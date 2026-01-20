@@ -207,6 +207,7 @@ export function useLoroSync(options: LoroSyncOptions): UseLoroSyncReturn {
 
     const unsubscribe = doc.subscribe((event: any) => {
       // event.by: "local" | "import" | "checkout"
+      console.log('[useLoroSync] doc.subscribe fired, event.by:', event.by);
 
       // Save to local storage (debounced) for ALL changes
       const snapshot = doc.export({ mode: 'snapshot' });
@@ -223,8 +224,10 @@ export function useLoroSync(options: LoroSyncOptions): UseLoroSyncReturn {
       // CRITICAL: Only update React state for REMOTE changes
       // Local changes are already in React state - updating would cause loops/overwrites
       if (event.by === 'local') {
+        console.log('[useLoroSync] Skipping local event');
         return;
       }
+      console.log('[useLoroSync] Processing remote event, updating React state');
 
       // Read fresh state from Loro and update React
       const { nodes, edges, tasks } = readStateFromLoro();
@@ -313,7 +316,9 @@ export function useLoroSync(options: LoroSyncOptions): UseLoroSyncReturn {
     ws.onmessage = async (event) => {
       try {
         const update = new Uint8Array(event.data);
+        console.log('[useLoroSync] ✅ WebSocket received update from server:', update.length, 'bytes');
         doc.import(update);
+        console.log('[useLoroSync] ✅ doc.import() completed');
       } catch (error: any) {
         console.error('[useLoroSync] Error importing update:', error);
         const errorMessage = error?.message || String(error);

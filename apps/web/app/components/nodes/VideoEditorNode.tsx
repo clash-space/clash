@@ -24,17 +24,21 @@ const VideoEditorNode = ({ data, id }: NodeProps) => {
     React.useEffect(() => {
         if (!loroSync?.doc) return;
 
-        const nodesMap = loroSync.doc.getMap('nodes');
+        // CRITICAL FIX: Subscribe to the entire document instead of just nodesMap
+        // This ensures we catch BOTH local changes (nodesMap.set) AND remote changes (doc.import)
+        const unsubscribe = loroSync.doc.subscribe((event: any) => {
+            // event.by: "local" | "import" | "checkout"
+            // We want to catch ALL changes (both local and remote) for this node
+            console.log('[VideoEditorNode] Loro doc event:', event.by);
 
-        // Subscribe to changes on this node
-        const unsubscribe = nodesMap.subscribe((event) => {
-            if (event.diff.updated) {
-                for (const [nodeId] of event.diff.updated) {
-                    if (nodeId === id) {
-                        console.log('[VideoEditorNode] Loro node updated, triggering preview refresh for:', id);
-                        setLoroUpdateTrigger(prev => prev + 1);
-                    }
-                }
+            // Check if this event affected our node
+            const nodesMap = loroSync.doc.getMap('nodes');
+            const currentNode = nodesMap.get(id);
+
+            // Trigger update if the node exists (simple check - any change to doc might affect this node)
+            if (currentNode) {
+                console.log('[VideoEditorNode] Loro node updated (via doc.subscribe), triggering preview refresh for:', id);
+                setLoroUpdateTrigger(prev => prev + 1);
             }
         });
 
@@ -49,6 +53,15 @@ const VideoEditorNode = ({ data, id }: NodeProps) => {
         if (loroSync?.doc) {
             const loroNode = loroSync.doc.getMap('nodes').get(id) as any;
             const loroDsl = loroNode?.data?.timelineDsl;
+            console.log('[VideoEditorNode] CRITICAL DEBUG:', {
+                nodeId: id,
+                trigger: loroUpdateTrigger,
+                hasPropsTimelineDsl: !!data.timelineDsl,
+                hasLoroTimelineDsl: !!loroDsl,
+                loroTrackCount: loroDsl?.tracks?.length || 0,
+                loroFirstTrackItemCount: loroDsl?.tracks?.[0]?.items?.length || 0,
+                firstItemSrc: loroDsl?.tracks?.[0]?.items?.[0]?.src || 'none'
+            });
             if (loroDsl) {
                 // Clone to ensure we have a plain object
                 try {
@@ -303,6 +316,10 @@ const VideoEditorNode = ({ data, id }: NodeProps) => {
                 compositionSize: `${timelineDsl.compositionWidth}x${timelineDsl.compositionHeight}`,
             });
 
+            // Ensure composition dimensions are set (default to 1920x1080 if missing)
+            const compositionWidth = timelineDsl.compositionWidth || 1920;
+            const compositionHeight = timelineDsl.compositionHeight || 1080;
+
             // Create a new video node with the rendered content
             // IMPORTANT: Override durationInFrames to use calculated value
             const updatedTimelineDsl = {
@@ -311,8 +328,8 @@ const VideoEditorNode = ({ data, id }: NodeProps) => {
             };
 
             console.log('[VideoEditorNode] Creating video node with:', {
-                compositionWidth: timelineDsl.compositionWidth,
-                compositionHeight: timelineDsl.compositionHeight,
+                compositionWidth,
+                compositionHeight,
                 maxEndFrame,
                 durationInSeconds,
             });
@@ -361,8 +378,8 @@ const VideoEditorNode = ({ data, id }: NodeProps) => {
                     timelineDsl: updatedTimelineDsl,
                     pendingTask: null,
                     // Set natural dimensions to match video editor canvas for correct aspect ratio
-                    naturalWidth: timelineDsl.compositionWidth,
-                    naturalHeight: timelineDsl.compositionHeight,
+                    naturalWidth: compositionWidth,
+                    naturalHeight: compositionHeight,
                 },
             };
 

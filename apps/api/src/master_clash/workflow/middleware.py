@@ -271,15 +271,20 @@ Example workflow:
                 # Apply JSON Patch
                 patched_dsl = jsonpatch.apply_patch(current_dsl, patch)
 
+                # Ensure critical fields are always present
+                if "compositionWidth" not in patched_dsl:
+                    patched_dsl["compositionWidth"] = 1920
+                if "compositionHeight" not in patched_dsl:
+                    patched_dsl["compositionHeight"] = 1080
+                if "fps" not in patched_dsl:
+                    patched_dsl["fps"] = 30
+
                 # Validate against schema
                 try:
                     TimelineDSL.model_validate(patched_dsl)
                 except ValidationError as e:
                     logger.error(f"DSL validation failed for node {node_id}: {e}")
                     return f"Error: Invalid DSL structure: {e}"
-
-                # Update node in Loro
-                updated_data = {**data, "timelineDsl": patched_dsl}
 
                 # Update upstream dependencies based on assets in timeline
                 # This ensures the video-editor node is connected to the assets it uses
@@ -289,6 +294,35 @@ Example workflow:
                     for item in items:
                         if "assetId" in item:
                             asset_ids.add(item["assetId"])
+
+                # Prepare updated data
+                updated_data = {**data, "timelineDsl": patched_dsl}
+
+                # CRITICAL FIX: Fill in missing 'src' and 'type' fields for items with assetId
+                # The agent only sets assetId, but the renderer needs src and type
+                # Normally the editor fills this in, but for patch_dsl we need to do it here
+                all_nodes = loro_client.get_all_nodes()
+                for track in patched_dsl.get("tracks", []):
+                    for item in track.get("items", []):
+                        asset_id = item.get("assetId")
+                        if asset_id:
+                            # Find the asset node and extract its src and type
+                            asset_node = all_nodes.get(asset_id)
+                            if asset_node and isinstance(asset_node, dict):
+                                asset_data = asset_node.get("data", {})
+                                asset_src = asset_data.get("src")
+                                asset_type = asset_node.get("type")  # node type: 'image', 'video', 'audio'
+
+                                if asset_src and not item.get("src"):
+                                    item["src"] = asset_src
+                                    logger.info(f"[patch_dsl] Filled src for item {item.get('id')}: {asset_src}")
+
+                                if asset_type and not item.get("type"):
+                                    item["type"] = asset_type
+                                    logger.info(f"[patch_dsl] Filled type for item {item.get('id')}: {asset_type}")
+
+                # Update the patched_dsl in updated_data after filling src
+                updated_data["timelineDsl"] = patched_dsl
 
                 if asset_ids:
                     current_upstreams = set(updated_data.get("upstreamNodeIds", []))
@@ -314,7 +348,32 @@ Example workflow:
                                 except Exception as e:
                                     logger.warning(f"Failed to add edge {edge_id}: {e}")
 
-                loro_client.update_node(node_id, {"data": updated_data})
+                # CRITICAL FIX: Read the full node from Loro and update it completely
+                # This ensures deep nested changes (like timelineDsl) trigger proper Loro events
+                # that the frontend subscription can detect for preview updates
+                nodes_map = loro_client.doc.get_map("nodes")
+                full_node = nodes_map.get(node_id)
+
+                # Extract full node value
+                if hasattr(full_node, "value"):
+                    full_node_dict = full_node.value
+                elif hasattr(full_node, "to_dict"):
+                    full_node_dict = full_node.to_dict()
+                else:
+                    all_nodes = nodes_map.get_deep_value() or {}
+                    full_node_dict = all_nodes.get(node_id) or {}
+
+                # Merge the updated data into the full node
+                full_node_dict["data"] = updated_data
+
+                # Use insert (not update_node) to trigger proper Loro change events
+                logger.info(f"[patch_dsl] About to insert node {node_id} with updated timelineDsl")
+                nodes_map.insert(node_id, full_node_dict)
+                logger.info(f"[patch_dsl] Node inserted, now committing...")
+                loro_client.doc.commit()
+                logger.info(f"[patch_dsl] Commit completed for node {node_id}")
+
+                logger.info(f"Successfully patched and committed timeline DSL for node {node_id}")
 
                 logger.info(f"Successfully patched timeline DSL for node {node_id}")
                 return f"Patch applied successfully to video-editor node {node_id}"

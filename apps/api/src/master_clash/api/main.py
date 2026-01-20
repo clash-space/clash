@@ -219,8 +219,40 @@ async def stream_workflow(
             return agent, agent_id
 
         try:
-            # Get or create the workflow graph lazily
-            graph = await get_or_create_graph()
+            # Get or create the workflow graph lazily with retry logic
+            from psycopg import OperationalError as PsycopgOperationalError
+
+            max_graph_retries = 2
+            graph = None
+
+            for attempt in range(max_graph_retries + 1):
+                try:
+                    graph = await get_or_create_graph()
+                    break  # Success, exit retry loop
+                except PsycopgOperationalError as e:
+                    error_msg = str(e).lower()
+                    if "ssl connection has been closed" in error_msg:
+                        logger.warning(
+                            f"SSL connection error while initializing graph (attempt {attempt + 1}/{max_graph_retries + 1}): {e}"
+                        )
+                        if attempt < max_graph_retries:
+                            # Reset the connection pool to force fresh connections
+                            from master_clash.database.pg_checkpointer import reset_connection_pool
+                            await reset_connection_pool()
+                            # Wait before retry
+                            await asyncio.sleep(1.0 * (attempt + 1))
+                        else:
+                            logger.error(f"Failed to initialize graph after {max_graph_retries + 1} attempts")
+                            raise
+                    else:
+                        # Non-SSL error, don't retry
+                        raise
+                except Exception as e:
+                    logger.error(f"Unexpected error initializing graph: {e}", exc_info=True)
+                    raise
+
+            if graph is None:
+                raise RuntimeError("Failed to initialize workflow graph")
 
             async for streamed in graph.astream(
                 inputs,
@@ -591,6 +623,44 @@ async def generate_semantic_ids(request: GenerateSemanticIDRequest):
     except Exception as e:
         logger.error(f"Error generating semantic IDs: {e}")
         raise HTTPException(status_code=500, detail=str(e)) from e
+
+
+@app.get("/api/health")
+async def health_check():
+    """
+    Health check endpoint for monitoring and load balancers.
+
+    Returns:
+        JSON response with health status and PostgreSQL connection pool metrics
+    """
+    from master_clash.database.pg_checkpointer import get_pool_health
+
+    try:
+        pool_health = await get_pool_health()
+
+        # Overall health status
+        is_healthy = pool_health.get("is_healthy", False)
+
+        return JSONResponse(
+            status_code=200 if is_healthy else 503,
+            content={
+                "status": "healthy" if is_healthy else "unhealthy",
+                "database": {
+                    "postgres": pool_health,
+                },
+                "service": "master-clash-api",
+            }
+        )
+    except Exception as e:
+        logger.error(f"Health check failed: {e}", exc_info=True)
+        return JSONResponse(
+            status_code=503,
+            content={
+                "status": "unhealthy",
+                "error": str(e),
+                "service": "master-clash-api",
+            }
+        )
 
 
 @app.exception_handler(Exception)

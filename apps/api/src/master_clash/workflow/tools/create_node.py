@@ -79,7 +79,17 @@ def create_create_node_tool(backend: CanvasBackendProtocol) -> BaseTool:
             # For video-editor nodes, initialize timelineDsl if not provided
             node_data_dict = payload.model_dump(exclude_none=True)
             if node_type == "video-editor" and "timelineDsl" not in node_data_dict:
-                node_data_dict["timelineDsl"] = TimelineDSL().model_dump()
+                # Ensure all required fields are present with defaults
+                # Use explicit dict instead of model_dump to guarantee fields are included
+                default_timeline = {
+                    "version": "1.0.0",
+                    "fps": 30,
+                    "compositionWidth": 1920,
+                    "compositionHeight": 1080,
+                    "durationInFrames": 0,
+                    "tracks": []
+                }
+                node_data_dict["timelineDsl"] = default_timeline
                 logger.info("[create_canvas_node] Initialized default timelineDsl for video-editor node")
 
             result = resolved_backend.create_node(

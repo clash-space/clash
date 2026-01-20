@@ -13,6 +13,39 @@ import type { Track, Item } from '@master-clash/remotion-core';
 // Debug logging disabled for performance
 // console.log('🎬 VideoComposition.tsx module loaded!');
 
+// Helper to ensure src is a proper URL
+const resolveAssetUrl = (src: string | undefined): string => {
+  if (!src) return '';
+
+  // Already a full URL
+  if (src.startsWith('http://') || src.startsWith('https://')) {
+    return src;
+  }
+
+  // Already a view URL
+  if (src.startsWith('/api/assets/view/')) {
+    return src;
+  }
+
+  // Data URL
+  if (src.startsWith('data:')) {
+    return src;
+  }
+
+  // R2 key format (projects/...) - convert to view URL
+  if (src.startsWith('projects/')) {
+    return `/api/assets/view/${src}`;
+  }
+
+  // Other paths starting with /
+  if (src.startsWith('/')) {
+    return src;
+  }
+
+  // Default: treat as R2 key
+  return `/api/assets/view/${src}`;
+};
+
 // Component to render individual items
 const ItemComponent: React.FC<{ item: Item; durationInFrames: number; visibleFrom?: number; endFrame?: number; globalEndFrame?: number; trackZIndex: number; itemsDomMapRef?: React.RefObject<Map<string, HTMLElement>> }> = ({ item, durationInFrames: _durationInFrames, visibleFrom, endFrame, globalEndFrame, trackZIndex, itemsDomMapRef }) => {
   const frame = useCurrentFrame();
@@ -107,7 +140,7 @@ const ItemComponent: React.FC<{ item: Item; durationInFrames: number; visibleFro
       >
         <AbsoluteFill style={{ opacity: hidden ? 0 : 1, width: '100%', height: '100%' }}>
           <OffthreadVideo
-            src={item.src}
+            src={resolveAssetUrl(item.src)}
             style={{ width: '100%', height: '100%', objectFit: 'fill' }}
             startFrom={sourceStart}
             pauseWhenBuffering={false}
@@ -123,7 +156,7 @@ const ItemComponent: React.FC<{ item: Item; durationInFrames: number; visibleFro
   if (item.type === 'audio') {
     const sourceStart = (item as any).sourceStartInFrames || 0;
     const baseVolume = item.volume || 1;
-    return <Audio src={item.src} startFrom={sourceStart} volume={baseVolume} />;
+    return <Audio src={resolveAssetUrl(item.src)} startFrom={sourceStart} volume={baseVolume} />;
   }
 
   if (item.type === 'image') {
@@ -135,7 +168,7 @@ const ItemComponent: React.FC<{ item: Item; durationInFrames: number; visibleFro
         })}
       >
         <Img
-          src={item.src}
+          src={resolveAssetUrl(item.src)}
           ref={(el) => {
             if (!itemsDomMapRef?.current || !el) return;
             itemsDomMapRef.current.set(item.id, el as HTMLElement);
