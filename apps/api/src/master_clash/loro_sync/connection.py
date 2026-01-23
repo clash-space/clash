@@ -32,6 +32,10 @@ class LoroConnectionMixin:
     _ws_loop: asyncio.AbstractEventLoop | None
     _disconnecting: bool  # Flag to prevent auto-reconnect after intentional disconnect
     _local_update_subscription: Any  # Loro subscription object
+    _doc_op_queue: asyncio.Queue | None
+    _doc_op_task: asyncio.Task | None
+    _doc_op_loop: asyncio.AbstractEventLoop | None
+    _doc_op_lock: asyncio.Lock
 
     async def connect(self):
         """Connect to the sync server via WebSocket and start syncing."""
@@ -52,6 +56,8 @@ class LoroConnectionMixin:
             )
             self.connected = True
             self._ws_loop = asyncio.get_running_loop()
+            self._doc_op_loop = self._ws_loop
+            await self._ensure_doc_op_worker()
             logger.info(f"[LoroSyncClient] ✅ Connected to sync server (project: {self.project_id})")
 
             # Wait for initial state snapshot
@@ -83,6 +89,8 @@ class LoroConnectionMixin:
     async def disconnect(self):
         """Disconnect from the sync server."""
         self._disconnecting = True  # Signal to _listen() not to auto-reconnect
+
+        await self._stop_doc_op_worker()
 
         # Unsubscribe from local updates
         if self._local_update_subscription:
@@ -265,6 +273,75 @@ class LoroConnectionMixin:
             logger.error(f"[LoroSyncClient] ❌ Error in _send_update: {e}")
             self.connected = False
             raise
+
+    async def _ensure_doc_op_worker(self) -> None:
+        if self._doc_op_queue is None:
+            self._doc_op_queue = asyncio.Queue()
+        if not self._doc_op_task or self._doc_op_task.done():
+            self._doc_op_task = asyncio.create_task(self._process_doc_ops())
+
+    async def _stop_doc_op_worker(self) -> None:
+        if not self._doc_op_queue or not self._doc_op_task:
+            return
+        await self._doc_op_queue.put(None)
+        try:
+            await asyncio.wait_for(self._doc_op_task, timeout=2.0)
+        except TimeoutError:
+            logger.warning("[LoroSyncClient] ⚠️ Timed out stopping doc op worker")
+        self._doc_op_task = None
+
+    async def _process_doc_ops(self) -> None:
+        if not self._doc_op_queue:
+            return
+        while True:
+            item = await self._doc_op_queue.get()
+            if item is None:
+                self._doc_op_queue.task_done()
+                break
+            label, op, done_future = item
+            try:
+                async with self._doc_op_lock:
+                    op()
+                    self.doc.commit()
+                if not done_future.done():
+                    done_future.set_result(None)
+                logger.debug(f"[LoroSyncClient] ✅ Doc op completed: {label}")
+            except Exception as e:
+                if not done_future.done():
+                    done_future.set_exception(e)
+                logger.error(f"[LoroSyncClient] ❌ Doc op failed: {label} - {e}")
+            finally:
+                self._doc_op_queue.task_done()
+
+    async def _enqueue_doc_op(self, op: Callable[[], None], label: str) -> None:
+        if not self._doc_op_queue:
+            op()
+            self.doc.commit()
+            return
+        loop = asyncio.get_running_loop()
+        done_future = loop.create_future()
+        await self._doc_op_queue.put((label, op, done_future))
+        await done_future
+
+    def _run_doc_op_sync(self, op: Callable[[], None], label: str, timeout_s: float = 5.0) -> bool:
+        if self._doc_op_queue and self._doc_op_loop and self._doc_op_loop.is_running():
+            try:
+                current_loop = asyncio.get_running_loop()
+            except RuntimeError:
+                current_loop = None
+
+            if current_loop is self._doc_op_loop:
+                asyncio.create_task(self._enqueue_doc_op(op, label))
+                logger.debug(f"[LoroSyncClient] 🕓 Doc op queued (in-loop): {label}")
+                return False
+
+            future = asyncio.run_coroutine_threadsafe(self._enqueue_doc_op(op, label), self._doc_op_loop)
+            future.result(timeout=timeout_s)
+            return True
+
+        op()
+        self.doc.commit()
+        return True
 
     def _get_state(self) -> dict[str, Any]:
         """Get the current state of the document as a dictionary."""

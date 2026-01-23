@@ -147,6 +147,7 @@ class VideoGenerationRequest:
     params: dict[str, Any] = field(default_factory=dict)
     reference_images: list[str] = field(default_factory=list)
     callback_url: str | None = None
+    task_id: str | None = None
 
 
 @dataclass
@@ -371,6 +372,33 @@ async def _poll_kie_video(external_task_id: str, project_id: str) -> VideoPollRe
         return VideoPollResult(status="completed", r2_key=r2_key)
 
 
+async def _submit_remotion_mg(request: VideoGenerationRequest) -> VideoSubmissionResult:
+    from master_clash.services.mg_animation import render_mg_animation
+
+    task_id = request.task_id or f"mg_{int(time.time())}"
+    result = await render_mg_animation(
+        description=request.prompt,
+        project_id=request.project_id,
+        task_id=task_id,
+        params=request.params,
+    )
+
+    if not result.success:
+        return VideoSubmissionResult(
+            success=False,
+            provider="remotion",
+            model_id=request.model_id,
+            error=result.error or "Remotion MG render failed",
+        )
+
+    return VideoSubmissionResult(
+        success=True,
+        provider="remotion",
+        model_id=request.model_id,
+        r2_key=result.r2_key,
+    )
+
+
 VIDEO_SUBMIT_HANDLERS: dict[str, VideoSubmitHandler] = {
     "kling-image2video": _submit_kling_image2video,
     "kling-kie-text2video": _submit_kie_text2video,
@@ -379,6 +407,7 @@ VIDEO_SUBMIT_HANDLERS: dict[str, VideoSubmitHandler] = {
     "sora-2-pro-image-to-video": _submit_kie_image2video,
     "sora-2-characters": _submit_kie_image2video,
     "sora-2-pro-storyboard": _submit_kie_text2video,
+    "remotion-mg": _submit_remotion_mg,
 }
 
 VIDEO_POLL_HANDLERS: dict[str, VideoPollHandler] = {

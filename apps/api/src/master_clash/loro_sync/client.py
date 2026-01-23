@@ -81,6 +81,10 @@ class LoroSyncClient(
         self._pending_sends: set[asyncio.Task[None]] = set()
         self._ws_loop: asyncio.AbstractEventLoop | None = None
         self._disconnecting = False  # Flag to prevent auto-reconnect after intentional disconnect
+        self._doc_op_queue: asyncio.Queue | None = None
+        self._doc_op_task: asyncio.Task | None = None
+        self._doc_op_loop: asyncio.AbstractEventLoop | None = None
+        self._doc_op_lock = asyncio.Lock()
 
 
 class LoroSyncClientSync:

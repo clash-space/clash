@@ -5,6 +5,7 @@ Provides methods for adding, updating, removing, and reading nodes.
 """
 
 import logging
+from collections.abc import Callable
 from typing import Any
 
 from loro import LoroDoc
@@ -22,6 +23,9 @@ class LoroNodesMixin:
     """Mixin providing node operations."""
 
     doc: LoroDoc
+    def _run_doc_op_sync(self, op: Callable[[], None], label: str, timeout_s: float = 5.0) -> bool:
+        """To be implemented by main class."""
+        raise NotImplementedError
 
     def _send_update(self, update: bytes):
         """To be implemented by main class."""
@@ -37,10 +41,15 @@ class LoroNodesMixin:
         node_type = node_data.get("type", "unknown")
         logger.info(f"[LoroSyncClient] ➕ Adding node: {node_id} (type: {node_type})")
 
-        nodes_map = self.doc.get_map("nodes")
-        nodes_map.insert(node_id, node_data)
-        self.doc.commit()
-        logger.info(f"[LoroSyncClient] ✅ Node added: {node_id}")
+        def op() -> None:
+            nodes_map = self.doc.get_map("nodes")
+            nodes_map.insert(node_id, node_data)
+
+        completed = self._run_doc_op_sync(op, f"add_node:{node_id}")
+        if completed:
+            logger.info(f"[LoroSyncClient] ✅ Node added: {node_id}")
+        else:
+            logger.info(f"[LoroSyncClient] 🕓 Node add queued: {node_id}")
 
     def add_node_auto_layout(
         self,
@@ -82,29 +91,34 @@ class LoroNodesMixin:
         """
         logger.info(f"[LoroSyncClient] 🔄 Updating node: {node_id}")
 
-        nodes_map = self.doc.get_map("nodes")
+        def op() -> None:
+            nodes_map = self.doc.get_map("nodes")
 
-        # Get existing node data safely
-        existing_proxy = nodes_map.get(node_id)
-        existing = {}
-        if existing_proxy:
-            if hasattr(existing_proxy, "value"):
-                existing = existing_proxy.value
-            elif hasattr(existing_proxy, "to_dict"):
-                existing = existing_proxy.to_dict()
+            # Get existing node data safely
+            existing_proxy = nodes_map.get(node_id)
+            existing = {}
+            if existing_proxy:
+                if hasattr(existing_proxy, "value"):
+                    existing = existing_proxy.value
+                elif hasattr(existing_proxy, "to_dict"):
+                    existing = existing_proxy.to_dict()
 
-        if not isinstance(existing, dict):
-            all_nodes = nodes_map.get_deep_value() or {}
-            existing = all_nodes.get(node_id) or {}
+            if not isinstance(existing, dict):
+                all_nodes = nodes_map.get_deep_value() or {}
+                existing = all_nodes.get(node_id) or {}
 
-        # Merge data
-        merged = {**existing, **node_data}
-        if "data" in existing and "data" in node_data:
-            merged["data"] = {**existing.get("data", {}), **node_data.get("data", {})}
+            # Merge data
+            merged = {**existing, **node_data}
+            if "data" in existing and "data" in node_data:
+                merged["data"] = {**existing.get("data", {}), **node_data.get("data", {})}
 
-        nodes_map.insert(node_id, merged)
-        self.doc.commit()
-        logger.info(f"[LoroSyncClient] ✅ Node updated: {node_id}")
+            nodes_map.insert(node_id, merged)
+
+        completed = self._run_doc_op_sync(op, f"update_node:{node_id}")
+        if completed:
+            logger.info(f"[LoroSyncClient] ✅ Node updated: {node_id}")
+        else:
+            logger.info(f"[LoroSyncClient] 🕓 Node update queued: {node_id}")
 
     def remove_node(self, node_id: str):
         """Remove a node from the canvas.
@@ -114,10 +128,15 @@ class LoroNodesMixin:
         """
         logger.info(f"[LoroSyncClient] ➖ Removing node: {node_id}")
 
-        nodes_map = self.doc.get_map("nodes")
-        nodes_map.delete(node_id)
-        self.doc.commit()
-        logger.info(f"[LoroSyncClient] ✅ Node removed: {node_id}")
+        def op() -> None:
+            nodes_map = self.doc.get_map("nodes")
+            nodes_map.delete(node_id)
+
+        completed = self._run_doc_op_sync(op, f"remove_node:{node_id}")
+        if completed:
+            logger.info(f"[LoroSyncClient] ✅ Node removed: {node_id}")
+        else:
+            logger.info(f"[LoroSyncClient] 🕓 Node removal queued: {node_id}")
 
     def get_node(self, node_id: str) -> dict[str, Any] | None:
         """Get a node by ID."""

@@ -310,4 +310,19 @@ MODEL_CARDS = [
         defaultParams={"duration": "5", "aspect_ratio": "16:9", "resolution": "720p", "cfg_scale": 0.5},
         input=ModelInputRule(requiresPrompt=True, referenceImage="forbidden", referenceMode="none"),
     ),
+    ModelCard(
+        id="remotion-mg",
+        name="Remotion MG (Gemini)",
+        provider="Gemini + Remotion",
+        kind="video",
+        description="Generate motion-graphics React components with Gemini and render via Remotion.",
+        parameters=[
+            ModelParameter(id="duration", label="Duration (s)", type="number", min=1, max=60, step=1, defaultValue=5),
+            ModelParameter(id="width", label="Width", type="number", min=320, max=3840, step=1, defaultValue=1920),
+            ModelParameter(id="height", label="Height", type="number", min=320, max=3840, step=1, defaultValue=1080),
+            ModelParameter(id="fps", label="FPS", type="number", min=12, max=60, step=1, defaultValue=30),
+        ],
+        defaultParams={"duration": 5, "width": 1920, "height": 1080, "fps": 30},
+        input=ModelInputRule(requiresPrompt=True, referenceImage="forbidden", referenceMode="none"),
+    ),
 ]

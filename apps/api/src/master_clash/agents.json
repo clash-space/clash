@@ -16,7 +16,8 @@
   "key_files": {
     "config.py": "Environment settings (Pydantic BaseSettings).",
     "models.py": "Shared Pydantic models used across modules.",
-    "context.py": "Request-scoped context management (Project Context)."
+    "context.py": "Request-scoped context management (Project Context).",
+    "services/mg_animation.py": "Generate motion-graphics React components with Gemini and render via Remotion."
   },
   "architecture_notes": "Follows a hexagonal-ish architecture: API -> Workflow -> Tools/Services -> External World."
 }

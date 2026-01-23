@@ -594,6 +594,7 @@ async def process_video_generation(
                         params=model_params,
                         reference_images=reference_images,
                         callback_url=callback_url,
+                        task_id=task_id,
                     )
                 )
 
