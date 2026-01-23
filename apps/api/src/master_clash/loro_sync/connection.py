@@ -140,17 +140,25 @@ class LoroConnectionMixin:
                 logger.error(f"[LoroSyncClient] ❌ Error in listen loop: {e}")
                 await self._auto_reconnect()
 
-    async def _auto_reconnect(self, max_retries: int = 3, delay: float = 2.0):
-        """Attempt to automatically reconnect to the sync server."""
+    async def _auto_reconnect(self, max_retries: int = 10, initial_delay: float = 1.0):
+        """Attempt to automatically reconnect to the sync server with exponential backoff.
+
+        Args:
+            max_retries: Maximum number of reconnection attempts (default: 10, was 3)
+            initial_delay: Initial delay in seconds, doubles each retry (default: 1.0s)
+        """
+        delay = initial_delay
         for attempt in range(max_retries):
             try:
-                logger.info(f"[LoroSyncClient] 🔄 Reconnection attempt {attempt + 1}/{max_retries}...")
+                logger.info(f"[LoroSyncClient] 🔄 Reconnection attempt {attempt + 1}/{max_retries} (delay: {delay:.1f}s)...")
                 await asyncio.sleep(delay)
                 await self.connect()
                 logger.info("[LoroSyncClient] ✅ Reconnected successfully")
                 return
             except Exception as e:
                 logger.error(f"[LoroSyncClient] ❌ Reconnection attempt {attempt + 1} failed: {e}")
+                # Exponential backoff with cap at 30 seconds
+                delay = min(delay * 2, 30.0)
 
         logger.error(f"[LoroSyncClient] ❌ Failed to reconnect after {max_retries} attempts")
 
@@ -197,8 +205,17 @@ class LoroConnectionMixin:
             logger.error(f"[LoroSyncClient] ❌ Sync reconnection failed: {e}")
             return False
 
-    def _send_update(self, update: bytes):
-        """Send a local update to the sync server."""
+    def _send_update(self, update: bytes, timeout_s: float = 5.0):
+        """Send a local update to the sync server with timeout.
+
+        Args:
+            update: Binary update data to send
+            timeout_s: Timeout in seconds for send operation (default: 5s)
+
+        Raises:
+            TimeoutError: If send operation exceeds timeout
+            Exception: If WebSocket is closed or send fails
+        """
         if not (self.ws and self.connected):
             logger.warning("[LoroSyncClient] ⚠️ Cannot send update: not connected")
             return
@@ -228,19 +245,26 @@ class LoroConnectionMixin:
                 logger.debug("[LoroSyncClient] WS loop is running, scheduling via run_coroutine_threadsafe")
                 future = asyncio.run_coroutine_threadsafe(self.ws.send(update), self._ws_loop)
 
-                def on_done(f):
-                    try:
-                        f.result()
-                        logger.debug("[LoroSyncClient] ✅ Update sent successfully via thread-safe call")
-                    except Exception as e:
-                        logger.error(f"[LoroSyncClient] ❌ Error sending update: {e}")
-
-                future.add_done_callback(on_done)
+                # CRITICAL: Wait for send with timeout to prevent hangs
+                try:
+                    future.result(timeout=timeout_s)
+                    logger.debug("[LoroSyncClient] ✅ Update sent successfully via thread-safe call")
+                except TimeoutError:
+                    logger.error(f"[LoroSyncClient] ❌ Send timed out after {timeout_s}s - marking as disconnected")
+                    self.connected = False
+                    raise
+                except Exception as e:
+                    logger.error(f"[LoroSyncClient] ❌ Error sending update: {e} - marking as disconnected")
+                    self.connected = False
+                    raise
             else:
                 logger.warning("[LoroSyncClient] ⚠️ WS event loop is not running, cannot send update")
+                self.connected = False
 
         except Exception as e:
             logger.error(f"[LoroSyncClient] ❌ Error in _send_update: {e}")
+            self.connected = False
+            raise
 
     def _get_state(self) -> dict[str, Any]:
         """Get the current state of the document as a dictionary."""

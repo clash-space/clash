@@ -2,8 +2,8 @@
 export type ItemProperties = {
   x: number; // X position in pixels from canvas center
   y: number; // Y position in pixels from canvas center
-  width: number; // Width scale (0-1, relative to canvas width)
-  height: number; // Height scale (0-1, relative to canvas height)
+  width: number; // Width scale (1 = 100% natural width)
+  height: number; // Height scale (1 = 100% natural height)
   rotation?: number; // Rotation in degrees
   opacity?: number; // Opacity (0-1)
   // Note: zIndex is determined by track order, not stored in properties
@@ -14,6 +14,7 @@ export type BaseItem = {
   id: string;
   from: number; // Start frame
   durationInFrames: number;
+  assetId?: string;
   properties?: ItemProperties; // Canvas positioning and transform properties
 };
 

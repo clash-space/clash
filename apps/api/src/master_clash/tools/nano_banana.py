@@ -1,4 +1,3 @@
-
 import logging
 
 from langchain_core.tools import tool
@@ -66,7 +65,9 @@ def get_image_registry_prompt() -> str:
         return "No images are currently registered."
 
     image_list = ", ".join(f"'{name}'" for name in _IMAGE_REGISTRY)
-    return f"Available reference images: {image_list}. Use these names when calling nano_banana tools."
+    return (
+        f"Available reference images: {image_list}. Use these names when calling nano_banana tools."
+    )
 
 
 def _generate_image_name(base_name: str) -> str:
@@ -84,9 +85,7 @@ def _generate_image_name(base_name: str) -> str:
     return f"{base_name}_{_GENERATED_IMAGE_COUNTER[base_name]}"
 
 
-def _save_image_to_file(
-    base64_data: str, filename: str, output_dir: str | None = None
-) -> str:
+def _save_image_to_file(base64_data: str, filename: str, output_dir: str | None = None) -> str:
     """
     Save base64-encoded image to file.
     Args:
@@ -128,7 +127,16 @@ def _base_nano_banana_gen(
     # Gemini supported aspect ratios (synced with shared-types GEMINI_ASPECT_RATIOS)
     # Reference: https://ai.google.dev/gemini-api/docs/image-generation
     supported_aspect_ratios = {
-        "1:1", "2:3", "3:2", "3:4", "4:3", "4:5", "5:4", "9:16", "16:9", "21:9"
+        "1:1",
+        "2:3",
+        "3:2",
+        "3:4",
+        "4:3",
+        "4:5",
+        "5:4",
+        "9:16",
+        "16:9",
+        "21:9",
     }
     normalized_ratio = aspect_ratio if aspect_ratio in supported_aspect_ratios else "16:9"
 
@@ -184,7 +192,7 @@ def _base_nano_banana_gen(
     try:
         # 调用模型
         response = llm.invoke(messages)
-        logger.info(f"Nano Banana Response: {response}")
+        # logger.info(f"Nano Banana Response: {response}")
     except Exception as e:
         logger.error(f"Error in nano_banana_gen: {str(e)}", exc_info=True)
         raise e
@@ -209,15 +217,11 @@ def _base_nano_banana_gen(
 
         # Look for text block to give better error
         text_block = next(
-            (
-                block
-                for block in response.content
-                if isinstance(block, dict) and block.get("text")
-            ),
+            (block for block in response.content if isinstance(block, dict) and block.get("text")),
             None,
         )
         if text_block:
-             raise ValueError(f"Model returned text instead of image: {text_block.get('text')}")
+            raise ValueError(f"Model returned text instead of image: {text_block.get('text')}")
 
         raise ValueError("No image generated in response")
 
@@ -328,7 +332,6 @@ def nano_banana_tool(
     ]
 
 
-
 @tool
 def nano_banana_pro_tool(
     text: str,
@@ -373,8 +376,6 @@ def nano_banana_pro_tool(
         image_message_part_template(image_data),
         text_message_part_template(f"Registered image name: {new_image_name}"),
     ]
-
-
 
 
 @tool

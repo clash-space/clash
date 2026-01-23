@@ -34,6 +34,14 @@ export async function pollNodeTasks(
 
       if (!pendingTask) continue;
 
+      // Skip if task is currently being submitted (taskState='submitted')
+      const taskState = innerData.taskState;
+      if (taskState === 'submitted') {
+        console.log(`[TaskPolling] ⏸ Node ${nodeId.slice(0, 8)} is submitting, skipping poll`);
+        hasPendingTasks = true;
+        continue;
+      }
+
       console.log(`[TaskPolling] 🔍 Checking task ${pendingTask} for node ${nodeId.slice(0, 8)}`);
 
       // Query Python API for task status
@@ -42,7 +50,8 @@ export async function pollNodeTasks(
 
       if (taskStatus.status === 'completed') {
         const updates: Record<string, any> = {
-          pendingTask: undefined // Clear pending task
+          pendingTask: undefined,  // Clear pending task
+          taskState: undefined,    // Clear task state
         };
 
         // Handle different task types
@@ -82,11 +91,31 @@ export async function pollNodeTasks(
         updateNodeData(doc, nodeId, updates, broadcast);
       } else if (taskStatus.status === 'failed') {
         console.error(`[TaskPolling] ❌ Task failed: ${taskStatus.error}`);
-        updateNodeData(doc, nodeId, { 
-          pendingTask: undefined,
-          status: 'failed',
-          error: taskStatus.error 
-        }, broadcast);
+
+        // Fix: Don't mark as failed if it was already completed (e.g. description generation failed)
+        // This prevents uploaded images from disappearing if description generation fails
+        const currentStatus = innerData.status;
+
+        if (currentStatus === 'completed' || currentStatus === 'fin') {
+            console.warn(`[TaskPolling] ⚠️ Auxiliary task failed for ${nodeId.slice(0, 8)}, preserving asset status`);
+
+            updateNodeData(doc, nodeId, {
+              pendingTask: undefined,
+              taskState: undefined,
+              // Don't change status, just mark description as failed to prevent retry loops in NodeProcessor
+              description: innerData.description || 'Description generation failed',
+              // We can log the error but don't set the main error field to avoid UI confusion
+              // error: taskStatus.error
+            }, broadcast);
+        } else {
+            // Main generation task failed - this is a real failure
+            updateNodeData(doc, nodeId, {
+              pendingTask: undefined,
+              taskState: undefined,
+              status: 'failed',
+              error: taskStatus.error
+            }, broadcast);
+        }
       } else {
         // Still pending/processing
         hasPendingTasks = true;

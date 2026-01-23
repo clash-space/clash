@@ -258,12 +258,11 @@ export const PropertiesPanel: React.FC = () => {
               />
             </div>
             <div className="mb-3">
-              <label className="block text-xs text-slate-500 mb-1.5">Width (0-1)</label>
+              <label className="block text-xs text-slate-500 mb-1.5">Width Scale (1=100%)</label>
               <input
                 type="number"
                 step="0.01"
                 min="0"
-                max="2"
                 value={item.properties?.width ?? 1}
                 onChange={(e) => updateItem({
                   properties: {
@@ -278,12 +277,11 @@ export const PropertiesPanel: React.FC = () => {
               />
             </div>
             <div className="mb-3">
-              <label className="block text-xs text-slate-500 mb-1.5">Height (0-1)</label>
+              <label className="block text-xs text-slate-500 mb-1.5">Height Scale (1=100%)</label>
               <input
                 type="number"
                 step="0.01"
                 min="0"
-                max="2"
                 value={item.properties?.height ?? 1}
                 onChange={(e) => updateItem({
                   properties: {

@@ -1,4 +1,4 @@
-import type { Node } from 'reactflow';
+import type { Node, Edge } from 'reactflow';
 import type { Point } from '../types';
 import { getAbsoluteRect } from '../core/geometry';
 
@@ -63,7 +63,87 @@ type RelayoutGridOptions = {
      * - When omitted, all sibling sets are relayouted.
      */
     scopeParentId?: string | undefined;
+    /**
+     * Edge connections to consider for topology-aware layout
+     */
+    edges?: Edge[];
+    /**
+     * Use compact layout (true) or grid-aligned layout (false)
+     * Compact layout places nodes at their actual positions with minimal gaps
+     */
+    compact?: boolean;
 };
+
+/**
+ * Perform topological layering - group nodes by "depth" from sources
+ * Returns nodes grouped by layers for better flow layout
+ */
+function topologicalLayering(nodeIds: string[], edges: Edge[]): string[][] {
+    // IMPORTANT: Sort nodeIds first for stable input
+    const sortedNodeIds = [...nodeIds].sort();
+
+    const nodeIdSet = new Set(sortedNodeIds);
+    const inDegree = new Map<string, number>();
+    const outgoing = new Map<string, Set<string>>();
+
+    // Initialize
+    for (const id of sortedNodeIds) {
+        inDegree.set(id, 0);
+        outgoing.set(id, new Set());
+    }
+
+    // Build directed graph and count in-degrees
+    for (const edge of edges) {
+        if (nodeIdSet.has(edge.source) && nodeIdSet.has(edge.target)) {
+            outgoing.get(edge.source)?.add(edge.target);
+            inDegree.set(edge.target, (inDegree.get(edge.target) || 0) + 1);
+        }
+    }
+
+    // Find roots (nodes with no incoming edges) - SORTED for stability
+    const layers: string[][] = [];
+    let currentLayer = sortedNodeIds.filter(id => inDegree.get(id) === 0);
+
+    // If no roots (cyclic graph or no edges), start with all nodes
+    if (currentLayer.length === 0) {
+        return [sortedNodeIds]; // Single layer
+    }
+
+    const visited = new Set<string>();
+
+    while (currentLayer.length > 0) {
+        layers.push([...currentLayer]);
+        const nextLayer: string[] = [];
+
+        for (const nodeId of currentLayer) {
+            visited.add(nodeId);
+
+            // Process outgoing edges - sort targets for stable order
+            const targets = Array.from(outgoing.get(nodeId) || []).sort();
+            for (const target of targets) {
+                if (!visited.has(target)) {
+                    const newInDegree = (inDegree.get(target) || 0) - 1;
+                    inDegree.set(target, newInDegree);
+
+                    if (newInDegree === 0 && !nextLayer.includes(target)) {
+                        nextLayer.push(target);
+                    }
+                }
+            }
+        }
+
+        // IMPORTANT: Sort nextLayer for stable order
+        currentLayer = nextLayer.sort();
+    }
+
+    // Add any remaining unvisited nodes (disconnected components) - SORTED
+    const unvisited = sortedNodeIds.filter(id => !visited.has(id));
+    if (unvisited.length > 0) {
+        layers.push(unvisited);
+    }
+
+    return layers;
+}
 
 type Row = {
     ids: string[];
@@ -232,6 +312,137 @@ function assignToColumns(
 }
 
 /**
+ * Hierarchical layout with text nodes on the left and groups stacked below
+ *
+ * Layout structure:
+ * - Left column: All text nodes (stacked vertically)
+ * - Right top: Loose nodes (assets, actions, etc., excluding text and groups)
+ * - Right bottom: Groups (stacked vertically)
+ * - Inside each group: Same recursive structure
+ */
+function layoutHierarchical(
+    siblings: Node[],
+    nodes: Node[],
+    rectsById: Map<string, RectLike>,
+    origin: Point,
+    opts: {
+        gapX: number;
+        gapY: number;
+        rowOverlapThreshold: number;
+        colOverlapThreshold: number;
+    },
+    edges: Edge[]
+): Map<string, Point> {
+    const positions = new Map<string, Point>();
+
+    // Classify nodes
+    const textNodes = siblings.filter((n) => n.type === 'text');
+    const groupNodes = siblings.filter((n) => n.type === 'group');
+    const otherNodes = siblings.filter((n) => n.type !== 'text' && n.type !== 'group');
+
+    // 1. Layout text nodes on the left (vertical stack)
+    let textX = origin.x;
+    let textY = origin.y;
+    let maxTextWidth = 0;
+
+    for (const textNode of textNodes) {
+        const size = getNodeSize(textNode, nodes);
+        positions.set(textNode.id, { x: textX, y: textY });
+        textY += size.height + opts.gapY;
+        maxTextWidth = Math.max(maxTextWidth, size.width);
+    }
+
+    // 2. Layout other nodes on the right top (using grid layout)
+    const rightX = origin.x + (textNodes.length > 0 ? maxTextWidth + opts.gapX * 2 : 0);
+    let rightY = origin.y;
+    let otherNodesMaxY = rightY;
+
+    if (otherNodes.length > 0) {
+        // Use position-based row assignment for other nodes
+        const otherRectsById = new Map<string, RectLike>();
+        for (const node of otherNodes) {
+            const rect = rectsById.get(node.id);
+            if (rect) {
+                // Shift rect to right area for row assignment
+                otherRectsById.set(node.id, {
+                    ...rect,
+                    x: rect.x - origin.x + rightX,
+                });
+            }
+        }
+
+        const rows = assignToRows(otherNodes, otherRectsById, {
+            gapY: opts.gapY,
+            rowOverlapThreshold: opts.rowOverlapThreshold,
+        });
+
+        const { colIndexById } = assignToColumns(rows, otherRectsById, {
+            gapX: opts.gapX,
+            colOverlapThreshold: opts.colOverlapThreshold,
+        });
+
+        const maxCols = Math.max(0, ...Array.from(colIndexById.values()).map((v) => v + 1));
+
+        // Calculate column widths and row heights
+        const colWidths = new Array<number>(maxCols).fill(0);
+        const rowHeights = new Array<number>(rows.length).fill(0);
+
+        for (let r = 0; r < rows.length; r++) {
+            const row = rows[r];
+            for (const id of row.ids) {
+                const c = colIndexById.get(id) ?? 0;
+                const node = nodes.find((n) => n.id === id)!;
+                const size = getNodeSize(node, nodes);
+                colWidths[c] = Math.max(colWidths[c], size.width);
+                rowHeights[r] = Math.max(rowHeights[r], size.height);
+            }
+        }
+
+        // Calculate column X positions
+        const colX: number[] = [];
+        let xCursor = rightX;
+        for (let c = 0; c < colWidths.length; c++) {
+            colX[c] = xCursor;
+            xCursor += colWidths[c] + opts.gapX;
+        }
+
+        // Calculate row Y positions
+        const rowY: number[] = [];
+        let yCursor = rightY;
+        for (let r = 0; r < rowHeights.length; r++) {
+            rowY[r] = yCursor;
+            yCursor += rowHeights[r] + opts.gapY;
+        }
+
+        otherNodesMaxY = yCursor;
+
+        // Position other nodes
+        for (let r = 0; r < rows.length; r++) {
+            const row = rows[r];
+            for (const id of row.ids) {
+                const c = colIndexById.get(id) ?? 0;
+                positions.set(id, {
+                    x: colX[c],
+                    y: rowY[r],
+                });
+            }
+        }
+    }
+
+    // 3. Layout groups below other nodes (vertical stack)
+    const groupsY = Math.max(textY, otherNodesMaxY);
+    let groupYCursor = groupsY;
+
+    for (const group of groupNodes) {
+        positions.set(group.id, { x: rightX, y: groupYCursor });
+        const groupSize = getNodeSize(group, nodes);
+        groupYCursor += groupSize.height + opts.gapY;
+    }
+
+    return positions;
+}
+
+/**
  * "Measured grid" relayout that keeps relative ordering but aligns nodes into rows/columns.
  *
  * For each sibling set (same parentId):
@@ -285,83 +496,24 @@ export function relayoutToGrid(nodes: Node[], options: RelayoutGridOptions = {})
         if (siblings.length === 0) continue;
 
         const origin = computeOrigin(siblings);
-        const rows = assignToRows(siblings, rectsById, {
-            gapY: opts.gapY,
-            rowOverlapThreshold: opts.rowOverlapThreshold,
-        });
-        const { colIndexById } = assignToColumns(rows, rectsById, {
-            gapX: opts.gapX,
-            colOverlapThreshold: opts.colOverlapThreshold,
-        });
 
-        const maxCols = Math.max(
-            0,
-            ...Array.from(colIndexById.values()).map((v) => v + 1)
+        // Use hierarchical layout: text left, groups bottom, others in between
+        const positions = layoutHierarchical(
+            siblings,
+            nodes,
+            rectsById,
+            origin,
+            {
+                gapX: opts.gapX,
+                gapY: opts.gapY,
+                rowOverlapThreshold: opts.rowOverlapThreshold,
+                colOverlapThreshold: opts.colOverlapThreshold,
+            },
+            options.edges || []
         );
 
-        const colWidths = new Array<number>(maxCols).fill(0);
-        const rowHeights = new Array<number>(rows.length).fill(0);
-
-        for (let r = 0; r < rows.length; r++) {
-            const row = rows[r];
-            for (const id of row.ids) {
-                const c = colIndexById.get(id) ?? 0;
-                const node = nodes.find((n) => n.id === id)!;
-                const size = getNodeSize(node, nodes);
-                colWidths[c] = Math.max(colWidths[c], size.width);
-                rowHeights[r] = Math.max(rowHeights[r], size.height);
-            }
-        }
-
-        const colX: number[] = [];
-        let xCursor = origin.x;
-        for (let c = 0; c < colWidths.length; c++) {
-            colX[c] = xCursor;
-            xCursor += colWidths[c] + opts.gapX;
-        }
-
-        const rowY: number[] = [];
-        let yCursor = origin.y;
-        for (let r = 0; r < rowHeights.length; r++) {
-            rowY[r] = yCursor;
-            yCursor += rowHeights[r] + opts.gapY;
-        }
-
-        const occupied: RectLike[] = [];
-
-        for (let r = 0; r < rows.length; r++) {
-            const row = rows[r];
-            for (const id of row.ids) {
-                const c = colIndexById.get(id) ?? 0;
-                const node = nodes.find((n) => n.id === id)!;
-                const size = getNodeSize(node, nodes);
-
-                const cellW = colWidths[c];
-                const cellH = rowHeights[r];
-
-                const baseX = colX[c];
-                const baseY = rowY[r];
-
-                const pos: Point = {
-                    x: opts.centerInCell ? baseX + Math.max(0, (cellW - size.width) / 2) : baseX,
-                    y: opts.centerInCell ? baseY + Math.max(0, (cellH - size.height) / 2) : baseY,
-                };
-
-                const rect: RectLike = { x: pos.x, y: pos.y, width: size.width, height: size.height };
-                const has = occupied.some((o) => overlaps(rect, o));
-                if (has) {
-                    // Very rare, but if centering causes overlaps (e.g. weird sizes), nudge down by grid gap.
-                    let ny = pos.y;
-                    while (occupied.some((o) => overlaps({ ...rect, y: ny }, o))) {
-                        ny += opts.gapY;
-                    }
-                    nextPosById.set(id, { x: pos.x, y: ny });
-                    occupied.push({ ...rect, y: ny });
-                } else {
-                    nextPosById.set(id, pos);
-                    occupied.push(rect);
-                }
-            }
+        for (const [id, pos] of positions.entries()) {
+            nextPosById.set(id, pos);
         }
     }
 

@@ -162,12 +162,14 @@ export function VideoEditorProvider({
         setAssets(deduplicatedAssets);
         setEditorNodeId(nodeId);
 
-        // Hydrate DSL with asset sources if missing (critical for Player which relies on src)
-        let hydratedDsl = nextTimelineDsl;
-        if (hydratedDsl && hydratedDsl.tracks) {
-             hydratedDsl = {
-                 ...hydratedDsl,
-                 tracks: hydratedDsl.tracks.map(track => ({
+        // Process DSL - normalize keys and ensure IDs exist
+        // Note: src/type are no longer hydrated here - they are resolved dynamically
+        // at render time by VideoComposition using the allNodes map
+        let processedDsl = nextTimelineDsl;
+        if (processedDsl && processedDsl.tracks) {
+             processedDsl = {
+                 ...processedDsl,
+                 tracks: processedDsl.tracks.map(track => ({
                      ...track,
                      items: track.items.map(item => {
                          let newItem = { ...item };
@@ -177,7 +179,7 @@ export function VideoEditorProvider({
                              newItem.id = `item-auto-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
                          }
 
-                         // 1.5 Handle legacy snake_case keys from backend (asset_id -> assetId)
+                         // 2. Handle legacy snake_case keys from backend (asset_id -> assetId)
                          if ((newItem as any).asset_id && !newItem.assetId) {
                              newItem.assetId = (newItem as any).asset_id;
                          }
@@ -188,38 +190,23 @@ export function VideoEditorProvider({
                              newItem.startAt = (newItem as any).start_at;
                          }
 
-                         // 2. Hydrate from Asset (src, type)
-                         if (newItem.assetId && (!newItem.src || !newItem.type)) {
-                             const asset = deduplicatedAssets.find(a => a.id === newItem.assetId);
-                             if (asset) {
-                                 console.log(`[VideoEditorContext] Hydrating item ${newItem.id} from asset ${asset.id}`);
-                                 if (!newItem.src) newItem.src = asset.src;
-                                 if (!newItem.type) newItem.type = asset.type;
-                             } else {
-                                 console.warn(`[VideoEditorContext] Could not find asset for item ${newItem.id} with assetId ${newItem.assetId}`);
-                             }
-                         }
-
-                         // 3. Normalize Type (lowercase)
+                         // 3. Normalize Type (lowercase) - only if type is already present
+                         // src/type resolution now happens at render time via VideoComposition
                          if (newItem.type) {
                              newItem.type = newItem.type.toLowerCase() as any;
-                         } else {
-                             // Default to image if still missing? Or solid?
-                             // Leaving it undefined might cause issues, let's default to 'image' if we have src, else 'solid'??
-                             // Best to leave it and let renderer handle fallback or gray block.
                          }
 
                          return newItem;
                      })
                  }))
              };
-             console.log('[VideoEditorContext] 3. Hydrated DSL (Ready for Editor):', JSON.stringify(hydratedDsl, null, 2));
+             console.log('[VideoEditorContext] 3. Processed DSL (Ready for Editor):', JSON.stringify(processedDsl, null, 2));
         }
 
         // Convert R2 keys to view URLs for editor display
-        const convertedTimelineDsl = hydratedDsl ? {
-            ...hydratedDsl,
-            tracks: convertTracksToViewUrls(hydratedDsl.tracks),
+        const convertedTimelineDsl = processedDsl ? {
+            ...processedDsl,
+            tracks: convertTracksToViewUrls(processedDsl.tracks),
         } : null;
         setTimelineDsl(convertedTimelineDsl);
 
@@ -313,6 +300,30 @@ export function VideoEditorProvider({
             compositionSize: `${finalDsl.compositionWidth}x${finalDsl.compositionHeight}`,
         });
 
+        // Calculate actual natural dimensions from source assets (not canvas size)
+        // Find the largest asset dimensions in the timeline
+        let maxAssetWidth = 0;
+        let maxAssetHeight = 0;
+        for (const track of finalDsl.tracks) {
+            for (const item of track.items) {
+                if ('assetId' in item && item.assetId) {
+                    const asset = state.assets.find(a => a.id === item.assetId || a.sourceNodeId === item.assetId);
+                    if (asset && asset.width && asset.height) {
+                        // Only consider assets that are larger than canvas (true source resolution)
+                        if (asset.width > maxAssetWidth) maxAssetWidth = asset.width;
+                        if (asset.height > maxAssetHeight) maxAssetHeight = asset.height;
+                    }
+                }
+            }
+        }
+        // Fallback to canvas size if no assets found
+        const naturalWidth = maxAssetWidth > 0 ? maxAssetWidth : state.compositionWidth;
+        const naturalHeight = maxAssetHeight > 0 ? maxAssetHeight : state.compositionHeight;
+
+        console.log('[VideoEditorContext] Calculated natural dimensions:', {
+            maxAssetWidth, maxAssetHeight, naturalWidth, naturalHeight
+        });
+
         // Create a new video node with the rendered content
         const newVideoNodeId = `video-${Date.now()}`;
 
@@ -356,9 +367,9 @@ export function VideoEditorProvider({
                 duration: durationInSeconds,
                 timelineDsl: finalDsl,
                 pendingTask: null,
-                // Set natural dimensions to match video editor canvas for correct aspect ratio
-                naturalWidth: state.compositionWidth,
-                naturalHeight: state.compositionHeight,
+                // Use actual source asset dimensions, not canvas size
+                naturalWidth,
+                naturalHeight,
             },
         };
 

@@ -55,6 +55,8 @@ export {
     autoScaleGroups,
     isChildWithinBounds,
     getGroupsNeedingScale,
+    shrinkGroupsToFit,
+    recursiveShrinkGroups,
 } from './group/auto-scale';
 
 // Collision detection

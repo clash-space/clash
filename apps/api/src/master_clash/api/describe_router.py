@@ -13,10 +13,10 @@ from datetime import datetime
 from fastapi import APIRouter, BackgroundTasks, HTTPException
 from pydantic import BaseModel, Field
 
-from master_clash.json_utils import dumps as json_dumps
-from master_clash.json_utils import loads as json_loads
+from master_clash.database.di import get_db_context
+from master_clash.database.models import AigcTask
+from master_clash.json_utils import dumps as json_dumps, loads as json_loads
 from master_clash.services import r2, genai
-from master_clash.database.di import get_database
 
 logger = logging.getLogger(__name__)
 
@@ -60,58 +60,56 @@ class DescribeStatusResponse(BaseModel):
 async def create_task(task_id: str, project_id: str, node_id: str, r2_key: str, mime_type: str) -> None:
     """Create task in DB."""
     now = int(datetime.utcnow().timestamp() * 1000)
-    params = json_dumps({"r2_key": r2_key, "mime_type": mime_type, "node_id": node_id})
+    params = {"r2_key": r2_key, "mime_type": mime_type, "node_id": node_id}
 
-    db = get_database()
-    try:
-        db.execute(
-            """INSERT INTO aigc_tasks
-               (task_id, project_id, task_type, status, params, created_at, updated_at, max_retries)
-               VALUES (?, ?, 'description', ?, ?, ?, ?, 3)""",
-            [task_id, project_id, STATUS_PENDING, params, now, now]
+    async with get_db_context() as session:
+        task = AigcTask(
+            task_id=task_id,
+            project_id=project_id,
+            task_type="description",
+            status=STATUS_PENDING,
+            params=params,  # SQLAlchemy JSON type handles serialization
+            created_at=now,
+            updated_at=now,
+            max_retries=3,
         )
-        db.commit()
-    finally:
-        db.close()
+        session.add(task)
+        await session.commit()
 
 
 async def update_task(task_id: str, status: str, result_data: dict = None, error: str = None) -> None:
     """Update task in DB."""
     now = int(datetime.utcnow().timestamp() * 1000)
-    db = get_database()
-    try:
+
+    async with get_db_context() as session:
+        result = await session.execute(
+            select(AigcTask).where(AigcTask.task_id == task_id)
+        )
+        task = result.scalar_one_or_none()
+
+        if not task:
+            return
+
+        task.status = status
+        task.updated_at = now
+
         if status == STATUS_COMPLETED and result_data:
-            db.execute(
-                """UPDATE aigc_tasks
-                   SET status = ?, result_data = ?, updated_at = ?, completed_at = ?
-                   WHERE task_id = ?""",
-                [status, json_dumps(result_data), now, now, task_id]
-            )
-        elif status == STATUS_FAILED and error:
-            db.execute(
-                """UPDATE aigc_tasks SET status = ?, error_message = ?, updated_at = ? WHERE task_id = ?""",
-                [status, error, now, task_id]
-            )
-        else:
-            db.execute(
-                """UPDATE aigc_tasks SET status = ?, updated_at = ? WHERE task_id = ?""",
-                [status, now, task_id]
-            )
-        db.commit()
-    finally:
-        db.close()
+            task.result_data = result_data  # SQLAlchemy JSON type handles serialization
+            task.completed_at = now
+        elif error:
+            task.error_message = error
+
+        await session.commit()
 
 
 async def get_task(task_id: str) -> dict | None:
     """Get task from DB."""
-    db = get_database()
-    try:
-        row = db.fetchone("SELECT * FROM aigc_tasks WHERE task_id = ?", [task_id])
-        if not row:
-            return None
-        return dict(row)
-    finally:
-        db.close()
+    async with get_db_context() as session:
+        result = await session.execute(
+            select(AigcTask).where(AigcTask.task_id == task_id)
+        )
+        task = result.scalar_one_or_none()
+        return task.__dict__ if task else None
 
 
 # === Background Processing ===
@@ -156,18 +154,24 @@ async def submit_description_task(request: DescribeSubmitRequest, background_tas
 async def get_description_status(task_id: str):
     """Get description task status."""
     task = await get_task(task_id)
-    
+
     if not task:
         raise HTTPException(status_code=404, detail=f"Task {task_id} not found")
-    
-    params = json_loads(task.get("params", "{}"))
-    result_data = json_loads(task.get("result_data") or "{}")
-    
+
+    # SQLAlchemy JSON type returns dict directly
+    params = task.get("params", {})
+    if isinstance(params, str):
+        params = json_loads(params)
+
+    result_data = task.get("result_data") or {}
+    if isinstance(result_data, str):
+        result_data = json_loads(result_data)
+
     return DescribeStatusResponse(
         task_id=task_id,
         status=task["status"],
-        description=result_data.get("description"),
+        description=result_data.get("description") if isinstance(result_data, dict) else None,
         error=task.get("error_message"),
-        node_id=params.get("node_id"),
+        node_id=params.get("node_id") if isinstance(params, dict) else None,
         project_id=task.get("project_id"),
     )

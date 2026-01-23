@@ -1,45 +1,46 @@
-"""Database abstraction (ports) to enable dependency inversion.
+"""Async database abstraction port.
 
-Provides a minimal, DB-agnostic interface used by the app code, with concrete
-adapters for specific backends (e.g., SQLite, Postgres/Neon).
+Single async interface for PostgreSQL via asyncpg.
 """
 
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from collections.abc import Iterable, Sequence
-from typing import Any, Protocol
+from typing import Any
 
 
-class CursorLike(Protocol):
-    def execute(self, query: str, params: Sequence[Any] | None = None) -> Any: ...
-    def executemany(self, query: str, seq_of_params: Iterable[Sequence[Any]]) -> Any: ...
-    def fetchone(self) -> Any: ...
-    def fetchall(self) -> list[Any]: ...
+class AsyncDatabase(ABC):
+    """Async database interface."""
 
-
-class Database(ABC):
-    """Abstract database interface."""
+    db_type: str = "postgres"
 
     @abstractmethod
-    def cursor(self) -> CursorLike:  # noqa: D401
-        """Return a cursor-like object for executing queries."""
+    async def execute(self, query: str, params: Sequence[Any] | None = None) -> str:
+        """Execute query, return status."""
+        ...
 
     @abstractmethod
-    def execute(self, query: str, params: Sequence[Any] | None = None) -> None: ...
+    async def executemany(self, query: str, seq_of_params: Iterable[Sequence[Any]]) -> None:
+        """Execute query with multiple param sets."""
+        ...
 
     @abstractmethod
-    def executemany(self, query: str, seq_of_params: Iterable[Sequence[Any]]) -> None: ...
+    async def fetchone(self, query: str, params: Sequence[Any] | None = None) -> dict[str, Any] | None:
+        """Fetch single row as dict."""
+        ...
 
     @abstractmethod
-    def fetchone(self, query: str, params: Sequence[Any] | None = None) -> Any: ...
+    async def fetchall(self, query: str, params: Sequence[Any] | None = None) -> list[dict[str, Any]]:
+        """Fetch all rows as list of dicts."""
+        ...
 
     @abstractmethod
-    def fetchall(self, query: str, params: Sequence[Any] | None = None) -> list[Any]: ...
+    async def fetchval(self, query: str, params: Sequence[Any] | None = None) -> Any:
+        """Fetch single value."""
+        ...
 
     @abstractmethod
-    def commit(self) -> None: ...
-
-    @abstractmethod
-    def close(self) -> None: ...
-
+    async def close(self) -> None:
+        """Close connection pool."""
+        ...

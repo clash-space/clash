@@ -319,11 +319,8 @@ class StateCanvasBackend:
         """
         import uuid
 
-        from master_clash.semantic_id import create_id_checker, generate_unique_id_for_project
-
-        # Generate semantic ID
-        checker = create_id_checker()
-        node_id = generate_unique_id_for_project(project_id, checker)
+        # Generate short UUID (8 characters)
+        node_id = uuid.uuid4().hex[:8]
 
         # Generate proposal ID
         proposal_id = f"proposal-{uuid.uuid4().hex[:8]}"
@@ -337,12 +334,12 @@ class StateCanvasBackend:
             frontend_type = "action-badge-image"
             proposal_type = "generative"
             # Pre-allocate asset ID for generation nodes
-            asset_id = generate_unique_id_for_project(project_id, checker)
+            asset_id = uuid.uuid4().hex[:8]
         elif node_type == "video_gen":
             frontend_type = "action-badge-video"
             proposal_type = "generative"
             # Pre-allocate asset ID for generation nodes
-            asset_id = generate_unique_id_for_project(project_id, checker)
+            asset_id = uuid.uuid4().hex[:8]
         elif node_type == "group":
             proposal_type = "group"
 
@@ -467,7 +464,7 @@ class StateCanvasBackend:
         query: str,
         node_types: Sequence[str] | None = None,
     ) -> list[NodeInfo]:
-        """Search nodes by content."""
+        """Search nodes by content across multiple fields (label, description, content, prompt)."""
         from master_clash.context import get_project_context
 
         context = get_project_context(project_id, force_refresh=True)
@@ -482,20 +479,39 @@ class StateCanvasBackend:
             if node_types and node.type not in node_types:
                 continue
 
-            # Search in label and data
+            # Comprehensive search across multiple fields
             label = node.data.get("label", "").lower()
+            description = node.data.get("description", "").lower()
             content = str(node.data.get("content", "")).lower()
+            prompt = node.data.get("prompt", "").lower()
 
-            if query_lower in label or query_lower in content:
-                matching_nodes.append(
-                    NodeInfo(
-                        id=node.id,
-                        type=node.type,
-                        position={"x": node.position.get("x", 0), "y": node.position.get("y", 0)},
-                        data=node.data,
-                        parent_id=node.parentId,
-                    )
+            # Check if query matches any field
+            matched = False
+            match_fields = []
+
+            if query_lower in label:
+                matched = True
+                match_fields.append("label")
+            if query_lower in description:
+                matched = True
+                match_fields.append("description")
+            if query_lower in content:
+                matched = True
+                match_fields.append("content")
+            if query_lower in prompt:
+                matched = True
+                match_fields.append("prompt")
+
+            if matched:
+                # Add match_fields metadata to help with debugging
+                node_info = NodeInfo(
+                    id=node.id,
+                    type=node.type,
+                    position={"x": node.position.get("x", 0), "y": node.position.get("y", 0)},
+                    data={**node.data, "_matched_fields": match_fields},
+                    parent_id=node.parentId,
                 )
+                matching_nodes.append(node_info)
 
         return matching_nodes
 

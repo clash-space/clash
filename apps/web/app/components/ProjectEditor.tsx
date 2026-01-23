@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useState, useEffect, useRef } from 'react';
+import { useCallback, useState, useEffect, useRef, useMemo } from 'react';
 import { flushSync } from 'react-dom';
 import ReactFlow, {
     Background,
@@ -61,6 +61,7 @@ import {
     needsAutoLayout,
     autoInsertNode,
     applyAutoInsertResult,
+    shrinkGroupsToFit,
 } from '@/lib/layout';
 import { generateSemanticId } from '@/lib/utils/semanticId';
 import { useLoroSync } from '../hooks/useLoroSync';
@@ -131,8 +132,17 @@ export default function ProjectEditor({ project, initialPrompt }: ProjectEditorP
     const initialNodes: Node[] = [];
     const initialEdges: Edge[] = [];
 
-    const [nodes, setNodes] = useNodesState(initialNodes);
+    const [nodes, setNodesInternal] = useNodesState(initialNodes);
     const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
+
+    // Wrap setNodes to ALWAYS sanitize before setting - this prevents "Parent node X not found" errors
+    // The sanitization must happen BEFORE nodes are set to state, not after
+    const setNodes = useCallback((updater: Node[] | ((nodes: Node[]) => Node[])) => {
+        setNodesInternal((currentNodes) => {
+            const newNodes = typeof updater === 'function' ? updater(currentNodes) : updater;
+            return sanitizeNodes(newNodes);
+        });
+    }, [setNodesInternal]);
     const [activeMenu, setActiveMenu] = useState<string | null>(null);
     const [projectName, setProjectName] = useState(project.name);
 
@@ -150,16 +160,37 @@ export default function ProjectEditor({ project, initialPrompt }: ProjectEditorP
                 let processedNodes = syncedNodes.map(syncedNode => {
                     const currentNode = currentNodesMap.get(syncedNode.id);
 
-                    if (!currentNode) return syncedNode;
+                    // Fix: Ensure text nodes have correct dimensions (300x400)
+                    // TextNode renders at w-[300px] h-[400px] but data might have wrong height
+                    let correctedNode = syncedNode;
+                    if (syncedNode.type === 'text') {
+                        const currentHeight = syncedNode.height || syncedNode.style?.height;
+                        const currentWidth = syncedNode.width || syncedNode.style?.width;
+
+                        if (currentHeight !== 400 || currentWidth !== 300) {
+                            correctedNode = {
+                                ...syncedNode,
+                                width: 300,
+                                height: 400,
+                                style: {
+                                    ...syncedNode.style,
+                                    width: 300,
+                                    height: 400,
+                                }
+                            };
+                        }
+                    }
+
+                    if (!currentNode) return correctedNode;
 
                     const isInteracting = !!(currentNode.dragging || currentNode.resizing);
                     return {
-                        ...syncedNode, // Trust Loro for data + layout unless interacting
-                        position: isInteracting ? currentNode.position : syncedNode.position,
-                        parentId: isInteracting ? currentNode.parentId : syncedNode.parentId,
-                        width: isInteracting ? currentNode.width : syncedNode.width,
-                        height: isInteracting ? currentNode.height : syncedNode.height,
-                        style: isInteracting ? currentNode.style : syncedNode.style,
+                        ...correctedNode, // Trust Loro for data + layout unless interacting
+                        position: isInteracting ? currentNode.position : correctedNode.position,
+                        parentId: isInteracting ? currentNode.parentId : correctedNode.parentId,
+                        width: isInteracting ? currentNode.width : correctedNode.width,
+                        height: isInteracting ? currentNode.height : correctedNode.height,
+                        style: isInteracting ? currentNode.style : correctedNode.style,
                         // Always preserve UI-only flags
                         selected: currentNode.selected,
                         dragging: currentNode.dragging,
@@ -264,6 +295,41 @@ export default function ProjectEditor({ project, initialPrompt }: ProjectEditorP
 
 	    // Selection state
 	    const [selectedNodes, setSelectedNodes] = useState<Node[]>([]);
+
+	    // Always sanitize nodes before passing to ReactFlow to prevent "Parent node X not found" errors
+	    // This is the final safety net - removes any invalid parentId references
+	    const sanitizedNodes = useMemo(() => {
+	        const nodeIds = new Set(nodes.map(n => n.id));
+	        let sanitizedCount = 0;
+	        const result = nodes.map(node => {
+	            if (node.parentId && !nodeIds.has(node.parentId)) {
+	                sanitizedCount++;
+	                console.warn(`[ProjectEditor] Sanitizing node ${node.id}: removing invalid parentId "${node.parentId}"`);
+	                // Explicitly create new object without parentId
+	                return {
+	                    id: node.id,
+	                    type: node.type,
+	                    position: node.position,
+	                    data: node.data,
+	                    width: node.width,
+	                    height: node.height,
+	                    style: node.style,
+	                    className: node.className,
+	                    selected: node.selected,
+	                    dragging: node.dragging,
+	                    resizing: node.resizing,
+	                    // Explicitly set parentId to undefined
+	                    parentId: undefined,
+	                    extent: undefined,
+	                } as Node;
+	            }
+	            return node;
+	        });
+	        if (sanitizedCount > 0) {
+	            console.log(`[ProjectEditor] Sanitized ${sanitizedCount} nodes with invalid parentIds`);
+	        }
+	        return result;
+	    }, [nodes]);
 
 	    const applyAutoZIndex = useCallback((nodeList: Node[]): Node[] => {
 	        const getTargetZIndex = (node: Node): number => {
@@ -400,7 +466,9 @@ export default function ProjectEditor({ project, initialPrompt }: ProjectEditorP
 	                applyLayoutPatchesToLoro(loroSync, patches);
 	            }
 
-	            return updatedNodes;
+	            // Always sanitize before returning to ReactFlow - removes invalid parentId references
+	            // This prevents "Parent node X not found" errors when parent nodes are deleted
+	            return sanitizeNodes(updatedNodes);
 	        });
 
         // Handle node deletions - sync to Loro (Fallback if onNodesDelete doesn't fire)
@@ -1247,48 +1315,72 @@ export default function ProjectEditor({ project, initialPrompt }: ProjectEditorP
         }
     }, [nodes, edges, setNodes, setEdges, project.id]);
 
+    const applyRelayout = useCallback(
+        (currentNodes: Node[], currentEdges: Edge[], scopeParentId: string | undefined) => {
+            let updated = [...currentNodes];
+
+            // 1. Recursive group scale (ensure containers are large enough)
+            const nodesToCheck = updated.filter((n) => n.parentId === scopeParentId);
+            const mergedScales = new Map<string, { width: number; height: number }>();
+
+            for (const node of nodesToCheck) {
+                const scales = recursiveGroupScale(node.id, updated);
+                for (const [groupId, size] of scales.entries()) {
+                    const prev = mergedScales.get(groupId);
+                    mergedScales.set(groupId, {
+                        width: Math.max(prev?.width ?? 0, size.width),
+                        height: Math.max(prev?.height ?? 0, size.height),
+                    });
+                }
+            }
+            if (mergedScales.size > 0) updated = applyGroupScales(updated, mergedScales);
+
+            // 2. Relayout to grid
+            updated = relayoutToGrid(updated, {
+                gapX: 80,
+                gapY: 60,
+                centerInCell: false,
+                scopeParentId: scopeParentId,
+                edges: currentEdges,
+                compact: true,
+            });
+
+            // 3. Post-layout scale (ensure containers fit new layout)
+            const postLayoutScales = new Map<string, { width: number; height: number }>();
+            const postLayoutNodesToCheck = updated.filter((n) => n.parentId === scopeParentId);
+
+            for (const node of postLayoutNodesToCheck) {
+                const scales = recursiveGroupScale(node.id, updated);
+                for (const [groupId, size] of scales.entries()) {
+                    const prev = postLayoutScales.get(groupId);
+                    postLayoutScales.set(groupId, {
+                        width: Math.max(prev?.width ?? 0, size.width),
+                        height: Math.max(prev?.height ?? 0, size.height),
+                    });
+                }
+            }
+            if (postLayoutScales.size > 0) updated = applyGroupScales(updated, postLayoutScales);
+
+            // 4. Shrink groups to fit
+            updated = shrinkGroupsToFit(updated, scopeParentId, 40);
+
+            // 5. Apply Z-Index
+            updated = applyAutoZIndex(updated);
+
+            return updated;
+        },
+        [applyAutoZIndex]
+    );
+
     const relayoutParent = useCallback(
         (parentId: string | undefined) => {
             setNodes((current) => {
-                // First, ensure all group sizes are up-to-date before layout
-                let updated = [...current];
-
-                // Update all group sizes in the scope
-                const nodesToCheck = current.filter((n) => n.parentId === parentId);
-                const mergedScales = new Map<string, { width: number; height: number }>();
-
-                // For each node in scope, check if it or its ancestors (groups) need resizing
-                for (const node of nodesToCheck) {
-                    const scales = recursiveGroupScale(node.id, updated);
-                    for (const [groupId, size] of scales.entries()) {
-                        const prev = mergedScales.get(groupId);
-                        if (!prev) mergedScales.set(groupId, size);
-                        else
-                            mergedScales.set(groupId, {
-                                width: Math.max(prev.width, size.width),
-                                height: Math.max(prev.height, size.height),
-                            });
-                    }
-                }
-
-                if (mergedScales.size > 0) {
-                    updated = applyGroupScales(updated, mergedScales);
-                }
-
-                // Now perform layout with correct group sizes
-                updated = relayoutToGrid(updated, {
-                    gapX: 120,
-                    gapY: 100,
-                    centerInCell: true,
-                    scopeParentId: parentId,
-                });
-
-                updated = applyAutoZIndex(updated);
+                const updated = applyRelayout(current, edges, parentId);
                 applyLayoutPatchesToLoro(loroSync, collectLayoutNodePatches(current, updated));
                 return updated;
             });
         },
-        [setNodes, applyAutoZIndex, loroSync]
+        [setNodes, applyRelayout, loroSync, edges]
     );
 
     const onLayout = useCallback(() => {
@@ -1369,7 +1461,7 @@ export default function ProjectEditor({ project, initialPrompt }: ProjectEditorP
                             </div>
                             <div className="absolute inset-0 z-0">
                                 <ReactFlow
-                                    nodes={nodes}
+                                    nodes={sanitizedNodes}
                                     edges={edges}
                                     onNodesChange={handleNodesChange}
                                     onEdgesChange={handleEdgesChange}

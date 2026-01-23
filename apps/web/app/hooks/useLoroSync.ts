@@ -15,6 +15,8 @@ export interface UseLoroSyncReturn {
   projectId: string;
   doc: LoroDoc | null;
   connected: boolean;
+  /** Whether initial load from IndexedDB is complete */
+  isInitialized: boolean;
   addNode: (nodeId: string, nodeData: any) => void;
   updateNode: (nodeId: string, nodeData: any) => void;
   removeNode: (nodeId: string) => void;
@@ -30,6 +32,11 @@ export interface UseLoroSyncReturn {
 // IndexedDB helpers
 const DB_NAME = 'loro-sync-db';
 const STORE_NAME = 'snapshots';
+
+// Schema version for migration - increment when data format changes
+// v1-reference-only: Timeline DSL uses assetId references only, no redundant src/type
+// v2-sanitize-parentid: Force clear IndexedDB to fix invalid parentId references
+const LORO_SCHEMA_VERSION = 'v2-sanitize-parentid';
 
 const initDB = (): Promise<IDBDatabase> => {
   return new Promise((resolve, reject) => {
@@ -141,15 +148,33 @@ export function useLoroSync(options: LoroSyncOptions): UseLoroSyncReturn {
     }
 
     const nodes: Node[] = [];
+    const nodesToFix: Array<{ key: string; cleanedData: any }> = [];
+
     for (const [key, value] of nodesMap.entries()) {
       const nodeData = value as any;
-      // Validate parentId
+      // Validate parentId - remove if parent doesn't exist to prevent ReactFlow errors
       if (nodeData.parentId && !nodeIds.has(nodeData.parentId)) {
-        const { parentId: _parentId, ...rest } = nodeData;
-        nodes.push({ id: key, ...rest });
+        console.warn(`[useLoroSync] Removing invalid parentId ${nodeData.parentId} from node ${key}`);
+        const { parentId: _parentId, extent: _extent, ...rest } = nodeData;
+        const cleanedData = { ...rest, parentId: undefined, extent: undefined };
+        nodes.push({ id: key, ...cleanedData });
+        // Mark for permanent fix in Loro doc
+        nodesToFix.push({ key, cleanedData });
       } else {
         nodes.push({ id: key, ...nodeData });
       }
+    }
+
+    // Permanently fix invalid parentIds in Loro doc (deferred to avoid triggering loops)
+    if (nodesToFix.length > 0) {
+      console.log(`[useLoroSync] Scheduling fix for ${nodesToFix.length} nodes with invalid parentIds`);
+      queueMicrotask(() => {
+        for (const { key, cleanedData } of nodesToFix) {
+          nodesMap.set(key, cleanedData);
+        }
+        doc.commit();
+        console.log(`[useLoroSync] Permanently fixed ${nodesToFix.length} nodes in Loro doc`);
+      });
     }
 
     const edges: Edge[] = [];
@@ -169,6 +194,23 @@ export function useLoroSync(options: LoroSyncOptions): UseLoroSyncReturn {
   useEffect(() => {
     let mounted = true;
     const initialize = async () => {
+      // Step 0: Migration check - clear old data if schema version changed
+      // This ensures clean transition to reference-only timeline model
+      const versionKey = `loro-schema-version-${projectId}`;
+      const currentVersion = localStorage.getItem(versionKey);
+
+      if (currentVersion !== LORO_SCHEMA_VERSION) {
+        console.log(`[useLoroSync] Schema version mismatch for project ${projectId}:`);
+        console.log(`[useLoroSync]   Current: ${currentVersion || 'none'}`);
+        console.log(`[useLoroSync]   Expected: ${LORO_SCHEMA_VERSION}`);
+        console.log('[useLoroSync] Clearing old IndexedDB data for clean migration...');
+
+        await deleteFromDB(projectId);
+        localStorage.setItem(versionKey, LORO_SCHEMA_VERSION);
+
+        console.log('[useLoroSync] Migration complete - using reference-only timeline model');
+      }
+
       // Step 1: Load from IndexedDB
       const snapshot = await loadFromDB(projectId);
       if (!mounted) return;
@@ -399,6 +441,18 @@ export function useLoroSync(options: LoroSyncOptions): UseLoroSyncReturn {
 
   const removeNode = useCallback((nodeId: string) => {
     const nodesMap = doc.getMap('nodes');
+
+    // Clean up children's parentId references before deleting the node
+    // This prevents "Parent node X not found" errors in ReactFlow
+    for (const [key, value] of nodesMap.entries()) {
+      const nodeData = value as any;
+      if (nodeData.parentId === nodeId) {
+        // Remove the parentId reference from child nodes
+        const { parentId: _parentId, extent: _extent, ...rest } = nodeData;
+        nodesMap.set(key, rest);
+      }
+    }
+
     nodesMap.delete(nodeId);
     doc.commit(); // Commit to trigger subscribeLocalUpdate
   }, [doc]);
@@ -442,6 +496,7 @@ export function useLoroSync(options: LoroSyncOptions): UseLoroSyncReturn {
     projectId,
     doc,
     connected,
+    isInitialized,
     addNode,
     updateNode,
     removeNode,

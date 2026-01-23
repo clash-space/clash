@@ -2,8 +2,10 @@
 List Nodes Tool
 
 Provides the list_canvas_nodes tool for listing nodes on the canvas.
+Returns JSON format for easy parsing.
 """
 
+import json
 import logging
 from collections import defaultdict
 from typing import Literal
@@ -21,20 +23,24 @@ def create_list_nodes_tool(backend: CanvasBackendProtocol) -> BaseTool:
     from langchain_core.tools import tool
 
     class ListCanvasNodesInput(BaseModel):
-        node_type: Literal["text", "prompt", "group", "image", "video"] | None = Field(
-            default=None, description="Optional filter by node type"
+        node_type: Literal["text", "prompt", "group", "image", "video", "video-editor", "image_gen", "video_gen", "action-badge"] | None = Field(
+            default=None, description="Optional filter by node type (text, group, video-editor, image_gen, video_gen, action-badge, image, video)"
         )
         parent_id: str | None = Field(
             default=None, description="Optional filter by parent group"
         )
+        query: str | None = Field(
+            default=None, description="Optional search query to filter nodes by label, description, content, or prompt"
+        )
 
     @tool(args_schema=ListCanvasNodesInput)
-    def list_canvas_nodes(
+    def list_nodes(
         runtime: ToolRuntime,
         node_type: str | None = None,
         parent_id: str | None = None,
+        query: str | None = None,
     ) -> str:
-        """List nodes on the canvas."""
+        """List and search nodes. Returns JSON with truncated previews. Use read_node to get full details."""
         project_id = runtime.state.get("project_id", "")
 
         # Try to get nodes from Loro first (real-time state)
@@ -67,71 +73,75 @@ def create_list_nodes_tool(backend: CanvasBackendProtocol) -> BaseTool:
             logger.info(f"list canvas nodes from backend: {nodes}")
 
         if not nodes:
-            return "No nodes found."
+            return json.dumps({"nodes": [], "total": 0, "filters": {}})
 
-        # Build parent -> children map
-        children: dict[str | None, list[NodeInfo]] = defaultdict(list)
-        for node in nodes:
-            children[node.parent_id].append(node)
-
-        def display_label(node: NodeInfo) -> str:
-            data = node.data or {}
-            name = data.get("label") or data.get("name") or ""
-            description = data.get("description") or ""
-            base = f"{node.id} ({node.type})"
-            if name:
-                base = f"{base}: {name}"
-            if description:
-                base = f"{base} - {description}"
-            if node.type == "group":
-                base = f"{base}/"
-            return base
+        def truncate(text: str, max_len: int = 50) -> str:
+            """Truncate text to max_len characters."""
+            if not text:
+                return ""
+            text_str = str(text)
+            if len(text_str) <= max_len:
+                return text_str
+            return text_str[:max_len] + "..."
 
         def matches_filter(node: NodeInfo) -> bool:
-            return node_type is None or node.type == node_type
+            # Filter by node type
+            if node_type and node.type != node_type:
+                return False
 
-        def render_tree(
-            current_parent: str | None, indent: str = ""
-        ) -> tuple[list[str], bool]:
-            lines: list[str] = []
-            has_match = False
+            # Filter by parent (if specified)
+            if parent_id is not None and node.parent_id != parent_id:
+                return False
 
-            sorted_children = sorted(
-                children.get(current_parent, []),
-                key=lambda n: (
-                    0 if n.type == "group" else 1,
-                    (n.data or {}).get("label", ""),
-                    n.id,
-                ),
-            )
+            # Filter by search query (search in label, description, content, prompt)
+            if query:
+                query_lower = query.lower()
+                label = node.data.get("label", "").lower()
+                description = node.data.get("description", "").lower()
+                content = str(node.data.get("content", "")).lower()
+                prompt = node.data.get("prompt", "").lower()
 
-            for child in sorted_children:
-                child_matches = matches_filter(child)
+                if not (query_lower in label or query_lower in description or
+                        query_lower in content or query_lower in prompt):
+                    return False
 
-                if child.type == "group":
-                    rendered_child_lines, subtree_has_match = render_tree(
-                        child.id, indent + "  "
-                    )
-                    if child_matches or subtree_has_match:
-                        lines.append(f"{indent}- {display_label(child)}")
-                        lines.extend(rendered_child_lines)
-                        has_match = True
-                        continue
-                else:
-                    if child_matches:
-                        lines.append(f"{indent}- {display_label(child)}")
-                        has_match = True
-                        continue
+            return True
 
-            return lines, has_match
+        # Filter nodes and build result list
+        result_nodes = []
+        for node in nodes:
+            if matches_filter(node):
+                # For description: use description if available, otherwise fallback to content for text nodes
+                description = node.data.get("description", "")
+                if not description and node.type == "text":
+                    description = node.data.get("content", "")
 
-        root_parent = parent_id or None
-        tree_lines, has_any = render_tree(root_parent, "")
+                node_data = {
+                    "id": node.id,
+                    "type": node.type,
+                    "label": truncate(node.data.get("label", ""), 50),
+                    "description": truncate(description, 50),
+                    "parent_id": node.parent_id,
+                }
+                result_nodes.append(node_data)
 
-        if not has_any:
-            return "No nodes found."
+        # Sort: groups first, then by label
+        result_nodes.sort(key=lambda n: (0 if n["type"] == "group" else 1, n["label"], n["id"]))
 
-        header = "Canvas nodes (tree):"
-        return "\n".join([header, *tree_lines])
+        # Build response
+        response = {
+            "nodes": result_nodes,
+            "total": len(result_nodes),
+            "filters": {}
+        }
 
-    return list_canvas_nodes
+        if node_type:
+            response["filters"]["type"] = node_type
+        if query:
+            response["filters"]["query"] = query
+        if parent_id:
+            response["filters"]["parent_id"] = parent_id
+
+        return json.dumps(response, ensure_ascii=False, indent=2)
+
+    return list_nodes

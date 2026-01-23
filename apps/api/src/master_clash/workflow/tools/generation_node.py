@@ -21,15 +21,15 @@ def create_generation_node_tool(backend: CanvasBackendProtocol) -> BaseTool:
 
     class GenerationNodeData(BaseModel):
         label: str = Field(
-            description="Content-based descriptive label for the node (e.g., 'Hero entering temple'). MUST NOT be generic like 'Generating image...' or 'Untitled'."
+            description="Content-based descriptive label for the node (e.g., 'Hero entering temple', 'Final Video'). MUST NOT be generic like 'Generating image...' or 'Untitled'."
         )
         prompt: str | None = Field(
             default=None,
-            description="DETAILED generation prompt for AI models. MUST be highly descriptive with: subject details, environment, lighting, camera angle, style, mood. Example: 'A weathered samurai in dark blue robes stands atop a cliff at sunset, golden hour lighting casting long shadows, wide establishing shot, cinematic epic style, moody atmosphere, mist rolling in from the valley below'. NEVER use vague prompts like 'a hero' or 'nice scene'."
+            description="DETAILED generation prompt for AI models. MUST be highly descriptive. Not required for video_editor nodes."
         )
         content: str | None = Field(
             default=None,
-            description="Markdown content displayed to users (e.g., prompt notes, scene context). This is the visible prompt part of the merged PromptActionNode."
+            description="Markdown content displayed to users (e.g., prompt notes, scene context)."
         )
         modelId: str | None = Field(  # noqa: N815
             default=None,
@@ -50,21 +50,26 @@ def create_generation_node_tool(backend: CanvasBackendProtocol) -> BaseTool:
         modelName: str | None = Field(  # noqa: N815
             default=None, description="Optional model name override"
         )
-        actionType: Literal["image-gen", "video-gen"] | None = Field(  # noqa: N815
+        actionType: Literal["image-gen", "video-gen", "video-render"] | None = Field(  # noqa: N815
             default=None,
             description="Optional override; inferred from node_type when omitted",
         )
         upstreamNodeIds: list[str] = Field(  # noqa: N815
             default_factory=list,
-            description="CRITICAL for video generation: List of upstream node IDs to connect. For video_gen, MUST include at least one completed image node ID to animate. For image_gen, upstreamNodeIds are optional."
+            description="List of upstream node IDs to connect. For video_gen, MUST include at least one completed image node ID. For video_editor, include asset node IDs to add to timeline."
+        )
+        # video_editor specific fields
+        timelineDsl: dict | None = Field(  # noqa: N815
+            default=None,
+            description="Timeline DSL structure for video_editor nodes (optional, will be initialized with defaults if not provided)",
         )
 
         class Config:
             extra = "allow"
 
     class CreateGenerationNodeInput(BaseModel):
-        node_type: Literal["image_gen", "video_gen"] = Field(
-            description="Generation node type to create"
+        node_type: Literal["image_gen", "video_gen", "video_editor"] = Field(
+            description="Generation node type: image_gen, video_gen, or video_editor (for timeline rendering)"
         )
         payload: GenerationNodeData = Field(
             description="Structured payload for generation node"
@@ -102,25 +107,62 @@ def create_generation_node_tool(backend: CanvasBackendProtocol) -> BaseTool:
         """
         project_id = runtime.state.get("project_id", "")
 
+        # Get workspace_group_id from runtime state (with configurable fallback)
+        workspace_group_id_from_state = runtime.state.get("workspace_group_id")
+        workspace_group_id_from_config = runtime.config.get("configurable", {}).get("workspace_group_id")
+
+        # Use state first, fallback to config
+        workspace_group_id = workspace_group_id_from_state or workspace_group_id_from_config
+
+        # Debug logging to diagnose parent_id issues
+        logger.info(f"[create_generation_node] Debug - parent_id arg: {parent_id}")
+        logger.info(f"[create_generation_node] Debug - workspace_group_id from state: {workspace_group_id_from_state}")
+        logger.info(f"[create_generation_node] Debug - workspace_group_id from config: {workspace_group_id_from_config}")
+        logger.info(f"[create_generation_node] Debug - final workspace_group_id: {workspace_group_id}")
+        logger.info(f"[create_generation_node] Debug - full runtime.state keys: {list(runtime.state.keys())}")
+
         # Auto-set parent_id from workspace if not explicitly provided
         if parent_id is None:
-            workspace_group_id = runtime.state.get("workspace_group_id")
             if workspace_group_id:
                 parent_id = workspace_group_id
-                logger.info(f"[create_generation_node] Auto-set parent_id from workspace: {parent_id}")
-        
+                source = "state" if workspace_group_id_from_state else "config"
+                logger.info(f"[create_generation_node] Auto-set parent_id from workspace ({source}): {parent_id}")
+            else:
+                # CRITICAL: If we're in a subagent context but workspace_group_id is missing,
+                # this indicates a state propagation issue
+                logger.warning(
+                    f"[create_generation_node] ISSUE DETECTED: parent_id is None and workspace_group_id not found in state or config. "
+                    f"This may indicate a state propagation problem in subagent execution. "
+                    f"Available state keys: {list(runtime.state.keys())}"
+                )
+
         logger.info(f"[create_generation_node] Creating {node_type} node with parent_id={parent_id}")
 
         resolved_backend = backend(runtime) if callable(backend) else backend
 
         # Prepare data with merged upstream IDs
         data_dict = payload.model_dump(exclude_none=True)
-        if data_dict.get("prompt") and not data_dict.get("content"):
-            # Mirror prompt into content so the UI shows the generation prompt.
-            data_dict["content"] = data_dict["prompt"]
-        if data_dict.get("content") and not data_dict.get("prompt"):
-            # Ensure generation uses the same text if only content is provided.
-            data_dict["prompt"] = data_dict["content"]
+
+        # For video_editor, initialize timelineDsl if not provided
+        if node_type == "video_editor" and "timelineDsl" not in data_dict:
+            default_timeline = {
+                "version": "1.0.0",
+                "fps": 30,
+                "compositionWidth": 1920,
+                "compositionHeight": 1080,
+                "durationInFrames": 0,
+                "tracks": []
+            }
+            data_dict["timelineDsl"] = default_timeline
+            logger.info("[create_generation_node] Initialized default timelineDsl for video_editor node")
+
+        # For image/video gen, mirror prompt <-> content
+        if node_type != "video_editor":
+            if data_dict.get("prompt") and not data_dict.get("content"):
+                data_dict["content"] = data_dict["prompt"]
+            if data_dict.get("content") and not data_dict.get("prompt"):
+                data_dict["prompt"] = data_dict["content"]
+
         final_upstream_ids = set(data_dict.get("upstreamNodeIds", []))
         if upstream_node_id:
             final_upstream_ids.add(upstream_node_id)
@@ -170,18 +212,26 @@ def create_generation_node_tool(backend: CanvasBackendProtocol) -> BaseTool:
                             node_position = {"x": -1, "y": -1}  # NEEDS_LAYOUT_POSITION
                             logger.info(f"[LoroSync] Using frontend auto-layout for node {result.node_id}")
 
-                        # Set default dimensions for action-badge nodes (matching frontend ProjectEditor.tsx)
-                        default_width = 320
-                        default_height = 220
+                        # Set default dimensions based on node type
+                        if node_type == "video_editor":
+                            default_width = 400
+                            default_height = 225
+                            loro_type = "video-editor"
+                            action_type = "video-render"
+                        else:
+                            default_width = 320
+                            default_height = 220
+                            loro_type = "action-badge"
+                            action_type = "image-gen" if node_type == "image_gen" else "video-gen"
 
                         loro_node = {
                             "id": result.node_id,
-                            "type": "action-badge" if node_type in ("image_gen", "video_gen") else (proposal.get("nodeType") or node_type),
+                            "type": loro_type,
                             "position": node_position,
                             "data": {
                                 **node_data,
                                 "upstreamNodeIds": list(final_upstream_ids),
-                                "actionType": "image-gen" if node_type == "image_gen" else ("video-gen" if node_type == "video_gen" else node_data.get("actionType")),
+                                "actionType": action_type,
                             },
                             # ReactFlow node dimensions - critical for proper rendering
                             "width": default_width,

@@ -30,7 +30,7 @@ def create_search_nodes_tool(backend: CanvasBackendProtocol) -> BaseTool:
         runtime: ToolRuntime,
         node_types: list[str] | None = None,
     ) -> str:
-        """Search nodes by content or metadata."""
+        """Search nodes by label, description, content, or prompt text."""
         project_id = runtime.state.get("project_id", "")
         resolved_backend = backend(runtime) if callable(backend) else backend
 
@@ -44,12 +44,43 @@ def create_search_nodes_tool(backend: CanvasBackendProtocol) -> BaseTool:
             if not nodes:
                 return f"No nodes found matching '{query}'."
 
-            lines = [f"Search results for '{query}':"]
-            for node in nodes:
-                lines.append(f"- {node.id} ({node.type}): {node.data}")
+            # Format results in a readable way
+            lines = [f"Found {len(nodes)} node(s) matching '{query}':\n"]
+
+            for i, node in enumerate(nodes, 1):
+                label = node.data.get("label", "Untitled")
+                node_type = node.type
+                matched_fields = node.data.get("_matched_fields", [])
+
+                lines.append(f"{i}. {label}")
+                lines.append(f"   ID: {node.id}")
+                lines.append(f"   Type: {node_type}")
+
+                if matched_fields:
+                    lines.append(f"   Matched in: {', '.join(matched_fields)}")
+
+                # Show a preview of the content/description
+                if "description" in matched_fields and node.data.get("description"):
+                    desc = node.data["description"]
+                    preview = desc[:100] + "..." if len(desc) > 100 else desc
+                    lines.append(f"   Description: {preview}")
+
+                if "content" in matched_fields and node.data.get("content"):
+                    content = str(node.data["content"])
+                    preview = content[:100] + "..." if len(content) > 100 else content
+                    lines.append(f"   Content: {preview}")
+
+                if "prompt" in matched_fields and node.data.get("prompt"):
+                    prompt = node.data["prompt"]
+                    preview = prompt[:100] + "..." if len(prompt) > 100 else prompt
+                    lines.append(f"   Prompt: {preview}")
+
+                lines.append("")  # Empty line between results
+
             return "\n".join(lines)
 
         except Exception as e:
+            logger.error(f"Error searching nodes: {e}")
             return f"Error searching: {e}"
 
     return search_canvas

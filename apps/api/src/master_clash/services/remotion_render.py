@@ -13,16 +13,16 @@ Architecture:
 import asyncio
 import json
 import logging
-import os
 import subprocess
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any
 
 from master_clash.config import get_settings
 from master_clash.json_utils import dumps as json_dumps
 from master_clash.services import r2
+from master_clash.workflow.timeline_resolver import resolve_timeline_dsl
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
@@ -33,11 +33,11 @@ class RenderResult:
     """Result of video rendering."""
 
     success: bool
-    r2_key: Optional[str] = None
-    error: Optional[str] = None
+    r2_key: str | None = None
+    error: str | None = None
 
 
-async def prepare_asset_urls(timeline_dsl: Dict[str, Any], frontend_url: str) -> Dict[str, Any]:
+async def prepare_asset_urls(timeline_dsl: dict[str, Any], frontend_url: str) -> dict[str, Any]:
     """
     Convert asset URLs in DSL to full HTTP URLs that Remotion CLI can access.
 
@@ -121,9 +121,10 @@ def get_entry_point() -> Path:
 
 
 async def render_video_with_remotion(
-    timeline_dsl: Dict[str, Any],
+    timeline_dsl: dict[str, Any],
     project_id: str,
     task_id: str,
+    loro_client=None,
 ) -> RenderResult:
     """
     Render video using Remotion CLI.
@@ -132,6 +133,7 @@ async def render_video_with_remotion(
         timeline_dsl: Timeline DSL containing tracks, composition settings, etc.
         project_id: Project ID for R2 storage
         task_id: Task ID for naming the output file
+        loro_client: Loro client to fetch asset node data for resolution
 
     Returns:
         RenderResult with success status and R2 key or error
@@ -144,8 +146,14 @@ async def render_video_with_remotion(
         settings = get_settings()
         frontend_url = settings.frontend_url
 
-        # Prepare asset URLs (convert R2 keys to full HTTP URLs)
-        processed_dsl = await prepare_asset_urls(timeline_dsl, frontend_url)
+        # STEP 1: Resolve assetId references to complete src/type data
+        # This transforms the reference-only timeline to a complete timeline for rendering
+        logger.info(f"[Remotion] Resolving timeline references for task {task_id}")
+        resolved_dsl = resolve_timeline_dsl(timeline_dsl, loro_client)
+        logger.info("[Remotion] Timeline resolved successfully")
+
+        # STEP 2: Prepare asset URLs (convert R2 keys to full HTTP URLs)
+        processed_dsl = await prepare_asset_urls(resolved_dsl, frontend_url)
 
         # Prepare output path (temp file)
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -208,6 +216,8 @@ async def render_video_with_remotion(
                 "--overwrite",
                 "--log",
                 "info",
+                "--timeout-in-milliseconds",
+                "120000",  # 120 seconds (2 minutes) for image loading timeout
             ]
 
             logger.info(f"[Remotion] Running: {' '.join(cmd)}")

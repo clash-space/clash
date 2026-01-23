@@ -6,12 +6,83 @@ import {
   Audio,
   Img,
   useCurrentFrame,
+  useVideoConfig,
   interpolate,
 } from 'remotion';
 import type { Track, Item } from '@master-clash/remotion-core';
 
 // Debug logging disabled for performance
 // console.log('🎬 VideoComposition.tsx module loaded!');
+
+/**
+ * Resolves timeline item references to asset data.
+ *
+ * Timeline items store only assetId references. This function resolves
+ * those references to the actual src/type/dimensions data from asset nodes.
+ * This is the frontend equivalent of the backend resolve_item function.
+ *
+ * @param item Timeline item with potential assetId reference
+ * @param allNodesMap Map of all nodes (node ID -> node data)
+ * @returns Item with src/type/dimensions resolved from asset node if assetId present
+ */
+const resolveTimelineItem = (item: Item, allNodesMap: Map<string, any>): Item & { naturalWidth?: number; naturalHeight?: number } => {
+  let asset = null;
+
+  // 1. Try to find asset by assetId
+  if (item.assetId) {
+    asset = allNodesMap.get(item.assetId);
+  }
+
+  // 2. If not found by assetId, try to find by src
+  if (!asset && 'src' in item) {
+    const itemSrc = (item as any).src;
+    // Iterate over all assets to find a match by src
+    for (const [_, node] of allNodesMap.entries()) {
+      if (node.data?.src === itemSrc) {
+        asset = node;
+        break;
+      }
+    }
+  }
+
+  if (asset) {
+    const assetData = asset.data || {};
+
+    // Get natural dimensions from asset node
+    let naturalWidth = assetData.naturalWidth;
+    let naturalHeight = assetData.naturalHeight;
+
+    // Fallback: parse aspectRatio string (e.g., "16:9") if no natural dimensions
+    if ((!naturalWidth || !naturalHeight) && assetData.aspectRatio) {
+      const ar = assetData.aspectRatio;
+      if (typeof ar === 'string' && ar.includes(':')) {
+        const [w, h] = ar.split(':').map(Number);
+        if (w && h) {
+          // Use 1920 as base width to calculate virtual dimensions
+          naturalWidth = 1920;
+          naturalHeight = Math.round(1920 * h / w);
+        }
+      }
+    }
+
+    console.log(`[resolveTimelineItem] itemId=${item.id} assetId=${item.assetId} assetFound=${!!asset} assetType=${asset.type} assetDataNaturalW=${assetData.naturalWidth} assetDataNaturalH=${assetData.naturalHeight} assetDataAspectRatio=${assetData.aspectRatio} resolvedNaturalW=${naturalWidth} resolvedNaturalH=${naturalHeight} assetDataSrc=${assetData.src}`);
+
+    return {
+      ...item,
+      src: assetData.src || ('src' in item ? item.src : undefined),
+      type: asset.type || item.type,
+      naturalWidth,
+      naturalHeight,
+    };
+  }
+
+  // Return as-is for non-asset items (solid, text) or if asset not found
+  // If item already has naturalWidth/naturalHeight (pre-resolved by NodeProcessor), preserve them
+  const existingNatW = (item as any).naturalWidth;
+  const existingNatH = (item as any).naturalHeight;
+  console.log(`[resolveTimelineItem] itemId=${item.id} assetId=${item.assetId || 'none'} assetFound=false type=${item.type} existingNaturalW=${existingNatW || 'none'} existingNaturalH=${existingNatH || 'none'}`);
+  return item;
+};
 
 // Helper to ensure src is a proper URL
 const resolveAssetUrl = (src: string | undefined): string => {
@@ -47,28 +118,62 @@ const resolveAssetUrl = (src: string | undefined): string => {
 };
 
 // Component to render individual items
-const ItemComponent: React.FC<{ item: Item; durationInFrames: number; visibleFrom?: number; endFrame?: number; globalEndFrame?: number; trackZIndex: number; itemsDomMapRef?: React.RefObject<Map<string, HTMLElement>> }> = ({ item, durationInFrames: _durationInFrames, visibleFrom, endFrame, globalEndFrame, trackZIndex, itemsDomMapRef }) => {
+const ItemComponent: React.FC<{ item: Item; allNodesMap: Map<string, any>; durationInFrames: number; visibleFrom?: number; endFrame?: number; globalEndFrame?: number; trackZIndex: number; itemsDomMapRef?: React.RefObject<Map<string, HTMLElement>> }> = ({ item, allNodesMap, durationInFrames: _durationInFrames, visibleFrom, endFrame, globalEndFrame, trackZIndex, itemsDomMapRef }) => {
   const frame = useCurrentFrame();
+  const { width: compWidth, height: compHeight } = useVideoConfig();
+
+  const itemSrc = 'src' in item ? (item as any).src : 'none';
+  const allNodesData = Array.from(allNodesMap.entries()).map(([k, v]) => `${k}:type=${v.type},dataSrc=${v.data?.src},naturalW=${v.data?.naturalWidth},naturalH=${v.data?.naturalHeight}`).join(' | ');
+  console.log(`[ItemComponent] itemId=${item.id} type=${item.type} assetId=${item.assetId || 'none'} itemSrc=${itemSrc} allNodesMapSize=${allNodesMap.size} allNodesData=[${allNodesData}]`);
+
+  // Resolve item references dynamically from asset nodes
+  const resolvedItem = resolveTimelineItem(item, allNodesMap);
 
   // Apply transform properties
+  // width and height are scale factors relative to the asset's natural dimensions
+  // width=1, height=1 means 100% of the asset's original size (not canvas size)
   const applyTransform = (baseStyle: React.CSSProperties = {}): React.CSSProperties => {
-    const props = item.properties;
+    const props = resolvedItem.properties;
     if (!props) return { ...baseStyle, zIndex: trackZIndex };
 
+    // Get natural dimensions from resolved item
+    const naturalWidth = (resolvedItem as any).naturalWidth || compWidth;
+    const naturalHeight = (resolvedItem as any).naturalHeight || compHeight;
+
+    // Scale relative to natural dimensions
+    // props.width/height are multipliers of the asset's natural size
+    let widthPx: number;
+    let heightPx: number;
+
+    // When both width and height are 1, contain in canvas (preserve aspect ratio)
+    if (props.width === 1 && props.height === 1) {
+      const scaleX = compWidth / naturalWidth;
+      const scaleY = compHeight / naturalHeight;
+      const scale = Math.min(scaleX, scaleY);
+      widthPx = naturalWidth * scale;
+      heightPx = naturalHeight * scale;
+    } else {
+      // Normal scaling: props.width/height are multipliers of natural dimensions
+      widthPx = props.width * naturalWidth;
+      heightPx = props.height * naturalHeight;
+    }
+
+    const widthPercent = (widthPx / compWidth) * 100;
+    const heightPercent = (heightPx / compHeight) * 100;
+
+    console.log(`[applyTransform] itemId=${resolvedItem.id} type=${resolvedItem.type} propsW=${props.width} propsH=${props.height} naturalW=${naturalWidth} naturalH=${naturalHeight} widthPx=${widthPx.toFixed(1)} heightPx=${heightPx.toFixed(1)} compW=${compWidth} compH=${compHeight} widthPercent=${widthPercent.toFixed(1)}% heightPercent=${heightPercent.toFixed(1)}% x=${props.x} y=${props.y} rotation=${props.rotation || 0}`);
+
     // Position from center (x, y in pixels from canvas center)
-    // Canvas center is at 50%, 50%
     const left = `calc(50% + ${props.x}px)`;
     const top = `calc(50% + ${props.y}px)`;
-    const width = `${props.width * 100}%`;
-    const height = `${props.height * 100}%`;
 
     return {
       ...baseStyle,
       position: 'absolute',
       left,
       top,
-      width,
-      height,
+      width: `${widthPercent}%`,
+      height: `${heightPercent}%`,
       // translate(-50%, -50%) centers the item on the specified position
       transform: `translate(-50%, -50%) rotate(${props.rotation || 0}deg)`,
       opacity: props.opacity ?? 1,
@@ -76,19 +181,19 @@ const ItemComponent: React.FC<{ item: Item; durationInFrames: number; visibleFro
     };
   };
 
-  if (item.type === 'solid') {
+  if (resolvedItem.type === 'solid') {
     return (
       <AbsoluteFill
         ref={(el) => {
           if (!itemsDomMapRef?.current || !el) return;
-          itemsDomMapRef.current.set(item.id, el as HTMLElement);
+          itemsDomMapRef.current.set(resolvedItem.id, el as HTMLElement);
         }}
-        style={applyTransform({ backgroundColor: item.color })}
+        style={applyTransform({ backgroundColor: resolvedItem.color })}
       />
     );
   }
 
-  if (item.type === 'text') {
+  if (resolvedItem.type === 'text') {
     const fadeOpacity = interpolate(frame, [0, 10], [0, 1], {
       extrapolateRight: 'clamp',
     });
@@ -97,7 +202,7 @@ const ItemComponent: React.FC<{ item: Item; durationInFrames: number; visibleFro
       <AbsoluteFill
         ref={(el) => {
           if (!itemsDomMapRef?.current || !el) return;
-          itemsDomMapRef.current.set(item.id, el as HTMLElement);
+          itemsDomMapRef.current.set(resolvedItem.id, el as HTMLElement);
         }}
         style={applyTransform({
           justifyContent: 'center',
@@ -107,22 +212,22 @@ const ItemComponent: React.FC<{ item: Item; durationInFrames: number; visibleFro
       >
         <h1
           style={{
-            color: item.color,
-            fontSize: item.fontSize || 60,
-            fontFamily: item.fontFamily || 'Arial',
-            fontWeight: item.fontWeight || 'bold',
+            color: resolvedItem.color,
+            fontSize: resolvedItem.fontSize || 60,
+            fontFamily: resolvedItem.fontFamily || 'Arial',
+            fontWeight: resolvedItem.fontWeight || 'bold',
             textAlign: 'center',
             padding: '0 40px',
           }}
         >
-          {item.text}
+          {resolvedItem.text}
         </h1>
       </AbsoluteFill>
     );
   }
 
-  if (item.type === 'video') {
-    const sourceStart = (item as any).sourceStartInFrames || 0;
+  if (resolvedItem.type === 'video') {
+    const sourceStart = (resolvedItem as any).sourceStartInFrames || 0;
     const isBeforeVisible = typeof visibleFrom === 'number' ? frame < visibleFrom : false;
     const isLastFrameOfItem = typeof endFrame === 'number' ? frame === endFrame : false;
     const shouldHideLastFrame = typeof globalEndFrame === 'number' && typeof endFrame === 'number'
@@ -134,13 +239,13 @@ const ItemComponent: React.FC<{ item: Item; durationInFrames: number; visibleFro
       <AbsoluteFill
         ref={(el) => {
           if (!itemsDomMapRef?.current || !el) return;
-          itemsDomMapRef.current.set(item.id, el as HTMLElement);
+          itemsDomMapRef.current.set(resolvedItem.id, el as HTMLElement);
         }}
         style={applyTransform({ backgroundColor: 'black' })}
       >
         <AbsoluteFill style={{ opacity: hidden ? 0 : 1, width: '100%', height: '100%' }}>
           <OffthreadVideo
-            src={resolveAssetUrl(item.src)}
+            src={resolveAssetUrl(resolvedItem.src)}
             style={{ width: '100%', height: '100%', objectFit: 'fill' }}
             startFrom={sourceStart}
             pauseWhenBuffering={false}
@@ -153,13 +258,13 @@ const ItemComponent: React.FC<{ item: Item; durationInFrames: number; visibleFro
     );
   }
 
-  if (item.type === 'audio') {
-    const sourceStart = (item as any).sourceStartInFrames || 0;
-    const baseVolume = item.volume || 1;
-    return <Audio src={resolveAssetUrl(item.src)} startFrom={sourceStart} volume={baseVolume} />;
+  if (resolvedItem.type === 'audio') {
+    const sourceStart = (resolvedItem as any).sourceStartInFrames || 0;
+    const baseVolume = resolvedItem.volume || 1;
+    return <Audio src={resolveAssetUrl(resolvedItem.src)} startFrom={sourceStart} volume={baseVolume} />;
   }
 
-  if (item.type === 'image') {
+  if (resolvedItem.type === 'image') {
     return (
       <AbsoluteFill
         style={applyTransform({
@@ -168,10 +273,10 @@ const ItemComponent: React.FC<{ item: Item; durationInFrames: number; visibleFro
         })}
       >
         <Img
-          src={resolveAssetUrl(item.src)}
+          src={resolveAssetUrl(resolvedItem.src)}
           ref={(el) => {
             if (!itemsDomMapRef?.current || !el) return;
-            itemsDomMapRef.current.set(item.id, el as HTMLElement);
+            itemsDomMapRef.current.set(resolvedItem.id, el as HTMLElement);
           }}
           style={{ width: '100%', height: '100%', objectFit: 'fill' }}
         />
@@ -183,7 +288,7 @@ const ItemComponent: React.FC<{ item: Item; durationInFrames: number; visibleFro
 };
 
 // Component to render a single track
-const TrackComponent: React.FC<{ track: Track; globalEndFrame: number; trackZIndex: number; itemsDomMapRef?: React.RefObject<Map<string, HTMLElement>> }> = ({ track, globalEndFrame, trackZIndex, itemsDomMapRef }) => {
+const TrackComponent: React.FC<{ track: Track; allNodesMap: Map<string, any>; globalEndFrame: number; trackZIndex: number; itemsDomMapRef?: React.RefObject<Map<string, HTMLElement>> }> = ({ track, allNodesMap, globalEndFrame, trackZIndex, itemsDomMapRef }) => {
   if (track.hidden) {
     return null;
   }
@@ -240,7 +345,7 @@ const TrackComponent: React.FC<{ track: Track; globalEndFrame: number; trackZInd
 
         return (
           <Sequence key={item.id} from={seqFrom} durationInFrames={item.durationInFrames} premountFor={PREMOUNT_FRAMES}>
-            <ItemComponent item={item} durationInFrames={item.durationInFrames} visibleFrom={visibleFrom} endFrame={endFrame} globalEndFrame={globalEndFrame} trackZIndex={trackZIndex} itemsDomMapRef={itemsDomMapRef} />
+            <ItemComponent item={item} allNodesMap={allNodesMap} durationInFrames={item.durationInFrames} visibleFrom={visibleFrom} endFrame={endFrame} globalEndFrame={globalEndFrame} trackZIndex={trackZIndex} itemsDomMapRef={itemsDomMapRef} />
           </Sequence>
         );
       })}
@@ -251,10 +356,15 @@ const TrackComponent: React.FC<{ track: Track; globalEndFrame: number; trackZInd
 // Main composition component
 export const VideoComposition: React.FC<{
   tracks: Track[];
+  allNodes?: Map<string, any>; // Map of node ID -> node data for resolving assetId references
   selectedItemId?: string | null;
   selectionBoxRef?: React.RefObject<HTMLDivElement | null>;
   itemsDomMapRef?: React.RefObject<Map<string, HTMLElement>>;
-}> = ({ tracks, selectedItemId, selectionBoxRef, itemsDomMapRef }) => {
+}> = ({ tracks, allNodes, selectedItemId, selectionBoxRef, itemsDomMapRef }) => {
+  const { width: compWidth, height: compHeight } = useVideoConfig();
+
+  // Create empty nodes map if not provided (for backward compatibility)
+  const nodesMap = allNodes || new Map();
 
   // 计算全局最后一帧（与上面的 TrackComponent 用到的 globalEndFrame 保持一致）
   const globalEndFrame = React.useMemo(() => {
@@ -268,15 +378,57 @@ export const VideoComposition: React.FC<{
     return maxEnd;
   }, [tracks]);
 
-  // 找到选中的 item 和它的 properties
-  const selectedItem = React.useMemo(() => {
+  // 找到选中的 item 和它的 properties，同时解析 natural dimensions
+  const selectedItemResolved = React.useMemo(() => {
     if (!selectedItemId) return null;
     for (const track of tracks) {
       const item = track.items.find((i) => i.id === selectedItemId);
-      if (item) return item;
+      if (item) {
+        return resolveTimelineItem(item, nodesMap);
+      }
     }
     return null;
-  }, [tracks, selectedItemId]);
+  }, [tracks, selectedItemId, nodesMap]);
+
+  // Calculate selection box dimensions using the same logic as applyTransform
+  const selectionBoxStyle = React.useMemo(() => {
+    if (!selectedItemResolved?.properties) return null;
+
+    const props = selectedItemResolved.properties;
+    const naturalWidth = (selectedItemResolved as any).naturalWidth || compWidth;
+    const naturalHeight = (selectedItemResolved as any).naturalHeight || compHeight;
+
+    // Scale relative to natural dimensions
+    // props.width/height are multipliers of the asset's natural size
+    let widthPx: number;
+    let heightPx: number;
+
+    // When both width and height are 1, contain in canvas (preserve aspect ratio)
+    if (props.width === 1 && props.height === 1) {
+      const scaleX = compWidth / naturalWidth;
+      const scaleY = compHeight / naturalHeight;
+      const scale = Math.min(scaleX, scaleY);
+      widthPx = naturalWidth * scale;
+      heightPx = naturalHeight * scale;
+    } else {
+      // Normal scaling: props.width/height are multipliers of natural dimensions
+      widthPx = props.width * naturalWidth;
+      heightPx = props.height * naturalHeight;
+    }
+
+    const widthPercent = (widthPx / compWidth) * 100;
+    const heightPercent = (heightPx / compHeight) * 100;
+
+    return {
+      position: 'absolute' as const,
+      left: `calc(50% + ${props.x}px)`,
+      top: `calc(50% + ${props.y}px)`,
+      width: `${widthPercent}%`,
+      height: `${heightPercent}%`,
+      transform: `translate(-50%, -50%)`,
+      boxSizing: 'border-box' as const,
+    };
+  }, [selectedItemResolved, compWidth, compHeight]);
 
   return (
     <AbsoluteFill style={{ backgroundColor: 'black', top: 0, left: 0, right: 0, bottom: 0 }}>
@@ -285,25 +437,16 @@ export const VideoComposition: React.FC<{
         // Higher index = lower in timeline = lower z-index
         const trackZIndex = tracks.length - trackIndex;
         return (
-          <TrackComponent key={`${track.id}-${trackIndex}`} track={track} globalEndFrame={globalEndFrame} trackZIndex={trackZIndex} itemsDomMapRef={itemsDomMapRef} />
+          <TrackComponent key={`${track.id}-${trackIndex}`} track={track} allNodesMap={nodesMap} globalEndFrame={globalEndFrame} trackZIndex={trackZIndex} itemsDomMapRef={itemsDomMapRef} />
         );
       })}
-      
+
       {/* 选择框 - 透明的，只用于提供 ref（不包含旋转） */}
-      {selectedItem && selectedItem.properties && (
+      {selectedItemResolved && selectionBoxStyle && (
         <AbsoluteFill style={{ pointerEvents: 'none', zIndex: 9999 }}>
           <div
             ref={selectionBoxRef}
-            style={{
-              position: 'absolute',
-              left: `calc(50% + ${selectedItem.properties.x}px)`,
-              top: `calc(50% + ${selectedItem.properties.y}px)`,
-              width: `${selectedItem.properties.width * 100}%`,
-              height: `${selectedItem.properties.height * 100}%`,
-              transform: `translate(-50%, -50%)`,
-              // 不显示边框，不包含旋转，只用于获取未旋转的位置和尺寸
-              boxSizing: 'border-box',
-            }}
+            style={selectionBoxStyle}
           />
         </AbsoluteFill>
       )}

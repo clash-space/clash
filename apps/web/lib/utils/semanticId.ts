@@ -1,121 +1,75 @@
 /**
- * Semantic ID Generation Utilities
+ * Short UUID Generation Utilities
  *
- * Provides utilities to generate human-readable, memorable IDs
- * like "alpha-ocean-square" for nodes and assets.
+ * Provides utilities to generate short, unique IDs
+ * like "abc123xy" for nodes and assets.
+ * Generated locally without backend dependency.
  */
 
-// Backend base URL for semantic ID generation (frontend-exposed)
-const API_URL =
-    process.env.NEXT_PUBLIC_BACKEND_URL ||
-    process.env.BACKEND_API_URL || // fallback for server contexts
-    'http://localhost:8888';
-
-interface GenerateIDResponse {
-    ids: string[];
-    project_id: string;
-}
-
 /**
- * Word lists for generating human-readable IDs client-side
+ * Character set for short UUID generation
+ * Uses lowercase letters and digits for readability
  */
-const ADJECTIVES = [
-    'alpha', 'bright', 'coral', 'deep', 'emerald', 'frost', 'golden', 'hazy',
-    'ivory', 'jade', 'keen', 'lunar', 'misty', 'noble', 'ocean', 'pearl',
-    'quiet', 'rustic', 'silver', 'teal', 'ultra', 'vivid', 'warm', 'zen'
-];
-
-const NOUNS = [
-    'aurora', 'breeze', 'crystal', 'dawn', 'echo', 'flame', 'glacier', 'horizon',
-    'island', 'jungle', 'kite', 'lagoon', 'meadow', 'nebula', 'oasis', 'prism',
-    'quartz', 'river', 'storm', 'temple', 'umbra', 'valley', 'wave', 'zenith'
-];
-
-const SHAPES = [
-    'arc', 'bloom', 'cube', 'dome', 'edge', 'fold', 'grid', 'helix',
-    'iris', 'jewel', 'knot', 'loop', 'mesh', 'node', 'orb', 'peak',
-    'quad', 'ring', 'star', 'tower', 'unity', 'vortex', 'wave', 'zest'
-];
+const CHARSET = 'abcdefghijklmnopqrstuvwxyz0123456789';
+const ID_LENGTH = 8;
 
 /**
- * Generate a semantic ID locally (fallback when backend unavailable)
- */
-function generateLocalSemanticId(): string {
-    const adj = ADJECTIVES[Math.floor(Math.random() * ADJECTIVES.length)];
-    const noun = NOUNS[Math.floor(Math.random() * NOUNS.length)];
-    const shape = SHAPES[Math.floor(Math.random() * SHAPES.length)];
-    const suffix = Math.floor(Math.random() * 1000).toString().padStart(3, '0');
-    return `${adj}-${noun}-${shape}-${suffix}`;
-}
-
-/**
- * Generate semantic IDs from the backend API
+ * Generate a short UUID locally
+ * Creates an 8-character ID using lowercase letters and digits
+ * Provides ~2.8 trillion possible combinations (36^8)
  *
- * @param projectId - Project ID for scoping
- * @param count - Number of IDs to generate (default: 1)
- * @returns Array of generated semantic IDs
+ * @returns A short unique ID string
  */
-export async function generateSemanticIds(projectId: string, count: number = 1): Promise<string[]> {
-    try {
-        const response = await fetch(`${API_URL}/api/generate-ids`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-                project_id: projectId,
-                count,
-            }),
-        });
+function generateShortUUID(): string {
+    const result: string[] = [];
+    const randomValues = new Uint8Array(ID_LENGTH);
 
-        if (!response.ok) {
-            throw new Error(`Failed to generate IDs: ${response.statusText}`);
-        }
+    // Use crypto.getRandomValues for better randomness
+    crypto.getRandomValues(randomValues);
 
-        const data: GenerateIDResponse = await response.json();
-        return data.ids;
-    } catch (error) {
-        console.warn('[SemanticID] Backend unavailable, using local generation:', error);
-        // Fallback to local generation with human-readable IDs
-        return Array.from({ length: count }, () => generateLocalSemanticId());
+    for (let i = 0; i < ID_LENGTH; i++) {
+        const index = randomValues[i] % CHARSET.length;
+        result.push(CHARSET[index]);
     }
+
+    return result.join('');
 }
 
 /**
- * Generate a single semantic ID
+ * Generate a single short unique ID
+ * Project ID is kept for API compatibility but not used for generation
  *
- * @param projectId - Project ID for scoping
- * @returns A semantic ID string
+ * @param _projectId - Project ID (not used, kept for compatibility)
+ * @returns A short unique ID string
  */
-export async function generateSemanticId(projectId: string): Promise<string> {
-    const ids = await generateSemanticIds(projectId, 1);
-    return ids[0];
+export async function generateSemanticId(_projectId: string): Promise<string> {
+    return generateShortUUID();
 }
 
 /**
- * Cache for batched ID generation to reduce API calls
+ * Generate multiple short unique IDs
+ * Project ID is kept for API compatibility but not used for generation
+ *
+ * @param _projectId - Project ID (not used, kept for compatibility)
+ * @param count - Number of IDs to generate (default: 1)
+ * @returns Array of generated short unique IDs
+ */
+export async function generateSemanticIds(_projectId: string, count: number = 1): Promise<string[]> {
+    return Array.from({ length: count }, () => generateShortUUID());
+}
+
+/**
+ * Cache for batched ID generation (kept for API compatibility)
+ * Note: With local UUID generation, caching is no longer necessary
+ * but this class is kept for backward compatibility
  */
 class SemanticIdCache {
-    private cache: Map<string, string[]> = new Map();
-    private batchSize = 10;
-
     async getId(projectId: string): Promise<string> {
-        const cached = this.cache.get(projectId);
-        if (cached && cached.length > 0) {
-            return cached.shift()!;
-        }
-
-        const ids = await generateSemanticIds(projectId, this.batchSize);
-        this.cache.set(projectId, ids.slice(1)); // Store remaining
-        return ids[0];
+        return generateSemanticId(projectId);
     }
 
-    clear(projectId?: string) {
-        if (projectId) {
-            this.cache.delete(projectId);
-        } else {
-            this.cache.clear();
-        }
+    clear(_projectId?: string) {
+        // No-op: local generation doesn't need cache clearing
     }
 }
 
@@ -123,10 +77,10 @@ export const semanticIdCache = new SemanticIdCache();
 
 /**
  * Get a semantic ID with caching
- * This is more efficient for generating many IDs in succession
+ * This is kept for API compatibility but delegates to direct generation
  *
  * @param projectId - Project ID for scoping
- * @returns A semantic ID string
+ * @returns A short unique ID string
  */
 export async function getCachedSemanticId(projectId: string): Promise<string> {
     return semanticIdCache.getId(projectId);

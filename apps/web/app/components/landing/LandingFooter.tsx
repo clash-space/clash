@@ -23,7 +23,7 @@ const navigation = {
 
 export default function LandingFooter() {
   return (
-    <footer className="bg-white border-t border-gray-200" aria-labelledby="footer-heading">
+    <footer className="bg-white/50 backdrop-blur-md border-t border-gray-200 relative z-10" aria-labelledby="footer-heading">
       <h2 id="footer-heading" className="sr-only">
         Footer
       </h2>

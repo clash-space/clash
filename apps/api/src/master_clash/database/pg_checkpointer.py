@@ -27,6 +27,7 @@ from master_clash.config import get_settings
 
 # Global async connection pool
 _async_pool: AsyncConnectionPool | None = None
+_heartbeat_task: asyncio.Task | None = None  # 后台心跳任务
 logger = logging.getLogger(__name__)
 
 
@@ -178,7 +179,117 @@ async def get_async_connection_pool() -> AsyncConnectionPool:
             _async_pool = None  # Reset pool on failure
             raise
 
+        # ⭐ 连接池预热机制 - 立即建立最小连接数
+        # 不要等到第一个请求才建连接，启动时就准备好
+        await warmup_connection_pool()
+
+        # ⭐ 启动后台心跳任务 - 定期 ping 保持连接活跃
+        start_heartbeat_task()
+
     return _async_pool
+
+
+async def warmup_connection_pool():
+    """
+    连接池预热：启动时就建立连接并验证可用性
+
+    这个机制的作用：
+    1. 应用启动时就建好连接，不是等第一个请求来了才建
+    2. 验证连接真的能用（执行一个简单查询）
+    3. 如果有问题，启动阶段就发现，而不是等用户遇到错误
+
+    就像汽车启动后要热车，连接池也要"热池"
+    """
+    global _async_pool
+
+    if _async_pool is None:
+        logger.warning("Cannot warmup pool: pool not initialized")
+        return
+
+    try:
+        logger.info("Warming up connection pool...")
+
+        # 并发建立 min_size 个连接并验证
+        async def test_connection():
+            """建立一个连接并验证能用"""
+            async with _async_pool.connection() as conn:
+                # 执行简单查询验证连接
+                await conn.execute("SELECT 1")
+
+        # 同时建立多个连接（min_size 个）
+        warmup_tasks = [test_connection() for _ in range(_async_pool.min_size)]
+        await asyncio.gather(*warmup_tasks, return_exceptions=True)
+
+        logger.info(
+            f"Connection pool warmed up successfully "
+            f"({_async_pool.min_size} connections ready)"
+        )
+    except Exception as e:
+        logger.warning(f"Connection pool warmup encountered issues (non-fatal): {e}")
+        # 预热失败不是致命的，连接池还是会按需创建连接
+
+
+async def connection_heartbeat():
+    """
+    后台心跳任务：定期 ping 数据库，保持连接活跃
+
+    为什么需要心跳？
+    1. TCP keepalive 只是被动检测（等连接断了才发现）
+    2. 心跳是主动保活（定期发个查询，告诉数据库"我还在用"）
+    3. 防止负载均衡器/防火墙因为"空闲太久"主动断连接
+
+    就像微信要定期发心跳包保持在线，数据库连接也要定期"心跳"
+
+    心跳间隔：每 60 秒（比 keepalive_idle=30s 要长，避免重复）
+    """
+    global _async_pool
+
+    logger.info("Starting connection pool heartbeat task")
+
+    while True:
+        try:
+            # 每 60 秒执行一次
+            await asyncio.sleep(60)
+
+            if _async_pool is None:
+                logger.debug("Pool not initialized, skipping heartbeat")
+                continue
+
+            # 对一个连接执行轻量级查询
+            try:
+                async with _async_pool.connection() as conn:
+                    await conn.execute("SELECT 1")
+                logger.debug("Connection heartbeat: OK")
+            except OperationalError as e:
+                # 连接有问题，记录警告但不退出心跳任务
+                logger.warning(f"Connection heartbeat failed (will retry): {e}")
+
+                # 如果是 SSL 错误，重置连接池
+                error_msg = str(e).lower()
+                if "ssl connection has been closed" in error_msg:
+                    logger.error("SSL connection lost detected by heartbeat, resetting pool")
+                    await reset_connection_pool()
+
+        except asyncio.CancelledError:
+            logger.info("Connection heartbeat task cancelled")
+            break
+        except Exception as e:
+            logger.error(f"Unexpected error in heartbeat task: {e}", exc_info=True)
+            # 继续运行，不要因为一次错误就停止心跳
+
+
+def start_heartbeat_task():
+    """启动后台心跳任务"""
+    global _heartbeat_task
+
+    # 如果已经有任务在运行，先取消
+    if _heartbeat_task is not None and not _heartbeat_task.done():
+        logger.debug("Heartbeat task already running")
+        return
+
+    # 启动新的心跳任务
+    _heartbeat_task = asyncio.create_task(connection_heartbeat())
+    logger.info("Connection pool heartbeat task started")
 
 
 async def get_async_checkpointer(initialize: bool = True) -> AsyncPostgresSaver:
@@ -248,6 +359,62 @@ async def get_async_checkpointer(initialize: bool = True) -> AsyncPostgresSaver:
 
 
 @asynccontextmanager
+async def get_connection_with_retry(max_retries: int = 3):
+    """
+    从连接池获取连接，失败时自动重试
+
+    这是一个包装器，让你在获取连接时有自动重试能力：
+
+    使用方式：
+        async with get_connection_with_retry() as conn:
+            await conn.execute("SELECT 1")
+
+    如果获取连接失败（比如网络问题），会自动重试 3 次，不用你手动处理
+
+    Args:
+        max_retries: 最大重试次数（默认 3 次）
+
+    Yields:
+        Database connection from pool
+
+    Raises:
+        最后一次失败的异常（如果所有重试都失败）
+    """
+    pool = await get_async_connection_pool()
+    last_error = None
+
+    for attempt in range(max_retries + 1):
+        try:
+            async with pool.connection() as conn:
+                yield conn
+                return  # 成功，退出
+        except OperationalError as e:
+            last_error = e
+            error_msg = str(e).lower()
+
+            if attempt < max_retries:
+                delay = 0.5 * (2 ** attempt)  # 0.5s, 1s, 2s
+                logger.warning(
+                    f"Failed to get connection (attempt {attempt + 1}/{max_retries + 1}): {e}. "
+                    f"Retrying in {delay}s..."
+                )
+
+                # 如果是 SSL 错误，重置连接池
+                if "ssl connection has been closed" in error_msg:
+                    logger.error("SSL connection error, resetting pool before retry")
+                    await reset_connection_pool()
+
+                await asyncio.sleep(delay)
+            else:
+                logger.error(f"Failed to get connection after {max_retries + 1} attempts: {e}")
+                raise
+
+    # 理论上不会到这里，但为了安全
+    if last_error:
+        raise last_error
+
+
+@asynccontextmanager
 async def get_checkpointer_with_health_check():
     """
     Context manager that provides a checkpointer with automatic health checking.
@@ -305,13 +472,26 @@ async def close_connection_pool():
 
     This function:
     - Safely closes all connections in the pool
+    - Stops the heartbeat background task
     - Handles errors during closure
     - Resets the global pool reference
     - Logs closure status for monitoring
 
     Safe to call multiple times (idempotent).
     """
-    global _async_pool
+    global _async_pool, _heartbeat_task
+
+    # 先停止心跳任务
+    if _heartbeat_task is not None and not _heartbeat_task.done():
+        logger.info("Stopping connection pool heartbeat task")
+        _heartbeat_task.cancel()
+        try:
+            await _heartbeat_task
+        except asyncio.CancelledError:
+            pass
+        _heartbeat_task = None
+
+    # 再关闭连接池
     if _async_pool:
         try:
             await _async_pool.close()

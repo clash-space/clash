@@ -1,6 +1,6 @@
 /**
  * Node Processor - Task Submission Only
- * 
+ *
  * All tasks use the same pattern:
  * 1. NodeProcessor spots a node needing work
  * 2. Submit to /api/tasks/submit (writes to DB, starts background processing)
@@ -22,8 +22,132 @@ const getModelCard = (modelId?: string) => MODEL_CARDS.find((card) => card.id ==
 type AssetStatus = 'uploading' | 'generating' | 'completed' | 'fin' | 'failed';
 type NodeType = 'image' | 'video' | 'audio' | 'video_render';
 
-// Track nodes currently being processed to prevent duplicate submissions
-const processingNodes = new Set<string>();
+/**
+ * CRITICAL FIX: Removed in-memory processingNodes Set
+ *
+ * Previous implementation used a memory-based Set to prevent duplicate submissions.
+ * This was unreliable because:
+ * 1. Durable Object restarts would clear the Set
+ * 2. Lock was released immediately after submission, before pendingTask sync
+ * 3. Race conditions could still cause duplicate submissions
+ *
+ * NEW APPROACH: Use pendingTask field as persistent lock
+ * - pendingTask is stored in Loro CRDT (persistent across restarts)
+ * - Check pendingTask BEFORE submission (line 55)
+ * - Set pendingTask IMMEDIATELY after successful submission
+ * - This creates an atomic check-and-set pattern
+ */
+
+/**
+ * Resolve assetId references in timeline DSL items.
+ * This populates src/type/naturalWidth/naturalHeight from the referenced asset nodes.
+ *
+ * Timeline items use a reference-based model where they only store assetId.
+ * The backend render service doesn't have access to Loro, so we must resolve
+ * these references before submitting the render task.
+ */
+function resolveTimelineDslReferences(
+  timelineDsl: Record<string, any>,
+  nodesMap: Map<string, any>
+): Record<string, any> {
+  // Build a src -> node lookup for matching by src (for items without assetId)
+  const srcToNode = new Map<string, any>();
+  for (const [nodeId, nodeData] of nodesMap.entries()) {
+    const data = nodeData?.data || nodeData;
+    // Handle Loro proxy objects
+    const src = typeof data?.toJSON === 'function' ? data.toJSON()?.src : data?.src;
+    if (src) {
+      srcToNode.set(src, { nodeId, ...nodeData });
+    }
+  }
+
+  const resolvedTracks = (timelineDsl.tracks || []).map((track: any) => {
+    const resolvedItems = (track.items || []).map((item: any) => {
+      let assetNode: any = null;
+
+      // 1. Try to find by assetId first
+      if (item.assetId) {
+        assetNode = nodesMap.get(item.assetId);
+      }
+
+      // 2. If no assetId or not found, try to match by src
+      if (!assetNode && item.src) {
+        // Normalize src for matching (strip URL prefix to get R2 key)
+        let srcKey = item.src;
+        // Handle full URLs like "http://localhost:3000/api/assets/view/projects/..."
+        const viewMatch = srcKey.match(/\/api\/assets\/view\/(.+)$/);
+        if (viewMatch) {
+          srcKey = viewMatch[1]; // Extract R2 key
+        }
+
+        // Try exact match first
+        assetNode = srcToNode.get(item.src) || srcToNode.get(srcKey);
+
+        // Try partial match (R2 key might be stored differently)
+        if (!assetNode) {
+          for (const [storedSrc, node] of srcToNode.entries()) {
+            if (storedSrc.includes(srcKey) || srcKey.includes(storedSrc)) {
+              assetNode = node;
+              break;
+            }
+          }
+        }
+      }
+
+      if (assetNode) {
+        // Extract asset data - handle both direct objects and Loro proxies
+        let assetData: Record<string, any> = {};
+        const rawData = assetNode.data || assetNode;
+
+        if (typeof rawData?.toJSON === 'function') {
+          assetData = rawData.toJSON();
+        } else if (rawData) {
+          assetData = typeof rawData === 'object' ? { ...rawData } : {};
+        }
+
+        // Get type from node or data
+        const assetType = assetNode.type || assetData.type;
+
+        // Resolve dimensions
+        let naturalWidth = assetData.naturalWidth;
+        let naturalHeight = assetData.naturalHeight;
+
+        // Fallback: parse aspectRatio string (e.g., "16:9") if no natural dimensions
+        if ((!naturalWidth || !naturalHeight) && assetData.aspectRatio) {
+          const ar = assetData.aspectRatio;
+          if (typeof ar === 'string' && ar.includes(':')) {
+            const [w, h] = ar.split(':').map(Number);
+            if (w && h) {
+              // Use 1920 as base width (matches frontend logic)
+              naturalWidth = 1920;
+              naturalHeight = Math.round(1920 * h / w);
+            }
+          }
+        }
+
+        const matchMethod = item.assetId ? `assetId=${item.assetId.slice(0, 8)}` : `src-match`;
+        console.log(`[NodeProcessor] Resolved ${matchMethod} -> type=${assetType}, src=${assetData.src?.slice(0, 30) || 'none'}, dim=${naturalWidth}x${naturalHeight}`);
+
+        return {
+          ...item,
+          src: assetData.src || item.src,
+          type: assetType || item.type,
+          ...(naturalWidth && { naturalWidth }),
+          ...(naturalHeight && { naturalHeight }),
+          ...(assetData.aspectRatio && { aspectRatio: assetData.aspectRatio }),
+        };
+      } else {
+        console.warn(`[NodeProcessor] No asset found for item id=${item.id}, src=${item.src?.slice(0, 50) || 'none'}`);
+      }
+
+      return item;
+    });
+
+    return { ...track, items: resolvedItems };
+  });
+
+  return { ...timelineDsl, tracks: resolvedTracks };
+}
 
 /**
  * Process pending nodes - submit tasks to API/DB
@@ -51,8 +175,8 @@ export async function processPendingNodes(
       const description = innerData.description;
       const pendingTask = innerData.pendingTask;
 
-      // Skip if already has a pending task
-      if (pendingTask) continue;
+      // Skip if already has a pending task or is submitting
+      if (pendingTask || innerData.taskState === 'submitted' || innerData.taskState === 'completed') continue;
 
       // Case 1: generating + no src -> submit generation task
       // OR video_render + status generating -> submit render task
@@ -60,23 +184,19 @@ export async function processPendingNodes(
       const hasTimelineDsl = innerData.timelineDsl != null;
       const shouldRenderVideo = nodeType === 'video_render' || (nodeType === 'video' && hasTimelineDsl);
 
-      if ((status === 'generating' && !src) || (shouldRenderVideo && status === 'generating' && !pendingTask)) {
+      if ((status === 'generating' && !src) || (shouldRenderVideo && status === 'generating')) {
+        // CRITICAL: Set taskState to 'submitted' IMMEDIATELY to prevent duplicate submissions
+        updateNodeData(doc, nodeId, { taskState: 'submitted' }, broadcast);
+        console.log(`[NodeProcessor] 🔒 Set taskState=submitted for node ${nodeId.slice(0, 8)}`);
+
         // Video render uses the timeline DSL
         if (shouldRenderVideo) {
-          const processingKey = `${nodeId}:render`;
-          if (processingNodes.has(processingKey)) {
-            console.log(`[NodeProcessor] ⏭️ Skipping render ${nodeId.slice(0, 8)} - already being processed`);
-            continue;
-          }
-          processingNodes.add(processingKey);
-
           console.log(`[NodeProcessor] 🎬 Submitting video_render for ${nodeId.slice(0, 8)}`);
 
           const timelineDsl = innerData.timelineDsl;
           if (!timelineDsl) {
             console.error(`[NodeProcessor] ❌ Missing timelineDsl for video_render node ${nodeId.slice(0, 8)}`);
             updateNodeData(doc, nodeId, { status: 'failed', error: 'Missing timelineDsl' }, broadcast);
-            processingNodes.delete(processingKey);
             continue;
           }
 
@@ -97,33 +217,30 @@ export async function processPendingNodes(
 
           console.log(`[NodeProcessor] 🔍 Render DSL for ${nodeId.slice(0, 8)}: duration=${safeDsl.durationInFrames}, tracks=${safeDsl.tracks?.length}`);
 
+          // Resolve assetId references in timeline items before submission
+          // This is critical because the backend render service doesn't have access to Loro
+          const resolvedDsl = resolveTimelineDslReferences(safeDsl, nodesMap);
+
           const params = {
-            timeline_dsl: safeDsl,
+            timeline_dsl: resolvedDsl,
           };
 
           const result = await submitTask(env, 'video_render', projectId, nodeId, params);
-          processingNodes.delete(processingKey);
 
           if (result.task_id) {
             console.log(`[NodeProcessor] ✅ Render task submitted: ${result.task_id} for node ${nodeId.slice(0, 8)}`);
-            updateNodeData(doc, nodeId, { pendingTask: result.task_id }, broadcast);
+            // Fix: Set taskState to 'completed' so TaskPolling can start polling
+            updateNodeData(doc, nodeId, { taskState: 'completed', pendingTask: result.task_id }, broadcast);
             submitted = true;
           } else {
             console.error(`[NodeProcessor] ❌ Render task submission failed for node ${nodeId.slice(0, 8)}: ${result.error}`);
-            updateNodeData(doc, nodeId, { status: 'failed', error: result.error || 'Render task submission failed' }, broadcast);
+            // Fix: Reset taskState on failure so it doesn't get stuck in 'submitted'
+            updateNodeData(doc, nodeId, { taskState: 'pending', status: 'failed', error: result.error || 'Render task submission failed' }, broadcast);
           }
           continue;
         }
 
         // Original AIGC generation logic
-        // Skip if already being processed (prevent race condition)
-        const processingKey = `${nodeId}:gen`;
-        if (processingNodes.has(processingKey)) {
-          console.log(`[NodeProcessor] ⏭️ Skipping ${nodeId.slice(0, 8)} - already being processed`);
-          continue;
-        }
-        processingNodes.add(processingKey);
-
         console.log(`[NodeProcessor] 🚀 Submitting ${nodeType}_gen for ${nodeId.slice(0, 8)}`);
 
         const taskType = nodeType === 'image' ? 'image_gen' : nodeType === 'video' ? 'video_gen' : 'audio_gen';
@@ -179,29 +296,22 @@ export async function processPendingNodes(
 
         const result = await submitTask(env, taskType, projectId, nodeId, params);
 
-        // Clear processing lock
-        processingNodes.delete(processingKey);
-
         if (result.task_id) {
           console.log(`[NodeProcessor] ✅ Task submitted successfully: ${result.task_id} for node ${nodeId.slice(0, 8)}`);
-          updateNodeData(doc, nodeId, { pendingTask: result.task_id }, broadcast);
+          updateNodeData(doc, nodeId, { taskState: 'completed', pendingTask: result.task_id }, broadcast);
           submitted = true;
         } else {
           console.error(`[NodeProcessor] ❌ Task submission failed for node ${nodeId.slice(0, 8)}: ${result.error}`);
-          updateNodeData(doc, nodeId, { status: 'failed', error: result.error || 'Task submission failed' }, broadcast);
+          // Reset taskState so it can be retried
+          updateNodeData(doc, nodeId, { taskState: 'pending', status: 'failed', error: result.error || 'Task submission failed' }, broadcast);
         }
       }
 
       // Case 2: completed + has src + no description -> submit description task
       // Skip audio nodes - they don't need descriptions
-      if (status === 'completed' && src && !description && nodeType !== 'audio') {
-        // Skip if already being processed (prevent race condition)
-        const processingKey = `${nodeId}:desc`;
-        if (processingNodes.has(processingKey)) {
-          console.log(`[NodeProcessor] ⏭️ Skipping desc for ${nodeId.slice(0, 8)} - already being processed`);
-          continue;
-        }
-        processingNodes.add(processingKey);
+      if (status === 'completed' && src && !description && nodeType !== 'audio' && !pendingTask && innerData.taskState !== 'submitted') {
+        updateNodeData(doc, nodeId, { taskState: 'submitted' }, broadcast);
+        console.log(`[NodeProcessor] 🔒 Set taskState=submitted for description: ${nodeId.slice(0, 8)}`);
 
         console.log(`[NodeProcessor] 📝 Submitting description for ${nodeId.slice(0, 8)}`);
 
@@ -213,26 +323,18 @@ export async function processPendingNodes(
 
         const result = await submitTask(env, taskType, projectId, nodeId, params);
 
-        // Clear processing lock
-        processingNodes.delete(processingKey);
-
         if (result.task_id) {
-          updateNodeData(doc, nodeId, { pendingTask: result.task_id }, broadcast);
+          updateNodeData(doc, nodeId, { taskState: 'completed', pendingTask: result.task_id }, broadcast);
           submitted = true;
         } else {
-          // Don't fail, just skip description
-          updateNodeData(doc, nodeId, { status: 'fin' }, broadcast);
+          updateNodeData(doc, nodeId, { taskState: 'pending', status: 'fin' }, broadcast);
         }
       }
 
       // Case 3: Video node with src but no coverUrl -> submit thumbnail extraction
-      if (nodeType === 'video' && status === 'completed' && src && !innerData.coverUrl) {
-        const processingKey = `${nodeId}:thumb`;
-        if (processingNodes.has(processingKey)) {
-          console.log(`[NodeProcessor] ⏭️ Skipping thumbnail for ${nodeId.slice(0, 8)} - already being processed`);
-          continue;
-        }
-        processingNodes.add(processingKey);
+      if (nodeType === 'video' && status === 'completed' && src && !innerData.coverUrl && !pendingTask && innerData.taskState !== 'submitted') {
+        updateNodeData(doc, nodeId, { taskState: 'submitted' }, broadcast);
+        console.log(`[NodeProcessor] 🔒 Set taskState=submitted for thumbnail: ${nodeId.slice(0, 8)}`);
 
         console.log(`[NodeProcessor] 🎬 Submitting thumbnail extraction for ${nodeId.slice(0, 8)}`);
 
@@ -244,14 +346,11 @@ export async function processPendingNodes(
 
         const result = await submitTask(env, taskType, projectId, nodeId, params);
 
-        processingNodes.delete(processingKey);
-
         if (result.task_id) {
-          updateNodeData(doc, nodeId, { pendingTask: result.task_id }, broadcast);
+          updateNodeData(doc, nodeId, { taskState: 'completed', pendingTask: result.task_id }, broadcast);
           submitted = true;
         } else {
-          // Don't fail if thumbnail extraction fails
-          console.warn(`[NodeProcessor] ⚠️ Thumbnail extraction failed for ${nodeId.slice(0, 8)}: ${result.error}`);
+          updateNodeData(doc, nodeId, { taskState: 'pending' }, broadcast);
         }
       }
     }

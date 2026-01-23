@@ -142,13 +142,9 @@ def create_run_generation_tool(backend: CanvasBackendProtocol) -> BaseTool:
                 # Update DSL with calculated duration
                 updated_dsl = {**timeline_dsl, "durationInFrames": max_end_frame}
 
-                # Generate asset ID
-                from master_clash.semantic_id import (
-                    create_id_checker,
-                    generate_unique_id_for_project,
-                )
-                checker = create_id_checker()
-                asset_id = generate_unique_id_for_project(project_id, checker)
+                # Generate short UUID for asset ID
+                import uuid
+                asset_id = uuid.uuid4().hex[:8]
 
                 # Get position from Loro
                 loro_client = runtime.config.get("configurable", {}).get("loro_client")
@@ -278,13 +274,9 @@ def create_run_generation_tool(backend: CanvasBackendProtocol) -> BaseTool:
                 if not has_image:
                     return f"Error: Video generation requires at least one completed image node. Please connect an image node to the action-badge node '{node_id}' before running video generation. (Checked {len(upstream_ids)} upstream nodes)"
 
-            # Generate asset ID
-            from master_clash.semantic_id import (
-                create_id_checker,
-                generate_unique_id_for_project,
-            )
-            checker = create_id_checker()
-            asset_id = generate_unique_id_for_project(project_id, checker)
+            # Generate short UUID for asset ID
+            import uuid
+            asset_id = uuid.uuid4().hex[:8]
 
             gen_type = "image" if action_type == "image-gen" else "video"
 

@@ -17,6 +17,31 @@ export const CanvasPreview: React.FC = React.memo(() => {
     return maxEnd > 0 ? maxEnd : 300; // 300 frames = 10 seconds at 30fps as fallback
   }, [state.tracks]);
 
+  // Create allNodesMap from assets for resolving assetId references in VideoComposition
+  // Timeline items use assetId which references the canvas node ID (sourceNodeId)
+  // We need to map BOTH asset.id AND asset.sourceNodeId to support both cases
+  const allNodesMap = useMemo(() => {
+    const map = new Map<string, any>();
+    for (const asset of state.assets) {
+      const nodeData = {
+        type: asset.type,
+        data: {
+          src: asset.src,
+          naturalWidth: asset.width,
+          naturalHeight: asset.height,
+        },
+      };
+      // Map by asset.id (internal editor ID)
+      map.set(asset.id, nodeData);
+      // Also map by sourceNodeId (canvas node ID) if different
+      // This is the ID that timeline items reference via assetId
+      if (asset.sourceNodeId && asset.sourceNodeId !== asset.id) {
+        map.set(asset.sourceNodeId, nodeData);
+      }
+    }
+    return map;
+  }, [state.assets]);
+
   return (
     <div style={styles.container}>
       {/* Canvas Area with InteractiveCanvas */}
@@ -24,6 +49,7 @@ export const CanvasPreview: React.FC = React.memo(() => {
         <InteractiveCanvas
           key="interactive-canvas"
           tracks={state.tracks}
+          allNodesMap={allNodesMap}
           selectedItemId={state.selectedItemId}
           currentFrame={state.currentFrame}
           compositionWidth={state.compositionWidth}

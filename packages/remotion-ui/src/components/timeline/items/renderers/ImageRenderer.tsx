@@ -5,7 +5,9 @@ import { colors } from '../../styles';
 
 export const ImageRenderer: React.FC<ItemRenderProps> = ({ item, asset, width, height }) => {
   const image = item as ImageItem;
-  const src = asset?.thumbnail || image.src;
+  // Support reference-based model: use asset.thumbnail/src as primary source
+  // Fallback to image.src for legacy items with direct src
+  const src = asset?.thumbnail || asset?.src || image.src;
   const [imageError, setImageError] = useState(false);
 
   // Resolve asset URL if needed (convert R2 keys to API URLs)
@@ -30,7 +32,7 @@ export const ImageRenderer: React.FC<ItemRenderProps> = ({ item, asset, width, h
           alt="thumb"
           style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
           onError={() => {
-            console.error('[ImageRenderer] Failed to load image:', resolvedSrc);
+            console.error(`[ImageRenderer] Load failed src="${resolvedSrc}"`);
             setImageError(true);
           }}
         />

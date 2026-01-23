@@ -29,8 +29,7 @@ def create_default_llm() -> ChatGoogleGenerativeAI:
     #     streaming=True
     # )
     return ChatGoogleGenerativeAI(
-        model="gemini-2.5-pro",
-        # transport="rest",
+        model="gemini-3-pro-preview",
         include_thoughts=True,
         thinking_budget=1000,
         streaming=True,

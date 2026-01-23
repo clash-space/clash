@@ -11,8 +11,7 @@ from .create_node import create_create_node_tool
 from .generation_node import create_generation_node_tool
 from .run_generation import create_run_generation_tool
 from .wait_generation import create_wait_generation_tool
-from .search_nodes import create_search_nodes_tool
-from .list_model_cards import create_list_model_cards_tool
+from .list_model_cards import create_list_models_tool
 
 __all__ = [
     "create_list_nodes_tool",
@@ -21,6 +20,5 @@ __all__ = [
     "create_generation_node_tool",
     "create_run_generation_tool",
     "create_wait_generation_tool",
-    "create_search_nodes_tool",
-    "create_list_model_cards_tool",
+    "create_list_models_tool",
 ]

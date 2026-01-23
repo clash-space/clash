@@ -1,7 +1,7 @@
 """
 Read Node Tool
 
-Provides the read_canvas_node tool for reading node details.
+Provides the read_node tool for reading node details.
 """
 
 import logging
@@ -15,14 +15,14 @@ logger = logging.getLogger(__name__)
 
 
 def create_read_node_tool(backend: CanvasBackendProtocol) -> BaseTool:
-    """Create read_canvas_node tool."""
+    """Create read_node tool."""
     from langchain_core.tools import tool
 
-    class ReadCanvasNodeInput(BaseModel):
+    class ReadNodeInput(BaseModel):
         node_id: str = Field(description="Target node ID")
 
-    @tool(args_schema=ReadCanvasNodeInput)
-    def read_canvas_node(
+    @tool(args_schema=ReadNodeInput)
+    def read_node(
         node_id: str,
         runtime: ToolRuntime,
     ) -> list[str | dict] | str:
@@ -136,4 +136,4 @@ def create_read_node_tool(backend: CanvasBackendProtocol) -> BaseTool:
 
         return [text_part]
 
-    return read_canvas_node
+    return read_node

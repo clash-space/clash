@@ -1,7 +1,7 @@
 """
 Create Node Tool
 
-Provides the create_canvas_node tool for creating text/group nodes.
+Provides the create_node tool for creating text/group nodes.
 """
 
 import logging
@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 
 
 def create_create_node_tool(backend: CanvasBackendProtocol) -> BaseTool:
-    """Create create_canvas_node tool."""
+    """Create create_node tool."""
     from langchain_core.tools import tool
 
     class CanvasNodeData(BaseModel):
@@ -38,9 +38,9 @@ def create_create_node_tool(backend: CanvasBackendProtocol) -> BaseTool:
         class Config:
             extra = "allow"
 
-    class CreateCanvasNodeInput(BaseModel):
-        node_type: Literal["text", "group", "video-editor"] = Field(
-            description="Node type to create (text for notes/scripts, group for organization, video-editor for timeline editing). NOTE: For prompts with generation, use create_generation_node instead."
+    class CreateNodeInput(BaseModel):
+        node_type: Literal["text", "group"] = Field(
+            description="Node type to create (text for notes/scripts, group for organization). NOTE: For image/video generation or video-editor, use create_generation_node instead."
         )
         payload: CanvasNodeData = Field(
             description="Structured payload for text/prompt/group nodes"
@@ -53,8 +53,8 @@ def create_create_node_tool(backend: CanvasBackendProtocol) -> BaseTool:
             description="Optional parent group; defaults to current workspace when omitted",
         )
 
-    @tool(args_schema=CreateCanvasNodeInput)
-    def create_canvas_node(
+    @tool(args_schema=CreateNodeInput)
+    def create_node(
         node_type: str,
         payload: CanvasNodeData,
         runtime: ToolRuntime,
@@ -64,33 +64,53 @@ def create_create_node_tool(backend: CanvasBackendProtocol) -> BaseTool:
         """Create a new node on the canvas."""
         project_id = runtime.state.get("project_id", "")
 
+        # Get workspace_group_id from runtime state (with configurable fallback)
+        workspace_group_id_from_state = runtime.state.get("workspace_group_id")
+        workspace_group_id_from_config = runtime.config.get("configurable", {}).get("workspace_group_id")
+
+        # Use state first, fallback to config
+        workspace_group_id = workspace_group_id_from_state or workspace_group_id_from_config
+
+        # Debug logging to diagnose parent_id issues
+        logger.info(f"[create_node] Debug - parent_id arg: {parent_id}")
+        logger.info(f"[create_node] Debug - workspace_group_id from state: {workspace_group_id_from_state}")
+        logger.info(f"[create_node] Debug - workspace_group_id from config: {workspace_group_id_from_config}")
+        logger.info(f"[create_node] Debug - final workspace_group_id: {workspace_group_id}")
+        logger.info(f"[create_node] Debug - full runtime.state keys: {list(runtime.state.keys())}")
+
+        # RULE: Subagents working in a workspace MUST NOT create new groups
+        # The Director is responsible for creating groups and assigning workspaces
+        if node_type == "group" and workspace_group_id:
+            logger.warning(
+                f"[create_node] BLOCKED: Attempted to create group while workspace_group_id={workspace_group_id} is set. "
+                "Subagents should not create groups - use the existing workspace instead."
+            )
+            return (
+                f"Error: Cannot create a new group while working in workspace '{workspace_group_id}'. "
+                "The Director has already assigned you a workspace group. "
+                "Please create your content nodes (text, image_gen, video_gen) directly - "
+                "they will be automatically placed in your assigned workspace."
+            )
+
         # Auto-set parent_id from workspace if not explicitly provided
         if parent_id is None:
-            workspace_group_id = runtime.state.get("workspace_group_id")
             if workspace_group_id:
                 parent_id = workspace_group_id
-                logger.info(f"[create_canvas_node] Auto-set parent_id from workspace: {parent_id}")
-        
-        logger.info(f"[create_canvas_node] Creating {node_type} node with parent_id={parent_id}")
+                source = "state" if workspace_group_id_from_state else "config"
+                logger.info(f"[create_node] Auto-set parent_id from workspace ({source}): {parent_id}")
+            else:
+                logger.warning(
+                    f"[create_node] ISSUE DETECTED: parent_id is None and workspace_group_id not found in state or config. "
+                    f"Node will be created at root level. "
+                    f"Available state keys: {list(runtime.state.keys())}"
+                )
+
+        logger.info(f"[create_node] Creating {node_type} node with parent_id={parent_id}")
 
         resolved_backend = backend(runtime) if callable(backend) else backend
 
         try:
-            # For video-editor nodes, initialize timelineDsl if not provided
             node_data_dict = payload.model_dump(exclude_none=True)
-            if node_type == "video-editor" and "timelineDsl" not in node_data_dict:
-                # Ensure all required fields are present with defaults
-                # Use explicit dict instead of model_dump to guarantee fields are included
-                default_timeline = {
-                    "version": "1.0.0",
-                    "fps": 30,
-                    "compositionWidth": 1920,
-                    "compositionHeight": 1080,
-                    "durationInFrames": 0,
-                    "tracks": []
-                }
-                node_data_dict["timelineDsl"] = default_timeline
-                logger.info("[create_canvas_node] Initialized default timelineDsl for video-editor node")
 
             result = resolved_backend.create_node(
                 project_id=project_id,
@@ -129,28 +149,10 @@ def create_create_node_tool(backend: CanvasBackendProtocol) -> BaseTool:
                         if resolved_type == "group":
                             default_width = 400
                             default_height = 400
-                        elif resolved_type == "video-editor":
-                            default_width = 400
-                            default_height = 225
                         else:
+                            # text nodes
                             default_width = 300
                             default_height = 300
-
-                        # Extract upstream dependencies from timelineDsl for video-editor nodes
-                        upstream_node_ids = []
-                        if resolved_type == "video-editor" and "timelineDsl" in node_data:
-                            timeline_dsl = node_data.get("timelineDsl", {})
-                            asset_ids = set()
-                            for track in timeline_dsl.get("tracks", []):
-                                items = track.get("items", [])
-                                for item in items:
-                                    if "assetId" in item and item["assetId"]:
-                                        asset_ids.add(item["assetId"])
-                            upstream_node_ids = list(asset_ids)
-                            if upstream_node_ids:
-                                # Add upstreamNodeIds to node data
-                                node_data["upstreamNodeIds"] = upstream_node_ids
-                                logger.info(f"[create_canvas_node] Extracted {len(upstream_node_ids)} upstream dependencies from timelineDsl: {upstream_node_ids}")
 
                         loro_node = {
                             "id": result.node_id,
@@ -171,29 +173,8 @@ def create_create_node_tool(backend: CanvasBackendProtocol) -> BaseTool:
                             ),
                         }
 
-                        # Create edges for upstream dependencies
-                        edges_to_add = {}
-                        if upstream_node_ids:
-                            for asset_id in upstream_node_ids:
-                                edge_id = f"{asset_id}-{result.node_id}"
-                                edges_to_add[edge_id] = {
-                                    "id": edge_id,
-                                    "source": asset_id,
-                                    "target": result.node_id,
-                                    "type": "default"
-                                }
-                                logger.info(f"[create_canvas_node] Creating edge from {asset_id} to {result.node_id}")
-
-                        # Add node and edges atomically
-                        if edges_to_add:
-                            loro_client.batch_update_graph(
-                                nodes={result.node_id: loro_node},
-                                edges=edges_to_add
-                            )
-                            logger.info(f"[LoroSync] Added node {result.node_id} with {len(edges_to_add)} edges to Loro")
-                        else:
-                            loro_client.add_node(result.node_id, loro_node)
-                            logger.info(f"[LoroSync] Added node {result.node_id} to Loro")
+                        loro_client.add_node(result.node_id, loro_node)
+                        logger.info(f"[LoroSync] Added node {result.node_id} to Loro")
 
                         loro_sync_success = True
                     except Exception as e:
@@ -213,4 +194,4 @@ def create_create_node_tool(backend: CanvasBackendProtocol) -> BaseTool:
         except Exception as e:
             return f"Error creating node: {e}"
 
-    return create_canvas_node
+    return create_node

@@ -35,8 +35,7 @@ from master_clash.workflow.tools import (
     create_generation_node_tool,
     create_run_generation_tool,
     create_wait_generation_tool,
-    create_search_nodes_tool,
-    create_list_model_cards_tool,
+    create_list_models_tool,
 )
 
 logger = logging.getLogger(__name__)
@@ -271,13 +270,26 @@ Example workflow:
                 # Apply JSON Patch
                 patched_dsl = jsonpatch.apply_patch(current_dsl, patch)
 
-                # Ensure critical fields are always present
-                if "compositionWidth" not in patched_dsl:
-                    patched_dsl["compositionWidth"] = 1920
-                if "compositionHeight" not in patched_dsl:
-                    patched_dsl["compositionHeight"] = 1080
-                if "fps" not in patched_dsl:
-                    patched_dsl["fps"] = 30
+                # Auto-set default properties for new items that don't have them
+                # width=1, height=1 means 100% of media's natural size (not composition size)
+                # The rendering layer will handle actual sizing based on naturalWidth/naturalHeight
+                for track in patched_dsl.get("tracks", []):
+                    items = track.get("items") or []
+                    for item in items:
+                        # Skip if item already has properties
+                        if item.get("properties"):
+                            continue
+
+                        # Set default properties: centered, original size, no rotation
+                        item["properties"] = {
+                            "x": 0,
+                            "y": 0,
+                            "width": 1.0,   # 100% of media's natural width
+                            "height": 1.0,  # 100% of media's natural height
+                            "rotation": 0,
+                            "opacity": 1
+                        }
+                        logger.debug(f"[patch_dsl] Set default properties for item {item.get('id')}")
 
                 # Validate against schema
                 try:
@@ -295,34 +307,9 @@ Example workflow:
                         if "assetId" in item:
                             asset_ids.add(item["assetId"])
 
-                # Prepare updated data
+                # Prepare updated data with reference-only timeline (no src/type hydration)
+                # Resolution happens at render time via timeline_resolver
                 updated_data = {**data, "timelineDsl": patched_dsl}
-
-                # CRITICAL FIX: Fill in missing 'src' and 'type' fields for items with assetId
-                # The agent only sets assetId, but the renderer needs src and type
-                # Normally the editor fills this in, but for patch_dsl we need to do it here
-                all_nodes = loro_client.get_all_nodes()
-                for track in patched_dsl.get("tracks", []):
-                    for item in track.get("items", []):
-                        asset_id = item.get("assetId")
-                        if asset_id:
-                            # Find the asset node and extract its src and type
-                            asset_node = all_nodes.get(asset_id)
-                            if asset_node and isinstance(asset_node, dict):
-                                asset_data = asset_node.get("data", {})
-                                asset_src = asset_data.get("src")
-                                asset_type = asset_node.get("type")  # node type: 'image', 'video', 'audio'
-
-                                if asset_src and not item.get("src"):
-                                    item["src"] = asset_src
-                                    logger.info(f"[patch_dsl] Filled src for item {item.get('id')}: {asset_src}")
-
-                                if asset_type and not item.get("type"):
-                                    item["type"] = asset_type
-                                    logger.info(f"[patch_dsl] Filled type for item {item.get('id')}: {asset_type}")
-
-                # Update the patched_dsl in updated_data after filling src
-                updated_data["timelineDsl"] = patched_dsl
 
                 if asset_ids:
                     current_upstreams = set(updated_data.get("upstreamNodeIds", []))
@@ -437,25 +424,40 @@ class CanvasMiddleware(AgentMiddleware):
         """Get the canvas-specific system prompt."""
         return """
 You have access to canvas tools for creating and managing visual content:
-- list_canvas_nodes: List nodes on the canvas
-- read_canvas_node: Read a specific node's data
-- create_canvas_node: Create text/group/video-editor nodes
+- list_nodes: List and search nodes (returns JSON)
+  - Returns JSON with: {nodes: [{id, type, label, description, parent_id}], total, filters}
+  - label and description are truncated to 50 chars for overview
+  - Use read_node(node_id) to get full details of specific nodes
+  - Supports filtering by node_type (text, group, video-editor, image_gen, video_gen, action-badge)
+  - Supports filtering by parent_id (to list nodes in a specific group)
+  - Supports search by query (searches in label, description, content, prompt)
+  - Examples:
+    * list_nodes(query="hero") - search all nodes
+    * list_nodes(node_type="video-editor") - find video-editor nodes
+    * list_nodes(parent_id="group-abc-123") - list nodes in a group
+- read_node: Read a specific node's full data (use after list to get complete content)
+- create_node: Create text/group nodes (group creation is RESTRICTED - see below)
   - text: For notes and scripts
-  - group: For organization (ALWAYS create groups first!)
-  - video-editor: For timeline editing (creates a node with embedded timeline DSL)
-- list_model_cards: List available model cards for a given asset kind (image/video/audio). Use this first to choose a model and parameters.
-- create_generation_node: Create PromptActionNodes with embedded prompts for image/video generation
+  - group: For organization (RESTRICTED to Director only)
+- list_models: List available models for generation. Use kind filter:
+  - kind="image_gen" or "image": Image generation models
+  - kind="video_gen" or "video": Video generation models
+  - kind="video_render": Video editor timeline rendering
+- create_generation_node: Create generation nodes (PromptActionNodes or video-editor)
+  - image_gen: For image generation (with prompt)
+  - video_gen: For video generation (with prompt, requires upstream image)
+  - video_editor: For timeline editing (creates node with embedded timeline DSL)
 - run_generation_node: Run a generation node to produce the asset (call after create), OR run a video-editor node to render its timeline
 - wait_for_generation: Wait for image/video generation to complete (ONLY pass image/video asset node IDs, NOT action-badge IDs)
-- search_canvas: Search nodes by content
 
-**CRITICAL: Always Organize in Groups**
-1. FIRST create a Group to contain your work (e.g., "Scene 1", "Character Designs")
-2. THEN create all content nodes with parentId pointing to that group
-3. NEVER leave nodes floating outside of a group!
+**CRITICAL: Group Creation Rules**
+- If you are working inside a workspace (workspace_group_id is set), DO NOT create groups.
+- Groups are created ONLY by the Director/Supervisor agent.
+- Your nodes will be automatically placed in your assigned workspace.
+- Only create content nodes: text, image_gen, video_gen, video_editor.
 
 **Video Editor Workflow**:
-- Create a video-editor node: `create_canvas_node(node_type="video-editor", payload={"label": "Final Video"})`
+- Create a video-editor node: `create_generation_node(node_type="video_editor", payload={"label": "Final Video"})`
 - This creates a node with an embedded timeline DSL
 - The user or Editor sub-agent can manually arrange assets in the timeline through the UI
 - The frontend automatically links assets to the video-editor when they are added to the timeline
@@ -468,9 +470,9 @@ IMPORTANT: PromptActionNode Architecture:
 - The 'content' field contains the markdown prompt content visible to users
 - You do NOT need to create separate prompt/text nodes - everything is in the PromptActionNode
 
-Workflow:
-1. Create a Group first (using create_canvas_node with type='group')
-2. Call list_model_cards to pick a model and parameters (progressive disclosure)
+Workflow (for Subagents working in a workspace):
+1. Your workspace group is already assigned - all nodes auto-placed there
+2. Call list_models to pick a model and parameters (progressive disclosure)
 3. Use create_generation_node with:
    - 'prompt': detailed generation prompt for the AI model
    - 'content': markdown description/notes for display
@@ -478,6 +480,7 @@ Workflow:
    - 'modelParams': MUST be an object (dict), not a JSON string
    - For video_gen: MUST include upstreamNodeIds with at least one completed image node ID
    - For image_gen: upstreamNodeIds are optional
+   - For video_editor: No prompt required, just label
 4. Then use run_generation_node to trigger the generation
 5. Call wait_for_generation to check status (pass the returned asset node ID, NOT the action-badge ID)
 """
@@ -488,9 +491,8 @@ Workflow:
             create_list_nodes_tool(self.backend),
             create_read_node_tool(self.backend),
             create_create_node_tool(self.backend),
-            create_list_model_cards_tool(),
+            create_list_models_tool(),
             create_generation_node_tool(self.backend),
             create_run_generation_tool(self.backend),
             create_wait_generation_tool(self.backend),
-            create_search_nodes_tool(self.backend),
         ]

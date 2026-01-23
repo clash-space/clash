@@ -38,11 +38,11 @@ const features = [
 
 export default function FeatureGrid() {
   return (
-    <section className="py-24 sm:py-32 bg-slate-50">
+    <section className="py-24 sm:py-32 relative z-10">
       <div className="mx-auto max-w-7xl px-6 lg:px-8">
         <div className="mx-auto max-w-2xl text-center">
-          <h2 className="text-base font-semibold leading-7 text-brand">Features</h2>
-          <p className="mt-2 text-3xl font-bold tracking-tight text-gray-900 sm:text-4xl">
+          <h2 className="text-base font-semibold leading-7 text-brand font-display">Features</h2>
+          <p className="mt-2 text-3xl font-bold tracking-tight text-gray-900 sm:text-4xl font-display">
             Everything you need to create amazing videos
           </p>
           <p className="mt-6 text-lg leading-8 text-gray-600">
@@ -58,9 +58,9 @@ export default function FeatureGrid() {
                 whileInView={{ opacity: 1, y: 0 }}
                 viewport={{ once: true }}
                 transition={{ duration: 0.5, delay: index * 0.1 }}
-                className="flex flex-col rounded-2xl bg-white p-8 shadow-sm ring-1 ring-gray-200 hover:shadow-lg transition-shadow"
+                className="flex flex-col rounded-[1.5rem] bg-white/60 backdrop-blur-md p-8 shadow-sm ring-1 ring-black/5 hover:shadow-lg transition-all hover:bg-white/80"
               >
-                <dt className="flex items-center gap-x-3 text-base font-semibold leading-7 text-gray-900">
+                <dt className="flex items-center gap-x-3 text-base font-semibold leading-7 text-gray-900 font-display">
                   <div className="h-10 w-10 flex items-center justify-center rounded-lg bg-brand/10">
                     <feature.icon className="h-6 w-6 text-brand" aria-hidden="true" weight="duotone" />
                   </div>

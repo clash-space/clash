@@ -17,12 +17,14 @@ import asyncio
 import json
 import logging
 import uuid
+from pathlib import Path
 from typing import Any
 
 import requests
 from fastapi import BackgroundTasks, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
+from fastapi.staticfiles import StaticFiles
 
 # from master_clash.video_analysis import VideoAnalysisOrchestrator, VideoAnalysisConfig, VideoAnalysisResult
 from langchain_core.messages import HumanMessage
@@ -44,11 +46,19 @@ from master_clash.utils import image_to_base64
 from master_clash.workflow.multi_agent import get_or_create_graph
 
 # Configure logging
+# 配置日志系统，将日志分别输出到文件和控制台
+# 日志文件存放在项目根目录的 .log 文件夹中
 settings = get_settings()
+log_dir = Path(__file__).resolve().parents[4] / ".log"
+log_dir.mkdir(parents=True, exist_ok=True)
+
 logging.basicConfig(
     level=settings.log_level,
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-    handlers=[logging.FileHandler("backend.log"), logging.StreamHandler()],
+    handlers=[
+        logging.FileHandler(log_dir / "api.log", encoding="utf-8"),
+        logging.StreamHandler(),
+    ],
 )
 logger = logging.getLogger(__name__)
 
@@ -69,6 +79,66 @@ app.include_router(tasks_router)
 app.include_router(execute_router)
 app.include_router(session_router)
 app.include_router(thumbnail_router)
+
+# Mount static files for task dashboard
+STATIC_DIR = Path(__file__).parent.parent / "static"
+if STATIC_DIR.exists():
+    app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
+
+# Task dashboard page
+@app.get("/dashboard")
+async def task_dashboard():
+    """Serve task dashboard HTML page."""
+    dashboard_path = STATIC_DIR / "task_dashboard.html"
+    if dashboard_path.exists():
+        return FileResponse(str(dashboard_path))
+    else:
+        raise HTTPException(status_code=404, detail="Dashboard not found")
+
+
+# === Startup & Shutdown Events ===
+
+@app.on_event("startup")
+async def startup_event():
+    """Application startup - init DB pool and start background tasks."""
+    logger.info("🚀 Starting Master Clash API...")
+
+    # Initialize SQLAlchemy database pool
+    try:
+        from master_clash.database.di import init_db
+        await init_db()
+        logger.info("✅ Database pool initialized")
+    except Exception as e:
+        logger.error(f"❌ Failed to initialize database: {e}")
+        raise
+
+    # Apply database migrations (using SQLAlchemy)
+    try:
+        from master_clash.database.migrations import apply_migrations
+        count = apply_migrations()
+        logger.info(f"✅ Database migrations applied ({count} new)")
+    except Exception as e:
+        logger.warning(f"⚠️ Migration check skipped: {e}")
+
+    # Start task scheduler
+    from master_clash.task_system import start_task_scheduler
+    start_task_scheduler()
+    logger.info("✅ Task scheduler started")
+
+    logger.info("✅ Master Clash API started successfully")
+
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    """Application shutdown - close DB pool."""
+    logger.info("🛑 Shutting down Master Clash API...")
+
+    try:
+        from master_clash.database.di import close_db
+        await close_db()
+        logger.info("✅ Database pool closed")
+    except Exception as e:
+        logger.warning(f"⚠️ Error closing database: {e}")
 
 
 class GenerateSemanticIDRequest(BaseModel):
@@ -604,24 +674,21 @@ async def stream_workflow(
 
 @app.post("/api/generate-ids", response_model=GenerateSemanticIDResponse)
 async def generate_semantic_ids(request: GenerateSemanticIDRequest):
-    """Generate semantic IDs for a project.
+    """Generate short unique IDs for a project.
 
-    Returns human-readable, memorable IDs like "alpha-ocean-square"
-    that are unique within the project scope.
+    Returns short UUIDs like "abc123xy" that are generated locally.
+    The project_id parameter is kept for API compatibility but not used.
     """
     try:
-        from master_clash.semantic_id import create_id_checker, generate_unique_ids_for_project
+        import uuid
 
-        # Create generic checker (works with Postgres/SQLite)
-        checker = create_id_checker()
-
-        # Generate unique IDs
-        ids = generate_unique_ids_for_project(request.project_id, request.count, checker)
+        # Generate short UUIDs (8 characters each)
+        ids = [uuid.uuid4().hex[:8] for _ in range(request.count)]
 
         return GenerateSemanticIDResponse(ids=ids, project_id=request.project_id)
 
     except Exception as e:
-        logger.error(f"Error generating semantic IDs: {e}")
+        logger.error(f"Error generating IDs: {e}")
         raise HTTPException(status_code=500, detail=str(e)) from e
 
 

@@ -7,6 +7,7 @@ import { findTopItemAtPoint } from './canvas/hitTest';
 
 interface InteractiveCanvasProps {
   tracks: Track[];
+  allNodesMap?: Map<string, any>; // Map of node ID -> node data for resolving assetId references
   selectedItemId: string | null;
   currentFrame: number;
   compositionWidth: number;
@@ -21,6 +22,7 @@ interface InteractiveCanvasProps {
 
 export const InteractiveCanvas: React.FC<InteractiveCanvasProps> = ({
   tracks,
+  allNodesMap,
   selectedItemId,
   currentFrame,
   compositionWidth,
@@ -65,12 +67,48 @@ export const InteractiveCanvas: React.FC<InteractiveCanvasProps> = ({
         .find((x) => x.item.id === selectedItemId)
     : null;
 
+  // --- Helper: Convert R2 key to viewable URL ---
+  const resolveAssetUrl = useCallback((src: string): string => {
+    if (!src) return '';
+    // If it's an R2 key (starts with 'projects/'), convert to API URL
+    if (src.startsWith('projects/') || src.startsWith('/projects/')) {
+      const cleanKey = src.startsWith('/') ? src.slice(1) : src;
+      return `/api/assets/view/${cleanKey}`;
+    }
+    // Otherwise return as-is (blob:, http:, data:, /api/assets/view/, etc.)
+    return src;
+  }, []);
+
+  // --- Utility function: get media aspect ratio ---
+  // Resolves src and type from allNodesMap for reference-based timeline items
   const getMediaAspectRatio = useCallback(async (item: Item): Promise<number | null> => {
-    if (!('src' in item)) return null;
-    const src = (item as any).src as string;
+    // Resolve src and type from item directly or via assetId (reference-based model)
+    let src = (item as any).src as string | undefined;
+    let itemType = item.type as string | undefined;
+
+    // If no direct src/type, try to resolve from allNodesMap via assetId
+    if (item.assetId && allNodesMap) {
+      const asset = allNodesMap.get(item.assetId);
+      if (asset) {
+        if (!src && asset.data?.src) {
+          src = asset.data.src;
+        }
+        if (!itemType && asset.type) {
+          itemType = asset.type;
+        }
+      }
+    }
+
+    if (!src) return null;
+
+    // Convert R2 key to viewable URL for loading
+    const loadableSrc = resolveAssetUrl(src);
+
+    // 1. Check cache (use original src as cache key for consistency)
     const cached = mediaAspectRatioRef.current.get(src);
     if (cached) return cached;
 
+    // 2. Check DOM (if already rendered)
     const el = itemsDomMapRef.current.get(item.id);
     if (el instanceof HTMLImageElement && el.naturalWidth && el.naturalHeight) {
       const ratio = el.naturalWidth / el.naturalHeight;
@@ -84,17 +122,22 @@ export const InteractiveCanvas: React.FC<InteractiveCanvasProps> = ({
     }
 
     if (typeof window === 'undefined') return null;
-    if (item.type === 'image') {
+
+    // 3. Actively load to get dimensions (use resolved itemType and loadableSrc)
+    if (itemType === 'image') {
       const ratio = await new Promise<number | null>((resolve) => {
         const img = new Image();
         img.onload = () => resolve(img.naturalWidth && img.naturalHeight ? img.naturalWidth / img.naturalHeight : null);
-        img.onerror = () => resolve(null);
-        img.src = src;
+        img.onerror = () => {
+          console.error('[InteractiveCanvas] Failed to load image for aspect ratio:', loadableSrc);
+          resolve(null);
+        };
+        img.src = loadableSrc;
       });
       if (ratio) mediaAspectRatioRef.current.set(src, ratio);
       return ratio;
     }
-    if (item.type === 'video') {
+    if (itemType === 'video') {
       const ratio = await new Promise<number | null>((resolve) => {
         const video = document.createElement('video');
         const cleanup = () => {
@@ -107,16 +150,17 @@ export const InteractiveCanvas: React.FC<InteractiveCanvasProps> = ({
           resolve(r);
         });
         video.addEventListener('error', () => {
+          console.error('[InteractiveCanvas] Failed to load video for aspect ratio:', loadableSrc);
           cleanup();
           resolve(null);
         });
-        video.src = src;
+        video.src = loadableSrc;
       });
       if (ratio) mediaAspectRatioRef.current.set(src, ratio);
       return ratio;
     }
     return null;
-  }, []);
+  }, [allNodesMap, resolveAssetUrl]);
 
   useEffect(() => {
     isInteractingRef.current = false;
@@ -144,7 +188,17 @@ export const InteractiveCanvas: React.FC<InteractiveCanvasProps> = ({
     const syncAspectRatio = async () => {
       if (isInteractingRef.current) return;
       if (!selectedItemData?.item.properties) return;
-      if (!['image', 'video'].includes(selectedItemData.item.type)) return;
+
+      // Resolve type from item directly or via assetId (reference-based model)
+      let itemType = selectedItemData.item.type as string | undefined;
+      if (!itemType && selectedItemData.item.assetId && allNodesMap) {
+        const asset = allNodesMap.get(selectedItemData.item.assetId);
+        if (asset?.type) {
+          itemType = asset.type;
+        }
+      }
+      if (!itemType || !['image', 'video'].includes(itemType)) return;
+
       const ratio = await getMediaAspectRatio(selectedItemData.item);
       if (!ratio) return;
       const props = selectedItemData.item.properties;
@@ -160,7 +214,7 @@ export const InteractiveCanvas: React.FC<InteractiveCanvasProps> = ({
       });
     };
     void syncAspectRatio();
-  }, [selectedItemData, compositionWidth, compositionHeight, getMediaAspectRatio, onUpdateItem]);
+  }, [selectedItemData, compositionWidth, compositionHeight, getMediaAspectRatio, onUpdateItem, allNodesMap]);
 
   // 检查 item 是否在当前帧可见
   const isItemVisible = selectedItemData
@@ -171,10 +225,11 @@ export const InteractiveCanvas: React.FC<InteractiveCanvasProps> = ({
   // 准备 Player 的 inputProps
   const inputProps = React.useMemo(() => ({
     tracks,
+    allNodes: allNodesMap,
     selectedItemId,
     selectionBoxRef,
     itemsDomMapRef,
-  }), [tracks, selectedItemId]);
+  }), [tracks, allNodesMap, selectedItemId]);
 
   // 同步播放状态
   useEffect(() => {

@@ -87,11 +87,33 @@ export const TimelineItem: React.FC<TimelineItemProps> = ({
 
   const width = frameToPixels(item.durationInFrames, pixelsPerFrame);
 
-  // Get item color based on type
+  // Resolve item type and src from asset if using reference-based model
+  // This is needed because reference-based items only have assetId, not type/src directly
+  const resolvedItemType = React.useMemo(() => {
+    if (item.type) return item.type;
+    // Try to resolve from assets via assetId
+    if (item.assetId) {
+      const asset = assets.find((a) => a.id === item.assetId);
+      if (asset?.type) return asset.type;
+    }
+    return undefined;
+  }, [item.type, item.assetId, assets]);
+
+  const resolvedItemSrc = React.useMemo(() => {
+    if ((item as any).src) return (item as any).src;
+    // Try to resolve from assets via assetId
+    if (item.assetId) {
+      const asset = assets.find((a) => a.id === item.assetId);
+      if (asset?.src) return asset.src;
+    }
+    return undefined;
+  }, [(item as any).src, item.assetId, assets]);
+
+  // Get item color based on type (use resolved type)
   const getColor = () => {
-    switch (item.type) {
+    switch (resolvedItemType) {
       case 'solid':
-        return item.color;
+        return (item as any).color;
       case 'text':
         return '#4CAF50';
       case 'video':
@@ -105,29 +127,35 @@ export const TimelineItem: React.FC<TimelineItemProps> = ({
     }
   };
 
-  // Get asset data (for thumbnail and waveform)
+  // Get asset data (for thumbnail and waveform) - use resolved type
   const asset = React.useMemo(() => {
-    if (item.type === 'video' || item.type === 'audio' || item.type === 'image') {
+    if (resolvedItemType === 'video' || resolvedItemType === 'audio' || resolvedItemType === 'image') {
       // Priority 1: Lookup by assetId (if present)
       if ('assetId' in item && item.assetId) {
         const found = assets.find((a) => a.id === item.assetId);
         if (found) return found;
       }
       // Priority 2: Fallback to lookup by src (legacy/direct link)
-      return assets.find((a) => a.src === item.src) ?? null;
+      return assets.find((a) => a.src === (item as any).src) ?? null;
+    }
+    // Also try assetId lookup even if type is unknown (reference-based model)
+    if (item.assetId) {
+      const found = assets.find((a) => a.id === item.assetId);
+      if (found) return found;
     }
     return null;
-  }, [item, assets]);
+  }, [item, assets, resolvedItemType]);
 
-  const thumbnail = asset?.thumbnail || (item.type === 'image' ? item.src : undefined);
+  // Use resolved src for thumbnail fallback
+  const thumbnail = asset?.thumbnail || (resolvedItemType === 'image' ? resolvedItemSrc : undefined);
   const itemWaveform: number[] | undefined =
-    (item.type === 'audio' || item.type === 'video') && 'waveform' in item
+    (resolvedItemType === 'audio' || resolvedItemType === 'video') && 'waveform' in item
       ? (item as any).waveform as number[] | undefined
       : undefined;
   const hasWaveform: boolean = Array.isArray(itemWaveform) && itemWaveform.length > 0;
 
   // Calculate heights - ensure items fit within 72px track height
-  const hasVideoWithThumbnail = item.type === 'video' && thumbnail && hasWaveform;
+  const hasVideoWithThumbnail = resolvedItemType === 'video' && thumbnail && hasWaveform;
   const itemHeight = hasVideoWithThumbnail ? 60 : (hasWaveform ? 56 : 44);
   const borderSize = isSelected ? 2 : 1;
   const availableHeight = itemHeight - (borderSize * 2);
@@ -147,14 +175,14 @@ export const TimelineItem: React.FC<TimelineItemProps> = ({
   // Generate thumbnail based on current zoom level
   // 绘制整个视频的缩略图，trim 由外层 CSS transform 完成
   const generateDynamicThumbnail = React.useCallback(async () => {
-    if (!asset?.duration || item.type !== 'video' || !('src' in item)) {
+    if (!asset?.duration || resolvedItemType !== 'video' || !resolvedItemSrc) {
       return;
     }
 
     setIsGeneratingThumbnail(true);
 
     try {
-      const videoSrc = item.src;
+      const videoSrc = resolvedItemSrc;
       const duration = asset.duration;
       const totalFrames = secondsToFrames(duration, state.fps);
 
@@ -348,7 +376,7 @@ export const TimelineItem: React.FC<TimelineItemProps> = ({
       console.error('Error generating dynamic thumbnail:', error);
       setIsGeneratingThumbnail(false);
     }
-  }, [asset?.duration, item, pixelsPerFrame, thumbnailHeight, itemHeight, hasWaveform]);
+  }, [asset?.duration, resolvedItemType, resolvedItemSrc, pixelsPerFrame, thumbnailHeight, itemHeight, hasWaveform, state.fps]);
 
   // 在以下情况触发绘制：
   // 1. 素材首次拖入 timeline (justInserted) - 采样 + 绘制
@@ -365,7 +393,7 @@ export const TimelineItem: React.FC<TimelineItemProps> = ({
       lastZoomLevelRef.current = pixelsPerFrame;
 
       // 对于视频类型，如果有 justInserted 标记，初始绘制（采样 + 绘制）
-      if (item.type === 'video' && asset?.duration) {
+      if (resolvedItemType === 'video' && asset?.duration) {
         if ((item as any).justInserted) {
           pendingClearInsertFlagRef.current = true;
         }
@@ -377,7 +405,7 @@ export const TimelineItem: React.FC<TimelineItemProps> = ({
     // zoom 级别变化时，立即重绘（无防抖）
     // 因为只是从缓存 filmstrip 中重新采样绘制，很快，不需要防抖
     const zoomChanged = Math.abs(pixelsPerFrame - lastZoomLevelRef.current) > 0.01;
-    if (zoomChanged && item.type === 'video' && asset?.duration) {
+    if (zoomChanged && resolvedItemType === 'video' && asset?.duration) {
       lastZoomLevelRef.current = pixelsPerFrame;
 
       // 清除之前的定时器
@@ -398,7 +426,7 @@ export const TimelineItem: React.FC<TimelineItemProps> = ({
     pixelsPerFrame,
     generateDynamicThumbnail,
     item.id,
-    item.type,
+    resolvedItemType,
     asset?.duration,
   ]);
 
@@ -439,29 +467,29 @@ export const TimelineItem: React.FC<TimelineItemProps> = ({
       : availableHeight - thumbnailHeight)
     : 0;
 
-  // Get audio/video properties
-  const audioFadeIn = ((item.type === 'video' || item.type === 'audio') && 'audioFadeIn' in item)
-    ? item.audioFadeIn || 0 : 0;
-  const audioFadeOut = ((item.type === 'video' || item.type === 'audio') && 'audioFadeOut' in item)
-    ? item.audioFadeOut || 0 : 0;
-  const itemVolume = ((item.type === 'video' || item.type === 'audio') && 'volume' in item)
-    ? item.volume ?? 1 : 1;
+  // Get audio/video properties (use resolved type)
+  const audioFadeIn = ((resolvedItemType === 'video' || resolvedItemType === 'audio') && 'audioFadeIn' in item)
+    ? (item as any).audioFadeIn || 0 : 0;
+  const audioFadeOut = ((resolvedItemType === 'video' || resolvedItemType === 'audio') && 'audioFadeOut' in item)
+    ? (item as any).audioFadeOut || 0 : 0;
+  const itemVolume = ((resolvedItemType === 'video' || resolvedItemType === 'audio') && 'volume' in item)
+    ? (item as any).volume ?? 1 : 1;
 
-  // Get display label
+  // Get display label (use resolved type and src)
   const getItemLabel = () => {
-    if (item.type === 'text') {
-      return item.text;
+    if (resolvedItemType === 'text') {
+      return (item as any).text;
     }
-    if (item.type === 'solid') {
+    if (resolvedItemType === 'solid') {
       return 'Solid';
     }
-    // For media items, extract filename from src
-    if ('src' in item && item.src) {
-      const filename = item.src.split('/').pop() || item.type;
+    // For media items, extract filename from src (use resolved src)
+    if (resolvedItemSrc) {
+      const filename = resolvedItemSrc.split('/').pop() || resolvedItemType || 'item';
       const cleanName = filename.replace(/\.[^.]+$/, '').replace(/_[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}/i, '');
       return cleanName.substring(0, 30);
     }
-    return item.type;
+    return resolvedItemType || 'item';
   };
 
   // Render waveform with volume and clipping
@@ -633,16 +661,16 @@ export const TimelineItem: React.FC<TimelineItemProps> = ({
     setDraggingVolume(false);
   }, []);
 
-  // Text editing handlers
+  // Text editing handlers (use resolved type)
   const handleTextEdit = () => {
-    if (item.type === 'text') {
-      setTempText(item.text);
+    if (resolvedItemType === 'text') {
+      setTempText((item as any).text);
       setIsEditingText(true);
     }
   };
 
   const handleTextSave = () => {
-    if (item.type === 'text' && tempText.trim()) {
+    if (resolvedItemType === 'text' && tempText.trim()) {
       onUpdate(item.id, { text: tempText.trim() });
     }
     setIsEditingText(false);
@@ -760,8 +788,17 @@ export const TimelineItem: React.FC<TimelineItemProps> = ({
     : draggableHook;
 
   // Decoupled renderers: first enable for image/text, others keep existing path
-  const useNewRenderer = item.type === 'image' || item.type === 'text';
-  const Renderer = React.useMemo(() => getRendererForItem(item), [item.type]);
+  // Use resolved type for determining which renderer to use
+  const useNewRenderer = resolvedItemType === 'image' || resolvedItemType === 'text';
+
+  // Create a resolved item with type for the renderer registry
+  const resolvedItemForRenderer = React.useMemo(() => {
+    if (item.type) return item;
+    // If item.type is not set, create a copy with resolved type
+    return resolvedItemType ? { ...item, type: resolvedItemType } as typeof item : item;
+  }, [item, resolvedItemType]);
+
+  const Renderer = React.useMemo(() => getRendererForItem(resolvedItemForRenderer), [resolvedItemForRenderer]);
 
   return (
     <div
@@ -822,8 +859,8 @@ export const TimelineItem: React.FC<TimelineItemProps> = ({
           borderRadius: '4px',
         }}
       >
-        {/* 背景图片(非视频类型) */}
-        {!useNewRenderer && item.type !== 'video' && item.type !== 'audio' && displayThumbnail && (
+        {/* 背景图片(非视频类型) - use resolved type */}
+        {!useNewRenderer && resolvedItemType !== 'video' && resolvedItemType !== 'audio' && displayThumbnail && (
           <div
             style={{
               position: 'absolute',
@@ -839,12 +876,12 @@ export const TimelineItem: React.FC<TimelineItemProps> = ({
         {/* New renderer (image/text) */}
         {useNewRenderer && (
           <div style={{ position: 'absolute', inset: 0 }}>
-            <Renderer item={item} asset={asset} width={width} height={itemHeight} pixelsPerFrame={pixelsPerFrame} />
+            <Renderer item={resolvedItemForRenderer} asset={asset} width={width} height={itemHeight} pixelsPerFrame={pixelsPerFrame} />
           </div>
         )}
 
-        {/* Thumbnail for video (with or without waveform) */}
-        {item.type === 'video' && (
+        {/* Thumbnail for video (with or without waveform) - use resolved type */}
+        {resolvedItemType === 'video' && (
           <div
             data-thumbnail-id={item.id}
             style={{
@@ -913,8 +950,8 @@ export const TimelineItem: React.FC<TimelineItemProps> = ({
           </div>
 
 
-          {/* Volume control line */}
-          {(item.type === 'audio' || item.type === 'video') && (() => {
+          {/* Volume control line - use resolved type */}
+          {(resolvedItemType === 'audio' || resolvedItemType === 'video') && (() => {
             const lineY = waveformHeight * (1 - itemVolume / 2);
             const clampedLineY = Math.max(0, Math.min(waveformHeight - 1, lineY));
 
@@ -1050,7 +1087,7 @@ export const TimelineItem: React.FC<TimelineItemProps> = ({
         maxWidth: isHovered ? 'calc(100% - 40px)' : 'calc(100% - 16px)',
         pointerEvents: 'none',
       }}>
-        {isEditingText && item.type === 'text' ? (
+        {isEditingText && resolvedItemType === 'text' ? (
           <input
             type="text"
             value={tempText}
@@ -1170,11 +1207,11 @@ export const TimelineItem: React.FC<TimelineItemProps> = ({
         </>
       )}
 
-      {/* Color picker for solid items */}
-      {item.type === 'solid' && isHovered && (
+      {/* Color picker for solid items - use resolved type */}
+      {resolvedItemType === 'solid' && isHovered && (
         <input
           type="color"
-          value={item.color}
+          value={(item as any).color}
           onChange={(e) => onUpdate(item.id, { color: e.target.value })}
           style={{
             position: 'absolute',

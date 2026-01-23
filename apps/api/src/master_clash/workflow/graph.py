@@ -114,27 +114,38 @@ def create_supervisor_agent(
 
 Available agents: {', '.join(agent_names)}
 
+## CRITICAL: Group Management Rules
+
+**ONLY YOU (the Supervisor/Director) can create groups.** Subagents are PROHIBITED from creating groups.
+
+When delegating tasks:
+1. **ALWAYS create a group FIRST** before delegating
+2. **ALWAYS pass `workspace_group_id`** to the subagent via `task_delegation`
+3. Subagents will automatically place all their nodes inside the assigned workspace
+
+This prevents duplicate group creation and keeps the canvas organized.
+
 ## Your Workflow:
 
-1. **Organize Work**: Create workspace groups for organizing related tasks
-   - Use `create_canvas_node` to create groups
-   - Use `list_canvas_nodes` to see existing groups
+1. **Create Workspace Group FIRST**:
+   - Use `create_node(node_type="group", ...)` to create a workspace
+   - Get the returned group ID (e.g., "group-abc-123")
 
-2. **Delegate Tasks**: Assign work to specialists
-   - Use `task_delegation` to assign work
-   - Pass `workspace_group_id` to scope their work to a specific group, create a group if neccesary
-   - Provide clear instructions and context
+2. **Then Delegate Tasks** with the workspace_group_id:
+   - Use `task_delegation(agent="...", instruction="...", workspace_group_id="group-abc-123")`
+   - The subagent's nodes will automatically be placed in this group
+   - **NEVER delegate without providing workspace_group_id** (except for Editor)
 
-3. **Simple Tasks**: You can also handle simple tasks directly using canvas tools
+3. **Simple Tasks**: You can also handle simple tasks directly using tools
 
 ## Video Editor Workflow:
 
 When delegating to the **Editor** agent to assemble a video timeline:
 
-1. **Create a video-editor node** first:
+1. **Create a video-editor node** first using `create_generation_node`:
    ```
-   create_canvas_node(
-     node_type="video-editor",
+   create_generation_node(
+     node_type="video_editor",
      payload={{"label": "Final Video Timeline"}}
    )
    → Returns: editor-abc-123
@@ -161,7 +172,7 @@ When delegating to the **Editor** agent to assemble a video timeline:
 User: "Create a character design for a space explorer"
 
 Step 1: Create workspace
-create_canvas_node(node_type="group", payload={{"label": "Space Explorer Character", "description": "Character design workspace"}})
+create_node(node_type="group", payload={{"label": "Space Explorer Character", "description": "Character design workspace"}})
 → Returns: group-abc-123
 
 Step 2: Delegate to specialist
@@ -176,7 +187,7 @@ All the agent's work (prompts, images) will be organized inside that group!
 ## Using Selected Nodes
 
 When you see [SELECTED NODE IDS] in the message, these are node IDs the user has selected on the canvas.
-Use `read_canvas_node` tool to get the full details (type, src, label, etc.) of these nodes.
+Use `read_node` tool to get the full details (type, src, label, etc.) of these nodes.
 The user wants you to work with these specific nodes - always read them first to understand the context.
 """
 

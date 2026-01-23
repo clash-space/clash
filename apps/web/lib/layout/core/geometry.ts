@@ -9,6 +9,7 @@ export function getNodeSize(type: string): Size {
         case 'group':
             return { width: 400, height: 400 };
         case 'text':
+            // Text nodes are rendered at fixed 300x400 in TextNode.tsx
             return { width: 300, height: 400 };
         case 'prompt':
             return { width: 300, height: 150 };

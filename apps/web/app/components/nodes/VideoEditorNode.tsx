@@ -66,7 +66,7 @@ const VideoEditorNode = ({ data, id }: NodeProps) => {
                 // Clone to ensure we have a plain object
                 try {
                     timelineDsl = JSON.parse(JSON.stringify(loroDsl));
-                } catch (e) {
+                } catch (_e) {
                     timelineDsl = loroDsl;
                 }
             }
@@ -74,21 +74,39 @@ const VideoEditorNode = ({ data, id }: NodeProps) => {
 
         if (timelineDsl?.tracks) {
             // Find the earliest visual item across all tracks
+            // Note: In reference-based model, items may only have assetId, not src
+            // We need to resolve assetId to src using ReactFlow nodes
             let earliestItem: any = null;
             let minFrom = Infinity;
+            let resolvedSrc: string | null = null;
+
+            // Get nodes inside effect to avoid reactFlow dependency
+            const nodes = reactFlow.getNodes();
 
             for (const track of timelineDsl.tracks) {
                 for (const item of (track.items || [])) {
-                    if (item.src && item.from < minFrom) {
+                    // Check if item has src directly or can be resolved via assetId
+                    let itemSrc = item.src;
+
+                    // If no src but has assetId, resolve from asset node
+                    if (!itemSrc && item.assetId) {
+                        const assetNode = nodes.find(n => n.id === item.assetId);
+                        if (assetNode?.data?.src) {
+                            itemSrc = assetNode.data.src;
+                        }
+                    }
+
+                    if (itemSrc && item.from < minFrom) {
                         minFrom = item.from;
                         earliestItem = item;
+                        resolvedSrc = itemSrc;
                     }
                 }
             }
 
-            if (earliestItem) {
-                console.log('[VideoEditorNode] Setting preview src:', earliestItem.src);
-                setPreviewSrc(earliestItem.src);
+            if (earliestItem && resolvedSrc) {
+                console.log('[VideoEditorNode] Setting preview src:', resolvedSrc);
+                setPreviewSrc(resolvedSrc);
                 return;
             }
         }
@@ -99,6 +117,7 @@ const VideoEditorNode = ({ data, id }: NodeProps) => {
     const handleOpenEditor = useCallback(() => {
         // Derive connected assets dynamically from edges
         // This removes the need to sync edge data to node.data.inputs
+        // Get nodes/edges inside callback to avoid reactFlow dependency
         const nodes = reactFlow.getNodes();
         const edges = reactFlow.getEdges();
 
@@ -237,7 +256,9 @@ const VideoEditorNode = ({ data, id }: NodeProps) => {
                 return true;
             });
         openEditor(uniqueAssets, id, timelineDsl, availableAssets);
-    }, [data.timelineDsl, id, loroSync, openEditor, reactFlow]);
+        // Note: reactFlow is intentionally excluded from deps - we read it inside the callback
+        // to avoid re-creating this callback on every ProjectEditor render
+    }, [data.timelineDsl, id, loroSync, openEditor]);
 
     const handleRender = useCallback(async () => {
         console.log('[VideoEditorNode] handleRender called');
@@ -432,7 +453,9 @@ const VideoEditorNode = ({ data, id }: NodeProps) => {
         } finally {
             setRendering(false);
         }
-    }, [data, id, loroSync, reactFlow]);
+        // Note: reactFlow is intentionally excluded from deps - we read it inside the callback
+        // to avoid re-creating this callback on every ProjectEditor render
+    }, [data, id, loroSync]);
 
     return (
         <div

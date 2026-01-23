@@ -83,8 +83,12 @@ const AssetInitializer = ({ assets }: { assets: any[] }) => {
           const duration = video.duration || 0;
           const needsThumbnail = !hasThumbnail;
 
-          if (!needsThumbnail && hasDuration) {
-            // Already have duration and thumbnail from cache, just update
+          // Capture dimensions if missing
+          const resolvedWidth = asset.width || video.videoWidth;
+          const resolvedHeight = asset.height || video.videoHeight;
+
+          if (!needsThumbnail && hasDuration && asset.width && asset.height) {
+            // Already have duration, thumbnail, and dimensions, just update
             return;
           }
 
@@ -105,8 +109,8 @@ const AssetInitializer = ({ assets }: { assets: any[] }) => {
                   type: normalizedType,
                   src: assetSrc,
                   name: asset.name || 'Imported Asset',
-                  width: asset.width,
-                  height: asset.height,
+                  width: resolvedWidth,
+                  height: resolvedHeight,
                   duration: duration,
                   thumbnail: thumbnail || cachedThumbnail || undefined,
                   createdAt: Date.now(),
@@ -116,7 +120,7 @@ const AssetInitializer = ({ assets }: { assets: any[] }) => {
               });
             });
           } else {
-            // Just update duration
+            // Just update duration/dimensions
             dispatch({ type: 'REMOVE_ASSET', payload: assetId });
             dispatch({
               type: 'ADD_ASSET',
@@ -125,8 +129,8 @@ const AssetInitializer = ({ assets }: { assets: any[] }) => {
                 type: normalizedType,
                 src: assetSrc,
                 name: asset.name || 'Imported Asset',
-                width: asset.width,
-                height: asset.height,
+                width: resolvedWidth,
+                height: resolvedHeight,
                 duration: duration,
                 thumbnail: cachedThumbnail || undefined,
                 createdAt: Date.now(),
@@ -158,8 +162,49 @@ const AssetInitializer = ({ assets }: { assets: any[] }) => {
         };
 
         video.src = assetSrc;
+      } else if (normalizedType === 'image' && assetSrc && (!asset.width || !asset.height)) {
+        // Load image dimensions if missing
+        const img = new Image();
+        img.onload = () => {
+          dispatch({
+            type: 'ADD_ASSET',
+            payload: {
+              id: assetId,
+              type: normalizedType,
+              src: assetSrc,
+              name: asset.name || 'Imported Asset',
+              width: img.naturalWidth,
+              height: img.naturalHeight,
+              duration: 0,
+              thumbnail: asset.thumbnail,
+              createdAt: Date.now(),
+              readOnly: true,
+              sourceNodeId: asset.sourceNodeId,
+            }
+          });
+        };
+        img.onerror = () => {
+           // Fallback if load fails
+           dispatch({
+            type: 'ADD_ASSET',
+            payload: {
+              id: assetId,
+              type: normalizedType,
+              src: assetSrc,
+              name: asset.name || 'Imported Asset',
+              width: asset.width,
+              height: asset.height,
+              duration: 0,
+              thumbnail: asset.thumbnail,
+              createdAt: Date.now(),
+              readOnly: true,
+              sourceNodeId: asset.sourceNodeId,
+            }
+          });
+        };
+        img.src = assetSrc;
       } else {
-        // For non-video assets, add directly
+        // For non-video assets (or fully specified images), add directly
         console.log('[AssetInitializer] Dispatching ADD_ASSET for non-video:', normalizedType, assetId);
         dispatch({
           type: 'ADD_ASSET',

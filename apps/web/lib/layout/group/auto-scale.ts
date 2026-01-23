@@ -1,9 +1,9 @@
 import type { Node } from 'reactflow';
 import type { Rect, Size, ScaleResult } from '../types';
-import { getAbsoluteRect, getAbsolutePosition } from '../core/geometry';
+import { getAbsolutePosition, getNodeSize } from '../core/geometry';
 import { getChildren, getAncestors } from './hierarchy';
 
-const DEFAULT_PADDING = 60;
+const DEFAULT_PADDING = 40;  // Reduced from 60 for more compact groups
 const MIN_GROUP_SIZE = { width: 200, height: 200 };
 
 /**
@@ -24,11 +24,9 @@ export function calculateGroupBounds(
     let maxBottom = 0;
 
     for (const child of children) {
-        // IMPORTANT: Use ReactFlow measured dimensions when available to avoid drift
-        // between visual size and persisted width/height (e.g. asset nodes that auto-size).
-        const rect = getAbsoluteRect(child, nodes);
-        const width = rect.width;
-        const height = rect.height;
+        const defaultSize = getNodeSize(child.type || 'default');
+        const width = child.width || (child.style?.width as number) || defaultSize.width;
+        const height = child.height || (child.style?.height as number) || defaultSize.height;
 
         const right = child.position.x + width;
         const bottom = child.position.y + height;
@@ -48,9 +46,8 @@ export function calculateGroupBounds(
  */
 export function needsExpansion(group: Node, nodes: Node[], padding: number = DEFAULT_PADDING): boolean {
     const requiredSize = calculateGroupBounds(group.id, nodes, padding);
-    const currentRect = getAbsoluteRect(group, nodes);
-    const currentWidth = currentRect.width || MIN_GROUP_SIZE.width;
-    const currentHeight = currentRect.height || MIN_GROUP_SIZE.height;
+    const currentWidth = group.width || (group.style?.width as number) || MIN_GROUP_SIZE.width;
+    const currentHeight = group.height || (group.style?.height as number) || MIN_GROUP_SIZE.height;
 
     return requiredSize.width > currentWidth || requiredSize.height > currentHeight;
 }
@@ -66,9 +63,8 @@ export function scaleGroupToFitChild(
     padding: number = DEFAULT_PADDING
 ): ScaleResult {
     const groupAbsPos = getAbsolutePosition(group, nodes);
-    const groupRect = getAbsoluteRect(group, nodes);
-    const currentWidth = groupRect.width || MIN_GROUP_SIZE.width;
-    const currentHeight = groupRect.height || MIN_GROUP_SIZE.height;
+    const currentWidth = group.width || (group.style?.width as number) || MIN_GROUP_SIZE.width;
+    const currentHeight = group.height || (group.style?.height as number) || MIN_GROUP_SIZE.height;
 
     // Child position is relative to group
     const childRelRight = childRect.x - groupAbsPos.x + childRect.width;
@@ -197,13 +193,12 @@ export function autoScaleGroups(
  * Check if a child is within the group's current bounds
  */
 export function isChildWithinBounds(child: Node, group: Node): boolean {
-    const groupRect = getAbsoluteRect(group, [group, child]);
-    const groupWidth = groupRect.width || MIN_GROUP_SIZE.width;
-    const groupHeight = groupRect.height || MIN_GROUP_SIZE.height;
+    const groupWidth = group.width || (group.style?.width as number) || MIN_GROUP_SIZE.width;
+    const groupHeight = group.height || (group.style?.height as number) || MIN_GROUP_SIZE.height;
 
-    const childRect = getAbsoluteRect(child, [group, child]);
-    const childWidth = childRect.width;
-    const childHeight = childRect.height;
+    const childSize = getNodeSize(child.type || 'default');
+    const childWidth = child.width || (child.style?.width as number) || childSize.width;
+    const childHeight = child.height || (child.style?.height as number) || childSize.height;
 
     const childRight = child.position.x + childWidth;
     const childBottom = child.position.y + childHeight;
@@ -228,4 +223,105 @@ export function getGroupsNeedingScale(nodeId: string, nodes: Node[]): string[] {
     }
 
     return groupsNeedingScale;
+}
+
+/**
+ * Shrink groups to tightly fit their children after relayout
+ * This removes excess white space while maintaining minimum padding
+ *
+ * @param nodes - All nodes in the graph
+ * @param parentId - Parent scope to process (undefined for root level)
+ * @param padding - Padding to maintain around children
+ * @returns Updated nodes array with shrunk groups
+ */
+export function shrinkGroupsToFit(
+    nodes: Node[],
+    parentId: string | undefined = undefined,
+    padding: number = DEFAULT_PADDING
+): Node[] {
+    // Find all groups in the specified scope
+    const groupsInScope = nodes.filter(
+        (n) => n.type === 'group' && n.parentId === parentId
+    );
+
+    if (groupsInScope.length === 0) {
+        return nodes;
+    }
+
+    const sizeUpdates = new Map<string, Size>();
+
+    // Calculate optimal size for each group based on its children
+    for (const group of groupsInScope) {
+        const optimalSize = calculateGroupBounds(group.id, nodes, padding);
+        const currentWidth = group.width || (group.style?.width as number) || MIN_GROUP_SIZE.width;
+        const currentHeight = group.height || (group.style?.height as number) || MIN_GROUP_SIZE.height;
+
+        // Only shrink if current size is larger than optimal size
+        // This prevents unnecessary updates and respects user manual resizing
+        const needsShrink = currentWidth > optimalSize.width || currentHeight > optimalSize.height;
+
+        if (needsShrink) {
+            sizeUpdates.set(group.id, {
+                width: Math.min(currentWidth, optimalSize.width),
+                height: Math.min(currentHeight, optimalSize.height),
+            });
+        }
+    }
+
+    return applyGroupScales(nodes, sizeUpdates);
+}
+
+/**
+ * Recursively shrink all groups in the tree to fit their children
+ * Processes from innermost to outermost groups
+ *
+ * @param nodes - All nodes in the graph
+ * @param padding - Padding to maintain around children
+ * @returns Updated nodes array with all groups shrunk to fit
+ */
+export function recursiveShrinkGroups(
+    nodes: Node[],
+    padding: number = DEFAULT_PADDING
+): Node[] {
+    let updated = nodes;
+    const allGroups = nodes.filter((n) => n.type === 'group');
+
+    if (allGroups.length === 0) {
+        return nodes;
+    }
+
+    // Process groups from deepest nesting to root
+    // This ensures child groups are sized before parent groups
+    const groupsByDepth = new Map<number, Node[]>();
+    let maxDepth = 0;
+
+    for (const group of allGroups) {
+        const depth = getNestingDepth(group.id, nodes);
+        const depthGroups = groupsByDepth.get(depth) || [];
+        depthGroups.push(group);
+        groupsByDepth.set(depth, depthGroups);
+        maxDepth = Math.max(maxDepth, depth);
+    }
+
+    // Process from deepest to shallowest
+    for (let depth = maxDepth; depth >= 0; depth--) {
+        const groupsAtDepth = groupsByDepth.get(depth) || [];
+
+        for (const group of groupsAtDepth) {
+            const optimalSize = calculateGroupBounds(group.id, updated, padding);
+            const currentWidth = group.width || (group.style?.width as number) || MIN_GROUP_SIZE.width;
+            const currentHeight = group.height || (group.style?.height as number) || MIN_GROUP_SIZE.height;
+
+            // Only shrink, never expand
+            if (currentWidth > optimalSize.width || currentHeight > optimalSize.height) {
+                const newSize = {
+                    width: Math.min(currentWidth, optimalSize.width),
+                    height: Math.min(currentHeight, optimalSize.height),
+                };
+                updated = updateGroupSize(updated, group.id, newSize);
+            }
+        }
+    }
+
+    return updated;
 }

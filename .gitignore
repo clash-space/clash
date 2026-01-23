@@ -52,6 +52,7 @@ backend.log
 frontend.log
 wrangler.log
 build.log
+.log/
 
 # Testing
 coverage/
@@ -104,3 +105,4 @@ uv.lock
 .python-version
 
 /assets
+packages/remotion-components/build

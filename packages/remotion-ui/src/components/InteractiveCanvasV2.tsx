@@ -5,6 +5,7 @@ import type { Track, Item, ItemProperties } from '@master-clash/remotion-core';
 
 interface InteractiveCanvasProps {
   tracks: Track[];
+  allNodesMap?: Map<string, any>; // Map of node ID -> node data for resolving assetId references
   selectedItemId: string | null;
   currentFrame: number;
   compositionWidth: number;
@@ -32,6 +33,7 @@ interface DragState {
 
 export const InteractiveCanvas: React.FC<InteractiveCanvasProps> = ({
   tracks,
+  allNodesMap,
   selectedItemId,
   currentFrame,
   compositionWidth,
@@ -58,12 +60,92 @@ export const InteractiveCanvas: React.FC<InteractiveCanvasProps> = ({
   const [, forceUpdate] = useState({});
   const mediaAspectRatioRef = useRef<Map<string, number>>(new Map());
 
-  // --- 辅助函数：获取媒体宽高比 ---
-  const getMediaAspectRatio = useCallback(async (item: Item): Promise<number | null> => {
-    if (!('src' in item)) return null;
-    const src = (item as any).src as string;
+  // --- Helper: Convert R2 key to viewable URL ---
+  const resolveAssetUrl = useCallback((src: string): string => {
+    if (!src) return '';
+    // If it's an R2 key (starts with 'projects/'), convert to API URL
+    if (src.startsWith('projects/') || src.startsWith('/projects/')) {
+      const cleanKey = src.startsWith('/') ? src.slice(1) : src;
+      return `/api/assets/view/${cleanKey}`;
+    }
+    // Otherwise return as-is (blob:, http:, data:, /api/assets/view/, etc.)
+    return src;
+  }, []);
 
-    // 1. 查缓存
+  // --- Helper: Get natural dimensions from item/asset ---
+  const getNaturalDimensions = useCallback((item: Item) => {
+    let naturalWidth = compositionWidth;
+    let naturalHeight = compositionHeight;
+    let asset = null;
+
+    if (allNodesMap) {
+      // 1. Try by assetId
+      if (item.assetId) {
+        asset = allNodesMap.get(item.assetId);
+      }
+
+      // 2. Try by src
+      if (!asset && 'src' in item) {
+        const itemSrc = (item as any).src;
+        for (const [_, node] of allNodesMap.entries()) {
+          if (node.data?.src === itemSrc) {
+            asset = node;
+            break;
+          }
+        }
+      }
+    }
+
+    if (asset) {
+      const assetData = asset.data || {};
+      if (assetData.naturalWidth && assetData.naturalHeight) {
+        naturalWidth = assetData.naturalWidth;
+        naturalHeight = assetData.naturalHeight;
+      } else if (assetData.aspectRatio && typeof assetData.aspectRatio === 'string') {
+        const ar = assetData.aspectRatio;
+        if (ar.includes(':')) {
+          const [w, h] = ar.split(':').map(Number);
+          if (w && h) {
+            naturalWidth = 1920;
+            naturalHeight = Math.round(1920 * h / w);
+          }
+        }
+      }
+    }
+    return { naturalWidth, naturalHeight };
+  }, [allNodesMap, compositionWidth, compositionHeight]);
+
+  // --- 辅助函数：获取媒体宽高比 ---
+  // Resolves src and type from allNodesMap for reference-based timeline items
+  const getMediaAspectRatio = useCallback(async (item: Item): Promise<number | null> => {
+    // Resolve src and type from item directly or via assetId (reference-based model)
+    let src = (item as any).src as string | undefined;
+    let itemType = item.type as string | undefined;
+    let asset = null;
+
+    // If no direct src/type, try to resolve from allNodesMap via assetId
+    if (item.assetId && allNodesMap) {
+      asset = allNodesMap.get(item.assetId);
+      if (asset) {
+        if (!src && asset.data?.src) {
+          src = asset.data.src;
+        }
+        if (!itemType && asset.type) {
+          itemType = asset.type;
+        }
+      }
+    }
+
+    console.log(`[getMediaAspectRatio] itemId=${item.id} assetId=${item.assetId} directSrc=${src || 'none'} directType=${itemType || 'none'} assetFound=${!!asset} resolvedSrc=${src || 'none'} resolvedType=${itemType || 'none'}`);
+
+    if (!src) {
+      return null;
+    }
+
+    // Convert R2 key to viewable URL for loading
+    const loadableSrc = resolveAssetUrl(src);
+
+    // 1. 查缓存 (use original src as cache key for consistency)
     const cached = mediaAspectRatioRef.current.get(src);
     if (cached) return cached;
 
@@ -82,18 +164,21 @@ export const InteractiveCanvas: React.FC<InteractiveCanvasProps> = ({
 
     if (typeof window === 'undefined') return null;
 
-    // 3. 主动加载获取
-    if (item.type === 'image') {
+    // 3. 主动加载获取 (use resolved itemType and loadableSrc)
+    if (itemType === 'image') {
       const ratio = await new Promise<number | null>((resolve) => {
         const img = new Image();
         img.onload = () => resolve(img.naturalWidth && img.naturalHeight ? img.naturalWidth / img.naturalHeight : null);
-        img.onerror = () => resolve(null);
-        img.src = src;
+        img.onerror = () => {
+          console.error(`[InteractiveCanvas] Image load failed for aspect ratio src="${loadableSrc}"`);
+          resolve(null);
+        };
+        img.src = loadableSrc;
       });
       if (ratio) mediaAspectRatioRef.current.set(src, ratio);
       return ratio;
     }
-    if (item.type === 'video') {
+    if (itemType === 'video') {
       const ratio = await new Promise<number | null>((resolve) => {
         const video = document.createElement('video');
         const cleanup = () => {
@@ -106,16 +191,17 @@ export const InteractiveCanvas: React.FC<InteractiveCanvasProps> = ({
           resolve(r);
         });
         video.addEventListener('error', () => {
+          console.error(`[InteractiveCanvas] Video load failed for aspect ratio src="${loadableSrc}"`);
           cleanup();
           resolve(null);
         });
-        video.src = src;
+        video.src = loadableSrc;
       });
       if (ratio) mediaAspectRatioRef.current.set(src, ratio);
       return ratio;
     }
     return null;
-  }, []);
+  }, [allNodesMap, resolveAssetUrl]);
 
   // --- 核心坐标系统 ---
 
@@ -213,6 +299,7 @@ export const InteractiveCanvas: React.FC<InteractiveCanvasProps> = ({
     : null;
 
   // 自动初始化 properties（如果不存在）- 智能填充逻辑
+  // 注意：后端 patch_dsl 已经会自动计算并设置 properties，这里只是作为兜底
   // 使用 ref 来跟踪已处理的 item，避免重复初始化
   const initializedItemsRef = useRef<Set<string>>(new Set());
 
@@ -228,30 +315,16 @@ export const InteractiveCanvas: React.FC<InteractiveCanvasProps> = ({
       // 标记为正在初始化，防止重复处理
       initializedItemsRef.current.add(item.id);
 
-      console.log('[InteractiveCanvas] Auto-initializing properties for item:', item.id);
-
       const mediaAR = await getMediaAspectRatio(item);
       const compAR = compositionWidth / compositionHeight;
 
-      console.log('[InteractiveCanvas] Calc Fit:', { mediaAR, compAR, compositionWidth, compositionHeight });
+      console.log(`[InteractiveCanvas] Auto-init itemId=${item.id} trackId=${trackId} mediaAR=${mediaAR?.toFixed(2) || 'null'} compAR=${compAR.toFixed(2)} compWidth=${compositionWidth} compHeight=${compositionHeight}`);
 
       let width = 1;
       let height = 1;
 
-      if (mediaAR) {
-        // Fit Contain 逻辑
-        if (mediaAR > compAR) {
-          // 素材比画布更宽（相对）：宽度填满，高度自适应
-          width = 1;
-          height = compAR / mediaAR;
-        } else {
-          // 素材比画布更窄（相对）：高度填满，宽度自适应
-          height = 1;
-          width = mediaAR / compAR;
-        }
-      }
-
-      console.log('[InteractiveCanvas] Result:', { width, height });
+      // width=1, height=1 means "Contain Fit" (scale to fit within canvas while preserving aspect ratio)
+      // This ensures the asset is fully visible and maximized within the canvas by default
 
       const defaultProperties: ItemProperties = {
         x: 0,
@@ -277,25 +350,19 @@ export const InteractiveCanvas: React.FC<InteractiveCanvasProps> = ({
   // 调试日志
   useEffect(() => {
     if (selectedItemData) {
-      console.log('[InteractiveCanvas] Selected item:', {
-        id: selectedItemData.item.id,
-        from: selectedItemData.item.from,
-        to: selectedItemData.item.from + selectedItemData.item.durationInFrames,
-        currentFrame,
-        isVisible: isItemVisible,
-        hasProperties: !!selectedItemData.item.properties,
-        properties: selectedItemData.item.properties,
-      });
+      const item = selectedItemData.item;
+      console.log(`[InteractiveCanvas] Selected itemId=${item.id} from=${item.from} to=${item.from + item.durationInFrames} currentFrame=${currentFrame} visible=${isItemVisible} hasProps=${!!item.properties} x=${item.properties?.x ?? 'none'} y=${item.properties?.y ?? 'none'} w=${item.properties?.width ?? 'none'} h=${item.properties?.height ?? 'none'} rot=${item.properties?.rotation ?? 'none'}`);
     }
   }, [selectedItemData, currentFrame, isItemVisible]);
 
   // 准备 Player 的 inputProps
   const inputProps = React.useMemo(() => ({
     tracks,
+    allNodes: allNodesMap,
     selectedItemId,
     selectionBoxRef,
     itemsDomMapRef,
-  }), [tracks, selectedItemId]);
+  }), [tracks, allNodesMap, selectedItemId]);
 
   // 同步播放状态和当前帧
   // 关键修复：避免在暂停时强制 seek 导致的帧重置问题
@@ -481,6 +548,24 @@ export const InteractiveCanvas: React.FC<InteractiveCanvasProps> = ({
 
       const startPoint = screenToPropertySpace(e.clientX, e.clientY);
 
+      let startWidth = selectedItemData.item.properties?.width ?? 1;
+      let startHeight = selectedItemData.item.properties?.height ?? 1;
+
+      // Handle Contain Fit special case for scaling
+      // If we are about to scale, and we are in "Contain Fit" mode (1,1),
+      // we need to calculate the effective scale so resizing is continuous.
+      if (mode.startsWith('scale') && startWidth === 1 && startHeight === 1) {
+        const { naturalWidth, naturalHeight } = getNaturalDimensions(selectedItemData.item);
+        const scaleX = compositionWidth / naturalWidth;
+        const scaleY = compositionHeight / naturalHeight;
+        const scale = Math.min(scaleX, scaleY);
+
+        startWidth = scale;
+        startHeight = scale;
+
+        console.log(`[InteractiveCanvas] Drag start (Scale) from Contain Fit. Adjusted startW/H to ${scale.toFixed(4)} (Nat: ${naturalWidth}x${naturalHeight})`);
+      }
+
       setDragState({
         mode,
         startX: startPoint.x, // Composition Pixels (Center Relative)
@@ -488,8 +573,8 @@ export const InteractiveCanvas: React.FC<InteractiveCanvasProps> = ({
         startProperties: {
           x: selectedItemData.item.properties?.x ?? 0,
           y: selectedItemData.item.properties?.y ?? 0,
-          width: selectedItemData.item.properties?.width ?? 1,
-          height: selectedItemData.item.properties?.height ?? 1,
+          width: startWidth,
+          height: startHeight,
           rotation: selectedItemData.item.properties?.rotation ?? 0,
           opacity: selectedItemData.item.properties?.opacity ?? 1,
         },
@@ -537,8 +622,11 @@ export const InteractiveCanvas: React.FC<InteractiveCanvasProps> = ({
           };
 
           // 获取元素的宽高（在属性空间中，单位是 composition pixels）
-          const itemWidth = (dragState.startProperties.width ?? 1) * compositionWidth;
-          const itemHeight = (dragState.startProperties.height ?? 1) * compositionHeight;
+          // width=1, height=1 means 100% of media's natural size
+          const { naturalWidth, naturalHeight } = getNaturalDimensions(dragState.item);
+
+          const itemWidth = (dragState.startProperties.width ?? 1) * naturalWidth;
+          const itemHeight = (dragState.startProperties.height ?? 1) * naturalHeight;
 
           // 计算元素的边界位置（相对于中心）
           const leftEdge = nextX - itemWidth / 2;
@@ -653,7 +741,7 @@ export const InteractiveCanvas: React.FC<InteractiveCanvasProps> = ({
         properties: newProperties as ItemProperties,
       });
     },
-    [dragState, screenToPropertySpace, onUpdateItem, getBaseMetrics, zoom]
+    [dragState, screenToPropertySpace, onUpdateItem, getBaseMetrics, zoom, allNodesMap, compositionWidth, compositionHeight]
   );
 
   // 处理鼠标释放
@@ -675,18 +763,22 @@ export const InteractiveCanvas: React.FC<InteractiveCanvasProps> = ({
   }, [dragState, handleMouseMove, handleMouseUp]);
 
   // 获取 Item 在屏幕上的渲染信息 (替换原来的 getItemBounds/getItemScreenPosition)
+  // width=1, height=1 means 100% of media's natural size (not composition size)
   const getItemRenderInfo = useCallback((item: Item) => {
     if (!item.properties) return null;
 
     // Properties:
     // x, y: Center relative composition pixels
-    // width, height: Normalized 0-1
+    // width, height: Scale factor relative to media's natural size (1 = 100% natural size)
 
     const propX = item.properties.x ?? 0;
     const propY = item.properties.y ?? 0;
     const propW = item.properties.width ?? 1;
     const propH = item.properties.height ?? 1;
     const rotation = item.properties.rotation ?? 0;
+
+    // Get natural dimensions from asset node
+    const { naturalWidth, naturalHeight } = getNaturalDimensions(item);
 
     // 转换中心点到 Normalized (0-1 TopLeft)
     const normCx = (propX / compositionWidth) + 0.5;
@@ -695,18 +787,27 @@ export const InteractiveCanvas: React.FC<InteractiveCanvasProps> = ({
     // 转换中心点到屏幕坐标
     const centerScreen = normalizedToScreen(normCx, normCy);
 
-    // 转换宽高到屏幕像素
-    // 注意：normalizedToScreen 包含 zoom 和 scale
-    // width(0-1) -> ScreenPx = width * compositionWidth * scaleX * zoom
-    // const widthScreen = scalarToScreen(propW);
-    // const heightScreen = scalarToScreen(propH * (compositionHeight / compositionWidth)) * (compositionWidth / compositionHeight);
-    // 上面 scalarToScreen 只用了 scaleX，如果像素非正方形可能有问题，但通常 scaleX=scaleY
-    // 更安全的写法：
     const metrics = getBaseMetrics();
     if (!metrics) return null;
 
-    const wPx = propW * compositionWidth * metrics.scaleX * zoom;
-    const hPx = propH * compositionHeight * metrics.scaleY * zoom;
+    // Calculate pixel size: propW * naturalWidth (then scale to screen)
+    // Implement Contain Fit logic when width=1, height=1
+    let itemPixelWidth: number;
+    let itemPixelHeight: number;
+
+    if (propW === 1 && propH === 1) {
+      const scaleX = compositionWidth / naturalWidth;
+      const scaleY = compositionHeight / naturalHeight;
+      const scale = Math.min(scaleX, scaleY);
+      itemPixelWidth = naturalWidth * scale;
+      itemPixelHeight = naturalHeight * scale;
+    } else {
+      itemPixelWidth = propW * naturalWidth;
+      itemPixelHeight = propH * naturalHeight;
+    }
+
+    const wPx = itemPixelWidth * metrics.scaleX * zoom;
+    const hPx = itemPixelHeight * metrics.scaleY * zoom;
 
     return {
       centerX: centerScreen.x,
@@ -718,7 +819,7 @@ export const InteractiveCanvas: React.FC<InteractiveCanvasProps> = ({
       left: centerScreen.x - wPx / 2,
       top: centerScreen.y - hPx / 2
     };
-  }, [normalizedToScreen, getBaseMetrics, compositionWidth, compositionHeight, zoom]);
+  }, [normalizedToScreen, getBaseMetrics, compositionWidth, compositionHeight, zoom, allNodesMap]);
 
   // 当前选中项的屏幕信息
   const bounds = selectedItemData ? getItemRenderInfo(selectedItemData.item) : null;
@@ -826,7 +927,7 @@ export const InteractiveCanvas: React.FC<InteractiveCanvasProps> = ({
           handleCanvasPan(e);
           // 点击空白区域取消选中
           // 如果点击的是元素或控制手柄，他们会 stopPropagation，不会到达这里
-          console.log('[InteractiveCanvas] Clicked empty area, deselecting');
+          console.log(`[InteractiveCanvas] Click event=emptyArea action=deselect`);
           onSelectItem?.(null);
         }}
       >
@@ -1011,7 +1112,7 @@ export const InteractiveCanvas: React.FC<InteractiveCanvasProps> = ({
             fill="transparent"
             style={{ pointerEvents: 'all' }}
             onMouseDown={(_e) => {
-              console.log('[InteractiveCanvas] Clicked empty background, deselecting');
+              console.log(`[InteractiveCanvas] Click event=emptyBackground action=deselect`);
               onSelectItem?.(null);
             }}
           />

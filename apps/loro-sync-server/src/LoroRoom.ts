@@ -30,6 +30,8 @@ export class LoroRoom {
   private isSaving: boolean = false;
   private needsSave: boolean = false;
   private initPromise: Promise<void> | null = null;
+  private messageQueue: Array<{ sender: WebSocket; data: Uint8Array }> = [];
+  private isProcessingQueue: boolean = false;
 
   constructor(state: DurableObjectState, env: Env) {
     this.state = state;
@@ -298,45 +300,79 @@ export class LoroRoom {
 
   /**
    * Handle incoming WebSocket message
+   * Enqueues message for serial processing to prevent concurrent doc.import() calls
    */
   private async handleMessage(sender: WebSocket, data: string | ArrayBuffer): Promise<void> {
-    // Ensure room is initialized before processing updates
-    if (this.initPromise) {
-      await this.initPromise;
+    if (typeof data === 'string') {
+      console.warn('[LoroRoom] ⚠️ Received text message, expected binary');
+      return;
     }
 
+    const updates = new Uint8Array(data);
+
+    // Add to queue for serial processing
+    this.messageQueue.push({ sender, data: updates });
+
+    // Start processing queue if not already running
+    if (!this.isProcessingQueue) {
+      this.processMessageQueue();
+    }
+  }
+
+  /**
+   * Process message queue serially to prevent concurrent doc.import() calls
+   * CRITICAL: Loro CRDT doc.import() is not thread-safe, must be serialized
+   */
+  private async processMessageQueue(): Promise<void> {
+    if (this.isProcessingQueue) {
+      return; // Already processing
+    }
+
+    this.isProcessingQueue = true;
+
     try {
-      if (typeof data === 'string') {
-        console.warn('[LoroRoom] ⚠️ Received text message, expected binary');
-        return;
+      while (this.messageQueue.length > 0) {
+        const message = this.messageQueue.shift();
+        if (!message) continue;
+
+        const { sender, data: updates } = message;
+
+        // Ensure room is initialized before processing updates
+        if (this.initPromise) {
+          await this.initPromise;
+        }
+
+        try {
+          const updateSize = updates.byteLength;
+          console.log(`[LoroRoom] 📥 Processing update from queue (${updateSize} bytes, ${this.messageQueue.length} remaining)`);
+
+          // CRITICAL: Serial import to prevent state corruption
+          this.doc.import(updates);
+          console.log(`[LoroRoom] ✅ Update applied to document. Version: ${this.doc.version().toJSON()}`);
+
+          // Check for pending nodes (using extracted module)
+          await processPendingNodes(
+            this.doc,
+            this.env,
+            this.projectId || '',
+            (data: Uint8Array) => this.broadcast(data),
+            () => this.triggerTaskPolling()
+          );
+
+          // Broadcast to all other clients
+          this.broadcast(updates, sender);
+          console.log(`[LoroRoom] 📡 Update broadcasted to ${this.clients.size - 1} other clients`);
+
+          // Save snapshot (non-blocking)
+          this.saveDocumentSnapshot().catch(err =>
+            console.error('[LoroRoom] ❌ Failed to save snapshot after update:', err)
+          );
+        } catch (error) {
+          console.error('[LoroRoom] ❌ Failed to process message:', error);
+        }
       }
-
-      const updates = new Uint8Array(data);
-      const updateSize = updates.byteLength;
-      console.log(`[LoroRoom] 📥 Received update from client (${updateSize} bytes)`);
-
-      this.doc.import(updates);
-      console.log(`[LoroRoom] ✅ Update applied to document. Version: ${this.doc.version().toJSON()}`);
-
-      // Check for pending nodes (using extracted module)
-      await processPendingNodes(
-        this.doc,
-        this.env,
-        this.projectId || '',
-        (data: Uint8Array) => this.broadcast(data),
-        () => this.triggerTaskPolling()
-      );
-
-      // Broadcast to all other clients
-      this.broadcast(updates, sender);
-      console.log(`[LoroRoom] 📡 Update broadcasted to ${this.clients.size - 1} other clients`);
-
-      // Save snapshot
-      this.saveDocumentSnapshot().catch(err => 
-        console.error('[LoroRoom] ❌ Failed to save snapshot after update:', err)
-      );
-    } catch (error) {
-      console.error('[LoroRoom] ❌ Failed to handle message:', error);
+    } finally {
+      this.isProcessingQueue = false;
     }
   }
 

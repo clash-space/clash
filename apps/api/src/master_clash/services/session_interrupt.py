@@ -1,472 +1,202 @@
-"""Session interrupt service for distributed interrupt flag management.
-
-Provides functions to set and check interrupt flags stored in D1/SQLite,
-enabling graceful session interruption across serverless instances.
-"""
+"""Session interrupt service - SQLAlchemy ORM version."""
 
 import asyncio
 import logging
-import time
+from datetime import datetime
 from typing import Any, Literal
 
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, ToolMessage
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from master_clash.database.checkpointer import get_async_checkpointer
-from master_clash.database.di import get_database
-from master_clash.json_utils import dumps as json_dumps
-from master_clash.json_utils import loads as json_loads
+from master_clash.database.di import get_db_context
+from master_clash.database.models import SessionInterrupt
+from master_clash.json_utils import dumps as json_dumps, loads as json_loads
 
 logger = logging.getLogger(__name__)
 
 SessionStatus = Literal["running", "completing", "interrupted", "completed"]
 
 
-def _row_get(row: Any, key: str | int, default: Any = None) -> Any:
-    """Fetch a value from DB row across adapters.
-
-    Supports tuples/lists, dict-like rows, and sqlite3.Row (subscriptable by column name).
-    """
-    if isinstance(row, (list, tuple)):
-        if isinstance(key, int) and 0 <= key < len(row):
-            return row[key]
-        return default
-
-    getter = getattr(row, "get", None)
-    if callable(getter):
-        try:
-            return getter(key, default)
-        except TypeError:
-            pass
-
-    try:
-        return row[key]
-    except Exception:
-        return default
-
+# === Session Operations ===
 
 async def create_session(thread_id: str, project_id: str, title: str | None = None) -> None:
-    """Create or update a session record when starting a workflow.
+    """Create or update a session record when starting a workflow."""
+    async with get_db_context() as session:
+        now = datetime.utcnow()
 
-    Args:
-        thread_id: Unique session/thread identifier
-        project_id: Project this session belongs to
-        title: Optional initial title
-    """
-    db = get_database()
-    try:
-        db.execute(
-            """
-            INSERT INTO session_interrupts (thread_id, project_id, status, title, created_at, updated_at)
-            VALUES (?, ?, 'running', ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-            ON CONFLICT(thread_id) DO UPDATE SET
-                status = 'running',
-                interrupted_at = NULL,
-                updated_at = CURRENT_TIMESTAMP
-            """,
-            (thread_id, project_id, title),
+        # Check if exists
+        result = await session.execute(
+            select(SessionInterrupt).where(SessionInterrupt.thread_id == thread_id)
         )
-        db.commit()
-        logger.info(
-            f"[Session] Created/updated session: thread_id={thread_id}, project_id={project_id}, title={title}"
-        )
-    finally:
-        db.close()
+        session_obj = result.scalar_one_or_none()
+
+        if session_obj:
+            # Update existing
+            session_obj.status = "running"
+            session_obj.interrupted_at = None
+            session_obj.updated_at = now
+            session_obj.is_deleted = 0
+        else:
+            # Create new
+            session_obj = SessionInterrupt(
+                thread_id=thread_id,
+                project_id=project_id,
+                status="running",
+                title=title,
+                created_at=now,
+                updated_at=now,
+                is_deleted=0,
+            )
+            session.add(session_obj)
+
+        await session.commit()
+        logger.info(f"[Session] Created/updated session: {thread_id}")
 
 
 async def request_interrupt(thread_id: str) -> bool:
-    """Request interruption of a session.
+    """Request interruption of a session."""
+    async with get_db_context() as session:
+        now = datetime.utcnow()
 
-    Sets the status to 'completing' - the session will stop after current step.
-
-    Args:
-        thread_id: Session to interrupt
-
-    Returns:
-        True if session was found and updated, False if not found
-    """
-    db = get_database()
-    try:
-        db.execute(
-            """
-            UPDATE session_interrupts
-            SET status = 'completing', interrupted_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
-            WHERE thread_id = ? AND status = 'running'
-            """,
-            (thread_id,),
-        )
-        db.commit()
-
-        # Check if update affected any rows
-        rows = db.fetchall(
-            "SELECT thread_id FROM session_interrupts WHERE thread_id = ? AND status = 'completing'",
-            (thread_id,),
-        )
-        success = len(rows) > 0
-
-        if success:
-            logger.info(f"[Session] Interrupt requested: thread_id={thread_id}")
-        else:
-            logger.warning(
-                f"[Session] Interrupt failed - session not found or not running: thread_id={thread_id}"
+        result = await session.execute(
+            select(SessionInterrupt).where(
+                (SessionInterrupt.thread_id == thread_id)
+                & (SessionInterrupt.status == "running")
+                & (SessionInterrupt.is_deleted == 0)
             )
-
-        return success
-    finally:
-        db.close()
-
-
-def check_interrupt_flag(thread_id: str) -> bool:
-    """Check if a session should be interrupted (sync version for callbacks).
-
-    Args:
-        thread_id: Session to check
-
-    Returns:
-        True if session should stop (status is 'completing' or 'interrupted')
-    """
-    db = get_database()
-    try:
-        rows = db.fetchall(
-            "SELECT status FROM session_interrupts WHERE thread_id = ? AND is_deleted = 0",
-            (thread_id,),
         )
-        if not rows:
+        session_obj = result.scalar_one_or_none()
+
+        if not session_obj:
             return False
 
-        status = _row_get(rows[0], "status")
-        if status is None:
-            status = _row_get(rows[0], 0)
-        should_interrupt = status in ("completing", "interrupted")
+        session_obj.status = "completing"
+        session_obj.interrupted_at = now
+        session_obj.updated_at = now
+        await session.commit()
 
-        if should_interrupt:
-            logger.debug(
-                f"[Session] Interrupt flag checked - TRUE: thread_id={thread_id}, status={status}"
-            )
+        logger.info(f"[Session] Interrupt requested: {thread_id}")
+        return True
 
-        return should_interrupt
-    finally:
-        db.close()
+
+async def check_interrupt_flag(thread_id: str) -> bool:
+    """Check if a session should be interrupted (sync version for callbacks)."""
+    # This needs to be sync for LangGraph callbacks
+    # Run async function in thread pool
+    try:
+        loop = asyncio.get_event_loop()
+        if loop.is_running():
+            # Use create_task if loop is running
+            future = asyncio.ensure_future(check_interrupt_flag_async(thread_id))
+            # Don't await - return default value for sync context
+            return False
+        else:
+            return loop.run_until_complete(check_interrupt_flag_async(thread_id))
+    except:
+        return False
 
 
 async def check_interrupt_flag_async(thread_id: str) -> bool:
     """Async version of interrupt flag check."""
-    return check_interrupt_flag(thread_id)
+    async with get_db_context() as session:
+        result = await session.execute(
+            select(SessionInterrupt.status).where(
+                (SessionInterrupt.thread_id == thread_id)
+                & (SessionInterrupt.is_deleted == 0)
+            )
+        )
+        status = result.scalar_one_or_none()
+
+        if not status:
+            return False
+
+        should_interrupt = status in ("completing", "interrupted")
+        if should_interrupt:
+            logger.debug(f"[Session] Interrupt flag TRUE: {thread_id}")
+        return should_interrupt
 
 
 async def set_session_status(thread_id: str, status: SessionStatus) -> None:
-    """Update session status.
+    """Update session status."""
+    async with get_db_context() as session:
+        now = datetime.utcnow()
 
-    Args:
-        thread_id: Session to update
-        status: New status
-    """
-    db = get_database()
-    try:
-        db.execute(
-            "UPDATE session_interrupts SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE thread_id = ? AND is_deleted = 0",
-            (status, thread_id),
+        result = await session.execute(
+            select(SessionInterrupt).where(
+                (SessionInterrupt.thread_id == thread_id)
+                & (SessionInterrupt.is_deleted == 0)
+            )
         )
-        db.commit()
-        logger.info(f"[Session] Status updated: thread_id={thread_id}, status={status}")
-    finally:
-        db.close()
+        session_obj = result.scalar_one_or_none()
+
+        if session_obj:
+            session_obj.status = status
+            session_obj.updated_at = now
+            await session.commit()
+
+            logger.info(f"[Session] Status updated: {thread_id} -> {status}")
 
 
-def get_session_status(thread_id: str) -> SessionStatus | None:
-    """Get current session status.
-
-    Args:
-        thread_id: Session to check
-
-    Returns:
-        Session status or None if not found
-    """
-    db = get_database()
-    try:
-        rows = db.fetchall(
-            "SELECT status FROM session_interrupts WHERE thread_id = ? AND is_deleted = 0",
-            (thread_id,),
+async def get_session_status(thread_id: str) -> SessionStatus | None:
+    """Get current session status."""
+    async with get_db_context() as session:
+        result = await session.execute(
+            select(SessionInterrupt.status).where(
+                (SessionInterrupt.thread_id == thread_id)
+                & (SessionInterrupt.is_deleted == 0)
+            )
         )
-        if not rows:
-            return None
-        status = _row_get(rows[0], "status")
-        if status is None:
-            status = _row_get(rows[0], 0)
-        return status
-    finally:
-        db.close()
+        return result.scalar_one_or_none()
 
 
 async def delete_session(thread_id: str) -> bool:
-    """Delete a session and all its associated data.
+    """Soft delete a session."""
+    async with get_db_context() as session:
+        now = datetime.utcnow()
 
-    Removes the session from session_interrupts, session_events, and
-    LangGraph checkpoints.
-
-    Args:
-        thread_id: Session ID to delete
-
-    Returns:
-        True if something was deleted, False otherwise
-    """
-    db = get_database()
-    try:
-        # Soft delete: update is_deleted and deleted_at
-        db.execute(
-            """
-            UPDATE session_interrupts
-            SET is_deleted = 1, deleted_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
-            WHERE thread_id = ?
-            """,
-            (thread_id,),
+        result = await session.execute(
+            select(SessionInterrupt).where(SessionInterrupt.thread_id == thread_id)
         )
-        db.commit()
-        logger.info(f"[Session] Soft deleted session: {thread_id}")
-        return True
-    except Exception as e:
-        logger.error(f"[Session] Failed to soft delete session {thread_id}: {e}")
+        session_obj = result.scalar_one_or_none()
+
+        if session_obj:
+            session_obj.is_deleted = 1
+            session_obj.deleted_at = now
+            session_obj.updated_at = now
+            await session.commit()
+
+            logger.info(f"[Session] Soft deleted: {thread_id}")
+            return True
+
         return False
-    finally:
-        db.close()
 
 
-class InterruptFlagCache:
-    """Cache for interrupt flag with time-based refresh.
-
-    Reduces database queries by caching the flag value and refreshing
-    periodically (default: every 500ms).
-    """
-
-    def __init__(self, thread_id: str, refresh_interval_ms: int = 500):
-        self.thread_id = thread_id
-        self.refresh_interval = refresh_interval_ms / 1000.0
-        self.last_check = 0.0
-        self._cached_value = False
-
-    def should_interrupt(self) -> bool:
-        """Check if session should be interrupted (cached).
-
-        Returns:
-            True if session should stop
-        """
-        now = time.time()
-        if now - self.last_check > self.refresh_interval:
-            self._cached_value = check_interrupt_flag(self.thread_id)
-            self.last_check = now
-        return self._cached_value
-
-    def force_refresh(self) -> bool:
-        """Force refresh the cache and return current value."""
-        self._cached_value = check_interrupt_flag(self.thread_id)
-        self.last_check = time.time()
-        return self._cached_value
-
-
-async def _get_checkpoint_tuple(checkpointer: Any, config: dict[str, Any]):
-    aget = getattr(checkpointer, "aget_tuple", None)
-    if callable(aget):
-        try:
-            return await aget(config)
-        except NotImplementedError:
-            pass
-
-    get_tuple = getattr(checkpointer, "get_tuple", None)
-    if callable(get_tuple):
-        return await asyncio.to_thread(get_tuple, config)
-
-    return None
-
-
-async def get_session_history(thread_id: str) -> list[dict[str, Any]]:
-    """Retrieve structured message history for a session from LangGraph checkpoints.
-
-    Maps LangGraph messages to ChatbotCopilot display items (message, thinking, tool_call, agent_card).
-
-    Args:
-        thread_id: Session identifier
-
-    Returns:
-        List of display items compatible with the frontend
-    """
-    logger.info(f"[SessionHistory] Fetching structured history for thread_id={thread_id}")
-
-    checkpointer = await get_async_checkpointer()
-    config = {"configurable": {"thread_id": thread_id}}
-
-    checkpoint_tuple = await _get_checkpoint_tuple(checkpointer, config)
-    if not checkpoint_tuple:
-        logger.warning(f"[SessionHistory] No checkpoint found for thread_id={thread_id}")
-        return []
-
-    state = checkpoint_tuple.checkpoint.get("channel_values", {})
-    messages = state.get("messages", [])
-
-    if not messages:
-        logger.info(f"[SessionHistory] No messages in state for thread_id={thread_id}")
-        return []
-
-    # First pass: collect tool outputs to resolve tool call status
-    tool_outputs = {}
-    for msg in messages:
-        if isinstance(msg, ToolMessage):
-            tool_outputs[msg.tool_call_id] = msg.content
-
-    history = []
-
-    def generate_id():
-        import random
-        import string
-        import time
-
-        return str(int(time.time() * 1000)) + "".join(
-            random.choices(string.ascii_lowercase + string.digits, k=7)
-        )
-
-    for msg in messages:
-        if not isinstance(msg, BaseMessage):
-            continue
-
-        if isinstance(msg, HumanMessage):
-            history.append(
-                {
-                    "type": "message",
-                    "role": "user",
-                    "content": msg.content,
-                    "id": msg.id or generate_id(),
-                }
+async def list_project_sessions(project_id: str) -> list[dict[str, Any]]:
+    """List all session IDs and titles for a project."""
+    async with get_db_context() as session:
+        result = await session.execute(
+            select(SessionInterrupt.thread_id, SessionInterrupt.title, SessionInterrupt.updated_at)
+            .where(
+                (SessionInterrupt.project_id == project_id)
+                & (SessionInterrupt.is_deleted == 0)
             )
-
-        elif isinstance(msg, AIMessage):
-            # 1. Handle Thinking (multi-part content)
-            if isinstance(msg.content, list):
-                for part in msg.content:
-                    if isinstance(part, dict):
-                        if part.get("type") == "thinking":
-                            history.append(
-                                {
-                                    "type": "thinking",
-                                    "content": part.get("thinking", ""),
-                                    "id": generate_id(),
-                                }
-                            )
-                        elif part.get("type") == "text":
-                            history.append(
-                                {
-                                    "type": "message",
-                                    "role": "assistant",
-                                    "content": part.get("text", ""),
-                                    "id": generate_id(),
-                                }
-                            )
-            elif isinstance(msg.content, str) and msg.content:
-                history.append(
-                    {
-                        "type": "message",
-                        "role": "assistant",
-                        "content": msg.content,
-                        "id": msg.id or generate_id(),
-                    }
-                )
-
-            # 2. Handle Tool Calls
-            if hasattr(msg, "tool_calls") and msg.tool_calls:
-                for tc in msg.tool_calls:
-                    tool_name = tc.get("name")
-                    tool_args = tc.get("args", {})
-                    tc_id = tc.get("id")
-
-                    # Special case: task_delegation -> agent_card
-                    if tool_name == "task_delegation":
-                        agent_name = tool_args.get("agent", "Specialist")
-                        history.append(
-                            {
-                                "type": "agent_card",
-                                "id": f"agent-{tc_id}",
-                                "props": {
-                                    "agentId": tc_id,
-                                    "agentName": agent_name,
-                                    "status": "completed" if tc_id in tool_outputs else "working",
-                                    "persona": agent_name.lower(),
-                                    "logs": [],  # We don't recurse into sub-agent history for now
-                                },
-                            }
-                        )
-                    else:
-                        history.append(
-                            {
-                                "type": "tool_call",
-                                "id": tc_id,
-                                "props": {
-                                    "toolName": tool_name,
-                                    "args": tool_args,
-                                    "status": "success" if tc_id in tool_outputs else "pending",
-                                    "indent": False,
-                                },
-                            }
-                        )
-
-    logger.info(
-        f"[SessionHistory] Generated {len(history)} display items for thread_id={thread_id}"
-    )
-    return history
-
-
-def list_project_sessions(project_id: str) -> list[dict[str, Any]]:
-    """List all session IDs and titles associated with a project.
-
-    Args:
-        project_id: Project identifier
-
-    Returns:
-        List of session objects {thread_id, title, updated_at}
-    """
-    db = get_database()
-    try:
-        rows = db.fetchall(
-            "SELECT thread_id, title, updated_at FROM session_interrupts WHERE project_id = ? AND is_deleted = 0 ORDER BY updated_at DESC",
-            (project_id,),
+            .order_by(SessionInterrupt.updated_at.desc())
         )
-        history = []
-        for row in rows:
-            if isinstance(row, (list, tuple)):
-                history.append(
-                    {
-                        "thread_id": row[0],
-                        "title": row[1] or f"Session {row[0][-6:]}",
-                        "updated_at": row[2],
-                    }
-                )
-            else:
-                thread_id = _row_get(row, "thread_id")
-                title = _row_get(row, "title")
-                history.append(
-                    {
-                        "thread_id": thread_id,
-                        "title": title
-                        or (
-                            f"Session {thread_id[-6:]}"
-                            if isinstance(thread_id, str) and len(thread_id) >= 6
-                            else "Session"
-                        ),
-                        "updated_at": _row_get(row, "updated_at"),
-                    }
-                )
-        return history
-    finally:
-        db.close()
+
+        return [
+            {
+                "thread_id": row.thread_id,
+                "title": row.title or f"Session {row.thread_id[-6:]}",
+                "updated_at": row.updated_at,
+            }
+            for row in result.all()
+        ]
 
 
 async def generate_and_update_title(thread_id: str, first_message: Any) -> str:
-    """Generate a summary title for a session using LLM and update DB.
-
-    Args:
-        thread_id: Session ID
-        first_message: The first user message to summarize
-
-    Returns:
-        The generated title
-    """
-
+    """Generate a summary title for a session using LLM and update DB."""
     def _extract_text(content: Any) -> str:
         if content is None:
             return ""
@@ -482,334 +212,245 @@ async def generate_and_update_title(thread_id: str, first_message: Any) -> str:
         from master_clash.workflow.multi_agent import create_default_llm
 
         llm = create_default_llm()
-
         msg_text = _extract_text(first_message)
-        prompt = f"Summarize the following user request into a very concise title (3-5 words max). No quotes or extra text.\n\nRequest: {msg_text}"
+        prompt = f"Summarize into a concise title (3-5 words max).\n\nRequest: {msg_text}"
 
         response = await llm.ainvoke(prompt)
         content = response.content
         title_text = _extract_text(content).strip().strip('"').strip("'")
 
-        # Fallback if empty
         if not title_text:
             title_text = f"Session {thread_id[-6:]}"
 
-        db = get_database()
-        try:
-            db.execute(
-                "UPDATE session_interrupts SET title = ?, updated_at = CURRENT_TIMESTAMP WHERE thread_id = ?",
-                (title_text, thread_id),
+        async with get_db_context() as session:
+            result = await session.execute(
+                select(SessionInterrupt).where(SessionInterrupt.thread_id == thread_id)
             )
-            db.commit()
-            logger.info(f"[Session] Title generated and saved: {title_text} for {thread_id}")
-        finally:
-            db.close()
+            session_obj = result.scalar_one_or_none()
+
+            if session_obj:
+                session_obj.title = title_text
+                session_obj.updated_at = datetime.utcnow()
+                await session.commit()
+
+                logger.info(f"[Session] Title generated: {title_text} for {thread_id}")
 
         return title_text
+
     except Exception as e:
         logger.error(f"[Session] Failed to generate title: {e}")
         return f"Session {thread_id[-6:]}"
 
 
-def log_session_event(thread_id: str, event_type: str, payload: dict[str, Any]) -> None:
-    """Log a streaming event to the database for history replay.
+async def get_session_history(thread_id: str) -> list[dict[str, Any]]:
+    """Retrieve structured message history from LangGraph checkpoints."""
+    logger.info(f"[SessionHistory] Fetching history for {thread_id}")
 
-    Args:
-        thread_id: Session identifier
-        event_type: Type of event (text, thinking, tool_start, etc.)
-        payload: Event data
-    """
-    db = get_database()
-    try:
-        db.execute(
-            "INSERT INTO session_events (thread_id, event_type, payload) VALUES (?, ?, ?)",
-            (thread_id, event_type, json_dumps(payload)),
+    checkpointer = await get_async_checkpointer()
+    config = {"configurable": {"thread_id": thread_id}}
+
+    checkpoint_tuple = await _get_checkpoint_tuple(checkpointer, config)
+    if not checkpoint_tuple:
+        logger.warning(f"[SessionHistory] No checkpoint for {thread_id}")
+        return []
+
+    state = checkpoint_tuple.checkpoint.get("channel_values", {})
+    messages = state.get("messages", [])
+
+    if not messages:
+        logger.info(f"[SessionHistory] No messages for {thread_id}")
+        return []
+
+    tool_outputs = {}
+    for msg in messages:
+        if isinstance(msg, ToolMessage):
+            tool_outputs[msg.tool_call_id] = msg.content
+
+    history = []
+    for msg in messages:
+        if not isinstance(msg, BaseMessage):
+            continue
+
+        if isinstance(msg, HumanMessage):
+            history.append({
+                "type": "message",
+                "role": "user",
+                "content": msg.content,
+                "id": msg.id or _generate_id(),
+            })
+        elif isinstance(msg, AIMessage):
+            if isinstance(msg.content, list):
+                for part in msg.content:
+                    if isinstance(part, dict):
+                        if part.get("type") == "thinking":
+                            history.append({
+                                "type": "thinking",
+                                "content": part.get("thinking", ""),
+                                "id": _generate_id(),
+                            })
+                        elif part.get("type") == "text":
+                            history.append({
+                                "type": "message",
+                                "role": "assistant",
+                                "content": part.get("text", ""),
+                                "id": _generate_id(),
+                            })
+            elif isinstance(msg.content, str) and msg.content:
+                history.append({
+                    "type": "message",
+                    "role": "assistant",
+                    "content": msg.content,
+                    "id": msg.id or _generate_id(),
+                })
+
+            if hasattr(msg, "tool_calls") and msg.tool_calls:
+                for tc in msg.tool_calls:
+                    tool_name = tc.get("name")
+                    tool_args = tc.get("args", {})
+                    tc_id = tc.get("id")
+
+                    if tool_name == "task_delegation":
+                        agent_name = tool_args.get("agent", "Specialist")
+                        history.append({
+                            "type": "agent_card",
+                            "id": f"agent-{tc_id}",
+                            "props": {
+                                "agentId": tc_id,
+                                "agentName": agent_name,
+                                "status": "completed" if tc_id in tool_outputs else "working",
+                                "persona": agent_name.lower(),
+                                "logs": [],
+                            },
+                        })
+                    else:
+                        history.append({
+                            "type": "tool_call",
+                            "id": tc_id,
+                            "props": {
+                                "toolName": tool_name,
+                                "args": tool_args,
+                                "status": "success" if tc_id in tool_outputs else "pending",
+                                "indent": False,
+                            },
+                        })
+
+    logger.info(f"[SessionHistory] Generated {len(history)} items for {thread_id}")
+    return history
+
+
+def _generate_id() -> str:
+    """Generate unique ID."""
+    import random
+    import string
+    import time
+    return str(int(time.time() * 1000)) + "".join(
+        random.choices(string.ascii_lowercase + string.digits, k=7)
+    )
+
+
+async def _get_checkpoint_tuple(checkpointer: Any, config: dict[str, Any]):
+    """Get checkpoint tuple from checkpointer."""
+    aget = getattr(checkpointer, "aget_tuple", None)
+    if callable(aget):
+        try:
+            return await aget(config)
+        except NotImplementedError:
+            pass
+
+    get_tuple = getattr(checkpointer, "get_tuple", None)
+    if callable(get_tuple):
+        return await asyncio.to_thread(get_tuple, config)
+
+    return None
+
+
+async def get_session_events(thread_id: str) -> list[dict[str, Any]]:
+    """Retrieve all logged events for a session."""
+    from master_clash.database.models import SessionEvent
+
+    async with get_db_context() as session:
+        result = await session.execute(
+            select(SessionEvent).where(SessionEvent.thread_id == thread_id)
+            .order_by(SessionEvent.created_at.asc())
         )
-        db.commit()
-    except Exception as e:
-        logger.error(f"[SessionEvent] Failed to log event {event_type} for {thread_id}: {e}")
-    finally:
-        db.close()
+        events = result.scalars().all()
+
+        return [
+            {
+                "event_type": e.event_type,
+                "payload": e.payload if isinstance(e.payload, dict) else {},
+                "created_at": e.created_at,
+            }
+            for e in events
+        ]
 
 
-def get_session_events(thread_id: str) -> list[dict[str, Any]]:
-    """Retrieve all logged events for a session.
+async def log_session_event(thread_id: str, event_type: str, payload: dict[str, Any]) -> None:
+    """Log a streaming event to the database."""
+    from master_clash.database.models import SessionEvent
 
-    Args:
-        thread_id: Session identifier
-
-    Returns:
-        List of event objects {event_type, payload, created_at}
-    """
-    db = get_database()
-    try:
-        rows = db.fetchall(
-            "SELECT event_type, payload, created_at FROM session_events WHERE thread_id = ? ORDER BY created_at ASC",
-            (thread_id,),
+    async with get_db_context() as session:
+        event = SessionEvent(
+            thread_id=thread_id,
+            event_type=event_type,
+            payload=payload,  # SQLAlchemy JSON type handles serialization
         )
-        events = []
-        for row in rows:
-            if isinstance(row, (list, tuple)):
-                etype, pay, crea = row
-            else:
-                etype = _row_get(row, "event_type")
-                pay = _row_get(row, "payload")
-                crea = _row_get(row, "created_at")
-
-            try:
-                events.append(
-                    {
-                        "event_type": etype,
-                        "payload": json_loads(pay) if isinstance(pay, str) else pay,
-                        "created_at": crea,
-                    }
-                )
-            except Exception:
-                continue
-        return events
-    finally:
-        db.close()
+        session.add(event)
+        await session.commit()
 
 
 async def get_session_history_from_events(thread_id: str) -> list[dict[str, Any]]:
-    """Reconstruct session history by replaying logged stream events.
+    """Reconstruct message history from session events table."""
+    events = await get_session_events(thread_id)
 
-    This provides high fidelity history including partial thinking, logs, and UI state
-    that LangGraph checkpoints might not fully capture.
-    """
-    events = get_session_events(thread_id)
-    if not events:
-        # Fallback to checkpoint-based history
-        return await get_session_history(thread_id)
-
-    display_items = []
-
-    # Map of tool_id -> agent_card item (for updating status later)
-    agent_cards_map = {}
-
-    # Stack of contexts. Each context is a list where new items should be appended.
-    # Level 0 is the main display_items list.
-    # Level 1+ are the 'logs' arrays of active agent cards.
-    context_stack = [display_items]
-
-    # Stack of active agent_id/tool_id to know when to pop the context
-    active_agent_stack = []
-
-    def generate_id():
-        import random
-        import string
-        import time
-        return str(int(time.time() * 1000)) + "".join(
-            random.choices(string.ascii_lowercase + string.digits, k=7)
-        )
-
+    # Convert events to display items format
+    messages = []
     for event in events:
-        etype = event["event_type"]
-        data = event["payload"]
+        event_type = event.get("event_type")
+        payload = event.get("payload", {})
 
-        # Current list to append to
-        current_list = context_stack[-1]
+        if event_type == "user_message":
+            messages.append({
+                "type": "message",
+                "role": "user",
+                "content": payload.get("content", ""),
+                "id": payload.get("id", _generate_id()),
+            })
+        elif event_type == "ai_message":
+            messages.append({
+                "type": "message",
+                "role": "assistant",
+                "content": payload.get("content", ""),
+                "id": payload.get("id", _generate_id()),
+            })
+        elif event_type == "thinking":
+            messages.append({
+                "type": "thinking",
+                "content": payload.get("content", ""),
+                "id": payload.get("id", _generate_id()),
+            })
+        elif event_type == "tool_call":
+            messages.append({
+                "type": "tool_call",
+                "id": payload.get("id", _generate_id()),
+                "props": {
+                    "toolName": payload.get("tool_name"),
+                    "args": payload.get("args", {}),
+                    "status": payload.get("status", "pending"),
+                    "indent": False,
+                },
+            })
+        elif event_type == "agent_card":
+            messages.append({
+                "type": "agent_card",
+                "id": payload.get("id", _generate_id()),
+                "props": {
+                    "agentId": payload.get("agent_id"),
+                    "agentName": payload.get("agent_name"),
+                    "status": payload.get("status", "working"),
+                    "persona": payload.get("agent_name", "").lower(),
+                    "logs": payload.get("logs", []),
+                },
+            })
 
-        if etype == "user_message":
-            # User messages always go to the root (display_items)
-            # You might want them nested if a sub-agent asks a question,
-            # but usually user messages are top-level interactions.
-            display_items.append(
-                {
-                    "id": f"user-{int(time.time() * 1000)}-{len(display_items)}",
-                    "type": "message",
-                    "role": "user",
-                    "content": data.get("content", ""),
-                }
-            )
-
-        elif etype == "text":
-            content = data.get("content", "")
-            agent = data.get("agent", "Director")
-            agent_id = data.get("agent_id")
-
-            # Check if we can append to the last message if it's the same agent
-            last_item = current_list[-1] if current_list else None
-
-            # Logic for appending to existing message or creating new one
-            # For AgentLogs (nested), structure is slightly different (AgentLog interface)
-            # but we use the same generic "message" type or "text" type mapping in frontend?
-            # Frontend AgentCard expects: { type: 'text', content: string | node }
-
-            if len(context_stack) > 1:
-                # Inside an agent card
-                if (
-                    last_item
-                    and last_item.get("type") == "text"
-                    # We assume sequential text from same agent is one block
-                ):
-                    # If content is string, append
-                    if isinstance(last_item.get("content"), str):
-                        last_item["content"] += content
-                else:
-                    current_list.append({
-                        "id": generate_id(),
-                        "type": "text",
-                        "content": content,
-                        "taskName": agent # Optional metadata
-                    })
-            else:
-                # Top level
-                if (
-                    last_item
-                    and last_item["type"] == "message"
-                    and last_item.get("role") == "assistant"
-                    and last_item.get("agent_id") == agent_id
-                ):
-                    last_item["content"] += content
-                else:
-                    current_list.append(
-                        {
-                            "id": f"msg-{int(time.time() * 1000)}-{len(display_items)}",
-                            "type": "message",
-                            "role": "assistant",
-                            "agent": agent,
-                            "agent_id": agent_id,
-                            "content": content,
-                        }
-                    )
-
-        elif etype == "thinking":
-            content = data.get("content", "")
-            agent = data.get("agent")
-            agent_id = data.get("agent_id")
-
-            last_item = current_list[-1] if current_list else None
-
-            if len(context_stack) > 1:
-                # Inside agent card
-                if last_item and last_item.get("type") == "thinking":
-                    last_item["content"] += content
-                else:
-                    current_list.append({
-                        "id": generate_id(),
-                        "type": "thinking",
-                        "content": content
-                    })
-            else:
-                # Top level
-                if (
-                    last_item
-                    and last_item["type"] == "thinking"
-                    and last_item.get("agent_id") == agent_id
-                ):
-                    last_item["content"] += content
-                else:
-                    current_list.append(
-                        {
-                            "id": f"think-{int(time.time() * 1000)}-{len(display_items)}",
-                            "type": "thinking",
-                            "agent": agent,
-                            "agent_id": agent_id,
-                            "content": content,
-                        }
-                    )
-
-        elif etype == "tool_start":
-            tool_name = data.get("tool")
-            tool_id = data.get("id")
-
-            if tool_name == "task_delegation":
-                # Start of a sub-agent
-                agent_name = data.get("input", {}).get("agent", "Specialist")
-
-                new_card = {
-                    "id": tool_id,
-                    "type": "agent_card",
-                    "props": {
-                        "agentId": tool_id,
-                        "agentName": agent_name,
-                        "status": "working",
-                        "persona": agent_name.lower(),
-                        "logs": [],
-                    },
-                }
-
-                current_list.append(new_card)
-
-                # Store reference for status updates
-                agent_cards_map[tool_id] = new_card
-
-                # Push new context
-                context_stack.append(new_card["props"]["logs"])
-                active_agent_stack.append(tool_id)
-
-            else:
-                # Normal tool call
-                # Structure for AgentLog inside card vs top level might differ
-                # Top level: type="tool_call"
-                # Inside card: type="tool_call", toolProps=...
-
-                tool_item = {
-                    "id": tool_id,
-                    "type": "tool_call",
-                    "props": {
-                        "toolName": tool_name,
-                        "args": data.get("input"),
-                        "status": "working",
-                        "indent": False,
-                    },
-                }
-
-                # If inside card, wrap it to match AgentLog interface
-                if len(context_stack) > 1:
-                    current_list.append({
-                        "id": tool_id,
-                        "type": "tool_call",
-                        "toolProps": tool_item["props"]
-                    })
-                else:
-                    current_list.append(tool_item)
-
-        elif etype == "tool_end":
-            item_id = data.get("id")
-            status = data.get("status", "success")
-            result = data.get("result")
-
-            # Check if this closes an active delegation
-            if active_agent_stack and active_agent_stack[-1] == item_id:
-                # Pop context
-                context_stack.pop()
-                active_agent_stack.pop()
-
-                # Update the card status
-                if item_id in agent_cards_map:
-                    agent_cards_map[item_id]["props"]["status"] = status
-                    # We don't usually show result for agent card, but we could
-            else:
-                # Update normal tool call
-                # We need to find it in the current list (or check active context)
-                # Since we don't have a map for all tool calls, we iterate back?
-                # Or we can just search recursively if needed, but typically tool_end follows tool_start
-                # in the same context.
-
-                # Simplification: search in current_list first
-                found = False
-                for item in reversed(current_list):
-                    # Top level tool call
-                    if item.get("id") == item_id:
-                        if "props" in item:
-                            item["props"]["status"] = status
-                            item["props"]["result"] = result
-                        found = True
-                        break
-
-                    # Nested tool call (AgentLog)
-                    if item.get("type") == "tool_call" and item.get("id") == item_id:
-                        if "toolProps" in item:
-                            item["toolProps"]["status"] = status
-                            item["toolProps"]["result"] = result
-                        found = True
-                        break
-
-                # If not found in current context (maybe edge case?), we could search up stack,
-                # but valid event streams should nest correctly.
-
-        # ... Handle other events like node updates if needed
-
-    return display_items
+    return messages

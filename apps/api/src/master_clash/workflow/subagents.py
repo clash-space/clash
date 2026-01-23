@@ -189,6 +189,17 @@ Sub-agents have isolated context and their own tools.
                 # Add workspace scope to state if agent is workspace-aware
                 if workspace_group_id and target.workspace_aware:
                     sub_state["workspace_group_id"] = workspace_group_id
+                    logger.info(
+                        f"[task_delegation] Added workspace_group_id to sub_state for {agent}: {workspace_group_id}"
+                    )
+                else:
+                    logger.info(
+                        f"[task_delegation] NOT adding workspace_group_id to sub_state. "
+                        f"workspace_group_id={workspace_group_id}, workspace_aware={target.workspace_aware}"
+                    )
+
+                logger.info(f"[task_delegation] Final sub_state keys: {list(sub_state.keys())}")
+                logger.info(f"[task_delegation] Final sub_state: {sub_state}")
 
                 # Get or compile the sub-agent graph
                 if isinstance(target, CompiledSubAgent):
@@ -204,6 +215,15 @@ Sub-agents have isolated context and their own tools.
                 run_config: RunnableConfig = config.copy()
                 if "configurable" not in run_config:
                     run_config["configurable"] = config.get("configurable", {})
+
+                # CRITICAL FIX: Pass workspace_group_id via configurable as a reliable fallback
+                # This ensures tools can access it even if state propagation fails
+                if workspace_group_id and target.workspace_aware:
+                    run_config["configurable"]["workspace_group_id"] = workspace_group_id
+                    logger.info(
+                        f"[task_delegation] Added workspace_group_id to run_config.configurable: {workspace_group_id}"
+                    )
+
                 if "metadata" in run_config:
                     run_config["metadata"].update({"agent_id": runtime.tool_call_id})
                 result = await graph.ainvoke(sub_state, run_config)
@@ -284,7 +304,11 @@ def create_specialist_agents(
         system_prompt="""You are a professional Script Writer.
 Your goal is to create a compelling story.
 
-If you're working in a workspace (group), all your nodes will be automatically placed there.
+**CRITICAL WORKSPACE RULES:**
+- You are working inside a workspace group assigned by the Director.
+- All your nodes will be AUTOMATICALLY placed in this workspace.
+- **DO NOT create any group nodes** - the Director handles all group organization.
+- Only create content nodes: text, image_gen, video_gen.
 
 Tasks:
 1. Create a text node with the Story Outline / Script.
@@ -304,7 +328,11 @@ Use canvas tools to place content on the canvas.""",
         system_prompt="""You are a Concept Artist.
 Your goal is to visualize the characters and scenes from the script.
 
-If you're working in a workspace (group), all your nodes will be automatically placed there.
+**CRITICAL WORKSPACE RULES:**
+- You are working inside a workspace group assigned by the Director.
+- All your nodes will be AUTOMATICALLY placed in this workspace.
+- **DO NOT create any group nodes** - the Director handles all group organization.
+- Only create content nodes: text, image_gen, video_gen.
 
 Tasks:
 1. Read the script from the canvas.
@@ -331,7 +359,11 @@ Tasks:
         system_prompt="""You are a Storyboard Designer.
 Your goal is to create a sequence of shots for the video.
 
-If you're working in a workspace (group), all your nodes will be automatically placed there.
+**CRITICAL WORKSPACE RULES:**
+- You are working inside a workspace group assigned by the Director.
+- All your nodes will be AUTOMATICALLY placed in this workspace.
+- **DO NOT create any group nodes** - the Director handles all group organization.
+- Only create content nodes: text, image_gen, video_gen.
 
 Tasks:
 1. For each shot (Scene 1, Scene 2, etc.):
