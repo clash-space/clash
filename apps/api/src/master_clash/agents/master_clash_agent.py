@@ -5,7 +5,7 @@ from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_google_genai import ChatGoogleGenerativeAI
 
 from master_clash.config import get_settings
-from master_clash.prompts import DIRECTOR_SYSTEM_PROMPT
+from master_clash.prompts import MASTERCLASH_SYSTEM_PROMPT
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
@@ -30,7 +30,7 @@ class MasterClashAgent:
         ]
 
         try:
-            logger.info("Director Agent planning...")
+            logger.info("MasterClash Agent planning...")
             response = await self.llm.ainvoke(messages)
             content = response.content
 
@@ -41,9 +41,9 @@ class MasterClashAgent:
                  content = content.split("```")[1].split("```")[0]
 
             plan = json.loads(content.strip())
-            logger.info(f"Director Agent plan: {plan}")
+            logger.info(f"MasterClash Agent plan: {plan}")
             return plan
         except Exception as e:
-            logger.error(f"Director Agent planning failed: {e}")
+            logger.error(f"MasterClash Agent planning failed: {e}")
             # Return empty plan on error
             return {"thought": f"I encountered an error while planning: {str(e)}", "plan": []}

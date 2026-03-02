@@ -19,7 +19,8 @@ class StreamEmitter:
         if thread_id:
             from master_clash.services.session_interrupt import log_session_event
 
-            log_session_event(thread_id, event_type, data)
+            # Use create_task to fire-and-forget the async log call
+            asyncio.create_task(log_session_event(thread_id, event_type, data))
 
         return f"event: {event_type}\ndata: {json_dumps(data)}\n\n"
 
@@ -27,7 +28,7 @@ class StreamEmitter:
         self,
         content: str,
         thread_id: str | None = None,
-        agent: str = "Director",
+        agent: str = "MasterClash",
         agent_id: str | None = None,
     ) -> str:
         """Output text token/message."""

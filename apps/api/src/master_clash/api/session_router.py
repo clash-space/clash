@@ -48,8 +48,8 @@ async def get_session_status_endpoint(thread_id: str):
     """
     logger.info(f"[SessionAPI] Status check: thread_id={thread_id}")
     
-    status = get_session_status(thread_id)
-    
+    status = await get_session_status(thread_id)
+
     return SessionStatusResponse(
         thread_id=thread_id,
         status=status,
@@ -80,7 +80,7 @@ async def interrupt_session_endpoint(thread_id: str):
         )
     else:
         # Check if session exists
-        status = get_session_status(thread_id)
+        status = await get_session_status(thread_id)
         if status is None:
             raise HTTPException(
                 status_code=404,
@@ -140,8 +140,8 @@ async def list_project_sessions_endpoint(project_id: str):
     """
     logger.info(f"[SessionAPI] Project session list requested: project_id={project_id}")
     
-    sessions = list_project_sessions(project_id)
-    
+    sessions = await list_project_sessions(project_id)
+
     return ProjectSessionListResponse(
         project_id=project_id,
         sessions=sessions,

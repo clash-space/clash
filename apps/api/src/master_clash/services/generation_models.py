@@ -310,12 +310,19 @@ async def _submit_kie_image2video(request: VideoGenerationRequest) -> VideoSubmi
     tail_image_url = params.get("tail_image_url")
     kie_model = _get_kie_model_name(request.model_id)
 
+    # Validate aspect_ratio for KIE (only supports "16:9", "9:16", "1:1")
+    valid_aspect_ratios = {"16:9", "9:16", "1:1"}
+    aspect_ratio = str(params.get("aspect_ratio", "16:9"))
+    if aspect_ratio not in valid_aspect_ratios:
+        logger.warning(f"[Generation] Invalid aspect_ratio '{aspect_ratio}' for KIE, defaulting to '16:9'")
+        aspect_ratio = "16:9"
+
     try:
         task_id = await kling_kie_client.create_image_to_video_task(
             image_url=image_url,
             prompt=request.prompt,
             duration=str(params.get("duration", "5")),
-            aspect_ratio=str(params.get("aspect_ratio", "16:9")),
+            aspect_ratio=aspect_ratio,
             negative_prompt=str(params.get("negative_prompt", "blur, distort, low quality")),
             cfg_scale=float(params.get("cfg_scale", 0.5)),
             resolution=params.get("resolution"),

@@ -367,6 +367,7 @@ async def _get_checkpoint_tuple(checkpointer: Any, config: dict[str, Any]):
 async def get_session_events(thread_id: str) -> list[dict[str, Any]]:
     """Retrieve all logged events for a session."""
     from master_clash.database.models import SessionEvent
+    from master_clash.json_utils import loads as json_loads
 
     async with get_db_context() as session:
         result = await session.execute(
@@ -375,14 +376,27 @@ async def get_session_events(thread_id: str) -> list[dict[str, Any]]:
         )
         events = result.scalars().all()
 
-        return [
-            {
+        processed_events = []
+        for e in events:
+            payload = e.payload
+            # Handle case where JSON is returned as string (e.g. SQLite)
+            if isinstance(payload, str):
+                try:
+                    payload = json_loads(payload)
+                except Exception:
+                    logger.warning(f"Failed to parse payload JSON for event {e.id}")
+                    payload = {}
+            elif not isinstance(payload, dict):
+                # Ensure payload is always a dict
+                payload = {}
+
+            processed_events.append({
                 "event_type": e.event_type,
-                "payload": e.payload if isinstance(e.payload, dict) else {},
+                "payload": payload,
                 "created_at": e.created_at,
-            }
-            for e in events
-        ]
+            })
+
+        return processed_events
 
 
 async def log_session_event(thread_id: str, event_type: str, payload: dict[str, Any]) -> None:
@@ -405,45 +419,126 @@ async def get_session_history_from_events(thread_id: str) -> list[dict[str, Any]
 
     # Convert events to display items format
     messages = []
+    # Map to find items by their ID for updates
+    items_by_id = {}
+    # Map to find nested log entries by tool ID
+    tool_logs_by_id = {}
+
     for event in events:
         event_type = event.get("event_type")
         payload = event.get("payload", {})
 
-        if event_type == "user_message":
+        if event_type in ("user_message", "human"):
+            # Handle user/human messages
             messages.append({
                 "type": "message",
                 "role": "user",
                 "content": payload.get("content", ""),
                 "id": payload.get("id", _generate_id()),
             })
-        elif event_type == "ai_message":
+        elif event_type in ("ai_message", "text", "assistant"):
+            # Handle AI/assistant messages - map 'text' event to ai_message
             messages.append({
                 "type": "message",
                 "role": "assistant",
-                "content": payload.get("content", ""),
+                "content": payload.get("content", payload.get("content", "")),
                 "id": payload.get("id", _generate_id()),
             })
         elif event_type == "thinking":
+            # Append thinking to the last agent card if it belongs to it, or create new
+            agent_name = payload.get("agent")
+            content = payload.get("content", "")
+            # (Simplified: just show as thinking message for now to avoid complexity)
             messages.append({
                 "type": "thinking",
-                "content": payload.get("content", ""),
+                "content": content,
                 "id": payload.get("id", _generate_id()),
             })
-        elif event_type == "tool_call":
-            messages.append({
-                "type": "tool_call",
-                "id": payload.get("id", _generate_id()),
-                "props": {
-                    "toolName": payload.get("tool_name"),
-                    "args": payload.get("args", {}),
-                    "status": payload.get("status", "pending"),
-                    "indent": False,
-                },
-            })
+        elif event_type in ("tool_call", "tool_start"):
+            # Handle tool calls
+            tool_name = payload.get("tool_name") or payload.get("tool") or payload.get("name") or "unknown"
+            args = payload.get("args") or payload.get("input") or payload.get("arguments") or {}
+            status = payload.get("status", "pending")
+            agent_name = payload.get("agent")
+            agent_id = payload.get("agent_id")
+            item_id = payload.get("id", _generate_id())
+
+            # Logic to determine if standalone or nested
+            is_standalone = True
+            if agent_name and agent_name not in ("Director", "Agent", "agent", "MasterClash"):
+                is_standalone = False
+
+            # Special case: task_delegation is always standalone/special in frontend
+            if tool_name == "task_delegation":
+                is_standalone = True
+
+            target_card = None
+            if not is_standalone:
+                # Try to find the active agent card to append to
+                if agent_id and agent_id in items_by_id:
+                     target_card = items_by_id[agent_id]
+                elif agent_name:
+                    # Find last card with this agent name
+                    for msg in reversed(messages):
+                        if msg.get("type") == "agent_card" and msg.get("props", {}).get("agentName") == agent_name:
+                            target_card = msg
+                            break
+
+            if target_card:
+                # Append to logs
+                log_entry = {
+                    "id": item_id,
+                    "type": "tool_call",
+                    "toolProps": {
+                        "toolName": tool_name,
+                        "args": args,
+                        "status": status,
+                        "indent": False,
+                    }
+                }
+                if "logs" not in target_card["props"]:
+                    target_card["props"]["logs"] = []
+                target_card["props"]["logs"].append(log_entry)
+                tool_logs_by_id[item_id] = log_entry
+            else:
+                # Create standalone message
+                item = {
+                    "type": "tool_call",
+                    "id": item_id,
+                    "props": {
+                        "toolName": tool_name,
+                        "args": args,
+                        "status": status,
+                        "indent": False,
+                    },
+                }
+                messages.append(item)
+                items_by_id[item_id] = item
+
+        elif event_type == "tool_end":
+            item_id = payload.get("id")
+            status = payload.get("status", "success")
+            result = payload.get("result")
+
+            if item_id:
+                # Try updating standalone tool
+                if item_id in items_by_id:
+                    tool_item = items_by_id[item_id]
+                    if tool_item.get("type") == "tool_call":
+                        tool_item["props"]["status"] = status
+                        tool_item["props"]["result"] = result
+
+                # Try updating nested tool log
+                if item_id in tool_logs_by_id:
+                    log_entry = tool_logs_by_id[item_id]
+                    log_entry["toolProps"]["status"] = status
+                    log_entry["toolProps"]["result"] = result
+
         elif event_type == "agent_card":
-            messages.append({
+            item_id = payload.get("id", _generate_id())
+            item = {
                 "type": "agent_card",
-                "id": payload.get("id", _generate_id()),
+                "id": item_id,
                 "props": {
                     "agentId": payload.get("agent_id"),
                     "agentName": payload.get("agent_name"),
@@ -451,6 +546,74 @@ async def get_session_history_from_events(thread_id: str) -> list[dict[str, Any]
                     "persona": payload.get("agent_name", "").lower(),
                     "logs": payload.get("logs", []),
                 },
+            }
+            messages.append(item)
+            if payload.get("agent_id"):
+                items_by_id[payload.get("agent_id")] = item
+            items_by_id[item_id] = item
+
+        elif event_type in ("sub_agent_start", "sub_agent_card"):
+            agent_name = payload.get("agent")
+            item_id = payload.get("id", _generate_id())
+            agent_id = payload.get("agent_id") or payload.get("id")
+
+            item = {
+                "type": "agent_card",
+                "id": item_id,
+                "props": {
+                    "agentId": agent_id,
+                    "agentName": agent_name,
+                    "status": "working",
+                    "persona": agent_name.lower() if agent_name else "",
+                    "logs": [],
+                },
+            }
+            messages.append(item)
+            items_by_id[agent_id] = item
+
+        elif event_type == "sub_agent_end":
+            agent_id = payload.get("agent_id") or payload.get("id")
+            agent_name = payload.get("agent")
+
+            found = False
+            if agent_id and agent_id in items_by_id:
+                items_by_id[agent_id]["props"]["status"] = "completed"
+                if payload.get("result"):
+                     items_by_id[agent_id]["props"]["logs"].append({
+                        "id": f"{agent_id}-end",
+                        "type": "text",
+                        "content": f"Completed: {payload.get('result')}"
+                     })
+                found = True
+
+            if not found and agent_name:
+                for msg in reversed(messages):
+                    if msg.get("type") == "agent_card" and msg.get("props", {}).get("agentName") == agent_name:
+                        msg["props"]["status"] = "completed"
+                        break
+
+        elif event_type == "workflow_error":
+            messages.append({
+                "type": "message",
+                "role": "assistant",
+                "content": f"Error: {payload.get('message', 'Unknown error')}",
+                "id": payload.get("id", _generate_id()),
+            })
+
+        elif event_type == "session_interrupted":
+            messages.append({
+                "type": "message",
+                "role": "assistant",
+                "content": f"⏸️ {payload.get('message', 'Session interrupted.')}",
+                "id": payload.get("id", _generate_id()),
+            })
+
+        elif event_type == "human_interrupt":
+            messages.append({
+                "type": "message",
+                "role": "assistant",
+                "content": f"✋ Human input requested: {payload.get('message', '')}",
+                "id": payload.get("id", _generate_id()),
             })
 
     return messages

@@ -90,53 +90,60 @@ def create_supervisor_agent(
     system_prompt: str | None = None,
     backend: CanvasBackendProtocol | None = None,
     checkpointer: Any | None = None,
+    additional_middleware: Sequence[AgentMiddleware] | None = None,
 ) -> Runnable:
     """Create a supervisor agent that delegates to specialists.
 
     Args:
-        model: Language model to use
-        subagents: Specialist sub-agents
-        system_prompt: Optional system prompt
-        backend: Canvas backend
-        checkpointer: Optional persistence checkpointer
+        model: Language model to use.
+        subagents: Specialist sub-agents.
+        system_prompt: Optional system prompt.
+        backend: Canvas backend.
+        checkpointer: Optional persistence checkpointer.
+        additional_middleware: Additional middleware to apply (e.g., SkillsMiddleware).
 
     Returns:
-        Compiled supervisor agent
+        Compiled supervisor agent.
     """
-
-    # Create supervisor-specific tools
     backend = backend or StateCanvasBackend()
-
 
     if system_prompt is None:
         agent_names = [sa.name for sa in subagents]
-        system_prompt = f"""You are the Supervisor. You coordinate work between specialized agents.
+        system_prompt = f"""You are the MasterClash. You handle creative tasks directly using your skills and delegate editing tasks to specialists.
 
-Available agents: {', '.join(agent_names)}
+Available agents for delegation: {', '.join(agent_names)}
+
+## Your Capabilities
+
+You have built-in skills for creative work:
+- **scriptwriting**: Create compelling story outlines and scripts
+- **concept-art**: Visualize characters and scenes through AI image generation
+- **storyboarding**: Create shot sequences and visual flow
+- **Video category best practices**: product-ecommerce, tutorial-explainer, story-narrative, social-media
+
+Use these skills directly - no delegation needed for creative tasks!
 
 ## CRITICAL: Group Management Rules
 
-**ONLY YOU (the Supervisor/Director) can create groups.** Subagents are PROHIBITED from creating groups.
-
-When delegating tasks:
-1. **ALWAYS create a group FIRST** before delegating
-2. **ALWAYS pass `workspace_group_id`** to the subagent via `task_delegation`
-3. Subagents will automatically place all their nodes inside the assigned workspace
-
-This prevents duplicate group creation and keeps the canvas organized.
+**ONLY YOU can create groups.** When organizing work:
+1. **Create a group FIRST** to organize related content
+2. Place your nodes inside that group
 
 ## Your Workflow:
 
-1. **Create Workspace Group FIRST**:
+1. **Create Workspace Group** for organized projects:
    - Use `create_node(node_type="group", ...)` to create a workspace
    - Get the returned group ID (e.g., "group-abc-123")
 
-2. **Then Delegate Tasks** with the workspace_group_id:
-   - Use `task_delegation(agent="...", instruction="...", workspace_group_id="group-abc-123")`
-   - The subagent's nodes will automatically be placed in this group
-   - **NEVER delegate without providing workspace_group_id** (except for Editor)
+2. **Handle Creative Tasks Directly**:
+   - Use your scriptwriting skill to create scripts and outlines
+   - Use concept-art skill for character/scene visualization
+   - Use storyboarding skill for shot sequences
+   - Create nodes directly on the canvas
 
-3. **Simple Tasks**: You can also handle simple tasks directly using tools
+3. **Delegate to Editor** for timeline assembly:
+   - Only the Editor agent handles timeline DSL operations
+   - See Video Editor Workflow below
 
 ## Video Editor Workflow:
 
@@ -175,14 +182,10 @@ Step 1: Create workspace
 create_node(node_type="group", payload={{"label": "Space Explorer Character", "description": "Character design workspace"}})
 → Returns: group-abc-123
 
-Step 2: Delegate to specialist
-task_delegation(
-  agent="ConceptArtist",
-  instruction="Design a space explorer character with futuristic suit",
-  workspace_group_id="group-abc-123"
-)
-
-All the agent's work (prompts, images) will be organized inside that group!
+Step 2: Use your concept-art skill directly
+- Create an image_gen node with the character design prompt
+- Follow the prompt engineering best practices from your skill
+- No delegation needed!
 
 ## Using Selected Nodes
 
@@ -191,12 +194,22 @@ Use `read_node` tool to get the full details (type, src, label, etc.) of these n
 The user wants you to work with these specific nodes - always read them first to understand the context.
 """
 
-    # Create supervisor with SubAgentMiddleware + CanvasMiddleware
-    return create_agent_with_middleware(
+    # Build middleware stack:
+    # 1. Additional middleware (e.g., SkillsMiddleware, CanvasMiddleware from caller)
+    # 2. SubAgentMiddleware for delegation to specialists
+    middleware_stack: list[AgentMiddleware] = []
+
+    if additional_middleware:
+        middleware_stack.extend(additional_middleware)
+
+    # Add SubAgentMiddleware for Editor delegation
+    middleware_stack.append(SubAgentMiddleware(subagents=subagents))
+
+    # Create supervisor with explicit middleware stack
+    return create_agent(
         model=model,
         tools=[],
         system_prompt=system_prompt,
-        backend=backend,
-        subagents=subagents,
+        middleware=middleware_stack,
         checkpointer=checkpointer,
     )

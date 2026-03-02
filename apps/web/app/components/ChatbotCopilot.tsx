@@ -809,7 +809,7 @@ export default function ChatbotCopilot({
                     }
 
                     // No agent_id for sub-agent: ignore to avoid mis-append
-                    if (agentName !== 'Director' && agentName !== 'Agent' && !resolvedAgentId) {
+                    if (agentName !== 'MasterClash' && agentName !== 'Agent' && !resolvedAgentId) {
                         return;
                     }
 
@@ -850,8 +850,8 @@ export default function ChatbotCopilot({
                 }
 
                 // If agent is Director (or generic Agent), show standalone tool call
-                // Check for 'Director', 'Agent', or 'agent'
-                if (data.agent === 'Director' || data.agent === 'Agent' || data.agent === 'agent') {
+                // Check for 'Director', 'Agent', or 'agent', or 'MasterClash'
+                if (data.agent === 'Director' || data.agent === 'Agent' || data.agent === 'agent' || data.agent === 'MasterClash') {
                     // Special handling for task_delegation
                     if (data.tool === 'task_delegation') {
                         const targetAgent = data.input.agent;
@@ -1468,7 +1468,7 @@ export default function ChatbotCopilot({
 
         const handleMouseUp = () => {
             setIsResizing(false);
-            document.body.style.userSelect = '';
+            document.body.style.userSelect = 'auto';
         };
 
         if (isResizing) {

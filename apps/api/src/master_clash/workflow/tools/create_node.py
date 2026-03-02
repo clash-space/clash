@@ -79,7 +79,7 @@ def create_create_node_tool(backend: CanvasBackendProtocol) -> BaseTool:
         logger.info(f"[create_node] Debug - full runtime.state keys: {list(runtime.state.keys())}")
 
         # RULE: Subagents working in a workspace MUST NOT create new groups
-        # The Director is responsible for creating groups and assigning workspaces
+        # The MasterClash is responsible for creating groups and assigning workspaces
         if node_type == "group" and workspace_group_id:
             logger.warning(
                 f"[create_node] BLOCKED: Attempted to create group while workspace_group_id={workspace_group_id} is set. "

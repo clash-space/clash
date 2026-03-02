@@ -438,7 +438,7 @@ You have access to canvas tools for creating and managing visual content:
 - read_node: Read a specific node's full data (use after list to get complete content)
 - create_node: Create text/group nodes (group creation is RESTRICTED - see below)
   - text: For notes and scripts
-  - group: For organization (RESTRICTED to Director only)
+  - group: For organization (RESTRICTED to MasterClash only)
 - list_models: List available models for generation. Use kind filter:
   - kind="image_gen" or "image": Image generation models
   - kind="video_gen" or "video": Video generation models

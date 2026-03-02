@@ -12,7 +12,7 @@ import asyncio
 import logging
 import uuid
 from datetime import datetime
-from typing import Any, Literal
+from typing import Any, Callable, Literal
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from pydantic import BaseModel
@@ -535,7 +535,7 @@ async def process_image_generation(
 
         except Exception as e:
             logger.error(f"[Tasks] Image gen failed: {e}")
-            await _fail_task_with_retry(task, str(e), session)
+            await _fail_task_with_retry(task, str(e), session, callback_url)
 
 
 async def process_video_generation(
@@ -665,7 +665,7 @@ async def process_video_generation(
 
         except Exception as e:
             logger.error(f"[Tasks] Video gen failed: {e}", exc_info=True)
-            await _fail_task_with_retry(task, str(e), session)
+            await _fail_task_with_retry(task, str(e), session, callback_url)
 
 
 async def process_audio_generation(
@@ -734,7 +734,7 @@ async def process_audio_generation(
 
         except Exception as e:
             logger.error(f"[Tasks] ❌ audio_gen failed: {e}", exc_info=True)
-            await _fail_task_with_retry(task, str(e), session)
+            await _fail_task_with_retry(task, str(e), session, callback_url)
 
 
 async def process_image_description(
@@ -790,7 +790,11 @@ async def process_image_description(
 
         except Exception as e:
             logger.error(f"[Tasks] ❌ image_desc failed: {e}", exc_info=True)
-            await _fail_task_with_retry(task, str(e), session)
+            await _fail_task_with_retry(
+                task, str(e), session, callback_url, on_final_fail=lambda: _send_loro_callback(
+                    callback_url, node_id, {"status": "failed", "pendingTask": None}
+                ) if callback_url and node_id else None
+            )
 
 
 async def process_video_description(
@@ -846,7 +850,11 @@ async def process_video_description(
 
         except Exception as e:
             logger.error(f"[Tasks] ❌ video_desc failed: {e}", exc_info=True)
-            await _fail_task_with_retry(task, str(e), session)
+            await _fail_task_with_retry(
+                task, str(e), session, callback_url, on_final_fail=lambda: _send_loro_callback(
+                    callback_url, node_id, {"status": "failed", "pendingTask": None}
+                ) if callback_url and node_id else None
+            )
 
 
 async def process_video_render(
@@ -913,7 +921,7 @@ async def process_video_render(
 
         except Exception as e:
             logger.error(f"[Tasks] ❌ video_render failed: {e}", exc_info=True)
-            await _fail_task_with_retry(task, str(e), session)
+            await _fail_task_with_retry(task, str(e), session, callback_url)
 
 
 async def process_video_thumbnail(
@@ -985,8 +993,22 @@ async def renew_lease(task_id: str) -> bool:
         return True
 
 
-async def _fail_task_with_retry(task: AigcTask, error: str, session: AsyncSession) -> None:
-    """Fail task and schedule retry if needed."""
+async def _fail_task_with_retry(
+    task: AigcTask,
+    error: str,
+    session: AsyncSession,
+    callback_url: str | None = None,
+    on_final_fail: Callable[..., Any] | None = None,
+) -> None:
+    """Fail task and schedule retry if needed.
+
+    Args:
+        task: The task to fail.
+        error: Error message.
+        session: Database session.
+        callback_url: URL forloro callback on final failure.
+        on_final_fail: Optional callback function to execute on final failure (before db commit).
+    """
     from master_clash.api.retry_manager import RETRY_STRATEGY_EXPONENTIAL, schedule_retry
 
     retry_scheduled = await schedule_retry(
@@ -999,12 +1021,19 @@ async def _fail_task_with_retry(task: AigcTask, error: str, session: AsyncSessio
         logger.info(f"[Tasks] 🔄 Task {task.task_id[:8]} scheduled for retry")
         return
 
+    # Execute final failure callback if provided (e.g., for loro callbacks with node_id)
+    if on_final_fail:
+        await on_final_fail()
+
     now = int(datetime.utcnow().timestamp() * 1000)
     task.status = STATUS_FAILED
     task.error_message = error
     task.updated_at = now
     await session.commit()
     logger.warning(f"[Tasks] ❌ Task {task.task_id[:8]} permanently failed")
+
+    if callback_url:
+        await _callback_to_loro(callback_url, task.task_id, "failed", None, error, session)
 
 
 async def _callback_to_loro(

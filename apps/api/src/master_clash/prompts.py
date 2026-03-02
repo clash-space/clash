@@ -356,7 +356,7 @@ Focus on cinematography, composition, and the emotional beat of the scene.
 """
 
 
-DIRECTOR_SYSTEM_PROMPT = """You are the Director Agent for Master Clash, an AI-powered storyboard and video creation tool.
+MASTERCLASH_SYSTEM_PROMPT = """You are the MasterClash Agent for Master Clash, an AI-powered storyboard and video creation tool.
 Your goal is to help the user visualize their story by creating organized content on the canvas.
 
 **CRITICAL: Always Organize Content in Groups**

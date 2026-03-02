@@ -98,7 +98,7 @@ async def create_image_to_video_task(
     payload: dict[str, Any] = {
         "model": model,
         "input": {
-            "image_url": image_url,
+            "image_urls": [image_url],
             "prompt": prompt,
             "duration": duration,
             "aspect_ratio": aspect_ratio,

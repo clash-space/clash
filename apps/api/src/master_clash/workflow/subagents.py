@@ -286,101 +286,20 @@ def create_specialist_agents(
     canvas_middleware: AgentMiddleware,
     timeline_middleware: AgentMiddleware,
 ) -> Sequence[SubAgent]:
-    """Create the four specialist agents for video creation.
+    """Create specialist agents for video creation.
+
+    After skills integration, only the Editor remains as a subagent.
+    ScriptWriter, ConceptArtist, and StoryboardDesigner capabilities
+    are now handled via skills in the supervisor's system prompt.
 
     Args:
-        model: Language model to use
-        canvas_middleware: Canvas middleware for tools
-        todo_middleware: Todo middleware for planning
-        timeline_middleware: Timeline middleware for editing operations
+        model: Language model to use.
+        canvas_middleware: Canvas middleware for tools.
+        timeline_middleware: Timeline middleware for editing operations.
 
     Returns:
-        List of sub-agent definitions
+        List of sub-agent definitions (only Editor).
     """
-
-    script_writer = SubAgent(
-        name="ScriptWriter",
-        description="Professional script writer for creating story outlines",
-        system_prompt="""You are a professional Script Writer.
-Your goal is to create a compelling story.
-
-**CRITICAL WORKSPACE RULES:**
-- You are working inside a workspace group assigned by the Director.
-- All your nodes will be AUTOMATICALLY placed in this workspace.
-- **DO NOT create any group nodes** - the Director handles all group organization.
-- Only create content nodes: text, image_gen, video_gen.
-
-Tasks:
-1. Create a text node with the Story Outline / Script.
-2. Create text nodes for Character Bios if needed.
-
-Use canvas tools to place content on the canvas.""",
-        # tools=[list_node_info, read_node, create_node],
-        tools=[],
-        model=model,
-        middleware=[canvas_middleware],
-        workspace_aware=True,  # Auto-scope nodes to workspace
-    )
-
-    concept_artist = SubAgent(
-        name="ConceptArtist",
-        description="Concept artist for visualizing characters and scenes",
-        system_prompt="""You are a Concept Artist.
-Your goal is to visualize the characters and scenes from the script.
-
-**CRITICAL WORKSPACE RULES:**
-- You are working inside a workspace group assigned by the Director.
-- All your nodes will be AUTOMATICALLY placed in this workspace.
-- **DO NOT create any group nodes** - the Director handles all group organization.
-- Only create content nodes: text, image_gen, video_gen.
-
-Tasks:
-1. Read the script from the canvas.
-2. For each character or scene:
-   - Create a PromptActionNode (type='image_gen') with:
-     * label: Descriptive name (e.g., "Character: Alice")
-     * content: Detailed visual description in Markdown
-     * actionType: 'image-gen'
-   - The node contains both the prompt and generation capability.
-3. AFTER creating a generation node, you MUST wait for it to complete before using its result.
-   - Use wait_for_generation to check status.
-   - If status is 'generating', WAIT and then RETRY.
-   - Repeat until status is 'completed'.""",
-        # tools=[list_node_info, read_node, create_node, wait_for_task],
-        tools=[],
-        model=model,
-        middleware=[canvas_middleware],
-        workspace_aware=True,  # Auto-scope nodes to workspace
-    )
-
-    storyboard_designer = SubAgent(
-        name="StoryboardDesigner",
-        description="Storyboard designer for creating shot sequences",
-        system_prompt="""You are a Storyboard Designer.
-Your goal is to create a sequence of shots for the video.
-
-**CRITICAL WORKSPACE RULES:**
-- You are working inside a workspace group assigned by the Director.
-- All your nodes will be AUTOMATICALLY placed in this workspace.
-- **DO NOT create any group nodes** - the Director handles all group organization.
-- Only create content nodes: text, image_gen, video_gen.
-
-Tasks:
-1. For each shot (Scene 1, Scene 2, etc.):
-   - Create a PromptActionNode (type='image_gen' or 'video_gen') with:
-     * label: Shot name (e.g., "Scene 1: Opening")
-     * content: Detailed scene description in Markdown
-     * actionType: 'image-gen' for stills, 'video-gen' for motion
-   - The node combines prompt editing and generation.
-2. ALWAYS wait for generation nodes to complete using wait_for_generation before creating dependent nodes.
-   - If 'generating', retry after a short delay.""",
-        # tools=[list_node_info, read_node, create_node, wait for_task],
-        tools=[],
-        model=model,
-        middleware=[canvas_middleware],
-        workspace_aware=True,  # Auto-scope nodes to workspace
-    )
-
     editor = SubAgent(
         name="Editor",
         description="Video editor for assembling the final video from timeline nodes",
@@ -433,4 +352,4 @@ The DSL within the video-editor node is the source of truth for the video struct
         workspace_aware=False,  # Editor works globally with specific node_id
     )
 
-    return [script_writer, concept_artist, storyboard_designer, editor]
+    return [editor]

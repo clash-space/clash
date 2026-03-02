@@ -1,9 +1,16 @@
 """Multi-agent LangGraph workflow for the creative canvas.
 
-This module creates a supervisor agent with four specialized sub-agents,
+This module creates a supervisor agent with specialist sub-agents,
 following the deepagents architecture pattern.
+
+After skills integration:
+- Supervisor handles creative tasks directly via skills (scriptwriting, concept-art, storyboarding)
+- Only Editor remains as a subagent (requires TimelineMiddleware for special tools)
 """
 
+from pathlib import Path
+
+from deepagents.backends.filesystem import FilesystemBackend
 from langchain_google_genai import ChatGoogleGenerativeAI
 
 from master_clash.workflow.backends import StateCanvasBackend
@@ -12,7 +19,11 @@ from master_clash.workflow.middleware import (
     CanvasMiddleware,
     TimelineMiddleware,
 )
+from master_clash.workflow.skills_middleware import SkillsMiddleware
 from master_clash.workflow.subagents import create_specialist_agents
+
+# Path to skills directory
+SKILLS_DIR = Path(__file__).parent.parent / "skills"
 
 
 def create_default_llm() -> ChatGoogleGenerativeAI:
@@ -41,28 +52,39 @@ def create_multi_agent_workflow(llm: ChatGoogleGenerativeAI | None = None):
     """Create the multi-agent workflow using deepagents-inspired architecture (sync version).
 
     This creates:
-    1. A supervisor agent that delegates tasks
-    2. Four specialist sub-agents (ScriptWriter, ConceptArtist, StoryboardDesigner, Editor)
-    3. Middleware stack (TodoList, Canvas, SubAgent)
+    1. A supervisor agent with skills (scriptwriting, concept-art, storyboarding, video categories)
+    2. Editor sub-agent (requires TimelineMiddleware for special tools)
+    3. Middleware stack (Skills, Canvas, SubAgent)
     4. Canvas backend for tool operations
 
     Note: This version uses get_checkpointer() which may not work with PostgreSQL.
     For PostgreSQL support, use create_multi_agent_workflow_async() instead.
 
     Args:
-        llm: Optional language model (defaults to Gemini 2.5 Pro)
+        llm: Optional language model (defaults to Gemini).
 
     Returns:
-        Compiled supervisor agent graph
+        Compiled supervisor agent graph.
     """
     llm = llm or create_default_llm()
 
-    # Create backend and middleware
+    # Create backends and middleware
     backend = StateCanvasBackend()
     canvas_middleware = CanvasMiddleware(backend=backend)
     timeline_middleware = TimelineMiddleware()
 
-    # Create specialist sub-agents
+    # Create skills backend and middleware for supervisor
+    # Skills provide creative capabilities and video category best practices
+    skills_backend = FilesystemBackend(root_dir=str(SKILLS_DIR), virtual_mode=True)
+    skills_middleware = SkillsMiddleware(
+        backend=skills_backend,
+        sources=[
+            "/creative/",    # scriptwriting, concept-art, storyboarding
+            "/categories/",  # product-ecommerce, tutorial-explainer, story-narrative, social-media
+        ],
+    )
+
+    # Create specialist sub-agents (only Editor remains)
     subagents = create_specialist_agents(
         model=llm,
         canvas_middleware=canvas_middleware,
@@ -80,6 +102,7 @@ def create_multi_agent_workflow(llm: ChatGoogleGenerativeAI | None = None):
         subagents=subagents,
         backend=backend,
         checkpointer=checkpointer,
+        additional_middleware=[skills_middleware, canvas_middleware],
     )
 
     return supervisor
@@ -89,27 +112,38 @@ async def create_multi_agent_workflow_async(llm: ChatGoogleGenerativeAI | None =
     """Create the multi-agent workflow using deepagents-inspired architecture (async version).
 
     This creates:
-    1. A supervisor agent that delegates tasks
-    2. Four specialist sub-agents (ScriptWriter, ConceptArtist, StoryboardDesigner, Editor)
-    3. Middleware stack (TodoList, Canvas, SubAgent)
+    1. A supervisor agent with skills (scriptwriting, concept-art, storyboarding, video categories)
+    2. Editor sub-agent (requires TimelineMiddleware for special tools)
+    3. Middleware stack (Skills, Canvas, SubAgent)
     4. Canvas backend for tool operations
 
     This async version properly supports PostgreSQL checkpointers.
 
     Args:
-        llm: Optional language model (defaults to Gemini 2.5 Pro)
+        llm: Optional language model (defaults to Gemini).
 
     Returns:
-        Compiled supervisor agent graph
+        Compiled supervisor agent graph.
     """
     llm = llm or create_default_llm()
 
-    # Create backend and middleware
+    # Create backends and middleware
     backend = StateCanvasBackend()
     canvas_middleware = CanvasMiddleware(backend=backend)
     timeline_middleware = TimelineMiddleware()
 
-    # Create specialist sub-agents
+    # Create skills backend and middleware for supervisor
+    # Skills provide creative capabilities and video category best practices
+    skills_backend = FilesystemBackend(root_dir=str(SKILLS_DIR), virtual_mode=True)
+    skills_middleware = SkillsMiddleware(
+        backend=skills_backend,
+        sources=[
+            "/creative/",    # scriptwriting, concept-art, storyboarding
+            "/categories/",  # product-ecommerce, tutorial-explainer, story-narrative, social-media
+        ],
+    )
+
+    # Create specialist sub-agents (only Editor remains)
     subagents = create_specialist_agents(
         model=llm,
         canvas_middleware=canvas_middleware,
@@ -127,6 +161,7 @@ async def create_multi_agent_workflow_async(llm: ChatGoogleGenerativeAI | None =
         subagents=subagents,
         backend=backend,
         checkpointer=checkpointer,
+        additional_middleware=[skills_middleware, canvas_middleware],
     )
 
     return supervisor
