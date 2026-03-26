@@ -1,0 +1,66 @@
+#:schema node_modules/wrangler/config-schema.json
+name = "master-clash-api"
+main = "src/index.ts"
+compatibility_date = "2025-03-14"
+compatibility_flags = ["nodejs_compat"]
+
+[observability]
+enabled = true
+
+# Durable Objects
+[[durable_objects.bindings]]
+name = "ROOM"
+class_name = "ProjectRoom"
+
+[[durable_objects.bindings]]
+name = "SUPERVISOR"
+class_name = "SupervisorAgent"
+
+[[durable_objects.bindings]]
+name = "GENERATION"
+class_name = "GenerationAgent"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["SupervisorAgent"]
+
+[[migrations]]
+tag = "v2"
+new_sqlite_classes = ["GenerationAgent"]
+
+[[migrations]]
+tag = "v3"
+renamed_classes = [{from = "SupervisorAgent", to = "ProjectRoom"}]
+
+[[migrations]]
+tag = "v4"
+new_sqlite_classes = ["SupervisorAgent"]
+
+# D1 Database (shared with frontend)
+[[d1_databases]]
+binding = "DB"
+database_name = "master-clash-frontend"
+database_id = "aab16eeb-a375-490b-ad1e-cd092cd9f4bb"
+
+# R2 Bucket
+[[r2_buckets]]
+binding = "R2_BUCKET"
+bucket_name = "master-clash-assets"
+
+# Environment variables (set via `wrangler secret put`)
+# GOOGLE_API_KEY
+# GOOGLE_AI_STUDIO_BASE_URL
+# KLING_ACCESS_KEY
+# KLING_SECRET_KEY
+# R2_PUBLIC_URL
+# JWT_SECRET
+# BETTER_AUTH_ORIGIN
+# WORKER_PUBLIC_URL
+
+[dev]
+# Only watch src/ to prevent .wrangler/state sqlite writes from triggering reload loops
+watch_dir = "src"
+
+[vars]
+ENVIRONMENT = "development"
+BETTER_AUTH_BASE_PATH = "/api/better-auth"

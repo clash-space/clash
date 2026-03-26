@@ -11,12 +11,7 @@
     "tail": "wrangler tail"
   },
   "dependencies": {
-    "@aws-sdk/client-s3": "^3.940.0",
     "@clash/shared-types": "workspace:*",
-    "@google-cloud/vertexai": "^1.10.0",
-    "@google/generative-ai": "^0.24.1",
-    "@langchain/core": "^1.1.6",
-    "@langchain/google-vertexai": "^2.1.1",
     "hono": "^4.11.1",
     "loro-crdt": "^1.10.3"
   },

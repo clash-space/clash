@@ -23,9 +23,9 @@ export async function GET(
             return NextResponse.json({ error: 'Missing object key' }, { status: 400 });
         }
 
-        // Forward to loro-sync-server thumbnail endpoint
-        const loroSyncUrl = process.env.LORO_SYNC_URL || process.env.NEXT_PUBLIC_LORO_SYNC_URL || 'http://localhost:8787';
-        const httpLoroUrl = loroSyncUrl.replace(/^ws/, 'http');
+        // Forward to api-cf thumbnail endpoint
+        const apiCfUrl = process.env.API_CF_URL || 'http://localhost:8789';
+        const httpLoroUrl = apiCfUrl;
 
         const thumbnailUrl = `${httpLoroUrl}/thumbnails/${objectKey}`;
 

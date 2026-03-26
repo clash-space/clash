@@ -4,10 +4,9 @@ export const ModelKindSchema = z.enum(['image', 'video', 'audio']);
 export type ModelKind = z.infer<typeof ModelKindSchema>;
 
 /**
- * Gemini ImageConfig aspect ratios
- * Reference: https://ai.google.dev/gemini-api/docs/image-generation
+ * Nano Banana 2 aspect ratios (fal.ai)
  */
-export const GEMINI_ASPECT_RATIOS = [
+export const NANO_BANANA_ASPECT_RATIOS = [
   { label: '1:1', value: '1:1' },
   { label: '2:3', value: '2:3' },
   { label: '3:2', value: '3:2' },
@@ -21,13 +20,41 @@ export const GEMINI_ASPECT_RATIOS = [
 ] as const;
 
 /**
- * Gemini ImageConfig image sizes
- * Reference: https://googleapis.github.io/python-genai/genai.html#genai.types.ImageConfig
+ * Nano Banana 2 resolutions (fal.ai)
  */
-export const GEMINI_IMAGE_SIZES = [
+export const NANO_BANANA_RESOLUTIONS = [
+  { label: '0.5K (Draft)', value: '0.5K' },
   { label: '1K (Fast)', value: '1K' },
   { label: '2K (Balanced)', value: '2K' },
   { label: '4K (High Quality)', value: '4K' },
+] as const;
+
+/**
+ * Sora 2 aspect ratios (fal.ai)
+ */
+export const SORA_ASPECT_RATIOS = [
+  { label: '16:9', value: '16:9' },
+  { label: '9:16', value: '9:16' },
+] as const;
+
+/**
+ * FLUX aspect ratios (fal.ai) — mapped to fal image_size values
+ */
+export const FLUX_ASPECT_RATIOS = [
+  { label: '16:9', value: 'landscape_16_9' },
+  { label: '9:16', value: 'portrait_16_9' },
+  { label: '1:1', value: 'square_hd' },
+  { label: '4:3', value: 'landscape_4_3' },
+  { label: '3:4', value: 'portrait_4_3' },
+] as const;
+
+/**
+ * Kling aspect ratios (fal.ai)
+ */
+export const KLING_ASPECT_RATIOS = [
+  { label: '16:9', value: '16:9' },
+  { label: '9:16', value: '9:16' },
+  { label: '1:1', value: '1:1' },
 ] as const;
 
 export const ModelParameterTypeSchema = z.enum(['select', 'slider', 'number', 'text', 'boolean']);
@@ -35,7 +62,6 @@ export type ModelParameterType = z.infer<typeof ModelParameterTypeSchema>;
 
 /**
  * Provider configuration for models
- * Each model can have multiple providers (e.g., ElevenLabs official API or KIE.ai)
  */
 export const ProviderSchema = z.enum(['official', 'kie']);
 export type Provider = z.infer<typeof ProviderSchema>;
@@ -91,232 +117,270 @@ export const ModelCardSchema = z.object({
 export type ModelCard = z.infer<typeof ModelCardSchema>;
 
 export const MODEL_CARDS: ModelCard[] = [
+  // ─── Image: Nano Banana 2 (fal.ai) ──────────────────────────
   {
-    id: 'nano-banana',
-    name: 'Nano Banana',
-    provider: 'Google Gemini',
+    id: 'nano-banana-2',
+    name: 'Nano Banana 2',
+    provider: 'fal.ai',
     kind: 'image',
-    description: 'Gemini 2.5 Flash image generation tuned for fast drafts.',
+    description: 'State-of-the-art fast image generation and editing.',
     parameters: [
       {
         id: 'aspect_ratio',
         label: 'Aspect Ratio',
         type: 'select',
-        options: GEMINI_ASPECT_RATIOS.map(r => ({ label: r.label, value: r.value })),
+        options: NANO_BANANA_ASPECT_RATIOS.map(r => ({ label: r.label, value: r.value })),
         defaultValue: '16:9',
       },
       {
-        id: 'image_size',
-        label: 'Image Size',
+        id: 'resolution',
+        label: 'Resolution',
         type: 'select',
-        options: GEMINI_IMAGE_SIZES.map(s => ({ label: s.label, value: s.value })),
-        defaultValue: '2K',
-        description: 'Higher resolution = better quality but slower generation',
-      },
-      {
-        id: 'stylization',
-        label: 'Stylization',
-        type: 'slider',
-        min: 0,
-        max: 1000,
-        step: 10,
-        defaultValue: 100,
-        description: 'Higher values add more model-driven styling.',
-      },
-      {
-        id: 'weirdness',
-        label: 'Weirdness',
-        type: 'slider',
-        min: 0,
-        max: 1000,
-        step: 10,
-        defaultValue: 0,
-        description: 'Experimentation strength for unexpected details.',
-      },
-      {
-        id: 'diversity',
-        label: 'Diversity',
-        type: 'slider',
-        min: 0,
-        max: 1000,
-        step: 10,
-        defaultValue: 0,
-        description: 'Encourage variety across multiple renders.',
+        options: NANO_BANANA_RESOLUTIONS.map(s => ({ label: s.label, value: s.value })),
+        defaultValue: '1K',
       },
       {
         id: 'count',
         label: 'Count',
         type: 'number',
         min: 1,
-        max: 8,
+        max: 4,
         step: 1,
         defaultValue: 1,
-        description: 'How many candidates to request in one call.',
+        description: 'How many images to generate.',
       },
     ],
     defaultParams: {
       aspect_ratio: '16:9',
-      image_size: '2K',
-      stylization: 100,
-      weirdness: 0,
-      diversity: 0,
+      resolution: '1K',
       count: 1,
     },
     input: { requiresPrompt: true, referenceImage: 'optional', referenceMode: 'single' },
   },
   {
-    id: 'nano-banana-pro',
-    name: 'Nano Banana Pro',
-    provider: 'Google Gemini',
+    id: 'nano-banana-2-edit',
+    name: 'Nano Banana 2 Edit',
+    provider: 'fal.ai',
     kind: 'image',
-    description: 'Gemini 3.0 Pro Image Preview for higher fidelity generations.',
+    description: 'Edit and composite images with text prompts.',
     parameters: [
       {
         id: 'aspect_ratio',
         label: 'Aspect Ratio',
         type: 'select',
-        options: GEMINI_ASPECT_RATIOS.map(r => ({ label: r.label, value: r.value })),
+        options: NANO_BANANA_ASPECT_RATIOS.map(r => ({ label: r.label, value: r.value })),
         defaultValue: '16:9',
       },
       {
-        id: 'image_size',
-        label: 'Image Size',
+        id: 'resolution',
+        label: 'Resolution',
         type: 'select',
-        options: GEMINI_IMAGE_SIZES.map(s => ({ label: s.label, value: s.value })),
-        defaultValue: '2K',
-        description: 'Higher resolution = better quality but slower generation',
+        options: NANO_BANANA_RESOLUTIONS.map(s => ({ label: s.label, value: s.value })),
+        defaultValue: '1K',
+      },
+    ],
+    defaultParams: {
+      aspect_ratio: '16:9',
+      resolution: '1K',
+    },
+    input: { requiresPrompt: true, referenceImage: 'required', referenceMode: 'multi' },
+  },
+
+  // ─── Image: FLUX Schnell (fal.ai) ────────────────────────────
+  {
+    id: 'flux-schnell',
+    name: 'FLUX Schnell',
+    provider: 'fal.ai',
+    kind: 'image',
+    description: 'Ultra-fast image generation, ~1s per image.',
+    parameters: [
+      {
+        id: 'image_size',
+        label: 'Aspect Ratio',
+        type: 'select',
+        options: FLUX_ASPECT_RATIOS.map(r => ({ label: r.label, value: r.value })),
+        defaultValue: 'landscape_16_9',
       },
       {
-        id: 'stylization',
-        label: 'Stylization',
-        type: 'slider',
-        min: 0,
-        max: 1000,
-        step: 10,
-        defaultValue: 200,
-      },
-      {
-        id: 'weirdness',
-        label: 'Weirdness',
-        type: 'slider',
-        min: 0,
-        max: 1000,
-        step: 10,
-        defaultValue: 0,
+        id: 'num_inference_steps',
+        label: 'Steps',
+        type: 'number',
+        min: 1,
+        max: 12,
+        step: 1,
+        defaultValue: 4,
+        description: 'More steps = higher quality but slower.',
       },
       {
         id: 'count',
         label: 'Count',
         type: 'number',
         min: 1,
-        max: 8,
+        max: 4,
         step: 1,
         defaultValue: 1,
-        description: 'How many candidates to request in one call.',
       },
     ],
     defaultParams: {
-      aspect_ratio: '16:9',
-      image_size: '2K',
-      stylization: 200,
-      weirdness: 0,
+      image_size: 'landscape_16_9',
+      num_inference_steps: 4,
       count: 1,
     },
-    input: { requiresPrompt: true, referenceImage: 'optional', referenceMode: 'single' },
+    input: { requiresPrompt: true, referenceImage: 'forbidden', referenceMode: 'none' },
   },
+
+  // ─── Image: FLUX Dev (fal.ai) ────────────────────────────────
   {
-    id: 'kling-image2video',
-    name: 'Kling Image2Video',
-    provider: 'Kling (Beijing)',
-    kind: 'video',
-    description: 'Turn a single keyframe into a short cinematic clip.',
+    id: 'flux-dev',
+    name: 'FLUX Dev',
+    provider: 'fal.ai',
+    kind: 'image',
+    description: 'High-quality image generation with great prompt following.',
     parameters: [
       {
-        id: 'duration',
-        label: 'Duration',
+        id: 'image_size',
+        label: 'Aspect Ratio',
         type: 'select',
-        options: [
-          { label: '5s', value: 5 },
-          { label: '10s', value: 10 },
-        ],
-        defaultValue: 5,
+        options: FLUX_ASPECT_RATIOS.map(r => ({ label: r.label, value: r.value })),
+        defaultValue: 'landscape_16_9',
       },
       {
-        id: 'cfg_scale',
-        label: 'CFG',
+        id: 'num_inference_steps',
+        label: 'Steps',
+        type: 'number',
+        min: 1,
+        max: 50,
+        step: 1,
+        defaultValue: 28,
+        description: 'More steps = higher quality but slower.',
+      },
+      {
+        id: 'guidance_scale',
+        label: 'Guidance Scale',
         type: 'slider',
-        min: 0,
-        max: 1,
-        step: 0.05,
-        defaultValue: 0.5,
-        description: 'Higher values adhere more tightly to the prompt.',
+        min: 1,
+        max: 20,
+        step: 0.5,
+        defaultValue: 3.5,
+        description: 'How closely to follow the prompt.',
+      },
+      {
+        id: 'count',
+        label: 'Count',
+        type: 'number',
+        min: 1,
+        max: 4,
+        step: 1,
+        defaultValue: 1,
       },
     ],
     defaultParams: {
-      duration: 5,
-      cfg_scale: 0.5,
+      image_size: 'landscape_16_9',
+      num_inference_steps: 28,
+      guidance_scale: 3.5,
+      count: 1,
     },
-    input: { requiresPrompt: true, referenceImage: 'required', referenceMode: 'single' },
+    input: { requiresPrompt: true, referenceImage: 'forbidden', referenceMode: 'none' },
   },
+
+  // ─── Video: Sora 2 (fal.ai) ─────────────────────────────────
   {
-    id: 'kling-kie-text2video',
-    name: 'Kling Text2Video Pro',
-    provider: 'Kling AI (KIE)',
+    id: 'sora-2-text-to-video',
+    name: 'Sora 2 (Text)',
+    provider: 'fal.ai',
     kind: 'video',
-    description: 'Direct text-to-video generation via Kling KIE API.',
+    description: 'Generate video from text prompts using OpenAI Sora 2.',
     parameters: [
       {
         id: 'duration',
         label: 'Duration',
         type: 'select',
         options: [
-          { label: '5s', value: '5' },
-          { label: '10s', value: '10' },
+          { label: '4s', value: 4 },
+          { label: '8s', value: 8 },
+          { label: '12s', value: 12 },
+          { label: '16s', value: 16 },
+          { label: '20s', value: 20 },
         ],
-        defaultValue: '5',
+        defaultValue: 4,
       },
       {
         id: 'aspect_ratio',
         label: 'Aspect Ratio',
         type: 'select',
-        options: [
-          { label: '16:9', value: '16:9' },
-          { label: '9:16', value: '9:16' },
-          { label: '1:1', value: '1:1' },
-        ],
+        options: SORA_ASPECT_RATIOS.map(r => ({ label: r.label, value: r.value })),
         defaultValue: '16:9',
       },
       {
-        id: 'negative_prompt',
-        label: 'Negative Prompt',
-        type: 'text',
-        placeholder: 'blur, distort, low quality',
-        defaultValue: 'blur, distort, low quality',
-      },
-      {
-        id: 'cfg_scale',
-        label: 'CFG',
-        type: 'slider',
-        min: 0,
-        max: 1,
-        step: 0.05,
-        defaultValue: 0.5,
+        id: 'resolution',
+        label: 'Resolution',
+        type: 'select',
+        options: [
+          { label: '720p', value: '720p' },
+        ],
+        defaultValue: '720p',
       },
     ],
     defaultParams: {
-      duration: '5',
+      duration: 4,
       aspect_ratio: '16:9',
-      negative_prompt: 'blur, distort, low quality',
-      cfg_scale: 0.5,
+      resolution: '720p',
     },
     input: { requiresPrompt: true, referenceImage: 'forbidden', referenceMode: 'none' },
   },
   {
-    id: 'kling-kie-image2video',
-    name: 'Kling Image2Video Pro',
-    provider: 'Kling AI (KIE)',
+    id: 'sora-2-image-to-video',
+    name: 'Sora 2 (Image)',
+    provider: 'fal.ai',
     kind: 'video',
-    description: 'Animate a still image with Kling KIE image-to-video.',
+    description: 'Animate a still image into video using Sora 2.',
+    parameters: [
+      {
+        id: 'duration',
+        label: 'Duration',
+        type: 'select',
+        options: [
+          { label: '4s', value: 4 },
+          { label: '8s', value: 8 },
+          { label: '12s', value: 12 },
+          { label: '16s', value: 16 },
+          { label: '20s', value: 20 },
+        ],
+        defaultValue: 4,
+      },
+      {
+        id: 'aspect_ratio',
+        label: 'Aspect Ratio',
+        type: 'select',
+        options: SORA_ASPECT_RATIOS.map(r => ({ label: r.label, value: r.value })),
+        defaultValue: '16:9',
+      },
+      {
+        id: 'resolution',
+        label: 'Resolution',
+        type: 'select',
+        options: [
+          { label: '720p', value: '720p' },
+          { label: '1080p', value: '1080p' },
+        ],
+        defaultValue: '720p',
+      },
+    ],
+    defaultParams: {
+      duration: 4,
+      aspect_ratio: '16:9',
+      resolution: '720p',
+    },
+    input: { requiresPrompt: true, referenceImage: 'required', referenceMode: 'single' },
+  },
+
+  // ─── Video: Kling 2.1 (fal.ai) ──────────────────────────────
+  {
+    id: 'kling-2.1-text-to-video',
+    name: 'Kling 2.1 (Text)',
+    provider: 'fal.ai',
+    kind: 'video',
+    description: 'Fast, cinematic text-to-video generation.',
     parameters: [
       {
         id: 'duration',
@@ -332,38 +396,49 @@ export const MODEL_CARDS: ModelCard[] = [
         id: 'aspect_ratio',
         label: 'Aspect Ratio',
         type: 'select',
-        options: [
-          { label: '16:9', value: '16:9' },
-          { label: '9:16', value: '9:16' },
-          { label: '1:1', value: '1:1' },
-        ],
+        options: KLING_ASPECT_RATIOS.map(r => ({ label: r.label, value: r.value })),
         defaultValue: '16:9',
-      },
-      {
-        id: 'negative_prompt',
-        label: 'Negative Prompt',
-        type: 'text',
-        placeholder: 'blur, distort, low quality',
-        defaultValue: 'blur, distort, low quality',
-      },
-      {
-        id: 'cfg_scale',
-        label: 'CFG',
-        type: 'slider',
-        min: 0,
-        max: 1,
-        step: 0.05,
-        defaultValue: 0.5,
       },
     ],
     defaultParams: {
       duration: '5',
       aspect_ratio: '16:9',
-      negative_prompt: 'blur, distort, low quality',
-      cfg_scale: 0.5,
     },
-    input: { requiresPrompt: true, referenceImage: 'required', referenceMode: 'start_end' },
+    input: { requiresPrompt: true, referenceImage: 'forbidden', referenceMode: 'none' },
   },
+  {
+    id: 'kling-2.1-image-to-video',
+    name: 'Kling 2.1 (Image)',
+    provider: 'fal.ai',
+    kind: 'video',
+    description: 'Animate a still image into cinematic video.',
+    parameters: [
+      {
+        id: 'duration',
+        label: 'Duration',
+        type: 'select',
+        options: [
+          { label: '5s', value: '5' },
+          { label: '10s', value: '10' },
+        ],
+        defaultValue: '5',
+      },
+      {
+        id: 'aspect_ratio',
+        label: 'Aspect Ratio',
+        type: 'select',
+        options: KLING_ASPECT_RATIOS.map(r => ({ label: r.label, value: r.value })),
+        defaultValue: '16:9',
+      },
+    ],
+    defaultParams: {
+      duration: '5',
+      aspect_ratio: '16:9',
+    },
+    input: { requiresPrompt: true, referenceImage: 'required', referenceMode: 'single' },
+  },
+
+  // ─── Audio ───────────────────────────────────────────────────
   {
     id: 'minimax-tts',
     name: 'MiniMax TTS',
@@ -471,285 +546,5 @@ export const MODEL_CARDS: ModelCard[] = [
     input: { requiresPrompt: true, referenceImage: 'forbidden', referenceMode: 'none' },
     availableProviders: ['official', 'kie'],
     defaultProvider: 'official',
-  },
-  {
-    id: 'sora-2-pro-text-to-video',
-    name: 'Sora 2 Pro (Text)',
-    provider: 'KIE.ai',
-    kind: 'video',
-    description: 'Sora 2 Pro Text-to-Video generation.',
-    parameters: [
-      {
-        id: 'duration',
-        label: 'Duration',
-        type: 'select',
-        options: [
-          { label: '5s', value: '5' },
-          { label: '10s', value: '10' },
-        ],
-        defaultValue: '5',
-      },
-      {
-        id: 'aspect_ratio',
-        label: 'Aspect Ratio',
-        type: 'select',
-        options: [
-          { label: '16:9', value: '16:9' },
-          { label: '9:16', value: '9:16' },
-          { label: '1:1', value: '1:1' },
-          { label: '21:9', value: '21:9' },
-        ],
-        defaultValue: '16:9',
-      },
-      {
-        id: 'resolution',
-        label: 'Resolution',
-        type: 'select',
-        options: [
-          { label: '720p', value: '720p' },
-          { label: '1080p', value: '1080p' },
-        ],
-        defaultValue: '720p',
-      },
-      {
-        id: 'cfg_scale',
-        label: 'CFG',
-        type: 'slider',
-        min: 0,
-        max: 1,
-        step: 0.05,
-        defaultValue: 0.5,
-      },
-    ],
-    defaultParams: {
-      duration: '5',
-      aspect_ratio: '16:9',
-      resolution: '720p',
-      cfg_scale: 0.5,
-    },
-    input: { requiresPrompt: true, referenceImage: 'forbidden', referenceMode: 'none' },
-  },
-  {
-    id: 'sora-2-pro-image-to-video',
-    name: 'Sora 2 Pro (Image)',
-    provider: 'KIE.ai',
-    kind: 'video',
-    description: 'Sora 2 Pro Image-to-Video generation.',
-    parameters: [
-      {
-        id: 'duration',
-        label: 'Duration',
-        type: 'select',
-        options: [
-          { label: '5s', value: '5' },
-          { label: '10s', value: '10' },
-        ],
-        defaultValue: '5',
-      },
-      {
-        id: 'aspect_ratio',
-        label: 'Aspect Ratio',
-        type: 'select',
-        options: [
-          { label: '16:9', value: '16:9' },
-          { label: '9:16', value: '9:16' },
-          { label: '1:1', value: '1:1' },
-          { label: '21:9', value: '21:9' },
-        ],
-        defaultValue: '16:9',
-      },
-      {
-        id: 'resolution',
-        label: 'Resolution',
-        type: 'select',
-        options: [
-          { label: '720p', value: '720p' },
-          { label: '1080p', value: '1080p' },
-        ],
-        defaultValue: '720p',
-      },
-      {
-        id: 'cfg_scale',
-        label: 'CFG',
-        type: 'slider',
-        min: 0,
-        max: 1,
-        step: 0.05,
-        defaultValue: 0.5,
-      },
-    ],
-    defaultParams: {
-      duration: '5',
-      aspect_ratio: '16:9',
-      resolution: '720p',
-      cfg_scale: 0.5,
-    },
-    input: { requiresPrompt: false, referenceImage: 'required', referenceMode: 'single' },
-  },
-  {
-    id: 'sora-2-characters',
-    name: 'Sora 2 Characters',
-    provider: 'KIE.ai',
-    kind: 'video',
-    description: 'Sora 2 Characters generation.',
-    parameters: [
-      {
-        id: 'duration',
-        label: 'Duration',
-        type: 'select',
-        options: [
-          { label: '5s', value: '5' },
-          { label: '10s', value: '10' },
-        ],
-        defaultValue: '5',
-      },
-      {
-        id: 'aspect_ratio',
-        label: 'Aspect Ratio',
-        type: 'select',
-        options: [
-          { label: '16:9', value: '16:9' },
-          { label: '9:16', value: '9:16' },
-          { label: '1:1', value: '1:1' },
-          { label: '21:9', value: '21:9' },
-        ],
-        defaultValue: '16:9',
-      },
-      {
-        id: 'resolution',
-        label: 'Resolution',
-        type: 'select',
-        options: [
-          { label: '720p', value: '720p' },
-          { label: '1080p', value: '1080p' },
-        ],
-        defaultValue: '720p',
-      },
-      {
-        id: 'cfg_scale',
-        label: 'CFG',
-        type: 'slider',
-        min: 0,
-        max: 1,
-        step: 0.05,
-        defaultValue: 0.5,
-      },
-    ],
-    defaultParams: {
-      duration: '5',
-      aspect_ratio: '16:9',
-      resolution: '720p',
-      cfg_scale: 0.5,
-    },
-    input: { requiresPrompt: true, referenceImage: 'required', referenceMode: 'single' },
-  },
-  {
-    id: 'sora-2-pro-storyboard',
-    name: 'Sora 2 Pro Storyboard',
-    provider: 'KIE.ai',
-    kind: 'video',
-    description: 'Sora 2 Pro Storyboard generation.',
-    parameters: [
-      {
-        id: 'duration',
-        label: 'Duration',
-        type: 'select',
-        options: [
-          { label: '5s', value: '5' },
-          { label: '10s', value: '10' },
-        ],
-        defaultValue: '5',
-      },
-      {
-        id: 'aspect_ratio',
-        label: 'Aspect Ratio',
-        type: 'select',
-        options: [
-          { label: '16:9', value: '16:9' },
-          { label: '9:16', value: '9:16' },
-          { label: '1:1', value: '1:1' },
-          { label: '21:9', value: '21:9' },
-        ],
-        defaultValue: '16:9',
-      },
-      {
-        id: 'resolution',
-        label: 'Resolution',
-        type: 'select',
-        options: [
-          { label: '720p', value: '720p' },
-          { label: '1080p', value: '1080p' },
-        ],
-        defaultValue: '720p',
-      },
-      {
-        id: 'cfg_scale',
-        label: 'CFG',
-        type: 'slider',
-        min: 0,
-        max: 1,
-        step: 0.05,
-        defaultValue: 0.5,
-      },
-    ],
-    defaultParams: {
-      duration: '5',
-      aspect_ratio: '16:9',
-      resolution: '720p',
-      cfg_scale: 0.5,
-    },
-    input: { requiresPrompt: true, referenceImage: 'forbidden', referenceMode: 'none' },
-  },
-  {
-    id: 'remotion-mg',
-    name: 'Remotion MG (Gemini)',
-    provider: 'Gemini + Remotion',
-    kind: 'video',
-    description: 'Generate motion-graphics React components with Gemini and render via Remotion.',
-    parameters: [
-      {
-        id: 'duration',
-        label: 'Duration (s)',
-        type: 'number',
-        min: 1,
-        max: 60,
-        step: 1,
-        defaultValue: 5,
-      },
-      {
-        id: 'width',
-        label: 'Width',
-        type: 'number',
-        min: 320,
-        max: 3840,
-        step: 1,
-        defaultValue: 1920,
-      },
-      {
-        id: 'height',
-        label: 'Height',
-        type: 'number',
-        min: 320,
-        max: 3840,
-        step: 1,
-        defaultValue: 1080,
-      },
-      {
-        id: 'fps',
-        label: 'FPS',
-        type: 'number',
-        min: 12,
-        max: 60,
-        step: 1,
-        defaultValue: 30,
-      },
-    ],
-    defaultParams: {
-      duration: 5,
-      width: 1920,
-      height: 1080,
-      fps: 30,
-    },
-    input: { requiresPrompt: true, referenceImage: 'forbidden', referenceMode: 'none' },
   },
 ] as unknown as ModelCard[];

@@ -3,11 +3,11 @@ export interface Env {
   DB: D1Database;
 
   // Service Bindings
-  LORO_SYNC: Fetcher;   // loro-sync-server
-  FRONTEND?: Fetcher;   // Next.js frontend (production)
+  API_CF: Fetcher;       // api-cf (ProjectRoom + Generation + assets)
+  FRONTEND?: Fetcher;    // Next.js frontend (production)
 
   // URL-based proxies (local development)
-  BACKEND_API_URL?: string;   // Python API (e.g., http://localhost:8888)
+  API_CF_URL?: string;        // api-cf fallback URL (e.g., http://localhost:8789)
   FRONTEND_URL?: string;      // Frontend (e.g., http://localhost:3000)
 
   // Better Auth config

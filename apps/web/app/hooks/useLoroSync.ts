@@ -363,11 +363,8 @@ export function useLoroSync(options: LoroSyncOptions): UseLoroSyncReturn {
         console.log('[useLoroSync] ✅ doc.import() completed');
       } catch (error: any) {
         console.error('[useLoroSync] Error importing update:', error);
-        const errorMessage = error?.message || String(error);
-        if (errorMessage.includes('Checksum mismatch') || errorMessage.includes('corrupted') || errorMessage.includes('Decode error')) {
-          await deleteFromDB(projectId);
-          window.location.reload();
-        }
+        // Don't reload — just log the error. The next full snapshot
+        // from the server (on reconnect) will fix the state.
       }
     };
 

@@ -36,9 +36,9 @@ export function resolveAssetUrl(src: string): string {
     if (isR2Key(s)) {
         // Ensure we don't double-slash if key somehow starts with /
         const cleanKey = s.startsWith('/') ? s.slice(1) : s;
-        // const resolved = `/assets/${cleanKey}`;
-        // Pointing to Next.js API route to match upload environment
-        const resolved = `/api/assets/view/${cleanKey}`;
+        // Use /assets/ rewrite which proxies to api-cf (works with both
+        // local wrangler R2 and production R2 via the same worker)
+        const resolved = `/assets/${cleanKey}`;
         // console.log(`[resolveAssetUrl] Resolved R2 key: ${src} -> ${resolved}`);
         return resolved;
     }

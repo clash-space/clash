@@ -149,7 +149,7 @@ export default function ProjectEditor({ project, initialPrompt }: ProjectEditorP
     // Loro CRDT sync
     const loroSync = useLoroSync({
         projectId: project.id,
-        syncServerUrl: process.env.NEXT_PUBLIC_LORO_SYNC_URL || 'ws://localhost:8787',
+        syncServerUrl: process.env.NEXT_PUBLIC_SYNC_URL || 'ws://localhost:8789',
         onNodesChange: (syncedNodes) => {
             // Loro is the SINGLE SOURCE OF TRUTH - use its state directly
             // Only preserve spatial state during active interaction (drag/resize).
@@ -230,7 +230,7 @@ export default function ProjectEditor({ project, initialPrompt }: ProjectEditorP
 
                     // Sync layout changes back to Loro (after a microtask to avoid loops)
                     queueMicrotask(() => {
-                        if (!loroSyncRef.current?.connected) return;
+                        if (!loroSyncRef.current) return;
 
                         for (const node of nodesToLayout) {
                             const layoutedNode = processedNodes.find(n => n.id === node.id);
@@ -473,7 +473,7 @@ export default function ProjectEditor({ project, initialPrompt }: ProjectEditorP
 
         // Handle node deletions - sync to Loro (Fallback if onNodesDelete doesn't fire)
         const removeChanges = changes.filter(c => c.type === 'remove');
-        if (removeChanges.length > 0 && loroSync.connected) {
+        if (removeChanges.length > 0) {
             removeChanges.forEach(change => {
                 if (change.type === 'remove') {
                     loroSync.removeNode(change.id);
@@ -485,7 +485,7 @@ export default function ProjectEditor({ project, initialPrompt }: ProjectEditorP
 
     // Reliable sync handlers
     const onNodesDelete = useCallback((deletedNodes: Node[]) => {
-        if (loroSync.connected) {
+        {
             deletedNodes.forEach(node => {
                 loroSync.removeNode(node.id);
             });
@@ -560,7 +560,7 @@ export default function ProjectEditor({ project, initialPrompt }: ProjectEditorP
 	            });
 	        });
 
-	        if (loroSync.connected && draggedNodePatch) {
+	        if (draggedNodePatch) {
 	            loroSync.updateNode(node.id, draggedNodePatch);
 	        }
 	        applyLayoutPatchesToLoro(loroSync, patchesToSync);
@@ -579,7 +579,7 @@ export default function ProjectEditor({ project, initialPrompt }: ProjectEditorP
 
         // Handle edge deletions - sync to Loro
         const removeChanges = changes.filter(c => c.type === 'remove');
-        if (removeChanges.length > 0 && loroSync.connected) {
+        if (removeChanges.length > 0) {
             removeChanges.forEach(change => {
                 if (change.type === 'remove') {
                     loroSync.removeEdge(change.id);
@@ -597,7 +597,7 @@ export default function ProjectEditor({ project, initialPrompt }: ProjectEditorP
                     e.source === (params as Connection).source && 
                     e.target === (params as Connection).target
                 );
-                if (addedEdge && loroSync.connected) {
+                if (addedEdge) {
                     loroSync.addEdge(addedEdge.id, addedEdge);
                 }
                 return newEdges;
@@ -663,14 +663,14 @@ export default function ProjectEditor({ project, initialPrompt }: ProjectEditorP
         let nodeType = type;
         let nodeData: any = { label: `New ${type}`, ...extraData };
         const imageModelDefaults = {
-            modelId: defaultImageModel?.id ?? 'nano-banana-pro',
-            model: defaultImageModel?.id ?? 'nano-banana-pro',
+            modelId: defaultImageModel?.id ?? 'nano-banana-2',
+            model: defaultImageModel?.id ?? 'nano-banana-2',
             modelParams: { ...(defaultImageModel?.defaultParams ?? {}) },
             referenceMode: defaultImageModel?.input.referenceMode ?? 'single',
         };
         const videoModelDefaults = {
-            modelId: defaultVideoModel?.id ?? 'kling-image2video',
-            model: defaultVideoModel?.id ?? 'kling-image2video',
+            modelId: defaultVideoModel?.id ?? 'sora-2-image-to-video',
+            model: defaultVideoModel?.id ?? 'sora-2-image-to-video',
             modelParams: { ...(defaultVideoModel?.defaultParams ?? {}) },
             referenceMode: defaultVideoModel?.input.referenceMode ?? 'single',
         };
@@ -1013,7 +1013,7 @@ export default function ProjectEditor({ project, initialPrompt }: ProjectEditorP
 
             // Sync new node to Loro
             const createdNode = finalNodes.find(n => n.id === newNodeId);
-            if (createdNode && loroSync.connected) {
+            if (createdNode) {
                 loroSync.addNode(newNodeId, createdNode);
             }
 
@@ -1076,9 +1076,7 @@ export default function ProjectEditor({ project, initialPrompt }: ProjectEditorP
                 targetHandle: 'assets',
             };
 
-            if (loroSync.connected) {
-                loroSync.addEdge(edgeId, newEdge);
-            }
+            loroSync.addEdge(edgeId, newEdge);
 
             return [...eds, newEdge];
         });
@@ -1188,16 +1186,14 @@ export default function ProjectEditor({ project, initialPrompt }: ProjectEditorP
                 );
                 URL.revokeObjectURL(localPreviewUrl);
 
-                if (loroSync.connected) {
-                    loroSync.updateNode(placeholderId, {
-                        data: {
-                            src: finalSrc,
-                            storageKey,
-                            status: 'completed',
-                            duration: videoDuration,
-                        }
-                    });
-                }
+                loroSync.updateNode(placeholderId, {
+                    data: {
+                        src: finalSrc,
+                        storageKey,
+                        status: 'completed',
+                        duration: videoDuration,
+                    }
+                });
                 return {
                     id: placeholderId,
                     type: assetType,
@@ -1222,11 +1218,9 @@ export default function ProjectEditor({ project, initialPrompt }: ProjectEditorP
                     )
                 );
                 URL.revokeObjectURL(localPreviewUrl);
-                if (loroSync.connected) {
-                    loroSync.updateNode(placeholderId, {
-                        data: { status: 'failed' },
-                    });
-                }
+                loroSync.updateNode(placeholderId, {
+                    data: { status: 'failed' },
+                });
                 return null;
             }
         },
@@ -1269,12 +1263,12 @@ export default function ProjectEditor({ project, initialPrompt }: ProjectEditorP
                 // Map legacy/agent types to action-badge
                 if (type === 'image-gen') {
                     type = 'action-badge';
-                    data = { actionType: 'image-gen', modelId: defaultImageModel?.id ?? 'nano-banana-pro', model: defaultImageModel?.id ?? 'nano-banana-pro', modelParams: { ...(defaultImageModel?.defaultParams ?? {}) }, ...data };
+                    data = { actionType: 'image-gen', modelId: defaultImageModel?.id ?? 'nano-banana-2', model: defaultImageModel?.id ?? 'nano-banana-2', modelParams: { ...(defaultImageModel?.defaultParams ?? {}) }, ...data };
                     if (!rest.width) rest.width = 200;
                     if (!rest.height) rest.height = 60;
                 } else if (type === 'video-gen') {
                     type = 'action-badge';
-                    data = { actionType: 'video-gen', modelId: defaultVideoModel?.id ?? 'kling-image2video', model: defaultVideoModel?.id ?? 'kling-image2video', modelParams: { ...(defaultVideoModel?.defaultParams ?? {}) }, ...data };
+                    data = { actionType: 'video-gen', modelId: defaultVideoModel?.id ?? 'sora-2-image-to-video', model: defaultVideoModel?.id ?? 'sora-2-image-to-video', modelParams: { ...(defaultVideoModel?.defaultParams ?? {}) }, ...data };
                     if (!rest.width) rest.width = 200;
                     if (!rest.height) rest.height = 60;
                 }

@@ -1,16 +1,29 @@
 import { useCallback, useMemo } from 'react';
 import { useReactFlow, Node, Edge } from 'reactflow';
-import type { Point, Size, Rect, OwnershipResult, LayoutManagerConfig } from '../types';
-import { Mesh, createMesh } from '../core/mesh';
-import { getAbsoluteRect, getAbsolutePosition, getNodeSize } from '../core/geometry';
-import { updateNodeOwnership, checkOwnershipChange } from '../group/ownership';
-import { recursiveGroupScale, applyGroupScales } from '../group/auto-scale';
-import { resolveCollisions, applyResolution } from '../collision/resolver';
+import type {
+    Point,
+    Size,
+    Rect,
+    OwnershipResult,
+    LayoutNode,
+} from '@clash/shared-layout';
 import {
+    Mesh,
+    createMesh,
+    getAbsoluteRect,
+    getAbsolutePosition,
+    getNodeSize,
+    updateNodeOwnership,
+    checkOwnershipChange,
+    recursiveGroupScale,
+    applyGroupScales,
+    resolveCollisions,
+    applyResolution,
     needsAutoLayout,
     autoInsertNode,
     applyAutoInsertResult,
-} from '../auto-insert';
+} from '@clash/shared-layout';
+import type { LayoutManagerConfig } from '../types';
 
 /**
  * Maximum dimension for media nodes (matches VideoNode.MAX_MEDIA_DIMENSION)
@@ -35,11 +48,10 @@ function calculateScaledDimensions(naturalWidth: number, naturalHeight: number):
 
 /**
  * Calculate node dimensions from aspect ratio
- * Used to pre-size media nodes correctly on creation
  */
 function calculateDimensionsFromAspectRatio(aspectRatio?: string): Size {
     if (!aspectRatio) {
-        return { width: 400, height: 400 }; // Default square
+        return { width: 400, height: 400 };
     }
 
     const parts = aspectRatio.split(':');
@@ -54,14 +66,11 @@ function calculateDimensionsFromAspectRatio(aspectRatio?: string): Size {
         return { width: 400, height: 400 };
     }
 
-    // Calculate dimensions that fit within MAX_MEDIA_DIMENSION
     if (widthRatio >= heightRatio) {
-        // Landscape or square
         const width = MAX_MEDIA_DIMENSION;
         const height = Math.round((heightRatio / widthRatio) * MAX_MEDIA_DIMENSION);
         return { width, height };
     } else {
-        // Portrait
         const height = MAX_MEDIA_DIMENSION;
         const width = Math.round((widthRatio / heightRatio) * MAX_MEDIA_DIMENSION);
         return { width, height };
@@ -70,23 +79,15 @@ function calculateDimensionsFromAspectRatio(aspectRatio?: string): Size {
 
 /**
  * Get the appropriate size for a node with multiple fallback strategies
- *
- * Priority for media nodes:
- * 1. naturalWidth/naturalHeight (actual video/image dimensions)
- * 2. aspectRatio (calculated dimensions)
- * 3. Default size
  */
 function getNodeSizeWithData(nodeType: string, nodeData?: any): Size {
     const defaultSize = getNodeSize(nodeType);
 
-    // For media nodes, try multiple strategies to get correct dimensions
     if (nodeType === 'video' || nodeType === 'image') {
-        // Strategy 1: Use actual natural dimensions if available (most accurate)
         if (nodeData?.naturalWidth && nodeData?.naturalHeight) {
             return calculateScaledDimensions(nodeData.naturalWidth, nodeData.naturalHeight);
         }
 
-        // Strategy 2: Use aspect ratio if available
         if (nodeData?.aspectRatio) {
             return calculateDimensionsFromAspectRatio(nodeData.aspectRatio);
         }
@@ -144,8 +145,7 @@ export interface UseLayoutManagerReturn {
         offset?: { x: number; y: number }
     ) => Node | null;
 
-    // Auto-insert for nodes with special placeholder position (from backend or programmatic creation)
-    // Returns IDs of nodes that were processed
+    // Auto-insert for nodes with special placeholder position
     handleAutoInsertNodes: (edges: Edge[]) => string[];
 
     // Mesh instance
@@ -154,7 +154,6 @@ export interface UseLayoutManagerReturn {
 
 /**
  * Unified hook for layout management
- * Replaces useAutoLayout with a cleaner, more modular API
  */
 export function useLayoutManager(
     config: Partial<LayoutManagerConfig> = {}
@@ -169,9 +168,6 @@ export function useLayoutManager(
 
     const mesh = useMemo(() => createMesh(finalConfig.mesh), [finalConfig.mesh]);
 
-    /**
-     * Check if a node's group ownership has changed
-     */
     const checkGroupOwnership = useCallback((nodeId: string) => {
         const nodes = getNodes();
         const node = nodes.find((n) => n.id === nodeId);
@@ -181,20 +177,14 @@ export function useLayoutManager(
         return checkOwnershipChange(node, nodes);
     }, [getNodes]);
 
-    /**
-     * Apply ownership change to a node
-     */
     const applyOwnershipChange = useCallback((nodeId: string, ownership: OwnershipResult) => {
         setNodes((nodes) => {
-            const nextNodes = updateNodeOwnership(nodes, nodeId, ownership);
+            const nextNodes = updateNodeOwnership(nodes, nodeId, ownership) as Node[];
             finalConfig.onNodesMutated?.(nodes, nextNodes);
             return nextNodes;
         });
     }, [setNodes, finalConfig]);
 
-    /**
-     * Resolve collisions for a specific node
-     */
     const resolveCollisionsForNode = useCallback((nodeId: string) => {
         setNodes((nodes) => {
             const result = resolveCollisions(nodes, nodeId, mesh, {
@@ -202,7 +192,7 @@ export function useLayoutManager(
             });
             if (result.steps.length > 0) {
                 console.log(`[LayoutManager] Resolved ${result.steps.length} collision(s) in ${result.iterations} iteration(s)`);
-                const nextNodes = applyResolution(nodes, result);
+                const nextNodes = applyResolution(nodes, result) as Node[];
                 finalConfig.onNodesMutated?.(nodes, nextNodes);
                 return nextNodes;
             }
@@ -210,15 +200,12 @@ export function useLayoutManager(
         });
     }, [setNodes, mesh, finalConfig]);
 
-    /**
-     * Scale groups for a node (after position/size change)
-     */
     const scaleGroupsForNode = useCallback((nodeId: string) => {
         setNodes((nodes) => {
             const scales = recursiveGroupScale(nodeId, nodes);
             if (scales.size > 0) {
                 console.log(`[LayoutManager] Scaled ${scales.size} group(s)`);
-                const nextNodes = applyGroupScales(nodes, scales);
+                const nextNodes = applyGroupScales(nodes, scales) as Node[];
                 finalConfig.onNodesMutated?.(nodes, nextNodes);
                 return nextNodes;
             }
@@ -226,35 +213,29 @@ export function useLayoutManager(
         });
     }, [setNodes, finalConfig]);
 
-    /**
-     * Handle node drag end - check ownership and resolve collisions
-     */
     const handleNodeDragEnd = useCallback((nodeId: string) => {
         const { hasChanged, ownership } = checkGroupOwnership(nodeId);
 
         setNodes((nodes) => {
-            let updatedNodes = nodes;
+            let updatedNodes: Node[] = nodes;
 
-            // 1. Apply ownership change if needed
             if (hasChanged) {
                 console.log(`[LayoutManager] Node ${nodeId} ownership changed to ${ownership.newParentId || 'root'}`);
-                updatedNodes = updateNodeOwnership(updatedNodes, nodeId, ownership);
+                updatedNodes = updateNodeOwnership(updatedNodes, nodeId, ownership) as Node[];
             }
 
-            // 2. Auto-scale parent groups
             if (finalConfig.autoScale) {
                 const scales = recursiveGroupScale(nodeId, updatedNodes);
                 if (scales.size > 0) {
-                    updatedNodes = applyGroupScales(updatedNodes, scales);
+                    updatedNodes = applyGroupScales(updatedNodes, scales) as Node[];
 
-                    // 3. Resolve collisions caused by scaling
                     if (finalConfig.autoResolveCollisions) {
                         for (const groupId of scales.keys()) {
                             const result = resolveCollisions(updatedNodes, groupId, mesh, {
                                 maxIterations: finalConfig.maxChainReactionIterations,
                             });
                             if (result.steps.length > 0) {
-                                updatedNodes = applyResolution(updatedNodes, result);
+                                updatedNodes = applyResolution(updatedNodes, result) as Node[];
                             }
                         }
                     }
@@ -268,28 +249,23 @@ export function useLayoutManager(
         });
     }, [checkGroupOwnership, setNodes, mesh, finalConfig]);
 
-    /**
-     * Handle node resize - scale groups and resolve collisions
-     */
     const handleNodeResize = useCallback((nodeId: string) => {
         setNodes((nodes) => {
-            let updatedNodes = nodes;
+            let updatedNodes: Node[] = nodes;
 
-            // 1. Auto-scale parent groups
             if (finalConfig.autoScale) {
                 const scales = recursiveGroupScale(nodeId, updatedNodes);
                 if (scales.size > 0) {
-                    updatedNodes = applyGroupScales(updatedNodes, scales);
+                    updatedNodes = applyGroupScales(updatedNodes, scales) as Node[];
                 }
             }
 
-            // 2. Resolve collisions
             if (finalConfig.autoResolveCollisions) {
                 const result = resolveCollisions(updatedNodes, nodeId, mesh, {
                     maxIterations: finalConfig.maxChainReactionIterations,
                 });
                 if (result.steps.length > 0) {
-                    updatedNodes = applyResolution(updatedNodes, result);
+                    updatedNodes = applyResolution(updatedNodes, result) as Node[];
                 }
             }
 
@@ -300,16 +276,10 @@ export function useLayoutManager(
         });
     }, [setNodes, mesh, finalConfig]);
 
-    /**
-     * Snap position to grid
-     */
     const snapToGrid = useCallback((position: Point): Point => {
         return mesh.snapToGrid(position);
     }, [mesh]);
 
-    /**
-     * Find non-overlapping position for a new node
-     */
     const findNonOverlappingPosition = useCallback((
         targetPos: Point,
         nodeSize: Size,
@@ -317,16 +287,13 @@ export function useLayoutManager(
     ): Point => {
         const nodes = getNodes();
 
-        // Get siblings (nodes with same parent)
         const siblings = nodes.filter((n) => n.parentId === parentId && n.type !== 'group');
 
-        // Build occupied rects
         const occupiedRects: Rect[] = siblings.map((s) => {
             const rect = getAbsoluteRect(s, nodes);
             return rect;
         });
 
-        // If we have a parent, we need to work in absolute coordinates
         let absTargetPos = targetPos;
         if (parentId) {
             const parent = nodes.find((n) => n.id === parentId);
@@ -341,7 +308,6 @@ export function useLayoutManager(
 
         const newAbsPos = mesh.findNonOverlappingPosition(absTargetPos, nodeSize, occupiedRects);
 
-        // Convert back to relative if has parent
         if (parentId) {
             const parent = nodes.find((n) => n.id === parentId);
             if (parent) {
@@ -356,18 +322,13 @@ export function useLayoutManager(
         return newAbsPos;
     }, [getNodes, mesh]);
 
-    /**
-     * Add a new node with automatic layout
-     */
     const addNodeWithLayout = useCallback((
         newNode: Partial<Node> & { type: string },
         targetPosition: Point,
         parentId?: string
     ): Node => {
-        // Get node size considering aspectRatio data
         const nodeSize = getNodeSizeWithData(newNode.type, newNode.data);
 
-        // Find non-overlapping position
         const position = findNonOverlappingPosition(targetPosition, nodeSize, parentId);
 
         const completeNode: Node = {
@@ -382,22 +343,20 @@ export function useLayoutManager(
         };
 
         setNodes((nodes) => {
-            let updatedNodes = [...nodes, completeNode];
+            let updatedNodes: Node[] = [...nodes, completeNode];
 
-            // Auto-scale parent groups
             if (finalConfig.autoScale && parentId) {
                 const scales = recursiveGroupScale(completeNode.id, updatedNodes);
                 if (scales.size > 0) {
-                    updatedNodes = applyGroupScales(updatedNodes, scales);
+                    updatedNodes = applyGroupScales(updatedNodes, scales) as Node[];
 
-                    // Resolve collisions caused by scaling
                     if (finalConfig.autoResolveCollisions) {
                         for (const groupId of scales.keys()) {
                             const result = resolveCollisions(updatedNodes, groupId, mesh, {
                                 maxIterations: finalConfig.maxChainReactionIterations,
                             });
                             if (result.steps.length > 0) {
-                                updatedNodes = applyResolution(updatedNodes, result);
+                                updatedNodes = applyResolution(updatedNodes, result) as Node[];
                             }
                         }
                     }
@@ -411,10 +370,6 @@ export function useLayoutManager(
         return completeNode;
     }, [findNonOverlappingPosition, setNodes, mesh, finalConfig]);
 
-    /**
-     * Legacy API compatibility for ActionBadge
-     * Takes parentNodeId and calculates target position based on it
-     */
     const addNodeWithAutoLayout = useCallback((
         newNode: Partial<Node> & { type: string },
         parentNodeId: string,
@@ -427,13 +382,8 @@ export function useLayoutManager(
             return null;
         }
 
-        // Use parent's parent as the parentId for the new node (same group as the parent node).
         const parentGroupId = parentNode.parentId;
 
-        // Calculate target position next to the parent node, in the coordinate system
-        // expected by addNodeWithLayout:
-        // - root: absolute
-        // - inside a group: relative to that group
         const parentAbsPos = getAbsolutePosition(parentNode, nodes);
         const absTargetPos = {
             x: parentAbsPos.x + offset.x,
@@ -455,21 +405,10 @@ export function useLayoutManager(
         return addNodeWithLayout(newNode, absTargetPos, undefined);
     }, [getNodes, addNodeWithLayout]);
 
-    /**
-     * Handle auto-insert for nodes with special placeholder position
-     * This is called when nodes are added from backend (Python) or programmatically
-     * with position = { x: -1, y: -1 }
-     *
-     * Rules:
-     * - Has reference (source node in same group via edge) → insert to the right
-     * - No reference → place at bottom of group/canvas
-     * - Chain-push overlapping nodes to the right
-     */
     const handleAutoInsertNodes = useCallback((edges: Edge[]): string[] => {
         const processed: string[] = [];
 
         setNodes((nodes) => {
-            // Find nodes that need auto-layout
             const nodesToLayout = nodes.filter(needsAutoLayout);
 
             if (nodesToLayout.length === 0) {
@@ -478,10 +417,9 @@ export function useLayoutManager(
 
             console.log(`[LayoutManager] Auto-inserting ${nodesToLayout.length} node(s)`);
 
-            let updatedNodes = [...nodes];
+            let updatedNodes: Node[] = [...nodes];
 
             for (const node of nodesToLayout) {
-                // Calculate position and push overlapping nodes
                 const result = autoInsertNode(node.id, updatedNodes, edges);
 
                 console.log(
@@ -491,25 +429,22 @@ export function useLayoutManager(
                     `pushed=${result.pushedNodes.size} node(s)`
                 );
 
-                // Apply the result
-                updatedNodes = applyAutoInsertResult(updatedNodes, node.id, result);
+                updatedNodes = applyAutoInsertResult(updatedNodes, node.id, result) as Node[];
                 processed.push(node.id);
 
-                // Auto-scale parent groups if the node is in a group
                 if (finalConfig.autoScale && node.parentId) {
                     const scales = recursiveGroupScale(node.id, updatedNodes);
                     if (scales.size > 0) {
                         console.log(`[LayoutManager] Scaled ${scales.size} group(s) for ${node.id}`);
-                        updatedNodes = applyGroupScales(updatedNodes, scales);
+                        updatedNodes = applyGroupScales(updatedNodes, scales) as Node[];
 
-                        // Resolve collisions caused by group scaling
                         if (finalConfig.autoResolveCollisions) {
                             for (const groupId of scales.keys()) {
                                 const collisionResult = resolveCollisions(updatedNodes, groupId, mesh, {
                                     maxIterations: finalConfig.maxChainReactionIterations,
                                 });
                                 if (collisionResult.steps.length > 0) {
-                                    updatedNodes = applyResolution(updatedNodes, collisionResult);
+                                    updatedNodes = applyResolution(updatedNodes, collisionResult) as Node[];
                                 }
                             }
                         }

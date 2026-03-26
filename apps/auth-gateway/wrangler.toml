@@ -11,8 +11,8 @@ database_id = "aab16eeb-a375-490b-ad1e-cd092cd9f4bb"
 
 # Service Bindings (production)
 [[services]]
-binding = "LORO_SYNC"
-service = "loro-sync-server"
+binding = "API_CF"
+service = "master-clash-api"
 
 # Uncomment when frontend is deployed as Worker
 # [[services]]

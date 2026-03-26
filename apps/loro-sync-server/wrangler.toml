@@ -36,6 +36,11 @@ vars = { ENVIRONMENT = "development" }
 [env.production]
 vars = { ENVIRONMENT = "production" }
 
+# Service Bindings
+[[services]]
+binding = "API_CF"
+service = "master-clash-api"
+
 # Durable Object migrations
 [[migrations]]
 tag = "v1"

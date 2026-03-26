@@ -52,7 +52,7 @@ async function requireUserId() {
 async function ensureDevUserExists(db: Awaited<ReturnType<typeof getDb>>) {
     if (process.env.NODE_ENV !== 'development') return
     await db.run(
-        sql`INSERT OR IGNORE INTO users (id, name, email, email_verified) VALUES (${DEV_USER_ID}, ${'Dev User'}, ${'dev@local'}, ${1})`
+        sql`INSERT OR IGNORE INTO user (id, name, email, emailVerified) VALUES (${DEV_USER_ID}, ${'Dev User'}, ${'dev@local'}, ${1})`
     )
 }
 
@@ -99,9 +99,8 @@ export async function getProjects(limit = 10) {
 
         console.log('[getProjects] Raw projects found:', projectsData.length);
 
-        const loroSyncUrl = process.env.LORO_SYNC_URL || process.env.NEXT_PUBLIC_LORO_SYNC_URL || 'http://localhost:8787';
-        // Convert WebSocket URL to HTTP
-        const httpLoroUrl = loroSyncUrl.replace(/^ws/, 'http');
+        const apiCfUrl = process.env.API_CF_URL || 'http://localhost:8789';
+        const httpLoroUrl = apiCfUrl;
 
         // Extract assets from Loro nodes for display
         return await Promise.all(projectsData.map(async (project) => {

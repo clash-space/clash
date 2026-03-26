@@ -5,7 +5,6 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { PaperPlaneRight, CaretLeft, CaretRight, Plus, ClockCounterClockwise, StopCircle, Trash } from '@phosphor-icons/react';
 import { useRouter } from 'next/navigation';
 import { Command } from '../actions';
-import { useChat } from '@ai-sdk/react';
 import { UserMessage } from './copilot/UserMessage';
 import { AgentCard, AgentLog } from './copilot/AgentCard';
 import { ToolCall } from './copilot/ToolCall';
@@ -21,13 +20,20 @@ import { thumbnailCache } from '@/lib/utils/thumbnailCache';
 
 const resolveApiBaseUrl = () => {
     if (process.env.NEXT_PUBLIC_API_URL) return process.env.NEXT_PUBLIC_API_URL;
-    if (typeof window === 'undefined') return 'http://localhost:8888';
+    if (typeof window === 'undefined') return 'http://localhost:8789';
     const { hostname, origin } = window.location;
     const isLocal = hostname === 'localhost' || hostname === '127.0.0.1';
-    return isLocal ? 'http://localhost:8888' : origin;
+    return isLocal ? 'http://localhost:8789' : origin;
 };
 
 const API_BASE_URL = resolveApiBaseUrl();
+
+/** Resolve WebSocket base URL from HTTP base URL. */
+const resolveWsBaseUrl = () => {
+    return API_BASE_URL.replace(/^http/, 'ws');
+};
+
+const WS_BASE_URL = resolveWsBaseUrl();
 
 const generateId = () => {
     return Date.now().toString() + Math.random().toString(36).substring(2, 9);
@@ -77,14 +83,17 @@ export default function ChatbotCopilot({
     edges: _edges = [],
     initialPrompt
 }: ChatbotCopilotProps) {
-    const { messages, status } = useChat({
-        initialMessages: initialMessages.map(m => ({
-            id: m.id,
-            role: m.role as 'user' | 'assistant',
-            content: m.content,
-            createdAt: new Date(m.createdAt),
-        })) as any,
-    } as any);
+    // ─── WebSocket to SupervisorAgent ──
+    // Each session (threadId) maps to its own SupervisorAgent DO instance.
+    // Room name = "projectId:threadId"
+    const wsRef = useRef<WebSocket | null>(null);
+    const wsReadyRef = useRef(false);
+    /** Accumulated chat messages (synced from AIChatAgent). */
+    const [chatMessages, setChatMessages] = useState<any[]>([]);
+    /** Buffer for data stream text parsing. */
+    const lineBufferRef = useRef('');
+    /** Current request ID for matching responses. */
+    const currentRequestIdRef = useRef<string | null>(null);
 
     const [displayItems, setDisplayItems] = useState<any[]>([]);
     const [isAutoPilot, _setIsAutoPilot] = useState(true);
@@ -168,7 +177,6 @@ export default function ChatbotCopilot({
     
     // Session management state
     const [sessionStatus, setSessionStatus] = useState<'idle' | 'running' | 'completing' | 'interrupted' | 'completed'>('idle');
-    const eventSourceRef = useRef<EventSource | null>(null);
 
     // Typewriter effect state
     const [_isTyping, setIsTyping] = useState(false);
@@ -178,11 +186,12 @@ export default function ChatbotCopilot({
     const handleNewSession = useCallback(() => {
         console.log('[ChatbotCopilot] Starting new session reset');
 
-        // 1. Close active EventSource
-        if (eventSourceRef.current) {
-            console.log('[ChatbotCopilot] Closing active EventSource for new session');
-            eventSourceRef.current.close();
-            eventSourceRef.current = null;
+        // 1. Close active WebSocket (will reconnect with new threadId)
+        if (wsRef.current) {
+            console.log('[ChatbotCopilot] Closing WebSocket for new session');
+            wsRef.current.close();
+            wsRef.current = null;
+            wsReadyRef.current = false;
         }
 
         // 2. Clear typewriter and queue
@@ -196,6 +205,7 @@ export default function ChatbotCopilot({
         // 3. Reset all workflow states
         const newThreadId = generateId();
         setThreadId(newThreadId);
+        setChatMessages([]);
         setDisplayItems([]);
         setSessionStatus('idle');
         setIsProcessing(false);
@@ -207,34 +217,20 @@ export default function ChatbotCopilot({
         console.log('[ChatbotCopilot] New session initiated:', newThreadId);
     }, []);
 
-    // Deletes a session and all its data
+    // Deletes a session from local history
     const deleteSession = useCallback(async (id: string, e: React.MouseEvent) => {
-        e.stopPropagation(); // Prevent switching to the session being deleted
-        
-        if (!window.confirm('Are you sure you want to delete this session and all its history?')) {
+        e.stopPropagation();
+
+        if (!window.confirm('Are you sure you want to delete this session?')) {
             return;
         }
 
-        console.log('[ChatbotCopilot] Deleting session:', id);
-        try {
-            const response = await fetch(`${API_BASE_URL}/api/v1/session/${id}`, {
-                method: 'DELETE',
-            });
-            
-            if (!response.ok) {
-                throw new Error('Failed to delete session');
-            }
+        // Remove from local history
+        setSessionHistory(prev => prev.filter(s => s.threadId !== id));
 
-            // 1. Update local history list
-            setSessionHistory(prev => prev.filter(s => s.threadId !== id));
-
-            // 2. If we deleted the current session, start a new one
-            if (id === threadId) {
-                console.log('[ChatbotCopilot] Current session deleted, resetting UI');
-                handleNewSession();
-            }
-        } catch (err) {
-            console.error('[ChatbotCopilot] Error deleting session:', err);
+        // If we deleted the current session, start a new one
+        if (id === threadId) {
+            handleNewSession();
         }
     }, [threadId, handleNewSession]);
 
@@ -242,51 +238,29 @@ export default function ChatbotCopilot({
     const handleStop = async () => {
         console.log('[ChatbotCopilot] Stop requested');
         setSessionStatus('completing');
-        
-        // Close the EventSource immediately to stop receiving events
-        if (eventSourceRef.current) {
-            eventSourceRef.current.close();
-            eventSourceRef.current = null;
+
+        // Send cancel via WebSocket
+        if (wsRef.current?.readyState === WebSocket.OPEN && currentRequestIdRef.current) {
+            wsRef.current.send(JSON.stringify({
+                type: 'cf_agent_chat_request_cancel',
+                id: currentRequestIdRef.current,
+            }));
         }
-        
-        // Notify backend to stop after current step
-        try {
-            await fetch(`${API_BASE_URL}/api/v1/session/${threadId}/interrupt`, {
-                method: 'POST',
-            });
-            console.log('[ChatbotCopilot] Interrupt request sent to backend');
-        } catch (e) {
-            console.error('[ChatbotCopilot] Failed to send interrupt request:', e);
-        }
-        
+
         setIsProcessing(false);
         setSessionStatus('interrupted');
+        currentRequestIdRef.current = null;
     };
 
     const loadSessionHistory = useCallback(async (id: string) => {
-        console.log('[ChatbotCopilot] Loading structured session history:', id);
-        try {
-            const response = await fetch(`${API_BASE_URL}/api/v1/session/${id}/history`);
-            if (!response.ok) throw new Error('Failed to fetch history');
-            const data = await response.json();
-            
-            if (data.messages && data.messages.length > 0) {
-                // Backend now returns structured displayItems, use them directly
-                setDisplayItems(data.messages);
-                console.log(`[ChatbotCopilot] Loaded ${data.messages.length} structured items from history`);
-            } else {
-                setDisplayItems([]);
-            }
-            
-            // Also check status
-            const statusResponse = await fetch(`${API_BASE_URL}/api/v1/session/${id}/status`);
-            if (statusResponse.ok) {
-                const statusData = await statusResponse.json();
-                setSessionStatus(statusData.status || 'idle');
-            }
-        } catch (err) {
-            console.error('[ChatbotCopilot] Error loading history:', err);
-        }
+        console.log('[ChatbotCopilot] Loading session history:', id);
+        // Session history is now managed by AIChatAgent via WebSocket.
+        // Messages are persisted in the SupervisorAgent DO's SQLite.
+        // On reconnect, the AIChatAgent sends cf_agent_chat_messages with the full history.
+        // We load it by connecting to the agent (which happens in ensureWsConnection).
+        setDisplayItems([]);
+        setChatMessages([]);
+        setSessionStatus('idle');
     }, []);
 
     // Load initial history
@@ -297,40 +271,9 @@ export default function ChatbotCopilot({
     }, [threadId, loadSessionHistory]);
 
     const fetchProjectSessions = useCallback(async () => {
-        console.log('[ChatbotCopilot] Fetching session list for project:', projectId);
-        try {
-            const response = await fetch(`${API_BASE_URL}/api/v1/session/project/${projectId}/list`);
-            if (!response.ok) throw new Error('Failed to fetch session list');
-            const data = await response.json();
-            
-            if (data.sessions) {
-                setSessionHistory(prev => {
-                    // Map backend objects to SessionInfo
-                    const backendSessions: SessionInfo[] = data.sessions.map((s: any) => ({
-                        threadId: s.thread_id,
-                        title: s.title,
-                        updatedAt: s.updated_at
-                    }));
-
-                    // Merge: prefer backend info for existing IDs, keep local-only IDs if any
-                    const merged = [...backendSessions];
-                    prev.forEach(p => {
-                        if (!merged.some(m => m.threadId === p.threadId)) {
-                            merged.push(p);
-                        }
-                    });
-                    
-                    return merged.sort((a, b) => {
-                        const dateA = a.updatedAt ? new Date(a.updatedAt).getTime() : 0;
-                        const dateB = b.updatedAt ? new Date(b.updatedAt).getTime() : 0;
-                        return dateB - dateA;
-                    });
-                });
-                console.log(`[ChatbotCopilot] Synced ${data.sessions.length} sessions from backend`);
-            }
-        } catch (err) {
-            console.error('[ChatbotCopilot] Error fetching session list:', err);
-        }
+        // Session list is now managed locally (stored in localStorage).
+        // Each SupervisorAgent DO persists its own chat history.
+        // Future: could query DO for session list.
     }, [projectId]);
 
     // Initial sync of session list
@@ -460,23 +403,19 @@ export default function ChatbotCopilot({
         };
     }, []);
 
-    // Sync useChat messages to display items
+    // Sync AIChatAgent messages to display items when message sync arrives
     useEffect(() => {
-        if (messages.length > 0) {
-            // Simple sync for now - in real app we'd merge
-            setDisplayItems(messages.map((m: any) => ({
-                type: 'message',
-                role: m.role,
-                content: m.content,
-                id: m.id
-            })));
+        if (chatMessages.length > 0) {
+            // The chatMessages from AIChatAgent contain the full conversation history.
+            // We don't overwrite displayItems since we have richer UI items.
+            // This is mainly for tracking the conversation state.
         }
-    }, [messages]);
+    }, [chatMessages]);
 
     const [input, setInput] = useState('');
     const [isResizing, setIsResizing] = useState(false);
     const messagesEndRef = useRef<HTMLDivElement>(null);
-    const isLoading = status === 'streaming' || status === 'submitted';
+    const isLoading = isProcessing;
 
     const scrollContainerRef = useRef<HTMLDivElement>(null);
     const [shouldStickToBottom, setShouldStickToBottom] = useState(true);
@@ -524,10 +463,203 @@ export default function ChatbotCopilot({
     //     return node?.id;
     // };
 
-    const runStreamScenario = useCallback(async (userInput: string, resume: boolean = false, inputData?: any) => {
+    // ─── WebSocket Connection to SupervisorAgent ──────────────
+    const ensureWsConnection = useCallback((): Promise<WebSocket> => {
+        return new Promise((resolve, reject) => {
+            if (wsRef.current?.readyState === WebSocket.OPEN) {
+                resolve(wsRef.current);
+                return;
+            }
+
+            // Close stale connection
+            if (wsRef.current) {
+                wsRef.current.close();
+                wsRef.current = null;
+            }
+
+            const room = `${projectId}:${threadId}`;
+            const wsUrl = `${WS_BASE_URL}/agents/supervisor/${room}`;
+            console.log('[ChatbotCopilot] Opening WebSocket to SupervisorAgent:', wsUrl);
+
+            const ws = new WebSocket(wsUrl);
+            wsRef.current = ws;
+
+            ws.onopen = () => {
+                console.log('[ChatbotCopilot] WebSocket connected');
+                wsReadyRef.current = true;
+                resolve(ws);
+            };
+
+            ws.onclose = () => {
+                console.log('[ChatbotCopilot] WebSocket closed');
+                wsReadyRef.current = false;
+                if (wsRef.current === ws) {
+                    wsRef.current = null;
+                }
+                setIsProcessing(false);
+            };
+
+            ws.onerror = (e) => {
+                console.error('[ChatbotCopilot] WebSocket error:', e);
+                reject(new Error('WebSocket connection failed'));
+            };
+
+            ws.onmessage = (event) => {
+                if (typeof event.data !== 'string') return;
+
+                let data: any;
+                try {
+                    data = JSON.parse(event.data);
+                } catch {
+                    return;
+                }
+
+                // AIChatAgent protocol: data stream response chunks
+                if (data.type === 'cf_agent_use_chat_response') {
+                    if (data.id !== currentRequestIdRef.current) return;
+                    if (!data.done) {
+                        parseDataStreamChunk(data.body);
+                    } else {
+                        // Stream complete
+                        flushTypewriter();
+                        setIsProcessing(false);
+                        setSessionStatus('idle');
+                        currentRequestIdRef.current = null;
+                    }
+                    return;
+                }
+
+                // AIChatAgent protocol: message sync
+                if (data.type === 'cf_agent_chat_messages') {
+                    setChatMessages(data.messages);
+                    return;
+                }
+
+                // Custom events from tools (node_proposal, sub_agent_start, etc.)
+                handleCustomEvent(data);
+            };
+        });
+    }, [projectId, threadId]);
+
+    /** Parse Vercel AI SDK data stream protocol chunks. */
+    const parseDataStreamChunk = useCallback((chunk: string) => {
+        lineBufferRef.current += chunk;
+        const lines = lineBufferRef.current.split('\n');
+        lineBufferRef.current = lines.pop() || '';
+
+        for (const line of lines) {
+            if (!line) continue;
+            const colonIdx = line.indexOf(':');
+            if (colonIdx === -1) continue;
+            const typeCode = line.substring(0, colonIdx);
+            const rawValue = line.substring(colonIdx + 1);
+
+            try {
+                switch (typeCode) {
+                    case '0': { // text delta
+                        const text = JSON.parse(rawValue) as string;
+                        textQueueRef.current += text;
+                        processTypewriterQueue();
+                        break;
+                    }
+                    case '9': { // tool call start
+                        const toolCall = JSON.parse(rawValue);
+                        setDisplayItems(prev => [...prev, {
+                            type: 'tool_call',
+                            id: `tc-${toolCall.toolCallId || generateId()}`,
+                            props: {
+                                name: toolCall.toolName,
+                                args: toolCall.args,
+                                status: 'running',
+                            }
+                        }]);
+                        break;
+                    }
+                    case 'a': { // tool result
+                        const result = JSON.parse(rawValue);
+                        setDisplayItems(prev => prev.map(item =>
+                            item.type === 'tool_call' && item.props?.name && item.id?.includes(result.toolCallId)
+                                ? { ...item, props: { ...item.props, status: 'complete', result: result.result } }
+                                : item
+                        ));
+                        break;
+                    }
+                    case 'e': { // error
+                        const error = JSON.parse(rawValue);
+                        setDisplayItems(prev => [...prev, {
+                            type: 'message',
+                            role: 'assistant',
+                            content: `Error: ${error}`,
+                            id: generateId()
+                        }]);
+                        break;
+                    }
+                    case 'd': { // finish
+                        // Handled by the 'done' flag in cf_agent_use_chat_response
+                        break;
+                    }
+                }
+            } catch (e) {
+                // Parse error on individual line, skip
+            }
+        }
+    }, [processTypewriterQueue]);
+
+    /** Handle custom JSON events from SupervisorAgent tools. */
+    const handleCustomEvent = useCallback((data: any) => {
+        if (data.type === 'node_proposal' && data.proposal) {
+            setDisplayItems(prev => [...prev, {
+                type: 'node_proposal',
+                id: `np-${generateId()}`,
+                props: data.proposal,
+            }]);
+        } else if (data.type === 'sub_agent_start') {
+            const agentName = data.agentName;
+            setDisplayItems(prev => [...prev, {
+                type: 'agent_card',
+                id: `agent-${generateId()}`,
+                props: {
+                    agentName,
+                    agentId: data.agentId || agentName,
+                    status: 'working',
+                    logs: [],
+                }
+            }]);
+        } else if (data.type === 'sub_agent_end') {
+            const agentName = data.agentName;
+            setDisplayItems(prev => prev.map(item =>
+                item.type === 'agent_card' && item.props?.agentName === agentName
+                    ? { ...item, props: { ...item.props, status: 'complete', result: data.result } }
+                    : item
+            ));
+        } else if (data.type === 'timeline_edit') {
+            // Timeline edits are handled by Loro sync
+        }
+    }, []);
+
+    // Close WebSocket when threadId changes (session switch) or on unmount
+    useEffect(() => {
+        // Close previous connection — ensureWsConnection will open a new one
+        // for the new threadId when the user sends a message.
+        if (wsRef.current) {
+            wsRef.current.close();
+            wsRef.current = null;
+            wsReadyRef.current = false;
+        }
+        return () => {
+            if (wsRef.current) {
+                wsRef.current.close();
+                wsRef.current = null;
+            }
+        };
+    }, [threadId]);
+
+    const runStreamScenario = useCallback(async (userInput: string, resume: boolean = false, _inputData?: any) => {
         setIsProcessing(true);
         setProcessingStatus('Thinking');
         setSessionStatus('running');
+        lineBufferRef.current = '';
+
         // 1. Add User Message (only if not resuming)
         if (!resume) {
             const userMsgId = generateId();
@@ -539,843 +671,60 @@ export default function ChatbotCopilot({
             }]);
         }
 
+        // 2. Add empty assistant message for streaming text
+        const assistantMsgId = generateId();
+        setDisplayItems(prev => [...prev, {
+            type: 'message',
+            role: 'assistant',
+            content: '',
+            id: assistantMsgId
+        }]);
 
-        // 3. Connect to SSE Stream
-        console.log('[ChatbotCopilot] Connecting to SSE stream...');
-        const url = new URL(`${API_BASE_URL}/api/v1/stream/${projectId}`);
-        url.searchParams.append('thread_id', threadId);
-        if (resume) {
-            url.searchParams.append('resume', 'true');
+        // 3. Connect to SupervisorAgent WebSocket and send chat message
+        try {
+            const ws = await ensureWsConnection();
+
+            // Build message list for the AIChatAgent protocol
+            const userMsg = { id: generateId(), role: 'user', content: userInput };
+            const allMessages = [...chatMessages, userMsg];
+
+            const requestId = generateId();
+            currentRequestIdRef.current = requestId;
+
+            // Send in AIChatAgent cf_agent_use_chat_request format
+            ws.send(JSON.stringify({
+                type: 'cf_agent_use_chat_request',
+                id: requestId,
+                init: {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ messages: allMessages }),
+                }
+            }));
+
+            console.log('[ChatbotCopilot] Chat message sent via WebSocket');
+        } catch (e) {
+            console.error('[ChatbotCopilot] Failed to send message:', e);
+            setDisplayItems(prev => [...prev, {
+                type: 'message',
+                role: 'assistant',
+                content: 'Failed to connect to AI agent. The canvas editor still works — you can create and edit nodes manually.',
+                id: generateId()
+            }]);
+            setIsProcessing(false);
+            setSessionStatus('idle');
         }
-        // Always pass user_input; when resuming, encode the inputData payload, otherwise send the user prompt.
-        const encodedUserInput = resume
-            ? JSON.stringify(inputData ?? '')
-            : (userInput ?? '');
-        url.searchParams.append('user_input', encodedUserInput);
-        if (selectedNodes.length > 0) {
-            url.searchParams.append('selected_node_ids', selectedNodes.map(n => n.id).join(','));
-        }
 
-        const eventSource = new EventSource(url.toString());
-        eventSourceRef.current = eventSource;  // Save ref for stop functionality
+    }, [projectId, chatMessages, ensureWsConnection, flushTypewriter, processTypewriterQueue, parseDataStreamChunk]);
 
-        // Track if stream ended normally to suppress error on close
-        let normalEnd = false;
-        let retryCount = 0;
-        const maxRetries = 3;
-        let hasReceivedData = false;
+    // NOTE: Old SSE event listeners removed. Custom events are now handled
+    // via WebSocket in handleCustomEvent and parseDataStreamChunk above.
 
-        eventSource.onopen = () => {
-            console.log('[ChatbotCopilot] SSE Stream connected successfully.');
-            retryCount = 0; // Reset retry count on successful connection
-        };
-
-        eventSource.onerror = (_e) => {
-            // EventSource fires onerror on normal close - check if it's expected
-            if (normalEnd) {
-                console.log('[ChatbotCopilot] SSE Stream closed (expected).');
-                return;
-            }
-
-            // Check readyState to determine if this is a real error
-            if (eventSource.readyState === EventSource.CLOSED) {
-                console.error('[ChatbotCopilot] SSE Stream closed unexpectedly.');
-
-                // If we haven't received any data and hit max retries, show error
-                if (!hasReceivedData && retryCount >= maxRetries) {
-                    setDisplayItems(prev => [...prev, {
-                        type: 'message',
-                        role: 'assistant',
-                        content: '❌ Unable to connect to the backend server. Please check if the server is running and try again.',
-                        id: generateId()
-                    }]);
-                }
-
-                eventSource.close();
-                setIsProcessing(false);
-            } else if (eventSource.readyState === EventSource.CONNECTING) {
-                retryCount++;
-                console.log(`[ChatbotCopilot] SSE Stream reconnecting... (attempt ${retryCount}/${maxRetries})`);
-
-                // If exceeded max retries, force close
-                if (retryCount > maxRetries) {
-                    console.error('[ChatbotCopilot] Max retry attempts exceeded. Closing stream.');
-                    setDisplayItems(prev => [...prev, {
-                        type: 'message',
-                        role: 'assistant',
-                        content: '❌ Connection failed after multiple attempts. Please try again later.',
-                        id: generateId()
-                    }]);
-                    eventSource.close();
-                    setIsProcessing(false);
-                }
-            } else {
-                console.warn('[ChatbotCopilot] SSE Stream unexpected state:', {
-                    readyState: eventSource.readyState,
-                    url: url.toString()
-                });
-                eventSource.close();
-                setIsProcessing(false);
-            }
-        };
-
-        eventSource.addEventListener('plan', (e: any) => {
-            hasReceivedData = true;
-            try {
-                const data = JSON.parse(e.data);
-                setTodoItems(data.items);
-            } catch (err) {
-                console.error('[ChatbotCopilot] Error parsing plan event:', err);
-            }
-        });
-
-        eventSource.addEventListener('thinking', (e: any) => {
-            hasReceivedData = true;
-            console.log('[ChatbotCopilot] Received thinking:', e.data);
-            try {
-                const data = JSON.parse(e.data);
-                const agentName = data.agent;
-                const resolvedAgentId = data.agent_id || (agentName ? agentNameToIdRef.current[agentName] : undefined);
-
-                // Only attach when we have a concrete agent_id to avoid mis-grouping
-                if (resolvedAgentId) {
-                    setDisplayItems(prev => {
-                        // Find the LAST working agent card with this agentId (most recent task_delegation)
-                        let existingIndex = -1;
-                        for (let i = prev.length - 1; i >= 0; i--) {
-                            if (prev[i].type === 'agent_card' &&
-                                prev[i].props.agentId === resolvedAgentId) {
-                                existingIndex = i;
-                                break;
-                            }
-                        }
-
-                        if (existingIndex !== -1) {
-                            return prev.map((item, index) => {
-                                if (index === existingIndex) {
-                                return {
-                                    ...item,
-                                    props: {
-                                        ...item.props,
-                                        agentId: item.props.agentId || resolvedAgentId,
-                                        logs: (() => {
-                                            const existingLogs = (item.props.logs || []) as AgentLog[];
-                                            // Check if the last log is a thinking block
-                                            const lastLog = existingLogs[existingLogs.length - 1];
-                                                if (lastLog && lastLog.type === 'thinking') {
-                                                    // Merge with existing thinking block
-                                                    return existingLogs.map((log: AgentLog, i: number) =>
-                                                        i === existingLogs.length - 1
-                                                            ? { ...log, content: log.content + '\n\n' + data.content }
-                                                            : log
-                                                    );
-                                                } else {
-                                                    // Create new thinking block
-                                                    const newId = data.id ? `${data.id}-thinking` : `thinking-${generateId()}`;
-                                                    return [...existingLogs, {
-                                                        id: newId,
-                                                        type: 'thinking',
-                                                        content: data.content
-                                                    }];
-                                                }
-                                            })()
-                                        }
-                                    };
-                                }
-                                return item;
-                            });
-                        } else {
-                            return [...prev, {
-                                type: 'agent_card',
-                                id: `agent-${resolvedAgentId}`,
-                                props: {
-                                    agentId: resolvedAgentId,
-                                    agentName: agentName,
-                                    status: 'working',
-                                    persona: agentName.toLowerCase(),
-                                    logs: [{
-                                        id: data.id || generateId(),
-                                        type: 'thinking',
-                                        content: data.content
-                                    }]
-                                }
-                            }];
-                        }
-                    });
-                    // Backfill mapping if missing
-                    if (agentName && resolvedAgentId && agentNameToIdRef.current[agentName] !== resolvedAgentId) {
-                        agentNameToIdRef.current[agentName] = resolvedAgentId;
-                    }
-                } else {
-                    // Main agent thinking - merge consecutive thinking blocks into one
-                    setDisplayItems(prev => {
-                        const lastItem = prev[prev.length - 1];
-                        // Check if last item is a thinking block AND from the same agent
-                        if (lastItem && lastItem.type === 'thinking' && lastItem.agent === agentName) {
-                            // Append to existing thinking block
-                            return prev.map((item, index) =>
-                                index === prev.length - 1
-                                    ? { ...item, content: item.content + '\n' + data.content }
-                                    : item
-                            );
-                        } else {
-                            // Create new thinking block
-                            return [...prev, {
-                                type: 'thinking',
-                                id: generateId() + '-thinking',
-                                agent: agentName, // Track which agent this thinking belongs to
-                                content: data.content
-                            }];
-                        }
-                    });
-                }
-            } catch (err) {
-                console.error('[ChatbotCopilot] Error parsing thinking event:', err);
-            }
-        });
-
-        eventSource.addEventListener('text', (e: any) => {
-            hasReceivedData = true;
-            console.log('[ChatbotCopilot] Received text:', e.data);
-            try {
-                const data = JSON.parse(e.data);
-                const agentName = data.agent;
-                const resolvedAgentId = data.agent_id || (agentName ? agentNameToIdRef.current[agentName] : undefined);
-
-                // Only process assistant messages
-                if (agentName && agentName !== 'User') {
-                    // Sub-agent text: rely on agent_id as the unique block id
-                    if (resolvedAgentId) {
-                        setDisplayItems(prev => {
-                            const existingIndex = prev.findIndex(item =>
-                                item.type === 'agent_card' &&
-                                item.props.agentId === resolvedAgentId
-                            );
-
-                            if (existingIndex !== -1) {
-                                return prev.map((item, index) => {
-                                    if (index === existingIndex) {
-                                        return {
-                                            ...item,
-                                            props: {
-                                                ...item.props,
-                                                agentId: item.props.agentId || resolvedAgentId,
-                                                logs: (() => {
-                                                    const existingLogs = (item.props.logs || []) as AgentLog[];
-                                                    const lastLog = existingLogs[existingLogs.length - 1];
-                                                    if (lastLog && lastLog.type === 'text') {
-                                                        return existingLogs.map((log: AgentLog, i: number) =>
-                                                            i === existingLogs.length - 1
-                                                                ? { ...log, content: log.content + data.content }
-                                                                : log
-                                                        );
-                                                    } else {
-                                                        const newId = data.id ? `${data.id}-text` : `text-${generateId()}`;
-                                                        return [...existingLogs, {
-                                                            id: newId,
-                                                            type: 'text',
-                                                            content: data.content
-                                                        }];
-                                                    }
-                                                })()
-                                            }
-                                        };
-                                    }
-                                    return item;
-                                });
-                            }
-
-                            // Create a new agent card if it wasn't created yet
-                            return [...prev, {
-                                type: 'agent_card',
-                                id: `agent-${resolvedAgentId}`,
-                                props: {
-                                    agentId: resolvedAgentId,
-                                    agentName,
-                                    status: 'working',
-                                    persona: agentName.toLowerCase(),
-                                    logs: [{
-                                        id: data.id ? `${data.id}-text` : `text-${generateId()}`,
-                                        type: 'text',
-                                        content: data.content
-                                    }]
-                                }
-                            }];
-                        });
-                        if (agentName && resolvedAgentId && agentNameToIdRef.current[agentName] !== resolvedAgentId) {
-                            agentNameToIdRef.current[agentName] = resolvedAgentId;
-                        }
-                        return;
-                    }
-
-                    // No agent_id for sub-agent: ignore to avoid mis-append
-                    if (agentName !== 'MasterClash' && agentName !== 'Agent' && !resolvedAgentId) {
-                        return;
-                    }
-
-                    // Director text (agent_id absent)
-                    setDisplayItems(prev => {
-                        const lastItem = prev[prev.length - 1];
-                        if (!lastItem || lastItem.type !== 'message' || lastItem.role !== 'assistant') {
-                            return [...prev, {
-                                type: 'message',
-                                role: 'assistant',
-                                content: '',
-                                id: generateId()
-                            }];
-                        }
-                        return prev;
-                    });
-
-                    textQueueRef.current += data.content;
-                    processTypewriterQueue();
-                }
-            } catch (err) {
-                console.error('[ChatbotCopilot] Error parsing text event:', err);
-            }
-        });
-
-        eventSource.addEventListener('tool_start', (e: any) => {
-            console.log('[ChatbotCopilot] Received tool_start:', e.data);
-            // Flush any pending typewriter text before showing tool
-            flushTypewriter();
-
-            try {
-                const data = JSON.parse(e.data);
-                const agentIdFromPayload = data.agent_id;
-                if (data.tool === 'task_delegation' && data.input?.agent) {
-                    setProcessingStatus(`${data.input.agent} is working...`);
-                } else {
-                    setProcessingStatus(`Running tool: ${data.tool}`);
-                }
-
-                // If agent is Director (or generic Agent), show standalone tool call
-                // Check for 'Director', 'Agent', or 'agent', or 'MasterClash'
-                if (data.agent === 'Director' || data.agent === 'Agent' || data.agent === 'agent' || data.agent === 'MasterClash') {
-                    // Special handling for task_delegation
-                    if (data.tool === 'task_delegation') {
-                        const targetAgent = data.input.agent;
-                        // const instruction = data.input.instruction; // Unused
-                        const toolCallId = data.id || generateId();
-                        // Use task_delegation tool_call_id as the AgentCard ID for precise matching
-                        const agentCardId = `agent-${toolCallId}`;
-
-                        setDisplayItems(prev => {
-                            const newItems = [...prev];
-
-                            // 1. Add the tool call (Director's action)
-                            newItems.push({
-                                type: 'tool_call',
-                                id: toolCallId,
-                                props: {
-                                    toolName: data.tool,
-                                    args: data.input,
-                                    status: 'pending',
-                                    indent: false
-                                }
-                            });
-
-                            // 2. Always create a NEW AgentCard for each task_delegation
-                            // Each task_delegation gets its own card, even if it's the same agent
-                            newItems.push({
-                                type: 'agent_card',
-                                id: agentCardId,
-                                props: {
-                                    agentId: toolCallId,
-                                    agentName: targetAgent,
-                                    status: 'working',
-                                    persona: targetAgent.toLowerCase(),
-                                    logs: [],
-                                    delegationId: toolCallId  // Store the delegation ID for matching
-                                }
-                            });
-
-                            // Cache mapping for this agent name to delegation id
-                            if (targetAgent && toolCallId) {
-                                agentNameToIdRef.current[targetAgent] = toolCallId;
-                            }
-
-                            return newItems;
-                        });
-                        return;
-                    }
-
-                    setDisplayItems(prev => [...prev, {
-                        type: 'tool_call',
-                        id: data.id || generateId(),
-                        props: {
-                            toolName: data.tool,
-                            args: data.input,
-                            status: 'pending',
-                            indent: false
-                        }
-                    }]);
-                    return;
-                }
-
-                const agentId = agentIdFromPayload;
-
-                // For now, we assume tool calls come from sub-agents like ScriptWriter
-                // So we create/update the agent card
-                setDisplayItems(prev => {
-                    // Find the LAST working agent card with this agentId
-                    let existingAgentIndex = -1;
-                    for (let i = prev.length - 1; i >= 0; i--) {
-                        if (prev[i].type === 'agent_card' &&
-                            prev[i].props.agentId === agentId &&
-                            prev[i].props.status === 'working') {
-                            existingAgentIndex = i;
-                            break;
-                        }
-                    }
-
-                    if (existingAgentIndex !== -1) {
-                        // Update existing agent card with new tool call log
-                        return prev.map((item, index) => {
-                            if (index === existingAgentIndex) {
-                                return {
-                                    ...item,
-                                    props: {
-                                        ...item.props,
-                                        logs: (() => {
-                                            const existingLogs = item.props.logs || [];
-                                            const newId = data.id || generateId();
-                                            if (existingLogs.some((l: AgentLog) => l.id === newId)) return existingLogs;
-                                            return [...existingLogs, {
-                                                id: newId,
-                                                type: 'tool_call',
-                                                toolProps: {
-                                                    toolName: data.tool,
-                                                    args: data.input,
-                                                    status: 'pending',
-                                                    indent: false
-                                                }
-                                            }];
-                                        })()
-                                    }
-                                };
-                            }
-                            return item;
-                        });
-                    } else {
-                        // Create new agent card with tool call log
-                        return [...prev, {
-                            type: 'agent_card',
-                            id: agentId ? `agent-${agentId}` : generateId(),
-                            props: {
-                                agentId,
-                                agentName: data.agent,
-                                status: 'working',
-                                persona: data.agent.toLowerCase(),
-                                logs: [{
-                                    id: data.id || generateId(),
-                                    type: 'tool_call',
-                                    toolProps: {
-                                        toolName: data.tool,
-                                        args: data.input,
-                                        status: 'pending',
-                                        indent: false
-                                    }
-                                }]
-                            }
-                        }];
-                    }
-                });
-            } catch (err) {
-                console.error('[ChatbotCopilot] Error parsing tool_start event:', err);
-            }
-        });
-
-        eventSource.addEventListener('tool_end', (e: any) => {
-            console.log('[ChatbotCopilot] Received tool_end:', e.data);
-            try {
-                const data = JSON.parse(e.data);
-                console.log('[ChatbotCopilot] tool_end parsed:', { id: data.id, tool: data.tool, agent: data.agent, status: data.status });
-
-                // Use status from backend (defaults to 'success' if not provided for backward compatibility)
-                const toolStatus = data.status || 'success';
-
-                // Reset status to agent working
-                if (data.agent && data.agent !== 'User') {
-                    setProcessingStatus(`${data.agent} is working...`);
-                } else {
-                    setProcessingStatus('Thinking...');
-                }
-
-                setDisplayItems(prev => {
-                    console.log('[ChatbotCopilot] Current displayItems before tool_end update:', prev.map(item => ({
-                        type: item.type,
-                        id: item.id,
-                        agentName: item.type === 'agent_card' ? item.props.agentName : undefined,
-                        agentId: item.type === 'agent_card' ? item.props.agentId : undefined,
-                        logs: item.type === 'agent_card' ? item.props.logs?.map((l: any) => ({ id: l.id, type: l.type, toolName: l.toolProps?.toolName })) : undefined
-                    })));
-                    return prev.map(item => {
-                        // Handle standalone tool call (Director or Agent) - match by ID first, then fallback to tool name
-                        if (item.type === 'tool_call') {
-                            // Prioritize ID matching for exact identification
-                            if (data.id && item.id === data.id) {
-                                return {
-                                    ...item,
-                                    props: {
-                                        ...item.props,
-                                        status: toolStatus,
-                                        result: data.result
-                                    }
-                                };
-                            }
-                        }
-
-                        // Handle task_delegation completion
-                        if (data.tool === 'task_delegation') {
-                            // 1. Update the standalone tool call by ID
-                            if (item.type === 'tool_call' && data.id && item.id === data.id) {
-                                return {
-                                    ...item,
-                                    props: {
-                                        ...item.props,
-                                        status: toolStatus,
-                                        result: data.result
-                                    }
-                                };
-                            }
-
-                            // 2. Update the corresponding AgentCard by delegationId
-                            if (item.type === 'agent_card' && item.props.delegationId === data.id) {
-                                return {
-                                    ...item,
-                                    props: {
-                                        ...item.props,
-                                        status: toolStatus === 'success' ? 'done' : 'failed'
-                                    }
-                                };
-                            }
-
-                            // 3. Update by agentId (delegation tool_call_id)
-                            if (item.type === 'agent_card' && item.props.agentId === data.agent_id) {
-                                return {
-                                    ...item,
-                                    props: {
-                                        ...item.props,
-                                        status: toolStatus === 'success' ? 'done' : 'failed'
-                                    }
-                                };
-                            }
-                        }
-
-                        // Handle agent card tool calls - match by ID within logs
-                        if (item.type === 'agent_card' && item.props.agentId === data.agent_id) {
-                            return {
-                                ...item,
-                                props: {
-                                    ...item.props,
-                                    logs: item.props.logs?.map((log: any) => {
-                                        // Match by ID first for exact identification
-                                        if (log.type === 'tool_call' && data.id && log.id === data.id) {
-                                            return {
-                                                ...log,
-                                                toolProps: {
-                                                    ...log.toolProps,
-                                                    status: toolStatus,
-                                                    result: data.result
-                                                }
-                                            };
-                                        }
-                                        return log;
-                                    })
-                                }
-                            };
-                        }
-                        return item;
-                    });
-                });
-            } catch (err) {
-                console.error('[ChatbotCopilot] Error parsing tool_end event:', err);
-            }
-        });
-
-        eventSource.addEventListener('sub_agent_start', (e: any) => {
-            console.log('[ChatbotCopilot] Received sub_agent_start:', e.data);
-            try {
-                const data = JSON.parse(e.data);
-                const agentId = data.agent_id || data.id;
-                const agentName = data.agent;
-                const taskName = data.task;
-                setProcessingStatus(`${agentName} is working`);
-                setDisplayItems(prev => {
-                    const existingIndex = prev.findIndex(item =>
-                        item.type === 'agent_card' &&
-                        (
-                            (agentId && item.props.agentId === agentId) ||
-                            (!agentId && item.props.agentName === agentName) ||
-                            (!item.props.agentId && item.props.agentName === agentName)
-                        )
-                    );
-                    if (existingIndex !== -1) {
-                        return prev.map((item, index) => {
-                            if (index === existingIndex) {
-                                const logs = item.props.logs || [];
-                                const lastLog = logs[logs.length - 1];
-                                // Deduplicate if same task
-                                if (lastLog && lastLog.taskName === taskName) {
-                                    return {
-                                        ...item,
-                                        props: { ...item.props, status: 'working', agentId: item.props.agentId || agentId }
-                                    };
-                                }
-                                return {
-                                    ...item,
-                                    props: {
-                                        ...item.props,
-                                        status: 'working',
-                                        agentId: item.props.agentId || agentId,
-                                        logs: (() => {
-                                            const existingLogs = logs;
-                                            // Deduplicate by ID if present
-                                            if (data.id && existingLogs.some((l: AgentLog) => l.id === data.id)) return existingLogs;
-
-                                            return [...existingLogs, {
-                                                id: data.id || generateId(),
-                                                type: 'text',
-                                                taskName: taskName,
-                                                content: <div className="text-blue-600 font-medium text-xs mt-2">Starting: {taskName}</div>
-                                            }];
-                                        })()
-                                    }
-                                };
-                            }
-                            return item;
-                        });
-                    } else {
-                        return [...prev, {
-                            type: 'agent_card',
-                            id: `agent-${agentId || agentName}-${generateId()}`,
-                            props: {
-                                agentId,
-                                agentName,
-                                status: 'working',
-                                persona: agentName.toLowerCase(),
-                                logs: [{
-                                    id: data.id || generateId(),
-                                    type: 'text',
-                                    taskName: taskName,
-                                    content: <div className="text-blue-600 font-medium text-xs">Starting: {taskName}</div>
-                                }]
-                            }
-                        }];
-                    }
-                });
-            } catch (err) {
-                console.error('[ChatbotCopilot] Error parsing sub_agent_start:', err);
-            }
-        });
-
-        eventSource.addEventListener('sub_agent_end', (e: any) => {
-            try {
-                const data = JSON.parse(e.data);
-                const agentId = data.agent_id || data.id;
-                setDisplayItems(prev => prev.map(item => {
-                    if (item.type === 'agent_card' &&
-                        (
-                            (agentId && item.props.agentId === agentId) ||
-                            (!agentId && item.props.agentName === data.agent) ||
-                            (!item.props.agentId && item.props.agentName === data.agent)
-                        )) {
-                        return {
-                            ...item,
-                            props: {
-                                ...item.props,
-                                status: 'done',
-                                logs: [...(item.props.logs || []), {
-                                    id: (data.id || generateId()) + '-end',
-                                    type: 'text',
-                                    content: <div className="text-green-600 font-medium text-xs mb-2">Completed: {data.result}</div>
-                                }]
-                            }
-                        };
-                    }
-                    return item;
-                }));
-            } catch (err) {
-                console.error('[ChatbotCopilot] Error parsing sub_agent_end:', err);
-            }
-        });
-
-        eventSource.addEventListener('human_interrupt', (e: any) => {
-            try {
-                const data = JSON.parse(e.data);
-                const approvalId = generateId() + '-approval';
-                setDisplayItems(prev => [...prev, {
-                    type: 'approval_card',
-                    id: approvalId,
-                    props: {
-                        message: data.message,
-                        onApprove: () => {
-                            setDisplayItems(p => p.filter(i => i.id !== approvalId));
-                            // Resume the stream with approval data
-                            runStreamScenario('', true, { action: 'approve' });
-                        },
-                        onReject: () => {
-                            setDisplayItems(p => p.filter(i => i.id !== approvalId));
-                            // Resume the stream with reject data
-                            runStreamScenario('', true, { action: 'reject' });
-                        }
-                    }
-                }]);
-                eventSource.close();
-                setIsProcessing(false);
-            } catch (err) {
-                console.error('[ChatbotCopilot] Error parsing human_interrupt event:', err);
-            }
-        });
-
-        eventSource.addEventListener('retry', () => {
-            console.log('[ChatbotCopilot] Received retry event. Retrying in 2s...');
-            normalEnd = true; // Suppress error on close
-            eventSource.close();
-            setTimeout(() => {
-                // Resume stream (syncs new context)
-                runStreamScenario('', true);
-            }, 2000);
-        });
-
-        eventSource.addEventListener('workflow_error', (e: any) => {
-            console.error('[ChatbotCopilot] Received workflow_error event:', e.data);
-            try {
-                const data = JSON.parse(e.data);
-                setDisplayItems(prev => [...prev, {
-                    type: 'message',
-                    role: 'assistant',
-                    content: `Error: ${data.message}`,
-                    id: generateId()
-                }]);
-            } catch (err) {
-                console.error('[ChatbotCopilot] Error parsing workflow_error event:', err);
-            }
-            normalEnd = true;
-            eventSource.close();
-            setIsProcessing(false);
-        });
-
-        eventSource.addEventListener('error', (e: Event) => {
-            // This captures native EventSource connection errors
-            if (normalEnd) {
-                console.log('[ChatbotCopilot] SSE Stream closed (expected).');
-                return;
-            }
-
-            console.warn('[ChatbotCopilot] SSE Stream connection error:', e);
-            // Don't parse e.data here as it's a native event
-
-            if (eventSource.readyState === EventSource.CLOSED) {
-                console.log('[ChatbotCopilot] SSE Stream closed.');
-            } else if (eventSource.readyState === EventSource.CONNECTING) {
-                console.log('[ChatbotCopilot] SSE Stream reconnecting...');
-            }
-        });
-
-        eventSource.addEventListener('end', () => {
-            console.log('[ChatbotCopilot] ===== RECEIVED END EVENT ===== Closing stream.');
-            hasReceivedData = true;
-            normalEnd = true;
-            eventSource.close();
-            eventSourceRef.current = null;
-            setIsProcessing(false);
-            setSessionStatus('completed');
-        });
-
-        // Handle session interrupted event from backend
-        eventSource.addEventListener('session_interrupted', (e: any) => {
-            console.log('[ChatbotCopilot] Session interrupted by backend');
-            normalEnd = true;
-            eventSource.close();
-            eventSourceRef.current = null;
-            setIsProcessing(false);
-            setSessionStatus('interrupted');
-            try {
-                const data = JSON.parse(e.data);
-                // Add a system message about interruption
-                setDisplayItems(prev => [...prev, {
-                    type: 'message',
-                    role: 'assistant',
-                    content: `⏸️ ${data.message || 'Session interrupted. You can resume by sending another message.'}`,
-                    id: generateId()
-                }]);
-            } catch (err) {
-                console.error('[ChatbotCopilot] Failed to parse session_interrupted:', err);
-            }
-        });
-
-        // ========================================
-        // REMOVED: node_proposal SSE listener
-        // Node proposals are now handled via Loro CRDT sync
-        // Agent writes directly to Loro's 'nodes' and 'edges' maps
-        // Frontend listens to Loro document changes in ProjectEditor
-        // See: apps/web/app/hooks/useLoroSync.ts
-        // ========================================
-        /* eventSource.addEventListener('node_proposal', (e: any) => {
-            ... removed ~140 lines of node proposal handling code ...
-        }); */
-
-        // Handle rerun_generation_node events
-        eventSource.addEventListener('rerun_generation_node', (e: any) => {
-            hasReceivedData = true;
-            try {
-                const data = JSON.parse(e.data);
-                console.log('[ChatbotCopilot] Received rerun_generation_node:', data);
-
-                const { nodeId, assetId, nodeData: _nodeData } = data;
-
-                if (!nodeId || !assetId) {
-                    console.error('[ChatbotCopilot] Missing nodeId or assetId in rerun_generation_node event');
-                    return;
-                }
-
-                // Find the ActionBadge node and trigger re-execution
-                console.log('[ChatbotCopilot] Current nodes:', nodes.map((n: any) => ({ id: n.id, type: n.type, actionType: n.data?.actionType })));
-                console.log('[ChatbotCopilot] Looking for nodeId:', nodeId);
-
-                const targetNode = nodes.find((n: any) => n.id === nodeId);
-
-                if (!targetNode) {
-                    console.error(`[ChatbotCopilot] Node ${nodeId} not found`);
-                    console.error('[ChatbotCopilot] Available node IDs:', nodes.map((n: any) => n.id));
-                    return;
-                }
-
-                // Check if it's an action-badge node with actionType
-                if (targetNode.type !== 'action-badge') {
-                    console.error(`[ChatbotCopilot] Node ${nodeId} is not an action-badge node (type: ${targetNode.type})`);
-                    return;
-                }
-
-                const actionType = targetNode.data?.actionType;
-                if (actionType !== 'image-gen' && actionType !== 'video-gen') {
-                    console.error(`[ChatbotCopilot] Node ${nodeId} is not a generation node (actionType: ${actionType})`);
-                    return;
-                }
-
-                console.log(`[ChatbotCopilot] Triggering regeneration for node ${nodeId} with assetId ${assetId}`);
-
-                // Update the node to trigger regeneration
-                // We set preAllocatedAssetId and autoRun to trigger the ActionBadge's useEffect
-                if (onUpdateNode) {
-                    onUpdateNode(nodeId, {
-                        data: {
-                            ...targetNode.data,
-                            preAllocatedAssetId: assetId,
-                            autoRun: true, // Trigger auto-run
-                        }
-                    });
-                } else {
-                    console.error('[ChatbotCopilot] onUpdateNode callback not provided');
-                }
-
-            } catch (err) {
-                console.error('[ChatbotCopilot] Error parsing rerun_generation_node event:', err);
-            }
-        });
-    }, [projectId, threadId, selectedNodes, onUpdateNode, nodes, flushTypewriter, processTypewriterQueue]);
+    // Old SSE event listeners (plan, thinking, text, tool_start, tool_end, sub_agent_start,
+    // sub_agent_end, human_interrupt, retry, workflow_error, error, end, session_interrupted,
+    // rerun_generation_node) were removed. Event handling is now done via WebSocket in
+    // handleCustomEvent and parseDataStreamChunk above.
+    void 0; // placeholder
 
     // Effect to handle pending resume after nodes update
     useEffect(() => {
@@ -1429,7 +778,7 @@ export default function ChatbotCopilot({
 
     useEffect(() => {
         scrollToBottom();
-    }, [messages, isCollapsed, displayItems, shouldStickToBottom, scrollToBottom]);
+    }, [isCollapsed, displayItems, shouldStickToBottom, scrollToBottom]);
 
     // Auto-send initial prompt if provided (simplified approach)
     const hasAutoStartedRef = useRef(false);

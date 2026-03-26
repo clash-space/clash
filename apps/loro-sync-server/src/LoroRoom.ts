@@ -50,27 +50,6 @@ export class LoroRoom {
       return this.handleWebSocket(request);
     }
 
-    // Handle internal broadcast-task request
-    if (url.pathname.endsWith('/broadcast-task') && request.method === 'POST') {
-      try {
-        const body = await request.json() as {
-          task_id: string;
-          result_url?: string;
-          result_data?: Record<string, any>;
-        };
-
-        await this.broadcastTaskCompletion(body.task_id, {
-          result_url: body.result_url,
-          result_data: body.result_data,
-        });
-
-        return new Response('Task broadcasted', { status: 200 });
-      } catch (error) {
-        console.error('Broadcast task error:', error);
-        return new Response('Broadcast failed', { status: 500 });
-      }
-    }
-
     // Handle internal trigger-task-polling request
     if (url.pathname.endsWith('/trigger-task-polling') && request.method === 'POST') {
       try {
@@ -528,37 +507,4 @@ export class LoroRoom {
     await triggerPollingService(this.state);
   }
 
-  /**
-   * Broadcast task completion to all connected clients
-   */
-  private async broadcastTaskCompletion(
-    taskId: string,
-    result: { result_url?: string; result_data?: Record<string, any> }
-  ): Promise<void> {
-    console.log(`[LoroRoom] 📢 Broadcasting task completion: ${taskId}`);
-
-    try {
-      const versionBefore = this.doc.version();
-
-      const tasksMap = this.doc.getMap('tasks');
-      tasksMap.set(taskId, {
-        status: 'completed',
-        result_url: result.result_url,
-        result_data: result.result_data,
-        completed_at: Date.now(),
-      });
-
-      console.log(`[LoroRoom] ✅ Task added to Loro document: ${taskId}`);
-
-      const update = this.doc.export({
-        mode: 'update',
-        from: versionBefore,
-      });
-
-      this.broadcast(update);
-      console.log(`[LoroRoom] ✅ Task completion broadcasted: ${taskId}`);
-    } catch (error) {
-      console.error('[LoroRoom] ❌ Error broadcasting task completion:', error);
-    }
-  }
 }

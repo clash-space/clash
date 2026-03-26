@@ -15,7 +15,7 @@ database_id = "aab16eeb-a375-490b-ad1e-cd092cd9f4bb"
 migrations_dir = "drizzle"
 
 [vars]
-BACKEND_API_URL = "https://master-clash-backend.your-cloudflare-account.workers.dev"
+API_CF_URL = "https://master-clash-api.your-cloudflare-account.workers.dev"
 BETTER_AUTH_URL = "http://localhost:3000"
 
 # Optional: Better Auth KV (rate limit / secondary storage)

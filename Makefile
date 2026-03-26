@@ -1,4 +1,4 @@
-.PHONY: install dev dev-web dev-api dev-sync dev-gateway dev-collab dev-full build test lint clean format setup db-web-local db-sync-local check-tools help bundle remotion-bundle remotion-render
+.PHONY: install dev dev-web dev-api-cf dev-gateway dev-full dev-gateway-full build test lint clean format setup db-web-local check-tools help bundle remotion-bundle remotion-render
 
 # Use interactive shell to load .zshrc environment
 
@@ -6,10 +6,10 @@
 # Configuration
 #==============================================================================
 
-# Proxy settings (can be overridden via environment or CLI)
-HTTP_PROXY ?= http://127.0.0.1:7897
-HTTPS_PROXY ?= http://127.0.0.1:7897
-NO_PROXY ?= localhost,127.0.0.1
+# Proxy settings (disabled by default; set via environment or CLI if needed)
+HTTP_PROXY ?=
+HTTPS_PROXY ?=
+NO_PROXY ?=
 
 # Color output
 BLUE := \033[0;34m
@@ -39,7 +39,6 @@ help: ## Show this help message
 check-tools: ## Verify required tools are installed
 	@echo "$(BLUE)Checking required tools...$(NC)"
 	@command -v pnpm >/dev/null 2>&1 || { echo "$(RED)Error: pnpm not found.$(NC)"; echo "$(YELLOW)Install: brew install pnpm$(NC)"; exit 1; }
-	@[ -d ".venv" ] || { echo "$(RED)Error: .venv directory not found.$(NC)"; echo "$(YELLOW)Please ensure python virtual environment is created.$(NC)"; exit 1; }
 	@command -v turbo >/dev/null 2>&1 || { echo "$(YELLOW)Warning: turbo not found. Run 'pnpm install' first$(NC)"; }
 	@echo "$(GREEN)✓ All required tools are installed$(NC)"
 
@@ -47,14 +46,10 @@ check-tools: ## Verify required tools are installed
 # Installation
 #==============================================================================
 
-install: check-tools ## Install all dependencies (TypeScript + Python)
+install: check-tools ## Install all dependencies
 	@echo "$(BLUE)Installing TypeScript dependencies...$(NC)"
 	@pnpm install
-	@echo "$(BLUE)Python dependencies should be managed in .venv...$(NC)"
 	@echo "$(GREEN)✓ Installation complete$(NC)"
-
-setup: install ## Alias for install (deprecated, use 'make install')
-	@echo "$(YELLOW)'make setup' is deprecated. Use 'make install' instead.$(NC)"
 
 #==============================================================================
 # Database
@@ -64,11 +59,7 @@ db-web-local: ## Setup/migrate local D1 database for web app
 	@echo "$(BLUE)Setting up local D1 database for web...$(NC)"
 	@cd apps/web && pnpm db:migrate:local
 
-db-sync-local: ## Setup/migrate local D1 database for sync server
-	@echo "$(BLUE)Setting up local D1 database for sync server...$(NC)"
-	@cd apps/loro-sync-server && pnpm db:migrate:local
-
-db-local: db-web-local db-sync-local ## Setup all local D1 databases
+db-local: db-web-local ## Setup all local D1 databases
 
 #==============================================================================
 # Development Servers
@@ -78,13 +69,9 @@ dev-web: ## Start frontend development server
 	@echo "$(BLUE)Starting frontend on http://localhost:3000...$(NC)"
 	@cd apps/web && HTTP_PROXY=$(HTTP_PROXY) HTTPS_PROXY=$(HTTPS_PROXY) NO_PROXY=$(NO_PROXY) pnpm dev
 
-dev-api: ## Start backend (FastAPI) development server
-	@echo "$(BLUE)Starting backend on http://localhost:8888...$(NC)"
-	@HTTP_PROXY=$(HTTP_PROXY) HTTPS_PROXY=$(HTTPS_PROXY) NO_PROXY=$(NO_PROXY) PYTHONPATH=apps/api/src .venv/bin/python -m uvicorn master_clash.api.main:app --reload --host 0.0.0.0 --port 8888
-
-dev-sync: db-sync-local ## Start Loro sync server (Durable Objects)
-	@echo "$(BLUE)Starting sync server on http://localhost:8787...$(NC)"
-	@cd apps/loro-sync-server && HTTP_PROXY=$(HTTP_PROXY) HTTPS_PROXY=$(HTTPS_PROXY) NO_PROXY=$(NO_PROXY) pnpm dev
+dev-api-cf: ## Start api-cf development server (port 8789)
+	@echo "$(BLUE)Starting api-cf on http://localhost:8789...$(NC)"
+	@cd apps/api-cf && HTTP_PROXY=$(HTTP_PROXY) HTTPS_PROXY=$(HTTPS_PROXY) NO_PROXY=$(NO_PROXY) pnpm dev --port 8789
 
 dev-gateway: ## Start auth gateway
 	@echo "$(BLUE)Starting auth gateway on http://localhost:8788...$(NC)"
@@ -94,40 +81,28 @@ dev-gateway: ## Start auth gateway
 # Combined Development
 #==============================================================================
 
-dev: ## Start frontend + backend in parallel
+dev: ## Start frontend + api-cf in parallel
 	@echo "$(BLUE)Starting development environment...$(NC)"
 	@echo "$(GREEN)Frontend:$(NC) http://localhost:3000"
-	@echo "$(GREEN)Backend:$(NC)  http://localhost:8888"
+	@echo "$(GREEN)API CF:$(NC)   http://localhost:8789"
 	@echo ""
-	@$(MAKE) -j2 dev-web dev-api
+	@$(MAKE) -j2 dev-web dev-api-cf
 
-dev-collab: ## Start frontend + sync server (for collaborative editing)
-	@echo "$(BLUE)Starting collaborative development environment...$(NC)"
-	@echo "$(GREEN)Frontend:$(NC) http://localhost:3000"
-	@echo "$(GREEN)Sync:$(NC)     http://localhost:8787 (ws: /sync/:projectId)"
-	@echo ""
-	@$(MAKE) -j2 dev-web dev-sync
+dev-full: dev ## Start all services (frontend + api-cf)
 
-dev-full: ## Start all services: frontend + backend + sync
-	@echo "$(BLUE)Starting full development environment...$(NC)"
-	@echo "$(GREEN)Frontend:$(NC) http://localhost:3000"
-	@echo "$(GREEN)Backend:$(NC)  http://localhost:8888"
-	@echo "$(GREEN)Sync:$(NC)     http://localhost:8787 (ws: /sync/:projectId)"
-	@echo ""
-	@$(MAKE) -j3 dev-web dev-api dev-sync
-
-dev-gateway-full: ## Start all services behind auth gateway (recommended for production-like setup)
+dev-gateway-full: ## Start all services behind auth gateway
 	@echo "$(BLUE)Starting full environment with API Gateway...$(NC)"
 	@echo ""
 	@echo "   ┌─────────────────────────────────────────────┐"
 	@echo "   │  $(GREEN)Auth Gateway:$(NC) http://localhost:8788        │"
 	@echo "   │  ├─ /          → Frontend (:3000)          │"
-	@echo "   │  ├─ /sync/*    → Loro Sync (:8787)         │"
-	@echo "   │  ├─ /api/chat  → Python API (:8888)        │"
-	@echo "   │  └─ /assets/*  → R2 Assets                 │"
+	@echo "   │  ├─ /sync/*    → api-cf ProjectRoom        │"
+	@echo "   │  ├─ /agents/*  → api-cf ProjectRoom        │"
+	@echo "   │  ├─ /assets/*  → api-cf R2 Assets          │"
+	@echo "   │  └─ /api/*     → api-cf REST               │"
 	@echo "   └─────────────────────────────────────────────┘"
 	@echo ""
-	@HTTP_PROXY=$(HTTP_PROXY) HTTPS_PROXY=$(HTTPS_PROXY) NO_PROXY=$(NO_PROXY) $(MAKE) -j4 dev-sync dev-web dev-api dev-gateway
+	@HTTP_PROXY=$(HTTP_PROXY) HTTPS_PROXY=$(HTTPS_PROXY) NO_PROXY=$(NO_PROXY) $(MAKE) -j3 dev-web dev-api-cf dev-gateway
 
 #==============================================================================
 # Build & Test
@@ -136,22 +111,14 @@ dev-gateway-full: ## Start all services behind auth gateway (recommended for pro
 build: check-tools ## Build all packages
 	@echo "$(BLUE)Building TypeScript packages...$(NC)"
 	@pnpm turbo run build
-	@echo "$(BLUE)Verifying Python packages...$(NC)"
-	@.venv/bin/pytest --collect-only
 
 test: check-tools ## Run all tests
 	@echo "$(BLUE)Running TypeScript tests...$(NC)"
 	@pnpm turbo run test
-	@echo "$(BLUE)Running Python tests...$(NC)"
-	@.venv/bin/pytest
 
 test-web: ## Run frontend tests only
 	@echo "$(BLUE)Running frontend tests...$(NC)"
 	@cd apps/web && pnpm test
-
-test-api: ## Run backend tests only
-	@echo "$(BLUE)Running backend tests...$(NC)"
-	@.venv/bin/pytest
 
 #==============================================================================
 # Remotion Bundle & Render
@@ -179,33 +146,18 @@ bundle: remotion-bundle ## Alias for remotion-bundle
 lint: check-tools ## Lint all code
 	@echo "$(BLUE)Linting TypeScript...$(NC)"
 	@pnpm turbo run lint
-	@echo "$(BLUE)Linting Python...$(NC)"
-	@.venv/bin/ruff check .
-	@$(MAKE) lint-docs
-
-lint-docs: ## Check AODS documentation integrity
-	@echo "$(BLUE)Checking documentation integrity...$(NC)"
-	@python3 scripts/check_agents_docs.py
 
 lint-web: ## Lint frontend only
 	@echo "$(BLUE)Linting frontend...$(NC)"
 	@cd apps/web && pnpm lint
 
-lint-api: ## Lint backend only
-	@echo "$(BLUE)Linting backend...$(NC)"
-	@.venv/bin/ruff check apps/api
-
 format: check-tools ## Format all code
 	@echo "$(BLUE)Formatting TypeScript...$(NC)"
 	@pnpm prettier --write "**/*.{ts,tsx,json,md}"
-	@echo "$(BLUE)Formatting Python...$(NC)"
-	@.venv/bin/ruff format .
 
 format-check: ## Check if code is formatted (CI use)
 	@echo "$(BLUE)Checking TypeScript formatting...$(NC)"
 	@pnpm prettier --check "**/*.{ts,tsx,json,md}"
-	@echo "$(BLUE)Checking Python formatting...$(NC)"
-	@.venv/bin/ruff format --check .
 
 #==============================================================================
 # Cleanup
@@ -216,14 +168,6 @@ clean: ## Clean all build artifacts and dependencies
 	@pnpm clean || true
 	@rm -rf node_modules .turbo
 	@rm -f apps/web/local.db*
-	@rm -f apps/loro-sync-server/local.db*
-	@echo "$(BLUE)Cleaning Python artifacts...$(NC)"
-	@rm -rf .venv uv.lock
-	@find . -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true
-	@find . -type d -name "*.egg-info" -exec rm -rf {} + 2>/dev/null || true
-	@find . -type d -name ".ruff_cache" -exec rm -rf {} + 2>/dev/null || true
-	@find . -type d -name ".pytest_cache" -exec rm -rf {} + 2>/dev/null || true
-	@find . -type d -name ".mypy_cache" -exec rm -rf {} + 2>/dev/null || true
 	@echo "$(GREEN)✓ Cleanup complete$(NC)"
 
 clean-all: clean ## Clean everything including all .wrangler directories
@@ -238,16 +182,10 @@ clean-all: clean ## Clean everything including all .wrangler directories
 deps-tree: ## Show dependency tree for all packages
 	@echo "$(BLUE)TypeScript dependencies:$(NC)"
 	@pnpm list --depth 0
-	@echo ""
-	@echo "$(BLUE)Python dependencies:$(NC)"
-	@uv pip list
 
 update-deps: ## Update all dependencies
 	@echo "$(BLUE)Updating TypeScript dependencies...$(NC)"
 	@pnpm update --latest
-	@echo "$(BLUE)Updating Python dependencies...$(NC)"
-	@echo "Skipping python deps update (uv not found)"
-	# @uv sync --upgrade
 
 info: ## Show project information
 	@echo "$(BLUE)Master Clash - Project Information$(NC)"
@@ -258,8 +196,6 @@ info: ## Show project information
 	@echo ""
 	@echo "$(BLUE)Node Version:$(NC) $$(node --version 2>/dev/null || echo 'Not installed')"
 	@echo "$(BLUE)PNPM Version:$(NC) $$(pnpm --version 2>/dev/null || echo 'Not installed')"
-	@echo "$(BLUE)Python Version:$(NC) $$(python --version 2>/dev/null || echo 'Not installed')"
-	@echo "$(BLUE)UV Version:$(NC) $$(uv --version 2>/dev/null || echo 'Not installed')"
 	@echo ""
 	@echo "$(BLUE)Environment:$(NC)"
 	@echo "  HTTP_PROXY=$(HTTP_PROXY)"

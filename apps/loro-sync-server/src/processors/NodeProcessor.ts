@@ -13,8 +13,8 @@ import type { Env } from '../types';
 import { updateNodeData } from '../sync/NodeUpdater';
 import { MODEL_CARDS } from '@clash/shared-types';
 
-const defaultImageModel = MODEL_CARDS.find((card) => card.kind === 'image')?.id ?? 'nano-banana-pro';
-const defaultVideoModel = MODEL_CARDS.find((card) => card.kind === 'video')?.id ?? 'kling-image2video';
+const defaultImageModel = MODEL_CARDS.find((card) => card.kind === 'image')?.id ?? 'nano-banana-2';
+const defaultVideoModel = MODEL_CARDS.find((card) => card.kind === 'video')?.id ?? 'sora-2-image-to-video';
 const defaultAudioModel = MODEL_CARDS.find((card) => card.kind === 'audio')?.id ?? 'minimax-tts';
 
 const getModelCard = (modelId?: string) => MODEL_CARDS.find((card) => card.id === modelId);
@@ -184,61 +184,15 @@ export async function processPendingNodes(
       const hasTimelineDsl = innerData.timelineDsl != null;
       const shouldRenderVideo = nodeType === 'video_render' || (nodeType === 'video' && hasTimelineDsl);
 
-      if ((status === 'generating' && !src) || (shouldRenderVideo && status === 'generating')) {
+      // Video render is handled client-side via Remotion — skip entirely
+      if (shouldRenderVideo && status === 'generating') {
+        continue;
+      }
+
+      if (status === 'generating' && !src) {
         // CRITICAL: Set taskState to 'submitted' IMMEDIATELY to prevent duplicate submissions
         updateNodeData(doc, nodeId, { taskState: 'submitted' }, broadcast);
         console.log(`[NodeProcessor] 🔒 Set taskState=submitted for node ${nodeId.slice(0, 8)}`);
-
-        // Video render uses the timeline DSL
-        if (shouldRenderVideo) {
-          console.log(`[NodeProcessor] 🎬 Submitting video_render for ${nodeId.slice(0, 8)}`);
-
-          const timelineDsl = innerData.timelineDsl;
-          if (!timelineDsl) {
-            console.error(`[NodeProcessor] ❌ Missing timelineDsl for video_render node ${nodeId.slice(0, 8)}`);
-            updateNodeData(doc, nodeId, { status: 'failed', error: 'Missing timelineDsl' }, broadcast);
-            continue;
-          }
-
-          // Ensure timelineDsl is a plain object, not a Loro Proxy
-          let safeDsl = timelineDsl;
-          try {
-            // If it has toJSON, call it (Loro objects usually have this)
-            if (typeof timelineDsl.toJSON === 'function') {
-                safeDsl = timelineDsl.toJSON();
-            } else {
-                // Fallback deep clone
-                safeDsl = JSON.parse(JSON.stringify(timelineDsl));
-            }
-          } catch (e) {
-            console.warn(`[NodeProcessor] ⚠️ Failed to convert DSL to plain object: ${e}`);
-            safeDsl = JSON.parse(JSON.stringify(timelineDsl));
-          }
-
-          console.log(`[NodeProcessor] 🔍 Render DSL for ${nodeId.slice(0, 8)}: duration=${safeDsl.durationInFrames}, tracks=${safeDsl.tracks?.length}`);
-
-          // Resolve assetId references in timeline items before submission
-          // This is critical because the backend render service doesn't have access to Loro
-          const resolvedDsl = resolveTimelineDslReferences(safeDsl, nodesMap);
-
-          const params = {
-            timeline_dsl: resolvedDsl,
-          };
-
-          const result = await submitTask(env, 'video_render', projectId, nodeId, params);
-
-          if (result.task_id) {
-            console.log(`[NodeProcessor] ✅ Render task submitted: ${result.task_id} for node ${nodeId.slice(0, 8)}`);
-            // Fix: Set taskState to 'completed' so TaskPolling can start polling
-            updateNodeData(doc, nodeId, { taskState: 'completed', pendingTask: result.task_id }, broadcast);
-            submitted = true;
-          } else {
-            console.error(`[NodeProcessor] ❌ Render task submission failed for node ${nodeId.slice(0, 8)}: ${result.error}`);
-            // Fix: Reset taskState on failure so it doesn't get stuck in 'submitted'
-            updateNodeData(doc, nodeId, { taskState: 'pending', status: 'failed', error: result.error || 'Render task submission failed' }, broadcast);
-          }
-          continue;
-        }
 
         // Original AIGC generation logic
         console.log(`[NodeProcessor] 🚀 Submitting ${nodeType}_gen for ${nodeId.slice(0, 8)}`);
@@ -331,28 +285,8 @@ export async function processPendingNodes(
         }
       }
 
-      // Case 3: Video node with src but no coverUrl -> submit thumbnail extraction
-      if (nodeType === 'video' && status === 'completed' && src && !innerData.coverUrl && !pendingTask && innerData.taskState !== 'submitted') {
-        updateNodeData(doc, nodeId, { taskState: 'submitted' }, broadcast);
-        console.log(`[NodeProcessor] 🔒 Set taskState=submitted for thumbnail: ${nodeId.slice(0, 8)}`);
-
-        console.log(`[NodeProcessor] 🎬 Submitting thumbnail extraction for ${nodeId.slice(0, 8)}`);
-
-        const taskType = 'video_thumbnail';
-        const params = {
-          video_r2_key: src,
-          timestamp: 1.0,
-        };
-
-        const result = await submitTask(env, taskType, projectId, nodeId, params);
-
-        if (result.task_id) {
-          updateNodeData(doc, nodeId, { taskState: 'completed', pendingTask: result.task_id }, broadcast);
-          submitted = true;
-        } else {
-          updateNodeData(doc, nodeId, { taskState: 'pending' }, broadcast);
-        }
-      }
+      // Note: Video cover images are now captured during video generation from Kling API.
+      // No separate thumbnail extraction step needed.
     }
 
     if (submitted) {
@@ -364,10 +298,7 @@ export async function processPendingNodes(
 }
 
 /**
- * Submit task to Python API
- */
-/**
- * Submit task to Python API
+ * Submit task to api-cf (via Service Binding or fallback URL)
  */
 async function submitTask(
   env: Env,
@@ -377,28 +308,24 @@ async function submitTask(
   params: Record<string, any>
 ): Promise<{ task_id?: string; error?: string }> {
   try {
-    // Build callback URL pointing to Loro Sync Server's /update-node endpoint
-    const baseUrl = env.LORO_SYNC_URL || env.WORKER_PUBLIC_URL;
+    const payload = JSON.stringify({
+      task_type: taskType,
+      project_id: projectId,
+      node_id: nodeId,
+      params: params,
+    });
 
-    const callbackUrl = baseUrl
-      ? `${baseUrl}/sync/${projectId}/update-node`
-      : null;
-
-    console.log(`[NodeProcessor] 📤 Submitting task to ${env.BACKEND_API_URL}/api/tasks/submit`);
-    console.log(`[NodeProcessor] 📋 Task details: type=${taskType}, project=${projectId}, node=${nodeId.slice(0, 8)}`);
-    console.log(`[NodeProcessor] 📋 Params:`, JSON.stringify(params, null, 2));
-
-    const response = await fetch(`${env.BACKEND_API_URL}/api/tasks/submit`, {
+    const opts: RequestInit = {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        task_type: taskType,
-        project_id: projectId,
-        node_id: nodeId,
-        params: params,
-        callback_url: callbackUrl,
-      }),
-    });
+      body: payload,
+    };
+
+    console.log(`[NodeProcessor] 📤 Submitting task: type=${taskType}, project=${projectId}, node=${nodeId.slice(0, 8)}`);
+
+    const response = env.API_CF
+      ? await env.API_CF.fetch("https://api-cf/api/tasks/submit", opts)
+      : await fetch(`${env.BACKEND_API_URL}/api/tasks/submit`, opts);
 
     if (!response.ok) {
       const text = await response.text();

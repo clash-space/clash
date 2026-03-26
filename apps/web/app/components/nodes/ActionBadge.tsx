@@ -68,16 +68,16 @@ const PromptActionNode = ({ data, selected, id }: NodeProps) => {
         if (explicitId) return explicitId;
         if (!legacyName) return undefined;
         const lower = legacyName.toLowerCase();
-        if (type === 'video-gen') return 'kling-image2video';
-        if (lower.includes('pro')) return 'nano-banana-pro';
-        return 'nano-banana';
+        if (type === 'video-gen') return 'sora-2-image-to-video';
+        if (lower.includes('pro')) return 'nano-banana-2';
+        return 'nano-banana-2';
     };
 
     const [actionType, setActionType] = useState<'image-gen' | 'video-gen'>(data.actionType || 'image-gen');
     const initialModelId =
         mapLegacyModelId(actionType, data.modelId as string | undefined, data.modelName) ||
         (MODEL_CARDS.find((card) => card.kind === (actionType === 'video-gen' ? 'video' : 'image'))?.id ??
-            (actionType === 'video-gen' ? 'kling-image2video' : 'nano-banana-pro'));
+            (actionType === 'video-gen' ? 'sora-2-image-to-video' : 'nano-banana-2'));
 
     const [modelId, setModelId] = useState<string>(initialModelId);
     const [modelParams, setModelParams] = useState<ModelParams>({

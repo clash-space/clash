@@ -1,6 +1,6 @@
 packages:
+  - 'apps/api-cf'
   - 'apps/auth-gateway'
-  - 'apps/loro-sync-server'
   - 'apps/web'
   - 'packages/remotion-*'
   - 'packages/shared-*'

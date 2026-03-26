@@ -19,7 +19,7 @@ CREATE TABLE IF NOT EXISTS message (
     role TEXT NOT NULL,
     project_id TEXT NOT NULL,
     created_at INTEGER DEFAULT (strftime('%s', 'now')),
-    FOREIGN KEY (project_id) REFERENCES project(id) ON DELETE CASCADE
+    -- FK removed: api-cf creates assets independently
 );
 
 -- Assets table (generated images/videos)
@@ -32,7 +32,7 @@ CREATE TABLE IF NOT EXISTS asset (
     type TEXT NOT NULL,
     metadata TEXT,
     created_at INTEGER DEFAULT (strftime('%s', 'now')),
-    FOREIGN KEY (project_id) REFERENCES project(id) ON DELETE CASCADE
+    -- FK removed: api-cf creates assets independently
 );
 
 -- User authentication table

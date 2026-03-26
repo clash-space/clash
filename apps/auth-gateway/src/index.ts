@@ -1,11 +1,14 @@
 /**
  * Auth Gateway - API Gateway Pattern
- * 
+ *
  * Single entry point for all services:
  * - /health       → Health check (public)
- * - /assets/*     → R2 assets via Loro Sync (public)
- * - /sync/*       → Loro Sync WebSocket (auth required)
- * - /api/chat/*   → Python API (auth required)
+ * - /assets/*     → R2 assets via api-cf (public)
+ * - /sync/*       → api-cf ProjectRoom DO (Loro CRDT sync, auth required)
+ * - /agents/*     → api-cf ProjectRoom DO (AI chat, auth required)
+ * - /api/tasks/*  → api-cf REST routes
+ * - /api/describe → api-cf REST routes
+ * - /upload/*     → api-cf asset upload
  * - /*            → Frontend (public)
  */
 
@@ -19,10 +22,23 @@ function json(data: unknown, status = 200): Response {
   });
 }
 
-function withUserHeader(headers: Headers, userId: string): Headers {
-  const next = new Headers(headers);
-  next.set("x-user-id", userId);
-  return next;
+function proxyToApiCf(request: Request, env: Env): Promise<Response> | Response {
+  if (env.API_CF) {
+    return env.API_CF.fetch(request);
+  }
+  if (env.API_CF_URL) {
+    const url = new URL(request.url);
+    const fallbackUrl = new URL(url.pathname + url.search, env.API_CF_URL);
+    const headers = new Headers(request.headers);
+    headers.delete("host");
+    return fetch(new Request(fallbackUrl.toString(), {
+      method: request.method,
+      headers,
+      body: request.body,
+      redirect: "manual",
+    }));
+  }
+  return json({ error: "API_CF service not configured" }, 500);
 }
 
 export default {
@@ -32,19 +48,23 @@ export default {
 
     // === Public Routes ===
 
-    // Health check
     if (path === "/health") {
       return new Response("OK", { status: 200 });
     }
 
-    // Assets: /assets/* -> Loro Sync /assets/*
+    // Assets: /assets/* -> api-cf
     if (path.startsWith("/assets/")) {
-      return env.LORO_SYNC.fetch(request);
+      return proxyToApiCf(request, env);
+    }
+
+    // Thumbnails: /thumbnails/* -> api-cf
+    if (path.startsWith("/thumbnails/")) {
+      return proxyToApiCf(request, env);
     }
 
     // === Authenticated Routes ===
 
-    // WebSocket Sync: /sync/:projectId -> Loro Sync Server
+    // WebSocket Sync: /sync/:projectId -> api-cf ProjectRoom DO
     if (path.startsWith("/sync/")) {
       const projectId = path.split("/")[2];
       if (!projectId) return new Response("Missing project ID", { status: 400 });
@@ -58,55 +78,47 @@ export default {
         return new Response("Forbidden", { status: 403 });
       }
 
-      return env.LORO_SYNC.fetch(request);
+      return proxyToApiCf(request, env);
     }
 
-    // Python API: /api/chat/* -> Backend
-    if (path.startsWith("/api/chat/")) {
-      if (!env.BACKEND_API_URL) {
-        return json({ error: "BACKEND_API_URL is not configured" }, 500);
-      }
+    // SupervisorAgent WebSocket: /agents/:agentType/:projectId -> api-cf ProjectRoom DO
+    if (path.startsWith("/agents/")) {
+      const segments = path.split("/");
+      const projectId = segments[3];
+      if (!projectId) return new Response("Missing project ID", { status: 400 });
 
       const userId = await getUserIdFromBetterAuth(request, env);
       if (!userId) return json({ error: "Unauthorized" }, 401);
 
-      // Forward to Python API
-      const restPath = path.replace("/api/chat", "");
-      const upstreamUrl = new URL(env.BACKEND_API_URL);
-      upstreamUrl.pathname = restPath;
-      upstreamUrl.search = url.search;
+      try {
+        await assertProjectOwner(env, projectId, userId);
+      } catch {
+        return new Response("Forbidden", { status: 403 });
+      }
 
-      const headers = withUserHeader(request.headers, userId);
-      headers.delete("host");
-
-      const upstreamRequest = new Request(upstreamUrl.toString(), {
-        method: request.method,
-        headers,
-        body: request.body,
-        redirect: "manual",
-      });
-
-      return fetch(upstreamRequest);
+      return proxyToApiCf(request, env);
     }
 
-    // Loro Sync API routes: /api/generate/*, /upload/*, /tasks/*
+    // api-cf routes: /api/tasks/*, /api/describe, /api/generate/*
     if (
-      path.startsWith("/api/generate/") ||
-      path.startsWith("/upload/") ||
-      path.startsWith("/tasks/") ||
-      path.startsWith("/webhooks/")
+      path.startsWith("/api/tasks/") ||
+      path.startsWith("/api/describe") ||
+      path.startsWith("/api/generate/")
     ) {
-      return env.LORO_SYNC.fetch(request);
+      return proxyToApiCf(request, env);
+    }
+
+    // Upload: /upload/* -> api-cf
+    if (path.startsWith("/upload/") || path === "/upload") {
+      return proxyToApiCf(request, env);
     }
 
     // === Frontend (fallback) ===
 
-    // All other routes -> Frontend
     if (env.FRONTEND) {
       return env.FRONTEND.fetch(request);
     }
 
-    // Local development: proxy to Next.js dev server
     if (env.FRONTEND_URL) {
       const upstreamUrl = new URL(env.FRONTEND_URL);
       upstreamUrl.pathname = path;

@@ -7,5 +7,5 @@ CREATE TABLE `asset` (
 	`type` text NOT NULL,
 	`metadata` text,
 	`created_at` integer DEFAULT (strftime('%s', 'now')),
-	FOREIGN KEY (`project_id`) REFERENCES `project`(`id`) ON UPDATE no action ON DELETE cascade
+	-- FK removed: api-cf creates assets independently
 );
