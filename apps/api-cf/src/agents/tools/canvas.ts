@@ -8,7 +8,7 @@ import {
   ALL_NODE_TYPES,
   CONTENT_NODE_TYPES,
   GENERATION_NODE_TYPES,
-  TaskStatus,
+  Status,
 } from "../../domain/canvas";
 
 // Cast to bypass ai@4/v5 overload mismatch (bundler resolves to v4 at runtime)
@@ -190,9 +190,9 @@ export function createCanvasTools(
         while (Date.now() < deadline) {
           const result = canvasBackend.getNodeStatus(doc, node_id);
 
-          if (result.status === TaskStatus.NodeNotFound) return `Node not found: ${node_id}`;
-          if (result.status === TaskStatus.Completed) return "Task completed.";
-          if (result.status === TaskStatus.Failed) return `Task failed: ${result.error}`;
+          if (result.status === Status.NodeNotFound) return `Node not found: ${node_id}`;
+          if (result.status === Status.Completed) return "Task completed.";
+          if (result.status === Status.Failed) return `Task failed: ${result.error}`;
 
           const remaining = deadline - Date.now();
           if (remaining <= 0) break;

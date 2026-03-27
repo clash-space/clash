@@ -25,9 +25,10 @@ function makeDocWithNodes(
   return doc;
 }
 
-function makeEnv(): Env {
+function makeEnv(overrides: Partial<Env> = {}): Env {
   return {
     GOOGLE_API_KEY: "",
+    CF_AIG_TOKEN: "",
     KLING_ACCESS_KEY: "",
     KLING_SECRET_KEY: "",
     R2_BUCKET: {} as any,
@@ -35,8 +36,11 @@ function makeEnv(): Env {
     ENVIRONMENT: "production",
     ROOM: {} as any,
     SUPERVISOR: {} as any,
-    GENERATION: {} as any,
+    GENERATION_WORKFLOW: {
+      get: vi.fn().mockRejectedValue(new Error("not found")),
+    } as any,
     DB: {} as any,
+    ...overrides,
   };
 }
 
@@ -96,28 +100,12 @@ describe("TaskPolling", () => {
       expect(result).toBe(false);
     });
 
-    it("skips taskState=submitted but returns true (still pending)", async () => {
-      const doc = makeDocWithNodes([
-        {
-          id: "n1",
-          type: "image",
-          data: { status: "generating", pendingTask: "task-1", taskState: "submitted" },
-        },
-      ]);
-      const env = makeEnv();
-
-      const result = await pollNodeTasks(doc, env, "proj-1", broadcast);
-      expect(result).toBe(true);
-      // getAssetByTaskId should NOT have been called (skipped)
-      expect(getAssetByTaskId).not.toHaveBeenCalled();
-    });
-
     it("task completed with result_url → updates src + status=completed", async () => {
       const doc = makeDocWithNodes([
         {
           id: "n1",
           type: "image",
-          data: { status: "generating", pendingTask: "task-1", taskState: "completed" },
+          data: { status: "generating", pendingTask: "task-1" },
         },
       ]);
       const env = makeEnv();
@@ -139,15 +127,14 @@ describe("TaskPolling", () => {
       expect(nodeData.data.status).toBe("completed");
       // Loro stores undefined as null
       expect(nodeData.data.pendingTask).toBeNull();
-      expect(nodeData.data.taskState).toBeNull();
     });
 
-    it("task completed with description → updates description + status=fin", async () => {
+    it("task completed with description → updates description + status stays completed", async () => {
       const doc = makeDocWithNodes([
         {
           id: "n1",
           type: "image",
-          data: { status: "completed", src: "img.png", pendingTask: "task-desc", taskState: "completed" },
+          data: { status: "completed", src: "img.png", pendingTask: "task-desc" },
         },
       ]);
       const env = makeEnv();
@@ -165,7 +152,7 @@ describe("TaskPolling", () => {
       const nodesMap = doc.getMap("nodes");
       const nodeData = nodesMap.get("n1") as any;
       expect(nodeData.data.description).toBe("A beautiful sunset");
-      expect(nodeData.data.status).toBe("fin");
+      expect(nodeData.data.status).toBe("completed");
     });
 
     it("task completed with cover_url → updates coverUrl", async () => {
@@ -173,7 +160,7 @@ describe("TaskPolling", () => {
         {
           id: "n1",
           type: "video",
-          data: { status: "generating", pendingTask: "task-vid", taskState: "completed" },
+          data: { status: "generating", pendingTask: "task-vid" },
         },
       ]);
       const env = makeEnv();
@@ -200,7 +187,7 @@ describe("TaskPolling", () => {
         {
           id: "n1",
           type: "image",
-          data: { status: "generating", pendingTask: "task-fail", taskState: "completed" },
+          data: { status: "generating", pendingTask: "task-fail" },
         },
       ]);
       const env = makeEnv();
@@ -231,7 +218,6 @@ describe("TaskPolling", () => {
             status: "completed",
             src: "img.png",
             pendingTask: "task-desc-fail",
-            taskState: "completed",
           },
         },
       ]);
@@ -260,7 +246,7 @@ describe("TaskPolling", () => {
         {
           id: "n1",
           type: "image",
-          data: { status: "generating", pendingTask: "task-new", taskState: "completed" },
+          data: { status: "generating", pendingTask: "task-new" },
         },
       ]);
       const env = makeEnv();
@@ -277,7 +263,7 @@ describe("TaskPolling", () => {
         {
           id: "n1",
           type: "image",
-          data: { status: "generating", pendingTask: "task-proc", taskState: "completed" },
+          data: { status: "generating", pendingTask: "task-proc" },
         },
       ]);
       const env = makeEnv();
@@ -298,12 +284,12 @@ describe("TaskPolling", () => {
         {
           id: "n1",
           type: "image",
-          data: { status: "generating", pendingTask: "task-done", taskState: "completed" },
+          data: { status: "generating", pendingTask: "task-done" },
         },
         {
           id: "n2",
           type: "video",
-          data: { status: "generating", pendingTask: "task-pending", taskState: "completed" },
+          data: { status: "generating", pendingTask: "task-pending" },
         },
       ]);
       const env = makeEnv();
@@ -331,7 +317,7 @@ describe("TaskPolling", () => {
         {
           id: "n1",
           type: "image",
-          data: { status: "generating", pendingTask: "task-bc", taskState: "completed" },
+          data: { status: "generating", pendingTask: "task-bc" },
         },
       ]);
       const env = makeEnv();
@@ -345,6 +331,64 @@ describe("TaskPolling", () => {
 
       await pollNodeTasks(doc, env, "proj-1", broadcast);
       expect(broadcast).toHaveBeenCalled();
+    });
+
+    it("workflow errored (no D1 record) → detects failure via workflow.status()", async () => {
+      const doc = makeDocWithNodes([
+        {
+          id: "n1",
+          type: "image",
+          data: { status: "generating", pendingTask: "task-wf-fail" },
+        },
+      ]);
+
+      // D1 returns null (no asset record yet)
+      (getAssetByTaskId as any).mockResolvedValue(null);
+
+      // Workflow.get() returns instance with errored status
+      const env = makeEnv({
+        GENERATION_WORKFLOW: {
+          get: vi.fn().mockResolvedValue({
+            status: vi.fn().mockResolvedValue({
+              status: "errored",
+              error: { message: "FAL API timeout after 3 retries" },
+            }),
+          }),
+        } as any,
+      });
+
+      const result = await pollNodeTasks(doc, env, "proj-1", broadcast);
+      expect(result).toBe(false);
+
+      const nodesMap = doc.getMap("nodes");
+      const nodeData = nodesMap.get("n1") as any;
+      expect(nodeData.data.status).toBe("failed");
+      expect(nodeData.data.error).toBe("FAL API timeout after 3 retries");
+      expect(nodeData.data.pendingTask).toBeNull();
+    });
+
+    it("workflow still running (no D1 record) → returns true (still pending)", async () => {
+      const doc = makeDocWithNodes([
+        {
+          id: "n1",
+          type: "image",
+          data: { status: "generating", pendingTask: "task-wf-running" },
+        },
+      ]);
+
+      (getAssetByTaskId as any).mockResolvedValue(null);
+
+      // Workflow.get() returns running status
+      const env = makeEnv({
+        GENERATION_WORKFLOW: {
+          get: vi.fn().mockResolvedValue({
+            status: vi.fn().mockResolvedValue({ status: "running" }),
+          }),
+        } as any,
+      });
+
+      const result = await pollNodeTasks(doc, env, "proj-1", broadcast);
+      expect(result).toBe(true);
     });
   });
 });

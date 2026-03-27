@@ -198,7 +198,7 @@ const VideoNode = ({ data, selected, id }: NodeProps) => {
 
     const handleDoubleClick = (e: React.MouseEvent) => {
         e.stopPropagation();
-        if (videoUrl && (status === 'completed' || status === 'fin')) {
+        if (videoUrl && (status === 'completed')) {
             openViewer('video', resolveAssetUrl(videoUrl), label);
         }
     };
@@ -248,7 +248,7 @@ const VideoNode = ({ data, selected, id }: NodeProps) => {
                 }}
                 onDoubleClick={handleDoubleClick}
             >
-                {(status === 'completed' || status === 'fin') && videoUrl ? (
+                {(status === 'completed') && videoUrl ? (
                     <div className="relative" style={{ width: '100%', height: '100%' }}>
                         <video
                             ref={videoRef}
@@ -486,7 +486,7 @@ const VideoNode = ({ data, selected, id }: NodeProps) => {
                     >
                         <textarea
                             className="w-full h-24 resize-none bg-transparent text-xs text-slate-600 focus:outline-none"
-                            value={description || ((status === 'completed' || status === 'fin') ? 'Generating description...' : 'No description available.')}
+                            value={description || ((status === 'completed') ? 'Generating description...' : 'No description available.')}
                             readOnly
                         />
                     </div>

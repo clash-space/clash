@@ -6,19 +6,30 @@ vi.mock("agents", () => ({
   Agent: class MockAgent {},
 }));
 
+// Mock cloudflare:workers protocol imports
+vi.mock("cloudflare:workers", () => ({
+  WorkflowEntrypoint: class MockWorkflowEntrypoint {},
+  DurableObject: class MockDurableObject {},
+}));
+
 // Mock describe service
 vi.mock("../services/describe", () => ({
   generateDescription: vi.fn().mockResolvedValue("A description"),
 }));
 
-// Mock generation module (depends on agents)
+// Mock generation module (depends on cloudflare:workers)
 vi.mock("../agents/generation", () => ({
-  GenerationAgent: class MockGeneration {},
+  GenerationWorkflow: class MockGeneration {},
 }));
 
-// Mock project-room module (depends on agents)
+// Mock project-room module (depends on cloudflare:workers)
 vi.mock("../agents/project-room", () => ({
   ProjectRoom: class MockProjectRoom {},
+}));
+
+// Mock supervisor module (depends on agents, @cloudflare/ai-chat)
+vi.mock("../agents/supervisor", () => ({
+  SupervisorAgent: class MockSupervisor {},
 }));
 
 // We need to import the app after mocks are set up
@@ -28,6 +39,7 @@ function makeEnv(overrides: Partial<Env> = {}): Env {
   return {
     GOOGLE_API_KEY: "test-key",
     GOOGLE_AI_STUDIO_BASE_URL: "",
+    CF_AIG_TOKEN: "",
     KLING_ACCESS_KEY: "",
     KLING_SECRET_KEY: "",
     R2_BUCKET: {
@@ -42,11 +54,8 @@ function makeEnv(overrides: Partial<Env> = {}): Env {
         fetch: vi.fn().mockResolvedValue(new Response("ok")),
       }),
     } as any,
-    GENERATION: {
-      idFromName: vi.fn().mockReturnValue("gen-id"),
-      get: vi.fn().mockReturnValue({
-        fetch: vi.fn().mockResolvedValue(new Response("ok")),
-      }),
+    GENERATION_WORKFLOW: {
+      create: vi.fn().mockResolvedValue({ id: "wf-id" }),
     } as any,
     DB: {
       prepare: vi.fn().mockReturnValue({
@@ -358,7 +367,7 @@ describe("Hono routes", () => {
       expect(res.status).toBe(200);
       const json = await res.json();
       expect(json.task_id).toBe("task-desc");
-      expect(json.status).toBe("processing");
+      expect(json.status).toBe("generating");
     });
   });
 });

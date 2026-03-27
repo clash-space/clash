@@ -29,20 +29,24 @@ export {
   type LoroDocumentState,
 } from './canvas';
 
-// Task types
+// Task types (atomic tasks + DO state)
 export {
-  TaskTypeSchema,
-  TaskStatusSchema,
-  ExternalServiceSchema,
-  AIGCTaskSchema,
-  SubmitTaskRequestSchema,
-  SubmitTaskResponseSchema,
-  type TaskType,
-  type TaskStatus,
-  type ExternalService,
-  type AIGCTask,
-  type SubmitTaskRequest,
-  type SubmitTaskResponse,
+  AtomicTaskTypeSchema,
+  ImageGenParamsSchema,
+  VideoGenParamsSchema,
+  DescriptionParamsSchema,
+  AtomicTaskRequestSchema,
+  AtomicTaskResultSchema,
+  DOStepStatusSchema,
+  DOStateSchema,
+  type AtomicTaskType,
+  type ImageGenParams,
+  type VideoGenParams,
+  type DescriptionParams,
+  type AtomicTaskRequest,
+  type AtomicTaskResult,
+  type DOStepStatus,
+  type DOState,
 } from './tasks';
 
 // Model metadata

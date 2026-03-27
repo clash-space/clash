@@ -10,7 +10,7 @@ import {
   findNodeByIdOrAssetId,
   getNodeStatus,
 } from "./canvas";
-import { NodeType, FrontendNodeType, ProposalType, TaskStatus } from "../../domain/canvas";
+import { NodeType, FrontendNodeType, ProposalType, Status } from "../../domain/canvas";
 
 function makeDoc(): LoroDoc {
   return new LoroDoc();
@@ -204,12 +204,14 @@ describe("canvas backend (Loro)", () => {
       expect(result.proposal!.upstreamNodeIds).toEqual(["a", "b"]);
     });
 
-    it("uses default position when not provided", () => {
+    it("uses auto-layout position when not provided", () => {
       const doc = makeDoc();
       createNode(doc, noop, "n1", "text", { label: "X" });
 
       const node = readNode(doc, "n1");
-      expect(node!.position).toEqual({ x: 0, y: 0 });
+      expect(node!.position).toBeDefined();
+      expect(typeof node!.position.x).toBe("number");
+      expect(typeof node!.position.y).toBe("number");
     });
   });
 
@@ -285,7 +287,7 @@ describe("canvas backend (Loro)", () => {
     it("returns NodeNotFound for missing node", () => {
       const doc = makeDoc();
       const result = getNodeStatus(doc, "missing");
-      expect(result.status).toBe(TaskStatus.NodeNotFound);
+      expect(result.status).toBe(Status.NodeNotFound);
     });
 
     it("returns Generating for image_gen node without status", () => {
@@ -293,7 +295,7 @@ describe("canvas backend (Loro)", () => {
       insertNode(doc, noop, "n1", "image_gen", { label: "Img" }, null, { x: 0, y: 0 });
 
       const result = getNodeStatus(doc, "n1");
-      expect(result.status).toBe(TaskStatus.Generating);
+      expect(result.status).toBe(Status.Generating);
     });
 
     it("returns Completed for text node without status", () => {
@@ -301,7 +303,7 @@ describe("canvas backend (Loro)", () => {
       insertNode(doc, noop, "n1", "text", { label: "T" }, null, { x: 0, y: 0 });
 
       const result = getNodeStatus(doc, "n1");
-      expect(result.status).toBe(TaskStatus.Completed);
+      expect(result.status).toBe(Status.Completed);
     });
 
     it("returns explicit status from node data", () => {
@@ -309,7 +311,7 @@ describe("canvas backend (Loro)", () => {
       insertNode(doc, noop, "n1", "image_gen", { label: "Img", status: "completed" }, null, { x: 0, y: 0 });
 
       const result = getNodeStatus(doc, "n1");
-      expect(result.status).toBe(TaskStatus.Completed);
+      expect(result.status).toBe(Status.Completed);
     });
 
     it("finds node by assetId", () => {
@@ -317,7 +319,7 @@ describe("canvas backend (Loro)", () => {
       insertNode(doc, noop, "n1", "image_gen", { label: "X", assetId: "a1", status: "failed" }, null, { x: 0, y: 0 });
 
       const result = getNodeStatus(doc, "a1");
-      expect(result.status).toBe(TaskStatus.Failed);
+      expect(result.status).toBe(Status.Failed);
     });
   });
 });

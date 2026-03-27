@@ -1,16 +1,16 @@
 /**
- * Node Processor - Task Submission
+ * Node Processor - Task Submission via Cloudflare Workflows
  *
- * Ported from loro-sync-server/src/processors/NodeProcessor.ts.
- * Key change: submitTask() now calls api-cf internal functions directly
- * instead of HTTP POST to /api/tasks/submit.
+ * Scans Loro nodes for pending work and submits generation/description
+ * tasks as Workflow instances. Uses `pendingTask` field as an optimistic
+ * lock — set synchronously before any async work.
  */
 
 import { LoroDoc } from 'loro-crdt';
 import type { Env } from '../config';
-import { updateNodeData } from './NodeUpdater';
-import { createAsset, updateAssetStatus } from '../services/asset-store';
-import { AssetStatus } from '../domain/canvas';
+import { log } from '../logger';
+import { updateNodeData, appendNodeLog } from './NodeUpdater';
+import { Status } from '../domain/canvas';
 import type { GenerationParams } from '../agents/generation';
 
 import { MODEL_CARDS } from '@clash/shared-types';
@@ -21,7 +21,6 @@ const defaultAudioModel = MODEL_CARDS.find((card) => card.kind === 'audio')?.id 
 
 const getModelCard = (modelId?: string) => MODEL_CARDS.find((card) => card.id === modelId);
 
-type AssetStatusType = 'uploading' | 'generating' | 'completed' | 'fin' | 'failed';
 type NodeType = 'image' | 'video' | 'audio' | 'video_render';
 
 /** Convert ArrayBuffer to base64, chunked to avoid stack overflow. */
@@ -122,7 +121,7 @@ function resolveTimelineDslReferences(
           ...(assetData.aspectRatio && { aspectRatio: assetData.aspectRatio }),
         };
       } else {
-        console.warn(`[NodeProcessor] No asset found for item id=${item.id}, src=${item.src?.slice(0, 50) || 'none'}`);
+        log.warn(`No asset found for item id=${item.id}, src=${item.src?.slice(0, 50) || 'none'}`);
       }
 
       return item;
@@ -135,7 +134,10 @@ function resolveTimelineDslReferences(
 }
 
 /**
- * Process pending nodes - submit tasks directly via internal functions
+ * Process pending nodes — submit tasks via Workflow.
+ *
+ * Uses `pendingTask` as optimistic lock: set synchronously before any
+ * async work so concurrent invocations (via event loop interleaving) skip.
  */
 export async function processPendingNodes(
   doc: LoroDoc,
@@ -155,26 +157,32 @@ export async function processPendingNodes(
 
       if (!['image', 'video', 'audio', 'video_render'].includes(nodeType)) continue;
 
-      const status = innerData.status as AssetStatusType;
+      const status = innerData.status as string;
       const src = innerData.src;
       const description = innerData.description;
       const pendingTask = innerData.pendingTask;
 
-      if (pendingTask || innerData.taskState === 'submitted' || innerData.taskState === 'completed') continue;
+      // pendingTask is the optimistic lock — skip if already set
+      if (pendingTask) continue;
 
       const hasTimelineDsl = innerData.timelineDsl != null;
       const shouldRenderVideo = nodeType === 'video_render' || (nodeType === 'video' && hasTimelineDsl);
 
       // Video render is handled client-side via Remotion — skip entirely
-      if (shouldRenderVideo && status === 'generating') {
+      if (shouldRenderVideo && status === Status.Pending) {
         continue;
       }
 
-      // Case 1: generating + no src -> submit generation task
-      if (status === 'generating' && !src) {
-        updateNodeData(doc, nodeId, { taskState: 'submitted' }, broadcast);
-
+      // Case 1: pending + no src -> submit generation task
+      if (status === Status.Pending && !src) {
+        const taskId = crypto.randomUUID();
         const taskType = nodeType === 'image' ? 'image_gen' : nodeType === 'video' ? 'video_gen' : 'audio_gen';
+        const tag = { nodeId, taskId, nodeType };
+
+        // Set status=generating + pendingTask synchronously (optimistic lock) before any await
+        updateNodeData(doc, nodeId, { status: Status.Generating, pendingTask: taskId }, broadcast);
+        appendNodeLog(doc, nodeId, `task=${taskId.slice(0, 8)} type=${taskType} model=${(innerData.modelId || innerData.model) ?? 'default'}`, broadcast);
+
         const selectedModelId = (innerData.modelId || innerData.model) ??
           (nodeType === 'video' ? defaultVideoModel : nodeType === 'audio' ? defaultAudioModel : defaultImageModel);
         const modelParams = (innerData.modelParams || {}) as Record<string, any>;
@@ -188,69 +196,61 @@ export async function processPendingNodes(
             const msg = referenceMode === 'start_end'
               ? 'Two reference images (start/end) required for selected model'
               : 'Reference image required for selected model';
-            updateNodeData(doc, nodeId, { status: 'failed', error: msg }, broadcast);
+            updateNodeData(doc, nodeId, { pendingTask: undefined, status: Status.Failed, error: msg }, broadcast);
             continue;
           }
         }
 
-        const params: Record<string, any> = {
+        const result = await submitGenTask(env, taskType as GenerationParams['type'], projectId, nodeId, taskId, {
           prompt: innerData.prompt || innerData.label || '',
           model: selectedModelId,
-          model_params: modelParams,
-          reference_images: referenceImages,
-          reference_mode: referenceMode,
-        };
+          modelParams,
+          referenceImages,
+          referenceMode,
+          aspectRatio: modelParams.aspect_ratio || innerData.aspectRatio || '16:9',
+          duration: modelParams.duration ?? innerData.duration ?? 5,
+          negativPrompt: modelParams.negative_prompt,
+          cfgScale: modelParams.cfg_scale,
+          resolution: modelParams.resolution,
+          tailImageUrl: (referenceMode === 'start_end' && referenceImages[1]) ? referenceImages[1] : undefined,
+          imageR2Key: referenceImages[0],
+        });
 
-        const aspectRatio = modelParams.aspect_ratio || innerData.aspectRatio || '16:9';
-
-        if (nodeType === 'video') {
-          if (referenceImages[0]) {
-            params.image_r2_key = referenceImages[0];
-          }
-          const duration = modelParams.duration ?? innerData.duration ?? 5;
-          params.duration = duration;
-          params.aspect_ratio = aspectRatio;
-          if (modelParams.negative_prompt) params.negative_prompt = modelParams.negative_prompt;
-          if (modelParams.cfg_scale) params.cfg_scale = modelParams.cfg_scale;
-          if (modelParams.resolution) params.resolution = modelParams.resolution;
-          if (referenceMode === 'start_end' && referenceImages[1]) {
-            params.tail_image_url = referenceImages[1];
-          }
-        } else if (nodeType === 'audio') {
-          // Audio/TTS - no extra params
+        if (result.error) {
+          appendNodeLog(doc, nodeId, `FAILED: ${result.error}`, broadcast);
+          updateNodeData(doc, nodeId, { pendingTask: undefined, status: Status.Failed, error: result.error }, broadcast);
         } else {
-          params.aspect_ratio = aspectRatio;
-        }
-
-        const result = await submitTaskInternal(env, taskType, projectId, nodeId, params);
-
-        if (result.task_id) {
-          console.log(`[NodeProcessor] Task submitted: ${result.task_id} for node ${nodeId.slice(0, 8)}`);
-          updateNodeData(doc, nodeId, { taskState: 'completed', pendingTask: result.task_id }, broadcast);
+          appendNodeLog(doc, nodeId, `submitted`, broadcast);
           submitted = true;
-        } else {
-          console.error(`[NodeProcessor] Task submission failed for node ${nodeId.slice(0, 8)}: ${result.error}`);
-          updateNodeData(doc, nodeId, { taskState: 'pending', status: 'failed', error: result.error || 'Task submission failed' }, broadcast);
         }
       }
 
       // Case 2: completed + has src + no description -> submit description task
-      if (status === 'completed' && src && !description && nodeType !== 'audio' && !pendingTask && innerData.taskState !== 'submitted') {
-        updateNodeData(doc, nodeId, { taskState: 'submitted' }, broadcast);
+      if (status === Status.Completed && src && !description && nodeType !== 'audio' && !pendingTask) {
+        const taskId = crypto.randomUUID();
+        const tag = { nodeId, taskId, type: 'desc' };
 
-        const taskType = nodeType === 'image' ? 'image_desc' : 'video_desc';
-        const params = {
-          r2_key: src,
-          mime_type: nodeType === 'image' ? 'image/png' : 'video/mp4',
-        };
+        // Set pendingTask synchronously (optimistic lock) before any await
+        updateNodeData(doc, nodeId, { pendingTask: taskId }, broadcast);
+        log.info("Submitting desc task", tag);
 
-        const result = await submitTaskInternal(env, taskType, projectId, nodeId, params);
+        const taskType: GenerationParams['type'] = nodeType === 'image' ? 'image_desc' : 'video_desc';
 
-        if (result.task_id) {
-          updateNodeData(doc, nodeId, { taskState: 'completed', pendingTask: result.task_id }, broadcast);
-          submitted = true;
+        // Normalise key — strip any accidental full-URL prefix
+        const cleanKey = src.startsWith('http://') || src.startsWith('https://')
+          ? new URL(src).pathname.replace(/^\//, '')
+          : src;
+
+        const result = await submitDescTask(env, taskType, projectId, nodeId, taskId, {
+          r2Key: cleanKey,
+          mimeType: nodeType === 'image' ? 'image/png' : 'video/mp4',
+        });
+
+        if (result.error) {
+          // Description failure is non-critical — keep completed status
+          updateNodeData(doc, nodeId, { pendingTask: undefined }, broadcast);
         } else {
-          updateNodeData(doc, nodeId, { taskState: 'pending', status: 'fin' }, broadcast);
+          submitted = true;
         }
       }
     }
@@ -259,207 +259,118 @@ export async function processPendingNodes(
       await triggerPolling();
     }
   } catch (error) {
-    console.error('[NodeProcessor] Error:', error);
+    log.error('Error:', error);
   }
 }
 
 /**
- * Submit task directly using api-cf internal functions (no HTTP round-trip).
+ * Submit a generation task (image_gen/video_gen) via Workflow.
  */
-async function submitTaskInternal(
+async function submitGenTask(
   env: Env,
-  taskType: string,
+  taskType: GenerationParams['type'],
   projectId: string,
   nodeId: string,
-  params: Record<string, any>
-): Promise<{ task_id?: string; error?: string }> {
+  taskId: string,
+  params: {
+    prompt: string;
+    model: string;
+    modelParams: Record<string, any>;
+    referenceImages: string[];
+    referenceMode: string;
+    aspectRatio: string;
+    duration: number;
+    negativPrompt?: string;
+    cfgScale?: number;
+    resolution?: string;
+    tailImageUrl?: string;
+    imageR2Key?: string;
+  },
+): Promise<{ error?: string }> {
   try {
-    const taskId = crypto.randomUUID();
-    console.log(`[NodeProcessor] Submitting task internally: type=${taskType}, project=${projectId}, node=${nodeId.slice(0, 8)}`);
-
-    if (taskType === 'image_gen') {
-      const referenceImages: string[] = params.reference_images ?? [];
-      const resolvedImages: string[] = [];
-      for (const ref of referenceImages) {
-        if (ref.startsWith('http://') || ref.startsWith('https://')) {
-          try {
-            const resp = await fetch(ref);
-            if (resp.ok) resolvedImages.push(arrayBufferToBase64(await resp.arrayBuffer()));
-          } catch (e) {
-            console.error(`[NodeProcessor] Failed to fetch reference image: ${ref}`, e);
-          }
-        } else if (ref.startsWith('projects/')) {
-          try {
-            const obj = await env.R2_BUCKET.get(ref);
-            if (obj) resolvedImages.push(arrayBufferToBase64(await obj.arrayBuffer()));
-          } catch (e) {
-            console.error(`[NodeProcessor] Failed to fetch R2 image: ${ref}`, e);
-          }
+    // Resolve reference images to base64 before workflow submission
+    const resolvedImages: string[] = [];
+    for (const ref of params.referenceImages) {
+      if (ref.startsWith('http://') || ref.startsWith('https://')) {
+        try {
+          const resp = await fetch(ref);
+          if (resp.ok) resolvedImages.push(arrayBufferToBase64(await resp.arrayBuffer()));
+        } catch (e) {
+          log.error(`Failed to fetch reference image: ${ref}`, e);
+        }
+      } else if (ref.startsWith('projects/')) {
+        try {
+          const obj = await env.R2_BUCKET.get(ref);
+          if (obj) resolvedImages.push(arrayBufferToBase64(await obj.arrayBuffer()));
+        } catch (e) {
+          log.error(`Failed to fetch R2 image: ${ref}`, e);
         }
       }
-
-      await createAsset(env.DB, {
-        id: nodeId,
-        name: `image-${nodeId.slice(0, 8)}`,
-        projectId,
-        storageKey: `pending/${taskId}`,
-        url: '',
-        type: 'image',
-        status: 'pending',
-        taskId,
-        metadata: JSON.stringify({ prompt: params.prompt, model: params.model }),
-      });
-
-      const genParams: GenerationParams = {
-        taskId,
-        type: 'image_gen',
-        projectId,
-        prompt: params.prompt ?? '',
-        aspectRatio: params.aspect_ratio ?? '16:9',
-        modelName: params.model,
-        modelParams: params.model_params as Record<string, unknown> | undefined,
-        base64Images: resolvedImages.length ? resolvedImages : undefined,
-      };
-
-      await delegateToGeneration(env, taskId, genParams);
-      return { task_id: taskId };
     }
 
-    if (taskType === 'video_gen') {
-      let imageBase64: string | undefined;
-      const imageRef = params.image_r2_key ?? params.reference_images?.[0];
-      if (imageRef) {
-        if (imageRef.startsWith('http://') || imageRef.startsWith('https://')) {
-          const resp = await fetch(imageRef);
-          if (resp.ok) imageBase64 = arrayBufferToBase64(await resp.arrayBuffer());
-        } else if (imageRef.startsWith('projects/')) {
-          const obj = await env.R2_BUCKET.get(imageRef);
-          if (obj) imageBase64 = arrayBufferToBase64(await obj.arrayBuffer());
-        }
+    // Resolve video source image
+    let imageBase64: string | undefined;
+    if (taskType === 'video_gen' && params.imageR2Key) {
+      const imageRef = params.imageR2Key;
+      if (imageRef.startsWith('http://') || imageRef.startsWith('https://')) {
+        const resp = await fetch(imageRef);
+        if (resp.ok) imageBase64 = arrayBufferToBase64(await resp.arrayBuffer());
+      } else if (imageRef.startsWith('projects/')) {
+        const obj = await env.R2_BUCKET.get(imageRef);
+        if (obj) imageBase64 = arrayBufferToBase64(await obj.arrayBuffer());
       }
-
-      // Only require an image if the model card specifies it
-      const videoModelCard = getModelCard(params.model);
-      if (!imageBase64 && videoModelCard?.input.referenceImage === 'required') {
-        return { error: 'No image provided for video generation' };
-      }
-
-      await createAsset(env.DB, {
-        id: nodeId,
-        name: `video-${nodeId.slice(0, 8)}`,
-        projectId,
-        storageKey: `pending/${taskId}`,
-        url: '',
-        type: 'video',
-        status: 'pending',
-        taskId,
-        metadata: JSON.stringify({ prompt: params.prompt, duration: params.duration, model: params.model }),
-      });
-
-      const genParams: GenerationParams = {
-        taskId,
-        type: 'video_gen',
-        projectId,
-        prompt: params.prompt ?? '',
-        imageBase64,
-        duration: params.duration,
-        aspectRatio: params.aspect_ratio,
-        cfgScale: params.cfg_scale,
-        videoModel: params.model,
-      };
-
-      await delegateToGeneration(env, taskId, genParams);
-      return { task_id: taskId };
     }
 
-    if (taskType === 'image_desc' || taskType === 'video_desc') {
-      const r2Key = params.r2_key as string | undefined;
-      if (!r2Key) return { error: 'Missing r2_key for description' };
+    // Submit to Workflow
+    const genParams: GenerationParams = {
+      taskId,
+      nodeId,
+      type: taskType,
+      projectId,
+      prompt: params.prompt,
+      aspectRatio: params.aspectRatio,
+      modelName: params.model,
+      modelParams: params.modelParams as Record<string, unknown>,
+      base64Images: resolvedImages.length ? resolvedImages : undefined,
+      imageBase64,
+      duration: params.duration,
+      cfgScale: params.cfgScale,
+      videoModel: params.model,
+    };
 
-      // Normalise key — strip any accidental full-URL prefix
-      const cleanKey = r2Key.startsWith('http://') || r2Key.startsWith('https://')
-        ? new URL(r2Key).pathname.replace(/^\//, '')
-        : r2Key;
-
-      await createAsset(env.DB, {
-        id: `desc-${nodeId}`,
-        name: `desc-${nodeId.slice(0, 8)}`,
-        projectId,
-        storageKey: cleanKey,
-        url: cleanKey,
-        type: taskType === 'image_desc' ? 'image' : 'video',
-        status: 'processing',
-        taskId,
-      });
-
-      // Fetch asset from R2 bucket and convert to base64 data URL so
-      // generateDescription never needs a public URL.
-      try {
-        const { generateDescription } = await import('../services/describe');
-
-        let dataUrl: string;
-        const obj = await env.R2_BUCKET.get(cleanKey);
-        if (obj) {
-          const buf = await obj.arrayBuffer();
-          const bytes = new Uint8Array(buf);
-          let binary = '';
-          for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
-          const mimeType = taskType === 'image_desc' ? (params.mime_type as string || 'image/png') : 'image/jpeg';
-          dataUrl = `data:${mimeType};base64,${btoa(binary)}`;
-        } else {
-          throw new Error(`R2 object not found: ${cleanKey}`);
-        }
-
-        const description = await generateDescription(env.CF_AIG_TOKEN, dataUrl);
-        await updateAssetStatus(env.DB, taskId, {
-          status: AssetStatus.Completed,
-          description,
-        });
-      } catch (e) {
-        console.error('[NodeProcessor] Description generation failed:', e);
-        await updateAssetStatus(env.DB, taskId, {
-          status: AssetStatus.Failed,
-          metadata: JSON.stringify({ error: String(e) }),
-        });
-      }
-
-      return { task_id: taskId };
-    }
-
-    if (taskType === 'audio_gen') {
-      return { error: 'Audio generation is not yet supported' };
-    }
-
-    return { error: `Unknown task_type: ${taskType}` };
+    await env.GENERATION_WORKFLOW.create({ id: taskId, params: genParams });
+    return {};
   } catch (e) {
-    console.error('[NodeProcessor] Exception during internal task submission:', e);
+    log.error('Exception during task submission:', e);
     return { error: String(e) };
   }
 }
 
-/** Delegate a generation task to the GenerationAgent DO. */
-async function delegateToGeneration(
+/**
+ * Submit a description task (image_desc/video_desc) via Workflow.
+ */
+async function submitDescTask(
   env: Env,
+  taskType: GenerationParams['type'],
+  projectId: string,
+  nodeId: string,
   taskId: string,
-  genParams: GenerationParams
-): Promise<void> {
+  params: { r2Key: string; mimeType: string },
+): Promise<{ error?: string }> {
   try {
-    const doId = env.GENERATION.idFromName(taskId);
-    const stub = env.GENERATION.get(doId);
-    await stub.fetch(new Request('https://do/run', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-partykit-room': taskId,
-        'x-partykit-namespace': 'GENERATION',
-      },
-      body: JSON.stringify(genParams),
-    }));
+    const genParams: GenerationParams = {
+      taskId,
+      nodeId,
+      type: taskType,
+      projectId,
+      r2Key: params.r2Key,
+      mimeType: params.mimeType,
+    };
+
+    await env.GENERATION_WORKFLOW.create({ id: taskId, params: genParams });
+    return {};
   } catch (e) {
-    console.error('Failed to delegate to GenerationAgent:', e);
-    await updateAssetStatus(env.DB, taskId, {
-      status: 'failed',
-      metadata: JSON.stringify({ error: `DO delegation failed: ${String(e)}` }),
-    });
+    log.error('Exception during desc submission:', e);
+    return { error: String(e) };
   }
 }

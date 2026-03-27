@@ -15,8 +15,11 @@ interface ImageGenParams {
   base64Images?: string[];
   aspectRatio?: string;
   modelName?: string;
-  /** Model-specific extra params (e.g. num_inference_steps, guidance_scale). */
   modelParams?: Record<string, unknown>;
+  /** Called when fal enqueues the request */
+  onEnqueue?: (requestId: string) => void;
+  /** Called on each fal queue status poll */
+  onQueueUpdate?: (status: { status: string; position?: number }) => void;
 }
 
 /** Map from shared model card IDs to fal.ai model endpoints. */
@@ -53,18 +56,16 @@ function stripDataUrl(base64Str: string): string {
 
 /**
  * Generate an image using fal.ai.
- * Returns raw base64 image data (no data: prefix).
+ * Returns { base64, requestId, model }.
  */
 export async function generateImage(
   falApiKey: string,
   params: ImageGenParams,
-): Promise<string> {
-  console.log(`[image-gen] Starting: key=${falApiKey.slice(0, 8)}... prompt="${params.text.slice(0, 50)}..."`);
+): Promise<{ base64: string; requestId: string; model: string }> {
   fal.config({ credentials: falApiKey });
 
   const hasRefImages = !!params.base64Images?.length;
   const modelId = resolveModelId(params.modelName, hasRefImages);
-  console.log(`[image-gen] Model: ${modelId}, aspect=${params.aspectRatio || "1:1"}, refs=${params.base64Images?.length ?? 0}`);
 
   let prompt = params.text;
   if (params.systemPrompt) {
@@ -105,9 +106,12 @@ export async function generateImage(
     }
   }
 
-  console.log(`[image-gen] Calling fal.subscribe("${modelId}")...`);
-  const result = await fal.subscribe(modelId, { input });
-  console.log(`[image-gen] fal responded, requestId=${result.requestId}`);
+  const result = await fal.subscribe(modelId, {
+    input,
+    timeout: 4 * 60 * 1000,
+    onEnqueue: params.onEnqueue,
+    onQueueUpdate: params.onQueueUpdate as any,
+  });
   const data = result.data as {
     images?: Array<{ url: string; width?: number; height?: number }>;
   };
@@ -128,7 +132,7 @@ export async function generateImage(
   for (let i = 0; i < bytes.length; i++) {
     binary += String.fromCharCode(bytes[i]);
   }
-  return btoa(binary);
+  return { base64: btoa(binary), requestId: result.requestId, model: modelId };
 }
 
 function resolveModelId(modelName: string | undefined, hasRefImages: boolean): string {

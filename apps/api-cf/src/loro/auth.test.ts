@@ -11,6 +11,7 @@ const JWT_SECRET = "test-secret-key-for-unit-tests";
 function makeEnv(overrides: Partial<Env> = {}): Env {
   return {
     GOOGLE_API_KEY: "",
+    CF_AIG_TOKEN: "",
     KLING_ACCESS_KEY: "",
     KLING_SECRET_KEY: "",
     R2_BUCKET: {} as any,
@@ -18,7 +19,7 @@ function makeEnv(overrides: Partial<Env> = {}): Env {
     ENVIRONMENT: "production",
     ROOM: {} as any,
     SUPERVISOR: {} as any,
-    GENERATION: {} as any,
+    GENERATION_WORKFLOW: {} as any,
     DB: {
       prepare: vi.fn().mockReturnValue({
         bind: vi.fn().mockReturnValue({

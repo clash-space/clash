@@ -10,7 +10,7 @@ import {
   NodeType,
   FrontendNodeType,
   ProposalType,
-  TaskStatus,
+  Status,
   isGenerationNodeType,
 } from "../../domain/canvas";
 import type { LayoutNode, LayoutEdge } from "@clash/shared-layout";
@@ -266,11 +266,11 @@ export function findNodeByIdOrAssetId(doc: LoroDoc, idOrAssetId: string): NodeIn
 
 export function getNodeStatus(doc: LoroDoc, nodeIdOrAssetId: string): TaskStatusResult {
   const node = findNodeByIdOrAssetId(doc, nodeIdOrAssetId);
-  if (!node) return { status: TaskStatus.NodeNotFound, error: "Node not found" };
+  if (!node) return { status: Status.NodeNotFound, error: "Node not found" };
 
   const defaultStatus = isGenerationNodeType(node.type)
-    ? TaskStatus.Generating
-    : TaskStatus.Completed;
-  const status = (node.data.status as string as TaskStatus) ?? defaultStatus;
+    ? Status.Generating
+    : Status.Completed;
+  const status = (node.data.status as string as Status) ?? defaultStatus;
   return { status };
 }

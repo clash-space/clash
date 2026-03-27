@@ -28,9 +28,6 @@ from typing import Any, Literal
 # === Enums ===
 
 NodeStatus = Literal["idle", "pending", "generating", "completed", "failed"]
-TaskType = Literal["kling_video", "nano_banana", "nano_banana_pro", "gemini_image"]
-TaskStatus = Literal["pending", "generating", "completed", "failed"]
-ExternalService = Literal["kling", "gemini", "vertex"]
 ActionType = Literal["image-gen", "video-gen"]
 
 
@@ -88,45 +85,7 @@ class CanvasEdge:
     targetHandle: str | None = None
 
 
-# === Task Types ===
-
-@dataclass
-class AIGCTask:
-    """AIGC task stored in D1."""
-    task_id: str
-    project_id: str
-    task_type: TaskType
-    status: TaskStatus
-    params: str  # JSON string
-    created_at: int
-    updated_at: int
-    retry_count: int
-    max_retries: int
-    external_task_id: str | None = None
-    external_service: ExternalService | None = None
-    result_url: str | None = None
-    result_data: str | None = None  # JSON string
-    error_message: str | None = None
-    completed_at: int | None = None
-
-
-@dataclass
-class SubmitTaskRequest:
-    """Task submission payload."""
-    project_id: str
-    task_type: TaskType
-    params: dict[str, Any]
-
-
-@dataclass
-class SubmitTaskResponse:
-    """Task submission response."""
-    task_id: str
-    status: TaskStatus
-    created_at: int
-
-
-# === Model Cards ===
+# === Task Types (legacy — kept for reference) ===
 
 @dataclass
 class ModelParameter:
@@ -338,22 +297,16 @@ const initPy = `"""
 Clash Types - Auto-generated from @clash/shared-types Zod schemas.
 
 Usage:
-    from clash_types import CanvasNode, CanvasEdge, AIGCTask
+    from clash_types import CanvasNode, CanvasEdge
 """
 
 from clash_types.types import (
     NodeStatus,
-    TaskType,
-    TaskStatus,
-    ExternalService,
     ActionType,
     Position,
     NodeData,
     CanvasNode,
     CanvasEdge,
-    AIGCTask,
-    SubmitTaskRequest,
-    SubmitTaskResponse,
     ModelCard,
     ModelParameter,
     ModelInputRule,
@@ -362,17 +315,11 @@ from clash_types.types import (
 
 __all__ = [
     "NodeStatus",
-    "TaskType",
-    "TaskStatus",
-    "ExternalService",
     "ActionType",
     "Position",
     "NodeData",
     "CanvasNode",
     "CanvasEdge",
-    "AIGCTask",
-    "SubmitTaskRequest",
-    "SubmitTaskResponse",
     "ModelCard",
     "ModelParameter",
     "ModelInputRule",

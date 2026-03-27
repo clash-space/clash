@@ -16,9 +16,11 @@ class_name = "ProjectRoom"
 name = "SUPERVISOR"
 class_name = "SupervisorAgent"
 
-[[durable_objects.bindings]]
-name = "GENERATION"
-class_name = "GenerationAgent"
+# Workflow
+[[workflows]]
+name = "generation-workflow"
+binding = "GENERATION_WORKFLOW"
+class_name = "GenerationWorkflow"
 
 [[migrations]]
 tag = "v1"
@@ -35,6 +37,10 @@ renamed_classes = [{from = "SupervisorAgent", to = "ProjectRoom"}]
 [[migrations]]
 tag = "v4"
 new_sqlite_classes = ["SupervisorAgent"]
+
+[[migrations]]
+tag = "v5"
+deleted_classes = ["GenerationAgent"]
 
 # D1 Database (shared with frontend)
 [[d1_databases]]

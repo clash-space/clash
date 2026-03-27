@@ -3,9 +3,9 @@ import { cors } from "hono/cors";
 import { ZodError } from "zod";
 
 import type { Env } from "../config";
-import { AssetStatus } from "../domain/canvas";
-import { generateDescription } from "../services/describe";
-import { createAsset, getAssetByTaskId, updateAssetStatus } from "../services/asset-store";
+import { log } from "../logger";
+import { Status } from "../domain/canvas";
+import { getAssetByTaskId, updateAssetStatus } from "../services/asset-store";
 import type { GenerationParams } from "../agents/generation";
 import {
   DEFAULT_IMAGE_MODEL,
@@ -24,7 +24,7 @@ api.onError((err, c) => {
   if (err instanceof ZodError) {
     return c.json({ error: "Validation failed", details: err.issues }, 400);
   }
-  console.error("Unhandled error:", err);
+  log.error("Unhandled error:", err);
   return c.json({ error: "Internal server error" }, 500);
 });
 
@@ -80,61 +80,40 @@ function resolveImagesToBase64(
   return { base64Inputs, urlPromises };
 }
 
-/** Delegate a generation task to the GenerationAgent DO. Marks asset failed on error. */
-async function delegateToGenerationAgent(
+/** Submit a generation task to the Workflow. Marks asset failed on error. */
+async function submitToWorkflow(
   c: Context<{ Bindings: Env }>,
   taskId: string,
   genParams: GenerationParams
 ): Promise<Response | null> {
   try {
-    const doId = c.env.GENERATION.idFromName(taskId);
-    const stub = c.env.GENERATION.get(doId);
-    await stub.fetch(new Request("https://do/run", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(genParams),
-    }));
+    await c.env.GENERATION_WORKFLOW.create({ id: taskId, params: genParams });
     return null; // success
   } catch (e) {
-    console.error("Failed to delegate to GenerationAgent:", e);
+    log.error("Failed to create workflow instance:", e);
     await updateAssetStatus(c.env.DB, taskId, {
-      status: "failed",
-      metadata: JSON.stringify({ error: `DO delegation failed: ${String(e)}` }),
+      status: Status.Failed,
+      metadata: JSON.stringify({ error: `Workflow creation failed: ${String(e)}` }),
     });
     return c.json({ error: "Failed to start generation task" }, 500);
   }
 }
 
 // ─── POST /api/generate/image ──────────────────────────────
-//
-// Pipeline: validate → D1 INSERT pending → delegate to GenerationAgent DO → return task_id
-//
 
 api.post("/api/generate/image", async (c) => {
   const body = GenerateImageRequestSchema.parse(await c.req.json());
   const taskId = crypto.randomUUID();
 
-  // Resolve reference images to base64 upfront (lightweight, keeps DO simpler)
+  // Resolve reference images to base64 upfront
   const { base64Inputs, urlPromises } = resolveImagesToBase64(body.base64_images, body.reference_image_urls);
   const urlInputs = await urlPromises;
   const allImages = [...base64Inputs, ...urlInputs];
 
-  // 1. Insert pending asset into D1
-  await createAsset(c.env.DB, {
-    id: body.asset_id,
-    name: body.asset_name,
-    projectId: body.project_id,
-    storageKey: `pending/${taskId}`,
-    url: "",
-    type: "image",
-    status: "pending",
-    taskId,
-    metadata: JSON.stringify({ prompt: body.prompt, model: body.model_name ?? DEFAULT_IMAGE_MODEL }),
-  });
-
-  // 2. Delegate to GenerationAgent DO
+  // Submit to Workflow (D1 asset created inside workflow on completion)
   const genParams: GenerationParams = {
     taskId,
+    nodeId: body.asset_id,
     type: "image_gen",
     projectId: body.project_id,
     prompt: body.prompt,
@@ -144,7 +123,7 @@ api.post("/api/generate/image", async (c) => {
     base64Images: allImages.length ? allImages : undefined,
   };
 
-  const errorResponse = await delegateToGenerationAgent(c, taskId, genParams);
+  const errorResponse = await submitToWorkflow(c, taskId, genParams);
   if (errorResponse) return errorResponse;
 
   return c.json({
@@ -155,9 +134,6 @@ api.post("/api/generate/image", async (c) => {
 });
 
 // ─── POST /api/generate/video ──────────────────────────────
-//
-// Pipeline: validate → resolve image → D1 INSERT pending → delegate to GenerationAgent DO → return task_id
-//
 
 api.post("/api/generate/video", async (c) => {
   const body = GenerateVideoRequestSchema.parse(await c.req.json());
@@ -189,22 +165,10 @@ api.post("/api/generate/video", async (c) => {
     return c.json({ error: "Failed to resolve image to base64" }, 400);
   }
 
-  // 1. Insert pending asset into D1
-  await createAsset(c.env.DB, {
-    id: body.asset_id,
-    name: body.asset_name,
-    projectId: body.project_id,
-    storageKey: `pending/${taskId}`,
-    url: "",
-    type: "video",
-    status: "pending",
-    taskId,
-    metadata: JSON.stringify({ prompt: body.prompt, duration: body.duration, model: body.model }),
-  });
-
-  // 2. Delegate to GenerationAgent DO
+  // Submit to Workflow (D1 asset created inside workflow on completion)
   const genParams: GenerationParams = {
     taskId,
+    nodeId: body.asset_id,
     type: "video_gen",
     projectId: body.project_id,
     prompt: body.prompt,
@@ -214,7 +178,7 @@ api.post("/api/generate/video", async (c) => {
     videoModel: body.model,
   };
 
-  const errorResponse = await delegateToGenerationAgent(c, taskId, genParams);
+  const errorResponse = await submitToWorkflow(c, taskId, genParams);
   if (errorResponse) return errorResponse;
 
   return c.json({
@@ -229,29 +193,27 @@ api.post("/api/generate/video", async (c) => {
 
 api.post("/api/describe", async (c) => {
   const body = GenerateDescriptionRequestSchema.parse(await c.req.json());
+  const taskId = body.task_id;
 
-  c.executionCtx.waitUntil(
-    (async () => {
-      try {
-        const description = await generateDescription(c.env.CF_AIG_TOKEN, body.url);
-        // Update description directly in D1
-        await updateAssetStatus(c.env.DB, body.task_id, {
-          status: AssetStatus.Completed,
-          description,
-        });
-      } catch (e) {
-        console.error("Description generation failed:", e);
-      }
-    })()
-  );
+  // Submit description via Workflow for durability
+  const genParams: GenerationParams = {
+    taskId,
+    type: "image_desc",
+    projectId: "",
+    r2Key: body.url,
+  };
 
-  return c.json({ task_id: body.task_id, status: AssetStatus.Processing });
+  try {
+    await c.env.GENERATION_WORKFLOW.create({ id: `desc-${taskId}`, params: genParams });
+  } catch (e) {
+    log.error("Failed to create description workflow:", e);
+    return c.json({ error: "Failed to start description task" }, 500);
+  }
+
+  return c.json({ task_id: taskId, status: Status.Generating });
 });
 
 // ─── GET /api/tasks/:taskId ────────────────────────────────
-//
-// Poll endpoint: frontend queries task status from D1.
-//
 
 api.get("/api/tasks/:taskId", async (c) => {
   const taskId = c.req.param("taskId");
@@ -267,7 +229,6 @@ api.get("/api/tasks/:taskId", async (c) => {
     try { metadataObj = JSON.parse(asset.metadata); } catch {}
   }
 
-  // Map to format expected by TaskPolling
   return c.json({
     task_id: taskId,
     status: asset.status,
@@ -281,10 +242,6 @@ api.get("/api/tasks/:taskId", async (c) => {
 });
 
 // ─── POST /api/tasks/submit ────────────────────────────────
-//
-// Unified task submission endpoint (replaces Python API).
-// Dispatches by task_type to existing generation/description logic.
-//
 
 api.post("/api/tasks/submit", async (c) => {
   const body = TaskSubmitRequestSchema.parse(await c.req.json());
@@ -292,7 +249,6 @@ api.post("/api/tasks/submit", async (c) => {
   const { task_type, project_id, node_id, params } = body;
 
   if (task_type === "image_gen") {
-    // Resolve reference images from R2 URLs to base64
     const referenceImages: string[] = params.reference_images ?? [];
     const resolvedImages: string[] = [];
     for (const ref of referenceImages) {
@@ -300,35 +256,23 @@ api.post("/api/tasks/submit", async (c) => {
         try {
           resolvedImages.push(await fetchUrlToBase64(ref));
         } catch (e) {
-          console.error(`[tasks/submit] Failed to fetch reference image: ${ref}`, e);
+          log.error(`Failed to fetch reference image: ${ref}`, e);
         }
       } else if (ref.startsWith("projects/")) {
-        // R2 key — fetch from R2 bucket
         try {
           const obj = await c.env.R2_BUCKET.get(ref);
           if (obj) {
             resolvedImages.push(arrayBufferToBase64(await obj.arrayBuffer()));
           }
         } catch (e) {
-          console.error(`[tasks/submit] Failed to fetch R2 image: ${ref}`, e);
+          log.error(`Failed to fetch R2 image: ${ref}`, e);
         }
       }
     }
 
-    await createAsset(c.env.DB, {
-      id: node_id,
-      name: `image-${node_id.slice(0, 8)}`,
-      projectId: project_id,
-      storageKey: `pending/${taskId}`,
-      url: "",
-      type: "image",
-      status: "pending",
-      taskId,
-      metadata: JSON.stringify({ prompt: params.prompt, model: params.model }),
-    });
-
     const genParams: GenerationParams = {
       taskId,
+      nodeId: node_id,
       type: "image_gen",
       projectId: project_id,
       prompt: params.prompt ?? "",
@@ -337,14 +281,13 @@ api.post("/api/tasks/submit", async (c) => {
       base64Images: resolvedImages.length ? resolvedImages : undefined,
     };
 
-    const errorResponse = await delegateToGenerationAgent(c, taskId, genParams);
+    const errorResponse = await submitToWorkflow(c, taskId, genParams);
     if (errorResponse) return errorResponse;
 
-    return c.json({ task_id: taskId, status: "pending" });
+    return c.json({ task_id: taskId, status: Status.Pending });
   }
 
   if (task_type === "video_gen") {
-    // Resolve image from R2 key or URL
     let imageBase64: string | undefined;
     const imageRef = params.image_r2_key ?? params.reference_images?.[0];
     if (imageRef) {
@@ -362,20 +305,9 @@ api.post("/api/tasks/submit", async (c) => {
       return c.json({ error: "No image provided for video generation" }, 400);
     }
 
-    await createAsset(c.env.DB, {
-      id: node_id,
-      name: `video-${node_id.slice(0, 8)}`,
-      projectId: project_id,
-      storageKey: `pending/${taskId}`,
-      url: "",
-      type: "video",
-      status: "pending",
-      taskId,
-      metadata: JSON.stringify({ prompt: params.prompt, duration: params.duration, model: params.model }),
-    });
-
     const genParams: GenerationParams = {
       taskId,
+      nodeId: node_id,
       type: "video_gen",
       projectId: project_id,
       prompt: params.prompt ?? "",
@@ -385,61 +317,39 @@ api.post("/api/tasks/submit", async (c) => {
       videoModel: params.model,
     };
 
-    const errorResponse = await delegateToGenerationAgent(c, taskId, genParams);
+    const errorResponse = await submitToWorkflow(c, taskId, genParams);
     if (errorResponse) return errorResponse;
 
-    return c.json({ task_id: taskId, status: "pending" });
+    return c.json({ task_id: taskId, status: Status.Pending });
   }
 
   if (task_type === "image_desc" || task_type === "video_desc") {
-    // Description generation — resolve R2 key or URL, then generate async
     const r2Key = params.r2_key as string | undefined;
     if (!r2Key) {
       return c.json({ error: "Missing r2_key for description" }, 400);
     }
 
-    // r2_key may be a full URL (from TaskPolling result_url) or an R2 storage key
-    const assetUrl = r2Key.startsWith("http://") || r2Key.startsWith("https://")
-      ? r2Key
-      : `${c.env.R2_PUBLIC_URL}/${r2Key}`;
+    const cleanKey = r2Key.startsWith("http://") || r2Key.startsWith("https://")
+      ? new URL(r2Key).pathname.replace(/^\//, "")
+      : r2Key;
 
-    // Create a placeholder asset record for tracking
-    await createAsset(c.env.DB, {
-      id: `desc-${node_id}`,
-      name: `desc-${node_id.slice(0, 8)}`,
-      projectId: project_id,
-      storageKey: r2Key,
-      url: assetUrl,
-      type: task_type === "image_desc" ? "image" : "video",
-      status: "processing",
+    const genParams: GenerationParams = {
       taskId,
-    });
+      nodeId: node_id,
+      type: task_type as GenerationParams["type"],
+      projectId: project_id,
+      r2Key: cleanKey,
+      mimeType: params.mime_type as string || "image/png",
+    };
 
-    // Generate description asynchronously
-    c.executionCtx.waitUntil(
-      (async () => {
-        try {
-          const description = await generateDescription(c.env.CF_AIG_TOKEN, assetUrl);
-          await updateAssetStatus(c.env.DB, taskId, {
-            status: AssetStatus.Completed,
-            description,
-          });
-        } catch (e) {
-          console.error("[tasks/submit] Description generation failed:", e);
-          await updateAssetStatus(c.env.DB, taskId, {
-            status: AssetStatus.Failed,
-            metadata: JSON.stringify({ error: String(e) }),
-          });
-        }
-      })()
-    );
+    const errorResponse = await submitToWorkflow(c, taskId, genParams);
+    if (errorResponse) return errorResponse;
 
-    return c.json({ task_id: taskId, status: "pending" });
+    return c.json({ task_id: taskId, status: Status.Pending });
   }
 
   if (task_type === "video_thumbnail") {
-    // No-op: cover image is now captured during video generation from Kling API
-    return c.json({ task_id: null, status: "completed" });
+    return c.json({ task_id: null, status: Status.Completed });
   }
 
   if (task_type === "audio_gen") {

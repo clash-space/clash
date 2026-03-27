@@ -7,7 +7,7 @@ import { assetRoutes } from "./routes/assets";
 import { thumbnailRoutes } from "./routes/thumbnails";
 import { ProjectRoom } from "./agents/project-room";
 import { SupervisorAgent } from "./agents/supervisor";
-import { GenerationAgent } from "./agents/generation";
+import { GenerationWorkflow } from "./agents/generation";
 
 const app = new Hono<{ Bindings: Env }>();
 
@@ -18,11 +18,7 @@ app.all("/sync/:projectId{.*}", async (c) => {
   const rawProjectId = c.req.param("projectId");
   const projectId = rawProjectId.split("/")[0];
   const id = c.env.ROOM.idFromName(projectId);
-  // partyserver requires x-partykit-room and x-partykit-namespace headers
-  const req = new Request(c.req.raw);
-  req.headers.set("x-partykit-room", projectId);
-  req.headers.set("x-partykit-namespace", "ROOM");
-  return c.env.ROOM.get(id).fetch(req);
+  return c.env.ROOM.get(id).fetch(c.req.raw);
 });
 
 // ─── AI Chat: /agents/supervisor/:room → SupervisorAgent DO ──
@@ -54,5 +50,5 @@ app.get("/health", (c) => c.json({ status: "ok" }));
 // Export for Cloudflare Workers
 export default app;
 
-// Export Durable Object classes
-export { ProjectRoom, SupervisorAgent, GenerationAgent };
+// Export Durable Object classes and Workflow
+export { ProjectRoom, SupervisorAgent, GenerationWorkflow };

@@ -94,7 +94,7 @@ const ImageNode = ({ data, selected, id }: NodeProps) => {
 
     const handleDoubleClick = (e: React.MouseEvent) => {
         e.stopPropagation();
-        if (imageUrl && (status === 'completed' || status === 'fin')) {
+        if (imageUrl && (status === 'completed')) {
             openViewer('image', resolveAssetUrl(imageUrl), label);
         }
     };
@@ -144,7 +144,7 @@ const ImageNode = ({ data, selected, id }: NodeProps) => {
                 }}
                 onDoubleClick={handleDoubleClick}
             >
-                {(status === 'completed' || status === 'fin') && imageUrl ? (
+                {(status === 'completed') && imageUrl ? (
                     <div className="relative">
                         {/* eslint-disable-next-line @next/next/no-img-element */}
                         <img
@@ -224,7 +224,7 @@ const ImageNode = ({ data, selected, id }: NodeProps) => {
                     >
                         <textarea
                             className="w-full h-24 resize-none bg-transparent text-xs text-slate-600 focus:outline-none"
-                            value={description || ((status === 'completed' || status === 'fin') ? 'Generating description...' : 'No description available.')}
+                            value={description || ((status === 'completed') ? 'Generating description...' : 'No description available.')}
                             readOnly
                         />
                     </div>

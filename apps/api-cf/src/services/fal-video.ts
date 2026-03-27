@@ -11,19 +11,22 @@ import { fal } from "@fal-ai/client";
 
 interface FalVideoParams {
   prompt: string;
-  /** Base64 image (with or without data: prefix) for image-to-video. */
   imageBase64?: string;
-  /** Duration in seconds. Sora: 4/8/12/16/20. Kling: 5/10 (passed as string). */
   duration?: number | string;
   aspectRatio?: string;
-  /** Model card ID, e.g. "kling-2.1-text-to-video". Defaults to sora-2. */
   videoModel?: string;
+  /** Called when fal enqueues the request */
+  onEnqueue?: (requestId: string) => void;
+  /** Called on each fal queue status poll */
+  onQueueUpdate?: (status: { status: string; position?: number }) => void;
 }
 
 interface FalVideoResult {
   url: string;
   coverImageUrl?: string;
   duration: number;
+  requestId: string;
+  model: string;
 }
 
 function stripDataUrl(base64Str: string): string {
@@ -73,7 +76,12 @@ async function generateSoraVideo(params: FalVideoParams): Promise<FalVideoResult
     input.image_url = `data:image/jpeg;base64,${stripDataUrl(params.imageBase64!)}`;
   }
 
-  const result = await fal.subscribe(modelId, { input } as any);
+  const result = await fal.subscribe(modelId, {
+    input,
+    timeout: 9 * 60 * 1000,
+    onEnqueue: params.onEnqueue,
+    onQueueUpdate: params.onQueueUpdate as any,
+  } as any);
   const data = result.data as {
     video?: { url: string; duration?: number };
     thumbnail?: { url: string };
@@ -87,6 +95,8 @@ async function generateSoraVideo(params: FalVideoParams): Promise<FalVideoResult
     url: data.video.url,
     coverImageUrl: data.thumbnail?.url,
     duration: data.video.duration ?? durationNum,
+    requestId: result.requestId,
+    model: modelId,
   };
 }
 
@@ -113,8 +123,12 @@ async function generateKlingVideo(params: FalVideoParams): Promise<FalVideoResul
     input.image_url = `data:image/jpeg;base64,${stripDataUrl(params.imageBase64!)}`;
   }
 
-  console.log(`[fal-video] Calling Kling: ${modelId}, duration=${durationStr}, aspect=${params.aspectRatio}`);
-  const result = await fal.subscribe(modelId, { input } as any);
+  const result = await fal.subscribe(modelId, {
+    input,
+    timeout: 9 * 60 * 1000,
+    onEnqueue: params.onEnqueue,
+    onQueueUpdate: params.onQueueUpdate as any,
+  } as any);
   const data = result.data as {
     video?: { url: string; content_type?: string };
   };
@@ -126,5 +140,7 @@ async function generateKlingVideo(params: FalVideoParams): Promise<FalVideoResul
   return {
     url: data.video.url,
     duration: durationNum,
+    requestId: result.requestId,
+    model: modelId,
   };
 }

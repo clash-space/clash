@@ -186,7 +186,7 @@ const AudioNode = ({ data, selected, id: _id }: NodeProps) => {
                 {/* Main Card - Waveform Only */}
                 <div
                     className={`w-full bg-white shadow-xl rounded-matrix overflow-hidden transition-all duration-300 hover:shadow-2xl cursor-pointer ${selected ? 'ring-4 ring-slate-900 ring-offset-2' : 'ring-1 ring-slate-200'}`}
-                    onClick={() => audioUrl && (status === 'completed' || status === 'fin') && setShowModal(true)}
+                    onClick={() => audioUrl && (status === 'completed') && setShowModal(true)}
                 >
                     <div className="flex items-center justify-center h-16 px-4">
                         {/* Show generating state */}

@@ -13,7 +13,7 @@ export interface Env {
   ENVIRONMENT: string;
   ROOM: DurableObjectNamespace;
   SUPERVISOR: DurableObjectNamespace;
-  GENERATION: DurableObjectNamespace;
+  GENERATION_WORKFLOW: Workflow;
   DB: D1Database;
   // Auth (ported from loro-sync-server)
   JWT_SECRET?: string;

@@ -1,9 +1,9 @@
 /**
  * Unified Asset Status Machine
- * 
+ *
  * Simple status machine for all AIGC assets (images, videos, etc.)
  * Both frontend and backend should use these exact values.
- * 
+ *
  * Status Flow:
  * uploading -> generating -> completed
  *           \            \-> failed
@@ -11,14 +11,10 @@
  */
 
 // Canonical status values used by both frontend and backend
-export type AssetStatus = 'uploading' | 'generating' | 'completed' | 'fin' | 'failed';
+export type AssetStatus = 'uploading' | 'generating' | 'completed' | 'failed';
 
 // Status descriptions for UI display
 export const StatusDisplay: Record<AssetStatus, { label: string; description: string }> = {
-  fin: {
-    label: 'Done',
-    description: 'All processing finished',
-  },
   uploading: {
     label: 'Uploading',
     description: 'Asset is being uploaded',
@@ -44,40 +40,35 @@ export function isActiveStatus(status: AssetStatus): boolean {
 
 // Helper to check if status represents a "final" state
 export function isFinalStatus(status: AssetStatus): boolean {
-  return status === 'completed' || status === 'failed' || status === 'fin';
+  return status === 'completed' || status === 'failed';
 }
 
-// Normalize legacy/old status values to the new 4-state system
+// Normalize legacy/old status values to the new system
 export function normalizeStatus(status: string | undefined): AssetStatus {
   if (!status) return 'generating';
-  
+
   const statusLower = status.toLowerCase();
-  
+
   // Uploading state
   if (statusLower === 'uploading') {
     return 'uploading';
   }
-  
+
   // Legacy mappings - all "in progress" states become 'generating'
   if (['pending', 'processing', 'generating'].includes(statusLower)) {
     return 'generating';
   }
-  
+
   // Error/failed states
   if (['error', 'failed'].includes(statusLower)) {
     return 'failed';
   }
-  
-  // Completed state
-  if (statusLower === 'completed') {
+
+  // Completed state (including legacy 'fin')
+  if (statusLower === 'completed' || statusLower === 'fin') {
     return 'completed';
   }
 
-  // Fin state
-  if (statusLower === 'fin') {
-    return 'fin';
-  }
-  
   // Default to generating for unknown statuses
   return 'generating';
 }

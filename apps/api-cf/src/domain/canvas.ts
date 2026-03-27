@@ -49,27 +49,22 @@ export const ProposalType = {
 
 export type ProposalType = (typeof ProposalType)[keyof typeof ProposalType];
 
-// ─── Task / Generation Status ──────────────────────────────
+// ─── Unified Status ─────────────────────────────────────────
+//
+// Single status enum used across D1 and Loro layers.
+// D1 subset:  Pending → Generating → Completed / Failed
+// Loro subset: Generating → Completed / Failed
+//
 
-export const TaskStatus = {
-  Completed: "completed",
+export const Status = {
+  Pending: "pending",
   Generating: "generating",
+  Completed: "completed",
   Failed: "failed",
   NodeNotFound: "node_not_found",
 } as const;
 
-export type TaskStatus = (typeof TaskStatus)[keyof typeof TaskStatus];
-
-// ─── Asset Status (REST callback) ──────────────────────────
-
-export const AssetStatus = {
-  Pending: "pending",
-  Processing: "processing",
-  Completed: "completed",
-  Failed: "failed",
-} as const;
-
-export type AssetStatus = (typeof AssetStatus)[keyof typeof AssetStatus];
+export type Status = (typeof Status)[keyof typeof Status];
 
 // ─── Schemas ───────────────────────────────────────────────
 
@@ -99,7 +94,7 @@ export interface CreateNodeResult {
 }
 
 export interface TaskStatusResult {
-  status: TaskStatus;
+  status: Status;
   output?: Record<string, unknown>;
   error?: string;
 }
