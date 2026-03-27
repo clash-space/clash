@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { tool as _tool, jsonSchema } from "ai";
+import { tool } from "ai";
 import type { LoroDoc } from "loro-crdt";
 import type { BroadcastFn } from "../backends/canvas";
 import * as canvasBackend from "../backends/canvas";
@@ -9,10 +9,10 @@ import {
   CONTENT_NODE_TYPES,
   GENERATION_NODE_TYPES,
   Status,
+  isGenerationNode,
+  ACTION_TYPE,
 } from "../../domain/canvas";
-
-// Cast to bypass ai@4/v5 overload mismatch (bundler resolves to v4 at runtime)
-const tool = _tool as any;
+import { MODEL_CARDS, buildPendingAssetNode } from "@clash/shared-types";
 
 /**
  * Create canvas tools that operate on the Loro CRDT document.
@@ -26,14 +26,14 @@ export function createCanvasTools(
 ) {
   const listCanvasNodes = tool({
     description: "List nodes on the canvas, optionally filtered by type or parent group. Returns a tree view.",
-    parameters: z.object({
+    inputSchema: z.object({
       node_type: z
         .enum(ALL_NODE_TYPES)
-        .default("" as any)
-        .describe("Optional filter by node type, empty string means all"),
-      parent_id: z.string().default("").describe("Optional filter by parent group, empty string means root"),
+        .optional()
+        .describe("Optional filter by node type"),
+      parent_id: z.string().optional().describe("Optional filter by parent group"),
     }),
-    execute: async (args: any) => {
+    execute: async (args) => {
       const node_type = args.node_type || undefined;
       const parent_id = args.parent_id || undefined;
       try {
@@ -95,10 +95,10 @@ export function createCanvasTools(
 
   const readCanvasNode = tool({
     description: "Read a specific node's detailed data.",
-    parameters: z.object({
+    inputSchema: z.object({
       node_id: z.string().describe("Target node ID"),
     }),
-    execute: async (args: any) => {
+    execute: async (args) => {
       const { node_id } = args;
       try {
         const node = canvasBackend.readNode(doc, node_id);
@@ -114,8 +114,8 @@ export function createCanvasTools(
   });
 
   const createCanvasNode = tool({
-    description: "Create a new text, prompt, or group node on the canvas.",
-    parameters: z.object({
+    description: "Create a new text or group node on the canvas.",
+    inputSchema: z.object({
       node_type: z.enum(CONTENT_NODE_TYPES).describe("Node type to create"),
       label: z.string().describe("Display label for the node"),
       content: z.string().optional().describe("Markdown/text content"),
@@ -123,7 +123,7 @@ export function createCanvasTools(
       position: z.object({ x: z.number(), y: z.number() }).optional().describe("Canvas coordinates"),
       parent_id: z.string().optional().describe("Parent group; defaults to current workspace"),
     }),
-    execute: async (args: any) => {
+    execute: async (args) => {
       const { node_type, label, content, description, position, parent_id } = args;
       try {
         const resolvedParent = parent_id ?? getWorkspaceGroupId() ?? null;
@@ -134,7 +134,6 @@ export function createCanvasTools(
 
         const result = canvasBackend.createNode(doc, broadcast, nodeId, node_type, data, position, resolvedParent);
         if (result.error) return `Error: ${result.error}`;
-        if (result.proposal) sendMessage({ type: "node_proposal", proposal: result.proposal });
         return `Created node ${result.node_id}`;
       } catch (e) {
         return `Error creating node: ${e}`;
@@ -143,29 +142,42 @@ export function createCanvasTools(
   });
 
   const createGenerationNode = tool({
-    description: "Create a new image or video generation node on the canvas. Returns nodeId and assetId.",
-    parameters: z.object({
-      node_type: z.enum(GENERATION_NODE_TYPES).describe("Generation node type"),
+    description: "Create a new image or video generation node on the canvas. Pass the generation prompt directly. Returns nodeId and assetId.",
+    inputSchema: z.object({
+      node_type: z.enum(GENERATION_NODE_TYPES).describe("Generation node type: image_gen or video_gen"),
       label: z.string().describe("Display label"),
-      model_name: z.string().optional().describe("Model name override"),
-      action_type: z.enum(["image-gen", "video-gen"]).optional().describe("Override; inferred from node_type"),
-      upstream_node_ids: z.array(z.string()).describe("Upstream node linkages"),
+      prompt: z.string().describe("The generation prompt — detailed description of what to generate"),
+      model_name: z.string().optional().describe("Model ID from list_models (e.g. 'flux-2-pro')"),
       position: z.object({ x: z.number(), y: z.number() }).optional().describe("Canvas coordinates"),
       parent_id: z.string().optional().describe("Parent group; defaults to current workspace"),
     }),
-    execute: async (args: any) => {
-      const { node_type, label, model_name, action_type, upstream_node_ids, position, parent_id } = args;
+    execute: async (args) => {
+      const { node_type, label, prompt, model_name, position, parent_id } = args;
       try {
         const resolvedParent = parent_id ?? getWorkspaceGroupId() ?? null;
         const nodeId = generateId();
         const assetId = generateId();
-        const data: Record<string, unknown> = { label, upstreamNodeIds: upstream_node_ids };
-        if (model_name) data.modelName = model_name;
-        if (action_type) data.actionType = action_type;
+
+        // Resolve model defaults from MODEL_CARDS
+        const kind = node_type === NodeType.ImageGen ? "image" : "video";
+        const modelCard = model_name
+          ? MODEL_CARDS.find(c => c.id === model_name)
+          : MODEL_CARDS.find(c => c.kind === kind);
+        const modelId = modelCard?.id || model_name || "";
+
+        const data: Record<string, unknown> = {
+          label,
+          content: prompt,  // ActionBadge reads data.content for the prompt
+          prompt,            // Also set prompt for NodeProcessor/legacy
+          actionType: node_type === NodeType.ImageGen ? "image-gen" : "video-gen",
+          modelId,
+          model: modelId,
+          modelParams: { ...(modelCard?.defaultParams ?? {}) },
+          referenceMode: modelCard?.input?.referenceMode ?? "none",
+        };
 
         const result = canvasBackend.createNode(doc, broadcast, nodeId, node_type, data, position, resolvedParent, assetId);
         if (result.error) return `Error: ${result.error}`;
-        if (result.proposal) sendMessage({ type: "node_proposal", proposal: result.proposal });
         return result.asset_id
           ? `Created generation node ${result.node_id} with assetId ${result.asset_id}`
           : `Created generation node ${result.node_id}`;
@@ -177,11 +189,11 @@ export function createCanvasTools(
 
   const waitForGeneration = tool({
     description: "Wait for a generated asset node to be ready.",
-    parameters: z.object({
+    inputSchema: z.object({
       node_id: z.string().describe("ID of generated asset node or assetId"),
       timeout_seconds: z.number().describe("Max wait time in seconds"),
     }),
-    execute: async (args: any) => {
+    execute: async (args) => {
       const { node_id, timeout_seconds } = args;
       const POLL_INTERVAL_MS = 3_000;
       try {
@@ -206,16 +218,71 @@ export function createCanvasTools(
     },
   });
 
-  const rerunGenerationNode = tool({
-    description: "Rerun a generation node to regenerate the asset with a new assetId.",
-    parameters: z.object({
-      node_id: z.string().describe("Generation node ID to rerun"),
+  const runGenerationNode = tool({
+    description: "Start generation for an action-badge node. Creates a pending image/video asset node linked to the source. Must be called after create_generation_node.",
+    inputSchema: z.object({
+      node_id: z.string().describe("The action-badge generation node ID"),
     }),
-    execute: async (args: any) => {
+    execute: async (args) => {
       const { node_id } = args;
       try {
         const node = canvasBackend.readNode(doc, node_id);
         if (!node) return `Error: Node ${node_id} not found`;
+        if (!isGenerationNode(node)) {
+          return `Error: Node ${node_id} is not a generation node (type: ${node.type})`;
+        }
+
+        const data = node.data || {};
+        // ActionBadge stores prompt in data.content, fallback to data.prompt
+        const prompt = (data.content as string) || (data.prompt as string) || "";
+        if (!prompt) return `Error: Node ${node_id} has no prompt. Set prompt first.`;
+
+        const actionType = (data.actionType as string) || ACTION_TYPE.ImageGen;
+        const modelId = (data.modelId as string) || (data.model as string) || "";
+        const modelParams = (data.modelParams as Record<string, string | number | boolean>) || {};
+
+        const assetNodeId = generateId();
+        const pendingNode = buildPendingAssetNode({
+          nodeId: assetNodeId,
+          prompt,
+          modelId,
+          modelParams,
+          actionType: actionType as typeof ACTION_TYPE.ImageGen | typeof ACTION_TYPE.VideoGen,
+          label: data.label as string | undefined,
+          referenceImageUrls: data.referenceImageUrls as string[] | undefined,
+          referenceMode: (data.referenceMode as string) || undefined,
+        });
+
+        // Insert the pending asset node into Loro
+        canvasBackend.insertNode(
+          doc, broadcast, pendingNode.id, pendingNode.type,
+          pendingNode.data, node.parent_id ?? null, { x: 0, y: 0 }
+        );
+
+        // Add edge from action-badge to the pending asset node
+        const edgeId = `${node_id}-${assetNodeId}`;
+        canvasBackend.insertEdge(doc, broadcast, edgeId, node_id, assetNodeId, "default");
+
+        return `Started generation: created pending ${pendingNode.type} node ${pendingNode.id}`;
+      } catch (e) {
+        return `Error starting generation: ${e}`;
+      }
+    },
+  });
+
+  const rerunGenerationNode = tool({
+    description: "Rerun a generation node to regenerate the asset with a new assetId.",
+    inputSchema: z.object({
+      node_id: z.string().describe("Generation node ID to rerun"),
+    }),
+    execute: async (args) => {
+      const { node_id } = args;
+      try {
+        const node = canvasBackend.readNode(doc, node_id);
+        if (!node) return `Error: Node ${node_id} not found`;
+        if (!isGenerationNode(node)) {
+          return `Error: Node ${node_id} is not a generation node (type: ${node.type})`;
+        }
         const newAssetId = generateId();
         sendMessage({ type: "rerun_generation", nodeId: node_id, assetId: newAssetId, nodeData: node.data });
         return `Triggered regeneration for node ${node_id} with new assetId: ${newAssetId}`;
@@ -227,11 +294,11 @@ export function createCanvasTools(
 
   const searchCanvas = tool({
     description: "Search nodes by content or metadata.",
-    parameters: z.object({
+    inputSchema: z.object({
       query: z.string().describe("Search query"),
       node_types: z.array(z.string()).optional().describe("Filter by node types"),
     }),
-    execute: async (args: any) => {
+    execute: async (args) => {
       const { query, node_types } = args;
       try {
         const nodes = canvasBackend.searchNodes(doc, query, node_types);
@@ -247,13 +314,40 @@ export function createCanvasTools(
     },
   });
 
+  const listModels = tool({
+    description:
+      "List available model cards for image, video, or audio generation. " +
+      "Use this first to choose a model and its parameters before creating generation nodes.",
+    inputSchema: z.object({
+      kind: z
+        .enum(["image", "video", "audio", "image_gen", "video_gen", "audio_gen"])
+        .optional()
+        .describe(
+          "Optional asset kind to filter models. Accepts image/video/audio or image_gen/video_gen/audio_gen."
+        ),
+    }),
+    execute: async (args) => {
+      const normalizedKind = args.kind?.replace("_gen", "") as
+        | "image"
+        | "video"
+        | "audio"
+        | undefined;
+      const cards = normalizedKind
+        ? MODEL_CARDS.filter((c) => c.kind === normalizedKind)
+        : MODEL_CARDS;
+      return cards;
+    },
+  });
+
   return {
     list_canvas_nodes: listCanvasNodes,
     read_canvas_node: readCanvasNode,
     create_canvas_node: createCanvasNode,
     create_generation_node: createGenerationNode,
+    run_generation_node: runGenerationNode,
     wait_for_generation: waitForGeneration,
     rerun_generation_node: rerunGenerationNode,
     search_canvas: searchCanvas,
+    list_models: listModels,
   };
 }

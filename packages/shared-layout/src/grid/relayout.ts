@@ -406,7 +406,7 @@ function layoutHierarchical(
  * "Measured grid" relayout
  */
 export function relayoutToGrid(nodes: LayoutNode[], options: RelayoutGridOptions = {}): LayoutNode[] {
-    const hasScope = Object.prototype.hasOwnProperty.call(options, 'scopeParentId');
+    const hasScope = Object.prototype.hasOwnProperty.call(options, 'scopeParentId') && options.scopeParentId !== undefined;
     const opts = {
         gapX: options.gapX ?? 80,
         gapY: options.gapY ?? 80,

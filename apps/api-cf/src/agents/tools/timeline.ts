@@ -1,7 +1,5 @@
 import { z } from "zod";
-import { tool as _tool } from "ai";
-
-const tool = _tool as any;
+import { tool } from "ai";
 
 /**
  * Create timeline editing tools.
@@ -12,11 +10,11 @@ export function createTimelineTools(
   const timelineEditor = tool({
     description:
       "Automated video editor tool. Provide an action (e.g., add_clip, set_duration, render) and params.",
-    parameters: z.object({
+    inputSchema: z.object({
       action: z.string().describe("Timeline action, e.g. add_clip, set_duration, render"),
       params: z.record(z.unknown()).describe("Action parameters"),
     }),
-    execute: async (args: any) => {
+    execute: async (args) => {
       const { action, params } = args;
       try {
         sendMessage({ type: "timeline_edit", action, params });

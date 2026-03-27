@@ -125,7 +125,6 @@ export const thumbnailCache = {
         .filter(key => key.startsWith(THUMBNAIL_PREFIX));
 
       keysToRemove.forEach(key => localStorage.removeItem(key));
-      console.log(`[thumbnailCache] Cleared ${keysToRemove.length} cached thumbnails`);
     } catch (e) {
       console.warn('[thumbnailCache] Failed to clear cache:', e);
     }
@@ -162,7 +161,6 @@ export const thumbnailCache = {
         localStorage.removeItem(cacheEntries[i].key);
       }
 
-      console.log(`[thumbnailCache] Cleared ${toRemove} oldest thumbnails`);
     } catch (e) {
       console.warn('[thumbnailCache] Failed to clear oldest:', e);
     }

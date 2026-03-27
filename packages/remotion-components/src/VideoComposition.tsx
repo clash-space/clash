@@ -12,7 +12,6 @@ import {
 import type { Track, Item } from '@master-clash/remotion-core';
 
 // Debug logging disabled for performance
-// console.log('🎬 VideoComposition.tsx module loaded!');
 
 /**
  * Resolves timeline item references to asset data.
@@ -65,7 +64,6 @@ const resolveTimelineItem = (item: Item, allNodesMap: Map<string, any>): Item & 
       }
     }
 
-    console.log(`[resolveTimelineItem] itemId=${item.id} assetId=${item.assetId} assetFound=${!!asset} assetType=${asset.type} assetDataNaturalW=${assetData.naturalWidth} assetDataNaturalH=${assetData.naturalHeight} assetDataAspectRatio=${assetData.aspectRatio} resolvedNaturalW=${naturalWidth} resolvedNaturalH=${naturalHeight} assetDataSrc=${assetData.src}`);
 
     return {
       ...item,
@@ -77,10 +75,6 @@ const resolveTimelineItem = (item: Item, allNodesMap: Map<string, any>): Item & 
   }
 
   // Return as-is for non-asset items (solid, text) or if asset not found
-  // If item already has naturalWidth/naturalHeight (pre-resolved by NodeProcessor), preserve them
-  const existingNatW = (item as any).naturalWidth;
-  const existingNatH = (item as any).naturalHeight;
-  console.log(`[resolveTimelineItem] itemId=${item.id} assetId=${item.assetId || 'none'} assetFound=false type=${item.type} existingNaturalW=${existingNatW || 'none'} existingNaturalH=${existingNatH || 'none'}`);
   return item;
 };
 
@@ -122,10 +116,6 @@ const ItemComponent: React.FC<{ item: Item; allNodesMap: Map<string, any>; durat
   const frame = useCurrentFrame();
   const { width: compWidth, height: compHeight } = useVideoConfig();
 
-  const itemSrc = 'src' in item ? (item as any).src : 'none';
-  const allNodesData = Array.from(allNodesMap.entries()).map(([k, v]) => `${k}:type=${v.type},dataSrc=${v.data?.src},naturalW=${v.data?.naturalWidth},naturalH=${v.data?.naturalHeight}`).join(' | ');
-  console.log(`[ItemComponent] itemId=${item.id} type=${item.type} assetId=${item.assetId || 'none'} itemSrc=${itemSrc} allNodesMapSize=${allNodesMap.size} allNodesData=[${allNodesData}]`);
-
   // Resolve item references dynamically from asset nodes
   const resolvedItem = resolveTimelineItem(item, allNodesMap);
 
@@ -161,7 +151,6 @@ const ItemComponent: React.FC<{ item: Item; allNodesMap: Map<string, any>; durat
     const widthPercent = (widthPx / compWidth) * 100;
     const heightPercent = (heightPx / compHeight) * 100;
 
-    console.log(`[applyTransform] itemId=${resolvedItem.id} type=${resolvedItem.type} propsW=${props.width} propsH=${props.height} naturalW=${naturalWidth} naturalH=${naturalHeight} widthPx=${widthPx.toFixed(1)} heightPx=${heightPx.toFixed(1)} compW=${compWidth} compH=${compHeight} widthPercent=${widthPercent.toFixed(1)}% heightPercent=${heightPercent.toFixed(1)}% x=${props.x} y=${props.y} rotation=${props.rotation || 0}`);
 
     // Position from center (x, y in pixels from canvas center)
     const left = `calc(50% + ${props.x}px)`;

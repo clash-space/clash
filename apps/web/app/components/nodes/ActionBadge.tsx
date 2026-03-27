@@ -9,7 +9,7 @@ import { useLayoutManager } from '@/lib/layout';
 import { generateSemanticId } from '@/lib/utils/semanticId';
 import MilkdownEditor from '../MilkdownEditor';
 import { resolveAssetUrl, isR2Key } from '../../../lib/utils/assets';
-import { MODEL_CARDS, type ModelCard, type ModelParameter } from '@clash/shared-types';
+import { MODEL_CARDS, resolveAspectRatio, type ModelCard, type ModelParameter } from '@clash/shared-types';
 import { applyLayoutPatchesToLoro, collectLayoutNodePatches } from '../../lib/loroNodeSync';
 
 type ModelParams = Record<string, string | number | boolean>;
@@ -225,7 +225,6 @@ const PromptActionNode = ({ data, selected, id }: NodeProps) => {
         );
         
         // Sync to Loro
-        console.log(`[PromptActionNode] Syncing update to Loro: ${id}`);
         if (loroSync?.connected) {
             loroSync.updateNode(id, {
                 data: {
@@ -350,11 +349,9 @@ const PromptActionNode = ({ data, selected, id }: NodeProps) => {
                         urls.push(src);
                     } else if (isR2Key(src)) {
                         // Pass R2 keys directly
-                        console.log('[ActionBadge] Including R2 key for backend processing');
                         urls.push(src);
                     } else if (src.includes('base64,')) {
                         // Also pass base64 images - backend will upload to R2
-                        console.log('[ActionBadge] Including base64 image for backend processing');
                         urls.push(src);
                     }
                 });
@@ -381,9 +378,6 @@ const PromptActionNode = ({ data, selected, id }: NodeProps) => {
                 // Extract meaningful label from prompt
                 const generatedLabel = extractLabelFromPrompt(prompt, 'Generated Image');
 
-                console.log('[ActionBadge] Creating pending image node:', pendingNodeId);
-                console.log('[ActionBadge] Label:', generatedLabel);
-                console.log('[ActionBadge] Prompt:', prompt);
 
                 // Create the pending node in React state
                 const newNode = addNodeWithAutoLayout(
@@ -393,10 +387,10 @@ const PromptActionNode = ({ data, selected, id }: NodeProps) => {
                         data: {
                             label: generatedLabel,
                             src: '', // Empty src = generating
-                            status: 'generating',
+                            status: 'pending',
                             prompt: prompt, // Loro uses this for generation
                             referenceImageUrls, // Pass reference images
-                            aspectRatio: modelParams.aspect_ratio || '16:9',
+                            aspectRatio: resolveAspectRatio(modelId, modelParams),
                             model: modelId,
                             modelId,
                             modelParams,
@@ -412,9 +406,7 @@ const PromptActionNode = ({ data, selected, id }: NodeProps) => {
                 }
 
                 // Sync pending node to Loro - server will detect and process
-                console.log('[ActionBadge] loroSync status:', !!loroSync, 'connected:', loroSync?.connected);
                 if (loroSync?.connected) {
-                    console.log('[ActionBadge] Syncing pending node to Loro (server will process):', newNode.id);
                     loroSync.addNode(newNode.id, newNode);
                 } else {
                     console.warn('[ActionBadge] ⚠️ loroSync not connected - node will not be processed');
@@ -454,23 +446,10 @@ const PromptActionNode = ({ data, selected, id }: NodeProps) => {
                     return n;
                 }));
 
-                console.log('[ActionBadge] ✅ Pending node created and synced. Loro server will process.');
             } else if (actionType === 'video-gen') {
                 // Collect connected images for video generation
                 // First image is start frame, second is end frame (if available)
                 const imageNodes = connectedNodes.filter(n => n?.type === 'image');
-
-                // Debug: log full connected nodes data
-                console.log('[ActionBadge] All connected nodes:', connectedNodes.map(n => ({
-                    id: n?.id,
-                    type: n?.type,
-                    data: n?.data,
-                })));
-                console.log('[ActionBadge] Filtered image nodes:', imageNodes.map(n => ({
-                    id: n?.id,
-                    src: n?.data?.src,
-                    status: n?.data?.status,
-                })));
 
                 const rawReferenceImages = getReferenceImageUrls(imageNodes.map(n => n?.data?.src));
                 const referenceImageUrls = forbidReferenceImage ? [] : rawReferenceImages;
@@ -483,11 +462,6 @@ const PromptActionNode = ({ data, selected, id }: NodeProps) => {
                             : 'Selected video model requires at least one reference image node');
                     }
                 }
-
-                // Debug: log image sources
-                console.log('[ActionBadge] Image nodes found:', imageNodes.length);
-                console.log('[ActionBadge] Image sources:', imageNodes.map(n => n?.data?.src));
-                console.log('[ActionBadge] Filtered reference URLs:', referenceImageUrls);
 
                 const resolveReferenceAspectRatio = () => {
                     const referenceNode = imageNodes.find((n) => {
@@ -506,7 +480,7 @@ const PromptActionNode = ({ data, selected, id }: NodeProps) => {
                     return fallbackAspect || undefined;
                 };
 
-                const effectiveAspectRatio = modelParams.aspect_ratio || resolveReferenceAspectRatio();
+                const effectiveAspectRatio = resolveAspectRatio(modelId, modelParams) || resolveReferenceAspectRatio();
                 const effectiveModelParams = modelParams;
 
                 // ============================================
@@ -518,10 +492,6 @@ const PromptActionNode = ({ data, selected, id }: NodeProps) => {
                 // Extract meaningful label from prompt
                 const generatedLabel = extractLabelFromPrompt(prompt, 'Generated Video');
 
-                console.log('[ActionBadge] Creating pending video node:', pendingNodeId);
-                console.log('[ActionBadge] Label:', generatedLabel);
-                console.log('[ActionBadge] Prompt:', prompt);
-                console.log('[ActionBadge] Reference images:', referenceImageUrls);
                 const durationValue = modelParams.duration ?? 5;
                 const durationNumber = typeof durationValue === 'string' ? parseInt(durationValue, 10) : Number(durationValue) || 5;
 
@@ -533,7 +503,7 @@ const PromptActionNode = ({ data, selected, id }: NodeProps) => {
                         data: {
                             label: generatedLabel,
                             src: '', // Empty src = generating
-                            status: 'generating',
+                            status: 'pending',
                             prompt: prompt, // Loro uses this for generation
                             referenceImageUrls, // Pass reference images
                             duration: durationNumber,
@@ -552,9 +522,7 @@ const PromptActionNode = ({ data, selected, id }: NodeProps) => {
                 }
 
                 // Sync pending node to Loro - server will detect and process
-                console.log('[ActionBadge] loroSync status:', !!loroSync, 'connected:', loroSync?.connected);
                 if (loroSync?.connected) {
-                    console.log('[ActionBadge] Syncing pending video node to Loro (server will process):', newNode.id);
                     loroSync.addNode(newNode.id, newNode);
                 } else {
                     console.warn('[ActionBadge] ⚠️ loroSync not connected - node will not be processed');
@@ -594,7 +562,6 @@ const PromptActionNode = ({ data, selected, id }: NodeProps) => {
                     return n;
                 }));
 
-                console.log('[ActionBadge] ✅ Pending video node created and synced. Loro server will process.');
             }
 
         } catch (err: any) {
@@ -628,13 +595,6 @@ const PromptActionNode = ({ data, selected, id }: NodeProps) => {
     // Execute action: generate image or video
     useEffect(() => {
         const requiredUpstreams: string[] = Array.isArray(data.upstreamNodeIds) ? data.upstreamNodeIds : [];
-        console.log('[ActionBadge] useEffect triggered', {
-            autoRun: data.autoRun,
-            upstreamNodeIds: requiredUpstreams,
-            nodeId: id,
-            edgesCount: edges.length,
-            isExecuting
-        });
 
         if (data.autoRun && !isExecuting) {
             if (requiredUpstreams.length > 0) {
@@ -642,16 +602,11 @@ const PromptActionNode = ({ data, selected, id }: NodeProps) => {
                 const allConnected = requiredUpstreams.every((uid: string) => connectedSources.includes(uid));
 
                 if (!allConnected) {
-                    console.log('[ActionBadge] Waiting for upstream connections...', {
-                        required: requiredUpstreams,
-                        connected: connectedSources
-                    });
                     return;
                 }
             }
 
             // Clear the flag to prevent infinite loops
-            console.log('[ActionBadge] Executing auto-run!');
             data.autoRun = false;
 
             // Small delay to ensure React Flow state is fully synced
@@ -974,7 +929,6 @@ const PromptActionNode = ({ data, selected, id }: NodeProps) => {
                                 actionType === 'video-gen' ? 'bg-red-50 text-red-600 hover:bg-red-100' : 'bg-blue-50 text-blue-600 hover:bg-blue-100'
                             }`}
                             onClick={(e) => {
-                                console.log('[PromptActionNode] Run button clicked!', { id, isExecuting, actionType });
                                 e.stopPropagation();
                                 handleExecute();
                             }}

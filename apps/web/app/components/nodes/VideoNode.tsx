@@ -1,6 +1,7 @@
 import { memo, useEffect, useRef, useState } from 'react';
 /* eslint-disable @next/next/no-img-element */
 import { Handle, Position, NodeProps, useReactFlow, useNodes } from 'reactflow';
+import SourceHandleMenu from './SourceHandleMenu';
 import { FilmSlate, TextT } from '@phosphor-icons/react';
 import { useMediaViewer } from '../MediaViewerContext';
 import { useOptionalLoroSyncContext } from '../LoroSyncContext';
@@ -501,12 +502,7 @@ const VideoNode = ({ data, selected, id }: NodeProps) => {
                 style={{ top: '50%', left: '-8px' }}
                 className="!h-4 !w-4 !border-4 !border-white !bg-slate-400 transition-all hover:!bg-red-500 hover:scale-125 shadow-sm !opacity-0 !pointer-events-none"
             />
-            <Handle
-                type="source"
-                position={Position.Right}
-                style={{ top: '50%', right: '-8px' }}
-                className="!h-4 !w-4 !border-4 !border-white !bg-slate-400 transition-all hover:!bg-red-500 hover:scale-125 shadow-sm"
-            />
+            <SourceHandleMenu nodeId={id} />
         </div>
     );
 };

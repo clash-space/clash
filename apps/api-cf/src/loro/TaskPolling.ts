@@ -8,7 +8,7 @@
 import { LoroDoc } from 'loro-crdt';
 import type { Env } from '../config';
 import { log } from '../logger';
-import { updateNodeData } from './NodeUpdater';
+import { updateNodeData, appendNodeLog, clearNodeLog } from './NodeUpdater';
 import { getAssetByTaskId } from '../services/asset-store';
 import { Status } from '../domain/canvas';
 
@@ -57,14 +57,15 @@ export async function pollNodeTasks(
         }
 
         updateNodeData(doc, nodeId, updates, broadcast);
+        clearNodeLog(doc, nodeId, broadcast);
       } else if (taskStatus.status === Status.Failed) {
-        log.error(`Task failed: ${taskStatus.error}`);
+        appendNodeLog(doc, nodeId, `FAILED: ${taskStatus.error}`, broadcast);
 
         const currentStatus = innerData.status;
 
         if (currentStatus === Status.Completed) {
           // Auxiliary task (description) failed — preserve asset, just clear pendingTask
-          log.warn(`Auxiliary task failed for ${nodeId.slice(0, 8)}, preserving asset status`);
+          appendNodeLog(doc, nodeId, `desc failed, asset preserved`, broadcast);
           updateNodeData(doc, nodeId, {
             pendingTask: undefined,
             description: innerData.description || 'Description generation failed',

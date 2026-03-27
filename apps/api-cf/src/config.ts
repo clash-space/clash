@@ -14,6 +14,9 @@ export interface Env {
   ROOM: DurableObjectNamespace;
   SUPERVISOR: DurableObjectNamespace;
   GENERATION_WORKFLOW: Workflow;
+  RENDER_CONTAINER: DurableObjectNamespace;
+  /** For local dev: direct URL to render-server (bypasses Container) */
+  RENDER_SERVER_URL?: string;
   DB: D1Database;
   // Auth (ported from loro-sync-server)
   JWT_SECRET?: string;

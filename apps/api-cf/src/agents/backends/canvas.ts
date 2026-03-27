@@ -8,10 +8,9 @@ import type { LoroDoc } from "loro-crdt";
 import type { NodeInfo, CreateNodeResult, TaskStatusResult } from "../../domain/canvas";
 import {
   NodeType,
-  FrontendNodeType,
+  AGENT_NODE_TYPE_MAP,
   ProposalType,
   Status,
-  isGenerationNodeType,
 } from "../../domain/canvas";
 import type { LayoutNode, LayoutEdge } from "@clash/shared-layout";
 import {
@@ -32,6 +31,9 @@ function parseLoroNode(nodeId: string, raw: Record<string, any>): NodeInfo {
     data: typeof data === "object" ? { ...data } : {},
     parent_id: raw.parentId ?? raw.parent_id ?? null,
     position: raw.position ?? { x: 0, y: 0 },
+    width: typeof raw.width === 'number' ? raw.width : null,
+    height: typeof raw.height === 'number' ? raw.height : null,
+    style: raw.style ?? null,
   };
 }
 
@@ -131,6 +133,9 @@ function toLayoutNode(node: NodeInfo): LayoutNode {
     position: node.position,
     parentId: node.parent_id ?? undefined,
     data: node.data,
+    width: node.width,
+    height: node.height,
+    style: node.style ?? undefined,
   };
 }
 
@@ -169,16 +174,13 @@ export function createNode(
   parentId?: string | null,
   assetId?: string | null
 ): CreateNodeResult {
-  let frontendType = nodeType;
+  // Map agent node type → ReactFlow type + actionType
+  const mapping = AGENT_NODE_TYPE_MAP[nodeType as keyof typeof AGENT_NODE_TYPE_MAP];
+  const rfType = mapping?.rfType ?? nodeType;
   let proposalType: ProposalType = ProposalType.Simple;
   let resolvedAssetId = assetId ?? null;
 
-  if (nodeType === NodeType.ImageGen) {
-    frontendType = FrontendNodeType.ImageGen;
-    proposalType = ProposalType.Generative;
-    resolvedAssetId = resolvedAssetId ?? crypto.randomUUID().slice(0, 8);
-  } else if (nodeType === NodeType.VideoGen) {
-    frontendType = FrontendNodeType.VideoGen;
+  if (nodeType === NodeType.ImageGen || nodeType === NodeType.VideoGen) {
     proposalType = ProposalType.Generative;
     resolvedAssetId = resolvedAssetId ?? crypto.randomUUID().slice(0, 8);
   } else if (nodeType === NodeType.Group) {
@@ -189,25 +191,39 @@ export function createNode(
   if (resolvedAssetId) {
     nodeData.assetId = resolvedAssetId;
   }
+  if (mapping && 'actionType' in mapping) {
+    nodeData.actionType = mapping.actionType;
+  }
 
-  // Use NEEDS_LAYOUT_POSITION as placeholder when no explicit position given,
-  // then immediately compute the real position via autoInsertNode.
-  const pos = position ?? NEEDS_LAYOUT_POSITION;
-  insertNode(doc, broadcast, nodeId, nodeType, nodeData, parentId ?? null, pos);
+  // Compute position BEFORE inserting so the placeholder {-1,-1} never
+  // leaks to connected web clients (avoids double auto-insert race).
+  let finalPos = position ?? null;
 
-  // Auto-layout: compute a real position if none was explicitly provided
-  if (!position) {
-    const allNodes = listNodes(doc).map(toLayoutNode);
+  if (!finalPos) {
+    // Build a virtual node list that includes the new node at placeholder pos
+    // so autoInsertNode can find it and calculate the real position.
+    const existingNodes = listNodes(doc).map(toLayoutNode);
+    const virtualNode: LayoutNode = {
+      id: nodeId,
+      type: rfType,
+      position: NEEDS_LAYOUT_POSITION,
+      parentId: parentId ?? undefined,
+      data: nodeData,
+    };
+    const allNodes = [...existingNodes, virtualNode];
     const allEdges = listEdges(doc);
     const result = autoInsertNode(nodeId, allNodes, allEdges);
+    finalPos = result.position;
 
-    // Collect all position updates (the new node + any pushed nodes)
-    const posUpdates = new Map<string, { x: number; y: number }>();
-    posUpdates.set(nodeId, result.position);
-    for (const [id, pt] of result.pushedNodes) {
-      posUpdates.set(id, pt);
+    // Insert the node with its real position (single broadcast)
+    insertNode(doc, broadcast, nodeId, rfType, nodeData, parentId ?? null, finalPos);
+
+    // Apply pushed-node position updates if any
+    if (result.pushedNodes.size > 0) {
+      batchUpdatePositions(doc, broadcast, result.pushedNodes);
     }
-    batchUpdatePositions(doc, broadcast, posUpdates);
+  } else {
+    insertNode(doc, broadcast, nodeId, rfType, nodeData, parentId ?? null, finalPos);
   }
 
   const upstreamNodeIds = (data.upstreamNodeIds ?? data.upstreamIds) as string[] | undefined;
@@ -216,7 +232,7 @@ export function createNode(
   const proposal: Record<string, unknown> = {
     id: `proposal-${crypto.randomUUID().slice(0, 8)}`,
     type: proposalType,
-    nodeType: frontendType,
+    nodeType: rfType,
     nodeData: proposalNodeData,
     groupId: parentId ?? null,
     message: `Proposed ${nodeType} node: ${(data.label as string) || "Untitled"}`,
@@ -268,9 +284,6 @@ export function getNodeStatus(doc: LoroDoc, nodeIdOrAssetId: string): TaskStatus
   const node = findNodeByIdOrAssetId(doc, nodeIdOrAssetId);
   if (!node) return { status: Status.NodeNotFound, error: "Node not found" };
 
-  const defaultStatus = isGenerationNodeType(node.type)
-    ? Status.Generating
-    : Status.Completed;
-  const status = (node.data.status as string as Status) ?? defaultStatus;
+  const status = (node.data.status as string as Status) ?? Status.Completed;
   return { status };
 }

@@ -167,13 +167,11 @@ export function useLoroSync(options: LoroSyncOptions): UseLoroSyncReturn {
 
     // Permanently fix invalid parentIds in Loro doc (deferred to avoid triggering loops)
     if (nodesToFix.length > 0) {
-      console.log(`[useLoroSync] Scheduling fix for ${nodesToFix.length} nodes with invalid parentIds`);
       queueMicrotask(() => {
         for (const { key, cleanedData } of nodesToFix) {
           nodesMap.set(key, cleanedData);
         }
         doc.commit();
-        console.log(`[useLoroSync] Permanently fixed ${nodesToFix.length} nodes in Loro doc`);
       });
     }
 
@@ -200,15 +198,10 @@ export function useLoroSync(options: LoroSyncOptions): UseLoroSyncReturn {
       const currentVersion = localStorage.getItem(versionKey);
 
       if (currentVersion !== LORO_SCHEMA_VERSION) {
-        console.log(`[useLoroSync] Schema version mismatch for project ${projectId}:`);
-        console.log(`[useLoroSync]   Current: ${currentVersion || 'none'}`);
-        console.log(`[useLoroSync]   Expected: ${LORO_SCHEMA_VERSION}`);
-        console.log('[useLoroSync] Clearing old IndexedDB data for clean migration...');
+        console.log(`[useLoroSync] Schema version mismatch for project ${projectId}, clearing old data`);
 
         await deleteFromDB(projectId);
         localStorage.setItem(versionKey, LORO_SCHEMA_VERSION);
-
-        console.log('[useLoroSync] Migration complete - using reference-only timeline model');
       }
 
       // Step 1: Load from IndexedDB
@@ -249,7 +242,6 @@ export function useLoroSync(options: LoroSyncOptions): UseLoroSyncReturn {
 
     const unsubscribe = doc.subscribe((event: any) => {
       // event.by: "local" | "import" | "checkout"
-      console.log('[useLoroSync] doc.subscribe fired, event.by:', event.by);
 
       // Save to local storage (debounced) for ALL changes
       const snapshot = doc.export({ mode: 'snapshot' });
@@ -266,10 +258,8 @@ export function useLoroSync(options: LoroSyncOptions): UseLoroSyncReturn {
       // CRITICAL: Only update React state for REMOTE changes
       // Local changes are already in React state - updating would cause loops/overwrites
       if (event.by === 'local') {
-        console.log('[useLoroSync] Skipping local event');
         return;
       }
-      console.log('[useLoroSync] Processing remote event, updating React state');
 
       // Read fresh state from Loro and update React
       const { nodes, edges, tasks } = readStateFromLoro();
@@ -356,11 +346,11 @@ export function useLoroSync(options: LoroSyncOptions): UseLoroSyncReturn {
     };
 
     ws.onmessage = async (event) => {
+      // Skip non-binary messages (e.g. Agents SDK protocol JSON)
+      if (typeof event.data === 'string') return;
       try {
         const update = new Uint8Array(event.data);
-        console.log('[useLoroSync] ✅ WebSocket received update from server:', update.length, 'bytes');
         doc.import(update);
-        console.log('[useLoroSync] ✅ doc.import() completed');
       } catch (error: any) {
         console.error('[useLoroSync] Error importing update:', error);
         // Don't reload — just log the error. The next full snapshot

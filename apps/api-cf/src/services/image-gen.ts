@@ -12,7 +12,8 @@ import { fal } from "@fal-ai/client";
 interface ImageGenParams {
   text: string;
   systemPrompt?: string;
-  base64Images?: string[];
+  /** URLs of reference images (fal CDN or any public URL) */
+  referenceImageUrls?: string[];
   aspectRatio?: string;
   modelName?: string;
   modelParams?: Record<string, unknown>;
@@ -28,11 +29,13 @@ const FAL_IMAGE_MODEL_IDS: Record<string, string> = {
   'flux-dev': 'fal-ai/flux/dev',
   'nano-banana-2': 'fal-ai/nano-banana-2',
   'nano-banana-2-edit': 'fal-ai/nano-banana-2/edit',
+  'recraft-v4': 'fal-ai/recraft/v4/pro/text-to-image',
+  'flux-2-pro': 'fal-ai/flux-2-pro',
+  'flux-2-pro-edit': 'fal-ai/flux-2-pro/edit',
 };
 
 /**
  * Convert a generic aspect-ratio string (e.g. "16:9") to a fal.ai image_size value.
- * Used by FLUX models which accept named sizes instead of aspect_ratio.
  */
 function aspectRatioToImageSize(ar: string): string {
   const map: Record<string, string> = {
@@ -49,22 +52,17 @@ function aspectRatioToImageSize(ar: string): string {
   return map[ar] || 'landscape_16_9';
 }
 
-function stripDataUrl(base64Str: string): string {
-  const idx = base64Str.indexOf("base64,");
-  return idx >= 0 ? base64Str.slice(idx + 7) : base64Str;
-}
-
 /**
  * Generate an image using fal.ai.
- * Returns { base64, requestId, model }.
+ * Returns the generated image URL (on fal's CDN).
  */
 export async function generateImage(
   falApiKey: string,
   params: ImageGenParams,
-): Promise<{ base64: string; requestId: string; model: string }> {
+): Promise<{ url: string; requestId: string; model: string }> {
   fal.config({ credentials: falApiKey });
 
-  const hasRefImages = !!params.base64Images?.length;
+  const hasRefImages = !!params.referenceImageUrls?.length;
   const modelId = resolveModelId(params.modelName, hasRefImages);
 
   let prompt = params.text;
@@ -75,8 +73,24 @@ export async function generateImage(
   let input: Record<string, unknown>;
   const extraParams = params.modelParams ?? {};
 
-  if (modelId === 'fal-ai/flux/schnell' || modelId === 'fal-ai/flux/dev') {
-    // FLUX models use image_size instead of aspect_ratio
+  if (modelId === 'fal-ai/recraft/v4/pro/text-to-image') {
+    input = {
+      prompt,
+      image_size: (extraParams.image_size as string) || 'square_hd',
+      enable_safety_checker: false,
+    };
+  } else if (modelId === 'fal-ai/flux-2-pro' || modelId === 'fal-ai/flux-2-pro/edit') {
+    input = {
+      prompt,
+      image_size: (extraParams.image_size as string) || 'landscape_4_3',
+      output_format: 'png',
+      safety_tolerance: (extraParams.safety_tolerance as string) || '2',
+      enable_safety_checker: false,
+    };
+    if (hasRefImages) {
+      input.image_urls = params.referenceImageUrls;
+    }
+  } else if (modelId === 'fal-ai/flux/schnell' || modelId === 'fal-ai/flux/dev') {
     const imageSize = (extraParams.image_size as string) || aspectRatioToImageSize(params.aspectRatio || '16:9');
     input = {
       prompt,
@@ -100,9 +114,7 @@ export async function generateImage(
       output_format: "png",
     };
     if (hasRefImages) {
-      input.image_urls = params.base64Images!.map(
-        (img) => `data:image/jpeg;base64,${stripDataUrl(img)}`
-      );
+      input.image_urls = params.referenceImageUrls;
     }
   }
 
@@ -120,25 +132,12 @@ export async function generateImage(
     throw new Error("No images in fal.ai response");
   }
 
-  // fal returns a URL — fetch and convert to base64
-  const imageResp = await fetch(data.images[0].url);
-  if (!imageResp.ok) {
-    throw new Error(`Failed to fetch generated image: ${imageResp.status}`);
-  }
-
-  const buffer = await imageResp.arrayBuffer();
-  const bytes = new Uint8Array(buffer);
-  let binary = "";
-  for (let i = 0; i < bytes.length; i++) {
-    binary += String.fromCharCode(bytes[i]);
-  }
-  return { base64: btoa(binary), requestId: result.requestId, model: modelId };
+  return { url: data.images[0].url, requestId: result.requestId, model: modelId };
 }
 
 function resolveModelId(modelName: string | undefined, hasRefImages: boolean): string {
   if (modelName && FAL_IMAGE_MODEL_IDS[modelName]) {
     return FAL_IMAGE_MODEL_IDS[modelName];
   }
-  // Default: nano-banana-2 (with edit variant when ref images present)
   return hasRefImages ? "fal-ai/nano-banana-2/edit" : "fal-ai/nano-banana-2";
 }

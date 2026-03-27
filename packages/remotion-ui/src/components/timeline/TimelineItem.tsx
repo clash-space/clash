@@ -2,7 +2,7 @@ import React, { useState, useCallback, useEffect, CSSProperties } from 'react';
 import { useDraggable } from '@dnd-kit/core';
 import { CSS as _DndCSS } from '@dnd-kit/utilities';
 import { motion } from 'framer-motion';
-import type { Item, Asset, Track } from '@master-clash/remotion-core';
+import type { Item, BaseItem, Asset, Track } from '@master-clash/remotion-core';
 import { useEditor } from '@master-clash/remotion-core';
 import { frameToPixels, secondsToFrames } from './utils/timeFormatter';
 import { getRendererForItem } from './items/registry';
@@ -92,22 +92,24 @@ export const TimelineItem: React.FC<TimelineItemProps> = ({
   const resolvedItemType = React.useMemo(() => {
     if (item.type) return item.type;
     // Try to resolve from assets via assetId
-    if (item.assetId) {
-      const asset = assets.find((a) => a.id === item.assetId);
+    const baseItem = item as BaseItem;
+    if (baseItem.assetId) {
+      const asset = assets.find((a) => a.id === baseItem.assetId);
       if (asset?.type) return asset.type;
     }
     return undefined;
-  }, [item.type, item.assetId, assets]);
+  }, [item.type, (item as BaseItem).assetId, assets]);
 
   const resolvedItemSrc = React.useMemo(() => {
     if ((item as any).src) return (item as any).src;
     // Try to resolve from assets via assetId
-    if (item.assetId) {
-      const asset = assets.find((a) => a.id === item.assetId);
+    const baseItem = item as BaseItem;
+    if (baseItem.assetId) {
+      const asset = assets.find((a) => a.id === baseItem.assetId);
       if (asset?.src) return asset.src;
     }
     return undefined;
-  }, [(item as any).src, item.assetId, assets]);
+  }, [(item as any).src, (item as BaseItem).assetId, assets]);
 
   // Get item color based on type (use resolved type)
   const getColor = () => {
@@ -795,7 +797,7 @@ export const TimelineItem: React.FC<TimelineItemProps> = ({
   const resolvedItemForRenderer = React.useMemo(() => {
     if (item.type) return item;
     // If item.type is not set, create a copy with resolved type
-    return resolvedItemType ? { ...item, type: resolvedItemType } as typeof item : item;
+    return resolvedItemType ? { ...(item as BaseItem), type: resolvedItemType } as Item : item;
   }, [item, resolvedItemType]);
 
   const Renderer = React.useMemo(() => getRendererForItem(resolvedItemForRenderer), [resolvedItemForRenderer]);
@@ -1001,7 +1003,7 @@ export const TimelineItem: React.FC<TimelineItemProps> = ({
               height: '12px',
               borderRadius: '50%',
               backgroundColor: '#fff',
-              border: '2px solid #0066ff',
+              border: '2px solid #FF6B50',
               cursor: 'ew-resize',
               zIndex: 30,
               boxShadow: '0 2px 4px rgba(0,0,0,0.3)',
@@ -1040,7 +1042,7 @@ export const TimelineItem: React.FC<TimelineItemProps> = ({
               height: '12px',
               borderRadius: '50%',
               backgroundColor: '#fff',
-              border: '2px solid #0066ff',
+              border: '2px solid #FF6B50',
               cursor: 'ew-resize',
               zIndex: 30,
               boxShadow: '0 2px 4px rgba(0,0,0,0.3)',

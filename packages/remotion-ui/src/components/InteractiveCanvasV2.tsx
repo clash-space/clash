@@ -136,7 +136,6 @@ export const InteractiveCanvas: React.FC<InteractiveCanvasProps> = ({
       }
     }
 
-    console.log(`[getMediaAspectRatio] itemId=${item.id} assetId=${item.assetId} directSrc=${src || 'none'} directType=${itemType || 'none'} assetFound=${!!asset} resolvedSrc=${src || 'none'} resolvedType=${itemType || 'none'}`);
 
     if (!src) {
       return null;
@@ -315,13 +314,8 @@ export const InteractiveCanvas: React.FC<InteractiveCanvasProps> = ({
       // 标记为正在初始化，防止重复处理
       initializedItemsRef.current.add(item.id);
 
-      const mediaAR = await getMediaAspectRatio(item);
-      const compAR = compositionWidth / compositionHeight;
-
-      console.log(`[InteractiveCanvas] Auto-init itemId=${item.id} trackId=${trackId} mediaAR=${mediaAR?.toFixed(2) || 'null'} compAR=${compAR.toFixed(2)} compWidth=${compositionWidth} compHeight=${compositionHeight}`);
-
-      let width = 1;
-      let height = 1;
+      const width = 1;
+      const height = 1;
 
       // width=1, height=1 means "Contain Fit" (scale to fit within canvas while preserving aspect ratio)
       // This ensures the asset is fully visible and maximized within the canvas by default
@@ -350,8 +344,7 @@ export const InteractiveCanvas: React.FC<InteractiveCanvasProps> = ({
   // 调试日志
   useEffect(() => {
     if (selectedItemData) {
-      const item = selectedItemData.item;
-      console.log(`[InteractiveCanvas] Selected itemId=${item.id} from=${item.from} to=${item.from + item.durationInFrames} currentFrame=${currentFrame} visible=${isItemVisible} hasProps=${!!item.properties} x=${item.properties?.x ?? 'none'} y=${item.properties?.y ?? 'none'} w=${item.properties?.width ?? 'none'} h=${item.properties?.height ?? 'none'} rot=${item.properties?.rotation ?? 'none'}`);
+      const _item = selectedItemData.item;
     }
   }, [selectedItemData, currentFrame, isItemVisible]);
 
@@ -554,7 +547,7 @@ export const InteractiveCanvas: React.FC<InteractiveCanvasProps> = ({
       // Handle Contain Fit special case for scaling
       // If we are about to scale, and we are in "Contain Fit" mode (1,1),
       // we need to calculate the effective scale so resizing is continuous.
-      if (mode.startsWith('scale') && startWidth === 1 && startHeight === 1) {
+      if (mode?.startsWith('scale') && startWidth === 1 && startHeight === 1) {
         const { naturalWidth, naturalHeight } = getNaturalDimensions(selectedItemData.item);
         const scaleX = compositionWidth / naturalWidth;
         const scaleY = compositionHeight / naturalHeight;
@@ -563,7 +556,6 @@ export const InteractiveCanvas: React.FC<InteractiveCanvasProps> = ({
         startWidth = scale;
         startHeight = scale;
 
-        console.log(`[InteractiveCanvas] Drag start (Scale) from Contain Fit. Adjusted startW/H to ${scale.toFixed(4)} (Nat: ${naturalWidth}x${naturalHeight})`);
       }
 
       setDragState({
@@ -839,7 +831,6 @@ export const InteractiveCanvas: React.FC<InteractiveCanvasProps> = ({
 
   //     const point = screenToPropertySpace(e.clientX, e.clientY);
 
-  //     console.log('[InteractiveCanvas] Click at:', point);
 
   //     const hitTarget = findTopItemAtPoint(
   //       point.x,
@@ -851,7 +842,6 @@ export const InteractiveCanvas: React.FC<InteractiveCanvasProps> = ({
   //     );
 
   //     if (hitTarget) {
-  //       console.log('[InteractiveCanvas] Clicked item:', hitTarget.itemId);
   //       if (selectedItemId !== hitTarget.itemId) {
   //         onSelectItem(hitTarget.itemId);
   //       }
@@ -882,7 +872,6 @@ export const InteractiveCanvas: React.FC<InteractiveCanvasProps> = ({
   //         });
   //       }
   //     } else {
-  //       console.log('[InteractiveCanvas] Clicked empty area, deselecting');
   //       onSelectItem(null);
   //     }
   //   },
@@ -927,7 +916,6 @@ export const InteractiveCanvas: React.FC<InteractiveCanvasProps> = ({
           handleCanvasPan(e);
           // 点击空白区域取消选中
           // 如果点击的是元素或控制手柄，他们会 stopPropagation，不会到达这里
-          console.log(`[InteractiveCanvas] Click event=emptyArea action=deselect`);
           onSelectItem?.(null);
         }}
       >
@@ -1112,7 +1100,6 @@ export const InteractiveCanvas: React.FC<InteractiveCanvasProps> = ({
             fill="transparent"
             style={{ pointerEvents: 'all' }}
             onMouseDown={(_e) => {
-              console.log(`[InteractiveCanvas] Click event=emptyBackground action=deselect`);
               onSelectItem?.(null);
             }}
           />
@@ -1202,7 +1189,7 @@ export const InteractiveCanvas: React.FC<InteractiveCanvasProps> = ({
             width={bounds.width}
             height={bounds.height}
             fill="none"
-            stroke="#0066ff"
+            stroke="#FF6B50"
             strokeWidth="2"
             style={{
               pointerEvents: 'none',
@@ -1246,7 +1233,7 @@ export const InteractiveCanvas: React.FC<InteractiveCanvasProps> = ({
                 cy={y}
                 r="6"
                 fill="#ffffff"
-                stroke="#0066ff"
+                stroke="#FF6B50"
                 strokeWidth="2"
                 style={{
                   pointerEvents: 'all',
@@ -1268,7 +1255,7 @@ export const InteractiveCanvas: React.FC<InteractiveCanvasProps> = ({
               cy={bounds.top - 30}
               r="6"
               fill="#ffffff"
-              stroke="#0066ff"
+              stroke="#FF6B50"
               strokeWidth="2"
               style={{
                 pointerEvents: 'all',
@@ -1287,7 +1274,7 @@ export const InteractiveCanvas: React.FC<InteractiveCanvasProps> = ({
               y1={bounds.top}
               x2={bounds.centerX}
               y2={bounds.top - 30}
-              stroke="#0066ff"
+              stroke="#FF6B50"
               strokeWidth="2"
               style={{
                 transform: `rotate(${bounds.rotation}deg)`,

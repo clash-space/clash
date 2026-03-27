@@ -168,8 +168,46 @@ export async function processPendingNodes(
       const hasTimelineDsl = innerData.timelineDsl != null;
       const shouldRenderVideo = nodeType === 'video_render' || (nodeType === 'video' && hasTimelineDsl);
 
-      // Video render is handled client-side via Remotion — skip entirely
+      // Case 0: video_render with timelineDsl → submit render task
       if (shouldRenderVideo && status === Status.Pending) {
+        const taskId = crypto.randomUUID();
+        updateNodeData(doc, nodeId, { status: Status.Generating, pendingTask: taskId }, broadcast);
+        appendNodeLog(doc, nodeId, `task=${taskId.slice(0, 8)} type=video_render`, broadcast);
+
+        // Resolve assetId references in timelineDsl using current Loro state
+        const nodesMap = doc.getMap('nodes');
+        const resolvedDsl = resolveTimelineDslReferences(innerData.timelineDsl, nodesMap as any);
+
+        // Convert R2 keys in src to full HTTP URLs so render-server's Chromium can access them
+        const workerUrl = env.WORKER_PUBLIC_URL || 'http://localhost:8789';
+        for (const track of resolvedDsl.tracks || []) {
+          for (const item of track.items || []) {
+            if (item.src && !item.src.startsWith('http') && !item.src.startsWith('data:')) {
+              item.src = `${workerUrl}/assets/${item.src}`;
+            }
+          }
+        }
+
+        const genParams: GenerationParams = {
+          taskId,
+          nodeId,
+          type: 'video_render',
+          projectId,
+          timelineDsl: resolvedDsl,
+        };
+
+        try {
+          await env.GENERATION_WORKFLOW.create({ id: `${projectId}-render-${nodeId}`, params: genParams });
+          appendNodeLog(doc, nodeId, `submitted`, broadcast);
+          submitted = true;
+        } catch (e: any) {
+          if (String(e).includes('already exists')) {
+            appendNodeLog(doc, nodeId, `already running`, broadcast);
+          } else {
+            appendNodeLog(doc, nodeId, `FAILED: ${String(e)}`, broadcast);
+            updateNodeData(doc, nodeId, { pendingTask: undefined, status: Status.Failed, error: String(e) }, broadcast);
+          }
+        }
         continue;
       }
 
@@ -288,40 +326,14 @@ async function submitGenTask(
   },
 ): Promise<{ error?: string }> {
   try {
-    // Resolve reference images to base64 before workflow submission
-    const resolvedImages: string[] = [];
-    for (const ref of params.referenceImages) {
-      if (ref.startsWith('http://') || ref.startsWith('https://')) {
-        try {
-          const resp = await fetch(ref);
-          if (resp.ok) resolvedImages.push(arrayBufferToBase64(await resp.arrayBuffer()));
-        } catch (e) {
-          log.error(`Failed to fetch reference image: ${ref}`, e);
-        }
-      } else if (ref.startsWith('projects/')) {
-        try {
-          const obj = await env.R2_BUCKET.get(ref);
-          if (obj) resolvedImages.push(arrayBufferToBase64(await obj.arrayBuffer()));
-        } catch (e) {
-          log.error(`Failed to fetch R2 image: ${ref}`, e);
-        }
-      }
-    }
+    // Pass R2 keys directly — workflow will upload to fal CDN internally
+    const referenceR2Keys = params.referenceImages.filter(ref =>
+      ref.startsWith('projects/') || ref.startsWith('http://') || ref.startsWith('https://')
+    );
 
-    // Resolve video source image
-    let imageBase64: string | undefined;
-    if (taskType === 'video_gen' && params.imageR2Key) {
-      const imageRef = params.imageR2Key;
-      if (imageRef.startsWith('http://') || imageRef.startsWith('https://')) {
-        const resp = await fetch(imageRef);
-        if (resp.ok) imageBase64 = arrayBufferToBase64(await resp.arrayBuffer());
-      } else if (imageRef.startsWith('projects/')) {
-        const obj = await env.R2_BUCKET.get(imageRef);
-        if (obj) imageBase64 = arrayBufferToBase64(await obj.arrayBuffer());
-      }
-    }
+    // For video: source image R2 key
+    const imageR2Key = taskType === 'video_gen' ? params.imageR2Key : undefined;
 
-    // Submit to Workflow
     const genParams: GenerationParams = {
       taskId,
       nodeId,
@@ -331,8 +343,8 @@ async function submitGenTask(
       aspectRatio: params.aspectRatio,
       modelName: params.model,
       modelParams: params.modelParams as Record<string, unknown>,
-      base64Images: resolvedImages.length ? resolvedImages : undefined,
-      imageBase64,
+      referenceR2Keys: referenceR2Keys.length ? referenceR2Keys : undefined,
+      imageR2Key,
       duration: params.duration,
       cfgScale: params.cfgScale,
       videoModel: params.model,

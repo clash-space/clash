@@ -4,6 +4,7 @@
  */
 
 import { LoroDoc } from 'loro-crdt';
+import { log } from '../logger';
 
 /**
  * Update specific data fields of a node and broadcast the change
@@ -20,7 +21,7 @@ export function updateNodeData(
 
     const existingNode = nodesMap.get(nodeId) as Record<string, any> | undefined;
     if (!existingNode) {
-      console.warn(`[NodeUpdater] Node not found for update: ${nodeId}`);
+      log.warn(`Node not found for update: ${nodeId}`);
       return;
     }
 
@@ -46,7 +47,7 @@ export function updateNodeData(
 
     broadcast(update);
   } catch (error) {
-    console.error(`[NodeUpdater] Error updating node data:`, error);
+    log.error(`Error updating node data:`, error);
   }
 }
 
@@ -72,13 +73,52 @@ export function updateNode(
 
     broadcast(update);
   } catch (error) {
-    console.error('[NodeUpdater] Error updating node:', error);
+    log.error('Error updating node:', error);
   }
 }
 
 /**
- * Set or update an edge in the Loro document
+ * Append a log entry to node's data._log array.
+ * Logs are kept for debugging failed/in-progress tasks, cleared on success.
  */
+export function appendNodeLog(
+  doc: LoroDoc,
+  nodeId: string,
+  message: string,
+  broadcast: (data: Uint8Array) => void
+): void {
+  try {
+    const versionBefore = doc.version();
+    const nodesMap = doc.getMap('nodes');
+    const existingNode = nodesMap.get(nodeId) as Record<string, any> | undefined;
+    if (!existingNode) return;
+
+    const data = existingNode.data || {};
+    const logs: string[] = Array.isArray(data._log) ? data._log : [];
+    const entry = `${new Date().toISOString().slice(11, 19)} ${message}`;
+    logs.push(entry);
+
+    nodesMap.set(nodeId, {
+      ...existingNode,
+      data: { ...data, _log: logs },
+    });
+
+    broadcast(doc.export({ mode: 'update', from: versionBefore }));
+  } catch {
+    // Non-critical, don't let logging break the pipeline
+  }
+}
+
+/**
+ * Clear node logs (call on successful completion).
+ */
+export function clearNodeLog(
+  doc: LoroDoc,
+  nodeId: string,
+  broadcast: (data: Uint8Array) => void
+): void {
+  updateNodeData(doc, nodeId, { _log: undefined }, broadcast);
+}
 export function updateEdge(
   doc: LoroDoc,
   edgeId: string,
@@ -98,6 +138,6 @@ export function updateEdge(
 
     broadcast(update);
   } catch (error) {
-    console.error('[NodeUpdater] Error updating edge:', error);
+    log.error('Error updating edge:', error);
   }
 }

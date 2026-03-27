@@ -7,7 +7,7 @@ import { VideoComposition } from './VideoComposition';
  * These are passed via --props when rendering
  */
 export interface RemotionInputProps {
-  tracks: any[];
+  tracks?: any[];
   compositionWidth?: number;
   compositionHeight?: number;
   fps?: number;
@@ -30,7 +30,6 @@ export const RemotionRoot: React.FC<RemotionInputProps> = (props) => {
   } as RemotionInputProps;
 
   // Debug log to see what props are actually received
-  console.log('[RemotionRoot] Received props:', JSON.stringify(inputProps, null, 2));
 
   // Extract composition settings from input props, with defaults
   const {
@@ -40,16 +39,6 @@ export const RemotionRoot: React.FC<RemotionInputProps> = (props) => {
     durationInFrames = 300,
     tracks = [],
   } = inputProps || {};
-
-  console.log(`[RemotionRoot] Config: ${compositionWidth}x${compositionHeight} @ ${fps}fps, duration: ${durationInFrames}`);
-
-  // Debug: Print each track and item to verify naturalWidth/naturalHeight are present
-  tracks.forEach((track: any, trackIdx: number) => {
-    console.log(`[RemotionRoot] Track ${trackIdx}: id=${track.id}, items=${track.items?.length || 0}`);
-    (track.items || []).forEach((item: any, itemIdx: number) => {
-      console.log(`[RemotionRoot]   Item ${itemIdx}: id=${item.id}, type=${item.type}, assetId=${item.assetId || 'none'}, src=${item.src?.slice(0, 50) || 'none'}, naturalWidth=${item.naturalWidth || 'MISSING'}, naturalHeight=${item.naturalHeight || 'MISSING'}, aspectRatio=${item.aspectRatio || 'none'}`);
-    });
-  });
 
   return (
     <>

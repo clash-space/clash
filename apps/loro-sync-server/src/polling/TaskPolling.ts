@@ -28,7 +28,9 @@ export async function pollNodeTasks(
     const nodesMap = doc.getMap('nodes');
 
     for (const [nodeId, nodeData] of nodesMap.entries()) {
-      const data = nodeData as Record<string, any>;
+      // Loro returns proxy objects — toJSON() to get plain JS data
+      const raw = nodeData as any;
+      const data = typeof raw?.toJSON === 'function' ? raw.toJSON() : raw as Record<string, any>;
       const innerData = data?.data || {};
       const pendingTask = innerData.pendingTask;
 

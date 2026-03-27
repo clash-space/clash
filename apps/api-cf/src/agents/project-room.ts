@@ -13,10 +13,10 @@
  * - SupervisorAgent DOs via internal WS (x-internal-agent header)
  */
 
-import { Agent } from "agents";
-import type { Connection, WSMessage } from "agents";
+import { DurableObject } from "cloudflare:workers";
 import { LoroDoc } from "loro-crdt";
 
+import { log } from "../logger";
 import type { Env } from "../config";
 import { loadSnapshot, saveSnapshot } from "../loro/storage";
 import { processPendingNodes } from "../loro/NodeProcessor";
@@ -24,31 +24,39 @@ import { pollNodeTasks } from "../loro/TaskPolling";
 import { updateNodeData } from "../loro/NodeUpdater";
 import { authenticateRequest } from "../loro/auth";
 
-/** Schedule IDs for deduplication — only one of each should exist at a time. */
-interface ScheduleIds {
-  snapshotSave?: string;
-  taskPoll?: string;
-}
+/** Alarm intervals in milliseconds */
+const SNAPSHOT_INTERVAL_MS = 300_000; // 5 minutes
+const TASK_POLL_INTERVAL_MS = 60_000; // 60 seconds
+const TASK_POLL_URGENT_MS = 2_000; // 2 seconds (after new task submission)
 
-export class ProjectRoom extends Agent<Env> {
+export class ProjectRoom extends DurableObject<Env> {
   private doc: LoroDoc = new LoroDoc();
   private projectId = "";
   private initPromise: Promise<void> | null = null;
-  private messageQueue: Array<{ sender: Connection; data: Uint8Array }> = [];
+  private messageQueue: Array<{ sender: WebSocket; data: Uint8Array }> = [];
   private isProcessingQueue = false;
+  private isProcessingNodes = false;
   private isSaving = false;
   private needsSave = false;
   private saveDebounceTimer: ReturnType<typeof setTimeout> | null = null;
-  private scheduleIds: ScheduleIds = {};
+  private lastSnapshotTime = 0;
 
-  // ─── Lifecycle ──────────────────────────────────────────────
+  // ─── Fetch: entry point for all requests ─────────────────────
 
-  onStart(): void {
-    // No SQL init needed — canvas state lives in Loro doc
+  async fetch(request: Request): Promise<Response> {
+    // WebSocket upgrade
+    if (request.headers.get("Upgrade") === "websocket") {
+      return this.handleWebSocketUpgrade(request);
+    }
+
+    // HTTP endpoints
+    return this.handleHttpRequest(request);
   }
 
-  async onConnect(connection: Connection, ctx: { request: Request }): Promise<void> {
-    const url = new URL(ctx.request.url);
+  // ─── WebSocket Upgrade (replaces onConnect) ──────────────────
+
+  private async handleWebSocketUpgrade(request: Request): Promise<Response> {
+    const url = new URL(request.url);
 
     // Extract projectId from path: /sync/:projectId
     const pathParts = url.pathname.split("/").filter(Boolean);
@@ -56,26 +64,21 @@ export class ProjectRoom extends Agent<Env> {
     if (pathParts[0] === "sync" && pathParts[1]) {
       projectId = pathParts[1];
     }
-
     if (!projectId) {
       projectId = url.searchParams.get("projectId") ?? "";
     }
-
     if (!projectId) {
-      console.error("[ProjectRoom] Missing project ID");
-      connection.close(4000, "Missing project ID");
-      return;
+      return new Response("Missing project ID", { status: 400 });
     }
 
     // Skip auth for internal agent connections
-    const isInternal = ctx.request.headers.get("x-internal-agent") === "true";
+    const isInternal = request.headers.get("x-internal-agent") === "true";
     if (!isInternal) {
       try {
-        await authenticateRequest(ctx.request, this.env, projectId);
+        await authenticateRequest(request, this.env, projectId);
       } catch (error) {
-        console.error("[ProjectRoom] Auth failed:", error);
-        connection.close(4001, "Unauthorized");
-        return;
+        log.error("Auth failed:", error);
+        return new Response("Unauthorized", { status: 401 });
       }
     }
 
@@ -87,80 +90,97 @@ export class ProjectRoom extends Agent<Env> {
 
     // Verify project ID matches
     if (this.projectId !== projectId) {
-      console.error(`[ProjectRoom] Project ID mismatch: expected ${this.projectId}, got ${projectId}`);
-      connection.close(4003, "Project ID mismatch");
-      return;
+      log.error(`Project ID mismatch: expected ${this.projectId}, got ${projectId}`);
+      return new Response("Project ID mismatch", { status: 400 });
     }
+
+    // Create WebSocket pair and accept via Hibernation API
+    const pair = new WebSocketPair();
+    const [client, server] = Object.values(pair);
+    this.ctx.acceptWebSocket(server);
 
     // Send initial Loro state to new client
     try {
       const snapshot = this.doc.export({ mode: "snapshot" });
-      connection.send(snapshot);
+      server.send(snapshot);
     } catch (error) {
-      console.error("[ProjectRoom] Failed to send initial state:", error);
+      log.error("Failed to send initial state:", error);
     }
+
+    return new Response(null, { status: 101, webSocket: client });
   }
+
+  // ─── Room Initialization ─────────────────────────────────────
 
   private async initRoom(projectId: string): Promise<void> {
     this.projectId = projectId;
 
-    // Load Loro document from D1
-    const snapshot = await loadSnapshot(this.env.DB, projectId);
+    // Persist projectId so alarm() can recover after hibernation
+    await this.ctx.storage.put("projectId", projectId);
+
+    // Load Loro document from DO storage
+    const snapshot = await loadSnapshot(this.ctx.storage);
     if (snapshot) {
       try {
         this.doc = LoroDoc.fromSnapshot(snapshot);
       } catch (error) {
-        console.error("[ProjectRoom] Failed to import snapshot:", error);
+        log.error("Failed to import snapshot:", error);
         this.doc = new LoroDoc();
       }
     } else {
       this.doc = new LoroDoc();
     }
 
-    // Schedule periodic snapshot save (deduplicated)
-    await this.scheduleOnce("snapshotSave", 300);
+    this.lastSnapshotTime = Date.now();
+
+    // Schedule first alarm for snapshot save + task polling
+    await this.ctx.storage.setAlarm(Date.now() + TASK_POLL_INTERVAL_MS);
 
     // Process any pending nodes and trigger polling
     await this.taskPoll();
   }
 
-  // ─── Schedule Helpers (deduplication) ─────────────────────
+  // ─── Hibernation WebSocket Handlers ──────────────────────────
 
-  /**
-   * Schedule a callback, cancelling any previous schedule for the same callback.
-   * Prevents schedule accumulation in cf_agents_schedules.
-   */
-  private async scheduleOnce(callback: keyof ScheduleIds, delaySeconds: number): Promise<void> {
-    // Cancel previous schedule if it exists
-    const prevId = this.scheduleIds[callback];
-    if (prevId) {
-      try {
-        await this.cancelSchedule(prevId);
-      } catch {
-        // Schedule may have already fired or been cleaned up
+  async webSocketMessage(ws: WebSocket, message: string | ArrayBuffer): Promise<void> {
+    // After hibernation, in-memory state is lost — re-initialize if needed
+    if (!this.projectId) {
+      const storedId = await this.ctx.storage.get<string>("projectId");
+      if (storedId && !this.initPromise) {
+        this.initPromise = this.initRoom(storedId);
       }
+      if (this.initPromise) await this.initPromise;
     }
 
-    // Create new schedule — schedule() returns { id, callback, ... }
-    const result = await this.schedule(delaySeconds, callback);
-    this.scheduleIds[callback] = (result as any).id as string;
-  }
-
-  // ─── Message Handling ───────────────────────────────────────
-
-  async onMessage(connection: Connection, message: WSMessage): Promise<void> {
-    // Binary message → Loro CRDT update
+    // Only handle binary messages (Loro CRDT updates)
     if (message instanceof ArrayBuffer) {
       const updates = new Uint8Array(message);
-      this.messageQueue.push({ sender: connection, data: updates });
+      this.messageQueue.push({ sender: ws, data: updates });
       if (!this.isProcessingQueue) {
         this.processMessageQueue();
       }
-      return;
     }
-
-    // Ignore non-binary messages — no chat handling in ProjectRoom
+    // Ignore string messages
   }
+
+  async webSocketClose(ws: WebSocket, code: number, reason: string): Promise<void> {
+    try {
+      ws.close(code, reason);
+    } catch {
+      // Already closed
+    }
+  }
+
+  async webSocketError(ws: WebSocket, error: unknown): Promise<void> {
+    log.error("WebSocket error:", error);
+    try {
+      ws.close(1011, "WebSocket error");
+    } catch {
+      // Already closed
+    }
+  }
+
+  // ─── Message Queue Processing ────────────────────────────────
 
   /**
    * Process Loro update queue serially.
@@ -185,18 +205,12 @@ export class ProjectRoom extends Agent<Env> {
           this.broadcastBinary(msg.data, msg.sender);
 
           // Check for pending nodes (may emit additional broadcasts)
-          await processPendingNodes(
-            this.doc,
-            this.env,
-            this.projectId,
-            (data: Uint8Array) => this.broadcastBinary(data),
-            () => this.triggerTaskPolling()
-          );
+          await this.guardedProcessPendingNodes();
 
           // Debounced snapshot save (5s after last update)
           this.debouncedSave();
         } catch (error) {
-          console.error("[ProjectRoom] Failed to process Loro update:", error);
+          log.error("Failed to process Loro update:", error);
         }
       }
     } finally {
@@ -209,14 +223,36 @@ export class ProjectRoom extends Agent<Env> {
   /**
    * Broadcast binary Loro update to all connected clients except sender.
    */
-  private broadcastBinary(data: Uint8Array, sender?: Connection): void {
-    for (const conn of this.getConnections()) {
-      if (conn === sender) continue;
+  private broadcastBinary(data: Uint8Array, sender?: WebSocket): void {
+    for (const ws of this.ctx.getWebSockets()) {
+      if (ws === sender) continue;
       try {
-        conn.send(data);
+        ws.send(data);
       } catch (error) {
-        console.error("[ProjectRoom] Failed to broadcast to client:", error);
+        log.error("Failed to broadcast to client:", error);
       }
+    }
+  }
+
+  // ─── Guarded Node Processing ─────────────────────────────────
+
+  /**
+   * Run processPendingNodes with a guard to prevent concurrent execution
+   * (alarm + processMessageQueue can race).
+   */
+  private async guardedProcessPendingNodes(): Promise<void> {
+    if (this.isProcessingNodes) return;
+    this.isProcessingNodes = true;
+    try {
+      await processPendingNodes(
+        this.doc,
+        this.env,
+        this.projectId,
+        (data: Uint8Array) => this.broadcastBinary(data),
+        async () => this.triggerTaskPolling()
+      );
+    } finally {
+      this.isProcessingNodes = false;
     }
   }
 
@@ -232,19 +268,9 @@ export class ProjectRoom extends Agent<Env> {
     this.saveDebounceTimer = setTimeout(() => {
       this.saveDebounceTimer = null;
       this.saveDocumentSnapshot().catch((err) =>
-        console.error("[ProjectRoom] Failed to save snapshot:", err)
+        log.error("Failed to save snapshot:", err)
       );
     }, 5_000);
-  }
-
-  /**
-   * Scheduled method: save Loro snapshot to D1.
-   * Re-schedules itself every 5 minutes (deduplicated).
-   */
-  async snapshotSave(): Promise<void> {
-    await this.saveDocumentSnapshot();
-    // Re-schedule next save (deduplicated — cancels previous)
-    await this.scheduleOnce("snapshotSave", 300);
   }
 
   private async saveDocumentSnapshot(): Promise<void> {
@@ -261,9 +287,10 @@ export class ProjectRoom extends Agent<Env> {
     try {
       const snapshot = this.doc.export({ mode: "snapshot" });
       const version = this.doc.version().toString();
-      await saveSnapshot(this.env.DB, this.projectId, snapshot, version);
+      await saveSnapshot(this.ctx.storage, this.projectId, snapshot, version);
+      this.lastSnapshotTime = Date.now();
     } catch (error) {
-      console.error("[ProjectRoom] Failed to save snapshot:", error);
+      log.error("Failed to save snapshot:", error);
     } finally {
       this.isSaving = false;
       if (this.needsSave) {
@@ -272,48 +299,62 @@ export class ProjectRoom extends Agent<Env> {
     }
   }
 
+  // ─── Alarm (replaces schedule/cancelSchedule) ────────────────
+
+  async alarm(): Promise<void> {
+    // After hibernation, in-memory state is lost — re-initialize if needed
+    if (!this.projectId) {
+      const storedId = await this.ctx.storage.get<string>("projectId");
+      if (!storedId) return; // No project ever connected, nothing to do
+      if (!this.initPromise) {
+        this.initPromise = this.initRoom(storedId);
+      }
+      await this.initPromise;
+    }
+
+    // Save snapshot if enough time has passed
+    const sinceLastSnapshot = Date.now() - this.lastSnapshotTime;
+    if (sinceLastSnapshot >= SNAPSHOT_INTERVAL_MS) {
+      await this.saveDocumentSnapshot();
+    }
+
+    // Run task polling
+    await this.taskPoll();
+
+    // Re-schedule next alarm only if clients are connected
+    if (this.ctx.getWebSockets().length > 0) {
+      await this.ctx.storage.setAlarm(Date.now() + TASK_POLL_INTERVAL_MS);
+    }
+  }
+
   // ─── Task Polling ───────────────────────────────────────────
 
-  /**
-   * Scheduled method: process pending nodes + poll task status.
-   */
-  async taskPoll(): Promise<void> {
+  private async taskPoll(): Promise<void> {
     if (!this.projectId) return;
 
     try {
       // Submit pending tasks
-      await processPendingNodes(
-        this.doc,
-        this.env,
-        this.projectId,
-        (data: Uint8Array) => this.broadcastBinary(data),
-        () => this.triggerTaskPolling()
-      );
+      await this.guardedProcessPendingNodes();
 
       // Poll tasks with pendingTask field
-      const stillPending = await pollNodeTasks(
+      await pollNodeTasks(
         this.doc,
         this.env,
         this.projectId,
         (data: Uint8Array) => this.broadcastBinary(data)
       );
-
-      if (stillPending) {
-        // Continue polling at 60s intervals (deduplicated)
-        await this.scheduleOnce("taskPoll", 60);
-      }
     } catch (error) {
-      console.error("[ProjectRoom] Error in taskPoll:", error);
+      log.error("Error in taskPoll:", error);
     }
   }
 
-  private async triggerTaskPolling(): Promise<void> {
-    await this.scheduleOnce("taskPoll", 2);
+  private triggerTaskPolling(): void {
+    this.ctx.storage.setAlarm(Date.now() + TASK_POLL_URGENT_MS);
   }
 
-  // ─── Internal HTTP Endpoints ────────────────────────────────
+  // ─── HTTP Endpoints (replaces onRequest) ─────────────────────
 
-  async onRequest(request: Request): Promise<Response> {
+  private async handleHttpRequest(request: Request): Promise<Response> {
     const url = new URL(request.url);
 
     // Handle /update-node internal request
@@ -330,19 +371,13 @@ export class ProjectRoom extends Agent<Env> {
           this.broadcastBinary(data)
         );
 
-        await processPendingNodes(
-          this.doc,
-          this.env,
-          this.projectId,
-          (data: Uint8Array) => this.broadcastBinary(data),
-          () => this.triggerTaskPolling()
-        );
+        await this.guardedProcessPendingNodes();
 
         this.debouncedSave();
 
         return Response.json({ ok: true });
       } catch (error) {
-        console.error("[ProjectRoom] Update node error:", error);
+        log.error("Update node error:", error);
         return Response.json({ error: "Update failed" }, { status: 500 });
       }
     }
@@ -358,7 +393,7 @@ export class ProjectRoom extends Agent<Env> {
 
         return Response.json(nodesArray);
       } catch (error) {
-        console.error("[ProjectRoom] Get nodes error:", error);
+        log.error("Get nodes error:", error);
         return Response.json({ error: "Failed to get nodes" }, { status: 500 });
       }
     }

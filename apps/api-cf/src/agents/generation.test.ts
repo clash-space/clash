@@ -4,7 +4,7 @@ import { Status } from "../domain/canvas";
 
 // Mock all external services
 vi.mock("../services/image-gen", () => ({
-  generateImage: vi.fn().mockResolvedValue({ base64: "base64-image-data", requestId: "fal-req-123", model: "fal-ai/nano-banana-2" }),
+  generateImage: vi.fn().mockResolvedValue({ url: "https://fal.ai/image.png", requestId: "fal-req-123", model: "fal-ai/nano-banana-2" }),
 }));
 vi.mock("../services/fal-video", () => ({
   generateFalVideo: vi.fn().mockResolvedValue({
@@ -67,7 +67,7 @@ describe("GenerationWorkflow pipeline logic", () => {
 
       (generateImage as any).mockImplementation(async () => {
         callOrder.push("generate");
-        return { base64: "base64-image-data", requestId: "fal-req-123", model: "nano-banana-2" };
+        return { url: "https://fal.ai/image.png", requestId: "fal-req-123", model: "nano-banana-2" };
       });
       (generateDescription as any).mockImplementation(async () => {
         callOrder.push("describe");
@@ -79,11 +79,11 @@ describe("GenerationWorkflow pipeline logic", () => {
 
       // Simulate the workflow steps
       const result = await generateImage("key", { text: "a cat" });
-      expect(result.base64).toBe("base64-image-data");
+      expect(result.url).toBe("https://fal.ai/image.png");
       expect(result.requestId).toBe("fal-req-123");
 
       const description = await step.do("describe", async () => {
-        return await generateDescription("token", `data:image/png;base64,${result.base64}`);
+        return await generateDescription("token", result.url);
       });
       expect(description).toBe("A beautiful image");
 

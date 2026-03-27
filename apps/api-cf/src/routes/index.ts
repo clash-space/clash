@@ -6,6 +6,7 @@ import type { Env } from "../config";
 import { log } from "../logger";
 import { Status } from "../domain/canvas";
 import { getAssetByTaskId, updateAssetStatus } from "../services/asset-store";
+import { uploadBase64Image } from "../services/r2";
 import type { GenerationParams } from "../agents/generation";
 import {
   DEFAULT_IMAGE_MODEL,
@@ -110,6 +111,13 @@ api.post("/api/generate/image", async (c) => {
   const urlInputs = await urlPromises;
   const allImages = [...base64Inputs, ...urlInputs];
 
+  // Upload resolved base64 images to R2 to get R2 keys
+  const referenceR2Keys: string[] = [];
+  for (const b64 of allImages) {
+    const key = await uploadBase64Image(c.env.R2_BUCKET, b64, body.project_id);
+    referenceR2Keys.push(key);
+  }
+
   // Submit to Workflow (D1 asset created inside workflow on completion)
   const genParams: GenerationParams = {
     taskId,
@@ -120,7 +128,7 @@ api.post("/api/generate/image", async (c) => {
     systemPrompt: body.system_prompt,
     aspectRatio: body.aspect_ratio,
     modelName: body.model_name ?? undefined,
-    base64Images: allImages.length ? allImages : undefined,
+    referenceR2Keys: referenceR2Keys.length ? referenceR2Keys : undefined,
   };
 
   const errorResponse = await submitToWorkflow(c, taskId, genParams);
@@ -165,6 +173,9 @@ api.post("/api/generate/video", async (c) => {
     return c.json({ error: "Failed to resolve image to base64" }, 400);
   }
 
+  // Upload base64 image to R2 to get an R2 key
+  const imageR2Key = await uploadBase64Image(c.env.R2_BUCKET, imageToUse, body.project_id);
+
   // Submit to Workflow (D1 asset created inside workflow on completion)
   const genParams: GenerationParams = {
     taskId,
@@ -172,7 +183,7 @@ api.post("/api/generate/video", async (c) => {
     type: "video_gen",
     projectId: body.project_id,
     prompt: body.prompt,
-    imageBase64: imageToUse,
+    imageR2Key,
     duration: body.duration,
     cfgScale: body.cfg_scale,
     videoModel: body.model,
@@ -198,6 +209,7 @@ api.post("/api/describe", async (c) => {
   // Submit description via Workflow for durability
   const genParams: GenerationParams = {
     taskId,
+    nodeId: taskId,
     type: "image_desc",
     projectId: "",
     r2Key: body.url,
@@ -250,23 +262,18 @@ api.post("/api/tasks/submit", async (c) => {
 
   if (task_type === "image_gen") {
     const referenceImages: string[] = params.reference_images ?? [];
-    const resolvedImages: string[] = [];
+    const resolvedR2Keys: string[] = [];
     for (const ref of referenceImages) {
       if (ref.startsWith("http://") || ref.startsWith("https://")) {
         try {
-          resolvedImages.push(await fetchUrlToBase64(ref));
+          const b64 = await fetchUrlToBase64(ref);
+          const key = await uploadBase64Image(c.env.R2_BUCKET, b64, project_id);
+          resolvedR2Keys.push(key);
         } catch (e) {
           log.error(`Failed to fetch reference image: ${ref}`, e);
         }
       } else if (ref.startsWith("projects/")) {
-        try {
-          const obj = await c.env.R2_BUCKET.get(ref);
-          if (obj) {
-            resolvedImages.push(arrayBufferToBase64(await obj.arrayBuffer()));
-          }
-        } catch (e) {
-          log.error(`Failed to fetch R2 image: ${ref}`, e);
-        }
+        resolvedR2Keys.push(ref);
       }
     }
 
@@ -278,7 +285,7 @@ api.post("/api/tasks/submit", async (c) => {
       prompt: params.prompt ?? "",
       aspectRatio: params.aspect_ratio ?? "16:9",
       modelName: params.model,
-      base64Images: resolvedImages.length ? resolvedImages : undefined,
+      referenceR2Keys: resolvedR2Keys.length ? resolvedR2Keys : undefined,
     };
 
     const errorResponse = await submitToWorkflow(c, taskId, genParams);
@@ -288,20 +295,18 @@ api.post("/api/tasks/submit", async (c) => {
   }
 
   if (task_type === "video_gen") {
-    let imageBase64: string | undefined;
+    let imageR2Key: string | undefined;
     const imageRef = params.image_r2_key ?? params.reference_images?.[0];
     if (imageRef) {
       if (imageRef.startsWith("http://") || imageRef.startsWith("https://")) {
-        imageBase64 = await fetchUrlToBase64(imageRef);
+        const b64 = await fetchUrlToBase64(imageRef);
+        imageR2Key = await uploadBase64Image(c.env.R2_BUCKET, b64, project_id);
       } else if (imageRef.startsWith("projects/")) {
-        const obj = await c.env.R2_BUCKET.get(imageRef);
-        if (obj) {
-          imageBase64 = arrayBufferToBase64(await obj.arrayBuffer());
-        }
+        imageR2Key = imageRef;
       }
     }
 
-    if (!imageBase64) {
+    if (!imageR2Key) {
       return c.json({ error: "No image provided for video generation" }, 400);
     }
 
@@ -311,7 +316,7 @@ api.post("/api/tasks/submit", async (c) => {
       type: "video_gen",
       projectId: project_id,
       prompt: params.prompt ?? "",
-      imageBase64,
+      imageR2Key,
       duration: params.duration,
       cfgScale: params.cfg_scale,
       videoModel: params.model,

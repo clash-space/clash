@@ -21,7 +21,7 @@ export type NodeType = (typeof NodeType)[keyof typeof NodeType];
 export const ALL_NODE_TYPES = Object.values(NodeType) as [NodeType, ...NodeType[]];
 
 /** Non-generative node types (manually created by agents). */
-export const CONTENT_NODE_TYPES = [NodeType.Text, NodeType.Prompt, NodeType.Group] as const;
+export const CONTENT_NODE_TYPES = [NodeType.Text, NodeType.Group] as const;
 export type ContentNodeType = (typeof CONTENT_NODE_TYPES)[number];
 
 /** Generation node types. */
@@ -32,12 +32,23 @@ export function isGenerationNodeType(t: string): t is GenerationNodeType {
   return (GENERATION_NODE_TYPES as readonly string[]).includes(t);
 }
 
-// ─── Frontend Node Types (proposal mapping) ────────────────
+// ─── Frontend Node Types ─────────────────────────────────────
+// Re-export from shared-types for convenience
+export { RF_NODE_TYPE, ACTION_TYPE, AGENT_NODE_TYPE_MAP } from "@clash/shared-types";
 
-export const FrontendNodeType = {
-  ImageGen: "action-badge-image",
-  VideoGen: "action-badge-video",
-} as const;
+import { RF_NODE_TYPE, ACTION_TYPE } from "@clash/shared-types";
+
+/**
+ * Check if a Loro node is a generation node.
+ * Loro stores type as "action-badge" with actionType in data.
+ */
+export function isGenerationNode(node: { type: string; data?: Record<string, unknown> }): boolean {
+  if (node.type === RF_NODE_TYPE.ActionBadge) {
+    const at = node.data?.actionType as string | undefined;
+    return at === ACTION_TYPE.ImageGen || at === ACTION_TYPE.VideoGen;
+  }
+  return false;
+}
 
 // ─── Proposal Types ────────────────────────────────────────
 
@@ -74,6 +85,13 @@ export const NodeInfoSchema = z.object({
   position: z.object({ x: z.number(), y: z.number() }),
   data: z.record(z.unknown()),
   parent_id: z.string().nullish(),
+  width: z.number().nullish(),
+  height: z.number().nullish(),
+  style: z.object({
+    width: z.union([z.number(), z.string()]).optional(),
+    height: z.union([z.number(), z.string()]).optional(),
+    zIndex: z.union([z.number(), z.string()]).optional(),
+  }).nullish(),
 });
 export type NodeInfo = z.infer<typeof NodeInfoSchema>;
 

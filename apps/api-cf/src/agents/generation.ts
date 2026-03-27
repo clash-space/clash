@@ -6,13 +6,34 @@ import { Status } from "../domain/canvas";
 import { generateDescription } from "../services/describe";
 import { generateImage } from "../services/image-gen";
 import { generateFalVideo } from "../services/fal-video";
-import { uploadBase64Image, uploadVideoFromUrl } from "../services/r2";
+import { uploadFromUrl } from "../services/r2";
 import { createAsset } from "../services/asset-store";
+import { fal } from "@fal-ai/client";
+
+/** Convert ArrayBuffer to base64 using chunked approach (avoids V8 crash). */
+function bufferToBase64(buf: ArrayBuffer): string {
+  const bytes = new Uint8Array(buf);
+  const CHUNK = 8192;
+  const chunks: string[] = [];
+  for (let i = 0; i < bytes.length; i += CHUNK) {
+    chunks.push(String.fromCharCode(...bytes.subarray(i, i + CHUNK)));
+  }
+  return btoa(chunks.join(""));
+}
+
+/** Read R2 object and build data URI for generateDescription. */
+async function r2ToDataUri(bucket: R2Bucket, key: string): Promise<string> {
+  const obj = await bucket.get(key);
+  if (!obj) throw new Error(`R2 object not found: ${key}`);
+  const ct = obj.httpMetadata?.contentType || "image/png";
+  const b64 = bufferToBase64(await obj.arrayBuffer());
+  return `data:${ct};base64,${b64}`;
+}
 
 export interface GenerationParams {
   taskId: string;
   nodeId: string;
-  type: "image_gen" | "video_gen" | "image_desc" | "video_desc";
+  type: "image_gen" | "video_gen" | "video_render" | "image_desc" | "video_desc";
   projectId: string;
   // image_gen fields
   prompt?: string;
@@ -20,23 +41,37 @@ export interface GenerationParams {
   aspectRatio?: string;
   modelName?: string;
   modelParams?: Record<string, unknown>;
-  base64Images?: string[];
-  referenceImageUrls?: string[];
+  /** R2 keys for reference images (resolved to fal URLs in workflow step) */
+  referenceR2Keys?: string[];
   // video_gen fields
-  imageBase64?: string;
+  /** R2 key for source image (image-to-video) */
+  imageR2Key?: string;
   duration?: number;
   cfgScale?: number;
   videoModel?: string;
   // desc fields
   r2Key?: string;
   mimeType?: string;
+  // video_render fields
+  timelineDsl?: Record<string, any>;
+}
+
+/**
+ * Upload an R2 object to fal's temporary CDN via fal.storage.upload().
+ * Returns the fal CDN URL.
+ */
+async function uploadR2ToFal(bucket: R2Bucket, r2Key: string, falApiKey: string): Promise<string> {
+  fal.config({ credentials: falApiKey });
+  const obj = await bucket.get(r2Key);
+  if (!obj) throw new Error(`R2 object not found: ${r2Key}`);
+  const buf = await obj.arrayBuffer();
+  const ct = obj.httpMetadata?.contentType || "image/png";
+  const blob = new Blob([buf], { type: ct });
+  return await fal.storage.upload(blob);
 }
 
 /**
  * GenerationWorkflow — durable multi-step pipeline for AIGC tasks.
- *
- * Each step is automatically persisted and retried on failure.
- * Replaces the old GenerationAgent DO with proper crash recovery.
  */
 export class GenerationWorkflow extends WorkflowEntrypoint<Env, GenerationParams> {
   async run(event: WorkflowEvent<GenerationParams>, step: WorkflowStep): Promise<void> {
@@ -49,6 +84,8 @@ export class GenerationWorkflow extends WorkflowEntrypoint<Env, GenerationParams
       await this.runImagePipeline(params, step);
     } else if (params.type === "video_gen") {
       await this.runVideoPipeline(params, step);
+    } else if (params.type === "video_render") {
+      await this.runRenderPipeline(params, step);
     } else if (params.type === "image_desc" || params.type === "video_desc") {
       await this.runDescPipeline(params, step);
     }
@@ -64,51 +101,44 @@ export class GenerationWorkflow extends WorkflowEntrypoint<Env, GenerationParams
       timeout: "5 minutes",
     }, async (ctx) => {
       log.info("Image generate started", { ...tag, model: params.modelName, attempt: ctx.attempt });
-      const { base64: base64Image, requestId, model } = await generateImage(this.env.FAL_API_KEY ?? "", {
+
+      // Resolve reference images: R2 keys → fal CDN URLs
+      let referenceImageUrls: string[] | undefined;
+      if (params.referenceR2Keys?.length) {
+        referenceImageUrls = [];
+        for (const key of params.referenceR2Keys) {
+          const falUrl = await uploadR2ToFal(this.env.R2_BUCKET, key, this.env.FAL_API_KEY ?? "");
+          referenceImageUrls.push(falUrl);
+        }
+        log.info("Reference images uploaded to fal", { ...tag, count: referenceImageUrls.length });
+      }
+
+      const { url: imageUrl, requestId, model } = await generateImage(this.env.FAL_API_KEY ?? "", {
         text: params.prompt ?? "",
         systemPrompt: params.systemPrompt,
-        base64Images: params.base64Images?.length ? params.base64Images : undefined,
+        referenceImageUrls,
         aspectRatio: params.aspectRatio,
         modelName: params.modelName,
         modelParams: params.modelParams,
-        onEnqueue: (reqId) => log.info("fal enqueued", { ...tag, falRequestId: reqId }),
-        onQueueUpdate: (s) => log.info("fal poll", { ...tag, falStatus: s.status, falPosition: s.position }),
+        onEnqueue: (reqId) => log.info("fal accepted", { ...tag, falRequestId: reqId }),
+        onQueueUpdate: (() => { let last = ""; return (s: any) => { if (s.status !== last) { last = s.status; log.info("fal status", { ...tag, falStatus: s.status }); } }; })(),
       });
-      log.info("Image generated, uploading to R2", { ...tag, falRequestId: requestId, model, sizeKB: Math.round(base64Image.length / 1024) });
+      log.info("Image generated, uploading to R2", { ...tag, falRequestId: requestId, model });
 
-      const key = await uploadBase64Image(
+      // Stream fal result URL directly to R2 (no base64)
+      const key = await uploadFromUrl(
         this.env.R2_BUCKET,
-        base64Image,
+        imageUrl,
         params.projectId,
         params.taskId,
+        "image/png",
       );
       log.info("Image uploaded", { ...tag, storageKey: key });
       return key;
     });
 
-    const description = await step.do("describe", {
-      retries: { limit: 2, delay: "3 seconds", backoff: "exponential" },
-      timeout: "2 minutes",
-    }, async (ctx) => {
-      try {
-        log.info("Description generation started", { ...tag, attempt: ctx.attempt });
-        const obj = await this.env.R2_BUCKET.get(storageKey);
-        if (!obj) return null;
-        const buf = await obj.arrayBuffer();
-        const bytes = new Uint8Array(buf);
-        let binary = "";
-        for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
-        const desc = await generateDescription(
-          this.env.CF_AIG_TOKEN,
-          `data:image/png;base64,${btoa(binary)}`,
-        );
-        log.info("Description generated", { ...tag, descLength: desc?.length });
-        return desc;
-      } catch (e) {
-        log.error("Description generation failed", { ...tag, error: String(e) });
-        return null;
-      }
-    });
+    // TODO: description generation temporarily disabled
+    const description = null;
 
     await step.do("save-asset", {
       retries: { limit: 3, delay: "2 seconds", backoff: "exponential" },
@@ -128,6 +158,14 @@ export class GenerationWorkflow extends WorkflowEntrypoint<Env, GenerationParams
       });
       log.info("Asset saved to D1", { ...tag, status: "completed" });
     });
+
+    // Notify ProjectRoom immediately (don't wait for polling)
+    await this.notifyRoom(params.projectId, params.nodeId, {
+      pendingTask: undefined,
+      status: Status.Completed,
+      src: storageKey,
+      _log: undefined,
+    });
   }
 
   private async runVideoPipeline(params: GenerationParams, step: WorkflowStep): Promise<void> {
@@ -138,14 +176,22 @@ export class GenerationWorkflow extends WorkflowEntrypoint<Env, GenerationParams
       timeout: "10 minutes",
     }, async (ctx) => {
       log.info("Video generate started", { ...tag, model: params.videoModel, attempt: ctx.attempt });
+
+      // Resolve source image: R2 key → fal CDN URL
+      let imageUrl: string | undefined;
+      if (params.imageR2Key) {
+        imageUrl = await uploadR2ToFal(this.env.R2_BUCKET, params.imageR2Key, this.env.FAL_API_KEY ?? "");
+        log.info("Source image uploaded to fal", { ...tag });
+      }
+
       const result = await generateFalVideo(this.env.FAL_API_KEY ?? "", {
         prompt: params.prompt ?? "",
-        imageBase64: params.imageBase64,
+        imageUrl,
         duration: params.duration,
         aspectRatio: params.aspectRatio,
         videoModel: params.videoModel,
-        onEnqueue: (reqId) => log.info("fal enqueued", { ...tag, falRequestId: reqId }),
-        onQueueUpdate: (s) => log.info("fal poll", { ...tag, falStatus: s.status, falPosition: s.position }),
+        onEnqueue: (reqId) => log.info("fal accepted", { ...tag, falRequestId: reqId }),
+        onQueueUpdate: (() => { let last = ""; return (s: any) => { if (s.status !== last) { last = s.status; log.info("fal status", { ...tag, falStatus: s.status }); } }; })(),
       });
       log.info("Video generated", { ...tag, falRequestId: result.requestId, model: result.model, hasCover: !!result.coverImageUrl });
       return result;
@@ -156,26 +202,29 @@ export class GenerationWorkflow extends WorkflowEntrypoint<Env, GenerationParams
       timeout: "3 minutes",
     }, async (ctx) => {
       log.info("Video upload started", { ...tag, attempt: ctx.attempt });
-      const sk = await uploadVideoFromUrl(
+
+      // Stream video URL directly to R2
+      const sk = await uploadFromUrl(
         this.env.R2_BUCKET,
         falResult.url,
         params.projectId,
         params.taskId,
+        "video/mp4",
       );
 
+      // Stream cover image to R2
       let coverKey: string | undefined;
       if (falResult.coverImageUrl) {
         try {
-          const coverResp = await fetch(falResult.coverImageUrl);
-          if (coverResp.ok) {
-            const coverBytes = new Uint8Array(await coverResp.arrayBuffer());
-            coverKey = `projects/${params.projectId}/assets/${params.taskId}-cover.jpg`;
-            await this.env.R2_BUCKET.put(coverKey, coverBytes, {
-              httpMetadata: { contentType: "image/jpeg" },
-            });
-          }
+          coverKey = await uploadFromUrl(
+            this.env.R2_BUCKET,
+            falResult.coverImageUrl,
+            params.projectId,
+            `${params.taskId}-cover`,
+            "image/jpeg",
+          );
         } catch (e) {
-          log.error("Failed to upload cover image:", e);
+          log.error("Failed to upload cover image", { ...tag, error: String(e) });
         }
       }
 
@@ -183,30 +232,8 @@ export class GenerationWorkflow extends WorkflowEntrypoint<Env, GenerationParams
       return { storageKey: sk, coverKey };
     });
 
-    const description = await step.do("describe", {
-      retries: { limit: 2, delay: "3 seconds", backoff: "exponential" },
-      timeout: "2 minutes",
-    }, async (ctx) => {
-      if (!coverKey) return null;
-      try {
-        log.info("Video description started", { ...tag, attempt: ctx.attempt });
-        const obj = await this.env.R2_BUCKET.get(coverKey);
-        if (!obj) return null;
-        const buf = await obj.arrayBuffer();
-        const bytes = new Uint8Array(buf);
-        let binary = "";
-        for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
-        const desc = await generateDescription(
-          this.env.CF_AIG_TOKEN,
-          `data:image/jpeg;base64,${btoa(binary)}`,
-        );
-        log.info("Video description generated", { ...tag, descLength: desc?.length });
-        return desc;
-      } catch (e) {
-        log.error("Video description failed", { ...tag, error: String(e) });
-        return null;
-      }
-    });
+    // TODO: description generation temporarily disabled
+    const description = null;
 
     await step.do("save-asset", {
       retries: { limit: 3, delay: "2 seconds", backoff: "exponential" },
@@ -228,32 +255,59 @@ export class GenerationWorkflow extends WorkflowEntrypoint<Env, GenerationParams
       });
       log.info("Video asset saved to D1", { ...tag, status: "completed" });
     });
+
+    // Notify ProjectRoom immediately
+    await this.notifyRoom(params.projectId, params.nodeId, {
+      pendingTask: undefined,
+      status: Status.Completed,
+      src: storageKey,
+      ...(coverKey ? { coverUrl: coverKey } : {}),
+      _log: undefined,
+    });
   }
 
-  private async runDescPipeline(params: GenerationParams, step: WorkflowStep): Promise<void> {
+  private async runRenderPipeline(params: GenerationParams, step: WorkflowStep): Promise<void> {
     const tag = { taskId: params.taskId, nodeId: params.nodeId };
 
-    const description = await step.do("describe", {
-      retries: { limit: 2, delay: "3 seconds", backoff: "exponential" },
-      timeout: "2 minutes",
+    const storageKey = await step.do("render-and-upload", {
+      retries: { limit: 1, delay: "10 seconds" },
+      timeout: "15 minutes",
     }, async (ctx) => {
-      const r2Key = params.r2Key;
-      if (!r2Key) throw new Error("Missing r2Key for description task");
+      log.info("Render started", { ...tag, attempt: ctx.attempt });
 
-      log.info("Desc pipeline started", { ...tag, r2Key, attempt: ctx.attempt });
-      const obj = await this.env.R2_BUCKET.get(r2Key);
-      if (!obj) throw new Error(`R2 object not found: ${r2Key}`);
+      // Call render-server (Container in prod, direct URL in dev)
+      let renderUrl: string;
+      if (this.env.RENDER_SERVER_URL) {
+        renderUrl = this.env.RENDER_SERVER_URL;
+      } else {
+        const container = (this.env.RENDER_CONTAINER as any).getByName(params.projectId);
+        renderUrl = "https://container";
+        // TODO: use container.fetch() directly when Container SDK stabilizes
+      }
 
-      const buf = await obj.arrayBuffer();
-      const bytes = new Uint8Array(buf);
-      let binary = "";
-      for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
-      const mimeType = params.mimeType || "image/png";
-      const dataUrl = `data:${mimeType};base64,${btoa(binary)}`;
+      const resp = await fetch(`${renderUrl}/render`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          timelineDsl: params.timelineDsl,
+          projectId: params.projectId,
+          taskId: params.taskId,
+        }),
+      });
 
-      const desc = await generateDescription(this.env.CF_AIG_TOKEN, dataUrl);
-      log.info("Desc generated", { ...tag, descLength: desc?.length });
-      return desc;
+      if (!resp.ok) {
+        const err = await resp.text();
+        throw new Error(`Render server error ${resp.status}: ${err}`);
+      }
+
+      // Stream response body directly to R2
+      const key = `projects/${params.projectId}/renders/${params.taskId}.mp4`;
+      await this.env.R2_BUCKET.put(key, resp.body, {
+        httpMetadata: { contentType: "video/mp4" },
+      });
+
+      log.info("Render uploaded to R2", { ...tag, storageKey: key });
+      return key;
     });
 
     await step.do("save-asset", {
@@ -261,17 +315,44 @@ export class GenerationWorkflow extends WorkflowEntrypoint<Env, GenerationParams
       timeout: "30 seconds",
     }, async () => {
       await createAsset(this.env.DB, {
-        id: `desc-${params.nodeId}`,
-        name: `desc-${params.nodeId.slice(0, 8)}`,
+        id: params.nodeId,
+        name: `render-${params.nodeId.slice(0, 8)}`,
         projectId: params.projectId,
-        storageKey: params.r2Key ?? "",
+        storageKey,
         url: "",
-        type: params.type === "image_desc" ? "image" : "video",
+        type: "video",
         status: Status.Completed,
         taskId: params.taskId,
-        description,
+        description: null,
       });
-      log.info("Desc asset saved to D1", { ...tag, status: "completed" });
+      log.info("Render asset saved to D1", { ...tag, status: "completed" });
     });
+
+    await this.notifyRoom(params.projectId, params.nodeId, {
+      pendingTask: undefined,
+      status: Status.Completed,
+      src: storageKey,
+      _log: undefined,
+    });
+  }
+
+  private async runDescPipeline(_params: GenerationParams, _step: WorkflowStep): Promise<void> {
+    // TODO: description generation temporarily disabled
+  }
+
+  /** Push node update to ProjectRoom DO (same worker). */
+  private async notifyRoom(projectId: string, nodeId: string, updates: Record<string, any>): Promise<void> {
+    try {
+      const roomId = this.env.ROOM.idFromName(projectId);
+      const stub = this.env.ROOM.get(roomId);
+      const resp = await stub.fetch(new Request(`https://do/sync/${projectId}/update-node`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ nodeId, updates }),
+      }));
+      await resp.text();
+    } catch (e) {
+      log.error("Failed to notify ProjectRoom", { projectId, nodeId, error: String(e) });
+    }
   }
 }

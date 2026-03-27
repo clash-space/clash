@@ -19,6 +19,7 @@ import { LoroDoc } from "loro-crdt";
 import { createOpenAI } from "@ai-sdk/openai";
 
 import type { Env } from "../config";
+import { log } from "../logger";
 import { createCanvasTools } from "./tools/canvas";
 import { createTimelineTools } from "./tools/timeline";
 import { createDelegationTool } from "./tools/delegation";
@@ -44,7 +45,7 @@ export class SupervisorAgent extends AIChatAgent<Env> {
     // Extract projectId from URL path or x-partykit-room header
     const projectId = this.extractProjectId(ctx.request);
     if (!projectId) {
-      console.error("[SupervisorAgent] Missing project ID");
+      log.error("Missing project ID");
       connection.close(4000, "Missing project ID");
       return;
     }
@@ -57,7 +58,7 @@ export class SupervisorAgent extends AIChatAgent<Env> {
     try {
       await this.roomConnection;
     } catch (error) {
-      console.error("[SupervisorAgent] Failed to connect to ProjectRoom:", error);
+      log.error("Failed to connect to ProjectRoom:", error);
       // Reset so next connection can retry
       this.roomConnection = null;
       connection.close(4002, "Failed to connect to project room");
@@ -88,7 +89,7 @@ export class SupervisorAgent extends AIChatAgent<Env> {
   // ─── ProjectRoom Connection ────────────────────────────────
 
   /**
-   * Establish internal WebSocket connection to ProjectRoom.
+   * Connect to ProjectRoom DO (same worker, shared bindings).
    * Receives the initial snapshot and subscribes to incremental updates.
    */
   private async connectToRoom(projectId: string): Promise<void> {
@@ -97,7 +98,6 @@ export class SupervisorAgent extends AIChatAgent<Env> {
     const roomId = this.env.ROOM.idFromName(projectId);
     const stub = this.env.ROOM.get(roomId);
 
-    // Create WebSocket upgrade request to ProjectRoom
     const resp = await stub.fetch(
       new Request(`https://internal/sync/${projectId}`, {
         headers: {
@@ -138,32 +138,30 @@ export class SupervisorAgent extends AIChatAgent<Env> {
             try {
               this.doc.import(data);
             } catch (e) {
-              console.error("[SupervisorAgent] Failed to initialize doc:", e);
+              log.error("Failed to initialize doc:", e);
             }
           }
           this.roomInitialized = true;
           clearTimeout(timeout);
-          console.log(`[SupervisorAgent] Connected to ProjectRoom for project: ${projectId}`);
           resolve();
         } else {
           // Subsequent messages = incremental updates
           try {
             this.doc.import(data);
           } catch (e) {
-            console.error("[SupervisorAgent] Failed to import room update:", e);
+            log.error("Failed to import room update:", e);
           }
         }
       });
 
       ws.addEventListener("close", () => {
-        console.log("[SupervisorAgent] ProjectRoom connection closed");
         this.roomWs = null;
         this.roomInitialized = false;
         this.roomConnection = null;
       });
 
       ws.addEventListener("error", (e) => {
-        console.error("[SupervisorAgent] ProjectRoom WebSocket error:", e);
+        log.error("ProjectRoom WebSocket error:", e);
         clearTimeout(timeout);
         reject(new Error("ProjectRoom WebSocket error"));
       });
@@ -178,7 +176,7 @@ export class SupervisorAgent extends AIChatAgent<Env> {
     if (this.roomWs?.readyState === WebSocket.OPEN) {
       this.roomWs.send(update);
     } else {
-      console.warn("[SupervisorAgent] Cannot broadcast — room WS not open");
+      log.warn("Cannot broadcast — room WS not open");
     }
   };
 
@@ -251,10 +249,10 @@ export class SupervisorAgent extends AIChatAgent<Env> {
     const canvasTools = createCanvasTools(this.doc, this.broadcastToRoom, sendMsg, generateId, getWorkspaceGroupId);
     const timelineTools = createTimelineTools(sendMsg);
     const allTools = { ...canvasTools, ...timelineTools };
-    const delegationTool = createDelegationTool(model as any, allTools, sendMsg);
+    const delegationTool = createDelegationTool(model as any, allTools);
     const tools = { ...allTools, task_delegation: delegationTool };
 
-    const { streamText, convertToModelMessages } = await import("ai");
+    const { streamText, convertToModelMessages, stepCountIs } = await import("ai");
 
     const result = streamText({
       model,
@@ -266,6 +264,7 @@ export class SupervisorAgent extends AIChatAgent<Env> {
       ]),
       messages: await convertToModelMessages(this.messages),
       tools,
+      stopWhen: stepCountIs(30),
       abortSignal: options?.abortSignal,
     });
 

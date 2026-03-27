@@ -109,7 +109,6 @@ export const TimelineTracksContainer: React.FC<TimelineTracksContainerProps> = (
 
   // Debug: log when assetDragPreview changes
   useEffect(() => {
-    console.log('[TimelineTracksContainer] assetDragPreview updated:', assetDragPreview);
   }, [assetDragPreview]);
 
   // 不再需要临时 track，与 item 拖动逻辑一致
@@ -308,12 +307,6 @@ export const TimelineTracksContainer: React.FC<TimelineTracksContainerProps> = (
     e.preventDefault();
     e.stopPropagation();
 
-    console.log('[TimelineTracksContainer.handleInsertDrop] Insert drop triggered:', {
-      position,
-      mouseX: e.clientX,
-      mouseY: e.clientY,
-    });
-
     // Check if this is an existing item being moved
     const dragType = e.dataTransfer.getData('dragType');
     // const itemId = e.dataTransfer.getData('itemId'); // unused
@@ -420,16 +413,6 @@ export const TimelineTracksContainer: React.FC<TimelineTracksContainerProps> = (
     const assetLeftX = mouseX - currentAssetDragOffset;
     const rawFrame = Math.max(0, Math.round(assetLeftX / pixelsPerFrame));
 
-    console.log('[TimelineTracksContainer.handleInsertDrop] Position calc:', {
-      mouseX: e.clientX,
-      rectLeft: rect.left,
-      scrollLeft: viewportEl.scrollLeft,
-      currentAssetDragOffset,
-      mouseXRelative: mouseX,
-      assetLeftX,
-      rawFrame,
-      pixelsPerFrame,
-    });
 
     const dropFrame = Math.max(0, rawFrame);
 
@@ -498,11 +481,6 @@ export const TimelineTracksContainer: React.FC<TimelineTracksContainerProps> = (
             break;
         }
       }
-
-      console.log('[TimelineTracksContainer.handleInsertDrop] Creating item:', {
-        dropFrame,
-        newItem,
-      });
 
       if (newItem) {
         dispatch({

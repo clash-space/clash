@@ -5,8 +5,9 @@
   "type": "module",
   "main": "./src/index.ts",
   "scripts": {
-    "dev": "wrangler dev --port 8788",
+    "dev": "wrangler dev --port 8788 --inspector-port 9230 --persist-to ../../.wrangler/state",
     "deploy": "wrangler deploy",
+    "type-check": "tsc --noEmit",
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {

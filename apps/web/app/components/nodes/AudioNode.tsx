@@ -1,11 +1,12 @@
 import { memo, useState, useRef, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { Handle, Position, NodeProps } from 'reactflow';
+import SourceHandleMenu from './SourceHandleMenu';
 import { Play, Pause, X, SpeakerHigh, SkipBack, SkipForward, Spinner } from '@phosphor-icons/react';
 import { resolveAssetUrl } from '../../../lib/utils/assets';
 import { normalizeStatus, isActiveStatus, type AssetStatus } from '../../../lib/assetStatus';
 
-const AudioNode = ({ data, selected, id: _id }: NodeProps) => {
+const AudioNode = ({ data, selected, id }: NodeProps) => {
     const [label, setLabel] = useState(data.label || 'Audio Node');
     const [isPlaying, setIsPlaying] = useState(false);
     const [progress, setProgress] = useState(0);
@@ -225,12 +226,7 @@ const AudioNode = ({ data, selected, id: _id }: NodeProps) => {
                     {audioUrl && <audio ref={audioRef} src={resolveAssetUrl(audioUrl)} />}
                 </div>
 
-                {/* Asset nodes only have output (source) */}
-                <Handle
-                    type="source"
-                    position={Position.Right}
-                    className="!h-4 !w-4 !translate-x-2 !border-4 !border-white !bg-slate-900 transition-all hover:scale-125 shadow-sm"
-                />
+                <SourceHandleMenu nodeId={id} />
             </div>
 
             {/* Render Modal */}

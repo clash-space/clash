@@ -6,8 +6,10 @@
   "main": "./src/index.ts",
   "scripts": {
     "db:migrate:local": "wrangler d1 migrations apply master-clash-frontend --local",
-    "dev": "wrangler dev",
+    "dev": "wrangler dev --port 8789 --inspector-port 9231",
     "deploy": "wrangler deploy",
+    "type-check": "tsc --noEmit",
+    "typecheck": "tsc --noEmit",
     "tail": "wrangler tail"
   },
   "dependencies": {

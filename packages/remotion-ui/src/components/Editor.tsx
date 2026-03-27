@@ -11,7 +11,6 @@ const AssetInitializer = ({ assets }: { assets: any[] }) => {
   const addedAssetsRef = React.useRef<Set<string>>(new Set());
 
   React.useEffect(() => {
-    // console.log('[AssetInitializer] Effect triggered, assets:', assets.length);
     if (!assets || assets.length === 0) return;
 
     // We removed the strict initializedRef check to allow prop updates to add new assets.
@@ -205,7 +204,6 @@ const AssetInitializer = ({ assets }: { assets: any[] }) => {
         img.src = assetSrc;
       } else {
         // For non-video assets (or fully specified images), add directly
-        console.log('[AssetInitializer] Dispatching ADD_ASSET for non-video:', normalizedType, assetId);
         dispatch({
           type: 'ADD_ASSET',
           payload: {

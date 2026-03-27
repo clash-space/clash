@@ -1,5 +1,6 @@
 import { memo, useEffect, useRef, useState } from 'react';
 import { Handle, Position, NodeProps, useReactFlow, useNodes } from 'reactflow';
+import SourceHandleMenu from './SourceHandleMenu';
 import { Image as ImageIcon, TextT } from '@phosphor-icons/react';
 import { useMediaViewer } from '../MediaViewerContext';
 import { useOptionalLoroSyncContext } from '../LoroSyncContext';
@@ -239,12 +240,7 @@ const ImageNode = ({ data, selected, id }: NodeProps) => {
                 style={{ top: '50%', left: '-8px' }}
                 className="!h-4 !w-4 !border-4 !border-white !bg-slate-400 transition-all hover:!bg-blue-500 hover:scale-125 shadow-sm !opacity-0 !pointer-events-none"
             />
-            <Handle
-                type="source"
-                position={Position.Right}
-                style={{ top: '50%', right: '-8px' }}
-                className="!h-4 !w-4 !border-4 !border-white !bg-slate-400 transition-all hover:!bg-blue-500 hover:scale-125 shadow-sm"
-            />
+            <SourceHandleMenu nodeId={id} />
         </div>
     );
 };

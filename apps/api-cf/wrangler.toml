@@ -22,6 +22,16 @@ name = "generation-workflow"
 binding = "GENERATION_WORKFLOW"
 class_name = "GenerationWorkflow"
 
+# Container (Remotion render server)
+[[containers]]
+class_name = "RenderContainer"
+image = "../render-server/Dockerfile"
+max_instances = 3
+
+[[durable_objects.bindings]]
+name = "RENDER_CONTAINER"
+class_name = "RenderContainer"
+
 [[migrations]]
 tag = "v1"
 new_sqlite_classes = ["SupervisorAgent"]
@@ -41,6 +51,10 @@ new_sqlite_classes = ["SupervisorAgent"]
 [[migrations]]
 tag = "v5"
 deleted_classes = ["GenerationAgent"]
+
+[[migrations]]
+tag = "v6"
+new_sqlite_classes = ["RenderContainer"]
 
 # D1 Database (shared with frontend)
 [[d1_databases]]
@@ -66,7 +80,10 @@ bucket_name = "master-clash-assets"
 [dev]
 # Only watch src/ to prevent .wrangler/state sqlite writes from triggering reload loops
 watch_dir = "src"
+# Containers are deployed via Docker, not needed in local dev (use RENDER_SERVER_URL instead)
+enable_containers = false
 
 [vars]
 ENVIRONMENT = "development"
 BETTER_AUTH_BASE_PATH = "/api/better-auth"
+RENDER_SERVER_URL = "http://localhost:8080"

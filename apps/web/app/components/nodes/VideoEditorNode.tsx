@@ -29,15 +29,13 @@ const VideoEditorNode = ({ data, id }: NodeProps) => {
         const unsubscribe = loroSync.doc.subscribe((event: any) => {
             // event.by: "local" | "import" | "checkout"
             // We want to catch ALL changes (both local and remote) for this node
-            console.log('[VideoEditorNode] Loro doc event:', event.by);
 
             // Check if this event affected our node
-            const nodesMap = loroSync.doc.getMap('nodes');
+            const nodesMap = loroSync.doc!.getMap('nodes');
             const currentNode = nodesMap.get(id);
 
             // Trigger update if the node exists (simple check - any change to doc might affect this node)
             if (currentNode) {
-                console.log('[VideoEditorNode] Loro node updated (via doc.subscribe), triggering preview refresh for:', id);
                 setLoroUpdateTrigger(prev => prev + 1);
             }
         });
@@ -53,15 +51,6 @@ const VideoEditorNode = ({ data, id }: NodeProps) => {
         if (loroSync?.doc) {
             const loroNode = loroSync.doc.getMap('nodes').get(id) as any;
             const loroDsl = loroNode?.data?.timelineDsl;
-            console.log('[VideoEditorNode] CRITICAL DEBUG:', {
-                nodeId: id,
-                trigger: loroUpdateTrigger,
-                hasPropsTimelineDsl: !!data.timelineDsl,
-                hasLoroTimelineDsl: !!loroDsl,
-                loroTrackCount: loroDsl?.tracks?.length || 0,
-                loroFirstTrackItemCount: loroDsl?.tracks?.[0]?.items?.length || 0,
-                firstItemSrc: loroDsl?.tracks?.[0]?.items?.[0]?.src || 'none'
-            });
             if (loroDsl) {
                 // Clone to ensure we have a plain object
                 try {
@@ -105,12 +94,10 @@ const VideoEditorNode = ({ data, id }: NodeProps) => {
             }
 
             if (earliestItem && resolvedSrc) {
-                console.log('[VideoEditorNode] Setting preview src:', resolvedSrc);
                 setPreviewSrc(resolvedSrc);
                 return;
             }
         }
-        console.log('[VideoEditorNode] No preview src found, clearing preview');
         setPreviewSrc(null);
     }, [data.timelineDsl, id, loroSync?.doc, loroUpdateTrigger]);
 
@@ -127,13 +114,6 @@ const VideoEditorNode = ({ data, id }: NodeProps) => {
         const connectedEdges = edges.filter(
             (edge) => edge.target === id && (edge.targetHandle === 'assets' || !edge.targetHandle)
         );
-
-        console.log('[VideoEditorNode] Connected edges check:', {
-            totalEdges: edges.length,
-            nodeId: id,
-            connectedEdgesCount: connectedEdges.length,
-            connectedEdges: connectedEdges
-        });
 
         // Map connected edges to asset objects
         const edgeAssets = connectedEdges.map((edge) => {
@@ -219,12 +199,6 @@ const VideoEditorNode = ({ data, id }: NodeProps) => {
         const allAssets = [...edgeAssets, ...timelineAssets];
         const uniqueAssets = Array.from(new Map(allAssets.map(item => [item.id, item])).values());
 
-        console.log('[VideoEditorNode] handleOpenEditor assets:', {
-            edgeAssets: edgeAssets.length,
-            timelineAssets: timelineAssets.length,
-            totalUnique: uniqueAssets.length
-        });
-
         const connectedAssetIds = new Set(uniqueAssets.map(a => a.id));
         const inputSrcs = new Set(
             uniqueAssets.map((asset: any) => asset?.src).filter(Boolean)
@@ -261,8 +235,6 @@ const VideoEditorNode = ({ data, id }: NodeProps) => {
     }, [data.timelineDsl, id, loroSync, openEditor]);
 
     const handleRender = useCallback(async () => {
-        console.log('[VideoEditorNode] handleRender called');
-        console.log('[VideoEditorNode] loroSync.connected:', loroSync?.connected);
 
         if (!loroSync?.doc) {
             console.error('[VideoEditorNode] LoroSync not connected');
@@ -292,22 +264,6 @@ const VideoEditorNode = ({ data, id }: NodeProps) => {
                 return;
             }
 
-            // Debug: log detailed structure
-            console.log('[VideoEditorNode] Raw timelineDsl:', {
-                hasTracks: !!timelineDsl.tracks,
-                trackCount: timelineDsl.tracks?.length,
-                durationInFrames: timelineDsl.durationInFrames,
-            });
-
-            if (timelineDsl.tracks) {
-                timelineDsl.tracks.forEach((t: any, i: number) => {
-                    console.log(`[VideoEditorNode] Track ${i}:`, t.items?.length, 'items');
-                    t.items?.forEach((item: any, j: number) => {
-                        console.log(`[VideoEditorNode]   Item ${j}: type=${item.type}, from=${item.from}, duration=${item.durationInFrames}, src=${item.src}`);
-                    });
-                });
-            }
-
             // Calculate video duration from timeline content
             let maxEndFrame = 0;
             for (const track of timelineDsl.tracks) {
@@ -321,21 +277,11 @@ const VideoEditorNode = ({ data, id }: NodeProps) => {
                     }
                 }
             }
-            console.log('[VideoEditorNode] Calculated maxEndFrame:', maxEndFrame);
 
             // Ensure at least some duration
             if (maxEndFrame === 0) maxEndFrame = 150; // Fallback 5s
 
             const durationInSeconds = maxEndFrame / (timelineDsl.fps || 30);
-
-            // Debug: log duration calculation
-            console.log('[VideoEditorNode] Duration calculation:', {
-                maxEndFrame,
-                fps: timelineDsl.fps,
-                calculatedDuration: durationInSeconds,
-                originalDuration: timelineDsl.durationInFrames,
-                compositionSize: `${timelineDsl.compositionWidth}x${timelineDsl.compositionHeight}`,
-            });
 
             // Ensure composition dimensions are set (default to 1920x1080 if missing)
             const compositionWidth = timelineDsl.compositionWidth || 1920;
@@ -347,13 +293,6 @@ const VideoEditorNode = ({ data, id }: NodeProps) => {
                 ...timelineDsl,
                 durationInFrames: maxEndFrame,
             };
-
-            console.log('[VideoEditorNode] Creating video node with:', {
-                compositionWidth,
-                compositionHeight,
-                maxEndFrame,
-                durationInSeconds,
-            });
 
             // Calculate auto-layout position locally to ensure immediate correct placement
             const newVideoNodeId = `video-${Date.now()}`;
@@ -384,7 +323,6 @@ const VideoEditorNode = ({ data, id }: NodeProps) => {
             const layoutResult = autoInsertNode(newVideoNodeId, tempNodes, tempEdges);
             const finalPosition = layoutResult.position;
 
-            console.log('[VideoEditorNode] Calculated layout position:', finalPosition);
 
             const newVideoNode = {
                 id: newVideoNodeId,
@@ -404,14 +342,7 @@ const VideoEditorNode = ({ data, id }: NodeProps) => {
                 },
             };
 
-            console.log('[VideoEditorNode] New video node data:', {
-                naturalWidth: newVideoNode.data.naturalWidth,
-                naturalHeight: newVideoNode.data.naturalHeight,
-                durationInFrames: updatedTimelineDsl.durationInFrames,
-            });
-
             // Add new node to LoroSync
-            console.log('[VideoEditorNode] Adding to LoroSync:', newVideoNodeId);
             loroSync.addNode(newVideoNodeId, newVideoNode);
 
             // Create edge from editor to new video node
@@ -422,17 +353,14 @@ const VideoEditorNode = ({ data, id }: NodeProps) => {
                 target: newVideoNodeId,
                 type: 'default',
             };
-            console.log('[VideoEditorNode] Adding edge to LoroSync:', edgeId);
             loroSync.addEdge(edgeId, newEdge);
 
             // Also add to ReactFlow for immediate UI update (with calculated position)
-            console.log('[VideoEditorNode] Adding to ReactFlow:', newVideoNodeId);
             reactFlow.addNodes(newVideoNode);
             reactFlow.addEdges(newEdge);
 
             // Sync pushed nodes from layout result
             if (layoutResult.pushedNodes.size > 0) {
-                console.log('[VideoEditorNode] Syncing pushed nodes:', layoutResult.pushedNodes.size);
                 layoutResult.pushedNodes.forEach((pos, nodeId) => {
                     loroSync.updateNode(nodeId, { position: pos });
                     // Also update ReactFlow locally
@@ -445,8 +373,6 @@ const VideoEditorNode = ({ data, id }: NodeProps) => {
             // Debug: Check what ReactFlow actually has
             setTimeout(() => {
                 const nodeInFlow = reactFlow.getNode(newVideoNodeId);
-                console.log('[VideoEditorNode] Node in ReactFlow:', nodeInFlow);
-                console.log('[VideoEditorNode] Node data:', nodeInFlow?.data);
             }, 100);
         } catch (error) {
             console.error('[VideoEditorNode] Failed to trigger render:', error);

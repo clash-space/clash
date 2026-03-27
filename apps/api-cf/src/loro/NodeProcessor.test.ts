@@ -57,6 +57,7 @@ function makeEnv(overrides: Partial<Env> = {}): Env {
     GENERATION_WORKFLOW: {
       create: vi.fn().mockResolvedValue({ id: "wf-id" }),
     } as any,
+    RENDER_CONTAINER: {} as any,
     DB: {
       prepare: vi.fn().mockReturnValue({
         bind: vi.fn().mockReturnValue({
@@ -67,7 +68,7 @@ function makeEnv(overrides: Partial<Env> = {}): Env {
       }),
     } as any,
     ...overrides,
-  };
+  } as Env;
 }
 
 describe("NodeProcessor - processPendingNodes", () => {
@@ -261,7 +262,7 @@ describe("NodeProcessor - processPendingNodes", () => {
     expect(triggerPolling).not.toHaveBeenCalled();
   });
 
-  it("skips video nodes with timelineDsl (client-side Remotion render)", async () => {
+  it("submits video nodes with timelineDsl as video_render task", async () => {
     const doc = makeDoc([
       {
         id: "n-timeline",
@@ -273,7 +274,15 @@ describe("NodeProcessor - processPendingNodes", () => {
 
     await processPendingNodes(doc, env, "proj-1", broadcast, triggerPolling);
 
-    expect(env.GENERATION_WORKFLOW.create).not.toHaveBeenCalled();
+    expect(env.GENERATION_WORKFLOW.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: "proj-1-render-n-timeline",
+        params: expect.objectContaining({
+          nodeId: "n-timeline",
+          type: "video_render",
+        }),
+      })
+    );
   });
 
   it("does not submit description for audio nodes", async () => {

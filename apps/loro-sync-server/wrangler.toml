@@ -18,15 +18,15 @@ binding = "DB"
 database_name = "master-clash-frontend"
 database_id = "aab16eeb-a375-490b-ad1e-cd092cd9f4bb"
 
-# R2 bucket for generated assets (remote in local dev)
+# R2 bucket for generated assets
 [[r2_buckets]]
 binding = "ASSETS"
 bucket_name = "master-clash-assets"
-remote = true
 
 # Environment variables
 [vars]
 BETTER_AUTH_BASE_PATH = "/api/better-auth"
+ENVIRONMENT = "development"
 
 # Development environment
 [env.development]
@@ -40,6 +40,9 @@ vars = { ENVIRONMENT = "production" }
 [[services]]
 binding = "API_CF"
 service = "master-clash-api"
+
+[dev]
+# (no extra dev config needed)
 
 # Durable Object migrations
 [[migrations]]

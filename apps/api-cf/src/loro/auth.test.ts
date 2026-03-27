@@ -20,6 +20,7 @@ function makeEnv(overrides: Partial<Env> = {}): Env {
     ROOM: {} as any,
     SUPERVISOR: {} as any,
     GENERATION_WORKFLOW: {} as any,
+    RENDER_CONTAINER: {} as any,
     DB: {
       prepare: vi.fn().mockReturnValue({
         bind: vi.fn().mockReturnValue({
@@ -29,7 +30,7 @@ function makeEnv(overrides: Partial<Env> = {}): Env {
     } as any,
     JWT_SECRET,
     ...overrides,
-  };
+  } as Env;
 }
 
 async function signJWT(
@@ -50,11 +51,11 @@ async function signJWT(
 }
 
 describe("auth", () => {
-  let fetchSpy: ReturnType<typeof vi.spyOn>;
+  let fetchSpy: any;
 
   beforeEach(() => {
     // Mock global fetch so BetterAuth session check returns null
-    fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+    fetchSpy = vi.spyOn(globalThis, "fetch" as any).mockResolvedValue(
       new Response(JSON.stringify(null), { status: 200 })
     );
   });

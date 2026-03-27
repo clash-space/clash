@@ -164,7 +164,8 @@ export async function processPendingNodes(
     let submitted = false;
 
     for (const [nodeId, nodeData] of nodesMap.entries()) {
-      const data = nodeData as Record<string, any>;
+      const raw = nodeData as any;
+      const data = typeof raw?.toJSON === 'function' ? raw.toJSON() : raw as Record<string, any>;
       const nodeType = data?.type as NodeType;
       const innerData = data?.data || {};
 
@@ -175,24 +176,20 @@ export async function processPendingNodes(
       const description = innerData.description;
       const pendingTask = innerData.pendingTask;
 
-      // Skip if already has a pending task or is submitting
+      // Skip if already has a pending task
       if (pendingTask || innerData.taskState === 'submitted' || innerData.taskState === 'completed') continue;
 
-      // Case 1: generating + no src -> submit generation task
-      // OR video_render + status generating -> submit render task
-      // OR video node with timelineDsl + status generating -> submit render task
       const hasTimelineDsl = innerData.timelineDsl != null;
       const shouldRenderVideo = nodeType === 'video_render' || (nodeType === 'video' && hasTimelineDsl);
 
-      // Video render is handled client-side via Remotion — skip entirely
-      if (shouldRenderVideo && status === 'generating') {
-        continue;
-      }
+      // Video render is handled client-side via Remotion — skip
+      if (shouldRenderVideo) continue;
 
-      if (status === 'generating' && !src) {
-        // CRITICAL: Set taskState to 'submitted' IMMEDIATELY to prevent duplicate submissions
-        updateNodeData(doc, nodeId, { taskState: 'submitted' }, broadcast);
-        console.log(`[NodeProcessor] 🔒 Set taskState=submitted for node ${nodeId.slice(0, 8)}`);
+      // Case 1: pending + no src → submit generation task
+      if (status === 'pending' && !src) {
+        // Set status=generating + taskState=submitted IMMEDIATELY (optimistic lock)
+        updateNodeData(doc, nodeId, { status: 'generating', taskState: 'submitted' }, broadcast);
+        console.log(`[NodeProcessor] 🔒 Set status=generating for node ${nodeId.slice(0, 8)}`);
 
         // Original AIGC generation logic
         console.log(`[NodeProcessor] 🚀 Submitting ${nodeType}_gen for ${nodeId.slice(0, 8)}`);

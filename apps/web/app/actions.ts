@@ -99,7 +99,7 @@ export async function getProjects(limit = 10) {
 
         console.log('[getProjects] Raw projects found:', projectsData.length);
 
-        const apiCfUrl = process.env.API_CF_URL || 'http://localhost:8789';
+        const apiCfUrl = process.env.API_CF_URL || 'http://localhost:8787';
         const httpLoroUrl = apiCfUrl;
 
         // Extract assets from Loro nodes for display

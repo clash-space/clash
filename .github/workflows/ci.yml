@@ -1,321 +1,86 @@
-# Master Clash - CI/CD Pipeline
-# Comprehensive workflow for linting, testing, and building the monorepo
-
 name: CI
 
 on:
   push:
-    branches: [master, main, develop]
+    branches: [master, main]
   pull_request:
-    branches: [master, main, develop]
+    branches: [master, main]
   workflow_dispatch:
-
-env:
-  NODE_VERSION: '20'
-  PYTHON_VERSION: '3.12'
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  #==========================================================================
-  # Code Quality Checks
-  #==========================================================================
   lint:
-    name: Lint & Format Check
+    name: Lint
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Install pnpm
-        uses: pnpm/action-setup@v2
+      - uses: pnpm/action-setup@v4
         with:
           version: 8
 
-      - name: Install Node.js
-        uses: actions/setup-node@v4
+      - uses: actions/setup-node@v4
         with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: 'pnpm'
+          node-version: 20
+          cache: pnpm
 
-      - name: Install Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: ${{ env.PYTHON_VERSION }}
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm turbo run lint
 
-      - name: Install uv
-        uses: astral-sh/setup-uv@v4
-        with:
-          version: "latest"
-
-      - name: Install dependencies
-        run: |
-          pnpm install --frozen-lockfile
-          uv sync --all-extras
-
-      - name: Lint TypeScript
-        run: pnpm turbo run lint --continue
-
-        # Continue on error to show all linting issues
-
-      - name: Lint Python
-        run: uv run ruff check .
-
-      - name: Check TypeScript formatting
-        run: pnpm prettier --check "**/*.{ts,tsx,json,md}"
-
-      - name: Check Python formatting
-        run: uv run ruff format --check .
-
-  #==========================================================================
-  # Type Checking
-  #==========================================================================
-  typecheck:
+  type-check:
     name: Type Check
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Install pnpm
-        uses: pnpm/action-setup@v2
+      - uses: pnpm/action-setup@v4
         with:
           version: 8
 
-      - name: Install Node.js
-        uses: actions/setup-node@v4
+      - uses: actions/setup-node@v4
         with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: 'pnpm'
+          node-version: 20
+          cache: pnpm
 
-      - name: Install Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: ${{ env.PYTHON_VERSION }}
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm turbo run type-check
 
-      - name: Install uv
-        uses: astral-sh/setup-uv@v4
-        with:
-          version: "latest"
-
-      - name: Install dependencies
-        run: |
-          pnpm install --frozen-lockfile
-          uv sync --all-extras
-
-      - name: Type check TypeScript
-        run: pnpm turbo run typecheck --continue
-
-      - name: Type check Python
-        run: uv run mypy apps/api/src/master_clash
-
-  #==========================================================================
-  # Frontend Tests
-  #==========================================================================
-  test-web:
-    name: Test Frontend
+  test:
+    name: Test
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: apps/web
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Install pnpm
-        uses: pnpm/action-setup@v2
+      - uses: pnpm/action-setup@v4
         with:
           version: 8
 
-      - name: Install Node.js
-        uses: actions/setup-node@v4
+      - uses: actions/setup-node@v4
         with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: 'pnpm'
+          node-version: 20
+          cache: pnpm
 
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm turbo run test
 
-      - name: Run tests
-        run: pnpm test
-        continue-on-error: true
-
-      - name: Build
-        run: pnpm build
-
-  #==========================================================================
-  # Backend Tests
-  #==========================================================================
-  test-api:
-    name: Test Backend API
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Install Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: ${{ env.PYTHON_VERSION }}
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@v4
-        with:
-          version: "latest"
-
-      - name: Install dependencies
-        run: uv sync --all-extras
-
-      - name: Run tests with coverage
-        env:
-          GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
-        run: |
-          uv run pytest apps/api/tests -v --cov=apps/api/src --cov-report=xml --cov-report=term || true
-
-      - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@v4
-        if: always()
-        with:
-          files: ./coverage.xml
-          flags: backend
-          name: backend-coverage
-          fail_ci_if_error: false
-
-  #==========================================================================
-  # Sync Server Tests
-  #==========================================================================
-  test-sync:
-    name: Test Sync Server
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: apps/loro-sync-server
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Install pnpm
-        uses: pnpm/action-setup@v2
-        with:
-          version: 8
-
-      - name: Install Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: 'pnpm'
-
-      - name: Install dependencies
-        run: pnpm install
-
-      - name: Build
-        run: pnpm build
-
-  #==========================================================================
-  # Build All Packages
-  #==========================================================================
   build:
-    name: Build All Packages
+    name: Build
     runs-on: ubuntu-latest
-    needs: [lint, typecheck]
+    needs: [lint, type-check]
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Install pnpm
-        uses: pnpm/action-setup@v2
+      - uses: pnpm/action-setup@v4
         with:
           version: 8
 
-      - name: Install Node.js
-        uses: actions/setup-node@v4
+      - uses: actions/setup-node@v4
         with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: 'pnpm'
+          node-version: 20
+          cache: pnpm
 
-      - name: Install Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: ${{ env.PYTHON_VERSION }}
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@v4
-        with:
-          version: "latest"
-
-      - name: Install all dependencies
-        run: |
-          pnpm install --frozen-lockfile
-          uv sync --all-extras
-
-      - name: Build TypeScript packages
-        run: pnpm turbo run build
-
-      - name: Verify Python packages
-        run: uv run pytest --collect-only
-
-  #==========================================================================
-  # Security Scanning
-  #==========================================================================
-  security:
-    name: Security Scan
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Install pnpm
-        uses: pnpm/action-setup@v2
-        with:
-          version: 8
-
-      - name: Install Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: 'pnpm'
-
-      - name: Run npm audit
-        run: pnpm audit --audit-level=moderate
-        continue-on-error: true
-
-      - name: Install Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: ${{ env.PYTHON_VERSION }}
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@v4
-        with:
-          version: "latest"
-
-      - name: Run safety check
-        run: |
-          uv pip install safety
-          uv run safety check --json
-        continue-on-error: true
-
-  #==========================================================================
-  # Docker Build Test
-  #==========================================================================
-  docker-test:
-    name: Test Docker Build
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Build Docker image
-        working-directory: apps/api
-        run: |
-          if [ -f Dockerfile ]; then
-            docker build -t master-clash-api:test .
-          else
-            echo "No Dockerfile found, skipping Docker build"
-          fi
-        continue-on-error: true
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm turbo run build

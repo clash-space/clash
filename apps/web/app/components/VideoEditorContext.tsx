@@ -138,15 +138,6 @@ export function VideoEditorProvider({
         nextTimelineDsl?: TimelineDslType | null,
         nextAvailableAssets: Array<Asset & { sourceNodeId?: string }> = []
     ) => {
-        console.log('[VideoEditorContext] openEditor called');
-        console.log('[VideoEditorContext] 1. Incoming Assets:', newAssets.length, newAssets);
-
-        // Log Agent-generated DSL if present
-        if (nextTimelineDsl) {
-            console.log('[VideoEditorContext] 2. Agent Generated DSL:', JSON.stringify(nextTimelineDsl, null, 2));
-        } else {
-            console.log('[VideoEditorContext] 2. No Agent DSL provided (Fresh Editor)');
-        }
 
         // Deduplicate assets before setting
         const seenKeys = new Set<string>();
@@ -186,8 +177,8 @@ export function VideoEditorProvider({
                          if ((newItem as any).duration_in_frames && !newItem.durationInFrames) {
                              newItem.durationInFrames = (newItem as any).duration_in_frames;
                          }
-                         if ((newItem as any).start_at && !newItem.startAt) {
-                             newItem.startAt = (newItem as any).start_at;
+                         if ((newItem as any).start_at && !newItem.from) {
+                             newItem.from = (newItem as any).start_at;
                          }
 
                          // 3. Normalize Type (lowercase) - only if type is already present
@@ -200,7 +191,6 @@ export function VideoEditorProvider({
                      })
                  }))
              };
-             console.log('[VideoEditorContext] 3. Processed DSL (Ready for Editor):', JSON.stringify(processedDsl, null, 2));
         }
 
         // Convert R2 keys to view URLs for editor display
@@ -256,18 +246,14 @@ export function VideoEditorProvider({
 
         // Calculate actual video duration from timeline content
         let maxEndFrame = 0;
-        console.log('[VideoEditorContext] Calculating max end frame from tracks:');
         for (const track of state.tracks) {
-            console.log(`[VideoEditorContext] Track: ${track.id} (${track.name}) - ${track.items.length} items`);
             for (const item of track.items) {
                 const endFrame = item.from + item.durationInFrames;
-                console.log(`[VideoEditorContext]   Item: ${item.id} (${item.type}) from=${item.from} duration=${item.durationInFrames} end=${endFrame}`);
                 if (endFrame > maxEndFrame) {
                     maxEndFrame = endFrame;
                 }
             }
         }
-        console.log(`[VideoEditorContext] Final maxEndFrame: ${maxEndFrame}, state.durationInFrames: ${state.durationInFrames}`);
 
         // Create DSL for export (deep copy and convert view URLs to R2 keys for storage)
         const finalDsl: TimelineDslType = {
@@ -278,13 +264,6 @@ export function VideoEditorProvider({
             durationInFrames: maxEndFrame,  // Use calculated duration instead of state value
         };
 
-        // Debug: log final DSL
-        console.log('[VideoEditorContext] Final DSL for export:', {
-            durationInFrames: finalDsl.durationInFrames,
-            compositionSize: `${finalDsl.compositionWidth}x${finalDsl.compositionHeight}`,
-            fps: finalDsl.fps,
-        });
-
         // Check if there's any content
         if (!finalDsl.tracks || finalDsl.tracks.length === 0) {
             alert('Please add some content to the timeline before exporting!');
@@ -292,13 +271,6 @@ export function VideoEditorProvider({
         }
 
         const durationInSeconds = maxEndFrame / finalDsl.fps;
-
-        console.log('[VideoEditorContext] Export DSL:', {
-            tracks: finalDsl.tracks.length,
-            durationInFrames: finalDsl.durationInFrames,
-            durationInSeconds,
-            compositionSize: `${finalDsl.compositionWidth}x${finalDsl.compositionHeight}`,
-        });
 
         // Calculate actual natural dimensions from source assets (not canvas size)
         // Find the largest asset dimensions in the timeline
@@ -319,10 +291,6 @@ export function VideoEditorProvider({
         // Fallback to canvas size if no assets found
         const naturalWidth = maxAssetWidth > 0 ? maxAssetWidth : state.compositionWidth;
         const naturalHeight = maxAssetHeight > 0 ? maxAssetHeight : state.compositionHeight;
-
-        console.log('[VideoEditorContext] Calculated natural dimensions:', {
-            maxAssetWidth, maxAssetHeight, naturalWidth, naturalHeight
-        });
 
         // Create a new video node with the rendered content
         const newVideoNodeId = `video-${Date.now()}`;
@@ -353,7 +321,6 @@ export function VideoEditorProvider({
         const layoutResult = autoInsertNode(newVideoNodeId, [...currentNodes, tempNode], [...currentEdges, tempEdge]);
         const finalPosition = layoutResult.position;
 
-        console.log('[VideoEditorContext] Export calculated layout position:', finalPosition);
 
         const newVideoNode = {
             id: newVideoNodeId,
@@ -363,7 +330,7 @@ export function VideoEditorProvider({
             data: {
                 label: `Rendered Video`,
                 src: null,  // Will be filled by callback when rendering completes
-                status: 'generating',
+                status: 'pending',
                 duration: durationInSeconds,
                 timelineDsl: finalDsl,
                 pendingTask: null,
@@ -388,16 +355,14 @@ export function VideoEditorProvider({
 
         // Sync pushed nodes from layout result
         if (layoutResult.pushedNodes.size > 0) {
-            console.log('[VideoEditorContext] Syncing pushed nodes:', layoutResult.pushedNodes.size);
             layoutResult.pushedNodes.forEach((pos, nodeId) => {
                 loroSync.updateNode(nodeId, { position: pos });
             });
         }
 
-        console.log('[VideoEditorContext] Export triggered - created new video node:', newVideoNodeId);
 
         // Note: The actual rendering will be triggered by NodeProcessor
-        // when it detects the new video node with 'generating' status
+        // when it detects the new video node with 'pending' status
     }, [editorNodeId, loroSync, nodes, edges]);
 
     const handleAssetUpload = useCallback(

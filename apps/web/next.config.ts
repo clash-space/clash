@@ -26,7 +26,7 @@ const nextConfig: NextConfig = {
   },
   async rewrites() {
     // All backend routes now go through api-cf (merged service)
-    const apiCfUrl = process.env.API_CF_URL || 'http://127.0.0.1:8789';
+    const apiCfUrl = process.env.API_CF_URL || 'http://127.0.0.1:8787';
 
     return [
       {

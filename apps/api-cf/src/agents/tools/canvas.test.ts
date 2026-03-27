@@ -55,8 +55,8 @@ describe("Canvas tools", () => {
       },
       {
         id: "n3",
-        type: "image_gen",
-        data: { label: "Generated Cat", status: "generating", assetId: "asset-1" },
+        type: "action-badge",
+        data: { label: "Generated Cat", status: "generating", assetId: "asset-1", actionType: "image-gen" },
         parentId: "g1",
       },
     ]);
@@ -68,7 +68,7 @@ describe("Canvas tools", () => {
 
   describe("list_canvas_nodes", () => {
     it("returns tree view of all nodes", async () => {
-      const result = await tools.list_canvas_nodes.execute({}, { toolCallId: "1", messages: [] });
+      const result = await tools.list_canvas_nodes.execute!({}, { toolCallId: "1", messages: [] });
       expect(result).toContain("Canvas nodes (tree):");
       expect(result).toContain("g1 (group)");
       expect(result).toContain("n1 (text)");
@@ -76,7 +76,7 @@ describe("Canvas tools", () => {
     });
 
     it("filters by node_type", async () => {
-      const result = await tools.list_canvas_nodes.execute(
+      const result = await tools.list_canvas_nodes.execute!(
         { node_type: "text" },
         { toolCallId: "1", messages: [] }
       );
@@ -87,7 +87,7 @@ describe("Canvas tools", () => {
     it("returns 'No nodes found.' for empty doc", async () => {
       const emptyDoc = new LoroDoc();
       const emptyTools = createCanvasTools(emptyDoc, broadcast, sendMessage, generateId, getWorkspaceGroupId);
-      const result = await emptyTools.list_canvas_nodes.execute({}, { toolCallId: "1", messages: [] });
+      const result = await emptyTools.list_canvas_nodes.execute!({}, { toolCallId: "1", messages: [] });
       expect(result).toBe("No nodes found.");
     });
   });
@@ -96,7 +96,7 @@ describe("Canvas tools", () => {
 
   describe("read_canvas_node", () => {
     it("returns node details", async () => {
-      const result = await tools.read_canvas_node.execute(
+      const result = await tools.read_canvas_node.execute!(
         { node_id: "n1" },
         { toolCallId: "1", messages: [] }
       );
@@ -105,7 +105,7 @@ describe("Canvas tools", () => {
     });
 
     it("returns 'not found' for missing node", async () => {
-      const result = await tools.read_canvas_node.execute(
+      const result = await tools.read_canvas_node.execute!(
         { node_id: "nonexistent" },
         { toolCallId: "1", messages: [] }
       );
@@ -116,8 +116,8 @@ describe("Canvas tools", () => {
   // ─── create_canvas_node ───
 
   describe("create_canvas_node", () => {
-    it("creates a text node and sends proposal", async () => {
-      const result = await tools.create_canvas_node.execute(
+    it("creates a text node", async () => {
+      const result = await tools.create_canvas_node.execute!(
         {
           node_type: "text",
           label: "New Note",
@@ -127,9 +127,6 @@ describe("Canvas tools", () => {
       );
 
       expect(result).toContain("Created node gen-id-1");
-      expect(sendMessage).toHaveBeenCalledWith(
-        expect.objectContaining({ type: "node_proposal" })
-      );
 
       // Verify node was actually created in Loro
       const nodesMap = doc.getMap("nodes");
@@ -142,7 +139,7 @@ describe("Canvas tools", () => {
     it("uses workspace group as default parent", async () => {
       getWorkspaceGroupId.mockReturnValue("g1");
 
-      const result = await tools.create_canvas_node.execute(
+      const result = await tools.create_canvas_node.execute!(
         { node_type: "text", label: "Child Note" },
         { toolCallId: "1", messages: [] }
       );
@@ -159,34 +156,26 @@ describe("Canvas tools", () => {
   // ─── create_generation_node ───
 
   describe("create_generation_node", () => {
-    it("creates generation node with assetId and sends proposal", async () => {
-      const result = await tools.create_generation_node.execute(
+    it("creates generation node with assetId", async () => {
+      const result = await tools.create_generation_node.execute!(
         {
           node_type: "image_gen",
           label: "AI Cat",
-          upstream_node_ids: ["n1"],
+          prompt: "A cute cat in watercolor style",
         },
         { toolCallId: "1", messages: [] }
       );
 
       expect(result).toContain("Created generation node gen-id-1");
       expect(result).toContain("assetId gen-id-2");
-      expect(sendMessage).toHaveBeenCalledWith(
-        expect.objectContaining({
-          type: "node_proposal",
-          proposal: expect.objectContaining({
-            assetId: "gen-id-2",
-          }),
-        })
-      );
     });
 
     it("creates video_gen node", async () => {
-      const result = await tools.create_generation_node.execute(
+      const result = await tools.create_generation_node.execute!(
         {
           node_type: "video_gen",
           label: "AI Video",
-          upstream_node_ids: ["n2"],
+          prompt: "A cat playing with yarn",
         },
         { toolCallId: "1", messages: [] }
       );
@@ -202,12 +191,12 @@ describe("Canvas tools", () => {
       // Update node to completed status
       const nodesMap = doc.getMap("nodes");
       nodesMap.set("n3", {
-        type: "image_gen",
-        data: { label: "Generated Cat", status: "completed", assetId: "asset-1" },
+        type: "action-badge",
+        data: { label: "Generated Cat", status: "completed", assetId: "asset-1", actionType: "image-gen" },
         position: { x: 0, y: 0 },
       });
 
-      const result = await tools.wait_for_generation.execute(
+      const result = await tools.wait_for_generation.execute!(
         { node_id: "n3", timeout_seconds: 1 },
         { toolCallId: "1", messages: [] }
       );
@@ -216,7 +205,7 @@ describe("Canvas tools", () => {
     });
 
     it("returns 'not found' for missing node", async () => {
-      const result = await tools.wait_for_generation.execute(
+      const result = await tools.wait_for_generation.execute!(
         { node_id: "nonexistent", timeout_seconds: 1 },
         { toolCallId: "1", messages: [] }
       );
@@ -227,12 +216,12 @@ describe("Canvas tools", () => {
     it("returns 'failed' for failed generation", async () => {
       const nodesMap = doc.getMap("nodes");
       nodesMap.set("n-fail", {
-        type: "image_gen",
-        data: { label: "Failed", status: "failed", error: "Out of credits" },
+        type: "action-badge",
+        data: { label: "Failed", status: "failed", error: "Out of credits", actionType: "image-gen" },
         position: { x: 0, y: 0 },
       });
 
-      const result = await tools.wait_for_generation.execute(
+      const result = await tools.wait_for_generation.execute!(
         { node_id: "n-fail", timeout_seconds: 1 },
         { toolCallId: "1", messages: [] }
       );
@@ -242,7 +231,7 @@ describe("Canvas tools", () => {
 
     it("times out for still-generating node", async () => {
       // n3 is still generating
-      const result = await tools.wait_for_generation.execute(
+      const result = await tools.wait_for_generation.execute!(
         { node_id: "n3", timeout_seconds: 0.1 },
         { toolCallId: "1", messages: [] }
       );
@@ -255,7 +244,7 @@ describe("Canvas tools", () => {
 
   describe("rerun_generation_node", () => {
     it("sends rerun_generation message with new assetId", async () => {
-      const result = await tools.rerun_generation_node.execute(
+      const result = await tools.rerun_generation_node.execute!(
         { node_id: "n3" },
         { toolCallId: "1", messages: [] }
       );
@@ -271,7 +260,7 @@ describe("Canvas tools", () => {
     });
 
     it("returns error for missing node", async () => {
-      const result = await tools.rerun_generation_node.execute(
+      const result = await tools.rerun_generation_node.execute!(
         { node_id: "missing" },
         { toolCallId: "1", messages: [] }
       );
@@ -285,7 +274,7 @@ describe("Canvas tools", () => {
 
   describe("search_canvas", () => {
     it("finds nodes by label", async () => {
-      const result = await tools.search_canvas.execute(
+      const result = await tools.search_canvas.execute!(
         { query: "Cat" },
         { toolCallId: "1", messages: [] }
       );
@@ -296,7 +285,7 @@ describe("Canvas tools", () => {
     });
 
     it("finds nodes by content", async () => {
-      const result = await tools.search_canvas.execute(
+      const result = await tools.search_canvas.execute!(
         { query: "Some content" },
         { toolCallId: "1", messages: [] }
       );
@@ -305,7 +294,7 @@ describe("Canvas tools", () => {
     });
 
     it("returns no results message for unmatched query", async () => {
-      const result = await tools.search_canvas.execute(
+      const result = await tools.search_canvas.execute!(
         { query: "xyz-no-match" },
         { toolCallId: "1", messages: [] }
       );
@@ -314,7 +303,7 @@ describe("Canvas tools", () => {
     });
 
     it("filters by node_types", async () => {
-      const result = await tools.search_canvas.execute(
+      const result = await tools.search_canvas.execute!(
         { query: "Cat", node_types: ["image"] },
         { toolCallId: "1", messages: [] }
       );

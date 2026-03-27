@@ -1,185 +1,118 @@
-# ALWAYS And MUST do
-1. after a task, run ci/cd process for compile、lint and other check.（do not build because this project is hot-built） which maintain in Makefile
+# CLAUDE.md
 
-# Shared Configuration Pattern
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-## Model Configuration (Image/Video Generation)
+## Build & Development Commands
 
-**Location**: `packages/shared-types/src/models.ts`
+```bash
+# Install dependencies
+make install                # pnpm install
 
-All model-related configurations (MODEL_CARDS, aspect ratios, image sizes, parameters) are centralized in the shared-types package to maintain consistency across frontend and backend.
+# Development (most common)
+make dev                    # Start web (:3000) + api-cf (:8789) in parallel
+make dev-gateway-full       # Start all services behind auth gateway (:8788)
 
-### Key Principles:
+# Individual services
+make dev-web                # Frontend only (:3000)
+make dev-api-cf             # API only (:8789)
+make dev-gateway            # Auth gateway only (:8788)
 
-1. **Single Source of Truth**: Model configurations, aspect ratios, and parameters are defined once in `shared-types`
-2. **TypeScript → Python Sync**: Python backend should reference these configurations in comments and validate against them
-3. **Configuration Constants**: Use exported constants like `GEMINI_ASPECT_RATIOS` and `GEMINI_IMAGE_SIZES` instead of hardcoding values
+# Database
+make db-local               # Run D1 migrations locally
 
-### Example:
+# Build, test, lint
+make build                  # turbo run build
+make test                   # turbo run test
+make lint                   # turbo run lint
+make format                 # prettier on all TS/JSON/MD
 
-```typescript
-// packages/shared-types/src/models.ts
-export const GEMINI_ASPECT_RATIOS = [
-  { label: '16:9', value: '16:9' },
-  { label: '9:16', value: '9:16' },
-  // ...
-] as const;
+# Per-app testing
+cd apps/api-cf && pnpm test           # API unit tests (vitest)
+cd apps/api-cf && pnpm test:watch     # API tests in watch mode
+cd apps/web && pnpm test              # Frontend tests
 
-export const MODEL_CARDS: ModelCard[] = [
-  {
-    id: 'nano-banana-pro',
-    parameters: [
-      {
-        id: 'aspect_ratio',
-        options: GEMINI_ASPECT_RATIOS.map(r => ({ label: r.label, value: r.value })),
-      },
-    ],
-  },
-];
+# Remotion
+make remotion-bundle        # Build Remotion video bundle
 ```
 
-```python
-# apps/api/src/master_clash/tools/nano_banana.py
-# Gemini supported aspect ratios (synced with shared-types GEMINI_ASPECT_RATIOS)
-supported_aspect_ratios = {
-    "1:1", "2:3", "3:2", "3:4", "4:3", "4:5", "5:4", "9:16", "16:9", "21:9"
-}
+**After completing a task, run `make lint` to verify.** Do not run `make build` — the project uses hot-reload in dev.
+
+## Architecture
+
+### Monorepo Structure
+
+pnpm workspaces + Turborepo. All apps deploy to **Cloudflare Workers**.
+
+- **`apps/web`** — Next.js 15 frontend (React 19, Tailwind CSS v4). Built with OpenNext for Cloudflare deployment.
+- **`apps/api-cf`** — Hono API on Cloudflare Workers. Houses Durable Objects (`ProjectRoom`, `SupervisorAgent`, `GenerationAgent`), REST endpoints, R2 asset serving.
+- **`apps/auth-gateway`** — Hono reverse proxy that validates auth and routes to web/api-cf services.
+- **`apps/loro-sync-server`** — Legacy CRDT sync server (functionality mostly merged into api-cf).
+- **`packages/shared-types`** — Zod schemas, TypeScript types, model card configs. Single source of truth for API contracts.
+- **`packages/shared-layout`** — Canvas node layout algorithms.
+- **`packages/remotion-core`** — Video editor state management (React hooks).
+- **`packages/remotion-components`** — Remotion rendering components.
+- **`packages/remotion-ui`** — Video editor UI components.
+
+### Gateway Pattern (Request Flow)
+
+```
+User → Auth Gateway (:8788)
+  ├─ /           → Web Frontend (:3000)
+  ├─ /sync/*     → ProjectRoom Durable Object (WebSocket, Loro CRDT)
+  ├─ /agents/*   → SupervisorAgent Durable Object (AI chat)
+  ├─ /api/*      → api-cf REST endpoints
+  └─ /assets/*   → R2 asset storage
 ```
 
-### Benefits:
-- Frontend UI automatically reflects available options
-- Backend validation uses the same constraints
-- Easy to add new models or parameters in one place
-- Type safety across the stack
+### Real-time Sync
 
-# Multi-Provider Architecture
+Canvas state (nodes, edges, tasks) is stored in **Loro CRDT** documents managed by the `ProjectRoom` Durable Object. Clients connect via WebSocket at `/sync/:projectId` and exchange binary CRDT updates. Relational data (users, projects, sessions) lives in **Cloudflare D1** (SQLite) via **Drizzle ORM**.
 
-## Provider System for Models
+### Durable Objects (api-cf)
 
-Models can have multiple provider implementations (e.g., ElevenLabs via official API or KIE.ai).
+- **`ProjectRoom`** — Loro CRDT document host, WebSocket hub for real-time collaboration.
+- **`SupervisorAgent`** — AI chat agent per project. Room name format: `projectId:agentId`.
+- **`GenerationAgent`** — Handles image/video generation tasks.
 
-### Configuration
+### Authentication
 
-**Location**: `packages/shared-types/src/models.ts`
+**Better Auth** with Drizzle adapter on D1. Supports email/password and Google OAuth. Base path: `/api/better-auth`. Auth gateway validates sessions and proxies authenticated requests.
 
-```typescript
-export const ProviderSchema = z.enum(['official', 'kie']);
+### AI & Generation
 
-export const ModelCardSchema = z.object({
-  // ... existing fields
-  availableProviders: z.array(ProviderSchema).optional(),
-  defaultProvider: ProviderSchema.optional(),
-});
-```
+- Image generation: Google Generative AI (Gemini)
+- Video generation: Kling, FAL AI
+- AI chat: OpenAI SDK, Google AI SDK
+- Model configs centralized in `packages/shared-types/src/models.ts`
 
-### Implementation Pattern
+## Key Patterns
 
-1. **Model Card Configuration**: Specify available providers in MODEL_CARDS
-   ```typescript
-   {
-     id: 'elevenlabs-tts',
-     availableProviders: ['official', 'kie'],
-     defaultProvider: 'official',
-   }
-   ```
+### Backend Design Principles (from AGENTS.md)
 
-2. **Backend Provider Services**: Create separate service files for each provider
-   - `elevenlabs_tts.py` - Official ElevenLabs API
-   - `kie_elevenlabs_tts.py` - KIE.ai proxy for ElevenLabs
+1. Domain-driven design
+2. Functional programming — prefer protocols/ADTs over classes, prefer pattern matching
+3. Async-first — go async or go die
 
-3. **Generation Router**: Route requests to appropriate provider in `generation_models.py`
-   ```python
-   async def _run_elevenlabs_tts(request, provider="official"):
-       if provider == "kie":
-           result = await kie_elevenlabs_tts.generate_speech(...)
-       else:
-           result = await elevenlabs_tts.generate_speech(...)
-   ```
+### Model Configuration
 
-4. **Request Flow**: Provider can be specified via:
-   - `AudioGenerationRequest.provider` field
-   - `params['provider']` parameter
-   - Defaults to model's `defaultProvider`
+All model cards, aspect ratios, and generation parameters are defined in `packages/shared-types/src/models.ts`. Both frontend and backend consume these. Never hardcode model parameters — use the shared constants.
 
-### Benefits
+### Multi-Provider Architecture
 
-- **Flexibility**: Switch providers without changing model interface
-- **Fallback**: Can implement automatic fallback to alternative providers
-- **Cost Optimization**: Route to cheaper providers when available
-- **Geographic Routing**: Use regional providers for lower latency
-- **A/B Testing**: Compare quality across providers
+Models can have multiple provider implementations (e.g., official API vs proxy). Provider routing is configured in model cards via `availableProviders` and `defaultProvider` fields.
 
-### Adding New Providers
+### agents.json Documentation
 
-1. Create new provider enum value in shared-types
-2. Implement provider service in `apps/api/src/master_clash/services/`
-3. Add routing logic in `generation_models.py`
-4. Update model card's `availableProviders` array
-5. Document provider-specific configuration
+Significant directories contain `agents.json` files for progressive disclosure navigation. When creating new modules, add an `agents.json`. When modifying architecture, update the relevant `agents.json`.
 
-# for backend
-1. domain design driven
-2. Functional programming
-    1. more protocal and ADT, less class
-    2. more pattern match
-3. go async or go die
+### API Validation
 
-# Agent-Optimized Documentation System (AODS)
+All API requests validated with Zod schemas defined in `apps/api-cf/src/domain/requests.ts`. Validation errors return 400 with structured error details.
 
-We use a "Progressive Disclosure" strategy to help AI Agents (and humans) navigate the codebase efficiently without consuming excessive context window.
+## Frontend Specifics (apps/web)
 
-## 1. Directory Indexing (`agents.json`)
-
-Every significant directory MUST contain an `agents.json` file. This acts as a router for Agents.
-
-### Structure
-
-```json
-{
-  "summary": "Brief description of this directory's purpose.",
-  "context_hints": [
-    "When to look here: e.g., dealing with database schemas"
-  ],
-  "subdirectories": {
-    "folder_name": "Description of what is inside. Be specific."
-  },
-  "key_files": {
-    "filename.ext": "Description of this file's responsibility."
-  },
-  "architecture_notes": "Optional. High-level patterns used here."
-}
-```
-
-### Maintenance Rules
-
-*   **Create**: When creating a new module or directory, add an `agents.json`.
-*   **Update**: When adding important files or changing architecture, update the local `agents.json`.
-*   **Verify**: Before finishing a task, check if your changes render the documentation stale.
-
-## 2. Source Code Headers
-
-Key files (entry points, complex logic) MUST have a structured header.
-
-### Format
-
-```text
-/**
- * @file <filename>
- * @description <Concise summary>
- * @module <module_path>
- *
- * @responsibility
- * - <Primary Responsibility 1>
- * - <Primary Responsibility 2>
- *
- * @exports
- * - <Name>: <Description>
- */
-```
-
-## 3. Navigation Workflow for Agents
-
-1.  **Start at Root**: Read `./agents.json` to understand the high-level map.
-2.  **Drill Down**: Follow `subdirectories` descriptions to find the relevant component.
-3.  **Read Context**: Read the `agents.json` in the target directory to understand local conventions.
-4.  **Locate File**: Use `key_files` or standard file listings to find the specific code.
+- **Styling**: Tailwind CSS v4, Framer Motion for animations, Phosphor Icons
+- **Fonts**: Inter (body), Space Grotesk (headings), JetBrains Mono (mono)
+- **Component model**: Server components by default, `'use client'` only when needed
+- **State**: Loro CRDT for canvas data, ReactFlow for node graph, dnd-kit for drag-and-drop
+- **Path alias**: `@/*` maps to project root

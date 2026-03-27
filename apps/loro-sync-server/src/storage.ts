@@ -148,7 +148,7 @@ export async function saveSnapshot(
     console.error(`[saveSnapshot] 🚨 D1 API Error: Could not parse response as JSON. 
 This usually means your Wrangler session is expired or your proxy settings are interfering with Cloudflare API calls.
 Try running: pnpm wrangler login
-Current Proxy: ${process.env.HTTP_PROXY || 'none'}`);
+Check your HTTP_PROXY env var if using a proxy.`);
   }
 
   console.error(`[saveSnapshot] All attempts failed for project ${projectId}. Final error:`, lastError);

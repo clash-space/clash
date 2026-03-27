@@ -39,9 +39,10 @@ function makeEnv(overrides: Partial<Env> = {}): Env {
     GENERATION_WORKFLOW: {
       get: vi.fn().mockRejectedValue(new Error("not found")),
     } as any,
+    RENDER_CONTAINER: {} as any,
     DB: {} as any,
     ...overrides,
-  };
+  } as Env;
 }
 
 describe("TaskPolling", () => {

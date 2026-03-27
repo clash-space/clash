@@ -26,14 +26,12 @@ function editorReducer(state: EditorState, action: EditorAction): EditorState {
       };
 
     case 'INSERT_TRACK': {
-      console.log('INSERT_TRACK reducer called with:', action.payload);
       const newTracks = [...state.tracks];
       const { track, index } = action.payload;
 
       // Insert at specific index
       newTracks.splice(index, 0, track);
 
-      console.log('New tracks after insertion:', newTracks);
 
       return {
         ...state,
@@ -107,7 +105,6 @@ function editorReducer(state: EditorState, action: EditorAction): EditorState {
 
     case 'SPLIT_ITEM': {
       const { trackId, itemId, splitFrame } = action.payload;
-      console.log('🔪 SPLIT_ITEM action triggered:', { trackId, itemId, splitFrame });
 
       return {
         ...state,
@@ -117,11 +114,9 @@ function editorReducer(state: EditorState, action: EditorAction): EditorState {
           const newItems = t.items.flatMap((item) => {
             if (item.id !== itemId) return [item];
 
-            console.log('📋 Original item to split:', JSON.stringify(item, null, 2));
 
             // Check if split frame is within item bounds
             const itemEnd = item.from + item.durationInFrames;
-            console.log(`📏 Item bounds: from=${item.from}, end=${itemEnd}, splitFrame=${splitFrame}`);
 
             if (splitFrame <= item.from || splitFrame >= itemEnd) {
               console.warn('⚠️ Split frame out of bounds, keeping original item');
@@ -177,27 +172,9 @@ function editorReducer(state: EditorState, action: EditorAction): EditorState {
               justInserted: item.type === 'video',
             });
 
-            console.log('✂️ Split result:');
-            console.log('  Original item:', JSON.stringify(item, null, 2));
-            console.log('  First item (right trim):', JSON.stringify(firstItem, null, 2));
-            console.log('  Second item (left trim):', JSON.stringify(secondItem, null, 2));
-
-            // 检查差异
-            const origKeys = Object.keys(item).sort();
-            const firstKeys = Object.keys(firstItem).sort();
-            const secondKeys = Object.keys(secondItem).sort();
-            console.log('  Keys comparison:', {
-              original: origKeys,
-              first: firstKeys,
-              second: secondKeys,
-              missingInFirst: origKeys.filter(k => !firstKeys.includes(k)),
-              missingInSecond: origKeys.filter(k => !secondKeys.includes(k))
-            });
-
             return [firstItem as Item, secondItem as Item];
           });
 
-          console.log('📦 New items array after split:', newItems.map(i => ({ id: i.id, from: i.from, duration: i.durationInFrames })));
           return { ...t, items: newItems };
         }),
       };
@@ -219,7 +196,6 @@ function editorReducer(state: EditorState, action: EditorAction): EditorState {
       return { ...state, zoom: action.payload };
 
     case 'ADD_ASSET':
-      console.log('[editorReducer] ADD_ASSET called with:', action.payload.id, 'Current assets count:', state.assets.length);
       return {
         ...state,
         assets: [...state.assets, action.payload],
@@ -292,7 +268,6 @@ type EditorProviderProps = {
 
 // Provider
 export function EditorProvider({ children, initialState: providedInitialState, onStateChange }: EditorProviderProps) {
-  console.log('[EditorProvider] Rendering with initialState:', providedInitialState?.assets?.map(a => ({ id: a.id, name: a.name })));
   const [state, dispatch] = useReducer(
     editorReducer,
     providedInitialState,

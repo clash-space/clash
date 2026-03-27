@@ -21,12 +21,18 @@ export {
   CanvasNodeSchema,
   CanvasEdgeSchema,
   LoroDocumentStateSchema,
+  RF_NODE_TYPE,
+  ACTION_TYPE,
+  AGENT_NODE_TYPE_MAP,
+  buildPendingAssetNode,
   type Position,
   type NodeStatus,
   type NodeData,
   type CanvasNode,
   type CanvasEdge,
   type LoroDocumentState,
+  type BuildPendingAssetNodeInput,
+  type PendingAssetNode,
 } from './canvas';
 
 // Task types (atomic tasks + DO state)
@@ -57,6 +63,7 @@ export {
   ModelInputRuleSchema,
   ModelCardSchema,
   MODEL_CARDS,
+  resolveAspectRatio,
   type ModelInputRule,
   type ModelKind,
   type ModelParameterType,

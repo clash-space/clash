@@ -5,6 +5,8 @@
   "description": "AI-powered video production platform",
   "scripts": {
     "dev": "turbo run dev",
+    "dev:log": "./scripts/dev-log.sh",
+    "logs": "./scripts/logs.sh",
     "build": "turbo run build",
     "test": "turbo run test",
     "lint": "turbo run lint",
@@ -35,6 +37,7 @@
     }
   },
   "dependencies": {
+    "@cloudflare/containers": "^0.2.0",
     "better-auth": "^1.4.6",
     "better-auth-cloudflare": "^0.2.9",
     "zod": "^4"

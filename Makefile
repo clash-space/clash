@@ -73,6 +73,10 @@ dev-api-cf: ## Start api-cf development server (port 8789)
 	@echo "$(BLUE)Starting api-cf on http://localhost:8789...$(NC)"
 	@cd apps/api-cf && HTTP_PROXY=$(HTTP_PROXY) HTTPS_PROXY=$(HTTPS_PROXY) NO_PROXY=$(NO_PROXY) pnpm dev --port 8789
 
+dev-render: ## Start render server (port 8080)
+	@echo "$(BLUE)Starting render server on http://localhost:8080...$(NC)"
+	@cd apps/render-server && HTTP_PROXY=$(HTTP_PROXY) HTTPS_PROXY=$(HTTPS_PROXY) NO_PROXY=$(NO_PROXY) pnpm dev
+
 dev-gateway: ## Start auth gateway
 	@echo "$(BLUE)Starting auth gateway on http://localhost:8788...$(NC)"
 	@cd apps/auth-gateway && HTTP_PROXY=$(HTTP_PROXY) HTTPS_PROXY=$(HTTPS_PROXY) NO_PROXY=$(NO_PROXY) pnpm dev
@@ -81,14 +85,15 @@ dev-gateway: ## Start auth gateway
 # Combined Development
 #==============================================================================
 
-dev: ## Start frontend + api-cf in parallel
+dev: ## Start frontend + api-cf + render-server in parallel
 	@echo "$(BLUE)Starting development environment...$(NC)"
-	@echo "$(GREEN)Frontend:$(NC) http://localhost:3000"
-	@echo "$(GREEN)API CF:$(NC)   http://localhost:8789"
+	@echo "$(GREEN)Frontend:$(NC)      http://localhost:3000"
+	@echo "$(GREEN)API CF:$(NC)        http://localhost:8789"
+	@echo "$(GREEN)Render Server:$(NC) http://localhost:8080"
 	@echo ""
-	@$(MAKE) -j2 dev-web dev-api-cf
+	@$(MAKE) -j3 dev-web dev-api-cf dev-render
 
-dev-full: dev ## Start all services (frontend + api-cf)
+dev-full: dev ## Start all services
 
 dev-gateway-full: ## Start all services behind auth gateway
 	@echo "$(BLUE)Starting full environment with API Gateway...$(NC)"

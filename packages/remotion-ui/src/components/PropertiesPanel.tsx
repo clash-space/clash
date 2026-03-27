@@ -63,8 +63,8 @@ export const PropertiesPanel: React.FC = () => {
                       payload: { width: preset.w, height: preset.h },
                     })}
                     className={`px-2 py-1.5 rounded text-xs font-medium transition-colors ${state.compositionWidth === preset.w && state.compositionHeight === preset.h
-                        ? 'bg-blue-600 text-white shadow-sm'
-                        : 'bg-white text-slate-700 border border-slate-200 hover:border-blue-400 hover:text-blue-600'
+                        ? 'bg-red-500 text-white shadow-sm'
+                        : 'bg-white text-slate-700 border border-slate-200 hover:border-red-300 hover:text-red-500'
                       }`}
                   >
                     {preset.label}
@@ -89,7 +89,7 @@ export const PropertiesPanel: React.FC = () => {
                   type: 'SET_DURATION',
                   payload: parseInt(e.target.value) || 600,
                 })}
-                className="w-full px-2 py-1.5 bg-white border border-slate-200 rounded text-sm text-slate-900 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none transition-all"
+                className="w-full px-2 py-1.5 bg-white border border-slate-200 rounded text-sm text-slate-900 focus:border-blue-500 focus:ring-1 focus:ring-red-400 outline-none transition-all"
               />
             </div>
             <div className="mb-3">
@@ -106,7 +106,7 @@ export const PropertiesPanel: React.FC = () => {
             </div>
             <button
               onClick={() => setShowExportModal(true)}
-              className="w-full py-2.5 bg-blue-600 text-white rounded-lg text-sm font-semibold hover:bg-blue-700 transition-colors shadow-sm hover:shadow active:scale-95"
+              className="w-full py-2.5 bg-red-500 text-white rounded-lg text-sm font-semibold hover:bg-blue-700 transition-colors shadow-sm hover:shadow active:scale-95"
             >
               Render video
             </button>
@@ -137,9 +137,9 @@ export const PropertiesPanel: React.FC = () => {
               <div className="mb-6 p-4 bg-blue-50 rounded-lg border border-blue-100">
                 <h3 className="m-0 mb-3 text-sm font-semibold text-blue-900">Method 2: Remotion Studio (Recommended)</h3>
                 <div className="mb-2 p-3 bg-white rounded border border-blue-200 overflow-x-auto">
-                  <code className="text-xs text-blue-600 font-mono">npm run dev</code>
+                  <code className="text-xs text-red-500 font-mono">npm run dev</code>
                 </div>
-                <p className="m-0 text-xs text-blue-600/80">
+                <p className="m-0 text-xs text-red-500/80">
                   Opens Remotion Studio at localhost:3002 with GUI render controls
                 </p>
               </div>
@@ -195,7 +195,7 @@ export const PropertiesPanel: React.FC = () => {
             onClick={splitItem}
             disabled={!canSplit}
             className={`px-3 py-1.5 rounded text-xs font-medium transition-colors border ${canSplit
-                ? 'bg-white text-blue-600 border-blue-200 hover:bg-blue-50 hover:border-blue-300 cursor-pointer'
+                ? 'bg-white text-red-500 border-blue-200 hover:bg-blue-50 hover:border-blue-300 cursor-pointer'
                 : 'bg-slate-50 text-slate-400 border-slate-200 cursor-not-allowed'
               }`}
             title={
@@ -236,7 +236,7 @@ export const PropertiesPanel: React.FC = () => {
                     height: item.properties?.height ?? 1,
                   }
                 })}
-                className="w-full px-2 py-1.5 bg-white border border-slate-200 rounded text-sm text-slate-900 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none transition-all"
+                className="w-full px-2 py-1.5 bg-white border border-slate-200 rounded text-sm text-slate-900 focus:border-blue-500 focus:ring-1 focus:ring-red-400 outline-none transition-all"
               />
             </div>
             <div className="mb-3">
@@ -254,7 +254,7 @@ export const PropertiesPanel: React.FC = () => {
                     height: item.properties?.height ?? 1,
                   }
                 })}
-                className="w-full px-2 py-1.5 bg-white border border-slate-200 rounded text-sm text-slate-900 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none transition-all"
+                className="w-full px-2 py-1.5 bg-white border border-slate-200 rounded text-sm text-slate-900 focus:border-blue-500 focus:ring-1 focus:ring-red-400 outline-none transition-all"
               />
             </div>
             <div className="mb-3">
@@ -273,7 +273,7 @@ export const PropertiesPanel: React.FC = () => {
                     height: item.properties?.height ?? 1,
                   }
                 })}
-                className="w-full px-2 py-1.5 bg-white border border-slate-200 rounded text-sm text-slate-900 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none transition-all"
+                className="w-full px-2 py-1.5 bg-white border border-slate-200 rounded text-sm text-slate-900 focus:border-blue-500 focus:ring-1 focus:ring-red-400 outline-none transition-all"
               />
             </div>
             <div className="mb-3">
@@ -292,7 +292,7 @@ export const PropertiesPanel: React.FC = () => {
                     height: parseFloat(e.target.value) || 0,
                   }
                 })}
-                className="w-full px-2 py-1.5 bg-white border border-slate-200 rounded text-sm text-slate-900 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none transition-all"
+                className="w-full px-2 py-1.5 bg-white border border-slate-200 rounded text-sm text-slate-900 focus:border-blue-500 focus:ring-1 focus:ring-red-400 outline-none transition-all"
               />
             </div>
           </div>
@@ -312,7 +312,7 @@ export const PropertiesPanel: React.FC = () => {
                   rotation: parseFloat(e.target.value) || 0,
                 }
               })}
-              className="w-full px-2 py-1.5 bg-white border border-slate-200 rounded text-sm text-slate-900 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none transition-all"
+              className="w-full px-2 py-1.5 bg-white border border-slate-200 rounded text-sm text-slate-900 focus:border-blue-500 focus:ring-1 focus:ring-red-400 outline-none transition-all"
             />
           </div>
           <div className="mb-3">
@@ -333,7 +333,7 @@ export const PropertiesPanel: React.FC = () => {
                   opacity: parseFloat(e.target.value) ?? 1,
                 }
               })}
-              className="w-full px-2 py-1.5 bg-white border border-slate-200 rounded text-sm text-slate-900 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none transition-all"
+              className="w-full px-2 py-1.5 bg-white border border-slate-200 rounded text-sm text-slate-900 focus:border-blue-500 focus:ring-1 focus:ring-red-400 outline-none transition-all"
             />
           </div>
           <div className="mb-3">
@@ -353,7 +353,7 @@ export const PropertiesPanel: React.FC = () => {
               type="number"
               value={item.from}
               onChange={(e) => updateItem({ from: parseInt(e.target.value) || 0 })}
-              className="w-full px-2 py-1.5 bg-white border border-slate-200 rounded text-sm text-slate-900 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none transition-all"
+              className="w-full px-2 py-1.5 bg-white border border-slate-200 rounded text-sm text-slate-900 focus:border-blue-500 focus:ring-1 focus:ring-red-400 outline-none transition-all"
             />
           </div>
           <div className="mb-3">
@@ -364,7 +364,7 @@ export const PropertiesPanel: React.FC = () => {
               onChange={(e) =>
                 updateItem({ durationInFrames: parseInt(e.target.value) || 1 })
               }
-              className="w-full px-2 py-1.5 bg-white border border-slate-200 rounded text-sm text-slate-900 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none transition-all"
+              className="w-full px-2 py-1.5 bg-white border border-slate-200 rounded text-sm text-slate-900 focus:border-blue-500 focus:ring-1 focus:ring-red-400 outline-none transition-all"
             />
           </div>
         </div>
@@ -378,7 +378,7 @@ export const PropertiesPanel: React.FC = () => {
               <textarea
                 value={(item as TextItem).text}
                 onChange={(e) => updateItem({ text: e.target.value })}
-                className="w-full px-2 py-1.5 bg-white border border-slate-200 rounded text-sm text-slate-900 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none transition-all min-h-[80px] resize-y"
+                className="w-full px-2 py-1.5 bg-white border border-slate-200 rounded text-sm text-slate-900 focus:border-blue-500 focus:ring-1 focus:ring-red-400 outline-none transition-all min-h-[80px] resize-y"
               />
             </div>
             <div className="mb-3">
@@ -394,7 +394,7 @@ export const PropertiesPanel: React.FC = () => {
                   type="text"
                   value={(item as TextItem).color}
                   onChange={(e) => updateItem({ color: e.target.value })}
-                  className="flex-1 px-2 py-1.5 bg-white border border-slate-200 rounded text-sm text-slate-900 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none transition-all"
+                  className="flex-1 px-2 py-1.5 bg-white border border-slate-200 rounded text-sm text-slate-900 focus:border-blue-500 focus:ring-1 focus:ring-red-400 outline-none transition-all"
                 />
               </div>
             </div>
@@ -406,7 +406,7 @@ export const PropertiesPanel: React.FC = () => {
                 onChange={(e) =>
                   updateItem({ fontSize: parseInt(e.target.value) || 60 })
                 }
-                className="w-full px-2 py-1.5 bg-white border border-slate-200 rounded text-sm text-slate-900 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none transition-all"
+                className="w-full px-2 py-1.5 bg-white border border-slate-200 rounded text-sm text-slate-900 focus:border-blue-500 focus:ring-1 focus:ring-red-400 outline-none transition-all"
               />
             </div>
             <div className="mb-3">
@@ -414,7 +414,7 @@ export const PropertiesPanel: React.FC = () => {
               <select
                 value={(item as TextItem).fontFamily || 'Arial'}
                 onChange={(e) => updateItem({ fontFamily: e.target.value })}
-                className="w-full px-2 py-1.5 bg-white border border-slate-200 rounded text-sm text-slate-900 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none transition-all"
+                className="w-full px-2 py-1.5 bg-white border border-slate-200 rounded text-sm text-slate-900 focus:border-blue-500 focus:ring-1 focus:ring-red-400 outline-none transition-all"
               >
                 <option value="Arial">Arial</option>
                 <option value="Helvetica">Helvetica</option>
@@ -429,7 +429,7 @@ export const PropertiesPanel: React.FC = () => {
               <select
                 value={(item as TextItem).fontWeight || 'bold'}
                 onChange={(e) => updateItem({ fontWeight: e.target.value })}
-                className="w-full px-2 py-1.5 bg-white border border-slate-200 rounded text-sm text-slate-900 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none transition-all"
+                className="w-full px-2 py-1.5 bg-white border border-slate-200 rounded text-sm text-slate-900 focus:border-blue-500 focus:ring-1 focus:ring-red-400 outline-none transition-all"
               >
                 <option value="normal">Normal</option>
                 <option value="bold">Bold</option>
@@ -457,7 +457,7 @@ export const PropertiesPanel: React.FC = () => {
                   type="text"
                   value={(item as SolidItem).color}
                   onChange={(e) => updateItem({ color: e.target.value })}
-                  className="flex-1 px-2 py-1.5 bg-white border border-slate-200 rounded text-sm text-slate-900 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none transition-all"
+                  className="flex-1 px-2 py-1.5 bg-white border border-slate-200 rounded text-sm text-slate-900 focus:border-blue-500 focus:ring-1 focus:ring-red-400 outline-none transition-all"
                 />
               </div>
             </div>

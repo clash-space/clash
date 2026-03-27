@@ -1,0 +1,27 @@
+{
+  "name": "@master-clash/render-server",
+  "version": "0.1.0",
+  "description": "Remotion video rendering service",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsup src/index.ts --format esm --target node20",
+    "start": "node dist/index.js"
+  },
+  "dependencies": {
+    "@hono/node-server": "^1.13.0",
+    "@master-clash/remotion-components": "workspace:*",
+    "@master-clash/remotion-core": "workspace:*",
+    "@remotion/bundler": "4.0.370",
+    "@remotion/renderer": "4.0.370",
+    "hono": "^4.7.0",
+    "react": "^19.2.0",
+    "remotion": "4.0.370"
+  },
+  "devDependencies": {
+    "tsup": "^8.0.0",
+    "tsx": "^4.0.0",
+    "typescript": "^5.9.3"
+  }
+}

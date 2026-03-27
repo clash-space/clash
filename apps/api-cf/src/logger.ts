@@ -4,16 +4,19 @@ const base = createConsola({ level: 3 });
 
 function getCallerTag(): string {
   const stack = new Error().stack;
-  if (!stack) return "unknown";
+  if (!stack) return "app";
   const lines = stack.split("\n");
   for (const line of lines.slice(3)) {
-    const match = line.match(/\/src\/(.+?)\.(ts|js)/);
+    // Match both source (/src/foo/bar.ts) and bundled paths (foo/bar.js)
+    const match = line.match(/\/([\w-]+)\.(ts|js)/);
     if (match) {
-      const parts = match[1].split("/");
-      return parts[parts.length - 1];
+      const name = match[1];
+      // Skip internal/generic names
+      if (["index", "chunk", "bundle", "worker", "logger"].includes(name)) continue;
+      return name;
     }
   }
-  return "unknown";
+  return "app";
 }
 
 export const log = new Proxy(base, {
@@ -22,7 +25,6 @@ export const log = new Proxy(base, {
       const tag = getCallerTag();
       return (...args: any[]) => {
         const ts = new Date().toISOString();
-        // Prepend timestamp to first arg if it's a string, otherwise inject as first arg
         if (typeof args[0] === "string") {
           args[0] = `${ts} ${args[0]}`;
         } else {

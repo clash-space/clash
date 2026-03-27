@@ -229,7 +229,7 @@ export const AssetPanel: React.FC<AssetPanelProps> = ({
             <button
               type="button"
               onClick={onBack}
-              className="flex h-9 w-9 items-center justify-center rounded-lg border border-slate-900 bg-slate-900 text-white shadow-sm transition-colors hover:bg-slate-800"
+              className="flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-700 shadow-sm transition-colors hover:bg-slate-50 hover:text-slate-900"
               aria-label={backLabel}
             >
               <svg
@@ -255,7 +255,7 @@ export const AssetPanel: React.FC<AssetPanelProps> = ({
             <button
               type="button"
               onClick={() => onExport()}
-              className="flex h-9 px-3 items-center justify-center rounded-lg border border-blue-600 bg-blue-600 text-white shadow-sm transition-colors hover:bg-blue-700 text-sm font-semibold"
+              className="flex h-9 px-3 items-center justify-center rounded-lg border border-red-500 bg-red-500 text-white shadow-sm transition-colors hover:bg-red-600 text-sm font-semibold"
             >
               Export
             </button>
@@ -270,7 +270,7 @@ export const AssetPanel: React.FC<AssetPanelProps> = ({
           <div className="flex gap-2">
             <button
               onClick={handleAddTextToTrack}
-              className="flex-1 py-2 px-3 bg-white text-slate-700 border border-slate-200 rounded-lg text-sm font-medium hover:border-blue-400 hover:text-blue-600 hover:bg-blue-50 transition-all cursor-grab active:cursor-grabbing shadow-sm"
+              className="flex-1 py-2 px-3 bg-white text-slate-700 border border-slate-200 rounded-lg text-sm font-medium hover:border-red-300 hover:text-red-500 hover:bg-red-50 transition-all cursor-grab active:cursor-grabbing shadow-sm"
               draggable
               onDragStart={(e) => handleQuickAddDragStart(e, 'text')}
               title="Click to add or drag to timeline"
@@ -354,7 +354,7 @@ export const AssetPanel: React.FC<AssetPanelProps> = ({
                   });
                 }, 0);
               }}
-              className="flex-1 py-2 px-3 bg-white text-slate-700 border border-slate-200 rounded-lg text-sm font-medium hover:border-blue-400 hover:text-blue-600 hover:bg-blue-50 transition-all cursor-grab active:cursor-grabbing shadow-sm"
+              className="flex-1 py-2 px-3 bg-white text-slate-700 border border-slate-200 rounded-lg text-sm font-medium hover:border-red-300 hover:text-red-500 hover:bg-red-50 transition-all cursor-grab active:cursor-grabbing shadow-sm"
               draggable
               onDragStart={(e) => handleQuickAddDragStart(e, 'solid')}
               title="Click to add or drag to timeline"
@@ -377,7 +377,7 @@ export const AssetPanel: React.FC<AssetPanelProps> = ({
           />
           <button
             onClick={() => fileInputRef.current?.click()}
-            className="w-full py-3 px-4 bg-blue-600 text-white rounded-lg text-sm font-semibold hover:bg-blue-700 transition-colors shadow-sm hover:shadow active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="w-full py-3 px-4 bg-red-500 text-white rounded-lg text-sm font-semibold hover:bg-red-600 transition-colors shadow-sm hover:shadow active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
             disabled={!onAssetUpload}
           >
             Upload Files
@@ -403,7 +403,7 @@ export const AssetPanel: React.FC<AssetPanelProps> = ({
                 key={asset.id}
                 draggable
                 onDragStart={(e) => handleAssetDragStart(e, asset)}
-                className="group flex items-center p-2 bg-white border border-slate-200 rounded-lg cursor-move hover:border-blue-400 hover:shadow-sm transition-all gap-3 overflow-hidden"
+                className="group flex items-center p-2 bg-white border border-slate-200 rounded-lg cursor-move hover:border-red-300 hover:shadow-sm transition-all gap-3 overflow-hidden"
               >
                 {asset.type === 'image' && (
                   <img
@@ -463,7 +463,7 @@ export const AssetPanel: React.FC<AssetPanelProps> = ({
                 <button
                   key={asset.id}
                   onClick={() => handlePickAsset(asset)}
-                  className="w-full flex items-center gap-3 p-2 rounded-lg border border-slate-200 bg-white hover:border-blue-300 hover:bg-blue-50 transition-colors text-left"
+                  className="w-full flex items-center gap-3 p-2 rounded-lg border border-slate-200 bg-white hover:border-red-200 hover:bg-red-50 transition-colors text-left"
                 >
                   {asset.type === 'image' ? (
                     <img

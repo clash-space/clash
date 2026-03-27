@@ -1,6 +1,8 @@
 'use client';
 
-import { Project } from '@generated/client';
+import type { InferSelectModel } from 'drizzle-orm';
+import type { projects } from '../../lib/db/app.schema';
+type Project = InferSelectModel<typeof projects>;
 import HeroSection from './HeroSection';
 import RecentProjects from './RecentProjects';
 

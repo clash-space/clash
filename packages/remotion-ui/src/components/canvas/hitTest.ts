@@ -14,7 +14,6 @@ export function testItemHit(
   
   // 如果元素没有 properties，跳过（不应该被点击）
   if (!props) {
-    console.log(`[hitTest] Item ${item.id} has no properties, skipping`);
     return false;
   }
   
@@ -44,23 +43,6 @@ export function testItemHit(
     localY >= -halfHeight &&
     localY <= halfHeight
   );
-
-  console.log(`[hitTest] Item ${item.id}:`, {
-    clickX,
-    clickY,
-    itemX,
-    itemY,
-    itemWidth,
-    itemHeight,
-    rotation: props.rotation ?? 0,
-    dx,
-    dy,
-    localX,
-    localY,
-    halfWidth,
-    halfHeight,
-    isHit,
-  });
 
   return isHit;
 }

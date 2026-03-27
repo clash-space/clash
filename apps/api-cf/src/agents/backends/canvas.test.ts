@@ -10,7 +10,7 @@ import {
   findNodeByIdOrAssetId,
   getNodeStatus,
 } from "./canvas";
-import { NodeType, FrontendNodeType, ProposalType, Status } from "../../domain/canvas";
+import { NodeType, RF_NODE_TYPE, ProposalType, Status } from "../../domain/canvas";
 
 function makeDoc(): LoroDoc {
   return new LoroDoc();
@@ -167,7 +167,7 @@ describe("canvas backend (Loro)", () => {
       const result = createNode(doc, noop, "img1", "image_gen", { label: "Img" }, null, null, "asset-123");
 
       expect(result.proposal!.type).toBe(ProposalType.Generative);
-      expect(result.proposal!.nodeType).toBe(FrontendNodeType.ImageGen);
+      expect(result.proposal!.nodeType).toBe(RF_NODE_TYPE.ActionBadge);
       expect(result.asset_id).toBe("asset-123");
 
       // assetId stored in node data
@@ -189,7 +189,7 @@ describe("canvas backend (Loro)", () => {
       const result = createNode(doc, noop, "vid1", "video_gen", { label: "Vid" });
 
       expect(result.proposal!.type).toBe(ProposalType.Generative);
-      expect(result.proposal!.nodeType).toBe(FrontendNodeType.VideoGen);
+      expect(result.proposal!.nodeType).toBe(RF_NODE_TYPE.ActionBadge);
       expect(result.asset_id).toBeTruthy();
     });
 
@@ -290,12 +290,12 @@ describe("canvas backend (Loro)", () => {
       expect(result.status).toBe(Status.NodeNotFound);
     });
 
-    it("returns Generating for image_gen node without status", () => {
+    it("returns Completed for image_gen node without explicit status", () => {
       const doc = makeDoc();
       insertNode(doc, noop, "n1", "image_gen", { label: "Img" }, null, { x: 0, y: 0 });
 
       const result = getNodeStatus(doc, "n1");
-      expect(result.status).toBe(Status.Generating);
+      expect(result.status).toBe(Status.Completed);
     });
 
     it("returns Completed for text node without status", () => {

@@ -50,5 +50,6 @@ app.get("/health", (c) => c.json({ status: "ok" }));
 // Export for Cloudflare Workers
 export default app;
 
-// Export Durable Object classes and Workflow
+// Export Durable Object classes, Workflow, and Container
 export { ProjectRoom, SupervisorAgent, GenerationWorkflow };
+export { RenderContainer } from "./containers/render";

@@ -57,6 +57,38 @@ export const KLING_ASPECT_RATIOS = [
   { label: '1:1', value: '1:1' },
 ] as const;
 
+/**
+ * Veo 3 aspect ratios (fal.ai)
+ */
+export const VEO3_ASPECT_RATIOS = [
+  { label: '16:9', value: '16:9' },
+  { label: '9:16', value: '9:16' },
+] as const;
+
+/**
+ * Recraft V4 aspect ratios — mapped to fal image_size values
+ */
+export const RECRAFT_ASPECT_RATIOS = [
+  { label: '1:1 HD', value: 'square_hd' },
+  { label: '1:1', value: 'square' },
+  { label: '4:3', value: 'landscape_4_3' },
+  { label: '16:9', value: 'landscape_16_9' },
+  { label: '3:4', value: 'portrait_4_3' },
+  { label: '9:16', value: 'portrait_16_9' },
+] as const;
+
+/**
+ * FLUX 2 Pro aspect ratios — mapped to fal image_size values
+ */
+export const FLUX2_ASPECT_RATIOS = [
+  { label: '1:1 HD', value: 'square_hd' },
+  { label: '1:1', value: 'square' },
+  { label: '4:3', value: 'landscape_4_3' },
+  { label: '16:9', value: 'landscape_16_9' },
+  { label: '3:4', value: 'portrait_4_3' },
+  { label: '9:16', value: 'portrait_16_9' },
+] as const;
+
 export const ModelParameterTypeSchema = z.enum(['select', 'slider', 'number', 'text', 'boolean']);
 export type ModelParameterType = z.infer<typeof ModelParameterTypeSchema>;
 
@@ -110,11 +142,54 @@ export const ModelCardSchema = z.object({
   description: z.string().optional(),
   parameters: z.array(ModelParameterSchema),
   defaultParams: z.record(z.union([z.string(), z.number(), z.boolean()])).default({}),
+  /**
+   * Canonical default aspect ratio in our format ("4:3", "16:9", etc.).
+   * Required for image and video models. Audio models use "1:1" as placeholder.
+   * This is OUR representation — provider-specific values live in parameters/defaultParams.
+   */
+  defaultAspectRatio: z.string().default('16:9'),
+  /**
+   * Maps our canonical aspect ratio ("4:3") → provider-specific param value ("landscape_4_3").
+   * The key of the provider param in defaultParams (e.g. "aspect_ratio" or "image_size").
+   * If the provider uses the same format as ours, the mapping is identity.
+   */
+  aspectRatioParam: z.string().optional(),
   input: ModelInputRuleSchema.default({ requiresPrompt: true, referenceImage: 'optional' }),
   availableProviders: z.array(ProviderSchema).optional(),
   defaultProvider: ProviderSchema.optional(),
 });
 export type ModelCard = z.infer<typeof ModelCardSchema>;
+
+/**
+ * Resolve the canonical aspect ratio from model-specific params.
+ * Uses the model's parameter options to reverse-map provider values to our format.
+ *
+ * e.g. FLUX:        image_size="landscape_4_3" → "4:3"
+ *      Nano Banana:  aspect_ratio="16:9"       → "16:9"
+ */
+export function resolveAspectRatio(
+  modelId: string,
+  modelParams: Record<string, string | number | boolean>,
+): string {
+  const card = MODEL_CARDS.find(c => c.id === modelId);
+  if (!card) return '16:9';
+
+  // Find the aspect ratio parameter (by aspectRatioParam or fallback to 'aspect_ratio')
+  const paramId = card.aspectRatioParam || 'aspect_ratio';
+  const arParam = card.parameters.find(p => p.id === paramId);
+  if (!arParam) return card.defaultAspectRatio;
+
+  // Get current value from modelParams
+  const value = modelParams[paramId];
+  if (!value) return card.defaultAspectRatio;
+
+  // If value is already canonical format (N:M), return directly
+  if (typeof value === 'string' && /^\d+:\d+$/.test(value)) return value;
+
+  // Reverse-lookup: provider value → our label
+  const option = arParam.options?.find(o => o.value === value);
+  return option?.label ?? card.defaultAspectRatio;
+}
 
 export const MODEL_CARDS: ModelCard[] = [
   // ─── Image: Nano Banana 2 (fal.ai) ──────────────────────────
@@ -123,6 +198,7 @@ export const MODEL_CARDS: ModelCard[] = [
     name: 'Nano Banana 2',
     provider: 'fal.ai',
     kind: 'image',
+    defaultAspectRatio: '16:9',
     description: 'State-of-the-art fast image generation and editing.',
     parameters: [
       {
@@ -162,6 +238,7 @@ export const MODEL_CARDS: ModelCard[] = [
     name: 'Nano Banana 2 Edit',
     provider: 'fal.ai',
     kind: 'image',
+    defaultAspectRatio: '16:9',
     description: 'Edit and composite images with text prompts.',
     parameters: [
       {
@@ -192,6 +269,8 @@ export const MODEL_CARDS: ModelCard[] = [
     name: 'FLUX Schnell',
     provider: 'fal.ai',
     kind: 'image',
+    defaultAspectRatio: '16:9',
+    aspectRatioParam: 'image_size',
     description: 'Ultra-fast image generation, ~1s per image.',
     parameters: [
       {
@@ -235,6 +314,8 @@ export const MODEL_CARDS: ModelCard[] = [
     name: 'FLUX Dev',
     provider: 'fal.ai',
     kind: 'image',
+    defaultAspectRatio: '16:9',
+    aspectRatioParam: 'image_size',
     description: 'High-quality image generation with great prompt following.',
     parameters: [
       {
@@ -289,6 +370,7 @@ export const MODEL_CARDS: ModelCard[] = [
     name: 'Sora 2 (Text)',
     provider: 'fal.ai',
     kind: 'video',
+    defaultAspectRatio: '16:9',
     description: 'Generate video from text prompts using OpenAI Sora 2.',
     parameters: [
       {
@@ -333,6 +415,7 @@ export const MODEL_CARDS: ModelCard[] = [
     name: 'Sora 2 (Image)',
     provider: 'fal.ai',
     kind: 'video',
+    defaultAspectRatio: '16:9',
     description: 'Animate a still image into video using Sora 2.',
     parameters: [
       {
@@ -380,6 +463,7 @@ export const MODEL_CARDS: ModelCard[] = [
     name: 'Kling 2.1 (Text)',
     provider: 'fal.ai',
     kind: 'video',
+    defaultAspectRatio: '16:9',
     description: 'Fast, cinematic text-to-video generation.',
     parameters: [
       {
@@ -411,6 +495,7 @@ export const MODEL_CARDS: ModelCard[] = [
     name: 'Kling 2.1 (Image)',
     provider: 'fal.ai',
     kind: 'video',
+    defaultAspectRatio: '16:9',
     description: 'Animate a still image into cinematic video.',
     parameters: [
       {
@@ -438,12 +523,273 @@ export const MODEL_CARDS: ModelCard[] = [
     input: { requiresPrompt: true, referenceImage: 'required', referenceMode: 'single' },
   },
 
+  // ─── Image: Recraft V4 Pro (fal.ai) ──────────────────────────
+  {
+    id: 'recraft-v4',
+    name: 'Recraft V4',
+    provider: 'fal.ai',
+    kind: 'image',
+    defaultAspectRatio: '16:9',
+    aspectRatioParam: 'image_size',
+    description: 'Designer-grade image generation with color control and text rendering.',
+    parameters: [
+      {
+        id: 'image_size',
+        label: 'Aspect Ratio',
+        type: 'select',
+        options: RECRAFT_ASPECT_RATIOS.map(r => ({ label: r.label, value: r.value })),
+        defaultValue: 'square_hd',
+      },
+    ],
+    defaultParams: {
+      image_size: 'square_hd',
+    },
+    input: { requiresPrompt: true, referenceImage: 'forbidden', referenceMode: 'none' },
+  },
+
+  // ─── Image: FLUX 2 Pro (fal.ai) ──────────────────────────────
+  {
+    id: 'flux-2-pro',
+    name: 'FLUX 2 Pro',
+    provider: 'fal.ai',
+    kind: 'image',
+    defaultAspectRatio: '4:3',
+    aspectRatioParam: 'image_size',
+    description: 'Latest FLUX flagship — high-quality image generation.',
+    parameters: [
+      {
+        id: 'image_size',
+        label: 'Aspect Ratio',
+        type: 'select',
+        options: FLUX2_ASPECT_RATIOS.map(r => ({ label: r.label, value: r.value })),
+        defaultValue: 'landscape_4_3',
+      },
+      {
+        id: 'safety_tolerance',
+        label: 'Safety Tolerance',
+        type: 'select',
+        options: [
+          { label: 'Strict (1)', value: '1' },
+          { label: 'Moderate (2)', value: '2' },
+          { label: 'Balanced (3)', value: '3' },
+          { label: 'Relaxed (4)', value: '4' },
+          { label: 'Permissive (5)', value: '5' },
+        ],
+        defaultValue: '2',
+      },
+    ],
+    defaultParams: {
+      image_size: 'landscape_4_3',
+      safety_tolerance: '2',
+    },
+    input: { requiresPrompt: true, referenceImage: 'forbidden', referenceMode: 'none' },
+  },
+  {
+    id: 'flux-2-pro-edit',
+    name: 'FLUX 2 Pro Edit',
+    provider: 'fal.ai',
+    kind: 'image',
+    defaultAspectRatio: '4:3',
+    aspectRatioParam: 'image_size',
+    description: 'Edit and transform images using FLUX 2 Pro.',
+    parameters: [
+      {
+        id: 'image_size',
+        label: 'Aspect Ratio',
+        type: 'select',
+        options: FLUX2_ASPECT_RATIOS.map(r => ({ label: r.label, value: r.value })),
+        defaultValue: 'landscape_4_3',
+      },
+      {
+        id: 'safety_tolerance',
+        label: 'Safety Tolerance',
+        type: 'select',
+        options: [
+          { label: 'Strict (1)', value: '1' },
+          { label: 'Moderate (2)', value: '2' },
+          { label: 'Balanced (3)', value: '3' },
+          { label: 'Relaxed (4)', value: '4' },
+          { label: 'Permissive (5)', value: '5' },
+        ],
+        defaultValue: '2',
+      },
+    ],
+    defaultParams: {
+      image_size: 'landscape_4_3',
+      safety_tolerance: '2',
+    },
+    input: { requiresPrompt: true, referenceImage: 'required', referenceMode: 'multi' },
+  },
+
+  // ─── Video: Veo 3 (fal.ai) ───────────────────────────────────
+  {
+    id: 'veo3-text-to-video',
+    name: 'Veo 3 (Text)',
+    provider: 'fal.ai',
+    kind: 'video',
+    defaultAspectRatio: '16:9',
+    description: 'Google Veo 3 text-to-video with audio generation.',
+    parameters: [
+      {
+        id: 'duration',
+        label: 'Duration',
+        type: 'select',
+        options: [
+          { label: '4s', value: '4s' },
+          { label: '6s', value: '6s' },
+          { label: '8s', value: '8s' },
+        ],
+        defaultValue: '8s',
+      },
+      {
+        id: 'aspect_ratio',
+        label: 'Aspect Ratio',
+        type: 'select',
+        options: VEO3_ASPECT_RATIOS.map(r => ({ label: r.label, value: r.value })),
+        defaultValue: '16:9',
+      },
+      {
+        id: 'resolution',
+        label: 'Resolution',
+        type: 'select',
+        options: [
+          { label: '720p', value: '720p' },
+          { label: '1080p', value: '1080p' },
+        ],
+        defaultValue: '720p',
+      },
+      {
+        id: 'generate_audio',
+        label: 'Generate Audio',
+        type: 'boolean',
+        defaultValue: true,
+        description: 'Include synthesized audio in the video.',
+      },
+    ],
+    defaultParams: {
+      duration: '8s',
+      aspect_ratio: '16:9',
+      resolution: '720p',
+      generate_audio: true,
+    },
+    input: { requiresPrompt: true, referenceImage: 'forbidden', referenceMode: 'none' },
+  },
+  {
+    id: 'veo3-fast-text-to-video',
+    name: 'Veo 3 Fast (Text)',
+    provider: 'fal.ai',
+    kind: 'video',
+    defaultAspectRatio: '16:9',
+    description: 'Google Veo 3 fast text-to-video — faster and more affordable.',
+    parameters: [
+      {
+        id: 'duration',
+        label: 'Duration',
+        type: 'select',
+        options: [
+          { label: '4s', value: '4s' },
+          { label: '6s', value: '6s' },
+          { label: '8s', value: '8s' },
+        ],
+        defaultValue: '8s',
+      },
+      {
+        id: 'aspect_ratio',
+        label: 'Aspect Ratio',
+        type: 'select',
+        options: VEO3_ASPECT_RATIOS.map(r => ({ label: r.label, value: r.value })),
+        defaultValue: '16:9',
+      },
+      {
+        id: 'resolution',
+        label: 'Resolution',
+        type: 'select',
+        options: [
+          { label: '720p', value: '720p' },
+          { label: '1080p', value: '1080p' },
+        ],
+        defaultValue: '720p',
+      },
+      {
+        id: 'generate_audio',
+        label: 'Generate Audio',
+        type: 'boolean',
+        defaultValue: true,
+        description: 'Include synthesized audio in the video.',
+      },
+    ],
+    defaultParams: {
+      duration: '8s',
+      aspect_ratio: '16:9',
+      resolution: '720p',
+      generate_audio: true,
+    },
+    input: { requiresPrompt: true, referenceImage: 'forbidden', referenceMode: 'none' },
+  },
+  {
+    id: 'veo3-image-to-video',
+    name: 'Veo 3 (Image)',
+    provider: 'fal.ai',
+    kind: 'video',
+    defaultAspectRatio: '16:9',
+    description: 'Google Veo 3 image-to-video — animate a still image.',
+    parameters: [
+      {
+        id: 'duration',
+        label: 'Duration',
+        type: 'select',
+        options: [
+          { label: '4s', value: '4s' },
+          { label: '6s', value: '6s' },
+          { label: '8s', value: '8s' },
+        ],
+        defaultValue: '8s',
+      },
+      {
+        id: 'aspect_ratio',
+        label: 'Aspect Ratio',
+        type: 'select',
+        options: [
+          { label: 'Auto', value: 'auto' },
+          { label: '16:9', value: '16:9' },
+          { label: '9:16', value: '9:16' },
+        ],
+        defaultValue: 'auto',
+      },
+      {
+        id: 'resolution',
+        label: 'Resolution',
+        type: 'select',
+        options: [
+          { label: '720p', value: '720p' },
+          { label: '1080p', value: '1080p' },
+        ],
+        defaultValue: '720p',
+      },
+      {
+        id: 'generate_audio',
+        label: 'Generate Audio',
+        type: 'boolean',
+        defaultValue: true,
+        description: 'Include synthesized audio in the video.',
+      },
+    ],
+    defaultParams: {
+      duration: '8s',
+      aspect_ratio: 'auto',
+      resolution: '720p',
+      generate_audio: true,
+    },
+    input: { requiresPrompt: true, referenceImage: 'required', referenceMode: 'single' },
+  },
+
   // ─── Audio ───────────────────────────────────────────────────
   {
     id: 'minimax-tts',
     name: 'MiniMax TTS',
     provider: 'MiniMax',
     kind: 'audio',
+    defaultAspectRatio: '1:1',
     description: 'High-quality Chinese and English text-to-speech.',
     parameters: [
       {
@@ -491,6 +837,7 @@ export const MODEL_CARDS: ModelCard[] = [
     name: 'ElevenLabs TTS',
     provider: 'ElevenLabs',
     kind: 'audio',
+    defaultAspectRatio: '1:1',
     description: 'Ultra-realistic voice synthesis with emotional range.',
     parameters: [
       {

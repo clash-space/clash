@@ -13,6 +13,7 @@ import ReactFlow, {
     Edge,
     Node,
     NodeChange,
+    useViewport,
 } from 'reactflow';
 import 'reactflow/dist/style.css';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -29,7 +30,9 @@ import {
     Square,
 } from '@phosphor-icons/react';
 import Link from 'next/link';
-import { Project } from '@generated/client';
+import type { InferSelectModel } from 'drizzle-orm';
+import type { projects } from '../../lib/db/app.schema';
+type Project = InferSelectModel<typeof projects>;
 import ChatbotCopilot from './ChatbotCopilot';
 import { updateProjectName } from '../actions';
 import VideoNode from './nodes/VideoNode';
@@ -125,6 +128,51 @@ const sanitizeNodes = (nodes: Node[]): Node[] => {
     });
 };
 
+function DebugNodeIds({ nodes }: { nodes: Node[] }) {
+    const { x, y, zoom } = useViewport();
+    const [expandedNode, setExpandedNode] = useState<string | null>(null);
+    return (
+        <div className="pointer-events-none absolute inset-0 overflow-hidden" style={{ zIndex: 9999 }}>
+            <div style={{ transform: `translate(${x}px, ${y}px) scale(${zoom})`, transformOrigin: '0 0' }}>
+                {nodes.map(node => {
+                    const d = node.data ?? {};
+                    const parts = [node.id];
+                    if (d.status) parts.push(d.status);
+                    if (d.pendingTask) parts.push(`task:${d.pendingTask.slice(0, 8)}`);
+                    if (d.src) parts.push('src:✓');
+                    if (d.description) parts.push('desc:✓');
+                    if (d.error) parts.push(`err:${d.error.slice(0, 20)}`);
+                    if (d.modelId) parts.push(d.modelId);
+                    if (d._log?.length) parts.push(`log:${d._log.length}`);
+                    const isExpanded = expandedNode === node.id;
+                    return (
+                        <div
+                            key={`dbg-${node.id}`}
+                            className="pointer-events-auto absolute cursor-pointer"
+                            style={{
+                                left: node.position.x,
+                                top: node.position.y - 20,
+                            }}
+                            onClick={() => setExpandedNode(isExpanded ? null : node.id)}
+                        >
+                            <span className="rounded bg-black/85 px-1.5 py-0.5 font-mono text-[10px] text-green-400 whitespace-nowrap select-all">
+                                {parts.join(' | ')}
+                            </span>
+                            {isExpanded && d._log?.length > 0 && (
+                                <div className="mt-1 rounded bg-black/90 p-2 font-mono text-[10px] text-gray-300 max-w-[400px] max-h-[200px] overflow-auto">
+                                    {d._log.map((entry: string, i: number) => (
+                                        <div key={i} className={entry.includes('FAILED') ? 'text-red-400' : ''}>{entry}</div>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+                    );
+                })}
+            </div>
+        </div>
+    );
+}
+
 export default function ProjectEditor({ project, initialPrompt }: ProjectEditorProps) {
     // IMPORTANT: Start with empty canvas - Loro sync will populate from server
     // This ensures Loro is the single source of truth for nodes/edges
@@ -145,11 +193,12 @@ export default function ProjectEditor({ project, initialPrompt }: ProjectEditorP
     }, [setNodesInternal]);
     const [activeMenu, setActiveMenu] = useState<string | null>(null);
     const [projectName, setProjectName] = useState(project.name);
+    const [showDebugIds, setShowDebugIds] = useState(false);
 
     // Loro CRDT sync
     const loroSync = useLoroSync({
         projectId: project.id,
-        syncServerUrl: process.env.NEXT_PUBLIC_SYNC_URL || 'ws://localhost:8789',
+        syncServerUrl: process.env.NEXT_PUBLIC_SYNC_URL || 'ws://localhost:8787',
         onNodesChange: (syncedNodes) => {
             // Loro is the SINGLE SOURCE OF TRUTH - use its state directly
             // Only preserve spatial state during active interaction (drag/resize).
@@ -627,6 +676,12 @@ export default function ProjectEditor({ project, initialPrompt }: ProjectEditorP
                         loroSync.undo();
                     }
                 }
+            }
+
+            // Ctrl/Cmd+Shift+D: toggle debug node IDs (dev only)
+            if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key === 'D' && process.env.NODE_ENV === 'development') {
+                e.preventDefault();
+                setShowDebugIds(v => !v);
             }
         };
 
@@ -1477,6 +1532,9 @@ export default function ProjectEditor({ project, initialPrompt }: ProjectEditorP
                                         style={{ backgroundColor: 'var(--canvas-bg)' }}
                                     />
 
+                                    {/* Debug: show node IDs as selectable labels */}
+                                    {showDebugIds && <DebugNodeIds nodes={nodes} />}
+
                                 </ReactFlow>
                             </div>
 
@@ -1592,6 +1650,26 @@ export default function ProjectEditor({ project, initialPrompt }: ProjectEditorP
                                      >
                                          <ArrowClockwise className="h-5 w-5" weight="bold" />
                                      </motion.button>
+
+                                     {/* Debug: toggle node IDs (dev only) */}
+                                     {process.env.NODE_ENV === 'development' && (
+                                         <>
+                                         <div className="w-8 h-px bg-slate-200" />
+                                         <motion.button
+                                             onClick={() => setShowDebugIds(v => !v)}
+                                             className={`flex h-10 w-10 items-center justify-center rounded-full transition-all ${
+                                                 showDebugIds
+                                                 ? "bg-green-600 text-white shadow-md"
+                                                 : "bg-transparent text-slate-400 hover:bg-slate-100 hover:text-slate-900"
+                                             }`}
+                                             whileHover={{ scale: 1.05 }}
+                                             whileTap={{ scale: 0.95 }}
+                                             title="Toggle Node IDs"
+                                         >
+                                             <span className="font-mono text-xs font-bold">ID</span>
+                                         </motion.button>
+                                         </>
+                                     )}
                                  </div>
                             </div>
 

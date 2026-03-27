@@ -9,6 +9,7 @@ vi.mock("agents", () => ({
 // Mock cloudflare:workers protocol imports
 vi.mock("cloudflare:workers", () => ({
   WorkflowEntrypoint: class MockWorkflowEntrypoint {},
+  WorkerEntrypoint: class MockWorkerEntrypoint {},
   DurableObject: class MockDurableObject {},
 }));
 
@@ -57,6 +58,7 @@ function makeEnv(overrides: Partial<Env> = {}): Env {
     GENERATION_WORKFLOW: {
       create: vi.fn().mockResolvedValue({ id: "wf-id" }),
     } as any,
+    RENDER_CONTAINER: {} as any,
     DB: {
       prepare: vi.fn().mockReturnValue({
         bind: vi.fn().mockReturnValue({
@@ -68,7 +70,7 @@ function makeEnv(overrides: Partial<Env> = {}): Env {
     } as any,
     WORKER_PUBLIC_URL: "https://api.example.com",
     ...overrides,
-  };
+  } as Env;
 }
 
 describe("Hono routes", () => {
@@ -87,7 +89,7 @@ describe("Hono routes", () => {
     it("returns 200 { status: 'ok' }", async () => {
       const res = await app.request("/health", {}, env);
       expect(res.status).toBe(200);
-      const json = await res.json();
+      const json: any = await res.json();
       expect(json).toEqual({ status: "ok" });
     });
   });
@@ -132,7 +134,7 @@ describe("Hono routes", () => {
       const res = await app.request(req, {}, env);
       expect(res.status).toBe(200);
 
-      const json = await res.json();
+      const json: any = await res.json();
       expect(json.storageKey).toMatch(/^projects\/proj-1\/assets\//);
       expect(json.url).toMatch(/^https:\/\/api\.example\.com\/assets\//);
 
@@ -190,7 +192,7 @@ describe("Hono routes", () => {
       );
 
       expect(res.status).toBe(200);
-      const json = await res.json();
+      const json: any = await res.json();
       expect(json.ids).toHaveLength(3);
       expect(json.project_id).toBe("proj-1");
     });
@@ -216,7 +218,7 @@ describe("Hono routes", () => {
       );
 
       expect(res.status).toBe(200);
-      const json = await res.json();
+      const json: any = await res.json();
       expect(json.task_id).toBeDefined();
       expect(json.status).toBe("pending");
     });
@@ -259,7 +261,7 @@ describe("Hono routes", () => {
       );
 
       expect(res.status).toBe(200);
-      const json = await res.json();
+      const json: any = await res.json();
       expect(json.status).toBe("completed");
     });
 
@@ -327,7 +329,7 @@ describe("Hono routes", () => {
       const res = await app.request("/api/tasks/task-123", {}, env);
       expect(res.status).toBe(200);
 
-      const json = await res.json();
+      const json: any = await res.json();
       expect(json.task_id).toBe("task-123");
       expect(json.status).toBe("completed");
       expect(json.result_url).toBe("https://r2.example.com/img.png");
@@ -365,7 +367,7 @@ describe("Hono routes", () => {
       const res = await app.request(req, undefined, env, executionCtx as any);
 
       expect(res.status).toBe(200);
-      const json = await res.json();
+      const json: any = await res.json();
       expect(json.task_id).toBe("task-desc");
       expect(json.status).toBe("generating");
     });

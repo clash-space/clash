@@ -6,6 +6,5 @@ CREATE TABLE `asset` (
 	`url` text NOT NULL,
 	`type` text NOT NULL,
 	`metadata` text,
-	`created_at` integer DEFAULT (strftime('%s', 'now')),
-	-- FK removed: api-cf creates assets independently
+	`created_at` integer DEFAULT (strftime('%s', 'now'))
 );

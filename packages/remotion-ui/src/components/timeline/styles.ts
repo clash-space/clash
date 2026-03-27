@@ -1,54 +1,54 @@
 /**
  * Timeline Design System
- * 统一的样式常量和设计 token
+ * Light theme aligned with main app (white bg, slate borders, red/coral accent)
  */
 
 export const colors = {
-  // 背景层次（增强深度感）
+  // 背景层次（亮色主题）
   bg: {
-    primary: '#1a1a1a',     // 主背景（更深）
-    secondary: '#232323',   // 次级背景
-    elevated: '#2a2a2a',    // 悬浮元素
-    hover: '#2f2f2f',       // 悬停状态
-    selected: '#2d2d3a',    // 选中状态背景（带蓝色调）
+    primary: '#ffffff',     // 主背景
+    secondary: '#f8fafc',   // 次级背景 (slate-50)
+    elevated: '#f1f5f9',    // 悬浮元素 (slate-100)
+    hover: '#e2e8f0',       // 悬停状态 (slate-200)
+    selected: '#fff1f0',    // 选中状态背景（带品牌色调）
   },
 
-  // 强调色（降低饱和度，更专业）
+  // 强调色（与主应用品牌色对齐）
   accent: {
-    primary: '#4A9EFF',     // 主色（蓝色）
-    success: '#52C41A',     // 成功（绿色）
-    warning: '#FAAD14',     // 警告（橙色）
-    danger: '#F5222D',      // 危险（红色）
+    primary: '#FF6B50',     // 主色（品牌红/珊瑚）
+    success: '#22c55e',     // 成功（green-500）
+    warning: '#f59e0b',     // 警告（amber-500）
+    danger: '#ef4444',      // 危险（red-500）
   },
 
-  // 素材类型色（统一饱和度）
+  // 素材类型色（柔和，适配亮色背景）
   item: {
-    video: '#4A9EFF',       // 蓝
-    audio: '#FA8C16',       // 橙
-    image: '#9254DE',       // 紫
-    text: '#52C41A',        // 绿
-    solid: '#8C8C8C',       // 灰
+    video: '#6366f1',       // 靛蓝 (indigo-500)
+    audio: '#f59e0b',       // 琥珀 (amber-500)
+    image: '#a855f7',       // 紫 (purple-500)
+    text: '#22c55e',        // 绿 (green-500)
+    solid: '#94a3b8',       // 灰 (slate-400)
   },
 
   // 文字层次
   text: {
-    primary: '#FFFFFF',
-    secondary: '#A6A6A6',
-    tertiary: '#666666',
-    disabled: '#404040',
+    primary: '#0f172a',     // slate-900
+    secondary: '#475569',   // slate-600
+    tertiary: '#94a3b8',    // slate-400
+    disabled: '#cbd5e1',    // slate-300
   },
 
   // 边框
   border: {
-    default: '#3a3a3a',
-    active: '#4A9EFF',
-    hover: '#505050',
+    default: '#e2e8f0',     // slate-200
+    active: '#FF6B50',      // 品牌色
+    hover: '#cbd5e1',       // slate-300
   },
 
   // 辅助线和指示器
   guide: {
-    snap: '#FAAD14',        // 吸附辅助线（黄色）
-    insert: '#4A9EFF',      // 插入指示线（蓝色）
+    snap: '#f59e0b',        // 吸附辅助线（琥珀）
+    insert: '#FF6B50',      // 插入指示线（品牌色）
   }
 } as const;
 
@@ -62,9 +62,9 @@ export const spacing = {
 } as const;
 
 export const borderRadius = {
-  sm: 2,
-  md: 4,
-  lg: 6,
+  sm: 4,
+  md: 6,
+  lg: 8,
   full: 9999,
 } as const;
 
@@ -79,8 +79,8 @@ export const zIndex = {
 
 export const typography = {
   fontFamily: {
-    sans: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
-    mono: '"SF Mono", Monaco, "Cascadia Code", "Roboto Mono", Consolas, monospace',
+    sans: 'Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+    mono: '"JetBrains Mono", "SF Mono", Monaco, Consolas, monospace',
   },
   fontSize: {
     xs: 11,
@@ -98,43 +98,36 @@ export const typography = {
 } as const;
 
 export const timeline = {
-  // 布局尺寸
   headerHeight: 48,
   rulerHeight: 32,
   trackHeight: 72,
   trackLabelWidth: 180,
 
-  // 素材项
-  itemMinWidth: 30,        // 最小宽度（对应 15 帧 * 2px）
-  itemVerticalPadding: 6,  // 上下间距
-  itemBorderRadius: 4,
+  itemMinWidth: 30,
+  itemVerticalPadding: 6,
+  itemBorderRadius: 6,
 
-  // 播放头
   playheadWidth: 2,
   playheadTriangleSize: 12,
 
-  // 缩放
   zoomMin: 0.25,
   zoomMax: 5,
   zoomDefault: 1,
 
-  // 吸附
-  snapThreshold: 5,         // 吸附阈值（帧数）
-  snapGridInterval: 5,      // 网格间隔（帧数）
+  snapThreshold: 5,
+  snapGridInterval: 5,
 
-  // 调整大小
-  resizeHandleWidth: 8,    // 边缘可拖拽区域宽度
+  resizeHandleWidth: 8,
 
-  // 滚动
   scrollbarThickness: 12,
 } as const;
 
 export const shadows = {
-  sm: '0 1px 2px rgba(0, 0, 0, 0.3)',
-  md: '0 2px 4px rgba(0, 0, 0, 0.4)',
-  lg: '0 4px 8px rgba(0, 0, 0, 0.5)',
-  selected: '0 0 0 2px #4A9EFF, 0 4px 12px rgba(74, 158, 255, 0.3)',
-  hover: '0 2px 8px rgba(0, 0, 0, 0.4)',
+  sm: '0 1px 2px rgba(0, 0, 0, 0.05)',
+  md: '0 2px 4px rgba(0, 0, 0, 0.08)',
+  lg: '0 4px 8px rgba(0, 0, 0, 0.1)',
+  selected: `0 0 0 2px #FF6B50, 0 4px 12px rgba(255, 107, 80, 0.2)`,
+  hover: '0 2px 8px rgba(0, 0, 0, 0.08)',
 } as const;
 
 export const transitions = {
@@ -143,7 +136,6 @@ export const transitions = {
   slow: 'all 0.3s ease',
 } as const;
 
-// 动画配置（用于 framer-motion）
 export const animations = {
   spring: {
     type: 'spring' as const,
@@ -161,7 +153,6 @@ export const animations = {
   },
 } as const;
 
-// 辅助函数：根据素材类型获取颜色
 export function getItemColor(type: 'video' | 'audio' | 'image' | 'text' | 'solid', customColor?: string): string {
   if (type === 'solid' && customColor) {
     return customColor;
@@ -169,9 +160,7 @@ export function getItemColor(type: 'video' | 'audio' | 'image' | 'text' | 'solid
   return colors.item[type];
 }
 
-// 辅助函数：生成带透明度的颜色
 export function withOpacity(color: string, opacity: number): string {
-  // 简单的 hex 转 rgba（假设输入是 #RRGGBB 格式）
   const hex = color.replace('#', '');
   const r = parseInt(hex.substring(0, 2), 16);
   const g = parseInt(hex.substring(2, 4), 16);

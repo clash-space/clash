@@ -24,7 +24,7 @@ export async function GET(
         }
 
         // Forward to api-cf thumbnail endpoint
-        const apiCfUrl = process.env.API_CF_URL || 'http://localhost:8789';
+        const apiCfUrl = process.env.API_CF_URL || 'http://localhost:8787';
         const httpLoroUrl = apiCfUrl;
 
         const thumbnailUrl = `${httpLoroUrl}/thumbnails/${objectKey}`;
