@@ -1,10 +1,11 @@
 import * as jose from "jose";
 
-const BASE_URL = "https://api-beijing.klingai.com/v1/videos/image2video";
+const DEFAULT_KLING_URL = "https://api-beijing.klingai.com/v1/videos/image2video";
 
 interface KlingConfig {
   accessKey: string;
   secretKey: string;
+  apiUrl?: string;
 }
 
 interface KlingGenerateParams {
@@ -69,7 +70,8 @@ export async function createVideoTask(
     payload.cfg_scale = params.cfgScale;
   }
 
-  const resp = await fetch(BASE_URL, {
+  const baseUrl = config.apiUrl || DEFAULT_KLING_URL;
+  const resp = await fetch(baseUrl, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${token}`,
@@ -104,7 +106,8 @@ export async function pollVideoTask(
   maxWaitMs = 300_000
 ): Promise<{ url: string; duration: number; coverImageUrl?: string }> {
   const token = await generateJwtToken(config);
-  const queryUrl = `${BASE_URL}/${taskId}`;
+  const baseUrl = config.apiUrl || DEFAULT_KLING_URL;
+  const queryUrl = `${baseUrl}/${taskId}`;
   const start = Date.now();
 
   while (Date.now() - start < maxWaitMs) {

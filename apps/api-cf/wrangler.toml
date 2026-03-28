@@ -70,8 +70,11 @@ bucket_name = "master-clash-assets"
 # Environment variables (set via `wrangler secret put`)
 # GOOGLE_API_KEY
 # GOOGLE_AI_STUDIO_BASE_URL
+# CF_AIG_TOKEN
+# CF_AIG_OPENAI_URL
 # KLING_ACCESS_KEY
 # KLING_SECRET_KEY
+# KLING_API_URL (optional, defaults to Beijing endpoint)
 # R2_PUBLIC_URL
 # JWT_SECRET
 # BETTER_AUTH_ORIGIN

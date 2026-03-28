@@ -228,7 +228,7 @@ export class SupervisorAgent extends AIChatAgent<Env> {
 
     const openai = createOpenAI({
       apiKey: this.env.CF_AIG_TOKEN,
-      baseURL: "https://gateway.ai.cloudflare.com/v1/44af79e51582ca20c9003eb926540242/clash/openai",
+      baseURL: this.env.CF_AIG_OPENAI_URL,
     });
     const model = openai.chat("gpt-5");
 

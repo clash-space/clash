@@ -83,7 +83,7 @@ describe("GenerationWorkflow pipeline logic", () => {
       expect(result.requestId).toBe("fal-req-123");
 
       const description = await step.do("describe", async () => {
-        return await generateDescription("token", result.url);
+        return await generateDescription("token", result.url, "https://gateway.example.com/openai");
       });
       expect(description).toBe("A beautiful image");
 
@@ -108,7 +108,7 @@ describe("GenerationWorkflow pipeline logic", () => {
       // Simulate: description step catches error and returns null
       let description: string | null;
       try {
-        description = await generateDescription("token", "data:image/png;base64,xxx");
+        description = await generateDescription("token", "data:image/png;base64,xxx", "https://gateway.example.com/openai");
       } catch {
         description = null;
       }
@@ -163,7 +163,7 @@ describe("GenerationWorkflow pipeline logic", () => {
       // Reset mock to default (may have been overridden by previous tests)
       (generateDescription as any).mockResolvedValue("A test description");
 
-      const description = await generateDescription("token", "data:image/png;base64,xxx");
+      const description = await generateDescription("token", "data:image/png;base64,xxx", "https://gateway.example.com/openai");
       expect(description).toBe("A test description");
 
       await updateAssetStatus({} as any, "task-3", {

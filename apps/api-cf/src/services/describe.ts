@@ -1,19 +1,19 @@
 import { createOpenAI } from "@ai-sdk/openai";
 import { generateText } from "ai";
 
-const OPENAI_GATEWAY_URL = "https://gateway.ai.cloudflare.com/v1/44af79e51582ca20c9003eb926540242/clash/openai";
-
 /**
  * Generate a description for an image or video using GPT-4o via AI Gateway (unified billing).
  * @param cfAigToken Cloudflare AI Gateway token
+ * @param cfAigOpenaiUrl AI Gateway OpenAI base URL
  */
 export async function generateDescription(
   cfAigToken: string,
   assetUrl: string,
+  cfAigOpenaiUrl: string,
 ): Promise<string> {
   const openai = createOpenAI({
     apiKey: cfAigToken,
-    baseURL: OPENAI_GATEWAY_URL,
+    baseURL: cfAigOpenaiUrl,
   });
 
   let imageContent: { type: "image"; image: URL } | { type: "image"; image: Uint8Array; mimeType: string };
