@@ -1,6 +1,8 @@
 import { useEffect, useRef, useCallback, useState } from 'react';
 import { LoroDoc, UndoManager } from 'loro-crdt';
 import { Node, Edge } from 'reactflow';
+import type { PresenceClient, ActivityMessage } from '@clash/shared-types';
+import { isSidebandMessage } from '@clash/shared-types';
 
 interface LoroSyncOptions {
   projectId: string;
@@ -8,6 +10,8 @@ interface LoroSyncOptions {
   onNodesChange?: (nodes: Node[]) => void;
   onEdgesChange?: (edges: Edge[]) => void;
   onTaskUpdate?: (taskId: string, taskData: any) => void;
+  onPresenceChange?: (clients: PresenceClient[]) => void;
+  onActivity?: (activity: ActivityMessage) => void;
 }
 
 export interface UseLoroSyncReturn {
@@ -115,6 +119,8 @@ export function useLoroSync(options: LoroSyncOptions): UseLoroSyncReturn {
     onNodesChange,
     onEdgesChange,
     onTaskUpdate,
+    onPresenceChange,
+    onActivity,
   } = options;
 
   const [doc] = useState(() => new LoroDoc());
@@ -346,8 +352,24 @@ export function useLoroSync(options: LoroSyncOptions): UseLoroSyncReturn {
     };
 
     ws.onmessage = async (event) => {
-      // Skip non-binary messages (e.g. Agents SDK protocol JSON)
-      if (typeof event.data === 'string') return;
+      // Text messages = JSON sideband (presence/activity)
+      if (typeof event.data === 'string') {
+        try {
+          const msg = JSON.parse(event.data);
+          if (isSidebandMessage(msg)) {
+            if (msg.type === 'presence' && onPresenceChange) {
+              onPresenceChange(msg.clients);
+            } else if (msg.type === 'activity' && onActivity) {
+              onActivity(msg);
+            }
+          }
+        } catch {
+          // Ignore unparseable text messages
+        }
+        return;
+      }
+
+      // Binary messages = Loro CRDT updates
       try {
         const update = new Uint8Array(event.data);
         doc.import(update);

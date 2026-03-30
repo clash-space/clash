@@ -1,0 +1,29 @@
+{
+  "name": "@clash/cli",
+  "version": "0.1.0",
+  "description": "Clash CLI — manage projects and canvas from your terminal",
+  "type": "module",
+  "bin": {
+    "clash": "./bin/clash.mjs"
+  },
+  "scripts": {
+    "start": "tsx src/index.ts",
+    "typecheck": "tsc --noEmit",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "@clash/shared-layout": "workspace:^",
+    "@clash/shared-types": "workspace:*",
+    "commander": "^13.0.0",
+    "loro-crdt": "^1.10.3",
+    "tsx": "^4.19.0",
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "@types/ws": "^8.5.0",
+    "typescript": "^5.0.0"
+  },
+  "files": [
+    "dist"
+  ]
+}

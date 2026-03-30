@@ -6,10 +6,10 @@ import { useAgentChat } from '@cloudflare/ai-chat/react';
 
 const resolveApiBaseUrl = () => {
   if (process.env.NEXT_PUBLIC_API_URL) return process.env.NEXT_PUBLIC_API_URL;
-  if (typeof window === 'undefined') return 'http://localhost:8787';
+  if (typeof window === 'undefined') return 'http://localhost:8789';
   const { hostname } = window.location;
   const isLocal = hostname === 'localhost' || hostname === '127.0.0.1';
-  return isLocal ? 'http://localhost:8787' : window.location.origin;
+  return isLocal ? 'http://localhost:8789' : window.location.origin;
 };
 
 const API_HOST = resolveApiBaseUrl().replace(/^https?:\/\//, '');

@@ -7,6 +7,52 @@ type BetterAuthGetSessionResponse =
     }
   | null;
 
+/**
+ * SHA-256 hash a string, returning hex.
+ */
+async function sha256(input: string): Promise<string> {
+  const data = new TextEncoder().encode(input);
+  const hashBuffer = await crypto.subtle.digest("SHA-256", data);
+  return Array.from(new Uint8Array(hashBuffer))
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+}
+
+/**
+ * Authenticate via API token (clsh_*). Returns userId or null.
+ * Checks Authorization header first, then ?token= query param (for WebSocket).
+ */
+export async function getUserIdFromApiToken(request: Request, env: Env): Promise<string | null> {
+  let token: string | null = null;
+
+  const authHeader = request.headers.get("authorization") ?? "";
+  if (authHeader.startsWith("Bearer clsh_")) {
+    token = authHeader.slice(7); // strip "Bearer "
+  }
+
+  if (!token) {
+    const url = new URL(request.url);
+    const queryToken = url.searchParams.get("token");
+    if (queryToken?.startsWith("clsh_")) {
+      token = queryToken;
+    }
+  }
+
+  if (!token) return null;
+  const hash = await sha256(token);
+  const { results } = await env.DB.prepare(
+    "SELECT user_id FROM api_token WHERE token_hash = ? LIMIT 1"
+  ).bind(hash).all();
+
+  if (!results?.[0]) return null;
+  const userId = (results[0] as any).user_id as string;
+
+  // Fire-and-forget: update last_used_at
+  env.DB.prepare("UPDATE api_token SET last_used_at = unixepoch() WHERE token_hash = ?").bind(hash).run();
+
+  return userId;
+}
+
 export async function getUserIdFromBetterAuth(request: Request, env: Env): Promise<string | null> {
   const cookie = request.headers.get("cookie") ?? "";
   const authorization = request.headers.get("authorization") ?? "";

@@ -1,0 +1,17 @@
+{
+  "id": "clash-video-production",
+  "name": "Clash Video Production",
+  "version": "0.1.0",
+  "description": "AI-powered video production with Clash — manage projects, edit canvas, generate assets",
+  "skills": [
+    { "name": "director", "path": "skills/director/SKILL.md" },
+    { "name": "project-management", "path": "skills/project-management/SKILL.md" },
+    { "name": "canvas-editing", "path": "skills/canvas-editing/SKILL.md" },
+    { "name": "generation", "path": "skills/generation/SKILL.md" },
+    { "name": "storyboard", "path": "skills/storyboard/SKILL.md" }
+  ],
+  "commands": [
+    { "name": "setup", "path": "commands/setup.md" }
+  ],
+  "hooks": "hooks/hooks.json"
+}

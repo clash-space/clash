@@ -5,6 +5,7 @@
  * - Loro CRDT sync (binary WebSocket messages)
  * - Task submission (NodeProcessor) and polling (TaskPolling)
  * - Periodic snapshot persistence to D1
+ * - Collaboration visibility (presence + activity sideband messages)
  *
  * Does NOT handle AI chat — that responsibility lives in SupervisorAgent.
  *
@@ -23,6 +24,7 @@ import { processPendingNodes } from "../loro/NodeProcessor";
 import { pollNodeTasks } from "../loro/TaskPolling";
 import { updateNodeData } from "../loro/NodeUpdater";
 import { authenticateRequest } from "../loro/auth";
+import type { ClientInfo, ClientType, PresenceMessage, ActivityMessage, ActivityAction } from "@clash/shared-types";
 
 /** Alarm intervals in milliseconds */
 const SNAPSHOT_INTERVAL_MS = 300_000; // 5 minutes
@@ -40,6 +42,12 @@ export class ProjectRoom extends DurableObject<Env> {
   private needsSave = false;
   private saveDebounceTimer: ReturnType<typeof setTimeout> | null = null;
   private lastSnapshotTime = 0;
+
+  /** Connected client identity map for presence tracking. */
+  private clients: Map<WebSocket, ClientInfo> = new Map();
+
+  /** Throttle activity broadcasts: nodeId → last broadcast timestamp */
+  private activityThrottle: Map<string, number> = new Map();
 
   // ─── Fetch: entry point for all requests ─────────────────────
 
@@ -73,13 +81,29 @@ export class ProjectRoom extends DurableObject<Env> {
 
     // Skip auth for internal agent connections
     const isInternal = request.headers.get("x-internal-agent") === "true";
+    let clientType: ClientType = "browser";
+    let userName = "User";
+    let userAvatar: string | undefined;
+
     if (!isInternal) {
       try {
-        await authenticateRequest(request, this.env, projectId);
+        const authResult = await authenticateRequest(request, this.env, projectId);
+        userName = authResult.userName ?? "User";
+        userAvatar = authResult.userAvatar;
+
+        // Detect client type from header
+        const clientTypeHeader = request.headers.get("x-client-type");
+        if (clientTypeHeader === "cli") {
+          clientType = "cli";
+          userName = authResult.userName ?? "CLI Agent";
+        }
       } catch (error) {
         log.error("Auth failed:", error);
         return new Response("Unauthorized", { status: 401 });
       }
+    } else {
+      clientType = "cli";
+      userName = "Internal Agent";
     }
 
     // Initialize on first connection
@@ -99,6 +123,17 @@ export class ProjectRoom extends DurableObject<Env> {
     const [client, server] = Object.values(pair);
     this.ctx.acceptWebSocket(server);
 
+    // Register client for presence
+    const wsId = crypto.randomUUID();
+    this.clients.set(server, {
+      id: wsId,
+      userId: "unknown", // filled from auth
+      clientType,
+      name: userName,
+      avatar: userAvatar,
+      connectedAt: Date.now(),
+    });
+
     // Send initial Loro state to new client
     try {
       const snapshot = this.doc.export({ mode: "snapshot" });
@@ -106,6 +141,9 @@ export class ProjectRoom extends DurableObject<Env> {
     } catch (error) {
       log.error("Failed to send initial state:", error);
     }
+
+    // Broadcast updated presence to all clients
+    this.broadcastPresence();
 
     return new Response(null, { status: 101, webSocket: client });
   }
@@ -140,6 +178,80 @@ export class ProjectRoom extends DurableObject<Env> {
     await this.taskPoll();
   }
 
+  // ─── Presence & Activity Broadcasts ─────────────────────────
+
+  /**
+   * Broadcast current presence to all connected clients.
+   */
+  private broadcastPresence(): void {
+    const msg: PresenceMessage = {
+      type: "presence",
+      clients: Array.from(this.clients.values()).map((c) => ({
+        id: c.id,
+        clientType: c.clientType,
+        userId: c.userId,
+        name: c.name,
+        avatar: c.avatar,
+      })),
+    };
+    this.broadcastText(JSON.stringify(msg));
+  }
+
+  /**
+   * Broadcast an activity event to all clients except the actor.
+   * Throttled: max 1 message per node per 500ms.
+   */
+  private broadcastActivity(
+    sender: WebSocket,
+    action: ActivityAction,
+    nodeId: string,
+    nodeType: string,
+    label: string
+  ): void {
+    const now = Date.now();
+    const throttleKey = `${nodeId}:${action}`;
+    const last = this.activityThrottle.get(throttleKey) ?? 0;
+    if (now - last < 500) return;
+    this.activityThrottle.set(throttleKey, now);
+
+    const client = this.clients.get(sender);
+    const msg: ActivityMessage = {
+      type: "activity",
+      actor: {
+        clientType: client?.clientType ?? "browser",
+        name: client?.name ?? "Unknown",
+      },
+      action,
+      nodeId,
+      nodeType,
+      label,
+      timestamp: now,
+    };
+
+    const json = JSON.stringify(msg);
+    for (const ws of this.ctx.getWebSockets()) {
+      if (ws === sender) continue;
+      try {
+        ws.send(json);
+      } catch {
+        // Connection may have closed
+      }
+    }
+  }
+
+  /**
+   * Broadcast a JSON text message to all connected clients.
+   */
+  private broadcastText(text: string): void {
+    for (const ws of this.ctx.getWebSockets()) {
+      try {
+        ws.send(text);
+      } catch {
+        // Connection may have closed
+      }
+    }
+  }
+
   // ─── Hibernation WebSocket Handlers ──────────────────────────
 
   async webSocketMessage(ws: WebSocket, message: string | ArrayBuffer): Promise<void> {
@@ -164,6 +276,8 @@ export class ProjectRoom extends DurableObject<Env> {
   }
 
   async webSocketClose(ws: WebSocket, code: number, reason: string): Promise<void> {
+    this.clients.delete(ws);
+    this.broadcastPresence();
     try {
       ws.close(code, reason);
     } catch {
@@ -173,6 +287,8 @@ export class ProjectRoom extends DurableObject<Env> {
 
   async webSocketError(ws: WebSocket, error: unknown): Promise<void> {
     log.error("WebSocket error:", error);
+    this.clients.delete(ws);
+    this.broadcastPresence();
     try {
       ws.close(1011, "WebSocket error");
     } catch {
@@ -198,11 +314,43 @@ export class ProjectRoom extends DurableObject<Env> {
         if (this.initPromise) await this.initPromise;
 
         try {
+          // Snapshot node keys before import for activity diff
+          const nodesBefore = new Map<string, Record<string, any>>();
+          const nodesMap = this.doc.getMap("nodes");
+          for (const [id, raw] of nodesMap.entries()) {
+            nodesBefore.set(id, raw as Record<string, any>);
+          }
+
           this.doc.import(msg.data);
 
           // Broadcast to all other clients FIRST so they have the base state
           // before receiving any derived updates from processPendingNodes.
           this.broadcastBinary(msg.data, msg.sender);
+
+          // Detect activity: diff nodes before/after
+          const nodesAfter = nodesMap.entries();
+          const seenIds = new Set<string>();
+          for (const [id, raw] of nodesAfter) {
+            seenIds.add(id);
+            const after = raw as Record<string, any>;
+            const before = nodesBefore.get(id);
+            if (!before) {
+              // New node added
+              const label = (after.data?.label as string) ?? (after.data?.name as string) ?? "";
+              this.broadcastActivity(msg.sender, "added", id, after.type ?? "text", label);
+            } else if (JSON.stringify(before) !== JSON.stringify(after)) {
+              // Node updated
+              const label = (after.data?.label as string) ?? (after.data?.name as string) ?? "";
+              this.broadcastActivity(msg.sender, "updated", id, after.type ?? "text", label);
+            }
+          }
+          // Check for deleted nodes
+          for (const [id, before] of nodesBefore) {
+            if (!seenIds.has(id)) {
+              const label = (before.data?.label as string) ?? (before.data?.name as string) ?? "";
+              this.broadcastActivity(msg.sender, "deleted", id, before.type ?? "text", label);
+            }
+          }
 
           // Check for pending nodes (may emit additional broadcasts)
           await this.guardedProcessPendingNodes();

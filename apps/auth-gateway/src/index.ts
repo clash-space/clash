@@ -13,7 +13,7 @@
  */
 
 import type { Env } from "./types";
-import { assertProjectOwner, getUserIdFromBetterAuth } from "./auth";
+import { assertProjectOwner, getUserIdFromApiToken, getUserIdFromBetterAuth } from "./auth";
 
 function json(data: unknown, status = 200): Response {
   return new Response(JSON.stringify(data), {
@@ -69,7 +69,9 @@ export default {
       const projectId = path.split("/")[2];
       if (!projectId) return new Response("Missing project ID", { status: 400 });
 
-      const userId = await getUserIdFromBetterAuth(request, env);
+      const userId =
+        (await getUserIdFromApiToken(request, env)) ??
+        (await getUserIdFromBetterAuth(request, env));
       if (!userId) return new Response("Unauthorized", { status: 401 });
 
       try {
@@ -97,6 +99,19 @@ export default {
       }
 
       return proxyToApiCf(request, env);
+    }
+
+    // Public REST API v1: /api/v1/* → api-cf (dual auth: API token + session)
+    if (path.startsWith("/api/v1/")) {
+      const userId =
+        (await getUserIdFromApiToken(request, env)) ??
+        (await getUserIdFromBetterAuth(request, env));
+      if (!userId) return json({ error: "Unauthorized" }, 401);
+
+      // Inject user ID for downstream handlers
+      const proxied = new Request(request);
+      proxied.headers.set("x-user-id", userId);
+      return proxyToApiCf(proxied, env);
     }
 
     // api-cf routes: /api/tasks/*, /api/describe, /api/generate/*

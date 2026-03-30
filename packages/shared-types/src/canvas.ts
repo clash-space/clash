@@ -188,3 +188,93 @@ export function buildPendingAssetNode(input: BuildPendingAssetNodeInput): Pendin
 
   return { id: nodeId, type: rfType, data };
 }
+
+// ─── Legacy / Agent-facing Constants ──────────────────────
+// Used by agents, CLI, and backend code that speaks in "image_gen"/"video_gen"
+// rather than the ReactFlow types above.
+
+/** Agent-facing node type names */
+export const NodeType = {
+  Text: "text",
+  Prompt: "prompt",
+  Group: "group",
+  Image: "image",
+  Video: "video",
+  ImageGen: "image_gen",
+  VideoGen: "video_gen",
+} as const;
+
+export const ALL_NODE_TYPES = Object.values(NodeType) as [string, ...string[]];
+export const CONTENT_NODE_TYPES = [NodeType.Text, NodeType.Prompt, NodeType.Group] as const;
+export type ContentNodeType = (typeof CONTENT_NODE_TYPES)[number];
+export const GENERATION_NODE_TYPES = [NodeType.ImageGen, NodeType.VideoGen] as const;
+export type GenerationNodeType = (typeof GENERATION_NODE_TYPES)[number];
+
+export function isGenerationNodeType(t: string): boolean {
+  return (GENERATION_NODE_TYPES as readonly string[]).includes(t);
+}
+
+/** @deprecated Use RF_NODE_TYPE.ActionBadge + ACTION_TYPE */
+export const FrontendNodeType = {
+  ImageGen: "action-badge",
+  VideoGen: "action-badge",
+} as const;
+
+export const ProposalType = {
+  Simple: "simple",
+  Generative: "generative",
+  Group: "group",
+} as const;
+
+/** Node lifecycle status — matches NodeStatusSchema values */
+export const TaskStatus = {
+  Idle: "idle",
+  Pending: "pending",
+  Generating: "generating",
+  Completed: "completed",
+  Failed: "failed",
+  NodeNotFound: "node_not_found",
+} as const;
+
+export const AssetStatus = {
+  Pending: "pending",
+  Processing: "processing",
+  Completed: "completed",
+  Failed: "failed",
+} as const;
+
+// ─── Loro-compatible Schemas ──────────────────────────────
+
+export const NodeInfoSchema = z.object({
+  id: z.string(),
+  type: z.string(),
+  position: z.object({ x: z.number(), y: z.number() }),
+  data: z.record(z.unknown()),
+  parent_id: z.string().nullish(),
+});
+
+export const EdgeInfoSchema = z.object({
+  id: z.string(),
+  source: z.string(),
+  target: z.string(),
+  source_handle: z.string().nullish(),
+  target_handle: z.string().nullish(),
+});
+export type EdgeInfo = z.infer<typeof EdgeInfoSchema>;
+
+export const ProjectContextSchema = z.object({
+  nodes: z.array(z.object({
+    id: z.string(),
+    type: z.string(),
+    data: z.record(z.unknown()),
+    position: z.object({ x: z.number().default(0), y: z.number().default(0) }),
+    parentId: z.string().nullish(),
+  })),
+  edges: z.array(z.object({
+    id: z.string(),
+    source: z.string(),
+    target: z.string(),
+    type: z.string().nullish(),
+  })),
+});
+export type ProjectContext = z.infer<typeof ProjectContextSchema>;

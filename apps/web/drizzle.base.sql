@@ -77,9 +77,23 @@ CREATE TABLE IF NOT EXISTS verificationToken (
     PRIMARY KEY (identifier, token)
 );
 
+-- API Tokens table (for CLI/agent access)
+CREATE TABLE IF NOT EXISTS api_token (
+    id TEXT PRIMARY KEY NOT NULL,
+    user_id TEXT NOT NULL,
+    name TEXT NOT NULL,
+    token_hash TEXT NOT NULL,
+    token_prefix TEXT NOT NULL,
+    last_used_at INTEGER,
+    created_at INTEGER DEFAULT (strftime('%s', 'now')),
+    FOREIGN KEY (user_id) REFERENCES user(id) ON DELETE CASCADE
+);
+
 -- Create indexes for better performance
 CREATE UNIQUE INDEX IF NOT EXISTS user_email_unique ON user(email);
 CREATE INDEX IF NOT EXISTS idx_message_project ON message(project_id);
 CREATE INDEX IF NOT EXISTS idx_asset_project ON asset(project_id);
 CREATE INDEX IF NOT EXISTS idx_session_user ON session(userId);
 CREATE INDEX IF NOT EXISTS idx_account_user ON account(userId);
+CREATE INDEX IF NOT EXISTS idx_api_token_user ON api_token(user_id);
+CREATE INDEX IF NOT EXISTS idx_api_token_hash ON api_token(token_hash);

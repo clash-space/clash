@@ -69,6 +69,10 @@ import {
 import { generateSemanticId } from '@/lib/utils/semanticId';
 import { useLoroSync } from '../hooks/useLoroSync';
 import { LoroSyncProvider } from './LoroSyncContext';
+import type { PresenceClient } from '@clash/shared-types';
+import PresenceBar from './PresenceBar';
+import ActivityToast, { useActivityToasts } from './ActivityToast';
+import NodeActivityIndicator, { useNodeHighlights } from './NodeActivityIndicator';
 import { MODEL_CARDS } from '@clash/shared-types';
 import { applyLayoutPatchesToLoro, collectLayoutNodePatches } from '../lib/loroNodeSync';
 import { calculateScaledDimensions } from './nodes/assetNodeSizing';
@@ -195,10 +199,20 @@ export default function ProjectEditor({ project, initialPrompt }: ProjectEditorP
     const [projectName, setProjectName] = useState(project.name);
     const [showDebugIds, setShowDebugIds] = useState(false);
 
+    // Collaboration visibility: presence + activity
+    const [presenceClients, setPresenceClients] = useState<PresenceClient[]>([]);
+    const { toasts, addToast, dismiss: dismissToast } = useActivityToasts();
+    const { highlights, addHighlight } = useNodeHighlights();
+
     // Loro CRDT sync
     const loroSync = useLoroSync({
         projectId: project.id,
-        syncServerUrl: process.env.NEXT_PUBLIC_SYNC_URL || 'ws://localhost:8787',
+        syncServerUrl: process.env.NEXT_PUBLIC_SYNC_URL || 'ws://localhost:8789',
+        onPresenceChange: setPresenceClients,
+        onActivity: (activity) => {
+            addToast(activity);
+            addHighlight(activity);
+        },
         onNodesChange: (syncedNodes) => {
             // Loro is the SINGLE SOURCE OF TRUTH - use its state directly
             // Only preserve spatial state during active interaction (drag/resize).
@@ -1472,6 +1486,19 @@ export default function ProjectEditor({ project, initialPrompt }: ProjectEditorP
 
                         {/* Main Canvas Area */}
                         <div className="flex flex-1 overflow-hidden relative">
+                            {/* Presence Bar - Top Right */}
+                            <div className="absolute top-6 right-6 z-[60] pointer-events-auto">
+                                <PresenceBar clients={presenceClients} />
+                            </div>
+
+                            {/* Activity Toasts */}
+                            <ActivityToast
+                                toasts={toasts}
+                                dismiss={dismissToast}
+                                sidebarWidth={sidebarWidth}
+                                isSidebarCollapsed={isSidebarCollapsed}
+                            />
+
                             {/* Logo + Project Name - No Background */}
                             <div id="editor-header" className="absolute top-6 left-[36px] z-[60] flex items-center pointer-events-auto">
                                 <Link href="/" className="group">
@@ -1531,6 +1558,9 @@ export default function ProjectEditor({ project, initialPrompt }: ProjectEditorP
                                         color="var(--canvas-dot)"
                                         style={{ backgroundColor: 'var(--canvas-bg)' }}
                                     />
+
+                                    {/* Collaboration: node-level activity indicators */}
+                                    <NodeActivityIndicator highlights={highlights} />
 
                                     {/* Debug: show node IDs as selectable labels */}
                                     {showDebugIds && <DebugNodeIds nodes={nodes} />}

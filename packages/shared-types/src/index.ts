@@ -13,18 +13,35 @@
  * - type *: TypeScript type definitions inferred from Zod
  */
 
-// Canvas types
+// Canvas types + constants (single source of truth)
 export {
+  // Schemas
   PositionSchema,
   NodeStatusSchema,
   NodeDataSchema,
   CanvasNodeSchema,
   CanvasEdgeSchema,
   LoroDocumentStateSchema,
+  NodeInfoSchema,
+  EdgeInfoSchema,
+  ProjectContextSchema,
+  // ReactFlow types
   RF_NODE_TYPE,
   ACTION_TYPE,
   AGENT_NODE_TYPE_MAP,
+  // Agent-facing types
+  NodeType,
+  ALL_NODE_TYPES,
+  CONTENT_NODE_TYPES,
+  GENERATION_NODE_TYPES,
+  isGenerationNodeType,
+  FrontendNodeType,
+  ProposalType,
+  TaskStatus,
+  AssetStatus,
+  // Builders
   buildPendingAssetNode,
+  // TypeScript types
   type Position,
   type NodeStatus,
   type NodeData,
@@ -33,6 +50,10 @@ export {
   type LoroDocumentState,
   type BuildPendingAssetNodeInput,
   type PendingAssetNode,
+  type ContentNodeType,
+  type GenerationNodeType,
+  type EdgeInfo,
+  type ProjectContext,
 } from './canvas';
 
 // Task types (atomic tasks + DO state)
@@ -71,6 +92,32 @@ export {
   type ModelCard,
 } from './models';
 
+// Loro CRDT operations (runtime only — types come from ./canvas)
+export {
+  listNodes,
+  readNode,
+  insertNode,
+  insertEdge,
+  listEdges,
+  createNode,
+  searchNodes,
+  findNodeByIdOrAssetId,
+  getNodeStatus,
+  deleteNode,
+  updateNode,
+  type BroadcastFn,
+  type NodeInfo,
+  type CreateNodeResult,
+  type TaskStatusResult,
+} from './loro-operations';
+
+// Loro sync client
+export { LoroSyncClient } from './loro-client';
+export type { LoroSyncClientOptions } from './loro-client';
+
+// Collaboration visibility (presence + activity)
+export * from './presence';
+
 // Pipeline types
 export {
   AssetStatusSchema,
@@ -80,7 +127,7 @@ export {
   PipelineDefSchema,
   TaskRuntimeStateSchema,
   PipelineRuntimeStateSchema,
-  type AssetStatus,
+  type AssetStatus as AssetStatusType,
   type TaskState,
   type PipelineTaskDef,
   type SuperstepDef,

@@ -3,6 +3,7 @@ import { cors } from "hono/cors";
 
 import type { Env } from "./config";
 import { api } from "./routes/index";
+import { v1Routes } from "./routes/v1/index";
 import { assetRoutes } from "./routes/assets";
 import { thumbnailRoutes } from "./routes/thumbnails";
 import { ProjectRoom } from "./agents/project-room";
@@ -40,6 +41,9 @@ app.all("/agents/supervisor/:room{.*}", async (c) => {
 app.route("/assets", assetRoutes);
 app.route("/upload", assetRoutes);
 app.route("/thumbnails", thumbnailRoutes);
+
+// ─── Public REST API v1 ─────────────────────────────────────
+app.route("/api/v1", v1Routes);
 
 // ─── REST API routes ────────────────────────────────────────
 app.route("/", api);

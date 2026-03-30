@@ -9,6 +9,10 @@ import type { Env } from '../config';
 export interface AuthResult {
   userId: string;
   projectId: string;
+  /** User display name (from Better Auth session, or "CLI Agent" for API tokens) */
+  userName?: string;
+  /** User avatar URL (from Better Auth session) */
+  userAvatar?: string;
 }
 
 interface JWTPayload {
@@ -102,6 +106,39 @@ async function assertProjectOwner(env: Env, projectId: string, userId: string): 
   }
 }
 
+/**
+ * SHA-256 hash a string, returning hex.
+ */
+async function sha256(input: string): Promise<string> {
+  const data = new TextEncoder().encode(input);
+  const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+  return Array.from(new Uint8Array(hashBuffer))
+    .map((b) => b.toString(16).padStart(2, '0'))
+    .join('');
+}
+
+/**
+ * Authenticate a request using API token (clsh_*), returning userId if valid.
+ */
+async function getUserIdFromApiToken(token: string, env: Env): Promise<string | null> {
+  if (!token.startsWith('clsh_')) return null;
+  if (!env.DB) return null;
+
+  const hash = await sha256(token);
+  const { results } = await env.DB
+    .prepare('SELECT user_id FROM api_token WHERE token_hash = ? LIMIT 1')
+    .bind(hash)
+    .all();
+
+  if (!results?.[0]) return null;
+  const userId = (results[0] as any).user_id as string;
+
+  // Fire-and-forget: update last_used_at
+  env.DB.prepare('UPDATE api_token SET last_used_at = unixepoch() WHERE token_hash = ?').bind(hash).run();
+
+  return userId;
+}
+
 export async function authenticateRequest(request: Request, env: Env, projectId: string): Promise<AuthResult> {
   // 1. Try BetterAuth session (cookie-based)
   const session = await getBetterAuthSession(request, env);
@@ -109,13 +146,29 @@ export async function authenticateRequest(request: Request, env: Env, projectId:
     if (env.ENVIRONMENT !== 'development') {
       await assertProjectOwner(env, projectId, session.user.id);
     }
-    return { userId: session.user.id, projectId };
+    return {
+      userId: session.user.id,
+      projectId,
+      userName: (session.user as any).name as string | undefined,
+      userAvatar: (session.user as any).image as string | undefined,
+    };
   }
 
-  // 2. Try JWT token (query param or Authorization header)
-  const token = extractTokenFromRequest(request);
-  if (token && env.JWT_SECRET) {
-    const payload = await verifyJWT(token, env.JWT_SECRET);
+  // 2. Try API token (clsh_*)
+  const rawToken = extractTokenFromRequest(request);
+  if (rawToken?.startsWith('clsh_')) {
+    const userId = await getUserIdFromApiToken(rawToken, env);
+    if (userId) {
+      if (env.ENVIRONMENT !== 'development') {
+        await assertProjectOwner(env, projectId, userId);
+      }
+      return { userId, projectId, userName: 'CLI Agent' };
+    }
+  }
+
+  // 3. Try JWT token (query param or Authorization header)
+  if (rawToken && env.JWT_SECRET) {
+    const payload = await verifyJWT(rawToken, env.JWT_SECRET);
     if (payload.projectId !== projectId) {
       throw new Error('Project ID mismatch');
     }
@@ -125,7 +178,7 @@ export async function authenticateRequest(request: Request, env: Env, projectId:
     return { userId: payload.sub, projectId: payload.projectId };
   }
 
-  // 3. Development mode fallback
+  // 4. Development mode fallback
   if (env.ENVIRONMENT === 'development') {
     return { userId: 'dev-user', projectId };
   }
