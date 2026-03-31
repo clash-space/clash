@@ -836,12 +836,12 @@ const PromptActionNode = ({ data, selected, id }: NodeProps) => {
     const configPanel = showPanel ? (
         <AnimatePresence>
             <div className="fixed inset-0 z-[9998]" onClick={() => { setShowPanel(false); setShowModelDropdown(false); }}>
-                {/* Backdrop — subtle */}
+                {/* Backdrop */}
                 <motion.div
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
                     exit={{ opacity: 0 }}
-                    className="absolute inset-0 bg-black/10"
+                    className="absolute inset-0 bg-white/30 backdrop-blur-sm"
                 />
 
                 {/* Bottom Panel */}
@@ -849,7 +849,7 @@ const PromptActionNode = ({ data, selected, id }: NodeProps) => {
                     initial={{ y: '100%', opacity: 0 }}
                     animate={{ y: 0, opacity: 1 }}
                     exit={{ y: '100%', opacity: 0 }}
-                    transition={{ type: 'spring', damping: 30, stiffness: 400 }}
+                    transition={{ type: 'spring', damping: 25, stiffness: 300 }}
                     className="absolute bottom-0 left-0 right-0 flex justify-center pointer-events-none"
                     onClick={(e) => e.stopPropagation()}
                 >
@@ -990,8 +990,8 @@ const PromptActionNode = ({ data, selected, id }: NodeProps) => {
             <div className="group relative">
                 {/* Compact Badge */}
                 <div
-                    className={`w-[200px] ${bgClass} rounded-xl overflow-hidden transition-all duration-200 hover:shadow-lg cursor-pointer ${
-                        selected ? `ring-2 ${ringClass} ring-offset-1` : 'ring-1 ring-gray-200'
+                    className={`w-[200px] ${bgClass} rounded-xl overflow-hidden transition-all duration-300 hover:shadow-lg cursor-pointer ${
+                        selected ? `ring-4 ${ringClass} ring-offset-2` : 'ring-1 ring-slate-200'
                     }`}
                     onClick={() => setShowPanel(!showPanel)}
                 >
@@ -1002,13 +1002,13 @@ const PromptActionNode = ({ data, selected, id }: NodeProps) => {
                         </div>
                         <div className="flex flex-col min-w-0 flex-1">
                             <input
-                                className={`bg-transparent text-xs font-bold ${colorClass} focus:outline-none w-full truncate nodrag`}
+                                className={`bg-transparent text-xs font-bold font-display ${colorClass} focus:outline-none w-full truncate nodrag`}
                                 value={label}
                                 onChange={handleLabelChange}
                                 placeholder="Action"
                                 onClick={(e) => e.stopPropagation()}
                             />
-                            <span className="text-[10px] text-gray-400 truncate leading-none">
+                            <span className="text-[10px] text-slate-400 truncate leading-none">
                                 {badgeDisplayName}
                             </span>
                         </div>
@@ -1041,18 +1041,18 @@ const PromptActionNode = ({ data, selected, id }: NodeProps) => {
                     )}
                 </div>
 
-                {/* Handles */}
+                {/* Handles — consistent with ImageNode/VideoNode */}
                 <Handle
                     type="target"
                     position={Position.Left}
-                    style={{ left: -6, top: '50%', transform: 'translateY(-50%)', width: 10, height: 10, zIndex: 100, background: '#94a3b8', border: '2px solid white' }}
-                    className="transition-all hover:scale-125 shadow-sm hover:!bg-slate-600"
+                    style={{ left: -8, top: '50%', transform: 'translateY(-50%)', zIndex: 100 }}
+                    className="!h-4 !w-4 !border-4 !border-white !bg-slate-400 transition-all hover:scale-125 shadow-sm hover:!bg-blue-500"
                 />
                 <Handle
                     type="source"
                     position={Position.Right}
                     isConnectable={false}
-                    className="!h-2.5 !w-2.5 !translate-x-1 !border-2 !border-white !bg-slate-400 z-10 !opacity-0 !pointer-events-none"
+                    className="!h-4 !w-4 !translate-x-1 !border-4 !border-white !bg-slate-400 transition-all hover:scale-125 shadow-sm hover:!bg-slate-600 z-10 !opacity-0 !pointer-events-none"
                 />
             </div>
 
