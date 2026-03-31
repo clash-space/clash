@@ -82,12 +82,14 @@ export class ProjectRoom extends DurableObject<Env> {
     // Skip auth for internal agent connections
     const isInternal = request.headers.get("x-internal-agent") === "true";
     let clientType: ClientType = "browser";
+    let userId = "unknown";
     let userName = "User";
     let userAvatar: string | undefined;
 
     if (!isInternal) {
       try {
         const authResult = await authenticateRequest(request, this.env, projectId);
+        userId = authResult.userId;
         userName = authResult.userName ?? "User";
         userAvatar = authResult.userAvatar;
 
@@ -123,16 +125,17 @@ export class ProjectRoom extends DurableObject<Env> {
     const [client, server] = Object.values(pair);
     this.ctx.acceptWebSocket(server);
 
-    // Register client for presence
-    const wsId = crypto.randomUUID();
-    this.clients.set(server, {
-      id: wsId,
-      userId: "unknown", // filled from auth
+    // Register client for presence — persist via serializeAttachment so it survives hibernation
+    const clientInfo: ClientInfo = {
+      id: crypto.randomUUID(),
+      userId,
       clientType,
       name: userName,
       avatar: userAvatar,
       connectedAt: Date.now(),
-    });
+    };
+    server.serializeAttachment(clientInfo);
+    this.clients.set(server, clientInfo);
 
     // Send initial Loro state to new client
     try {
@@ -181,9 +184,38 @@ export class ProjectRoom extends DurableObject<Env> {
   // ─── Presence & Activity Broadcasts ─────────────────────────
 
   /**
+   * Rebuild this.clients from live WebSockets after hibernation wake-up.
+   * Uses serializeAttachment/deserializeAttachment to recover ClientInfo.
+   */
+  private rebuildClientsFromWebSockets(): void {
+    const liveWs = this.ctx.getWebSockets();
+    const knownWs = new Set(this.clients.keys());
+
+    for (const ws of liveWs) {
+      if (!knownWs.has(ws)) {
+        const attachment = ws.deserializeAttachment() as ClientInfo | null;
+        if (attachment) {
+          this.clients.set(ws, attachment);
+        }
+      }
+    }
+
+    // Remove entries whose WebSocket is no longer in the live set
+    const liveSet = new Set(liveWs);
+    for (const ws of this.clients.keys()) {
+      if (!liveSet.has(ws)) {
+        this.clients.delete(ws);
+      }
+    }
+  }
+
+  /**
    * Broadcast current presence to all connected clients.
    */
   private broadcastPresence(): void {
+    // Sync clients map with actual live WebSockets to avoid stale entries
+    this.rebuildClientsFromWebSockets();
+
     const msg: PresenceMessage = {
       type: "presence",
       clients: Array.from(this.clients.values()).map((c) => ({

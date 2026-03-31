@@ -54,12 +54,6 @@ export function useNodeHighlights() {
   return { highlights, addHighlight };
 }
 
-const actionLabels: Record<string, string> = {
-  added: 'added this',
-  updated: 'editing',
-  deleted: 'removed this',
-};
-
 /**
  * Renders floating labels above nodes that were recently modified by other clients.
  * Uses ReactFlow's coordinate system to position labels correctly.

@@ -4,6 +4,12 @@ import { motion } from 'framer-motion';
 import Link from 'next/link';
 import betterAuthClient from '@/lib/betterAuthClient';
 
+const navLinks = [
+  { name: 'Use Cases', href: '#use-cases' },
+  { name: 'Pricing', href: '#pricing' },
+  { name: 'Blog', href: '#blog' },
+];
+
 export default function LandingNav() {
   const session = betterAuthClient.useSession();
   const user = session.data?.user;
@@ -11,7 +17,7 @@ export default function LandingNav() {
   return (
     <header className="fixed top-0 left-0 right-0 z-50 border-b border-slate-200 bg-white/70 backdrop-blur-xl">
       <div className="mx-auto flex h-20 max-w-7xl items-center justify-between px-6 lg:px-8">
-        {/* Logo Area */}
+        {/* Logo */}
         <Link href="/" className="group">
           <motion.div
             className="flex items-center gap-1"
@@ -24,6 +30,19 @@ export default function LandingNav() {
             <div className="h-6 w-[5px] bg-brand -skew-x-[20deg] transform origin-center" />
           </motion.div>
         </Link>
+
+        {/* Center Links */}
+        <nav className="hidden md:flex items-center gap-8">
+          {navLinks.map((link) => (
+            <a
+              key={link.name}
+              href={link.href}
+              className="text-sm font-medium text-gray-600 transition-colors hover:text-gray-900"
+            >
+              {link.name}
+            </a>
+          ))}
+        </nav>
 
         {/* Right Actions */}
         <div className="flex items-center gap-4">

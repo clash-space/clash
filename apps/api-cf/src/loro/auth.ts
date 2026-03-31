@@ -140,12 +140,16 @@ async function getUserIdFromApiToken(token: string, env: Env): Promise<string | 
 }
 
 export async function authenticateRequest(request: Request, env: Env, projectId: string): Promise<AuthResult> {
+  const isDev = env.ENVIRONMENT === 'development';
+
+  async function verifyOwnership(userId: string): Promise<void> {
+    if (!isDev) await assertProjectOwner(env, projectId, userId);
+  }
+
   // 1. Try BetterAuth session (cookie-based)
   const session = await getBetterAuthSession(request, env);
   if (session?.user?.id) {
-    if (env.ENVIRONMENT !== 'development') {
-      await assertProjectOwner(env, projectId, session.user.id);
-    }
+    await verifyOwnership(session.user.id);
     return {
       userId: session.user.id,
       projectId,
@@ -159,9 +163,7 @@ export async function authenticateRequest(request: Request, env: Env, projectId:
   if (rawToken?.startsWith('clsh_')) {
     const userId = await getUserIdFromApiToken(rawToken, env);
     if (userId) {
-      if (env.ENVIRONMENT !== 'development') {
-        await assertProjectOwner(env, projectId, userId);
-      }
+      await verifyOwnership(userId);
       return { userId, projectId, userName: 'CLI Agent' };
     }
   }
@@ -172,14 +174,12 @@ export async function authenticateRequest(request: Request, env: Env, projectId:
     if (payload.projectId !== projectId) {
       throw new Error('Project ID mismatch');
     }
-    if (env.ENVIRONMENT !== 'development') {
-      await assertProjectOwner(env, projectId, payload.sub);
-    }
+    await verifyOwnership(payload.sub);
     return { userId: payload.sub, projectId: payload.projectId };
   }
 
   // 4. Development mode fallback
-  if (env.ENVIRONMENT === 'development') {
+  if (isDev) {
     return { userId: 'dev-user', projectId };
   }
 

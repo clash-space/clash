@@ -35,7 +35,7 @@ tasksCommand
   .option("--timeout <seconds>", "Max wait time", "120")
   .option("--json", "Output as JSON")
   .action(async (options) => {
-    const deadline = Date.now() + parseInt(options.timeout) * 1000;
+    const deadline = Date.now() + parseInt(options.timeout, 10) * 1000;
     const POLL_MS = 3_000;
 
     while (Date.now() < deadline) {

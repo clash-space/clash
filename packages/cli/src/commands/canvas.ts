@@ -2,7 +2,7 @@ import { Command } from "commander";
 import WebSocket from "ws";
 import {
   LoroSyncClient, buildPendingAssetNode,
-  ACTION_TYPE, MODEL_CARDS, resolveAspectRatio,
+  ACTION_TYPE, MODEL_CARDS,
   insertNode, insertEdge, listNodes, listEdges,
 } from "@clash/shared-types";
 import type { NodeInfo } from "@clash/shared-types";
@@ -149,14 +149,16 @@ canvasCommand
         process.exit(1);
       }
 
-      // 2. Resolve prompt (same priority as ActionBadge UI)
+      // 2. Gather graph state once (used for prompt resolution, validation, and layout)
+      const allNodes = client.listNodes();
+      const allEdges = listEdges(client.doc);
+      const incomingEdges = allEdges.filter((e) => e.target === options.node);
+
+      // 3. Resolve prompt (same priority as ActionBadge UI)
       let prompt = (badge.data.content as string) || "";
 
       // Fallback: check connected prompt/text nodes via edges
       if (!prompt) {
-        const allNodes = client.listNodes();
-        const allEdges = listEdges(client.doc);
-        const incomingEdges = allEdges.filter((e) => e.target === options.node);
         for (const edge of incomingEdges) {
           const source = allNodes.find((n) => n.id === edge.source);
           if (source && (source.type === "text" || source.type === "prompt") && source.data.content) {
@@ -176,7 +178,7 @@ canvasCommand
         process.exit(1);
       }
 
-      // 3. Resolve model (fallback to default if badge doesn't specify)
+      // 4. Resolve model (fallback to default if badge doesn't specify)
       const isVideo = actionType === ACTION_TYPE.VideoGen;
       const kind = isVideo ? "video" : "image";
       let modelId = (badge.data.modelId as string) || (badge.data.model as string) || "";
@@ -186,27 +188,19 @@ canvasCommand
       }
       const modelCard = modelId ? MODEL_CARDS.find((c: any) => c.id === modelId) : null;
       const modelParams = (badge.data.modelParams as Record<string, any>) || { ...(modelCard?.defaultParams ?? {}) };
-      const referenceMode = (badge.data.referenceMode as string) || modelCard?.input?.referenceMode || "none";
 
-      // 4. Validate reference image requirement
-      if (actionType === ACTION_TYPE.VideoGen || actionType === ACTION_TYPE.ImageGen) {
-        const refRequired = modelCard?.input?.referenceImage === "required";
-        if (refRequired) {
-          const allNodes = client.listNodes();
-          const allEdges = listEdges(client.doc);
-          const incomingEdges = allEdges.filter((e) => e.target === options.node);
-          const imageNodes = incomingEdges
-            .map((e) => allNodes.find((n) => n.id === e.source))
-            .filter((n): n is NodeInfo => !!n && n.type === "image" && !!n.data.src);
+      // 5. Validate reference image requirement
+      const refRequired = modelCard?.input?.referenceImage === "required";
+      const connectedImages = incomingEdges
+        .map((e) => allNodes.find((n) => n.id === e.source))
+        .filter((n): n is NodeInfo => !!n && n.type === "image" && !!n.data.src);
 
-          if (imageNodes.length === 0) {
-            console.error("Error: Selected model requires a reference image. Connect an image node first.");
-            process.exit(1);
-          }
-        }
+      if (refRequired && connectedImages.length === 0) {
+        console.error("Error: Selected model requires a reference image. Connect an image node first.");
+        process.exit(1);
       }
 
-      // 5. Build pending asset node (same as ActionBadge handleExecute)
+      // 6. Build pending asset node (same as ActionBadge handleExecute)
       const assetNodeId = crypto.randomUUID().slice(0, 8);
       const pending = buildPendingAssetNode({
         nodeId: assetNodeId,
@@ -216,33 +210,26 @@ canvasCommand
         actionType: actionType as typeof ACTION_TYPE.ImageGen | typeof ACTION_TYPE.VideoGen,
       });
 
-      // Collect reference images from connected image nodes
-      const allNodes = client.listNodes();
-      const allEdges = listEdges(client.doc);
-      const incomingEdges = allEdges.filter((e) => e.target === options.node);
-      const refUrls = incomingEdges
-        .map((e) => allNodes.find((n) => n.id === e.source))
-        .filter((n): n is NodeInfo => !!n && n.type === "image" && !!n.data.src)
-        .map((n) => n.data.src as string);
-
+      // Attach reference images from connected image nodes
+      const refUrls = connectedImages.map((n) => n.data.src as string);
       if (refUrls.length > 0) {
         pending.data.referenceImageUrls = refUrls;
       }
 
-      // 6. Insert pending asset node with auto-layout
-      const existingLayout = listNodes(client.doc).map((n: any) => ({
+      // 7. Insert pending asset node with auto-layout
+      const existingLayout = allNodes.map((n) => ({
         id: n.id, type: n.type, position: n.position, parentId: n.parent_id ?? undefined, data: n.data,
       }));
-      const edgesLayout = listEdges(client.doc);
+      const edgesLayout = allEdges;
       const virtual = { id: assetNodeId, type: pending.type, position: NEEDS_LAYOUT_POSITION, data: pending.data };
       const layout = autoInsertNode(assetNodeId, [...existingLayout, virtual], edgesLayout);
 
-      const noop = (_d: Uint8Array) => {};
-      insertNode(client.doc, noop, assetNodeId, pending.type, pending.data, null, layout.position);
+      const noBroadcast: (d: Uint8Array) => void = () => {};
+      insertNode(client.doc, noBroadcast, assetNodeId, pending.type, pending.data, null, layout.position);
 
-      // 7. Add edge from ActionBadge → pending asset node
+      // 8. Add edge from ActionBadge → pending asset node
       const edgeId = `${options.node}-${assetNodeId}`;
-      insertEdge(client.doc, noop, edgeId, options.node, assetNodeId, "default");
+      insertEdge(client.doc, noBroadcast, edgeId, options.node, assetNodeId, "default");
 
       if (isJsonMode(options)) {
         printJson({

@@ -12,7 +12,7 @@ export async function apiFetch(
   const serverUrl = getServerUrl();
   const url = `${serverUrl}${path}`;
 
-  const res = await fetch(url, {
+  return fetch(url, {
     ...options,
     headers: {
       "Content-Type": "application/json",
@@ -20,8 +20,6 @@ export async function apiFetch(
       ...((options.headers as Record<string, string>) ?? {}),
     },
   });
-
-  return res;
 }
 
 export async function apiJson<T = unknown>(

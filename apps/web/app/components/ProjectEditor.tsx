@@ -201,6 +201,8 @@ export default function ProjectEditor({ project, initialPrompt }: ProjectEditorP
 
     // Collaboration visibility: presence + activity
     const [presenceClients, setPresenceClients] = useState<PresenceClient[]>([]);
+    // Filter out the current user from presence (you don't need to see yourself)
+    const otherClients = presenceClients.filter((c) => c.userId !== project.ownerId);
     const { toasts, addToast, dismiss: dismissToast } = useActivityToasts();
     const { highlights, addHighlight } = useNodeHighlights();
 
@@ -1486,10 +1488,14 @@ export default function ProjectEditor({ project, initialPrompt }: ProjectEditorP
 
                         {/* Main Canvas Area */}
                         <div className="flex flex-1 overflow-hidden relative">
-                            {/* Presence Bar - Top Right */}
-                            <div className="absolute top-6 right-6 z-[60] pointer-events-auto">
-                                <PresenceBar clients={presenceClients} />
-                            </div>
+                            {/* Presence Bar - Top Right, shifts left to avoid overlap with sidebar / expand button */}
+                            <motion.div
+                                className="absolute top-6 z-[60] pointer-events-auto"
+                                animate={{ right: isSidebarCollapsed ? 80 : sidebarWidth + 24 }}
+                                transition={{ type: 'spring', stiffness: 400, damping: 30 }}
+                            >
+                                <PresenceBar clients={otherClients} />
+                            </motion.div>
 
                             {/* Activity Toasts */}
                             <ActivityToast

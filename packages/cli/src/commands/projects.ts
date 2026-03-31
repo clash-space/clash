@@ -54,16 +54,17 @@ projectsCommand
   .requiredOption("--id <id>", "Project ID")
   .option("--json", "Output as JSON")
   .action(async (options) => {
-    const data = await apiJson(`/api/v1/projects/${options.id}`);
+    const data = await apiJson<{ id: string; name: string; description?: string; created_at: string }>(
+      `/api/v1/projects/${options.id}`
+    );
 
     if (isJsonMode(options)) {
       printJson(data);
     } else {
-      const p = data as any;
-      console.log(`ID:          ${p.id}`);
-      console.log(`Name:        ${p.name}`);
-      console.log(`Description: ${p.description ?? "(none)"}`);
-      console.log(`Created:     ${p.created_at}`);
+      console.log(`ID:          ${data.id}`);
+      console.log(`Name:        ${data.name}`);
+      console.log(`Description: ${data.description ?? "(none)"}`);
+      console.log(`Created:     ${data.created_at}`);
     }
   });
 
