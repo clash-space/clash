@@ -28,6 +28,7 @@ import {
     ArrowClockwise,
     UploadSimple,
     Square,
+    PuzzlePiece,
 } from '@phosphor-icons/react';
 import Link from 'next/link';
 import type { InferSelectModel } from 'drizzle-orm';
@@ -74,6 +75,7 @@ import PresenceBar from './PresenceBar';
 import ActivityToast, { useActivityToasts } from './ActivityToast';
 import NodeActivityIndicator, { useNodeHighlights } from './NodeActivityIndicator';
 import { MODEL_CARDS } from '@clash/shared-types';
+import { useCustomActions } from '../hooks/useCustomActions';
 import { applyLayoutPatchesToLoro, collectLayoutNodePatches } from '../lib/loroNodeSync';
 import { calculateScaledDimensions } from './nodes/assetNodeSizing';
 
@@ -82,6 +84,20 @@ const CHILD_NODE_Z_INDEX_BASE = 1000;
 interface ProjectEditorProps {
     project: Project; // messages removed
     initialPrompt?: string;
+    /** Globally installed actions from D1 (passed from server component) */
+    globalActions?: Array<{
+        actionId: string;
+        name: string;
+        description: string | null;
+        runtime: string;
+        version: string | null;
+        author: string | null;
+        workerUrl: string | null;
+        icon: string | null;
+        color: string | null;
+        tags: string | null;
+        manifest: string;
+    }>;
 }
 
 /**
@@ -177,7 +193,7 @@ function DebugNodeIds({ nodes }: { nodes: Node[] }) {
     );
 }
 
-export default function ProjectEditor({ project, initialPrompt }: ProjectEditorProps) {
+export default function ProjectEditor({ project, initialPrompt, globalActions = [] }: ProjectEditorProps) {
     // IMPORTANT: Start with empty canvas - Loro sync will populate from server
     // This ensures Loro is the single source of truth for nodes/edges
     // Legacy: project.nodes/edges from DB are now ignored
@@ -705,6 +721,36 @@ export default function ProjectEditor({ project, initialPrompt }: ProjectEditorP
         return () => window.removeEventListener('keydown', handleKeyDown);
     }, [loroSync]);
 
+    // Merge local (Loro) + global (D1) custom actions, deduplicate by ID
+    const loroActions = useCustomActions(loroSync.doc);
+    const customActions = useMemo(() => {
+        const merged = new Map<string, typeof loroActions[number]>();
+        // Global actions first (from D1)
+        for (const ga of globalActions) {
+            try {
+                const manifest = JSON.parse(ga.manifest);
+                merged.set(ga.actionId, {
+                    id: ga.actionId,
+                    name: ga.name,
+                    description: ga.description || undefined,
+                    parameters: manifest.parameters || [],
+                    outputType: manifest.outputType || 'image',
+                    icon: ga.icon || undefined,
+                    color: ga.color || undefined,
+                    runtime: (ga.runtime as 'local' | 'worker') || 'worker',
+                    version: ga.version || undefined,
+                    author: ga.author || undefined,
+                    workerUrl: ga.workerUrl || undefined,
+                });
+            } catch { /* skip invalid manifest */ }
+        }
+        // Loro actions override (local registrations take precedence)
+        for (const la of loroActions) {
+            merged.set(la.id, la);
+        }
+        return Array.from(merged.values());
+    }, [loroActions, globalActions]);
+
     const toolbarMenu = [
         {
             id: 'assets',
@@ -723,6 +769,11 @@ export default function ProjectEditor({ project, initialPrompt }: ProjectEditorP
             items: [
                 { id: 'action-badge-image', label: 'Image Gen', icon: ImageIcon },
                 { id: 'action-badge-video', label: 'Video Gen', icon: FilmSlate },
+                ...customActions.map((a) => ({
+                    id: `action-badge-custom-${a.id}`,
+                    label: `${a.runtime === 'worker' ? '☁️ ' : ''}${a.name}`,
+                    icon: PuzzlePiece,
+                })),
             ]
         },
         { id: 'video-editor', label: 'Editor', icon: FilmSlate },
@@ -763,6 +814,18 @@ export default function ProjectEditor({ project, initialPrompt }: ProjectEditorP
                 ...videoModelDefaults,
                 content: '# Prompt\nEnter your prompt here...',
                 ...nodeData
+            };
+        } else if (type.startsWith('action-badge-custom-')) {
+            const customId = type.replace('action-badge-custom-', '');
+            const def = customActions.find((a) => a.id === customId);
+            nodeType = 'action-badge';
+            nodeData = {
+                label: def?.name || 'Custom Action',
+                actionType: `custom:${customId}`,
+                customActionId: customId,
+                customActionParams: {},
+                content: '# Prompt\nEnter your prompt here...',
+                ...nodeData,
             };
         } else if (type === 'text') {
             nodeData = { label: 'Text Node', content: '# Hello World\nDouble click to edit.', ...nodeData };
@@ -837,10 +900,10 @@ export default function ProjectEditor({ project, initialPrompt }: ProjectEditorP
                 layoutWidth = 300;
                 layoutHeight = 400;
             } else if (nodeType === 'action-badge') {
-                defaultWidth = 320;
-                defaultHeight = 220;
-                layoutWidth = 320;
-                layoutHeight = 220;
+                defaultWidth = 200;
+                defaultHeight = 80;
+                layoutWidth = 200;
+                layoutHeight = 80;
             } else if (nodeType === 'prompt') {
                 defaultWidth = 300;
                 defaultHeight = 150;
@@ -1091,7 +1154,7 @@ export default function ProjectEditor({ project, initialPrompt }: ProjectEditorP
             return finalNodes;
         });
         return newNodeId;
-    }, [nodes, selectedNodes, setNodes, loroSync, applyAutoZIndex]);
+    }, [nodes, selectedNodes, setNodes, loroSync, applyAutoZIndex, customActions]);
 
     const updateNode = useCallback((nodeId: string, updates: Partial<Node>) => {
         setNodes((nds) =>
@@ -1336,12 +1399,12 @@ export default function ProjectEditor({ project, initialPrompt }: ProjectEditorP
                     type = 'action-badge';
                     data = { actionType: 'image-gen', modelId: defaultImageModel?.id ?? 'nano-banana-2', model: defaultImageModel?.id ?? 'nano-banana-2', modelParams: { ...(defaultImageModel?.defaultParams ?? {}) }, ...data };
                     if (!rest.width) rest.width = 200;
-                    if (!rest.height) rest.height = 60;
+                    if (!rest.height) rest.height = 80;
                 } else if (type === 'video-gen') {
                     type = 'action-badge';
                     data = { actionType: 'video-gen', modelId: defaultVideoModel?.id ?? 'sora-2-image-to-video', model: defaultVideoModel?.id ?? 'sora-2-image-to-video', modelParams: { ...(defaultVideoModel?.defaultParams ?? {}) }, ...data };
                     if (!rest.width) rest.width = 200;
-                    if (!rest.height) rest.height = 60;
+                    if (!rest.height) rest.height = 80;
                 }
 
                 // Validate parentId if present

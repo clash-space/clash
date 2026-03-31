@@ -43,3 +43,84 @@ export const apiTokens = sqliteTable(
         apiTokenHashIdx: index("api_token_hash_idx").on(table.tokenHash),
     })
 )
+
+/**
+ * User Variables — encrypted key-value store for API keys used by actions.
+ * Values are AES-GCM encrypted with ACTION_SECRET_KEY env var.
+ * Actions declare required variables in their manifest (secrets[]).
+ * Platform decrypts and injects at runtime.
+ */
+export const userVariables = sqliteTable(
+    "user_variable",
+    {
+        id: text("id")
+            .primaryKey()
+            .$defaultFn(() => crypto.randomUUID()),
+        userId: text("user_id")
+            .notNull()
+            .references(() => betterAuthUsers.id, { onDelete: "cascade" }),
+        key: text("key").notNull(),
+        encryptedValue: text("encrypted_value").notNull(),
+        createdAt: integer("created_at", { mode: "timestamp" }).default(sql`(strftime('%s', 'now'))`),
+        updatedAt: integer("updated_at", { mode: "timestamp" }).default(sql`(strftime('%s', 'now'))`),
+    },
+    (table) => ({
+        userVariableUserIdx: index("user_variable_userId_idx").on(table.userId),
+        userVariableUniqueIdx: index("user_variable_unique_idx").on(table.userId, table.key),
+    })
+)
+
+/**
+ * Installed Actions — globally installed canvas actions per user.
+ * Actions appear in all project toolbars.
+ */
+export const installedActions = sqliteTable(
+    "installed_action",
+    {
+        id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+        userId: text("user_id").notNull().references(() => betterAuthUsers.id, { onDelete: "cascade" }),
+        actionId: text("action_id").notNull(),
+        name: text("name").notNull(),
+        description: text("description"),
+        manifest: text("manifest").notNull(),
+        runtime: text("runtime").notNull().default("worker"),
+        version: text("version"),
+        author: text("author"),
+        repository: text("repository"),
+        workerUrl: text("worker_url"),
+        icon: text("icon"),
+        color: text("color"),
+        tags: text("tags"),
+        createdAt: integer("created_at", { mode: "timestamp" }).default(sql`(strftime('%s', 'now'))`),
+    },
+    (table) => ({
+        installedActionUserIdx: index("installed_action_userId_idx").on(table.userId),
+        installedActionUniqueIdx: index("installed_action_unique_idx").on(table.userId, table.actionId),
+    })
+)
+
+/**
+ * Installed Skills — globally installed AI agent skills per user.
+ * Skills are SKILL.md instruction sets for Claude Code.
+ */
+export const installedSkills = sqliteTable(
+    "installed_skill",
+    {
+        id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+        userId: text("user_id").notNull().references(() => betterAuthUsers.id, { onDelete: "cascade" }),
+        skillId: text("skill_id").notNull(),
+        name: text("name").notNull(),
+        description: text("description"),
+        repository: text("repository"),
+        version: text("version"),
+        author: text("author"),
+        icon: text("icon"),
+        tags: text("tags"),
+        linkedActionId: text("linked_action_id"),
+        createdAt: integer("created_at", { mode: "timestamp" }).default(sql`(strftime('%s', 'now'))`),
+    },
+    (table) => ({
+        installedSkillUserIdx: index("installed_skill_userId_idx").on(table.userId),
+        installedSkillUniqueIdx: index("installed_skill_unique_idx").on(table.userId, table.skillId),
+    })
+)

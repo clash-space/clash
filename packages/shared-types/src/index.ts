@@ -39,6 +39,12 @@ export {
   ProposalType,
   TaskStatus,
   AssetStatus,
+  // Custom actions
+  CustomActionParameterSchema,
+  CustomActionSecretSchema,
+  CustomActionDefinitionSchema,
+  isCustomActionType,
+  getCustomActionId,
   // Builders
   buildPendingAssetNode,
   // TypeScript types
@@ -54,6 +60,9 @@ export {
   type GenerationNodeType,
   type EdgeInfo,
   type ProjectContext,
+  type CustomActionDefinition,
+  type CustomActionParameter,
+  type CustomActionSecret,
 } from './canvas';
 
 // Task types (atomic tasks + DO state)
@@ -114,6 +123,17 @@ export {
 // Loro sync client
 export { LoroSyncClient } from './loro-client';
 export type { LoroSyncClientOptions } from './loro-client';
+
+// Prompt parsing (mixed-modality @-mentions)
+export {
+  parsePromptParts,
+  extractPromptText,
+  extractAssetRefs,
+  buildMention,
+  hasAssetMentions,
+  type PromptPart,
+  type AssetRef,
+} from './prompt';
 
 // Collaboration visibility (presence + activity)
 export * from './presence';

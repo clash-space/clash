@@ -131,6 +131,9 @@ export const ModelInputRuleSchema = z.object({
   requiresPrompt: z.boolean().default(true),
   referenceImage: z.enum(['required', 'optional', 'forbidden']).default('optional'),
   referenceMode: z.enum(['none', 'single', 'multi', 'start_end']).default('single'),
+  /** Modalities that can be @-mentioned inline in the prompt editor.
+   *  Does NOT affect form-field inputs (start/end frames, etc.) */
+  promptModalities: z.array(z.enum(['text', 'image', 'video', 'audio'])).default(['text']),
 });
 export type ModelInputRule = z.infer<typeof ModelInputRuleSchema>;
 
@@ -231,7 +234,7 @@ export const MODEL_CARDS: ModelCard[] = [
       resolution: '1K',
       count: 1,
     },
-    input: { requiresPrompt: true, referenceImage: 'optional', referenceMode: 'single' },
+    input: { requiresPrompt: true, referenceImage: 'optional', referenceMode: 'single', promptModalities: ['text', 'image'] },
   },
   {
     id: 'nano-banana-2-edit',
@@ -260,7 +263,7 @@ export const MODEL_CARDS: ModelCard[] = [
       aspect_ratio: '16:9',
       resolution: '1K',
     },
-    input: { requiresPrompt: true, referenceImage: 'required', referenceMode: 'multi' },
+    input: { requiresPrompt: true, referenceImage: 'required', referenceMode: 'multi', promptModalities: ['text', 'image'] },
   },
 
   // ─── Image: FLUX Schnell (fal.ai) ────────────────────────────
@@ -618,7 +621,7 @@ export const MODEL_CARDS: ModelCard[] = [
       image_size: 'landscape_4_3',
       safety_tolerance: '2',
     },
-    input: { requiresPrompt: true, referenceImage: 'required', referenceMode: 'multi' },
+    input: { requiresPrompt: true, referenceImage: 'required', referenceMode: 'multi', promptModalities: ['text', 'image'] },
   },
 
   // ─── Video: Veo 3 (fal.ai) ───────────────────────────────────

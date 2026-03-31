@@ -14,6 +14,8 @@ export {
   NodeInfoSchema,
   EdgeInfoSchema,
   ProjectContextSchema,
+  isCustomActionType,
+  getCustomActionId,
 } from "@clash/shared-types";
 
 // AssetStatus as const object (pipeline exports it as Zod type)
@@ -52,7 +54,7 @@ import { RF_NODE_TYPE, ACTION_TYPE } from "@clash/shared-types";
 export function isGenerationNode(node: { type: string; data?: Record<string, unknown> }): boolean {
   if (node.type === RF_NODE_TYPE.ActionBadge) {
     const at = node.data?.actionType as string | undefined;
-    return at === ACTION_TYPE.ImageGen || at === ACTION_TYPE.VideoGen;
+    return at === ACTION_TYPE.ImageGen || at === ACTION_TYPE.VideoGen || (!!at && at.startsWith('custom:'));
   }
   return false;
 }

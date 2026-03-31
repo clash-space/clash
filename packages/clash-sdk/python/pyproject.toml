@@ -1,0 +1,15 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "clash-sdk"
+version = "0.1.0"
+description = "SDK for registering local code as Clash canvas actions"
+requires-python = ">=3.10"
+dependencies = [
+    "aiohttp>=3.9",
+]
+
+[project.optional-dependencies]
+dev = ["pytest", "pytest-asyncio"]

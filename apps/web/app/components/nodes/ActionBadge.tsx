@@ -1,6 +1,6 @@
 import { memo, useState, useEffect, useCallback, useMemo } from 'react';
 import { Handle, Position, Node, NodeProps, useReactFlow, useEdges } from 'reactflow';
-import { VideoCamera, Image as ImageIcon, CaretDown, X, Play, Spinner, ArrowsInLineVertical } from '@phosphor-icons/react';
+import { VideoCamera, Image as ImageIcon, CaretDown, X, Play, Spinner, PuzzlePiece } from '@phosphor-icons/react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { createPortal } from 'react-dom';
 import { useProject } from '../ProjectContext';
@@ -9,8 +9,9 @@ import { useLayoutManager } from '@/lib/layout';
 import { generateSemanticId } from '@/lib/utils/semanticId';
 import MilkdownEditor from '../MilkdownEditor';
 import { resolveAssetUrl, isR2Key } from '../../../lib/utils/assets';
-import { MODEL_CARDS, resolveAspectRatio, type ModelCard, type ModelParameter } from '@clash/shared-types';
+import { MODEL_CARDS, resolveAspectRatio, parsePromptParts, extractPromptText, extractAssetRefs, type ModelCard, type ModelParameter, type CustomActionDefinition } from '@clash/shared-types';
 import { applyLayoutPatchesToLoro, collectLayoutNodePatches } from '../../lib/loroNodeSync';
+import { useCustomActions } from '../../hooks/useCustomActions';
 
 type ModelParams = Record<string, string | number | boolean>;
 
@@ -35,7 +36,7 @@ const extractLabelFromPrompt = (promptText: string, fallback: string): string =>
 };
 
 const PromptActionNode = ({ data, selected, id }: NodeProps) => {
-    const [isHovered, setIsHovered] = useState(false);
+    const [showPanel, setShowPanel] = useState(false);
     const [showModal, setShowModal] = useState(false);
     const [showModelDropdown, setShowModelDropdown] = useState(false);
     const [isExecuting, setIsExecuting] = useState(false);
@@ -73,9 +74,23 @@ const PromptActionNode = ({ data, selected, id }: NodeProps) => {
         return 'nano-banana-2';
     };
 
-    const [actionType, setActionType] = useState<'image-gen' | 'video-gen'>(data.actionType || 'image-gen');
-    const initialModelId =
-        mapLegacyModelId(actionType, data.modelId as string | undefined, data.modelName) ||
+    const [actionType, setActionType] = useState<string>(data.actionType || 'image-gen');
+    const isCustom = actionType.startsWith('custom:');
+    const customActionId = isCustom ? actionType.replace('custom:', '') : null;
+
+    // Get custom action definitions from Loro
+    const customActions = useCustomActions(loroSync?.doc ?? null);
+    const customDef: CustomActionDefinition | undefined = customActionId
+        ? customActions.find((a) => a.id === customActionId)
+        : undefined;
+
+    // Custom action params state
+    const [customActionParams, setCustomActionParams] = useState<ModelParams>(
+        (data.customActionParams as ModelParams) ?? {}
+    );
+
+    const initialModelId = isCustom ? '' :
+        mapLegacyModelId(actionType as 'image-gen' | 'video-gen', data.modelId as string | undefined, data.modelName) ||
         (MODEL_CARDS.find((card) => card.kind === (actionType === 'video-gen' ? 'video' : 'image'))?.id ??
             (actionType === 'video-gen' ? 'sora-2-image-to-video' : 'nano-banana-2'));
 
@@ -85,10 +100,10 @@ const PromptActionNode = ({ data, selected, id }: NodeProps) => {
         ...(data.modelParams ?? {}),
     });
 
-    const Icon = actionType === 'video-gen' ? VideoCamera : ImageIcon;
-    const colorClass = actionType === 'video-gen' ? 'text-red-500' : 'text-blue-500';
-    const bgClass = actionType === 'video-gen' ? 'bg-red-50' : 'bg-blue-50';
-    const ringClass = actionType === 'video-gen' ? 'ring-red-500' : 'ring-blue-500';
+    const Icon = isCustom ? PuzzlePiece : actionType === 'video-gen' ? VideoCamera : ImageIcon;
+    const colorClass = isCustom ? 'text-purple-500' : actionType === 'video-gen' ? 'text-red-500' : 'text-blue-500';
+    const bgClass = isCustom ? 'bg-purple-50' : actionType === 'video-gen' ? 'bg-red-50' : 'bg-blue-50';
+    const ringClass = isCustom ? 'ring-purple-500' : actionType === 'video-gen' ? 'ring-red-500' : 'ring-blue-500';
 
     const availableModels = useMemo(
         () => MODEL_CARDS.filter((card) => card.kind === (actionType === 'video-gen' ? 'video' : 'image')),
@@ -247,50 +262,6 @@ const PromptActionNode = ({ data, selected, id }: NodeProps) => {
         setLabel(newLabel);
     };
 
-    // Type switching handler
-    const handleTypeSwitch = () => {
-        const newType = actionType === 'image-gen' ? 'video-gen' : 'image-gen';
-        setActionType(newType);
-        
-        const nextCandidates = MODEL_CARDS.filter((card) => card.kind === (newType === 'video-gen' ? 'video' : 'image'));
-        const nextModel = nextCandidates[0];
-        const nextModelId = nextModel?.id ?? modelId;
-        const nextParams = { ...(nextModel?.defaultParams ?? {}) } as ModelParams;
-        setModelId(nextModelId);
-        setModelParams(nextParams);
-        
-        // Sync to node data
-        setNodes((nds) =>
-            nds.map((node) => {
-                if (node.id === id) {
-                    return {
-                        ...node,
-                        data: {
-                            ...node.data,
-                            actionType: newType,
-                            modelId: nextModelId,
-                            model: nextModelId,
-                            modelParams: nextParams,
-                        },
-                    };
-                }
-                return node;
-            })
-        );
-
-        // Sync to Loro
-        if (loroSync?.connected) {
-            loroSync.updateNode(id, {
-                data: {
-                    actionType: newType,
-                    modelId: nextModelId,
-                    model: nextModelId,
-                    modelParams: nextParams,
-                }
-            });
-        }
-    };
-
     // Auto-run effect
     const handleExecute = useCallback(async () => {
         setIsExecuting(true);
@@ -328,6 +299,19 @@ const PromptActionNode = ({ data, selected, id }: NodeProps) => {
                 throw new Error('No prompt provided. Please edit the node or connect a text/prompt node.');
             }
 
+            // Parse mixed-modality prompt: extract text + @-mentioned asset references
+            const promptParts = parsePromptParts(prompt);
+            const promptText = extractPromptText(promptParts);
+            const inlineAssetRefs = extractAssetRefs(promptParts);
+
+            // Resolve inline @-mentioned image URLs
+            const inlineImageUrls = inlineAssetRefs
+                .map((ref) => {
+                    const refNode = getNodes().find((n) => n.id === ref.nodeId);
+                    return refNode?.data?.src as string | undefined;
+                })
+                .filter((src): src is string => !!src);
+
             // Capture and clear pre-allocated asset ID (provided by backend; treat as single-use)
             const preAllocatedAssetId = data.preAllocatedAssetId;
             if (preAllocatedAssetId) {
@@ -360,11 +344,67 @@ const PromptActionNode = ({ data, selected, id }: NodeProps) => {
             const requiresReferenceImage = referenceRequirement === 'required';
             const forbidReferenceImage = referenceRequirement === 'forbidden';
 
-            if (actionType === 'image-gen') {
+            // ── Custom Action Execution ──────────────────────
+            if (isCustom && customDef) {
+                const pendingNodeId = assetName;
+                const outputType = customDef.outputType || 'image';
+                const generatedLabel = extractLabelFromPrompt(prompt, `${customDef.name} Result`);
+
+                const pendingData: Record<string, unknown> = {
+                    label: generatedLabel,
+                    status: 'pending',
+                    actionType,
+                    customActionId: customDef.id,
+                    customActionParams,
+                    prompt,
+                    outputType,
+                };
+
+                // For image/video outputs, set empty src so NodeProcessor detects it
+                if (outputType !== 'text') {
+                    pendingData.src = '';
+                }
+
+                const pendingNodeType = outputType === 'text' ? 'text' : outputType; // 'image' | 'video' | 'text'
+
+                const newNode = addNodeWithAutoLayout(
+                    {
+                        id: pendingNodeId,
+                        type: pendingNodeType,
+                        data: pendingData,
+                    },
+                    id
+                );
+
+                if (!newNode) {
+                    throw new Error('Failed to create pending node.');
+                }
+
+                if (loroSync?.connected) {
+                    loroSync.addNode(newNode.id, newNode);
+                }
+
+                const edgeId = `${id}-${pendingNodeId}`;
+                addEdges({ id: edgeId, source: id, target: pendingNodeId, type: 'default' });
+                if (loroSync?.connected) {
+                    loroSync.addEdge(edgeId, { id: edgeId, source: id, target: pendingNodeId, type: 'default' });
+                }
+
+                setNodes((nds) => nds.map((n) => {
+                    if (n.id === id) {
+                        return { ...n, data: { ...n.data, preAllocatedAssetId: undefined, status: 'success' } };
+                    }
+                    return n;
+                }));
+
+            } else if (actionType === 'image-gen') {
                 // Collect connected images for reference
                 const imageNodes = connectedNodes.filter(n => n?.type === 'image');
                 const rawReferenceImages = getReferenceImageUrls(imageNodes.map(n => n?.data?.src));
-                const referenceImageUrls = forbidReferenceImage ? [] : rawReferenceImages;
+                const connectedImageUrls = forbidReferenceImage ? [] : rawReferenceImages;
+
+                // Merge: inline @-refs + edge-connected images (deduplicate)
+                const referenceImageUrls = [...new Set([...inlineImageUrls, ...connectedImageUrls])];
 
                 if (requiresReferenceImage && referenceImageUrls.length === 0) {
                     throw new Error('Selected model requires at least one reference image.');
@@ -375,8 +415,8 @@ const PromptActionNode = ({ data, selected, id }: NodeProps) => {
                 // ============================================
                 const pendingNodeId = assetName;
 
-                // Extract meaningful label from prompt
-                const generatedLabel = extractLabelFromPrompt(prompt, 'Generated Image');
+                // Extract meaningful label from prompt text (without @-mention syntax)
+                const generatedLabel = extractLabelFromPrompt(promptText, 'Generated Image');
 
 
                 // Create the pending node in React state
@@ -388,8 +428,8 @@ const PromptActionNode = ({ data, selected, id }: NodeProps) => {
                             label: generatedLabel,
                             src: '', // Empty src = generating
                             status: 'pending',
-                            prompt: prompt, // Loro uses this for generation
-                            referenceImageUrls, // Pass reference images
+                            prompt: promptText, // Send clean text to generation API
+                            referenceImageUrls, // Pass merged reference images
                             aspectRatio: resolveAspectRatio(modelId, modelParams),
                             model: modelId,
                             modelId,
@@ -452,7 +492,12 @@ const PromptActionNode = ({ data, selected, id }: NodeProps) => {
                 const imageNodes = connectedNodes.filter(n => n?.type === 'image');
 
                 const rawReferenceImages = getReferenceImageUrls(imageNodes.map(n => n?.data?.src));
-                const referenceImageUrls = forbidReferenceImage ? [] : rawReferenceImages;
+                const connectedVideoImageUrls = forbidReferenceImage ? [] : rawReferenceImages;
+                // For start_end mode, only use connected images (not inline @-refs)
+                // For other modes, merge inline + connected
+                const referenceImageUrls = referenceMode === 'start_end'
+                    ? connectedVideoImageUrls
+                    : [...new Set([...inlineImageUrls, ...connectedVideoImageUrls])];
 
                 if (requiresReferenceImage) {
                     const requiredCount = referenceMode === 'start_end' ? 2 : 1;
@@ -490,7 +535,7 @@ const PromptActionNode = ({ data, selected, id }: NodeProps) => {
                 const pendingNodeId = assetName;
 
                 // Extract meaningful label from prompt
-                const generatedLabel = extractLabelFromPrompt(prompt, 'Generated Video');
+                const generatedLabel = extractLabelFromPrompt(promptText, 'Generated Video');
 
                 const durationValue = modelParams.duration ?? 5;
                 const durationNumber = typeof durationValue === 'string' ? parseInt(durationValue, 10) : Number(durationValue) || 5;
@@ -504,8 +549,8 @@ const PromptActionNode = ({ data, selected, id }: NodeProps) => {
                             label: generatedLabel,
                             src: '', // Empty src = generating
                             status: 'pending',
-                            prompt: prompt, // Loro uses this for generation
-                            referenceImageUrls, // Pass reference images
+                            prompt: promptText, // Send clean text to generation API
+                            referenceImageUrls, // Pass merged reference images
                             duration: durationNumber,
                             model: modelId,
                             modelId,
@@ -586,7 +631,10 @@ const PromptActionNode = ({ data, selected, id }: NodeProps) => {
         setNodes,
         addNodeWithAutoLayout,
         loroSync,
-        addEdges
+        addEdges,
+        isCustom,
+        customDef,
+        customActionParams
     ]);
 
     // Helper to extract meaningful label from prompt content (already moved outside)
@@ -623,7 +671,7 @@ const PromptActionNode = ({ data, selected, id }: NodeProps) => {
             const numericValue = typeof currentValue === 'number' ? currentValue : Number(currentValue ?? 0);
             return (
                 <div key={param.id} className="space-y-1">
-                    <div className="flex justify-between text-[10px] font-medium text-white/70">
+                    <div className="flex justify-between text-[10px] font-medium text-gray-500">
                         <span>{param.label}</span>
                         <span>{numericValue}</span>
                     </div>
@@ -634,10 +682,10 @@ const PromptActionNode = ({ data, selected, id }: NodeProps) => {
                         step={param.step ?? 1}
                         value={numericValue}
                         onChange={(e) => updateModelParam(param.id, Number(e.target.value))}
-                        className="w-full h-1 bg-white/10 rounded-lg appearance-none cursor-pointer accent-blue-400"
+                        className="w-full h-1 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-gray-900"
                     />
                     {param.description && (
-                        <p className="text-[10px] text-white/50 leading-snug">{param.description}</p>
+                        <p className="text-[10px] text-gray-400 leading-snug">{param.description}</p>
                     )}
                 </div>
             );
@@ -648,11 +696,11 @@ const PromptActionNode = ({ data, selected, id }: NodeProps) => {
             const selected = options.find((opt) => String(opt.value) === String(currentValue))?.value ?? options[0]?.value ?? '';
             return (
                 <div key={param.id} className="space-y-1">
-                    <div className="flex justify-between text-[10px] font-medium text-white/70">
+                    <div className="flex justify-between text-[10px] font-medium text-gray-500">
                         <span>{param.label}</span>
                     </div>
                     <select
-                        className="w-full rounded-lg bg-white/10 border border-white/10 px-3 py-2 text-xs font-semibold text-white focus:outline-none"
+                        className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-gray-900 focus:outline-none focus:border-gray-400 transition-colors"
                         value={String(selected)}
                         onChange={(e) => {
                             const next = options.find((opt) => String(opt.value) === e.target.value);
@@ -661,13 +709,13 @@ const PromptActionNode = ({ data, selected, id }: NodeProps) => {
                         onMouseDown={(e) => e.stopPropagation()}
                     >
                         {options.map((opt) => (
-                            <option key={`${param.id}-${opt.label}`} value={String(opt.value)} className="bg-[#1a1a1a] text-white">
+                            <option key={`${param.id}-${opt.label}`} value={String(opt.value)}>
                                 {opt.label}
                             </option>
                         ))}
                     </select>
                     {param.description && (
-                        <p className="text-[10px] text-white/50 leading-snug">{param.description}</p>
+                        <p className="text-[10px] text-gray-400 leading-snug">{param.description}</p>
                     )}
                 </div>
             );
@@ -676,7 +724,7 @@ const PromptActionNode = ({ data, selected, id }: NodeProps) => {
         if (param.type === 'number') {
             return (
                 <div key={param.id} className="space-y-1">
-                    <div className="flex justify-between text-[10px] font-medium text-white/70">
+                    <div className="flex justify-between text-[10px] font-medium text-gray-500">
                         <span>{param.label}</span>
                     </div>
                     <input
@@ -686,11 +734,11 @@ const PromptActionNode = ({ data, selected, id }: NodeProps) => {
                         step={param.step}
                         value={currentValue as number | string}
                         onChange={(e) => updateModelParam(param.id, Number(e.target.value))}
-                        className="w-full rounded-lg bg-white/10 border border-white/10 px-3 py-2 text-xs font-semibold text-white focus:outline-none"
+                        className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-gray-900 focus:outline-none focus:border-gray-400 transition-colors"
                         onMouseDown={(e) => e.stopPropagation()}
                     />
                     {param.description && (
-                        <p className="text-[10px] text-white/50 leading-snug">{param.description}</p>
+                        <p className="text-[10px] text-gray-400 leading-snug">{param.description}</p>
                     )}
                 </div>
             );
@@ -699,7 +747,7 @@ const PromptActionNode = ({ data, selected, id }: NodeProps) => {
         if (param.type === 'text') {
             return (
                 <div key={param.id} className="space-y-1">
-                    <div className="flex justify-between text-[10px] font-medium text-white/70">
+                    <div className="flex justify-between text-[10px] font-medium text-gray-500">
                         <span>{param.label}</span>
                     </div>
                     <textarea
@@ -707,11 +755,11 @@ const PromptActionNode = ({ data, selected, id }: NodeProps) => {
                         value={String(currentValue)}
                         onChange={(e) => updateModelParam(param.id, e.target.value)}
                         placeholder={param.placeholder}
-                        className="w-full rounded-lg bg-white/10 border border-white/10 px-3 py-2 text-xs font-semibold text-white focus:outline-none resize-none"
+                        className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-gray-900 focus:outline-none focus:border-gray-400 resize-none transition-colors"
                         onMouseDown={(e) => e.stopPropagation()}
                     />
                     {param.description && (
-                        <p className="text-[10px] text-white/50 leading-snug">{param.description}</p>
+                        <p className="text-[10px] text-gray-400 leading-snug">{param.description}</p>
                     )}
                 </div>
             );
@@ -719,11 +767,11 @@ const PromptActionNode = ({ data, selected, id }: NodeProps) => {
 
         if (param.type === 'boolean') {
             return (
-                <label key={param.id} className="flex items-center justify-between rounded-lg bg-white/5 px-3 py-2 border border-white/10 cursor-pointer">
+                <label key={param.id} className="flex items-center justify-between rounded-xl bg-gray-50 px-3 py-2 border border-slate-200 cursor-pointer">
                     <div className="flex flex-col">
-                        <span className="text-xs font-semibold">{param.label}</span>
+                        <span className="text-xs font-medium text-gray-900">{param.label}</span>
                         {param.description && (
-                            <span className="text-[10px] text-white/50">{param.description}</span>
+                            <span className="text-[10px] text-gray-400">{param.description}</span>
                         )}
                     </div>
                     <input
@@ -731,7 +779,7 @@ const PromptActionNode = ({ data, selected, id }: NodeProps) => {
                         checked={Boolean(currentValue)}
                         onChange={(e) => updateModelParam(param.id, e.target.checked)}
                         onMouseDown={(e) => e.stopPropagation()}
-                        className="h-4 w-4 accent-blue-400"
+                        className="h-4 w-4 accent-gray-900"
                     />
                 </label>
             );
@@ -758,8 +806,8 @@ const PromptActionNode = ({ data, selected, id }: NodeProps) => {
                     initial={{ opacity: 0, scale: 0.95, y: 20 }}
                     animate={{ opacity: 1, scale: 1, y: 0 }}
                     exit={{ opacity: 0, scale: 0.95, y: 20 }}
-                    transition={{ type: 'spring', damping: 25, stiffness: 300 }}
-                    className="relative z-10 w-full max-w-5xl h-[85vh] bg-white rounded-xl shadow-2xl overflow-hidden flex flex-col border border-gray-200"
+                    transition={{ type: 'spring', damping: 30, stiffness: 300 }}
+                    className="relative z-10 w-full max-w-5xl h-[85vh] bg-white rounded-xl shadow-lg overflow-hidden flex flex-col border border-slate-200"
                     onClick={(e) => e.stopPropagation()}
                 >
                     {/* Header with Title Input */}
@@ -778,7 +826,7 @@ const PromptActionNode = ({ data, selected, id }: NodeProps) => {
                         <div className="flex gap-2">
                             <button
                                 onClick={handleSave}
-                                className="px-4 py-2 text-sm font-medium text-white bg-black rounded-lg hover:bg-gray-800 transition-colors"
+                                className="px-4 py-2 text-sm font-medium text-white bg-slate-900 rounded-xl hover:bg-slate-800 transition-colors"
                             >
                                 Save
                             </button>
@@ -793,7 +841,205 @@ const PromptActionNode = ({ data, selected, id }: NodeProps) => {
 
                     {/* Editor Content */}
                     <div className="flex-1 overflow-y-auto bg-white">
-                        <MilkdownEditor value={content} onChange={setContent} />
+                        <MilkdownEditor
+                            value={content}
+                            onChange={setContent}
+                            mentionableNodes={(() => {
+                                const allNodes = getNodes();
+                                return allNodes
+                                    .filter((n) => ['image', 'video', 'text'].includes(n.type))
+                                    .map((n) => ({
+                                        id: n.id,
+                                        type: n.type,
+                                        label: (n.data.label as string) || n.id,
+                                        src: n.data.src as string | undefined,
+                                    }));
+                            })()}
+                            promptModalities={
+                                isCustom
+                                    ? (customDef?.promptModalities ?? ['text'])
+                                    : (selectedModel?.input.promptModalities ?? ['text'])
+                            }
+                            connectedNodeIds={
+                                edges.filter((e) => e.target === id).map((e) => e.source)
+                            }
+                            onMentionAdded={(referencedNodeId) => {
+                                const edgeId = `${referencedNodeId}-${id}`;
+                                addEdges({ id: edgeId, source: referencedNodeId, target: id, type: 'default' });
+                                if (loroSync?.connected) {
+                                    loroSync.addEdge(edgeId, { id: edgeId, source: referencedNodeId, target: id, type: 'default' });
+                                }
+                            }}
+                        />
+                    </div>
+                </motion.div>
+            </div>
+        </AnimatePresence>
+    ) : null;
+
+    // Computed display name for the badge
+    const badgeDisplayName = isCustom
+        ? (customDef?.name || customActionId || 'Custom')
+        : (selectedModel?.name || modelId || (actionType === 'video-gen' ? 'Video' : 'Image'));
+
+    // Bottom config panel content (portalled)
+    const configPanel = showPanel ? (
+        <AnimatePresence>
+            <div className="fixed inset-0 z-[9998]" onClick={() => { setShowPanel(false); setShowModelDropdown(false); }}>
+                {/* Backdrop */}
+                <motion.div
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    className="absolute inset-0 bg-white/30 backdrop-blur-sm"
+                />
+
+                {/* Bottom Panel */}
+                <motion.div
+                    initial={{ y: '100%', opacity: 0 }}
+                    animate={{ y: 0, opacity: 1 }}
+                    exit={{ y: '100%', opacity: 0 }}
+                    transition={{ type: 'spring', damping: 30, stiffness: 400 }}
+                    className="absolute bottom-0 left-0 right-0 flex justify-center pointer-events-none"
+                    onClick={(e) => e.stopPropagation()}
+                >
+                    <div className="pointer-events-auto w-full max-w-lg mb-6 mx-4 rounded-2xl bg-white/90 backdrop-blur-xl p-5 shadow-lg border border-slate-200">
+                        {/* Panel Header */}
+                        <div className="flex items-center justify-between mb-4">
+                            <div className="flex items-center gap-3">
+                                <div className={`h-9 w-9 rounded-xl flex items-center justify-center ${
+                                    isCustom ? 'bg-gray-100 text-gray-600' :
+                                    actionType === 'video-gen' ? 'bg-red-50 text-red-600' : 'bg-gray-100 text-gray-600'
+                                }`}>
+                                    <Icon size={18} weight="bold" />
+                                </div>
+                                <div>
+                                    <h3 className="text-sm font-display font-bold text-gray-900 leading-tight">
+                                        {isCustom ? (customDef?.name || customActionId) : modelDisplay}
+                                    </h3>
+                                    <p className="text-[11px] text-gray-500">
+                                        {isCustom ? (customDef?.description || 'Custom action') : (providerDisplay || 'Configure parameters')}
+                                    </p>
+                                </div>
+                            </div>
+                            <button
+                                onClick={() => { setShowPanel(false); setShowModelDropdown(false); }}
+                                className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors"
+                            >
+                                <X size={16} weight="bold" />
+                            </button>
+                        </div>
+
+                        {/* Tags */}
+                        <div className="flex flex-wrap gap-1.5 mb-4">
+                            {isCustom ? (
+                                <>
+                                    <span className="px-2 py-0.5 rounded-full bg-gray-100 text-[10px] text-gray-600 font-medium uppercase tracking-wider">
+                                        {customDef?.outputType || 'image'}
+                                    </span>
+                                    {customDef?.runtime === 'worker' ? (
+                                        <span className="px-2 py-0.5 rounded-full bg-gray-100 text-[10px] text-gray-600 font-medium">
+                                            ☁️ Cloud{customDef.version ? ` · v${customDef.version}` : ''}
+                                        </span>
+                                    ) : (
+                                        <span className="px-2 py-0.5 rounded-full bg-gray-100 text-[10px] text-gray-500 font-medium uppercase tracking-wider">
+                                            🖥 Local
+                                        </span>
+                                    )}
+                                    {customDef?.author && (
+                                        <span className="px-2 py-0.5 rounded-full bg-gray-100 text-[10px] text-gray-400 font-medium">
+                                            @{customDef.author}
+                                        </span>
+                                    )}
+                                </>
+                            ) : (
+                                <>
+                                    <span className="px-2 py-0.5 rounded-full bg-gray-100 text-[10px] text-gray-500 font-medium uppercase tracking-wider">
+                                        {selectedModel?.kind === 'video' ? 'Video' : 'Image'}
+                                    </span>
+                                    {selectedModel?.input.referenceImage === 'required' && (
+                                        <span className="px-2 py-0.5 rounded-full bg-red-50 text-[10px] text-red-600 font-medium">
+                                            Ref required
+                                        </span>
+                                    )}
+                                </>
+                            )}
+                        </div>
+
+                        {/* Model Selector (for built-in actions) */}
+                        {!isCustom && (
+                            <div className="mb-4">
+                                <div className="relative">
+                                    <button
+                                        className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 flex items-center justify-between hover:bg-gray-50 transition-colors cursor-pointer"
+                                        onClick={() => setShowModelDropdown(!showModelDropdown)}
+                                    >
+                                        <div className="flex flex-col items-start">
+                                            <span className="text-[10px] text-gray-400 font-medium">Model</span>
+                                            <span className="text-xs font-bold text-gray-900">{modelDisplay}</span>
+                                        </div>
+                                        <CaretDown size={12} weight="bold" className="text-gray-400" />
+                                    </button>
+                                    {showModelDropdown && (
+                                        <div className="absolute left-0 right-0 bottom-full mb-1 bg-white border border-slate-200 rounded-xl shadow-lg overflow-hidden z-50 max-h-48 overflow-y-auto">
+                                            {availableModels.map((card) => (
+                                                <div
+                                                    key={card.id}
+                                                    className={`px-3 py-2 text-xs cursor-pointer transition-colors ${
+                                                        card.id === modelId ? 'bg-gray-900 text-white' : 'text-gray-700 hover:bg-gray-50'
+                                                    }`}
+                                                    onClick={() => {
+                                                        handleModelChange(card.id);
+                                                        setShowModelDropdown(false);
+                                                    }}
+                                                >
+                                                    <div className="font-bold leading-tight">{card.name}</div>
+                                                    <div className={`text-[10px] ${card.id === modelId ? 'text-gray-300' : 'text-gray-400'}`}>{card.provider}</div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Parameters */}
+                        <div className="space-y-3">
+                            {isCustom && customDef ? (
+                                customDef.parameters.map((param) =>
+                                    renderParamControl({
+                                        ...param,
+                                        id: param.id,
+                                        label: param.label,
+                                        type: param.type as ModelParameter['type'],
+                                        defaultValue: param.defaultValue,
+                                        options: param.options?.map((o) =>
+                                            typeof o === 'string' ? { label: o, value: o } : o
+                                        ),
+                                        min: param.min,
+                                        max: param.max,
+                                        step: param.step,
+                                    } as ModelParameter)
+                                )
+                            ) : (
+                                selectedModel?.parameters.map(renderParamControl)
+                            )}
+                        </div>
+
+                        {/* Prompt preview */}
+                        <div className="mt-4 pt-3 border-t border-slate-200">
+                            <button
+                                onClick={(e) => { e.stopPropagation(); setShowPanel(false); handleDoubleClick(); }}
+                                className="w-full text-left px-3 py-2 rounded-xl bg-gray-50 hover:bg-gray-100 transition-colors border border-slate-200"
+                            >
+                                <span className="text-[10px] text-gray-400 font-medium uppercase tracking-wider">Prompt</span>
+                                <p className="text-xs text-gray-600 line-clamp-2 leading-snug mt-0.5">
+                                    {content && content !== '# Prompt\nEnter your prompt here...'
+                                        ? extractLabelFromPrompt(content, 'Click to edit prompt...')
+                                        : 'Click to edit prompt...'}
+                                </p>
+                            </button>
+                        </div>
                     </div>
                 </motion.div>
             </div>
@@ -802,248 +1048,78 @@ const PromptActionNode = ({ data, selected, id }: NodeProps) => {
 
     return (
         <>
-            <div
-                className="group relative"
-                onMouseEnter={() => setIsHovered(true)}
-                onMouseLeave={() => {
-                    setIsHovered(false);
-                    setShowModelDropdown(false);
-                }}
-            >
-                {/* Floating Title Input */}
+            <div className="group relative">
+                {/* Compact Badge */}
                 <div
-                    className="absolute -top-8 left-4 z-10"
-                    onDoubleClick={(e) => e.stopPropagation()}
-                >
-                    <input
-                        className={`bg-transparent text-lg font-bold font-display ${colorClass} focus:outline-none`}
-                        value={label}
-                        onChange={handleLabelChange}
-                        placeholder="Prompt"
-                    />
-                </div>
-
-                {/* Main Node Container */}
-                <div 
-                    className={`w-[320px] h-[220px] ${bgClass} rounded-xl flex flex-col overflow-hidden transition-all duration-300 hover:shadow-xl ${
-                        selected ? `ring-4 ${ringClass} ring-offset-2` : 'ring-1 ring-gray-200'
+                    className={`w-[200px] ${bgClass} rounded-xl overflow-hidden transition-all duration-300 hover:shadow-lg cursor-pointer ${
+                        selected ? `ring-4 ${ringClass} ring-offset-2` : 'ring-1 ring-slate-200'
                     }`}
-                    onDoubleClick={handleDoubleClick}
+                    onClick={() => setShowPanel(!showPanel)}
                 >
-                    {/* Content Preview Area */}
-                    <div className="flex-1 p-4 relative overflow-hidden cursor-pointer flex flex-col">
-                        {/* Prompt Area (No scrollbar, pure fade-out) */}
-                        <div className="flex-1 relative overflow-hidden mb-1">
-                            {/* Prompt Text */}
-                            <div className="prose prose-sm prose-slate prose-p:text-gray-600 prose-headings:text-gray-800 prose-p:leading-tight">
-                                <MarkdownPreview content={content} />
-                            </div>
-                            
-                            {/* Bottom fade-out overlay to indicate overflow without scrollbar */}
-                            <div className={`absolute bottom-0 left-0 right-0 h-6 bg-gradient-to-t from-${actionType === 'video-gen' ? 'red' : 'blue'}-50 to-transparent pointer-events-none`} />
+                    {/* Top Row: Icon + Label */}
+                    <div className="flex items-center gap-2 px-3 py-2.5" onDoubleClick={(e) => { e.stopPropagation(); handleDoubleClick(); }}>
+                        <div className={`flex-shrink-0 ${colorClass}`}>
+                            <Icon size={16} weight="fill" />
                         </div>
-                        
-                        {/* Reference Images Section (Compact) */}
-                        {(() => {
-                            // Get connected image nodes
-                            const incomingEdges = edges.filter(e => e.target === id);
-                            const nodes = getNodes();
-                            const connectedImages = incomingEdges
-                                .map(e => nodes.find(n => n.id === e.source))
-                                .filter(n => n?.type === 'image' && n?.data?.src)
-                                .map(n => ({
-                                    id: n!.id,
-                                    src: n!.data.src,
-                                    label: n!.data.label || 'Image'
-                                }));
-                            
-                            if (connectedImages.length === 0) return null;
-                            
-                            return (
-                                <div className="space-y-1 pt-1.5 border-t border-gray-200/40 flex-shrink-0">
-                                    <div className="flex items-center gap-1">
-                                        <ImageIcon size={9} weight="fill" className={`${colorClass} opacity-50`} />
-                                        <span className="text-[8px] font-bold text-gray-400 uppercase tracking-widest">
-                                            Refs ({connectedImages.length})
-                                        </span>
-                                    </div>
-                                    <div className="flex flex-wrap gap-1 pb-0.5">
-                                        {connectedImages.map((img) => (
-                                            <div
-                                                key={img.id}
-                                                className="relative"
-                                                title={img.label}
-                                            >
-                                                {/* eslint-disable-next-line @next/next/no-img-element */}
-                                                <img
-                                                    src={resolveAssetUrl(img.src)}
-                                                    alt={img.label}
-                                                    className={`w-8 h-8 object-cover rounded-md border-[1.5px] transition-all ${
-                                                        actionType === 'video-gen' 
-                                                            ? 'border-red-100 hover:border-red-300' 
-                                                            : 'border-blue-100 hover:border-blue-300'
-                                                    } shadow-sm hover:scale-105`}
-                                                />
-                                            </div>
-                                        ))}
-                                    </div>
-                                </div>
-                            );
-                        })()}
+                        <div className="flex flex-col min-w-0 flex-1">
+                            <input
+                                className={`bg-transparent text-xs font-bold font-display ${colorClass} focus:outline-none w-full truncate nodrag`}
+                                value={label}
+                                onChange={handleLabelChange}
+                                placeholder="Action"
+                                onClick={(e) => e.stopPropagation()}
+                            />
+                            <span className="text-[10px] text-slate-400 truncate leading-none">
+                                {badgeDisplayName}
+                            </span>
+                        </div>
                     </div>
 
-                    {/* Control Bar */}
-                    <div className="px-3 py-2 bg-white/60 backdrop-blur-sm border-t border-gray-200/50 flex items-center gap-2">
-                        {/* Type Switch Button */}
+                    {/* Bottom Row: Execute */}
+                    <div className="flex items-center gap-1 px-2 pb-2">
+                        <div className="flex-1" />
                         <button
-                            className={`nodrag flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg transition-all hover:scale-105 active:scale-95 ${
-                                actionType === 'video-gen' ? 'bg-red-100 text-red-600 hover:bg-red-200' : 'bg-blue-100 text-blue-600 hover:bg-blue-200'
+                            className={`nodrag flex h-7 items-center gap-1.5 px-3 rounded-lg text-xs font-semibold transition-all hover:scale-[1.02] active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed ${
+                                isCustom ? 'bg-purple-500 text-white hover:bg-purple-600' :
+                                actionType === 'video-gen' ? 'bg-red-500 text-white hover:bg-red-600' : 'bg-blue-500 text-white hover:bg-blue-600'
                             }`}
-                            onClick={(e) => {
-                                e.stopPropagation();
-                                handleTypeSwitch();
-                            }}
-                            title={`Switch to ${actionType === 'video-gen' ? 'Image' : 'Video'} Generation`}
-                        >
-                            <ArrowsInLineVertical size={16} weight="bold" />
-                        </button>
-
-                        {/* Model Display */}
-                        <div className="flex flex-col min-w-0 flex-1">
-                            <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider leading-none">Model</span>
-                            <span className="text-xs font-bold text-slate-900 truncate">{modelDisplay}</span>
-                            {providerDisplay && (
-                                <span className="text-[10px] text-slate-500 truncate">{providerDisplay}</span>
-                            )}
-                        </div>
-
-                        {/* Count Display */}
-                        <div className="flex flex-col items-center min-w-[32px]">
-                            <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider leading-none">Count</span>
-                            <span className="text-xs font-bold text-slate-900">{countValue}</span>
-                        </div>
-
-                        {/* Execution Button */}
-                        <button
-                            className={`nodrag flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg transition-all hover:scale-105 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed ${
-                                actionType === 'video-gen' ? 'bg-red-50 text-red-600 hover:bg-red-100' : 'bg-blue-50 text-blue-600 hover:bg-blue-100'
-                            }`}
-                            onClick={(e) => {
-                                e.stopPropagation();
-                                handleExecute();
-                            }}
+                            onClick={(e) => { e.stopPropagation(); handleExecute(); }}
                             disabled={isExecuting}
-                            title={error || (isExecuting ? 'Generating...' : 'Execute')}
                         >
                             {isExecuting ? (
-                                <Spinner size={16} className="animate-spin" />
+                                <Spinner size={12} className="animate-spin" />
                             ) : (
-                                <Play size={16} weight="fill" />
+                                <Play size={12} weight="fill" />
                             )}
+                            {isExecuting ? 'Running' : 'Run'}
                         </button>
                     </div>
 
                     {error && (
-                        <div className="absolute -bottom-6 left-0 text-[10px] text-red-500 whitespace-nowrap">
+                        <div className="px-3 pb-1.5 text-[10px] text-red-500 truncate">
                             {error}
                         </div>
                     )}
                 </div>
 
-                {/* Dark Hover Configuration Panel */}
-                <div className={`
-                    absolute top-full mt-3 w-72 rounded-2xl bg-[#1a1a1a] p-4 shadow-2xl border border-[#333] z-30 origin-top transition-all duration-200 nodrag
-                    ${isHovered ? 'opacity-100 scale-100 translate-y-0' : 'opacity-0 scale-95 -translate-y-2 pointer-events-none'}
-                `}>
-                    <div className="absolute -top-4 left-0 w-full h-4 bg-transparent" />
-                    <div className="absolute -top-1.5 left-1/2 -translate-x-1/2 w-3 h-3 bg-[#1a1a1a] rotate-45 border-t border-l border-[#333]" />
-
-                    <div className="flex flex-col gap-4 text-white" onMouseDown={(e) => e.stopPropagation()}>
-                        <div className="flex items-start justify-between gap-3">
-                            <div className="flex items-start gap-3">
-                                <div className={`h-10 w-10 rounded-lg bg-white/10 flex items-center justify-center ${colorClass}`}>
-                                    <Icon size={18} weight="fill" />
-                                </div>
-                                <div className="flex flex-col gap-1">
-                                    <span className="text-sm font-bold leading-tight">{modelDisplay}</span>
-                                    <span className="text-[11px] text-white/60">{providerDisplay || 'Model card'}</span>
-                                    {selectedModel?.description && (
-                                        <p className="text-[11px] text-white/70 leading-snug">{selectedModel.description}</p>
-                                    )}
-                                    <div className="flex flex-wrap gap-1">
-                                        <span className="px-2 py-0.5 rounded-full bg-white/5 text-[10px] uppercase tracking-widest">
-                                            {selectedModel?.kind === 'video' ? 'Video' : 'Image'}
-                                        </span>
-                                        {selectedModel?.input.referenceImage === 'required' && (
-                                            <span className="px-2 py-0.5 rounded-full bg-red-500/20 text-[10px] text-red-100">
-                                                Needs reference image
-                                            </span>
-                                        )}
-                                        {selectedModel?.input.referenceImage === 'forbidden' && (
-                                            <span className="px-2 py-0.5 rounded-full bg-emerald-500/20 text-[10px] text-emerald-100">
-                                                No reference needed
-                                            </span>
-                                        )}
-                                    </div>
-                                </div>
-                            </div>
-                            <div className="relative w-40">
-                                <button
-                                    className="w-full bg-white/5 rounded-lg p-2 flex flex-col gap-1 hover:bg-white/10 transition-colors cursor-pointer border border-white/10"
-                                    onClick={() => setShowModelDropdown(!showModelDropdown)}
-                                >
-                                    <span className="text-[10px] text-white/40 font-medium">Model</span>
-                                    <div className="flex items-center justify-between">
-                                        <span className="text-xs font-bold truncate">{modelDisplay}</span>
-                                        <CaretDown size={10} className="text-white/40" />
-                                    </div>
-                                </button>
-                                {showModelDropdown && (
-                                    <div className="absolute right-0 top-full mt-1 w-full bg-[#2a2a2a] border border-[#333] rounded-lg shadow-xl overflow-hidden z-50 flex flex-col">
-                                        {availableModels.map((card) => (
-                                            <div
-                                                key={card.id}
-                                                className={`px-3 py-2 text-xs cursor-pointer transition-colors ${card.id === modelId ? 'bg-blue-500 text-white' : 'text-white/80 hover:bg-white/10'}`}
-                                                onClick={(e) => {
-                                                    e.stopPropagation();
-                                                    handleModelChange(card.id);
-                                                    setShowModelDropdown(false);
-                                                }}
-                                            >
-                                                <div className="font-bold leading-tight">{card.name}</div>
-                                                <div className="text-[10px] text-white/60">{card.provider}</div>
-                                            </div>
-                                        ))}
-                                    </div>
-                                )}
-                            </div>
-                        </div>
-
-                        <div className="space-y-3 pt-1">
-                            {selectedModel?.parameters.map(renderParamControl)}
-                        </div>
-                    </div>
-                </div>
-
-                {/* Handles */}
+                {/* Handles — consistent with ImageNode/VideoNode */}
                 <Handle
                     type="target"
                     position={Position.Left}
-                    style={{ left: -6, top: '50%', transform: 'translateY(-50%)', width: 12, height: 12, zIndex: 100, background: '#94a3b8', border: '2px solid white' }}
-                    className="transition-all hover:scale-125 shadow-sm hover:!bg-slate-600"
+                    style={{ left: -8, top: '50%', transform: 'translateY(-50%)', zIndex: 100 }}
+                    className="!h-4 !w-4 !border-4 !border-white !bg-slate-400 transition-all hover:scale-125 shadow-sm hover:!bg-blue-500"
                 />
-
-                {/* Output handle (hidden, for programmatic connections) */}
                 <Handle
                     type="source"
                     position={Position.Right}
                     isConnectable={false}
-                    className="!h-3 !w-3 !translate-x-1 !border-2 !border-white !bg-slate-400 transition-all hover:scale-125 shadow-sm hover:!bg-slate-600 z-10 !opacity-0 !pointer-events-none"
+                    className="!h-4 !w-4 !translate-x-1 !border-4 !border-white !bg-slate-400 transition-all hover:scale-125 shadow-sm hover:!bg-slate-600 z-10 !opacity-0 !pointer-events-none"
                 />
             </div>
 
-            {/* Render modal in portal */}
+            {/* Portalled panels */}
             {typeof window !== 'undefined' && modalContent && createPortal(modalContent, document.body)}
+            {typeof window !== 'undefined' && configPanel && createPortal(configPanel, document.body)}
         </>
     );
 };
@@ -1052,7 +1128,7 @@ const PromptActionNode = ({ data, selected, id }: NodeProps) => {
 const MarkdownPreview = ({ content }: { content: string }) => {
     return (
         <div
-            className="prose prose-sm max-w-none prose-slate prose-headings:font-bold prose-headings:text-slate-900 prose-p:text-slate-700 prose-a:text-blue-600 prose-code:text-blue-600 prose-code:bg-blue-50 prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded"
+            className="prose prose-sm max-w-none prose-slate prose-headings:font-bold prose-headings:text-gray-900 prose-p:text-gray-700 prose-a:text-gray-900 prose-a:underline prose-code:text-gray-700 prose-code:bg-gray-100 prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded"
             dangerouslySetInnerHTML={{
                 __html: content
                     .replace(/^### (.*$)/gim, '<h3>$1</h3>')

@@ -89,6 +89,57 @@ CREATE TABLE IF NOT EXISTS api_token (
     FOREIGN KEY (user_id) REFERENCES user(id) ON DELETE CASCADE
 );
 
+-- User variables table (encrypted API keys for actions)
+CREATE TABLE IF NOT EXISTS user_variable (
+    id TEXT PRIMARY KEY NOT NULL,
+    user_id TEXT NOT NULL,
+    key TEXT NOT NULL,
+    encrypted_value TEXT NOT NULL,
+    created_at INTEGER DEFAULT (strftime('%s', 'now')),
+    updated_at INTEGER DEFAULT (strftime('%s', 'now')),
+    FOREIGN KEY (user_id) REFERENCES user(id) ON DELETE CASCADE,
+    UNIQUE(user_id, key)
+);
+
+-- Installed actions table (global, per-user)
+CREATE TABLE IF NOT EXISTS installed_action (
+    id TEXT PRIMARY KEY NOT NULL,
+    user_id TEXT NOT NULL,
+    action_id TEXT NOT NULL,
+    name TEXT NOT NULL,
+    description TEXT,
+    manifest TEXT NOT NULL,
+    runtime TEXT NOT NULL DEFAULT 'worker',
+    version TEXT,
+    author TEXT,
+    repository TEXT,
+    worker_url TEXT,
+    icon TEXT,
+    color TEXT,
+    tags TEXT,
+    created_at INTEGER DEFAULT (strftime('%s', 'now')),
+    FOREIGN KEY (user_id) REFERENCES user(id) ON DELETE CASCADE,
+    UNIQUE(user_id, action_id)
+);
+
+-- Installed skills table (global, per-user)
+CREATE TABLE IF NOT EXISTS installed_skill (
+    id TEXT PRIMARY KEY NOT NULL,
+    user_id TEXT NOT NULL,
+    skill_id TEXT NOT NULL,
+    name TEXT NOT NULL,
+    description TEXT,
+    repository TEXT,
+    version TEXT,
+    author TEXT,
+    icon TEXT,
+    tags TEXT,
+    linked_action_id TEXT,
+    created_at INTEGER DEFAULT (strftime('%s', 'now')),
+    FOREIGN KEY (user_id) REFERENCES user(id) ON DELETE CASCADE,
+    UNIQUE(user_id, skill_id)
+);
+
 -- Create indexes for better performance
 CREATE UNIQUE INDEX IF NOT EXISTS user_email_unique ON user(email);
 CREATE INDEX IF NOT EXISTS idx_message_project ON message(project_id);
@@ -97,3 +148,6 @@ CREATE INDEX IF NOT EXISTS idx_session_user ON session(userId);
 CREATE INDEX IF NOT EXISTS idx_account_user ON account(userId);
 CREATE INDEX IF NOT EXISTS idx_api_token_user ON api_token(user_id);
 CREATE INDEX IF NOT EXISTS idx_api_token_hash ON api_token(token_hash);
+CREATE INDEX IF NOT EXISTS idx_user_variable_user ON user_variable(user_id);
+CREATE INDEX IF NOT EXISTS idx_installed_action_user ON installed_action(user_id);
+CREATE INDEX IF NOT EXISTS idx_installed_skill_user ON installed_skill(user_id);

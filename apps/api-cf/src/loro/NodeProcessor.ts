@@ -13,7 +13,7 @@ import { updateNodeData, appendNodeLog } from './NodeUpdater';
 import { Status } from '../domain/canvas';
 import type { GenerationParams } from '../agents/generation';
 
-import { MODEL_CARDS } from '@clash/shared-types';
+import { MODEL_CARDS, parsePromptParts, extractPromptText } from '@clash/shared-types';
 
 const defaultImageModel = MODEL_CARDS.find((card) => card.kind === 'image')?.id ?? 'nano-banana-2';
 const defaultVideoModel = MODEL_CARDS.find((card) => card.kind === 'video')?.id ?? 'sora-2-image-to-video';
@@ -211,6 +211,64 @@ export async function processPendingNodes(
         continue;
       }
 
+      // Case: custom action pending → route based on runtime (local agent or CF Worker)
+      if (status === Status.Pending && !src && innerData.actionType?.startsWith('custom:')) {
+        const taskId = crypto.randomUUID();
+        const actionId = innerData.customActionId ?? innerData.actionType.replace('custom:', '');
+        updateNodeData(doc, nodeId, { status: Status.Generating, pendingTask: taskId }, broadcast);
+        appendNodeLog(doc, nodeId, `task=${taskId.slice(0, 8)} type=custom action=${actionId}`, broadcast);
+
+        // Check runtime from Loro customActions map
+        const actionsMap = doc.getMap('customActions');
+        const actionDef = actionsMap.get(actionId) as Record<string, any> | undefined;
+        const runtime = actionDef?.runtime || 'local';
+        const workerUrl = actionDef?.workerUrl;
+
+        if (runtime === 'worker' && workerUrl) {
+          // Route to CF Worker via GenerationWorkflow (retries + durability)
+          const genParams: GenerationParams = {
+            taskId,
+            nodeId,
+            type: 'custom_action',
+            projectId,
+            prompt: innerData.prompt || innerData.content || '',
+            customActionId: actionId,
+            customActionParams: innerData.customActionParams || {},
+            workerUrl,
+          };
+
+          try {
+            await env.GENERATION_WORKFLOW.create({ id: taskId, params: genParams });
+            appendNodeLog(doc, nodeId, `submitted to worker: ${workerUrl}`, broadcast);
+            submitted = true;
+          } catch (e: any) {
+            appendNodeLog(doc, nodeId, `FAILED: ${String(e)}`, broadcast);
+            updateNodeData(doc, nodeId, { pendingTask: undefined, status: Status.Failed, error: String(e) }, broadcast);
+          }
+        } else {
+          // Route to local agent via Loro tasks map
+          const versionBefore = doc.version();
+          const tasksMap = doc.getMap('tasks');
+          tasksMap.set(taskId, {
+            taskId,
+            nodeId,
+            projectId,
+            actionType: innerData.actionType,
+            customActionId: actionId,
+            params: innerData.customActionParams || {},
+            prompt: innerData.prompt || innerData.content || '',
+            outputType: innerData.outputType || 'image',
+            status: 'waiting_for_agent',
+            createdAt: Date.now(),
+          });
+          const update = doc.export({ mode: 'update', from: versionBefore });
+          broadcast(update);
+        }
+
+        log.info('Custom action task dispatched', { nodeId, taskId, runtime, actionType: innerData.actionType });
+        continue;
+      }
+
       // Case 1: pending + no src -> submit generation task
       if (status === Status.Pending && !src) {
         const taskId = crypto.randomUUID();
@@ -239,8 +297,24 @@ export async function processPendingNodes(
           }
         }
 
+        // Parse prompt for @-mention parts (mixed-modality)
+        const rawPrompt = innerData.prompt || innerData.label || '';
+        const parts = parsePromptParts(rawPrompt);
+        const cleanPrompt = extractPromptText(parts);
+
+        // Resolve @-mentioned asset refs to R2 keys
+        const resolvedParts = parts.map((part) => {
+          if (part.type === 'asset_ref' && part.nodeId) {
+            const refNode = nodesMap.get(part.nodeId) as Record<string, any> | undefined;
+            const refSrc = refNode?.data?.src as string | undefined;
+            return { type: 'asset_ref', nodeId: part.nodeId, r2Key: refSrc || undefined };
+          }
+          return { type: 'text', text: part.text || '' };
+        });
+
         const result = await submitGenTask(env, taskType as GenerationParams['type'], projectId, nodeId, taskId, {
-          prompt: innerData.prompt || innerData.label || '',
+          prompt: cleanPrompt,
+          promptParts: resolvedParts,
           model: selectedModelId,
           modelParams,
           referenceImages,
@@ -312,6 +386,7 @@ async function submitGenTask(
   taskId: string,
   params: {
     prompt: string;
+    promptParts?: Array<{ type: string; text?: string; nodeId?: string; r2Key?: string }>;
     model: string;
     modelParams: Record<string, any>;
     referenceImages: string[];
@@ -340,6 +415,7 @@ async function submitGenTask(
       type: taskType,
       projectId,
       prompt: params.prompt,
+      promptParts: params.promptParts,
       aspectRatio: params.aspectRatio,
       modelName: params.model,
       modelParams: params.modelParams as Record<string, unknown>,

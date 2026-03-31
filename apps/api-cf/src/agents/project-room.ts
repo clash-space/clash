@@ -296,15 +296,107 @@ export class ProjectRoom extends DurableObject<Env> {
       if (this.initPromise) await this.initPromise;
     }
 
-    // Only handle binary messages (Loro CRDT updates)
+    // Handle binary messages (Loro CRDT updates)
     if (message instanceof ArrayBuffer) {
       const updates = new Uint8Array(message);
       this.messageQueue.push({ sender: ws, data: updates });
       if (!this.isProcessingQueue) {
         this.processMessageQueue();
       }
+      return;
     }
-    // Ignore string messages
+
+    // Handle text messages (custom action protocol)
+    if (typeof message === "string") {
+      try {
+        const parsed = JSON.parse(message);
+        await this.handleTextMessage(ws, parsed);
+      } catch (error) {
+        // Not valid JSON or handler error — ignore
+        log.error("Failed to handle text message:", error);
+      }
+    }
+  }
+
+  /**
+   * Handle JSON text messages from clients (custom action protocol).
+   */
+  private async handleTextMessage(sender: WebSocket, msg: Record<string, any>): Promise<void> {
+    if (this.initPromise) await this.initPromise;
+
+    if (msg.type === "register_custom_actions") {
+      // Local agent registering custom action definitions
+      const actions = msg.actions as Array<Record<string, any>>;
+      if (!Array.isArray(actions)) return;
+
+      const versionBefore = this.doc.version();
+      const actionsMap = this.doc.getMap("customActions");
+      for (const action of actions) {
+        if (!action.id || !action.name) continue;
+        actionsMap.set(action.id, {
+          id: action.id,
+          name: action.name,
+          description: action.description || "",
+          parameters: action.parameters || [],
+          outputType: action.outputType || "image",
+          icon: action.icon || "",
+          color: action.color || "",
+        });
+      }
+      const update = this.doc.export({ mode: "update", from: versionBefore });
+      this.broadcastBinary(update);
+      this.debouncedSave();
+
+      log.info("Custom actions registered", {
+        count: actions.length,
+        ids: actions.map((a) => a.id),
+      });
+    }
+
+    if (msg.type === "unregister_custom_actions") {
+      // Local agent removing its custom action definitions
+      const actionIds = msg.actionIds as string[];
+      if (!Array.isArray(actionIds)) return;
+
+      const versionBefore = this.doc.version();
+      const actionsMap = this.doc.getMap("customActions");
+      for (const id of actionIds) {
+        actionsMap.delete(id);
+      }
+      const update = this.doc.export({ mode: "update", from: versionBefore });
+      this.broadcastBinary(update);
+      this.debouncedSave();
+    }
+
+    if (msg.type === "complete_custom_task") {
+      // Local agent reporting task completion
+      const { taskId, nodeId, status, result } = msg;
+      if (!taskId || !nodeId) return;
+
+      const nodeUpdates: Record<string, any> = {
+        pendingTask: undefined,
+        status: status === "failed" ? "failed" : "completed",
+      };
+
+      if (result?.storageKey) nodeUpdates.src = result.storageKey;
+      if (result?.content) nodeUpdates.content = result.content;
+      if (result?.description) nodeUpdates.description = result.description;
+      if (result?.error) nodeUpdates.error = result.error;
+
+      updateNodeData(this.doc, nodeId, nodeUpdates, (data) =>
+        this.broadcastBinary(data)
+      );
+
+      // Clean up the tasks map entry
+      const versionBefore = this.doc.version();
+      const tasksMap = this.doc.getMap("tasks");
+      tasksMap.delete(taskId);
+      const update = this.doc.export({ mode: "update", from: versionBefore });
+      this.broadcastBinary(update);
+
+      this.debouncedSave();
+      log.info("Custom task completed", { taskId, nodeId, status });
+    }
   }
 
   async webSocketClose(ws: WebSocket, code: number, reason: string): Promise<void> {
