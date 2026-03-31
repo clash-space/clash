@@ -2,16 +2,23 @@
 
 import { useState, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Key, Plus, Trash, Copy, Check, ArrowLeft, Lock, Eye, EyeSlash } from '@phosphor-icons/react';
+import { Key, Plus, Trash, Copy, Check, ArrowLeft, Lock, Eye, EyeSlash, PuzzlePiece, BookOpen, ArrowRight } from '@phosphor-icons/react';
 import Link from 'next/link';
-import { createApiToken, revokeApiToken, type ApiTokenInfo, setVariable, deleteVariable, type VariableInfo } from './actions';
+import {
+    createApiToken, revokeApiToken, type ApiTokenInfo,
+    setVariable, deleteVariable, type VariableInfo,
+    uninstallAction, type InstalledActionInfo,
+    uninstallSkill, type InstalledSkillInfo,
+} from './actions';
 
 interface Props {
     initialTokens: ApiTokenInfo[];
     initialVariables: VariableInfo[];
+    initialActions: InstalledActionInfo[];
+    initialSkills: InstalledSkillInfo[];
 }
 
-export default function SettingsClient({ initialTokens, initialVariables }: Props) {
+export default function SettingsClient({ initialTokens, initialVariables, initialActions, initialSkills }: Props) {
     const [tokens, setTokens] = useState<ApiTokenInfo[]>(initialTokens);
     const [newTokenName, setNewTokenName] = useState('');
     const [revealedToken, setRevealedToken] = useState<string | null>(null);
@@ -24,6 +31,12 @@ export default function SettingsClient({ initialTokens, initialVariables }: Prop
     const [newVarValue, setNewVarValue] = useState('');
     const [isAddingVar, setIsAddingVar] = useState(false);
     const [showVarValue, setShowVarValue] = useState(false);
+
+    // Installed actions/skills state
+    const [actions, setActions] = useState<InstalledActionInfo[]>(initialActions);
+    const [skills, setSkills] = useState<InstalledSkillInfo[]>(initialSkills);
+
+    const variableKeys = new Set(variables.map((v) => v.key));
 
     const handleCreate = useCallback(async () => {
         if (!newTokenName.trim()) return;
@@ -75,6 +88,24 @@ export default function SettingsClient({ initialTokens, initialVariables }: Prop
             setVariables((prev) => prev.filter((v) => v.id !== varId));
         } catch (err) {
             console.error('Failed to delete variable:', err);
+        }
+    }, []);
+
+    const handleUninstallAction = useCallback(async (actionId: string) => {
+        try {
+            await uninstallAction(actionId);
+            setActions((prev) => prev.filter((a) => a.actionId !== actionId));
+        } catch (err) {
+            console.error('Failed to uninstall action:', err);
+        }
+    }, []);
+
+    const handleUninstallSkill = useCallback(async (skillId: string) => {
+        try {
+            await uninstallSkill(skillId);
+            setSkills((prev) => prev.filter((s) => s.skillId !== skillId));
+        } catch (err) {
+            console.error('Failed to uninstall skill:', err);
         }
     }, []);
 
@@ -335,6 +366,195 @@ export default function SettingsClient({ initialTokens, initialVariables }: Prop
                                     </motion.button>
                                 </div>
                             ))
+                        )}
+                    </div>
+                </section>
+
+                {/* Installed Actions Section */}
+                <section className="mt-6 bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+                    <div className="px-6 py-5 border-b border-slate-100">
+                        <div className="flex items-center gap-3">
+                            <div className="flex items-center justify-center h-10 w-10 rounded-xl bg-blue-50">
+                                <PuzzlePiece className="h-5 w-5 text-blue-600" weight="bold" />
+                            </div>
+                            <div className="flex-1">
+                                <h2 className="font-display text-lg font-bold text-gray-900">
+                                    Installed Actions
+                                </h2>
+                                <p className="text-sm text-gray-500">
+                                    Canvas actions available in all your projects
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                    <div className="divide-y divide-slate-100">
+                        {actions.length === 0 ? (
+                            <div className="px-6 py-12 text-center">
+                                <PuzzlePiece className="h-10 w-10 text-gray-300 mx-auto mb-3" weight="duotone" />
+                                <p className="text-sm text-gray-500 mb-3">
+                                    No actions installed yet.
+                                </p>
+                                <Link
+                                    href="/marketplace"
+                                    className="inline-flex items-center gap-1.5 text-sm font-medium text-blue-600 hover:text-blue-700"
+                                >
+                                    Browse Marketplace <ArrowRight className="h-3.5 w-3.5" />
+                                </Link>
+                            </div>
+                        ) : (
+                            <>
+                                {actions.map((action) => {
+                                    const secrets: Array<{ id: string }> = (() => {
+                                        try { return JSON.parse(action.manifest)?.secrets || []; } catch { return []; }
+                                    })();
+                                    const missingSecrets = secrets.filter((s) => !variableKeys.has(s.id));
+                                    return (
+                                        <div key={action.id} className="px-6 py-4 hover:bg-gray-50/50 transition-colors">
+                                            <div className="flex items-start justify-between">
+                                                <div className="flex-1 min-w-0">
+                                                    <div className="flex items-center gap-2 flex-wrap">
+                                                        <span className="text-sm font-medium text-gray-900">
+                                                            {action.icon || '🧩'} {action.name}
+                                                        </span>
+                                                        <span className="text-[10px] text-sky-600 bg-sky-50 rounded px-1.5 py-0.5 font-medium">
+                                                            {action.runtime === 'worker' ? '☁️ Cloud' : '🖥 Local'}
+                                                        </span>
+                                                        {action.version && (
+                                                            <span className="text-[10px] text-gray-400 font-mono">
+                                                                v{action.version}
+                                                            </span>
+                                                        )}
+                                                        {action.author && (
+                                                            <span className="text-[10px] text-gray-400">
+                                                                @{action.author}
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                    {action.description && (
+                                                        <p className="text-xs text-gray-500 mt-0.5 line-clamp-1">{action.description}</p>
+                                                    )}
+                                                    {secrets.length > 0 && (
+                                                        <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+                                                            {secrets.map((s) => (
+                                                                <span key={s.id} className={`text-[10px] font-mono rounded px-1.5 py-0.5 ${
+                                                                    variableKeys.has(s.id)
+                                                                        ? 'text-emerald-600 bg-emerald-50'
+                                                                        : 'text-red-600 bg-red-50'
+                                                                }`}>
+                                                                    {variableKeys.has(s.id) ? '✅' : '❌'} {s.id}
+                                                                </span>
+                                                            ))}
+                                                        </div>
+                                                    )}
+                                                    {missingSecrets.length > 0 && (
+                                                        <p className="text-[10px] text-red-500 mt-1">
+                                                            Missing keys — set them in Variables above
+                                                        </p>
+                                                    )}
+                                                </div>
+                                                <motion.button
+                                                    onClick={() => handleUninstallAction(action.actionId)}
+                                                    className="ml-4 rounded-lg p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 transition-all flex-shrink-0"
+                                                    whileTap={{ scale: 0.95 }}
+                                                    title="Uninstall"
+                                                >
+                                                    <Trash className="h-4 w-4" weight="bold" />
+                                                </motion.button>
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+                                <div className="px-6 py-3 bg-gray-50/50">
+                                    <Link
+                                        href="/marketplace"
+                                        className="inline-flex items-center gap-1.5 text-sm font-medium text-blue-600 hover:text-blue-700"
+                                    >
+                                        Browse Marketplace <ArrowRight className="h-3.5 w-3.5" />
+                                    </Link>
+                                </div>
+                            </>
+                        )}
+                    </div>
+                </section>
+
+                {/* Installed Skills Section */}
+                <section className="mt-6 bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+                    <div className="px-6 py-5 border-b border-slate-100">
+                        <div className="flex items-center gap-3">
+                            <div className="flex items-center justify-center h-10 w-10 rounded-xl bg-amber-50">
+                                <BookOpen className="h-5 w-5 text-amber-600" weight="bold" />
+                            </div>
+                            <div>
+                                <h2 className="font-display text-lg font-bold text-gray-900">
+                                    Installed Skills
+                                </h2>
+                                <p className="text-sm text-gray-500">
+                                    AI agent skills for Claude Code
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                    <div className="divide-y divide-slate-100">
+                        {skills.length === 0 ? (
+                            <div className="px-6 py-12 text-center">
+                                <BookOpen className="h-10 w-10 text-gray-300 mx-auto mb-3" weight="duotone" />
+                                <p className="text-sm text-gray-500 mb-3">
+                                    No skills installed yet.
+                                </p>
+                                <Link
+                                    href="/marketplace"
+                                    className="inline-flex items-center gap-1.5 text-sm font-medium text-blue-600 hover:text-blue-700"
+                                >
+                                    Browse Marketplace <ArrowRight className="h-3.5 w-3.5" />
+                                </Link>
+                            </div>
+                        ) : (
+                            <>
+                                {skills.map((skill) => (
+                                    <div key={skill.id} className="flex items-center justify-between px-6 py-4 hover:bg-gray-50/50 transition-colors">
+                                        <div className="flex-1 min-w-0">
+                                            <div className="flex items-center gap-2 flex-wrap">
+                                                <span className="text-sm font-medium text-gray-900">
+                                                    {skill.icon || '📘'} {skill.name}
+                                                </span>
+                                                <span className="text-[10px] text-amber-600 bg-amber-50 rounded px-1.5 py-0.5 font-medium">
+                                                    skill
+                                                </span>
+                                                {skill.version && (
+                                                    <span className="text-[10px] text-gray-400 font-mono">v{skill.version}</span>
+                                                )}
+                                                {skill.author && (
+                                                    <span className="text-[10px] text-gray-400">@{skill.author}</span>
+                                                )}
+                                            </div>
+                                            {skill.description && (
+                                                <p className="text-xs text-gray-500 mt-0.5 line-clamp-1">{skill.description}</p>
+                                            )}
+                                            {skill.linkedActionId && (
+                                                <p className="text-[10px] text-gray-400 mt-0.5">
+                                                    Linked action: {skill.linkedActionId}
+                                                </p>
+                                            )}
+                                        </div>
+                                        <motion.button
+                                            onClick={() => handleUninstallSkill(skill.skillId)}
+                                            className="ml-4 rounded-lg p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 transition-all"
+                                            whileTap={{ scale: 0.95 }}
+                                            title="Uninstall"
+                                        >
+                                            <Trash className="h-4 w-4" weight="bold" />
+                                        </motion.button>
+                                    </div>
+                                ))}
+                                <div className="px-6 py-3 bg-gray-50/50">
+                                    <Link
+                                        href="/marketplace"
+                                        className="inline-flex items-center gap-1.5 text-sm font-medium text-blue-600 hover:text-blue-700"
+                                    >
+                                        Browse Marketplace <ArrowRight className="h-3.5 w-3.5" />
+                                    </Link>
+                                </div>
+                            </>
                         )}
                     </div>
                 </section>

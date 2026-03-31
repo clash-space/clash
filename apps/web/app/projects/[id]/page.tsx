@@ -1,4 +1,5 @@
 import { getProject } from '../../actions';
+import { listInstalledActions } from '../../settings/actions';
 import ProjectEditor from '../../components/ProjectEditor';
 import { notFound } from 'next/navigation';
 
@@ -13,11 +14,14 @@ export default async function ProjectPage({
 }) {
   const { id } = await params;
   const { prompt } = await searchParams;
-  const project = await getProject(id);
+  const [project, globalActions] = await Promise.all([
+    getProject(id),
+    listInstalledActions().catch(() => []),
+  ]);
 
   if (!project) {
     notFound();
   }
 
-  return <ProjectEditor project={project} initialPrompt={prompt} />;
+  return <ProjectEditor project={project} initialPrompt={prompt} globalActions={globalActions} />;
 }

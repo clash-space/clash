@@ -84,6 +84,20 @@ const CHILD_NODE_Z_INDEX_BASE = 1000;
 interface ProjectEditorProps {
     project: Project; // messages removed
     initialPrompt?: string;
+    /** Globally installed actions from D1 (passed from server component) */
+    globalActions?: Array<{
+        actionId: string;
+        name: string;
+        description: string | null;
+        runtime: string;
+        version: string | null;
+        author: string | null;
+        workerUrl: string | null;
+        icon: string | null;
+        color: string | null;
+        tags: string | null;
+        manifest: string;
+    }>;
 }
 
 /**
@@ -179,7 +193,7 @@ function DebugNodeIds({ nodes }: { nodes: Node[] }) {
     );
 }
 
-export default function ProjectEditor({ project, initialPrompt }: ProjectEditorProps) {
+export default function ProjectEditor({ project, initialPrompt, globalActions = [] }: ProjectEditorProps) {
     // IMPORTANT: Start with empty canvas - Loro sync will populate from server
     // This ensures Loro is the single source of truth for nodes/edges
     // Legacy: project.nodes/edges from DB are now ignored
@@ -707,8 +721,35 @@ export default function ProjectEditor({ project, initialPrompt }: ProjectEditorP
         return () => window.removeEventListener('keydown', handleKeyDown);
     }, [loroSync]);
 
-    // Custom actions registered by local agents
-    const customActions = useCustomActions(loroSync.doc);
+    // Merge local (Loro) + global (D1) custom actions, deduplicate by ID
+    const loroActions = useCustomActions(loroSync.doc);
+    const customActions = useMemo(() => {
+        const merged = new Map<string, typeof loroActions[number]>();
+        // Global actions first (from D1)
+        for (const ga of globalActions) {
+            try {
+                const manifest = JSON.parse(ga.manifest);
+                merged.set(ga.actionId, {
+                    id: ga.actionId,
+                    name: ga.name,
+                    description: ga.description || undefined,
+                    parameters: manifest.parameters || [],
+                    outputType: manifest.outputType || 'image',
+                    icon: ga.icon || undefined,
+                    color: ga.color || undefined,
+                    runtime: (ga.runtime as 'local' | 'worker') || 'worker',
+                    version: ga.version || undefined,
+                    author: ga.author || undefined,
+                    workerUrl: ga.workerUrl || undefined,
+                });
+            } catch { /* skip invalid manifest */ }
+        }
+        // Loro actions override (local registrations take precedence)
+        for (const la of loroActions) {
+            merged.set(la.id, la);
+        }
+        return Array.from(merged.values());
+    }, [loroActions, globalActions]);
 
     const toolbarMenu = [
         {
