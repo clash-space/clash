@@ -39,6 +39,11 @@ export {
   ProposalType,
   TaskStatus,
   AssetStatus,
+  // Custom actions
+  CustomActionParameterSchema,
+  CustomActionDefinitionSchema,
+  isCustomActionType,
+  getCustomActionId,
   // Builders
   buildPendingAssetNode,
   // TypeScript types
@@ -54,6 +59,8 @@ export {
   type GenerationNodeType,
   type EdgeInfo,
   type ProjectContext,
+  type CustomActionDefinition,
+  type CustomActionParameter,
 } from './canvas';
 
 // Task types (atomic tasks + DO state)

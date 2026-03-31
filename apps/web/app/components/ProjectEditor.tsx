@@ -28,6 +28,7 @@ import {
     ArrowClockwise,
     UploadSimple,
     Square,
+    PuzzlePiece,
 } from '@phosphor-icons/react';
 import Link from 'next/link';
 import type { InferSelectModel } from 'drizzle-orm';
@@ -74,6 +75,7 @@ import PresenceBar from './PresenceBar';
 import ActivityToast, { useActivityToasts } from './ActivityToast';
 import NodeActivityIndicator, { useNodeHighlights } from './NodeActivityIndicator';
 import { MODEL_CARDS } from '@clash/shared-types';
+import { useCustomActions } from '../hooks/useCustomActions';
 import { applyLayoutPatchesToLoro, collectLayoutNodePatches } from '../lib/loroNodeSync';
 import { calculateScaledDimensions } from './nodes/assetNodeSizing';
 
@@ -705,6 +707,9 @@ export default function ProjectEditor({ project, initialPrompt }: ProjectEditorP
         return () => window.removeEventListener('keydown', handleKeyDown);
     }, [loroSync]);
 
+    // Custom actions registered by local agents
+    const customActions = useCustomActions(loroSync.doc);
+
     const toolbarMenu = [
         {
             id: 'assets',
@@ -723,6 +728,11 @@ export default function ProjectEditor({ project, initialPrompt }: ProjectEditorP
             items: [
                 { id: 'action-badge-image', label: 'Image Gen', icon: ImageIcon },
                 { id: 'action-badge-video', label: 'Video Gen', icon: FilmSlate },
+                ...customActions.map((a) => ({
+                    id: `action-badge-custom-${a.id}`,
+                    label: a.name,
+                    icon: PuzzlePiece,
+                })),
             ]
         },
         { id: 'video-editor', label: 'Editor', icon: FilmSlate },
@@ -763,6 +773,18 @@ export default function ProjectEditor({ project, initialPrompt }: ProjectEditorP
                 ...videoModelDefaults,
                 content: '# Prompt\nEnter your prompt here...',
                 ...nodeData
+            };
+        } else if (type.startsWith('action-badge-custom-')) {
+            const customId = type.replace('action-badge-custom-', '');
+            const def = customActions.find((a) => a.id === customId);
+            nodeType = 'action-badge';
+            nodeData = {
+                label: def?.name || 'Custom Action',
+                actionType: `custom:${customId}`,
+                customActionId: customId,
+                customActionParams: {},
+                content: '# Prompt\nEnter your prompt here...',
+                ...nodeData,
             };
         } else if (type === 'text') {
             nodeData = { label: 'Text Node', content: '# Hello World\nDouble click to edit.', ...nodeData };
@@ -1091,7 +1113,7 @@ export default function ProjectEditor({ project, initialPrompt }: ProjectEditorP
             return finalNodes;
         });
         return newNodeId;
-    }, [nodes, selectedNodes, setNodes, loroSync, applyAutoZIndex]);
+    }, [nodes, selectedNodes, setNodes, loroSync, applyAutoZIndex, customActions]);
 
     const updateNode = useCallback((nodeId: string, updates: Partial<Node>) => {
         setNodes((nds) =>

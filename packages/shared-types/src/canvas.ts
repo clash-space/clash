@@ -39,6 +39,8 @@ export const RF_NODE_TYPE = {
 export const ACTION_TYPE = {
   ImageGen: 'image-gen',
   VideoGen: 'video-gen',
+  /** Custom actions provided by local agents. Full actionType: "custom:<action-id>" */
+  Custom: 'custom',
 } as const;
 
 /**
@@ -77,7 +79,7 @@ export const NodeDataSchema = z.object({
   status: NodeStatusSchema.optional(),
   assetId: z.string().optional(),
   taskId: z.string().optional(),
-  actionType: z.enum([ACTION_TYPE.ImageGen, ACTION_TYPE.VideoGen]).optional(),
+  actionType: z.string().optional(),
   upstreamNodeIds: z.array(z.string()).optional(),
   duration: z.number().optional(),
   model: z.string().optional(),
@@ -87,6 +89,10 @@ export const NodeDataSchema = z.object({
   referenceImageUrls: z.array(z.string()).optional(),
   error: z.string().optional(),
   sourceNodeId: z.string().optional(),
+  /** Custom action ID (e.g. "style-transfer") for custom:* action types */
+  customActionId: z.string().optional(),
+  /** User-configured parameters for custom actions */
+  customActionParams: z.record(z.unknown()).optional(),
 }).passthrough(); // Allow additional fields
 
 export type NodeData = z.infer<typeof NodeDataSchema>;
@@ -242,6 +248,47 @@ export const AssetStatus = {
   Completed: "completed",
   Failed: "failed",
 } as const;
+
+// ─── Custom Action Definitions ───────────────────────────
+// Used by local agents (Python SDK / CLI) to register custom actions
+// that execute locally instead of via cloud GenerationWorkflow.
+
+export const CustomActionParameterSchema = z.object({
+  id: z.string(),
+  label: z.string(),
+  type: z.enum(['text', 'number', 'slider', 'select', 'boolean']),
+  description: z.string().optional(),
+  defaultValue: z.union([z.string(), z.number(), z.boolean()]).optional(),
+  options: z.array(z.object({
+    label: z.string(),
+    value: z.union([z.string(), z.number()]),
+  })).optional(),
+  min: z.number().optional(),
+  max: z.number().optional(),
+  step: z.number().optional(),
+});
+export type CustomActionParameter = z.infer<typeof CustomActionParameterSchema>;
+
+export const CustomActionDefinitionSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  description: z.string().optional(),
+  parameters: z.array(CustomActionParameterSchema).default([]),
+  outputType: z.enum(['image', 'video', 'text']),
+  icon: z.string().optional(),
+  color: z.string().optional(),
+});
+export type CustomActionDefinition = z.infer<typeof CustomActionDefinitionSchema>;
+
+/** Check if an actionType string represents a custom (local) action */
+export function isCustomActionType(actionType: string): boolean {
+  return actionType.startsWith('custom:');
+}
+
+/** Extract the action ID from a custom actionType string */
+export function getCustomActionId(actionType: string): string {
+  return actionType.replace('custom:', '');
+}
 
 // ─── Loro-compatible Schemas ──────────────────────────────
 

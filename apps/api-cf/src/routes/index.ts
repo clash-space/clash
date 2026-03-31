@@ -5,7 +5,7 @@ import { ZodError } from "zod";
 import type { Env } from "../config";
 import { log } from "../logger";
 import { Status } from "../domain/canvas";
-import { getAssetByTaskId, updateAssetStatus } from "../services/asset-store";
+import { getAssetByTaskId, updateAssetStatus, createAsset } from "../services/asset-store";
 import { uploadBase64Image } from "../services/r2";
 import type { GenerationParams } from "../agents/generation";
 import {
@@ -366,6 +366,56 @@ api.post("/api/tasks/submit", async (c) => {
   }
 
   return c.json({ error: `Unknown task_type: ${task_type}` }, 400);
+});
+
+// ─── POST /api/custom-action/upload ──────────────────────
+// Used by local agents (Python SDK) to upload results of custom actions.
+
+api.post("/api/custom-action/upload", async (c) => {
+  const formData = await c.req.formData();
+  const file = formData.get("file") as File | null;
+  const projectId = formData.get("projectId") as string;
+  const taskId = formData.get("taskId") as string;
+  const nodeId = formData.get("nodeId") as string;
+  const outputType = (formData.get("outputType") as string) || "image";
+
+  if (!projectId || !taskId || !nodeId) {
+    return c.json({ error: "Missing required fields: projectId, taskId, nodeId" }, 400);
+  }
+
+  // Text output type doesn't require a file upload
+  if (outputType === "text") {
+    const content = formData.get("content") as string | null;
+    return c.json({ success: true, storageKey: null, content });
+  }
+
+  if (!file) {
+    return c.json({ error: "Missing file for image/video output" }, 400);
+  }
+
+  // Determine file extension and content type
+  const ext = outputType === "video" ? "mp4" : "png";
+  const contentType = outputType === "video" ? "video/mp4" : file.type || "image/png";
+  const key = `projects/${projectId}/custom/${taskId}.${ext}`;
+
+  await c.env.R2_BUCKET.put(key, file.stream(), {
+    httpMetadata: { contentType },
+  });
+
+  // Save asset record to D1
+  await createAsset(c.env.DB, {
+    id: nodeId,
+    name: `custom-${nodeId.slice(0, 8)}`,
+    projectId,
+    storageKey: key,
+    url: "",
+    type: outputType,
+    status: Status.Completed,
+    taskId,
+    description: null,
+  });
+
+  return c.json({ success: true, storageKey: key });
 });
 
 // ─── POST /api/generate-ids ───────────────────────────────

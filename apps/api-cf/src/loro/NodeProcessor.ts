@@ -211,6 +211,35 @@ export async function processPendingNodes(
         continue;
       }
 
+      // Case: custom action pending → route to local agent via tasks map
+      // Custom actions are executed by local agents (Python SDK, etc.) instead of cloud workflows.
+      if (status === Status.Pending && !src && innerData.actionType?.startsWith('custom:')) {
+        const taskId = crypto.randomUUID();
+        updateNodeData(doc, nodeId, { status: Status.Generating, pendingTask: taskId }, broadcast);
+        appendNodeLog(doc, nodeId, `task=${taskId.slice(0, 8)} type=custom action=${innerData.customActionId ?? innerData.actionType}`, broadcast);
+
+        // Write task to Loro tasks map — connected local agents receive via CRDT sync
+        const versionBefore = doc.version();
+        const tasksMap = doc.getMap('tasks');
+        tasksMap.set(taskId, {
+          taskId,
+          nodeId,
+          projectId,
+          actionType: innerData.actionType,
+          customActionId: innerData.customActionId ?? innerData.actionType.replace('custom:', ''),
+          params: innerData.customActionParams || {},
+          prompt: innerData.prompt || innerData.content || '',
+          outputType: innerData.outputType || 'image',
+          status: 'waiting_for_agent',
+          createdAt: Date.now(),
+        });
+        const update = doc.export({ mode: 'update', from: versionBefore });
+        broadcast(update);
+
+        log.info('Custom action task dispatched', { nodeId, taskId, actionType: innerData.actionType });
+        continue;
+      }
+
       // Case 1: pending + no src -> submit generation task
       if (status === Status.Pending && !src) {
         const taskId = crypto.randomUUID();
