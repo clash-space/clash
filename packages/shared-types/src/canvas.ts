@@ -250,8 +250,8 @@ export const AssetStatus = {
 } as const;
 
 // ─── Custom Action Definitions ───────────────────────────
-// Used by local agents (Python SDK / CLI) to register custom actions
-// that execute locally instead of via cloud GenerationWorkflow.
+// Used by local agents (Python SDK) and deployed workers (CF Workers)
+// to register custom actions on the canvas.
 
 export const CustomActionParameterSchema = z.object({
   id: z.string(),
@@ -269,6 +269,14 @@ export const CustomActionParameterSchema = z.object({
 });
 export type CustomActionParameter = z.infer<typeof CustomActionParameterSchema>;
 
+export const CustomActionSecretSchema = z.object({
+  id: z.string(),
+  label: z.string(),
+  description: z.string().optional(),
+  required: z.boolean().default(true),
+});
+export type CustomActionSecret = z.infer<typeof CustomActionSecretSchema>;
+
 export const CustomActionDefinitionSchema = z.object({
   id: z.string(),
   name: z.string(),
@@ -277,6 +285,20 @@ export const CustomActionDefinitionSchema = z.object({
   outputType: z.enum(['image', 'video', 'text']),
   icon: z.string().optional(),
   color: z.string().optional(),
+  /** Execution runtime: 'local' = Python SDK via WebSocket, 'worker' = deployed CF Worker via HTTP */
+  runtime: z.enum(['local', 'worker']).default('local'),
+  /** Semver version */
+  version: z.string().optional(),
+  /** Action author name */
+  author: z.string().optional(),
+  /** Source repository (e.g. "github:user/repo") */
+  repository: z.string().optional(),
+  /** CF Worker URL for runtime='worker' actions */
+  workerUrl: z.string().optional(),
+  /** User variables this action needs (e.g. API keys). Platform injects at runtime. */
+  secrets: z.array(CustomActionSecretSchema).optional(),
+  /** Discovery tags */
+  tags: z.array(z.string()).optional(),
 });
 export type CustomActionDefinition = z.infer<typeof CustomActionDefinitionSchema>;
 

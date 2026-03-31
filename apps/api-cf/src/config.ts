@@ -27,4 +27,6 @@ export interface Env {
   BETTER_AUTH_ORIGIN?: string;
   BETTER_AUTH_BASE_PATH?: string;
   WORKER_PUBLIC_URL?: string;
+  /** AES-GCM key for encrypting/decrypting user variables (action secrets) */
+  ACTION_SECRET_KEY?: string;
 }

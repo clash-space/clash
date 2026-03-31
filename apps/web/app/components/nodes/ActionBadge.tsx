@@ -887,9 +887,20 @@ const PromptActionNode = ({ data, selected, id }: NodeProps) => {
                                     <span className="px-2 py-0.5 rounded-full bg-purple-500/20 text-[10px] text-purple-200 font-medium uppercase tracking-wider">
                                         {customDef?.outputType || 'image'}
                                     </span>
-                                    <span className="px-2 py-0.5 rounded-full bg-white/5 text-[10px] text-white/50 font-medium uppercase tracking-wider">
-                                        Local Agent
-                                    </span>
+                                    {customDef?.runtime === 'worker' ? (
+                                        <span className="px-2 py-0.5 rounded-full bg-sky-500/20 text-[10px] text-sky-200 font-medium">
+                                            ☁️ Cloud{customDef.version ? ` · v${customDef.version}` : ''}
+                                        </span>
+                                    ) : (
+                                        <span className="px-2 py-0.5 rounded-full bg-white/5 text-[10px] text-white/50 font-medium uppercase tracking-wider">
+                                            🖥 Local
+                                        </span>
+                                    )}
+                                    {customDef?.author && (
+                                        <span className="px-2 py-0.5 rounded-full bg-white/5 text-[10px] text-white/40 font-medium">
+                                            {customDef.author}
+                                        </span>
+                                    )}
                                 </>
                             ) : (
                                 <>

@@ -211,32 +211,61 @@ export async function processPendingNodes(
         continue;
       }
 
-      // Case: custom action pending → route to local agent via tasks map
-      // Custom actions are executed by local agents (Python SDK, etc.) instead of cloud workflows.
+      // Case: custom action pending → route based on runtime (local agent or CF Worker)
       if (status === Status.Pending && !src && innerData.actionType?.startsWith('custom:')) {
         const taskId = crypto.randomUUID();
+        const actionId = innerData.customActionId ?? innerData.actionType.replace('custom:', '');
         updateNodeData(doc, nodeId, { status: Status.Generating, pendingTask: taskId }, broadcast);
-        appendNodeLog(doc, nodeId, `task=${taskId.slice(0, 8)} type=custom action=${innerData.customActionId ?? innerData.actionType}`, broadcast);
+        appendNodeLog(doc, nodeId, `task=${taskId.slice(0, 8)} type=custom action=${actionId}`, broadcast);
 
-        // Write task to Loro tasks map — connected local agents receive via CRDT sync
-        const versionBefore = doc.version();
-        const tasksMap = doc.getMap('tasks');
-        tasksMap.set(taskId, {
-          taskId,
-          nodeId,
-          projectId,
-          actionType: innerData.actionType,
-          customActionId: innerData.customActionId ?? innerData.actionType.replace('custom:', ''),
-          params: innerData.customActionParams || {},
-          prompt: innerData.prompt || innerData.content || '',
-          outputType: innerData.outputType || 'image',
-          status: 'waiting_for_agent',
-          createdAt: Date.now(),
-        });
-        const update = doc.export({ mode: 'update', from: versionBefore });
-        broadcast(update);
+        // Check runtime from Loro customActions map
+        const actionsMap = doc.getMap('customActions');
+        const actionDef = actionsMap.get(actionId) as Record<string, any> | undefined;
+        const runtime = actionDef?.runtime || 'local';
+        const workerUrl = actionDef?.workerUrl;
 
-        log.info('Custom action task dispatched', { nodeId, taskId, actionType: innerData.actionType });
+        if (runtime === 'worker' && workerUrl) {
+          // Route to CF Worker via GenerationWorkflow (retries + durability)
+          const genParams: GenerationParams = {
+            taskId,
+            nodeId,
+            type: 'custom_action',
+            projectId,
+            prompt: innerData.prompt || innerData.content || '',
+            customActionId: actionId,
+            customActionParams: innerData.customActionParams || {},
+            workerUrl,
+          };
+
+          try {
+            await env.GENERATION_WORKFLOW.create({ id: taskId, params: genParams });
+            appendNodeLog(doc, nodeId, `submitted to worker: ${workerUrl}`, broadcast);
+            submitted = true;
+          } catch (e: any) {
+            appendNodeLog(doc, nodeId, `FAILED: ${String(e)}`, broadcast);
+            updateNodeData(doc, nodeId, { pendingTask: undefined, status: Status.Failed, error: String(e) }, broadcast);
+          }
+        } else {
+          // Route to local agent via Loro tasks map
+          const versionBefore = doc.version();
+          const tasksMap = doc.getMap('tasks');
+          tasksMap.set(taskId, {
+            taskId,
+            nodeId,
+            projectId,
+            actionType: innerData.actionType,
+            customActionId: actionId,
+            params: innerData.customActionParams || {},
+            prompt: innerData.prompt || innerData.content || '',
+            outputType: innerData.outputType || 'image',
+            status: 'waiting_for_agent',
+            createdAt: Date.now(),
+          });
+          const update = doc.export({ mode: 'update', from: versionBefore });
+          broadcast(update);
+        }
+
+        log.info('Custom action task dispatched', { nodeId, taskId, runtime, actionType: innerData.actionType });
         continue;
       }
 

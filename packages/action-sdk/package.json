@@ -1,0 +1,25 @@
+{
+  "name": "@clash/action-sdk",
+  "version": "0.1.0",
+  "description": "SDK for building Clash canvas actions — types and utilities for action authors",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch"
+  },
+  "files": [
+    "dist",
+    "src"
+  ],
+  "devDependencies": {
+    "typescript": "^5.0.0"
+  }
+}

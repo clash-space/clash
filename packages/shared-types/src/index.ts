@@ -41,6 +41,7 @@ export {
   AssetStatus,
   // Custom actions
   CustomActionParameterSchema,
+  CustomActionSecretSchema,
   CustomActionDefinitionSchema,
   isCustomActionType,
   getCustomActionId,
@@ -61,6 +62,7 @@ export {
   type ProjectContext,
   type CustomActionDefinition,
   type CustomActionParameter,
+  type CustomActionSecret,
 } from './canvas';
 
 // Task types (atomic tasks + DO state)

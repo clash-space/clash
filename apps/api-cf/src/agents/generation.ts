@@ -33,7 +33,7 @@ async function r2ToDataUri(bucket: R2Bucket, key: string): Promise<string> {
 export interface GenerationParams {
   taskId: string;
   nodeId: string;
-  type: "image_gen" | "video_gen" | "video_render" | "image_desc" | "video_desc";
+  type: "image_gen" | "video_gen" | "video_render" | "image_desc" | "video_desc" | "custom_action";
   projectId: string;
   // image_gen fields
   prompt?: string;
@@ -54,6 +54,10 @@ export interface GenerationParams {
   mimeType?: string;
   // video_render fields
   timelineDsl?: Record<string, any>;
+  // custom_action fields
+  customActionId?: string;
+  customActionParams?: Record<string, unknown>;
+  workerUrl?: string;
 }
 
 /**
@@ -88,6 +92,8 @@ export class GenerationWorkflow extends WorkflowEntrypoint<Env, GenerationParams
       await this.runRenderPipeline(params, step);
     } else if (params.type === "image_desc" || params.type === "video_desc") {
       await this.runDescPipeline(params, step);
+    } else if (params.type === "custom_action") {
+      await this.runCustomActionPipeline(params, step);
     }
 
     log.info("Workflow completed", ctx);
@@ -338,6 +344,110 @@ export class GenerationWorkflow extends WorkflowEntrypoint<Env, GenerationParams
 
   private async runDescPipeline(_params: GenerationParams, _step: WorkflowStep): Promise<void> {
     // TODO: description generation temporarily disabled
+  }
+
+  /**
+   * Custom Action pipeline — calls an author-deployed CF Worker via HTTP.
+   * Injects user variables (secrets) at runtime.
+   */
+  private async runCustomActionPipeline(params: GenerationParams, step: WorkflowStep): Promise<void> {
+    const tag = { taskId: params.taskId, nodeId: params.nodeId, actionId: params.customActionId };
+
+    // Step 1: Load user secrets for this action
+    const secrets = await step.do("load-secrets", {
+      timeout: "10 seconds",
+    }, async () => {
+      // TODO: resolve userId from projectId ownership
+      // For now, load all secrets matching the action's declared secret keys
+      // This will be implemented when auth context is passed through
+      if (!this.env.ACTION_SECRET_KEY) return {};
+
+      const { loadSecrets } = await import("../services/user-variables");
+      // The action manifest's secrets[] are stored in Loro customActions map
+      // For the workflow, we pass required keys through params (future enhancement)
+      return {} as Record<string, string>;
+    });
+
+    // Step 2: Call the action Worker
+    const result = await step.do("execute-action", {
+      retries: { limit: 2, delay: "5 seconds", backoff: "exponential" },
+      timeout: "5 minutes",
+    }, async (ctx) => {
+      log.info("Calling custom action worker", { ...tag, workerUrl: params.workerUrl, attempt: ctx.attempt });
+
+      const resp = await fetch(params.workerUrl!, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          taskId: params.taskId,
+          nodeId: params.nodeId,
+          projectId: params.projectId,
+          actionId: params.customActionId,
+          prompt: params.prompt || "",
+          params: params.customActionParams || {},
+          secrets,
+        }),
+      });
+
+      if (!resp.ok) {
+        const errText = await resp.text();
+        throw new Error(`Action worker error ${resp.status}: ${errText}`);
+      }
+
+      const data = await resp.json() as Record<string, any>;
+      log.info("Custom action response", { ...tag, type: data.type });
+      return data;
+    });
+
+    // Step 3: If result has a URL, download and upload to R2
+    let storageKey: string | undefined;
+    if ((result.type === "image" || result.type === "video") && result.url) {
+      storageKey = await step.do("upload-result", {
+        retries: { limit: 2, delay: "2 seconds" },
+        timeout: "3 minutes",
+      }, async () => {
+        const key = await uploadFromUrl(
+          this.env.R2_BUCKET,
+          result.url,
+          params.projectId,
+          params.taskId,
+          result.mimeType || (result.type === "video" ? "video/mp4" : "image/png"),
+        );
+        log.info("Custom action result uploaded", { ...tag, storageKey: key });
+        return key;
+      });
+    }
+
+    // Step 4: Save asset to D1
+    if (storageKey) {
+      await step.do("save-asset", {
+        retries: { limit: 3, delay: "2 seconds", backoff: "exponential" },
+        timeout: "30 seconds",
+      }, async () => {
+        await createAsset(this.env.DB, {
+          id: params.nodeId,
+          name: `custom-${params.nodeId.slice(0, 8)}`,
+          projectId: params.projectId,
+          storageKey: storageKey!,
+          url: "",
+          type: result.type || "image",
+          status: Status.Completed,
+          taskId: params.taskId,
+          description: result.description || null,
+          metadata: JSON.stringify({ actionId: params.customActionId }),
+        });
+      });
+    }
+
+    // Step 5: Notify ProjectRoom
+    await this.notifyRoom(params.projectId, params.nodeId, {
+      pendingTask: undefined,
+      status: Status.Completed,
+      src: storageKey || "",
+      content: result.content || undefined,
+      description: result.description || undefined,
+      _log: undefined,
+    });
   }
 
   /** Push node update to ProjectRoom DO (same worker). */

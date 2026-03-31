@@ -43,3 +43,29 @@ export const apiTokens = sqliteTable(
         apiTokenHashIdx: index("api_token_hash_idx").on(table.tokenHash),
     })
 )
+
+/**
+ * User Variables — encrypted key-value store for API keys used by actions.
+ * Values are AES-GCM encrypted with ACTION_SECRET_KEY env var.
+ * Actions declare required variables in their manifest (secrets[]).
+ * Platform decrypts and injects at runtime.
+ */
+export const userVariables = sqliteTable(
+    "user_variable",
+    {
+        id: text("id")
+            .primaryKey()
+            .$defaultFn(() => crypto.randomUUID()),
+        userId: text("user_id")
+            .notNull()
+            .references(() => betterAuthUsers.id, { onDelete: "cascade" }),
+        key: text("key").notNull(),
+        encryptedValue: text("encrypted_value").notNull(),
+        createdAt: integer("created_at", { mode: "timestamp" }).default(sql`(strftime('%s', 'now'))`),
+        updatedAt: integer("updated_at", { mode: "timestamp" }).default(sql`(strftime('%s', 'now'))`),
+    },
+    (table) => ({
+        userVariableUserIdx: index("user_variable_userId_idx").on(table.userId),
+        userVariableUniqueIdx: index("user_variable_unique_idx").on(table.userId, table.key),
+    })
+)

@@ -730,7 +730,7 @@ export default function ProjectEditor({ project, initialPrompt }: ProjectEditorP
                 { id: 'action-badge-video', label: 'Video Gen', icon: FilmSlate },
                 ...customActions.map((a) => ({
                     id: `action-badge-custom-${a.id}`,
-                    label: a.name,
+                    label: `${a.runtime === 'worker' ? '☁️ ' : ''}${a.name}`,
                     icon: PuzzlePiece,
                 })),
             ]
