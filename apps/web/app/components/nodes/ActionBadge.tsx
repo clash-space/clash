@@ -1,6 +1,6 @@
 import { memo, useState, useEffect, useCallback, useMemo } from 'react';
 import { Handle, Position, Node, NodeProps, useReactFlow, useEdges } from 'reactflow';
-import { VideoCamera, Image as ImageIcon, CaretDown, X, Play, Spinner, ArrowsInLineVertical, PuzzlePiece, GearSix } from '@phosphor-icons/react';
+import { VideoCamera, Image as ImageIcon, CaretDown, X, Play, Spinner, ArrowsInLineVertical, PuzzlePiece } from '@phosphor-icons/react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { createPortal } from 'react-dom';
 import { useProject } from '../ProjectContext';
@@ -1037,9 +1037,10 @@ const PromptActionNode = ({ data, selected, id }: NodeProps) => {
                     className={`w-[200px] ${bgClass} rounded-xl overflow-hidden transition-all duration-200 hover:shadow-lg cursor-pointer ${
                         selected ? `ring-2 ${ringClass} ring-offset-1` : 'ring-1 ring-gray-200'
                     }`}
+                    onClick={() => setShowPanel(!showPanel)}
                 >
-                    {/* Top Row: Icon + Label + Config Gear */}
-                    <div className="flex items-center gap-2 px-3 py-2.5" onDoubleClick={handleDoubleClick}>
+                    {/* Top Row: Icon + Label */}
+                    <div className="flex items-center gap-2 px-3 py-2.5" onDoubleClick={(e) => { e.stopPropagation(); handleDoubleClick(); }}>
                         <div className={`flex-shrink-0 ${colorClass}`}>
                             <Icon size={16} weight="fill" />
                         </div>
@@ -1055,16 +1056,6 @@ const PromptActionNode = ({ data, selected, id }: NodeProps) => {
                                 {badgeDisplayName}
                             </span>
                         </div>
-                        <button
-                            className="nodrag flex-shrink-0 p-1 rounded-md text-gray-400 hover:text-gray-600 hover:bg-black/5 transition-colors"
-                            onClick={(e) => {
-                                e.stopPropagation();
-                                setShowPanel(!showPanel);
-                            }}
-                            title="Configure"
-                        >
-                            <GearSix size={14} weight="bold" />
-                        </button>
                     </div>
 
                     {/* Bottom Row: Type switch (built-in only) + Execute */}
