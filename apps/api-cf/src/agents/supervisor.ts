@@ -246,7 +246,7 @@ export class SupervisorAgent extends AIChatAgent<Env> {
     const generateId = () => crypto.randomUUID().slice(0, 8);
     const getWorkspaceGroupId = () => this.workspaceGroupId;
 
-    const canvasTools = createCanvasTools(this.doc, this.broadcastToRoom, sendMsg, generateId, getWorkspaceGroupId);
+    const canvasTools = createCanvasTools(this.doc, this.broadcastToRoom, sendMsg, generateId, getWorkspaceGroupId, this.env, this.projectId);
     const timelineTools = createTimelineTools(sendMsg);
     const allTools = { ...canvasTools, ...timelineTools };
     const delegationTool = createDelegationTool(model as any, allTools);

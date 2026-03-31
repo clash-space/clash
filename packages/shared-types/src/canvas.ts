@@ -93,6 +93,27 @@ export const NodeDataSchema = z.object({
   customActionId: z.string().optional(),
   /** User-configured parameters for custom actions */
   customActionParams: z.record(z.unknown()).optional(),
+  /** Structured understanding results (ASR transcription, visual analysis, etc.).
+   *  Keys are overwritten, not merged — each key is independently owned. */
+  understanding: z.object({
+    transcription: z.object({
+      text: z.string(),
+      segments: z.array(z.object({
+        start: z.number(),
+        end: z.number(),
+        text: z.string(),
+      })),
+    }).optional(),
+    visual: z.object({
+      description: z.string().optional(),
+      shots: z.array(z.object({
+        start: z.number(),
+        end: z.number(),
+        description: z.string(),
+      })).optional(),
+      tags: z.array(z.string()).optional(),
+    }).optional(),
+  }).passthrough().optional(),
 }).passthrough(); // Allow additional fields
 
 export type NodeData = z.infer<typeof NodeDataSchema>;

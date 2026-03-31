@@ -56,6 +56,10 @@ deleted_classes = ["GenerationAgent"]
 tag = "v6"
 new_sqlite_classes = ["RenderContainer"]
 
+# Workers AI
+[ai]
+binding = "AI"
+
 # D1 Database (shared with frontend)
 [[d1_databases]]
 binding = "DB"

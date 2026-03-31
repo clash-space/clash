@@ -15,6 +15,7 @@ export const AtomicTaskTypeSchema = z.enum([
   'image_gen',   // Generate image
   'video_gen',   // Generate video
   'description', // Generate description for asset
+  'understand',  // Comprehensive understanding (ASR + visual analysis)
 ]);
 export type AtomicTaskType = z.infer<typeof AtomicTaskTypeSchema>;
 
@@ -51,11 +52,20 @@ export const DescriptionParamsSchema = z.object({
 });
 export type DescriptionParams = z.infer<typeof DescriptionParamsSchema>;
 
+// === Understanding Params ===
+export const UnderstandParamsSchema = z.object({
+  r2_key: z.string(),
+  mime_type: z.string(),
+  language: z.string().optional(),
+});
+export type UnderstandParams = z.infer<typeof UnderstandParamsSchema>;
+
 // === Discriminated Union for Atomic Task Request ===
 export const AtomicTaskRequestSchema = z.discriminatedUnion('task_type', [
   z.object({ task_type: z.literal('image_gen'), params: ImageGenParamsSchema }),
   z.object({ task_type: z.literal('video_gen'), params: VideoGenParamsSchema }),
   z.object({ task_type: z.literal('description'), params: DescriptionParamsSchema }),
+  z.object({ task_type: z.literal('understand'), params: UnderstandParamsSchema }),
 ]);
 export type AtomicTaskRequest = z.infer<typeof AtomicTaskRequestSchema>;
 
