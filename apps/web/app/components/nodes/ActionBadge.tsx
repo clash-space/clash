@@ -1,6 +1,6 @@
 import { memo, useState, useEffect, useCallback, useMemo } from 'react';
 import { Handle, Position, Node, NodeProps, useReactFlow, useEdges } from 'reactflow';
-import { VideoCamera, Image as ImageIcon, CaretDown, X, Play, Spinner, ArrowsInLineVertical, PuzzlePiece } from '@phosphor-icons/react';
+import { VideoCamera, Image as ImageIcon, CaretDown, X, Play, Spinner, ArrowsInLineVertical, PuzzlePiece, GearSix } from '@phosphor-icons/react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { createPortal } from 'react-dom';
 import { useProject } from '../ProjectContext';
@@ -36,7 +36,7 @@ const extractLabelFromPrompt = (promptText: string, fallback: string): string =>
 };
 
 const PromptActionNode = ({ data, selected, id }: NodeProps) => {
-    const [isHovered, setIsHovered] = useState(false);
+    const [showPanel, setShowPanel] = useState(false);
     const [showModal, setShowModal] = useState(false);
     const [showModelDropdown, setShowModelDropdown] = useState(false);
     const [isExecuting, setIsExecuting] = useState(false);
@@ -871,321 +871,258 @@ const PromptActionNode = ({ data, selected, id }: NodeProps) => {
         </AnimatePresence>
     ) : null;
 
-    return (
-        <>
-            <div
-                className="group relative"
-                onMouseEnter={() => setIsHovered(true)}
-                onMouseLeave={() => {
-                    setIsHovered(false);
-                    setShowModelDropdown(false);
-                }}
-            >
-                {/* Floating Title Input */}
-                <div
-                    className="absolute -top-8 left-4 z-10"
-                    onDoubleClick={(e) => e.stopPropagation()}
-                >
-                    <input
-                        className={`bg-transparent text-lg font-bold font-display ${colorClass} focus:outline-none`}
-                        value={label}
-                        onChange={handleLabelChange}
-                        placeholder="Prompt"
-                    />
-                </div>
+    // Computed display name for the badge
+    const badgeDisplayName = isCustom
+        ? (customDef?.name || customActionId || 'Custom')
+        : (selectedModel?.name || modelId || (actionType === 'video-gen' ? 'Video' : 'Image'));
 
-                {/* Main Node Container */}
-                <div 
-                    className={`w-[320px] h-[220px] ${bgClass} rounded-xl flex flex-col overflow-hidden transition-all duration-300 hover:shadow-xl ${
-                        selected ? `ring-4 ${ringClass} ring-offset-2` : 'ring-1 ring-gray-200'
-                    }`}
-                    onDoubleClick={handleDoubleClick}
+    // Bottom config panel content (portalled)
+    const configPanel = showPanel ? (
+        <AnimatePresence>
+            <div className="fixed inset-0 z-[9998]" onClick={() => { setShowPanel(false); setShowModelDropdown(false); }}>
+                {/* Backdrop — subtle */}
+                <motion.div
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    className="absolute inset-0 bg-black/10"
+                />
+
+                {/* Bottom Panel */}
+                <motion.div
+                    initial={{ y: '100%', opacity: 0 }}
+                    animate={{ y: 0, opacity: 1 }}
+                    exit={{ y: '100%', opacity: 0 }}
+                    transition={{ type: 'spring', damping: 30, stiffness: 400 }}
+                    className="absolute bottom-0 left-0 right-0 flex justify-center pointer-events-none"
+                    onClick={(e) => e.stopPropagation()}
                 >
-                    {/* Content Preview Area */}
-                    <div className="flex-1 p-4 relative overflow-hidden cursor-pointer flex flex-col">
-                        {/* Prompt Area (No scrollbar, pure fade-out) */}
-                        <div className="flex-1 relative overflow-hidden mb-1">
-                            {/* Prompt Text */}
-                            <div className="prose prose-sm prose-slate prose-p:text-gray-600 prose-headings:text-gray-800 prose-p:leading-tight">
-                                <MarkdownPreview content={content} />
-                            </div>
-                            
-                            {/* Bottom fade-out overlay to indicate overflow without scrollbar */}
-                            <div className={`absolute bottom-0 left-0 right-0 h-6 bg-gradient-to-t from-${actionType === 'video-gen' ? 'red' : 'blue'}-50 to-transparent pointer-events-none`} />
-                        </div>
-                        
-                        {/* Reference Images Section (Compact) */}
-                        {(() => {
-                            // Get connected image nodes
-                            const incomingEdges = edges.filter(e => e.target === id);
-                            const nodes = getNodes();
-                            const connectedImages = incomingEdges
-                                .map(e => nodes.find(n => n.id === e.source))
-                                .filter(n => n?.type === 'image' && n?.data?.src)
-                                .map(n => ({
-                                    id: n!.id,
-                                    src: n!.data.src,
-                                    label: n!.data.label || 'Image'
-                                }));
-                            
-                            if (connectedImages.length === 0) return null;
-                            
-                            return (
-                                <div className="space-y-1 pt-1.5 border-t border-gray-200/40 flex-shrink-0">
-                                    <div className="flex items-center gap-1">
-                                        <ImageIcon size={9} weight="fill" className={`${colorClass} opacity-50`} />
-                                        <span className="text-[8px] font-bold text-gray-400 uppercase tracking-widest">
-                                            Refs ({connectedImages.length})
-                                        </span>
-                                    </div>
-                                    <div className="flex flex-wrap gap-1 pb-0.5">
-                                        {connectedImages.map((img) => (
-                                            <div
-                                                key={img.id}
-                                                className="relative"
-                                                title={img.label}
-                                            >
-                                                {/* eslint-disable-next-line @next/next/no-img-element */}
-                                                <img
-                                                    src={resolveAssetUrl(img.src)}
-                                                    alt={img.label}
-                                                    className={`w-8 h-8 object-cover rounded-md border-[1.5px] transition-all ${
-                                                        actionType === 'video-gen' 
-                                                            ? 'border-red-100 hover:border-red-300' 
-                                                            : 'border-blue-100 hover:border-blue-300'
-                                                    } shadow-sm hover:scale-105`}
-                                                />
-                                            </div>
-                                        ))}
-                                    </div>
+                    <div className="pointer-events-auto w-full max-w-lg mb-6 mx-4 rounded-2xl bg-[#1a1a1a]/95 backdrop-blur-2xl p-5 shadow-2xl border border-white/10">
+                        {/* Panel Header */}
+                        <div className="flex items-center justify-between mb-4">
+                            <div className="flex items-center gap-3">
+                                <div className={`h-9 w-9 rounded-lg flex items-center justify-center ${
+                                    isCustom ? 'bg-purple-500/20 text-purple-400' :
+                                    actionType === 'video-gen' ? 'bg-red-500/20 text-red-400' : 'bg-blue-500/20 text-blue-400'
+                                }`}>
+                                    <Icon size={18} weight="fill" />
                                 </div>
-                            );
-                        })()}
-                    </div>
-
-                    {/* Control Bar */}
-                    <div className="px-3 py-2 bg-white/60 backdrop-blur-sm border-t border-gray-200/50 flex items-center gap-2">
-                        {/* Type Switch Button — hidden for custom actions */}
-                        {!isCustom && (
-                            <button
-                                className={`nodrag flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg transition-all hover:scale-105 active:scale-95 ${
-                                    actionType === 'video-gen' ? 'bg-red-100 text-red-600 hover:bg-red-200' : 'bg-blue-100 text-blue-600 hover:bg-blue-200'
-                                }`}
-                                onClick={(e) => {
-                                    e.stopPropagation();
-                                    handleTypeSwitch();
-                                }}
-                                title={`Switch to ${actionType === 'video-gen' ? 'Image' : 'Video'} Generation`}
-                            >
-                                <ArrowsInLineVertical size={16} weight="bold" />
-                            </button>
-                        )}
-
-                        {/* Custom action icon */}
-                        {isCustom && (
-                            <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-purple-100 text-purple-600">
-                                <PuzzlePiece size={16} weight="bold" />
+                                <div>
+                                    <h3 className="text-sm font-bold text-white leading-tight">
+                                        {isCustom ? (customDef?.name || customActionId) : modelDisplay}
+                                    </h3>
+                                    <p className="text-[11px] text-white/50">
+                                        {isCustom ? (customDef?.description || 'Custom action') : (providerDisplay || 'Configure parameters')}
+                                    </p>
+                                </div>
                             </div>
-                        )}
+                            <button
+                                onClick={() => { setShowPanel(false); setShowModelDropdown(false); }}
+                                className="p-1.5 rounded-lg hover:bg-white/10 text-white/40 hover:text-white/80 transition-colors"
+                            >
+                                <X size={16} weight="bold" />
+                            </button>
+                        </div>
 
-                        {/* Model / Action Display */}
-                        <div className="flex flex-col min-w-0 flex-1">
+                        {/* Tags */}
+                        <div className="flex flex-wrap gap-1.5 mb-4">
                             {isCustom ? (
                                 <>
-                                    <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider leading-none">Custom Action</span>
-                                    <span className="text-xs font-bold text-slate-900 truncate">{customDef?.name || customActionId}</span>
-                                    {customDef?.description && (
-                                        <span className="text-[10px] text-slate-500 truncate">{customDef.description}</span>
-                                    )}
+                                    <span className="px-2 py-0.5 rounded-full bg-purple-500/20 text-[10px] text-purple-200 font-medium uppercase tracking-wider">
+                                        {customDef?.outputType || 'image'}
+                                    </span>
+                                    <span className="px-2 py-0.5 rounded-full bg-white/5 text-[10px] text-white/50 font-medium uppercase tracking-wider">
+                                        Local Agent
+                                    </span>
                                 </>
                             ) : (
                                 <>
-                                    <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider leading-none">Model</span>
-                                    <span className="text-xs font-bold text-slate-900 truncate">{modelDisplay}</span>
-                                    {providerDisplay && (
-                                        <span className="text-[10px] text-slate-500 truncate">{providerDisplay}</span>
+                                    <span className="px-2 py-0.5 rounded-full bg-white/5 text-[10px] text-white/50 font-medium uppercase tracking-wider">
+                                        {selectedModel?.kind === 'video' ? 'Video' : 'Image'}
+                                    </span>
+                                    {selectedModel?.input.referenceImage === 'required' && (
+                                        <span className="px-2 py-0.5 rounded-full bg-red-500/20 text-[10px] text-red-200 font-medium">
+                                            Ref required
+                                        </span>
                                     )}
                                 </>
                             )}
                         </div>
 
-                        {/* Count Display — hidden for custom actions */}
+                        {/* Model Selector (for built-in actions) */}
                         {!isCustom && (
-                            <div className="flex flex-col items-center min-w-[32px]">
-                                <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider leading-none">Count</span>
-                                <span className="text-xs font-bold text-slate-900">{countValue}</span>
+                            <div className="mb-4">
+                                <div className="relative">
+                                    <button
+                                        className="w-full bg-white/5 rounded-lg px-3 py-2.5 flex items-center justify-between hover:bg-white/10 transition-colors cursor-pointer border border-white/10"
+                                        onClick={() => setShowModelDropdown(!showModelDropdown)}
+                                    >
+                                        <div className="flex flex-col items-start">
+                                            <span className="text-[10px] text-white/40 font-medium">Model</span>
+                                            <span className="text-xs font-bold text-white">{modelDisplay}</span>
+                                        </div>
+                                        <CaretDown size={12} className="text-white/40" />
+                                    </button>
+                                    {showModelDropdown && (
+                                        <div className="absolute left-0 right-0 bottom-full mb-1 bg-[#2a2a2a] border border-[#444] rounded-lg shadow-xl overflow-hidden z-50 max-h-48 overflow-y-auto">
+                                            {availableModels.map((card) => (
+                                                <div
+                                                    key={card.id}
+                                                    className={`px-3 py-2 text-xs cursor-pointer transition-colors ${
+                                                        card.id === modelId ? 'bg-blue-500 text-white' : 'text-white/80 hover:bg-white/10'
+                                                    }`}
+                                                    onClick={() => {
+                                                        handleModelChange(card.id);
+                                                        setShowModelDropdown(false);
+                                                    }}
+                                                >
+                                                    <div className="font-bold leading-tight">{card.name}</div>
+                                                    <div className="text-[10px] text-white/50">{card.provider}</div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
                             </div>
                         )}
 
-                        {/* Execution Button */}
+                        {/* Parameters */}
+                        <div className="space-y-3 text-white">
+                            {isCustom && customDef ? (
+                                customDef.parameters.map((param) =>
+                                    renderParamControl({
+                                        ...param,
+                                        id: param.id,
+                                        label: param.label,
+                                        type: param.type as ModelParameter['type'],
+                                        defaultValue: param.defaultValue,
+                                        options: param.options?.map((o) =>
+                                            typeof o === 'string' ? { label: o, value: o } : o
+                                        ),
+                                        min: param.min,
+                                        max: param.max,
+                                        step: param.step,
+                                    } as ModelParameter)
+                                )
+                            ) : (
+                                selectedModel?.parameters.map(renderParamControl)
+                            )}
+                        </div>
+
+                        {/* Prompt preview */}
+                        <div className="mt-4 pt-3 border-t border-white/10">
+                            <button
+                                onClick={(e) => { e.stopPropagation(); setShowPanel(false); handleDoubleClick(); }}
+                                className="w-full text-left px-3 py-2 rounded-lg bg-white/5 hover:bg-white/10 transition-colors border border-white/5"
+                            >
+                                <span className="text-[10px] text-white/40 font-medium uppercase tracking-wider">Prompt</span>
+                                <p className="text-xs text-white/70 line-clamp-2 leading-snug mt-0.5">
+                                    {content && content !== '# Prompt\nEnter your prompt here...'
+                                        ? extractLabelFromPrompt(content, 'Click to edit prompt...')
+                                        : 'Click to edit prompt...'}
+                                </p>
+                            </button>
+                        </div>
+                    </div>
+                </motion.div>
+            </div>
+        </AnimatePresence>
+    ) : null;
+
+    return (
+        <>
+            <div className="group relative">
+                {/* Compact Badge */}
+                <div
+                    className={`w-[200px] ${bgClass} rounded-xl overflow-hidden transition-all duration-200 hover:shadow-lg cursor-pointer ${
+                        selected ? `ring-2 ${ringClass} ring-offset-1` : 'ring-1 ring-gray-200'
+                    }`}
+                >
+                    {/* Top Row: Icon + Label + Config Gear */}
+                    <div className="flex items-center gap-2 px-3 py-2.5" onDoubleClick={handleDoubleClick}>
+                        <div className={`flex-shrink-0 ${colorClass}`}>
+                            <Icon size={16} weight="fill" />
+                        </div>
+                        <div className="flex flex-col min-w-0 flex-1">
+                            <input
+                                className={`bg-transparent text-xs font-bold ${colorClass} focus:outline-none w-full truncate nodrag`}
+                                value={label}
+                                onChange={handleLabelChange}
+                                placeholder="Action"
+                                onClick={(e) => e.stopPropagation()}
+                            />
+                            <span className="text-[10px] text-gray-400 truncate leading-none">
+                                {badgeDisplayName}
+                            </span>
+                        </div>
                         <button
-                            className={`nodrag flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg transition-all hover:scale-105 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed ${
-                                isCustom ? 'bg-purple-50 text-purple-600 hover:bg-purple-100' :
-                                actionType === 'video-gen' ? 'bg-red-50 text-red-600 hover:bg-red-100' : 'bg-blue-50 text-blue-600 hover:bg-blue-100'
-                            }`}
+                            className="nodrag flex-shrink-0 p-1 rounded-md text-gray-400 hover:text-gray-600 hover:bg-black/5 transition-colors"
                             onClick={(e) => {
                                 e.stopPropagation();
-                                handleExecute();
+                                setShowPanel(!showPanel);
                             }}
+                            title="Configure"
+                        >
+                            <GearSix size={14} weight="bold" />
+                        </button>
+                    </div>
+
+                    {/* Bottom Row: Type switch (built-in only) + Execute */}
+                    <div className="flex items-center gap-1 px-2 pb-2">
+                        {!isCustom && (
+                            <button
+                                className={`nodrag flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-md transition-all hover:scale-105 active:scale-95 ${
+                                    actionType === 'video-gen' ? 'bg-red-100/80 text-red-500' : 'bg-blue-100/80 text-blue-500'
+                                }`}
+                                onClick={(e) => { e.stopPropagation(); handleTypeSwitch(); }}
+                                title={`Switch to ${actionType === 'video-gen' ? 'Image' : 'Video'}`}
+                            >
+                                <ArrowsInLineVertical size={12} weight="bold" />
+                            </button>
+                        )}
+                        <div className="flex-1" />
+                        <button
+                            className={`nodrag flex h-7 items-center gap-1.5 px-3 rounded-lg text-xs font-semibold transition-all hover:scale-[1.02] active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed ${
+                                isCustom ? 'bg-purple-500 text-white hover:bg-purple-600' :
+                                actionType === 'video-gen' ? 'bg-red-500 text-white hover:bg-red-600' : 'bg-blue-500 text-white hover:bg-blue-600'
+                            }`}
+                            onClick={(e) => { e.stopPropagation(); handleExecute(); }}
                             disabled={isExecuting}
-                            title={error || (isExecuting ? 'Generating...' : 'Execute')}
                         >
                             {isExecuting ? (
-                                <Spinner size={16} className="animate-spin" />
+                                <Spinner size={12} className="animate-spin" />
                             ) : (
-                                <Play size={16} weight="fill" />
+                                <Play size={12} weight="fill" />
                             )}
+                            {isExecuting ? 'Running' : 'Run'}
                         </button>
                     </div>
 
                     {error && (
-                        <div className="absolute -bottom-6 left-0 text-[10px] text-red-500 whitespace-nowrap">
+                        <div className="px-3 pb-1.5 text-[10px] text-red-500 truncate">
                             {error}
                         </div>
                     )}
-                </div>
-
-                {/* Dark Hover Configuration Panel */}
-                <div className={`
-                    absolute top-full mt-3 w-72 rounded-2xl bg-[#1a1a1a] p-4 shadow-2xl border border-[#333] z-30 origin-top transition-all duration-200 nodrag
-                    ${isHovered ? 'opacity-100 scale-100 translate-y-0' : 'opacity-0 scale-95 -translate-y-2 pointer-events-none'}
-                `}>
-                    <div className="absolute -top-4 left-0 w-full h-4 bg-transparent" />
-                    <div className="absolute -top-1.5 left-1/2 -translate-x-1/2 w-3 h-3 bg-[#1a1a1a] rotate-45 border-t border-l border-[#333]" />
-
-                    <div className="flex flex-col gap-4 text-white" onMouseDown={(e) => e.stopPropagation()}>
-                        {isCustom && customDef ? (
-                            /* ── Custom Action Config Panel ── */
-                            <>
-                                <div className="flex items-start gap-3">
-                                    <div className="h-10 w-10 rounded-lg bg-white/10 flex items-center justify-center text-purple-400">
-                                        <PuzzlePiece size={18} weight="fill" />
-                                    </div>
-                                    <div className="flex flex-col gap-1">
-                                        <span className="text-sm font-bold leading-tight">{customDef.name}</span>
-                                        {customDef.description && (
-                                            <p className="text-[11px] text-white/70 leading-snug">{customDef.description}</p>
-                                        )}
-                                        <div className="flex flex-wrap gap-1">
-                                            <span className="px-2 py-0.5 rounded-full bg-purple-500/20 text-[10px] text-purple-200 uppercase tracking-widest">
-                                                {customDef.outputType}
-                                            </span>
-                                            <span className="px-2 py-0.5 rounded-full bg-white/5 text-[10px] uppercase tracking-widest">
-                                                Local Agent
-                                            </span>
-                                        </div>
-                                    </div>
-                                </div>
-                                {customDef.parameters.length > 0 && (
-                                    <div className="space-y-3 pt-1">
-                                        {customDef.parameters.map((param) =>
-                                            renderParamControl({
-                                                ...param,
-                                                id: param.id,
-                                                label: param.label,
-                                                type: param.type as ModelParameter['type'],
-                                                defaultValue: param.defaultValue,
-                                                options: param.options?.map((o) =>
-                                                    typeof o === 'string' ? { label: o, value: o } : o
-                                                ),
-                                                min: param.min,
-                                                max: param.max,
-                                                step: param.step,
-                                            } as ModelParameter)
-                                        )}
-                                    </div>
-                                )}
-                            </>
-                        ) : (
-                            /* ── Built-in Model Config Panel ── */
-                            <>
-                                <div className="flex items-start justify-between gap-3">
-                                    <div className="flex items-start gap-3">
-                                        <div className={`h-10 w-10 rounded-lg bg-white/10 flex items-center justify-center ${colorClass}`}>
-                                            <Icon size={18} weight="fill" />
-                                        </div>
-                                        <div className="flex flex-col gap-1">
-                                            <span className="text-sm font-bold leading-tight">{modelDisplay}</span>
-                                            <span className="text-[11px] text-white/60">{providerDisplay || 'Model card'}</span>
-                                            {selectedModel?.description && (
-                                                <p className="text-[11px] text-white/70 leading-snug">{selectedModel.description}</p>
-                                            )}
-                                            <div className="flex flex-wrap gap-1">
-                                                <span className="px-2 py-0.5 rounded-full bg-white/5 text-[10px] uppercase tracking-widest">
-                                                    {selectedModel?.kind === 'video' ? 'Video' : 'Image'}
-                                                </span>
-                                                {selectedModel?.input.referenceImage === 'required' && (
-                                                    <span className="px-2 py-0.5 rounded-full bg-red-500/20 text-[10px] text-red-100">
-                                                        Needs reference image
-                                                    </span>
-                                                )}
-                                                {selectedModel?.input.referenceImage === 'forbidden' && (
-                                                    <span className="px-2 py-0.5 rounded-full bg-emerald-500/20 text-[10px] text-emerald-100">
-                                                        No reference needed
-                                                    </span>
-                                                )}
-                                            </div>
-                                        </div>
-                                    </div>
-                                    <div className="relative w-40">
-                                        <button
-                                            className="w-full bg-white/5 rounded-lg p-2 flex flex-col gap-1 hover:bg-white/10 transition-colors cursor-pointer border border-white/10"
-                                            onClick={() => setShowModelDropdown(!showModelDropdown)}
-                                        >
-                                            <span className="text-[10px] text-white/40 font-medium">Model</span>
-                                            <div className="flex items-center justify-between">
-                                                <span className="text-xs font-bold truncate">{modelDisplay}</span>
-                                                <CaretDown size={10} className="text-white/40" />
-                                            </div>
-                                        </button>
-                                        {showModelDropdown && (
-                                            <div className="absolute right-0 top-full mt-1 w-full bg-[#2a2a2a] border border-[#333] rounded-lg shadow-xl overflow-hidden z-50 flex flex-col">
-                                                {availableModels.map((card) => (
-                                                    <div
-                                                        key={card.id}
-                                                        className={`px-3 py-2 text-xs cursor-pointer transition-colors ${card.id === modelId ? 'bg-blue-500 text-white' : 'text-white/80 hover:bg-white/10'}`}
-                                                        onClick={(e) => {
-                                                            e.stopPropagation();
-                                                            handleModelChange(card.id);
-                                                            setShowModelDropdown(false);
-                                                        }}
-                                                    >
-                                                        <div className="font-bold leading-tight">{card.name}</div>
-                                                        <div className="text-[10px] text-white/60">{card.provider}</div>
-                                                    </div>
-                                                ))}
-                                            </div>
-                                        )}
-                                    </div>
-                                </div>
-
-                                <div className="space-y-3 pt-1">
-                                    {selectedModel?.parameters.map(renderParamControl)}
-                                </div>
-                            </>
-                        )}
-                    </div>
                 </div>
 
                 {/* Handles */}
                 <Handle
                     type="target"
                     position={Position.Left}
-                    style={{ left: -6, top: '50%', transform: 'translateY(-50%)', width: 12, height: 12, zIndex: 100, background: '#94a3b8', border: '2px solid white' }}
+                    style={{ left: -6, top: '50%', transform: 'translateY(-50%)', width: 10, height: 10, zIndex: 100, background: '#94a3b8', border: '2px solid white' }}
                     className="transition-all hover:scale-125 shadow-sm hover:!bg-slate-600"
                 />
-
-                {/* Output handle (hidden, for programmatic connections) */}
                 <Handle
                     type="source"
                     position={Position.Right}
                     isConnectable={false}
-                    className="!h-3 !w-3 !translate-x-1 !border-2 !border-white !bg-slate-400 transition-all hover:scale-125 shadow-sm hover:!bg-slate-600 z-10 !opacity-0 !pointer-events-none"
+                    className="!h-2.5 !w-2.5 !translate-x-1 !border-2 !border-white !bg-slate-400 z-10 !opacity-0 !pointer-events-none"
                 />
             </div>
 
-            {/* Render modal in portal */}
+            {/* Portalled panels */}
             {typeof window !== 'undefined' && modalContent && createPortal(modalContent, document.body)}
+            {typeof window !== 'undefined' && configPanel && createPortal(configPanel, document.body)}
         </>
     );
 };

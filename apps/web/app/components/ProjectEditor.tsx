@@ -859,10 +859,10 @@ export default function ProjectEditor({ project, initialPrompt }: ProjectEditorP
                 layoutWidth = 300;
                 layoutHeight = 400;
             } else if (nodeType === 'action-badge') {
-                defaultWidth = 320;
-                defaultHeight = 220;
-                layoutWidth = 320;
-                layoutHeight = 220;
+                defaultWidth = 200;
+                defaultHeight = 80;
+                layoutWidth = 200;
+                layoutHeight = 80;
             } else if (nodeType === 'prompt') {
                 defaultWidth = 300;
                 defaultHeight = 150;
@@ -1358,12 +1358,12 @@ export default function ProjectEditor({ project, initialPrompt }: ProjectEditorP
                     type = 'action-badge';
                     data = { actionType: 'image-gen', modelId: defaultImageModel?.id ?? 'nano-banana-2', model: defaultImageModel?.id ?? 'nano-banana-2', modelParams: { ...(defaultImageModel?.defaultParams ?? {}) }, ...data };
                     if (!rest.width) rest.width = 200;
-                    if (!rest.height) rest.height = 60;
+                    if (!rest.height) rest.height = 80;
                 } else if (type === 'video-gen') {
                     type = 'action-badge';
                     data = { actionType: 'video-gen', modelId: defaultVideoModel?.id ?? 'sora-2-image-to-video', model: defaultVideoModel?.id ?? 'sora-2-image-to-video', modelParams: { ...(defaultVideoModel?.defaultParams ?? {}) }, ...data };
                     if (!rest.width) rest.width = 200;
-                    if (!rest.height) rest.height = 60;
+                    if (!rest.height) rest.height = 80;
                 }
 
                 // Validate parentId if present
