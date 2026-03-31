@@ -1,6 +1,6 @@
 import { memo, useState, useEffect, useCallback, useMemo } from 'react';
 import { Handle, Position, Node, NodeProps, useReactFlow, useEdges } from 'reactflow';
-import { VideoCamera, Image as ImageIcon, CaretDown, X, Play, Spinner, ArrowsInLineVertical, PuzzlePiece } from '@phosphor-icons/react';
+import { VideoCamera, Image as ImageIcon, CaretDown, X, Play, Spinner, PuzzlePiece } from '@phosphor-icons/react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { createPortal } from 'react-dom';
 import { useProject } from '../ProjectContext';
@@ -260,50 +260,6 @@ const PromptActionNode = ({ data, selected, id }: NodeProps) => {
     const handleLabelChange = (evt: React.ChangeEvent<HTMLInputElement>) => {
         const newLabel = evt.target.value;
         setLabel(newLabel);
-    };
-
-    // Type switching handler
-    const handleTypeSwitch = () => {
-        const newType = actionType === 'image-gen' ? 'video-gen' : 'image-gen';
-        setActionType(newType);
-        
-        const nextCandidates = MODEL_CARDS.filter((card) => card.kind === (newType === 'video-gen' ? 'video' : 'image'));
-        const nextModel = nextCandidates[0];
-        const nextModelId = nextModel?.id ?? modelId;
-        const nextParams = { ...(nextModel?.defaultParams ?? {}) } as ModelParams;
-        setModelId(nextModelId);
-        setModelParams(nextParams);
-        
-        // Sync to node data
-        setNodes((nds) =>
-            nds.map((node) => {
-                if (node.id === id) {
-                    return {
-                        ...node,
-                        data: {
-                            ...node.data,
-                            actionType: newType,
-                            modelId: nextModelId,
-                            model: nextModelId,
-                            modelParams: nextParams,
-                        },
-                    };
-                }
-                return node;
-            })
-        );
-
-        // Sync to Loro
-        if (loroSync?.connected) {
-            loroSync.updateNode(id, {
-                data: {
-                    actionType: newType,
-                    modelId: nextModelId,
-                    model: nextModelId,
-                    modelParams: nextParams,
-                }
-            });
-        }
     };
 
     // Auto-run effect
@@ -1058,19 +1014,8 @@ const PromptActionNode = ({ data, selected, id }: NodeProps) => {
                         </div>
                     </div>
 
-                    {/* Bottom Row: Type switch (built-in only) + Execute */}
+                    {/* Bottom Row: Execute */}
                     <div className="flex items-center gap-1 px-2 pb-2">
-                        {!isCustom && (
-                            <button
-                                className={`nodrag flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-md transition-all hover:scale-105 active:scale-95 ${
-                                    actionType === 'video-gen' ? 'bg-red-100/80 text-red-500' : 'bg-blue-100/80 text-blue-500'
-                                }`}
-                                onClick={(e) => { e.stopPropagation(); handleTypeSwitch(); }}
-                                title={`Switch to ${actionType === 'video-gen' ? 'Image' : 'Video'}`}
-                            >
-                                <ArrowsInLineVertical size={12} weight="bold" />
-                            </button>
-                        )}
                         <div className="flex-1" />
                         <button
                             className={`nodrag flex h-7 items-center gap-1.5 px-3 rounded-lg text-xs font-semibold transition-all hover:scale-[1.02] active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed ${
