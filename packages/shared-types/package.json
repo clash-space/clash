@@ -16,6 +16,8 @@
   "scripts": {
     "build": "tsc",
     "clean": "rm -rf dist",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "generate:json-schema": "ts-node scripts/generate-json-schema.ts",
     "generate:python": "ts-node scripts/generate-python.ts"
   },
@@ -27,6 +29,7 @@
   "devDependencies": {
     "ts-node": "^10.9.2",
     "typescript": "^5.0.0",
+    "vitest": "^4.1.2",
     "zod-to-json-schema": "^3.23.0"
   },
   "files": [

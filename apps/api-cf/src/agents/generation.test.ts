@@ -181,8 +181,8 @@ describe("GenerationWorkflow pipeline logic", () => {
 });
 
 describe("Status enum", () => {
-  it("has exactly 5 values", () => {
-    expect(Object.keys(Status)).toHaveLength(5);
+  it("has exactly 6 values", () => {
+    expect(Object.keys(Status)).toHaveLength(6);
   });
 
   it("contains expected values", () => {
