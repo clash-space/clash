@@ -30,8 +30,8 @@ interface MilkdownEditorProps {
     onChange: (value: string) => void;
     /** Available nodes for @-mention */
     mentionableNodes?: MentionableNode[];
-    /** Allowed modalities for @-mention filter (from model's input.modalities) */
-    inputModalities?: string[];
+    /** Allowed modalities for @-mention filter (from model's input.promptModalities) */
+    promptModalities?: string[];
     /** Node IDs already connected via edges (shown first in @-menu) */
     connectedNodeIds?: string[];
     /** Callback when a new @-mention is inserted for an unconnected node */
@@ -144,7 +144,7 @@ function AssetMentionMenu({
     coords,
     nodes,
     connectedIds,
-    inputModalities,
+    promptModalities,
     onSelect,
     onClose,
 }: {
@@ -153,7 +153,7 @@ function AssetMentionMenu({
     coords: { left: number; top: number; bottom: number } | null;
     nodes: MentionableNode[];
     connectedIds: Set<string>;
-    inputModalities: string[];
+    promptModalities: string[];
     onSelect: (node: MentionableNode) => void;
     onClose: () => void;
 }) {
@@ -163,7 +163,7 @@ function AssetMentionMenu({
     const filtered = nodes.filter((n) => {
         // Filter by allowed modalities (map node type to modality)
         const modality = n.type === 'image' ? 'image' : n.type === 'video' ? 'video' : n.type === 'audio' ? 'audio' : 'text';
-        if (!inputModalities.includes(modality)) return false;
+        if (!promptModalities.includes(modality)) return false;
         // Filter by search query
         if (query && !n.label.toLowerCase().includes(query.toLowerCase())) return false;
         return true;
@@ -246,7 +246,7 @@ function MilkdownEditorInner({
     value,
     onChange,
     mentionableNodes = [],
-    inputModalities = ['text'],
+    promptModalities = ['text'],
     connectedNodeIds = [],
     onMentionAdded,
 }: MilkdownEditorProps) {
@@ -259,7 +259,7 @@ function MilkdownEditorInner({
     const connectedSet = new Set(connectedNodeIds);
 
     // Only show @-menu if modalities include non-text types
-    const showMentions = inputModalities.some((m) => m !== 'text');
+    const showMentions = promptModalities.some((m) => m !== 'text');
 
     const mentionPlugin = useCallback(() => {
         if (!showMentions) {
@@ -368,7 +368,7 @@ function MilkdownEditorInner({
                     coords={mentionState.cursorCoords}
                     nodes={mentionableNodes}
                     connectedIds={connectedSet}
-                    inputModalities={inputModalities}
+                    promptModalities={promptModalities}
                     onSelect={handleMentionSelect}
                     onClose={handleMentionClose}
                 />

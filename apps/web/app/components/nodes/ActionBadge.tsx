@@ -855,10 +855,10 @@ const PromptActionNode = ({ data, selected, id }: NodeProps) => {
                                         src: n.data.src as string | undefined,
                                     }));
                             })()}
-                            inputModalities={
+                            promptModalities={
                                 isCustom
-                                    ? (customDef?.inputModalities ?? ['text'])
-                                    : (selectedModel?.input.modalities ?? ['text'])
+                                    ? (customDef?.promptModalities ?? ['text'])
+                                    : (selectedModel?.input.promptModalities ?? ['text'])
                             }
                             connectedNodeIds={
                                 edges.filter((e) => e.target === id).map((e) => e.source)

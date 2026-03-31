@@ -299,8 +299,8 @@ export const CustomActionDefinitionSchema = z.object({
   secrets: z.array(CustomActionSecretSchema).optional(),
   /** Discovery tags */
   tags: z.array(z.string()).optional(),
-  /** Input modalities accepted inline in the prompt via @-mentions */
-  inputModalities: z.array(z.enum(['text', 'image', 'video', 'audio'])).default(['text']),
+  /** Modalities that can be @-mentioned inline in the prompt editor */
+  promptModalities: z.array(z.enum(['text', 'image', 'video', 'audio'])).default(['text']),
 });
 export type CustomActionDefinition = z.infer<typeof CustomActionDefinitionSchema>;
 
