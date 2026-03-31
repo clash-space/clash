@@ -13,7 +13,7 @@ import { updateNodeData, appendNodeLog } from './NodeUpdater';
 import { Status } from '../domain/canvas';
 import type { GenerationParams } from '../agents/generation';
 
-import { MODEL_CARDS } from '@clash/shared-types';
+import { MODEL_CARDS, parsePromptParts, extractPromptText } from '@clash/shared-types';
 
 const defaultImageModel = MODEL_CARDS.find((card) => card.kind === 'image')?.id ?? 'nano-banana-2';
 const defaultVideoModel = MODEL_CARDS.find((card) => card.kind === 'video')?.id ?? 'sora-2-image-to-video';
@@ -297,8 +297,24 @@ export async function processPendingNodes(
           }
         }
 
+        // Parse prompt for @-mention parts (mixed-modality)
+        const rawPrompt = innerData.prompt || innerData.label || '';
+        const parts = parsePromptParts(rawPrompt);
+        const cleanPrompt = extractPromptText(parts);
+
+        // Resolve @-mentioned asset refs to R2 keys
+        const resolvedParts = parts.map((part) => {
+          if (part.type === 'asset_ref' && part.nodeId) {
+            const refNode = nodesMap.get(part.nodeId) as Record<string, any> | undefined;
+            const refSrc = refNode?.data?.src as string | undefined;
+            return { type: 'asset_ref', nodeId: part.nodeId, r2Key: refSrc || undefined };
+          }
+          return { type: 'text', text: part.text || '' };
+        });
+
         const result = await submitGenTask(env, taskType as GenerationParams['type'], projectId, nodeId, taskId, {
-          prompt: innerData.prompt || innerData.label || '',
+          prompt: cleanPrompt,
+          promptParts: resolvedParts,
           model: selectedModelId,
           modelParams,
           referenceImages,
@@ -370,6 +386,7 @@ async function submitGenTask(
   taskId: string,
   params: {
     prompt: string;
+    promptParts?: Array<{ type: string; text?: string; nodeId?: string; r2Key?: string }>;
     model: string;
     modelParams: Record<string, any>;
     referenceImages: string[];
@@ -398,6 +415,7 @@ async function submitGenTask(
       type: taskType,
       projectId,
       prompt: params.prompt,
+      promptParts: params.promptParts,
       aspectRatio: params.aspectRatio,
       modelName: params.model,
       modelParams: params.modelParams as Record<string, unknown>,

@@ -43,6 +43,9 @@ export interface GenerationParams {
   modelParams?: Record<string, unknown>;
   /** R2 keys for reference images (resolved to fal URLs in workflow step) */
   referenceR2Keys?: string[];
+  /** Structured prompt parts preserving text+image ordering (for parts-native APIs).
+   *  Each part: { type: 'text', text } or { type: 'asset_ref', nodeId, r2Key } */
+  promptParts?: Array<{ type: string; text?: string; nodeId?: string; r2Key?: string }>;
   // video_gen fields
   /** R2 key for source image (image-to-video) */
   imageR2Key?: string;
@@ -110,7 +113,25 @@ export class GenerationWorkflow extends WorkflowEntrypoint<Env, GenerationParams
 
       // Resolve reference images: R2 keys → fal CDN URLs
       let referenceImageUrls: string[] | undefined;
-      if (params.referenceR2Keys?.length) {
+
+      if (params.promptParts?.length) {
+        // Parts-aware path: resolve asset_ref parts from R2 to fal CDN URLs
+        // This preserves the ordering of text + image parts for future parts-native APIs
+        referenceImageUrls = [];
+        for (const part of params.promptParts) {
+          if (part.type === 'asset_ref' && part.r2Key) {
+            const falUrl = await uploadR2ToFal(this.env.R2_BUCKET, part.r2Key, this.env.FAL_API_KEY ?? "");
+            referenceImageUrls.push(falUrl);
+          }
+        }
+        if (referenceImageUrls.length === 0) referenceImageUrls = undefined;
+        if (referenceImageUrls) {
+          log.info("Prompt parts: resolved asset refs to fal URLs", { ...tag, count: referenceImageUrls.length });
+        }
+      }
+
+      // Fallback: resolve from flat referenceR2Keys (legacy / non-parts path)
+      if (!referenceImageUrls && params.referenceR2Keys?.length) {
         referenceImageUrls = [];
         for (const key of params.referenceR2Keys) {
           const falUrl = await uploadR2ToFal(this.env.R2_BUCKET, key, this.env.FAL_API_KEY ?? "");
