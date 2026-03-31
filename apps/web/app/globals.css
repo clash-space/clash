@@ -140,4 +140,26 @@ pre {
   /* Ensure wrapper doesn't have background */
 }
 
+/* ─── @-mention asset chips in MilkdownEditor ─────────── */
+.asset-mention {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: #f1f5f9; /* slate-100 */
+  border: 1px solid #e2e8f0; /* slate-200 */
+  border-radius: 6px;
+  padding: 1px 6px;
+  font-size: 12px;
+  font-weight: 500;
+  color: #334155; /* slate-700 */
+  vertical-align: baseline;
+  cursor: default;
+}
+.asset-mention img {
+  width: 16px;
+  height: 16px;
+  border-radius: 3px;
+  object-fit: cover;
+}
+
 /* Group drag feedback classes removed */

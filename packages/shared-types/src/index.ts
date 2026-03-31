@@ -124,6 +124,17 @@ export {
 export { LoroSyncClient } from './loro-client';
 export type { LoroSyncClientOptions } from './loro-client';
 
+// Prompt parsing (mixed-modality @-mentions)
+export {
+  parsePromptParts,
+  extractPromptText,
+  extractAssetRefs,
+  buildMention,
+  hasAssetMentions,
+  type PromptPart,
+  type AssetRef,
+} from './prompt';
+
 // Collaboration visibility (presence + activity)
 export * from './presence';
 

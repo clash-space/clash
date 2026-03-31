@@ -9,7 +9,7 @@ import { useLayoutManager } from '@/lib/layout';
 import { generateSemanticId } from '@/lib/utils/semanticId';
 import MilkdownEditor from '../MilkdownEditor';
 import { resolveAssetUrl, isR2Key } from '../../../lib/utils/assets';
-import { MODEL_CARDS, resolveAspectRatio, type ModelCard, type ModelParameter, type CustomActionDefinition } from '@clash/shared-types';
+import { MODEL_CARDS, resolveAspectRatio, parsePromptParts, extractPromptText, extractAssetRefs, type ModelCard, type ModelParameter, type CustomActionDefinition } from '@clash/shared-types';
 import { applyLayoutPatchesToLoro, collectLayoutNodePatches } from '../../lib/loroNodeSync';
 import { useCustomActions } from '../../hooks/useCustomActions';
 
@@ -299,6 +299,19 @@ const PromptActionNode = ({ data, selected, id }: NodeProps) => {
                 throw new Error('No prompt provided. Please edit the node or connect a text/prompt node.');
             }
 
+            // Parse mixed-modality prompt: extract text + @-mentioned asset references
+            const promptParts = parsePromptParts(prompt);
+            const promptText = extractPromptText(promptParts);
+            const inlineAssetRefs = extractAssetRefs(promptParts);
+
+            // Resolve inline @-mentioned image URLs
+            const inlineImageUrls = inlineAssetRefs
+                .map((ref) => {
+                    const refNode = getNodes().find((n) => n.id === ref.nodeId);
+                    return refNode?.data?.src as string | undefined;
+                })
+                .filter((src): src is string => !!src);
+
             // Capture and clear pre-allocated asset ID (provided by backend; treat as single-use)
             const preAllocatedAssetId = data.preAllocatedAssetId;
             if (preAllocatedAssetId) {
@@ -388,7 +401,10 @@ const PromptActionNode = ({ data, selected, id }: NodeProps) => {
                 // Collect connected images for reference
                 const imageNodes = connectedNodes.filter(n => n?.type === 'image');
                 const rawReferenceImages = getReferenceImageUrls(imageNodes.map(n => n?.data?.src));
-                const referenceImageUrls = forbidReferenceImage ? [] : rawReferenceImages;
+                const connectedImageUrls = forbidReferenceImage ? [] : rawReferenceImages;
+
+                // Merge: inline @-refs + edge-connected images (deduplicate)
+                const referenceImageUrls = [...new Set([...inlineImageUrls, ...connectedImageUrls])];
 
                 if (requiresReferenceImage && referenceImageUrls.length === 0) {
                     throw new Error('Selected model requires at least one reference image.');
@@ -399,8 +415,8 @@ const PromptActionNode = ({ data, selected, id }: NodeProps) => {
                 // ============================================
                 const pendingNodeId = assetName;
 
-                // Extract meaningful label from prompt
-                const generatedLabel = extractLabelFromPrompt(prompt, 'Generated Image');
+                // Extract meaningful label from prompt text (without @-mention syntax)
+                const generatedLabel = extractLabelFromPrompt(promptText, 'Generated Image');
 
 
                 // Create the pending node in React state
@@ -412,8 +428,8 @@ const PromptActionNode = ({ data, selected, id }: NodeProps) => {
                             label: generatedLabel,
                             src: '', // Empty src = generating
                             status: 'pending',
-                            prompt: prompt, // Loro uses this for generation
-                            referenceImageUrls, // Pass reference images
+                            prompt: promptText, // Send clean text to generation API
+                            referenceImageUrls, // Pass merged reference images
                             aspectRatio: resolveAspectRatio(modelId, modelParams),
                             model: modelId,
                             modelId,
@@ -476,7 +492,12 @@ const PromptActionNode = ({ data, selected, id }: NodeProps) => {
                 const imageNodes = connectedNodes.filter(n => n?.type === 'image');
 
                 const rawReferenceImages = getReferenceImageUrls(imageNodes.map(n => n?.data?.src));
-                const referenceImageUrls = forbidReferenceImage ? [] : rawReferenceImages;
+                const connectedVideoImageUrls = forbidReferenceImage ? [] : rawReferenceImages;
+                // For start_end mode, only use connected images (not inline @-refs)
+                // For other modes, merge inline + connected
+                const referenceImageUrls = referenceMode === 'start_end'
+                    ? connectedVideoImageUrls
+                    : [...new Set([...inlineImageUrls, ...connectedVideoImageUrls])];
 
                 if (requiresReferenceImage) {
                     const requiredCount = referenceMode === 'start_end' ? 2 : 1;
@@ -514,7 +535,7 @@ const PromptActionNode = ({ data, selected, id }: NodeProps) => {
                 const pendingNodeId = assetName;
 
                 // Extract meaningful label from prompt
-                const generatedLabel = extractLabelFromPrompt(prompt, 'Generated Video');
+                const generatedLabel = extractLabelFromPrompt(promptText, 'Generated Video');
 
                 const durationValue = modelParams.duration ?? 5;
                 const durationNumber = typeof durationValue === 'string' ? parseInt(durationValue, 10) : Number(durationValue) || 5;
@@ -528,8 +549,8 @@ const PromptActionNode = ({ data, selected, id }: NodeProps) => {
                             label: generatedLabel,
                             src: '', // Empty src = generating
                             status: 'pending',
-                            prompt: prompt, // Loro uses this for generation
-                            referenceImageUrls, // Pass reference images
+                            prompt: promptText, // Send clean text to generation API
+                            referenceImageUrls, // Pass merged reference images
                             duration: durationNumber,
                             model: modelId,
                             modelId,
@@ -820,7 +841,36 @@ const PromptActionNode = ({ data, selected, id }: NodeProps) => {
 
                     {/* Editor Content */}
                     <div className="flex-1 overflow-y-auto bg-white">
-                        <MilkdownEditor value={content} onChange={setContent} />
+                        <MilkdownEditor
+                            value={content}
+                            onChange={setContent}
+                            mentionableNodes={(() => {
+                                const allNodes = getNodes();
+                                return allNodes
+                                    .filter((n) => ['image', 'video', 'text'].includes(n.type))
+                                    .map((n) => ({
+                                        id: n.id,
+                                        type: n.type,
+                                        label: (n.data.label as string) || n.id,
+                                        src: n.data.src as string | undefined,
+                                    }));
+                            })()}
+                            inputModalities={
+                                isCustom
+                                    ? (customDef?.inputModalities ?? ['text'])
+                                    : (selectedModel?.input.modalities ?? ['text'])
+                            }
+                            connectedNodeIds={
+                                edges.filter((e) => e.target === id).map((e) => e.source)
+                            }
+                            onMentionAdded={(referencedNodeId) => {
+                                const edgeId = `${referencedNodeId}-${id}`;
+                                addEdges({ id: edgeId, source: referencedNodeId, target: id, type: 'default' });
+                                if (loroSync?.connected) {
+                                    loroSync.addEdge(edgeId, { id: edgeId, source: referencedNodeId, target: id, type: 'default' });
+                                }
+                            }}
+                        />
                     </div>
                 </motion.div>
             </div>
