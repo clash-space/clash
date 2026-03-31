@@ -13,6 +13,8 @@ import {
   ACTION_TYPE,
 } from "../../domain/canvas";
 import { MODEL_CARDS, buildPendingAssetNode } from "@clash/shared-types";
+import type { Env } from "../../config";
+import type { GenerationParams } from "../generation";
 
 /**
  * Create canvas tools that operate on the Loro CRDT document.
@@ -22,7 +24,9 @@ export function createCanvasTools(
   broadcast: BroadcastFn,
   sendMessage: (msg: Record<string, unknown>) => void,
   generateId: () => string,
-  getWorkspaceGroupId: () => string | undefined
+  getWorkspaceGroupId: () => string | undefined,
+  env?: Env,
+  projectId?: string,
 ) {
   const listCanvasNodes = tool({
     description: "List nodes on the canvas, optionally filtered by type or parent group. Returns a tree view.",
@@ -339,6 +343,50 @@ export function createCanvasTools(
     },
   });
 
+  const understandAsset = tool({
+    description:
+      "Run comprehensive understanding on an image, video, or audio asset node. " +
+      "Performs ASR transcription (audio/video) and visual analysis (image/video). " +
+      "Results are stored in the node's understanding field.",
+    inputSchema: z.object({
+      node_id: z.string().describe("Target asset node ID (image, video, or audio)"),
+      language: z.string().optional().describe("Language hint for ASR (e.g. 'zh', 'en')"),
+    }),
+    execute: async (args) => {
+      const { node_id, language } = args;
+      if (!env || !projectId) return "Error: understand_asset requires env and projectId";
+      try {
+        const node = canvasBackend.readNode(doc, node_id);
+        if (!node) return `Error: Node ${node_id} not found`;
+
+        const src = node.data.src as string | undefined;
+        if (!src) return `Error: Node ${node_id} has no asset (src is empty)`;
+
+        const nodeType = node.type;
+        let mimeType = "image/png";
+        if (nodeType === "video") mimeType = "video/mp4";
+        else if (nodeType === "audio") mimeType = "audio/mp3";
+
+        const taskId = generateId();
+
+        const genParams: GenerationParams = {
+          taskId,
+          nodeId: node_id,
+          type: "understand",
+          projectId,
+          r2Key: src,
+          mimeType,
+          language,
+        };
+
+        await env.GENERATION_WORKFLOW.create({ id: taskId, params: genParams });
+        return `Understanding task submitted for node ${node_id} (taskId: ${taskId}). Results will appear in node.data.understanding.`;
+      } catch (e) {
+        return `Error: ${e}`;
+      }
+    },
+  });
+
   return {
     list_canvas_nodes: listCanvasNodes,
     read_canvas_node: readCanvasNode,
@@ -349,5 +397,6 @@ export function createCanvasTools(
     rerun_generation_node: rerunGenerationNode,
     search_canvas: searchCanvas,
     list_models: listModels,
+    understand_asset: understandAsset,
   };
 }

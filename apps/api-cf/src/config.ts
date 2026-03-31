@@ -1,4 +1,6 @@
 export interface Env {
+  /** Cloudflare Workers AI binding */
+  AI: Ai;
   GOOGLE_API_KEY: string;
   GOOGLE_AI_STUDIO_BASE_URL?: string;
   /** Cloudflare AI Gateway token — used for OpenAI unified billing */

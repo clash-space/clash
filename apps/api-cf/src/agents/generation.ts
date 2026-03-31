@@ -8,6 +8,8 @@ import { generateImage } from "../services/image-gen";
 import { generateFalVideo } from "../services/fal-video";
 import { uploadFromUrl } from "../services/r2";
 import { createAsset } from "../services/asset-store";
+import { transcribeAudio } from "../services/asr";
+import { analyzeVisual } from "../services/visual-understanding";
 import { fal } from "@fal-ai/client";
 
 /** Convert ArrayBuffer to base64 using chunked approach (avoids V8 crash). */
@@ -33,7 +35,7 @@ async function r2ToDataUri(bucket: R2Bucket, key: string): Promise<string> {
 export interface GenerationParams {
   taskId: string;
   nodeId: string;
-  type: "image_gen" | "video_gen" | "video_render" | "image_desc" | "video_desc" | "custom_action";
+  type: "image_gen" | "video_gen" | "video_render" | "image_desc" | "video_desc" | "custom_action" | "understand";
   projectId: string;
   // image_gen fields
   prompt?: string;
@@ -52,9 +54,11 @@ export interface GenerationParams {
   duration?: number;
   cfgScale?: number;
   videoModel?: string;
-  // desc fields
+  // desc / understand fields
   r2Key?: string;
   mimeType?: string;
+  /** Language hint for ASR (e.g. "zh", "en") */
+  language?: string;
   // video_render fields
   timelineDsl?: Record<string, any>;
   // custom_action fields
@@ -97,6 +101,8 @@ export class GenerationWorkflow extends WorkflowEntrypoint<Env, GenerationParams
       await this.runDescPipeline(params, step);
     } else if (params.type === "custom_action") {
       await this.runCustomActionPipeline(params, step);
+    } else if (params.type === "understand") {
+      await this.runUnderstandPipeline(params, step);
     }
 
     log.info("Workflow completed", ctx);
@@ -469,6 +475,64 @@ export class GenerationWorkflow extends WorkflowEntrypoint<Env, GenerationParams
       description: result.description || undefined,
       _log: undefined,
     });
+  }
+
+  /**
+   * Understanding pipeline — runs ASR (audio) and visual analysis (image/video) in sequence.
+   * Results are written to node.data.understanding as key-level overwrites.
+   */
+  private async runUnderstandPipeline(params: GenerationParams, step: WorkflowStep): Promise<void> {
+    const tag = { taskId: params.taskId, nodeId: params.nodeId };
+    const r2Key = params.r2Key;
+    const mimeType = params.mimeType || "";
+    if (!r2Key) throw new Error("understand task requires r2Key");
+
+    const isAudio = mimeType.startsWith("audio/");
+    const isVideo = mimeType.startsWith("video/");
+    const isImage = mimeType.startsWith("image/");
+
+    const understanding: Record<string, unknown> = {};
+
+    // Step 1: ASR transcription (for audio and video)
+    if (isAudio || isVideo) {
+      const transcription = await step.do("transcribe", {
+        retries: { limit: 2, delay: "5 seconds", backoff: "exponential" },
+        timeout: "5 minutes",
+      }, async () => {
+        log.info("ASR started", tag);
+        const audioUrl = await uploadR2ToFal(this.env.R2_BUCKET, r2Key, this.env.FAL_API_KEY ?? "");
+        const result = await transcribeAudio(this.env.FAL_API_KEY ?? "", audioUrl, {
+          language: params.language,
+        });
+        log.info("ASR completed", { ...tag, textLength: result.text.length, segments: result.segments.length });
+        return result;
+      });
+      understanding.transcription = transcription;
+    }
+
+    // Step 2: Visual analysis (for image and video)
+    if (isImage || isVideo) {
+      const visual = await step.do("visual-analyze", {
+        retries: { limit: 2, delay: "5 seconds", backoff: "exponential" },
+        timeout: "3 minutes",
+      }, async () => {
+        log.info("Visual analysis started", tag);
+        const dataUri = await r2ToDataUri(this.env.R2_BUCKET, r2Key);
+        const result = await analyzeVisual(this.env.AI, dataUri);
+        log.info("Visual analysis completed", { ...tag, hasDescription: !!result.description, shots: result.shots?.length });
+        return result;
+      });
+      understanding.visual = visual;
+    }
+
+    // Step 3: Notify room with understanding results
+    await this.notifyRoom(params.projectId, params.nodeId, {
+      pendingTask: undefined,
+      understanding,
+      _log: undefined,
+    });
+
+    log.info("Understand pipeline completed", tag);
   }
 
   /** Push node update to ProjectRoom DO (same worker). */

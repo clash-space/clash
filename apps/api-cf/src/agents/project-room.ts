@@ -368,6 +368,37 @@ export class ProjectRoom extends DurableObject<Env> {
       this.debouncedSave();
     }
 
+    if (msg.type === "write_understanding") {
+      // Local agent writing understanding results to a node.
+      // Each key in `understanding` is overwritten independently (no merge).
+      const { nodeId, understanding } = msg;
+      if (!nodeId || !understanding || typeof understanding !== "object") return;
+
+      const nodesMap = this.doc.getMap("nodes");
+      const existingNode = nodesMap.get(nodeId) as Record<string, any> | undefined;
+      if (!existingNode) return;
+
+      const existingData = existingNode.data || {};
+      const existingUnderstanding = existingData.understanding || {};
+
+      // Key-level overwrite: new keys replace old keys, unmentioned keys are preserved
+      const merged = { ...existingUnderstanding };
+      for (const [key, value] of Object.entries(understanding)) {
+        merged[key] = value;
+      }
+
+      const versionBefore = this.doc.version();
+      nodesMap.set(nodeId, {
+        ...existingNode,
+        data: { ...existingData, understanding: merged },
+      });
+      const update = this.doc.export({ mode: "update", from: versionBefore });
+      this.broadcastBinary(update);
+      this.debouncedSave();
+
+      log.info("Understanding written", { nodeId, keys: Object.keys(understanding) });
+    }
+
     if (msg.type === "complete_custom_task") {
       // Local agent reporting task completion
       const { taskId, nodeId, status, result } = msg;
