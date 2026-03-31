@@ -164,13 +164,11 @@ export default function MarketplaceClient({ items, installedActionIds, installed
                                 >
                                     {/* Card Header */}
                                     <div className="flex items-start gap-3 mb-3">
-                                        <div className={`flex items-center justify-center h-10 w-10 rounded-xl flex-shrink-0 ${
-                                            isAction ? 'bg-blue-50' : 'bg-amber-50'
-                                        }`}>
+                                        <div className="flex items-center justify-center h-10 w-10 rounded-xl flex-shrink-0 bg-gray-100">
                                             {isAction ? (
-                                                <PuzzlePiece className="h-5 w-5 text-blue-600" weight="bold" />
+                                                <PuzzlePiece className="h-5 w-5 text-gray-600" weight="bold" />
                                             ) : (
-                                                <BookOpen className="h-5 w-5 text-amber-600" weight="bold" />
+                                                <BookOpen className="h-5 w-5 text-gray-600" weight="bold" />
                                             )}
                                         </div>
                                         <div className="flex-1 min-w-0">
@@ -179,12 +177,12 @@ export default function MarketplaceClient({ items, installedActionIds, installed
                                             </h3>
                                             <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
                                                 <span className={`text-[10px] font-medium rounded px-1.5 py-0.5 ${
-                                                    isAction ? 'text-blue-600 bg-blue-50' : 'text-amber-600 bg-amber-50'
+                                                    'text-gray-600 bg-gray-100'
                                                 }`}>
                                                     {item.type}
                                                 </span>
                                                 {isAction && item.runtime === 'worker' && (
-                                                    <span className="text-[10px] text-sky-600 bg-sky-50 rounded px-1.5 py-0.5 font-medium">
+                                                    <span className="text-[10px] text-gray-500 bg-gray-100 rounded px-1.5 py-0.5 font-medium">
                                                         ☁️
                                                     </span>
                                                 )}

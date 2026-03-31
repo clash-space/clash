@@ -348,7 +348,7 @@ export default function SettingsClient({ initialTokens, initialVariables, initia
                                             <code className="text-sm font-mono font-medium text-gray-900">
                                                 {v.key}
                                             </code>
-                                            <span className="text-xs text-emerald-600 bg-emerald-50 rounded px-1.5 py-0.5 font-medium">
+                                            <span className="text-xs text-gray-500 bg-gray-100 rounded px-1.5 py-0.5 font-medium">
                                                 encrypted
                                             </span>
                                         </div>
@@ -374,8 +374,8 @@ export default function SettingsClient({ initialTokens, initialVariables, initia
                 <section className="mt-6 bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
                     <div className="px-6 py-5 border-b border-slate-100">
                         <div className="flex items-center gap-3">
-                            <div className="flex items-center justify-center h-10 w-10 rounded-xl bg-blue-50">
-                                <PuzzlePiece className="h-5 w-5 text-blue-600" weight="bold" />
+                            <div className="flex items-center justify-center h-10 w-10 rounded-xl bg-gray-100">
+                                <PuzzlePiece className="h-5 w-5 text-gray-600" weight="bold" />
                             </div>
                             <div className="flex-1">
                                 <h2 className="font-display text-lg font-bold text-gray-900">
@@ -396,7 +396,7 @@ export default function SettingsClient({ initialTokens, initialVariables, initia
                                 </p>
                                 <Link
                                     href="/marketplace"
-                                    className="inline-flex items-center gap-1.5 text-sm font-medium text-blue-600 hover:text-blue-700"
+                                    className="inline-flex items-center gap-1.5 text-sm font-medium text-gray-900 hover:text-gray-700"
                                 >
                                     Browse Marketplace <ArrowRight className="h-3.5 w-3.5" />
                                 </Link>
@@ -416,7 +416,7 @@ export default function SettingsClient({ initialTokens, initialVariables, initia
                                                         <span className="text-sm font-medium text-gray-900">
                                                             {action.icon || '🧩'} {action.name}
                                                         </span>
-                                                        <span className="text-[10px] text-sky-600 bg-sky-50 rounded px-1.5 py-0.5 font-medium">
+                                                        <span className="text-[10px] text-gray-600 bg-gray-100 rounded px-1.5 py-0.5 font-medium">
                                                             {action.runtime === 'worker' ? '☁️ Cloud' : '🖥 Local'}
                                                         </span>
                                                         {action.version && (
@@ -438,7 +438,7 @@ export default function SettingsClient({ initialTokens, initialVariables, initia
                                                             {secrets.map((s) => (
                                                                 <span key={s.id} className={`text-[10px] font-mono rounded px-1.5 py-0.5 ${
                                                                     variableKeys.has(s.id)
-                                                                        ? 'text-emerald-600 bg-emerald-50'
+                                                                        ? 'text-gray-600 bg-gray-100'
                                                                         : 'text-red-600 bg-red-50'
                                                                 }`}>
                                                                     {variableKeys.has(s.id) ? '✅' : '❌'} {s.id}
@@ -467,7 +467,7 @@ export default function SettingsClient({ initialTokens, initialVariables, initia
                                 <div className="px-6 py-3 bg-gray-50/50">
                                     <Link
                                         href="/marketplace"
-                                        className="inline-flex items-center gap-1.5 text-sm font-medium text-blue-600 hover:text-blue-700"
+                                        className="inline-flex items-center gap-1.5 text-sm font-medium text-gray-900 hover:text-gray-700"
                                     >
                                         Browse Marketplace <ArrowRight className="h-3.5 w-3.5" />
                                     </Link>
@@ -503,7 +503,7 @@ export default function SettingsClient({ initialTokens, initialVariables, initia
                                 </p>
                                 <Link
                                     href="/marketplace"
-                                    className="inline-flex items-center gap-1.5 text-sm font-medium text-blue-600 hover:text-blue-700"
+                                    className="inline-flex items-center gap-1.5 text-sm font-medium text-gray-900 hover:text-gray-700"
                                 >
                                     Browse Marketplace <ArrowRight className="h-3.5 w-3.5" />
                                 </Link>
@@ -549,7 +549,7 @@ export default function SettingsClient({ initialTokens, initialVariables, initia
                                 <div className="px-6 py-3 bg-gray-50/50">
                                     <Link
                                         href="/marketplace"
-                                        className="inline-flex items-center gap-1.5 text-sm font-medium text-blue-600 hover:text-blue-700"
+                                        className="inline-flex items-center gap-1.5 text-sm font-medium text-gray-900 hover:text-gray-700"
                                     >
                                         Browse Marketplace <ArrowRight className="h-3.5 w-3.5" />
                                     </Link>

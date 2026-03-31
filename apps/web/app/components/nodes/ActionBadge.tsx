@@ -650,7 +650,7 @@ const PromptActionNode = ({ data, selected, id }: NodeProps) => {
             const numericValue = typeof currentValue === 'number' ? currentValue : Number(currentValue ?? 0);
             return (
                 <div key={param.id} className="space-y-1">
-                    <div className="flex justify-between text-[10px] font-medium text-white/70">
+                    <div className="flex justify-between text-[10px] font-medium text-gray-500">
                         <span>{param.label}</span>
                         <span>{numericValue}</span>
                     </div>
@@ -661,10 +661,10 @@ const PromptActionNode = ({ data, selected, id }: NodeProps) => {
                         step={param.step ?? 1}
                         value={numericValue}
                         onChange={(e) => updateModelParam(param.id, Number(e.target.value))}
-                        className="w-full h-1 bg-white/10 rounded-lg appearance-none cursor-pointer accent-blue-400"
+                        className="w-full h-1 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-gray-900"
                     />
                     {param.description && (
-                        <p className="text-[10px] text-white/50 leading-snug">{param.description}</p>
+                        <p className="text-[10px] text-gray-400 leading-snug">{param.description}</p>
                     )}
                 </div>
             );
@@ -675,11 +675,11 @@ const PromptActionNode = ({ data, selected, id }: NodeProps) => {
             const selected = options.find((opt) => String(opt.value) === String(currentValue))?.value ?? options[0]?.value ?? '';
             return (
                 <div key={param.id} className="space-y-1">
-                    <div className="flex justify-between text-[10px] font-medium text-white/70">
+                    <div className="flex justify-between text-[10px] font-medium text-gray-500">
                         <span>{param.label}</span>
                     </div>
                     <select
-                        className="w-full rounded-lg bg-white/10 border border-white/10 px-3 py-2 text-xs font-semibold text-white focus:outline-none"
+                        className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-gray-900 focus:outline-none focus:border-gray-400 transition-colors"
                         value={String(selected)}
                         onChange={(e) => {
                             const next = options.find((opt) => String(opt.value) === e.target.value);
@@ -688,13 +688,13 @@ const PromptActionNode = ({ data, selected, id }: NodeProps) => {
                         onMouseDown={(e) => e.stopPropagation()}
                     >
                         {options.map((opt) => (
-                            <option key={`${param.id}-${opt.label}`} value={String(opt.value)} className="bg-[#1a1a1a] text-white">
+                            <option key={`${param.id}-${opt.label}`} value={String(opt.value)}>
                                 {opt.label}
                             </option>
                         ))}
                     </select>
                     {param.description && (
-                        <p className="text-[10px] text-white/50 leading-snug">{param.description}</p>
+                        <p className="text-[10px] text-gray-400 leading-snug">{param.description}</p>
                     )}
                 </div>
             );
@@ -703,7 +703,7 @@ const PromptActionNode = ({ data, selected, id }: NodeProps) => {
         if (param.type === 'number') {
             return (
                 <div key={param.id} className="space-y-1">
-                    <div className="flex justify-between text-[10px] font-medium text-white/70">
+                    <div className="flex justify-between text-[10px] font-medium text-gray-500">
                         <span>{param.label}</span>
                     </div>
                     <input
@@ -713,11 +713,11 @@ const PromptActionNode = ({ data, selected, id }: NodeProps) => {
                         step={param.step}
                         value={currentValue as number | string}
                         onChange={(e) => updateModelParam(param.id, Number(e.target.value))}
-                        className="w-full rounded-lg bg-white/10 border border-white/10 px-3 py-2 text-xs font-semibold text-white focus:outline-none"
+                        className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-gray-900 focus:outline-none focus:border-gray-400 transition-colors"
                         onMouseDown={(e) => e.stopPropagation()}
                     />
                     {param.description && (
-                        <p className="text-[10px] text-white/50 leading-snug">{param.description}</p>
+                        <p className="text-[10px] text-gray-400 leading-snug">{param.description}</p>
                     )}
                 </div>
             );
@@ -726,7 +726,7 @@ const PromptActionNode = ({ data, selected, id }: NodeProps) => {
         if (param.type === 'text') {
             return (
                 <div key={param.id} className="space-y-1">
-                    <div className="flex justify-between text-[10px] font-medium text-white/70">
+                    <div className="flex justify-between text-[10px] font-medium text-gray-500">
                         <span>{param.label}</span>
                     </div>
                     <textarea
@@ -734,11 +734,11 @@ const PromptActionNode = ({ data, selected, id }: NodeProps) => {
                         value={String(currentValue)}
                         onChange={(e) => updateModelParam(param.id, e.target.value)}
                         placeholder={param.placeholder}
-                        className="w-full rounded-lg bg-white/10 border border-white/10 px-3 py-2 text-xs font-semibold text-white focus:outline-none resize-none"
+                        className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-gray-900 focus:outline-none focus:border-gray-400 resize-none transition-colors"
                         onMouseDown={(e) => e.stopPropagation()}
                     />
                     {param.description && (
-                        <p className="text-[10px] text-white/50 leading-snug">{param.description}</p>
+                        <p className="text-[10px] text-gray-400 leading-snug">{param.description}</p>
                     )}
                 </div>
             );
@@ -746,11 +746,11 @@ const PromptActionNode = ({ data, selected, id }: NodeProps) => {
 
         if (param.type === 'boolean') {
             return (
-                <label key={param.id} className="flex items-center justify-between rounded-lg bg-white/5 px-3 py-2 border border-white/10 cursor-pointer">
+                <label key={param.id} className="flex items-center justify-between rounded-xl bg-gray-50 px-3 py-2 border border-slate-200 cursor-pointer">
                     <div className="flex flex-col">
-                        <span className="text-xs font-semibold">{param.label}</span>
+                        <span className="text-xs font-medium text-gray-900">{param.label}</span>
                         {param.description && (
-                            <span className="text-[10px] text-white/50">{param.description}</span>
+                            <span className="text-[10px] text-gray-400">{param.description}</span>
                         )}
                     </div>
                     <input
@@ -758,7 +758,7 @@ const PromptActionNode = ({ data, selected, id }: NodeProps) => {
                         checked={Boolean(currentValue)}
                         onChange={(e) => updateModelParam(param.id, e.target.checked)}
                         onMouseDown={(e) => e.stopPropagation()}
-                        className="h-4 w-4 accent-blue-400"
+                        className="h-4 w-4 accent-gray-900"
                     />
                 </label>
             );
@@ -805,7 +805,7 @@ const PromptActionNode = ({ data, selected, id }: NodeProps) => {
                         <div className="flex gap-2">
                             <button
                                 onClick={handleSave}
-                                className="px-4 py-2 text-sm font-medium text-white bg-black rounded-lg hover:bg-gray-800 transition-colors"
+                                className="px-4 py-2 text-sm font-medium text-white bg-slate-900 rounded-xl hover:bg-slate-800 transition-colors"
                             >
                                 Save
                             </button>
@@ -849,32 +849,32 @@ const PromptActionNode = ({ data, selected, id }: NodeProps) => {
                     initial={{ y: '100%', opacity: 0 }}
                     animate={{ y: 0, opacity: 1 }}
                     exit={{ y: '100%', opacity: 0 }}
-                    transition={{ type: 'spring', damping: 25, stiffness: 300 }}
+                    transition={{ type: 'spring', damping: 30, stiffness: 400 }}
                     className="absolute bottom-0 left-0 right-0 flex justify-center pointer-events-none"
                     onClick={(e) => e.stopPropagation()}
                 >
-                    <div className="pointer-events-auto w-full max-w-lg mb-6 mx-4 rounded-2xl bg-[#1a1a1a]/95 backdrop-blur-2xl p-5 shadow-2xl border border-white/10">
+                    <div className="pointer-events-auto w-full max-w-lg mb-6 mx-4 rounded-2xl bg-white/90 backdrop-blur-xl p-5 shadow-lg border border-slate-200">
                         {/* Panel Header */}
                         <div className="flex items-center justify-between mb-4">
                             <div className="flex items-center gap-3">
-                                <div className={`h-9 w-9 rounded-lg flex items-center justify-center ${
-                                    isCustom ? 'bg-purple-500/20 text-purple-400' :
-                                    actionType === 'video-gen' ? 'bg-red-500/20 text-red-400' : 'bg-blue-500/20 text-blue-400'
+                                <div className={`h-9 w-9 rounded-xl flex items-center justify-center ${
+                                    isCustom ? 'bg-gray-100 text-gray-600' :
+                                    actionType === 'video-gen' ? 'bg-red-50 text-red-600' : 'bg-gray-100 text-gray-600'
                                 }`}>
-                                    <Icon size={18} weight="fill" />
+                                    <Icon size={18} weight="bold" />
                                 </div>
                                 <div>
-                                    <h3 className="text-sm font-bold text-white leading-tight">
+                                    <h3 className="text-sm font-display font-bold text-gray-900 leading-tight">
                                         {isCustom ? (customDef?.name || customActionId) : modelDisplay}
                                     </h3>
-                                    <p className="text-[11px] text-white/50">
+                                    <p className="text-[11px] text-gray-500">
                                         {isCustom ? (customDef?.description || 'Custom action') : (providerDisplay || 'Configure parameters')}
                                     </p>
                                 </div>
                             </div>
                             <button
                                 onClick={() => { setShowPanel(false); setShowModelDropdown(false); }}
-                                className="p-1.5 rounded-lg hover:bg-white/10 text-white/40 hover:text-white/80 transition-colors"
+                                className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors"
                             >
                                 <X size={16} weight="bold" />
                             </button>
@@ -884,31 +884,31 @@ const PromptActionNode = ({ data, selected, id }: NodeProps) => {
                         <div className="flex flex-wrap gap-1.5 mb-4">
                             {isCustom ? (
                                 <>
-                                    <span className="px-2 py-0.5 rounded-full bg-purple-500/20 text-[10px] text-purple-200 font-medium uppercase tracking-wider">
+                                    <span className="px-2 py-0.5 rounded-full bg-gray-100 text-[10px] text-gray-600 font-medium uppercase tracking-wider">
                                         {customDef?.outputType || 'image'}
                                     </span>
                                     {customDef?.runtime === 'worker' ? (
-                                        <span className="px-2 py-0.5 rounded-full bg-sky-500/20 text-[10px] text-sky-200 font-medium">
+                                        <span className="px-2 py-0.5 rounded-full bg-gray-100 text-[10px] text-gray-600 font-medium">
                                             ☁️ Cloud{customDef.version ? ` · v${customDef.version}` : ''}
                                         </span>
                                     ) : (
-                                        <span className="px-2 py-0.5 rounded-full bg-white/5 text-[10px] text-white/50 font-medium uppercase tracking-wider">
+                                        <span className="px-2 py-0.5 rounded-full bg-gray-100 text-[10px] text-gray-500 font-medium uppercase tracking-wider">
                                             🖥 Local
                                         </span>
                                     )}
                                     {customDef?.author && (
-                                        <span className="px-2 py-0.5 rounded-full bg-white/5 text-[10px] text-white/40 font-medium">
-                                            {customDef.author}
+                                        <span className="px-2 py-0.5 rounded-full bg-gray-100 text-[10px] text-gray-400 font-medium">
+                                            @{customDef.author}
                                         </span>
                                     )}
                                 </>
                             ) : (
                                 <>
-                                    <span className="px-2 py-0.5 rounded-full bg-white/5 text-[10px] text-white/50 font-medium uppercase tracking-wider">
+                                    <span className="px-2 py-0.5 rounded-full bg-gray-100 text-[10px] text-gray-500 font-medium uppercase tracking-wider">
                                         {selectedModel?.kind === 'video' ? 'Video' : 'Image'}
                                     </span>
                                     {selectedModel?.input.referenceImage === 'required' && (
-                                        <span className="px-2 py-0.5 rounded-full bg-red-500/20 text-[10px] text-red-200 font-medium">
+                                        <span className="px-2 py-0.5 rounded-full bg-red-50 text-[10px] text-red-600 font-medium">
                                             Ref required
                                         </span>
                                     )}
@@ -921,22 +921,22 @@ const PromptActionNode = ({ data, selected, id }: NodeProps) => {
                             <div className="mb-4">
                                 <div className="relative">
                                     <button
-                                        className="w-full bg-white/5 rounded-lg px-3 py-2.5 flex items-center justify-between hover:bg-white/10 transition-colors cursor-pointer border border-white/10"
+                                        className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 flex items-center justify-between hover:bg-gray-50 transition-colors cursor-pointer"
                                         onClick={() => setShowModelDropdown(!showModelDropdown)}
                                     >
                                         <div className="flex flex-col items-start">
-                                            <span className="text-[10px] text-white/40 font-medium">Model</span>
-                                            <span className="text-xs font-bold text-white">{modelDisplay}</span>
+                                            <span className="text-[10px] text-gray-400 font-medium">Model</span>
+                                            <span className="text-xs font-bold text-gray-900">{modelDisplay}</span>
                                         </div>
-                                        <CaretDown size={12} className="text-white/40" />
+                                        <CaretDown size={12} className="text-gray-400" />
                                     </button>
                                     {showModelDropdown && (
-                                        <div className="absolute left-0 right-0 bottom-full mb-1 bg-[#2a2a2a] border border-[#444] rounded-lg shadow-xl overflow-hidden z-50 max-h-48 overflow-y-auto">
+                                        <div className="absolute left-0 right-0 bottom-full mb-1 bg-white border border-slate-200 rounded-xl shadow-lg overflow-hidden z-50 max-h-48 overflow-y-auto">
                                             {availableModels.map((card) => (
                                                 <div
                                                     key={card.id}
                                                     className={`px-3 py-2 text-xs cursor-pointer transition-colors ${
-                                                        card.id === modelId ? 'bg-blue-500 text-white' : 'text-white/80 hover:bg-white/10'
+                                                        card.id === modelId ? 'bg-gray-900 text-white' : 'text-gray-700 hover:bg-gray-50'
                                                     }`}
                                                     onClick={() => {
                                                         handleModelChange(card.id);
@@ -944,7 +944,7 @@ const PromptActionNode = ({ data, selected, id }: NodeProps) => {
                                                     }}
                                                 >
                                                     <div className="font-bold leading-tight">{card.name}</div>
-                                                    <div className="text-[10px] text-white/50">{card.provider}</div>
+                                                    <div className={`text-[10px] ${card.id === modelId ? 'text-gray-300' : 'text-gray-400'}`}>{card.provider}</div>
                                                 </div>
                                             ))}
                                         </div>
@@ -954,7 +954,7 @@ const PromptActionNode = ({ data, selected, id }: NodeProps) => {
                         )}
 
                         {/* Parameters */}
-                        <div className="space-y-3 text-white">
+                        <div className="space-y-3">
                             {isCustom && customDef ? (
                                 customDef.parameters.map((param) =>
                                     renderParamControl({
@@ -977,13 +977,13 @@ const PromptActionNode = ({ data, selected, id }: NodeProps) => {
                         </div>
 
                         {/* Prompt preview */}
-                        <div className="mt-4 pt-3 border-t border-white/10">
+                        <div className="mt-4 pt-3 border-t border-slate-200">
                             <button
                                 onClick={(e) => { e.stopPropagation(); setShowPanel(false); handleDoubleClick(); }}
-                                className="w-full text-left px-3 py-2 rounded-lg bg-white/5 hover:bg-white/10 transition-colors border border-white/5"
+                                className="w-full text-left px-3 py-2 rounded-xl bg-gray-50 hover:bg-gray-100 transition-colors border border-slate-200"
                             >
-                                <span className="text-[10px] text-white/40 font-medium uppercase tracking-wider">Prompt</span>
-                                <p className="text-xs text-white/70 line-clamp-2 leading-snug mt-0.5">
+                                <span className="text-[10px] text-gray-400 font-medium uppercase tracking-wider">Prompt</span>
+                                <p className="text-xs text-gray-600 line-clamp-2 leading-snug mt-0.5">
                                     {content && content !== '# Prompt\nEnter your prompt here...'
                                         ? extractLabelFromPrompt(content, 'Click to edit prompt...')
                                         : 'Click to edit prompt...'}
