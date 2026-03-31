@@ -84,7 +84,7 @@ const TextNode = ({ data, selected, id }: NodeProps) => {
                         animate={{ opacity: 1, scale: 1, y: 0 }}
                         exit={{ opacity: 0, scale: 0.95, y: 20 }}
                         transition={{ type: 'spring', damping: 25, stiffness: 300 }}
-                        className="relative z-10 w-full max-w-5xl h-[85vh] bg-white rounded-xl shadow-xl overflow-hidden flex flex-col border border-slate-200"
+                        className="relative z-10 w-full max-w-5xl h-[85vh] bg-white rounded-xl shadow-lg overflow-hidden flex flex-col border border-slate-200"
                         onClick={(e) => e.stopPropagation()}
                     >
                         {/* Header with Title Input */}
@@ -142,7 +142,7 @@ const TextNode = ({ data, selected, id }: NodeProps) => {
                 </div>
 
                 {/* Main Card */}
-                <div className={`w-full h-full bg-slate-50 rounded-matrix flex flex-col overflow-hidden transition-all duration-300 hover:shadow-xl ${
+                <div className={`w-full h-full bg-slate-50 rounded-matrix flex flex-col overflow-hidden transition-all duration-300 hover:shadow-lg ${
                     selected ? 'ring-4 ring-blue-500 ring-offset-2' : 'ring-1 ring-slate-200'
                 }`}>
                     {/* Card Content */}
@@ -182,7 +182,7 @@ const TextNode = ({ data, selected, id }: NodeProps) => {
 // Simple markdown preview component
 const MarkdownPreview = ({ content }: { content: string }) => {
     return (
-        <div className="prose prose-lg max-w-none prose-slate prose-headings:font-bold prose-headings:text-gray-900 prose-p:text-gray-700 prose-a:text-blue-600 prose-code:text-blue-600 prose-code:bg-blue-50 prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded">
+        <div className="prose prose-lg max-w-none prose-slate prose-headings:font-bold prose-headings:text-gray-900 prose-p:text-gray-700 prose-a:text-gray-900 prose-a:underline prose-code:text-gray-700 prose-code:bg-gray-100 prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded">
             <ReactMarkdown>{content}</ReactMarkdown>
         </div>
     );

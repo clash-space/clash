@@ -806,8 +806,8 @@ const PromptActionNode = ({ data, selected, id }: NodeProps) => {
                     initial={{ opacity: 0, scale: 0.95, y: 20 }}
                     animate={{ opacity: 1, scale: 1, y: 0 }}
                     exit={{ opacity: 0, scale: 0.95, y: 20 }}
-                    transition={{ type: 'spring', damping: 25, stiffness: 300 }}
-                    className="relative z-10 w-full max-w-5xl h-[85vh] bg-white rounded-xl shadow-2xl overflow-hidden flex flex-col border border-gray-200"
+                    transition={{ type: 'spring', damping: 30, stiffness: 300 }}
+                    className="relative z-10 w-full max-w-5xl h-[85vh] bg-white rounded-xl shadow-lg overflow-hidden flex flex-col border border-slate-200"
                     onClick={(e) => e.stopPropagation()}
                 >
                     {/* Header with Title Input */}
@@ -978,7 +978,7 @@ const PromptActionNode = ({ data, selected, id }: NodeProps) => {
                                             <span className="text-[10px] text-gray-400 font-medium">Model</span>
                                             <span className="text-xs font-bold text-gray-900">{modelDisplay}</span>
                                         </div>
-                                        <CaretDown size={12} className="text-gray-400" />
+                                        <CaretDown size={12} weight="bold" className="text-gray-400" />
                                     </button>
                                     {showModelDropdown && (
                                         <div className="absolute left-0 right-0 bottom-full mb-1 bg-white border border-slate-200 rounded-xl shadow-lg overflow-hidden z-50 max-h-48 overflow-y-auto">
@@ -1128,7 +1128,7 @@ const PromptActionNode = ({ data, selected, id }: NodeProps) => {
 const MarkdownPreview = ({ content }: { content: string }) => {
     return (
         <div
-            className="prose prose-sm max-w-none prose-slate prose-headings:font-bold prose-headings:text-slate-900 prose-p:text-slate-700 prose-a:text-blue-600 prose-code:text-blue-600 prose-code:bg-blue-50 prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded"
+            className="prose prose-sm max-w-none prose-slate prose-headings:font-bold prose-headings:text-gray-900 prose-p:text-gray-700 prose-a:text-gray-900 prose-a:underline prose-code:text-gray-700 prose-code:bg-gray-100 prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded"
             dangerouslySetInnerHTML={{
                 __html: content
                     .replace(/^### (.*$)/gim, '<h3>$1</h3>')

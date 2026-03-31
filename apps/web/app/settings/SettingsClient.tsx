@@ -192,17 +192,17 @@ export default function SettingsClient({ initialTokens, initialVariables, initia
                                 exit={{ height: 0, opacity: 0 }}
                                 className="overflow-hidden"
                             >
-                                <div className="px-6 py-4 bg-emerald-50 border-b border-emerald-100">
-                                    <p className="text-sm font-medium text-emerald-800 mb-2">
+                                <div className="px-6 py-4 bg-gray-50 border-b border-slate-100">
+                                    <p className="text-sm font-medium text-gray-800 mb-2">
                                         Token created! Copy it now — it won&apos;t be shown again.
                                     </p>
                                     <div className="flex items-center gap-2">
-                                        <code className="flex-1 rounded-lg bg-white border border-emerald-200 px-3 py-2 text-sm font-mono text-gray-900 select-all">
+                                        <code className="flex-1 rounded-lg bg-white border border-slate-200 px-3 py-2 text-sm font-mono text-gray-900 select-all">
                                             {revealedToken}
                                         </code>
                                         <motion.button
                                             onClick={() => handleCopy(revealedToken, 'new')}
-                                            className="rounded-lg bg-emerald-600 p-2.5 text-white hover:bg-emerald-700 transition-colors"
+                                            className="rounded-lg bg-gray-900 p-2.5 text-white hover:bg-gray-800 transition-colors"
                                             whileTap={{ scale: 0.95 }}
                                         >
                                             {copiedId === 'new' ? (
@@ -214,7 +214,7 @@ export default function SettingsClient({ initialTokens, initialVariables, initia
                                     </div>
                                     <button
                                         onClick={() => setRevealedToken(null)}
-                                        className="mt-2 text-xs text-emerald-700 hover:text-emerald-900 underline"
+                                        className="mt-2 text-xs text-gray-500 hover:text-gray-700 underline"
                                     >
                                         Dismiss
                                     </button>
@@ -274,8 +274,8 @@ export default function SettingsClient({ initialTokens, initialVariables, initia
                 <section className="mt-6 bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
                     <div className="px-6 py-5 border-b border-slate-100">
                         <div className="flex items-center gap-3">
-                            <div className="flex items-center justify-center h-10 w-10 rounded-xl bg-purple-50">
-                                <Lock className="h-5 w-5 text-purple-600" weight="bold" />
+                            <div className="flex items-center justify-center h-10 w-10 rounded-xl bg-gray-100">
+                                <Lock className="h-5 w-5 text-gray-600" weight="bold" />
                             </div>
                             <div>
                                 <h2 className="font-display text-lg font-bold text-gray-900">
@@ -481,8 +481,8 @@ export default function SettingsClient({ initialTokens, initialVariables, initia
                 <section className="mt-6 bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
                     <div className="px-6 py-5 border-b border-slate-100">
                         <div className="flex items-center gap-3">
-                            <div className="flex items-center justify-center h-10 w-10 rounded-xl bg-amber-50">
-                                <BookOpen className="h-5 w-5 text-amber-600" weight="bold" />
+                            <div className="flex items-center justify-center h-10 w-10 rounded-xl bg-gray-100">
+                                <BookOpen className="h-5 w-5 text-gray-600" weight="bold" />
                             </div>
                             <div>
                                 <h2 className="font-display text-lg font-bold text-gray-900">
@@ -517,7 +517,7 @@ export default function SettingsClient({ initialTokens, initialVariables, initia
                                                 <span className="text-sm font-medium text-gray-900">
                                                     {skill.icon || '📘'} {skill.name}
                                                 </span>
-                                                <span className="text-[10px] text-amber-600 bg-amber-50 rounded px-1.5 py-0.5 font-medium">
+                                                <span className="text-[10px] text-gray-600 bg-gray-100 rounded px-1.5 py-0.5 font-medium">
                                                     skill
                                                 </span>
                                                 {skill.version && (
