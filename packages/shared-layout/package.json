@@ -17,7 +17,9 @@
     "build": "tsc",
     "clean": "rm -rf dist"
   },
-  "dependencies": {},
+  "dependencies": {
+    "@dagrejs/dagre": "^3.0.0"
+  },
   "devDependencies": {
     "typescript": "^5.0.0"
   },
