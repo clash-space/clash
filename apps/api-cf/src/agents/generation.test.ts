@@ -3,7 +3,7 @@ import type { Env } from "../config";
 import { Status } from "../domain/canvas";
 
 // Mock all external services
-vi.mock("../services/image-gen", () => ({
+vi.mock("../services/fal-image", () => ({
   generateImage: vi.fn().mockResolvedValue({ url: "https://fal.ai/image.png", requestId: "fal-req-123", model: "fal-ai/nano-banana-2" }),
 }));
 vi.mock("../services/fal-video", () => ({
@@ -27,7 +27,7 @@ vi.mock("../services/asset-store", () => ({
 }));
 
 // Must import AFTER vi.mock so mocks are active
-import { generateImage } from "../services/image-gen";
+import { generateImage } from "../services/fal-image";
 import { generateFalVideo } from "../services/fal-video";
 import { generateDescription } from "../services/describe";
 import { updateAssetStatus } from "../services/asset-store";

@@ -3,6 +3,11 @@ export interface Env {
   AI: Ai;
   GOOGLE_API_KEY: string;
   GOOGLE_AI_STUDIO_BASE_URL?: string;
+  /** Google Vertex AI service account credentials (edge runtime) */
+  GOOGLE_CLIENT_EMAIL?: string;
+  GOOGLE_PRIVATE_KEY?: string;
+  GOOGLE_CLOUD_PROJECT?: string;
+  GOOGLE_CLOUD_LOCATION?: string;
   /** Cloudflare AI Gateway token — used for OpenAI unified billing */
   CF_AIG_TOKEN: string;
   /** AI Gateway base URL for OpenAI, e.g. https://gateway.ai.cloudflare.com/v1/{account}/{gw}/openai */

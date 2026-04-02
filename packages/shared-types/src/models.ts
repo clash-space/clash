@@ -66,6 +66,17 @@ export const VEO3_ASPECT_RATIOS = [
 ] as const;
 
 /**
+ * Imagen 4 aspect ratios (Google native)
+ */
+export const IMAGEN_ASPECT_RATIOS = [
+  { label: '16:9', value: '16:9' },
+  { label: '9:16', value: '9:16' },
+  { label: '1:1', value: '1:1' },
+  { label: '4:3', value: '4:3' },
+  { label: '3:4', value: '3:4' },
+] as const;
+
+/**
  * Recraft V4 aspect ratios — mapped to fal image_size values
  */
 export const RECRAFT_ASPECT_RATIOS = [
@@ -784,6 +795,207 @@ export const MODEL_CARDS: ModelCard[] = [
       generate_audio: true,
     },
     input: { requiresPrompt: true, referenceImage: 'required', referenceMode: 'single' },
+  },
+
+  // ─── Image: Gemini Image (Google Vertex) ────────────────────
+
+  {
+    id: 'gemini-flash-image',
+    name: 'Gemini Flash Image',
+    provider: 'Google',
+    kind: 'image',
+    defaultAspectRatio: '16:9',
+    description: 'Gemini 2.5 Flash — fast image generation with text understanding.',
+    parameters: [
+      {
+        id: 'aspect_ratio',
+        label: 'Aspect Ratio',
+        type: 'select',
+        options: IMAGEN_ASPECT_RATIOS.map(r => ({ label: r.label, value: r.value })),
+        defaultValue: '16:9',
+      },
+    ],
+    defaultParams: {
+      aspect_ratio: '16:9',
+    },
+    input: { requiresPrompt: true, referenceImage: 'optional', referenceMode: 'single', promptModalities: ['text', 'image'] },
+  },
+  {
+    id: 'gemini-flash-image-2',
+    name: 'Gemini Flash Image 2',
+    provider: 'Google',
+    kind: 'image',
+    defaultAspectRatio: '16:9',
+    description: 'Gemini 3.1 Flash Image — latest fast image generation and editing.',
+    parameters: [
+      {
+        id: 'aspect_ratio',
+        label: 'Aspect Ratio',
+        type: 'select',
+        options: IMAGEN_ASPECT_RATIOS.map(r => ({ label: r.label, value: r.value })),
+        defaultValue: '16:9',
+      },
+    ],
+    defaultParams: {
+      aspect_ratio: '16:9',
+    },
+    input: { requiresPrompt: true, referenceImage: 'optional', referenceMode: 'single', promptModalities: ['text', 'image'] },
+  },
+  {
+    id: 'gemini-pro-image',
+    name: 'Gemini Pro Image',
+    provider: 'Google',
+    kind: 'image',
+    defaultAspectRatio: '16:9',
+    description: 'Gemini 3 Pro Image — highest quality image generation.',
+    parameters: [
+      {
+        id: 'aspect_ratio',
+        label: 'Aspect Ratio',
+        type: 'select',
+        options: IMAGEN_ASPECT_RATIOS.map(r => ({ label: r.label, value: r.value })),
+        defaultValue: '16:9',
+      },
+    ],
+    defaultParams: {
+      aspect_ratio: '16:9',
+    },
+    input: { requiresPrompt: true, referenceImage: 'optional', referenceMode: 'single', promptModalities: ['text', 'image'] },
+  },
+
+  // ─── Image: Imagen 4 (Google native via Vercel AI SDK) ──────
+
+  {
+    id: 'imagen-4',
+    name: 'Imagen 4',
+    provider: 'Google',
+    kind: 'image',
+    defaultAspectRatio: '16:9',
+    description: 'Google Imagen 4 — high-quality image generation.',
+    parameters: [
+      {
+        id: 'aspect_ratio',
+        label: 'Aspect Ratio',
+        type: 'select',
+        options: IMAGEN_ASPECT_RATIOS.map(r => ({ label: r.label, value: r.value })),
+        defaultValue: '16:9',
+      },
+    ],
+    defaultParams: {
+      aspect_ratio: '16:9',
+    },
+    input: { requiresPrompt: true, referenceImage: 'forbidden', referenceMode: 'none' },
+  },
+  {
+    id: 'imagen-4-fast',
+    name: 'Imagen 4 Fast',
+    provider: 'Google',
+    kind: 'image',
+    defaultAspectRatio: '16:9',
+    description: 'Google Imagen 4 Fast — faster generation, same quality.',
+    parameters: [
+      {
+        id: 'aspect_ratio',
+        label: 'Aspect Ratio',
+        type: 'select',
+        options: IMAGEN_ASPECT_RATIOS.map(r => ({ label: r.label, value: r.value })),
+        defaultValue: '16:9',
+      },
+    ],
+    defaultParams: {
+      aspect_ratio: '16:9',
+    },
+    input: { requiresPrompt: true, referenceImage: 'forbidden', referenceMode: 'none' },
+  },
+
+  // ─── Video: Veo 3.1 (Google native via Vercel AI SDK) ──────
+
+  {
+    id: 'veo-3.1',
+    name: 'Veo 3.1',
+    provider: 'Google',
+    kind: 'video',
+    defaultAspectRatio: '16:9',
+    description: 'Google Veo 3.1 — state-of-the-art video generation with native audio.',
+    parameters: [
+      {
+        id: 'aspect_ratio',
+        label: 'Aspect Ratio',
+        type: 'select',
+        options: VEO3_ASPECT_RATIOS.map(r => ({ label: r.label, value: r.value })),
+        defaultValue: '16:9',
+      },
+      {
+        id: 'generate_audio',
+        label: 'Generate Audio',
+        type: 'boolean',
+        defaultValue: true,
+        description: 'Include natively generated audio.',
+      },
+    ],
+    defaultParams: {
+      aspect_ratio: '16:9',
+      generate_audio: true,
+    },
+    input: { requiresPrompt: true, referenceImage: 'forbidden', referenceMode: 'none' },
+  },
+  {
+    id: 'veo-3.1-lite',
+    name: 'Veo 3.1 Lite',
+    provider: 'Google',
+    kind: 'video',
+    defaultAspectRatio: '16:9',
+    description: 'Google Veo 3.1 Lite — cost-effective video generation at same speed.',
+    parameters: [
+      {
+        id: 'aspect_ratio',
+        label: 'Aspect Ratio',
+        type: 'select',
+        options: VEO3_ASPECT_RATIOS.map(r => ({ label: r.label, value: r.value })),
+        defaultValue: '16:9',
+      },
+      {
+        id: 'generate_audio',
+        label: 'Generate Audio',
+        type: 'boolean',
+        defaultValue: true,
+        description: 'Include natively generated audio.',
+      },
+    ],
+    defaultParams: {
+      aspect_ratio: '16:9',
+      generate_audio: true,
+    },
+    input: { requiresPrompt: true, referenceImage: 'forbidden', referenceMode: 'none' },
+  },
+  {
+    id: 'veo-3.1-fast',
+    name: 'Veo 3.1 Fast',
+    provider: 'Google',
+    kind: 'video',
+    defaultAspectRatio: '16:9',
+    description: 'Google Veo 3.1 Fast — high-speed video generation.',
+    parameters: [
+      {
+        id: 'aspect_ratio',
+        label: 'Aspect Ratio',
+        type: 'select',
+        options: VEO3_ASPECT_RATIOS.map(r => ({ label: r.label, value: r.value })),
+        defaultValue: '16:9',
+      },
+      {
+        id: 'generate_audio',
+        label: 'Generate Audio',
+        type: 'boolean',
+        defaultValue: true,
+        description: 'Include natively generated audio.',
+      },
+    ],
+    defaultParams: {
+      aspect_ratio: '16:9',
+      generate_audio: true,
+    },
+    input: { requiresPrompt: true, referenceImage: 'forbidden', referenceMode: 'none' },
   },
 
   // ─── Audio ───────────────────────────────────────────────────

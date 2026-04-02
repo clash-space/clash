@@ -81,6 +81,30 @@ export async function uploadFromUrl(
   return storageKey;
 }
 
+/** Upload raw bytes to R2. Returns the storage key. */
+export async function uploadBytes(
+  bucket: R2Bucket,
+  data: Uint8Array,
+  projectId: string,
+  filename?: string,
+  contentType = "application/octet-stream"
+): Promise<string> {
+  const ext = contentType.includes("jpeg") || contentType.includes("jpg") ? "jpg"
+    : contentType.includes("png") ? "png"
+    : contentType.includes("mp4") ? "mp4"
+    : contentType.includes("webm") ? "webm"
+    : "bin";
+
+  const name = filename ?? crypto.randomUUID();
+  const storageKey = `projects/${projectId}/assets/${name}.${ext}`;
+
+  await bucket.put(storageKey, data, {
+    httpMetadata: { contentType },
+  });
+
+  return storageKey;
+}
+
 /** Delete an asset from R2. */
 export async function deleteAsset(bucket: R2Bucket, storageKey: string): Promise<void> {
   await bucket.delete(storageKey);

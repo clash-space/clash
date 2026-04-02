@@ -4,9 +4,9 @@ import type { Env } from "../config";
 import { log } from "../logger";
 import { Status } from "../domain/canvas";
 import { generateDescription } from "../services/describe";
-import { generateImage } from "../services/image-gen";
-import { generateFalVideo } from "../services/fal-video";
-import { uploadFromUrl } from "../services/r2";
+import { resolveImageProvider } from "../services/image-provider";
+import { resolveVideoProvider } from "../services/video-provider";
+import { uploadFromUrl, uploadBytes } from "../services/r2";
 import { createAsset } from "../services/asset-store";
 import { transcribeAudio } from "../services/asr";
 import { analyzeVisual } from "../services/visual-understanding";
@@ -146,26 +146,22 @@ export class GenerationWorkflow extends WorkflowEntrypoint<Env, GenerationParams
         log.info("Reference images uploaded to fal", { ...tag, count: referenceImageUrls.length });
       }
 
-      const { url: imageUrl, requestId, model } = await generateImage(this.env.FAL_API_KEY ?? "", {
-        text: params.prompt ?? "",
+      const provider = resolveImageProvider(params.modelName);
+      const result = await provider.generate(this.env, {
+        prompt: params.prompt ?? "",
         systemPrompt: params.systemPrompt,
         referenceImageUrls,
         aspectRatio: params.aspectRatio,
         modelName: params.modelName,
         modelParams: params.modelParams,
-        onEnqueue: (reqId) => log.info("fal accepted", { ...tag, falRequestId: reqId }),
-        onQueueUpdate: (() => { let last = ""; return (s: any) => { if (s.status !== last) { last = s.status; log.info("fal status", { ...tag, falStatus: s.status }); } }; })(),
       });
-      log.info("Image generated, uploading to R2", { ...tag, falRequestId: requestId, model });
+      log.info("Image generated", { ...tag, model: result.model });
 
-      // Stream fal result URL directly to R2 (no base64)
-      const key = await uploadFromUrl(
-        this.env.R2_BUCKET,
-        imageUrl,
-        params.projectId,
-        params.taskId,
-        "image/png",
-      );
+      // Upload to R2: raw bytes (Google) or CDN URL (fal)
+      const key = result.data
+        ? await uploadBytes(this.env.R2_BUCKET, result.data, params.projectId, params.taskId, result.mediaType ?? "image/png")
+        : await uploadFromUrl(this.env.R2_BUCKET, result.url!, params.projectId, params.taskId, "image/png");
+
       log.info("Image uploaded", { ...tag, storageKey: key });
       return key;
     });
@@ -204,29 +200,35 @@ export class GenerationWorkflow extends WorkflowEntrypoint<Env, GenerationParams
   private async runVideoPipeline(params: GenerationParams, step: WorkflowStep): Promise<void> {
     const tag = { taskId: params.taskId, nodeId: params.nodeId };
 
-    const falResult = await step.do("generate", {
+    // Resolve source image for image-to-video models
+    let imageUrl: string | undefined;
+    if (params.imageR2Key) {
+      imageUrl = await step.do("resolve-source-image", {
+        retries: { limit: 2, delay: "2 seconds" },
+        timeout: "1 minute",
+      }, async () => {
+        const url = await uploadR2ToFal(this.env.R2_BUCKET, params.imageR2Key!, this.env.FAL_API_KEY ?? "");
+        log.info("Source image resolved", { ...tag });
+        return url;
+      });
+    }
+
+    const provider = resolveVideoProvider(params.videoModel);
+    const genResult = await step.do("generate", {
       retries: { limit: 2, delay: "5 seconds", backoff: "exponential" },
       timeout: "10 minutes",
     }, async (ctx) => {
       log.info("Video generate started", { ...tag, model: params.videoModel, attempt: ctx.attempt });
 
-      // Resolve source image: R2 key → fal CDN URL
-      let imageUrl: string | undefined;
-      if (params.imageR2Key) {
-        imageUrl = await uploadR2ToFal(this.env.R2_BUCKET, params.imageR2Key, this.env.FAL_API_KEY ?? "");
-        log.info("Source image uploaded to fal", { ...tag });
-      }
-
-      const result = await generateFalVideo(this.env.FAL_API_KEY ?? "", {
+      const result = await provider.generate(this.env, {
         prompt: params.prompt ?? "",
         imageUrl,
         duration: params.duration,
         aspectRatio: params.aspectRatio,
-        videoModel: params.videoModel,
-        onEnqueue: (reqId) => log.info("fal accepted", { ...tag, falRequestId: reqId }),
-        onQueueUpdate: (() => { let last = ""; return (s: any) => { if (s.status !== last) { last = s.status; log.info("fal status", { ...tag, falStatus: s.status }); } }; })(),
+        modelName: params.videoModel,
+        modelParams: params.modelParams,
       });
-      log.info("Video generated", { ...tag, falRequestId: result.requestId, model: result.model, hasCover: !!result.coverImageUrl });
+      log.info("Video generated", { ...tag, model: result.model, hasCover: !!result.coverImageUrl });
       return result;
     });
 
@@ -236,26 +238,15 @@ export class GenerationWorkflow extends WorkflowEntrypoint<Env, GenerationParams
     }, async (ctx) => {
       log.info("Video upload started", { ...tag, attempt: ctx.attempt });
 
-      // Stream video URL directly to R2
-      const sk = await uploadFromUrl(
-        this.env.R2_BUCKET,
-        falResult.url,
-        params.projectId,
-        params.taskId,
-        "video/mp4",
-      );
+      // Upload: raw bytes (Google) or CDN URL (fal)
+      const sk = genResult.data
+        ? await uploadBytes(this.env.R2_BUCKET, genResult.data, params.projectId, params.taskId, genResult.mediaType ?? "video/mp4")
+        : await uploadFromUrl(this.env.R2_BUCKET, genResult.url!, params.projectId, params.taskId, "video/mp4");
 
-      // Stream cover image to R2
       let coverKey: string | undefined;
-      if (falResult.coverImageUrl) {
+      if (genResult.coverImageUrl) {
         try {
-          coverKey = await uploadFromUrl(
-            this.env.R2_BUCKET,
-            falResult.coverImageUrl,
-            params.projectId,
-            `${params.taskId}-cover`,
-            "image/jpeg",
-          );
+          coverKey = await uploadFromUrl(this.env.R2_BUCKET, genResult.coverImageUrl, params.projectId, `${params.taskId}-cover`, "image/jpeg");
         } catch (e) {
           log.error("Failed to upload cover image", { ...tag, error: String(e) });
         }
