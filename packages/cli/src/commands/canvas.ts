@@ -1,12 +1,8 @@
 import { Command } from "commander";
 import WebSocket from "ws";
 import {
-  LoroSyncClient, buildPendingAssetNode,
-  ACTION_TYPE, MODEL_CARDS,
-  insertNode, insertEdge, listNodes, listEdges,
+  LoroSyncClient, Canvas,
 } from "@clash/shared-types";
-import type { NodeInfo } from "@clash/shared-types";
-import { autoInsertNode, NEEDS_LAYOUT_POSITION } from "@clash/shared-layout";
 import { requireApiKey, getServerUrl } from "../lib/config";
 import { isJsonMode, printJson } from "../lib/output";
 
@@ -132,120 +128,28 @@ canvasCommand
   .action(async (options) => {
     const client = await connectToProject(options.project);
     try {
-      // 1. Read and validate the ActionBadge node
-      const badge = client.readNode(options.node);
-      if (!badge) {
-        console.error(`Error: Node not found: ${options.node}`);
+      const canvas = new Canvas(client.doc, () => {});  // broadcast via subscribeLocalUpdates
+      const result = canvas.executeGeneration(
+        options.node,
+        () => crypto.randomUUID().slice(0, 8),
+      );
+
+      if (result.error) {
+        console.error(`Error: ${result.error}`);
         process.exit(1);
       }
-      if (badge.type !== "action-badge") {
-        console.error(`Error: Node ${options.node} is type '${badge.type}', not 'action-badge'. Only action-badge nodes can be executed.`);
-        process.exit(1);
-      }
-
-      const actionType = badge.data.actionType as string;
-      if (actionType !== ACTION_TYPE.ImageGen && actionType !== ACTION_TYPE.VideoGen) {
-        console.error(`Error: Node ${options.node} has unknown actionType '${actionType}'.`);
-        process.exit(1);
-      }
-
-      // 2. Gather graph state once (used for prompt resolution, validation, and layout)
-      const allNodes = client.listNodes();
-      const allEdges = listEdges(client.doc);
-      const incomingEdges = allEdges.filter((e) => e.target === options.node);
-
-      // 3. Resolve prompt (same priority as ActionBadge UI)
-      let prompt = (badge.data.content as string) || "";
-
-      // Fallback: check connected prompt/text nodes via edges
-      if (!prompt) {
-        for (const edge of incomingEdges) {
-          const source = allNodes.find((n) => n.id === edge.source);
-          if (source && (source.type === "text" || source.type === "prompt") && source.data.content) {
-            prompt = source.data.content as string;
-            break;
-          }
-        }
-      }
-
-      // Fallback: data.prompt (legacy)
-      if (!prompt) {
-        prompt = (badge.data.prompt as string) || "";
-      }
-
-      if (!prompt.trim()) {
-        console.error("Error: No prompt found. Edit the node content or connect a text/prompt node first.");
-        process.exit(1);
-      }
-
-      // 4. Resolve model (fallback to default if badge doesn't specify)
-      const isVideo = actionType === ACTION_TYPE.VideoGen;
-      const kind = isVideo ? "video" : "image";
-      let modelId = (badge.data.modelId as string) || (badge.data.model as string) || "";
-      if (!modelId) {
-        const defaultCard = MODEL_CARDS.find((c: any) => c.kind === kind);
-        modelId = defaultCard?.id || "";
-      }
-      const modelCard = modelId ? MODEL_CARDS.find((c: any) => c.id === modelId) : null;
-      const modelParams = (badge.data.modelParams as Record<string, any>) || { ...(modelCard?.defaultParams ?? {}) };
-
-      // 5. Validate reference image requirement
-      const refRequired = modelCard?.input?.referenceImage === "required";
-      const connectedImages = incomingEdges
-        .map((e) => allNodes.find((n) => n.id === e.source))
-        .filter((n): n is NodeInfo => !!n && n.type === "image" && !!n.data.src);
-
-      if (refRequired && connectedImages.length === 0) {
-        console.error("Error: Selected model requires a reference image. Connect an image node first.");
-        process.exit(1);
-      }
-
-      // 6. Build pending asset node (same as ActionBadge handleExecute)
-      const assetNodeId = crypto.randomUUID().slice(0, 8);
-      const pending = buildPendingAssetNode({
-        nodeId: assetNodeId,
-        prompt,
-        modelId,
-        modelParams: modelParams as Record<string, string | number | boolean>,
-        actionType: actionType as typeof ACTION_TYPE.ImageGen | typeof ACTION_TYPE.VideoGen,
-      });
-
-      // Attach reference images from connected image nodes
-      const refUrls = connectedImages.map((n) => n.data.src as string);
-      if (refUrls.length > 0) {
-        pending.data.referenceImageUrls = refUrls;
-      }
-
-      // 7. Insert pending asset node with auto-layout
-      const existingLayout = allNodes.map((n) => ({
-        id: n.id, type: n.type, position: n.position, parentId: n.parent_id ?? undefined, data: n.data,
-      }));
-      const edgesLayout = allEdges;
-      const virtual = { id: assetNodeId, type: pending.type, position: NEEDS_LAYOUT_POSITION, data: pending.data };
-      const layout = autoInsertNode(assetNodeId, [...existingLayout, virtual], edgesLayout);
-
-      const noBroadcast: (d: Uint8Array) => void = () => {};
-      insertNode(client.doc, noBroadcast, assetNodeId, pending.type, pending.data, null, layout.position);
-
-      // 8. Add edge from ActionBadge → pending asset node
-      const edgeId = `${options.node}-${assetNodeId}`;
-      insertEdge(client.doc, noBroadcast, edgeId, options.node, assetNodeId, "default");
 
       if (isJsonMode(options)) {
         printJson({
           executed: true,
           badge_node_id: options.node,
-          asset_node_id: assetNodeId,
-          type: pending.type,
+          asset_node_id: result.assetNodeId,
+          type: result.assetNodeType,
           status: "pending",
-          model: modelId,
-          prompt,
         });
       } else {
         console.log(`Executed action-badge: ${options.node}`);
-        console.log(`Created pending ${kind}: ${assetNodeId}`);
-        console.log(`Model:  ${modelId}`);
-        console.log(`Prompt: ${prompt.length > 60 ? prompt.slice(0, 57) + "..." : prompt}`);
+        console.log(`Created pending asset: ${result.assetNodeId} (${result.assetNodeType})`);
         console.log(`NodeProcessor will auto-submit generation task.`);
       }
     } finally {

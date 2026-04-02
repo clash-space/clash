@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { LoroDoc } from "loro-crdt";
 import { createCanvasTools } from "./canvas";
-import type { BroadcastFn } from "../backends/canvas";
+import type { BroadcastFn } from "@clash/shared-types";
 
 function makeDocWithNodes(
   nodes: Array<{

@@ -119,9 +119,46 @@ Types defined in `packages/shared-types/src/presence.ts`. Detected via `isSideba
 
 All schemas in `packages/shared-types`. Both frontend and backend validate against the same Zod schemas. Canvas node types, task schemas, model cards — all defined once. Python types can be generated via `pnpm generate:python`.
 
-### Loro Operations
+### Canvas Operations (Loro)
 
-Runtime canvas operations (insert/update/delete nodes/edges) live in `packages/shared-types/src/loro-operations.ts`. The `LoroSyncClient` in `loro-client.ts` wraps these for CLI/agent use. Layout integration via `packages/shared-layout` for auto-positioning.
+All canvas operations are encapsulated in the `Canvas` class (`packages/shared-types/src/canvas-ops.ts`). Instantiate with `new Canvas(doc, broadcast)` and call methods directly. **All clients (web, CLI, api-cf agents) must use this class — never re-implement layout, validation, or node creation logic in client code.**
+
+```typescript
+const canvas = new Canvas(doc, broadcast);
+
+// Read
+canvas.listNodes(type?, parentId?)
+canvas.readNode(nodeId)
+canvas.searchNodes(query, types?)
+canvas.findNode(idOrAssetId)
+canvas.getNodeStatus(idOrAssetId)
+canvas.listEdges()
+
+// Write
+canvas.createNode(id, type, data, position?, parentId?)    // auto-insert layout
+canvas.createLinkedNode({ sourceNodeId, ... })              // + edge + auto-insert
+canvas.updateNode(nodeId, updates)
+canvas.deleteNode(nodeId)
+canvas.insertEdge(edgeId, source, target, type?)
+
+// Business operations
+canvas.executeGeneration(nodeId, generateId)   // validate → buildPending → createLinkedNode
+```
+
+`executeGeneration` replaces the previously duplicated flow of read node → extract prompt/model → validate → build pending asset → create linked node. One call does everything.
+
+**Validation & builders** (in `canvas.ts`, used internally by Canvas):
+- `validateGenerationInput()` — Validates prompt + reference images against model card.
+- `buildPendingAssetNode()` — Builds pending image/video node data.
+
+**Layout** (`packages/shared-layout`, used internally by Canvas):
+- `autoInsertNode` — Calculates position (right of reference via edge, or bottom of group) + chainPush.
+- `relayoutToGrid` — Full grid relayout for the relayout button.
+
+**Rules:**
+- Reference images come from prompt parts (inline `@`-mentions via `parsePromptParts`), not from connected upstream nodes.
+- Never hardcode positions — Canvas handles auto-insert internally.
+- Any logic duplicated across clients must go into `packages/shared-types` or `packages/shared-layout`. Client code should only contain framework-specific glue (React hooks, CLI output formatting, etc.).
 
 ### agents.json Documentation
 

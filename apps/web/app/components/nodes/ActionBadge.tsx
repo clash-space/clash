@@ -1,5 +1,5 @@
-import { memo, useState, useEffect, useCallback, useMemo } from 'react';
-import { Handle, Position, Node, NodeProps, useReactFlow, useEdges } from 'reactflow';
+import { memo, useState, useEffect, useCallback, useMemo, useRef, type KeyboardEvent as ReactKeyboardEvent } from 'react';
+import { Handle, Position, type Node as RFNode, NodeProps, useReactFlow, useEdges } from 'reactflow';
 import { VideoCamera, Image as ImageIcon, CaretDown, X, Play, Spinner, PuzzlePiece } from '@phosphor-icons/react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { createPortal } from 'react-dom';
@@ -7,9 +7,8 @@ import { useProject } from '../ProjectContext';
 import { useOptionalLoroSyncContext } from '../LoroSyncContext';
 import { useLayoutManager } from '@/lib/layout';
 import { generateSemanticId } from '@/lib/utils/semanticId';
-import MilkdownEditor from '../MilkdownEditor';
-import { resolveAssetUrl, isR2Key } from '../../../lib/utils/assets';
-import { MODEL_CARDS, resolveAspectRatio, parsePromptParts, extractPromptText, extractAssetRefs, type ModelCard, type ModelParameter, type CustomActionDefinition } from '@clash/shared-types';
+import { resolveAssetUrl } from '../../../lib/utils/assets';
+import { MODEL_CARDS, resolveAspectRatio, validateGenerationInput, parsePromptParts, extractPromptText, extractAssetRefs, buildMention, type ModelCard, type ModelParameter, type CustomActionDefinition } from '@clash/shared-types';
 import { applyLayoutPatchesToLoro, collectLayoutNodePatches } from '../../lib/loroNodeSync';
 import { useCustomActions } from '../../hooks/useCustomActions';
 
@@ -42,13 +41,20 @@ const PromptActionNode = ({ data, selected, id }: NodeProps) => {
     const [isExecuting, setIsExecuting] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
+    // @ mention state
+    const textareaRef = useRef<HTMLTextAreaElement>(null);
+    const [showMentionMenu, setShowMentionMenu] = useState(false);
+    const [mentionQuery, setMentionQuery] = useState('');
+    const [mentionCursor, setMentionCursor] = useState(0);
+    const [mentionIndex, setMentionIndex] = useState(0);
+
     // React Flow hooks
     const { projectId } = useProject();
-    const { getNodes, getEdges, addEdges, setNodes } = useReactFlow();
+    const { getNodes, addEdges, setNodes } = useReactFlow();
     const loroSync = useOptionalLoroSyncContext();
     const edges = useEdges();
     const onNodesMutated = useCallback(
-        (prevNodes: Node[], nextNodes: Node[]) => {
+        (prevNodes: RFNode[], nextNodes: RFNode[]) => {
             if (!loroSync?.connected) return;
             const patches = collectLayoutNodePatches(prevNodes, nextNodes);
             applyLayoutPatchesToLoro(loroSync, patches);
@@ -58,8 +64,14 @@ const PromptActionNode = ({ data, selected, id }: NodeProps) => {
     const { addNodeWithAutoLayout } = useLayoutManager({ onNodesMutated });
 
     // Prompt editing state
+    const cleanContent = (val: string | undefined) => {
+        if (!val) return '';
+        // Strip legacy default placeholder
+        if (val.trim() === '# Prompt\nEnter your prompt here...' || val.trim() === '# Prompt\n\nEnter your prompt here...') return '';
+        return val;
+    };
     const [label, setLabel] = useState(data.label || 'Prompt');
-    const [content, setContent] = useState(data.content || '# Prompt\nEnter your prompt here...');
+    const [content, setContent] = useState(cleanContent(data.content));
 
     const mapLegacyModelId = (
         type: 'image-gen' | 'video-gen',
@@ -89,6 +101,8 @@ const PromptActionNode = ({ data, selected, id }: NodeProps) => {
         (data.customActionParams as ModelParams) ?? {}
     );
 
+    const editorRef = useRef<HTMLDivElement>(null);
+
     const initialModelId = isCustom ? '' :
         mapLegacyModelId(actionType as 'image-gen' | 'video-gen', data.modelId as string | undefined, data.modelName) ||
         (MODEL_CARDS.find((card) => card.kind === (actionType === 'video-gen' ? 'video' : 'image'))?.id ??
@@ -101,9 +115,10 @@ const PromptActionNode = ({ data, selected, id }: NodeProps) => {
     });
 
     const Icon = isCustom ? PuzzlePiece : actionType === 'video-gen' ? VideoCamera : ImageIcon;
-    const colorClass = isCustom ? 'text-purple-500' : actionType === 'video-gen' ? 'text-red-500' : 'text-blue-500';
-    const bgClass = isCustom ? 'bg-purple-50' : actionType === 'video-gen' ? 'bg-red-50' : 'bg-blue-50';
-    const ringClass = isCustom ? 'ring-purple-500' : actionType === 'video-gen' ? 'ring-red-500' : 'ring-blue-500';
+    const colorClass = isCustom ? 'text-custom' : actionType === 'video-gen' ? 'text-video' : 'text-image';
+    const bgClass = isCustom ? 'bg-custom-light' : actionType === 'video-gen' ? 'bg-video-light' : 'bg-image-light';
+    const ringClass = isCustom ? 'ring-custom' : actionType === 'video-gen' ? 'ring-video' : 'ring-image';
+    const btnClass = isCustom ? 'bg-custom hover:opacity-90' : actionType === 'video-gen' ? 'bg-video hover:opacity-90' : 'bg-image hover:opacity-90';
 
     const availableModels = useMemo(
         () => MODEL_CARDS.filter((card) => card.kind === (actionType === 'video-gen' ? 'video' : 'image')),
@@ -117,8 +132,180 @@ const PromptActionNode = ({ data, selected, id }: NodeProps) => {
     const modelDisplay = selectedModel?.name || modelId;
     const providerDisplay = selectedModel?.provider || '';
     const referenceMode = selectedModel?.input.referenceMode || 'single';
-    const referenceRequirement = selectedModel?.input.referenceImage || 'optional';
     const countValue = Number(modelParams.count ?? 1);
+
+    // @ mention: mentionable nodes (with src for thumbnails)
+    const mentionableNodes = useMemo(() => {
+        const modalities = isCustom
+            ? (customDef?.promptModalities ?? ['text'])
+            : (selectedModel?.input.promptModalities ?? ['text']);
+        const allNodes = getNodes();
+        return allNodes
+            .filter((n) => modalities.includes(n.type as any))
+            .map((n) => ({
+                id: n.id,
+                type: n.type as string,
+                label: (n.data.label as string) || n.id,
+                src: n.data.src as string | undefined,
+            }));
+    }, [getNodes, isCustom, customDef, selectedModel]);
+
+    const filteredMentionNodes = useMemo(() => {
+        if (!mentionQuery) return mentionableNodes;
+        return mentionableNodes.filter((n) =>
+            n.label.toLowerCase().includes(mentionQuery) || n.id.toLowerCase().includes(mentionQuery)
+        );
+    }, [mentionableNodes, mentionQuery]);
+
+    // Render content string → HTML with inline mention chips
+    const contentToHtml = useCallback((raw: string) => {
+        if (!raw) return '';
+        const MENTION_RE = /@\[([^\]]*)\]\(node:([^)]+)\)/g;
+        return raw.replace(MENTION_RE, (_match, label, nodeId) => {
+            const node = mentionableNodes.find((n) => n.id === nodeId);
+            const src = node?.src;
+            const imgHtml = src
+                ? `<img src="${resolveAssetUrl(src)}" style="height:20px;width:20px;border-radius:4px;object-fit:cover;vertical-align:middle;display:inline-block;margin-right:3px;" />`
+                : '';
+            return `<span contenteditable="false" data-mention-id="${nodeId}" style="display:inline-flex;align-items:center;gap:2px;background:#f1f5f9;border:1px solid #e2e8f0;border-radius:6px;padding:1px 6px 1px 3px;margin:0 2px;font-size:12px;color:#334155;vertical-align:middle;line-height:22px;">${imgHtml}${label}</span>`;
+        });
+    }, [mentionableNodes]);
+
+    // Read back HTML → content string
+    const htmlToContent = useCallback((el: HTMLDivElement): string => {
+        let result = '';
+        el.childNodes.forEach((node) => {
+            if (node.nodeType === Node.TEXT_NODE) {
+                result += node.textContent || '';
+            } else if (node.nodeType === Node.ELEMENT_NODE) {
+                const elem = node as HTMLElement;
+                const mentionId = elem.getAttribute('data-mention-id');
+                if (mentionId) {
+                    const label = elem.textContent || mentionId;
+                    result += buildMention(label, mentionId);
+                } else if (elem.tagName === 'BR') {
+                    result += '\n';
+                } else {
+                    const inner = htmlToContent(elem as HTMLDivElement);
+                    result += inner;
+                    if (elem.tagName === 'DIV' || elem.tagName === 'P') result += '\n';
+                }
+            }
+        });
+        return result;
+    }, []);
+
+    // Sync editor HTML when content changes externally
+    const lastContentRef = useRef(content);
+    useEffect(() => {
+        if (editorRef.current && content !== lastContentRef.current) {
+            const sel = window.getSelection();
+            const hadFocus = editorRef.current === document.activeElement;
+            editorRef.current.innerHTML = contentToHtml(content);
+            lastContentRef.current = content;
+            if (hadFocus && sel) {
+                const range = document.createRange();
+                range.selectNodeContents(editorRef.current);
+                range.collapse(false);
+                sel.removeAllRanges();
+                sel.addRange(range);
+            }
+        }
+    }, [content, contentToHtml]);
+
+    // Init editor on mount
+    useEffect(() => {
+        if (editorRef.current && showPanel) {
+            editorRef.current.innerHTML = contentToHtml(content);
+            lastContentRef.current = content;
+        }
+    }, [showPanel]);
+
+    const handleEditorInput = useCallback(() => {
+        const el = editorRef.current;
+        if (!el) return;
+        const raw = htmlToContent(el);
+        lastContentRef.current = raw;
+        setContent(raw);
+        const sel = window.getSelection();
+        if (!sel || sel.rangeCount === 0) return;
+        const range = sel.getRangeAt(0);
+        if (range.startContainer.nodeType !== Node.TEXT_NODE) {
+            setShowMentionMenu(false);
+            return;
+        }
+        const textBefore = (range.startContainer.textContent || '').slice(0, range.startOffset);
+        const atMatch = textBefore.match(/@(\w*)$/);
+        if (atMatch) {
+            setMentionQuery(atMatch[1].toLowerCase());
+            setShowMentionMenu(true);
+            setMentionIndex(0);
+        } else {
+            setShowMentionMenu(false);
+        }
+    }, [htmlToContent]);
+
+    const handleEditorKeyDown = useCallback((e: ReactKeyboardEvent<HTMLDivElement>) => {
+        if (showMentionMenu && filteredMentionNodes.length > 0) {
+            if (e.key === 'ArrowDown') {
+                e.preventDefault();
+                setMentionIndex((prev) => Math.min(prev + 1, filteredMentionNodes.length - 1));
+            } else if (e.key === 'ArrowUp') {
+                e.preventDefault();
+                setMentionIndex((prev) => Math.max(prev - 1, 0));
+            } else if (e.key === 'Enter' || e.key === 'Tab') {
+                e.preventDefault();
+                insertMention(filteredMentionNodes[mentionIndex]);
+            } else if (e.key === 'Escape') {
+                setShowMentionMenu(false);
+            }
+        }
+    }, [showMentionMenu, filteredMentionNodes, mentionIndex]);
+
+    const insertMention = useCallback((node: { id: string; label: string; src?: string }) => {
+        const el = editorRef.current;
+        if (!el) return;
+        const sel = window.getSelection();
+        if (!sel || sel.rangeCount === 0) return;
+        const range = sel.getRangeAt(0);
+        if (range.startContainer.nodeType === Node.TEXT_NODE) {
+            const text = range.startContainer.textContent || '';
+            const before = text.slice(0, range.startOffset);
+            const atPos = before.lastIndexOf('@');
+            if (atPos >= 0) {
+                range.startContainer.textContent = text.slice(0, atPos) + text.slice(range.startOffset);
+                range.setStart(range.startContainer, atPos);
+                range.collapse(true);
+            }
+        }
+        const mentionHtml = contentToHtml(buildMention(node.label, node.id));
+        const temp = document.createElement('span');
+        temp.innerHTML = mentionHtml + '&nbsp;';
+        const frag = document.createDocumentFragment();
+        let lastInserted: globalThis.Node | null = null;
+        while (temp.firstChild) {
+            lastInserted = temp.firstChild;
+            frag.appendChild(temp.firstChild);
+        }
+        range.insertNode(frag);
+        if (lastInserted) {
+            const newRange = document.createRange();
+            newRange.setStartAfter(lastInserted);
+            newRange.collapse(true);
+            sel.removeAllRanges();
+            sel.addRange(newRange);
+        }
+        const raw = htmlToContent(el);
+        lastContentRef.current = raw;
+        setContent(raw);
+        setShowMentionMenu(false);
+        setMentionIndex(0);
+        const edgeId = `${node.id}-${id}`;
+        addEdges({ id: edgeId, source: node.id, target: id, type: 'default' });
+        if (loroSync?.connected) {
+            loroSync.addEdge(edgeId, { id: edgeId, source: node.id, target: id, type: 'default' });
+        }
+    }, [contentToHtml, htmlToContent, id, addEdges, loroSync]);
 
     const syncModelState = useCallback(
         (nextModelId: string, nextParams: ModelParams, nextReferenceMode?: string) => {
@@ -178,7 +365,8 @@ const PromptActionNode = ({ data, selected, id }: NodeProps) => {
             setLabel((prev: string) => (prev !== data.label ? data.label : prev));
         }
         if (data.content !== undefined) {
-            setContent((prev: string) => (prev !== data.content ? data.content : prev));
+            const cleaned = cleanContent(data.content);
+            setContent((prev: string) => (prev !== cleaned ? cleaned : prev));
         }
     }, [data.label, data.content]);
 
@@ -254,7 +442,7 @@ const PromptActionNode = ({ data, selected, id }: NodeProps) => {
         setShowModal(false);
         // Reset to original values
         setLabel(data.label || 'Prompt');
-        setContent(data.content || '# Prompt\nEnter your prompt here...');
+        setContent(cleanContent(data.content));
     }, [data.label, data.content]);
 
     const handleLabelChange = (evt: React.ChangeEvent<HTMLInputElement>) => {
@@ -268,32 +456,7 @@ const PromptActionNode = ({ data, selected, id }: NodeProps) => {
         setError(null);
 
         try {
-            // Get connected input nodes
-            const incomingEdges = getEdges().filter(e => e.target === id);
-            const nodes = getNodes();
-            const connectedNodes = incomingEdges.map(e =>
-                nodes.find(n => n.id === e.source)
-            ).filter(Boolean);
-
-            // PRIORITY 1: Use embedded content if available
-            let prompt = content && content.trim() !== '# Prompt\nEnter your prompt here...' ? content : '';
-
-            // PRIORITY 2: Fallback to connected prompt/text nodes
-            if (!prompt) {
-                const promptNode = connectedNodes.find(n => n?.type === 'prompt');
-                const textNode = connectedNodes.find(n => n?.type === 'text');
-
-                if (promptNode) {
-                    prompt = promptNode.data.content || '';
-                } else if (textNode) {
-                    prompt = textNode.data.content || '';
-                }
-            }
-
-            // PRIORITY 3: Fallback to data.prompt (legacy)
-            if (!prompt) {
-                prompt = data.prompt || '';
-            }
+            const prompt = (content && content.trim() !== '' ? content : '') || data.prompt || '';
 
             if (!prompt || prompt.trim() === '') {
                 throw new Error('No prompt provided. Please edit the node or connect a text/prompt node.');
@@ -312,6 +475,16 @@ const PromptActionNode = ({ data, selected, id }: NodeProps) => {
                 })
                 .filter((src): src is string => !!src);
 
+            // Validate generation inputs against model card
+            if (!isCustom && selectedModel) {
+                const validationError = validateGenerationInput({
+                    prompt: promptText,
+                    referenceImageUrls: inlineImageUrls,
+                    modelCard: selectedModel,
+                });
+                if (validationError) throw new Error(validationError);
+            }
+
             // Capture and clear pre-allocated asset ID (provided by backend; treat as single-use)
             const preAllocatedAssetId = data.preAllocatedAssetId;
             if (preAllocatedAssetId) {
@@ -324,25 +497,6 @@ const PromptActionNode = ({ data, selected, id }: NodeProps) => {
 
             // Generate unique asset name (prefer pre-allocated assetId once; otherwise request semantic ID)
             const assetName = preAllocatedAssetId || await generateSemanticId(projectId);
-
-            const getReferenceImageUrls = (sources: string[]) => {
-                const urls: string[] = [];
-                sources.forEach((src) => {
-                    if (!src) return;
-                    if (src.startsWith('http://') || src.startsWith('https://')) {
-                        urls.push(src);
-                    } else if (isR2Key(src)) {
-                        // Pass R2 keys directly
-                        urls.push(src);
-                    } else if (src.includes('base64,')) {
-                        // Also pass base64 images - backend will upload to R2
-                        urls.push(src);
-                    }
-                });
-                return urls;
-            };
-            const requiresReferenceImage = referenceRequirement === 'required';
-            const forbidReferenceImage = referenceRequirement === 'forbidden';
 
             // ── Custom Action Execution ──────────────────────
             if (isCustom && customDef) {
@@ -398,77 +552,44 @@ const PromptActionNode = ({ data, selected, id }: NodeProps) => {
                 }));
 
             } else if (actionType === 'image-gen') {
-                // Collect connected images for reference
-                const imageNodes = connectedNodes.filter(n => n?.type === 'image');
-                const rawReferenceImages = getReferenceImageUrls(imageNodes.map(n => n?.data?.src));
-                const connectedImageUrls = forbidReferenceImage ? [] : rawReferenceImages;
-
-                // Merge: inline @-refs + edge-connected images (deduplicate)
-                const referenceImageUrls = [...new Set([...inlineImageUrls, ...connectedImageUrls])];
-
-                if (requiresReferenceImage && referenceImageUrls.length === 0) {
-                    throw new Error('Selected model requires at least one reference image.');
-                }
-
-                // ============================================
-                // Create pending node - Loro will handle generation
-                // ============================================
-                const pendingNodeId = assetName;
-
-                // Extract meaningful label from prompt text (without @-mention syntax)
+                const referenceImageUrls = inlineImageUrls;
                 const generatedLabel = extractLabelFromPrompt(promptText, 'Generated Image');
+                const batchCount = countValue;
 
+                for (let i = 0; i < batchCount; i++) {
+                    const pendingNodeId = i === 0 ? assetName : await generateSemanticId(projectId);
 
-                // Create the pending node in React state
-                const newNode = addNodeWithAutoLayout(
-                    {
-                        id: pendingNodeId,
-                        type: 'image',
-                        data: {
-                            label: generatedLabel,
-                            src: '', // Empty src = generating
-                            status: 'pending',
-                            prompt: promptText, // Send clean text to generation API
-                            referenceImageUrls, // Pass merged reference images
-                            aspectRatio: resolveAspectRatio(modelId, modelParams),
-                            model: modelId,
-                            modelId,
-                            modelParams,
-                            referenceMode,
-                            count: modelParams.count,
+                    const newNode = addNodeWithAutoLayout(
+                        {
+                            id: pendingNodeId,
+                            type: 'image',
+                            data: {
+                                label: batchCount > 1 ? `${generatedLabel} (${i + 1})` : generatedLabel,
+                                src: '',
+                                status: 'pending',
+                                prompt: promptText,
+                                referenceImageUrls,
+                                aspectRatio: resolveAspectRatio(modelId, modelParams),
+                                model: modelId,
+                                modelId,
+                                modelParams: { ...modelParams, count: 1 },
+                                referenceMode,
+                            },
                         },
-                    },
-                    id
-                );
+                        id
+                    );
 
-                if (!newNode) {
-                    throw new Error('Failed to create pending image node.');
-                }
+                    if (!newNode) continue;
 
-                // Sync pending node to Loro - server will detect and process
-                if (loroSync?.connected) {
-                    loroSync.addNode(newNode.id, newNode);
-                } else {
-                    console.warn('[ActionBadge] ⚠️ loroSync not connected - node will not be processed');
-                }
+                    if (loroSync?.connected) {
+                        loroSync.addNode(newNode.id, newNode);
+                    }
 
-                // Add edge
-                const edgeId = `${id}-${pendingNodeId}`;
-                addEdges({
-                    id: edgeId,
-                    source: id,
-                    target: pendingNodeId,
-                    type: 'default',
-                });
-
-                // Sync edge
-                if (loroSync?.connected) {
-                    loroSync.addEdge(edgeId, {
-                        id: edgeId,
-                        source: id,
-                        target: pendingNodeId,
-                        type: 'default',
-                    });
+                    const edgeId = `${id}-${pendingNodeId}`;
+                    addEdges({ id: edgeId, source: id, target: pendingNodeId, type: 'default' });
+                    if (loroSync?.connected) {
+                        loroSync.addEdge(edgeId, { id: edgeId, source: id, target: pendingNodeId, type: 'default' });
+                    }
                 }
 
                 // Update ActionBadge status
@@ -487,109 +608,47 @@ const PromptActionNode = ({ data, selected, id }: NodeProps) => {
                 }));
 
             } else if (actionType === 'video-gen') {
-                // Collect connected images for video generation
-                // First image is start frame, second is end frame (if available)
-                const imageNodes = connectedNodes.filter(n => n?.type === 'image');
-
-                const rawReferenceImages = getReferenceImageUrls(imageNodes.map(n => n?.data?.src));
-                const connectedVideoImageUrls = forbidReferenceImage ? [] : rawReferenceImages;
-                // For start_end mode, only use connected images (not inline @-refs)
-                // For other modes, merge inline + connected
-                const referenceImageUrls = referenceMode === 'start_end'
-                    ? connectedVideoImageUrls
-                    : [...new Set([...inlineImageUrls, ...connectedVideoImageUrls])];
-
-                if (requiresReferenceImage) {
-                    const requiredCount = referenceMode === 'start_end' ? 2 : 1;
-                    if (referenceImageUrls.length < requiredCount) {
-                        throw new Error(referenceMode === 'start_end'
-                            ? 'Selected video model needs start and end frames (connect two images).'
-                            : 'Selected video model requires at least one reference image node');
-                    }
-                }
-
-                const resolveReferenceAspectRatio = () => {
-                    const referenceNode = imageNodes.find((n) => {
-                        const width = Number(n?.data?.naturalWidth);
-                        const height = Number(n?.data?.naturalHeight);
-                        return Number.isFinite(width) && Number.isFinite(height) && width > 0 && height > 0;
-                    });
-                    if (referenceNode) {
-                        const width = Number(referenceNode.data.naturalWidth);
-                        const height = Number(referenceNode.data.naturalHeight);
-                        const gcd = (a: number, b: number): number => (b === 0 ? a : gcd(b, a % b));
-                        const ratio = gcd(Math.round(width), Math.round(height));
-                        return `${Math.round(width) / ratio}:${Math.round(height) / ratio}`;
-                    }
-                    const fallbackAspect = imageNodes.find((n) => typeof n?.data?.aspectRatio === 'string')?.data?.aspectRatio;
-                    return fallbackAspect || undefined;
-                };
-
-                const effectiveAspectRatio = resolveAspectRatio(modelId, modelParams) || resolveReferenceAspectRatio();
-                const effectiveModelParams = modelParams;
-
-                // ============================================
-                // Create pending video node - Loro will handle generation
-                // Same pattern as image generation
-                // ============================================
-                const pendingNodeId = assetName;
-
-                // Extract meaningful label from prompt
+                const referenceImageUrls = inlineImageUrls;
                 const generatedLabel = extractLabelFromPrompt(promptText, 'Generated Video');
-
                 const durationValue = modelParams.duration ?? 5;
                 const durationNumber = typeof durationValue === 'string' ? parseInt(durationValue, 10) : Number(durationValue) || 5;
+                const batchCount = countValue;
 
-                // Create the pending video node in React state
-                const newNode = addNodeWithAutoLayout(
-                    {
-                        id: pendingNodeId,
-                        type: 'video',
-                        data: {
-                            label: generatedLabel,
-                            src: '', // Empty src = generating
-                            status: 'pending',
-                            prompt: promptText, // Send clean text to generation API
-                            referenceImageUrls, // Pass merged reference images
-                            duration: durationNumber,
-                            model: modelId,
-                            modelId,
-                            modelParams: effectiveModelParams,
-                            referenceMode,
-                            aspectRatio: effectiveAspectRatio,
+                for (let i = 0; i < batchCount; i++) {
+                    const pendingNodeId = i === 0 ? assetName : await generateSemanticId(projectId);
+
+                    const newNode = addNodeWithAutoLayout(
+                        {
+                            id: pendingNodeId,
+                            type: 'video',
+                            data: {
+                                label: batchCount > 1 ? `${generatedLabel} (${i + 1})` : generatedLabel,
+                                src: '',
+                                status: 'pending',
+                                prompt: promptText,
+                                referenceImageUrls,
+                                duration: durationNumber,
+                                model: modelId,
+                                modelId,
+                                modelParams,
+                                referenceMode,
+                                aspectRatio: resolveAspectRatio(modelId, modelParams),
+                            },
                         },
-                    },
-                    id
-                );
+                        id
+                    );
 
-                if (!newNode) {
-                    throw new Error('Failed to create pending video node.');
-                }
+                    if (!newNode) continue;
 
-                // Sync pending node to Loro - server will detect and process
-                if (loroSync?.connected) {
-                    loroSync.addNode(newNode.id, newNode);
-                } else {
-                    console.warn('[ActionBadge] ⚠️ loroSync not connected - node will not be processed');
-                }
+                    if (loroSync?.connected) {
+                        loroSync.addNode(newNode.id, newNode);
+                    }
 
-                // Add edge
-                const edgeId = `${id}-${pendingNodeId}`;
-                addEdges({
-                    id: edgeId,
-                    source: id,
-                    target: pendingNodeId,
-                    type: 'default',
-                });
-
-                // Sync edge
-                if (loroSync?.connected) {
-                    loroSync.addEdge(edgeId, {
-                        id: edgeId,
-                        source: id,
-                        target: pendingNodeId,
-                        type: 'default',
-                    });
+                    const edgeId = `${id}-${pendingNodeId}`;
+                    addEdges({ id: edgeId, source: id, target: pendingNodeId, type: 'default' });
+                    if (loroSync?.connected) {
+                        loroSync.addEdge(edgeId, { id: edgeId, source: id, target: pendingNodeId, type: 'default' });
+                    }
                 }
 
                 // Update ActionBadge status
@@ -625,8 +684,6 @@ const PromptActionNode = ({ data, selected, id }: NodeProps) => {
         modelParams,
         modelId,
         referenceMode,
-        referenceRequirement,
-        getEdges,
         getNodes,
         setNodes,
         addNodeWithAutoLayout,
@@ -882,207 +939,318 @@ const PromptActionNode = ({ data, selected, id }: NodeProps) => {
         ? (customDef?.name || customActionId || 'Custom')
         : (selectedModel?.name || modelId || (actionType === 'video-gen' ? 'Video' : 'Image'));
 
-    // Bottom config panel content (portalled)
+    // Resolve current param display chips
+    const paramChips = useMemo(() => {
+        const chips: { label: string; value: string; paramId: string }[] = [];
+        const params = isCustom ? customDef?.parameters : selectedModel?.parameters;
+        if (!params) return chips;
+        params.forEach((p: any) => {
+            if (p.id === 'count') return; // count is shown separately as xN chip
+            const val = modelParams[p.id] ?? p.defaultValue;
+            if (val === undefined) return;
+            if (p.type === 'select' && p.options) {
+                const opt = p.options.find((o: any) => String(o.value) === String(val));
+                chips.push({ label: p.label, value: opt?.label ?? String(val), paramId: p.id });
+            } else if (p.type === 'boolean') {
+                chips.push({ label: p.label, value: val ? 'On' : 'Off', paramId: p.id });
+            } else {
+                chips.push({ label: p.label, value: String(val), paramId: p.id });
+            }
+        });
+        return chips;
+    }, [isCustom, customDef, selectedModel, modelParams]);
+
+    // Track which param chip has an open dropdown
+    const [activeParamDropdown, setActiveParamDropdown] = useState<string | null>(null);
+    const [expandedParam, setExpandedParam] = useState<string | null>(null);
+    const panelRef = useRef<HTMLDivElement>(null);
+
+    // Click outside → close panel (capture phase to beat React Flow's stopPropagation)
+    useEffect(() => {
+        if (!showPanel) return;
+        const handleClickOutside = (e: MouseEvent) => {
+            if (panelRef.current && !panelRef.current.contains(e.target as globalThis.Node)) {
+                setShowPanel(false);
+                setShowModelDropdown(false);
+                setActiveParamDropdown(null);
+                setExpandedParam(null);
+            }
+        };
+        document.addEventListener('mousedown', handleClickOutside, true);
+        return () => document.removeEventListener('mousedown', handleClickOutside, true);
+    }, [showPanel]);
+
+    // Bottom chat-style config panel (portalled)
     const configPanel = showPanel ? (
         <AnimatePresence>
-            <div className="fixed inset-0 z-[9998]" onClick={() => { setShowPanel(false); setShowModelDropdown(false); }}>
-                {/* Backdrop */}
-                <motion.div
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    exit={{ opacity: 0 }}
-                    className="absolute inset-0 bg-white/30 backdrop-blur-sm"
-                />
-
-                {/* Bottom Panel */}
-                <motion.div
-                    initial={{ y: '100%', opacity: 0 }}
-                    animate={{ y: 0, opacity: 1 }}
-                    exit={{ y: '100%', opacity: 0 }}
-                    transition={{ type: 'spring', damping: 30, stiffness: 400 }}
-                    className="absolute bottom-0 left-0 right-0 flex justify-center pointer-events-none"
-                    onClick={(e) => e.stopPropagation()}
-                >
-                    <div className="pointer-events-auto w-full max-w-lg mb-6 mx-4 rounded-2xl bg-white/90 backdrop-blur-xl p-5 shadow-lg border border-slate-200">
-                        {/* Panel Header */}
-                        <div className="flex items-center justify-between mb-4">
-                            <div className="flex items-center gap-3">
-                                <div className={`h-9 w-9 rounded-xl flex items-center justify-center ${
-                                    isCustom ? 'bg-gray-100 text-gray-600' :
-                                    actionType === 'video-gen' ? 'bg-red-50 text-red-600' : 'bg-gray-100 text-gray-600'
-                                }`}>
-                                    <Icon size={18} weight="bold" />
-                                </div>
-                                <div>
-                                    <h3 className="text-sm font-display font-bold text-gray-900 leading-tight">
-                                        {isCustom ? (customDef?.name || customActionId) : modelDisplay}
-                                    </h3>
-                                    <p className="text-[11px] text-gray-500">
-                                        {isCustom ? (customDef?.description || 'Custom action') : (providerDisplay || 'Configure parameters')}
-                                    </p>
-                                </div>
+            <motion.div
+                initial={{ y: 40, opacity: 0 }}
+                animate={{ y: 0, opacity: 1 }}
+                exit={{ y: 40, opacity: 0 }}
+                transition={{ type: 'spring', damping: 30, stiffness: 400 }}
+                className="fixed bottom-0 left-0 right-0 z-[9998] flex justify-center pointer-events-none pb-5 px-4"
+            >
+                <div ref={panelRef} className="w-full max-w-2xl flex flex-col items-start">
+                    {/* Connected nodes thumbnails — above the panel */}
+                    {(() => {
+                        const connectedSources = edges.filter(e => e.target === id).map(e => e.source);
+                        const connectedImageNodes = getNodes().filter(n => connectedSources.includes(n.id) && n.data.src);
+                        if (connectedImageNodes.length === 0) return null;
+                        return (
+                            <div className="pointer-events-auto flex gap-1.5 mb-2 px-1">
+                                {connectedImageNodes.map((n) => (
+                                    <img
+                                        key={n.id}
+                                        src={resolveAssetUrl(n.data.src as string)}
+                                        alt={(n.data.label as string) || n.id}
+                                        className="h-10 w-10 rounded-lg object-cover border border-slate-200 shadow-sm"
+                                    />
+                                ))}
                             </div>
-                            <button
-                                onClick={() => { setShowPanel(false); setShowModelDropdown(false); }}
-                                className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors"
-                            >
-                                <X size={16} weight="bold" />
-                            </button>
-                        </div>
+                        );
+                    })()}
 
-                        {/* Tags */}
-                        <div className="flex flex-wrap gap-1.5 mb-4">
-                            {isCustom ? (
-                                <>
-                                    <span className="px-2 py-0.5 rounded-full bg-gray-100 text-[10px] text-gray-600 font-medium uppercase tracking-wider">
-                                        {customDef?.outputType || 'image'}
-                                    </span>
-                                    {customDef?.runtime === 'worker' ? (
-                                        <span className="px-2 py-0.5 rounded-full bg-gray-100 text-[10px] text-gray-600 font-medium">
-                                            ☁️ Cloud{customDef.version ? ` · v${customDef.version}` : ''}
-                                        </span>
-                                    ) : (
-                                        <span className="px-2 py-0.5 rounded-full bg-gray-100 text-[10px] text-gray-500 font-medium uppercase tracking-wider">
-                                            🖥 Local
-                                        </span>
-                                    )}
-                                    {customDef?.author && (
-                                        <span className="px-2 py-0.5 rounded-full bg-gray-100 text-[10px] text-gray-400 font-medium">
-                                            @{customDef.author}
-                                        </span>
-                                    )}
-                                </>
-                            ) : (
-                                <>
-                                    <span className="px-2 py-0.5 rounded-full bg-gray-100 text-[10px] text-gray-500 font-medium uppercase tracking-wider">
-                                        {selectedModel?.kind === 'video' ? 'Video' : 'Image'}
-                                    </span>
-                                    {selectedModel?.input.referenceImage === 'required' && (
-                                        <span className="px-2 py-0.5 rounded-full bg-red-50 text-[10px] text-red-600 font-medium">
-                                            Ref required
-                                        </span>
-                                    )}
-                                </>
+                <div
+                    className="pointer-events-auto w-full rounded-2xl bg-white shadow-2xl border border-slate-200 overflow-visible"
+                    onClick={() => { setShowModelDropdown(false); setActiveParamDropdown(null); }}
+                >
+                    {/* Prompt editor with inline @ mention chips */}
+                    <div className="relative px-4 pt-3 pb-4 nodrag">
+                        <div
+                            ref={editorRef}
+                            contentEditable
+                            suppressContentEditableWarning
+                            className="w-full max-h-[40vh] overflow-y-auto text-sm text-gray-900 focus:outline-none leading-relaxed empty:before:content-[attr(data-placeholder)] empty:before:text-gray-400"
+                            style={{ minHeight: '1.5em' }}
+                            data-placeholder="Describe anything you want to generate... (@ to ref assets)"
+                            onInput={handleEditorInput}
+                            onKeyDown={(e) => {
+                                if (e.key === 'Enter') {
+                                    if (showMentionMenu && filteredMentionNodes.length > 0) {
+                                        e.preventDefault();
+                                        insertMention(filteredMentionNodes[mentionIndex]);
+                                        return;
+                                    }
+                                    // Let contentEditable handle Enter naturally (newline)
+                                    return;
+                                }
+                                handleEditorKeyDown(e);
+                            }}
+                            onMouseDown={(e) => e.stopPropagation()}
+                        />
+                        {/* @ mention dropdown with thumbnails */}
+                        {showMentionMenu && filteredMentionNodes.length > 0 && (
+                            <div className="absolute left-4 right-4 bottom-full mb-1 bg-white border border-slate-200 rounded-xl shadow-lg z-50 max-h-48 overflow-y-auto">
+                                {filteredMentionNodes.map((node, idx) => (
+                                    <div
+                                        key={node.id}
+                                        className={`px-3 py-2 text-xs cursor-pointer flex items-center gap-2.5 transition-colors ${
+                                            idx === mentionIndex ? 'bg-gray-100' : 'hover:bg-gray-50'
+                                        }`}
+                                        onMouseDown={(e) => { e.preventDefault(); insertMention(node); }}
+                                    >
+                                        {node.src ? (
+                                            <img
+                                                src={resolveAssetUrl(node.src)}
+                                                alt={node.label}
+                                                className="h-8 w-8 rounded object-cover flex-shrink-0 border border-slate-200"
+                                            />
+                                        ) : (
+                                            <div className="h-8 w-8 rounded bg-gray-100 flex-shrink-0 flex items-center justify-center border border-slate-200">
+                                                <span className="text-[9px] uppercase text-gray-400">{node.type}</span>
+                                            </div>
+                                        )}
+                                        <span className="font-medium text-gray-900 truncate">{node.label}</span>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+
+                    {/* Bottom toolbar: model selector + clickable param chips */}
+                    <div className="flex items-center gap-1.5 px-3 pb-3 flex-nowrap overflow-visible">
+                        {/* Model selector chip */}
+                        <div className="relative">
+                            <button
+                                className="flex items-center gap-1 px-2.5 py-1 rounded-full bg-gray-100 hover:bg-gray-200 text-xs font-medium text-gray-700 transition-colors"
+                                onClick={(e) => { e.stopPropagation(); setShowModelDropdown(!showModelDropdown); setActiveParamDropdown(null); }}
+                            >
+                                <Icon size={12} weight="bold" className={colorClass} />
+                                {modelDisplay}
+                                <CaretDown size={10} weight="bold" className="text-gray-400" />
+                            </button>
+                            {showModelDropdown && (
+                                <div className="absolute left-0 bottom-full mb-2 w-[220px] bg-white border border-slate-200 rounded-2xl shadow-xl z-50 max-h-48 overflow-hidden [&:hover]:overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                                    {availableModels.map((card) => (
+                                        <div
+                                            key={card.id}
+                                            className={`px-3 py-2 text-xs cursor-pointer transition-colors ${
+                                                card.id === modelId ? 'bg-gray-900 text-white' : 'text-gray-700 hover:bg-gray-50'
+                                            }`}
+                                            onClick={() => {
+                                                handleModelChange(card.id);
+                                                setShowModelDropdown(false);
+                                            }}
+                                        >
+                                            <div className="font-bold leading-tight">{card.name}</div>
+                                            <div className={`text-[10px] ${card.id === modelId ? 'text-gray-300' : 'text-gray-400'}`}>{card.provider}</div>
+                                        </div>
+                                    ))}
+                                </div>
                             )}
                         </div>
 
-                        {/* Model Selector (for built-in actions) */}
-                        {!isCustom && (
-                            <div className="mb-4">
-                                <div className="relative">
-                                    <button
-                                        className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 flex items-center justify-between hover:bg-gray-50 transition-colors cursor-pointer"
-                                        onClick={() => setShowModelDropdown(!showModelDropdown)}
-                                    >
-                                        <div className="flex flex-col items-start">
-                                            <span className="text-[10px] text-gray-400 font-medium">Model</span>
-                                            <span className="text-xs font-bold text-gray-900">{modelDisplay}</span>
-                                        </div>
-                                        <CaretDown size={12} weight="bold" className="text-gray-400" />
-                                    </button>
-                                    {showModelDropdown && (
-                                        <div className="absolute left-0 right-0 bottom-full mb-1 bg-white border border-slate-200 rounded-xl shadow-lg overflow-hidden z-50 max-h-48 overflow-y-auto">
-                                            {availableModels.map((card) => (
-                                                <div
-                                                    key={card.id}
-                                                    className={`px-3 py-2 text-xs cursor-pointer transition-colors ${
-                                                        card.id === modelId ? 'bg-gray-900 text-white' : 'text-gray-700 hover:bg-gray-50'
-                                                    }`}
-                                                    onClick={() => {
-                                                        handleModelChange(card.id);
-                                                        setShowModelDropdown(false);
-                                                    }}
-                                                >
-                                                    <div className="font-bold leading-tight">{card.name}</div>
-                                                    <div className={`text-[10px] ${card.id === modelId ? 'text-gray-300' : 'text-gray-400'}`}>{card.provider}</div>
+                        {/* Combined params chip → opens single popover with all params */}
+                        {paramChips.length > 0 && (
+                            <div className="relative flex-shrink-0">
+                                <button
+                                    className={`flex items-center gap-1 px-2.5 py-1 rounded-full text-xs transition-colors ${
+                                        activeParamDropdown === '_params' ? 'bg-gray-200 text-gray-900' : 'bg-gray-100 hover:bg-gray-200 text-gray-600'
+                                    }`}
+                                    onClick={(e) => { e.stopPropagation(); setActiveParamDropdown(activeParamDropdown === '_params' ? null : '_params'); setShowModelDropdown(false); }}
+                                >
+                                    <span className="font-medium text-gray-800">
+                                        {paramChips.map((c) => c.value).join(' · ')}
+                                    </span>
+                                    <CaretDown size={10} weight="bold" className="text-gray-400" />
+                                </button>
+                                {activeParamDropdown === '_params' && (
+                                    <div className="absolute left-0 bottom-full mb-2 bg-white border border-slate-200 rounded-2xl shadow-xl z-50 min-w-[240px] overflow-hidden">
+                                        {((isCustom ? customDef?.parameters : selectedModel?.parameters) ?? []).map((param: any, idx: number) => {
+                                            const p = param as ModelParameter;
+                                            const currentVal = modelParams[p.id] ?? p.defaultValue;
+                                            const currentLabel = p.type === 'select'
+                                                ? (p.options?.find((o) => String(o.value) === String(currentVal))?.label ?? String(currentVal))
+                                                : p.type === 'boolean' ? (currentVal ? 'On' : 'Off') : String(currentVal);
+                                            const isExpanded = expandedParam === p.id;
+                                            return (
+                                                <div key={p.id} className={idx > 0 ? 'border-t border-slate-100' : ''}>
+                                                    <button
+                                                        className="w-full flex items-center justify-between px-4 py-2.5 hover:bg-gray-50 transition-colors"
+                                                        onClick={(e) => { e.stopPropagation(); setExpandedParam(isExpanded ? null : p.id); }}
+                                                    >
+                                                        <span className="text-xs text-gray-500">{p.label}</span>
+                                                        <span className="flex items-center gap-1 text-xs font-semibold text-gray-900">
+                                                            {currentLabel}
+                                                            <CaretDown size={10} weight="bold" className={`text-gray-400 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
+                                                        </span>
+                                                    </button>
+                                                    {isExpanded && (
+                                                        <div className="px-3 pb-3">
+                                                            {(p.type === 'select') && (
+                                                                <div className="flex flex-wrap gap-1.5">
+                                                                    {p.options?.map((opt) => (
+                                                                        <button key={String(opt.value)}
+                                                                            className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${String(currentVal) === String(opt.value) ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
+                                                                            onClick={(e) => { e.stopPropagation(); updateModelParam(p.id, opt.value); setExpandedParam(null); }}
+                                                                        >{opt.label}</button>
+                                                                    ))}
+                                                                </div>
+                                                            )}
+                                                            {p.type === 'boolean' && (
+                                                                <div className="flex gap-1.5">
+                                                                    {[{ l: 'On', v: true }, { l: 'Off', v: false }].map((o) => (
+                                                                        <button key={o.l}
+                                                                            className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${Boolean(currentVal) === o.v ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
+                                                                            onClick={(e) => { e.stopPropagation(); updateModelParam(p.id, o.v); setExpandedParam(null); }}
+                                                                        >{o.l}</button>
+                                                                    ))}
+                                                                </div>
+                                                            )}
+                                                            {p.type === 'number' && (
+                                                                <input type="number" min={p.min} max={p.max} step={p.step}
+                                                                    value={currentVal as number}
+                                                                    onChange={(e) => updateModelParam(p.id, Number(e.target.value))}
+                                                                    className="w-full text-xs border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:border-gray-400"
+                                                                    onClick={(e) => e.stopPropagation()} onMouseDown={(e) => e.stopPropagation()}
+                                                                />
+                                                            )}
+                                                            {p.type === 'slider' && (
+                                                                <div className="space-y-1.5" onClick={(e) => e.stopPropagation()}>
+                                                                    <div className="flex justify-between text-[10px] text-gray-500">
+                                                                        <span>{p.min}</span><span className="font-semibold text-gray-900">{currentVal}</span><span>{p.max}</span>
+                                                                    </div>
+                                                                    <input type="range" min={p.min} max={p.max} step={p.step}
+                                                                        value={currentVal as number}
+                                                                        onChange={(e) => updateModelParam(p.id, Number(e.target.value))}
+                                                                        className="w-full h-1.5 bg-gray-200 rounded-full appearance-none cursor-pointer accent-gray-900"
+                                                                        onMouseDown={(e) => e.stopPropagation()}
+                                                                    />
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    )}
                                                 </div>
-                                            ))}
-                                        </div>
-                                    )}
-                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                )}
                             </div>
                         )}
 
-                        {/* Parameters */}
-                        <div className="space-y-3">
-                            {isCustom && customDef ? (
-                                customDef.parameters.map((param) =>
-                                    renderParamControl({
-                                        ...param,
-                                        id: param.id,
-                                        label: param.label,
-                                        type: param.type as ModelParameter['type'],
-                                        defaultValue: param.defaultValue,
-                                        options: param.options?.map((o) =>
-                                            typeof o === 'string' ? { label: o, value: o } : o
-                                        ),
-                                        min: param.min,
-                                        max: param.max,
-                                        step: param.step,
-                                    } as ModelParameter)
-                                )
-                            ) : (
-                                selectedModel?.parameters.map(renderParamControl)
+                        {/* Spacer */}
+                        <div className="flex-1 min-w-[8px]" />
+
+                        {/* Batch count chip (xN) */}
+                        <div className="relative flex-shrink-0">
+                            <button
+                                className="flex items-center gap-1 px-2.5 py-1 rounded-full bg-gray-100 hover:bg-gray-200 text-xs font-medium text-gray-700 transition-colors"
+                                onClick={(e) => { e.stopPropagation(); setActiveParamDropdown(activeParamDropdown === '_count' ? null : '_count'); setShowModelDropdown(false); }}
+                            >
+                                x{countValue}
+                                <CaretDown size={10} weight="bold" className="text-gray-400" />
+                            </button>
+                            {activeParamDropdown === '_count' && (
+                                <div className="absolute right-0 bottom-full mb-1 min-w-[80px] bg-white border border-slate-200 rounded-xl shadow-lg overflow-hidden z-50">
+                                    {[1, 2, 3, 4].map((n) => (
+                                        <div
+                                            key={n}
+                                            className={`px-3 py-2 text-xs cursor-pointer text-center transition-colors ${
+                                                countValue === n ? 'bg-gray-900 text-white' : 'text-gray-700 hover:bg-gray-50'
+                                            }`}
+                                            onClick={() => {
+                                                updateModelParam('count', n);
+                                                setActiveParamDropdown(null);
+                                            }}
+                                        >
+                                            x{n}
+                                        </div>
+                                    ))}
+                                </div>
                             )}
                         </div>
-
-                        {/* Prompt preview */}
-                        <div className="mt-4 pt-3 border-t border-slate-200">
-                            <button
-                                onClick={(e) => { e.stopPropagation(); setShowPanel(false); handleDoubleClick(); }}
-                                className="w-full text-left px-3 py-2 rounded-xl bg-gray-50 hover:bg-gray-100 transition-colors border border-slate-200"
-                            >
-                                <span className="text-[10px] text-gray-400 font-medium uppercase tracking-wider">Prompt</span>
-                                <p className="text-xs text-gray-600 line-clamp-2 leading-snug mt-0.5">
-                                    {content && content !== '# Prompt\nEnter your prompt here...'
-                                        ? extractLabelFromPrompt(content, 'Click to edit prompt...')
-                                        : 'Click to edit prompt...'}
-                                </p>
-                            </button>
-                        </div>
                     </div>
-                </motion.div>
-            </div>
+                </div>
+                </div>
+            </motion.div>
         </AnimatePresence>
     ) : null;
 
     return (
         <>
             <div className="group relative">
-                {/* Compact Badge */}
+                {/* Compact Badge — click opens config panel */}
                 <div
-                    className={`w-[200px] ${bgClass} rounded-xl overflow-hidden transition-all duration-300 hover:shadow-lg cursor-pointer ${
+                    className={`w-[260px] ${bgClass} rounded-xl overflow-hidden transition-all duration-300 hover:shadow-lg cursor-pointer ${
                         selected ? `ring-4 ${ringClass} ring-offset-2` : 'ring-1 ring-slate-200'
                     }`}
                     onClick={() => setShowPanel(!showPanel)}
                 >
-                    {/* Top Row: Icon + Label */}
-                    <div className="flex items-center gap-2 px-3 py-2.5" onDoubleClick={(e) => { e.stopPropagation(); handleDoubleClick(); }}>
+                    <div className="flex items-center gap-2.5 px-3.5 py-4">
                         <div className={`flex-shrink-0 ${colorClass}`}>
                             <Icon size={16} weight="fill" />
                         </div>
                         <div className="flex flex-col min-w-0 flex-1">
-                            <input
-                                className={`bg-transparent text-xs font-bold font-display ${colorClass} focus:outline-none w-full truncate nodrag`}
-                                value={label}
-                                onChange={handleLabelChange}
-                                placeholder="Action"
-                                onClick={(e) => e.stopPropagation()}
-                            />
+                            <span className={`text-xs font-bold font-display ${colorClass} truncate`}>
+                                {label || 'Action'}
+                            </span>
                             <span className="text-[10px] text-slate-400 truncate leading-none">
                                 {badgeDisplayName}
                             </span>
                         </div>
-                    </div>
-
-                    {/* Bottom Row: Execute */}
-                    <div className="flex items-center gap-1 px-2 pb-2">
-                        <div className="flex-1" />
+                        {/* Run button — separate click target */}
                         <button
-                            className={`nodrag flex h-7 items-center gap-1.5 px-3 rounded-lg text-xs font-semibold transition-all hover:scale-[1.02] active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed ${
-                                isCustom ? 'bg-purple-500 text-white hover:bg-purple-600' :
-                                actionType === 'video-gen' ? 'bg-red-500 text-white hover:bg-red-600' : 'bg-blue-500 text-white hover:bg-blue-600'
-                            }`}
+                            className={`nodrag flex-shrink-0 flex h-7 items-center gap-1.5 px-3 rounded-lg text-xs font-semibold text-white transition-all hover:scale-[1.02] active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed ${btnClass}`}
                             onClick={(e) => { e.stopPropagation(); handleExecute(); }}
                             disabled={isExecuting}
                         >
@@ -1102,7 +1270,7 @@ const PromptActionNode = ({ data, selected, id }: NodeProps) => {
                     )}
                 </div>
 
-                {/* Handles — consistent with ImageNode/VideoNode */}
+                {/* Handles */}
                 <Handle
                     type="target"
                     position={Position.Left}

@@ -8,7 +8,7 @@
  */
 
 import { z } from 'zod';
-import { resolveAspectRatio } from './models';
+import { resolveAspectRatio, type ModelCard } from './models';
 
 // === Position ===
 export const PositionSchema = z.object({
@@ -147,6 +147,38 @@ export const LoroDocumentStateSchema = z.object({
   tasks: z.record(z.string(), z.any()),
 });
 export type LoroDocumentState = z.infer<typeof LoroDocumentStateSchema>;
+
+// === Generation Pre-validation ===
+
+export interface ValidateGenerationInput {
+  prompt: string;
+  referenceImageUrls: string[];
+  modelCard: ModelCard;
+}
+
+/**
+ * Validate generation inputs against model card requirements.
+ * Returns null if valid, or an error message string if invalid.
+ */
+export function validateGenerationInput(input: ValidateGenerationInput): string | null {
+  const { prompt, referenceImageUrls, modelCard } = input;
+  const { referenceImage, referenceMode, requiresPrompt } = modelCard.input;
+
+  if (requiresPrompt && (!prompt || !prompt.trim())) {
+    return 'No prompt provided.';
+  }
+
+  if (referenceImage === 'required') {
+    const requiredCount = referenceMode === 'start_end' ? 2 : 1;
+    if (referenceImageUrls.length < requiredCount) {
+      return referenceMode === 'start_end'
+        ? 'Selected model needs start and end frames. Attach two images via @-mention in the prompt.'
+        : 'Selected model requires a reference image. Attach an image via @-mention in the prompt.';
+    }
+  }
+
+  return null;
+}
 
 // === Pending Asset Node Builder ===
 // Shared logic for creating a pending image/video node from generation params.

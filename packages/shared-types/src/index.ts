@@ -45,7 +45,8 @@ export {
   CustomActionDefinitionSchema,
   isCustomActionType,
   getCustomActionId,
-  // Builders
+  // Validation & Builders
+  validateGenerationInput,
   buildPendingAssetNode,
   // TypeScript types
   type Position,
@@ -54,6 +55,7 @@ export {
   type CanvasNode,
   type CanvasEdge,
   type LoroDocumentState,
+  type ValidateGenerationInput,
   type BuildPendingAssetNodeInput,
   type PendingAssetNode,
   type ContentNodeType,
@@ -103,24 +105,20 @@ export {
   type ModelCard,
 } from './models';
 
-// Loro CRDT operations (runtime only — types come from ./canvas)
-export {
-  listNodes,
-  readNode,
-  insertNode,
-  insertEdge,
-  listEdges,
-  createNode,
-  searchNodes,
-  findNodeByIdOrAssetId,
-  getNodeStatus,
-  deleteNode,
-  updateNode,
-  type BroadcastFn,
-  type NodeInfo,
-  type CreateNodeResult,
-  type TaskStatusResult,
-} from './loro-operations';
+// Canvas operations class
+export { Canvas } from './canvas-ops';
+export type {
+  ExecuteGenerationResult,
+} from './canvas-ops';
+
+// Re-export types from Canvas for convenience
+export type {
+  BroadcastFn,
+  NodeInfo,
+  CreateNodeResult,
+  CreateLinkedNodeResult,
+  TaskStatusResult,
+} from './canvas-ops';
 
 // Loro sync client
 export { LoroSyncClient } from './loro-client';

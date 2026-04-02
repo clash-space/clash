@@ -1,59 +1,48 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect } from "vitest";
 import { LoroDoc } from "loro-crdt";
-import {
-  listNodes,
-  readNode,
-  insertNode,
-  insertEdge,
-  createNode,
-  searchNodes,
-  findNodeByIdOrAssetId,
-  getNodeStatus,
-} from "./canvas";
+import { Canvas } from "@clash/shared-types";
 import { NodeType, RF_NODE_TYPE, ProposalType, Status } from "../../domain/canvas";
 
-function makeDoc(): LoroDoc {
-  return new LoroDoc();
+function makeCanvas(): Canvas {
+  return new Canvas(new LoroDoc(), () => {});
 }
 
-const noop: (data: Uint8Array) => void = () => {};
-
-describe("canvas backend (Loro)", () => {
+describe("Canvas class", () => {
   // ─── listNodes ──────────────────────────────────────────────
 
   describe("listNodes", () => {
     it("returns empty array for fresh doc", () => {
-      const doc = makeDoc();
-      expect(listNodes(doc)).toEqual([]);
+      const canvas = makeCanvas();
+      expect(canvas.listNodes()).toEqual([]);
     });
 
     it("returns all inserted nodes", () => {
-      const doc = makeDoc();
-      insertNode(doc, noop, "n1", "text", { label: "A" }, null, { x: 0, y: 0 });
-      insertNode(doc, noop, "n2", "prompt", { label: "B" }, null, { x: 10, y: 20 });
+      const canvas = makeCanvas();
+      canvas.insertNode("n1", "text", { label: "A" }, null, { x: 0, y: 0 });
+      canvas.insertNode("n2", "prompt", { label: "B" }, null, { x: 10, y: 20 });
 
-      const nodes = listNodes(doc);
+      const nodes = canvas.listNodes();
       expect(nodes).toHaveLength(2);
       expect(nodes.map((n) => n.id).sort()).toEqual(["n1", "n2"]);
     });
 
     it("filters by nodeType", () => {
-      const doc = makeDoc();
-      insertNode(doc, noop, "n1", "text", { label: "A" }, null, { x: 0, y: 0 });
-      insertNode(doc, noop, "n2", "prompt", { label: "B" }, null, { x: 0, y: 0 });
+      const canvas = makeCanvas();
+      canvas.insertNode("n1", "text", { label: "A" }, null, { x: 0, y: 0 });
+      canvas.insertNode("n2", "prompt", { label: "B" }, null, { x: 0, y: 0 });
 
-      const textOnly = listNodes(doc, "text");
+      const textOnly = canvas.listNodes("text");
       expect(textOnly).toHaveLength(1);
       expect(textOnly[0].type).toBe("text");
     });
 
     it("filters by parentId", () => {
-      const doc = makeDoc();
-      insertNode(doc, noop, "g1", "group", { label: "G" }, null, { x: 0, y: 0 });
-      insertNode(doc, noop, "n1", "text", { label: "A" }, "g1", { x: 0, y: 0 });
-      insertNode(doc, noop, "n2", "text", { label: "B" }, null, { x: 0, y: 0 });
+      const canvas = makeCanvas();
+      canvas.insertNode("g1", "group", { label: "G" }, null, { x: 0, y: 0 });
+      canvas.insertNode("n1", "text", { label: "A" }, "g1", { x: 0, y: 0 });
+      canvas.insertNode("n2", "text", { label: "B" }, null, { x: 0, y: 0 });
 
-      const children = listNodes(doc, null, "g1");
+      const children = canvas.listNodes(null, "g1");
       expect(children).toHaveLength(1);
       expect(children[0].id).toBe("n1");
     });
@@ -63,15 +52,15 @@ describe("canvas backend (Loro)", () => {
 
   describe("readNode", () => {
     it("returns null for nonexistent node", () => {
-      const doc = makeDoc();
-      expect(readNode(doc, "missing")).toBeNull();
+      const canvas = makeCanvas();
+      expect(canvas.readNode("missing")).toBeNull();
     });
 
     it("returns correct data for existing node", () => {
-      const doc = makeDoc();
-      insertNode(doc, noop, "n1", "text", { label: "Hello" }, null, { x: 5, y: 10 });
+      const canvas = makeCanvas();
+      canvas.insertNode("n1", "text", { label: "Hello" }, null, { x: 5, y: 10 });
 
-      const node = readNode(doc, "n1");
+      const node = canvas.readNode("n1");
       expect(node).not.toBeNull();
       expect(node!.id).toBe("n1");
       expect(node!.type).toBe("text");
@@ -81,10 +70,10 @@ describe("canvas backend (Loro)", () => {
     });
 
     it("reads parentId correctly", () => {
-      const doc = makeDoc();
-      insertNode(doc, noop, "n1", "text", {}, "parent1", { x: 0, y: 0 });
+      const canvas = makeCanvas();
+      canvas.insertNode("n1", "text", {}, "parent1", { x: 0, y: 0 });
 
-      const node = readNode(doc, "n1");
+      const node = canvas.readNode("n1");
       expect(node!.parent_id).toBe("parent1");
     });
   });
@@ -93,25 +82,26 @@ describe("canvas backend (Loro)", () => {
 
   describe("insertNode", () => {
     it("broadcasts a Loro update", () => {
-      const doc = makeDoc();
       const broadcasts: Uint8Array[] = [];
-      const broadcast = (data: Uint8Array) => broadcasts.push(data);
+      const canvas = new Canvas(new LoroDoc(), (data) => broadcasts.push(data));
 
-      insertNode(doc, broadcast, "n1", "text", { label: "A" }, null, { x: 0, y: 0 });
+      canvas.insertNode("n1", "text", { label: "A" }, null, { x: 0, y: 0 });
 
       expect(broadcasts).toHaveLength(1);
       expect(broadcasts[0].byteLength).toBeGreaterThan(0);
     });
 
     it("broadcast can be applied to another doc", () => {
-      const doc1 = makeDoc();
-      const doc2 = makeDoc();
+      const doc1 = new LoroDoc();
+      const doc2 = new LoroDoc();
       const broadcasts: Uint8Array[] = [];
 
-      insertNode(doc1, (data) => broadcasts.push(data), "n1", "text", { label: "synced" }, null, { x: 0, y: 0 });
+      const canvas = new Canvas(doc1, (data) => broadcasts.push(data));
+      canvas.insertNode("n1", "text", { label: "synced" }, null, { x: 0, y: 0 });
       doc2.import(broadcasts[0]);
 
-      const node = readNode(doc2, "n1");
+      const canvas2 = new Canvas(doc2, () => {});
+      const node = canvas2.readNode("n1");
       expect(node).not.toBeNull();
       expect(node!.data.label).toBe("synced");
     });
@@ -121,10 +111,11 @@ describe("canvas backend (Loro)", () => {
 
   describe("insertEdge", () => {
     it("inserts an edge and broadcasts", () => {
-      const doc = makeDoc();
+      const doc = new LoroDoc();
       const broadcasts: Uint8Array[] = [];
+      const canvas = new Canvas(doc, (data) => broadcasts.push(data));
 
-      insertEdge(doc, (data) => broadcasts.push(data), "e1", "src", "tgt", "custom");
+      canvas.insertEdge("e1", "src", "tgt", "custom");
 
       expect(broadcasts).toHaveLength(1);
       const edgesMap = doc.getMap("edges");
@@ -139,8 +130,8 @@ describe("canvas backend (Loro)", () => {
 
   describe("createNode", () => {
     it("creates a text node with simple proposal", () => {
-      const doc = makeDoc();
-      const result = createNode(doc, noop, "n1", "text", { label: "Test" }, { x: 1, y: 2 }, null);
+      const canvas = makeCanvas();
+      const result = canvas.createNode("n1", "text", { label: "Test" }, { x: 1, y: 2 }, null);
 
       expect(result.node_id).toBe("n1");
       expect(result.error).toBeNull();
@@ -149,35 +140,33 @@ describe("canvas backend (Loro)", () => {
       expect(result.proposal!.type).toBe(ProposalType.Simple);
       expect(result.proposal!.nodeType).toBe("text");
 
-      // Node should exist in doc
-      const node = readNode(doc, "n1");
+      const node = canvas.readNode("n1");
       expect(node).not.toBeNull();
       expect(node!.data.label).toBe("Test");
     });
 
     it("creates a group node with group proposal", () => {
-      const doc = makeDoc();
-      const result = createNode(doc, noop, "g1", "group", { label: "Group" });
+      const canvas = makeCanvas();
+      const result = canvas.createNode("g1", "group", { label: "Group" });
 
       expect(result.proposal!.type).toBe(ProposalType.Group);
     });
 
     it("creates image_gen node with generative proposal and assetId", () => {
-      const doc = makeDoc();
-      const result = createNode(doc, noop, "img1", "image_gen", { label: "Img" }, null, null, "asset-123");
+      const canvas = makeCanvas();
+      const result = canvas.createNode("img1", "image_gen", { label: "Img" }, null, null, "asset-123");
 
       expect(result.proposal!.type).toBe(ProposalType.Generative);
       expect(result.proposal!.nodeType).toBe(RF_NODE_TYPE.ActionBadge);
       expect(result.asset_id).toBe("asset-123");
 
-      // assetId stored in node data
-      const node = readNode(doc, "img1");
+      const node = canvas.readNode("img1");
       expect(node!.data.assetId).toBe("asset-123");
     });
 
     it("auto-generates assetId for image_gen when not provided", () => {
-      const doc = makeDoc();
-      const result = createNode(doc, noop, "img1", "image_gen", { label: "Img" });
+      const canvas = makeCanvas();
+      const result = canvas.createNode("img1", "image_gen", { label: "Img" });
 
       expect(result.asset_id).toBeTruthy();
       expect(typeof result.asset_id).toBe("string");
@@ -185,8 +174,8 @@ describe("canvas backend (Loro)", () => {
     });
 
     it("creates video_gen node with generative proposal", () => {
-      const doc = makeDoc();
-      const result = createNode(doc, noop, "vid1", "video_gen", { label: "Vid" });
+      const canvas = makeCanvas();
+      const result = canvas.createNode("vid1", "video_gen", { label: "Vid" });
 
       expect(result.proposal!.type).toBe(ProposalType.Generative);
       expect(result.proposal!.nodeType).toBe(RF_NODE_TYPE.ActionBadge);
@@ -194,21 +183,20 @@ describe("canvas backend (Loro)", () => {
     });
 
     it("includes upstreamNodeIds in proposal", () => {
-      const doc = makeDoc();
-      const result = createNode(doc, noop, "n1", "text", {
+      const canvas = makeCanvas();
+      const result = canvas.createNode("n1", "text", {
         label: "X",
         upstreamNodeIds: ["a", "b", "a"],
       });
 
-      // Deduplicated
       expect(result.proposal!.upstreamNodeIds).toEqual(["a", "b"]);
     });
 
     it("uses auto-layout position when not provided", () => {
-      const doc = makeDoc();
-      createNode(doc, noop, "n1", "text", { label: "X" });
+      const canvas = makeCanvas();
+      canvas.createNode("n1", "text", { label: "X" });
 
-      const node = readNode(doc, "n1");
+      const node = canvas.readNode("n1");
       expect(node!.position).toBeDefined();
       expect(typeof node!.position.x).toBe("number");
       expect(typeof node!.position.y).toBe("number");
@@ -219,65 +207,287 @@ describe("canvas backend (Loro)", () => {
 
   describe("searchNodes", () => {
     it("finds nodes by label", () => {
-      const doc = makeDoc();
-      insertNode(doc, noop, "n1", "text", { label: "Hello World" }, null, { x: 0, y: 0 });
-      insertNode(doc, noop, "n2", "text", { label: "Goodbye" }, null, { x: 0, y: 0 });
+      const canvas = makeCanvas();
+      canvas.insertNode("n1", "text", { label: "Hello World" }, null, { x: 0, y: 0 });
+      canvas.insertNode("n2", "text", { label: "Goodbye" }, null, { x: 0, y: 0 });
 
-      const results = searchNodes(doc, "hello");
+      const results = canvas.searchNodes("hello");
       expect(results).toHaveLength(1);
       expect(results[0].id).toBe("n1");
     });
 
     it("finds nodes by content", () => {
-      const doc = makeDoc();
-      insertNode(doc, noop, "n1", "text", { label: "X", content: "secret sauce" }, null, { x: 0, y: 0 });
+      const canvas = makeCanvas();
+      canvas.insertNode("n1", "text", { label: "X", content: "secret sauce" }, null, { x: 0, y: 0 });
 
-      const results = searchNodes(doc, "secret");
+      const results = canvas.searchNodes("secret");
       expect(results).toHaveLength(1);
     });
 
     it("filters by nodeTypes", () => {
-      const doc = makeDoc();
-      insertNode(doc, noop, "n1", "text", { label: "match" }, null, { x: 0, y: 0 });
-      insertNode(doc, noop, "n2", "prompt", { label: "match" }, null, { x: 0, y: 0 });
+      const canvas = makeCanvas();
+      canvas.insertNode("n1", "text", { label: "match" }, null, { x: 0, y: 0 });
+      canvas.insertNode("n2", "prompt", { label: "match" }, null, { x: 0, y: 0 });
 
-      const results = searchNodes(doc, "match", ["prompt"]);
+      const results = canvas.searchNodes("match", ["prompt"]);
       expect(results).toHaveLength(1);
       expect(results[0].type).toBe("prompt");
     });
 
     it("returns empty for no matches", () => {
-      const doc = makeDoc();
-      insertNode(doc, noop, "n1", "text", { label: "abc" }, null, { x: 0, y: 0 });
+      const canvas = makeCanvas();
+      canvas.insertNode("n1", "text", { label: "abc" }, null, { x: 0, y: 0 });
 
-      expect(searchNodes(doc, "xyz")).toHaveLength(0);
+      expect(canvas.searchNodes("xyz")).toHaveLength(0);
     });
   });
 
-  // ─── findNodeByIdOrAssetId ──────────────────────────────────
+  // ─── findNode ──────────────────────────────────────────────
 
-  describe("findNodeByIdOrAssetId", () => {
+  describe("findNode", () => {
     it("finds by primary id", () => {
-      const doc = makeDoc();
-      insertNode(doc, noop, "n1", "text", { label: "A" }, null, { x: 0, y: 0 });
+      const canvas = makeCanvas();
+      canvas.insertNode("n1", "text", { label: "A" }, null, { x: 0, y: 0 });
 
-      const node = findNodeByIdOrAssetId(doc, "n1");
+      const node = canvas.findNode("n1");
       expect(node).not.toBeNull();
       expect(node!.id).toBe("n1");
     });
 
     it("finds by assetId in data", () => {
-      const doc = makeDoc();
-      insertNode(doc, noop, "n1", "image_gen", { label: "Img", assetId: "asset-xyz" }, null, { x: 0, y: 0 });
+      const canvas = makeCanvas();
+      canvas.insertNode("n1", "image_gen", { label: "Img", assetId: "asset-xyz" }, null, { x: 0, y: 0 });
 
-      const node = findNodeByIdOrAssetId(doc, "asset-xyz");
+      const node = canvas.findNode("asset-xyz");
       expect(node).not.toBeNull();
       expect(node!.id).toBe("n1");
     });
 
     it("returns null when not found", () => {
-      const doc = makeDoc();
-      expect(findNodeByIdOrAssetId(doc, "nope")).toBeNull();
+      const canvas = makeCanvas();
+      expect(canvas.findNode("nope")).toBeNull();
+    });
+  });
+
+  // ─── createLinkedNode ────────────────────────────────────────
+
+  describe("createLinkedNode", () => {
+    it("creates node + edge with auto-layout position", () => {
+      const canvas = makeCanvas();
+      // Create a source node first
+      canvas.insertNode("src", "action-badge", { label: "Source" }, null, { x: 100, y: 100 });
+
+      const result = canvas.createLinkedNode({
+        nodeId: "target",
+        nodeType: "image",
+        data: { label: "Generated", status: "pending" },
+        parentId: null,
+        sourceNodeId: "src",
+      });
+
+      expect(result.nodeId).toBe("target");
+      expect(result.position.x).toBeGreaterThan(100); // placed to the right of source
+
+      // Node should exist
+      const node = canvas.readNode("target");
+      expect(node).not.toBeNull();
+      expect(node!.data.label).toBe("Generated");
+
+      // Edge should exist
+      const edges = canvas.listEdges();
+      expect(edges).toHaveLength(1);
+      expect(edges[0].source).toBe("src");
+      expect(edges[0].target).toBe("target");
+    });
+
+    it("pushes overlapping siblings", () => {
+      const canvas = makeCanvas();
+      canvas.insertNode("src", "action-badge", { label: "Source" }, null, { x: 0, y: 0 });
+      // Place an existing node where the linked node would go
+      canvas.insertNode("blocker", "text", { label: "Blocker" }, null, { x: 380, y: 0 });
+
+      const result = canvas.createLinkedNode({
+        nodeId: "new",
+        nodeType: "image",
+        data: { label: "New" },
+        parentId: null,
+        sourceNodeId: "src",
+      });
+
+      expect(result.pushedNodeIds.length).toBeGreaterThanOrEqual(0);
+      // new node should be placed to right of source
+      expect(result.position.x).toBeGreaterThan(0);
+    });
+
+    it("uses custom edgeId and edgeType", () => {
+      const doc = new LoroDoc();
+      const canvas = new Canvas(doc, () => {});
+      canvas.insertNode("src", "text", { label: "S" }, null, { x: 0, y: 0 });
+
+      canvas.createLinkedNode({
+        nodeId: "tgt",
+        nodeType: "text",
+        data: { label: "T" },
+        parentId: null,
+        sourceNodeId: "src",
+        edgeId: "custom-edge",
+        edgeType: "special",
+      });
+
+      const edgesMap = doc.getMap("edges");
+      const edge = edgesMap.get("custom-edge") as Record<string, any>;
+      expect(edge).toBeDefined();
+      expect(edge.type).toBe("special");
+    });
+  });
+
+  // ─── executeGeneration ──────────────────────────────────────
+
+  describe("executeGeneration", () => {
+    function makeCanvasWithBadge(
+      modelId = "nano-banana-2",
+      prompt = "A cute cat",
+    ): Canvas {
+      const canvas = makeCanvas();
+      canvas.insertNode("badge1", "action-badge", {
+        label: "Test Badge",
+        actionType: "image-gen",
+        content: prompt,
+        modelId,
+        model: modelId,
+        modelParams: { aspect_ratio: "16:9" },
+        referenceMode: "single",
+      }, null, { x: 0, y: 0 });
+      return canvas;
+    }
+
+    let idCounter = 0;
+    const generateId = () => `gen-${++idCounter}`;
+
+    it("creates pending asset node linked to action-badge", () => {
+      idCounter = 0;
+      const canvas = makeCanvasWithBadge();
+
+      const result = canvas.executeGeneration("badge1", generateId);
+
+      expect(result.error).toBeNull();
+      expect(result.assetNodeId).toBe("gen-1");
+      expect(result.assetNodeType).toBe("image");
+
+      // Pending node exists with correct data
+      const pending = canvas.readNode("gen-1");
+      expect(pending).not.toBeNull();
+      expect(pending!.data.status).toBe("pending");
+      expect(pending!.data.prompt).toBe("A cute cat");
+      expect(pending!.data.modelId).toBe("nano-banana-2");
+
+      // Edge exists
+      const edges = canvas.listEdges();
+      expect(edges.some(e => e.source === "badge1" && e.target === "gen-1")).toBe(true);
+    });
+
+    it("returns error for missing node", () => {
+      const canvas = makeCanvas();
+      const result = canvas.executeGeneration("nonexistent", generateId);
+      expect(result.error).toContain("not found");
+    });
+
+    it("returns error for non-generation node", () => {
+      const canvas = makeCanvas();
+      canvas.insertNode("text1", "text", { label: "Hello" }, null, { x: 0, y: 0 });
+
+      const result = canvas.executeGeneration("text1", generateId);
+      expect(result.error).toContain("not a generation node");
+    });
+
+    it("returns error for empty prompt", () => {
+      const canvas = makeCanvasWithBadge("nano-banana-2", "");
+      const result = canvas.executeGeneration("badge1", generateId);
+      expect(result.error).toContain("No prompt");
+    });
+
+    it("returns validation error when model requires reference image", () => {
+      const canvas = makeCanvasWithBadge("nano-banana-2-edit", "Edit this image");
+      const result = canvas.executeGeneration("badge1", generateId);
+      expect(result.error).toContain("reference image");
+    });
+
+    it("succeeds when model requires reference and images are provided", () => {
+      idCounter = 0;
+      const canvas = makeCanvas();
+      canvas.insertNode("badge1", "action-badge", {
+        label: "Edit Badge",
+        actionType: "image-gen",
+        content: "Edit this",
+        modelId: "nano-banana-2-edit",
+        model: "nano-banana-2-edit",
+        modelParams: { aspect_ratio: "16:9" },
+        referenceMode: "multi",
+        referenceImageUrls: ["projects/p1/assets/ref.png"],
+      }, null, { x: 0, y: 0 });
+
+      const result = canvas.executeGeneration("badge1", generateId);
+      expect(result.error).toBeNull();
+      expect(result.assetNodeId).toBe("gen-1");
+    });
+
+    it("handles video generation", () => {
+      idCounter = 0;
+      const canvas = makeCanvas();
+      canvas.insertNode("badge1", "action-badge", {
+        label: "Video Badge",
+        actionType: "video-gen",
+        content: "A flying bird",
+        modelId: "sora-2-text-to-video",
+        model: "sora-2-text-to-video",
+        modelParams: { duration: 5 },
+        referenceMode: "none",
+      }, null, { x: 0, y: 0 });
+
+      const result = canvas.executeGeneration("badge1", generateId);
+      expect(result.error).toBeNull();
+      expect(result.assetNodeType).toBe("video");
+
+      const pending = canvas.readNode("gen-1");
+      expect(pending!.data.status).toBe("pending");
+      expect(pending!.data.duration).toBe(5);
+    });
+  });
+
+  // ─── updateNode ─────────────────────────────────────────────
+
+  describe("updateNode", () => {
+    it("updates node data", () => {
+      const canvas = makeCanvas();
+      canvas.insertNode("n1", "text", { label: "Old" }, null, { x: 0, y: 0 });
+
+      const ok = canvas.updateNode("n1", { label: "New" });
+      expect(ok).toBe(true);
+
+      const node = canvas.readNode("n1");
+      expect(node!.data.label).toBe("New");
+    });
+
+    it("returns false for missing node", () => {
+      const canvas = makeCanvas();
+      expect(canvas.updateNode("missing", { label: "X" })).toBe(false);
+    });
+  });
+
+  // ─── deleteNode ─────────────────────────────────────────────
+
+  describe("deleteNode", () => {
+    it("deletes existing node", () => {
+      const canvas = makeCanvas();
+      canvas.insertNode("n1", "text", { label: "X" }, null, { x: 0, y: 0 });
+
+      expect(canvas.deleteNode("n1")).toBe(true);
+      expect(canvas.readNode("n1")).toBeNull();
+    });
+
+    it("returns false for missing node", () => {
+      const canvas = makeCanvas();
+      expect(canvas.deleteNode("missing")).toBe(false);
     });
   });
 
@@ -285,40 +495,40 @@ describe("canvas backend (Loro)", () => {
 
   describe("getNodeStatus", () => {
     it("returns NodeNotFound for missing node", () => {
-      const doc = makeDoc();
-      const result = getNodeStatus(doc, "missing");
+      const canvas = makeCanvas();
+      const result = canvas.getNodeStatus("missing");
       expect(result.status).toBe(Status.NodeNotFound);
     });
 
     it("returns Completed for image_gen node without explicit status", () => {
-      const doc = makeDoc();
-      insertNode(doc, noop, "n1", "image_gen", { label: "Img" }, null, { x: 0, y: 0 });
+      const canvas = makeCanvas();
+      canvas.insertNode("n1", "image_gen", { label: "Img" }, null, { x: 0, y: 0 });
 
-      const result = getNodeStatus(doc, "n1");
+      const result = canvas.getNodeStatus("n1");
       expect(result.status).toBe(Status.Completed);
     });
 
     it("returns Completed for text node without status", () => {
-      const doc = makeDoc();
-      insertNode(doc, noop, "n1", "text", { label: "T" }, null, { x: 0, y: 0 });
+      const canvas = makeCanvas();
+      canvas.insertNode("n1", "text", { label: "T" }, null, { x: 0, y: 0 });
 
-      const result = getNodeStatus(doc, "n1");
+      const result = canvas.getNodeStatus("n1");
       expect(result.status).toBe(Status.Completed);
     });
 
     it("returns explicit status from node data", () => {
-      const doc = makeDoc();
-      insertNode(doc, noop, "n1", "image_gen", { label: "Img", status: "completed" }, null, { x: 0, y: 0 });
+      const canvas = makeCanvas();
+      canvas.insertNode("n1", "image_gen", { label: "Img", status: "completed" }, null, { x: 0, y: 0 });
 
-      const result = getNodeStatus(doc, "n1");
+      const result = canvas.getNodeStatus("n1");
       expect(result.status).toBe(Status.Completed);
     });
 
     it("finds node by assetId", () => {
-      const doc = makeDoc();
-      insertNode(doc, noop, "n1", "image_gen", { label: "X", assetId: "a1", status: "failed" }, null, { x: 0, y: 0 });
+      const canvas = makeCanvas();
+      canvas.insertNode("n1", "image_gen", { label: "X", assetId: "a1", status: "failed" }, null, { x: 0, y: 0 });
 
-      const result = getNodeStatus(doc, "a1");
+      const result = canvas.getNodeStatus("a1");
       expect(result.status).toBe(Status.Failed);
     });
   });

@@ -1,8 +1,8 @@
 import { z } from "zod";
 import { tool } from "ai";
 import type { LoroDoc } from "loro-crdt";
-import type { BroadcastFn } from "../backends/canvas";
-import * as canvasBackend from "../backends/canvas";
+import type { BroadcastFn } from "@clash/shared-types";
+import { Canvas, MODEL_CARDS } from "@clash/shared-types";
 import {
   NodeType,
   ALL_NODE_TYPES,
@@ -10,11 +10,10 @@ import {
   GENERATION_NODE_TYPES,
   Status,
   isGenerationNode,
-  ACTION_TYPE,
 } from "../../domain/canvas";
-import { MODEL_CARDS, buildPendingAssetNode } from "@clash/shared-types";
 import type { Env } from "../../config";
 import type { GenerationParams } from "../generation";
+import { log } from "../../logger";
 
 /**
  * Create canvas tools that operate on the Loro CRDT document.
@@ -28,6 +27,8 @@ export function createCanvasTools(
   env?: Env,
   projectId?: string,
 ) {
+  const canvas = new Canvas(doc, broadcast);
+
   const listCanvasNodes = tool({
     description: "List nodes on the canvas, optionally filtered by type or parent group. Returns a tree view.",
     inputSchema: z.object({
@@ -41,7 +42,7 @@ export function createCanvasTools(
       const node_type = args.node_type || undefined;
       const parent_id = args.parent_id || undefined;
       try {
-        const nodes = canvasBackend.listNodes(doc);
+        const nodes = canvas.listNodes();
         if (!nodes.length) return "No nodes found.";
 
         const children = new Map<string | null, typeof nodes>();
@@ -105,7 +106,7 @@ export function createCanvasTools(
     execute: async (args) => {
       const { node_id } = args;
       try {
-        const node = canvasBackend.readNode(doc, node_id);
+        const node = canvas.readNode(node_id);
         if (!node) return `Node ${node_id} not found.`;
         const data = node.data || {};
         const name = (data.label as string) || (data.name as string) || node.id;
@@ -136,7 +137,7 @@ export function createCanvasTools(
         if (content) data.content = content;
         if (description) data.description = description;
 
-        const result = canvasBackend.createNode(doc, broadcast, nodeId, node_type, data, position, resolvedParent);
+        const result = canvas.createNode(nodeId, node_type, data, position, resolvedParent);
         if (result.error) return `Error: ${result.error}`;
         return `Created node ${result.node_id}`;
       } catch (e) {
@@ -157,6 +158,7 @@ export function createCanvasTools(
     }),
     execute: async (args) => {
       const { node_type, label, prompt, model_name, position, parent_id } = args;
+      log.info("create_generation_node called", { node_type, label, prompt: prompt?.slice(0, 50), model_name });
       try {
         const resolvedParent = parent_id ?? getWorkspaceGroupId() ?? null;
         const nodeId = generateId();
@@ -169,6 +171,8 @@ export function createCanvasTools(
           : MODEL_CARDS.find(c => c.kind === kind);
         const modelId = modelCard?.id || model_name || "";
 
+        log.info("create_generation_node creating node", { nodeId, assetId, modelId, resolvedParent });
+
         const data: Record<string, unknown> = {
           label,
           content: prompt,  // ActionBadge reads data.content for the prompt
@@ -180,12 +184,16 @@ export function createCanvasTools(
           referenceMode: modelCard?.input?.referenceMode ?? "none",
         };
 
-        const result = canvasBackend.createNode(doc, broadcast, nodeId, node_type, data, position, resolvedParent, assetId);
+        const result = canvas.createNode(nodeId, node_type, data, position, resolvedParent, assetId);
+        log.info("create_generation_node result", { node_id: result.node_id, asset_id: result.asset_id, error: result.error });
         if (result.error) return `Error: ${result.error}`;
-        return result.asset_id
+        const response = result.asset_id
           ? `Created generation node ${result.node_id} with assetId ${result.asset_id}`
           : `Created generation node ${result.node_id}`;
+        log.info("create_generation_node returning", { response });
+        return response;
       } catch (e) {
+        log.error("create_generation_node error", e);
         return `Error creating generation node: ${e}`;
       }
     },
@@ -204,7 +212,7 @@ export function createCanvasTools(
         const deadline = Date.now() + timeout_seconds * 1000;
 
         while (Date.now() < deadline) {
-          const result = canvasBackend.getNodeStatus(doc, node_id);
+          const result = canvas.getNodeStatus(node_id);
 
           if (result.status === Status.NodeNotFound) return `Node not found: ${node_id}`;
           if (result.status === Status.Completed) return "Task completed.";
@@ -230,44 +238,9 @@ export function createCanvasTools(
     execute: async (args) => {
       const { node_id } = args;
       try {
-        const node = canvasBackend.readNode(doc, node_id);
-        if (!node) return `Error: Node ${node_id} not found`;
-        if (!isGenerationNode(node)) {
-          return `Error: Node ${node_id} is not a generation node (type: ${node.type})`;
-        }
-
-        const data = node.data || {};
-        // ActionBadge stores prompt in data.content, fallback to data.prompt
-        const prompt = (data.content as string) || (data.prompt as string) || "";
-        if (!prompt) return `Error: Node ${node_id} has no prompt. Set prompt first.`;
-
-        const actionType = (data.actionType as string) || ACTION_TYPE.ImageGen;
-        const modelId = (data.modelId as string) || (data.model as string) || "";
-        const modelParams = (data.modelParams as Record<string, string | number | boolean>) || {};
-
-        const assetNodeId = generateId();
-        const pendingNode = buildPendingAssetNode({
-          nodeId: assetNodeId,
-          prompt,
-          modelId,
-          modelParams,
-          actionType: actionType as typeof ACTION_TYPE.ImageGen | typeof ACTION_TYPE.VideoGen,
-          label: data.label as string | undefined,
-          referenceImageUrls: data.referenceImageUrls as string[] | undefined,
-          referenceMode: (data.referenceMode as string) || undefined,
-        });
-
-        // Insert the pending asset node into Loro
-        canvasBackend.insertNode(
-          doc, broadcast, pendingNode.id, pendingNode.type,
-          pendingNode.data, node.parent_id ?? null, { x: 0, y: 0 }
-        );
-
-        // Add edge from action-badge to the pending asset node
-        const edgeId = `${node_id}-${assetNodeId}`;
-        canvasBackend.insertEdge(doc, broadcast, edgeId, node_id, assetNodeId, "default");
-
-        return `Started generation: created pending ${pendingNode.type} node ${pendingNode.id}`;
+        const result = canvas.executeGeneration(node_id, generateId);
+        if (result.error) return `Error: ${result.error}`;
+        return `Started generation: created pending ${result.assetNodeType} node ${result.assetNodeId}`;
       } catch (e) {
         return `Error starting generation: ${e}`;
       }
@@ -282,7 +255,7 @@ export function createCanvasTools(
     execute: async (args) => {
       const { node_id } = args;
       try {
-        const node = canvasBackend.readNode(doc, node_id);
+        const node = canvas.readNode(node_id);
         if (!node) return `Error: Node ${node_id} not found`;
         if (!isGenerationNode(node)) {
           return `Error: Node ${node_id} is not a generation node (type: ${node.type})`;
@@ -305,7 +278,7 @@ export function createCanvasTools(
     execute: async (args) => {
       const { query, node_types } = args;
       try {
-        const nodes = canvasBackend.searchNodes(doc, query, node_types);
+        const nodes = canvas.searchNodes(query, node_types);
         if (!nodes.length) return `No nodes found matching '${query}'.`;
         const lines = [`Search results for '${query}':`];
         for (const node of nodes) {
@@ -356,7 +329,7 @@ export function createCanvasTools(
       const { node_id, language } = args;
       if (!env || !projectId) return "Error: understand_asset requires env and projectId";
       try {
-        const node = canvasBackend.readNode(doc, node_id);
+        const node = canvas.readNode(node_id);
         if (!node) return `Error: Node ${node_id} not found`;
 
         const src = node.data.src as string | undefined;
