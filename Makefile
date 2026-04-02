@@ -11,6 +11,12 @@ HTTP_PROXY ?=
 HTTPS_PROXY ?=
 NO_PROXY ?=
 
+# Service ports (single source of truth)
+API_CF_PORT ?= 8789
+WEB_PORT ?= 3000
+GATEWAY_PORT ?= 8788
+RENDER_PORT ?= 8080
+
 # Color output
 BLUE := \033[0;34m
 GREEN := \033[0;32m
@@ -66,20 +72,23 @@ db-local: db-web-local ## Setup all local D1 databases
 #==============================================================================
 
 dev-web: ## Start frontend development server
-	@echo "$(BLUE)Starting frontend on http://localhost:3000...$(NC)"
-	@cd apps/web && HTTP_PROXY=$(HTTP_PROXY) HTTPS_PROXY=$(HTTPS_PROXY) NO_PROXY=$(NO_PROXY) pnpm dev
+	@echo "$(BLUE)Starting frontend on http://localhost:$(WEB_PORT)...$(NC)"
+	@cd apps/web && \
+		API_CF_URL=http://127.0.0.1:$(API_CF_PORT) \
+		HTTP_PROXY=$(HTTP_PROXY) HTTPS_PROXY=$(HTTPS_PROXY) NO_PROXY=$(NO_PROXY) \
+		pnpm dev --port $(WEB_PORT)
 
-dev-api-cf: ## Start api-cf development server (port 8789)
-	@echo "$(BLUE)Starting api-cf on http://localhost:8789...$(NC)"
-	@cd apps/api-cf && HTTP_PROXY=$(HTTP_PROXY) HTTPS_PROXY=$(HTTPS_PROXY) NO_PROXY=$(NO_PROXY) pnpm dev --port 8789
+dev-api-cf: ## Start api-cf development server
+	@echo "$(BLUE)Starting api-cf on http://localhost:$(API_CF_PORT)...$(NC)"
+	@cd apps/api-cf && HTTP_PROXY=$(HTTP_PROXY) HTTPS_PROXY=$(HTTPS_PROXY) NO_PROXY=$(NO_PROXY) pnpm dev --port $(API_CF_PORT)
 
-dev-render: ## Start render server (port 8080)
-	@echo "$(BLUE)Starting render server on http://localhost:8080...$(NC)"
-	@cd apps/render-server && HTTP_PROXY=$(HTTP_PROXY) HTTPS_PROXY=$(HTTPS_PROXY) NO_PROXY=$(NO_PROXY) pnpm dev
+dev-render: ## Start render server
+	@echo "$(BLUE)Starting render server on http://localhost:$(RENDER_PORT)...$(NC)"
+	@cd apps/render-server && HTTP_PROXY=$(HTTP_PROXY) HTTPS_PROXY=$(HTTPS_PROXY) NO_PROXY=$(NO_PROXY) PORT=$(RENDER_PORT) pnpm dev
 
 dev-gateway: ## Start auth gateway
-	@echo "$(BLUE)Starting auth gateway on http://localhost:8788...$(NC)"
-	@cd apps/auth-gateway && HTTP_PROXY=$(HTTP_PROXY) HTTPS_PROXY=$(HTTPS_PROXY) NO_PROXY=$(NO_PROXY) pnpm dev
+	@echo "$(BLUE)Starting auth gateway on http://localhost:$(GATEWAY_PORT)...$(NC)"
+	@cd apps/auth-gateway && HTTP_PROXY=$(HTTP_PROXY) HTTPS_PROXY=$(HTTPS_PROXY) NO_PROXY=$(NO_PROXY) pnpm dev --port $(GATEWAY_PORT)
 
 #==============================================================================
 # Combined Development
@@ -87,9 +96,9 @@ dev-gateway: ## Start auth gateway
 
 dev: ## Start frontend + api-cf + render-server in parallel
 	@echo "$(BLUE)Starting development environment...$(NC)"
-	@echo "$(GREEN)Frontend:$(NC)      http://localhost:3000"
-	@echo "$(GREEN)API CF:$(NC)        http://localhost:8789"
-	@echo "$(GREEN)Render Server:$(NC) http://localhost:8080"
+	@echo "$(GREEN)Frontend:$(NC)      http://localhost:$(WEB_PORT)"
+	@echo "$(GREEN)API CF:$(NC)        http://localhost:$(API_CF_PORT)"
+	@echo "$(GREEN)Render Server:$(NC) http://localhost:$(RENDER_PORT)"
 	@echo ""
 	@$(MAKE) -j3 dev-web dev-api-cf dev-render
 

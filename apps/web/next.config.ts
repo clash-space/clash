@@ -25,10 +25,21 @@ const nextConfig: NextConfig = {
     unoptimized: true, // Cloudflare uses their own image optimization
   },
   async rewrites() {
-    // All backend routes now go through api-cf (merged service)
+    // All backend routes proxy through Next.js to api-cf.
+    // Clients never need to know api-cf's port — everything is same-origin.
     const apiCfUrl = process.env.API_CF_URL || 'http://127.0.0.1:8789';
 
     return [
+      // WebSocket routes (Loro CRDT sync + Agent chat)
+      {
+        source: '/sync/:path*',
+        destination: `${apiCfUrl}/sync/:path*`,
+      },
+      {
+        source: '/agents/:path*',
+        destination: `${apiCfUrl}/agents/:path*`,
+      },
+      // REST API routes
       {
         source: '/api/describe',
         destination: `${apiCfUrl}/api/describe`,
@@ -38,12 +49,21 @@ const nextConfig: NextConfig = {
         destination: `${apiCfUrl}/api/tasks/:path*`,
       },
       {
+        source: '/api/v1/:path*',
+        destination: `${apiCfUrl}/api/v1/:path*`,
+      },
+      // Asset routes
+      {
         source: '/assets/:path*',
         destination: `${apiCfUrl}/assets/:path*`,
       },
       {
         source: '/thumbnails/:path*',
         destination: `${apiCfUrl}/thumbnails/:path*`,
+      },
+      {
+        source: '/upload/:path*',
+        destination: `${apiCfUrl}/upload/:path*`,
       },
     ];
   },

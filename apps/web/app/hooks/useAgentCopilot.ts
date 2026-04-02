@@ -4,15 +4,11 @@ import { useState, useCallback, useRef, useEffect } from 'react';
 import { useAgent } from 'agents/react';
 import { useAgentChat } from '@cloudflare/ai-chat/react';
 
-const resolveApiBaseUrl = () => {
-  if (process.env.NEXT_PUBLIC_API_URL) return process.env.NEXT_PUBLIC_API_URL;
-  if (typeof window === 'undefined') return 'http://localhost:8789';
-  const { hostname } = window.location;
-  const isLocal = hostname === 'localhost' || hostname === '127.0.0.1';
-  return isLocal ? 'http://localhost:8789' : window.location.origin;
-};
-
-const API_HOST = resolveApiBaseUrl().replace(/^https?:\/\//, '');
+// Agent WebSocket goes through Next.js rewrite proxy (same origin).
+// No external URL needed — the /agents/* path is proxied to api-cf.
+const API_HOST = typeof window !== 'undefined'
+  ? window.location.host
+  : 'localhost:3000';
 
 export interface CustomEvent {
   id: string;

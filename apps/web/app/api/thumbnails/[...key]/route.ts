@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { getCloudflareContext } from '@opennextjs/cloudflare';
 
 export const dynamic = 'force-dynamic';
 
@@ -23,17 +24,17 @@ export async function GET(
             return NextResponse.json({ error: 'Missing object key' }, { status: 400 });
         }
 
-        // Forward to api-cf thumbnail endpoint
-        const apiCfUrl = process.env.API_CF_URL || 'http://localhost:8787';
-        const httpLoroUrl = apiCfUrl;
+        // Forward to api-cf via service binding or fallback URL
+        const { env } = await getCloudflareContext({ async: true });
+        const apiCf = (env as any).API_CF as { fetch: typeof fetch } | undefined;
 
-        const thumbnailUrl = `${httpLoroUrl}/thumbnails/${objectKey}`;
+        console.log('[Thumbnail] Forwarding:', objectKey);
 
-        console.log('[Thumbnail] Forwarding to:', thumbnailUrl);
-
-        const response = await fetch(thumbnailUrl, {
-            next: { revalidate: 3600 } // Cache for 1 hour
-        });
+        const response = apiCf
+            ? await apiCf.fetch(`https://api-cf/thumbnails/${objectKey}`)
+            : await fetch(`${process.env.API_CF_URL || 'http://localhost:8789'}/thumbnails/${objectKey}`, {
+                next: { revalidate: 3600 }
+            });
 
         if (!response.ok) {
             console.error('[Thumbnail] Upstream error:', response.status);

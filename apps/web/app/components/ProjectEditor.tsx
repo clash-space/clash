@@ -225,7 +225,9 @@ export default function ProjectEditor({ project, initialPrompt, globalActions = 
     // Loro CRDT sync
     const loroSync = useLoroSync({
         projectId: project.id,
-        syncServerUrl: process.env.NEXT_PUBLIC_SYNC_URL || 'ws://localhost:8789',
+        syncServerUrl: typeof window !== 'undefined'
+                ? `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}`
+                : 'ws://localhost:3000',
         onPresenceChange: setPresenceClients,
         onActivity: (activity) => {
             addToast(activity);
@@ -257,6 +259,24 @@ export default function ProjectEditor({ project, initialPrompt, globalActions = 
                                     ...syncedNode.style,
                                     width: 300,
                                     height: 400,
+                                }
+                            };
+                        }
+                    }
+
+                    // Fix: Ensure action-badge nodes don't persist oversized dimensions
+                    if (syncedNode.type === 'action-badge') {
+                        const storedWidth = syncedNode.width || syncedNode.style?.width;
+                        const storedHeight = syncedNode.height || syncedNode.style?.height;
+                        if ((storedWidth && Number(storedWidth) > 280) || (storedHeight && Number(storedHeight) > 80)) {
+                            correctedNode = {
+                                ...correctedNode,
+                                width: undefined,
+                                height: undefined,
+                                style: {
+                                    ...correctedNode.style,
+                                    width: undefined,
+                                    height: undefined,
                                 }
                             };
                         }
@@ -900,10 +920,10 @@ export default function ProjectEditor({ project, initialPrompt, globalActions = 
                 layoutWidth = 300;
                 layoutHeight = 400;
             } else if (nodeType === 'action-badge') {
-                defaultWidth = 200;
-                defaultHeight = 80;
-                layoutWidth = 200;
-                layoutHeight = 80;
+                defaultWidth = 260;
+                defaultHeight = 48;
+                layoutWidth = 260;
+                layoutHeight = 48;
             } else if (nodeType === 'prompt') {
                 defaultWidth = 300;
                 defaultHeight = 150;

@@ -99,19 +99,21 @@ export async function getProjects(limit = 10) {
 
         console.log('[getProjects] Raw projects found:', projectsData.length);
 
-        const apiCfUrl = process.env.API_CF_URL || 'http://localhost:8787';
-        const httpLoroUrl = apiCfUrl;
+        // Use service binding (API_CF) if available, fall back to URL for dev
+        const { env } = await getCloudflareContext({ async: true });
+        const apiCf = (env as any).API_CF as { fetch: typeof fetch } | undefined;
 
         // Extract assets from Loro nodes for display
         return await Promise.all(projectsData.map(async (project) => {
             let nodes: any[] = [];
 
-            // 1. Try to fetch from Loro Sync Server
+            // 1. Try to fetch from Loro Sync Server via service binding
             try {
-                // Determine protocol/url
-                const response = await fetch(`${httpLoroUrl}/sync/${project.id}/nodes`, {
-                    next: { revalidate: 0 } // Don't cache this fetch
-                });
+                const response = apiCf
+                    ? await apiCf.fetch(`https://api-cf/sync/${project.id}/nodes`)
+                    : await fetch(`${process.env.API_CF_URL || 'http://localhost:8789'}/sync/${project.id}/nodes`, {
+                        next: { revalidate: 0 }
+                    });
 
                 if (response.ok) {
                     nodes = await response.json();
@@ -144,7 +146,7 @@ export async function getProjects(limit = 10) {
 
                         if (src.startsWith('projects/') || src.startsWith('/projects/')) {
                             const cleanKey = src.startsWith('/') ? src.slice(1) : src;
-                            src = `/api/assets/view/${cleanKey}`;
+                            src = `/assets/${cleanKey}`;
                         }
                     }
 
@@ -158,7 +160,7 @@ export async function getProjects(limit = 10) {
                         thumbnailUrl = node.data.coverUrl;
                         if (thumbnailUrl && (thumbnailUrl.startsWith('projects/') || thumbnailUrl.startsWith('/projects/'))) {
                             const cleanKey = thumbnailUrl.startsWith('/') ? thumbnailUrl.slice(1) : thumbnailUrl;
-                            thumbnailUrl = `/api/assets/view/${cleanKey}`;
+                            thumbnailUrl = `/assets/${cleanKey}`;
                         }
                     } else if (node.type === 'video') {
                         return null;
