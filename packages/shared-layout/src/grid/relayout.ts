@@ -1,10 +1,13 @@
 /**
- * Graph-aware relayout using dagre (Sugiyama layered layout).
+ * Smart relayout: preserves relative positions while tidying up.
  *
- * Connected nodes (with edges) are laid out by dagre in topological layers.
- * Orphan nodes (no edges) are arranged in a type-based column grid.
+ * Strategy:
+ *   1. Build edge-based groups: each source + its direct targets = one row
+ *   2. Orphan nodes (no edges): each becomes its own row
+ *   3. Sort rows by their original centroid Y (preserves vertical order)
+ *   4. Within each row: source left, targets right, sorted by original X
+ *   5. Assign positions with consistent spacing
  */
-import dagre from '@dagrejs/dagre';
 import type { LayoutNode, LayoutEdge } from '../types';
 import type { Point } from '../types';
 import { getAbsoluteRect } from '../core/geometry';
@@ -26,156 +29,197 @@ function getNodeSize(node: LayoutNode, all: LayoutNode[]): { width: number; heig
   return { width: r.width, height: r.height };
 }
 
-function computeOrigin(nodes: LayoutNode[]): Point {
-  let minX = Infinity;
-  let minY = Infinity;
-  for (const n of nodes) {
-    minX = Math.min(minX, n.position.x);
-    minY = Math.min(minY, n.position.y);
-  }
-  return {
-    x: Number.isFinite(minX) ? minX : 0,
-    y: Number.isFinite(minY) ? minY : 0,
-  };
-}
+// ─── Edge-based row grouping ────────────────────────────
 
-/** Determine column index for orphan nodes by type */
-function getTypeColumn(type: string): number {
-  switch (type) {
-    case 'text': case 'prompt': case 'context': return 0;
-    case 'action-badge': case 'image_gen': case 'video_gen': case 'video-editor': return 1;
-    case 'image': case 'video': case 'audio': return 2;
-    default: return 2;
-  }
+interface LayoutRow {
+  nodeIds: string[];
+  originalCentroidY: number;
 }
 
 /**
- * Lay out nodes using dagre for connected subgraph + column grid for orphans.
+ * Group nodes into rows based on edges.
+ *
+ * Each source node and its direct targets form a row.
+ * Nodes that are only targets (not sources) get merged into their source's row.
+ * Orphan nodes (no edges) each form their own single-node row.
+ *
+ * Within a row: source nodes first (by original X), then target nodes (by original X).
  */
-function layoutWithDagre(
-  siblings: LayoutNode[],
-  allNodes: LayoutNode[],
-  origin: Point,
-  opts: { gapX: number; gapY: number; rankdir: 'LR' | 'TB' },
+function buildEdgeRows(
+  nodes: LayoutNode[],
   edges: LayoutEdge[],
+): LayoutRow[] {
+  const nodeIds = new Set(nodes.map(n => n.id));
+  const nodesById = new Map(nodes.map(n => [n.id, n]));
+  const relevantEdges = edges.filter(e => nodeIds.has(e.source) && nodeIds.has(e.target));
+
+  // Find sources: nodes that have outgoing edges
+  const sourceToTargets = new Map<string, Set<string>>();
+  const targetToSources = new Map<string, Set<string>>();
+
+  for (const e of relevantEdges) {
+    const tgts = sourceToTargets.get(e.source) ?? new Set();
+    tgts.add(e.target);
+    sourceToTargets.set(e.source, tgts);
+
+    const srcs = targetToSources.get(e.target) ?? new Set();
+    srcs.add(e.source);
+    targetToSources.set(e.target, srcs);
+  }
+
+  // Build rows: each source + its targets
+  const assigned = new Set<string>();
+  const rows: LayoutRow[] = [];
+
+  // Process source nodes (nodes with outgoing edges)
+  const sourceNodes = [...sourceToTargets.keys()].sort((a, b) => {
+    const na = nodesById.get(a)!, nb = nodesById.get(b)!;
+    return na.position.y - nb.position.y;
+  });
+
+  for (const srcId of sourceNodes) {
+    if (assigned.has(srcId)) continue;
+    const targets = sourceToTargets.get(srcId) ?? new Set();
+
+    const rowNodeIds = [srcId];
+    assigned.add(srcId);
+
+    // Add targets not yet assigned
+    const sortedTargets = [...targets]
+      .filter(t => !assigned.has(t))
+      .sort((a, b) => {
+        const na = nodesById.get(a)!, nb = nodesById.get(b)!;
+        return na.position.x - nb.position.x;
+      });
+
+    for (const tgt of sortedTargets) {
+      rowNodeIds.push(tgt);
+      assigned.add(tgt);
+    }
+
+    // Compute centroid Y from original positions
+    let sumY = 0;
+    for (const id of rowNodeIds) {
+      sumY += nodesById.get(id)!.position.y;
+    }
+    rows.push({
+      nodeIds: rowNodeIds,
+      originalCentroidY: sumY / rowNodeIds.length,
+    });
+  }
+
+  // Remaining unassigned nodes (orphans or pure targets)
+  for (const node of nodes) {
+    if (assigned.has(node.id)) continue;
+    assigned.add(node.id);
+    rows.push({
+      nodeIds: [node.id],
+      originalCentroidY: node.position.y,
+    });
+  }
+
+  // Sort rows by original centroid Y (preserves vertical order)
+  rows.sort((a, b) => a.originalCentroidY - b.originalCentroidY);
+
+  return rows;
+}
+
+// ─── Position assignment ────────────────────────────────
+
+function assignPositions(
+  rows: LayoutRow[],
+  nodesById: Map<string, LayoutNode>,
+  allNodes: LayoutNode[],
+  originX: number,
+  opts: { gapX: number; gapY: number },
 ): Map<string, Point> {
   const positions = new Map<string, Point>();
-  const siblingIds = new Set(siblings.map(n => n.id));
 
-  const groupNodes = siblings.filter(n => n.type === 'group');
-  const nonGroupNodes = siblings.filter(n => n.type !== 'group');
-
-  // Find edges within this sibling set
-  const relevantEdges = edges.filter(e => siblingIds.has(e.source) && siblingIds.has(e.target));
-
-  const connectedIds = new Set<string>();
-  for (const e of relevantEdges) {
-    connectedIds.add(e.source);
-    connectedIds.add(e.target);
-  }
-
-  const connectedNodes = nonGroupNodes.filter(n => connectedIds.has(n.id));
-  const orphanNodes = nonGroupNodes.filter(n => !connectedIds.has(n.id));
-
-  let graphBottom = origin.y;
-  let graphRight = origin.x;
-
-  // ── 1. Layout connected nodes with dagre ───────────────
-
-  if (connectedNodes.length > 0) {
-    const g = new dagre.graphlib.Graph();
-    g.setGraph({
-      rankdir: opts.rankdir,
-      // ranksep = distance between layers (horizontal in LR mode)
-      ranksep: opts.gapX,
-      // nodesep = distance between nodes in same layer (vertical in LR mode)
-      nodesep: opts.gapY,
-      marginx: 0,
-      marginy: 0,
-    });
-    g.setDefaultEdgeLabel(() => ({}));
-
-    for (const node of connectedNodes) {
-      const size = getNodeSize(node, allNodes);
-      g.setNode(node.id, { width: size.width, height: size.height });
-    }
-
-    for (const edge of relevantEdges) {
-      g.setEdge(edge.source, edge.target);
-    }
-
-    dagre.layout(g);
-
-    // dagre gives center coordinates → convert to top-left
-    for (const node of connectedNodes) {
-      const dn = g.node(node.id);
-      if (!dn) continue;
-
-      const pos = {
-        x: origin.x + dn.x - dn.width / 2,
-        y: origin.y + dn.y - dn.height / 2,
-      };
-      positions.set(node.id, pos);
-
-      graphBottom = Math.max(graphBottom, pos.y + dn.height);
-      graphRight = Math.max(graphRight, pos.x + dn.width);
+  // Starting Y from the topmost node's original position
+  let minOriginalY = Infinity;
+  for (const row of rows) {
+    for (const id of row.nodeIds) {
+      const n = nodesById.get(id);
+      if (n) minOriginalY = Math.min(minOriginalY, n.position.y);
     }
   }
+  let cursorY = Number.isFinite(minOriginalY) ? minOriginalY : 0;
 
-  // ── 2. Layout orphan nodes in a grid below the dagre graph ──
+  for (const row of rows) {
+    const rowNodes = row.nodeIds.map(id => nodesById.get(id)!).filter(Boolean);
+    if (rowNodes.length === 0) continue;
 
-  if (orphanNodes.length > 0) {
-    const orphanStartY = connectedNodes.length > 0 ? graphBottom + opts.gapY * 2 : origin.y;
+    // Compute row height (tallest node)
+    let rowHeight = 0;
+    for (const node of rowNodes) {
+      rowHeight = Math.max(rowHeight, getNodeSize(node, allNodes).height);
+    }
 
-    // Sort orphans: text first, then badges, then media — for visual grouping
-    const sorted = [...orphanNodes].sort((a, b) => getTypeColumn(a.type || '') - getTypeColumn(b.type || ''));
-
-    // Lay out in a wrapping grid (max ~4 items per row)
-    const maxRowWidth = 1600;
-    let cursorX = origin.x;
-    let cursorY = orphanStartY;
-    let rowMaxHeight = 0;
-
-    for (const node of sorted) {
+    // Assign X positions left to right
+    let cursorX = originX;
+    for (const node of rowNodes) {
       const size = getNodeSize(node, allNodes);
-
-      if (cursorX + size.width > origin.x + maxRowWidth && cursorX > origin.x) {
-        cursorX = origin.x;
-        cursorY += rowMaxHeight + opts.gapY;
-        rowMaxHeight = 0;
-      }
-
-      positions.set(node.id, { x: cursorX, y: cursorY });
+      positions.set(node.id, {
+        x: cursorX,
+        y: cursorY + (rowHeight - size.height) / 2,  // vertically center in row
+      });
       cursorX += size.width + opts.gapX;
-      rowMaxHeight = Math.max(rowMaxHeight, size.height);
-      graphBottom = Math.max(graphBottom, cursorY + size.height);
     }
-  }
 
-  // ── 3. Stack group nodes below everything ──────────────
-
-  if (groupNodes.length > 0) {
-    let groupY = graphBottom + opts.gapY * 2;
-    for (const group of groupNodes) {
-      const size = getNodeSize(group, allNodes);
-      positions.set(group.id, { x: origin.x, y: groupY });
-      groupY += size.height + opts.gapY;
-    }
+    cursorY += rowHeight + opts.gapY;
   }
 
   return positions;
 }
 
-/**
- * Relayout nodes using dagre-based graph layout.
- */
+// ─── Main ───────────────────────────────────────────────
+
+function smartLayout(
+  siblings: LayoutNode[],
+  allNodes: LayoutNode[],
+  edges: LayoutEdge[],
+  opts: { gapX: number; gapY: number },
+): Map<string, Point> {
+  // Separate groups
+  const groupNodes = siblings.filter(n => n.type === 'group');
+  const nonGroupNodes = siblings.filter(n => n.type !== 'group');
+
+  if (nonGroupNodes.length === 0) {
+    const positions = new Map<string, Point>();
+    groupNodes.forEach(n => positions.set(n.id, { ...n.position }));
+    return positions;
+  }
+
+  const nodesById = new Map(nonGroupNodes.map(n => [n.id, n]));
+
+  // Build rows from edges
+  const rows = buildEdgeRows(nonGroupNodes, edges);
+
+  // Compute origin X
+  let originX = Infinity;
+  for (const n of nonGroupNodes) {
+    originX = Math.min(originX, n.position.x);
+  }
+  if (!Number.isFinite(originX)) originX = 0;
+
+  // Assign positions
+  const positions = assignPositions(rows, nodesById, allNodes, originX, opts);
+
+  // Groups keep their position
+  for (const g of groupNodes) {
+    positions.set(g.id, { ...g.position });
+  }
+
+  return positions;
+}
+
+// ─── Public API ─────────────────────────────────────────
+
 export function relayoutToGrid(nodes: LayoutNode[], options: RelayoutGridOptions = {}): LayoutNode[] {
   const hasScope = Object.prototype.hasOwnProperty.call(options, 'scopeParentId') && options.scopeParentId !== undefined;
   const opts = {
-    gapX: options.gapX ?? 80,
+    gapX: options.gapX ?? 60,
     gapY: options.gapY ?? 40,
-    rankdir: (options.rankdir ?? 'LR') as 'LR' | 'TB',
-    scopeParentId: options.scopeParentId,
   };
 
   const byParent = new Map<string | undefined, LayoutNode[]>();
@@ -189,22 +233,12 @@ export function relayoutToGrid(nodes: LayoutNode[], options: RelayoutGridOptions
   const nextPosById = new Map<string, Point>();
 
   const entries = hasScope
-    ? [[opts.scopeParentId, byParent.get(opts.scopeParentId) ?? []] as const]
+    ? [[options.scopeParentId, byParent.get(options.scopeParentId) ?? []] as const]
     : Array.from(byParent.entries());
 
   for (const [, siblings] of entries) {
     if (siblings.length === 0) continue;
-
-    const origin = computeOrigin(siblings);
-
-    const positions = layoutWithDagre(
-      siblings,
-      nodes,
-      origin,
-      { gapX: opts.gapX, gapY: opts.gapY, rankdir: opts.rankdir },
-      options.edges || [],
-    );
-
+    const positions = smartLayout(siblings, nodes, options.edges || [], opts);
     for (const [id, pos] of positions.entries()) {
       nextPosById.set(id, pos);
     }
