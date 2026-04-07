@@ -14,6 +14,7 @@ import ReactFlow, {
     Node,
     NodeChange,
     useViewport,
+    SelectionMode,
 } from 'reactflow';
 import 'reactflow/dist/style.css';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -1638,6 +1639,11 @@ export default function ProjectEditor({ project, initialPrompt, globalActions = 
                                     nodeTypes={nodeTypes}
                                     fitView
                                     minZoom={0.1}
+                                    selectionOnDrag
+                                    panOnDrag={[1, 2]}
+                                    selectionMode={SelectionMode.Partial}
+                                    deleteKeyCode={['Backspace', 'Delete']}
+                                    multiSelectionKeyCode="Shift"
                                     proOptions={{ hideAttribution: true }}
                                 >
                                     <Background
