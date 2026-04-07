@@ -39,20 +39,59 @@ function dist(a: Point, b: Point): number {
 }
 
 /**
- * Simple agglomerative clustering: merge nearest pair until all pairs > threshold.
+ * Clustering: first merge edge-connected nodes, then merge nearby clusters by distance.
  */
 function clusterByDistance(
   nodes: LayoutNode[],
   allNodes: LayoutNode[],
+  edges: LayoutEdge[],
   threshold: number,
 ): LayoutNode[][] {
-  // Start: each node is its own cluster
-  let clusters: { nodes: LayoutNode[]; center: Point }[] = nodes.map(n => ({
-    nodes: [n],
-    center: nodeCenter(n, allNodes),
-  }));
+  const nodeIds = new Set(nodes.map(n => n.id));
+  const nodeMap = new Map(nodes.map(n => [n.id, n]));
 
-  // Merge until no pair is closer than threshold
+  // Union-Find: start by merging edge-connected nodes
+  const parent = new Map<string, string>();
+  for (const n of nodes) parent.set(n.id, n.id);
+
+  function find(x: string): string {
+    let r = x;
+    while (parent.get(r) !== r) r = parent.get(r)!;
+    let c = x;
+    while (c !== r) { const next = parent.get(c)!; parent.set(c, r); c = next; }
+    return r;
+  }
+  function union(a: string, b: string) {
+    const ra = find(a), rb = find(b);
+    if (ra !== rb) parent.set(ra, rb);
+  }
+
+  // Merge edge-connected nodes first (so badge + its images are always together)
+  for (const e of edges) {
+    if (nodeIds.has(e.source) && nodeIds.has(e.target)) {
+      union(e.source, e.target);
+    }
+  }
+
+  // Build initial clusters from union-find
+  const groupMap = new Map<string, LayoutNode[]>();
+  for (const n of nodes) {
+    const root = find(n.id);
+    const list = groupMap.get(root) ?? [];
+    list.push(n);
+    groupMap.set(root, list);
+  }
+
+  let clusters: { nodes: LayoutNode[]; center: Point }[] = [...groupMap.values()].map(group => {
+    let cx = 0, cy = 0;
+    for (const n of group) {
+      const c = nodeCenter(n, allNodes);
+      cx += c.x; cy += c.y;
+    }
+    return { nodes: group, center: { x: cx / group.length, y: cy / group.length } };
+  });
+
+  // Then merge nearby clusters by distance
   let merged = true;
   while (merged && clusters.length > 1) {
     merged = false;
@@ -62,34 +101,26 @@ function clusterByDistance(
     for (let i = 0; i < clusters.length; i++) {
       for (let j = i + 1; j < clusters.length; j++) {
         const d = dist(clusters[i].center, clusters[j].center);
-        if (d < bestDist) {
-          bestDist = d;
-          bestI = i;
-          bestJ = j;
-        }
+        if (d < bestDist) { bestDist = d; bestI = i; bestJ = j; }
       }
     }
 
     if (bestDist < threshold && bestI >= 0 && bestJ >= 0) {
-      // Merge j into i
       const a = clusters[bestI], b = clusters[bestJ];
-      const totalCount = a.nodes.length + b.nodes.length;
-      const mergedCenter: Point = {
-        x: (a.center.x * a.nodes.length + b.center.x * b.nodes.length) / totalCount,
-        y: (a.center.y * a.nodes.length + b.center.y * b.nodes.length) / totalCount,
-      };
+      const total = a.nodes.length + b.nodes.length;
       clusters[bestI] = {
         nodes: [...a.nodes, ...b.nodes],
-        center: mergedCenter,
+        center: {
+          x: (a.center.x * a.nodes.length + b.center.x * b.nodes.length) / total,
+          y: (a.center.y * a.nodes.length + b.center.y * b.nodes.length) / total,
+        },
       };
       clusters.splice(bestJ, 1);
       merged = true;
     }
   }
 
-  // Sort clusters by center Y (top to bottom)
   clusters.sort((a, b) => a.center.y - b.center.y);
-
   return clusters.map(c => c.nodes);
 }
 
@@ -241,9 +272,12 @@ function smartLayout(
   if (!Number.isFinite(originX)) originX = 0;
   if (!Number.isFinite(originY)) originY = 0;
 
-  // Cluster by distance
-  // Threshold: ~800px — nodes within this distance are grouped together
-  const clusters = clusterByDistance(nonGroupNodes, allNodes, 800);
+  // Cluster: first merge edge-connected nodes, then by distance (~800px)
+  const siblingEdges = edges.filter(e => {
+    const ids = new Set(nonGroupNodes.map(n => n.id));
+    return ids.has(e.source) && ids.has(e.target);
+  });
+  const clusters = clusterByDistance(nonGroupNodes, allNodes, siblingEdges, 800);
 
   let cursorY = originY;
 
