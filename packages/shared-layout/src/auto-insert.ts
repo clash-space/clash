@@ -1,16 +1,10 @@
 /**
- * Auto-insert layout logic for new nodes.
+ * Auto-insert layout for new nodes.
  *
- * Uses column-based placement by node type:
- *   Column 0 (x ≈ origin):   text / prompt nodes
- *   Column 1 (x + offset):   action-badge nodes
- *   Column 2 (x + offset):   image / video / audio output nodes
- *
- * Within a column, nodes that share a common root ancestor ("family")
- * are stacked vertically together. Families are separated by a larger gap.
- *
- * When a new node has an edge from a source node, it is placed in the
- * appropriate column, vertically aligned with its source's family.
+ * Strategy:
+ *   - If node has a reference (source via edge): place to the right of it
+ *   - If no reference: find the nearest cluster of nodes, place below it
+ *   - Resolve overlaps by pushing down
  */
 
 import type { LayoutNode, LayoutEdge } from './types';
@@ -20,15 +14,8 @@ import { getNodeSize, rectOverlaps } from './core/geometry';
 /** Special position value indicating a node needs auto-layout */
 export const NEEDS_LAYOUT_POSITION: Point = { x: -1, y: -1 };
 
-/** Default gap between nodes in the same family */
-const GAP_Y = 20;
-/** Gap between different families */
-const FAMILY_GAP_Y = 60;
-/** Horizontal gap between columns */
-const COL_GAP = 80;
-/** Left margin */
-const MARGIN = 80;
-
+const GAP_X = 60;
+const GAP_Y = 30;
 const MAX_MEDIA_DIMENSION = 500;
 
 function calculateScaledDimensions(naturalWidth: number, naturalHeight: number): { width: number; height: number } {
@@ -37,104 +24,12 @@ function calculateScaledDimensions(naturalWidth: number, naturalHeight: number):
   return { width: Math.round(naturalWidth * scale), height: Math.round(naturalHeight * scale) };
 }
 
-/** Check if a node needs auto-layout based on its position */
 export function needsAutoLayout(node: LayoutNode): boolean {
   if (!node.position) return true;
   return node.position.x === NEEDS_LAYOUT_POSITION.x && node.position.y === NEEDS_LAYOUT_POSITION.y;
 }
 
-// ─── Column assignment ──────────────────────────────────
-
-/** Determine which column a node belongs to based on its type */
-function getColumn(type: string): number {
-  switch (type) {
-    case 'text':
-    case 'prompt':
-    case 'context':
-      return 0;
-    case 'action-badge':
-    case 'image_gen':
-    case 'video_gen':
-      return 1;
-    case 'image':
-    case 'video':
-    case 'audio':
-      return 2;
-    case 'video-editor':
-      return 1;
-    case 'group':
-      return 0;
-    default:
-      return 2;
-  }
-}
-
-/** Get the maximum width of nodes in a given column */
-function getColumnWidth(col: number): number {
-  switch (col) {
-    case 0: return 300;  // text nodes
-    case 1: return 320;  // action-badge
-    case 2: return 500;  // image/video
-    default: return 300;
-  }
-}
-
-/** Get the X position for a column */
-function getColumnX(col: number): number {
-  let x = MARGIN;
-  for (let c = 0; c < col; c++) {
-    x += getColumnWidth(c) + COL_GAP;
-  }
-  return x;
-}
-
-// ─── Family detection ───────────────────────────────────
-
-/** Find the root ancestor of a node by walking edges backward */
-function findRootAncestor(
-  nodeId: string,
-  nodes: LayoutNode[],
-  edges: LayoutEdge[],
-): string {
-  const visited = new Set<string>();
-  let current = nodeId;
-
-  while (!visited.has(current)) {
-    visited.add(current);
-    const incomingEdge = edges.find(e => e.target === current);
-    if (!incomingEdge) break;
-    // Only follow edges within the same parent group
-    const currentNode = nodes.find(n => n.id === current);
-    const sourceNode = nodes.find(n => n.id === incomingEdge.source);
-    if (!sourceNode || sourceNode.parentId !== currentNode?.parentId) break;
-    current = incomingEdge.source;
-  }
-
-  return current;
-}
-
-// ─── Reference finding ──────────────────────────────────
-
-/** Find the source node connected via an incoming edge, in the same group */
-export function findReferenceNode(
-  nodeId: string,
-  nodes: LayoutNode[],
-  edges: LayoutEdge[],
-): LayoutNode | null {
-  const node = nodes.find(n => n.id === nodeId);
-  if (!node) return null;
-
-  const incomingEdge = edges.find(e => e.target === nodeId);
-  if (!incomingEdge) return null;
-
-  const sourceNode = nodes.find(n => n.id === incomingEdge.source);
-  if (!sourceNode) return null;
-  if (sourceNode.parentId !== node.parentId) return null;
-
-  return sourceNode;
-}
-
-// ─── Node dimensions ────────────────────────────────────
+// ─── Helpers ────────────────────────────────────────────
 
 function normalizeDimension(value: unknown): number | undefined {
   if (typeof value === 'number') return value;
@@ -169,15 +64,27 @@ function getNodeWidth(node: LayoutNode): number {
   );
 }
 
+export function findReferenceNode(
+  nodeId: string,
+  nodes: LayoutNode[],
+  edges: LayoutEdge[],
+): LayoutNode | null {
+  const node = nodes.find(n => n.id === nodeId);
+  if (!node) return null;
+  const incomingEdge = edges.find(e => e.target === nodeId);
+  if (!incomingEdge) return null;
+  const sourceNode = nodes.find(n => n.id === incomingEdge.source);
+  if (!sourceNode) return null;
+  if (sourceNode.parentId !== node.parentId) return null;
+  return sourceNode;
+}
+
 // ─── Position calculation ───────────────────────────────
 
 /**
- * Calculate insertion position using column-based layout.
- *
- * 1. Determine column by node type
- * 2. Find family (root ancestor via edges)
- * 3. Stack below siblings in same column + family
- * 4. If no siblings, align Y with source node
+ * Calculate insert position:
+ *   - Has reference → to the right of reference
+ *   - No reference → below the nearest cluster of siblings
  */
 export function calculateInsertPosition(
   node: LayoutNode,
@@ -185,64 +92,45 @@ export function calculateInsertPosition(
   nodes: LayoutNode[],
   edges: LayoutEdge[],
 ): Point {
-  const col = getColumn(node.type || 'default');
-  const x = getColumnX(col);
+  if (referenceNode && referenceNode.position && referenceNode.position.x !== NEEDS_LAYOUT_POSITION.x) {
+    // Place to the right of reference
+    const refWidth = getNodeWidth(referenceNode);
+    return {
+      x: referenceNode.position.x + refWidth + GAP_X,
+      y: referenceNode.position.y,
+    };
+  }
 
-  // Find family root
-  const familyRoot = referenceNode
-    ? findRootAncestor(referenceNode.id, nodes, edges)
-    : node.id;
-
-  // Find existing siblings: same column, same family, same parent, already positioned
+  // No reference — find nearest cluster bottom
   const siblings = nodes.filter(n => {
     if (n.id === node.id) return false;
     if (n.parentId !== node.parentId) return false;
     if (n.type === 'group') return false;
     if (!n.position || n.position.x === NEEDS_LAYOUT_POSITION.x) return false;
-    if (getColumn(n.type || 'default') !== col) return false;
-    // Same family?
-    const nFamily = findRootAncestor(n.id, nodes, edges);
-    return nFamily === familyRoot;
+    return true;
   });
 
-  if (siblings.length > 0) {
-    // Stack below the last sibling in this column+family
-    let maxBottom = 0;
-    for (const s of siblings) {
-      const bottom = s.position.y + getNodeHeight(s);
-      if (bottom > maxBottom) maxBottom = bottom;
-    }
-    return { x, y: maxBottom + GAP_Y };
+  if (siblings.length === 0) {
+    return { x: GAP_X, y: GAP_Y };
   }
 
-  if (referenceNode && referenceNode.position && referenceNode.position.x !== NEEDS_LAYOUT_POSITION.x) {
-    // First node in this column for this family — align Y with reference
-    return { x, y: referenceNode.position.y };
+  // Find the bottom of existing nodes
+  let maxBottom = 0;
+  let leftmostX = Infinity;
+  for (const s of siblings) {
+    const bottom = s.position.y + getNodeHeight(s);
+    if (bottom > maxBottom) maxBottom = bottom;
+    leftmostX = Math.min(leftmostX, s.position.x);
   }
 
-  // No reference, no siblings — find bottom of this column across all families
-  const columnNodes = nodes.filter(n => {
-    if (n.id === node.id) return false;
-    if (n.parentId !== node.parentId) return false;
-    if (!n.position || n.position.x === NEEDS_LAYOUT_POSITION.x) return false;
-    return getColumn(n.type || 'default') === col;
-  });
-
-  if (columnNodes.length > 0) {
-    let maxBottom = 0;
-    for (const n of columnNodes) {
-      const bottom = n.position.y + getNodeHeight(n);
-      if (bottom > maxBottom) maxBottom = bottom;
-    }
-    return { x, y: maxBottom + FAMILY_GAP_Y };
-  }
-
-  return { x, y: MARGIN };
+  return {
+    x: Number.isFinite(leftmostX) ? leftmostX : GAP_X,
+    y: maxBottom + GAP_Y,
+  };
 }
 
-// ─── Overlap resolution ─────────────────────────────────
+// ─── Overlap resolution (push down) ─────────────────────
 
-/** Find overlapping siblings (same parent, not group, not self) */
 export function getOverlappingSiblings(
   nodeId: string,
   nodeRect: Rect,
@@ -254,21 +142,14 @@ export function getOverlappingSiblings(
     if (n.parentId !== parentId) return false;
     if (n.type === 'group') return false;
     if (!n.position || n.position.x === NEEDS_LAYOUT_POSITION.x) return false;
-
     const siblingRect: Rect = {
-      x: n.position.x,
-      y: n.position.y,
-      width: getNodeWidth(n),
-      height: getNodeHeight(n),
+      x: n.position.x, y: n.position.y,
+      width: getNodeWidth(n), height: getNodeHeight(n),
     };
     return rectOverlaps(nodeRect, siblingRect);
   });
 }
 
-/**
- * Push overlapping nodes downward (vertical only) to resolve collisions.
- * Unlike the old chainPushRight, this preserves column alignment.
- */
 export function chainPushDown(
   triggerNodeId: string,
   nodes: LayoutNode[],
@@ -276,10 +157,8 @@ export function chainPushDown(
 ): Map<string, Point> {
   const positionUpdates = new Map<string, Point>();
   const workingPositions = new Map<string, Point>();
-
   for (const node of nodes) {
-    if (!node.position) continue;
-    workingPositions.set(node.id, { ...node.position });
+    if (node.position) workingPositions.set(node.id, { ...node.position });
   }
 
   const toCheck = new Set<string>([triggerNodeId]);
@@ -292,7 +171,6 @@ export function chainPushDown(
     if (next.done) break;
     const nodeId = next.value;
     toCheck.delete(nodeId);
-
     if (checked.has(nodeId)) continue;
     checked.add(nodeId);
 
@@ -305,23 +183,19 @@ export function chainPushDown(
     const nodeRect: Rect = { x: nodePos.x, y: nodePos.y, width: nodeWidth, height: nodeHeight };
 
     const siblings = nodes.filter(n => {
-      if (n.id === nodeId) return false;
-      if (n.parentId !== node.parentId) return false;
-      if (n.type === 'group') return false;
+      if (n.id === nodeId || n.parentId !== node.parentId || n.type === 'group') return false;
       const pos = workingPositions.get(n.id);
-      if (!pos || pos.x === NEEDS_LAYOUT_POSITION.x) return false;
-      return true;
+      return pos && pos.x !== NEEDS_LAYOUT_POSITION.x;
     });
 
     for (const sibling of siblings) {
       const siblingPos = workingPositions.get(sibling.id)!;
-      const siblingWidth = getNodeWidth(sibling);
-      const siblingHeight = getNodeHeight(sibling);
-      const siblingRect: Rect = { x: siblingPos.x, y: siblingPos.y, width: siblingWidth, height: siblingHeight };
-
+      const siblingRect: Rect = {
+        x: siblingPos.x, y: siblingPos.y,
+        width: getNodeWidth(sibling), height: getNodeHeight(sibling),
+      };
       if (!rectOverlaps(nodeRect, siblingRect)) continue;
 
-      // Push down (not right)
       const pushDistance = nodeRect.y + nodeRect.height + GAP_Y - siblingPos.y;
       if (pushDistance > 0) {
         const newPos: Point = { x: siblingPos.x, y: siblingPos.y + pushDistance };
@@ -335,24 +209,20 @@ export function chainPushDown(
   return positionUpdates;
 }
 
-// Keep old name for backward compatibility
+// backward compat
 export const chainPushRight = chainPushDown;
-
-// ─── Bottom-Y helper ────────────────────────────────────
 
 export function findBottomY(parentId: string | undefined, nodes: LayoutNode[]): number {
   const siblings = nodes.filter(
     n => n.parentId === parentId && n.position?.x !== NEEDS_LAYOUT_POSITION.x,
   );
-  if (siblings.length === 0) return MARGIN;
-
+  if (siblings.length === 0) return GAP_Y;
   let maxBottom = 0;
-  for (const sibling of siblings) {
-    if (!sibling.position) continue;
-    const bottom = sibling.position.y + getNodeHeight(sibling);
-    if (bottom > maxBottom) maxBottom = bottom;
+  for (const s of siblings) {
+    if (!s.position) continue;
+    maxBottom = Math.max(maxBottom, s.position.y + getNodeHeight(s));
   }
-  return maxBottom + FAMILY_GAP_Y;
+  return maxBottom + GAP_Y;
 }
 
 // ─── Main entry point ───────────────────────────────────
@@ -364,9 +234,6 @@ export interface AutoInsertResult {
   referenceNodeId?: string;
 }
 
-/**
- * Auto-insert a node using column-based layout and resolve overlaps.
- */
 export function autoInsertNode(
   nodeId: string,
   nodes: LayoutNode[],
@@ -374,7 +241,7 @@ export function autoInsertNode(
 ): AutoInsertResult {
   const node = nodes.find(n => n.id === nodeId);
   if (!node) {
-    return { position: { x: MARGIN, y: MARGIN }, pushedNodes: new Map(), hasReference: false };
+    return { position: { x: GAP_X, y: GAP_Y }, pushedNodes: new Map(), hasReference: false };
   }
 
   const referenceNode = findReferenceNode(nodeId, nodes, edges);
@@ -383,7 +250,6 @@ export function autoInsertNode(
   const nodesWithPosition = nodes.map(n =>
     n.id === nodeId ? { ...n, position } : n,
   );
-
   const pushedNodes = chainPushDown(nodeId, nodesWithPosition);
 
   return {
@@ -394,7 +260,6 @@ export function autoInsertNode(
   };
 }
 
-/** Apply auto-insert result to a nodes array */
 export function applyAutoInsertResult(
   nodes: LayoutNode[],
   nodeId: string,
@@ -408,18 +273,15 @@ export function applyAutoInsertResult(
   });
 }
 
-/** Process all nodes that need auto-layout */
 export function processAutoLayoutNodes(
   nodes: LayoutNode[],
   edges: LayoutEdge[],
 ): { nodes: LayoutNode[]; processed: string[] } {
   const nodesToLayout = nodes.filter(needsAutoLayout);
   const processed: string[] = [];
-
   if (nodesToLayout.length === 0) return { nodes, processed };
 
   let updatedNodes = [...nodes];
-
   for (const node of nodesToLayout) {
     const result = autoInsertNode(node.id, updatedNodes, edges);
     updatedNodes = applyAutoInsertResult(updatedNodes, node.id, result);
