@@ -2,11 +2,12 @@
  * Smart relayout: preserves relative positions while tidying up.
  *
  * Strategy:
- *   1. Build edge-based groups: each source + its direct targets = one row
- *   2. Orphan nodes (no edges): each becomes its own row
- *   3. Sort rows by their original centroid Y (preserves vertical order)
- *   4. Within each row: source left, targets right, sorted by original X
- *   5. Assign positions with consistent spacing
+ *   1. Separate text/prompt nodes → left column
+ *   2. Build edge-based rows: each source + its direct targets
+ *   3. Wide rows (>3 targets) wrap into sub-rows
+ *   4. Sort rows by original centroid Y (preserves vertical order)
+ *   5. Group related rows (same text ancestor) with tighter spacing
+ *   6. Assign positions with consistent spacing
  */
 import type { LayoutNode, LayoutEdge } from '../types';
 import type { Point } from '../types';
@@ -24,36 +25,66 @@ type RelayoutGridOptions = {
   centerInCell?: boolean;
 };
 
+const MAX_TARGETS_PER_ROW = 3;
+
 function getNodeSize(node: LayoutNode, all: LayoutNode[]): { width: number; height: number } {
   const r = getAbsoluteRect(node, all);
   return { width: r.width, height: r.height };
 }
 
-// ─── Edge-based row grouping ────────────────────────────
+function isTextType(type: string): boolean {
+  return type === 'text' || type === 'prompt' || type === 'context';
+}
+
+// ─── Edge analysis ──────────────────────────────────────
 
 interface LayoutRow {
   nodeIds: string[];
+  /** ID of the source node (badge) if this is a connected row */
+  sourceId?: string;
+  /** ID of the text ancestor for grouping */
+  familyId?: string;
   originalCentroidY: number;
 }
 
 /**
- * Group nodes into rows based on edges.
- *
- * Each source node and its direct targets form a row.
- * Nodes that are only targets (not sources) get merged into their source's row.
- * Orphan nodes (no edges) each form their own single-node row.
- *
- * Within a row: source nodes first (by original X), then target nodes (by original X).
+ * Find the text node ancestor of a source node via edges.
+ * Walks backward through edges to find a text/prompt node.
+ */
+function findTextAncestor(
+  nodeId: string,
+  nodesById: Map<string, LayoutNode>,
+  targetToSources: Map<string, Set<string>>,
+  visited = new Set<string>(),
+): string | undefined {
+  if (visited.has(nodeId)) return undefined;
+  visited.add(nodeId);
+
+  const node = nodesById.get(nodeId);
+  if (!node) return undefined;
+  if (isTextType(node.type || '')) return nodeId;
+
+  const sources = targetToSources.get(nodeId);
+  if (!sources) return undefined;
+
+  for (const srcId of sources) {
+    const result = findTextAncestor(srcId, nodesById, targetToSources, visited);
+    if (result) return result;
+  }
+  return undefined;
+}
+
+/**
+ * Build rows from edges, with wrapping for wide fan-outs.
  */
 function buildEdgeRows(
   nodes: LayoutNode[],
   edges: LayoutEdge[],
-): LayoutRow[] {
+): { rows: LayoutRow[]; textNodeIds: Set<string> } {
   const nodeIds = new Set(nodes.map(n => n.id));
   const nodesById = new Map(nodes.map(n => [n.id, n]));
   const relevantEdges = edges.filter(e => nodeIds.has(e.source) && nodeIds.has(e.target));
 
-  // Find sources: nodes that have outgoing edges
   const sourceToTargets = new Map<string, Set<string>>();
   const targetToSources = new Map<string, Set<string>>();
 
@@ -67,24 +98,32 @@ function buildEdgeRows(
     targetToSources.set(e.target, srcs);
   }
 
-  // Build rows: each source + its targets
+  // Identify text nodes (they go in the left column, not in rows)
+  const textNodeIds = new Set<string>();
+  for (const n of nodes) {
+    if (isTextType(n.type || '')) textNodeIds.add(n.id);
+  }
+
   const assigned = new Set<string>();
   const rows: LayoutRow[] = [];
 
-  // Process source nodes (nodes with outgoing edges)
-  const sourceNodes = [...sourceToTargets.keys()].sort((a, b) => {
-    const na = nodesById.get(a)!, nb = nodesById.get(b)!;
-    return na.position.y - nb.position.y;
-  });
+  // Mark text nodes as assigned (handled separately)
+  for (const id of textNodeIds) assigned.add(id);
+
+  // Process source nodes (nodes with outgoing edges), excluding text nodes
+  const sourceNodes = [...sourceToTargets.keys()]
+    .filter(id => !textNodeIds.has(id))
+    .sort((a, b) => {
+      const na = nodesById.get(a)!, nb = nodesById.get(b)!;
+      return na.position.y - nb.position.y;
+    });
 
   for (const srcId of sourceNodes) {
     if (assigned.has(srcId)) continue;
     const targets = sourceToTargets.get(srcId) ?? new Set();
 
-    const rowNodeIds = [srcId];
     assigned.add(srcId);
 
-    // Add targets not yet assigned
     const sortedTargets = [...targets]
       .filter(t => !assigned.has(t))
       .sort((a, b) => {
@@ -92,23 +131,55 @@ function buildEdgeRows(
         return na.position.x - nb.position.x;
       });
 
-    for (const tgt of sortedTargets) {
-      rowNodeIds.push(tgt);
-      assigned.add(tgt);
-    }
+    for (const tgt of sortedTargets) assigned.add(tgt);
 
-    // Compute centroid Y from original positions
-    let sumY = 0;
-    for (const id of rowNodeIds) {
-      sumY += nodesById.get(id)!.position.y;
+    // Find text ancestor for family grouping
+    const familyId = findTextAncestor(srcId, nodesById, targetToSources);
+
+    // Split targets into chunks for wrapping
+    if (sortedTargets.length <= MAX_TARGETS_PER_ROW) {
+      // Single row: source + all targets
+      const rowNodeIds = [srcId, ...sortedTargets];
+      let sumY = 0;
+      for (const id of rowNodeIds) sumY += nodesById.get(id)!.position.y;
+
+      rows.push({
+        nodeIds: rowNodeIds,
+        sourceId: srcId,
+        familyId,
+        originalCentroidY: sumY / rowNodeIds.length,
+      });
+    } else {
+      // First row: source + first chunk of targets
+      const firstChunk = sortedTargets.slice(0, MAX_TARGETS_PER_ROW);
+      const firstRowIds = [srcId, ...firstChunk];
+      let sumY = 0;
+      for (const id of firstRowIds) sumY += nodesById.get(id)!.position.y;
+
+      rows.push({
+        nodeIds: firstRowIds,
+        sourceId: srcId,
+        familyId,
+        originalCentroidY: sumY / firstRowIds.length,
+      });
+
+      // Subsequent rows: just targets (indented, no source)
+      for (let i = MAX_TARGETS_PER_ROW; i < sortedTargets.length; i += MAX_TARGETS_PER_ROW) {
+        const chunk = sortedTargets.slice(i, i + MAX_TARGETS_PER_ROW);
+        let chunkSumY = 0;
+        for (const id of chunk) chunkSumY += nodesById.get(id)!.position.y;
+
+        rows.push({
+          nodeIds: chunk,
+          sourceId: undefined,  // continuation row, indented
+          familyId,
+          originalCentroidY: chunkSumY / chunk.length,
+        });
+      }
     }
-    rows.push({
-      nodeIds: rowNodeIds,
-      originalCentroidY: sumY / rowNodeIds.length,
-    });
   }
 
-  // Remaining unassigned nodes (orphans or pure targets)
+  // Remaining unassigned non-text nodes (orphans)
   for (const node of nodes) {
     if (assigned.has(node.id)) continue;
     assigned.add(node.id);
@@ -118,16 +189,17 @@ function buildEdgeRows(
     });
   }
 
-  // Sort rows by original centroid Y (preserves vertical order)
+  // Sort rows by original centroid Y
   rows.sort((a, b) => a.originalCentroidY - b.originalCentroidY);
 
-  return rows;
+  return { rows, textNodeIds };
 }
 
 // ─── Position assignment ────────────────────────────────
 
 function assignPositions(
   rows: LayoutRow[],
+  textNodeIds: Set<string>,
   nodesById: Map<string, LayoutNode>,
   allNodes: LayoutNode[],
   originX: number,
@@ -135,7 +207,18 @@ function assignPositions(
 ): Map<string, Point> {
   const positions = new Map<string, Point>();
 
-  // Starting Y from the topmost node's original position
+  // Reserve left column for text nodes
+  let textColWidth = 0;
+  for (const id of textNodeIds) {
+    const n = nodesById.get(id);
+    if (n) textColWidth = Math.max(textColWidth, getNodeSize(n, allNodes).width);
+  }
+  const contentX = textNodeIds.size > 0 ? originX + textColWidth + opts.gapX : originX;
+
+  // Indentation for continuation rows (no source node)
+  const sourceWidth = 320 + opts.gapX;  // approximate badge width + gap
+
+  // Starting Y
   let minOriginalY = Infinity;
   for (const row of rows) {
     for (const id of row.nodeIds) {
@@ -143,30 +226,90 @@ function assignPositions(
       if (n) minOriginalY = Math.min(minOriginalY, n.position.y);
     }
   }
+  for (const id of textNodeIds) {
+    const n = nodesById.get(id);
+    if (n) minOriginalY = Math.min(minOriginalY, n.position.y);
+  }
   let cursorY = Number.isFinite(minOriginalY) ? minOriginalY : 0;
 
+  // Track Y ranges for each family (for text node alignment)
+  const familyYStart = new Map<string, number>();
+  const familyYEnd = new Map<string, number>();
+
+  let prevFamilyId: string | undefined;
+
   for (const row of rows) {
+    // Add extra spacing between different families
+    if (row.familyId && prevFamilyId && row.familyId !== prevFamilyId) {
+      cursorY += opts.gapY;  // extra gap between families
+    }
+    prevFamilyId = row.familyId;
+
     const rowNodes = row.nodeIds.map(id => nodesById.get(id)!).filter(Boolean);
     if (rowNodes.length === 0) continue;
 
-    // Compute row height (tallest node)
+    // Row height
     let rowHeight = 0;
     for (const node of rowNodes) {
       rowHeight = Math.max(rowHeight, getNodeSize(node, allNodes).height);
     }
 
-    // Assign X positions left to right
-    let cursorX = originX;
+    // Track family Y range
+    if (row.familyId) {
+      if (!familyYStart.has(row.familyId)) familyYStart.set(row.familyId, cursorY);
+      familyYEnd.set(row.familyId, cursorY + rowHeight);
+    }
+
+    // X position: indented if continuation row (no source)
+    let cursorX = row.sourceId ? contentX : contentX + sourceWidth;
+
     for (const node of rowNodes) {
       const size = getNodeSize(node, allNodes);
       positions.set(node.id, {
         x: cursorX,
-        y: cursorY + (rowHeight - size.height) / 2,  // vertically center in row
+        y: cursorY + (rowHeight - size.height) / 2,
       });
       cursorX += size.width + opts.gapX;
     }
 
     cursorY += rowHeight + opts.gapY;
+  }
+
+  // ── Place text nodes in left column ────────────────────
+
+  // For each text node, try to align it with its family's Y range
+  const textNodes = [...textNodeIds].map(id => nodesById.get(id)!).filter(Boolean);
+  textNodes.sort((a, b) => a.position.y - b.position.y);
+
+  // Build text→family map via edges
+  const textFamilyMap = new Map<string, string>();
+  for (const row of rows) {
+    if (row.familyId && row.sourceId) {
+      // This family is anchored to a text node
+      textFamilyMap.set(row.familyId, row.familyId);
+    }
+  }
+
+  let textCursorY = Number.isFinite(minOriginalY) ? minOriginalY : 0;
+
+  for (const textNode of textNodes) {
+    const size = getNodeSize(textNode, allNodes);
+
+    // Try to align with family Y range
+    const famStart = familyYStart.get(textNode.id);
+    const famEnd = familyYEnd.get(textNode.id);
+
+    if (famStart !== undefined && famEnd !== undefined) {
+      // Center text node vertically within its family's range
+      const famMidY = (famStart + famEnd) / 2;
+      const textY = famMidY - size.height / 2;
+      positions.set(textNode.id, { x: originX, y: Math.max(textCursorY, textY) });
+      textCursorY = Math.max(textCursorY, textY) + size.height + opts.gapY;
+    } else {
+      // No family — place sequentially
+      positions.set(textNode.id, { x: originX, y: textCursorY });
+      textCursorY += size.height + opts.gapY;
+    }
   }
 
   return positions;
@@ -180,7 +323,6 @@ function smartLayout(
   edges: LayoutEdge[],
   opts: { gapX: number; gapY: number },
 ): Map<string, Point> {
-  // Separate groups
   const groupNodes = siblings.filter(n => n.type === 'group');
   const nonGroupNodes = siblings.filter(n => n.type !== 'group');
 
@@ -191,24 +333,15 @@ function smartLayout(
   }
 
   const nodesById = new Map(nonGroupNodes.map(n => [n.id, n]));
+  const { rows, textNodeIds } = buildEdgeRows(nonGroupNodes, edges);
 
-  // Build rows from edges
-  const rows = buildEdgeRows(nonGroupNodes, edges);
-
-  // Compute origin X
   let originX = Infinity;
-  for (const n of nonGroupNodes) {
-    originX = Math.min(originX, n.position.x);
-  }
+  for (const n of nonGroupNodes) originX = Math.min(originX, n.position.x);
   if (!Number.isFinite(originX)) originX = 0;
 
-  // Assign positions
-  const positions = assignPositions(rows, nodesById, allNodes, originX, opts);
+  const positions = assignPositions(rows, textNodeIds, nodesById, allNodes, originX, opts);
 
-  // Groups keep their position
-  for (const g of groupNodes) {
-    positions.set(g.id, { ...g.position });
-  }
+  for (const g of groupNodes) positions.set(g.id, { ...g.position });
 
   return positions;
 }
@@ -217,10 +350,7 @@ function smartLayout(
 
 export function relayoutToGrid(nodes: LayoutNode[], options: RelayoutGridOptions = {}): LayoutNode[] {
   const hasScope = Object.prototype.hasOwnProperty.call(options, 'scopeParentId') && options.scopeParentId !== undefined;
-  const opts = {
-    gapX: options.gapX ?? 60,
-    gapY: options.gapY ?? 40,
-  };
+  const opts = { gapX: options.gapX ?? 60, gapY: options.gapY ?? 40 };
 
   const byParent = new Map<string | undefined, LayoutNode[]>();
   for (const n of nodes) {
@@ -231,7 +361,6 @@ export function relayoutToGrid(nodes: LayoutNode[], options: RelayoutGridOptions
   }
 
   const nextPosById = new Map<string, Point>();
-
   const entries = hasScope
     ? [[options.scopeParentId, byParent.get(options.scopeParentId) ?? []] as const]
     : Array.from(byParent.entries());
@@ -239,9 +368,7 @@ export function relayoutToGrid(nodes: LayoutNode[], options: RelayoutGridOptions
   for (const [, siblings] of entries) {
     if (siblings.length === 0) continue;
     const positions = smartLayout(siblings, nodes, options.edges || [], opts);
-    for (const [id, pos] of positions.entries()) {
-      nextPosById.set(id, pos);
-    }
+    for (const [id, pos] of positions.entries()) nextPosById.set(id, pos);
   }
 
   let changed = false;
