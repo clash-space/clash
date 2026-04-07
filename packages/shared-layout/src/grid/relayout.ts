@@ -291,16 +291,59 @@ function smartLayout(
       return (na?.position.y ?? 0) - (nb?.position.y ?? 0);
     });
 
-    // Layout each tree, stack vertically
-    for (const tree of forest) {
-      const result = layoutTree(tree, nodesById, allNodes, opts.gapX, opts.gapY);
+    // Layout each tree, stack vertically.
+    // Merge consecutive isolated text nodes into one horizontal row.
+    let i = 0;
+    while (i < forest.length) {
+      const tree = forest[i];
+      const treeNode = nodesById.get(tree.id);
+      const isIsolatedText = tree.children.length === 0 && treeNode &&
+        (treeNode.type === 'text' || treeNode.type === 'prompt' || treeNode.type === 'context');
 
-      // Place tree at (originX, cursorY)
-      for (const [id, pos] of result.positions) {
-        positions.set(id, { x: originX + pos.x, y: cursorY + pos.y });
+      if (isIsolatedText) {
+        // Collect consecutive isolated text nodes
+        const textGroup: TreeNode[] = [tree];
+        let j = i + 1;
+        while (j < forest.length) {
+          const next = forest[j];
+          const nextNode = nodesById.get(next.id);
+          if (next.children.length === 0 && nextNode &&
+            (nextNode.type === 'text' || nextNode.type === 'prompt' || nextNode.type === 'context')) {
+            textGroup.push(next);
+            j++;
+          } else {
+            break;
+          }
+        }
+
+        // Place text group horizontally
+        let textX = originX;
+        let maxTextHeight = 0;
+        for (const t of textGroup) {
+          const n = nodesById.get(t.id)!;
+          const size = getNodeSize(n, allNodes);
+          maxTextHeight = Math.max(maxTextHeight, size.height);
+        }
+        for (const t of textGroup) {
+          const n = nodesById.get(t.id)!;
+          const size = getNodeSize(n, allNodes);
+          positions.set(t.id, {
+            x: textX,
+            y: cursorY + (maxTextHeight - size.height) / 2,
+          });
+          textX += size.width + opts.gapX;
+        }
+        cursorY += maxTextHeight + opts.gapY;
+        i = j;
+      } else {
+        // Normal tree layout
+        const result = layoutTree(tree, nodesById, allNodes, opts.gapX, opts.gapY);
+        for (const [id, pos] of result.positions) {
+          positions.set(id, { x: originX + pos.x, y: cursorY + pos.y });
+        }
+        cursorY += result.height + opts.gapY;
+        i++;
       }
-
-      cursorY += result.height + opts.gapY;
     }
 
     // Extra gap between clusters
