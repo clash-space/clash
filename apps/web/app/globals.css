@@ -14,9 +14,29 @@
   --color-canvas-bg: var(--canvas-bg);
   --color-canvas-dot: var(--canvas-dot);
 
-  /* Semantic Color System */
+  /* ── Semantic Color System ──────────────────────────
+   * Brand: Coral Red #FF6B50
+   * Derived via split-complementary + analogous harmony:
+   *   - Image (brand):  coral #FF6B50
+   *   - Video (complement): teal #2EBFA5
+   *   - Audio (analogous):  amber #F5A623
+   *   - Custom (triadic):   indigo #6366F1
+   */
   --color-brand: #FF6B50;
+  --color-brand-light: #FFF0ED;
   --color-brand-foreground: #ffffff;
+
+  --color-image: #FF6B50;
+  --color-image-light: #FFF0ED;
+
+  --color-video: #3B82F6;
+  --color-video-light: #EFF6FF;
+
+  --color-audio: #F5A623;
+  --color-audio-light: #FFFBEB;
+
+  --color-custom: #6366F1;
+  --color-custom-light: #EEF2FF;
 
   --font-sans: var(--font-inter);
   --font-display: var(--font-space-grotesk);

@@ -14,7 +14,7 @@ function getAssetUrl(env: Env, objectKey: string): string {
   if (env.R2_PUBLIC_URL) {
     return `${env.R2_PUBLIC_URL}/${objectKey}`;
   }
-  return `http://localhost:8789/assets/${objectKey}`;
+  return `http://localhost:8787/assets/${objectKey}`;
 }
 
 const assetRoutes = new Hono<{ Bindings: Env }>();

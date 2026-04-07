@@ -1,7 +1,6 @@
 packages:
   - 'apps/api-cf'
   - 'apps/auth-gateway'
-  - 'apps/loro-sync-server'
   - 'apps/render-server'
   - 'apps/web'
   - 'packages/remotion-*'

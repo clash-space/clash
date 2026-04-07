@@ -331,8 +331,8 @@ const VideoEditorNode = ({ data, id }: NodeProps) => {
                 parentId: data.parentId, // Keep in same group if editor is in a group
                 data: {
                     label: `Rendered Video`,
-                    src: null,  // Will be filled by callback when rendering completes
-                    status: 'generating',
+                    src: '',  // Empty src signals pending generation
+                    status: 'pending',
                     duration: durationInSeconds,
                     timelineDsl: updatedTimelineDsl,
                     pendingTask: null,

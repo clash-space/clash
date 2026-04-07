@@ -179,7 +179,7 @@ export async function processPendingNodes(
         const resolvedDsl = resolveTimelineDslReferences(innerData.timelineDsl, nodesMap as any);
 
         // Convert R2 keys in src to full HTTP URLs so render-server's Chromium can access them
-        const workerUrl = env.WORKER_PUBLIC_URL || 'http://localhost:8789';
+        const workerUrl = env.WORKER_PUBLIC_URL || 'http://localhost:8787';
         for (const track of resolvedDsl.tracks || []) {
           for (const item of track.items || []) {
             if (item.src && !item.src.startsWith('http') && !item.src.startsWith('data:')) {

@@ -24,6 +24,7 @@ import { createCanvasTools } from "./tools/canvas";
 import { createTimelineTools } from "./tools/timeline";
 import { createDelegationTool } from "./tools/delegation";
 import { getSupervisorPrompt } from "../prompts/supervisor";
+import { applyChunkToParts } from "./apply-chunk";
 
 export class SupervisorAgent extends AIChatAgent<Env> {
   /** Local Loro CRDT replica — synced with ProjectRoom via internal WS. */
@@ -216,7 +217,16 @@ export class SupervisorAgent extends AIChatAgent<Env> {
 
   // ─── AI Chat ────────────────────────────────────────────────
 
-  async onChatMessage(_onFinish: unknown, options?: { abortSignal?: AbortSignal }) {
+  /**
+   * Stream AI response directly via WebSocket, bypassing SSE serialization.
+   *
+   * The default AIChatAgent flow: streamText → SSE Response → _reply → _streamSSEReply → WS
+   * has a bug where SSE chunks split mid-line cause silent event drops.
+   *
+   * Our flow: streamText → toUIMessageStream (objects) → WS directly.
+   * We return `undefined` from onChatMessage and handle streaming + persistence ourselves.
+   */
+  async onChatMessage(_onFinish: unknown, options?: { abortSignal?: AbortSignal; requestId?: string }) {
     // Ensure room connection is ready
     if (!this.roomInitialized) {
       if (this.roomConnection) {
@@ -268,6 +278,66 @@ export class SupervisorAgent extends AIChatAgent<Env> {
       abortSignal: options?.abortSignal,
     });
 
-    return result.toUIMessageStreamResponse();
+    // Stream directly via WebSocket — no SSE intermediate layer.
+    const requestId = options?.requestId ?? crypto.randomUUID();
+    const self = this as any;
+    const streamId = self._startStream(requestId);
+    const message = self._createStreamingAssistantMessage(false);
+    self._streamingMessage = message;
+
+    const MSG_TYPE = "cf_agent_use_chat_response";
+
+    try {
+      for await (const chunk of result.toUIMessageStream()) {
+        // Build server-side message parts (mirrors what client does)
+        applyChunkToParts(message.parts, chunk);
+
+        // Remap finish event to include finishReason in messageMetadata
+        let event = chunk as Record<string, unknown>;
+        if (chunk.type === "finish" && "finishReason" in chunk) {
+          const { finishReason, ...rest } = chunk as any;
+          event = { ...rest, type: "finish", messageMetadata: { finishReason } };
+        }
+
+        // Handle start event: extract messageId
+        if (chunk.type === "start" && (chunk as any).messageId != null) {
+          message.id = (chunk as any).messageId;
+        }
+        if ((chunk.type === "start" || chunk.type === "finish" || chunk.type === "message-metadata") && (chunk as any).messageMetadata != null) {
+          message.metadata = message.metadata
+            ? { ...message.metadata, ...(chunk as any).messageMetadata }
+            : (chunk as any).messageMetadata;
+        }
+
+        const body = JSON.stringify(event);
+        self._storeStreamChunk(streamId, body);
+        self._broadcastChatMessage({ body, done: false, id: requestId, type: MSG_TYPE });
+      }
+    } catch (err) {
+      log.error("Stream error:", err);
+      self._markStreamError(streamId);
+      self._broadcastChatMessage({
+        body: err instanceof Error ? err.message : "Stream error",
+        done: true,
+        error: true,
+        id: requestId,
+        type: MSG_TYPE,
+      });
+      throw err;
+    } finally {
+      self._streamingMessage = null;
+    }
+
+    // Signal stream complete
+    self._completeStream(streamId);
+    self._broadcastChatMessage({ body: "", done: true, id: requestId, type: MSG_TYPE });
+
+    // Persist the message built by applyChunkToParts
+    if (message.parts.length > 0) {
+      await this.persistMessages([...this.messages, message] as any);
+    }
+
+    // Return undefined — we already streamed everything via WS.
+    return undefined;
   }
 }
