@@ -30,6 +30,8 @@ import {
     UploadSimple,
     Square,
     PuzzlePiece,
+    CursorClick,
+    Hand,
 } from '@phosphor-icons/react';
 import Link from 'next/link';
 import type { InferSelectModel } from 'drizzle-orm';
@@ -215,6 +217,7 @@ export default function ProjectEditor({ project, initialPrompt, globalActions = 
     const [activeMenu, setActiveMenu] = useState<string | null>(null);
     const [projectName, setProjectName] = useState(project.name);
     const [showDebugIds, setShowDebugIds] = useState(false);
+    const [canvasMode, setCanvasMode] = useState<'select' | 'hand'>('select');
 
     // Collaboration visibility: presence + activity
     const [presenceClients, setPresenceClients] = useState<PresenceClient[]>([]);
@@ -389,6 +392,7 @@ export default function ProjectEditor({ project, initialPrompt, globalActions = 
 
     // File upload state
     const fileInputRef = useRef<HTMLInputElement>(null);
+    const canvasModeBeforeSpace = useRef<'select' | 'hand'>('select');
     const [pendingNodeType, setPendingNodeType] = useState<string | null>(null);
 
     // Sidebar state
@@ -736,10 +740,35 @@ export default function ProjectEditor({ project, initialPrompt, globalActions = 
                 e.preventDefault();
                 setShowDebugIds(v => !v);
             }
+
+            // V: select mode, H: hand mode (Figma-style)
+            if (!e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey) {
+                if (e.key === 'v') setCanvasMode('select');
+                if (e.key === 'h') setCanvasMode('hand');
+            }
+
+            // Space: temporary hand mode
+            if (e.key === ' ' && !e.repeat) {
+                e.preventDefault();
+                setCanvasMode(prev => {
+                    canvasModeBeforeSpace.current = prev;
+                    return 'hand';
+                });
+            }
+        };
+
+        const handleKeyUp = (e: KeyboardEvent) => {
+            if (e.key === ' ') {
+                setCanvasMode(canvasModeBeforeSpace.current);
+            }
         };
 
         window.addEventListener('keydown', handleKeyDown);
-        return () => window.removeEventListener('keydown', handleKeyDown);
+        window.addEventListener('keyup', handleKeyUp);
+        return () => {
+            window.removeEventListener('keydown', handleKeyDown);
+            window.removeEventListener('keyup', handleKeyUp);
+        };
     }, [loroSync]);
 
     // Merge local (Loro) + global (D1) custom actions, deduplicate by ID
@@ -1625,7 +1654,7 @@ export default function ProjectEditor({ project, initialPrompt, globalActions = 
                                     placeholder="Untitled"
                                 />
                             </div>
-                            <div className="absolute inset-0 z-0">
+                            <div className={`absolute inset-0 z-0 ${canvasMode === 'hand' ? '[&_.react-flow__pane]:cursor-grab [&_.react-flow__pane:active]:cursor-grabbing' : ''}`}>
                                 <ReactFlow
                                     nodes={sanitizedNodes}
                                     edges={edges}
@@ -1639,8 +1668,8 @@ export default function ProjectEditor({ project, initialPrompt, globalActions = 
                                     nodeTypes={nodeTypes}
                                     fitView
                                     minZoom={0.1}
-                                    selectionOnDrag
-                                    panOnDrag={[1, 2]}
+                                    selectionOnDrag={canvasMode === 'select'}
+                                    panOnDrag={canvasMode === 'select' ? [1, 2] : true}
                                     selectionMode={SelectionMode.Partial}
                                     deleteKeyCode={['Backspace', 'Delete']}
                                     multiSelectionKeyCode="Shift"
@@ -1666,6 +1695,30 @@ export default function ProjectEditor({ project, initialPrompt, globalActions = 
                             {/* Left Toolbar - Vertical Palette */}
                             <div className="absolute left-6 top-1/2 -translate-y-1/2 z-50 flex flex-col gap-2 pointer-events-none">
                                  <div className="pointer-events-auto flex flex-col items-center gap-3 rounded-full border border-slate-200 bg-white/80 py-6 px-3 shadow-lg backdrop-blur-xl transition-all">
+                                    {/* Canvas Mode Toggle */}
+                                    {([
+                                        { mode: 'select' as const, icon: CursorClick, label: 'Select (V)', key: 'V' },
+                                        { mode: 'hand' as const, icon: Hand, label: 'Hand (H)', key: 'H' },
+                                    ]).map(({ mode, icon: ModeIcon, label, key }) => (
+                                        <motion.button
+                                            key={mode}
+                                            onClick={() => setCanvasMode(mode)}
+                                            className={`flex h-10 w-10 items-center justify-center rounded-full transition-all ${
+                                                canvasMode === mode
+                                                ? "bg-slate-900 text-white shadow-md"
+                                                : "bg-transparent text-slate-500 hover:bg-slate-100 hover:text-slate-900"
+                                            }`}
+                                            whileHover={{ scale: 1.05 }}
+                                            whileTap={{ scale: 0.95 }}
+                                            title={label}
+                                        >
+                                            <ModeIcon className="h-5 w-5" weight={canvasMode === mode ? "fill" : "regular"} />
+                                        </motion.button>
+                                    ))}
+
+                                    {/* Divider */}
+                                    <div className="w-8 h-px bg-slate-200" />
+
                                     {toolbarMenu.map((item) => {
                                         const Icon = item.icon;
                                         const isActive = activeMenu === item.id;

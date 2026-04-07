@@ -277,7 +277,7 @@ function smartLayout(
     const ids = new Set(nonGroupNodes.map(n => n.id));
     return ids.has(e.source) && ids.has(e.target);
   });
-  const clusters = clusterByDistance(nonGroupNodes, allNodes, siblingEdges, 800);
+  const clusters = clusterByDistance(nonGroupNodes, allNodes, siblingEdges, 1500);
 
   let cursorY = originY;
 
