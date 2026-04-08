@@ -570,7 +570,7 @@ export default function SettingsClient({ initialTokens, initialVariables, initia
                             <div>
                                 <p>Install the CLI:</p>
                                 <code className="inline-block mt-1 rounded-lg bg-gray-100 px-3 py-1.5 text-xs font-mono text-gray-800">
-                                    npm install -g @clash/cli
+                                    npm install -g @clash-space/cli
                                 </code>
                             </div>
                         </div>

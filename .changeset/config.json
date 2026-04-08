@@ -4,8 +4,19 @@
   "commit": false,
   "fixed": [],
   "linked": [],
-  "access": "restricted",
+  "access": "public",
   "baseBranch": "master",
   "updateInternalDependencies": "patch",
-  "ignore": []
+  "ignore": [
+    "@clash/web",
+    "@clash/api-cf",
+    "@clash/gateway",
+    "@clash/render-server",
+    "@clash/remotion-components",
+    "@clash/remotion-core",
+    "@clash/remotion-ui",
+    "@clash/claude-code-plugin",
+    "@clash/shared-types",
+    "@clash/shared-layout"
+  ]
 }

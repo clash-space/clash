@@ -10,7 +10,7 @@ Follow these steps to set up the Clash CLI:
 ## 1. Check if CLI is installed
 
 ```bash
-which clash || echo "Not installed. Run: npm install -g @clash/cli"
+which clash || echo "Not installed. Run: npm install -g @clash-space/cli"
 ```
 
 ## 2. Configure your API token

@@ -1,5 +1,3 @@
-#!/usr/bin/env node
-
 import { Command } from "commander";
 import { authCommand } from "./commands/auth";
 import { projectsCommand } from "./commands/projects";

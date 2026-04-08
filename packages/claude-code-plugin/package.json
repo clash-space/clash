@@ -9,7 +9,6 @@
     "index.mjs",
     "openclaw.plugin.json",
     "commands",
-    "skills",
     "hooks"
   ]
 }
