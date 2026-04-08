@@ -98,7 +98,6 @@ service-account.json
 
 # pnpm
 .pnpm-store
-pnpm-lock.yaml
 
 # uv
 uv.lock
