@@ -5,5 +5,6 @@ packages:
   - 'apps/web'
   - 'packages/remotion-*'
   - 'packages/shared-*'
+  - 'packages/action-sdk'
   - 'packages/cli'
   - 'packages/claude-code-plugin'
