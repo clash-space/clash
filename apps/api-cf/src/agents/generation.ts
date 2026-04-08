@@ -114,7 +114,7 @@ export class GenerationWorkflow extends WorkflowEntrypoint<Env, GenerationParams
     const storageKey = await step.do("generate-and-upload", {
       retries: { limit: 2, delay: "5 seconds", backoff: "exponential" },
       timeout: "5 minutes",
-    }, async (ctx) => {
+    }, async (ctx = { attempt: 1 }) => {
       log.info("Image generate started", { ...tag, model: params.modelName, attempt: ctx.attempt });
 
       // Resolve reference images: R2 keys → fal CDN URLs
@@ -217,7 +217,7 @@ export class GenerationWorkflow extends WorkflowEntrypoint<Env, GenerationParams
     const genResult = await step.do("generate", {
       retries: { limit: 2, delay: "5 seconds", backoff: "exponential" },
       timeout: "10 minutes",
-    }, async (ctx) => {
+    }, async (ctx = { attempt: 1 }) => {
       log.info("Video generate started", { ...tag, model: params.videoModel, attempt: ctx.attempt });
 
       const result = await provider.generate(this.env, {
@@ -235,7 +235,7 @@ export class GenerationWorkflow extends WorkflowEntrypoint<Env, GenerationParams
     const { storageKey, coverKey } = await step.do("upload", {
       retries: { limit: 2, delay: "2 seconds" },
       timeout: "3 minutes",
-    }, async (ctx) => {
+    }, async (ctx = { attempt: 1 }) => {
       log.info("Video upload started", { ...tag, attempt: ctx.attempt });
 
       // Upload: raw bytes (Google) or CDN URL (fal)
@@ -296,7 +296,7 @@ export class GenerationWorkflow extends WorkflowEntrypoint<Env, GenerationParams
     const storageKey = await step.do("render-and-upload", {
       retries: { limit: 1, delay: "10 seconds" },
       timeout: "15 minutes",
-    }, async (ctx) => {
+    }, async (ctx = { attempt: 1 }) => {
       log.info("Render started", { ...tag, attempt: ctx.attempt });
 
       // Call render-server (Container in prod, direct URL in dev)
@@ -390,7 +390,7 @@ export class GenerationWorkflow extends WorkflowEntrypoint<Env, GenerationParams
     const result = await step.do("execute-action", {
       retries: { limit: 2, delay: "5 seconds", backoff: "exponential" },
       timeout: "5 minutes",
-    }, async (ctx) => {
+    }, async (ctx = { attempt: 1 }) => {
       log.info("Calling custom action worker", { ...tag, workerUrl: params.workerUrl, attempt: ctx.attempt });
 
       const resp = await fetch(params.workerUrl!, {

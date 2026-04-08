@@ -1,11 +1,11 @@
 {
-  "name": "auth-gateway",
+  "name": "@master-clash/gateway",
   "version": "0.1.0",
   "private": true,
   "type": "module",
   "main": "./src/index.ts",
   "scripts": {
-    "dev": "wrangler dev --port 8788 --inspector-port 9230 --persist-to ../../.wrangler/state",
+    "dev": "wrangler dev --inspector-port 9230 --persist-to ../../.wrangler/state",
     "deploy": "wrangler deploy",
     "type-check": "tsc --noEmit",
     "typecheck": "tsc --noEmit"

@@ -31,7 +31,7 @@ import {
     Square,
     PuzzlePiece,
     CursorClick,
-    Hand,
+    HandGrabbing,
 } from '@phosphor-icons/react';
 import Link from 'next/link';
 import type { InferSelectModel } from 'drizzle-orm';
@@ -997,28 +997,24 @@ export default function ProjectEditor({ project, initialPrompt, globalActions = 
 
             let targetPos = { x: 100, y: 100 };
 
-            // If no parentId, try to place to the right of the entire graph
+            // If no parentId, place below all existing root nodes
             if (!parentId && nds.length > 0) {
-                let maxX = -Infinity;
-                let lastNodeY = 100; // Default Y if no nodes found (unlikely)
+                let maxBottom = 0;
+                let leftmostX = Infinity;
 
                 nds.forEach(n => {
-                    // Only consider root nodes or top-level groups
                     if (!n.parentId) {
-                        const x = n.position.x + (n.width || Number(n.style?.width) || 300);
-                        if (x > maxX) {
-                            maxX = x;
-                            // Track the Y of the right-most node to align with it
-                            lastNodeY = n.position.y;
-                        }
+                        const h = n.height || Number(n.style?.height) || 300;
+                        const bottom = n.position.y + h;
+                        if (bottom > maxBottom) maxBottom = bottom;
+                        leftmostX = Math.min(leftmostX, n.position.x);
                     }
                 });
 
-                if (maxX > -Infinity) {
-                    // Place to the right of the right-most node, aligned to its TOP (stable Y)
+                if (maxBottom > 0) {
                     targetPos = {
-                        x: maxX + 100,
-                        y: lastNodeY // Align with the last node's Y instead of centering
+                        x: Number.isFinite(leftmostX) ? leftmostX : 100,
+                        y: maxBottom + 50,
                     };
                 }
             }
@@ -1102,16 +1098,19 @@ export default function ProjectEditor({ project, initialPrompt, globalActions = 
             } else {
                 // Root level placement (e.g. new groups)
                 if (nodeType === 'group') {
-                    // Find the right-most group to avoid overlap
+                    // Place new group below existing groups
                     const existingGroups = nds.filter(n => n.type === 'group');
                     if (existingGroups.length > 0) {
-                        const rightMostGroup = existingGroups.reduce((prev, current) => {
-                            return (prev.position.x > current.position.x) ? prev : current;
-                        });
-                        const groupWidth = rightMostGroup.width || Number(rightMostGroup.style?.width) || 400;
+                        let maxBottom = 0;
+                        let leftmostX = Infinity;
+                        for (const g of existingGroups) {
+                            const h = g.height || Number(g.style?.height) || 400;
+                            maxBottom = Math.max(maxBottom, g.position.y + h);
+                            leftmostX = Math.min(leftmostX, g.position.x);
+                        }
                         targetPos = {
-                            x: rightMostGroup.position.x + groupWidth + 100, // Add extra spacing for groups
-                            y: rightMostGroup.position.y
+                            x: Number.isFinite(leftmostX) ? leftmostX : 100,
+                            y: maxBottom + 100,
                         };
                     }
                 }
@@ -1144,8 +1143,8 @@ export default function ProjectEditor({ project, initialPrompt, globalActions = 
                 });
 
                 if (hasDirectOverlap) {
-                    // Shift right by default width + spacing to avoid overlap
-                    position = { x: targetPos.x + layoutWidth + 50, y: targetPos.y };
+                    // Shift down to avoid overlap
+                    position = { x: targetPos.x, y: targetPos.y + layoutHeight + 50 };
                 }
             }
 
@@ -1695,26 +1694,19 @@ export default function ProjectEditor({ project, initialPrompt, globalActions = 
                             {/* Left Toolbar - Vertical Palette */}
                             <div className="absolute left-6 top-1/2 -translate-y-1/2 z-50 flex flex-col gap-2 pointer-events-none">
                                  <div className="pointer-events-auto flex flex-col items-center gap-3 rounded-full border border-slate-200 bg-white/80 py-6 px-3 shadow-lg backdrop-blur-xl transition-all">
-                                    {/* Canvas Mode Toggle */}
-                                    {([
-                                        { mode: 'select' as const, icon: CursorClick, label: 'Select (V)', key: 'V' },
-                                        { mode: 'hand' as const, icon: Hand, label: 'Hand (H)', key: 'H' },
-                                    ]).map(({ mode, icon: ModeIcon, label, key }) => (
-                                        <motion.button
-                                            key={mode}
-                                            onClick={() => setCanvasMode(mode)}
-                                            className={`flex h-10 w-10 items-center justify-center rounded-full transition-all ${
-                                                canvasMode === mode
-                                                ? "bg-slate-900 text-white shadow-md"
-                                                : "bg-transparent text-slate-500 hover:bg-slate-100 hover:text-slate-900"
-                                            }`}
-                                            whileHover={{ scale: 1.05 }}
-                                            whileTap={{ scale: 0.95 }}
-                                            title={label}
-                                        >
-                                            <ModeIcon className="h-5 w-5" weight={canvasMode === mode ? "fill" : "regular"} />
-                                        </motion.button>
-                                    ))}
+                                    {/* Canvas Mode Toggle: single button switches between select/hand */}
+                                    <motion.button
+                                        onClick={() => setCanvasMode(prev => prev === 'select' ? 'hand' : 'select')}
+                                        className="flex h-10 w-10 items-center justify-center rounded-full bg-transparent text-slate-500 hover:bg-slate-100 hover:text-slate-900 transition-all"
+                                        whileHover={{ scale: 1.05 }}
+                                        whileTap={{ scale: 0.95 }}
+                                        title={canvasMode === 'select' ? 'Select mode (V)' : 'Hand mode (H)'}
+                                    >
+                                        {canvasMode === 'select'
+                                            ? <CursorClick className="h-5 w-5" weight="regular" />
+                                            : <HandGrabbing className="h-5 w-5" weight="fill" />
+                                        }
+                                    </motion.button>
 
                                     {/* Divider */}
                                     <div className="w-8 h-px bg-slate-200" />

@@ -1,4 +1,4 @@
-.PHONY: install dev dev-web dev-api-cf dev-gateway dev-full dev-gateway-full build test lint clean format setup db-web-local check-tools help bundle remotion-bundle remotion-render
+.PHONY: install dev dev-web dev-api-cf dev-gateway dev-full build test lint clean format setup db-web-local check-tools help bundle remotion-bundle remotion-render
 
 # Use interactive shell to load .zshrc environment
 
@@ -12,9 +12,11 @@ HTTPS_PROXY ?=
 NO_PROXY ?=
 
 # Service ports (single source of truth)
+# Gateway is the sole user-facing entry point on :3000.
+# Next.js runs on an internal port; users never access it directly.
+GATEWAY_PORT ?= 3000
+WEB_PORT ?= 3001
 API_CF_PORT ?= 8789
-WEB_PORT ?= 3000
-GATEWAY_PORT ?= 8788
 RENDER_PORT ?= 8080
 
 # Color output
@@ -71,10 +73,9 @@ db-local: db-web-local ## Setup all local D1 databases
 # Development Servers
 #==============================================================================
 
-dev-web: ## Start frontend development server
-	@echo "$(BLUE)Starting frontend on http://localhost:$(WEB_PORT)...$(NC)"
+dev-web: ## Start frontend development server (internal, behind gateway)
+	@echo "$(BLUE)Starting frontend on http://localhost:$(WEB_PORT) (internal)...$(NC)"
 	@cd apps/web && \
-		API_CF_URL=http://127.0.0.1:$(API_CF_PORT) \
 		HTTP_PROXY=$(HTTP_PROXY) HTTPS_PROXY=$(HTTPS_PROXY) NO_PROXY=$(NO_PROXY) \
 		pnpm dev --port $(WEB_PORT)
 
@@ -86,37 +87,33 @@ dev-render: ## Start render server
 	@echo "$(BLUE)Starting render server on http://localhost:$(RENDER_PORT)...$(NC)"
 	@cd apps/render-server && HTTP_PROXY=$(HTTP_PROXY) HTTPS_PROXY=$(HTTPS_PROXY) NO_PROXY=$(NO_PROXY) PORT=$(RENDER_PORT) pnpm dev
 
-dev-gateway: ## Start auth gateway
-	@echo "$(BLUE)Starting auth gateway on http://localhost:$(GATEWAY_PORT)...$(NC)"
-	@cd apps/auth-gateway && HTTP_PROXY=$(HTTP_PROXY) HTTPS_PROXY=$(HTTPS_PROXY) NO_PROXY=$(NO_PROXY) pnpm dev --port $(GATEWAY_PORT)
+dev-gateway: ## Start gateway (user-facing entry point)
+	@echo "$(BLUE)Starting gateway on http://localhost:$(GATEWAY_PORT)...$(NC)"
+	@cd apps/gateway && \
+		FRONTEND_URL=http://127.0.0.1:$(WEB_PORT) \
+		API_CF_URL=http://127.0.0.1:$(API_CF_PORT) \
+		NO_PROXY="localhost,127.0.0.1,::1,.local" \
+		pnpm dev --port $(GATEWAY_PORT)
 
 #==============================================================================
 # Combined Development
 #==============================================================================
 
-dev: ## Start frontend + api-cf + render-server in parallel
+dev: ## Start gateway + frontend + api-cf in parallel
 	@echo "$(BLUE)Starting development environment...$(NC)"
-	@echo "$(GREEN)Frontend:$(NC)      http://localhost:$(WEB_PORT)"
-	@echo "$(GREEN)API CF:$(NC)        http://localhost:$(API_CF_PORT)"
-	@echo "$(GREEN)Render Server:$(NC) http://localhost:$(RENDER_PORT)"
-	@echo ""
-	@$(MAKE) -j3 dev-web dev-api-cf dev-render
-
-dev-full: dev ## Start all services
-
-dev-gateway-full: ## Start all services behind auth gateway
-	@echo "$(BLUE)Starting full environment with API Gateway...$(NC)"
 	@echo ""
 	@echo "   ┌─────────────────────────────────────────────┐"
-	@echo "   │  $(GREEN)Auth Gateway:$(NC) http://localhost:8788        │"
-	@echo "   │  ├─ /          → Frontend (:3000)          │"
+	@echo "   │  $(GREEN)Gateway:$(NC) http://localhost:$(GATEWAY_PORT)              │"
+	@echo "   │  ├─ /          → Next.js (:$(WEB_PORT))           │"
 	@echo "   │  ├─ /sync/*    → api-cf ProjectRoom        │"
-	@echo "   │  ├─ /agents/*  → api-cf ProjectRoom        │"
+	@echo "   │  ├─ /agents/*  → api-cf SupervisorAgent    │"
 	@echo "   │  ├─ /assets/*  → api-cf R2 Assets          │"
 	@echo "   │  └─ /api/*     → api-cf REST               │"
 	@echo "   └─────────────────────────────────────────────┘"
 	@echo ""
-	@HTTP_PROXY=$(HTTP_PROXY) HTTPS_PROXY=$(HTTPS_PROXY) NO_PROXY=$(NO_PROXY) $(MAKE) -j3 dev-web dev-api-cf dev-gateway
+	@$(MAKE) -j3 dev-gateway dev-web dev-api-cf
+
+dev-full: dev ## Alias for dev
 
 #==============================================================================
 # Build & Test

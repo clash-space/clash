@@ -221,12 +221,28 @@ const PromptActionNode = ({ data, selected, id }: NodeProps) => {
         }
     }, [showPanel]);
 
+    const syncTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
     const handleEditorInput = useCallback(() => {
         const el = editorRef.current;
         if (!el) return;
         const raw = htmlToContent(el);
         lastContentRef.current = raw;
         setContent(raw);
+
+        // Debounce sync to Loro (300ms)
+        if (syncTimerRef.current) clearTimeout(syncTimerRef.current);
+        syncTimerRef.current = setTimeout(() => {
+            setNodes((nds) =>
+                nds.map((node) =>
+                    node.id === id ? { ...node, data: { ...node.data, content: raw } } : node
+                )
+            );
+            if (loroSync?.connected) {
+                loroSync.updateNode(id, { data: { content: raw } });
+            }
+        }, 300);
+
         const sel = window.getSelection();
         if (!sel || sel.rangeCount === 0) return;
         const range = sel.getRangeAt(0);
@@ -243,7 +259,7 @@ const PromptActionNode = ({ data, selected, id }: NodeProps) => {
         } else {
             setShowMentionMenu(false);
         }
-    }, [htmlToContent]);
+    }, [htmlToContent, id, setNodes, loroSync]);
 
     const handleEditorKeyDown = useCallback((e: ReactKeyboardEvent<HTMLDivElement>) => {
         if (showMentionMenu && filteredMentionNodes.length > 0) {

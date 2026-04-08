@@ -22,23 +22,27 @@ function json(data: unknown, status = 200): Response {
   });
 }
 
-function proxyToApiCf(request: Request, env: Env): Promise<Response> | Response {
-  if (env.API_CF) {
-    return env.API_CF.fetch(request);
+async function proxyToApiCf(request: Request, env: Env): Promise<Response> {
+  try {
+    if (env.API_CF) {
+      return await env.API_CF.fetch(request);
+    }
+    if (env.API_CF_URL) {
+      const url = new URL(request.url);
+      const fallbackUrl = new URL(url.pathname + url.search, env.API_CF_URL);
+      const headers = new Headers(request.headers);
+      headers.delete("host");
+      return await fetch(new Request(fallbackUrl.toString(), {
+        method: request.method,
+        headers,
+        body: request.body,
+        redirect: "manual",
+      }));
+    }
+    return json({ error: "API_CF service not configured" }, 500);
+  } catch {
+    return json({ error: "API_CF unavailable (starting up?)" }, 502);
   }
-  if (env.API_CF_URL) {
-    const url = new URL(request.url);
-    const fallbackUrl = new URL(url.pathname + url.search, env.API_CF_URL);
-    const headers = new Headers(request.headers);
-    headers.delete("host");
-    return fetch(new Request(fallbackUrl.toString(), {
-      method: request.method,
-      headers,
-      body: request.body,
-      redirect: "manual",
-    }));
-  }
-  return json({ error: "API_CF service not configured" }, 500);
 }
 
 export default {
@@ -66,38 +70,11 @@ export default {
 
     // WebSocket Sync: /sync/:projectId -> api-cf ProjectRoom DO
     if (path.startsWith("/sync/")) {
-      const projectId = path.split("/")[2];
-      if (!projectId) return new Response("Missing project ID", { status: 400 });
-
-      const userId =
-        (await getUserIdFromApiToken(request, env)) ??
-        (await getUserIdFromBetterAuth(request, env));
-      if (!userId) return new Response("Unauthorized", { status: 401 });
-
-      try {
-        await assertProjectOwner(env, projectId, userId);
-      } catch {
-        return new Response("Forbidden", { status: 403 });
-      }
-
       return proxyToApiCf(request, env);
     }
 
     // SupervisorAgent WebSocket: /agents/:agentType/:projectId -> api-cf ProjectRoom DO
     if (path.startsWith("/agents/")) {
-      const segments = path.split("/");
-      const projectId = segments[3];
-      if (!projectId) return new Response("Missing project ID", { status: 400 });
-
-      const userId = await getUserIdFromBetterAuth(request, env);
-      if (!userId) return json({ error: "Unauthorized" }, 401);
-
-      try {
-        await assertProjectOwner(env, projectId, userId);
-      } catch {
-        return new Response("Forbidden", { status: 403 });
-      }
-
       return proxyToApiCf(request, env);
     }
 
@@ -130,28 +107,32 @@ export default {
 
     // === Frontend (fallback) ===
 
-    if (env.FRONTEND) {
-      return env.FRONTEND.fetch(request);
+    try {
+      if (env.FRONTEND) {
+        return await env.FRONTEND.fetch(request);
+      }
+
+      if (env.FRONTEND_URL) {
+        const upstreamUrl = new URL(env.FRONTEND_URL);
+        upstreamUrl.pathname = path;
+        upstreamUrl.search = url.search;
+
+        const headers = new Headers(request.headers);
+        headers.delete("host");
+
+        const upstreamRequest = new Request(upstreamUrl.toString(), {
+          method: request.method,
+          headers,
+          body: request.body,
+          redirect: "manual",
+        });
+
+        return await fetch(upstreamRequest);
+      }
+
+      return new Response("Frontend not configured", { status: 500 });
+    } catch {
+      return new Response("Frontend unavailable (starting up?)", { status: 502 });
     }
-
-    if (env.FRONTEND_URL) {
-      const upstreamUrl = new URL(env.FRONTEND_URL);
-      upstreamUrl.pathname = path;
-      upstreamUrl.search = url.search;
-
-      const headers = new Headers(request.headers);
-      headers.delete("host");
-
-      const upstreamRequest = new Request(upstreamUrl.toString(), {
-        method: request.method,
-        headers,
-        body: request.body,
-        redirect: "manual",
-      });
-
-      return fetch(upstreamRequest);
-    }
-
-    return new Response("Frontend not configured", { status: 500 });
   },
 };

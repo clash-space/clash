@@ -93,12 +93,30 @@ export function calculateInsertPosition(
   edges: LayoutEdge[],
 ): Point {
   if (referenceNode && referenceNode.position && referenceNode.position.x !== NEEDS_LAYOUT_POSITION.x) {
-    // Place to the right of reference
+    // Place to the right of reference, below existing children
     const refWidth = getNodeWidth(referenceNode);
-    return {
-      x: referenceNode.position.x + refWidth + GAP_X,
-      y: referenceNode.position.y,
-    };
+    const childX = referenceNode.position.x + refWidth + GAP_X;
+
+    // Find existing children of this reference (nodes that reference points to via edges)
+    const existingChildIds = new Set(
+      edges.filter(e => e.source === referenceNode.id).map(e => e.target),
+    );
+    const existingChildren = nodes.filter(
+      n => existingChildIds.has(n.id) && n.id !== node.id &&
+           n.position && n.position.x !== NEEDS_LAYOUT_POSITION.x,
+    );
+
+    if (existingChildren.length === 0) {
+      return { x: childX, y: referenceNode.position.y };
+    }
+
+    // Place below the lowest existing child
+    let maxBottom = 0;
+    for (const child of existingChildren) {
+      const bottom = child.position.y + getNodeHeight(child);
+      if (bottom > maxBottom) maxBottom = bottom;
+    }
+    return { x: childX, y: maxBottom + GAP_Y };
   }
 
   // No reference — find nearest cluster bottom
