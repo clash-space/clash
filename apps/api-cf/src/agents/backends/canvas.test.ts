@@ -19,7 +19,7 @@ describe("Canvas class", () => {
     it("returns all inserted nodes", () => {
       const canvas = makeCanvas();
       canvas.insertNode("n1", "text", { label: "A" }, null, { x: 0, y: 0 });
-      canvas.insertNode("n2", "prompt", { label: "B" }, null, { x: 10, y: 20 });
+      canvas.insertNode("n2", "text", { label: "B" }, null, { x: 10, y: 20 });
 
       const nodes = canvas.listNodes();
       expect(nodes).toHaveLength(2);
@@ -29,7 +29,7 @@ describe("Canvas class", () => {
     it("filters by nodeType", () => {
       const canvas = makeCanvas();
       canvas.insertNode("n1", "text", { label: "A" }, null, { x: 0, y: 0 });
-      canvas.insertNode("n2", "prompt", { label: "B" }, null, { x: 0, y: 0 });
+      canvas.insertNode("n2", "text", { label: "B" }, null, { x: 0, y: 0 });
 
       const textOnly = canvas.listNodes("text");
       expect(textOnly).toHaveLength(1);
@@ -227,11 +227,11 @@ describe("Canvas class", () => {
     it("filters by nodeTypes", () => {
       const canvas = makeCanvas();
       canvas.insertNode("n1", "text", { label: "match" }, null, { x: 0, y: 0 });
-      canvas.insertNode("n2", "prompt", { label: "match" }, null, { x: 0, y: 0 });
+      canvas.insertNode("n2", "text", { label: "match" }, null, { x: 0, y: 0 });
 
-      const results = canvas.searchNodes("match", ["prompt"]);
+      const results = canvas.searchNodes("match", ["text"]);
       expect(results).toHaveLength(1);
-      expect(results[0].type).toBe("prompt");
+      expect(results[0].type).toBe("text");
     });
 
     it("returns empty for no matches", () => {

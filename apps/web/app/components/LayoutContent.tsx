@@ -17,10 +17,12 @@ export default function LayoutContent({
   const isProjectDetailPage = pathname?.match(/^\/projects\/[^\/]+$/);
   const isLoginPage = pathname === '/login';
   const isLandingPage = pathname === '/landing';
+  const isSettingsPage = pathname === '/settings';
+  const isAuthPage = pathname?.startsWith('/auth/');
 
   // If unauthenticated, or on login page, or on fullscreen project page, or explicit landing page
   // Don't show dashboard navigation and background
-  if (!isAuthenticated || isLoginPage || isProjectDetailPage || isLandingPage) {
+  if (!isAuthenticated || isLoginPage || isProjectDetailPage || isLandingPage || isSettingsPage || isAuthPage) {
     return <>{children}</>;
   }
 

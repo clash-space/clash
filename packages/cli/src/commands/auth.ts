@@ -1,29 +1,101 @@
 import { Command } from "commander";
-import { createInterface } from "node:readline/promises";
-import { stdin, stdout } from "node:process";
+import { createServer } from "node:http";
 import { saveConfig, loadConfig, getApiKey, getServerUrl } from "../lib/config";
 
 export const authCommand = new Command("auth")
-  .description("Manage authentication");
+  .description(`Manage authentication
+
+Get a token: Clash web app → avatar → Settings → API Tokens → Create
+Or run: clash auth login (opens browser for OAuth)
+Config stored at: ~/.clash/config.json`);
 
 authCommand
   .command("login")
-  .description("Configure API key")
+  .description("Authenticate via browser (opens Clash web app)")
   .action(async () => {
-    const rl = createInterface({ input: stdin, output: stdout });
-    try {
-      const apiKey = await rl.question("Enter your Clash API key (clsh_...): ");
-      if (!apiKey.startsWith("clsh_")) {
-        console.error("Error: API key must start with 'clsh_'");
-        process.exit(1);
+    const serverUrl = getServerUrl();
+
+    // Start temporary localhost server to receive callback
+    const port = await new Promise<number>((resolve) => {
+      const srv = createServer();
+      srv.listen(0, () => {
+        const addr = srv.address();
+        const p = typeof addr === "object" && addr ? addr.port : 0;
+        srv.close(() => resolve(p));
+      });
+    });
+
+    const callbackUrl = `http://localhost:${port}/callback`;
+    const authUrl = `${serverUrl}/auth/cli?redirect_uri=${encodeURIComponent(callbackUrl)}`;
+
+    const server = createServer((req, res) => {
+      const url = new URL(req.url || "/", `http://localhost:${port}`);
+
+      if (url.pathname === "/callback") {
+        const token = url.searchParams.get("token");
+        const error = url.searchParams.get("error");
+
+        if (token && token.startsWith("clsh_")) {
+          const config = loadConfig();
+          config.apiKey = token;
+          saveConfig(config);
+
+          res.writeHead(200, { "Content-Type": "text/html" });
+          res.end(`
+            <html>
+              <body style="font-family: system-ui; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0;">
+                <div style="text-align: center;">
+                  <h1>Authenticated!</h1>
+                  <p>You can close this tab and return to the terminal.</p>
+                </div>
+              </body>
+            </html>
+          `);
+
+          console.log("\nAuthenticated successfully!");
+          console.log(`API key saved to ~/.clash/config.json`);
+          setTimeout(() => { server.close(); process.exit(0); }, 500);
+        } else {
+          res.writeHead(400, { "Content-Type": "text/html" });
+          res.end(`
+            <html>
+              <body style="font-family: system-ui; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0;">
+                <div style="text-align: center;">
+                  <h1>Authentication failed</h1>
+                  <p>${error || "No token received"}</p>
+                </div>
+              </body>
+            </html>
+          `);
+
+          console.error(`\nAuthentication failed: ${error || "No token received"}`);
+          setTimeout(() => { server.close(); process.exit(1); }, 500);
+        }
+      } else {
+        res.writeHead(404);
+        res.end();
       }
-      const config = loadConfig();
-      config.apiKey = apiKey.trim();
-      saveConfig(config);
-      console.log("API key saved to ~/.clash/config.json");
-    } finally {
-      rl.close();
-    }
+    });
+
+    server.listen(port, () => {
+      console.log(`Opening browser for authentication...`);
+      console.log(`If the browser doesn't open, visit:\n  ${authUrl}\n`);
+      console.log("Waiting for authentication...");
+
+      // Open browser
+      const { exec } = require("node:child_process");
+      const openCmd = process.platform === "darwin" ? "open"
+        : process.platform === "win32" ? "start"
+        : "xdg-open";
+      exec(`${openCmd} "${authUrl}"`);
+    });
+
+    // Timeout after 5 minutes
+    setTimeout(() => {
+      console.error("\nAuthentication timed out.");
+      server.close();
+      process.exit(1);
+    }, 5 * 60 * 1000);
   });
 
 authCommand
@@ -41,7 +113,6 @@ authCommand
     console.log(`API key: ${apiKey.slice(0, 13)}...`);
     console.log(`Server:  ${serverUrl}`);
 
-    // Validate the token by hitting the projects endpoint
     try {
       const res = await fetch(`${serverUrl}/api/v1/projects`, {
         headers: { Authorization: `Bearer ${apiKey}` },
@@ -55,7 +126,7 @@ authCommand
       } else {
         console.log(`Status:  Server error (${res.status})`);
       }
-    } catch (err) {
+    } catch {
       console.log(`Status:  Cannot reach server at ${serverUrl}`);
     }
   });

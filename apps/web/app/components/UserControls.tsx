@@ -2,14 +2,28 @@
 
 /* eslint-disable @next/next/no-img-element */
 
-import { motion } from 'framer-motion';
-import { GoogleLogo } from '@phosphor-icons/react';
+import { useState, useRef, useEffect } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { GoogleLogo, Gear, SignOut } from '@phosphor-icons/react';
+import Link from 'next/link';
 import betterAuthClient from '@/lib/betterAuthClient';
 
 export default function UserControls() {
   const sessionQuery = betterAuthClient.useSession();
   const session = sessionQuery.data;
   const user = session?.user;
+  const [open, setOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    };
+    if (open) document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [open]);
 
   const handleSignOut = async () => {
     try {
@@ -37,7 +51,6 @@ export default function UserControls() {
     }
   };
 
-  // Get user initials for avatar
   const getInitials = (name: string | null | undefined) => {
     if (!name) return '?';
     return name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
@@ -46,29 +59,59 @@ export default function UserControls() {
   return (
     <div className="flex items-center gap-3">
       {user ? (
-        <motion.div
-           className="flex items-center gap-3 rounded-full bg-white border border-slate-200 pl-1.5 pr-4 py-1.5 shadow-sm cursor-pointer hover:shadow-md transition-all"
-           whileHover={{ scale: 1.02 }}
-           whileTap={{ scale: 0.98 }}
-           onClick={handleSignOut}
-        >
-           {user.image ? (
-            <img
-              src={user.image}
-              alt="Avatar"
-              className="h-10 w-10 rounded-full object-cover"
-            />
-          ) : (
-            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-br from-brand to-red-500 text-sm font-bold text-white">
-              {getInitials(user.name)}
-            </div>
-          )}
-           <span className="text-base font-display font-medium text-gray-700 max-w-[120px] truncate">
+        <div className="relative" ref={menuRef}>
+          <motion.div
+            className="flex items-center gap-3 rounded-full bg-white border border-slate-200 pl-1.5 pr-4 py-1.5 shadow-sm cursor-pointer hover:shadow-md transition-all"
+            whileHover={{ scale: 1.02 }}
+            whileTap={{ scale: 0.98 }}
+            onClick={() => setOpen(prev => !prev)}
+          >
+            {user.image ? (
+              <img
+                src={user.image}
+                alt="Avatar"
+                className="h-10 w-10 rounded-full object-cover"
+              />
+            ) : (
+              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-br from-brand to-red-500 text-sm font-bold text-white">
+                {getInitials(user.name)}
+              </div>
+            )}
+            <span className="text-base font-display font-medium text-gray-700 max-w-[120px] truncate">
               {user.name}
-           </span>
-        </motion.div>
+            </span>
+          </motion.div>
+
+          <AnimatePresence>
+            {open && (
+              <motion.div
+                initial={{ opacity: 0, y: 4, scale: 0.95 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, y: 4, scale: 0.95 }}
+                transition={{ duration: 0.15 }}
+                className="absolute right-0 mt-2 w-48 rounded-xl bg-white border border-slate-200 shadow-lg py-1.5 z-50"
+              >
+                <Link
+                  href="/settings"
+                  onClick={() => setOpen(false)}
+                  className="flex items-center gap-2.5 px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
+                >
+                  <Gear className="h-4 w-4" />
+                  Settings
+                </Link>
+                <button
+                  onClick={handleSignOut}
+                  className="flex w-full items-center gap-2.5 px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
+                >
+                  <SignOut className="h-4 w-4" />
+                  Sign out
+                </button>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
       ) : (
-           <motion.button
+        <motion.button
           onClick={handleSignIn}
           className="flex items-center gap-2 rounded-full bg-gray-900 px-6 py-3 text-base font-display font-medium text-white transition-all hover:bg-gray-800 shadow-lg shadow-gray-900/20"
           whileHover={{ scale: 1.05 }}

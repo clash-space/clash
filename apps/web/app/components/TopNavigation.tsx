@@ -6,14 +6,14 @@ import { usePathname } from 'next/navigation';
 import {
   House,
   FolderOpen,
-  File,
+  Storefront,
 } from '@phosphor-icons/react';
 import UserControls from './UserControls';
 
 const navItems = [
   { name: 'Home', href: '/', icon: House },
   { name: 'Projects', href: '/projects', icon: FolderOpen },
-  { name: 'Prompt Library', href: '/prompts', icon: File },
+  { name: 'Store', href: '/marketplace', icon: Storefront },
 ];
 
 export default function TopNavigation() {
@@ -38,14 +38,11 @@ export default function TopNavigation() {
           </Link>
         </div>
 
-        {/* Floating Center Nav - The "Rounded Rectangle" */}
-        <nav className="pointer-events-auto absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 shadow-md border border-slate-200 bg-white/80 backdrop-blur-xl rounded-full px-3 py-2 flex items-center gap-2">
+        {/* Floating Center Nav */}
+        <nav className="pointer-events-auto absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 shadow-md border border-slate-200 bg-white/80 backdrop-blur-xl rounded-full px-3 py-2 flex items-center gap-1">
           {navItems.map((item) => {
             const isActive = pathname === item.href;
             const Icon = item.icon;
-            // Prompt Library is just a placeholder to match the screenshot provided by user description roughly
-            if (item.name === 'Prompt Library') return null;
-
             return (
               <Link key={item.name} href={item.href}>
                 <motion.div
@@ -66,8 +63,8 @@ export default function TopNavigation() {
                     />
                   )}
                   <span className="relative z-10 flex items-center gap-2.5">
-                      <Icon className={`h-5 w-5 ${isActive ? 'text-brand' : ''}`} weight={isActive ? "fill" : "regular"} />
-                      {item.name}
+                    <Icon className={`h-5 w-5 ${isActive ? 'text-brand' : ''}`} weight={isActive ? "fill" : "regular"} />
+                    {item.name}
                   </span>
                 </motion.div>
               </Link>

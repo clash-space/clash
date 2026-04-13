@@ -110,7 +110,7 @@ describe("Loro CRDT sync", () => {
 
       // A adds a node
       const vA = docA.version();
-      docA.getMap("nodes").set("n2", { type: "prompt", data: { label: "from-A" } });
+      docA.getMap("nodes").set("n2", { type: "text", data: { label: "from-A" } });
       const updateA = docA.export({ mode: "update", from: vA });
 
       // B modifies existing node

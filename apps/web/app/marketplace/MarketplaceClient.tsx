@@ -2,8 +2,7 @@
 
 import { useState, useCallback, useMemo } from 'react';
 import { motion } from 'framer-motion';
-import { MagnifyingGlass, ArrowLeft, PuzzlePiece, BookOpen, Check, Download } from '@phosphor-icons/react';
-import Link from 'next/link';
+import { MagnifyingGlass, PuzzlePiece, BookOpen, Check, Download } from '@phosphor-icons/react';
 import type { RegistryItem } from './actions';
 import {
     marketplaceInstallAction,
@@ -59,7 +58,6 @@ export default function MarketplaceClient({ items, installedActionIds, installed
             setLoadingId(item.id);
             try {
                 if (isInstalled(item)) {
-                    // Uninstall
                     if (item.type === 'action') {
                         await marketplaceUninstallAction(item.id);
                         setInstalledActions((prev) => { const s = new Set(prev); s.delete(item.id); return s; });
@@ -68,7 +66,6 @@ export default function MarketplaceClient({ items, installedActionIds, installed
                         setInstalledSkills((prev) => { const s = new Set(prev); s.delete(item.id); return s; });
                     }
                 } else {
-                    // Install
                     if (item.type === 'action') {
                         await marketplaceInstallAction(item);
                         setInstalledActions((prev) => new Set(prev).add(item.id));
@@ -93,46 +90,39 @@ export default function MarketplaceClient({ items, installedActionIds, installed
     ];
 
     return (
-        <div className="min-h-screen bg-gray-50 pt-28 pb-16 px-4">
-            <div className="mx-auto max-w-4xl">
+        <div className="min-h-screen pt-28 pb-16 px-4 md:px-8">
+            <div className="mx-auto max-w-5xl">
                 {/* Header */}
                 <div className="mb-8">
-                    <Link
-                        href="/settings"
-                        className="inline-flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-900 transition-colors mb-4"
-                    >
-                        <ArrowLeft className="h-4 w-4" />
-                        Settings
-                    </Link>
-                    <h1 className="font-display text-3xl font-bold text-gray-900">
+                    <h1 className="font-display text-3xl font-bold tracking-tight text-gray-900">
                         Marketplace
                     </h1>
                     <p className="text-gray-500 mt-1">
-                        Discover community actions and skills for your canvas and AI agents
+                        Actions and skills for your canvas and AI agents
                     </p>
                 </div>
 
                 {/* Search + Filter */}
-                <div className="flex items-center gap-3 mb-6">
+                <div className="flex items-center gap-3 mb-8">
                     <div className="flex-1 relative">
-                        <MagnifyingGlass className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+                        <MagnifyingGlass className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
                         <input
                             type="text"
                             value={query}
                             onChange={(e) => setQuery(e.target.value)}
                             placeholder="Search actions and skills..."
-                            className="w-full rounded-xl border border-slate-200 bg-white pl-10 pr-4 py-2.5 text-sm text-gray-900 placeholder:text-gray-400 focus:border-gray-400 focus:outline-none transition-colors"
+                            className="w-full rounded-full border border-slate-200 bg-white pl-11 pr-4 py-2.5 text-sm text-gray-900 placeholder:text-gray-400 focus:border-gray-400 focus:outline-none transition-colors shadow-sm"
                         />
                     </div>
-                    <div className="flex rounded-xl border border-slate-200 bg-white overflow-hidden">
+                    <div className="flex gap-1">
                         {filterButtons.map((btn) => (
                             <button
                                 key={btn.value}
                                 onClick={() => setFilter(btn.value)}
-                                className={`px-4 py-2.5 text-sm font-medium transition-colors ${
+                                className={`rounded-full px-4 py-2 text-sm font-medium transition-all ${
                                     filter === btn.value
-                                        ? 'bg-gray-900 text-white'
-                                        : 'text-gray-600 hover:bg-gray-50'
+                                        ? 'bg-gray-900 text-white shadow-sm'
+                                        : 'text-gray-500 hover:text-gray-900 hover:bg-gray-100'
                                 }`}
                             >
                                 {btn.label}
@@ -143,14 +133,14 @@ export default function MarketplaceClient({ items, installedActionIds, installed
 
                 {/* Results */}
                 {filtered.length === 0 ? (
-                    <div className="text-center py-20">
+                    <div className="text-center py-24">
                         <MagnifyingGlass className="h-10 w-10 text-gray-300 mx-auto mb-3" weight="duotone" />
-                        <p className="text-sm text-gray-500">
-                            {query ? `No results for "${query}"` : 'No items available yet. Check back soon!'}
+                        <p className="text-sm text-gray-400">
+                            {query ? `No results for "${query}"` : 'No items available yet'}
                         </p>
                     </div>
                 ) : (
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                         {filtered.map((item) => {
                             const installed = isInstalled(item);
                             const loading = loadingId === item.id;
@@ -159,78 +149,56 @@ export default function MarketplaceClient({ items, installedActionIds, installed
                             return (
                                 <motion.div
                                     key={`${item.type}-${item.id}`}
-                                    className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5 flex flex-col hover:shadow-md transition-shadow"
-                                    whileHover={{ y: -2 }}
+                                    className="bg-white rounded-2xl border border-slate-200 p-5 flex flex-col cursor-default hover:shadow-lg hover:border-slate-300 transition-all"
+                                    whileHover={{ y: -3 }}
+                                    transition={{ type: 'spring', stiffness: 400, damping: 25 }}
                                 >
-                                    {/* Card Header */}
-                                    <div className="flex items-start gap-3 mb-3">
-                                        <div className="flex items-center justify-center h-10 w-10 rounded-xl flex-shrink-0 bg-gray-100">
+                                    <div className="flex items-center gap-3 mb-3">
+                                        <div className={`flex items-center justify-center h-10 w-10 rounded-xl flex-shrink-0 ${
+                                            isAction ? 'bg-blue-50' : 'bg-purple-50'
+                                        }`}>
                                             {isAction ? (
-                                                <PuzzlePiece className="h-5 w-5 text-gray-600" weight="bold" />
+                                                <PuzzlePiece className="h-5 w-5 text-blue-500" weight="bold" />
                                             ) : (
-                                                <BookOpen className="h-5 w-5 text-gray-600" weight="bold" />
+                                                <BookOpen className="h-5 w-5 text-purple-500" weight="bold" />
                                             )}
                                         </div>
                                         <div className="flex-1 min-w-0">
                                             <h3 className="font-display text-sm font-bold text-gray-900 truncate">
-                                                {item.icon ? `${item.icon} ` : ''}{item.name}
+                                                {item.name}
                                             </h3>
-                                            <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
-                                                <span className={`text-[10px] font-medium rounded px-1.5 py-0.5 ${
-                                                    'text-gray-600 bg-gray-100'
-                                                }`}>
-                                                    {item.type}
-                                                </span>
-                                                {isAction && item.runtime === 'worker' && (
-                                                    <span className="text-[10px] text-gray-500 bg-gray-100 rounded px-1.5 py-0.5 font-medium">
-                                                        ☁️
-                                                    </span>
-                                                )}
-                                                {item.version && (
-                                                    <span className="text-[10px] text-gray-400 font-mono">
-                                                        v{item.version}
-                                                    </span>
-                                                )}
-                                                {item.author && (
-                                                    <span className="text-[10px] text-gray-400">
-                                                        @{item.author}
-                                                    </span>
-                                                )}
+                                            <div className="flex items-center gap-1.5 mt-0.5">
+                                                {item.author && <span className="text-xs text-gray-400">@{item.author}</span>}
+                                                {item.version && <span className="text-xs text-gray-400 font-mono">v{item.version}</span>}
                                             </div>
                                         </div>
                                     </div>
 
-                                    {/* Description */}
                                     {item.description && (
-                                        <p className="text-xs text-gray-500 line-clamp-2 mb-3 flex-1">
+                                        <p className="text-sm text-gray-500 line-clamp-2 mb-4 flex-1 leading-relaxed">
                                             {item.description}
                                         </p>
                                     )}
 
-                                    {/* Tags */}
                                     {item.tags && item.tags.length > 0 && (
-                                        <div className="flex flex-wrap gap-1 mb-3">
-                                            {item.tags.slice(0, 4).map((tag) => (
-                                                <span
-                                                    key={tag}
-                                                    className="text-[10px] text-gray-500 bg-gray-100 rounded-full px-2 py-0.5"
-                                                >
+                                        <div className="flex flex-wrap gap-1.5 mb-4">
+                                            {item.tags.slice(0, 3).map((tag) => (
+                                                <span key={tag} className="text-xs text-gray-500 bg-gray-100 rounded-full px-2.5 py-0.5">
                                                     {tag}
                                                 </span>
                                             ))}
                                         </div>
                                     )}
 
-                                    {/* Install Button */}
                                     <motion.button
                                         onClick={() => handleToggleInstall(item)}
                                         disabled={loading}
-                                        className={`mt-auto flex items-center justify-center gap-2 rounded-xl px-4 py-2 text-sm font-medium transition-all ${
+                                        className={`mt-auto flex items-center justify-center gap-2 rounded-full px-4 py-2 text-sm font-medium transition-all ${
                                             installed
                                                 ? 'bg-gray-100 text-gray-600 hover:bg-red-50 hover:text-red-600'
                                                 : 'bg-gray-900 text-white hover:bg-gray-800'
                                         } disabled:opacity-50`}
-                                        whileTap={{ scale: 0.98 }}
+                                        whileTap={{ scale: 0.97 }}
                                     >
                                         {loading ? (
                                             <span className="animate-pulse">...</span>

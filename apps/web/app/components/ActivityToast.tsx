@@ -2,7 +2,7 @@
 
 import { useState, useCallback, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Robot, ArrowRight, User } from '@phosphor-icons/react';
+import { Sparkle, ArrowRight, User } from '@phosphor-icons/react';
 import type { ActivityMessage } from '@clash/shared-types';
 
 interface ToastItem {
@@ -71,6 +71,7 @@ export default function ActivityToast({
     >
       <AnimatePresence mode="popLayout">
         {toasts.map((toast) => {
+          const isAgent = toast.activity.actor.clientType === 'agent';
           const isCli = toast.activity.actor.clientType === 'cli';
           return (
             <motion.div
@@ -82,10 +83,12 @@ export default function ActivityToast({
               className="pointer-events-auto flex items-center gap-2 rounded-full bg-white/90 backdrop-blur-xl pl-1.5 pr-3 py-1.5 shadow-sm border border-brand/15"
             >
               <div className={`flex h-6 w-6 items-center justify-center rounded-full ${
-                isCli ? 'bg-gray-900' : 'bg-brand/10'
+                isAgent ? 'bg-brand' : isCli ? 'bg-blue-50' : 'bg-brand/10'
               }`}>
-                {isCli ? (
-                  <Robot className="h-3 w-3 text-white" weight="fill" />
+                {isAgent ? (
+                  <Sparkle className="h-3 w-3 text-white" weight="fill" />
+                ) : isCli ? (
+                  <Sparkle className="h-3 w-3 text-blue-500" weight="fill" />
                 ) : (
                   <User className="h-3 w-3 text-brand" weight="fill" />
                 )}

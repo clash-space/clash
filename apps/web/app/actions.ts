@@ -52,7 +52,7 @@ async function requireUserId() {
 async function ensureDevUserExists(db: Awaited<ReturnType<typeof getDb>>) {
     if (process.env.NODE_ENV !== 'development') return
     await db.run(
-        sql`INSERT OR IGNORE INTO user (id, name, email, emailVerified) VALUES (${DEV_USER_ID}, ${'Dev User'}, ${'dev@local'}, ${1})`
+        sql`INSERT OR IGNORE INTO users (id, name, email, email_verified, created_at, updated_at) VALUES (${DEV_USER_ID}, ${'Dev User'}, ${'dev@local'}, ${0}, ${Date.now()}, ${Date.now()})`
     )
 }
 

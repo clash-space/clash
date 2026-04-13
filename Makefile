@@ -111,7 +111,8 @@ dev: ## Start gateway + frontend + api-cf in parallel
 	@echo "   │  └─ /api/*     → api-cf REST               │"
 	@echo "   └─────────────────────────────────────────────┘"
 	@echo ""
-	@$(MAKE) -j3 dev-gateway dev-web dev-api-cf
+	@$(MAKE) -j2 dev-web dev-api-cf & \
+	sleep 5 && $(MAKE) dev-gateway && wait
 
 dev-full: dev ## Alias for dev
 

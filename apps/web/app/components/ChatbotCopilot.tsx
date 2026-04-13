@@ -18,9 +18,6 @@ import { resolveAssetUrl } from '@/lib/utils/assets';
 import { thumbnailCache } from '@/lib/utils/thumbnailCache';
 import { useAgentCopilot, type CustomEvent } from '../hooks/useAgentCopilot';
 
-const generateId = () => {
-    return Date.now().toString() + Math.random().toString(36).substring(2, 9);
-};
 
 interface Message {
     id: string;
@@ -32,6 +29,7 @@ interface Message {
 
 interface ChatbotCopilotProps {
     projectId: string;
+    threadId: string;
     initialMessages: Message[];
     onCommand?: (command: Command) => void;
     width: number;
@@ -46,6 +44,13 @@ interface ChatbotCopilotProps {
     nodes?: RFNode[];
     edges?: RFEdge[];
     initialPrompt?: string;
+    /** Session history + actions passed from parent */
+    sessionHistory?: Array<{ threadId: string; title?: string }>;
+    onNewSession?: () => void;
+    onSwitchSession?: (threadId: string) => void;
+    onDeleteSession?: (threadId: string) => void;
+    /** Called when user sends first message with no active session */
+    onCreateSession?: (initialMessage: string) => void;
 }
 
 /** Markdown components for assistant text rendering */
@@ -77,6 +82,7 @@ const markdownComponents = {
 
 export default function ChatbotCopilot({
     projectId,
+    threadId,
     initialMessages,
     onCommand: _onCommand,
     width,
@@ -90,10 +96,14 @@ export default function ChatbotCopilot({
     findNodeIdByName: _findNodeIdByName,
     nodes = [],
     edges: _edges = [],
-    initialPrompt
+    initialPrompt,
+    sessionHistory = [],
+    onNewSession,
+    onSwitchSession,
+    onDeleteSession,
+    onCreateSession,
 }: ChatbotCopilotProps) {
-    // ─── Session Management ──────────────────────────────────
-    const [threadId, setThreadId] = useState<string>('');
+    // ─── UI State ──────────────────────────────────────────────
     const [input, setInput] = useState('');
     const [isResizing, setIsResizing] = useState(false);
     const [showHistory, setShowHistory] = useState(false);
@@ -104,50 +114,6 @@ export default function ChatbotCopilot({
     const [shouldStickToBottom, setShouldStickToBottom] = useState(true);
     const historyDropdownRef = useRef<HTMLDivElement | null>(null);
     const historyButtonRef = useRef<HTMLButtonElement | null>(null);
-
-    interface SessionInfo {
-        threadId: string;
-        title?: string;
-        updatedAt?: string;
-    }
-    const [sessionHistory, setSessionHistory] = useState<SessionInfo[]>([]);
-
-    // Initialize threadId from localStorage
-    useEffect(() => {
-        if (typeof window === 'undefined' || threadId) return;
-        const saved = localStorage.getItem(`clash_thread_id_${projectId}`);
-        setThreadId(saved || generateId());
-    }, [projectId, threadId]);
-
-    // Persist threadId
-    useEffect(() => {
-        if (typeof window !== 'undefined' && threadId) {
-            localStorage.setItem(`clash_thread_id_${projectId}`, threadId);
-        }
-    }, [threadId, projectId]);
-
-    // Load session history from localStorage
-    useEffect(() => {
-        if (typeof window === 'undefined') return;
-        const saved = localStorage.getItem(`clash_session_history_${projectId}`);
-        if (!saved) { setSessionHistory([]); return; }
-        try {
-            const parsed = JSON.parse(saved);
-            const normalized = parsed.map((item: any) =>
-                typeof item === 'string' ? { threadId: item } : item
-            );
-            setSessionHistory(normalized);
-        } catch {
-            setSessionHistory([]);
-        }
-    }, [projectId]);
-
-    // Persist session history
-    useEffect(() => {
-        if (typeof window !== 'undefined') {
-            localStorage.setItem(`clash_session_history_${projectId}`, JSON.stringify(sessionHistory));
-        }
-    }, [sessionHistory, projectId]);
 
     // ─── Agent Chat Hook ─────────────────────────────────────
     const {
@@ -166,31 +132,17 @@ export default function ChatbotCopilot({
 
     const isProcessing = status === 'submitted' || status === 'streaming';
 
-    // Add current threadId to session history when messages appear
-    useEffect(() => {
-        if (messages.length > 0 && threadId) {
-            setSessionHistory(prev => {
-                const exists = prev.some(s => s.threadId === threadId);
-                if (exists) return prev;
-                return [{ threadId, title: `Session ${threadId.slice(-6)}` }, ...prev];
-            });
-        }
-    }, [messages.length, threadId]);
-
-    // ─── Session Actions ─────────────────────────────────────
+    // ─── Session Actions (delegated to parent) ───────────────
     const handleNewSession = useCallback(() => {
-        const newThreadId = generateId();
-        setThreadId(newThreadId);
         setTodoItems([]);
         clearCustomEvents();
-    }, [clearCustomEvents]);
+        onNewSession?.();
+    }, [clearCustomEvents, onNewSession]);
 
-    const deleteSession = useCallback(async (id: string, e: React.MouseEvent) => {
+    const deleteSession = useCallback((id: string, e: React.MouseEvent) => {
         e.stopPropagation();
-        if (!window.confirm('Are you sure you want to delete this session?')) return;
-        setSessionHistory(prev => prev.filter(s => s.threadId !== id));
-        if (id === threadId) handleNewSession();
-    }, [threadId, handleNewSession]);
+        onDeleteSession?.(id);
+    }, [onDeleteSession]);
 
     const handleStop = async () => {
         await stop();
@@ -245,7 +197,12 @@ export default function ChatbotCopilot({
         const value = input;
         setInput('');
         setShouldStickToBottom(true);
-        await sendMessage({ text: value });
+        if (!threadId) {
+            // No session yet — ask parent to create one (will remount with new threadId + initialPrompt)
+            onCreateSession?.(value);
+        } else {
+            await sendMessage({ text: value });
+        }
     };
 
     // Auto-send initial prompt
@@ -378,7 +335,7 @@ export default function ChatbotCopilot({
                                                     key={item.threadId}
                                                     className="px-4 py-3 hover:bg-slate-50 cursor-pointer border-b border-slate-50 last:border-0 flex items-center justify-between group"
                                                     onClick={() => {
-                                                        setThreadId(item.threadId);
+                                                        onSwitchSession?.(item.threadId);
                                                         setShowHistory(false);
                                                     }}
                                                 >

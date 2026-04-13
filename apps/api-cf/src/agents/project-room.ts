@@ -104,8 +104,8 @@ export class ProjectRoom extends DurableObject<Env> {
         return new Response("Unauthorized", { status: 401 });
       }
     } else {
-      clientType = "cli";
-      userName = "Internal Agent";
+      clientType = "agent";
+      userName = request.headers.get("x-agent-name") || "Agent";
     }
 
     // Initialize on first connection
@@ -216,16 +216,17 @@ export class ProjectRoom extends DurableObject<Env> {
     // Sync clients map with actual live WebSockets to avoid stale entries
     this.rebuildClientsFromWebSockets();
 
-    const msg: PresenceMessage = {
-      type: "presence",
-      clients: Array.from(this.clients.values()).map((c) => ({
-        id: c.id,
-        clientType: c.clientType,
-        userId: c.userId,
-        name: c.name,
-        avatar: c.avatar,
-      })),
-    };
+    const clients = Array.from(this.clients.values()).map((c) => ({
+      id: c.id,
+      clientType: c.clientType,
+      userId: c.userId,
+      name: c.name,
+      avatar: c.avatar,
+    }));
+
+    log.debug(`Presence: ${clients.length} clients`);
+
+    const msg: PresenceMessage = { type: "presence", clients };
     this.broadcastText(JSON.stringify(msg));
   }
 

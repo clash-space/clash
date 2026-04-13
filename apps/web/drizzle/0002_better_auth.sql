@@ -11,10 +11,8 @@ CREATE TABLE `accounts` (
 	`scope` text,
 	`password` text,
 	`created_at` integer DEFAULT (cast(unixepoch('subsecond') * 1000 as integer)) NOT NULL,
-	`updated_at` integer NOT NULL,
-	FOREIGN KEY (`user_id`) REFERENCES `users`(`id`) ON UPDATE no action ON DELETE cascade
-);
---> statement-breakpoint
+	`updated_at` integer NOT NULL
+);--> statement-breakpoint
 CREATE INDEX `accounts_userId_idx` ON `accounts` (`user_id`);--> statement-breakpoint
 CREATE TABLE `sessions` (
 	`id` text PRIMARY KEY NOT NULL,
@@ -32,10 +30,8 @@ CREATE TABLE `sessions` (
 	`region_code` text,
 	`colo` text,
 	`latitude` text,
-	`longitude` text,
-	FOREIGN KEY (`user_id`) REFERENCES `users`(`id`) ON UPDATE no action ON DELETE cascade
-);
---> statement-breakpoint
+	`longitude` text
+);--> statement-breakpoint
 CREATE UNIQUE INDEX `sessions_token_unique` ON `sessions` (`token`);--> statement-breakpoint
 CREATE INDEX `sessions_userId_idx` ON `sessions` (`user_id`);--> statement-breakpoint
 CREATE TABLE `users` (
@@ -46,8 +42,7 @@ CREATE TABLE `users` (
 	`image` text,
 	`created_at` integer DEFAULT (cast(unixepoch('subsecond') * 1000 as integer)) NOT NULL,
 	`updated_at` integer DEFAULT (cast(unixepoch('subsecond') * 1000 as integer)) NOT NULL
-);
---> statement-breakpoint
+);--> statement-breakpoint
 CREATE UNIQUE INDEX `users_email_unique` ON `users` (`email`);--> statement-breakpoint
 CREATE TABLE `verifications` (
 	`id` text PRIMARY KEY NOT NULL,
@@ -56,8 +51,7 @@ CREATE TABLE `verifications` (
 	`expires_at` integer NOT NULL,
 	`created_at` integer DEFAULT (cast(unixepoch('subsecond') * 1000 as integer)) NOT NULL,
 	`updated_at` integer DEFAULT (cast(unixepoch('subsecond') * 1000 as integer)) NOT NULL
-);
---> statement-breakpoint
+);--> statement-breakpoint
 CREATE INDEX `verifications_identifier_idx` ON `verifications` (`identifier`);--> statement-breakpoint
 ALTER TABLE `asset` ADD `status` text DEFAULT 'completed';--> statement-breakpoint
 ALTER TABLE `asset` ADD `task_id` text;--> statement-breakpoint

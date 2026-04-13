@@ -1,7 +1,7 @@
 'use client';
 
 import { motion, AnimatePresence } from 'framer-motion';
-import { Robot } from '@phosphor-icons/react';
+import { Sparkle, Terminal } from '@phosphor-icons/react';
 import type { PresenceClient } from '@clash/shared-types';
 
 interface PresenceBarProps {
@@ -38,13 +38,17 @@ export default function PresenceBar({ clients }: PresenceBarProps) {
           >
             <div
               className={`flex h-8 w-8 items-center justify-center rounded-full border-2 border-white shadow-sm ${
-                client.clientType === 'cli'
-                  ? 'bg-gray-900 ring-2 ring-emerald-400'
-                  : 'bg-gradient-to-br from-brand to-red-500'
+                client.clientType === 'agent'
+                  ? 'bg-brand'
+                  : client.clientType === 'cli'
+                    ? 'bg-white ring-1 ring-slate-200'
+                    : 'bg-gradient-to-br from-brand to-red-500'
               }`}
             >
-              {client.clientType === 'cli' ? (
-                <Robot className="h-4 w-4 text-emerald-400" weight="bold" />
+              {client.clientType === 'agent' ? (
+                <Sparkle className="h-4 w-4 text-white" weight="fill" />
+              ) : client.clientType === 'cli' ? (
+                <Terminal className="h-4 w-4 text-blue-500" weight="bold" />
               ) : client.avatar ? (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img
@@ -62,9 +66,6 @@ export default function PresenceBar({ clients }: PresenceBarProps) {
             {/* Tooltip */}
             <div className="absolute top-full left-1/2 -translate-x-1/2 mt-2 px-2 py-1 rounded-md bg-gray-900 text-white text-xs font-medium whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50">
               {client.name}
-              {client.clientType === 'cli' && (
-                <span className="text-emerald-400 ml-1">CLI</span>
-              )}
             </div>
           </motion.div>
         ))}

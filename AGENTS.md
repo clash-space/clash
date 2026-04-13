@@ -2,6 +2,11 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Critical Rules
+
+- **No foreign keys.** Never add `REFERENCES`, `FOREIGN KEY`, or `.references()` in schema definitions or migrations. D1 enables foreign key enforcement and it causes issues with user IDs across auth boundaries.
+- **All `/api/v1/*` routes live in api-cf (Hono), not in Next.js.** Gateway routes `/api/v1/*` to api-cf. Never create Next.js API routes under `/api/v1/` — they will 404. Add new endpoints in `apps/api-cf/src/routes/v1/` and register them in `apps/api-cf/src/routes/v1/index.ts`. Next.js API routes (`apps/web/app/api/`) are only for paths that gateway does not intercept (e.g., `/api/better-auth/*`).
+
 ## Build & Development Commands
 
 ```bash

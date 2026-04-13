@@ -38,6 +38,7 @@ import type { InferSelectModel } from 'drizzle-orm';
 import type { projects } from '../../lib/db/app.schema';
 type Project = InferSelectModel<typeof projects>;
 import ChatbotCopilot from './ChatbotCopilot';
+import { useSessionHistory } from '../hooks/useSessionHistory';
 import { updateProjectName } from '../actions';
 import VideoNode from './nodes/VideoNode';
 import ImageNode from './nodes/ImageNode';
@@ -129,8 +130,7 @@ const nodeTypes = {
     context: TextNode, // Remap context to TextNode
     audio: AudioNode,
     'action-badge': PromptActionNode, // Merged: Prompt + Action
-    prompt: PromptActionNode, // Backward compatibility: old prompt nodes render as PromptActionNode
-    group: GroupNode,
+group: GroupNode,
     'video-editor': VideoEditorNode,
 };
 
@@ -398,6 +398,57 @@ export default function ProjectEditor({ project, initialPrompt, globalActions = 
     // Sidebar state
     const [sidebarWidth, setSidebarWidth] = useState(384);
     const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+
+    // Chat session state
+    const [threadId, setThreadId] = useState<string>('');
+    const [sessionKey, setSessionKey] = useState(0);
+    const [chatInitialPrompt, setChatInitialPrompt] = useState<string | undefined>(initialPrompt);
+    const { sessions: sessionHistory, upsertSession, deleteSession: removeSession } = useSessionHistory(project.id);
+
+    const handleCreateSession = useCallback(async (initialMessage?: string) => {
+        try {
+            const title = initialMessage
+                ? initialMessage.slice(0, 40).trim() + (initialMessage.length > 40 ? '...' : '')
+                : `Session`;
+            const res = await fetch('/api/v1/sessions', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ projectId: project.id, title }),
+            });
+            if (!res.ok) throw new Error('Failed to create session');
+            const data = await res.json();
+            upsertSession(data.threadId, title);
+            setThreadId(data.threadId);
+            return data.threadId as string;
+        } catch (err) {
+            console.error('Failed to create session:', err);
+            return null;
+        }
+    }, [project.id, upsertSession]);
+
+    const handleNewSession = useCallback(() => {
+        setChatInitialPrompt(undefined);
+        setThreadId('');
+        setSessionKey(k => k + 1);
+    }, []);
+
+    const handleSwitchSession = useCallback((id: string) => {
+        setChatInitialPrompt(undefined);
+        setThreadId(id);
+    }, []);
+
+    const handleDeleteSession = useCallback((id: string) => {
+        removeSession(id);
+        if (id === threadId) setThreadId('');
+    }, [removeSession, threadId]);
+
+    // Auto-create session for initialPrompt from HomePage
+    useEffect(() => {
+        if (initialPrompt && !threadId) {
+            handleCreateSession(initialPrompt);
+        }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []); // Run once on mount
 
 	    // Selection state
 	    const [selectedNodes, setSelectedNodes] = useState<Node[]>([]);
@@ -1846,8 +1897,14 @@ export default function ProjectEditor({ project, initialPrompt, globalActions = 
                             <div id="copilot-container" className="fixed right-0 top-0 bottom-0 z-40 pointer-events-none">
                                 <div className="pointer-events-auto h-full">
                                     <ChatbotCopilot
+                                        key={threadId || `__new_${sessionKey}`}
+                                        onCreateSession={async (msg) => {
+                                            const newId = await handleCreateSession(msg);
+                                            if (newId) setChatInitialPrompt(msg);
+                                        }}
                                         projectId={project.id}
-                                        initialMessages={[]} // No persisted messages anymore
+                                        threadId={threadId}
+                                        initialMessages={[]}
                                         onCommand={handleCommand}
                                         width={sidebarWidth}
                                         onWidthChange={setSidebarWidth}
@@ -1860,7 +1917,11 @@ export default function ProjectEditor({ project, initialPrompt, globalActions = 
                                         findNodeIdByName={findNodeIdByName}
                                         nodes={nodes}
                                         edges={edges}
-                                        initialPrompt={initialPrompt}
+                                        initialPrompt={chatInitialPrompt}
+                                        sessionHistory={sessionHistory}
+                                        onNewSession={handleNewSession}
+                                        onSwitchSession={handleSwitchSession}
+                                        onDeleteSession={handleDeleteSession}
                                     />
                                 </div>
                             </div>

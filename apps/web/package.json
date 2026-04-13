@@ -7,7 +7,7 @@
     "build": "next build",
     "build:next": "next build",
     "type-check": "tsc --noEmit",
-    "db:migrate:local": "wrangler d1 migrations apply master-clash-frontend --local",
+    "db:migrate:local": "wrangler d1 migrations apply master-clash-frontend --local --persist-to ../../.wrangler/state",
     "cf:build": "opennextjs-cloudflare build",
     "cf:preview": "opennextjs-cloudflare build && opennextjs-cloudflare preview --remote",
     "cf:deploy": "opennextjs-cloudflare build && opennextjs-cloudflare deploy",

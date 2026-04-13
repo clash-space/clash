@@ -86,6 +86,11 @@ pre {
   font-family: var(--font-jetbrains-mono), 'Courier New', monospace;
 }
 
+/* Always show scrollbar gutter to prevent layout shift */
+html {
+  overflow-y: scroll;
+}
+
 /* Smooth scrollbars */
 ::-webkit-scrollbar {
   width: 8px;

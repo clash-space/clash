@@ -120,23 +120,23 @@ async function sha256(input: string): Promise<string> {
 /**
  * Authenticate a request using API token (clsh_*), returning userId if valid.
  */
-async function getUserIdFromApiToken(token: string, env: Env): Promise<string | null> {
+async function getUserIdFromApiToken(token: string, env: Env): Promise<{ userId: string; tokenName: string } | null> {
   if (!token.startsWith('clsh_')) return null;
   if (!env.DB) return null;
 
   const hash = await sha256(token);
   const { results } = await env.DB
-    .prepare('SELECT user_id FROM api_token WHERE token_hash = ? LIMIT 1')
+    .prepare('SELECT user_id, name FROM api_token WHERE token_hash = ? LIMIT 1')
     .bind(hash)
     .all();
 
   if (!results?.[0]) return null;
-  const userId = (results[0] as any).user_id as string;
+  const row = results[0] as any;
 
   // Fire-and-forget: update last_used_at
   env.DB.prepare('UPDATE api_token SET last_used_at = unixepoch() WHERE token_hash = ?').bind(hash).run();
 
-  return userId;
+  return { userId: row.user_id as string, tokenName: (row.name as string) || 'CLI' };
 }
 
 export async function authenticateRequest(request: Request, env: Env, projectId: string): Promise<AuthResult> {
@@ -161,10 +161,10 @@ export async function authenticateRequest(request: Request, env: Env, projectId:
   // 2. Try API token (clsh_*)
   const rawToken = extractTokenFromRequest(request);
   if (rawToken?.startsWith('clsh_')) {
-    const userId = await getUserIdFromApiToken(rawToken, env);
-    if (userId) {
-      await verifyOwnership(userId);
-      return { userId, projectId, userName: 'CLI Agent' };
+    const result = await getUserIdFromApiToken(rawToken, env);
+    if (result) {
+      await verifyOwnership(result.userId);
+      return { userId: result.userId, projectId, userName: result.tokenName };
     }
   }
 

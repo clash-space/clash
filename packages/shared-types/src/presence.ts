@@ -7,7 +7,7 @@
 
 // ─── Connection Identity ──────────────────────────────────────
 
-export type ClientType = "browser" | "cli";
+export type ClientType = "browser" | "cli" | "agent";
 
 export interface ClientInfo {
   id: string;

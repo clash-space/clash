@@ -298,7 +298,7 @@ function smartLayout(
       const tree = forest[i];
       const treeNode = nodesById.get(tree.id);
       const isIsolatedText = tree.children.length === 0 && treeNode &&
-        (treeNode.type === 'text' || treeNode.type === 'prompt' || treeNode.type === 'context');
+        (treeNode.type === 'text' || treeNode.type === 'context');
 
       if (isIsolatedText) {
         // Collect consecutive isolated text nodes

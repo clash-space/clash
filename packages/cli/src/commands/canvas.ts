@@ -5,9 +5,10 @@ import {
 } from "@clash/shared-types";
 import { requireApiKey, getServerUrl } from "../lib/config";
 import { isJsonMode, printJson } from "../lib/output";
+import { isDaemonRunning, sendCommand, startDaemon, getSocketPath } from "../lib/daemon";
 
 /**
- * Create a connected LoroSyncClient for the given project.
+ * Create a one-shot connected LoroSyncClient (fallback when no daemon).
  */
 async function connectToProject(projectId: string): Promise<LoroSyncClient> {
   const apiKey = requireApiKey();
@@ -26,8 +27,56 @@ async function connectToProject(projectId: string): Promise<LoroSyncClient> {
   return client;
 }
 
+/**
+ * Run a command via daemon if running, otherwise fall back to one-shot connection.
+ */
+async function runCommand(projectId: string, cmd: object): Promise<any> {
+  if (isDaemonRunning(projectId)) {
+    return sendCommand(projectId, cmd);
+  }
+  return null; // caller should fall back
+}
+
 export const canvasCommand = new Command("canvas")
-  .description("Canvas node operations (via Loro CRDT sync)");
+  .description(`Canvas node operations (via Loro CRDT sync)
+
+Node types: text, group, image, video, image_gen, video_gen
+
+Daemon mode (recommended for multi-command sessions):
+  clash canvas connect --project <id>     # start persistent connection
+  clash canvas list --project <id> --json # uses daemon automatically
+  clash canvas disconnect --project <id>  # stop (auto-exits after 10min idle)`);
+
+// ─── connect ─────────────────────────────────────────────
+
+canvasCommand
+  .command("connect")
+  .description("Start persistent connection to a project (daemon mode)")
+  .requiredOption("--project <id>", "Project ID")
+  .action(async (options) => {
+    if (isDaemonRunning(options.project)) {
+      console.log(JSON.stringify({ status: "already_running", socket: getSocketPath(options.project) }));
+      return;
+    }
+    const apiKey = requireApiKey();
+    const serverUrl = getServerUrl();
+    await startDaemon(options.project, serverUrl, apiKey);
+  });
+
+// ─── disconnect ──────────────────────────────────────────
+
+canvasCommand
+  .command("disconnect")
+  .description("Stop persistent connection")
+  .requiredOption("--project <id>", "Project ID")
+  .action(async (options) => {
+    if (!isDaemonRunning(options.project)) {
+      console.log("No daemon running.");
+      return;
+    }
+    const result = await sendCommand(options.project, { action: "disconnect" });
+    console.log(JSON.stringify(result));
+  });
 
 // ─── list ─────────────────────────────────────────────────
 
@@ -38,6 +87,19 @@ canvasCommand
   .option("--type <type>", "Filter by node type")
   .option("--json", "Output as JSON")
   .action(async (options) => {
+    const daemonResult = await runCommand(options.project, { action: "list", type: options.type });
+    if (daemonResult) {
+      if (daemonResult.error) { console.error(daemonResult.error); process.exit(1); }
+      if (isJsonMode(options)) { printJson(daemonResult.nodes); }
+      else {
+        for (const node of daemonResult.nodes) {
+          console.log(`${node.id}  ${node.type.padEnd(14)}  ${(node.data?.label as string) || ""}`);
+        }
+        console.log(`\n${daemonResult.nodes.length} node(s)`);
+      }
+      return;
+    }
+
     const client = await connectToProject(options.project);
     try {
       const nodes = client.listNodes(options.type);
@@ -66,6 +128,21 @@ canvasCommand
   .requiredOption("--node <id>", "Node ID")
   .option("--json", "Output as JSON")
   .action(async (options) => {
+    const daemonResult = await runCommand(options.project, { action: "get", nodeId: options.node });
+    if (daemonResult) {
+      if (daemonResult.error) { console.error(daemonResult.error); process.exit(1); }
+      if (isJsonMode(options)) { printJson(daemonResult.node); }
+      else {
+        const n = daemonResult.node;
+        console.log(`ID:       ${n.id}`);
+        console.log(`Type:     ${n.type}`);
+        console.log(`Label:    ${(n.data?.label as string) || "(none)"}`);
+        console.log(`Status:   ${(n.data?.status as string) || "(none)"}`);
+        console.log(`Position: (${n.position.x}, ${n.position.y})`);
+      }
+      return;
+    }
+
     const client = await connectToProject(options.project);
     try {
       const node = client.readNode(options.node);
@@ -92,15 +169,29 @@ canvasCommand
   .requiredOption("--project <id>", "Project ID")
   .requiredOption("--type <type>", "Node type: text, group, image_gen, video_gen")
   .requiredOption("--label <label>", "Node label")
-  .option("--content <content>", "Text/prompt content")
+  .option("--content <content>", "Text content")
   .option("--parent <id>", "Parent group ID")
   .option("--json", "Output as JSON")
   .action(async (options) => {
+    const daemonResult = await runCommand(options.project, {
+      action: "add", type: options.type, label: options.label,
+      content: options.content, parentId: options.parent,
+    });
+    if (daemonResult) {
+      if (daemonResult.error) { console.error(daemonResult.error); process.exit(1); }
+      if (isJsonMode(options)) { printJson(daemonResult); }
+      else {
+        console.log(`Created node: ${daemonResult.node_id} (${options.type})`);
+        if (daemonResult.asset_id) console.log(`Asset ID:    ${daemonResult.asset_id}`);
+      }
+      return;
+    }
+
     const client = await connectToProject(options.project);
     try {
       const nodeId = crypto.randomUUID().slice(0, 8);
       const data: Record<string, unknown> = { label: options.label };
-      if (options.content) { data.content = options.content; data.prompt = options.content; }
+      if (options.content) { data.content = options.content; }
 
       const result = client.createNode(nodeId, options.type, data, null, options.parent ?? null);
       if (isJsonMode(options)) {
@@ -115,42 +206,37 @@ canvasCommand
   });
 
 // ─── execute ──────────────────────────────────────────────
-// Mirrors ActionBadge's handleExecute: validates the action-badge node,
-// resolves prompt, creates a pending image/video asset node + edge,
-// then NodeProcessor detects and submits the generation task.
 
 canvasCommand
   .command("execute")
-  .description("Execute an action-badge node to trigger generation (same as clicking Execute in UI)")
+  .description("Execute an action-badge node to trigger generation")
   .requiredOption("--project <id>", "Project ID")
   .requiredOption("--node <id>", "ActionBadge node ID to execute")
   .option("--json", "Output as JSON")
   .action(async (options) => {
+    const daemonResult = await runCommand(options.project, { action: "execute", nodeId: options.node });
+    if (daemonResult) {
+      if (daemonResult.error) { console.error(daemonResult.error); process.exit(1); }
+      if (isJsonMode(options)) { printJson(daemonResult); }
+      else {
+        console.log(`Executed action-badge: ${options.node}`);
+        console.log(`Created pending asset: ${daemonResult.assetNodeId} (${daemonResult.assetNodeType})`);
+      }
+      return;
+    }
+
     const client = await connectToProject(options.project);
     try {
-      const canvas = new Canvas(client.doc, () => {});  // broadcast via subscribeLocalUpdates
-      const result = canvas.executeGeneration(
-        options.node,
-        () => crypto.randomUUID().slice(0, 8),
-      );
+      const canvas = new Canvas(client.doc, () => {});
+      const result = canvas.executeGeneration(options.node, () => crypto.randomUUID().slice(0, 8));
 
-      if (result.error) {
-        console.error(`Error: ${result.error}`);
-        process.exit(1);
-      }
+      if (result.error) { console.error(`Error: ${result.error}`); process.exit(1); }
 
       if (isJsonMode(options)) {
-        printJson({
-          executed: true,
-          badge_node_id: options.node,
-          asset_node_id: result.assetNodeId,
-          type: result.assetNodeType,
-          status: "pending",
-        });
+        printJson({ executed: true, assetNodeId: result.assetNodeId, assetNodeType: result.assetNodeType });
       } else {
         console.log(`Executed action-badge: ${options.node}`);
         console.log(`Created pending asset: ${result.assetNodeId} (${result.assetNodeType})`);
-        console.log(`NodeProcessor will auto-submit generation task.`);
       }
     } finally {
       await client.disconnect();
@@ -168,6 +254,16 @@ canvasCommand
   .option("--content <content>", "New content")
   .option("--json", "Output as JSON")
   .action(async (options) => {
+    const daemonResult = await runCommand(options.project, {
+      action: "update", nodeId: options.node, label: options.label, content: options.content,
+    });
+    if (daemonResult) {
+      if (daemonResult.error) { console.error(daemonResult.error); process.exit(1); }
+      if (isJsonMode(options)) { printJson(daemonResult); }
+      else console.log(`Updated node: ${options.node}`);
+      return;
+    }
+
     const client = await connectToProject(options.project);
     try {
       const updates: Record<string, unknown> = {};
@@ -195,6 +291,14 @@ canvasCommand
   .requiredOption("--node <id>", "Node ID")
   .option("--json", "Output as JSON")
   .action(async (options) => {
+    const daemonResult = await runCommand(options.project, { action: "delete", nodeId: options.node });
+    if (daemonResult) {
+      if (daemonResult.error) { console.error(daemonResult.error); process.exit(1); }
+      if (isJsonMode(options)) { printJson(daemonResult); }
+      else console.log(`Deleted node: ${options.node}`);
+      return;
+    }
+
     const client = await connectToProject(options.project);
     try {
       const ok = client.deleteNode(options.node);
@@ -216,6 +320,21 @@ canvasCommand
   .option("--type <types>", "Comma-separated node types to filter")
   .option("--json", "Output as JSON")
   .action(async (options) => {
+    const daemonResult = await runCommand(options.project, {
+      action: "search", query: options.query, types: options.type?.split(",") ?? null,
+    });
+    if (daemonResult) {
+      if (daemonResult.error) { console.error(daemonResult.error); process.exit(1); }
+      if (isJsonMode(options)) { printJson(daemonResult.nodes); }
+      else {
+        for (const node of daemonResult.nodes) {
+          console.log(`${node.id}  ${node.type.padEnd(14)}  ${(node.data?.label as string) || ""}`);
+        }
+        console.log(`\n${daemonResult.nodes.length} result(s)`);
+      }
+      return;
+    }
+
     const client = await connectToProject(options.project);
     try {
       const nodeTypes = options.type?.split(",") ?? null;

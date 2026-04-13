@@ -3,7 +3,7 @@
 import { useState, useCallback, useEffect } from 'react';
 import { useReactFlow, useViewport } from 'reactflow';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Robot, User } from '@phosphor-icons/react';
+import { Sparkle, User } from '@phosphor-icons/react';
 import type { ActivityMessage } from '@clash/shared-types';
 
 interface NodeHighlight {
@@ -78,6 +78,7 @@ export default function NodeActivityIndicator({
           // Convert ReactFlow node position to screen coordinates
           const x = node.position.x * viewport.zoom + viewport.x;
           const y = node.position.y * viewport.zoom + viewport.y;
+          const isAgent = h.actor.clientType === 'agent';
           const isCli = h.actor.clientType === 'cli';
 
           return (
@@ -96,12 +97,12 @@ export default function NodeActivityIndicator({
             >
               {/* Indicator pill */}
               <div className={`flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium shadow-sm ${
-                isCli
-                  ? 'bg-gray-900 text-white'
-                  : 'bg-brand text-white'
+                isAgent ? 'bg-brand text-white' : isCli ? 'bg-white text-blue-600 ring-1 ring-slate-200' : 'bg-brand text-white'
               }`}>
-                {isCli ? (
-                  <Robot className="h-2.5 w-2.5" weight="fill" />
+                {isAgent ? (
+                  <Sparkle className="h-2.5 w-2.5" weight="fill" />
+                ) : isCli ? (
+                  <Sparkle className="h-2.5 w-2.5" weight="fill" />
                 ) : (
                   <User className="h-2.5 w-2.5" weight="fill" />
                 )}

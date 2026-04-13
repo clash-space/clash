@@ -118,7 +118,9 @@ export default {
         upstreamUrl.search = url.search;
 
         const headers = new Headers(request.headers);
+        const originalHost = headers.get("host") || url.host;
         headers.delete("host");
+        headers.set("x-forwarded-host", originalHost);
 
         const upstreamRequest = new Request(upstreamUrl.toString(), {
           method: request.method,

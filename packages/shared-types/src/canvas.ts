@@ -255,7 +255,6 @@ export function buildPendingAssetNode(input: BuildPendingAssetNodeInput): Pendin
 /** Agent-facing node type names */
 export const NodeType = {
   Text: "text",
-  Prompt: "prompt",
   Group: "group",
   Image: "image",
   Video: "video",
@@ -264,7 +263,7 @@ export const NodeType = {
 } as const;
 
 export const ALL_NODE_TYPES = Object.values(NodeType) as [string, ...string[]];
-export const CONTENT_NODE_TYPES = [NodeType.Text, NodeType.Prompt, NodeType.Group] as const;
+export const CONTENT_NODE_TYPES = [NodeType.Text, NodeType.Group] as const;
 export type ContentNodeType = (typeof CONTENT_NODE_TYPES)[number];
 export const GENERATION_NODE_TYPES = [NodeType.ImageGen, NodeType.VideoGen] as const;
 export type GenerationNodeType = (typeof GENERATION_NODE_TYPES)[number];

@@ -31,8 +31,10 @@ export class SupervisorAgent extends AIChatAgent<Env> {
   private doc: LoroDoc = new LoroDoc();
   /** Internal WebSocket to ProjectRoom for Loro sync. */
   private roomWs: WebSocket | null = null;
-  /** Project ID extracted from the DO name (format: "projectId:agentId"). */
+  /** Project ID extracted from the DO name (format: "projectId:threadId"). */
   private projectId = "";
+  /** Thread ID extracted from the DO name. */
+  private threadId = "";
   /** Whether the initial snapshot has been received from ProjectRoom. */
   private roomInitialized = false;
   /** Promise that resolves once the room connection + snapshot are ready. */
@@ -43,45 +45,59 @@ export class SupervisorAgent extends AIChatAgent<Env> {
   // ─── Connection Lifecycle ──────────────────────────────────
 
   async onConnect(connection: Connection, ctx: { request: Request }): Promise<void> {
-    // Extract projectId from URL path or x-partykit-room header
+    // Only extract IDs — don't connect to ProjectRoom until agent actually works
     const projectId = this.extractProjectId(ctx.request);
     if (!projectId) {
       log.error("Missing project ID");
       connection.close(4000, "Missing project ID");
       return;
     }
+    this.projectId = projectId;
+  }
 
-    // Establish room connection (once per DO instance)
-    if (!this.roomConnection) {
-      this.roomConnection = this.connectToRoom(projectId);
-    }
+  /**
+   * When last browser client disconnects, wait for any in-flight work
+   * to finish, then disconnect from ProjectRoom so the DO can hibernate.
+   */
+  async onClose(_connection: Connection): Promise<void> {
+    const remaining = [...this.getConnections()].length;
+    log.info(`Client disconnected. Remaining clients: ${remaining}`);
 
-    try {
-      await this.roomConnection;
-    } catch (error) {
-      log.error("Failed to connect to ProjectRoom:", error);
-      // Reset so next connection can retry
+    if (remaining > 0) return;
+
+    // No more browser clients — wait for active work to finish
+    log.info("No clients remaining. Waiting for agent to become stable...");
+    await this.waitUntilStable({ timeout: 300_000 }); // 5 min max
+
+    // Disconnect from ProjectRoom → presence disappears → DO can hibernate
+    if (this.roomWs) {
+      log.info("Agent stable. Disconnecting from ProjectRoom.");
+      this.roomWs.close();
+      this.roomWs = null;
+      this.roomInitialized = false;
       this.roomConnection = null;
-      connection.close(4002, "Failed to connect to project room");
-      return;
     }
   }
 
   private extractProjectId(request: Request): string {
-    // Try x-partykit-room header first (set by router): "projectId:agentId"
-    const room = request.headers.get("x-partykit-room");
-    if (room) {
+    const parseRoom = (room: string): string => {
       const colonIdx = room.indexOf(":");
-      return colonIdx > 0 ? room.substring(0, colonIdx) : room;
-    }
+      if (colonIdx > 0) {
+        this.threadId = room.substring(colonIdx + 1);
+        return room.substring(0, colonIdx);
+      }
+      return room;
+    };
+
+    // Try x-partykit-room header first (set by router): "projectId:threadId"
+    const room = request.headers.get("x-partykit-room");
+    if (room) return parseRoom(room);
 
     // Fallback: parse URL path /agents/supervisor/:room
     const url = new URL(request.url);
     const pathParts = url.pathname.split("/").filter(Boolean);
     if (pathParts[0] === "agents" && pathParts[1] === "supervisor" && pathParts[2]) {
-      const room2 = pathParts[2];
-      const colonIdx = room2.indexOf(":");
-      return colonIdx > 0 ? room2.substring(0, colonIdx) : room2;
+      return parseRoom(pathParts[2]);
     }
 
     return "";
@@ -94,8 +110,6 @@ export class SupervisorAgent extends AIChatAgent<Env> {
    * Receives the initial snapshot and subscribes to incremental updates.
    */
   private async connectToRoom(projectId: string): Promise<void> {
-    this.projectId = projectId;
-
     const roomId = this.env.ROOM.idFromName(projectId);
     const stub = this.env.ROOM.get(roomId);
 
@@ -106,6 +120,7 @@ export class SupervisorAgent extends AIChatAgent<Env> {
           "x-partykit-room": projectId,
           "x-partykit-namespace": "ROOM",
           "x-internal-agent": "true",
+          "x-agent-name": this.threadId?.slice(-6) || "Agent",
         },
       })
     );
@@ -227,13 +242,12 @@ export class SupervisorAgent extends AIChatAgent<Env> {
    * We return `undefined` from onChatMessage and handle streaming + persistence ourselves.
    */
   async onChatMessage(_onFinish: unknown, options?: { abortSignal?: AbortSignal; requestId?: string }) {
-    // Ensure room connection is ready
+    // Lazily connect to ProjectRoom on first chat message
+    if (!this.roomConnection) {
+      this.roomConnection = this.connectToRoom(this.projectId);
+    }
     if (!this.roomInitialized) {
-      if (this.roomConnection) {
-        await this.roomConnection;
-      } else {
-        throw new Error("Not connected to ProjectRoom");
-      }
+      await this.roomConnection;
     }
 
     const openai = createOpenAI({

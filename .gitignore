@@ -104,4 +104,4 @@ uv.lock
 .python-version
 
 /assets
-packages/remotion-components/build
+packages/remotion-components/build.claude/worktrees/

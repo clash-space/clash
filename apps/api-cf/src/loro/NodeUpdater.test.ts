@@ -107,14 +107,14 @@ describe("NodeUpdater", () => {
       updateNode(
         doc,
         "n1",
-        { type: "prompt", data: { new: true }, position: { x: 5, y: 5 } },
+        { type: "text", data: { new: true }, position: { x: 5, y: 5 } },
         (data) => broadcasts.push(data)
       );
 
       expect(broadcasts).toHaveLength(1);
 
       const node = (doc.getMap("nodes").get("n1") as Record<string, any>);
-      expect(node.type).toBe("prompt");
+      expect(node.type).toBe("text");
       expect(node.data.new).toBe(true);
       expect(node.data.old).toBeUndefined();
     });
