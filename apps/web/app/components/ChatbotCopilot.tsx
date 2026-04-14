@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef, useEffect, useCallback } from 'react';
+import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { CaretLeft, CaretRight, Plus, ClockCounterClockwise, Trash } from '@phosphor-icons/react';
 import { useRouter } from 'next/navigation';
@@ -256,6 +256,19 @@ export default function ChatbotCopilot({
     useEffect(() => {
         scrollToBottom();
     }, [isCollapsed, messages, shouldStickToBottom, scrollToBottom]);
+
+    // ─── @-mention nodes for ChatInput ────────────────────────
+    const mentionableNodes = useMemo(() => {
+        if (!nodes) return [];
+        return nodes
+            .filter((n) => ['image', 'video', 'text'].includes(n.type as string))
+            .map((n) => ({
+                id: n.id,
+                type: n.type as string,
+                label: (n.data.label as string) || n.id,
+                src: n.data.src as string | undefined,
+            }));
+    }, [nodes]);
 
     // ─── Submit ──────────────────────────────────────────────
     const [isCreatingSession, setIsCreatingSession] = useState(false);
@@ -669,6 +682,7 @@ export default function ChatbotCopilot({
                                     error={sessionError || connectionError}
                                     onDismissError={() => { setSessionError(null); clearConnectionError(); }}
                                     placeholder={selectedNodes.length > 0 ? 'Ask anything about selected files...' : 'Ask anything...'}
+                                    mentionableNodes={mentionableNodes}
                                 />
                             </div>
                         </motion.div>

@@ -5,7 +5,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { ArrowUp, Plus, Microphone, X, Check, StopCircle, CircleNotch } from '@phosphor-icons/react';
 import dynamic from 'next/dynamic';
 import { getSignedUrl } from '../../../lib/hooks/useSignedUrl';
-import type { MilkdownEditorHandle } from '../MilkdownEditor';
+import type { MilkdownEditorHandle, MentionableNode } from '../MilkdownEditor';
 
 // Lazy load MilkdownEditor to avoid SSR issues
 const MilkdownEditor = dynamic(() => import('../MilkdownEditor'), { ssr: false });
@@ -39,6 +39,9 @@ interface ChatInputProps {
     disabled?: boolean;
     placeholder?: string;
     variant?: 'default' | 'hero';
+    mentionableNodes?: MentionableNode[];
+    connectedNodeIds?: string[];
+    onMentionAdded?: (nodeId: string) => void;
 }
 
 // ─── Helpers ─────────────────────────────────────────────────
@@ -77,6 +80,13 @@ function extractAssetKeys(markdown: string): UploadedAttachment[] {
     return results;
 }
 
+/** Convert inline mention images ![mention:nodeId:label](url) back to @[label](node:id) */
+function restoreMentions(markdown: string): string {
+    return markdown.replace(/!\[mention:([^:]+):([^\]]*)\]\([^)]*\)/g, (_match, nodeId, label) => {
+        return `@[${label}](node:${nodeId})`;
+    });
+}
+
 const ACCEPT = 'image/*,video/*,audio/*,.pdf,.txt,.md,.markdown,.json,.csv,.srt,.vtt';
 
 // ─── Component ───────────────────────────────────────────────
@@ -94,6 +104,9 @@ export function ChatInput({
     disabled = false,
     placeholder = 'Ask anything...',
     variant = 'default',
+    mentionableNodes,
+    connectedNodeIds,
+    onMentionAdded,
 }: ChatInputProps) {
     const fileInputRef = useRef<HTMLInputElement>(null);
     const editorRef = useRef<MilkdownEditorHandle>(null);
@@ -129,10 +142,12 @@ export function ChatInput({
 
     // ─── Submit ──────────────────────────────────────────────
     const handleFormSubmit = useCallback(() => {
-        const text = input.trim();
-        if (!text || uploading > 0) return;
+        const raw = input.trim();
+        if (!raw || uploading > 0) return;
+        const text = restoreMentions(raw);
         const attachments = extractAssetKeys(text);
         onInputChange('');
+        editorRef.current?.clear();
         onSubmit(text, attachments);
     }, [input, uploading, onInputChange, onSubmit]);
 
@@ -275,7 +290,11 @@ export function ChatInput({
                                 ref={editorRef}
                                 value={input}
                                 onChange={onInputChange}
+                                onSubmit={handleFormSubmit}
                                 promptModalities={['text', 'image']}
+                                mentionableNodes={mentionableNodes}
+                                connectedNodeIds={connectedNodeIds}
+                                onMentionAdded={onMentionAdded}
                             />
                         </div>
 
@@ -294,13 +313,13 @@ export function ChatInput({
                                     type="button"
                                     onClick={() => fileInputRef.current?.click()}
                                     disabled={isBusy}
-                                    className="w-7 h-7 rounded-lg flex items-center justify-center text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors disabled:opacity-30"
+                                    className="-ml-1.5 w-7 h-7 rounded-lg flex items-center justify-center text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors disabled:opacity-30"
                                     title="Attach files"
                                 >
                                     <Plus className="w-4 h-4" weight="bold" />
                                 </button>
                             </div>
-                            <div className="flex items-center gap-1.5">
+                            <div className="flex items-center gap-1.5 -mr-1.5">
                                 {!isHero && (
                                     <div
                                         className={`w-2 h-2 rounded-full transition-colors ${connected ? 'bg-emerald-500' : 'bg-red-400'}`}

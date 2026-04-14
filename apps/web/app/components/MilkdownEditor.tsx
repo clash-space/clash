@@ -1,6 +1,7 @@
 'use client';
 
 import { useRef, useCallback, useState, useEffect, useImperativeHandle, forwardRef } from 'react';
+import { createPortal } from 'react-dom';
 import { Editor, rootCtx, defaultValueCtx } from '@milkdown/core';
 import { commonmark } from '@milkdown/preset-commonmark';
 import { nord } from '@milkdown/theme-nord';
@@ -13,6 +14,7 @@ import { $prose } from '@milkdown/utils';
 import { Plugin, PluginKey } from '@milkdown/prose/state';
 import type { EditorView } from '@milkdown/prose/view';
 import { SignedImg } from './SignedMedia';
+import { getSignedUrl } from '../../lib/hooks/useSignedUrl';
 
 import '@milkdown/theme-nord/style.css';
 import 'prismjs/themes/prism.css';
@@ -28,11 +30,15 @@ export interface MentionableNode {
 export interface MilkdownEditorHandle {
     /** Insert markdown at the current cursor position. Images (![alt](url)) are rendered inline. */
     insertAtCursor: (markdown: string) => void;
+    /** Clear all editor content */
+    clear: () => void;
 }
 
 interface MilkdownEditorProps {
     value: string;
     onChange: (value: string) => void;
+    /** Called when user presses Enter (without Shift). If provided, Enter submits instead of inserting a newline. */
+    onSubmit?: () => void;
     /** Available nodes for @-mention */
     mentionableNodes?: MentionableNode[];
     /** Allowed modalities for @-mention filter (from model's input.promptModalities) */
@@ -206,7 +212,7 @@ function AssetMentionMenu({
     return (
         <div
             className="fixed z-[9999] w-64 max-h-60 overflow-y-auto bg-white rounded-xl border border-slate-200 shadow-lg"
-            style={{ left: coords.left, top: coords.bottom + 4 }}
+            style={{ left: coords.left, bottom: window.innerHeight - coords.top + 4 }}
         >
             {sorted.map((node, i) => {
                 const showSeparator = hasConnected && i === connected.length;
@@ -249,6 +255,7 @@ function AssetMentionMenu({
 const MilkdownEditorInner = forwardRef<MilkdownEditorHandle, MilkdownEditorProps>(function MilkdownEditorInner({
     value,
     onChange,
+    onSubmit,
     mentionableNodes = [],
     promptModalities = ['text'],
     connectedNodeIds = [],
@@ -260,10 +267,36 @@ const MilkdownEditorInner = forwardRef<MilkdownEditorHandle, MilkdownEditorProps
     });
     const editorViewRef = useRef<EditorView | null>(null);
 
+    const onSubmitRef = useRef(onSubmit);
+    onSubmitRef.current = onSubmit;
+
     const connectedSet = new Set(connectedNodeIds);
 
     // Only show @-menu if modalities include non-text types
     const showMentions = promptModalities.some((m) => m !== 'text');
+
+    // Enter to submit, Shift+Enter for newline
+    const enterKeyPlugin = useCallback(() => {
+        return $prose(() => new Plugin({
+            key: new PluginKey('enter-submit'),
+            props: {
+                handleKeyDown(view, event) {
+                    if (event.key === 'Enter' && !event.shiftKey && !event.metaKey && !event.ctrlKey) {
+                        // Don't intercept if @-mention menu is active
+                        const mentionActive = mentionPluginKey.getState(view.state) as MentionPluginState | undefined;
+                        if (mentionActive?.active) return false;
+
+                        if (onSubmitRef.current) {
+                            event.preventDefault();
+                            onSubmitRef.current();
+                            return true;
+                        }
+                    }
+                    return false;
+                },
+            },
+        }));
+    }, []);
 
     const mentionPlugin = useCallback(() => {
         if (!showMentions) {
@@ -287,6 +320,7 @@ const MilkdownEditorInner = forwardRef<MilkdownEditorHandle, MilkdownEditorProps
             .use(trailing)
             .use(ensureStartingParagraph)
             .use(captureViewPlugin())
+            .use(enterKeyPlugin())
             .use(mentionPlugin())
             .config((ctx) => {
                 ctx.get(listenerCtx).markdownUpdated((_ctx, markdown) => {
@@ -307,6 +341,13 @@ const MilkdownEditorInner = forwardRef<MilkdownEditorHandle, MilkdownEditorProps
     }, []);
 
     useImperativeHandle(ref, () => ({
+        clear() {
+            const view = editorViewRef.current;
+            if (!view) return;
+            const { tr } = view.state;
+            tr.delete(0, view.state.doc.content.size);
+            view.dispatch(tr);
+        },
         insertAtCursor(markdown: string) {
             const view = editorViewRef.current;
             console.log('[MilkdownEditor] insertAtCursor, view:', !!view);
@@ -336,28 +377,40 @@ const MilkdownEditorInner = forwardRef<MilkdownEditorHandle, MilkdownEditorProps
         },
     }), []);
 
-    const handleMentionSelect = useCallback((node: MentionableNode) => {
+    const handleMentionSelect = useCallback(async (node: MentionableNode) => {
         const view = editorViewRef.current;
         if (!view) return;
 
         const state = mentionPluginKey.getState(view.state) as MentionPluginState;
         if (!state?.active) return;
 
-        // Replace @query with @[Label](node:id) markdown syntax
-        const mentionText = `@[${node.label}](node:${node.id}) `;
         const { from } = state;
         const to = view.state.selection.from;
 
-        const tr = view.state.tr.replaceWith(
-            from,
-            to,
-            view.state.schema.text(mentionText)
-        );
-
-        // Deactivate mention
-        tr.setMeta(mentionPluginKey, { active: false, query: '', from: 0, cursorCoords: null });
-        view.dispatch(tr);
-        view.focus();
+        // For image nodes with src, insert as inline image (thumbnail)
+        // The alt encodes mention info: "mention:nodeId:label"
+        if (node.src) {
+            const signedUrl = await getSignedUrl(node.src);
+            const imageType = view.state.schema.nodes.image;
+            if (imageType) {
+                const imgNode = imageType.create({
+                    src: signedUrl,
+                    alt: `mention:${node.id}:${node.label}`,
+                    title: node.label,
+                });
+                const tr = view.state.tr.replaceWith(from, to, imgNode);
+                tr.setMeta(mentionPluginKey, { active: false, query: '', from: 0, cursorCoords: null });
+                view.dispatch(tr);
+                view.focus();
+            }
+        } else {
+            // Non-image nodes: insert as text mention
+            const mentionText = `@[${node.label}](node:${node.id}) `;
+            const tr = view.state.tr.replaceWith(from, to, view.state.schema.text(mentionText));
+            tr.setMeta(mentionPluginKey, { active: false, query: '', from: 0, cursorCoords: null });
+            view.dispatch(tr);
+            view.focus();
+        }
 
         // Auto-connect if not already connected
         if (!connectedSet.has(node.id) && onMentionAdded) {
@@ -381,6 +434,13 @@ const MilkdownEditorInner = forwardRef<MilkdownEditorHandle, MilkdownEditorProps
         }
     };
 
+    // Compute menu position based on wrapper element
+    const menuCoords = (() => {
+        if (!mentionState.active || !wrapperRef.current) return mentionState.cursorCoords;
+        const rect = wrapperRef.current.getBoundingClientRect();
+        return { left: rect.left, top: rect.top, bottom: rect.bottom };
+    })();
+
     return (
         <>
             <div
@@ -390,17 +450,18 @@ const MilkdownEditorInner = forwardRef<MilkdownEditorHandle, MilkdownEditorProps
             >
                 <Milkdown />
             </div>
-            {showMentions && (
+            {showMentions && typeof document !== 'undefined' && createPortal(
                 <AssetMentionMenu
                     active={mentionState.active}
                     query={mentionState.query}
-                    coords={mentionState.cursorCoords}
+                    coords={menuCoords}
                     nodes={mentionableNodes}
                     connectedIds={connectedSet}
                     promptModalities={promptModalities}
                     onSelect={handleMentionSelect}
                     onClose={handleMentionClose}
-                />
+                />,
+                document.body
             )}
         </>
     );

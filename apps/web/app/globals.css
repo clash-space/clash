@@ -210,6 +210,16 @@ html {
   vertical-align: text-bottom;
   margin: 0 2px;
 }
+/* Mention images (alt starts with "mention:") — render as inline thumbnails */
+.ProseMirror img[alt^="mention:"] {
+  height: 20px;
+  width: 20px;
+  border-radius: 4px;
+  object-fit: cover;
+  display: inline-block;
+  vertical-align: middle;
+  margin: 0 2px;
+}
 .milkdown-chat-input .ProseMirror:focus {
   outline: none;
 }

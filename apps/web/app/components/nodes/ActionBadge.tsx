@@ -182,10 +182,10 @@ const PromptActionNode = ({ data, selected, id }: NodeProps) => {
             const node = mentionableNodes.find((n) => n.id === nodeId);
             const src = node?.src;
             const resolvedUrl = src ? signedUrlMap[src] : undefined;
-            const imgHtml = resolvedUrl
-                ? `<img src="${resolvedUrl}" style="height:20px;width:20px;border-radius:4px;object-fit:cover;vertical-align:middle;display:inline-block;margin-right:3px;" />`
-                : '';
-            return `<span contenteditable="false" data-mention-id="${nodeId}" style="display:inline-flex;align-items:center;gap:2px;background:#f1f5f9;border:1px solid #e2e8f0;border-radius:6px;padding:1px 6px 1px 3px;margin:0 2px;font-size:12px;color:#334155;vertical-align:middle;line-height:22px;">${imgHtml}${label}</span>`;
+            if (resolvedUrl) {
+                return `<span contenteditable="false" data-mention-id="${nodeId}" title="${label}" style="display:inline-block;vertical-align:middle;margin:0 2px;"><img src="${resolvedUrl}" style="height:20px;width:20px;border-radius:4px;object-fit:cover;display:block;" /></span>`;
+            }
+            return `<span contenteditable="false" data-mention-id="${nodeId}" title="${label}" style="display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;background:#f1f5f9;border:1px solid #e2e8f0;border-radius:4px;margin:0 2px;font-size:8px;color:#94a3b8;vertical-align:middle;">${node?.type?.charAt(0).toUpperCase() || '?'}</span>`;
         });
     }, [mentionableNodes, signedUrlMap]);
 
