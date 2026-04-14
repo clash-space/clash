@@ -1922,7 +1922,7 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
                             <div id="copilot-container" className="fixed right-0 top-0 bottom-0 z-40 pointer-events-none">
                                 <div className="pointer-events-auto h-full">
                                     <ChatbotCopilot
-                                        key={threadId || `__new_${sessionKey}`}
+                                        key={`copilot_${sessionKey}`}
                                         onCreateSession={async (msg) => {
                                             const result = await handleCreateSession(msg);
                                             if (result) {
