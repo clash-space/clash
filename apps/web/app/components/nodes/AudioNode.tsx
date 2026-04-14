@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { Handle, Position, NodeProps } from 'reactflow';
 import SourceHandleMenu from './SourceHandleMenu';
 import { Play, Pause, X, SpeakerHigh, SkipBack, SkipForward, Spinner } from '@phosphor-icons/react';
-import { resolveAssetUrl } from '../../../lib/utils/assets';
+import { useSignedUrl } from '../../../lib/hooks/useSignedUrl';
 import { normalizeStatus, isActiveStatus, type AssetStatus } from '../../../lib/assetStatus';
 
 const AudioNode = ({ data, selected, id }: NodeProps) => {
@@ -14,6 +14,7 @@ const AudioNode = ({ data, selected, id }: NodeProps) => {
     const [status, setStatus] = useState<AssetStatus>(normalizeStatus(data.status) || (data.src ? 'completed' : 'generating'));
     const [audioUrl, setAudioUrl] = useState<string | undefined>(data.src);
     const audioRef = useRef<HTMLAudioElement>(null);
+    const signedAudioUrl = useSignedUrl(audioUrl);
 
     // Generate random waveform bars
     const waveformBars = useMemo(() => {
@@ -223,7 +224,7 @@ const AudioNode = ({ data, selected, id }: NodeProps) => {
                     </div>
 
                     {/* Hidden Audio Element - kept in DOM for persistence */}
-                    {audioUrl && <audio ref={audioRef} src={resolveAssetUrl(audioUrl)} />}
+                    {audioUrl && <audio ref={audioRef} src={signedAudioUrl || ''} />}
                 </div>
 
                 <SourceHandleMenu nodeId={id} />

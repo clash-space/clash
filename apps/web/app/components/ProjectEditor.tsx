@@ -34,10 +34,11 @@ import {
     HandGrabbing,
 } from '@phosphor-icons/react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import type { InferSelectModel } from 'drizzle-orm';
 import type { projects } from '../../lib/db/app.schema';
 type Project = InferSelectModel<typeof projects>;
-import ChatbotCopilot from './ChatbotCopilot';
+import ChatbotCopilot, { setPendingPrompt } from './ChatbotCopilot';
 import { useSessionHistory } from '../hooks/useSessionHistory';
 import { updateProjectName } from '../actions';
 import VideoNode from './nodes/VideoNode';
@@ -86,8 +87,9 @@ import { calculateScaledDimensions } from './nodes/assetNodeSizing';
 const CHILD_NODE_Z_INDEX_BASE = 1000;
 
 interface ProjectEditorProps {
-    project: Project; // messages removed
+    project: Project;
     initialPrompt?: string;
+    initialThreadId?: string;
     /** Globally installed actions from D1 (passed from server component) */
     globalActions?: Array<{
         actionId: string;
@@ -196,7 +198,7 @@ function DebugNodeIds({ nodes }: { nodes: Node[] }) {
     );
 }
 
-export default function ProjectEditor({ project, initialPrompt, globalActions = [] }: ProjectEditorProps) {
+export default function ProjectEditor({ project, initialPrompt, initialThreadId, globalActions = [] }: ProjectEditorProps) {
     // IMPORTANT: Start with empty canvas - Loro sync will populate from server
     // This ensures Loro is the single source of truth for nodes/edges
     // Legacy: project.nodes/edges from DB are now ignored
@@ -396,16 +398,32 @@ export default function ProjectEditor({ project, initialPrompt, globalActions = 
     const [pendingNodeType, setPendingNodeType] = useState<string | null>(null);
 
     // Sidebar state
-    const [sidebarWidth, setSidebarWidth] = useState(384);
-    const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+    const [sidebarWidth, setSidebarWidth] = useState(() => {
+        if (typeof window !== 'undefined') {
+            const saved = localStorage.getItem('copilot-sidebar-width');
+            return saved ? parseInt(saved, 10) : 384;
+        }
+        return 384;
+    });
+    const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(() => {
+        if (typeof window !== 'undefined') {
+            return localStorage.getItem('copilot-sidebar-collapsed') === 'true';
+        }
+        return false;
+    });
+
+    // Persist sidebar state
+    useEffect(() => { localStorage.setItem('copilot-sidebar-width', String(sidebarWidth)); }, [sidebarWidth]);
+    useEffect(() => { localStorage.setItem('copilot-sidebar-collapsed', String(isSidebarCollapsed)); }, [isSidebarCollapsed]);
 
     // Chat session state
-    const [threadId, setThreadId] = useState<string>('');
+    const [threadId, setThreadId] = useState<string>(initialThreadId || '');
     const [sessionKey, setSessionKey] = useState(0);
     const [chatInitialPrompt, setChatInitialPrompt] = useState<string | undefined>(initialPrompt);
+    const editorRouter = useRouter();
     const { sessions: sessionHistory, upsertSession, deleteSession: removeSession } = useSessionHistory(project.id);
 
-    const handleCreateSession = useCallback(async (initialMessage?: string) => {
+    const handleCreateSession = useCallback(async (initialMessage?: string): Promise<{ threadId: string; title: string } | null> => {
         try {
             const title = initialMessage
                 ? initialMessage.slice(0, 40).trim() + (initialMessage.length > 40 ? '...' : '')
@@ -417,14 +435,13 @@ export default function ProjectEditor({ project, initialPrompt, globalActions = 
             });
             if (!res.ok) throw new Error('Failed to create session');
             const data = await res.json();
-            upsertSession(data.threadId, title);
-            setThreadId(data.threadId);
-            return data.threadId as string;
+            // Don't update any state here — caller batches all state updates together
+            return { threadId: data.threadId as string, title };
         } catch (err) {
             console.error('Failed to create session:', err);
             return null;
         }
-    }, [project.id, upsertSession]);
+    }, [project.id]);
 
     const handleNewSession = useCallback(() => {
         setChatInitialPrompt(undefined);
@@ -443,9 +460,17 @@ export default function ProjectEditor({ project, initialPrompt, globalActions = 
     }, [removeSession, threadId]);
 
     // Auto-create session for initialPrompt from HomePage
+    const hasCreatedSessionRef = useRef(false);
     useEffect(() => {
-        if (initialPrompt && !threadId) {
-            handleCreateSession(initialPrompt);
+        if (initialPrompt && !threadId && !hasCreatedSessionRef.current) {
+            hasCreatedSessionRef.current = true;
+            handleCreateSession(initialPrompt).then(result => {
+                if (result) {
+                    upsertSession(result.threadId, result.title);
+                    setPendingPrompt(result.threadId, initialPrompt!);
+                    setThreadId(result.threadId);
+                }
+            });
         }
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []); // Run once on mount
@@ -1389,7 +1414,7 @@ export default function ProjectEditor({ project, initialPrompt, globalActions = 
                 formData.append('projectId', project.id);
                 formData.append('type', assetType);
 
-                const res = await fetch('/api/upload/asset', {
+                const res = await fetch('/upload', {
                     method: 'POST',
                     body: formData,
                 });
@@ -1899,8 +1924,12 @@ export default function ProjectEditor({ project, initialPrompt, globalActions = 
                                     <ChatbotCopilot
                                         key={threadId || `__new_${sessionKey}`}
                                         onCreateSession={async (msg) => {
-                                            const newId = await handleCreateSession(msg);
-                                            if (newId) setChatInitialPrompt(msg);
+                                            const result = await handleCreateSession(msg);
+                                            if (result) {
+                                                upsertSession(result.threadId, result.title);
+                                                setPendingPrompt(result.threadId, msg);
+                                                setThreadId(result.threadId);
+                                            }
                                         }}
                                         projectId={project.id}
                                         threadId={threadId}
@@ -1922,6 +1951,22 @@ export default function ProjectEditor({ project, initialPrompt, globalActions = 
                                         onNewSession={handleNewSession}
                                         onSwitchSession={handleSwitchSession}
                                         onDeleteSession={handleDeleteSession}
+                                        onUploadFiles={useCallback((attachments: import('./copilot/ChatInput').UploadedAttachment[]) => {
+                                            for (const a of attachments) {
+                                                // Files already uploaded to R2 — just create canvas nodes with storageKey
+                                                if (a.type === 'image' || a.type === 'video' || a.type === 'audio') {
+                                                    addNode(a.type, {
+                                                        label: a.fileName,
+                                                        src: a.storageKey,
+                                                        storageKey: a.storageKey,
+                                                        url: a.url,
+                                                        status: 'completed',
+                                                    });
+                                                } else {
+                                                    addNode('text', { label: a.fileName, content: `[Uploaded: ${a.fileName}](${a.storageKey})` });
+                                                }
+                                            }
+                                        }, [addNode])}
                                     />
                                 </div>
                             </div>

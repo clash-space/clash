@@ -7,7 +7,8 @@ import { useProject } from '../ProjectContext';
 import { useOptionalLoroSyncContext } from '../LoroSyncContext';
 import { useLayoutManager } from '@/lib/layout';
 import { generateSemanticId } from '@/lib/utils/semanticId';
-import { resolveAssetUrl } from '../../../lib/utils/assets';
+import { SignedImg } from '../SignedMedia';
+import { getSignedUrl } from '../../../lib/hooks/useSignedUrl';
 import { MODEL_CARDS, resolveAspectRatio, validateGenerationInput, parsePromptParts, extractPromptText, extractAssetRefs, buildMention, type ModelCard, type ModelParameter, type CustomActionDefinition } from '@clash/shared-types';
 import { applyLayoutPatchesToLoro, collectLayoutNodePatches } from '../../lib/loroNodeSync';
 import { useCustomActions } from '../../hooks/useCustomActions';
@@ -157,6 +158,22 @@ const PromptActionNode = ({ data, selected, id }: NodeProps) => {
         );
     }, [mentionableNodes, mentionQuery]);
 
+    // Pre-resolve signed URLs for mentionable node thumbnails (used in contentToHtml)
+    const [signedUrlMap, setSignedUrlMap] = useState<Record<string, string>>({});
+    useEffect(() => {
+        let cancelled = false;
+        const srcs = mentionableNodes.filter((n) => n.src).map((n) => n.src!);
+        if (srcs.length === 0) return;
+        Promise.all(srcs.map(async (src) => {
+            const url = await getSignedUrl(src);
+            return [src, url] as const;
+        })).then((entries) => {
+            if (cancelled) return;
+            setSignedUrlMap(Object.fromEntries(entries));
+        });
+        return () => { cancelled = true; };
+    }, [mentionableNodes]);
+
     // Render content string → HTML with inline mention chips
     const contentToHtml = useCallback((raw: string) => {
         if (!raw) return '';
@@ -164,12 +181,13 @@ const PromptActionNode = ({ data, selected, id }: NodeProps) => {
         return raw.replace(MENTION_RE, (_match, label, nodeId) => {
             const node = mentionableNodes.find((n) => n.id === nodeId);
             const src = node?.src;
-            const imgHtml = src
-                ? `<img src="${resolveAssetUrl(src)}" style="height:20px;width:20px;border-radius:4px;object-fit:cover;vertical-align:middle;display:inline-block;margin-right:3px;" />`
+            const resolvedUrl = src ? signedUrlMap[src] : undefined;
+            const imgHtml = resolvedUrl
+                ? `<img src="${resolvedUrl}" style="height:20px;width:20px;border-radius:4px;object-fit:cover;vertical-align:middle;display:inline-block;margin-right:3px;" />`
                 : '';
             return `<span contenteditable="false" data-mention-id="${nodeId}" style="display:inline-flex;align-items:center;gap:2px;background:#f1f5f9;border:1px solid #e2e8f0;border-radius:6px;padding:1px 6px 1px 3px;margin:0 2px;font-size:12px;color:#334155;vertical-align:middle;line-height:22px;">${imgHtml}${label}</span>`;
         });
-    }, [mentionableNodes]);
+    }, [mentionableNodes, signedUrlMap]);
 
     // Read back HTML → content string
     const htmlToContent = useCallback((el: HTMLDivElement): string => {
@@ -1015,9 +1033,9 @@ const PromptActionNode = ({ data, selected, id }: NodeProps) => {
                         return (
                             <div className="pointer-events-auto flex gap-1.5 mb-2 px-1">
                                 {connectedImageNodes.map((n) => (
-                                    <img
+                                    <SignedImg
                                         key={n.id}
-                                        src={resolveAssetUrl(n.data.src as string)}
+                                        src={n.data.src as string}
                                         alt={(n.data.label as string) || n.id}
                                         className="h-10 w-10 rounded-lg object-cover border border-slate-200 shadow-sm"
                                     />
@@ -1066,8 +1084,8 @@ const PromptActionNode = ({ data, selected, id }: NodeProps) => {
                                         onMouseDown={(e) => { e.preventDefault(); insertMention(node); }}
                                     >
                                         {node.src ? (
-                                            <img
-                                                src={resolveAssetUrl(node.src)}
+                                            <SignedImg
+                                                src={node.src}
                                                 alt={node.label}
                                                 className="h-8 w-8 rounded object-cover flex-shrink-0 border border-slate-200"
                                             />

@@ -6,7 +6,8 @@ import { FilmSlate, TextT } from '@phosphor-icons/react';
 import { useMediaViewer } from '../MediaViewerContext';
 import { useOptionalLoroSyncContext } from '../LoroSyncContext';
 import { normalizeStatus, isActiveStatus, type AssetStatus } from '../../../lib/assetStatus';
-import { resolveAssetUrl } from '../../../lib/utils/assets';
+import { SignedImg } from '../SignedMedia';
+import { useSignedUrl } from '../../../lib/hooks/useSignedUrl';
 import { thumbnailCache } from '../../../lib/utils/thumbnailCache';
 import {
     calculateDimensionsFromAspectRatio,
@@ -25,7 +26,8 @@ const VideoNode = ({ data, selected, id }: NodeProps) => {
     const [videoUrl, setVideoUrl] = useState<string | undefined>(data.src);
     const [description, setDescription] = useState(data.description || '');
     const [localThumbnail, setLocalThumbnail] = useState<string | null>(thumbnailCache.get(videoUrl));
-    const posterUrl = data.referenceImageUrls?.[0] ? resolveAssetUrl(data.referenceImageUrls[0]) : undefined;
+    const signedVideoUrl = useSignedUrl(videoUrl);
+    const posterUrl = useSignedUrl(data.referenceImageUrls?.[0]);
     const [isVideoReady, setIsVideoReady] = useState(false);
     const videoRef = useRef<HTMLVideoElement | null>(null);
     const lastReadyUrlRef = useRef<string | undefined>(undefined);
@@ -200,7 +202,7 @@ const VideoNode = ({ data, selected, id }: NodeProps) => {
     const handleDoubleClick = (e: React.MouseEvent) => {
         e.stopPropagation();
         if (videoUrl && (status === 'completed')) {
-            openViewer('video', resolveAssetUrl(videoUrl), label);
+            openViewer('video', signedVideoUrl, label);
         }
     };
 
@@ -253,7 +255,7 @@ const VideoNode = ({ data, selected, id }: NodeProps) => {
                     <div className="relative" style={{ width: '100%', height: '100%' }}>
                         <video
                             ref={videoRef}
-                            src={resolveAssetUrl(videoUrl)}
+                            src={signedVideoUrl || ''}
                             poster={!isVideoReady && posterImage ? posterImage : undefined}
                             controls={false}
                             className="block pointer-events-none"
@@ -403,7 +405,7 @@ const VideoNode = ({ data, selected, id }: NodeProps) => {
                 ) : status === 'uploading' && videoUrl ? (
                     <div className="relative" style={{ width: '100%', height: '100%' }}>
                         <video
-                            src={resolveAssetUrl(videoUrl)}
+                            src={signedVideoUrl || ''}
                             controls={false}
                             className="block pointer-events-none opacity-70"
                             style={{

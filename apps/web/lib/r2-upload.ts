@@ -7,8 +7,9 @@ import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
 
 const sanitizeFileName = (fileName: string) => fileName.replace(/[^a-zA-Z0-9._-]/g, '_');
 
-const buildStorageKey = (projectId: string, fileName: string) => {
-    return `projects/${projectId}/assets/${sanitizeFileName(fileName)}`;
+const buildStorageKey = (fileName: string) => {
+    const uuid = crypto.randomUUID().slice(0, 8);
+    return `uploads/${uuid}-${sanitizeFileName(fileName)}`;
 };
 
 // Initialize R2 client with environment variables
@@ -38,11 +39,11 @@ export function getR2Client() {
  */
 export async function uploadBase64ImageToR2(params: {
     base64Data: string;
-    projectId: string;
+    projectId?: string;
     fileName: string;
     contentType?: string;
 }) {
-    const { base64Data, projectId, fileName, contentType = 'image/png' } = params;
+    const { base64Data, fileName, contentType = 'image/png' } = params;
 
     console.log('[R2 Upload] Using S3 API directly');
 
@@ -58,7 +59,7 @@ export async function uploadBase64ImageToR2(params: {
         : base64Data;
 
     const buffer = Buffer.from(normalizedBase64, 'base64');
-    const storageKey = buildStorageKey(projectId, fileName);
+    const storageKey = buildStorageKey(fileName);
 
     const client = getR2Client();
     await client.send(
@@ -79,10 +80,10 @@ export async function uploadBase64ImageToR2(params: {
  */
 export async function uploadVideoFromUrlToR2(params: {
     videoUrl: string;
-    projectId: string;
+    projectId?: string;
     fileName: string;
 }) {
-    const { videoUrl, projectId, fileName } = params;
+    const { videoUrl, fileName } = params;
 
     console.log('[R2 Upload] Downloading and uploading video via S3 API');
 
@@ -103,7 +104,7 @@ export async function uploadVideoFromUrlToR2(params: {
     const buffer = Buffer.from(arrayBuffer);
 
     // Generate storage key
-    const storageKey = buildStorageKey(projectId, `${fileName}.mp4`);
+    const storageKey = buildStorageKey(`${fileName}.mp4`);
 
     // Upload to R2
     const client = getR2Client();
@@ -125,11 +126,11 @@ export async function uploadVideoFromUrlToR2(params: {
  */
 export async function uploadBufferToR2(params: {
     buffer: Buffer | ArrayBuffer | Uint8Array;
-    projectId: string;
+    projectId?: string;
     fileName: string;
     contentType?: string;
 }) {
-    const { buffer, projectId, fileName, contentType = 'application/octet-stream' } = params;
+    const { buffer, fileName, contentType = 'application/octet-stream' } = params;
 
     console.log('[R2 Upload Buffer] Using S3 API directly');
 
@@ -146,7 +147,7 @@ export async function uploadBufferToR2(params: {
             ? Buffer.from(buffer)
             : Buffer.from(buffer);
 
-    const storageKey = buildStorageKey(projectId, fileName);
+    const storageKey = buildStorageKey(fileName);
 
     const client = getR2Client();
     await client.send(

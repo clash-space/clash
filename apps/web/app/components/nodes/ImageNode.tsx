@@ -5,7 +5,8 @@ import { Image as ImageIcon, TextT } from '@phosphor-icons/react';
 import { useMediaViewer } from '../MediaViewerContext';
 import { useOptionalLoroSyncContext } from '../LoroSyncContext';
 import { normalizeStatus, isActiveStatus, type AssetStatus } from '../../../lib/assetStatus';
-import { resolveAssetUrl } from '../../../lib/utils/assets';
+import { SignedImg } from '../SignedMedia';
+import { useSignedUrl } from '../../../lib/hooks/useSignedUrl';
 import {
     calculateDimensionsFromAspectRatio,
     calculateScaledDimensions,
@@ -23,7 +24,7 @@ const ImageNode = ({ data, selected, id }: NodeProps) => {
     const [imageUrl, setImageUrl] = useState<string | undefined>(data.src);
     const [description, setDescription] = useState(data.description || '');
     const [showDescription, setShowDescription] = useState(false);
-    // Removed initialSizeRef
+    const signedImageUrl = useSignedUrl(imageUrl);
     const didInitSizeRef = useRef(false);
 
     // Get current node dimensions
@@ -96,7 +97,7 @@ const ImageNode = ({ data, selected, id }: NodeProps) => {
     const handleDoubleClick = (e: React.MouseEvent) => {
         e.stopPropagation();
         if (imageUrl && (status === 'completed')) {
-            openViewer('image', resolveAssetUrl(imageUrl), label);
+            openViewer('image', signedImageUrl, label);
         }
     };
 
@@ -147,9 +148,8 @@ const ImageNode = ({ data, selected, id }: NodeProps) => {
             >
                 {(status === 'completed') && imageUrl ? (
                     <div className="relative">
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img
-                            src={resolveAssetUrl(imageUrl)}
+                        <SignedImg
+                            src={imageUrl}
                             alt={label}
                             className="block"
                             style={{
@@ -173,9 +173,8 @@ const ImageNode = ({ data, selected, id }: NodeProps) => {
                     </div>
                 ) : status === 'uploading' && imageUrl ? (
                     <div className="relative" style={{ width: '100%', height: '100%' }}>
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img
-                            src={resolveAssetUrl(imageUrl)}
+                        <SignedImg
+                            src={imageUrl}
                             alt={label}
                             className="block"
                             style={{

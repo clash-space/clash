@@ -188,3 +188,28 @@ html {
 }
 
 /* Group drag feedback classes removed */
+
+/* Compact MilkdownEditor inside ChatInput */
+.milkdown-chat-input .milkdown-editor-wrapper {
+  padding: 8px 16px 4px;
+}
+.milkdown-chat-input .ProseMirror {
+  font-size: 14px;
+  line-height: 1.5;
+  min-height: 24px;
+}
+.milkdown-chat-input .ProseMirror p {
+  margin: 0;
+}
+.milkdown-chat-input .ProseMirror img {
+  height: 1.2em;
+  width: auto;
+  border-radius: 3px;
+  object-fit: cover;
+  display: inline;
+  vertical-align: text-bottom;
+  margin: 0 2px;
+}
+.milkdown-chat-input .ProseMirror:focus {
+  outline: none;
+}

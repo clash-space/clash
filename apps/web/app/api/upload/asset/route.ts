@@ -9,9 +9,9 @@ export async function POST(request: NextRequest) {
         const projectId = formData.get('projectId') as string | null;
         const type = (formData.get('type') as string | null) || 'asset';
 
-        if (!file || !(file instanceof File) || !projectId) {
+        if (!file || !(file instanceof File)) {
             return NextResponse.json(
-                { error: 'Missing required fields: file, projectId' },
+                { error: 'Missing required field: file' },
                 { status: 400 }
             );
         }
@@ -25,7 +25,6 @@ export async function POST(request: NextRequest) {
 
         const { storageKey, url } = await uploadBufferToR2({
             buffer: arrayBuffer,
-            projectId,
             fileName: finalFileName,
             contentType: file.type || 'application/octet-stream',
         });

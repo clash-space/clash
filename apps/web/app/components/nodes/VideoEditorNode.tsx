@@ -5,7 +5,8 @@ import { Handle, Position, NodeProps, useReactFlow, Node } from 'reactflow';
 import { FilmSlate, VideoCamera } from '@phosphor-icons/react';
 import { useVideoEditor } from '../VideoEditorContext';
 import { useOptionalLoroSyncContext } from '../LoroSyncContext';
-import { resolveAssetUrl } from '../../../lib/utils/assets';
+import { SignedImg } from '../SignedMedia';
+import { useSignedUrl, getSignedUrl } from '../../../lib/hooks/useSignedUrl';
 import { normalizeStatus, isActiveStatus } from '../../../lib/assetStatus';
 import { autoInsertNode } from '../../../lib/layout';
 
@@ -15,6 +16,7 @@ const VideoEditorNode = ({ data, id }: NodeProps) => {
     const reactFlow = useReactFlow();
     const [rendering, setRendering] = useState(false);
     const [previewSrc, setPreviewSrc] = useState<string | null>(null);
+    const signedPreviewUrl = useSignedUrl(previewSrc || undefined);
 
     // Extract first frame source from timeline
     // Force re-render trigger for Loro updates
@@ -101,7 +103,7 @@ const VideoEditorNode = ({ data, id }: NodeProps) => {
         setPreviewSrc(null);
     }, [data.timelineDsl, id, loroSync?.doc, loroUpdateTrigger]);
 
-    const handleOpenEditor = useCallback(() => {
+    const handleOpenEditor = useCallback(async () => {
         // Derive connected assets dynamically from edges
         // This removes the need to sync edge data to node.data.inputs
         // Get nodes/edges inside callback to avoid reactFlow dependency
@@ -116,7 +118,7 @@ const VideoEditorNode = ({ data, id }: NodeProps) => {
         );
 
         // Map connected edges to asset objects
-        const edgeAssets = connectedEdges.map((edge) => {
+        const edgeAssetsRaw = connectedEdges.map((edge) => {
              const sourceNode = nodes.find((n) => n.id === edge.source);
              if (!sourceNode) return null;
 
@@ -142,7 +144,7 @@ const VideoEditorNode = ({ data, id }: NodeProps) => {
                  return {
                     id: sourceNode.id,
                     type: nodeType as 'image' | 'video' | 'audio',
-                    src: resolveAssetUrl(src),
+                    src: src as string,
                     name: sourceNode.data.label || sourceNode.type,
                     width: sourceNode.data.naturalWidth,
                     height: sourceNode.data.naturalHeight,
@@ -152,6 +154,12 @@ const VideoEditorNode = ({ data, id }: NodeProps) => {
              }
              return null;
         }).filter((a): a is any => a !== null);
+
+        // Resolve all asset src URLs to signed URLs
+        const edgeAssets = await Promise.all(edgeAssetsRaw.map(async (a: any) => ({
+            ...a,
+            src: a.src ? await getSignedUrl(a.src) : a.src,
+        })));
 
         // Fallback/Supplement: Scan timelineDsl for used assets
         // This ensures that if arrange_timeline put something in the timeline, it shows up in assets
@@ -173,7 +181,7 @@ const VideoEditorNode = ({ data, id }: NodeProps) => {
                 });
             });
 
-            assetIdsInTimeline.forEach(assetId => {
+            await Promise.all(Array.from(assetIdsInTimeline).map(async (assetId) => {
                 const node = nodes.find(n => n.id === assetId);
                 if (node) {
                     const nodeType = (node.type || '').toLowerCase();
@@ -183,7 +191,7 @@ const VideoEditorNode = ({ data, id }: NodeProps) => {
                          timelineAssets.push({
                             id: node.id,
                             type: nodeType as 'image' | 'video' | 'audio',
-                            src: resolveAssetUrl(src),
+                            src: src ? await getSignedUrl(src) : src,
                             name: node.data.label || node.type,
                             width: node.data.naturalWidth,
                             height: node.data.naturalHeight,
@@ -192,7 +200,7 @@ const VideoEditorNode = ({ data, id }: NodeProps) => {
                          });
                      }
                 }
-            });
+            }));
         }
 
         // Combine and deduplicate
@@ -204,7 +212,7 @@ const VideoEditorNode = ({ data, id }: NodeProps) => {
             uniqueAssets.map((asset: any) => asset?.src).filter(Boolean)
         );
         const seenKeys = new Set<string>();
-        const availableAssets = nodes
+        const availableAssetsRaw = nodes
             .filter((node) => ['image', 'video', 'audio'].includes((node.type || '').toLowerCase()))
             .filter((node) => node.data?.src && !connectedAssetIds.has(node.id))
             .filter((node) => {
@@ -215,21 +223,25 @@ const VideoEditorNode = ({ data, id }: NodeProps) => {
             .map((node) => ({
                 id: node.id,
                 type: (node.type || '').toLowerCase() as 'image' | 'video' | 'audio',
-                src: resolveAssetUrl(node.data.src),
+                src: node.data.src as string,
                 name: node.data?.label || node.type,
                 width: node.data?.naturalWidth,
                 height: node.data?.naturalHeight,
                 duration: node.data?.duration,
                 sourceNodeId: node.id,
-            }))
-            .filter((asset) => {
+            }));
+        const availableAssets = await Promise.all(availableAssetsRaw.map(async (a) => ({
+            ...a,
+            src: a.src ? await getSignedUrl(a.src) : a.src,
+        })));
+        const filteredAvailableAssets = availableAssets.filter((asset) => {
                 if (inputSrcs.has(asset.src)) return false;
                 const key = asset.sourceNodeId || asset.src;
                 if (seenKeys.has(key)) return false;
                 seenKeys.add(key);
                 return true;
             });
-        openEditor(uniqueAssets, id, timelineDsl, availableAssets);
+        openEditor(uniqueAssets, id, timelineDsl, filteredAvailableAssets);
         // Note: reactFlow is intentionally excluded from deps - we read it inside the callback
         // to avoid re-creating this callback on every ProjectEditor render
     }, [data.timelineDsl, id, loroSync, openEditor]);
@@ -402,18 +414,20 @@ const VideoEditorNode = ({ data, id }: NodeProps) => {
                 <div className="relative w-full aspect-video bg-stone-100 flex items-center justify-center overflow-hidden border-b border-slate-100">
                     {previewSrc ? (
                         previewSrc.match(/\.(mp4|webm|mov)$/i) ? (
-                            <video
-                                src={resolveAssetUrl(previewSrc)}
-                                className="w-full h-full object-cover pointer-events-none"
-                                preload="auto"
-                                muted
-                                playsInline
-                                // Show first frame
-                                onLoadedMetadata={(e) => { (e.target as HTMLVideoElement).currentTime = 0; }}
-                            />
+                            signedPreviewUrl ? (
+                                <video
+                                    src={signedPreviewUrl}
+                                    className="w-full h-full object-cover pointer-events-none"
+                                    preload="auto"
+                                    muted
+                                    playsInline
+                                    // Show first frame
+                                    onLoadedMetadata={(e) => { (e.target as HTMLVideoElement).currentTime = 0; }}
+                                />
+                            ) : null
                         ) : (
-                            <img
-                                src={resolveAssetUrl(previewSrc)}
+                            <SignedImg
+                                src={previewSrc}
                                 alt="Preview"
                                 className="w-full h-full object-cover pointer-events-none"
                             />

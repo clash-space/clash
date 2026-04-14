@@ -10,6 +10,8 @@ const API_HOST = typeof window !== 'undefined'
   ? window.location.host
   : 'localhost:3000';
 
+const MAX_RECONNECT_ATTEMPTS = 5;
+
 export interface CustomEvent {
   id: string;
   type: string;
@@ -26,11 +28,20 @@ interface UseAgentCopilotOptions {
 export function useAgentCopilot({ projectId, threadId, onCustomEvent }: UseAgentCopilotOptions) {
   const [connected, setConnected] = useState(false);
   const [customEvents, setCustomEvents] = useState<CustomEvent[]>([]);
+  const [connectionError, setConnectionError] = useState<string | null>(null);
+  const [lastFailedMessage, setLastFailedMessage] = useState<string | null>(null);
+  const reconnectAttemptsRef = useRef(0);
   const onCustomEventRef = useRef(onCustomEvent);
 
   useEffect(() => {
     onCustomEventRef.current = onCustomEvent;
   }, [onCustomEvent]);
+
+  // Reset reconnect counter when threadId changes (new session)
+  useEffect(() => {
+    reconnectAttemptsRef.current = 0;
+    setConnectionError(null);
+  }, [threadId]);
 
   const handleCustomEvent = useCallback((data: Record<string, unknown>) => {
     const event: CustomEvent = {
@@ -47,8 +58,20 @@ export function useAgentCopilot({ projectId, threadId, onCustomEvent }: UseAgent
     agent: 'supervisor',
     name: `${projectId}:${threadId}`,
     host: API_HOST,
-    onOpen: () => setConnected(true),
-    onClose: () => setConnected(false),
+    onOpen: () => {
+      // console.log('[useAgentCopilot] WS opened');
+      setConnected(true);
+      setConnectionError(null);
+      reconnectAttemptsRef.current = 0;
+    },
+    onClose: () => {
+      // console.log('[useAgentCopilot] WS closed');
+      setConnected(false);
+      reconnectAttemptsRef.current += 1;
+      if (reconnectAttemptsRef.current >= MAX_RECONNECT_ATTEMPTS) {
+        setConnectionError(`Connection lost after ${MAX_RECONNECT_ATTEMPTS} attempts. Please refresh the page.`);
+      }
+    },
     onMessage: (event: MessageEvent) => {
       // useAgent passes through messages that don't match cf_agent_* protocol.
       // These are our custom events (node_proposal, rerun_generation, timeline_edit).
@@ -63,16 +86,30 @@ export function useAgentCopilot({ projectId, threadId, onCustomEvent }: UseAgent
     },
   });
 
-  const chat = useAgentChat({ agent });
+  const chat = useAgentChat({
+    agent,
+    onError: (error) => {
+      console.error('[useAgentCopilot] Chat error:', error);
+      setConnectionError(error.message || 'Failed to send message. Please try again.');
+    },
+  });
 
   const clearCustomEvents = useCallback(() => {
     setCustomEvents([]);
+  }, []);
+
+  const clearConnectionError = useCallback(() => {
+    setConnectionError(null);
+    setLastFailedMessage(null);
   }, []);
 
   return {
     ...chat,
     agent,
     connected,
+    connectionError,
+    lastFailedMessage,
+    clearConnectionError,
     customEvents,
     clearCustomEvents,
   };

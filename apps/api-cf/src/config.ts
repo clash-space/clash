@@ -12,6 +12,14 @@ export interface Env {
   CF_AIG_TOKEN: string;
   /** AI Gateway base URL for OpenAI, e.g. https://gateway.ai.cloudflare.com/v1/{account}/{gw}/openai */
   CF_AIG_OPENAI_URL: string;
+  /** AI provider: "openai" (default) or "anthropic" */
+  AI_PROVIDER?: string;
+  /** Model override, e.g. "claude-sonnet-4-20250514" or "gpt-5" */
+  AI_MODEL?: string;
+  /** Anthropic API key (required when AI_PROVIDER=anthropic) */
+  ANTHROPIC_API_KEY?: string;
+  /** AI Gateway base URL for Anthropic (optional, uses api.anthropic.com by default) */
+  CF_AIG_ANTHROPIC_URL?: string;
   FAL_API_KEY?: string;
   /** AI Gateway base URL for fal, e.g. https://gateway.ai.cloudflare.com/v1/{account}/{gw}/fal */
   FAL_GATEWAY_URL?: string;

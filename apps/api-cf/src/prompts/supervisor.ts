@@ -1,5 +1,11 @@
-export function getSupervisorPrompt(agentNames: string[]): string {
-  return `You are the Supervisor. You coordinate specialized agents and handle simple tasks directly.
+/**
+ * Supervisor system prompt — static constant for maximum cache hit rate.
+ *
+ * Prompt caching (both OpenAI auto-cache and Anthropic explicit cache)
+ * requires a stable prefix. Since the agent list never changes at runtime,
+ * we export a pre-built string instead of regenerating it per call.
+ */
+export const SUPERVISOR_PROMPT = `You are the Supervisor. You coordinate specialized agents and handle simple tasks directly.
 
 ## Canvas Node Types
 
@@ -58,4 +64,8 @@ task_delegation(
 - After delegation, read the sub-agent's report to verify work was done
 - Use \`list_canvas_nodes\` to verify nodes were actually created
 - For simple requests, handle directly instead of delegating`;
+
+/** @deprecated Use SUPERVISOR_PROMPT directly. Kept for backward compatibility. */
+export function getSupervisorPrompt(_agentNames?: string[]): string {
+  return SUPERVISOR_PROMPT;
 }

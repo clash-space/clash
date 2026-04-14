@@ -176,6 +176,136 @@ describe("applyChunkToParts", () => {
   });
 });
 
+// ─── 2b. applyChunkToParts: preliminary delegation tool outputs ──
+
+describe("applyChunkToParts – preliminary delegation outputs", () => {
+  it("sets preliminary flag on tool-output-available", () => {
+    const parts: any[] = [];
+
+    applyChunkToParts(parts, {
+      type: "tool-input-start",
+      toolCallId: "del_1",
+      toolName: "task_delegation",
+    });
+    applyChunkToParts(parts, {
+      type: "tool-input-available",
+      toolCallId: "del_1",
+      toolName: "task_delegation",
+      input: { agent: "ScriptWriter", instruction: "Write a script" },
+    });
+    applyChunkToParts(parts, {
+      type: "tool-output-available",
+      toolCallId: "del_1",
+      output: { status: "started", agent: "ScriptWriter", message: "Working..." },
+      preliminary: true,
+    });
+
+    expect(parts).toHaveLength(1);
+    expect(parts[0].preliminary).toBe(true);
+    expect(parts[0].output.status).toBe("started");
+    expect(parts[0].output.agent).toBe("ScriptWriter");
+  });
+
+  it("overwrites previous preliminary output (accumulation is backend's job)", () => {
+    const parts: any[] = [];
+
+    applyChunkToParts(parts, {
+      type: "tool-input-start",
+      toolCallId: "del_1",
+      toolName: "task_delegation",
+    });
+    applyChunkToParts(parts, {
+      type: "tool-input-available",
+      toolCallId: "del_1",
+      toolName: "task_delegation",
+      input: { agent: "ScriptWriter", instruction: "Write a script" },
+    });
+
+    // First yield: started
+    applyChunkToParts(parts, {
+      type: "tool-output-available",
+      toolCallId: "del_1",
+      output: { status: "started", agent: "ScriptWriter", toolCalls: [] },
+      preliminary: true,
+    });
+    expect(parts[0].output.toolCalls).toEqual([]);
+
+    // Second yield: 1 tool call
+    applyChunkToParts(parts, {
+      type: "tool-output-available",
+      toolCallId: "del_1",
+      output: {
+        status: "step",
+        agent: "ScriptWriter",
+        toolCalls: [
+          { id: "c1", toolName: "list_canvas_nodes", args: {}, status: "calling" },
+        ],
+      },
+      preliminary: true,
+    });
+    expect(parts[0].output.toolCalls).toHaveLength(1);
+    expect(parts[0].output.toolCalls[0].toolName).toBe("list_canvas_nodes");
+
+    // Third yield: 2 tool calls (accumulated)
+    applyChunkToParts(parts, {
+      type: "tool-output-available",
+      toolCallId: "del_1",
+      output: {
+        status: "step",
+        agent: "ScriptWriter",
+        toolCalls: [
+          { id: "c1", toolName: "list_canvas_nodes", args: {}, output: "3 nodes", status: "completed" },
+          { id: "c2", toolName: "create_canvas_node", args: { type: "text" }, status: "calling" },
+        ],
+      },
+      preliminary: true,
+    });
+    expect(parts[0].output.toolCalls).toHaveLength(2);
+    expect(parts[0].output.toolCalls[0].status).toBe("completed");
+    expect(parts[0].output.toolCalls[1].status).toBe("calling");
+
+    // Only 1 part total (same toolCallId)
+    expect(parts).toHaveLength(1);
+  });
+
+  it("final output clears preliminary flag", () => {
+    const parts: any[] = [];
+
+    applyChunkToParts(parts, {
+      type: "tool-input-start",
+      toolCallId: "del_1",
+      toolName: "task_delegation",
+    });
+    applyChunkToParts(parts, {
+      type: "tool-input-available",
+      toolCallId: "del_1",
+      toolName: "task_delegation",
+      input: { agent: "ScriptWriter", instruction: "Write a script" },
+    });
+
+    // Preliminary
+    applyChunkToParts(parts, {
+      type: "tool-output-available",
+      toolCallId: "del_1",
+      output: { status: "step", agent: "ScriptWriter", toolCalls: [] },
+      preliminary: true,
+    });
+    expect(parts[0].preliminary).toBe(true);
+
+    // Final (preliminary not in chunk — applyChunkToParts only sets when present,
+    // so it stays as previously set; the frontend checks output type to distinguish)
+    applyChunkToParts(parts, {
+      type: "tool-output-available",
+      toolCallId: "del_1",
+      output: "ScriptWriter completed the task. Created node abc.",
+      preliminary: false,
+    });
+    expect(parts[0].preliminary).toBe(false);
+    expect(parts[0].output).toBe("ScriptWriter completed the task. Created node abc.");
+    expect(parts[0].state).toBe("output-available");
+  });
+});
+
 // ─── 3. WS broadcast protocol ──────────────────────────────────
 
 describe("WS broadcast message format", () => {

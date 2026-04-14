@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { PaperPlaneRight, CaretLeft, CaretRight, Plus, ClockCounterClockwise, StopCircle, Trash } from '@phosphor-icons/react';
+import { CaretLeft, CaretRight, Plus, ClockCounterClockwise, Trash } from '@phosphor-icons/react';
 import { useRouter } from 'next/navigation';
 import { Command } from '../actions';
 import { UserMessage } from './copilot/UserMessage';
@@ -10,11 +10,13 @@ import { AgentCard, type AgentLog } from './copilot/AgentCard';
 import { ToolCall } from './copilot/ToolCall';
 import { ApprovalCard } from './copilot/ApprovalCard';
 import { ThinkingProcess } from './copilot/ThinkingProcess';
+import { ChatInput } from './copilot/ChatInput';
 import { TodoList, TodoItem } from './copilot/TodoList';
 import { ThinkingIndicator } from './copilot/ThinkingIndicator';
 import type { Node as RFNode, Edge as RFEdge, Connection as RFConnection } from 'reactflow';
 import ReactMarkdown from 'react-markdown';
-import { resolveAssetUrl } from '@/lib/utils/assets';
+import { SignedImg } from './SignedMedia';
+import { useSignedUrl } from '@/lib/hooks/useSignedUrl';
 import { thumbnailCache } from '@/lib/utils/thumbnailCache';
 import { useAgentCopilot, type CustomEvent } from '../hooks/useAgentCopilot';
 
@@ -51,6 +53,8 @@ interface ChatbotCopilotProps {
     onDeleteSession?: (threadId: string) => void;
     /** Called when user sends first message with no active session */
     onCreateSession?: (initialMessage: string) => void;
+    /** Create canvas nodes from already-uploaded attachments */
+    onUploadFiles?: (attachments: import('./copilot/ChatInput').UploadedAttachment[]) => void;
 }
 
 /** Markdown components for assistant text rendering */
@@ -80,6 +84,51 @@ const markdownComponents = {
     a: ({ href, children }: any) => <a href={href} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">{children}</a>,
 };
 
+/** Small component so we can call useSignedUrl per-node */
+function SelectedNodeThumbnail({ node }: { node: RFNode }) {
+    const signedSrc = useSignedUrl(node.data.src);
+    const rawThumbnail = (node.data.referenceImageUrls && node.data.referenceImageUrls[0]) ||
+                         node.data.thumbnail ||
+                         thumbnailCache.get(node.data.src);
+    const signedThumbnail = useSignedUrl(rawThumbnail);
+    const isVideo = node.type === 'video' ||
+                    node.data?.actionType === 'video-gen' ||
+                    /\.(mp4|mov|webm)$/i.test(node.data?.src || '');
+    return (
+        <div className="w-6 h-6 rounded-md ring-2 ring-white overflow-hidden bg-slate-100 flex items-center justify-center">
+            {rawThumbnail ? (
+                signedThumbnail ? (
+                    /* eslint-disable-next-line @next/next/no-img-element */
+                    <img src={signedThumbnail} alt="" className="w-full h-full object-cover" />
+                ) : null
+            ) : isVideo ? (
+                signedSrc ? (
+                    <video
+                        src={`${signedSrc}#t=0.1`}
+                        className="w-full h-full object-cover"
+                        preload="metadata"
+                        muted
+                        playsInline
+                    />
+                ) : null
+            ) : (
+                signedSrc ? (
+                    /* eslint-disable-next-line @next/next/no-img-element */
+                    <img src={signedSrc} alt="" className="w-full h-full object-cover" />
+                ) : null
+            )}
+        </div>
+    );
+}
+
+// Module-level pending prompt — survives React Strict Mode double-mount
+// and component remounts. Set by onCreateSession, consumed by auto-send.
+let __pendingPrompt: { threadId: string; text: string } | null = null;
+
+export function setPendingPrompt(threadId: string, text: string) {
+    __pendingPrompt = { threadId, text };
+}
+
 export default function ChatbotCopilot({
     projectId,
     threadId,
@@ -102,12 +151,14 @@ export default function ChatbotCopilot({
     onSwitchSession,
     onDeleteSession,
     onCreateSession,
+    onUploadFiles,
 }: ChatbotCopilotProps) {
     // ─── UI State ──────────────────────────────────────────────
     const [input, setInput] = useState('');
     const [isResizing, setIsResizing] = useState(false);
     const [showHistory, setShowHistory] = useState(false);
     const [todoItems, setTodoItems] = useState<TodoItem[]>([]);
+    const [suggestions, setSuggestions] = useState<Array<{ label: string; message: string }>>([]);
 
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const scrollContainerRef = useRef<HTMLDivElement>(null);
@@ -123,14 +174,30 @@ export default function ChatbotCopilot({
         status,
         clearHistory,
         connected,
+        connectionError,
+        lastFailedMessage,
+        clearConnectionError,
         customEvents,
         clearCustomEvents,
     } = useAgentCopilot({
         projectId,
         threadId,
+        onCustomEvent: useCallback((data: Record<string, unknown>) => {
+            if (data.type === 'suggestions' && Array.isArray(data.suggestions)) {
+                setSuggestions(data.suggestions as Array<{ label: string; message: string }>);
+            }
+        }, []),
     });
 
     const isProcessing = status === 'submitted' || status === 'streaming';
+    const hasPendingPrompt = !!__pendingPrompt && __pendingPrompt.threadId === threadId;
+
+    // Auto-restore failed message to input
+    useEffect(() => {
+        if (lastFailedMessage && !input) {
+            setInput(lastFailedMessage);
+        }
+    }, [lastFailedMessage]); // eslint-disable-line react-hooks/exhaustive-deps
 
     // ─── Session Actions (delegated to parent) ───────────────
     const handleNewSession = useCallback(() => {
@@ -191,33 +258,64 @@ export default function ChatbotCopilot({
     }, [isCollapsed, messages, shouldStickToBottom, scrollToBottom]);
 
     // ─── Submit ──────────────────────────────────────────────
-    const handleSubmit = async (e?: React.FormEvent) => {
-        e?.preventDefault();
-        if (!input.trim() || isProcessing) return;
-        const value = input;
+    const [isCreatingSession, setIsCreatingSession] = useState(false);
+    const [sessionError, setSessionError] = useState<string | null>(null);
+
+    const handleSubmit = async (text: string, attachments: import('./copilot/ChatInput').UploadedAttachment[] = []) => {
+        const value = text.trim();
+        if (!value && attachments.length === 0) return;
+        if (isProcessing || isCreatingSession) return;
         setInput('');
+        setSuggestions([]);
+        setSessionError(null);
+        clearConnectionError();
         setShouldStickToBottom(true);
+
+        // Create canvas nodes for uploaded attachments
+        if (attachments.length > 0 && onUploadFiles) {
+            onUploadFiles(attachments);
+        }
+
+        // Message text is already markdown with inline images: ![name](storageKey)
+        // The agent can parse these directly
+        const msgText = value;
+
         if (!threadId) {
-            // No session yet — ask parent to create one (will remount with new threadId + initialPrompt)
-            onCreateSession?.(value);
+            setIsCreatingSession(true);
+            try {
+                await onCreateSession?.(msgText);
+            } catch {
+                setSessionError('Failed to create session. Please try again.');
+                setInput(value);
+            } finally {
+                setIsCreatingSession(false);
+            }
         } else {
-            await sendMessage({ text: value });
+            try {
+                await sendMessage({ text: msgText });
+            } catch {
+                setInput(value);
+            }
         }
     };
 
-    // Auto-send initial prompt
-    const hasAutoStartedRef = useRef(false);
-    const router = useRouter();
-
+    // Auto-send pending prompt when connected and ready.
+    // setTimeout ensures useAgentChat's internal WS handlers are fully set up
+    // after onOpen fires. cleanup cancels on Strict Mode's first unmount.
     useEffect(() => {
-        if (initialPrompt && !hasAutoStartedRef.current && connected) {
-            hasAutoStartedRef.current = true;
-            router.replace(`/projects/${projectId}`, { scroll: false });
-            setTimeout(() => {
-                sendMessage({ text: initialPrompt });
-            }, 500);
-        }
-    }, [initialPrompt, projectId, router, sendMessage, connected]);
+        if (!__pendingPrompt || __pendingPrompt.threadId !== threadId || !connected) return;
+        if (status === 'submitted' || status === 'streaming') return;
+        const timer = setTimeout(() => {
+            if (!__pendingPrompt || __pendingPrompt.threadId !== threadId) return;
+            const text = __pendingPrompt.text;
+            __pendingPrompt = null;
+            sendMessage({ text });
+            if (window.location.search.includes('prompt=')) {
+                window.history.replaceState({}, '', window.location.pathname);
+            }
+        }, 300);
+        return () => clearTimeout(timer);
+    }, [threadId, status, connected, sendMessage]);
 
     // ─── Resize ──────────────────────────────────────────────
     const startResizing = () => setIsResizing(true);
@@ -423,10 +521,29 @@ export default function ChatbotCopilot({
                                                             // Sub-agent delegation: show AgentCard for preliminary outputs
                                                             if (toolName === 'task_delegation' && part.preliminary && part.output) {
                                                                 const progress = part.output as any;
+                                                                const agentName = progress.agent || 'Agent';
                                                                 const agentLogs: AgentLog[] = [];
+
                                                                 if (progress.toolCalls?.length) {
-                                                                    progress.toolCalls.forEach((tc: string, idx: number) => {
-                                                                        agentLogs.push({ id: `tc-${idx}`, type: 'text', content: `→ ${tc}` });
+                                                                    progress.toolCalls.forEach((tc: any) => {
+                                                                        // Support both old format (string) and new format (SubAgentToolCall)
+                                                                        if (typeof tc === 'string') {
+                                                                            agentLogs.push({ id: `tc-${tc}`, type: 'text', content: `→ ${tc}` });
+                                                                        } else {
+                                                                            agentLogs.push({
+                                                                                id: tc.id || `tc-${tc.toolName}`,
+                                                                                type: 'tool_call',
+                                                                                toolProps: {
+                                                                                    toolName: tc.toolName,
+                                                                                    args: tc.args,
+                                                                                    result: tc.output,
+                                                                                    status: tc.status === 'completed' ? 'success'
+                                                                                        : tc.status === 'error' ? 'error'
+                                                                                        : 'pending',
+                                                                                    indent: false,
+                                                                                },
+                                                                            });
+                                                                        }
                                                                     });
                                                                 }
                                                                 if (progress.text) {
@@ -435,12 +552,21 @@ export default function ChatbotCopilot({
                                                                 if (progress.message) {
                                                                     agentLogs.push({ id: 'msg', type: 'text', content: progress.message });
                                                                 }
+
+                                                                const personaMap: Record<string, string> = {
+                                                                    ScriptWriter: 'scriptwriter',
+                                                                    ConceptArtist: 'conceptartist',
+                                                                    StoryboardDesigner: 'storyboardartist',
+                                                                    Editor: 'videoproducer',
+                                                                };
+
                                                                 return (
                                                                     <AgentCard
                                                                         key={part.toolCallId || i}
-                                                                        agentName={progress.agent || 'Agent'}
+                                                                        agentName={agentName}
                                                                         status={progress.status === 'completed' ? 'done' : progress.status === 'failed' ? 'failed' : 'working'}
                                                                         logs={agentLogs}
+                                                                        persona={(personaMap[agentName] || 'default') as any}
                                                                     />
                                                                 );
                                                             }
@@ -469,6 +595,29 @@ export default function ChatbotCopilot({
                                     {isProcessing && (
                                         <ThinkingIndicator message={status === 'submitted' ? 'Thinking' : 'Streaming'} />
                                     )}
+
+                                    {/* Suggestion chips (e.g. "Continue" after step limit) */}
+                                    {suggestions.length > 0 && !isProcessing && (
+                                        <motion.div
+                                            initial={{ opacity: 0, y: 10 }}
+                                            animate={{ opacity: 1, y: 0 }}
+                                            className="flex flex-wrap gap-2 px-1"
+                                        >
+                                            {suggestions.map((s, i) => (
+                                                <motion.button
+                                                    key={i}
+                                                    onClick={() => handleSubmit(s.message)}
+                                                    className="px-4 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-200 rounded-full shadow-sm hover:bg-slate-50 hover:border-slate-300 transition-all"
+                                                    whileHover={{ scale: 1.03, y: -1 }}
+                                                    whileTap={{ scale: 0.97 }}
+                                                    transition={{ type: "spring", stiffness: 400, damping: 25 }}
+                                                >
+                                                    {s.label}
+                                                </motion.button>
+                                            ))}
+                                        </motion.div>
+                                    )}
+
                                     <div ref={messagesEndRef} />
                                 </div>
                             </div>
@@ -484,34 +633,9 @@ export default function ChatbotCopilot({
                                     >
                                         <div className="bg-white/90 backdrop-blur-md text-slate-600 text-xs font-medium px-3 py-1.5 rounded-full border border-slate-200 shadow-sm flex items-center gap-2">
                                             <div className="flex -space-x-2">
-                                                {selectedNodes.filter(n => n.data?.src).slice(0, 3).map((node) => {
-                                                    const src = resolveAssetUrl(node.data.src);
-                                                    const thumbnail = (node.data.referenceImageUrls && node.data.referenceImageUrls[0]) ||
-                                                                    node.data.thumbnail ||
-                                                                    thumbnailCache.get(node.data.src);
-                                                    const isVideo = node.type === 'video' ||
-                                                                   node.data?.actionType === 'video-gen' ||
-                                                                   /\.(mp4|mov|webm)$/i.test(node.data?.src || '');
-                                                    return (
-                                                        <div key={node.id} className="w-6 h-6 rounded-md ring-2 ring-white overflow-hidden bg-slate-100 flex items-center justify-center">
-                                                            {thumbnail ? (
-                                                                /* eslint-disable-next-line @next/next/no-img-element */
-                                                                <img src={resolveAssetUrl(thumbnail)} alt="" className="w-full h-full object-cover" />
-                                                            ) : isVideo ? (
-                                                                <video
-                                                                    src={`${src}#t=0.1`}
-                                                                    className="w-full h-full object-cover"
-                                                                    preload="metadata"
-                                                                    muted
-                                                                    playsInline
-                                                                />
-                                                            ) : (
-                                                                /* eslint-disable-next-line @next/next/no-img-element */
-                                                                <img src={src} alt="" className="w-full h-full object-cover" />
-                                                            )}
-                                                        </div>
-                                                    );
-                                                })}
+                                                {selectedNodes.filter(n => n.data?.src).slice(0, 3).map((node) => (
+                                                    <SelectedNodeThumbnail key={node.id} node={node} />
+                                                ))}
                                             </div>
                                             <span>{selectedNodes.length} Selected</span>
                                             {selectedNodes.length === 1 && (
@@ -531,46 +655,21 @@ export default function ChatbotCopilot({
                                 )}
                             </AnimatePresence>
 
-                            <div className="absolute bottom-0 left-0 right-0 h-40 bg-gradient-to-t from-gray-50 via-gray-50/60 to-transparent pointer-events-none" />
+                            <div className="absolute bottom-0 left-0 right-0 h-28 bg-gradient-to-t from-gray-50 via-gray-50/80 to-transparent pointer-events-none" />
 
-                            <div className="absolute bottom-0 left-0 right-0 px-4 py-4">
-                                <form onSubmit={handleSubmit} className="flex gap-2">
-                                    <input
-                                        type="text"
-                                        value={input}
-                                        onChange={(e) => setInput(e.target.value)}
-                                        placeholder={isProcessing ? "Agent is thinking..." : (selectedNodes.length > 0 ? "Ask anything about selected files..." : "Type your message...")}
-                                        className={`flex-1 px-6 py-4 bg-white backdrop-blur-xl rounded-full focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:bg-white text-sm text-gray-900 placeholder:text-gray-500 border border-slate-200 transition-all shadow-sm hover:shadow-md ${isProcessing ? 'opacity-50 cursor-not-allowed' : ''}`}
-                                        disabled={isProcessing}
-                                    />
-                                    {isProcessing ? (
-                                        <motion.button
-                                            type="button"
-                                            onClick={handleStop}
-                                            className="px-6 py-4 rounded-full transition-all flex items-center justify-center gap-2 bg-red-500/90 text-white shadow-lg hover:bg-red-600"
-                                            whileHover={{ scale: 1.05, y: -2 }}
-                                            whileTap={{ scale: 0.95 }}
-                                            transition={{ type: "spring", stiffness: 400, damping: 25 }}
-                                        >
-                                            <StopCircle className="w-5 h-5" weight="fill" />
-                                            <span className="text-sm font-medium">Stop</span>
-                                        </motion.button>
-                                    ) : (
-                                        <motion.button
-                                            type="submit"
-                                            disabled={!input.trim() || isProcessing}
-                                            className={`h-[54px] w-[54px] rounded-full transition-all flex items-center justify-center ${input.trim() && !isProcessing
-                                                ? 'bg-gray-900/90 text-white shadow-lg'
-                                                : 'bg-gray-300/60 text-gray-400 cursor-not-allowed'
-                                                }`}
-                                            whileHover={input.trim() ? { scale: 1.05, y: -2 } : {}}
-                                            whileTap={input.trim() ? { scale: 0.95 } : {}}
-                                            transition={{ type: "spring", stiffness: 400, damping: 25 }}
-                                        >
-                                            <PaperPlaneRight className="w-5 h-5" weight="fill" />
-                                        </motion.button>
-                                    )}
-                                </form>
+                            <div className="absolute bottom-0 left-0 right-0">
+                                <ChatInput
+                                    input={input}
+                                    onInputChange={setInput}
+                                    onSubmit={handleSubmit}
+                                    onStop={handleStop}
+                                    isProcessing={isProcessing}
+                                    isCreatingSession={isCreatingSession || hasPendingPrompt}
+                                    connected={connected}
+                                    error={sessionError || connectionError}
+                                    onDismissError={() => { setSessionError(null); clearConnectionError(); }}
+                                    placeholder={selectedNodes.length > 0 ? 'Ask anything about selected files...' : 'Ask anything...'}
+                                />
                             </div>
                         </motion.div>
                     )}

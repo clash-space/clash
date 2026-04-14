@@ -16,15 +16,15 @@
 import { AIChatAgent } from "@cloudflare/ai-chat";
 import type { Connection, WSMessage } from "agents";
 import { LoroDoc } from "loro-crdt";
-import { createOpenAI } from "@ai-sdk/openai";
 
 import type { Env } from "../config";
 import { log } from "../logger";
+import { createModel } from "../providers";
 import { createCanvasTools } from "./tools/canvas";
 import { createTimelineTools } from "./tools/timeline";
 import { createDelegationTool } from "./tools/delegation";
-import { getSupervisorPrompt } from "../prompts/supervisor";
-import { applyChunkToParts } from "./apply-chunk";
+import { SUPERVISOR_PROMPT } from "../prompts/supervisor";
+import { withCacheControl, cachedSystemPrompt } from "./cache-control";
 
 export class SupervisorAgent extends AIChatAgent<Env> {
   /** Local Loro CRDT replica — synced with ProjectRoom via internal WS. */
@@ -41,6 +41,8 @@ export class SupervisorAgent extends AIChatAgent<Env> {
   private roomConnection: Promise<void> | null = null;
   /** Current workspace group ID for scoping agent work. */
   private workspaceGroupId?: string;
+  /** Cached model instance + provider type — avoids recreating per message. */
+  private _model: ReturnType<typeof createModel> | null = null;
 
   // ─── Connection Lifecycle ──────────────────────────────────
 
@@ -233,15 +235,15 @@ export class SupervisorAgent extends AIChatAgent<Env> {
   // ─── AI Chat ────────────────────────────────────────────────
 
   /**
-   * Stream AI response directly via WebSocket, bypassing SSE serialization.
+   * Stream AI response via the standard AIChatAgent flow.
    *
-   * The default AIChatAgent flow: streamText → SSE Response → _reply → _streamSSEReply → WS
-   * has a bug where SSE chunks split mid-line cause silent event drops.
-   *
-   * Our flow: streamText → toUIMessageStream (objects) → WS directly.
-   * We return `undefined` from onChatMessage and handle streaming + persistence ourselves.
+   * Uses createUIMessageStream + createUIMessageStreamResponse so the base
+   * class handles SSE→WS conversion, resumable streaming, and persistence.
    */
-  async onChatMessage(_onFinish: unknown, options?: { abortSignal?: AbortSignal; requestId?: string }) {
+  async onChatMessage(
+    onFinish?: Parameters<AIChatAgent<Env>["onChatMessage"]>[0],
+    options?: Parameters<AIChatAgent<Env>["onChatMessage"]>[1],
+  ) {
     // Lazily connect to ProjectRoom on first chat message
     if (!this.roomConnection) {
       this.roomConnection = this.connectToRoom(this.projectId);
@@ -250,11 +252,8 @@ export class SupervisorAgent extends AIChatAgent<Env> {
       await this.roomConnection;
     }
 
-    const openai = createOpenAI({
-      apiKey: this.env.CF_AIG_TOKEN,
-      baseURL: this.env.CF_AIG_OPENAI_URL,
-    });
-    const model = openai.chat("gpt-5");
+    if (!this._model) this._model = createModel(this.env);
+    const { model, provider } = this._model;
 
     // Send custom events to all connected browser clients
     const sendMsg = (msg: Record<string, unknown>) => {
@@ -273,85 +272,40 @@ export class SupervisorAgent extends AIChatAgent<Env> {
     const canvasTools = createCanvasTools(this.doc, this.broadcastToRoom, sendMsg, generateId, getWorkspaceGroupId, this.env, this.projectId);
     const timelineTools = createTimelineTools(sendMsg);
     const allTools = { ...canvasTools, ...timelineTools };
-    const delegationTool = createDelegationTool(model as any, allTools);
+    const delegationTool = createDelegationTool(model as any, allTools, provider);
     const tools = { ...allTools, task_delegation: delegationTool };
 
-    const { streamText, convertToModelMessages, stepCountIs } = await import("ai");
+    const { streamText, convertToModelMessages, stepCountIs, createUIMessageStream, createUIMessageStreamResponse } = await import("ai");
 
-    const result = streamText({
-      model,
-      system: getSupervisorPrompt([
-        "ScriptWriter",
-        "ConceptArtist",
-        "StoryboardDesigner",
-        "Editor",
-      ]),
-      messages: await convertToModelMessages(this.messages),
-      tools,
-      stopWhen: stepCountIs(30),
-      abortSignal: options?.abortSignal,
+    const modelMessages = await convertToModelMessages(this.messages);
+    const MAX_STEPS = 100;
+
+    const stream = createUIMessageStream({
+      execute: ({ writer }) => {
+        const result = streamText({
+          model,
+          system: cachedSystemPrompt(SUPERVISOR_PROMPT, provider),
+          messages: withCacheControl(modelMessages, provider),
+          tools,
+          stopWhen: stepCountIs(MAX_STEPS),
+          abortSignal: options?.abortSignal,
+          onFinish: async ({ steps }) => {
+            if (steps.length >= MAX_STEPS) {
+              log.warn(`Step limit reached (${MAX_STEPS} steps)`);
+              sendMsg({
+                type: "suggestions",
+                suggestions: [
+                  { label: "Continue", message: "continue" },
+                ],
+              });
+            }
+          },
+        });
+
+        writer.merge(result.toUIMessageStream());
+      },
     });
 
-    // Stream directly via WebSocket — no SSE intermediate layer.
-    const requestId = options?.requestId ?? crypto.randomUUID();
-    const self = this as any;
-    const streamId = self._startStream(requestId);
-    const message = self._createStreamingAssistantMessage(false);
-    self._streamingMessage = message;
-
-    const MSG_TYPE = "cf_agent_use_chat_response";
-
-    try {
-      for await (const chunk of result.toUIMessageStream()) {
-        // Build server-side message parts (mirrors what client does)
-        applyChunkToParts(message.parts, chunk);
-
-        // Remap finish event to include finishReason in messageMetadata
-        let event = chunk as Record<string, unknown>;
-        if (chunk.type === "finish" && "finishReason" in chunk) {
-          const { finishReason, ...rest } = chunk as any;
-          event = { ...rest, type: "finish", messageMetadata: { finishReason } };
-        }
-
-        // Handle start event: extract messageId
-        if (chunk.type === "start" && (chunk as any).messageId != null) {
-          message.id = (chunk as any).messageId;
-        }
-        if ((chunk.type === "start" || chunk.type === "finish" || chunk.type === "message-metadata") && (chunk as any).messageMetadata != null) {
-          message.metadata = message.metadata
-            ? { ...message.metadata, ...(chunk as any).messageMetadata }
-            : (chunk as any).messageMetadata;
-        }
-
-        const body = JSON.stringify(event);
-        self._storeStreamChunk(streamId, body);
-        self._broadcastChatMessage({ body, done: false, id: requestId, type: MSG_TYPE });
-      }
-    } catch (err) {
-      log.error("Stream error:", err);
-      self._markStreamError(streamId);
-      self._broadcastChatMessage({
-        body: err instanceof Error ? err.message : "Stream error",
-        done: true,
-        error: true,
-        id: requestId,
-        type: MSG_TYPE,
-      });
-      throw err;
-    } finally {
-      self._streamingMessage = null;
-    }
-
-    // Signal stream complete
-    self._completeStream(streamId);
-    self._broadcastChatMessage({ body: "", done: true, id: requestId, type: MSG_TYPE });
-
-    // Persist the message built by applyChunkToParts
-    if (message.parts.length > 0) {
-      await this.persistMessages([...this.messages, message] as any);
-    }
-
-    // Return undefined — we already streamed everything via WS.
-    return undefined;
+    return createUIMessageStreamResponse({ stream });
   }
 }

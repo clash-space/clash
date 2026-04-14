@@ -1,6 +1,6 @@
 'use client';
 
-import { useRef, useCallback, useState, useEffect } from 'react';
+import { useRef, useCallback, useState, useEffect, useImperativeHandle, forwardRef } from 'react';
 import { Editor, rootCtx, defaultValueCtx } from '@milkdown/core';
 import { commonmark } from '@milkdown/preset-commonmark';
 import { nord } from '@milkdown/theme-nord';
@@ -12,7 +12,7 @@ import { history } from '@milkdown/plugin-history';
 import { $prose } from '@milkdown/utils';
 import { Plugin, PluginKey } from '@milkdown/prose/state';
 import type { EditorView } from '@milkdown/prose/view';
-import { resolveAssetUrl } from '../../lib/utils/assets';
+import { SignedImg } from './SignedMedia';
 
 import '@milkdown/theme-nord/style.css';
 import 'prismjs/themes/prism.css';
@@ -23,6 +23,11 @@ export interface MentionableNode {
     type: string;       // 'image' | 'video' | 'text' | etc.
     label: string;
     src?: string;        // For image/video: R2 key or URL
+}
+
+export interface MilkdownEditorHandle {
+    /** Insert markdown at the current cursor position. Images (![alt](url)) are rendered inline. */
+    insertAtCursor: (markdown: string) => void;
 }
 
 interface MilkdownEditorProps {
@@ -220,9 +225,8 @@ function AssetMentionMenu({
                             onMouseEnter={() => setSelectedIndex(i)}
                         >
                             {node.type === 'image' && node.src ? (
-                                /* eslint-disable-next-line @next/next/no-img-element */
-                                <img
-                                    src={resolveAssetUrl(node.src)}
+                                <SignedImg
+                                    src={node.src}
                                     alt=""
                                     className="w-6 h-6 rounded object-cover border border-slate-200 flex-shrink-0"
                                 />
@@ -242,14 +246,14 @@ function AssetMentionMenu({
 
 // ─── Main Editor Component ───────────────────────────────
 
-function MilkdownEditorInner({
+const MilkdownEditorInner = forwardRef<MilkdownEditorHandle, MilkdownEditorProps>(function MilkdownEditorInner({
     value,
     onChange,
     mentionableNodes = [],
     promptModalities = ['text'],
     connectedNodeIds = [],
     onMentionAdded,
-}: MilkdownEditorProps) {
+}, ref) {
     const wrapperRef = useRef<HTMLDivElement>(null);
     const [mentionState, setMentionState] = useState<MentionPluginState>({
         active: false, query: '', from: 0, cursorCoords: null,
@@ -282,6 +286,7 @@ function MilkdownEditorInner({
             .use(history)
             .use(trailing)
             .use(ensureStartingParagraph)
+            .use(captureViewPlugin())
             .use(mentionPlugin())
             .config((ctx) => {
                 ctx.get(listenerCtx).markdownUpdated((_ctx, markdown) => {
@@ -290,22 +295,46 @@ function MilkdownEditorInner({
             })
     );
 
-    // Capture EditorView reference
-    useEffect(() => {
-        const editor = get();
-        if (editor) {
-            // Access the ProseMirror view from the Milkdown editor
-            try {
-                const ctx = (editor as any).ctx;
-                if (ctx) {
-                    const { editorViewCtx } = require('@milkdown/core');
-                    editorViewRef.current = ctx.get(editorViewCtx);
+    // Capture EditorView via a plugin (more reliable than ctx.get)
+    const captureViewPlugin = useCallback(() => {
+        return $prose(() => new Plugin({
+            key: new PluginKey('capture-view'),
+            view(view) {
+                editorViewRef.current = view;
+                return {};
+            },
+        }));
+    }, []);
+
+    useImperativeHandle(ref, () => ({
+        insertAtCursor(markdown: string) {
+            const view = editorViewRef.current;
+            console.log('[MilkdownEditor] insertAtCursor, view:', !!view);
+            if (!view) return;
+
+            const imgMatch = markdown.match(/^!\[([^\]]*)\]\(([^)]+)\)/);
+            console.log('[MilkdownEditor] imgMatch:', !!imgMatch, 'schema nodes:', Object.keys(view.state.schema.nodes));
+            if (imgMatch) {
+                const [, alt, src] = imgMatch;
+                const imageType = view.state.schema.nodes.image;
+                console.log('[MilkdownEditor] imageType:', !!imageType);
+                if (imageType) {
+                    const imageNode = imageType.create({ src, alt });
+                    const { from } = view.state.selection;
+                    const tr = view.state.tr.insert(from, imageNode);
+                    view.dispatch(tr);
+                    view.focus();
+                    return;
                 }
-            } catch {
-                // EditorView not yet available
             }
-        }
-    }, [get]);
+
+            // Fallback: insert as plain text
+            const { from } = view.state.selection;
+            const tr = view.state.tr.insertText(markdown, from);
+            view.dispatch(tr);
+            view.focus();
+        },
+    }), []);
 
     const handleMentionSelect = useCallback((node: MentionableNode) => {
         const view = editorViewRef.current;
@@ -375,12 +404,14 @@ function MilkdownEditorInner({
             )}
         </>
     );
-}
+});
 
-export default function MilkdownEditor(props: MilkdownEditorProps) {
+const MilkdownEditor = forwardRef<MilkdownEditorHandle, MilkdownEditorProps>(function MilkdownEditor(props, ref) {
     return (
         <MilkdownProvider>
-            <MilkdownEditorInner {...props} />
+            <MilkdownEditorInner ref={ref} {...props} />
         </MilkdownProvider>
     );
-}
+});
+
+export default MilkdownEditor;

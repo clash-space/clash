@@ -6,7 +6,18 @@ import { SCRIPT_WRITER_PROMPT } from "../../prompts/script-writer";
 import { CONCEPT_ARTIST_PROMPT } from "../../prompts/concept-artist";
 import { STORYBOARD_DESIGNER_PROMPT } from "../../prompts/storyboard-designer";
 import { EDITOR_PROMPT } from "../../prompts/editor";
+import { cachedSystemPrompt } from "../cache-control";
+import type { ProviderType } from "../../providers";
 import { log } from "../../logger";
+
+/** Rich tool call detail accumulated across generator yields. */
+export interface SubAgentToolCall {
+  id: string;
+  toolName: string;
+  args?: Record<string, unknown>;
+  output?: string;
+  status: "calling" | "completed" | "error";
+}
 
 /** Tool sets each specialist is allowed to use. */
 const TOOL_ALLOWLISTS: Record<string, string[]> = {
@@ -88,13 +99,15 @@ const delegationSchema = z.object({
 /**
  * Sub-agent progress object yielded to the frontend via generator tool streaming.
  * Each yield sends a preliminary tool output (part.preliminary = true).
+ * toolCalls is accumulated — each yield carries the full history so the
+ * frontend doesn't lose prior entries when apply-chunk overwrites the output.
  */
 interface SubAgentProgress {
   status: "started" | "step" | "completed" | "failed";
   agent: string;
   step?: number;
   totalSteps?: number;
-  toolCalls?: string[];
+  toolCalls?: SubAgentToolCall[];
   text?: string;
   message?: string;
 }
@@ -108,6 +121,7 @@ interface SubAgentProgress {
 export function createDelegationTool(
   model: LanguageModel,
   agentTools: ToolSet,
+  provider: ProviderType = "openai",
 ) {
   const agentNames = Object.keys(SPECIALISTS);
 
@@ -150,7 +164,7 @@ export function createDelegationTool(
 
         const result = streamText({
           model,
-          system: specialist.prompt,
+          system: cachedSystemPrompt(specialist.prompt, provider),
           messages: [{ role: "user" as const, content: msgContent }],
           tools: scopedTools,
           stopWhen: stepCountIs(15),
@@ -159,40 +173,62 @@ export function createDelegationTool(
         // Use fullStream for real-time progress (text + tool calls + tool results)
         let fullText = "";
         let stepCount = 0;
-        const recentToolCalls: string[] = [];
+        const accumulatedToolCalls: SubAgentToolCall[] = [];
 
+        let lastEventTime = Date.now();
         for await (const part of result.fullStream) {
           if (part.type === "text-delta") {
             fullText += part.text;
           } else if (part.type === "tool-call") {
-            recentToolCalls.push(part.toolName);
+            const now = Date.now();
+            log.info(`[${agent}] tool-call: ${part.toolName} (+${now - lastEventTime}ms)`);
+            lastEventTime = now;
+            accumulatedToolCalls.push({
+              id: (part as any).toolCallId || `tc-${stepCount}`,
+              toolName: part.toolName,
+              args: (part as any).args ?? (part as any).input as Record<string, unknown>,
+              status: "calling",
+            });
             yield {
               status: "step" as const,
               agent,
               step: ++stepCount,
-              toolCalls: [...recentToolCalls],
-              text: `Calling ${part.toolName}...`,
+              toolCalls: [...accumulatedToolCalls],
             };
           } else if (part.type === "tool-result") {
-            const output = (part as any).output;
-            const preview = typeof output === "string"
-              ? output.slice(0, 200)
-              : JSON.stringify(output).slice(0, 200);
+            const now = Date.now();
+            log.info(`[${agent}] tool-result: ${(part as any).toolName} (+${now - lastEventTime}ms)`);
+            lastEventTime = now;
+            // Find matching tool call by toolCallId and update it
+            const tcId = (part as any).toolCallId;
+            const tc = tcId
+              ? accumulatedToolCalls.find(t => t.id === tcId)
+              : [...accumulatedToolCalls].reverse().find(t => t.toolName === (part as any).toolName && t.status === "calling");
+            if (tc) {
+              const output = (part as any).output;
+              tc.output = typeof output === "string"
+                ? output.slice(0, 300)
+                : JSON.stringify(output).slice(0, 300);
+              tc.status = "completed";
+            }
             yield {
               status: "step" as const,
               agent,
               step: stepCount,
-              toolCalls: [...recentToolCalls],
-              text: preview,
+              toolCalls: [...accumulatedToolCalls],
             };
+          } else if ((part as any).type === "step-start") {
+            const now = Date.now();
+            log.info(`[${agent}] step-start (+${now - lastEventTime}ms since last event)`);
+            lastEventTime = now;
           }
         }
 
         const report = fullText || `${agent} completed the task.`;
         log.info(`${agent} completed: ${report.slice(0, 200)}`);
 
-        // Yield completion — still preliminary
-        yield { status: "completed", agent, message: report.slice(0, 500) };
+        // Yield completion with full tool call history preserved
+        yield { status: "completed", agent, message: report.slice(0, 500), toolCalls: [...accumulatedToolCalls] };
 
         // Return final result for the supervisor model
         return report;

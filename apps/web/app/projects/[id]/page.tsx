@@ -10,10 +10,10 @@ export default async function ProjectPage({
   searchParams
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ prompt?: string }>;
+  searchParams: Promise<{ prompt?: string; thread?: string }>;
 }) {
   const { id } = await params;
-  const { prompt } = await searchParams;
+  const { prompt, thread } = await searchParams;
   const [project, globalActions] = await Promise.all([
     getProject(id),
     listInstalledActions().catch(() => []),
@@ -23,5 +23,5 @@ export default async function ProjectPage({
     notFound();
   }
 
-  return <ProjectEditor project={project} initialPrompt={prompt} globalActions={globalActions} />;
+  return <ProjectEditor project={project} initialPrompt={prompt} initialThreadId={thread} globalActions={globalActions} />;
 }
