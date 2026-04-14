@@ -99,7 +99,7 @@ export function createCanvasTools(
   });
 
   const readCanvasNode = tool({
-    description: "Read a specific node's detailed data.",
+    description: "Read a specific node's detailed data. For image/video/audio nodes, returns the actual media content so you can see/hear it.",
     inputSchema: z.object({
       node_id: z.string().describe("Target node ID"),
     }),
@@ -111,7 +111,51 @@ export function createCanvasTools(
         const data = node.data || {};
         const name = (data.label as string) || (data.name as string) || node.id;
         const description = (data.description as string) || (data.content as string) || "";
-        return description ? `${name}: ${description} type: ${node.type}` : name;
+        const src = data.src as string | undefined;
+
+        // For media nodes with R2 storage key, return multimodal content
+        if (src && env?.R2_BUCKET && ["image", "video", "audio"].includes(node.type)) {
+          try {
+            const obj = await env.R2_BUCKET.get(src);
+            if (obj) {
+              const ct = obj.httpMetadata?.contentType || "application/octet-stream";
+              const buf = await obj.arrayBuffer();
+              const bytes = new Uint8Array(buf);
+              const CHUNK = 8192;
+              const chunks: string[] = [];
+              for (let i = 0; i < bytes.length; i += CHUNK) {
+                chunks.push(String.fromCharCode(...bytes.subarray(i, i + CHUNK)));
+              }
+              const b64 = btoa(chunks.join(""));
+
+              const textPart = { type: "text" as const, text: `Node ${node_id} (${node.type}): ${name}${description ? " — " + description : ""}` };
+
+              if (node.type === "image") {
+                return {
+                  type: "content" as const,
+                  value: [
+                    textPart,
+                    { type: "image-data" as const, data: b64, mediaType: ct },
+                  ],
+                };
+              } else {
+                // video/audio: return as file data
+                return {
+                  type: "content" as const,
+                  value: [
+                    textPart,
+                    { type: "file-data" as const, data: b64, mediaType: ct },
+                  ],
+                };
+              }
+            }
+          } catch (e) {
+            log.warn("read_canvas_node: failed to fetch R2 object", { src, error: String(e) });
+          }
+        }
+
+        // Fallback: text-only response
+        return description ? `${name}: ${description} type: ${node.type}` : `${name} type: ${node.type}`;
       } catch (e) {
         return `Error reading node: ${e}`;
       }

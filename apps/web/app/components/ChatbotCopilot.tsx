@@ -55,6 +55,8 @@ interface ChatbotCopilotProps {
     onCreateSession?: (initialMessage: string) => void;
     /** Create canvas nodes from already-uploaded attachments */
     onUploadFiles?: (attachments: import('./copilot/ChatInput').UploadedAttachment[]) => void;
+    /** Focus and select a node on the canvas */
+    onFocusNode?: (nodeId: string) => void;
 }
 
 /** Markdown components for assistant text rendering */
@@ -152,6 +154,7 @@ export default function ChatbotCopilot({
     onDeleteSession,
     onCreateSession,
     onUploadFiles,
+    onFocusNode,
 }: ChatbotCopilotProps) {
     // ─── UI State ──────────────────────────────────────────────
     const [input, setInput] = useState('');
@@ -501,12 +504,16 @@ export default function ChatbotCopilot({
                                             transition={{ type: "spring", stiffness: 500, damping: 30 }}
                                         >
                                             {msg.role === 'user' ? (
-                                                <UserMessage content={
-                                                    msg.parts
-                                                        ?.filter((p: any) => p.type === 'text')
-                                                        .map((p: any) => p.text)
-                                                        .join('') || ''
-                                                } />
+                                                <UserMessage
+                                                    content={
+                                                        msg.parts
+                                                            ?.filter((p: any) => p.type === 'text')
+                                                            .map((p: any) => p.text)
+                                                            .join('') || ''
+                                                    }
+                                                    mentionNodes={mentionableNodes}
+                                                    onNodeDoubleClick={onFocusNode}
+                                                />
                                             ) : (
                                                 <div className="space-y-3">
                                                     {msg.parts?.map((part: any, i: number) => {
