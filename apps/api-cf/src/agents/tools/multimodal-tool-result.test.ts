@@ -10,7 +10,8 @@
  * Requires GOOGLE_API_KEY in .dev.vars or env.
  */
 import { describe, it, expect } from "vitest";
-import { tool, convertToModelMessages } from "ai";
+import { tool, generateText, convertToModelMessages, stepCountIs } from "ai";
+import { createOpenAI } from "@ai-sdk/openai";
 import { z } from "zod";
 import * as fs from "node:fs";
 import * as path from "node:path";
@@ -41,7 +42,86 @@ function getTestImage(): { data: string; mediaType: string; description: string 
 
 // ─── Test ─────────────────────────────────────────────────
 
-describe("Multimodal tool result E2E", () => {
+const CF_AIG_TOKEN = process.env.CF_AIG_TOKEN;
+const CF_AIG_OPENAI_URL = process.env.CF_AIG_OPENAI_URL;
+
+describe.skipIf(!CF_AIG_TOKEN || !CF_AIG_OPENAI_URL)("Multimodal tool result E2E", () => {
+  it("LLM can see image data returned from tool via toModelOutput", async () => {
+    const testImage = getTestImage();
+
+    const readImageTool = tool({
+      description: "Read an image and return it for the model to see",
+      inputSchema: z.object({
+        id: z.string().describe("Image ID"),
+      }),
+      execute: async ({ id }) => {
+        return {
+          text: `Image ${id}: ${testImage.description}`,
+          imageData: testImage.data,
+          imageMediaType: testImage.mediaType,
+        };
+      },
+      toModelOutput({ output }) {
+        if (output.imageData) {
+          return {
+            type: "content" as const,
+            value: [
+              { type: "text" as const, text: output.text },
+              { type: "media" as const, data: output.imageData, mediaType: output.imageMediaType },
+            ],
+          };
+        }
+        return output.text;
+      },
+    });
+
+    const tools = { read_image: readImageTool };
+
+    const openai = createOpenAI({
+      apiKey: CF_AIG_TOKEN!,
+      baseURL: CF_AIG_OPENAI_URL!,
+    });
+    const model = openai.chat("gpt-5.4");
+
+    const result = await generateText({
+      model,
+      tools,
+      stopWhen: stepCountIs(5),
+      messages: [
+        { role: "user", content: "Call read_image with id 'test-1', then describe what you see. Be specific about colors." },
+      ],
+    });
+
+    console.log("=== LLM Response ===");
+    console.log(result.text);
+    console.log("=== Steps ===", result.steps.length);
+    for (const [i, step] of result.steps.entries()) {
+      console.log(`Step ${i}: finishReason=${step.finishReason}, text="${step.text?.slice(0,100)}"`);
+      for (const tc of step.toolCalls || []) {
+        console.log(`  Tool call: ${tc.toolName}(${JSON.stringify(tc.args)}) id=${tc.toolCallId}`);
+      }
+      for (const tr of step.toolResults || []) {
+        const out = tr.output as any;
+        console.log(`  Tool result: hasImageData=${!!out?.imageData}, text=${out?.text?.slice(0,50)}`);
+      }
+    }
+    console.log("=== Full text ===", JSON.stringify(result.text));
+    console.log("=== Response messages ===", result.response?.messages?.length);
+
+    // LLM should have called the tool
+    const allToolCalls = result.steps.flatMap(s => s.toolCalls || []);
+    expect(allToolCalls.length).toBeGreaterThan(0);
+    expect(allToolCalls[0].toolName).toBe("read_image");
+
+    // LLM should respond about the image, not echo JSON
+    expect(result.text).toBeTruthy();
+    expect(result.text.length).toBeGreaterThan(10);
+    expect(result.text).not.toContain('"type": "content"');
+    expect(result.text).not.toContain("imageData");
+    // For a red pixel, it should mention red or color
+    console.log("=== Checking if LLM saw the image ===");
+    console.log("Response mentions color:", /red|color|pixel|image/i.test(result.text));
+  }, 60_000);
 
   it("convertToModelMessages correctly transforms tool result with toModelOutput", async () => {
     const testImage = getTestImage();
