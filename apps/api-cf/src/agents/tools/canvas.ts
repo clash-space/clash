@@ -98,6 +98,23 @@ export function createCanvasTools(
     },
   });
 
+  /** Generate a full public signed URL for an R2 storage key. */
+  async function makePublicSignedUrl(storageKey: string): Promise<string | null> {
+    if (!env?.JWT_SECRET || !env?.WORKER_PUBLIC_URL) return null;
+    try {
+      const SIGNED_URL_TTL = 3600;
+      const exp = Math.floor(Date.now() / 1000) + SIGNED_URL_TTL;
+      const keyData = new TextEncoder().encode(env.JWT_SECRET);
+      const cryptoKey = await crypto.subtle.importKey("raw", keyData, { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+      const sigData = new TextEncoder().encode(`${storageKey}:${exp}`);
+      const sig = await crypto.subtle.sign("HMAC", cryptoKey, sigData);
+      const sigStr = btoa(String.fromCharCode(...new Uint8Array(sig))).replace(/[+/=]/g, c => c === "+" ? "-" : c === "/" ? "_" : "");
+      return `${env.WORKER_PUBLIC_URL}/assets/${storageKey}?exp=${exp}&sig=${sigStr}`;
+    } catch {
+      return null;
+    }
+  }
+
   const readCanvasNode = tool({
     description: "Read a specific node's detailed data. For image/video/audio nodes, returns the actual media content so you can see/hear it.",
     inputSchema: z.object({
@@ -107,17 +124,20 @@ export function createCanvasTools(
       const { node_id } = args;
       try {
         const node = canvas.readNode(node_id);
-        if (!node) return { text: `Node ${node_id} not found.`, mediaType: null, data: null };
+        if (!node) return { text: `Node ${node_id} not found.`, mediaType: null, data: null, url: null };
         const data = node.data || {};
         const name = (data.label as string) || (data.name as string) || node.id;
         const description = (data.description as string) || (data.content as string) || "";
         const src = data.src as string | undefined;
         const text = `Node ${node_id} (${node.type}): ${name}${description ? " — " + description : ""}`;
 
-        // For media nodes with R2 storage key, fetch binary data
+        // For media nodes with R2 storage key, return image data + URL
         if (src && env?.R2_BUCKET && ["image", "video", "audio"].includes(node.type)) {
           try {
-            const obj = await env.R2_BUCKET.get(src);
+            const [obj, publicUrl] = await Promise.all([
+              env.R2_BUCKET.get(src),
+              makePublicSignedUrl(src),
+            ]);
             if (obj) {
               const ct = obj.httpMetadata?.contentType || "application/octet-stream";
               const buf = await obj.arrayBuffer();
@@ -128,27 +148,28 @@ export function createCanvasTools(
                 chunks.push(String.fromCharCode(...bytes.subarray(i, i + CHUNK)));
               }
               const b64 = btoa(chunks.join(""));
-              return { text, mediaType: ct, data: b64 };
+              return { text, mediaType: ct, data: b64, url: publicUrl };
             }
           } catch (e) {
             log.warn("read_canvas_node: failed to fetch R2 object", { src, error: String(e) });
           }
         }
 
-        return { text, mediaType: null, data: null };
+        return { text, mediaType: null, data: null, url: null };
       } catch (e) {
-        return { text: `Error reading node: ${e}`, mediaType: null, data: null };
+        return { text: `Error reading node: ${e}`, mediaType: null, data: null, url: null };
       }
     },
     toModelOutput({ output }) {
       if (output.data && output.mediaType) {
-        return {
-          type: "content" as const,
-          value: [
-            { type: "text" as const, text: output.text },
-            { type: "media" as const, data: output.data, mediaType: output.mediaType },
-          ],
-        };
+        // Prefer URL (cheaper tokens) with base64 fallback
+        const parts: any[] = [{ type: "text" as const, text: output.text }];
+        if (output.url) {
+          parts.push({ type: "file" as const, url: output.url, mediaType: output.mediaType });
+        } else {
+          parts.push({ type: "media" as const, data: output.data, mediaType: output.mediaType });
+        }
+        return { type: "content" as const, value: parts };
       }
       return output.text;
     },
