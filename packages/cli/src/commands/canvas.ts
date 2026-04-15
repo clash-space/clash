@@ -1,8 +1,8 @@
 import { Command } from "commander";
 import WebSocket from "ws";
-import { writeFileSync, mkdirSync } from "node:fs";
+import { writeFileSync, mkdirSync, existsSync } from "node:fs";
 import { join } from "node:path";
-import { tmpdir } from "node:os";
+import { homedir } from "node:os";
 import {
   LoroSyncClient, Canvas,
 } from "@clash/shared-types";
@@ -125,28 +125,33 @@ canvasCommand
 
 // ─── get ──────────────────────────────────────────────────
 
+/** Cache dir: ~/.clash/cache/assets (cross-platform, persistent) */
+const ASSET_CACHE_DIR = join(homedir(), ".clash", "cache", "assets");
+
 /**
- * Download media asset to a temp file. Returns the file path, or null on failure.
+ * Download media asset with caching. Returns file path, or null on failure.
+ * Skips download if file already exists in cache.
  */
 async function downloadAsset(src: string): Promise<string | null> {
   try {
+    const fileName = src.replace(/[/\\:]/g, "_");
+    mkdirSync(ASSET_CACHE_DIR, { recursive: true });
+    const filePath = join(ASSET_CACHE_DIR, fileName);
+
+    // Check cache
+    if (existsSync(filePath)) return filePath;
+
     // Get signed URL
     const signRes = await apiFetch(`/assets/sign?key=${encodeURIComponent(src)}`);
     if (!signRes.ok) return null;
     const { url: signedPath } = (await signRes.json()) as { url: string };
 
-    // Download the actual file
-    const serverUrl = getServerUrl();
-    const fullUrl = `${serverUrl}${signedPath}`;
+    // Download
+    const fullUrl = `${getServerUrl()}${signedPath}`;
     const res = await fetch(fullUrl);
     if (!res.ok) return null;
 
-    const buf = Buffer.from(await res.arrayBuffer());
-    const ext = src.split(".").pop() || "bin";
-    const dir = join(tmpdir(), "clash-assets");
-    mkdirSync(dir, { recursive: true });
-    const filePath = join(dir, `${src.replace(/[/\\]/g, "_")}`);
-    writeFileSync(filePath, buf);
+    writeFileSync(filePath, Buffer.from(await res.arrayBuffer()));
     return filePath;
   } catch {
     return null;
