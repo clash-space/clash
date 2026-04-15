@@ -3,6 +3,8 @@
 import { motion } from 'framer-motion';
 import ReactMarkdown from 'react-markdown';
 import { SignedImg } from '../SignedMedia';
+import { useMediaViewer } from '../MediaViewerContext';
+import { useSignedUrl } from '../../../lib/hooks/useSignedUrl';
 
 interface MentionNode {
     id: string;
@@ -10,7 +12,25 @@ interface MentionNode {
     src?: string;
 }
 
-export function UserMessage({ content, mentionNodes, onNodeDoubleClick }: { content: string; mentionNodes?: MentionNode[]; onNodeDoubleClick?: (nodeId: string) => void }) {
+/** Inline thumbnail that opens MediaViewer on double-click */
+function InlineThumbnail({ src, alt, title }: { src?: string; alt: string; title: string }) {
+    const { openViewer } = useMediaViewer();
+    const signedUrl = useSignedUrl(src);
+
+    return (
+        // eslint-disable-next-line @next/next/no-img-element
+        signedUrl ? <img
+            src={signedUrl}
+            alt={alt}
+            title={title}
+            className="inline-block rounded object-cover align-text-bottom mx-0.5 cursor-pointer hover:ring-2 hover:ring-slate-400"
+            style={{ height: '1.2em', width: '1.2em' }}
+            onDoubleClick={() => openViewer('image', signedUrl, title)}
+        /> : null
+    );
+}
+
+export function UserMessage({ content, mentionNodes }: { content: string; mentionNodes?: MentionNode[] }) {
     // Strip <!-- asset-keys: ... --> comments (legacy format)
     let cleaned = content.replace(/<!--\s*asset-keys:.+?-->/g, '').replace(/📎\s*\S+/g, '').trim();
 
@@ -38,29 +58,8 @@ export function UserMessage({ content, mentionNodes, onNodeDoubleClick }: { cont
                             p: ({ children }) => <p className="text-sm leading-relaxed mb-1 last:mb-0">{children}</p>,
                             img: ({ src, alt }) => {
                                 const mentionMatch = alt?.match(/^mention:([^:]+):(.+)$/);
-                                if (mentionMatch) {
-                                    const nodeId = mentionMatch[1];
-                                    // Render mention as inline thumbnail, double-click to focus node
-                                    return (
-                                        <SignedImg
-                                            src={typeof src === 'string' ? src : undefined}
-                                            alt={mentionMatch[2]}
-                                            title={mentionMatch[2]}
-                                            className="inline-block rounded object-cover align-text-bottom mx-0.5 cursor-pointer hover:ring-2 hover:ring-slate-400"
-                                            style={{ height: '1.2em', width: '1.2em' }}
-                                            onDoubleClick={() => onNodeDoubleClick?.(nodeId)}
-                                        />
-                                    );
-                                }
-                                return (
-                                    <SignedImg
-                                        src={typeof src === 'string' ? src : undefined}
-                                        alt={alt || ''}
-                                        title={alt || ''}
-                                        className="inline-block rounded object-cover align-text-bottom mx-0.5 cursor-pointer hover:ring-2 hover:ring-slate-400"
-                                        style={{ height: '1.2em', width: '1.2em' }}
-                                    />
-                                );
+                                const label = mentionMatch ? mentionMatch[2] : (alt || '');
+                                return <InlineThumbnail src={src} alt={label} title={label} />;
                             },
                             a: ({ href, children }) => (
                                 <a href={href} className="text-blue-600 underline text-sm" target="_blank" rel="noreferrer">{children}</a>

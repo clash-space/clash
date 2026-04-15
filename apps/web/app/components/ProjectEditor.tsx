@@ -1647,20 +1647,6 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
         return node?.id;
     }, [nodes]);
 
-    const rfInstanceRef = useRef<any>(null);
-
-    const focusNode = useCallback((nodeId: string) => {
-        const rf = rfInstanceRef.current;
-        if (!rf) return;
-        const node = nodes.find(n => n.id === nodeId);
-        if (!node) return;
-        // Select the node
-        setNodes(nds => nds.map(n => ({ ...n, selected: n.id === nodeId })));
-        // Pan to it
-        const x = node.position.x + (node.width || 300) / 2;
-        const y = node.position.y + (node.height || 300) / 2;
-        rf.setCenter(x, y, { zoom: 1, duration: 300 });
-    }, [nodes, setNodes]);
 
     return (
         <ProjectProvider projectId={project.id}>
@@ -1746,7 +1732,6 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
                             </div>
                             <div className={`absolute inset-0 z-0 ${canvasMode === 'hand' ? '[&_.react-flow__pane]:cursor-grab [&_.react-flow__pane:active]:cursor-grabbing' : ''}`}>
                                 <ReactFlow
-                                    onInit={(instance) => { rfInstanceRef.current = instance; }}
                                     nodes={sanitizedNodes}
                                     edges={edges}
                                     onNodesChange={handleNodesChange}
@@ -1967,7 +1952,6 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
                                         onNewSession={handleNewSession}
                                         onSwitchSession={handleSwitchSession}
                                         onDeleteSession={handleDeleteSession}
-                                        onFocusNode={focusNode}
                                         onUploadFiles={useCallback((attachments: import('./copilot/ChatInput').UploadedAttachment[]) => {
                                             for (const a of attachments) {
                                                 // Files already uploaded to R2 — just create canvas nodes with storageKey

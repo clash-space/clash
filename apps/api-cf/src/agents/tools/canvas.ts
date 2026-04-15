@@ -107,13 +107,14 @@ export function createCanvasTools(
       const { node_id } = args;
       try {
         const node = canvas.readNode(node_id);
-        if (!node) return `Node ${node_id} not found.`;
+        if (!node) return { text: `Node ${node_id} not found.`, mediaType: null, data: null };
         const data = node.data || {};
         const name = (data.label as string) || (data.name as string) || node.id;
         const description = (data.description as string) || (data.content as string) || "";
         const src = data.src as string | undefined;
+        const text = `Node ${node_id} (${node.type}): ${name}${description ? " — " + description : ""}`;
 
-        // For media nodes with R2 storage key, return multimodal content
+        // For media nodes with R2 storage key, fetch binary data
         if (src && env?.R2_BUCKET && ["image", "video", "audio"].includes(node.type)) {
           try {
             const obj = await env.R2_BUCKET.get(src);
@@ -127,38 +128,29 @@ export function createCanvasTools(
                 chunks.push(String.fromCharCode(...bytes.subarray(i, i + CHUNK)));
               }
               const b64 = btoa(chunks.join(""));
-
-              const textPart = { type: "text" as const, text: `Node ${node_id} (${node.type}): ${name}${description ? " — " + description : ""}` };
-
-              if (node.type === "image") {
-                return {
-                  type: "content" as const,
-                  value: [
-                    textPart,
-                    { type: "image-data" as const, data: b64, mediaType: ct },
-                  ],
-                };
-              } else {
-                // video/audio: return as file data
-                return {
-                  type: "content" as const,
-                  value: [
-                    textPart,
-                    { type: "file-data" as const, data: b64, mediaType: ct },
-                  ],
-                };
-              }
+              return { text, mediaType: ct, data: b64 };
             }
           } catch (e) {
             log.warn("read_canvas_node: failed to fetch R2 object", { src, error: String(e) });
           }
         }
 
-        // Fallback: text-only response
-        return description ? `${name}: ${description} type: ${node.type}` : `${name} type: ${node.type}`;
+        return { text, mediaType: null, data: null };
       } catch (e) {
-        return `Error reading node: ${e}`;
+        return { text: `Error reading node: ${e}`, mediaType: null, data: null };
       }
+    },
+    toModelOutput({ output }) {
+      if (output.data && output.mediaType) {
+        return {
+          type: "content" as const,
+          value: [
+            { type: "text" as const, text: output.text },
+            { type: "media" as const, data: output.data, mediaType: output.mediaType },
+          ],
+        };
+      }
+      return output.text;
     },
   });
 

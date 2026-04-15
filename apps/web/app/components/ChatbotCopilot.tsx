@@ -55,8 +55,6 @@ interface ChatbotCopilotProps {
     onCreateSession?: (initialMessage: string) => void;
     /** Create canvas nodes from already-uploaded attachments */
     onUploadFiles?: (attachments: import('./copilot/ChatInput').UploadedAttachment[]) => void;
-    /** Focus and select a node on the canvas */
-    onFocusNode?: (nodeId: string) => void;
 }
 
 /** Markdown components for assistant text rendering */
@@ -154,7 +152,6 @@ export default function ChatbotCopilot({
     onDeleteSession,
     onCreateSession,
     onUploadFiles,
-    onFocusNode,
 }: ChatbotCopilotProps) {
     // ─── UI State ──────────────────────────────────────────────
     const [input, setInput] = useState('');
@@ -512,7 +509,6 @@ export default function ChatbotCopilot({
                                                             .join('') || ''
                                                     }
                                                     mentionNodes={mentionableNodes}
-                                                    onNodeDoubleClick={onFocusNode}
                                                 />
                                             ) : (
                                                 <div className="space-y-3">
