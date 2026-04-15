@@ -1,11 +1,15 @@
 import { Command } from "commander";
 import WebSocket from "ws";
+import { writeFileSync, mkdirSync } from "node:fs";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
 import {
   LoroSyncClient, Canvas,
 } from "@clash/shared-types";
 import { requireApiKey, getServerUrl } from "../lib/config";
 import { isJsonMode, printJson } from "../lib/output";
 import { isDaemonRunning, sendCommand, startDaemon, getSocketPath } from "../lib/daemon";
+import { apiFetch } from "../lib/api";
 
 /**
  * Create a one-shot connected LoroSyncClient (fallback when no daemon).
@@ -121,43 +125,83 @@ canvasCommand
 
 // ─── get ──────────────────────────────────────────────────
 
+/**
+ * Download media asset to a temp file. Returns the file path, or null on failure.
+ */
+async function downloadAsset(src: string): Promise<string | null> {
+  try {
+    // Get signed URL
+    const signRes = await apiFetch(`/assets/sign?key=${encodeURIComponent(src)}`);
+    if (!signRes.ok) return null;
+    const { url: signedPath } = (await signRes.json()) as { url: string };
+
+    // Download the actual file
+    const serverUrl = getServerUrl();
+    const fullUrl = `${serverUrl}${signedPath}`;
+    const res = await fetch(fullUrl);
+    if (!res.ok) return null;
+
+    const buf = Buffer.from(await res.arrayBuffer());
+    const ext = src.split(".").pop() || "bin";
+    const dir = join(tmpdir(), "clash-assets");
+    mkdirSync(dir, { recursive: true });
+    const filePath = join(dir, `${src.replace(/[/\\]/g, "_")}`);
+    writeFileSync(filePath, buf);
+    return filePath;
+  } catch {
+    return null;
+  }
+}
+
+function printNodeInfo(n: any) {
+  console.log(`ID:       ${n.id}`);
+  console.log(`Type:     ${n.type}`);
+  console.log(`Label:    ${(n.data?.label as string) || "(none)"}`);
+  console.log(`Status:   ${(n.data?.status as string) || "(none)"}`);
+  console.log(`Position: (${n.position.x}, ${n.position.y})`);
+  if (n.data?.content) console.log(`Content:  ${n.data.content}`);
+  if (n.data?.description) console.log(`Desc:     ${n.data.description}`);
+}
+
 canvasCommand
   .command("get")
-  .description("Get a specific node")
+  .description("Get a specific node. For media nodes, downloads the asset to a temp file.")
   .requiredOption("--project <id>", "Project ID")
   .requiredOption("--node <id>", "Node ID")
   .option("--json", "Output as JSON")
   .action(async (options) => {
+    let node: any = null;
+
     const daemonResult = await runCommand(options.project, { action: "get", nodeId: options.node });
     if (daemonResult) {
       if (daemonResult.error) { console.error(daemonResult.error); process.exit(1); }
-      if (isJsonMode(options)) { printJson(daemonResult.node); }
-      else {
-        const n = daemonResult.node;
-        console.log(`ID:       ${n.id}`);
-        console.log(`Type:     ${n.type}`);
-        console.log(`Label:    ${(n.data?.label as string) || "(none)"}`);
-        console.log(`Status:   ${(n.data?.status as string) || "(none)"}`);
-        console.log(`Position: (${n.position.x}, ${n.position.y})`);
+      node = daemonResult.node;
+    } else {
+      const client = await connectToProject(options.project);
+      try {
+        node = client.readNode(options.node);
+        if (!node) { console.error(`Node not found: ${options.node}`); process.exit(1); }
+      } finally {
+        await client.disconnect();
       }
-      return;
     }
 
-    const client = await connectToProject(options.project);
-    try {
-      const node = client.readNode(options.node);
-      if (!node) { console.error(`Node not found: ${options.node}`); process.exit(1); }
-      if (isJsonMode(options)) {
-        printJson(node);
-      } else {
-        console.log(`ID:       ${node.id}`);
-        console.log(`Type:     ${node.type}`);
-        console.log(`Label:    ${(node.data.label as string) || "(none)"}`);
-        console.log(`Status:   ${(node.data.status as string) || "(none)"}`);
-        console.log(`Position: (${node.position.x}, ${node.position.y})`);
+    // For media nodes, download the asset
+    const src = node.data?.src as string | undefined;
+    const isMedia = ["image", "video", "audio"].includes(node.type);
+    let assetPath: string | null = null;
+    if (isMedia && src) {
+      assetPath = await downloadAsset(src);
+    }
+
+    if (isJsonMode(options)) {
+      printJson({ ...node, ...(assetPath ? { assetPath } : {}) });
+    } else {
+      printNodeInfo(node);
+      if (assetPath) {
+        console.log(`Asset:    ${assetPath}`);
+        console.log(`\nTo view this ${node.type}, open or read the file at the path above.`);
       }
-    } finally {
-      await client.disconnect();
     }
   });
 
