@@ -1952,16 +1952,33 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
                                         onNewSession={handleNewSession}
                                         onSwitchSession={handleSwitchSession}
                                         onDeleteSession={handleDeleteSession}
-                                        onUploadFiles={useCallback((attachments: import('./copilot/ChatInput').UploadedAttachment[]) => {
+                                        onUploadFiles={useCallback(async (attachments: import('./copilot/ChatInput').UploadedAttachment[]) => {
                                             for (const a of attachments) {
-                                                // Files already uploaded to R2 — just create canvas nodes with storageKey
                                                 if (a.type === 'image' || a.type === 'video' || a.type === 'audio') {
+                                                    // Get natural dimensions from signed URL (same as canvas upload)
+                                                    let naturalWidth: number | undefined;
+                                                    let naturalHeight: number | undefined;
+                                                    if (a.type === 'image' && a.storageKey) {
+                                                        try {
+                                                            const { getSignedUrl: getUrl } = await import('../../lib/hooks/useSignedUrl');
+                                                            const url = await getUrl(a.storageKey);
+                                                            const dims = await new Promise<{ w: number; h: number }>((resolve, reject) => {
+                                                                const img = new Image();
+                                                                img.onload = () => resolve({ w: img.naturalWidth, h: img.naturalHeight });
+                                                                img.onerror = reject;
+                                                                img.src = url;
+                                                            });
+                                                            naturalWidth = dims.w;
+                                                            naturalHeight = dims.h;
+                                                        } catch { /* use defaults */ }
+                                                    }
                                                     addNode(a.type, {
                                                         label: a.fileName,
                                                         src: a.storageKey,
                                                         storageKey: a.storageKey,
                                                         url: a.url,
                                                         status: 'completed',
+                                                        ...(naturalWidth && naturalHeight ? { naturalWidth, naturalHeight } : {}),
                                                     });
                                                 } else {
                                                     addNode('text', { label: a.fileName, content: `[Uploaded: ${a.fileName}](${a.storageKey})` });

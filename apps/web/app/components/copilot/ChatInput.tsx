@@ -23,6 +23,8 @@ export interface UploadedAttachment {
     type: 'image' | 'video' | 'audio' | 'document';
     storageKey: string;
     url: string;
+    naturalWidth?: number;
+    naturalHeight?: number;
 }
 
 interface ChatInputProps {
