@@ -162,14 +162,15 @@ export function createCanvasTools(
     },
     toModelOutput({ output }) {
       if (output.data && output.mediaType) {
-        // Prefer URL (cheaper tokens) with base64 fallback
-        const parts: any[] = [{ type: "text" as const, text: output.text }];
-        if (output.url) {
-          parts.push({ type: "file" as const, url: output.url, mediaType: output.mediaType });
-        } else {
-          parts.push({ type: "media" as const, data: output.data, mediaType: output.mediaType });
-        }
-        return { type: "content" as const, value: parts };
+        // Always use base64 inline (type:'media') — URL won't work if server
+        // is not publicly accessible (e.g. localhost, private network)
+        return {
+          type: "content" as const,
+          value: [
+            { type: "text" as const, text: output.text },
+            { type: "media" as const, data: output.data, mediaType: output.mediaType },
+          ],
+        };
       }
       return output.text;
     },
