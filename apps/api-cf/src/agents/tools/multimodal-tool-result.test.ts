@@ -123,6 +123,59 @@ describe.skipIf(!CF_AIG_TOKEN || !CF_AIG_OPENAI_URL)("Multimodal tool result E2E
     console.log("Response mentions color:", /red|color|pixel|image/i.test(result.text));
   }, 60_000);
 
+  it("LLM can see image via URL in tool result (file type)", async () => {
+    // Use a publicly accessible image URL
+    const PUBLIC_IMAGE_URL = "https://upload.wikimedia.org/wikipedia/commons/thumb/4/47/PNG_transparency_demonstration_1.png/280px-PNG_transparency_demonstration_1.png";
+
+    const readImageUrlTool = tool({
+      description: "Read an image node and return a URL for the model to see",
+      inputSchema: z.object({ id: z.string() }),
+      execute: async ({ id }) => ({
+        text: `Image node ${id}: a test image with dice`,
+        url: PUBLIC_IMAGE_URL,
+        mediaType: "image/png",
+      }),
+      toModelOutput({ output }) {
+        if (output.url) {
+          return {
+            type: "content" as const,
+            value: [
+              { type: "text" as const, text: output.text },
+              { type: "file" as const, url: output.url, mediaType: output.mediaType },
+            ],
+          };
+        }
+        return output.text;
+      },
+    });
+
+    const tools = { read_image: readImageUrlTool };
+    const openai = createOpenAI({ apiKey: CF_AIG_TOKEN!, baseURL: CF_AIG_OPENAI_URL! });
+    const model = openai.chat("gpt-5.4");
+
+    const result = await generateText({
+      model,
+      tools,
+      stopWhen: stepCountIs(5),
+      messages: [
+        { role: "user", content: "Call read_image with id 'node-1' and describe what you see in detail." },
+      ],
+    });
+
+    console.log("=== URL-based LLM Response ===");
+    console.log(result.text);
+    console.log("=== Steps ===", result.steps.length);
+    for (const [i, step] of result.steps.entries()) {
+      console.log(`Step ${i}: finishReason=${step.finishReason}`);
+    }
+
+    expect(result.steps.length).toBeGreaterThan(1); // tool call + response
+    expect(result.text).toBeTruthy();
+    expect(result.text.length).toBeGreaterThan(10);
+    // The wikipedia image shows dice on a checkered transparency background
+    console.log("Response mentions visual content:", /dice|transparent|checker|image|color/i.test(result.text));
+  }, 60_000);
+
   it("convertToModelMessages correctly transforms tool result with toModelOutput", async () => {
     const testImage = getTestImage();
 
