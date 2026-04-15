@@ -277,7 +277,7 @@ export class SupervisorAgent extends AIChatAgent<Env> {
 
     const { streamText, convertToModelMessages, stepCountIs, createUIMessageStream, createUIMessageStreamResponse } = await import("ai");
 
-    const modelMessages = await convertToModelMessages(this.messages);
+    const modelMessages = await convertToModelMessages(this.messages, { tools });
     const MAX_STEPS = 100;
 
     const stream = createUIMessageStream({

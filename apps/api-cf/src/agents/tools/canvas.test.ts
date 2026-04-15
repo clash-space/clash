@@ -95,21 +95,85 @@ describe("Canvas tools", () => {
   // ─── read_canvas_node ───
 
   describe("read_canvas_node", () => {
-    it("returns node details", async () => {
+    it("returns node details for text node (no media)", async () => {
       const result = await tools.read_canvas_node.execute!(
         { node_id: "n1" },
         { toolCallId: "1", messages: [] }
-      );
-      expect(result).toContain("Hello World");
-      expect(result).toContain("Some content here");
+      ) as any;
+      expect(result.text).toContain("Hello World");
+      expect(result.text).toContain("Some content here");
+      expect(result.mediaType).toBeNull();
+      expect(result.data).toBeNull();
     });
 
     it("returns 'not found' for missing node", async () => {
       const result = await tools.read_canvas_node.execute!(
         { node_id: "nonexistent" },
         { toolCallId: "1", messages: [] }
+      ) as any;
+      expect(result.text).toContain("not found");
+    });
+
+    it("toModelOutput returns text for non-media nodes", async () => {
+      const executeResult = await tools.read_canvas_node.execute!(
+        { node_id: "n1" },
+        { toolCallId: "1", messages: [] }
+      ) as any;
+      const modelOutput = (tools.read_canvas_node as any).toModelOutput({
+        toolCallId: "1",
+        input: { node_id: "n1" },
+        output: executeResult,
+      });
+      expect(modelOutput).toBe(executeResult.text);
+    });
+
+    it("returns multimodal content for image node with R2", async () => {
+      // Create tools with mock R2
+      const fakeImageData = new TextEncoder().encode("fake-image-bytes");
+      const mockR2Object = {
+        httpMetadata: { contentType: "image/png" },
+        arrayBuffer: () => Promise.resolve(fakeImageData.buffer),
+      };
+      const mockEnv = {
+        R2_BUCKET: { get: vi.fn().mockResolvedValue(mockR2Object) },
+      } as any;
+
+      const toolsWithR2 = createCanvasTools(
+        doc, broadcast, sendMessage, generateId, getWorkspaceGroupId, mockEnv
       );
-      expect(result).toContain("not found");
+
+      const result = await toolsWithR2.read_canvas_node.execute!(
+        { node_id: "n2" },
+        { toolCallId: "1", messages: [] }
+      ) as any;
+
+      expect(result.text).toContain("Cat photo");
+      expect(result.mediaType).toBe("image/png");
+      expect(result.data).toBeTruthy();
+      expect(typeof result.data).toBe("string"); // base64
+
+      // Verify R2 was called with correct key
+      expect(mockEnv.R2_BUCKET.get).toHaveBeenCalledWith("cat.png");
+    });
+
+    it("toModelOutput returns content array for media nodes", async () => {
+      const fakeOutput = {
+        text: "Node n2 (image): Cat photo",
+        mediaType: "image/png",
+        data: "aGVsbG8=", // base64 of "hello"
+      };
+      const modelOutput = (tools.read_canvas_node as any).toModelOutput({
+        toolCallId: "1",
+        input: { node_id: "n2" },
+        output: fakeOutput,
+      });
+      expect(modelOutput).toEqual({
+        type: "content",
+        value: [
+          { type: "text", text: "Node n2 (image): Cat photo" },
+          { type: "media", data: "aGVsbG8=", mediaType: "image/png" },
+        ],
+      });
     });
   });
 
