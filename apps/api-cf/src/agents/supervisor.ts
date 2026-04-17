@@ -289,6 +289,58 @@ export class SupervisorAgent extends AIChatAgent<Env> {
           tools,
           stopWhen: stepCountIs(MAX_STEPS),
           abortSignal: options?.abortSignal,
+          // OpenAI Chat Completions tool messages only accept text content.
+          // Tools that want to surface an image embed a [[CANVAS_IMAGE:mime:b64]] marker
+          // in their text output. prepareStep strips the marker and injects a follow-up
+          // user message with the image as image_url so the model can actually see it.
+          prepareStep: ({ messages }) => {
+            const out: any[] = [];
+            const pendingImages: Array<{ mime: string; b64: string; toolCallId?: string }> = [];
+            for (const msg of messages) {
+              if (msg.role === "tool" && Array.isArray(msg.content)) {
+                const cleanedContent = msg.content.map((part: any) => {
+                  if (part.type !== "tool-result") return part;
+                  const output = part.output;
+                  // output can be { type: 'text', value: string } or { type: 'json', value: ... }
+                  let text: string | null = null;
+                  if (output?.type === "text" && typeof output.value === "string") text = output.value;
+                  else if (output?.type === "json" && typeof output.value === "string") text = output.value;
+                  if (!text) return part;
+                  const MARKER = /\[\[CANVAS_IMAGE:([^:]+):([A-Za-z0-9+/=]+)\]\]/g;
+                  let match: RegExpExecArray | null;
+                  const localImages: Array<{ mime: string; b64: string }> = [];
+                  while ((match = MARKER.exec(text)) !== null) {
+                    localImages.push({ mime: match[1], b64: match[2] });
+                  }
+                  if (localImages.length === 0) return part;
+                  const stripped = text.replace(MARKER, "").trim();
+                  for (const img of localImages) pendingImages.push({ ...img, toolCallId: part.toolCallId });
+                  return { ...part, output: { type: "text", value: stripped || "Image attached in the following user message." } };
+                });
+                out.push({ ...msg, content: cleanedContent });
+                // Inject a follow-up user message with the images so the model can see them
+                if (pendingImages.length > 0) {
+                  const userContent: any[] = [
+                    { type: "text", text: "Image(s) returned by the previous tool call:" },
+                  ];
+                  for (const img of pendingImages) {
+                    // AI SDK 'image' part accepts base64 string (no data: prefix) or Uint8Array.
+                    // See: ImagePart in @ai-sdk/provider
+                    userContent.push({
+                      type: "image",
+                      image: img.b64,
+                      mediaType: img.mime,
+                    });
+                  }
+                  out.push({ role: "user", content: userContent });
+                  pendingImages.length = 0;
+                }
+              } else {
+                out.push(msg);
+              }
+            }
+            return { messages: out };
+          },
           onFinish: async ({ steps }) => {
             if (steps.length >= MAX_STEPS) {
               log.warn(`Step limit reached (${MAX_STEPS} steps)`);

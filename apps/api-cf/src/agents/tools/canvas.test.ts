@@ -112,14 +112,37 @@ describe("Canvas tools", () => {
       expect(result).toContain("not found");
     });
 
-    it("returns understanding hint for image node without understanding", async () => {
+    it("returns node metadata for image node without env (no vision)", async () => {
       const result = await tools.read_canvas_node.execute!(
         { node_id: "n2" },
         { toolCallId: "1", messages: [] }
       ) as string;
       expect(result).toContain("Cat photo");
       expect(result).toContain("cat.png");
-      expect(result).toContain("understand_asset");
+    });
+
+    it("embeds CANVAS_IMAGE marker with base64 for image nodes", async () => {
+      const fakeImageBytes = new TextEncoder().encode("fake-image-bytes").buffer;
+      const mockR2Object = {
+        httpMetadata: { contentType: "image/png" },
+        arrayBuffer: () => Promise.resolve(fakeImageBytes),
+      };
+      const mockEnv = {
+        R2_BUCKET: { get: vi.fn().mockResolvedValue(mockR2Object) },
+      } as any;
+
+      const toolsWithR2 = createCanvasTools(
+        doc, broadcast, sendMessage, generateId, getWorkspaceGroupId, mockEnv
+      );
+
+      const result = await toolsWithR2.read_canvas_node.execute!(
+        { node_id: "n2" },
+        { toolCallId: "1", messages: [] }
+      ) as string;
+
+      expect(result).toContain("Cat photo");
+      expect(result).toMatch(/\[\[CANVAS_IMAGE:image\/png:[A-Za-z0-9+/=]+\]\]/);
+      expect(mockEnv.R2_BUCKET.get).toHaveBeenCalledWith("cat.png");
     });
   });
 

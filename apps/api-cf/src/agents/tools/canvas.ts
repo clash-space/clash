@@ -114,14 +114,36 @@ export function createCanvasTools(
         const content = (data.content as string) || "";
         const understanding = (data.understanding as string) || "";
         const src = data.src as string | undefined;
+        const isImage = node.type === "image";
 
         const lines: string[] = [`Node ${node_id} (${node.type}): ${name}`];
         if (description) lines.push(`Description: ${description}`);
         if (content) lines.push(`Content: ${content}`);
         if (understanding) lines.push(`Visual understanding: ${understanding}`);
         if (src) lines.push(`Storage key: ${src}`);
-        if (!understanding && src && ["image", "video", "audio"].includes(node.type)) {
-          lines.push(`Note: No visual understanding available yet. Use understand_asset tool to analyze this ${node.type}.`);
+
+        // For image nodes, fetch binary and embed a marker containing the data URI.
+        // supervisor.ts prepareStep strips the marker and injects a follow-up user message
+        // with the image as image_url content. This is the only way OpenAI Chat Completions
+        // can surface tool-returned images to the model (tool-role message content is text-only).
+        if (isImage && src && env?.R2_BUCKET) {
+          try {
+            const obj = await env.R2_BUCKET.get(src);
+            if (obj) {
+              const ct = obj.httpMetadata?.contentType || "image/png";
+              const buf = await obj.arrayBuffer();
+              const bytes = new Uint8Array(buf);
+              const CHUNK = 8192;
+              const chunks: string[] = [];
+              for (let i = 0; i < bytes.length; i += CHUNK) {
+                chunks.push(String.fromCharCode(...bytes.subarray(i, i + CHUNK)));
+              }
+              const b64 = btoa(chunks.join(""));
+              lines.push(`[[CANVAS_IMAGE:${ct}:${b64}]]`);
+            }
+          } catch (e) {
+            log.warn("read_canvas_node: failed to read R2 object", { src, error: String(e) });
+          }
         }
         return lines.join("\n");
       } catch (e) {
