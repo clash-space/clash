@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useCallback, useEffect } from 'react';
-import { useReactFlow, useViewport } from 'reactflow';
+import { useReactFlow, useViewport } from '@xyflow/react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Sparkle, User } from '@phosphor-icons/react';
 import type { ActivityMessage } from '@clash/shared-types';

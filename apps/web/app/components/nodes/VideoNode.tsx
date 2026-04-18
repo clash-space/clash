@@ -1,6 +1,6 @@
 import { memo, useEffect, useRef, useState } from 'react';
 /* eslint-disable @next/next/no-img-element */
-import { Handle, Position, NodeProps, useReactFlow, useNodes } from 'reactflow';
+import { Handle, Position, NodeProps, Node, useReactFlow, useNodes } from '@xyflow/react';
 import SourceHandleMenu from './SourceHandleMenu';
 import { FilmSlate, TextT } from '@phosphor-icons/react';
 import { useMediaViewer } from '../MediaViewerContext';
@@ -16,7 +16,7 @@ import {
     resolveInitialMediaSize,
 } from './assetNodeSizing';
 
-const VideoNode = ({ data, selected, id }: NodeProps) => {
+const VideoNode = ({ data, selected, id }: NodeProps<Node<Record<string, any>>>) => {
     const [label, setLabel] = useState(data.label || 'Video Node');
     const { openViewer } = useMediaViewer();
     const { setNodes } = useReactFlow();

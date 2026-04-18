@@ -1,7 +1,7 @@
 'use client';
 
 import { memo, useState, useCallback, useEffect } from 'react';
-import { Handle, Position, NodeProps, useReactFlow } from 'reactflow';
+import { Handle, Position, NodeProps, Node, useReactFlow } from '@xyflow/react';
 import { X } from '@phosphor-icons/react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { createPortal } from 'react-dom';
@@ -9,7 +9,7 @@ import MilkdownEditor from '../MilkdownEditor';
 import ReactMarkdown from 'react-markdown';
 import { useOptionalLoroSyncContext } from '../LoroSyncContext';
 
-const TextNode = ({ data, selected, id }: NodeProps) => {
+const TextNode = ({ data, selected, id }: NodeProps<Node<Record<string, any>>>) => {
     const [showModal, setShowModal] = useState(false);
     const [label, setLabel] = useState(data.label || 'Text Node');
     const [content, setContent] = useState(data.content || '# Hello World\nDouble click to edit.');

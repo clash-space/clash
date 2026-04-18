@@ -511,7 +511,6 @@ export class ProjectRoom extends DurableObject<Env> {
           // Check for pending nodes (may emit additional broadcasts)
           await this.guardedProcessPendingNodes();
 
-          // Debounced snapshot save (5s after last update)
           this.debouncedSave();
         } catch (error) {
           log.error("Failed to process Loro update:", error);

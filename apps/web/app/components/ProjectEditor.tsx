@@ -2,7 +2,8 @@
 
 import { useCallback, useState, useEffect, useRef, useMemo } from 'react';
 import { flushSync } from 'react-dom';
-import ReactFlow, {
+import {
+    ReactFlow,
     Background,
     BackgroundVariant,
     useNodesState,
@@ -15,8 +16,12 @@ import ReactFlow, {
     NodeChange,
     useViewport,
     SelectionMode,
-} from 'reactflow';
-import 'reactflow/dist/style.css';
+} from '@xyflow/react';
+
+// Use a flexible data type to preserve v11-style data access patterns throughout the codebase.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type AppNode = Node<Record<string, any>>;
+import '@xyflow/react/dist/style.css';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
     FilmSlate,
@@ -139,23 +144,59 @@ group: GroupNode,
 const defaultImageModel = MODEL_CARDS.find((card) => card.kind === 'image');
 const defaultVideoModel = MODEL_CARDS.find((card) => card.kind === 'video');
 
-const sanitizeNodes = (nodes: Node[]): Node[] => {
+// ReactFlow v12: parent nodes must appear before children in the nodes array.
+const sortNodesParentFirst = (nodes: AppNode[]): AppNode[] => {
+    const idSet = new Set(nodes.map((n) => n.id));
+    const result: AppNode[] = [];
+    const visited = new Set<string>();
+    const visit = (node: AppNode) => {
+        if (visited.has(node.id)) return;
+        visited.add(node.id);
+        if (node.parentId && idSet.has(node.parentId)) {
+            const parent = nodes.find((n) => n.id === node.parentId);
+            if (parent) visit(parent);
+        }
+        result.push(node);
+    };
+    for (const node of nodes) visit(node);
+    return result;
+};
+
+const sanitizeNodes = (nodes: AppNode[]): AppNode[] => {
     const nodeIds = new Set(nodes.map(n => n.id));
-    return nodes.map(node => {
+    const cleaned = nodes.map(node => {
         if (node.parentId && !nodeIds.has(node.parentId)) {
             console.warn(`[Sanitize] Removing invalid parentId ${node.parentId} from node ${node.id}`);
-            // Reset to absolute position (or keep relative as absolute)
-            // Since parent is missing, we can't calculate true absolute, so we just keep the values
             const { parentId: _, ...rest } = node;
             return { ...rest, parentId: undefined, extent: undefined };
         }
         return node;
     });
+    return sortNodesParentFirst(cleaned);
 };
 
-function DebugNodeIds({ nodes }: { nodes: Node[] }) {
+function DebugNodeIds({ nodes }: { nodes: AppNode[] }) {
     const { x, y, zoom } = useViewport();
     const [expandedNode, setExpandedNode] = useState<string | null>(null);
+
+    // Build absolute positions by traversing parent chain
+    const posById = useMemo(() => {
+        const map = new Map<string, { x: number; y: number }>();
+        const getAbs = (node: AppNode): { x: number; y: number } => {
+            if (map.has(node.id)) return map.get(node.id)!;
+            let { x: nx, y: ny } = node.position;
+            if (node.parentId) {
+                const parent = nodes.find(n => n.id === node.parentId);
+                if (parent) { const p = getAbs(parent); nx += p.x; ny += p.y; }
+            }
+            const abs = { x: nx, y: ny };
+            map.set(node.id, abs);
+            return abs;
+        };
+        nodes.forEach(getAbs);
+        return map;
+    }, [nodes]);
+
     return (
         <div className="pointer-events-none absolute inset-0 overflow-hidden" style={{ zIndex: 9999 }}>
             <div style={{ transform: `translate(${x}px, ${y}px) scale(${zoom})`, transformOrigin: '0 0' }}>
@@ -170,13 +211,14 @@ function DebugNodeIds({ nodes }: { nodes: Node[] }) {
                     if (d.modelId) parts.push(d.modelId);
                     if (d._log?.length) parts.push(`log:${d._log.length}`);
                     const isExpanded = expandedNode === node.id;
+                    const abs = posById.get(node.id) ?? node.position;
                     return (
                         <div
                             key={`dbg-${node.id}`}
                             className="pointer-events-auto absolute cursor-pointer"
                             style={{
-                                left: node.position.x,
-                                top: node.position.y - 20,
+                                left: abs.x,
+                                top: abs.y - 20,
                             }}
                             onClick={() => setExpandedNode(isExpanded ? null : node.id)}
                         >
@@ -202,10 +244,10 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
     // IMPORTANT: Start with empty canvas - Loro sync will populate from server
     // This ensures Loro is the single source of truth for nodes/edges
     // Legacy: project.nodes/edges from DB are now ignored
-    const initialNodes: Node[] = [];
+    const initialNodes: AppNode[] = [];
     const initialEdges: Edge[] = [];
 
-    const [nodes, setNodesInternal] = useNodesState(initialNodes);
+    const [nodes, setNodesInternal] = useNodesState<AppNode>(initialNodes);
     const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
 
     // Wrap setNodes to ALWAYS sanitize before setting - this prevents "Parent node X not found" errors
@@ -556,7 +598,7 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
 	    // Custom onNodesChange to handle recursive resizing
 	    const handleNodesChange = useCallback((changes: NodeChange[]) => {
 	        setNodes((currentNodes) => {
-	            let updatedNodes = applyNodeChanges(changes, currentNodes);
+	            let updatedNodes = applyNodeChanges(changes as NodeChange<AppNode>[], currentNodes);
 
             // Check for dimension changes (resizing)
             const resizeChanges = changes.filter((c) => c.type === 'dimensions');
@@ -700,7 +742,6 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
 	                    position: ownership.relativePosition,
 	                    extent: undefined,
 	                };
-	                (nextNode as any).parentNode = ownership.newParentId;
 
 	                // If a group is nested, ensure it stays above its parent.
 	                if (nextNode.type === 'group' && ownership.newParentId) {
@@ -732,7 +773,6 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
 	                draggedNodePatch = {
 	                    position: nextNode.position,
 	                    parentId: nextNode.parentId,
-	                    parentNode: (nextNode as any).parentNode,
 	                    extent: nextNode.extent,
 	                    style: nextNode.style,
 	                };
@@ -756,7 +796,7 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
 
 
     // Custom handleEdgesChange to sync edge deletions to Loro
-    const handleEdgesChange = useCallback((changes: import('reactflow').EdgeChange[]) => {
+    const handleEdgesChange = useCallback((changes: import('@xyflow/react').EdgeChange[]) => {
         onEdgesChange(changes);
 
         // Handle edge deletions - sync to Loro
@@ -1621,8 +1661,7 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
             updated = applyAutoZIndex(updated);
 
             return updated;
-        },
-        [applyAutoZIndex]
+        }
     );
 
     const relayoutParent = useCallback(

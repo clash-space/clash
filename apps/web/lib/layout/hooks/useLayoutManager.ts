@@ -1,5 +1,5 @@
 import { useCallback, useMemo } from 'react';
-import { useReactFlow, Node, Edge } from 'reactflow';
+import { useReactFlow, Node, Edge } from '@xyflow/react';
 import type {
     Point,
     Size,

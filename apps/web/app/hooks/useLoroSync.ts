@@ -1,8 +1,28 @@
 import { useEffect, useRef, useCallback, useState } from 'react';
 import { LoroDoc, UndoManager } from 'loro-crdt';
-import { Node, Edge } from 'reactflow';
+import { Node, Edge } from '@xyflow/react';
 import type { PresenceClient, ActivityMessage } from '@clash/shared-types';
 import { isSidebandMessage } from '@clash/shared-types';
+
+// ReactFlow v12: parent nodes must appear before children in the nodes array.
+function sortNodesParentFirst(nodes: Node[]): Node[] {
+  const idSet = new Set(nodes.map((n) => n.id));
+  const result: Node[] = [];
+  const visited = new Set<string>();
+
+  const visit = (node: Node) => {
+    if (visited.has(node.id)) return;
+    visited.add(node.id);
+    if (node.parentId && idSet.has(node.parentId)) {
+      const parent = nodes.find((n) => n.id === node.parentId);
+      if (parent) visit(parent);
+    }
+    result.push(node);
+  };
+
+  for (const node of nodes) visit(node);
+  return result;
+}
 
 interface LoroSyncOptions {
   projectId: string;
@@ -181,6 +201,10 @@ export function useLoroSync(options: LoroSyncOptions): UseLoroSyncReturn {
       });
     }
 
+    // v12 requires parent nodes to appear before their children in the nodes array.
+    // Sort topologically: nodes without parentId first, then children in order.
+    const sortedNodes = sortNodesParentFirst(nodes);
+
     const edges: Edge[] = [];
     for (const [key, value] of edgesMap.entries()) {
       edges.push({ id: key, ...(value as any) });
@@ -191,7 +215,7 @@ export function useLoroSync(options: LoroSyncOptions): UseLoroSyncReturn {
       tasks.push({ id: key, data: value });
     }
 
-    return { nodes, edges, tasks };
+    return { nodes: sortedNodes, edges, tasks };
   }, [doc]);
 
   // Load from local storage on mount - MUST complete before WebSocket connects

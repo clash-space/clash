@@ -1,5 +1,5 @@
 import { memo, useState, useCallback, useRef } from 'react';
-import { Handle, Position, useReactFlow, Node } from 'reactflow';
+import { Handle, Position, useReactFlow, Node } from '@xyflow/react';
 import { Image as ImageIcon, VideoCamera, FilmSlate, Plus } from '@phosphor-icons/react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useOptionalLoroSyncContext } from '../LoroSyncContext';

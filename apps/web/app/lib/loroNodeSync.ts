@@ -1,4 +1,4 @@
-import type { Node } from 'reactflow';
+import type { Node } from '@xyflow/react';
 
 type LoroNodeUpdater = {
     connected: boolean;
@@ -45,10 +45,6 @@ export function collectLayoutNodePatches(prevNodes: Node[], nextNodes: Node[]): 
 
         if (!samePoint(prev.position, next.position)) patch.position = next.position;
         if (prev.parentId !== next.parentId) patch.parentId = next.parentId;
-
-        const prevParentNode = (prev as any).parentNode;
-        const nextParentNode = (next as any).parentNode;
-        if (prevParentNode !== nextParentNode) patch.parentNode = nextParentNode;
 
         if (prev.width !== next.width) patch.width = next.width;
         if (prev.height !== next.height) patch.height = next.height;

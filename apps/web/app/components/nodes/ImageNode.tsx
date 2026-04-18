@@ -1,5 +1,5 @@
 import { memo, useEffect, useRef, useState } from 'react';
-import { Handle, Position, NodeProps, useReactFlow, useNodes } from 'reactflow';
+import { Handle, Position, NodeProps, Node, useReactFlow, useNodes } from '@xyflow/react';
 import SourceHandleMenu from './SourceHandleMenu';
 import { Image as ImageIcon, TextT } from '@phosphor-icons/react';
 import { useMediaViewer } from '../MediaViewerContext';
@@ -14,7 +14,7 @@ import {
     resolveInitialMediaSize,
 } from './assetNodeSizing';
 
-const ImageNode = ({ data, selected, id }: NodeProps) => {
+const ImageNode = ({ data, selected, id }: NodeProps<Node<Record<string, any>>>) => {
     const [label, setLabel] = useState(data.label || 'Image Node');
     const { openViewer } = useMediaViewer();
     const { setNodes } = useReactFlow();

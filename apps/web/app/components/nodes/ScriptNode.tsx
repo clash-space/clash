@@ -1,5 +1,5 @@
 import { memo, useState, useEffect } from 'react';
-import { Handle, Position, NodeProps, useReactFlow } from 'reactflow';
+import { Handle, Position, NodeProps, Node, useReactFlow } from '@xyflow/react';
 import { Scroll, Plus } from '@phosphor-icons/react';
 
 // Define the structure for a Shot
@@ -9,7 +9,7 @@ export interface Shot {
     content: string;
 }
 
-const ScriptNode = ({ id, data, selected }: NodeProps) => {
+const ScriptNode = ({ id, data, selected }: NodeProps<Node<Record<string, any>>>) => {
     const { setNodes } = useReactFlow();
 
     // Local state for shots

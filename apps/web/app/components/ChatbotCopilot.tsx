@@ -13,7 +13,7 @@ import { ThinkingProcess } from './copilot/ThinkingProcess';
 import { ChatInput } from './copilot/ChatInput';
 import { TodoList, TodoItem } from './copilot/TodoList';
 import { ThinkingIndicator } from './copilot/ThinkingIndicator';
-import type { Node as RFNode, Edge as RFEdge, Connection as RFConnection } from 'reactflow';
+import type { Node as RFNode, Edge as RFEdge, Connection as RFConnection } from '@xyflow/react';
 import ReactMarkdown from 'react-markdown';
 import { SignedImg } from './SignedMedia';
 import { useSignedUrl } from '@/lib/hooks/useSignedUrl';

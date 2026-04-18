@@ -1,7 +1,7 @@
 'use client';
 
 import { memo, useEffect, useMemo, useRef, useState } from 'react';
-import { Node, NodeProps, NodeResizeControl, useNodes, useReactFlow } from 'reactflow';
+import { Node, NodeProps, NodeResizeControl, useNodes, useReactFlow } from '@xyflow/react';
 import { useOptionalLoroSyncContext } from '../LoroSyncContext';
 import { useLayoutActions } from '../LayoutActionsContext';
 import { MagicWand } from '@phosphor-icons/react';
@@ -14,7 +14,7 @@ const controlStyle = {
     height: 10,
 };
 
-const GroupNode = ({ selected, data, id }: NodeProps) => {
+const GroupNode = ({ selected, data, id }: NodeProps<Node<Record<string, any>>>) => {
     const [label, setLabel] = useState(data.label || 'Group');
     const nodes = useNodes();
     const { setNodes } = useReactFlow();

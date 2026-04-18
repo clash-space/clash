@@ -1,12 +1,12 @@
 import { memo, useState, useRef, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
-import { Handle, Position, NodeProps } from 'reactflow';
+import { Handle, Position, NodeProps, Node } from '@xyflow/react';
 import SourceHandleMenu from './SourceHandleMenu';
 import { Play, Pause, X, SpeakerHigh, SkipBack, SkipForward, Spinner } from '@phosphor-icons/react';
 import { useSignedUrl } from '../../../lib/hooks/useSignedUrl';
 import { normalizeStatus, isActiveStatus, type AssetStatus } from '../../../lib/assetStatus';
 
-const AudioNode = ({ data, selected, id }: NodeProps) => {
+const AudioNode = ({ data, selected, id }: NodeProps<Node<Record<string, any>>>) => {
     const [label, setLabel] = useState(data.label || 'Audio Node');
     const [isPlaying, setIsPlaying] = useState(false);
     const [progress, setProgress] = useState(0);

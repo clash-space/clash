@@ -1,7 +1,7 @@
 
 import React, { memo, useCallback, useState } from 'react';
 /* eslint-disable @next/next/no-img-element */
-import { Handle, Position, NodeProps, useReactFlow, Node } from 'reactflow';
+import { Handle, Position, NodeProps, useReactFlow, Node } from '@xyflow/react';
 import { FilmSlate, VideoCamera } from '@phosphor-icons/react';
 import { useVideoEditor } from '../VideoEditorContext';
 import { useOptionalLoroSyncContext } from '../LoroSyncContext';
@@ -10,7 +10,7 @@ import { useSignedUrl, getSignedUrl } from '../../../lib/hooks/useSignedUrl';
 import { normalizeStatus, isActiveStatus } from '../../../lib/assetStatus';
 import { autoInsertNode } from '../../../lib/layout';
 
-const VideoEditorNode = ({ data, id }: NodeProps) => {
+const VideoEditorNode = ({ data, id }: NodeProps<Node<Record<string, any>>>) => {
     const { openEditor } = useVideoEditor();
     const loroSync = useOptionalLoroSyncContext();
     const reactFlow = useReactFlow();

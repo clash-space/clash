@@ -1,5 +1,5 @@
 import { memo, useState, useEffect, useCallback, useMemo, useRef, type KeyboardEvent as ReactKeyboardEvent } from 'react';
-import { Handle, Position, type Node as RFNode, NodeProps, useReactFlow, useEdges } from 'reactflow';
+import { Handle, Position, type Node as RFNode, NodeProps, useReactFlow, useEdges } from '@xyflow/react';
 import { VideoCamera, Image as ImageIcon, CaretDown, X, Play, Spinner, PuzzlePiece } from '@phosphor-icons/react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { createPortal } from 'react-dom';
@@ -35,7 +35,7 @@ const extractLabelFromPrompt = (promptText: string, fallback: string): string =>
     return firstLine;
 };
 
-const PromptActionNode = ({ data, selected, id }: NodeProps) => {
+const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string, any>>>) => {
     const [showPanel, setShowPanel] = useState(false);
     const [showModal, setShowModal] = useState(false);
     const [showModelDropdown, setShowModelDropdown] = useState(false);

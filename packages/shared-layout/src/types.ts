@@ -11,8 +11,8 @@ export interface LayoutNode {
     type?: string;
     position: { x: number; y: number };
     parentId?: string;
-    width?: number | null;
-    height?: number | null;
+    width?: number;
+    height?: number;
     /** Node data. Uses `any` so reactflow's `Node<T>` (where data is `T`) is assignable. */
     data: Record<string, any>;
     style?: { width?: number | string; height?: number | string; zIndex?: number | string };

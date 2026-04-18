@@ -3,7 +3,7 @@
 import React, { createContext, useContext, useState, useCallback, ReactNode, useRef } from 'react';
 import dynamic from 'next/dynamic';
 import type { EditorState, TimelineDsl, Track } from '@master-clash/remotion-core';
-import type { Node, Edge } from 'reactflow';
+import type { Node, Edge } from '@xyflow/react';
 import { useOptionalLoroSyncContext } from './LoroSyncContext';
 import { autoInsertNode } from '@/lib/layout';
 

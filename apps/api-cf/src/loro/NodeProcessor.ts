@@ -271,7 +271,9 @@ export async function processPendingNodes(
 
       // Case 1: pending + no src -> submit generation task
       if (status === Status.Pending && !src) {
-        const taskId = crypto.randomUUID();
+        // Deterministic taskId: same nodeId always maps to the same workflow ID,
+        // so duplicate submissions (Loro race, alarm + queue, etc.) are idempotent.
+        const taskId = `${projectId}-gen-${nodeId}`;
         const taskType = nodeType === 'image' ? 'image_gen' : nodeType === 'video' ? 'video_gen' : 'audio_gen';
         const tag = { nodeId, taskId, nodeType };
 
@@ -428,7 +430,11 @@ async function submitGenTask(
 
     await env.GENERATION_WORKFLOW.create({ id: taskId, params: genParams });
     return {};
-  } catch (e) {
+  } catch (e: any) {
+    if (String(e).includes('already exists')) {
+      log.info('Gen workflow already exists, skipping duplicate submission', { taskId, nodeId });
+      return {};
+    }
     log.error('Exception during task submission:', e);
     return { error: String(e) };
   }

@@ -1,9 +1,9 @@
 import { memo, useState, useEffect, useMemo } from 'react';
-import { Handle, Position, NodeProps, useNodes, useEdges } from 'reactflow';
+import { Handle, Position, NodeProps, Node, useNodes, useEdges } from '@xyflow/react';
 import { PaintBrush, Link as LinkIcon, MagicWand, Warning } from '@phosphor-icons/react';
 import { Shot } from './ScriptNode';
 
-const StoryboardNode = ({ id, data: _data, selected }: NodeProps) => {
+const StoryboardNode = ({ id, data: _data, selected }: NodeProps<Node<Record<string, any>>>) => {
     // React Flow v11 compatible approach
     const nodes = useNodes();
     const edges = useEdges();
