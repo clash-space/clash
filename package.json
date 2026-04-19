@@ -33,7 +33,15 @@
   "pnpm": {
     "overrides": {
       "remotion": "4.0.370",
-      "@remotion/*": "4.0.370"
+      "@remotion/*": "4.0.370",
+      "@vitest/utils": "4.1.0",
+      "@vitest/runner": "4.1.0",
+      "@vitest/snapshot": "4.1.0",
+      "@vitest/expect": "4.1.0",
+      "@vitest/spy": "4.1.0",
+      "@vitest/pretty-format": "4.1.0",
+      "@vitest/mocker": "4.1.0",
+      "vitest": "4.1.0"
     }
   },
   "dependencies": {
