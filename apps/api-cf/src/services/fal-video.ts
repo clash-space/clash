@@ -11,8 +11,14 @@ import { fal } from "@fal-ai/client";
 
 interface FalVideoParams {
   prompt: string;
-  /** URL of source image (fal CDN URL, not base64) */
+  /** URL of source image (fal CDN URL, not base64). Single or startEnd.first. */
   imageUrl?: string;
+  /** Tail/end frame URL (Kling 2.5/3, Seedance i2v with end_image_url). */
+  tailImageUrl?: string;
+  /** Multi-modal ref URLs (Seedance reference-to-video). */
+  referenceImageUrls?: string[];
+  referenceVideoUrls?: string[];
+  referenceAudioUrls?: string[];
   duration?: number | string;
   aspectRatio?: string;
   videoModel?: string;
@@ -43,12 +49,20 @@ export async function generateFalVideo(
     return generateKlingVideo(params);
   }
 
+  if (params.videoModel === 'kling-3') {
+    return generateKling3Video(params);
+  }
+
   if (params.videoModel === 'veo3' || params.videoModel === 'veo3-fast-text-to-video') {
     return generateVeo3Video(params);
   }
 
   if (params.videoModel === 'seedance-2') {
     return generateSeedance2Video(params);
+  }
+
+  if (params.videoModel === 'seedance-2-ref') {
+    return generateSeedance2RefVideo(params);
   }
 
   // Default: Sora 2 (id 'sora-2'). Provider-internal dispatch by hasImage.
@@ -119,6 +133,7 @@ async function generateKlingVideo(params: FalVideoParams): Promise<FalVideoResul
 
   if (hasImage) {
     input.image_url = params.imageUrl;
+    if (params.tailImageUrl) input.tail_image_url = params.tailImageUrl;
   }
 
   const result = await fal.subscribe(modelId, {
@@ -165,7 +180,7 @@ async function generateSeedance2Video(params: FalVideoParams): Promise<FalVideoR
 
   if (hasImage) {
     input.image_url = params.imageUrl;
-    // `end_image_url` left unset — exposed via first_last mode later.
+    if (params.tailImageUrl) input.end_image_url = params.tailImageUrl;
   } else {
     // text-to-video takes aspect_ratio; image-to-video infers from the source image.
     input.aspect_ratio = params.aspectRatio || 'auto';
@@ -247,6 +262,90 @@ async function generateVeo3Video(params: FalVideoParams): Promise<FalVideoResult
   return {
     url: data.video.url,
     duration: durationNum,
+    requestId: result.requestId,
+    model: modelId,
+  };
+}
+
+/**
+ * Kling 3 Pro — image-to-video with start_image_url (required) + optional end_image_url.
+ * This is the canonical startEnd model. No text-to-video on v3 yet.
+ */
+async function generateKling3Video(params: FalVideoParams): Promise<FalVideoResult> {
+  if (!params.imageUrl) {
+    throw new Error("Kling 3 Pro requires a start frame (image_url)");
+  }
+
+  const modelId = "fal-ai/kling-video/v3/pro/image-to-video";
+
+  const durationStr = typeof params.duration === 'number'
+    ? String(Math.min(Math.max(params.duration, 3), 15))
+    : (params.duration ?? "5");
+  const durationNum = parseInt(durationStr as string, 10);
+
+  const input: Record<string, unknown> = {
+    prompt: params.prompt,
+    duration: durationStr,
+    start_image_url: params.imageUrl,
+    generate_audio: (params.modelParams?.generate_audio as boolean) ?? true,
+  };
+  if (params.tailImageUrl) input.end_image_url = params.tailImageUrl;
+
+  const result = await fal.subscribe(modelId, {
+    input,
+    timeout: 10 * 60 * 1000,
+    onEnqueue: params.onEnqueue,
+    onQueueUpdate: params.onQueueUpdate as any,
+  } as any);
+  const data = result.data as { video?: { url: string; duration?: number } };
+  if (!data.video?.url) throw new Error("No video in kling v3 response");
+
+  return {
+    url: data.video.url,
+    duration: data.video.duration ?? durationNum,
+    requestId: result.requestId,
+    model: modelId,
+  };
+}
+
+/**
+ * Seedance 2.0 reference-to-video — separate endpoint that accepts up to
+ * 9 image refs + 3 video refs + 3 audio refs (total ≤ 12). References are
+ * positional in the prompt: "@Image1 @Video2 @Audio1".
+ */
+async function generateSeedance2RefVideo(params: FalVideoParams): Promise<FalVideoResult> {
+  const modelId = "bytedance/seedance-2.0/reference-to-video";
+
+  const rawDuration = params.duration ?? 'auto';
+  const durationParam: string | number = rawDuration === 'auto'
+    ? 'auto'
+    : (typeof rawDuration === 'string' ? parseInt(rawDuration, 10) : rawDuration);
+
+  const input: Record<string, unknown> = {
+    prompt: params.prompt,
+    duration: durationParam,
+    resolution: (params.modelParams?.resolution as string) ?? '720p',
+    aspect_ratio: params.aspectRatio || 'auto',
+    generate_audio: (params.modelParams?.generate_audio as boolean) ?? true,
+  };
+
+  if (params.referenceImageUrls?.length) input.image_urls = params.referenceImageUrls;
+  if (params.referenceVideoUrls?.length) input.video_urls = params.referenceVideoUrls;
+  if (params.referenceAudioUrls?.length) input.audio_urls = params.referenceAudioUrls;
+
+  const result = await fal.subscribe(modelId, {
+    input,
+    timeout: 10 * 60 * 1000,
+    onEnqueue: params.onEnqueue,
+    onQueueUpdate: params.onQueueUpdate as any,
+  } as any);
+  const data = result.data as { video?: { url: string; duration?: number } };
+  if (!data.video?.url) throw new Error("No video in seedance-2-ref response");
+
+  const fallbackDuration = typeof durationParam === 'number' ? durationParam : 5;
+  return {
+    url: data.video.url,
+    duration: data.video.duration ?? fallbackDuration,
     requestId: result.requestId,
     model: modelId,
   };

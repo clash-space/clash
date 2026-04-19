@@ -148,11 +148,23 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
     const maxRefs = inputMode.startEnd ? 2 : (inputMode.images?.max ?? 0);
     const isStartEnd = !!inputMode.startEnd;
 
-    // Resolve a node's reference-image source. Only image nodes are valid — videos are rejected.
-    const resolveRefSrc = useCallback((node: { type?: string; data?: Record<string, unknown> } | undefined): string | undefined => {
-        if (!node || node.type !== 'image') return undefined;
-        return node.data?.src as string | undefined;
-    }, []);
+    // Which reference kinds the selected model accepts, derived from inputMode.
+    const acceptsImageRef = !!inputMode.images || !!inputMode.startEnd;
+    const acceptsVideoRef = !!inputMode.videos;
+    const acceptsAudioRef = !!inputMode.audios;
+
+    // Resolve a node's ref source if its kind is accepted by the current model.
+    // Returns the raw R2 key — renderers use cover for video, placeholder for audio.
+    const resolveRefSrc = useCallback(
+        (node: { type?: string; data?: Record<string, unknown> } | undefined): string | undefined => {
+            if (!node) return undefined;
+            if (node.type === 'image' && acceptsImageRef) return node.data?.src as string | undefined;
+            if (node.type === 'video' && acceptsVideoRef) return node.data?.src as string | undefined;
+            if (node.type === 'audio' && acceptsAudioRef) return node.data?.src as string | undefined;
+            return undefined;
+        },
+        [acceptsImageRef, acceptsVideoRef, acceptsAudioRef],
+    );
 
     // Attached node IDs = incoming edges whose source resolves to a valid image ref.
     // Display order = data.referenceImageOrder (user-controlled via drag); new attachments append.
@@ -593,20 +605,24 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
             const promptParts = parsePromptParts(prompt);
             const promptText = extractPromptText(promptParts);
 
-            // Reference images from the attachment form (ordered).
-            // image → data.src, video → data.coverUrl (first frame).
-            const inlineImageUrls = refNodeIds
-                .map((nodeId) => {
-                    const refNode = getNodes().find((n) => n.id === nodeId);
-                    return resolveRefSrc(refNode);
-                })
-                .filter((src): src is string => !!src);
+            // Partition attached refs by node kind; each modality writes its own Loro field.
+            const partitionRefs = (kind: 'image' | 'video' | 'audio') =>
+                refNodeIds
+                    .map((nodeId) => getNodes().find((n) => n.id === nodeId))
+                    .filter((n) => n?.type === kind)
+                    .map((n) => resolveRefSrc(n))
+                    .filter((src): src is string => !!src);
+            const inlineImageUrls = partitionRefs('image');
+            const inlineVideoUrls = partitionRefs('video');
+            const inlineAudioUrls = partitionRefs('audio');
 
             // Validate generation inputs against model card
             if (!isCustom && selectedModel) {
                 const validationError = validateGenerationInput({
                     prompt: promptText,
                     referenceImageUrls: inlineImageUrls,
+                    referenceVideoUrls: inlineVideoUrls,
+                    referenceAudioUrls: inlineAudioUrls,
                     modelCard: selectedModel,
                 });
                 if (validationError) throw new Error(validationError);
@@ -735,6 +751,8 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
 
             } else if (actionType === 'video-gen') {
                 const referenceImageUrls = inlineImageUrls;
+                const referenceVideoUrls = inlineVideoUrls;
+                const referenceAudioUrls = inlineAudioUrls;
                 const generatedLabel = extractLabelFromPrompt(promptText, 'Generated Video');
                 const durationValue = modelParams.duration ?? 5;
                 const durationNumber = typeof durationValue === 'string' ? parseInt(durationValue, 10) : Number(durationValue) || 5;
@@ -753,6 +771,8 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
                                 status: 'pending',
                                 prompt: promptText,
                                 referenceImageUrls,
+                                referenceVideoUrls,
+                                referenceAudioUrls,
                                 duration: durationNumber,
                                 model: modelId,
                                 modelId,
@@ -1225,7 +1245,8 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
                                         : node.type === 'video'
                                             ? (node.data.coverUrl as string | undefined)
                                             : undefined;
-                                    if (!thumb) return null;
+                                    const isAudio = node.type === 'audio';
+                                    if (!thumb && !isAudio) return null;
                                     const badge = isStartEnd
                                         ? (i === 0 ? '首' : i === 1 ? '尾' : `${i + 1}`)
                                         : `${i + 1}`;
@@ -1239,11 +1260,17 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
                                             whileDrag={{ scale: 1.08, zIndex: 10 }}
                                             style={{ cursor: isFrozen ? 'default' : 'grab' }}
                                         >
-                                            <SignedImg
-                                                src={thumb}
-                                                alt={(node.data.label as string) || nodeId}
-                                                className="h-10 w-10 rounded-lg object-cover border border-slate-200 shadow-sm pointer-events-none"
-                                            />
+                                            {isAudio ? (
+                                                <div className="h-10 w-10 rounded-lg bg-violet-100 border border-slate-200 shadow-sm flex items-center justify-center text-violet-600 text-lg pointer-events-none">
+                                                    ♪
+                                                </div>
+                                            ) : (
+                                                <SignedImg
+                                                    src={thumb!}
+                                                    alt={(node.data.label as string) || nodeId}
+                                                    className="h-10 w-10 rounded-lg object-cover border border-slate-200 shadow-sm pointer-events-none"
+                                                />
+                                            )}
                                             <span className="absolute -top-1 -left-1 bg-slate-700 text-white text-[9px] font-bold rounded px-1 min-w-[14px] text-center leading-[14px] pointer-events-none">
                                                 {badge}
                                             </span>

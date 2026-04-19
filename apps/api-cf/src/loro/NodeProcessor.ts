@@ -421,9 +421,11 @@ export async function processPendingNodes(
           (nodeType === 'video' ? defaultVideoModel : nodeType === 'audio' ? defaultAudioModel : defaultImageModel);
         const modelParams = (innerData.modelParams || {}) as Record<string, any>;
         const referenceImages: string[] = Array.isArray(innerData.referenceImageUrls) ? innerData.referenceImageUrls : [];
+        const referenceVideos: string[] = Array.isArray(innerData.referenceVideoUrls) ? innerData.referenceVideoUrls : [];
+        const referenceAudios: string[] = Array.isArray(innerData.referenceAudioUrls) ? innerData.referenceAudioUrls : [];
         const modelCard = getModelCard(selectedModelId);
         const inputMode = modelCard?.input.inputMode ?? {};
-        log.info('Gen task params', { nodeId, model: selectedModelId, referenceImages, prompt: innerData.prompt || innerData.label });
+        log.info('Gen task params', { nodeId, model: selectedModelId, images: referenceImages.length, videos: referenceVideos.length, audios: referenceAudios.length, prompt: innerData.prompt || innerData.label });
 
         // Pre-flight: refuse to submit the workflow when image refs violate the inputMode.
         // Only enforced for video gen (image gen is more forgiving).
@@ -466,14 +468,16 @@ export async function processPendingNodes(
           model: selectedModelId,
           modelParams,
           referenceImages,
+          referenceVideos,
+          referenceAudios,
           referenceMode: inputMode.startEnd ? 'start_end' : (inputMode.images ? 'multi' : 'none'),
           aspectRatio: modelParams.aspect_ratio || innerData.aspectRatio || '16:9',
           duration: modelParams.duration ?? innerData.duration ?? 5,
           negativPrompt: modelParams.negative_prompt,
           cfgScale: modelParams.cfg_scale,
           resolution: modelParams.resolution,
-          // Pass the second ref as tail for startEnd mode (provider reads as image_tail/end_image_url).
-          tailImageUrl: inputMode.startEnd ? referenceImages[1] : undefined,
+          // For startEnd models, first ref = first frame; second = tail/end frame.
+          tailImageR2Key: inputMode.startEnd ? referenceImages[1] : undefined,
           imageR2Key: referenceImages[0],
         });
 
@@ -545,19 +549,20 @@ async function submitGenTask(
     negativPrompt?: string;
     cfgScale?: number;
     resolution?: string;
-    tailImageUrl?: string;
+    tailImageR2Key?: string;
     imageR2Key?: string;
+    referenceVideos?: string[];
+    referenceAudios?: string[];
   },
 ): Promise<{ error?: string }> {
   try {
-    // Pass R2 keys directly — workflow will upload to fal CDN internally.
-    // Accept both generated (projects/…) and user-uploaded (uploads/…) R2 keys, plus raw URLs.
-    const referenceR2Keys = params.referenceImages.filter(ref =>
-      ref.startsWith('projects/') || ref.startsWith('uploads/') || ref.startsWith('http://') || ref.startsWith('https://')
-    );
-    log.info('submitGenTask referenceR2Keys', { taskId, input: params.referenceImages, filtered: referenceR2Keys });
+    const validR2 = (ref: string) =>
+      ref.startsWith('projects/') || ref.startsWith('uploads/') || ref.startsWith('http://') || ref.startsWith('https://');
+    const referenceR2Keys = params.referenceImages.filter(validR2);
+    const referenceVideoR2Keys = (params.referenceVideos ?? []).filter(validR2);
+    const referenceAudioR2Keys = (params.referenceAudios ?? []).filter(validR2);
+    log.info('submitGenTask refs', { taskId, images: referenceR2Keys.length, videos: referenceVideoR2Keys.length, audios: referenceAudioR2Keys.length });
 
-    // For video: source image R2 key
     const imageR2Key = taskType === 'video_gen' ? params.imageR2Key : undefined;
 
     const genParams: GenerationParams = {
@@ -571,7 +576,10 @@ async function submitGenTask(
       modelName: params.model,
       modelParams: params.modelParams as Record<string, unknown>,
       referenceR2Keys: referenceR2Keys.length ? referenceR2Keys : undefined,
+      referenceVideoR2Keys: referenceVideoR2Keys.length ? referenceVideoR2Keys : undefined,
+      referenceAudioR2Keys: referenceAudioR2Keys.length ? referenceAudioR2Keys : undefined,
       imageR2Key,
+      tailImageR2Key: params.tailImageR2Key,
       duration: params.duration,
       cfgScale: params.cfgScale,
       videoModel: params.model,

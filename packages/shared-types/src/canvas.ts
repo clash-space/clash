@@ -152,51 +152,66 @@ export type LoroDocumentState = z.infer<typeof LoroDocumentStateSchema>;
 export interface ValidateGenerationInput {
   prompt: string;
   referenceImageUrls: string[];
+  referenceVideoUrls?: string[];
+  referenceAudioUrls?: string[];
   modelCard: ModelCard;
 }
 
 /**
  * Validate generation inputs against model card requirements.
  * Returns null if valid, or an error message string if invalid.
- *
- * Today the input here only carries images (videos/audios aren't yet plumbed
- * through). When other-modality refs land, extend this to take a per-kind map.
  */
 export function validateGenerationInput(input: ValidateGenerationInput): string | null {
-  const { prompt, referenceImageUrls, modelCard } = input;
+  const { prompt, referenceImageUrls, referenceVideoUrls = [], referenceAudioUrls = [], modelCard } = input;
   const { inputMode, requiresPrompt } = modelCard.input;
 
   if (requiresPrompt && (!prompt || !prompt.trim())) {
     return 'No prompt provided.';
   }
 
-  const count = referenceImageUrls.length;
-  const acceptsImages = !!inputMode.images || !!inputMode.startEnd;
+  const imgCount = referenceImageUrls.length;
+  const vidCount = referenceVideoUrls.length;
+  const audCount = referenceAudioUrls.length;
 
-  if (count > 0 && !acceptsImages) {
+  const acceptsImages = !!inputMode.images || !!inputMode.startEnd;
+  if (imgCount > 0 && !acceptsImages) {
     return 'Selected model does not accept reference images.';
+  }
+  if (vidCount > 0 && !inputMode.videos) {
+    return 'Selected model does not accept reference videos.';
+  }
+  if (audCount > 0 && !inputMode.audios) {
+    return 'Selected model does not accept reference audio.';
   }
 
   if (inputMode.startEnd) {
-    if (count < 1) {
+    if (imgCount < 1) {
       return 'Selected model needs a start frame. Attach one via @-mention in the prompt.';
     }
-    if (count > 2) {
+    if (imgCount > 2) {
       return 'Selected model uses at most two frames (start + optional end).';
     }
-    return null;
-  }
-
-  if (inputMode.images) {
+  } else if (inputMode.images) {
     const min = inputMode.images.min ?? 0;
-    if (count < min) {
+    if (imgCount < min) {
       return min === 1
         ? 'Selected model requires a reference image. Attach one via @-mention in the prompt.'
         : `Selected model requires at least ${min} reference images.`;
     }
-    if (count > inputMode.images.max) {
-      return `Selected model accepts at most ${inputMode.images.max} reference images (got ${count}).`;
+    if (imgCount > inputMode.images.max) {
+      return `Selected model accepts at most ${inputMode.images.max} reference images (got ${imgCount}).`;
     }
+  }
+
+  if (inputMode.videos) {
+    const min = inputMode.videos.min ?? 0;
+    if (vidCount < min) return `Selected model requires at least ${min} reference video(s).`;
+    if (vidCount > inputMode.videos.max) return `Selected model accepts at most ${inputMode.videos.max} reference video(s) (got ${vidCount}).`;
+  }
+  if (inputMode.audios) {
+    const min = inputMode.audios.min ?? 0;
+    if (audCount < min) return `Selected model requires at least ${min} reference audio clip(s).`;
+    if (audCount > inputMode.audios.max) return `Selected model accepts at most ${inputMode.audios.max} reference audio clip(s) (got ${audCount}).`;
   }
 
   return null;

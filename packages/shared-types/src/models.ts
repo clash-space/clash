@@ -508,6 +508,69 @@ export const MODEL_CARDS: ModelCard[] = [
     input: { requiresPrompt: true, inputMode: { images: { max: 1 } } },
   },
 
+  // ─── Video: Seedance 2.0 reference-to-video ────────────────
+  // Separate endpoint with multi-modal refs. Up to 12 total files across
+  // images (≤9), videos (≤3), audios (≤3). Positional prompt references
+  // (@Image1, @Video2, @Audio1).
+  {
+    id: 'seedance-2-ref',
+    name: 'Seedance 2.0 (Reference)',
+    provider: 'fal.ai',
+    kind: 'video',
+    defaultAspectRatio: '16:9',
+    description: 'Seedance 2.0 — multi-modal reference-to-video (images + videos + audios).',
+    parameters: [
+      {
+        id: 'duration',
+        label: 'Duration',
+        type: 'select',
+        options: [
+          { label: 'Auto', value: 'auto' },
+          { label: '4s', value: 4 },
+          { label: '6s', value: 6 },
+          { label: '8s', value: 8 },
+          { label: '10s', value: 10 },
+          { label: '15s', value: 15 },
+        ],
+        defaultValue: 'auto',
+      },
+      {
+        id: 'aspect_ratio',
+        label: 'Aspect Ratio',
+        type: 'select',
+        options: SEEDANCE_ASPECT_RATIOS.map(r => ({ label: r.label, value: r.value })),
+        defaultValue: 'auto',
+      },
+      {
+        id: 'resolution',
+        label: 'Resolution',
+        type: 'select',
+        options: [
+          { label: '480p', value: '480p' },
+          { label: '720p', value: '720p' },
+        ],
+        defaultValue: '720p',
+      },
+      {
+        id: 'generate_audio',
+        label: 'Native audio',
+        type: 'boolean',
+        defaultValue: true,
+      },
+    ],
+    defaultParams: {
+      duration: 'auto',
+      aspect_ratio: 'auto',
+      resolution: '720p',
+      generate_audio: true,
+    },
+    input: {
+      requiresPrompt: true,
+      inputMode: { images: { max: 9 }, videos: { max: 3 }, audios: { max: 3 } },
+      promptModalities: ['text', 'image', 'video', 'audio'],
+    },
+  },
+
   // ─── Video: Kling 2.1 (fal.ai) ──────────────────────────────
   // Single card — provider auto-routes to /text-to-video or /image-to-video.
   {
@@ -541,6 +604,39 @@ export const MODEL_CARDS: ModelCard[] = [
       aspect_ratio: '16:9',
     },
     input: { requiresPrompt: true, inputMode: { images: { max: 1 } } },
+  },
+
+  // ─── Video: Kling 3 Pro (fal.ai) — first frame + optional end frame ────
+  {
+    id: 'kling-3',
+    name: 'Kling 3 Pro',
+    provider: 'fal.ai',
+    kind: 'video',
+    defaultAspectRatio: '16:9',
+    description: 'Kling 3 Pro — first + optional end frame, with native audio.',
+    parameters: [
+      {
+        id: 'duration',
+        label: 'Duration',
+        type: 'select',
+        options: [
+          { label: '5s', value: '5' },
+          { label: '10s', value: '10' },
+        ],
+        defaultValue: '5',
+      },
+      {
+        id: 'generate_audio',
+        label: 'Native audio',
+        type: 'boolean',
+        defaultValue: true,
+      },
+    ],
+    defaultParams: {
+      duration: '5',
+      generate_audio: true,
+    },
+    input: { requiresPrompt: true, inputMode: { startEnd: {} } },
   },
 
   // ─── Image: Recraft V4 Pro (fal.ai) ──────────────────────────

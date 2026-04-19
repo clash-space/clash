@@ -49,8 +49,14 @@ export interface GenerationParams {
    *  Each part: { type: 'text', text } or { type: 'asset_ref', nodeId, r2Key } */
   promptParts?: Array<{ type: string; text?: string; nodeId?: string; r2Key?: string }>;
   // video_gen fields
-  /** R2 key for source image (image-to-video) */
+  /** R2 key for source image (image-to-video, first frame for startEnd). */
   imageR2Key?: string;
+  /** R2 key for the optional end/tail frame (models with startEnd inputMode). */
+  tailImageR2Key?: string;
+  /** R2 keys for reference videos (models with videos inputMode; e.g. Seedance ref-to-video). */
+  referenceVideoR2Keys?: string[];
+  /** R2 keys for reference audios (models with audios inputMode). */
+  referenceAudioR2Keys?: string[];
   duration?: number;
   cfgScale?: number;
   videoModel?: string;
@@ -198,7 +204,7 @@ export class GenerationWorkflow extends WorkflowEntrypoint<Env, GenerationParams
   private async runVideoPipeline(params: GenerationParams, step: WorkflowStep): Promise<void> {
     const tag = { taskId: params.taskId, nodeId: params.nodeId };
 
-    // Resolve source image for image-to-video models
+    // Resolve source image for image-to-video models (first frame / single image).
     let imageUrl: string | undefined;
     if (params.imageR2Key) {
       imageUrl = await step.do("resolve-source-image", {
@@ -211,6 +217,41 @@ export class GenerationWorkflow extends WorkflowEntrypoint<Env, GenerationParams
       });
     }
 
+    // Resolve optional tail/end frame for startEnd models.
+    let tailImageUrl: string | undefined;
+    if (params.tailImageR2Key) {
+      tailImageUrl = await step.do("resolve-tail-image", {
+        retries: { limit: 2, delay: "2 seconds" },
+        timeout: "1 minute",
+      }, async () => {
+        return await uploadR2ToFal(this.env.R2_BUCKET, params.tailImageR2Key!, this.env.FAL_API_KEY ?? "");
+      });
+    }
+
+    // Resolve multi-modal reference bundles (Seedance ref-to-video etc.).
+    let refImageUrls: string[] | undefined;
+    let refVideoUrls: string[] | undefined;
+    let refAudioUrls: string[] | undefined;
+    if ((params.referenceR2Keys?.length ?? 0) + (params.referenceVideoR2Keys?.length ?? 0) + (params.referenceAudioR2Keys?.length ?? 0) > 0) {
+      const [imgs, vids, auds] = await step.do("resolve-refs", {
+        retries: { limit: 2, delay: "2 seconds" },
+        timeout: "3 minutes",
+      }, async () => {
+        const resolve = async (keys?: string[]) => {
+          if (!keys?.length) return undefined;
+          const out: string[] = [];
+          for (const k of keys) out.push(await uploadR2ToFal(this.env.R2_BUCKET, k, this.env.FAL_API_KEY ?? ""));
+          return out;
+        };
+        return [
+          await resolve(params.referenceR2Keys),
+          await resolve(params.referenceVideoR2Keys),
+          await resolve(params.referenceAudioR2Keys),
+        ] as const;
+      });
+      refImageUrls = imgs; refVideoUrls = vids; refAudioUrls = auds;
+    }
+
     const provider = resolveVideoProvider(params.videoModel);
     const genResult = await step.do("generate", {
       retries: { limit: 2, delay: "5 seconds", backoff: "exponential" },
@@ -221,6 +262,10 @@ export class GenerationWorkflow extends WorkflowEntrypoint<Env, GenerationParams
       const result = await provider.generate(this.env, {
         prompt: params.prompt ?? "",
         imageUrl,
+        tailImageUrl,
+        referenceImageUrls: refImageUrls,
+        referenceVideoUrls: refVideoUrls,
+        referenceAudioUrls: refAudioUrls,
         duration: params.duration,
         aspectRatio: params.aspectRatio,
         modelName: params.videoModel,

@@ -12,7 +12,14 @@ import { generateGoogleVideo, GOOGLE_VIDEO_MODELS, type VertexCredentials } from
 
 export interface VideoGenInput {
   prompt: string;
+  /** First / source image (single or startEnd.first). */
   imageUrl?: string;
+  /** Optional tail/end frame (startEnd models like Kling 2.5 / 3 / Seedance i2v). */
+  tailImageUrl?: string;
+  /** Multi-modal reference bundle for models with `inputMode.images/videos/audios`. */
+  referenceImageUrls?: string[];
+  referenceVideoUrls?: string[];
+  referenceAudioUrls?: string[];
   aspectRatio?: string;
   duration?: number;
   modelName?: string;
@@ -40,6 +47,10 @@ const falVideoProvider: VideoProvider = {
     const result = await generateFalVideo(env.FAL_API_KEY ?? "", {
       prompt: params.prompt,
       imageUrl: params.imageUrl,
+      tailImageUrl: params.tailImageUrl,
+      referenceImageUrls: params.referenceImageUrls,
+      referenceVideoUrls: params.referenceVideoUrls,
+      referenceAudioUrls: params.referenceAudioUrls,
       duration: params.duration,
       aspectRatio: params.aspectRatio,
       videoModel: params.modelName,

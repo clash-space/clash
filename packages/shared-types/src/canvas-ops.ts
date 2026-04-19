@@ -84,8 +84,8 @@ function toLayoutNode(node: NodeInfo): LayoutNode {
     position: node.position,
     parentId: node.parent_id ?? undefined,
     data: node.data,
-    width: node.width,
-    height: node.height,
+    width: node.width ?? undefined,
+    height: node.height ?? undefined,
     style: node.style ?? undefined,
   };
 }
