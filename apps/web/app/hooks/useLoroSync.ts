@@ -76,10 +76,29 @@ const initDB = (): Promise<IDBDatabase> => {
   });
 };
 
+// Returns true if the IndexedDB appears corrupted (NotReadableError). Caller should wipe and continue.
+const isCorruptionError = (err: unknown): boolean => {
+  const name = (err as { name?: string })?.name;
+  return name === 'NotReadableError' || name === 'InvalidStateError';
+};
+
+const wipeDB = async (): Promise<void> => {
+  try {
+    await new Promise<void>((resolve) => {
+      const req = indexedDB.deleteDatabase(DB_NAME);
+      req.onerror = () => resolve();
+      req.onsuccess = () => resolve();
+      req.onblocked = () => resolve();
+    });
+  } catch {
+    // best-effort
+  }
+};
+
 const saveToDB = async (projectId: string, snapshot: Uint8Array): Promise<void> => {
   try {
     const db = await initDB();
-    return new Promise((resolve, reject) => {
+    await new Promise<void>((resolve, reject) => {
       const transaction = db.transaction(STORE_NAME, 'readwrite');
       const store = transaction.objectStore(STORE_NAME);
       const request = store.put(snapshot, projectId);
@@ -88,13 +107,14 @@ const saveToDB = async (projectId: string, snapshot: Uint8Array): Promise<void> 
     });
   } catch (err) {
     console.error('[useLoroSync] Failed to save to IndexedDB:', err);
+    if (isCorruptionError(err)) await wipeDB();
   }
 };
 
 const loadFromDB = async (projectId: string): Promise<Uint8Array | undefined> => {
   try {
     const db = await initDB();
-    return new Promise((resolve, reject) => {
+    return await new Promise<Uint8Array | undefined>((resolve, reject) => {
       const transaction = db.transaction(STORE_NAME, 'readonly');
       const store = transaction.objectStore(STORE_NAME);
       const request = store.get(projectId);
@@ -103,6 +123,7 @@ const loadFromDB = async (projectId: string): Promise<Uint8Array | undefined> =>
     });
   } catch (err) {
     console.error('[useLoroSync] Failed to load from IndexedDB:', err);
+    if (isCorruptionError(err)) await wipeDB();
     return undefined;
   }
 };
@@ -110,7 +131,7 @@ const loadFromDB = async (projectId: string): Promise<Uint8Array | undefined> =>
 const deleteFromDB = async (projectId: string): Promise<void> => {
   try {
     const db = await initDB();
-    return new Promise((resolve, reject) => {
+    await new Promise<void>((resolve, reject) => {
       const transaction = db.transaction(STORE_NAME, 'readwrite');
       const store = transaction.objectStore(STORE_NAME);
       const request = store.delete(projectId);
@@ -119,6 +140,7 @@ const deleteFromDB = async (projectId: string): Promise<void> => {
     });
   } catch (err) {
     console.error('[useLoroSync] Failed to delete from IndexedDB:', err);
+    if (isCorruptionError(err)) await wipeDB();
   }
 };
 
@@ -152,6 +174,11 @@ export function useLoroSync(options: LoroSyncOptions): UseLoroSyncReturn {
   const wsRef = useRef<WebSocket | null>(null);
   const [connected, setConnected] = useState(false);
   const [isInitialized, setIsInitialized] = useState(false);
+
+  // Stash callbacks in a ref so init / subscribe effects don't re-run when the caller
+  // passes inline closures (which get a new reference on every parent render).
+  const callbacksRef = useRef({ onNodesChange, onEdgesChange, onTaskUpdate, onPresenceChange, onActivity });
+  callbacksRef.current = { onNodesChange, onEdgesChange, onTaskUpdate, onPresenceChange, onActivity };
 
   // Track pending local updates that haven't been acknowledged by server
   
@@ -207,7 +234,14 @@ export function useLoroSync(options: LoroSyncOptions): UseLoroSyncReturn {
 
     const edges: Edge[] = [];
     for (const [key, value] of edgesMap.entries()) {
-      edges.push({ id: key, ...(value as any) });
+      edges.push({
+        id: key,
+        ...(value as any),
+        interactionWidth: 30,
+        focusable: true,
+        selectable: true,
+        deletable: true,
+      });
     }
 
     const tasks: Array<{ id: string; data: any }> = [];
@@ -228,7 +262,7 @@ export function useLoroSync(options: LoroSyncOptions): UseLoroSyncReturn {
       const currentVersion = localStorage.getItem(versionKey);
 
       if (currentVersion !== LORO_SCHEMA_VERSION) {
-        console.log(`[useLoroSync] Schema version mismatch for project ${projectId}, clearing old data`);
+        console.log(`[useLoroSync] Schema version mismatch for project ${projectId}, clearing old data`, { currentVersion, expected: LORO_SCHEMA_VERSION });
 
         await deleteFromDB(projectId);
         localStorage.setItem(versionKey, LORO_SCHEMA_VERSION);
@@ -248,14 +282,15 @@ export function useLoroSync(options: LoroSyncOptions): UseLoroSyncReturn {
 
       // Step 2: Update React state from Loro
       const { nodes, edges, tasks } = readStateFromLoro();
-      if (onNodesChange && nodes.length > 0) {
-        onNodesChange(nodes);
+      const cb = callbacksRef.current;
+      if (cb.onNodesChange && nodes.length > 0) {
+        cb.onNodesChange(nodes);
       }
-      if (onEdgesChange && edges.length > 0) {
-        onEdgesChange(edges);
+      if (cb.onEdgesChange && edges.length > 0) {
+        cb.onEdgesChange(edges);
       }
-      if (onTaskUpdate) {
-        tasks.forEach(t => onTaskUpdate(t.id, t.data));
+      if (cb.onTaskUpdate) {
+        tasks.forEach(t => cb.onTaskUpdate!(t.id, t.data));
       }
 
       updateUndoRedoState();
@@ -264,7 +299,7 @@ export function useLoroSync(options: LoroSyncOptions): UseLoroSyncReturn {
 
     initialize();
     return () => { mounted = false; };
-  }, [projectId, doc, onNodesChange, onEdgesChange, onTaskUpdate, readStateFromLoro, updateUndoRedoState]);
+  }, [projectId, doc, readStateFromLoro, updateUndoRedoState]);
 
   // Subscribe to document changes - only for remote updates
   useEffect(() => {
@@ -294,21 +329,22 @@ export function useLoroSync(options: LoroSyncOptions): UseLoroSyncReturn {
       // Read fresh state from Loro and update React
       const { nodes, edges, tasks } = readStateFromLoro();
 
-      if (onNodesChange) {
-        onNodesChange(nodes);
+      const cb = callbacksRef.current;
+      if (cb.onNodesChange) {
+        cb.onNodesChange(nodes);
       }
-      if (onEdgesChange) {
-        onEdgesChange(edges);
+      if (cb.onEdgesChange) {
+        cb.onEdgesChange(edges);
       }
-      if (onTaskUpdate) {
-        tasks.forEach(t => onTaskUpdate(t.id, t.data));
+      if (cb.onTaskUpdate) {
+        tasks.forEach(t => cb.onTaskUpdate!(t.id, t.data));
       }
     });
 
     return () => {
       unsubscribe();
     };
-  }, [doc, isInitialized, onNodesChange, onEdgesChange, onTaskUpdate, projectId, readStateFromLoro, updateUndoRedoState]);
+  }, [doc, isInitialized, projectId, readStateFromLoro, updateUndoRedoState]);
 
   // WebSocket connection state
   const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -350,12 +386,14 @@ export function useLoroSync(options: LoroSyncOptions): UseLoroSyncReturn {
     }
 
     const wsUrl = `${syncServerUrl}/sync/${projectId}`;
+    console.log('[useLoroSync] connecting WebSocket', wsUrl);
 
     const ws = new WebSocket(wsUrl);
     ws.binaryType = 'arraybuffer';
     wsRef.current = ws;
 
     ws.onopen = () => {
+      console.log('[useLoroSync] ws open', wsUrl);
       if (isUnmountingRef.current) {
         ws.close();
         return;
@@ -381,10 +419,10 @@ export function useLoroSync(options: LoroSyncOptions): UseLoroSyncReturn {
         try {
           const msg = JSON.parse(event.data);
           if (isSidebandMessage(msg)) {
-            if (msg.type === 'presence' && onPresenceChange) {
-              onPresenceChange(msg.clients);
-            } else if (msg.type === 'activity' && onActivity) {
-              onActivity(msg);
+            if (msg.type === 'presence' && callbacksRef.current.onPresenceChange) {
+              callbacksRef.current.onPresenceChange(msg.clients);
+            } else if (msg.type === 'activity' && callbacksRef.current.onActivity) {
+              callbacksRef.current.onActivity(msg);
             }
           }
         } catch {
@@ -408,7 +446,8 @@ export function useLoroSync(options: LoroSyncOptions): UseLoroSyncReturn {
       console.error('[useLoroSync] WebSocket error:', error);
     };
 
-    ws.onclose = (_event) => {
+    ws.onclose = (event) => {
+      console.log('[useLoroSync] ws close', { code: event.code, reason: event.reason, wasClean: event.wasClean });
       setConnected(false);
       if (pingIntervalRef.current) clearInterval(pingIntervalRef.current);
       if (!isUnmountingRef.current) {

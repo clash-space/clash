@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import { Inter, Space_Grotesk, JetBrains_Mono } from 'next/font/google';
 import './globals.css';
 import LayoutContent from './components/LayoutContent';
+import DevLogBridge from './components/DevLogBridge';
 
 const inter = Inter({
   variable: '--font-inter',
@@ -60,6 +61,7 @@ export default async function RootLayout({
         suppressHydrationWarning
         className={`${inter.variable} ${spaceGrotesk.variable} ${jetbrainsMono.variable} font-sans antialiased`}
       >
+        <DevLogBridge />
         <LayoutContent isAuthenticated={isAuthenticated}>{children}</LayoutContent>
       </body>
     </html>

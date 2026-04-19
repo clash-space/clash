@@ -223,3 +223,22 @@ html {
 .milkdown-chat-input .ProseMirror:focus {
   outline: none;
 }
+
+/* Edge interaction: ensure the invisible hit-area actually catches clicks */
+.react-flow__edge {
+  pointer-events: visibleStroke;
+}
+.react-flow__edge-interaction {
+  pointer-events: stroke;
+  stroke-opacity: 0;
+}
+.react-flow__edge.selected .react-flow__edge-path {
+  stroke: #3b82f6;
+  stroke-width: 2.5;
+}
+.react-flow__edge:hover .react-flow__edge-path {
+  stroke: #64748b;
+}
+.react-flow__edge {
+  cursor: pointer;
+}

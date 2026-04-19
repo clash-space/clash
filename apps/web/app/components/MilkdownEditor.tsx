@@ -388,7 +388,8 @@ const MilkdownEditorInner = forwardRef<MilkdownEditorHandle, MilkdownEditorProps
         const to = view.state.selection.from;
 
         // For image nodes with src, insert as inline image (thumbnail)
-        // The alt encodes mention info: "mention:nodeId:label"
+        // The alt encodes mention info: "mention:nodeId:label" for parsing by parsePromptParts.
+        // Signed URL used as src for display only; parsePromptParts extracts nodeId from alt, not src.
         if (node.src) {
             const signedUrl = await getSignedUrl(node.src);
             const imageType = view.state.schema.nodes.image;

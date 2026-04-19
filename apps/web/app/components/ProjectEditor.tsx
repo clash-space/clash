@@ -440,23 +440,24 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
     const [pendingNodeType, setPendingNodeType] = useState<string | null>(null);
 
     // Sidebar state
-    const [sidebarWidth, setSidebarWidth] = useState(() => {
-        if (typeof window !== 'undefined') {
-            const saved = localStorage.getItem('copilot-sidebar-width');
-            return saved ? parseInt(saved, 10) : 384;
-        }
-        return 384;
-    });
-    const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(() => {
-        if (typeof window !== 'undefined') {
-            return localStorage.getItem('copilot-sidebar-collapsed') === 'true';
-        }
-        return false;
-    });
+    // Sidebar state starts with server defaults; localStorage is read post-mount to avoid hydration mismatch.
+    const [sidebarWidth, setSidebarWidth] = useState(384);
+    const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+    const [sidebarHydrated, setSidebarHydrated] = useState(false);
 
-    // Persist sidebar state
-    useEffect(() => { localStorage.setItem('copilot-sidebar-width', String(sidebarWidth)); }, [sidebarWidth]);
-    useEffect(() => { localStorage.setItem('copilot-sidebar-collapsed', String(isSidebarCollapsed)); }, [isSidebarCollapsed]);
+    useEffect(() => {
+        const savedWidth = localStorage.getItem('copilot-sidebar-width');
+        if (savedWidth) setSidebarWidth(parseInt(savedWidth, 10));
+        setIsSidebarCollapsed(localStorage.getItem('copilot-sidebar-collapsed') === 'true');
+        setSidebarHydrated(true);
+    }, []);
+
+    useEffect(() => {
+        if (sidebarHydrated) localStorage.setItem('copilot-sidebar-width', String(sidebarWidth));
+    }, [sidebarWidth, sidebarHydrated]);
+    useEffect(() => {
+        if (sidebarHydrated) localStorage.setItem('copilot-sidebar-collapsed', String(isSidebarCollapsed));
+    }, [isSidebarCollapsed, sidebarHydrated]);
 
     // Chat session state
     const [threadId, setThreadId] = useState<string>(initialThreadId || '');
@@ -554,6 +555,7 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
 	        }
 	        return result;
 	    }, [nodes]);
+
 
 	    const applyAutoZIndex = useCallback((nodeList: Node[]): Node[] => {
 	        const getTargetZIndex = (node: Node): number => {
@@ -812,11 +814,23 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
 
     const onConnect = useCallback(
         (params: Connection | Edge) => {
+            // Reject invalid connections (e.g. video → image-gen ActionBadge can't use video as reference image)
+            const srcId = (params as Connection).source;
+            const tgtId = (params as Connection).target;
+            if (srcId && tgtId) {
+                const src = nodes.find(n => n.id === srcId);
+                const tgt = nodes.find(n => n.id === tgtId);
+                const tgtIsImageGen = tgt?.type === 'action-badge' && (tgt.data as any)?.actionType === 'image-gen';
+                if (tgtIsImageGen && (src?.type === 'video' || src?.type === 'audio')) {
+                    console.warn(`[onConnect] rejected: ${src?.type} cannot feed an image-gen node`);
+                    return;
+                }
+            }
+            const paramsWithDefaults = { ...params, interactionWidth: 30, focusable: true, selectable: true, deletable: true };
             setEdges((eds) => {
-                const newEdges = addEdge(params, eds);
-                // Find the newly added edge and sync to Loro
-                const addedEdge = newEdges.find(e => 
-                    e.source === (params as Connection).source && 
+                const newEdges = addEdge(paramsWithDefaults as any, eds);
+                const addedEdge = newEdges.find(e =>
+                    e.source === (params as Connection).source &&
                     e.target === (params as Connection).target
                 );
                 if (addedEdge) {
@@ -825,7 +839,7 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
                 return newEdges;
             });
         },
-        [setEdges, loroSync]
+        [nodes, setEdges, loroSync]
     );
 
     // Keyboard shortcuts for Undo/Redo
@@ -857,6 +871,16 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
                 setShowDebugIds(v => !v);
             }
 
+            // Del/Backspace: delete selected edges (ReactFlow's deleteKeyCode isn't firing reliably)
+            if (e.key === 'Delete' || e.key === 'Backspace') {
+                const selectedEdgeIds = edges.filter(ed => ed.selected).map(ed => ed.id);
+                if (selectedEdgeIds.length > 0) {
+                    e.preventDefault();
+                    setEdges(eds => eds.filter(ed => !selectedEdgeIds.includes(ed.id)));
+                    selectedEdgeIds.forEach(eid => loroSync.removeEdge(eid));
+                }
+            }
+
             // V: select mode, H: hand mode (Figma-style)
             if (!e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey) {
                 if (e.key === 'v') setCanvasMode('select');
@@ -885,7 +909,7 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
             window.removeEventListener('keydown', handleKeyDown);
             window.removeEventListener('keyup', handleKeyUp);
         };
-    }, [loroSync]);
+    }, [loroSync, edges, setEdges]);
 
     // Merge local (Loro) + global (D1) custom actions, deduplicate by ID
     const loroActions = useCustomActions(loroSync.doc);
@@ -1788,6 +1812,12 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
                                     selectionMode={SelectionMode.Partial}
                                     deleteKeyCode={['Backspace', 'Delete']}
                                     multiSelectionKeyCode="Shift"
+                                    defaultEdgeOptions={{
+                                        interactionWidth: 30,
+                                        focusable: true,
+                                        selectable: true,
+                                        deletable: true,
+                                    }}
                                     proOptions={{ hideAttribution: true }}
                                 >
                                     <Background

@@ -65,14 +65,33 @@ export function useSignedUrl(src: string | undefined): string {
     }
 
     let cancelled = false;
-    getOrFetch(src).then(({ url: signed }) => {
-      if (!cancelled) setUrl(signed);
-    }).catch(() => {
-      // Fallback: try unsigned (will 403 in prod but useful for debugging)
-      if (!cancelled) setUrl(`/assets/${src}`);
-    });
+    let refreshTimer: ReturnType<typeof setTimeout> | undefined;
 
-    return () => { cancelled = true; };
+    const loadAndScheduleRefresh = () => {
+      getOrFetch(src).then(({ url: signed, exp }) => {
+        if (cancelled) return;
+        setUrl(signed);
+        // Re-fetch REFRESH_MARGIN seconds before expiry to avoid serving stale URLs
+        // to long-lived <img> / <video> elements.
+        const msUntilRefresh = Math.max(1000, (exp - Math.floor(Date.now() / 1000) - REFRESH_MARGIN) * 1000);
+        refreshTimer = setTimeout(() => {
+          if (!cancelled) {
+            cache.delete(src); // force fresh fetch
+            loadAndScheduleRefresh();
+          }
+        }, msUntilRefresh);
+      }).catch(() => {
+        // Fallback: try unsigned (will 403 in prod but useful for debugging)
+        if (!cancelled) setUrl(`/assets/${src}`);
+      });
+    };
+
+    loadAndScheduleRefresh();
+
+    return () => {
+      cancelled = true;
+      if (refreshTimer) clearTimeout(refreshTimer);
+    };
   }, [src]);
 
   return url;

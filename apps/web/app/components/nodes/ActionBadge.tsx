@@ -1,7 +1,7 @@
 import { memo, useState, useEffect, useCallback, useMemo, useRef, type KeyboardEvent as ReactKeyboardEvent } from 'react';
 import { Handle, Position, type Node as RFNode, NodeProps, useReactFlow, useEdges } from '@xyflow/react';
-import { VideoCamera, Image as ImageIcon, CaretDown, X, Play, Spinner, PuzzlePiece } from '@phosphor-icons/react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { VideoCamera, Image as ImageIcon, CaretDown, X, Play, Spinner, PuzzlePiece, Plus, Lock, Copy } from '@phosphor-icons/react';
+import { motion, AnimatePresence, Reorder } from 'framer-motion';
 import { createPortal } from 'react-dom';
 import { useProject } from '../ProjectContext';
 import { useOptionalLoroSyncContext } from '../LoroSyncContext';
@@ -9,9 +9,10 @@ import { useLayoutManager } from '@/lib/layout';
 import { generateSemanticId } from '@/lib/utils/semanticId';
 import { SignedImg } from '../SignedMedia';
 import { getSignedUrl } from '../../../lib/hooks/useSignedUrl';
-import { MODEL_CARDS, resolveAspectRatio, validateGenerationInput, parsePromptParts, extractPromptText, extractAssetRefs, buildMention, type ModelCard, type ModelParameter, type CustomActionDefinition } from '@clash/shared-types';
+import { MODEL_CARDS, resolveAspectRatio, validateGenerationInput, parsePromptParts, extractPromptText, buildMention, type ModelCard, type ModelParameter, type CustomActionDefinition } from '@clash/shared-types';
 import { applyLayoutPatchesToLoro, collectLayoutNodePatches } from '../../lib/loroNodeSync';
 import { useCustomActions } from '../../hooks/useCustomActions';
+import MilkdownEditor from '../MilkdownEditor';
 
 type ModelParams = Record<string, string | number | boolean>;
 
@@ -51,7 +52,7 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
 
     // React Flow hooks
     const { projectId } = useProject();
-    const { getNodes, addEdges, setNodes } = useReactFlow();
+    const { getNodes, addEdges, setNodes, setEdges } = useReactFlow();
     const loroSync = useOptionalLoroSyncContext();
     const edges = useEdges();
     const onNodesMutated = useCallback(
@@ -73,13 +74,21 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
     };
     const [label, setLabel] = useState(data.label || 'Prompt');
     const [content, setContent] = useState(cleanContent(data.content));
+    const isFrozen = !!data.hasRun;
+    const [showRefPicker, setShowRefPicker] = useState(false);
+
+    // Collapse retired -edit variants into their base card (backend auto-switches to /edit when refs present).
+    const LEGACY_MODEL_REMAP: Record<string, string> = {
+        'nano-banana-2-edit': 'nano-banana-2',
+        'flux-2-pro-edit': 'flux-2-pro',
+    };
 
     const mapLegacyModelId = (
         type: 'image-gen' | 'video-gen',
         explicitId?: string,
         legacyName?: string
     ): string | undefined => {
-        if (explicitId) return explicitId;
+        if (explicitId) return LEGACY_MODEL_REMAP[explicitId] ?? explicitId;
         if (!legacyName) return undefined;
         const lower = legacyName.toLowerCase();
         if (type === 'video-gen') return 'sora-2-image-to-video';
@@ -135,21 +144,92 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
     const referenceMode = selectedModel?.input.referenceMode || 'single';
     const countValue = Number(modelParams.count ?? 1);
 
-    // @ mention: mentionable nodes (with src for thumbnails)
+    // Resolve a node's reference-image source. Only image nodes are valid — videos are rejected.
+    const resolveRefSrc = useCallback((node: { type?: string; data?: Record<string, unknown> } | undefined): string | undefined => {
+        if (!node || node.type !== 'image') return undefined;
+        return node.data?.src as string | undefined;
+    }, []);
+
+    // Attached node IDs = incoming edges whose source resolves to a valid image ref.
+    // Display order = data.referenceImageOrder (user-controlled via drag); new attachments append.
+    const attachedNodeIds = useMemo(() => {
+        return edges
+            .filter(e => e.target === id)
+            .map(e => getNodes().find(n => n.id === e.source))
+            .filter((n): n is NonNullable<typeof n> => !!n && !!resolveRefSrc(n))
+            .map(n => n.id);
+    }, [edges, id, getNodes, resolveRefSrc]);
+
+    const refNodeIds = useMemo(() => {
+        const order = Array.isArray(data.referenceImageOrder) ? (data.referenceImageOrder as string[]) : [];
+        const attachedSet = new Set(attachedNodeIds);
+        const ordered = order.filter(nid => attachedSet.has(nid));
+        const seen = new Set(ordered);
+        const extras = attachedNodeIds.filter(nid => !seen.has(nid));
+        return [...ordered, ...extras];
+    }, [attachedNodeIds, data.referenceImageOrder]);
+
+    // If any ref images are attached, hide models that forbid reference images from the selector.
+    const selectableModels = useMemo(() => {
+        if (refNodeIds.length === 0) return availableModels;
+        return availableModels.filter(card => card.input.referenceImage !== 'forbidden');
+    }, [availableModels, refNodeIds.length]);
+
+    // If the currently selected model no longer accepts refs but refs are attached, auto-switch.
+    useEffect(() => {
+        if (refNodeIds.length === 0) return;
+        const current = availableModels.find(card => card.id === modelId);
+        if (!current || current.input.referenceImage !== 'forbidden') return;
+        const fallback = selectableModels[0];
+        if (!fallback || fallback.id === modelId) return;
+        const nextParams = { ...(fallback.defaultParams ?? {}) } as ModelParams;
+        setModelId(fallback.id);
+        setModelParams(nextParams);
+        setNodes(nds => nds.map(n => n.id === id
+            ? { ...n, data: { ...n.data, modelId: fallback.id, model: fallback.id, modelParams: nextParams } }
+            : n
+        ));
+        if (loroSync?.connected) {
+            loroSync.updateNode(id, { data: { modelId: fallback.id, model: fallback.id, modelParams: nextParams } });
+        }
+    }, [refNodeIds.length, modelId, availableModels, selectableModels, id, setNodes, loroSync]);
+
+    const persistRefOrder = useCallback((next: string[]) => {
+        setNodes(nds => nds.map(n => n.id === id ? { ...n, data: { ...n.data, referenceImageOrder: next } } : n));
+        if (loroSync?.connected) {
+            loroSync.updateNode(id, { data: { referenceImageOrder: next } });
+        }
+    }, [id, setNodes, loroSync]);
+
+    const addRefNode = useCallback((sourceNodeId: string) => {
+        const edgeId = `${sourceNodeId}-${id}`;
+        addEdges({ id: edgeId, source: sourceNodeId, target: id, type: 'default' });
+        if (loroSync?.connected) {
+            loroSync.addEdge(edgeId, { id: edgeId, source: sourceNodeId, target: id, type: 'default' });
+        }
+    }, [id, addEdges, loroSync]);
+
+    const removeRefNode = useCallback((sourceNodeId: string) => {
+        const edgeIds = edges.filter(e => e.target === id && e.source === sourceNodeId).map(e => e.id);
+        if (edgeIds.length === 0) return;
+        setEdges(eds => eds.filter(e => !edgeIds.includes(e.id)));
+        if (loroSync?.connected) {
+            edgeIds.forEach(eid => loroSync.removeEdge(eid));
+        }
+    }, [id, edges, setEdges, loroSync]);
+
+    // @ mention: only attached reference images, with positional labels "Image 1", "Image 2"...
     const mentionableNodes = useMemo(() => {
-        const modalities = isCustom
-            ? (customDef?.promptModalities ?? ['text'])
-            : (selectedModel?.input.promptModalities ?? ['text']);
-        const allNodes = getNodes();
-        return allNodes
-            .filter((n) => modalities.includes(n.type as any))
-            .map((n) => ({
-                id: n.id,
-                type: n.type as string,
-                label: (n.data.label as string) || n.id,
-                src: n.data.src as string | undefined,
-            }));
-    }, [getNodes, isCustom, customDef, selectedModel]);
+        return refNodeIds.map((nodeId, i) => {
+            const node = getNodes().find(n => n.id === nodeId);
+            return {
+                id: nodeId,
+                type: (node?.type as string) || 'image',
+                label: `Image ${i + 1}`,
+                src: resolveRefSrc(node),
+            };
+        });
+    }, [refNodeIds, getNodes, resolveRefSrc]);
 
     const filteredMentionNodes = useMemo(() => {
         if (!mentionQuery) return mentionableNodes;
@@ -404,6 +484,7 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
         }
     }, [data.label, data.content]);
 
+
     useEffect(() => {
         const incomingType = data.actionType || 'image-gen';
         if (incomingType !== actionType) {
@@ -444,40 +525,49 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
 
     const handleSave = useCallback(() => {
         setShowModal(false);
-        // Update the node data locally
         setNodes((nds) =>
             nds.map((node) => {
                 if (node.id === id) {
-                    return {
-                        ...node,
-                        data: {
-                            ...node.data,
-                            label,
-                            content,
-                        },
-                    };
+                    return { ...node, data: { ...node.data, label, content } };
                 }
                 return node;
             })
         );
-        
-        // Sync to Loro
         if (loroSync?.connected) {
-            loroSync.updateNode(id, {
-                data: {
-                    label,
-                    content,
-                }
-            });
+            loroSync.updateNode(id, { data: { label, content } });
         }
     }, [id, label, content, setNodes, loroSync]);
 
     const handleCancel = useCallback(() => {
         setShowModal(false);
-        // Reset to original values
         setLabel(data.label || 'Prompt');
         setContent(cleanContent(data.content));
     }, [data.label, data.content]);
+
+    const handleCopy = useCallback(async () => {
+        const newId = await generateSemanticId(projectId);
+        const currentNode = getNodes().find(n => n.id === id);
+        const pos = currentNode?.position ?? { x: 0, y: 0 };
+        const newNode = {
+            id: newId,
+            type: 'action-badge' as const,
+            position: { x: pos.x + 290, y: pos.y },
+            data: { label, content, actionType, modelId, modelParams, referenceImageOrder: refNodeIds },
+        };
+        setNodes(nds => [...nds, newNode as any]);
+        if (loroSync?.connected) {
+            loroSync.addNode(newId, newNode);
+        }
+        // Duplicate incoming reference edges so the new copy shares the same attachments
+        refNodeIds.forEach(srcId => {
+            const edgeId = `${srcId}-${newId}`;
+            addEdges({ id: edgeId, source: srcId, target: newId, type: 'default' });
+            if (loroSync?.connected) {
+                loroSync.addEdge(edgeId, { id: edgeId, source: srcId, target: newId, type: 'default' });
+            }
+        });
+        setShowModal(false);
+    }, [id, label, content, actionType, modelId, modelParams, refNodeIds, projectId, getNodes, setNodes, addEdges, loroSync]);
 
     const handleLabelChange = (evt: React.ChangeEvent<HTMLInputElement>) => {
         const newLabel = evt.target.value;
@@ -496,16 +586,16 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
                 throw new Error('No prompt provided. Please edit the node or connect a text/prompt node.');
             }
 
-            // Parse mixed-modality prompt: extract text + @-mentioned asset references
+            // Parse prompt: strip @[Image N](node:...) chips to get clean text
             const promptParts = parsePromptParts(prompt);
             const promptText = extractPromptText(promptParts);
-            const inlineAssetRefs = extractAssetRefs(promptParts);
 
-            // Resolve inline @-mentioned image URLs
-            const inlineImageUrls = inlineAssetRefs
-                .map((ref) => {
-                    const refNode = getNodes().find((n) => n.id === ref.nodeId);
-                    return refNode?.data?.src as string | undefined;
+            // Reference images from the attachment form (ordered).
+            // image → data.src, video → data.coverUrl (first frame).
+            const inlineImageUrls = refNodeIds
+                .map((nodeId) => {
+                    const refNode = getNodes().find((n) => n.id === nodeId);
+                    return resolveRefSrc(refNode);
                 })
                 .filter((src): src is string => !!src);
 
@@ -702,6 +792,12 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
 
             }
 
+            // Freeze after first successful run
+            setNodes(nds => nds.map(n => n.id === id ? { ...n, data: { ...n.data, hasRun: true } } : n));
+            if (loroSync?.connected) {
+                loroSync.updateNode(id, { data: { hasRun: true } });
+            }
+
         } catch (err: any) {
             setError(err.message);
             console.error('Execution error:', err);
@@ -718,6 +814,7 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
         modelParams,
         modelId,
         referenceMode,
+        refNodeIds,
         getNodes,
         setNodes,
         addNodeWithAutoLayout,
@@ -907,20 +1004,37 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
                             type="text"
                             value={label}
                             onChange={handleLabelChange}
+                            disabled={isFrozen}
                             placeholder="Untitled Prompt"
-                            className="w-full text-4xl font-bold text-gray-900 placeholder:text-gray-300 bg-transparent border-none outline-none focus:outline-none"
+                            className="w-full text-4xl font-bold text-gray-900 placeholder:text-gray-300 bg-transparent border-none outline-none focus:outline-none disabled:opacity-60"
                             style={{
                                 fontFamily: 'var(--font-space-grotesk), var(--font-inter), sans-serif',
                                 letterSpacing: '-0.02em'
                             }}
                         />
-                        <div className="flex gap-2">
-                            <button
-                                onClick={handleSave}
-                                className="px-4 py-2 text-sm font-medium text-white bg-slate-900 rounded-xl hover:bg-slate-800 transition-colors"
-                            >
-                                Save
-                            </button>
+                        <div className="flex gap-2 items-center">
+                            {isFrozen ? (
+                                <>
+                                    <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 text-slate-500 text-sm font-medium">
+                                        <Lock size={13} weight="bold" />
+                                        Frozen
+                                    </div>
+                                    <button
+                                        onClick={handleCopy}
+                                        className="flex items-center gap-1.5 px-4 py-2 text-sm font-medium text-white bg-slate-900 rounded-xl hover:bg-slate-800 transition-colors"
+                                    >
+                                        <Copy size={14} weight="bold" />
+                                        Copy to Edit
+                                    </button>
+                                </>
+                            ) : (
+                                <button
+                                    onClick={handleSave}
+                                    className="px-4 py-2 text-sm font-medium text-white bg-slate-900 rounded-xl hover:bg-slate-800 transition-colors"
+                                >
+                                    Save
+                                </button>
+                            )}
                             <button
                                 onClick={handleCancel}
                                 className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
@@ -930,37 +1044,102 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
                         </div>
                     </div>
 
+                    {/* Image Attachment Row */}
+                    {(refNodeIds.length > 0 || !isFrozen) && (
+                        <div className="px-12 py-3 flex items-center gap-2 flex-wrap border-b border-slate-100">
+                            <Reorder.Group
+                                axis="x"
+                                values={refNodeIds}
+                                onReorder={persistRefOrder}
+                                className="flex items-center gap-2 flex-wrap"
+                                as="div"
+                            >
+                                {refNodeIds.map((nodeId, i) => {
+                                    const node = getNodes().find(n => n.id === nodeId);
+                                    const src = resolveRefSrc(node);
+                                    return (
+                                        <Reorder.Item
+                                            key={nodeId}
+                                            value={nodeId}
+                                            drag={isFrozen ? false : 'x'}
+                                            className="relative group/thumb flex-shrink-0"
+                                            as="div"
+                                            whileDrag={{ scale: 1.08, zIndex: 10 }}
+                                            style={{ cursor: isFrozen ? 'default' : 'grab' }}
+                                        >
+                                            <div className="w-10 h-10 rounded-lg overflow-hidden border border-slate-200 bg-slate-50 flex items-center justify-center pointer-events-none">
+                                                {src ? (
+                                                    <SignedImg src={src} alt={`Image ${i + 1}`} className="w-full h-full object-cover" />
+                                                ) : (
+                                                    <ImageIcon size={16} className="text-slate-400" />
+                                                )}
+                                            </div>
+                                            <span className="absolute -top-1 -left-1 bg-slate-700 text-white text-[9px] font-bold rounded px-1 min-w-[14px] text-center leading-[14px] pointer-events-none">
+                                                {i + 1}
+                                            </span>
+                                            {!isFrozen && (
+                                                <button
+                                                    className="absolute -top-1 -right-1 bg-red-400 text-white rounded-full w-4 h-4 hidden group-hover/thumb:flex items-center justify-center text-[11px] leading-none"
+                                                    onPointerDown={e => e.stopPropagation()}
+                                                    onClick={() => removeRefNode(nodeId)}
+                                                >×</button>
+                                            )}
+                                        </Reorder.Item>
+                                    );
+                                })}
+                            </Reorder.Group>
+                            {!isFrozen && (
+                                <div className="relative flex-shrink-0">
+                                    <button
+                                        className="w-10 h-10 rounded-lg border border-dashed border-slate-300 flex items-center justify-center text-slate-400 hover:border-slate-500 hover:text-slate-600 transition-colors"
+                                        onClick={() => setShowRefPicker(p => !p)}
+                                    >
+                                        <Plus size={16} weight="bold" />
+                                    </button>
+                                    {showRefPicker && (
+                                        <div className="absolute left-0 top-full mt-1 w-56 bg-white border border-slate-200 rounded-xl shadow-lg z-50 overflow-hidden">
+                                            {(() => {
+                                                const available = getNodes().filter(n => {
+                                                    if (refNodeIds.includes(n.id)) return false;
+                                                    return !!resolveRefSrc(n);
+                                                });
+                                                if (available.length === 0) {
+                                                    return <div className="px-3 py-3 text-xs text-slate-400">No images available</div>;
+                                                }
+                                                return available.map(n => {
+                                                    const refSrc = resolveRefSrc(n)!;
+                                                    return (
+                                                        <button
+                                                            key={n.id}
+                                                            className="w-full flex items-center gap-2 px-3 py-2 hover:bg-slate-50 transition-colors text-left"
+                                                            onClick={() => {
+                                                                addRefNode(n.id);
+                                                                setShowRefPicker(false);
+                                                            }}
+                                                        >
+                                                            <div className="w-7 h-7 rounded overflow-hidden border border-slate-200 flex-shrink-0">
+                                                                <SignedImg src={refSrc} className="w-full h-full object-cover" />
+                                                            </div>
+                                                            <span className="text-xs text-slate-700 truncate">{(n.data.label as string) || n.id}</span>
+                                                        </button>
+                                                    );
+                                                });
+                                            })()}
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+                        </div>
+                    )}
+
                     {/* Editor Content */}
-                    <div className="flex-1 overflow-y-auto bg-white">
+                    <div className="flex-1 overflow-y-auto bg-white" style={isFrozen ? { pointerEvents: 'none', opacity: 0.7 } : undefined}>
                         <MilkdownEditor
                             value={content}
                             onChange={setContent}
-                            mentionableNodes={(() => {
-                                const allNodes = getNodes();
-                                return allNodes
-                                    .filter((n) => ['image', 'video', 'text'].includes(n.type))
-                                    .map((n) => ({
-                                        id: n.id,
-                                        type: n.type,
-                                        label: (n.data.label as string) || n.id,
-                                        src: n.data.src as string | undefined,
-                                    }));
-                            })()}
-                            promptModalities={
-                                isCustom
-                                    ? (customDef?.promptModalities ?? ['text'])
-                                    : (selectedModel?.input.promptModalities ?? ['text'])
-                            }
-                            connectedNodeIds={
-                                edges.filter((e) => e.target === id).map((e) => e.source)
-                            }
-                            onMentionAdded={(referencedNodeId) => {
-                                const edgeId = `${referencedNodeId}-${id}`;
-                                addEdges({ id: edgeId, source: referencedNodeId, target: id, type: 'default' });
-                                if (loroSync?.connected) {
-                                    loroSync.addEdge(edgeId, { id: edgeId, source: referencedNodeId, target: id, type: 'default' });
-                                }
-                            }}
+                            mentionableNodes={mentionableNodes}
+                            promptModalities={mentionableNodes.length > 0 ? ['text', 'image'] : ['text']}
+                            connectedNodeIds={refNodeIds}
                         />
                     </div>
                 </motion.div>
@@ -1115,7 +1294,7 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
                             </button>
                             {showModelDropdown && (
                                 <div className="absolute left-0 bottom-full mb-2 w-[220px] bg-white border border-slate-200 rounded-2xl shadow-xl z-50 max-h-48 overflow-hidden [&:hover]:overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-                                    {availableModels.map((card) => (
+                                    {selectableModels.map((card) => (
                                         <div
                                             key={card.id}
                                             className={`px-3 py-2 text-xs cursor-pointer transition-colors ${
