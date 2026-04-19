@@ -996,13 +996,11 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
             modelId: defaultImageModel?.id ?? 'nano-banana-2',
             model: defaultImageModel?.id ?? 'nano-banana-2',
             modelParams: { ...(defaultImageModel?.defaultParams ?? {}) },
-            referenceMode: defaultImageModel?.input.referenceMode ?? 'single',
         };
         const videoModelDefaults = {
             modelId: defaultVideoModel?.id ?? 'sora-2',
             model: defaultVideoModel?.id ?? 'sora-2',
             modelParams: { ...(defaultVideoModel?.defaultParams ?? {}) },
-            referenceMode: defaultVideoModel?.input.referenceMode ?? 'single',
         };
 
         if (type === 'action-badge-image' || type === 'image-gen') {

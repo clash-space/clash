@@ -141,8 +141,14 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
 
     const modelDisplay = selectedModel?.name || modelId;
     const providerDisplay = selectedModel?.provider || '';
-    const referenceMode = selectedModel?.input.referenceMode || 'single';
+    const inputMode = selectedModel?.input.inputMode ?? { kind: 'none' as const };
     const countValue = Number(modelParams.count ?? 1);
+    // Per-mode ref capacity. `none` accepts no refs; `multi` caps at its declared max;
+    // `first_last` uses two fixed slots; `single` is capped to 1.
+    const maxRefs = inputMode.kind === 'none' ? 0
+        : inputMode.kind === 'multi' ? inputMode.max
+        : inputMode.kind === 'first_last' ? 2
+        : 1;
 
     // Resolve a node's reference-image source. Only image nodes are valid — videos are rejected.
     const resolveRefSrc = useCallback((node: { type?: string; data?: Record<string, unknown> } | undefined): string | undefined => {
@@ -169,17 +175,17 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
         return [...ordered, ...extras];
     }, [attachedNodeIds, data.referenceImageOrder]);
 
-    // If any ref images are attached, hide models that forbid reference images from the selector.
+    // If any ref images are attached, hide models that can't consume them (kind='none').
     const selectableModels = useMemo(() => {
         if (refNodeIds.length === 0) return availableModels;
-        return availableModels.filter(card => card.input.referenceImage !== 'forbidden');
+        return availableModels.filter(card => card.input.inputMode.kind !== 'none');
     }, [availableModels, refNodeIds.length]);
 
     // If the currently selected model no longer accepts refs but refs are attached, auto-switch.
     useEffect(() => {
         if (refNodeIds.length === 0) return;
         const current = availableModels.find(card => card.id === modelId);
-        if (!current || current.input.referenceImage !== 'forbidden') return;
+        if (!current || current.input.inputMode.kind !== 'none') return;
         const fallback = selectableModels[0];
         if (!fallback || fallback.id === modelId) return;
         const nextParams = { ...(fallback.defaultParams ?? {}) } as ModelParams;
@@ -422,8 +428,7 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
     }, [contentToHtml, htmlToContent, id, addEdges, loroSync]);
 
     const syncModelState = useCallback(
-        (nextModelId: string, nextParams: ModelParams, nextReferenceMode?: string) => {
-            const refMode = nextReferenceMode || referenceMode;
+        (nextModelId: string, nextParams: ModelParams) => {
             setNodes((nds) =>
                 nds.map((node) => {
                     if (node.id === id) {
@@ -434,7 +439,6 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
                                 modelId: nextModelId,
                                 model: nextModelId,
                                 modelParams: nextParams,
-                                referenceMode: refMode,
                             },
                         };
                     }
@@ -447,12 +451,11 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
                         modelId: nextModelId,
                         model: nextModelId,
                         modelParams: nextParams,
-                        referenceMode: refMode,
                     }
                 });
             }
         },
-        [id, referenceMode, loroSync, setNodes]
+        [id, loroSync, setNodes]
     );
 
     const handleModelChange = useCallback((nextId: string) => {
@@ -461,8 +464,7 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
         const resolvedId = nextModel?.id ?? nextId;
         setModelId(resolvedId);
         setModelParams(nextParams);
-        const nextRefMode = nextModel?.input.referenceMode || 'single';
-        syncModelState(resolvedId, nextParams, nextRefMode);
+        syncModelState(resolvedId, nextParams);
     }, [availableModels, syncModelState]);
 
     const updateModelParam = useCallback((paramId: string, value: string | number | boolean) => {
@@ -695,8 +697,7 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
                                 model: modelId,
                                 modelId,
                                 modelParams: { ...modelParams, count: 1 },
-                                referenceMode,
-                            },
+                                                            },
                         },
                         id
                     );
@@ -753,8 +754,7 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
                                 model: modelId,
                                 modelId,
                                 modelParams,
-                                referenceMode,
-                                aspectRatio: resolveAspectRatio(modelId, modelParams),
+                                                                aspectRatio: resolveAspectRatio(modelId, modelParams),
                             },
                         },
                         id
@@ -811,8 +811,7 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
         actionType,
         modelParams,
         modelId,
-        referenceMode,
-        refNodeIds,
+                refNodeIds,
         getNodes,
         setNodes,
         addNodeWithAutoLayout,
@@ -1205,7 +1204,7 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
                     {/* Reference images strip above the prompt panel.
                         Sourced from `refNodeIds` (image-bearing connected nodes, image src or
                         video cover). Drag to reorder, × to detach. For models declaring
-                        referenceMode='start_end', the first two slots show 首/尾 badges. */}
+                        inputMode.kind='first_last', the first two slots show 首/尾 badges. */}
                     {refNodeIds.length > 0 && (
                         <div className="pointer-events-auto mb-2 px-1">
                             <Reorder.Group
@@ -1224,7 +1223,7 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
                                             ? (node.data.coverUrl as string | undefined)
                                             : undefined;
                                     if (!thumb) return null;
-                                    const badge = referenceMode === 'start_end'
+                                    const badge = inputMode.kind === 'first_last'
                                         ? (i === 0 ? '首' : i === 1 ? '尾' : `${i + 1}`)
                                         : `${i + 1}`;
                                     return (

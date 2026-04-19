@@ -215,7 +215,6 @@ export function createCanvasTools(
           modelId,
           model: modelId,
           modelParams: { ...(modelCard?.defaultParams ?? {}) },
-          referenceMode: modelCard?.input?.referenceMode ?? "none",
         };
 
         const result = canvas.createNode(nodeId, node_type, data, position, resolvedParent, assetId);

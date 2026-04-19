@@ -85,7 +85,6 @@ export const NodeDataSchema = z.object({
   model: z.string().optional(),
   modelId: z.string().optional(),
   modelParams: z.record(z.union([z.string(), z.number(), z.boolean()])).optional(),
-  referenceMode: z.enum(['none', 'single', 'multi', 'start_end']).optional(),
   referenceImageUrls: z.array(z.string()).optional(),
   error: z.string().optional(),
   sourceNodeId: z.string().optional(),
@@ -162,22 +161,43 @@ export interface ValidateGenerationInput {
  */
 export function validateGenerationInput(input: ValidateGenerationInput): string | null {
   const { prompt, referenceImageUrls, modelCard } = input;
-  const { referenceImage, referenceMode, requiresPrompt } = modelCard.input;
+  const { inputMode, requiresPrompt } = modelCard.input;
 
   if (requiresPrompt && (!prompt || !prompt.trim())) {
     return 'No prompt provided.';
   }
 
-  if (referenceImage === 'required') {
-    const requiredCount = referenceMode === 'start_end' ? 2 : 1;
-    if (referenceImageUrls.length < requiredCount) {
-      return referenceMode === 'start_end'
-        ? 'Selected model needs start and end frames. Attach two images via @-mention in the prompt.'
-        : 'Selected model requires a reference image. Attach an image via @-mention in the prompt.';
-    }
-  }
+  const count = referenceImageUrls.length;
 
-  return null;
+  switch (inputMode.kind) {
+    case 'none':
+      // No-ref models accept extra images silently (provider will ignore them).
+      return null;
+
+    case 'single':
+      if (inputMode.required && count < 1) {
+        return 'Selected model requires a reference image. Attach one via @-mention in the prompt.';
+      }
+      return null;
+
+    case 'multi':
+      if (inputMode.required && count < 1) {
+        return 'Selected model requires at least one reference image.';
+      }
+      if (count > inputMode.max) {
+        return `Selected model accepts at most ${inputMode.max} reference images (got ${count}).`;
+      }
+      return null;
+
+    case 'first_last':
+      if (count < 1) {
+        return 'Selected model needs a start frame. Attach one via @-mention in the prompt.';
+      }
+      if (count > 2) {
+        return 'Selected model uses at most two frames (start + end).';
+      }
+      return null;
+  }
 }
 
 // === Pending Asset Node Builder ===
