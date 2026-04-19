@@ -422,18 +422,22 @@ export async function processPendingNodes(
         const modelParams = (innerData.modelParams || {}) as Record<string, any>;
         const referenceImages: string[] = Array.isArray(innerData.referenceImageUrls) ? innerData.referenceImageUrls : [];
         const modelCard = getModelCard(selectedModelId);
-        const inputMode = modelCard?.input.inputMode ?? { kind: 'none' as const };
-        log.info('Gen task params', { nodeId, model: selectedModelId, referenceImages, inputMode: inputMode.kind, prompt: innerData.prompt || innerData.label });
+        const inputMode = modelCard?.input.inputMode ?? {};
+        log.info('Gen task params', { nodeId, model: selectedModelId, referenceImages, prompt: innerData.prompt || innerData.label });
 
-        // Pre-flight: refuse to submit the workflow when the model requires refs we don't have.
+        // Pre-flight: refuse to submit the workflow when image refs violate the inputMode.
+        // Only enforced for video gen (image gen is more forgiving).
         if (nodeType === 'video') {
           let msg: string | null = null;
-          if (inputMode.kind === 'single' && inputMode.required && referenceImages.length < 1) {
-            msg = 'Reference image required for selected model';
-          } else if (inputMode.kind === 'multi' && inputMode.required && referenceImages.length < 1) {
-            msg = 'At least one reference image required for selected model';
-          } else if (inputMode.kind === 'first_last' && referenceImages.length < 1) {
+          if (inputMode.startEnd && referenceImages.length < 1) {
             msg = 'Start frame required for selected model';
+          } else if (inputMode.images) {
+            const min = inputMode.images.min ?? 0;
+            if (referenceImages.length < min) {
+              msg = min === 1
+                ? 'Reference image required for selected model'
+                : `At least ${min} reference images required for selected model`;
+            }
           }
           if (msg) {
             updateNodeData(doc, nodeId, { pendingTask: undefined, status: Status.Failed, error: msg }, broadcast);
@@ -462,14 +466,14 @@ export async function processPendingNodes(
           model: selectedModelId,
           modelParams,
           referenceImages,
-          referenceMode: inputMode.kind === 'first_last' ? 'start_end' : inputMode.kind,
+          referenceMode: inputMode.startEnd ? 'start_end' : (inputMode.images ? 'multi' : 'none'),
           aspectRatio: modelParams.aspect_ratio || innerData.aspectRatio || '16:9',
           duration: modelParams.duration ?? innerData.duration ?? 5,
           negativPrompt: modelParams.negative_prompt,
           cfgScale: modelParams.cfg_scale,
           resolution: modelParams.resolution,
-          // Pass the second ref as tail for first_last mode (provider reads as image_tail/end_image_url).
-          tailImageUrl: inputMode.kind === 'first_last' ? referenceImages[1] : undefined,
+          // Pass the second ref as tail for startEnd mode (provider reads as image_tail/end_image_url).
+          tailImageUrl: inputMode.startEnd ? referenceImages[1] : undefined,
           imageR2Key: referenceImages[0],
         });
 

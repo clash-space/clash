@@ -158,6 +158,9 @@ export interface ValidateGenerationInput {
 /**
  * Validate generation inputs against model card requirements.
  * Returns null if valid, or an error message string if invalid.
+ *
+ * Today the input here only carries images (videos/audios aren't yet plumbed
+ * through). When other-modality refs land, extend this to take a per-kind map.
  */
 export function validateGenerationInput(input: ValidateGenerationInput): string | null {
   const { prompt, referenceImageUrls, modelCard } = input;
@@ -168,36 +171,35 @@ export function validateGenerationInput(input: ValidateGenerationInput): string 
   }
 
   const count = referenceImageUrls.length;
+  const acceptsImages = !!inputMode.images || !!inputMode.startEnd;
 
-  switch (inputMode.kind) {
-    case 'none':
-      // No-ref models accept extra images silently (provider will ignore them).
-      return null;
-
-    case 'single':
-      if (inputMode.required && count < 1) {
-        return 'Selected model requires a reference image. Attach one via @-mention in the prompt.';
-      }
-      return null;
-
-    case 'multi':
-      if (inputMode.required && count < 1) {
-        return 'Selected model requires at least one reference image.';
-      }
-      if (count > inputMode.max) {
-        return `Selected model accepts at most ${inputMode.max} reference images (got ${count}).`;
-      }
-      return null;
-
-    case 'first_last':
-      if (count < 1) {
-        return 'Selected model needs a start frame. Attach one via @-mention in the prompt.';
-      }
-      if (count > 2) {
-        return 'Selected model uses at most two frames (start + end).';
-      }
-      return null;
+  if (count > 0 && !acceptsImages) {
+    return 'Selected model does not accept reference images.';
   }
+
+  if (inputMode.startEnd) {
+    if (count < 1) {
+      return 'Selected model needs a start frame. Attach one via @-mention in the prompt.';
+    }
+    if (count > 2) {
+      return 'Selected model uses at most two frames (start + optional end).';
+    }
+    return null;
+  }
+
+  if (inputMode.images) {
+    const min = inputMode.images.min ?? 0;
+    if (count < min) {
+      return min === 1
+        ? 'Selected model requires a reference image. Attach one via @-mention in the prompt.'
+        : `Selected model requires at least ${min} reference images.`;
+    }
+    if (count > inputMode.images.max) {
+      return `Selected model accepts at most ${inputMode.images.max} reference images (got ${count}).`;
+    }
+  }
+
+  return null;
 }
 
 // === Pending Asset Node Builder ===

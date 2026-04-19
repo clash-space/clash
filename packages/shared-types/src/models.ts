@@ -152,28 +152,39 @@ export const ModelParameterSchema = z.object({
 export type ModelParameter = z.infer<typeof ModelParameterSchema>;
 
 /**
- * Input shape a model accepts. Drives both the prompt-panel UI and provider
- * adapter parameter mapping. Open for extension only by adding a new variant.
+ * Input shape a model accepts. Each declared field is an independent input
+ * "modality" with its own UI render unit + provider adapter mapping.
+ * Adding a new modality is three places: schema field here, a strip component,
+ * and a provider mapping. No discriminated union, no exhaustive switches.
+ *
+ * Examples:
+ *   text-to-X                      {}
+ *   single image required          { images: { max: 1, min: 1 } }
+ *   multi image (Nano Banana)      { images: { max: 8 } }
+ *   first/last frame (Kling 2.5)   { startEnd: {} }
+ *   Seedance ref-to-video          { images:{max:9}, videos:{max:3}, audios:{max:3} }
+ *   future audio-driven video      { images:{max:1, min:1}, audios:{max:1, min:1} }
+ *
+ * `startEnd` always means the standard convention: first frame required,
+ * last frame optional. No real-world model breaks that pattern; if one
+ * shows up, add a config field on the {} then.
  */
-export const ModelInputModeSchema = z.discriminatedUnion('kind', [
-  /** No reference media (text-to-X). */
-  z.object({ kind: z.literal('none') }),
-  /** 0 or 1 reference image. `required: true` rejects generations without one. */
-  z.object({ kind: z.literal('single'), required: z.boolean().optional() }),
-  /** 0..max reference images, positional refs in prompt. */
-  z.object({
-    kind: z.literal('multi'),
-    max: z.number().int().positive(),
-    required: z.boolean().optional(),
-  }),
-  /** Two ordered frames: first (required) + last (optional end-frame). */
-  z.object({ kind: z.literal('first_last') }),
-]);
+const RefSpecSchema = z.object({
+  max: z.number().int().positive(),
+  min: z.number().int().nonnegative().optional(),
+});
+
+export const ModelInputModeSchema = z.object({
+  images: RefSpecSchema.optional(),
+  videos: RefSpecSchema.optional(),
+  audios: RefSpecSchema.optional(),
+  startEnd: z.object({}).passthrough().optional(),
+});
 export type ModelInputMode = z.infer<typeof ModelInputModeSchema>;
 
 export const ModelInputRuleSchema = z.object({
   requiresPrompt: z.boolean().default(true),
-  inputMode: ModelInputModeSchema.default({ kind: 'none' }),
+  inputMode: ModelInputModeSchema.default({}),
   /** Modalities that can be @-mentioned inline in the prompt editor.
    *  Does NOT affect form-field inputs (start/end frames, etc.) */
   promptModalities: z.array(z.enum(['text', 'image', 'video', 'audio'])).default(['text']),
@@ -200,7 +211,7 @@ export const ModelCardSchema = z.object({
    * If the provider uses the same format as ours, the mapping is identity.
    */
   aspectRatioParam: z.string().optional(),
-  input: ModelInputRuleSchema.default({ requiresPrompt: true, inputMode: { kind: 'none' }, promptModalities: ['text'] }),
+  input: ModelInputRuleSchema.default({ requiresPrompt: true, inputMode: {}, promptModalities: ['text'] }),
   availableProviders: z.array(ProviderSchema).optional(),
   defaultProvider: ProviderSchema.optional(),
   /**
@@ -284,7 +295,7 @@ export const MODEL_CARDS: ModelCard[] = [
       resolution: '1K',
       count: 1,
     },
-    input: { requiresPrompt: true, inputMode: { kind: 'multi', max: 8 }, promptModalities: ['text', 'image'] },
+    input: { requiresPrompt: true, inputMode: { images: { max: 8 } }, promptModalities: ['text', 'image'] },
   },
 
   // ─── Image: FLUX Schnell (fal.ai) ────────────────────────────
@@ -329,7 +340,7 @@ export const MODEL_CARDS: ModelCard[] = [
       num_inference_steps: 4,
       count: 1,
     },
-    input: { requiresPrompt: true, inputMode: { kind: 'none' } },
+    input: { requiresPrompt: true, inputMode: {} },
   },
 
   // ─── Image: FLUX Dev (fal.ai) ────────────────────────────────
@@ -385,7 +396,7 @@ export const MODEL_CARDS: ModelCard[] = [
       guidance_scale: 3.5,
       count: 1,
     },
-    input: { requiresPrompt: true, inputMode: { kind: 'none' } },
+    input: { requiresPrompt: true, inputMode: {} },
   },
 
   // ─── Video: Sora 2 (fal.ai) ─────────────────────────────────
@@ -434,7 +445,7 @@ export const MODEL_CARDS: ModelCard[] = [
       aspect_ratio: '16:9',
       resolution: '720p',
     },
-    input: { requiresPrompt: true, inputMode: { kind: 'single' } },
+    input: { requiresPrompt: true, inputMode: { images: { max: 1 } } },
   },
 
   // ─── Video: Seedance 2.0 (ByteDance via fal.ai) ────────────
@@ -494,7 +505,7 @@ export const MODEL_CARDS: ModelCard[] = [
       resolution: '720p',
       generate_audio: true,
     },
-    input: { requiresPrompt: true, inputMode: { kind: 'single' } },
+    input: { requiresPrompt: true, inputMode: { images: { max: 1 } } },
   },
 
   // ─── Video: Kling 2.1 (fal.ai) ──────────────────────────────
@@ -529,7 +540,7 @@ export const MODEL_CARDS: ModelCard[] = [
       duration: '5',
       aspect_ratio: '16:9',
     },
-    input: { requiresPrompt: true, inputMode: { kind: 'single' } },
+    input: { requiresPrompt: true, inputMode: { images: { max: 1 } } },
   },
 
   // ─── Image: Recraft V4 Pro (fal.ai) ──────────────────────────
@@ -553,7 +564,7 @@ export const MODEL_CARDS: ModelCard[] = [
     defaultParams: {
       image_size: 'square_hd',
     },
-    input: { requiresPrompt: true, inputMode: { kind: 'none' } },
+    input: { requiresPrompt: true, inputMode: {} },
   },
 
   // ─── Image: FLUX 2 Pro (fal.ai) ──────────────────────────────
@@ -591,7 +602,7 @@ export const MODEL_CARDS: ModelCard[] = [
       image_size: 'landscape_4_3',
       safety_tolerance: '2',
     },
-    input: { requiresPrompt: true, inputMode: { kind: 'multi', max: 8 }, promptModalities: ['text', 'image'] },
+    input: { requiresPrompt: true, inputMode: { images: { max: 8 } }, promptModalities: ['text', 'image'] },
   },
 
   // ─── Video: Veo 3 (fal.ai) ───────────────────────────────────
@@ -647,7 +658,7 @@ export const MODEL_CARDS: ModelCard[] = [
       resolution: '720p',
       generate_audio: true,
     },
-    input: { requiresPrompt: true, inputMode: { kind: 'single' } },
+    input: { requiresPrompt: true, inputMode: { images: { max: 1 } } },
   },
   {
     id: 'veo3-fast-text-to-video',
@@ -699,7 +710,7 @@ export const MODEL_CARDS: ModelCard[] = [
       resolution: '720p',
       generate_audio: true,
     },
-    input: { requiresPrompt: true, inputMode: { kind: 'none' } },
+    input: { requiresPrompt: true, inputMode: {} },
   },
 
   // ─── Image: Gemini Image (Google Vertex) ────────────────────
@@ -723,7 +734,7 @@ export const MODEL_CARDS: ModelCard[] = [
     defaultParams: {
       aspect_ratio: '16:9',
     },
-    input: { requiresPrompt: true, inputMode: { kind: 'single' }, promptModalities: ['text', 'image'] },
+    input: { requiresPrompt: true, inputMode: { images: { max: 1 } }, promptModalities: ['text', 'image'] },
   },
   {
     id: 'gemini-flash-image-2',
@@ -744,7 +755,7 @@ export const MODEL_CARDS: ModelCard[] = [
     defaultParams: {
       aspect_ratio: '16:9',
     },
-    input: { requiresPrompt: true, inputMode: { kind: 'single' }, promptModalities: ['text', 'image'] },
+    input: { requiresPrompt: true, inputMode: { images: { max: 1 } }, promptModalities: ['text', 'image'] },
   },
   {
     id: 'gemini-pro-image',
@@ -765,7 +776,7 @@ export const MODEL_CARDS: ModelCard[] = [
     defaultParams: {
       aspect_ratio: '16:9',
     },
-    input: { requiresPrompt: true, inputMode: { kind: 'single' }, promptModalities: ['text', 'image'] },
+    input: { requiresPrompt: true, inputMode: { images: { max: 1 } }, promptModalities: ['text', 'image'] },
   },
 
   // ─── Image: Imagen 4 (Google native via Vercel AI SDK) ──────
@@ -789,7 +800,7 @@ export const MODEL_CARDS: ModelCard[] = [
     defaultParams: {
       aspect_ratio: '16:9',
     },
-    input: { requiresPrompt: true, inputMode: { kind: 'none' } },
+    input: { requiresPrompt: true, inputMode: {} },
   },
   {
     id: 'imagen-4-fast',
@@ -810,7 +821,7 @@ export const MODEL_CARDS: ModelCard[] = [
     defaultParams: {
       aspect_ratio: '16:9',
     },
-    input: { requiresPrompt: true, inputMode: { kind: 'none' } },
+    input: { requiresPrompt: true, inputMode: {} },
   },
 
   // ─── Video: Veo 3.1 (Google native via Vercel AI SDK) ──────
@@ -842,7 +853,7 @@ export const MODEL_CARDS: ModelCard[] = [
       aspect_ratio: '16:9',
       generate_audio: true,
     },
-    input: { requiresPrompt: true, inputMode: { kind: 'none' } },
+    input: { requiresPrompt: true, inputMode: {} },
   },
   {
     id: 'veo-3.1-lite',
@@ -871,7 +882,7 @@ export const MODEL_CARDS: ModelCard[] = [
       aspect_ratio: '16:9',
       generate_audio: true,
     },
-    input: { requiresPrompt: true, inputMode: { kind: 'none' } },
+    input: { requiresPrompt: true, inputMode: {} },
   },
   {
     id: 'veo-3.1-fast',
@@ -900,7 +911,7 @@ export const MODEL_CARDS: ModelCard[] = [
       aspect_ratio: '16:9',
       generate_audio: true,
     },
-    input: { requiresPrompt: true, inputMode: { kind: 'none' } },
+    input: { requiresPrompt: true, inputMode: {} },
   },
 
   // ─── Audio ───────────────────────────────────────────────────
@@ -950,7 +961,7 @@ export const MODEL_CARDS: ModelCard[] = [
       speed: 1.0,
       pitch: 0,
     },
-    input: { requiresPrompt: true, inputMode: { kind: 'none' } },
+    input: { requiresPrompt: true, inputMode: {} },
   },
   {
     id: 'elevenlabs-tts',
@@ -1010,7 +1021,7 @@ export const MODEL_CARDS: ModelCard[] = [
       stability: 0.5,
       similarity_boost: 0.75,
     },
-    input: { requiresPrompt: true, inputMode: { kind: 'none' } },
+    input: { requiresPrompt: true, inputMode: {} },
     availableProviders: ['official', 'kie'],
     defaultProvider: 'official',
   },

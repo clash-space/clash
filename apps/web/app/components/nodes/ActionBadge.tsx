@@ -141,14 +141,12 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
 
     const modelDisplay = selectedModel?.name || modelId;
     const providerDisplay = selectedModel?.provider || '';
-    const inputMode = selectedModel?.input.inputMode ?? { kind: 'none' as const };
+    const inputMode = selectedModel?.input.inputMode ?? {};
     const countValue = Number(modelParams.count ?? 1);
-    // Per-mode ref capacity. `none` accepts no refs; `multi` caps at its declared max;
-    // `first_last` uses two fixed slots; `single` is capped to 1.
-    const maxRefs = inputMode.kind === 'none' ? 0
-        : inputMode.kind === 'multi' ? inputMode.max
-        : inputMode.kind === 'first_last' ? 2
-        : 1;
+    // Total image-ref capacity. `startEnd` is two fixed slots; `images.max` if declared;
+    // otherwise 0 (model takes no image refs at all).
+    const maxRefs = inputMode.startEnd ? 2 : (inputMode.images?.max ?? 0);
+    const isStartEnd = !!inputMode.startEnd;
 
     // Resolve a node's reference-image source. Only image nodes are valid — videos are rejected.
     const resolveRefSrc = useCallback((node: { type?: string; data?: Record<string, unknown> } | undefined): string | undefined => {
@@ -175,17 +173,22 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
         return [...ordered, ...extras];
     }, [attachedNodeIds, data.referenceImageOrder]);
 
-    // If any ref images are attached, hide models that can't consume them (kind='none').
+    // If any ref images are attached, hide models that can't consume them.
     const selectableModels = useMemo(() => {
         if (refNodeIds.length === 0) return availableModels;
-        return availableModels.filter(card => card.input.inputMode.kind !== 'none');
+        return availableModels.filter(card => {
+            const im = card.input.inputMode;
+            return !!im.images || !!im.startEnd;
+        });
     }, [availableModels, refNodeIds.length]);
 
     // If the currently selected model no longer accepts refs but refs are attached, auto-switch.
     useEffect(() => {
         if (refNodeIds.length === 0) return;
         const current = availableModels.find(card => card.id === modelId);
-        if (!current || current.input.inputMode.kind !== 'none') return;
+        if (!current) return;
+        const accepts = !!current.input.inputMode.images || !!current.input.inputMode.startEnd;
+        if (accepts) return;
         const fallback = selectableModels[0];
         if (!fallback || fallback.id === modelId) return;
         const nextParams = { ...(fallback.defaultParams ?? {}) } as ModelParams;
@@ -1203,8 +1206,8 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
                 <div ref={panelRef} className="w-full max-w-2xl flex flex-col items-start">
                     {/* Reference images strip above the prompt panel.
                         Sourced from `refNodeIds` (image-bearing connected nodes, image src or
-                        video cover). Drag to reorder, × to detach. For models declaring
-                        inputMode.kind='first_last', the first two slots show 首/尾 badges. */}
+                        video cover). Drag to reorder, × to detach. When the model declares
+                        inputMode.startEnd, the first two slots show 首/尾 badges. */}
                     {refNodeIds.length > 0 && (
                         <div className="pointer-events-auto mb-2 px-1">
                             <Reorder.Group
@@ -1223,7 +1226,7 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
                                             ? (node.data.coverUrl as string | undefined)
                                             : undefined;
                                     if (!thumb) return null;
-                                    const badge = inputMode.kind === 'first_last'
+                                    const badge = isStartEnd
                                         ? (i === 0 ? '首' : i === 1 ? '尾' : `${i + 1}`)
                                         : `${i + 1}`;
                                     return (
