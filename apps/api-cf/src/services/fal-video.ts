@@ -16,6 +16,8 @@ interface FalVideoParams {
   duration?: number | string;
   aspectRatio?: string;
   videoModel?: string;
+  /** Passthrough of ModelCard parameter selections (resolution, generate_audio, ...). */
+  modelParams?: Record<string, unknown>;
   onEnqueue?: (requestId: string) => void;
   onQueueUpdate?: (status: { status: string; position?: number }) => void;
 }
@@ -37,14 +39,19 @@ export async function generateFalVideo(
 ): Promise<FalVideoResult> {
   fal.config({ credentials: falApiKey });
 
-  if (params.videoModel === 'kling-2.1-text-to-video' || params.videoModel === 'kling-2.1-image-to-video') {
+  if (params.videoModel === 'kling-2.1') {
     return generateKlingVideo(params);
   }
 
-  if (params.videoModel?.startsWith('veo3-')) {
+  if (params.videoModel === 'veo3' || params.videoModel === 'veo3-fast-text-to-video') {
     return generateVeo3Video(params);
   }
 
+  if (params.videoModel === 'seedance-2') {
+    return generateSeedance2Video(params);
+  }
+
+  // Default: Sora 2 (id 'sora-2'). Provider-internal dispatch by hasImage.
   return generateSoraVideo(params);
 }
 
@@ -136,14 +143,66 @@ async function generateKlingVideo(params: FalVideoParams): Promise<FalVideoResul
   };
 }
 
+async function generateSeedance2Video(params: FalVideoParams): Promise<FalVideoResult> {
+  const hasImage = !!params.imageUrl;
+  // Provider-internal dispatch: same model id in our cards, two fal endpoints.
+  const modelId = hasImage
+    ? "bytedance/seedance-2.0/image-to-video"
+    : "bytedance/seedance-2.0/text-to-video";
+
+  // Seedance accepts `"auto"` (let the model pick) or an integer 4-15 for seconds.
+  const rawDuration = params.duration ?? 'auto';
+  const durationParam: string | number = rawDuration === 'auto'
+    ? 'auto'
+    : (typeof rawDuration === 'string' ? parseInt(rawDuration, 10) : rawDuration);
+
+  const input: Record<string, unknown> = {
+    prompt: params.prompt,
+    duration: durationParam,
+    resolution: (params.modelParams?.resolution as string) ?? '720p',
+    generate_audio: (params.modelParams?.generate_audio as boolean) ?? true,
+  };
+
+  if (hasImage) {
+    input.image_url = params.imageUrl;
+    // `end_image_url` left unset — exposed via first_last mode later.
+  } else {
+    // text-to-video takes aspect_ratio; image-to-video infers from the source image.
+    input.aspect_ratio = params.aspectRatio || 'auto';
+  }
+
+  const result = await fal.subscribe(modelId, {
+    input,
+    timeout: 10 * 60 * 1000,
+    onEnqueue: params.onEnqueue,
+    onQueueUpdate: params.onQueueUpdate as any,
+  } as any);
+  const data = result.data as {
+    video?: { url: string; duration?: number };
+  };
+
+  if (!data.video?.url) {
+    throw new Error("No video in seedance-2 response");
+  }
+
+  const fallbackDuration = typeof durationParam === 'number' ? durationParam : 5;
+
+  return {
+    url: data.video.url,
+    duration: data.video.duration ?? fallbackDuration,
+    requestId: result.requestId,
+    model: modelId,
+  };
+}
+
 async function generateVeo3Video(params: FalVideoParams): Promise<FalVideoResult> {
   const hasImage = !!params.imageUrl;
 
   let modelId: string;
-  if (params.videoModel === 'veo3-image-to-video') {
-    modelId = 'fal-ai/veo3/image-to-video';
-  } else if (params.videoModel === 'veo3-fast-text-to-video') {
+  if (params.videoModel === 'veo3-fast-text-to-video') {
     modelId = 'fal-ai/veo3/fast';
+  } else if (hasImage) {
+    modelId = 'fal-ai/veo3/image-to-video';
   } else {
     modelId = 'fal-ai/veo3';
   }

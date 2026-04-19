@@ -16,7 +16,7 @@ import type { GenerationParams } from '../agents/generation';
 import { MODEL_CARDS, parsePromptParts, extractPromptText } from '@clash/shared-types';
 
 const defaultImageModel = MODEL_CARDS.find((card) => card.kind === 'image')?.id ?? 'nano-banana-2';
-const defaultVideoModel = MODEL_CARDS.find((card) => card.kind === 'video')?.id ?? 'sora-2-image-to-video';
+const defaultVideoModel = MODEL_CARDS.find((card) => card.kind === 'video')?.id ?? 'sora-2';
 const defaultAudioModel = MODEL_CARDS.find((card) => card.kind === 'audio')?.id ?? 'minimax-tts';
 
 const getModelCard = (modelId?: string) => MODEL_CARDS.find((card) => card.id === modelId);

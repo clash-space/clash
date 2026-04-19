@@ -100,6 +100,19 @@ export const FLUX2_ASPECT_RATIOS = [
   { label: '9:16', value: 'portrait_16_9' },
 ] as const;
 
+/**
+ * Seedance 2.0 aspect ratios — passed directly (no mapping needed).
+ */
+export const SEEDANCE_ASPECT_RATIOS = [
+  { label: 'Auto', value: 'auto' },
+  { label: '21:9', value: '21:9' },
+  { label: '16:9', value: '16:9' },
+  { label: '4:3', value: '4:3' },
+  { label: '1:1', value: '1:1' },
+  { label: '3:4', value: '3:4' },
+  { label: '9:16', value: '9:16' },
+] as const;
+
 export const ModelParameterTypeSchema = z.enum(['select', 'slider', 'number', 'text', 'boolean']);
 export type ModelParameterType = z.infer<typeof ModelParameterTypeSchema>;
 
@@ -358,57 +371,13 @@ export const MODEL_CARDS: ModelCard[] = [
 
   // ─── Video: Sora 2 (fal.ai) ─────────────────────────────────
   {
-    id: 'sora-2-text-to-video',
-    name: 'Sora 2 (Text)',
+    // Single card — provider auto-routes to /text-to-video or /image-to-video.
+    id: 'sora-2',
+    name: 'Sora 2',
     provider: 'fal.ai',
     kind: 'video',
     defaultAspectRatio: '16:9',
-    description: 'Generate video from text prompts using OpenAI Sora 2.',
-    parameters: [
-      {
-        id: 'duration',
-        label: 'Duration',
-        type: 'select',
-        options: [
-          { label: '4s', value: 4 },
-          { label: '8s', value: 8 },
-          { label: '12s', value: 12 },
-          { label: '16s', value: 16 },
-          { label: '20s', value: 20 },
-        ],
-        defaultValue: 4,
-      },
-      {
-        id: 'aspect_ratio',
-        label: 'Aspect Ratio',
-        type: 'select',
-        options: SORA_ASPECT_RATIOS.map(r => ({ label: r.label, value: r.value })),
-        defaultValue: '16:9',
-      },
-      {
-        id: 'resolution',
-        label: 'Resolution',
-        type: 'select',
-        options: [
-          { label: '720p', value: '720p' },
-        ],
-        defaultValue: '720p',
-      },
-    ],
-    defaultParams: {
-      duration: 4,
-      aspect_ratio: '16:9',
-      resolution: '720p',
-    },
-    input: { requiresPrompt: true, referenceImage: 'forbidden', referenceMode: 'none' },
-  },
-  {
-    id: 'sora-2-image-to-video',
-    name: 'Sora 2 (Image)',
-    provider: 'fal.ai',
-    kind: 'video',
-    defaultAspectRatio: '16:9',
-    description: 'Animate a still image into video using Sora 2.',
+    description: 'OpenAI Sora 2 — text-to-video or animate a still image.',
     parameters: [
       {
         id: 'duration',
@@ -446,17 +415,78 @@ export const MODEL_CARDS: ModelCard[] = [
       aspect_ratio: '16:9',
       resolution: '720p',
     },
-    input: { requiresPrompt: true, referenceImage: 'required', referenceMode: 'single' },
+    input: { requiresPrompt: true, referenceImage: 'optional', referenceMode: 'single' },
+  },
+
+  // ─── Video: Seedance 2.0 (ByteDance via fal.ai) ────────────
+  // Single card — provider (fal-video) auto-routes between `/text-to-video` and
+  // `/image-to-video` based on whether a reference image is attached.
+  // The `/image-to-video` endpoint also accepts an optional `end_image_url`;
+  // that'll be exposed once the ModelInputMode refactor adds `first_last` UI.
+  {
+    id: 'seedance-2',
+    name: 'Seedance 2.0',
+    provider: 'fal.ai',
+    kind: 'video',
+    defaultAspectRatio: '16:9',
+    description: 'ByteDance Seedance 2.0 — text-to-video or animate a still image, with optional native audio.',
+    parameters: [
+      {
+        id: 'duration',
+        label: 'Duration',
+        type: 'select',
+        options: [
+          { label: 'Auto', value: 'auto' },
+          { label: '4s', value: 4 },
+          { label: '6s', value: 6 },
+          { label: '8s', value: 8 },
+          { label: '10s', value: 10 },
+          { label: '15s', value: 15 },
+        ],
+        defaultValue: 'auto',
+      },
+      {
+        id: 'aspect_ratio',
+        label: 'Aspect Ratio',
+        type: 'select',
+        options: SEEDANCE_ASPECT_RATIOS.map(r => ({ label: r.label, value: r.value })),
+        defaultValue: '16:9',
+      },
+      {
+        id: 'resolution',
+        label: 'Resolution',
+        type: 'select',
+        options: [
+          { label: '480p', value: '480p' },
+          { label: '720p', value: '720p' },
+        ],
+        defaultValue: '720p',
+      },
+      {
+        id: 'generate_audio',
+        label: 'Native audio',
+        type: 'boolean',
+        defaultValue: true,
+      },
+    ],
+    defaultParams: {
+      duration: 'auto',
+      aspect_ratio: '16:9',
+      resolution: '720p',
+      generate_audio: true,
+    },
+    input: { requiresPrompt: true, referenceImage: 'optional', referenceMode: 'single' },
   },
 
   // ─── Video: Kling 2.1 (fal.ai) ──────────────────────────────
+  // Single card — provider auto-routes to /text-to-video or /image-to-video.
   {
-    id: 'kling-2.1-text-to-video',
-    name: 'Kling 2.1 (Text)',
+    id: 'kling-2.1',
+    name: 'Kling 2.1',
     provider: 'fal.ai',
     kind: 'video',
     defaultAspectRatio: '16:9',
-    description: 'Fast, cinematic text-to-video generation.',
+    description: 'Kling 2.1 — fast, cinematic video generation, text or image input.',
     parameters: [
       {
         id: 'duration',
@@ -480,39 +510,7 @@ export const MODEL_CARDS: ModelCard[] = [
       duration: '5',
       aspect_ratio: '16:9',
     },
-    input: { requiresPrompt: true, referenceImage: 'forbidden', referenceMode: 'none' },
-  },
-  {
-    id: 'kling-2.1-image-to-video',
-    name: 'Kling 2.1 (Image)',
-    provider: 'fal.ai',
-    kind: 'video',
-    defaultAspectRatio: '16:9',
-    description: 'Animate a still image into cinematic video.',
-    parameters: [
-      {
-        id: 'duration',
-        label: 'Duration',
-        type: 'select',
-        options: [
-          { label: '5s', value: '5' },
-          { label: '10s', value: '10' },
-        ],
-        defaultValue: '5',
-      },
-      {
-        id: 'aspect_ratio',
-        label: 'Aspect Ratio',
-        type: 'select',
-        options: KLING_ASPECT_RATIOS.map(r => ({ label: r.label, value: r.value })),
-        defaultValue: '16:9',
-      },
-    ],
-    defaultParams: {
-      duration: '5',
-      aspect_ratio: '16:9',
-    },
-    input: { requiresPrompt: true, referenceImage: 'required', referenceMode: 'single' },
+    input: { requiresPrompt: true, referenceImage: 'optional', referenceMode: 'single' },
   },
 
   // ─── Image: Recraft V4 Pro (fal.ai) ──────────────────────────
@@ -579,12 +577,14 @@ export const MODEL_CARDS: ModelCard[] = [
 
   // ─── Video: Veo 3 (fal.ai) ───────────────────────────────────
   {
-    id: 'veo3-text-to-video',
-    name: 'Veo 3 (Text)',
+    // Single card — provider auto-routes to /text-to-video or /image-to-video.
+    // veo3-fast stays separate (different model variant, not just a different endpoint).
+    id: 'veo3',
+    name: 'Veo 3',
     provider: 'fal.ai',
     kind: 'video',
     defaultAspectRatio: '16:9',
-    description: 'Google Veo 3 text-to-video with audio generation.',
+    description: 'Google Veo 3 — text-to-video or animate a still image, with audio.',
     parameters: [
       {
         id: 'duration',
@@ -628,7 +628,7 @@ export const MODEL_CARDS: ModelCard[] = [
       resolution: '720p',
       generate_audio: true,
     },
-    input: { requiresPrompt: true, referenceImage: 'forbidden', referenceMode: 'none' },
+    input: { requiresPrompt: true, referenceImage: 'optional', referenceMode: 'single' },
   },
   {
     id: 'veo3-fast-text-to-video',
@@ -681,62 +681,6 @@ export const MODEL_CARDS: ModelCard[] = [
       generate_audio: true,
     },
     input: { requiresPrompt: true, referenceImage: 'forbidden', referenceMode: 'none' },
-  },
-  {
-    id: 'veo3-image-to-video',
-    name: 'Veo 3 (Image)',
-    provider: 'fal.ai',
-    kind: 'video',
-    defaultAspectRatio: '16:9',
-    description: 'Google Veo 3 image-to-video — animate a still image.',
-    parameters: [
-      {
-        id: 'duration',
-        label: 'Duration',
-        type: 'select',
-        options: [
-          { label: '4s', value: '4s' },
-          { label: '6s', value: '6s' },
-          { label: '8s', value: '8s' },
-        ],
-        defaultValue: '8s',
-      },
-      {
-        id: 'aspect_ratio',
-        label: 'Aspect Ratio',
-        type: 'select',
-        options: [
-          { label: 'Auto', value: 'auto' },
-          { label: '16:9', value: '16:9' },
-          { label: '9:16', value: '9:16' },
-        ],
-        defaultValue: 'auto',
-      },
-      {
-        id: 'resolution',
-        label: 'Resolution',
-        type: 'select',
-        options: [
-          { label: '720p', value: '720p' },
-          { label: '1080p', value: '1080p' },
-        ],
-        defaultValue: '720p',
-      },
-      {
-        id: 'generate_audio',
-        label: 'Generate Audio',
-        type: 'boolean',
-        defaultValue: true,
-        description: 'Include synthesized audio in the video.',
-      },
-    ],
-    defaultParams: {
-      duration: '8s',
-      aspect_ratio: 'auto',
-      resolution: '720p',
-      generate_audio: true,
-    },
-    input: { requiresPrompt: true, referenceImage: 'required', referenceMode: 'single' },
   },
 
   // ─── Image: Gemini Image (Google Vertex) ────────────────────

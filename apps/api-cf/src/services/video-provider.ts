@@ -43,6 +43,7 @@ const falVideoProvider: VideoProvider = {
       duration: params.duration,
       aspectRatio: params.aspectRatio,
       videoModel: params.modelName,
+      modelParams: params.modelParams,
     });
     return {
       url: result.url,

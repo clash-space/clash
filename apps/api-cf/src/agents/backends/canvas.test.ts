@@ -438,8 +438,8 @@ describe("Canvas class", () => {
         label: "Video Badge",
         actionType: "video-gen",
         content: "A flying bird",
-        modelId: "sora-2-text-to-video",
-        model: "sora-2-text-to-video",
+        modelId: "sora-2",
+        model: "sora-2",
         modelParams: { duration: 5 },
         referenceMode: "none",
       }, null, { x: 0, y: 0 });

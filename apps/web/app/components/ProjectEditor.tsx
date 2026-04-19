@@ -999,8 +999,8 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
             referenceMode: defaultImageModel?.input.referenceMode ?? 'single',
         };
         const videoModelDefaults = {
-            modelId: defaultVideoModel?.id ?? 'sora-2-image-to-video',
-            model: defaultVideoModel?.id ?? 'sora-2-image-to-video',
+            modelId: defaultVideoModel?.id ?? 'sora-2',
+            model: defaultVideoModel?.id ?? 'sora-2',
             modelParams: { ...(defaultVideoModel?.defaultParams ?? {}) },
             referenceMode: defaultVideoModel?.input.referenceMode ?? 'single',
         };
@@ -1636,7 +1636,7 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
                     if (!rest.height) rest.height = 80;
                 } else if (type === 'video-gen') {
                     type = 'action-badge';
-                    data = { actionType: 'video-gen', modelId: defaultVideoModel?.id ?? 'sora-2-image-to-video', model: defaultVideoModel?.id ?? 'sora-2-image-to-video', modelParams: { ...(defaultVideoModel?.defaultParams ?? {}) }, ...data };
+                    data = { actionType: 'video-gen', modelId: defaultVideoModel?.id ?? 'sora-2', model: defaultVideoModel?.id ?? 'sora-2', modelParams: { ...(defaultVideoModel?.defaultParams ?? {}) }, ...data };
                     if (!rest.width) rest.width = 200;
                     if (!rest.height) rest.height = 80;
                 }

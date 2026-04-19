@@ -382,7 +382,7 @@ describe("NodeProcessor - processPendingNodes", () => {
       {
         id: "node-vid-noimg",
         type: "video",
-        data: { status: "pending", prompt: "test", modelId: "sora-2-image-to-video" },
+        data: { status: "pending", prompt: "test", modelId: "sora-2" },
       },
     ]);
 

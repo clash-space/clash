@@ -48,8 +48,8 @@ const MENU_OPTIONS: MenuOption[] = [
         nodeData: {
             label: 'Video Prompt',
             actionType: 'video-gen',
-            modelId: defaultVideoModel?.id ?? 'sora-2-image-to-video',
-            model: defaultVideoModel?.id ?? 'sora-2-image-to-video',
+            modelId: defaultVideoModel?.id ?? 'sora-2',
+            model: defaultVideoModel?.id ?? 'sora-2',
             modelParams: { ...(defaultVideoModel?.defaultParams ?? {}) },
             referenceMode: defaultVideoModel?.input.referenceMode ?? 'single',
             content: '# Prompt\nEnter your prompt here...',

@@ -91,7 +91,7 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
         if (explicitId) return LEGACY_MODEL_REMAP[explicitId] ?? explicitId;
         if (!legacyName) return undefined;
         const lower = legacyName.toLowerCase();
-        if (type === 'video-gen') return 'sora-2-image-to-video';
+        if (type === 'video-gen') return 'sora-2';
         if (lower.includes('pro')) return 'nano-banana-2';
         return 'nano-banana-2';
     };
@@ -116,7 +116,7 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
     const initialModelId = isCustom ? '' :
         mapLegacyModelId(actionType as 'image-gen' | 'video-gen', data.modelId as string | undefined, data.modelName) ||
         (MODEL_CARDS.find((card) => card.kind === (actionType === 'video-gen' ? 'video' : 'image'))?.id ??
-            (actionType === 'video-gen' ? 'sora-2-image-to-video' : 'nano-banana-2'));
+            (actionType === 'video-gen' ? 'sora-2' : 'nano-banana-2'));
 
     const [modelId, setModelId] = useState<string>(initialModelId);
     const [modelParams, setModelParams] = useState<ModelParams>({
