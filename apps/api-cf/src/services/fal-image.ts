@@ -136,7 +136,13 @@ export async function generateImage(
 }
 
 function resolveModelId(modelName: string | undefined, hasRefImages: boolean): string {
+  // When reference images are present, auto-switch text-to-image variants to their /edit sibling.
+  // e.g. nano-banana-2 → nano-banana-2/edit, flux-2-pro → flux-2-pro/edit.
   if (modelName && FAL_IMAGE_MODEL_IDS[modelName]) {
+    if (hasRefImages) {
+      const editKey = `${modelName}-edit`;
+      if (FAL_IMAGE_MODEL_IDS[editKey]) return FAL_IMAGE_MODEL_IDS[editKey];
+    }
     return FAL_IMAGE_MODEL_IDS[modelName];
   }
   return hasRefImages ? "fal-ai/nano-banana-2/edit" : "fal-ai/nano-banana-2";

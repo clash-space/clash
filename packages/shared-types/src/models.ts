@@ -171,6 +171,13 @@ export const ModelCardSchema = z.object({
   input: ModelInputRuleSchema.default({ requiresPrompt: true, referenceImage: 'optional' }),
   availableProviders: z.array(ProviderSchema).optional(),
   defaultProvider: ProviderSchema.optional(),
+  /**
+   * Upper bound (ms) for a healthy run. NodeProcessor marks a workflow Failed if
+   * engine status is still "running" past this point (orphan from miniflare
+   * hot-reload, hung provider, etc). Set generously above the 99th-percentile
+   * run so legitimately slow jobs never get misclassified.
+   */
+  maxRuntimeMs: z.number().int().positive().optional(),
 });
 export type ModelCard = z.infer<typeof ModelCardSchema>;
 
@@ -245,36 +252,7 @@ export const MODEL_CARDS: ModelCard[] = [
       resolution: '1K',
       count: 1,
     },
-    input: { requiresPrompt: true, referenceImage: 'optional', referenceMode: 'single', promptModalities: ['text', 'image'] },
-  },
-  {
-    id: 'nano-banana-2-edit',
-    name: 'Nano Banana 2 Edit',
-    provider: 'fal.ai',
-    kind: 'image',
-    defaultAspectRatio: '16:9',
-    description: 'Edit and composite images with text prompts.',
-    parameters: [
-      {
-        id: 'aspect_ratio',
-        label: 'Aspect Ratio',
-        type: 'select',
-        options: NANO_BANANA_ASPECT_RATIOS.map(r => ({ label: r.label, value: r.value })),
-        defaultValue: '16:9',
-      },
-      {
-        id: 'resolution',
-        label: 'Resolution',
-        type: 'select',
-        options: NANO_BANANA_RESOLUTIONS.map(s => ({ label: s.label, value: s.value })),
-        defaultValue: '1K',
-      },
-    ],
-    defaultParams: {
-      aspect_ratio: '16:9',
-      resolution: '1K',
-    },
-    input: { requiresPrompt: true, referenceImage: 'required', referenceMode: 'multi', promptModalities: ['text', 'image'] },
+    input: { requiresPrompt: true, referenceImage: 'optional', referenceMode: 'multi', promptModalities: ['text', 'image'] },
   },
 
   // ─── Image: FLUX Schnell (fal.ai) ────────────────────────────
@@ -596,43 +574,7 @@ export const MODEL_CARDS: ModelCard[] = [
       image_size: 'landscape_4_3',
       safety_tolerance: '2',
     },
-    input: { requiresPrompt: true, referenceImage: 'forbidden', referenceMode: 'none' },
-  },
-  {
-    id: 'flux-2-pro-edit',
-    name: 'FLUX 2 Pro Edit',
-    provider: 'fal.ai',
-    kind: 'image',
-    defaultAspectRatio: '4:3',
-    aspectRatioParam: 'image_size',
-    description: 'Edit and transform images using FLUX 2 Pro.',
-    parameters: [
-      {
-        id: 'image_size',
-        label: 'Aspect Ratio',
-        type: 'select',
-        options: FLUX2_ASPECT_RATIOS.map(r => ({ label: r.label, value: r.value })),
-        defaultValue: 'landscape_4_3',
-      },
-      {
-        id: 'safety_tolerance',
-        label: 'Safety Tolerance',
-        type: 'select',
-        options: [
-          { label: 'Strict (1)', value: '1' },
-          { label: 'Moderate (2)', value: '2' },
-          { label: 'Balanced (3)', value: '3' },
-          { label: 'Relaxed (4)', value: '4' },
-          { label: 'Permissive (5)', value: '5' },
-        ],
-        defaultValue: '2',
-      },
-    ],
-    defaultParams: {
-      image_size: 'landscape_4_3',
-      safety_tolerance: '2',
-    },
-    input: { requiresPrompt: true, referenceImage: 'required', referenceMode: 'multi', promptModalities: ['text', 'image'] },
+    input: { requiresPrompt: true, referenceImage: 'optional', referenceMode: 'multi', promptModalities: ['text', 'image'] },
   },
 
   // ─── Video: Veo 3 (fal.ai) ───────────────────────────────────

@@ -148,6 +148,31 @@ describe("buildMention", () => {
   });
 });
 
+describe("image mention format (Milkdown)", () => {
+  it("parses image mention from Milkdown format", () => {
+    const parts = parsePromptParts("![mention:img-abc:Eyewear](https://cdn.example.com/signed?token=xyz)");
+    expect(parts).toEqual([
+      { type: "asset_ref", nodeId: "img-abc", label: "Eyewear" },
+    ]);
+  });
+
+  it("extracts nodeId from image mention", () => {
+    const parts = parsePromptParts("Make it like ![mention:img-abc:Photo](https://example.com/img.jpg) but blue");
+    expect(extractAssetRefs(parts)).toEqual([
+      { nodeId: "img-abc", label: "Photo" },
+    ]);
+    expect(extractPromptText(parts)).toBe("Make it like Photo but blue");
+  });
+
+  it("handles mixed text and image mentions in order", () => {
+    const parts = parsePromptParts("@[Logo](node:logo-1) and ![mention:img-2:Photo](https://url)");
+    expect(extractAssetRefs(parts)).toEqual([
+      { nodeId: "logo-1", label: "Logo" },
+      { nodeId: "img-2", label: "Photo" },
+    ]);
+  });
+});
+
 describe("hasAssetMentions", () => {
   it("returns false for plain text", () => {
     expect(hasAssetMentions("Hello world")).toBe(false);
@@ -155,6 +180,10 @@ describe("hasAssetMentions", () => {
 
   it("returns true when @-mentions present", () => {
     expect(hasAssetMentions("Use @[Logo](node:abc)")).toBe(true);
+  });
+
+  it("returns true when image mentions present", () => {
+    expect(hasAssetMentions("![mention:img-abc:Photo](https://url)")).toBe(true);
   });
 
   it("returns false for regular @ signs", () => {

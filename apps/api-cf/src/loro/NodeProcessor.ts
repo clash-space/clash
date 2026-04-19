@@ -23,6 +23,58 @@ const getModelCard = (modelId?: string) => MODEL_CARDS.find((card) => card.id ==
 
 type NodeType = 'image' | 'video' | 'audio' | 'video_render';
 
+// Fallback upper-bound wall time per node kind. Used when the selected model card
+// doesn't specify its own `maxRuntimeMs`. Set generously above the 99th-percentile
+// run so we never misclassify a legitimately slow task.
+const DEFAULT_RUNNING_ORPHAN_MS: Record<string, number> = {
+  image: 15 * 60 * 1000,
+  video: 30 * 60 * 1000,
+  audio: 10 * 60 * 1000,
+  video_render: 30 * 60 * 1000,
+};
+
+function resolveMaxRuntimeMs(nodeType: string, modelId?: string): number {
+  const card = getModelCard(modelId);
+  return card?.maxRuntimeMs ?? DEFAULT_RUNNING_ORPHAN_MS[nodeType] ?? 30 * 60 * 1000;
+}
+
+/**
+ * Pick which workflow binding owns a given taskId.
+ * All our generation tasks currently use GENERATION_WORKFLOW.
+ */
+function getWorkflowBinding(env: Env): Workflow | undefined {
+  return env.GENERATION_WORKFLOW as Workflow | undefined;
+}
+
+/**
+ * Check the workflow engine's view of a task. Returns a terminal status if the
+ * workflow is effectively dead (errored / terminated / instance missing), or null
+ * if it's still legitimately in-flight or unknown.
+ *
+ * Needed because miniflare's workflow engine doesn't resume after worker hot-reload
+ * (no alarm() method on Engine; scheduler.wait is in-memory only). Stuck workflows
+ * sit in "running" forever locally — for us that's indistinguishable from normal
+ * running, so we additionally trust "complete" / "errored" / "terminated".
+ */
+async function inspectWorkflowStatus(
+  env: Env,
+  taskId: string
+): Promise<{ status: string; error?: string } | null> {
+  try {
+    const wf = getWorkflowBinding(env);
+    if (!wf) return null;
+    const inst = await wf.get(taskId);
+    const s = await inst.status();
+    return { status: String(s.status ?? ''), error: s.error ? String(s.error) : undefined };
+  } catch (e) {
+    const msg = String(e);
+    // "Instance not found" in miniflare when the instance was never created or was deleted.
+    if (/not\s*found|Error 3001|doesn't exist/i.test(msg)) return { status: 'missing' };
+    log.warn('inspectWorkflowStatus failed', { taskId, error: msg });
+    return null;
+  }
+}
+
 /** Convert ArrayBuffer to base64, chunked to avoid stack overflow. */
 function arrayBufferToBase64(buf: ArrayBuffer): string {
   const bytes = new Uint8Array(buf);
@@ -161,9 +213,31 @@ export async function processPendingNodes(
       const src = innerData.src;
       const description = innerData.description;
       const pendingTask = innerData.pendingTask;
+      const pendingTaskAt = typeof innerData.pendingTaskAt === 'number' ? innerData.pendingTaskAt : undefined;
 
-      // pendingTask is the optimistic lock — skip if already set
-      if (pendingTask) continue;
+      // Optimistic lock — skip if set, unless we can prove it's orphaned.
+      if (pendingTask) {
+        const info = await inspectWorkflowStatus(env, pendingTask);
+        const age = pendingTaskAt ? Date.now() - pendingTaskAt : undefined;
+        const modelId = (innerData.modelId || innerData.model) as string | undefined;
+        const runningTooLong = info?.status === 'running'
+          && age !== undefined
+          && age > resolveMaxRuntimeMs(nodeType, modelId);
+
+        if (info && ['errored', 'terminated', 'missing'].includes(info.status)) {
+          const reason = `orphan task: workflow status=${info.status}${info.error ? ` (${info.error})` : ''}`;
+          log.warn('Orphan pendingTask (terminal status), marking node Failed', { nodeId, nodeType, taskId: pendingTask, status: info.status });
+          appendNodeLog(doc, nodeId, `FAILED: ${reason}`, broadcast);
+          updateNodeData(doc, nodeId, { pendingTask: undefined, pendingTaskAt: undefined, status: Status.Failed, error: reason }, broadcast);
+        } else if (runningTooLong) {
+          const ageSec = Math.round((age ?? 0) / 1000);
+          const reason = `orphan task: workflow still "running" after ${ageSec}s (presumed dead — miniflare hot-reload kills in-memory timers)`;
+          log.warn('Orphan pendingTask (running-too-long), marking node Failed', { nodeId, nodeType, taskId: pendingTask, ageSec });
+          appendNodeLog(doc, nodeId, `FAILED: ${reason}`, broadcast);
+          updateNodeData(doc, nodeId, { pendingTask: undefined, pendingTaskAt: undefined, status: Status.Failed, error: reason }, broadcast);
+        }
+        continue;
+      }
 
       const hasTimelineDsl = innerData.timelineDsl != null;
       const shouldRenderVideo = nodeType === 'video_render' || (nodeType === 'video' && hasTimelineDsl);
@@ -171,7 +245,7 @@ export async function processPendingNodes(
       // Case 0: video_render with timelineDsl → submit render task
       if (shouldRenderVideo && status === Status.Pending) {
         const taskId = crypto.randomUUID();
-        updateNodeData(doc, nodeId, { status: Status.Generating, pendingTask: taskId }, broadcast);
+        updateNodeData(doc, nodeId, { status: Status.Generating, pendingTask: taskId, pendingTaskAt: Date.now() }, broadcast);
         appendNodeLog(doc, nodeId, `task=${taskId.slice(0, 8)} type=video_render`, broadcast);
 
         // Resolve assetId references in timelineDsl using current Loro state
@@ -215,7 +289,7 @@ export async function processPendingNodes(
       if (status === Status.Pending && !src && innerData.actionType?.startsWith('custom:')) {
         const taskId = crypto.randomUUID();
         const actionId = innerData.customActionId ?? innerData.actionType.replace('custom:', '');
-        updateNodeData(doc, nodeId, { status: Status.Generating, pendingTask: taskId }, broadcast);
+        updateNodeData(doc, nodeId, { status: Status.Generating, pendingTask: taskId, pendingTaskAt: Date.now() }, broadcast);
         appendNodeLog(doc, nodeId, `task=${taskId.slice(0, 8)} type=custom action=${actionId}`, broadcast);
 
         // Check runtime from Loro customActions map
@@ -278,7 +352,7 @@ export async function processPendingNodes(
         const tag = { nodeId, taskId, nodeType };
 
         // Set status=generating + pendingTask synchronously (optimistic lock) before any await
-        updateNodeData(doc, nodeId, { status: Status.Generating, pendingTask: taskId }, broadcast);
+        updateNodeData(doc, nodeId, { status: Status.Generating, pendingTask: taskId, pendingTaskAt: Date.now() }, broadcast);
         appendNodeLog(doc, nodeId, `task=${taskId.slice(0, 8)} type=${taskType} model=${(innerData.modelId || innerData.model) ?? 'default'}`, broadcast);
 
         const selectedModelId = (innerData.modelId || innerData.model) ??
@@ -287,6 +361,7 @@ export async function processPendingNodes(
         const referenceImages: string[] = Array.isArray(innerData.referenceImageUrls) ? innerData.referenceImageUrls : [];
         const modelCard = getModelCard(selectedModelId);
         const referenceMode = modelCard?.input.referenceMode || 'single';
+        log.info('Gen task params', { nodeId, model: selectedModelId, referenceImages, referenceMode, prompt: innerData.prompt || innerData.label });
 
         if (nodeType === 'video' && modelCard?.input.referenceImage === 'required') {
           const requiredCount = referenceMode === 'start_end' ? 2 : 1;
@@ -345,7 +420,7 @@ export async function processPendingNodes(
         const tag = { nodeId, taskId, type: 'desc' };
 
         // Set pendingTask synchronously (optimistic lock) before any await
-        updateNodeData(doc, nodeId, { pendingTask: taskId }, broadcast);
+        updateNodeData(doc, nodeId, { pendingTask: taskId, pendingTaskAt: Date.now() }, broadcast);
         log.info("Submitting desc task", tag);
 
         const taskType: GenerationParams['type'] = nodeType === 'image' ? 'image_desc' : 'video_desc';
@@ -403,10 +478,12 @@ async function submitGenTask(
   },
 ): Promise<{ error?: string }> {
   try {
-    // Pass R2 keys directly — workflow will upload to fal CDN internally
+    // Pass R2 keys directly — workflow will upload to fal CDN internally.
+    // Accept both generated (projects/…) and user-uploaded (uploads/…) R2 keys, plus raw URLs.
     const referenceR2Keys = params.referenceImages.filter(ref =>
-      ref.startsWith('projects/') || ref.startsWith('http://') || ref.startsWith('https://')
+      ref.startsWith('projects/') || ref.startsWith('uploads/') || ref.startsWith('http://') || ref.startsWith('https://')
     );
+    log.info('submitGenTask referenceR2Keys', { taskId, input: params.referenceImages, filtered: referenceR2Keys });
 
     // For video: source image R2 key
     const imageR2Key = taskType === 'video_gen' ? params.imageR2Key : undefined;
