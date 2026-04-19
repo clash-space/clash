@@ -56,23 +56,40 @@ function getWorkflowBinding(env: Env): Workflow | undefined {
  * sit in "running" forever locally — for us that's indistinguishable from normal
  * running, so we additionally trust "complete" / "errored" / "terminated".
  */
+/** Hard timeout — miniflare wf.get/status can hang on certain instances and pin the DO loop. */
+const WF_STATUS_TIMEOUT_MS = 1500;
+
 async function inspectWorkflowStatus(
   env: Env,
   taskId: string
 ): Promise<{ status: string; error?: string } | null> {
-  try {
-    const wf = getWorkflowBinding(env);
-    if (!wf) return null;
-    const inst = await wf.get(taskId);
-    const s = await inst.status();
-    return { status: String(s.status ?? ''), error: s.error ? String(s.error) : undefined };
-  } catch (e) {
-    const msg = String(e);
-    // "Instance not found" in miniflare when the instance was never created or was deleted.
-    if (/not\s*found|Error 3001|doesn't exist/i.test(msg)) return { status: 'missing' };
-    log.warn('inspectWorkflowStatus failed', { taskId, error: msg });
+  const wf = getWorkflowBinding(env);
+  if (!wf) return null;
+
+  const probe = (async () => {
+    try {
+      const inst = await wf.get(taskId);
+      const s = await inst.status();
+      return { status: String(s.status ?? ''), error: s.error ? String(s.error) : undefined };
+    } catch (e) {
+      const msg = String(e);
+      if (/not\s*found|Error 3001|doesn't exist/i.test(msg)) return { status: 'missing' };
+      log.warn('inspectWorkflowStatus error', { taskId, error: msg });
+      return null;
+    }
+  })();
+
+  const timeout = new Promise<{ status: string }>((resolve) =>
+    setTimeout(() => resolve({ status: 'timeout' }), WF_STATUS_TIMEOUT_MS),
+  );
+
+  const result = await Promise.race([probe, timeout]);
+  // 'timeout' is treated as 'unknown' upstream — caller should not act on it.
+  if (result && (result as { status: string }).status === 'timeout') {
+    log.warn('inspectWorkflowStatus timed out — treating as unknown', { taskId });
     return null;
   }
+  return result;
 }
 
 /** Convert ArrayBuffer to base64, chunked to avoid stack overflow. */
@@ -186,7 +203,72 @@ function resolveTimelineDslReferences(
 }
 
 /**
+ * Recover orphaned tasks — scan nodes with `pendingTask` and mark Failed any
+ * whose backing workflow is errored / terminated / missing, or whose runtime
+ * has exceeded the per-kind cap (covers miniflare's lost-timer hibernation).
+ *
+ * SLOW PATH: each pending node triggers a workflow status RPC (timeboxed).
+ * Caller must NOT run this from the WebSocket message-processing critical
+ * section — it's reserved for the alarm timer to keep WS handling responsive.
+ * Per-task probes run in parallel so total cost is max-of-N rather than sum.
+ */
+export async function recoverOrphanedTasks(
+  doc: LoroDoc,
+  env: Env,
+  broadcast: (data: Uint8Array) => void,
+): Promise<void> {
+  const nodesMap = doc.getMap('nodes');
+  const candidates: Array<{ nodeId: string; nodeType: NodeType; pendingTask: string; pendingTaskAt?: number; modelId?: string }> = [];
+
+  for (const [nodeId, nodeData] of nodesMap.entries()) {
+    const data = nodeData as Record<string, any>;
+    const nodeType = data?.type as NodeType;
+    if (!['image', 'video', 'audio', 'video_render'].includes(nodeType)) continue;
+    const innerData = data?.data || {};
+    const pendingTask = innerData.pendingTask as string | undefined;
+    if (!pendingTask) continue;
+    candidates.push({
+      nodeId,
+      nodeType,
+      pendingTask,
+      pendingTaskAt: typeof innerData.pendingTaskAt === 'number' ? innerData.pendingTaskAt : undefined,
+      modelId: (innerData.modelId || innerData.model) as string | undefined,
+    });
+  }
+
+  if (candidates.length === 0) return;
+
+  await Promise.allSettled(
+    candidates.map(async ({ nodeId, nodeType, pendingTask, pendingTaskAt, modelId }) => {
+      const info = await inspectWorkflowStatus(env, pendingTask);
+      const age = pendingTaskAt ? Date.now() - pendingTaskAt : undefined;
+      const runningTooLong = info?.status === 'running'
+        && age !== undefined
+        && age > resolveMaxRuntimeMs(nodeType, modelId);
+
+      if (info && ['errored', 'terminated', 'missing'].includes(info.status)) {
+        const reason = `orphan task: workflow status=${info.status}${info.error ? ` (${info.error})` : ''}`;
+        log.warn('Orphan pendingTask (terminal status), marking node Failed', { nodeId, nodeType, taskId: pendingTask, status: info.status });
+        appendNodeLog(doc, nodeId, `FAILED: ${reason}`, broadcast);
+        updateNodeData(doc, nodeId, { pendingTask: undefined, pendingTaskAt: undefined, status: Status.Failed, error: reason }, broadcast);
+      } else if (runningTooLong) {
+        const ageSec = Math.round((age ?? 0) / 1000);
+        const reason = `orphan task: workflow still "running" after ${ageSec}s (presumed dead — miniflare hot-reload kills in-memory timers)`;
+        log.warn('Orphan pendingTask (running-too-long), marking node Failed', { nodeId, nodeType, taskId: pendingTask, ageSec });
+        appendNodeLog(doc, nodeId, `FAILED: ${reason}`, broadcast);
+        updateNodeData(doc, nodeId, { pendingTask: undefined, pendingTaskAt: undefined, status: Status.Failed, error: reason }, broadcast);
+      }
+    }),
+  );
+}
+
+/**
  * Process pending nodes — submit tasks via Workflow.
+ *
+ * FAST PATH: only handles nodes WITHOUT pendingTask (new submissions).
+ * Nodes already in flight are skipped here; their failures are caught by
+ * `recoverOrphanedTasks` from the alarm timer. This separation keeps the
+ * WebSocket message handler off the slow workflow.status() critical path.
  *
  * Uses `pendingTask` as optimistic lock: set synchronously before any
  * async work so concurrent invocations (via event loop interleaving) skip.
@@ -215,29 +297,9 @@ export async function processPendingNodes(
       const pendingTask = innerData.pendingTask;
       const pendingTaskAt = typeof innerData.pendingTaskAt === 'number' ? innerData.pendingTaskAt : undefined;
 
-      // Optimistic lock — skip if set, unless we can prove it's orphaned.
-      if (pendingTask) {
-        const info = await inspectWorkflowStatus(env, pendingTask);
-        const age = pendingTaskAt ? Date.now() - pendingTaskAt : undefined;
-        const modelId = (innerData.modelId || innerData.model) as string | undefined;
-        const runningTooLong = info?.status === 'running'
-          && age !== undefined
-          && age > resolveMaxRuntimeMs(nodeType, modelId);
-
-        if (info && ['errored', 'terminated', 'missing'].includes(info.status)) {
-          const reason = `orphan task: workflow status=${info.status}${info.error ? ` (${info.error})` : ''}`;
-          log.warn('Orphan pendingTask (terminal status), marking node Failed', { nodeId, nodeType, taskId: pendingTask, status: info.status });
-          appendNodeLog(doc, nodeId, `FAILED: ${reason}`, broadcast);
-          updateNodeData(doc, nodeId, { pendingTask: undefined, pendingTaskAt: undefined, status: Status.Failed, error: reason }, broadcast);
-        } else if (runningTooLong) {
-          const ageSec = Math.round((age ?? 0) / 1000);
-          const reason = `orphan task: workflow still "running" after ${ageSec}s (presumed dead — miniflare hot-reload kills in-memory timers)`;
-          log.warn('Orphan pendingTask (running-too-long), marking node Failed', { nodeId, nodeType, taskId: pendingTask, ageSec });
-          appendNodeLog(doc, nodeId, `FAILED: ${reason}`, broadcast);
-          updateNodeData(doc, nodeId, { pendingTask: undefined, pendingTaskAt: undefined, status: Status.Failed, error: reason }, broadcast);
-        }
-        continue;
-      }
+      // Optimistic lock — skip nodes already in flight. Orphan recovery is the
+      // alarm's job (see recoverOrphanedTasks) so this hot path stays fast.
+      if (pendingTask) continue;
 
       const hasTimelineDsl = innerData.timelineDsl != null;
       const shouldRenderVideo = nodeType === 'video_render' || (nodeType === 'video' && hasTimelineDsl);

@@ -20,7 +20,7 @@ import { LoroDoc } from "loro-crdt";
 import { log } from "../logger";
 import type { Env } from "../config";
 import { loadSnapshot, saveSnapshot } from "../loro/storage";
-import { processPendingNodes } from "../loro/NodeProcessor";
+import { processPendingNodes, recoverOrphanedTasks } from "../loro/NodeProcessor";
 import { pollNodeTasks } from "../loro/TaskPolling";
 import { updateNodeData } from "../loro/NodeUpdater";
 import { authenticateRequest } from "../loro/auth";
@@ -302,7 +302,12 @@ export class ProjectRoom extends DurableObject<Env> {
       const updates = new Uint8Array(message);
       this.messageQueue.push({ sender: ws, data: updates });
       if (!this.isProcessingQueue) {
-        this.processMessageQueue();
+        // Fire-and-forget — but ALWAYS catch so an unhandled rejection can't
+        // leave isProcessingQueue stuck (which would silently grow the queue forever).
+        this.processMessageQueue().catch((err) => {
+          log.error("processMessageQueue rejected:", err);
+          this.isProcessingQueue = false;
+        });
       }
       return;
     }
@@ -636,10 +641,19 @@ export class ProjectRoom extends DurableObject<Env> {
     if (!this.projectId) return;
 
     try {
-      // Submit pending tasks
+      // Submit any new pending tasks (cheap — no workflow status calls).
       await this.guardedProcessPendingNodes();
 
-      // Poll tasks with pendingTask field
+      // Recover orphaned tasks (slow — timeboxed workflow status RPCs).
+      // This is the ONLY place that runs the orphan-recovery scan; the WS
+      // message handler stays off this path so client edits never block on it.
+      await recoverOrphanedTasks(
+        this.doc,
+        this.env,
+        (data: Uint8Array) => this.broadcastBinary(data),
+      );
+
+      // Poll completed tasks → write back to nodes.
       await pollNodeTasks(
         this.doc,
         this.env,
