@@ -711,12 +711,30 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
 
     // Reliable sync handlers
     const onNodesDelete = useCallback((deletedNodes: Node[]) => {
-        {
-            deletedNodes.forEach(node => {
-                loroSync.removeNode(node.id);
-            });
-        }
-    }, [loroSync]);
+        deletedNodes.forEach(node => {
+            loroSync.removeNode(node.id);
+        });
+
+        // Drop project's asset_refs row for any assetId no longer referenced by any surviving node.
+        // Other projects sharing the same asset are unaffected (M:N).
+        const deletedIds = new Set(deletedNodes.map(n => n.id));
+        const survivingAssetIds = new Set(
+            nodes
+                .filter(n => !deletedIds.has(n.id))
+                .map(n => (n.data as Record<string, unknown>)?.assetId as string | undefined)
+                .filter((v): v is string => !!v),
+        );
+        const orphanedAssetIds = new Set(
+            deletedNodes
+                .map(n => (n.data as Record<string, unknown>)?.assetId as string | undefined)
+                .filter((v): v is string => !!v && !survivingAssetIds.has(v)),
+        );
+        orphanedAssetIds.forEach(assetId => {
+            void fetch(`/api/v1/assets/${encodeURIComponent(assetId)}/ref?projectId=${encodeURIComponent(project.id)}`, {
+                method: 'DELETE',
+            }).catch(e => console.warn('[onNodesDelete] removeAssetRef failed', assetId, e));
+        });
+    }, [loroSync, nodes, project.id]);
 
 	    const onNodeDragStop = useCallback((_event: React.MouseEvent, node: Node, _allNodes: Node[]) => {
 	        let patchesToSync: Array<{ id: string; patch: any }> = [];
@@ -1491,6 +1509,31 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
                 const { url, storageKey } = await res.json();
                 const finalSrc = storageKey || url;
 
+                // Register the asset in D1 so it has a stable id usable across nodes/projects.
+                let assetId: string | undefined;
+                try {
+                    const regRes = await fetch('/api/v1/assets', {
+                        method: 'POST',
+                        headers: { 'content-type': 'application/json' },
+                        body: JSON.stringify({
+                            projectId: project.id,
+                            kind: assetType,
+                            srcR2Key: storageKey,
+                            width: mediaWidth,
+                            height: mediaHeight,
+                            durationMs: typeof videoDuration === 'number' ? Math.round(videoDuration * 1000) : undefined,
+                            bytes: file.size,
+                        }),
+                    });
+                    if (regRes.ok) {
+                        ({ id: assetId } = await regRes.json());
+                    } else {
+                        console.warn('[Upload] asset registration failed', regRes.status, await regRes.text());
+                    }
+                } catch (e) {
+                    console.warn('[Upload] asset registration threw', e);
+                }
+
                 setNodes((nds) =>
                     nds.map((node) =>
                         node.id === placeholderId
@@ -1498,6 +1541,7 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
                                 ...node,
                                 data: {
                                     ...node.data,
+                                    ...(assetId ? { assetId } : {}),
                                     src: finalSrc,
                                     storageKey,
                                     status: 'completed',
@@ -1511,6 +1555,7 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
 
                 loroSync.updateNode(placeholderId, {
                     data: {
+                        ...(assetId ? { assetId } : {}),
                         src: finalSrc,
                         storageKey,
                         status: 'completed',

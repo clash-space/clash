@@ -8,6 +8,7 @@ import { useOptionalLoroSyncContext } from '../LoroSyncContext';
 import { normalizeStatus, isActiveStatus, type AssetStatus } from '../../../lib/assetStatus';
 import { SignedImg } from '../SignedMedia';
 import { useSignedUrl } from '../../../lib/hooks/useSignedUrl';
+import { useAsset, invalidateAsset } from '../../../lib/hooks/useAsset';
 import { thumbnailCache } from '../../../lib/utils/thumbnailCache';
 import {
     calculateDimensionsFromAspectRatio,
@@ -23,11 +24,17 @@ const VideoNode = ({ data, selected, id }: NodeProps<Node<Record<string, any>>>)
     const nodes = useNodes();
     const loroSync = useOptionalLoroSyncContext();
     const [status, setStatus] = useState<AssetStatus>(normalizeStatus(data.status) || (data.src ? 'completed' : 'generating'));
-    const [videoUrl, setVideoUrl] = useState<string | undefined>(data.src);
+    const nodeAssetId = data.assetId as string | undefined;
+    const asset = useAsset(nodeAssetId);
+    // Prefer R2 key from assets table; fall back to legacy data.src for nodes uploaded before
+    // the assets table existed (or while the registration round-trip is in flight).
+    const videoR2Key = asset?.srcR2Key ?? (data.src as string | undefined);
+    const [videoUrl, setVideoUrl] = useState<string | undefined>(videoR2Key);
     const [description, setDescription] = useState(data.description || '');
     const [localThumbnail, setLocalThumbnail] = useState<string | null>(thumbnailCache.get(videoUrl));
     const signedVideoUrl = useSignedUrl(videoUrl);
-    const posterUrl = useSignedUrl(data.referenceImageUrls?.[0]);
+    // Poster: prefer asset's persisted cover; fall back to first reference image used at gen time.
+    const posterUrl = useSignedUrl(asset?.coverR2Key ?? data.referenceImageUrls?.[0]);
     const [isVideoReady, setIsVideoReady] = useState(false);
     const videoRef = useRef<HTMLVideoElement | null>(null);
     const lastReadyUrlRef = useRef<string | undefined>(undefined);
@@ -89,15 +96,15 @@ const VideoNode = ({ data, selected, id }: NodeProps<Node<Record<string, any>>>)
     }, [videoUrl]);
     const [showDescription, setShowDescription] = useState(false);
 
-    // Sync status and videoUrl from Loro data changes
+    // Sync status and videoUrl from Loro data changes (resolved via assetId when present).
     useEffect(() => {
         setStatus((prev: AssetStatus) => {
             const next = normalizeStatus(data.status);
             return next !== prev ? next : prev;
         });
-        setVideoUrl((prev: string | undefined) => (data.src !== prev ? data.src : prev));
+        setVideoUrl((prev: string | undefined) => (videoR2Key !== prev ? videoR2Key : prev));
         setDescription((prev: string) => ((data.description || '') !== prev ? (data.description || '') : prev));
-    }, [data.status, data.src, data.description]);
+    }, [data.status, videoR2Key, data.description]);
 
     useEffect(() => {
         if (!videoUrl) {
@@ -161,9 +168,45 @@ const VideoNode = ({ data, selected, id }: NodeProps<Node<Record<string, any>>>)
             if (!existingThumbnail && avgBrightness > 20) {
                 thumbnailCache.set(url, thumbnail);
                 setLocalThumbnail(thumbnail);
+
+                // Persist as the asset's cover (one-shot, fire-and-forget).
+                // Skip if the asset already has one — server is the source of truth.
+                // NB: `data` here shadows the component prop with imageData.data — read assetId via the captured `nodeAssetId`.
+                if (nodeAssetId && !asset?.coverR2Key) {
+                    persistCover(canvas, nodeAssetId).catch((e) =>
+                        console.warn('[VideoNode] cover persist failed', e),
+                    );
+                }
             }
         } catch (err) {
             console.warn('[VideoNode] Thumbnail capture failed:', err);
+        }
+    };
+
+    /** Upload the captured cover blob to R2, PATCH the asset row, and mirror onto the node
+     *  so mention chips / other surfaces can read it without an async asset round-trip. */
+    const persistCover = async (canvas: HTMLCanvasElement, assetId: string): Promise<void> => {
+        const blob: Blob | null = await new Promise((res) => canvas.toBlob(res, 'image/jpeg', 0.85));
+        if (!blob) return;
+        const file = new File([blob], `cover-${assetId}.jpg`, { type: 'image/jpeg' });
+        const form = new FormData();
+        form.append('file', file);
+        form.append('type', 'cover');
+        const upRes = await fetch('/upload', { method: 'POST', body: form });
+        if (!upRes.ok) throw new Error(`cover upload ${upRes.status}`);
+        const { storageKey } = (await upRes.json()) as { storageKey: string };
+        const patchRes = await fetch(`/api/v1/assets/${encodeURIComponent(assetId)}/cover`, {
+            method: 'PATCH',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ coverR2Key: storageKey }),
+        });
+        if (!patchRes.ok) throw new Error(`cover patch ${patchRes.status}`);
+        invalidateAsset(assetId);
+
+        // Mirror onto Loro so denormalized readers (mention chip, etc.) see it immediately.
+        setNodes((nds) => nds.map((n) => (n.id === id ? { ...n, data: { ...n.data, coverUrl: storageKey } } : n)));
+        if (loroSync?.connected) {
+            loroSync.updateNode(id, { data: { coverUrl: storageKey } });
         }
     };
 
@@ -255,7 +298,7 @@ const VideoNode = ({ data, selected, id }: NodeProps<Node<Record<string, any>>>)
                     <div className="relative" style={{ width: '100%', height: '100%' }}>
                         <video
                             ref={videoRef}
-                            src={signedVideoUrl || ''}
+                            src={signedVideoUrl || undefined}
                             poster={!isVideoReady && posterImage ? posterImage : undefined}
                             controls={false}
                             className="block pointer-events-none"
@@ -405,7 +448,7 @@ const VideoNode = ({ data, selected, id }: NodeProps<Node<Record<string, any>>>)
                 ) : status === 'uploading' && videoUrl ? (
                     <div className="relative" style={{ width: '100%', height: '100%' }}>
                         <video
-                            src={signedVideoUrl || ''}
+                            src={signedVideoUrl || undefined}
                             controls={false}
                             className="block pointer-events-none opacity-70"
                             style={{

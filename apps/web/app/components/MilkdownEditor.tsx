@@ -24,7 +24,10 @@ export interface MentionableNode {
     id: string;
     type: string;       // 'image' | 'video' | 'text' | etc.
     label: string;
-    src?: string;        // For image/video: R2 key or URL
+    /** R2 key or URL of an image to render inline as the chip thumbnail.
+     *  For image nodes: the image itself. For video nodes: the persisted cover frame.
+     *  Absent → falls back to a text mention. */
+    thumbnail?: string;
 }
 
 export interface MilkdownEditorHandle {
@@ -230,9 +233,9 @@ function AssetMentionMenu({
                             onMouseDown={(e) => { e.preventDefault(); onSelect(node); }}
                             onMouseEnter={() => setSelectedIndex(i)}
                         >
-                            {node.type === 'image' && node.src ? (
+                            {node.thumbnail ? (
                                 <SignedImg
-                                    src={node.src}
+                                    src={node.thumbnail}
                                     alt=""
                                     className="w-6 h-6 rounded object-cover border border-slate-200 flex-shrink-0"
                                 />
@@ -387,11 +390,12 @@ const MilkdownEditorInner = forwardRef<MilkdownEditorHandle, MilkdownEditorProps
         const { from } = state;
         const to = view.state.selection.from;
 
-        // For image nodes with src, insert as inline image (thumbnail)
+        // Inline-image mention path. Uses node.thumbnail (image's own src OR video's cover).
         // The alt encodes mention info: "mention:nodeId:label" for parsing by parsePromptParts.
-        // Signed URL used as src for display only; parsePromptParts extracts nodeId from alt, not src.
-        if (node.src) {
-            const signedUrl = await getSignedUrl(node.src);
+        // Without a thumbnail, falls through to the text mention path — never put an mp4 src
+        // into <img> (renders as broken icon).
+        if (node.thumbnail) {
+            const signedUrl = await getSignedUrl(node.thumbnail);
             const imageType = view.state.schema.nodes.image;
             if (imageType) {
                 const imgNode = imageType.create({

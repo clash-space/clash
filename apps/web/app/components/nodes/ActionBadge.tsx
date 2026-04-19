@@ -226,7 +226,7 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
                 id: nodeId,
                 type: (node?.type as string) || 'image',
                 label: `Image ${i + 1}`,
-                src: resolveRefSrc(node),
+                thumbnail: resolveRefSrc(node),
             };
         });
     }, [refNodeIds, getNodes, resolveRefSrc]);
@@ -242,7 +242,7 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
     const [signedUrlMap, setSignedUrlMap] = useState<Record<string, string>>({});
     useEffect(() => {
         let cancelled = false;
-        const srcs = mentionableNodes.filter((n) => n.src).map((n) => n.src!);
+        const srcs = mentionableNodes.filter((n) => n.thumbnail).map((n) => n.thumbnail!);
         if (srcs.length === 0) return;
         Promise.all(srcs.map(async (src) => {
             const url = await getSignedUrl(src);
@@ -260,7 +260,7 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
         const MENTION_RE = /@\[([^\]]*)\]\(node:([^)]+)\)/g;
         return raw.replace(MENTION_RE, (_match, label, nodeId) => {
             const node = mentionableNodes.find((n) => n.id === nodeId);
-            const src = node?.src;
+            const src = node?.thumbnail;
             const resolvedUrl = src ? signedUrlMap[src] : undefined;
             if (resolvedUrl) {
                 return `<span contenteditable="false" data-mention-id="${nodeId}" title="${label}" style="display:inline-block;vertical-align:middle;margin:0 2px;"><img src="${resolvedUrl}" style="height:20px;width:20px;border-radius:4px;object-fit:cover;display:block;" /></span>`;
@@ -466,12 +466,10 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
     }, [availableModels, syncModelState]);
 
     const updateModelParam = useCallback((paramId: string, value: string | number | boolean) => {
-        setModelParams((prev) => {
-            const next = { ...prev, [paramId]: value };
-            syncModelState(modelId, next);
-            return next;
-        });
-    }, [modelId, syncModelState]);
+        const next = { ...modelParams, [paramId]: value };
+        setModelParams(next);
+        syncModelState(modelId, next);
+    }, [modelId, modelParams, syncModelState]);
 
     // Sync content and label when data changes (from Loro or other sources)
     useEffect(() => {
@@ -1204,24 +1202,62 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
                 className="fixed bottom-0 left-0 right-0 z-[9998] flex justify-center pointer-events-none pb-5 px-4"
             >
                 <div ref={panelRef} className="w-full max-w-2xl flex flex-col items-start">
-                    {/* Connected nodes thumbnails — above the panel */}
-                    {(() => {
-                        const connectedSources = edges.filter(e => e.target === id).map(e => e.source);
-                        const connectedImageNodes = getNodes().filter(n => connectedSources.includes(n.id) && n.data.src);
-                        if (connectedImageNodes.length === 0) return null;
-                        return (
-                            <div className="pointer-events-auto flex gap-1.5 mb-2 px-1">
-                                {connectedImageNodes.map((n) => (
-                                    <SignedImg
-                                        key={n.id}
-                                        src={n.data.src as string}
-                                        alt={(n.data.label as string) || n.id}
-                                        className="h-10 w-10 rounded-lg object-cover border border-slate-200 shadow-sm"
-                                    />
-                                ))}
-                            </div>
-                        );
-                    })()}
+                    {/* Reference images strip above the prompt panel.
+                        Sourced from `refNodeIds` (image-bearing connected nodes, image src or
+                        video cover). Drag to reorder, × to detach. For models declaring
+                        referenceMode='start_end', the first two slots show 首/尾 badges. */}
+                    {refNodeIds.length > 0 && (
+                        <div className="pointer-events-auto mb-2 px-1">
+                            <Reorder.Group
+                                axis="x"
+                                values={refNodeIds}
+                                onReorder={persistRefOrder}
+                                className="flex gap-1.5"
+                                as="div"
+                            >
+                                {refNodeIds.map((nodeId, i) => {
+                                    const node = getNodes().find(n => n.id === nodeId);
+                                    if (!node) return null;
+                                    const thumb = node.type === 'image'
+                                        ? (node.data.src as string | undefined)
+                                        : node.type === 'video'
+                                            ? (node.data.coverUrl as string | undefined)
+                                            : undefined;
+                                    if (!thumb) return null;
+                                    const badge = referenceMode === 'start_end'
+                                        ? (i === 0 ? '首' : i === 1 ? '尾' : `${i + 1}`)
+                                        : `${i + 1}`;
+                                    return (
+                                        <Reorder.Item
+                                            key={nodeId}
+                                            value={nodeId}
+                                            drag={isFrozen ? false : 'x'}
+                                            as="div"
+                                            className="relative group/thumb flex-shrink-0"
+                                            whileDrag={{ scale: 1.08, zIndex: 10 }}
+                                            style={{ cursor: isFrozen ? 'default' : 'grab' }}
+                                        >
+                                            <SignedImg
+                                                src={thumb}
+                                                alt={(node.data.label as string) || nodeId}
+                                                className="h-10 w-10 rounded-lg object-cover border border-slate-200 shadow-sm pointer-events-none"
+                                            />
+                                            <span className="absolute -top-1 -left-1 bg-slate-700 text-white text-[9px] font-bold rounded px-1 min-w-[14px] text-center leading-[14px] pointer-events-none">
+                                                {badge}
+                                            </span>
+                                            {!isFrozen && (
+                                                <button
+                                                    className="absolute -top-1 -right-1 bg-red-400 text-white rounded-full w-4 h-4 hidden group-hover/thumb:flex items-center justify-center text-[11px] leading-none"
+                                                    onPointerDown={e => e.stopPropagation()}
+                                                    onClick={() => removeRefNode(nodeId)}
+                                                >×</button>
+                                            )}
+                                        </Reorder.Item>
+                                    );
+                                })}
+                            </Reorder.Group>
+                        </div>
+                    )}
 
                 <div
                     className="pointer-events-auto w-full rounded-2xl bg-white shadow-2xl border border-slate-200 overflow-visible"
@@ -1262,9 +1298,9 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
                                         }`}
                                         onMouseDown={(e) => { e.preventDefault(); insertMention(node); }}
                                     >
-                                        {node.src ? (
+                                        {node.thumbnail ? (
                                             <SignedImg
-                                                src={node.src}
+                                                src={node.thumbnail}
                                                 alt={node.label}
                                                 className="h-8 w-8 rounded object-cover flex-shrink-0 border border-slate-200"
                                             />

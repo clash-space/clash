@@ -258,16 +258,28 @@ export default function ChatbotCopilot({
     }, [isCollapsed, messages, shouldStickToBottom, scrollToBottom]);
 
     // ─── @-mention nodes for ChatInput ────────────────────────
+    // `thumbnail` decides whether the mention renders as an inline image chip:
+    //   - image nodes  → use their own src (the image)
+    //   - video nodes  → use the persisted cover (set by VideoNode capture pipeline)
+    //   - text / no thumbnail → falls through to a plain text mention
     const mentionableNodes = useMemo(() => {
         if (!nodes) return [];
         return nodes
             .filter((n) => ['image', 'video', 'text'].includes(n.type as string))
-            .map((n) => ({
-                id: n.id,
-                type: n.type as string,
-                label: (n.data.label as string) || n.id,
-                src: n.data.src as string | undefined,
-            }));
+            .map((n) => {
+                const thumbnail =
+                    n.type === 'image'
+                        ? (n.data.src as string | undefined)
+                        : n.type === 'video'
+                            ? (n.data.coverUrl as string | undefined)
+                            : undefined;
+                return {
+                    id: n.id,
+                    type: n.type as string,
+                    label: (n.data.label as string) || n.id,
+                    thumbnail,
+                };
+            });
     }, [nodes]);
 
     // ─── Submit ──────────────────────────────────────────────
@@ -686,6 +698,7 @@ export default function ChatbotCopilot({
                                     onDismissError={() => { setSessionError(null); clearConnectionError(); }}
                                     placeholder={selectedNodes.length > 0 ? 'Ask anything about selected files...' : 'Ask anything...'}
                                     mentionableNodes={mentionableNodes}
+                                    projectId={projectId}
                                 />
                             </div>
                         </motion.div>

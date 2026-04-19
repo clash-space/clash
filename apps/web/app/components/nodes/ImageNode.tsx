@@ -7,6 +7,7 @@ import { useOptionalLoroSyncContext } from '../LoroSyncContext';
 import { normalizeStatus, isActiveStatus, type AssetStatus } from '../../../lib/assetStatus';
 import { SignedImg } from '../SignedMedia';
 import { useSignedUrl } from '../../../lib/hooks/useSignedUrl';
+import { useAsset } from '../../../lib/hooks/useAsset';
 import {
     calculateDimensionsFromAspectRatio,
     calculateScaledDimensions,
@@ -21,7 +22,9 @@ const ImageNode = ({ data, selected, id }: NodeProps<Node<Record<string, any>>>)
     const nodes = useNodes();
     const loroSync = useOptionalLoroSyncContext();
     const [status, setStatus] = useState<AssetStatus>(normalizeStatus(data.status) || (data.src ? 'completed' : 'generating'));
-    const [imageUrl, setImageUrl] = useState<string | undefined>(data.src);
+    const asset = useAsset(data.assetId);
+    const imageR2Key = asset?.srcR2Key ?? (data.src as string | undefined);
+    const [imageUrl, setImageUrl] = useState<string | undefined>(imageR2Key);
     const [description, setDescription] = useState(data.description || '');
     const [showDescription, setShowDescription] = useState(false);
     const signedImageUrl = useSignedUrl(imageUrl);
@@ -54,15 +57,15 @@ const ImageNode = ({ data, selected, id }: NodeProps<Node<Record<string, any>>>)
     const nodeWidth = initialSize.width;
     const nodeHeight = initialSize.height;
 
-    // Sync state with props when they change (e.g. from Loro sync)
+    // Sync state with props when they change (resolved via assetId when present).
     useEffect(() => {
-        setImageUrl((prev: string | undefined) => (data.src && data.src !== prev ? data.src : prev));
+        setImageUrl((prev: string | undefined) => (imageR2Key && imageR2Key !== prev ? imageR2Key : prev));
         setStatus((prev: AssetStatus) => {
             const next = normalizeStatus(data.status);
             return next !== prev ? next : prev;
         });
         setDescription((prev: string) => (data.description && data.description !== prev ? data.description : prev));
-    }, [data.src, data.status, data.description]);
+    }, [imageR2Key, data.status, data.description]);
 
     // Loro sync handles state updates - no polling needed
 

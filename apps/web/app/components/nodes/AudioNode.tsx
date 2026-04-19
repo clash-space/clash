@@ -4,6 +4,7 @@ import { Handle, Position, NodeProps, Node } from '@xyflow/react';
 import SourceHandleMenu from './SourceHandleMenu';
 import { Play, Pause, X, SpeakerHigh, SkipBack, SkipForward, Spinner } from '@phosphor-icons/react';
 import { useSignedUrl } from '../../../lib/hooks/useSignedUrl';
+import { useAsset } from '../../../lib/hooks/useAsset';
 import { normalizeStatus, isActiveStatus, type AssetStatus } from '../../../lib/assetStatus';
 
 const AudioNode = ({ data, selected, id }: NodeProps<Node<Record<string, any>>>) => {
@@ -11,8 +12,10 @@ const AudioNode = ({ data, selected, id }: NodeProps<Node<Record<string, any>>>)
     const [isPlaying, setIsPlaying] = useState(false);
     const [progress, setProgress] = useState(0);
     const [duration, setDuration] = useState(0);
-    const [status, setStatus] = useState<AssetStatus>(normalizeStatus(data.status) || (data.src ? 'completed' : 'generating'));
-    const [audioUrl, setAudioUrl] = useState<string | undefined>(data.src);
+    const asset = useAsset(data.assetId);
+    const audioR2Key = asset?.srcR2Key ?? (data.src as string | undefined);
+    const [status, setStatus] = useState<AssetStatus>(normalizeStatus(data.status) || (audioR2Key ? 'completed' : 'generating'));
+    const [audioUrl, setAudioUrl] = useState<string | undefined>(audioR2Key);
     const audioRef = useRef<HTMLAudioElement>(null);
     const signedAudioUrl = useSignedUrl(audioUrl);
 
@@ -21,14 +24,14 @@ const AudioNode = ({ data, selected, id }: NodeProps<Node<Record<string, any>>>)
         return Array.from({ length: 64 }, () => Math.floor(Math.random() * 70) + 30);
     }, []);
 
-    // Sync status and audioUrl from Loro data changes
+    // Sync status and audioUrl from Loro data changes (resolved via assetId when present).
     useEffect(() => {
         setStatus((prev: AssetStatus) => {
             const next = normalizeStatus(data.status);
             return next !== prev ? next : prev;
         });
-        setAudioUrl((prev: string | undefined) => (data.src !== prev ? data.src : prev));
-    }, [data.status, data.src]);
+        setAudioUrl((prev: string | undefined) => (audioR2Key !== prev ? audioR2Key : prev));
+    }, [data.status, audioR2Key]);
 
     useEffect(() => {
         const audio = audioRef.current;
@@ -224,7 +227,7 @@ const AudioNode = ({ data, selected, id }: NodeProps<Node<Record<string, any>>>)
                     </div>
 
                     {/* Hidden Audio Element - kept in DOM for persistence */}
-                    {audioUrl && <audio ref={audioRef} src={signedAudioUrl || ''} />}
+                    {audioUrl && <audio ref={audioRef} src={signedAudioUrl || undefined} />}
                 </div>
 
                 <SourceHandleMenu nodeId={id} />

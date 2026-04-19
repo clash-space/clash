@@ -44,6 +44,8 @@ interface ChatInputProps {
     mentionableNodes?: MentionableNode[];
     connectedNodeIds?: string[];
     onMentionAdded?: (nodeId: string) => void;
+    /** When present, chat attachments also get registered in the assets table under this project. */
+    projectId?: string;
 }
 
 // ─── Helpers ─────────────────────────────────────────────────
@@ -61,6 +63,77 @@ async function uploadFile(file: File): Promise<{ storageKey: string; url: string
     const res = await fetch('/upload', { method: 'POST', body: form });
     if (!res.ok) throw new Error('Upload failed');
     return res.json();
+}
+
+/** Probe dimensions / duration for an uploaded file so the asset row carries real metadata. */
+async function probeMediaMetadata(
+    file: File,
+    kind: 'image' | 'video' | 'audio',
+): Promise<{ width?: number; height?: number; durationMs?: number }> {
+    const objectUrl = URL.createObjectURL(file);
+    try {
+        if (kind === 'image') {
+            return await new Promise((resolve) => {
+                const img = new Image();
+                img.onload = () => resolve({ width: img.naturalWidth, height: img.naturalHeight });
+                img.onerror = () => resolve({});
+                img.src = objectUrl;
+            });
+        }
+        if (kind === 'video') {
+            return await new Promise((resolve) => {
+                const video = document.createElement('video');
+                video.preload = 'metadata';
+                video.onloadedmetadata = () =>
+                    resolve({
+                        width: video.videoWidth,
+                        height: video.videoHeight,
+                        durationMs: Math.round((video.duration || 0) * 1000),
+                    });
+                video.onerror = () => resolve({});
+                video.src = objectUrl;
+            });
+        }
+        if (kind === 'audio') {
+            return await new Promise((resolve) => {
+                const audio = document.createElement('audio');
+                audio.preload = 'metadata';
+                audio.onloadedmetadata = () => resolve({ durationMs: Math.round((audio.duration || 0) * 1000) });
+                audio.onerror = () => resolve({});
+                audio.src = objectUrl;
+            });
+        }
+        return {};
+    } finally {
+        URL.revokeObjectURL(objectUrl);
+    }
+}
+
+/** Register the uploaded file as an asset row. Silently no-ops if no project context. */
+async function registerAsset(
+    projectId: string | undefined,
+    storageKey: string,
+    file: File,
+    kind: 'image' | 'video' | 'audio' | 'document',
+): Promise<void> {
+    if (!projectId) return;
+    if (kind === 'document') return; // documents aren't media assets
+    try {
+        const meta = await probeMediaMetadata(file, kind);
+        await fetch('/api/v1/assets', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({
+                projectId,
+                kind,
+                srcR2Key: storageKey,
+                bytes: file.size,
+                ...meta,
+            }),
+        });
+    } catch (e) {
+        console.warn('[ChatInput] asset registration failed', e);
+    }
 }
 
 /** Extract asset keys from markdown images: ![...](/assets/uploads/xxx?sig=...) */
@@ -109,6 +182,7 @@ export function ChatInput({
     mentionableNodes,
     connectedNodeIds,
     onMentionAdded,
+    projectId,
 }: ChatInputProps) {
     const fileInputRef = useRef<HTMLInputElement>(null);
     const editorRef = useRef<MilkdownEditorHandle>(null);
@@ -126,6 +200,8 @@ export function ChatInput({
                 console.log('[ChatInput] uploading:', name);
                 const { storageKey } = await uploadFile(file);
                 console.log('[ChatInput] uploaded:', storageKey);
+                // Register in assets table (best-effort; doesn't block the chat attachment).
+                void registerAsset(projectId, storageKey, file, type);
                 const signedUrl = await getSignedUrl(storageKey);
                 console.log('[ChatInput] signed:', signedUrl.slice(0, 60));
                 const md = type === 'image'
@@ -140,7 +216,7 @@ export function ChatInput({
                 setUploading(n => n - 1);
             }
         });
-    }, []);
+    }, [projectId]);
 
     // ─── Submit ──────────────────────────────────────────────
     const handleFormSubmit = useCallback(() => {
