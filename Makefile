@@ -77,11 +77,11 @@ dev-web: ## Start frontend development server (internal, behind gateway)
 	@echo "$(BLUE)Starting frontend on http://localhost:$(WEB_PORT) (internal)...$(NC)"
 	@cd apps/web && \
 		HTTP_PROXY=$(HTTP_PROXY) HTTPS_PROXY=$(HTTPS_PROXY) NO_PROXY=$(NO_PROXY) \
-		pnpm dev --port $(WEB_PORT)
+		pnpm dev
 
 dev-api-cf: ## Start api-cf development server
 	@echo "$(BLUE)Starting api-cf on http://localhost:$(API_CF_PORT)...$(NC)"
-	@cd apps/api-cf && HTTP_PROXY=$(HTTP_PROXY) HTTPS_PROXY=$(HTTPS_PROXY) NO_PROXY=$(NO_PROXY) pnpm dev --port $(API_CF_PORT)
+	@cd apps/api-cf && HTTP_PROXY=$(HTTP_PROXY) HTTPS_PROXY=$(HTTPS_PROXY) NO_PROXY=$(NO_PROXY) pnpm dev
 
 dev-render: ## Start render server
 	@echo "$(BLUE)Starting render server on http://localhost:$(RENDER_PORT)...$(NC)"
@@ -93,7 +93,7 @@ dev-gateway: ## Start gateway (user-facing entry point)
 		FRONTEND_URL=http://127.0.0.1:$(WEB_PORT) \
 		API_CF_URL=http://127.0.0.1:$(API_CF_PORT) \
 		NO_PROXY="localhost,127.0.0.1,::1,.local" \
-		pnpm dev --port $(GATEWAY_PORT)
+		pnpm dev
 
 #==============================================================================
 # Combined Development
