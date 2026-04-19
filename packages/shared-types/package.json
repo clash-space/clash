@@ -11,6 +11,11 @@
       "types": "./src/index.ts",
       "import": "./src/index.ts",
       "default": "./src/index.ts"
+    },
+    "./assets": {
+      "types": "./src/assets.ts",
+      "import": "./src/assets.ts",
+      "default": "./src/assets.ts"
     }
   },
   "scripts": {

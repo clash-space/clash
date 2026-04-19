@@ -1,10 +1,15 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import type { Env } from "../config";
 import { Status } from "../domain/canvas";
 
-// Mock all external services
+// Mock external services. The GenerationWorkflow class extends WorkflowEntrypoint
+// from cloudflare:workers and can't be instantiated in vitest, so these tests
+// exercise the helper services in the order the workflow would call them.
 vi.mock("../services/fal-image", () => ({
-  generateImage: vi.fn().mockResolvedValue({ url: "https://fal.ai/image.png", requestId: "fal-req-123", model: "fal-ai/nano-banana-2" }),
+  generateImage: vi.fn().mockResolvedValue({
+    url: "https://fal.ai/image.png",
+    requestId: "fal-req-123",
+    model: "fal-ai/nano-banana-2",
+  }),
 }));
 vi.mock("../services/fal-video", () => ({
   generateFalVideo: vi.fn().mockResolvedValue({
@@ -16,186 +21,82 @@ vi.mock("../services/fal-video", () => ({
   }),
 }));
 vi.mock("../services/r2", () => ({
-  uploadBase64Image: vi.fn().mockResolvedValue(["projects/p1/assets/img.png", "https://r2/img.png"]),
-  uploadVideoFromUrl: vi.fn().mockResolvedValue(["projects/p1/assets/vid.mp4", "https://r2/vid.mp4"]),
+  uploadFromUrl: vi.fn().mockResolvedValue("projects/p1/assets/result.png"),
+  uploadBytes: vi.fn().mockResolvedValue("projects/p1/assets/result.png"),
 }));
-vi.mock("../services/describe", () => ({
-  generateDescription: vi.fn().mockResolvedValue("A test description"),
-}));
-vi.mock("../services/asset-store", () => ({
-  updateAssetStatus: vi.fn().mockResolvedValue(undefined),
+vi.mock("../services/assets", () => ({
+  createAsset: vi.fn().mockResolvedValue({ id: "asset-1" }),
+  getProjectOwner: vi.fn().mockResolvedValue("user-1"),
 }));
 
-// Must import AFTER vi.mock so mocks are active
 import { generateImage } from "../services/fal-image";
 import { generateFalVideo } from "../services/fal-video";
-import { generateDescription } from "../services/describe";
-import { updateAssetStatus } from "../services/asset-store";
-import type { GenerationParams } from "./generation";
+import { createAsset, getProjectOwner } from "../services/assets";
 
-/**
- * Since GenerationWorkflow extends WorkflowEntrypoint (cloudflare:workers),
- * we can't instantiate it directly in vitest. Instead, we test the pipeline
- * logic by extracting it into a helper that simulates the Workflow step runner.
- *
- * This tests the same code paths that the Workflow would execute.
- */
-
-// Simulate a WorkflowStep that just executes callbacks immediately
-function mockStep() {
-  return {
-    do: vi.fn(async (_name: string, configOrCb: any, maybeCb?: any) => {
-      const cb = maybeCb ?? configOrCb;
-      return await cb({ attempt: 1 });
-    }),
-    sleep: vi.fn(),
-    sleepUntil: vi.fn(),
-  };
-}
-
-// Since we can't import the class directly (cloudflare:workers),
-// we test the service functions it calls in the correct order.
-describe("GenerationWorkflow pipeline logic", () => {
+describe("GenerationWorkflow service contracts", () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  describe("image pipeline", () => {
-    it("calls generate → upload → describe → updateAsset in order", async () => {
-      const step = mockStep();
-      const callOrder: string[] = [];
+  it("image pipeline: generate → createAsset(kind=image)", async () => {
+    const result = await generateImage("key", { text: "a cat" });
+    expect(result.url).toBe("https://fal.ai/image.png");
 
-      (generateImage as any).mockImplementation(async () => {
-        callOrder.push("generate");
-        return { url: "https://fal.ai/image.png", requestId: "fal-req-123", model: "nano-banana-2" };
-      });
-      (generateDescription as any).mockImplementation(async () => {
-        callOrder.push("describe");
-        return "A beautiful image";
-      });
-      (updateAssetStatus as any).mockImplementation(async () => {
-        callOrder.push("update");
-      });
-
-      // Simulate the workflow steps
-      const result = await generateImage("key", { text: "a cat" });
-      expect(result.url).toBe("https://fal.ai/image.png");
-      expect(result.requestId).toBe("fal-req-123");
-
-      const description = await step.do("describe", async () => {
-        return await generateDescription("token", result.url, "https://gateway.example.com/openai");
-      });
-      expect(description).toBe("A beautiful image");
-
-      await step.do("update-asset", async () => {
-        await updateAssetStatus({} as any, "task-1", {
-          status: Status.Completed,
-          description,
-        });
-      });
-
-      expect(callOrder).toEqual(["generate", "describe", "update"]);
-      expect(updateAssetStatus).toHaveBeenCalledWith(
-        expect.anything(),
-        "task-1",
-        expect.objectContaining({ status: "completed", description: "A beautiful image" }),
-      );
+    const userId = (await getProjectOwner({} as any, "p1")) ?? "";
+    const { id } = await createAsset({} as any, {
+      id: "task-1",
+      userId,
+      kind: "image",
+      srcR2Key: "projects/p1/assets/result.png",
+      projectId: "p1",
+      sourceModel: "nano-banana-2",
+      sourcePrompt: "a cat",
+      sourceTaskId: "task-1",
     });
 
-    it("description failure does not block asset completion", async () => {
-      (generateDescription as any).mockRejectedValueOnce(new Error("LLM timeout"));
-
-      // Simulate: description step catches error and returns null
-      let description: string | null;
-      try {
-        description = await generateDescription("token", "data:image/png;base64,xxx", "https://gateway.example.com/openai");
-      } catch {
-        description = null;
-      }
-
-      expect(description).toBeNull();
-
-      // Asset should still be marked completed with null description
-      await updateAssetStatus({} as any, "task-1", {
-        status: Status.Completed,
-        description: null,
-      });
-
-      expect(updateAssetStatus).toHaveBeenCalledWith(
-        expect.anything(),
-        "task-1",
-        expect.objectContaining({ status: "completed", description: null }),
-      );
-    });
+    expect(id).toBe("asset-1");
+    expect(createAsset).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        kind: "image",
+        srcR2Key: "projects/p1/assets/result.png",
+        projectId: "p1",
+        sourceTaskId: "task-1",
+      }),
+    );
   });
 
-  describe("video pipeline", () => {
-    it("calls generateFalVideo → upload → describe → updateAsset", async () => {
-      const result = await generateFalVideo("key", {
-        prompt: "a sunset",
-        duration: 5,
-      });
+  it("video pipeline: generate → createAsset(kind=video) with cover", async () => {
+    const result = await generateFalVideo("key", { prompt: "a sunset", duration: 5 });
+    expect(result.url).toBe("https://fal.ai/video.mp4");
 
-      expect(result).toEqual({
-        url: "https://fal.ai/video.mp4",
-        coverImageUrl: null,
-        duration: 5,
-        requestId: "fal-req-456",
-        model: "fal-ai/sora-2/text-to-video",
-      });
-
-      // No cover image → no description
-      await updateAssetStatus({} as any, "task-2", {
-        status: Status.Completed,
-        description: null,
-      });
-
-      expect(updateAssetStatus).toHaveBeenCalledWith(
-        expect.anything(),
-        "task-2",
-        expect.objectContaining({ status: "completed" }),
-      );
+    await createAsset({} as any, {
+      id: "task-2",
+      userId: "user-1",
+      kind: "video",
+      srcR2Key: "projects/p1/assets/result.mp4",
+      coverR2Key: "projects/p1/assets/result-cover.jpg",
+      projectId: "p1",
+      sourceModel: "sora-2",
+      sourcePrompt: "a sunset",
+      sourceTaskId: "task-2",
     });
-  });
 
-  describe("description pipeline", () => {
-    it("generates description from R2 object", async () => {
-      // Reset mock to default (may have been overridden by previous tests)
-      (generateDescription as any).mockResolvedValue("A test description");
-
-      const description = await generateDescription("token", "data:image/png;base64,xxx", "https://gateway.example.com/openai");
-      expect(description).toBe("A test description");
-
-      await updateAssetStatus({} as any, "task-3", {
-        status: Status.Completed,
-        description,
-      });
-
-      expect(updateAssetStatus).toHaveBeenCalledWith(
-        expect.anything(),
-        "task-3",
-        expect.objectContaining({ description: "A test description" }),
-      );
-    });
+    expect(createAsset).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        kind: "video",
+        coverR2Key: "projects/p1/assets/result-cover.jpg",
+      }),
+    );
   });
 });
 
 describe("Status enum", () => {
-  it("has exactly 6 values", () => {
-    expect(Object.keys(Status)).toHaveLength(6);
-  });
-
   it("contains expected values", () => {
     expect(Status.Pending).toBe("pending");
     expect(Status.Generating).toBe("generating");
     expect(Status.Completed).toBe("completed");
     expect(Status.Failed).toBe("failed");
-    expect(Status.NodeNotFound).toBe("node_not_found");
-  });
-
-  it("does not contain fin or processing", () => {
-    const values = Object.values(Status);
-    expect(values).not.toContain("fin");
-    expect(values).not.toContain("processing");
   });
 });

@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm"
-import { index, integer, sqliteTable, text } from "drizzle-orm/sqlite-core"
+import { index, integer, primaryKey, sqliteTable, text } from "drizzle-orm/sqlite-core"
 // No foreign keys — see AGENTS.md
 
 /**
@@ -96,6 +96,55 @@ export const installedActions = sqliteTable(
     (table) => ({
         installedActionUserIdx: index("installed_action_userId_idx").on(table.userId),
         installedActionUniqueIdx: index("installed_action_unique_idx").on(table.userId, table.actionId),
+    })
+)
+
+/**
+ * Assets — generated/uploaded media metadata.
+ * Single source of truth per asset. Immutable to user APIs (only system writes).
+ * R2 blobs referenced by `srcR2Key` (and `coverR2Key` for video thumbnails).
+ */
+export const assets = sqliteTable(
+    "assets",
+    {
+        id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+        userId: text("user_id").notNull(),
+        kind: text("kind").notNull(),
+        srcR2Key: text("src_r2_key").notNull(),
+        coverR2Key: text("cover_r2_key"),
+        width: integer("width"),
+        height: integer("height"),
+        durationMs: integer("duration_ms"),
+        bytes: integer("bytes"),
+        sourceModel: text("source_model"),
+        sourcePrompt: text("source_prompt"),
+        sourceTaskId: text("source_task_id"),
+        createdAt: integer("created_at", { mode: "timestamp" }).default(sql`(strftime('%s', 'now'))`),
+        updatedAt: integer("updated_at", { mode: "timestamp" }).default(sql`(strftime('%s', 'now'))`),
+    },
+    (table) => ({
+        assetsUserIdx: index("assets_user_idx").on(table.userId, table.createdAt),
+        assetsTaskIdx: index("assets_task_idx").on(table.sourceTaskId),
+    })
+)
+
+/**
+ * Asset References — M:N junction. One row per (asset, project) pair.
+ * Cross-project import = INSERT here; R2 blob shared via assets.srcR2Key.
+ * Delete a row when its project no longer references the asset; mark-and-sweep
+ * GC reclaims R2 blobs once no asset_refs row points to them.
+ */
+export const assetRefs = sqliteTable(
+    "asset_refs",
+    {
+        assetId: text("asset_id").notNull(),
+        projectId: text("project_id").notNull(),
+        importedAt: integer("imported_at", { mode: "timestamp" }).notNull().default(sql`(strftime('%s', 'now'))`),
+    },
+    (table) => ({
+        pk: primaryKey({ columns: [table.assetId, table.projectId] }),
+        assetRefsProjectIdx: index("asset_refs_project_idx").on(table.projectId),
+        assetRefsAssetIdx: index("asset_refs_asset_idx").on(table.assetId),
     })
 )
 

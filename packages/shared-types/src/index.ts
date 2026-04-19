@@ -138,6 +138,16 @@ export {
 // Collaboration visibility (presence + activity)
 export * from './presence';
 
+// Asset metadata (D1 assets + asset_refs tables)
+export {
+  AssetKindSchema,
+  AssetSchema,
+  AssetRefRowSchema,
+  type AssetKind,
+  type Asset,
+  type AssetRefRow,
+} from './assets';
+
 // Pipeline types
 export {
   AssetStatusSchema,

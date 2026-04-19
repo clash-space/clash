@@ -5,7 +5,7 @@ import { ZodError } from "zod";
 import type { Env } from "../config";
 import { log } from "../logger";
 import { Status } from "../domain/canvas";
-import { getAssetByTaskId, updateAssetStatus, createAsset } from "../services/asset-store";
+import { createAsset, getAssetByTaskId, getProjectOwner } from "../services/assets";
 import { uploadBase64Image } from "../services/r2";
 import type { GenerationParams } from "../agents/generation";
 import {
@@ -81,7 +81,7 @@ function resolveImagesToBase64(
   return { base64Inputs, urlPromises };
 }
 
-/** Submit a generation task to the Workflow. Marks asset failed on error. */
+/** Submit a generation task to the Workflow. Returns error response if create fails. */
 async function submitToWorkflow(
   c: Context<{ Bindings: Env }>,
   taskId: string,
@@ -91,11 +91,9 @@ async function submitToWorkflow(
     await c.env.GENERATION_WORKFLOW.create({ id: taskId, params: genParams });
     return null; // success
   } catch (e) {
+    // Asset row is created inside the workflow on completion; nothing to mark failed here.
+    // The orphan-recovery loop in NodeProcessor catches stuck `pendingTask` via workflow.status().
     log.error("Failed to create workflow instance:", e);
-    await updateAssetStatus(c.env.DB, taskId, {
-      status: Status.Failed,
-      metadata: JSON.stringify({ error: `Workflow creation failed: ${String(e)}` }),
-    });
     return c.json({ error: "Failed to start generation task" }, 500);
   }
 }
@@ -235,21 +233,14 @@ api.get("/api/tasks/:taskId", async (c) => {
     return c.json({ error: "Task not found" }, 404);
   }
 
-  // Parse metadata for cover_url and error
-  let metadataObj: Record<string, unknown> = {};
-  if (asset.metadata) {
-    try { metadataObj = JSON.parse(asset.metadata); } catch {}
-  }
-
   return c.json({
     task_id: taskId,
-    status: asset.status,
-    result_url: asset.url || undefined,
+    status: Status.Completed,
+    asset_id: asset.id,
+    result_url: asset.srcR2Key,
     result_data: {
-      description: asset.description || undefined,
-      cover_url: (metadataObj.cover_url as string) || undefined,
+      cover_url: asset.coverR2Key ?? undefined,
     },
-    error: (metadataObj.error as string) || undefined,
   });
 });
 
@@ -402,20 +393,19 @@ api.post("/api/custom-action/upload", async (c) => {
     httpMetadata: { contentType },
   });
 
-  // Save asset record to D1
-  await createAsset(c.env.DB, {
-    id: nodeId,
-    name: `custom-${nodeId.slice(0, 8)}`,
+  // Save asset record to D1 (custom action upload path).
+  const userId = (await getProjectOwner(c.env.DB, projectId)) ?? "";
+  const kind = (outputType === "video" ? "video" : outputType === "audio" ? "audio" : "image") as "image" | "video" | "audio";
+  const { id: assetId } = await createAsset(c.env.DB, {
+    id: taskId,
+    userId,
+    kind,
+    srcR2Key: key,
     projectId,
-    storageKey: key,
-    url: "",
-    type: outputType,
-    status: Status.Completed,
-    taskId,
-    description: null,
+    sourceTaskId: taskId,
   });
 
-  return c.json({ success: true, storageKey: key });
+  return c.json({ success: true, storageKey: key, assetId });
 });
 
 // ─── POST /api/generate-ids ───────────────────────────────

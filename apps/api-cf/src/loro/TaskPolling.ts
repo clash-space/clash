@@ -9,7 +9,7 @@ import { LoroDoc } from 'loro-crdt';
 import type { Env } from '../config';
 import { log } from '../logger';
 import { updateNodeData, appendNodeLog, clearNodeLog } from './NodeUpdater';
-import { getAssetByTaskId } from '../services/asset-store';
+import { getAssetByTaskId } from '../services/assets';
 import { Status } from '../domain/canvas';
 
 /**
@@ -40,43 +40,21 @@ export async function pollNodeTasks(
       if (taskStatus.status === Status.Completed) {
         const updates: Record<string, any> = {
           pendingTask: undefined,
+          status: Status.Completed,
         };
-
-        if (taskStatus.result_url) {
-          updates.src = taskStatus.result_url;
-          updates.status = Status.Completed;
-
-          if (taskStatus.result_data?.cover_url) {
-            updates.coverUrl = taskStatus.result_data.cover_url;
-          }
-        }
-
-        if (taskStatus.result_data?.description) {
-          updates.description = taskStatus.result_data.description;
-          // Keep status as completed — no more 'fin'
-        }
+        if (taskStatus.assetId) updates.assetId = taskStatus.assetId;
+        if (taskStatus.srcR2Key) updates.src = taskStatus.srcR2Key;
+        if (taskStatus.coverR2Key) updates.coverUrl = taskStatus.coverR2Key;
 
         updateNodeData(doc, nodeId, updates, broadcast);
         clearNodeLog(doc, nodeId, broadcast);
       } else if (taskStatus.status === Status.Failed) {
         appendNodeLog(doc, nodeId, `FAILED: ${taskStatus.error}`, broadcast);
-
-        const currentStatus = innerData.status;
-
-        if (currentStatus === Status.Completed) {
-          // Auxiliary task (description) failed — preserve asset, just clear pendingTask
-          appendNodeLog(doc, nodeId, `desc failed, asset preserved`, broadcast);
-          updateNodeData(doc, nodeId, {
-            pendingTask: undefined,
-            description: innerData.description || 'Description generation failed',
-          }, broadcast);
-        } else {
-          updateNodeData(doc, nodeId, {
-            pendingTask: undefined,
-            status: Status.Failed,
-            error: taskStatus.error,
-          }, broadcast);
-        }
+        updateNodeData(doc, nodeId, {
+          pendingTask: undefined,
+          status: Status.Failed,
+          error: taskStatus.error,
+        }, broadcast);
       } else {
         hasPendingTasks = true;
       }
@@ -89,46 +67,33 @@ export async function pollNodeTasks(
 }
 
 /**
- * Get task status — check D1 first, fall back to Workflow status.
+ * Get task status — check D1 assets table first, fall back to Workflow status.
  *
- * If D1 has no record yet, the Workflow may still be running or may have
- * failed before writing to D1. Check workflow.status() to detect failures.
+ * If D1 has no asset row yet, the workflow may still be running or may have
+ * failed before completing the save-asset step. Check workflow.status() for failure.
  */
 async function getTaskStatusDirect(
   env: Env,
   taskId: string
 ): Promise<{
   status: string;
-  result_url?: string;
-  result_data?: { description?: string; cover_url?: string };
+  assetId?: string;
+  srcR2Key?: string;
+  coverR2Key?: string;
   error?: string;
 }> {
   try {
     const asset = await getAssetByTaskId(env.DB, taskId);
-
     if (asset) {
-      let metadataObj: Record<string, unknown> = {};
-      if (asset.metadata) {
-        try { metadataObj = JSON.parse(asset.metadata); } catch {}
-      }
-
-      // Prefer storageKey (R2 key like "projects/...") over public URL.
-      const resultUrl = asset.storageKey?.startsWith('projects/')
-        ? asset.storageKey
-        : asset.url || undefined;
-
       return {
-        status: asset.status,
-        result_url: resultUrl,
-        result_data: {
-          description: asset.description || undefined,
-          cover_url: (metadataObj.cover_url as string) || undefined,
-        },
-        error: (metadataObj.error as string) || undefined,
+        status: Status.Completed,
+        assetId: asset.id,
+        srcR2Key: asset.srcR2Key,
+        coverR2Key: asset.coverR2Key ?? undefined,
       };
     }
 
-    // No D1 record — check Workflow status to detect failures
+    // No D1 record — check Workflow status to detect failures.
     try {
       const instance = await env.GENERATION_WORKFLOW.get(taskId);
       const wfStatus = await instance.status();
@@ -136,7 +101,7 @@ async function getTaskStatusDirect(
         return { status: Status.Failed, error: wfStatus.error?.message ?? 'Workflow failed' };
       }
     } catch {
-      // Workflow instance not found — task may not have been created yet
+      // Workflow instance not found — task may not have been created yet.
     }
 
     return { status: Status.Pending };

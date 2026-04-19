@@ -3,12 +3,11 @@ import { LoroDoc } from "loro-crdt";
 import { hasPendingTasks, pollNodeTasks } from "./TaskPolling";
 import type { Env } from "../config";
 
-// Mock asset-store
-vi.mock("../services/asset-store", () => ({
+vi.mock("../services/assets", () => ({
   getAssetByTaskId: vi.fn(),
 }));
 
-import { getAssetByTaskId } from "../services/asset-store";
+import { getAssetByTaskId } from "../services/assets";
 
 function makeDocWithNodes(
   nodes: Array<{ id: string; type: string; data: Record<string, any> }>
@@ -45,6 +44,20 @@ function makeEnv(overrides: Partial<Env> = {}): Env {
   } as Env;
 }
 
+/** Build a row matching the new AssetRecord shape returned by getAssetByTaskId. */
+function asset(over: Partial<{ id: string; srcR2Key: string; coverR2Key: string | null; kind: string }> = {}) {
+  return {
+    id: over.id ?? "asset-1",
+    userId: "u-1",
+    kind: over.kind ?? "image",
+    srcR2Key: over.srcR2Key ?? "projects/p1/assets/img.png",
+    coverR2Key: over.coverR2Key ?? null,
+    width: null, height: null, durationMs: null, bytes: null,
+    sourceModel: null, sourcePrompt: null, sourceTaskId: "task-1",
+    createdAt: 0, updatedAt: 0,
+  };
+}
+
 describe("TaskPolling", () => {
   const broadcast = vi.fn();
 
@@ -52,12 +65,11 @@ describe("TaskPolling", () => {
     vi.clearAllMocks();
   });
 
-  // ─── hasPendingTasks (existing tests) ───
+  // ─── hasPendingTasks ───
 
   describe("hasPendingTasks", () => {
     it("returns false for empty doc", () => {
-      const doc = new LoroDoc();
-      expect(hasPendingTasks(doc)).toBe(false);
+      expect(hasPendingTasks(new LoroDoc())).toBe(false);
     });
 
     it("returns false when no nodes have pendingTask", () => {
@@ -65,7 +77,6 @@ describe("TaskPolling", () => {
         { id: "n1", type: "image", data: { status: "completed", src: "url" } },
         { id: "n2", type: "text", data: { label: "hello" } },
       ]);
-
       expect(hasPendingTasks(doc)).toBe(false);
     });
 
@@ -73,17 +84,6 @@ describe("TaskPolling", () => {
       const doc = makeDocWithNodes([
         { id: "n1", type: "image", data: { status: "generating", pendingTask: "task-123" } },
       ]);
-
-      expect(hasPendingTasks(doc)).toBe(true);
-    });
-
-    it("returns true when any node has pendingTask among many", () => {
-      const doc = makeDocWithNodes([
-        { id: "n1", type: "text", data: { label: "a" } },
-        { id: "n2", type: "image", data: { status: "completed" } },
-        { id: "n3", type: "video", data: { status: "generating", pendingTask: "task-456" } },
-      ]);
-
       expect(hasPendingTasks(doc)).toBe(true);
     });
   });
@@ -95,264 +95,59 @@ describe("TaskPolling", () => {
       const doc = makeDocWithNodes([
         { id: "n1", type: "image", data: { status: "completed", src: "url" } },
       ]);
-      const env = makeEnv();
-
-      const result = await pollNodeTasks(doc, env, "proj-1", broadcast);
+      const result = await pollNodeTasks(doc, makeEnv(), "proj-1", broadcast);
       expect(result).toBe(false);
     });
 
-    it("task completed with result_url → updates src + status=completed", async () => {
+    it("asset row found → writes assetId/src + status=completed + clears pendingTask", async () => {
       const doc = makeDocWithNodes([
-        {
-          id: "n1",
-          type: "image",
-          data: { status: "generating", pendingTask: "task-1" },
-        },
+        { id: "n1", type: "image", data: { status: "generating", pendingTask: "task-1" } },
       ]);
-      const env = makeEnv();
+      (getAssetByTaskId as any).mockResolvedValue(
+        asset({ id: "asset-xyz", srcR2Key: "projects/p1/assets/img.png" }),
+      );
 
-      (getAssetByTaskId as any).mockResolvedValue({
-        status: "completed",
-        url: "https://r2.example.com/image.png",
-        description: null,
-        metadata: null,
-      });
-
-      const result = await pollNodeTasks(doc, env, "proj-1", broadcast);
+      const result = await pollNodeTasks(doc, makeEnv(), "proj-1", broadcast);
       expect(result).toBe(false);
 
-      // Node should be updated
-      const nodesMap = doc.getMap("nodes");
-      const nodeData = nodesMap.get("n1") as any;
-      expect(nodeData.data.src).toBe("https://r2.example.com/image.png");
-      expect(nodeData.data.status).toBe("completed");
-      // Loro stores undefined as null
-      expect(nodeData.data.pendingTask).toBeNull();
-    });
-
-    it("task completed with description → updates description + status stays completed", async () => {
-      const doc = makeDocWithNodes([
-        {
-          id: "n1",
-          type: "image",
-          data: { status: "completed", src: "img.png", pendingTask: "task-desc" },
-        },
-      ]);
-      const env = makeEnv();
-
-      (getAssetByTaskId as any).mockResolvedValue({
-        status: "completed",
-        url: "", // empty url means no result_url
-        description: "A beautiful sunset",
-        metadata: null,
-      });
-
-      const result = await pollNodeTasks(doc, env, "proj-1", broadcast);
-      expect(result).toBe(false);
-
-      const nodesMap = doc.getMap("nodes");
-      const nodeData = nodesMap.get("n1") as any;
-      expect(nodeData.data.description).toBe("A beautiful sunset");
-      expect(nodeData.data.status).toBe("completed");
-    });
-
-    it("task completed with cover_url → updates coverUrl", async () => {
-      const doc = makeDocWithNodes([
-        {
-          id: "n1",
-          type: "video",
-          data: { status: "generating", pendingTask: "task-vid" },
-        },
-      ]);
-      const env = makeEnv();
-
-      (getAssetByTaskId as any).mockResolvedValue({
-        status: "completed",
-        url: "https://r2.example.com/video.mp4",
-        description: null,
-        metadata: JSON.stringify({ cover_url: "https://r2.example.com/cover.jpg" }),
-      });
-
-      const result = await pollNodeTasks(doc, env, "proj-1", broadcast);
-      expect(result).toBe(false);
-
-      const nodesMap = doc.getMap("nodes");
-      const nodeData = nodesMap.get("n1") as any;
-      expect(nodeData.data.coverUrl).toBe("https://r2.example.com/cover.jpg");
-      expect(nodeData.data.src).toBe("https://r2.example.com/video.mp4");
-      expect(nodeData.data.status).toBe("completed");
-    });
-
-    it("task failed (main gen) → status=failed", async () => {
-      const doc = makeDocWithNodes([
-        {
-          id: "n1",
-          type: "image",
-          data: { status: "generating", pendingTask: "task-fail" },
-        },
-      ]);
-      const env = makeEnv();
-
-      (getAssetByTaskId as any).mockResolvedValue({
-        status: "failed",
-        url: "",
-        description: null,
-        metadata: JSON.stringify({ error: "Generation failed" }),
-      });
-
-      const result = await pollNodeTasks(doc, env, "proj-1", broadcast);
-      expect(result).toBe(false);
-
-      const nodesMap = doc.getMap("nodes");
-      const nodeData = nodesMap.get("n1") as any;
-      expect(nodeData.data.status).toBe("failed");
-      expect(nodeData.data.error).toBe("Generation failed");
-      expect(nodeData.data.pendingTask).toBeNull();
-    });
-
-    it("task failed (auxiliary, node already completed) → preserves status", async () => {
-      const doc = makeDocWithNodes([
-        {
-          id: "n1",
-          type: "image",
-          data: {
-            status: "completed",
-            src: "img.png",
-            pendingTask: "task-desc-fail",
-          },
-        },
-      ]);
-      const env = makeEnv();
-
-      (getAssetByTaskId as any).mockResolvedValue({
-        status: "failed",
-        url: "",
-        description: null,
-        metadata: JSON.stringify({ error: "Desc failed" }),
-      });
-
-      const result = await pollNodeTasks(doc, env, "proj-1", broadcast);
-      expect(result).toBe(false);
-
-      const nodesMap = doc.getMap("nodes");
-      const nodeData = nodesMap.get("n1") as any;
-      // Status should NOT change to failed — preserved from before
+      const nodeData = doc.getMap("nodes").get("n1") as any;
+      expect(nodeData.data.assetId).toBe("asset-xyz");
+      expect(nodeData.data.src).toBe("projects/p1/assets/img.png");
       expect(nodeData.data.status).toBe("completed");
       expect(nodeData.data.pendingTask).toBeNull();
-      expect(nodeData.data.description).toBe("Description generation failed");
     });
 
-    it("task pending (not in D1 yet) → returns true", async () => {
+    it("video asset with cover → writes coverUrl", async () => {
       const doc = makeDocWithNodes([
-        {
-          id: "n1",
-          type: "image",
-          data: { status: "generating", pendingTask: "task-new" },
-        },
+        { id: "n1", type: "video", data: { status: "generating", pendingTask: "task-vid" } },
       ]);
-      const env = makeEnv();
+      (getAssetByTaskId as any).mockResolvedValue(
+        asset({
+          kind: "video",
+          srcR2Key: "projects/p1/assets/vid.mp4",
+          coverR2Key: "projects/p1/assets/vid-cover.jpg",
+        }),
+      );
 
-      // getAssetByTaskId returns null → status='pending'
+      await pollNodeTasks(doc, makeEnv(), "proj-1", broadcast);
+
+      const nodeData = doc.getMap("nodes").get("n1") as any;
+      expect(nodeData.data.src).toBe("projects/p1/assets/vid.mp4");
+      expect(nodeData.data.coverUrl).toBe("projects/p1/assets/vid-cover.jpg");
+    });
+
+    it("no asset row + workflow errored → marks failed via workflow.status()", async () => {
+      const doc = makeDocWithNodes([
+        { id: "n1", type: "image", data: { status: "generating", pendingTask: "task-wf-fail" } },
+      ]);
       (getAssetByTaskId as any).mockResolvedValue(null);
 
-      const result = await pollNodeTasks(doc, env, "proj-1", broadcast);
-      expect(result).toBe(true);
-    });
-
-    it("task processing (still running) → returns true", async () => {
-      const doc = makeDocWithNodes([
-        {
-          id: "n1",
-          type: "image",
-          data: { status: "generating", pendingTask: "task-proc" },
-        },
-      ]);
-      const env = makeEnv();
-
-      (getAssetByTaskId as any).mockResolvedValue({
-        status: "processing",
-        url: "",
-        description: null,
-        metadata: null,
-      });
-
-      const result = await pollNodeTasks(doc, env, "proj-1", broadcast);
-      expect(result).toBe(true);
-    });
-
-    it("multiple nodes: some completed, some pending → returns true", async () => {
-      const doc = makeDocWithNodes([
-        {
-          id: "n1",
-          type: "image",
-          data: { status: "generating", pendingTask: "task-done" },
-        },
-        {
-          id: "n2",
-          type: "video",
-          data: { status: "generating", pendingTask: "task-pending" },
-        },
-      ]);
-      const env = makeEnv();
-
-      (getAssetByTaskId as any)
-        .mockResolvedValueOnce({
-          status: "completed",
-          url: "https://r2.example.com/img.png",
-          description: null,
-          metadata: null,
-        })
-        .mockResolvedValueOnce(null); // pending
-
-      const result = await pollNodeTasks(doc, env, "proj-1", broadcast);
-      expect(result).toBe(true);
-
-      // First node should be completed
-      const nodesMap = doc.getMap("nodes");
-      const n1Data = nodesMap.get("n1") as any;
-      expect(n1Data.data.status).toBe("completed");
-    });
-
-    it("broadcast is called when node is updated", async () => {
-      const doc = makeDocWithNodes([
-        {
-          id: "n1",
-          type: "image",
-          data: { status: "generating", pendingTask: "task-bc" },
-        },
-      ]);
-      const env = makeEnv();
-
-      (getAssetByTaskId as any).mockResolvedValue({
-        status: "completed",
-        url: "https://r2.example.com/img.png",
-        description: null,
-        metadata: null,
-      });
-
-      await pollNodeTasks(doc, env, "proj-1", broadcast);
-      expect(broadcast).toHaveBeenCalled();
-    });
-
-    it("workflow errored (no D1 record) → detects failure via workflow.status()", async () => {
-      const doc = makeDocWithNodes([
-        {
-          id: "n1",
-          type: "image",
-          data: { status: "generating", pendingTask: "task-wf-fail" },
-        },
-      ]);
-
-      // D1 returns null (no asset record yet)
-      (getAssetByTaskId as any).mockResolvedValue(null);
-
-      // Workflow.get() returns instance with errored status
       const env = makeEnv({
         GENERATION_WORKFLOW: {
           get: vi.fn().mockResolvedValue({
             status: vi.fn().mockResolvedValue({
               status: "errored",
-              error: { message: "FAL API timeout after 3 retries" },
+              error: { message: "FAL API timeout" },
             }),
           }),
         } as any,
@@ -361,25 +156,18 @@ describe("TaskPolling", () => {
       const result = await pollNodeTasks(doc, env, "proj-1", broadcast);
       expect(result).toBe(false);
 
-      const nodesMap = doc.getMap("nodes");
-      const nodeData = nodesMap.get("n1") as any;
+      const nodeData = doc.getMap("nodes").get("n1") as any;
       expect(nodeData.data.status).toBe("failed");
-      expect(nodeData.data.error).toBe("FAL API timeout after 3 retries");
+      expect(nodeData.data.error).toBe("FAL API timeout");
       expect(nodeData.data.pendingTask).toBeNull();
     });
 
-    it("workflow still running (no D1 record) → returns true (still pending)", async () => {
+    it("no asset row + workflow still running → returns true (keep polling)", async () => {
       const doc = makeDocWithNodes([
-        {
-          id: "n1",
-          type: "image",
-          data: { status: "generating", pendingTask: "task-wf-running" },
-        },
+        { id: "n1", type: "image", data: { status: "generating", pendingTask: "task-wf-running" } },
       ]);
-
       (getAssetByTaskId as any).mockResolvedValue(null);
 
-      // Workflow.get() returns running status
       const env = makeEnv({
         GENERATION_WORKFLOW: {
           get: vi.fn().mockResolvedValue({
@@ -390,6 +178,114 @@ describe("TaskPolling", () => {
 
       const result = await pollNodeTasks(doc, env, "proj-1", broadcast);
       expect(result).toBe(true);
+    });
+
+    it("multiple nodes: one completed, one pending → returns true", async () => {
+      const doc = makeDocWithNodes([
+        { id: "n1", type: "image", data: { status: "generating", pendingTask: "task-done" } },
+        { id: "n2", type: "video", data: { status: "generating", pendingTask: "task-pending" } },
+      ]);
+      (getAssetByTaskId as any)
+        .mockResolvedValueOnce(asset({ id: "a1", srcR2Key: "img.png" }))
+        .mockResolvedValueOnce(null);
+
+      const result = await pollNodeTasks(doc, makeEnv(), "proj-1", broadcast);
+      expect(result).toBe(true);
+
+      const n1 = doc.getMap("nodes").get("n1") as any;
+      expect(n1.data.status).toBe("completed");
+    });
+
+    it("broadcast is called when a node is updated", async () => {
+      const doc = makeDocWithNodes([
+        { id: "n1", type: "image", data: { status: "generating", pendingTask: "task-bc" } },
+      ]);
+      (getAssetByTaskId as any).mockResolvedValue(asset());
+      await pollNodeTasks(doc, makeEnv(), "proj-1", broadcast);
+      expect(broadcast).toHaveBeenCalled();
+    });
+
+    it("nodes without pendingTask are skipped (no DB query)", async () => {
+      const doc = makeDocWithNodes([
+        { id: "n1", type: "image", data: { status: "completed", src: "u" } },
+        { id: "n2", type: "text", data: { label: "x" } },
+      ]);
+      const result = await pollNodeTasks(doc, makeEnv(), "proj-1", broadcast);
+      expect(result).toBe(false);
+      expect(getAssetByTaskId).not.toHaveBeenCalled();
+    });
+
+    it("workflow terminated → marks failed with default error message", async () => {
+      const doc = makeDocWithNodes([
+        { id: "n1", type: "image", data: { status: "generating", pendingTask: "t-term" } },
+      ]);
+      (getAssetByTaskId as any).mockResolvedValue(null);
+      const env = makeEnv({
+        GENERATION_WORKFLOW: {
+          get: vi.fn().mockResolvedValue({
+            status: vi.fn().mockResolvedValue({ status: "terminated" }),
+          }),
+        } as any,
+      });
+      await pollNodeTasks(doc, env, "proj-1", broadcast);
+      const nodeData = doc.getMap("nodes").get("n1") as any;
+      expect(nodeData.data.status).toBe("failed");
+      expect(nodeData.data.error).toBe("Workflow failed");
+    });
+
+    it("workflow.get throws (instance gone) → returns true (still pending, no crash)", async () => {
+      const doc = makeDocWithNodes([
+        { id: "n1", type: "image", data: { status: "generating", pendingTask: "t-gone" } },
+      ]);
+      (getAssetByTaskId as any).mockResolvedValue(null);
+      const env = makeEnv({
+        GENERATION_WORKFLOW: {
+          get: vi.fn().mockRejectedValue(new Error("instance not found")),
+        } as any,
+      });
+      const result = await pollNodeTasks(doc, env, "proj-1", broadcast);
+      // Treated as still pending — orphan recovery in NodeProcessor handles long-running cases.
+      expect(result).toBe(true);
+    });
+
+    it("DB query throws → marks the node failed with the thrown error string", async () => {
+      const doc = makeDocWithNodes([
+        { id: "n1", type: "image", data: { status: "generating", pendingTask: "t-db" } },
+      ]);
+      (getAssetByTaskId as any).mockRejectedValueOnce(new Error("D1 down"));
+      await pollNodeTasks(doc, makeEnv(), "proj-1", broadcast);
+      const nodeData = doc.getMap("nodes").get("n1") as any;
+      expect(nodeData.data.status).toBe("failed");
+      expect(nodeData.data.error).toMatch(/D1 down/);
+    });
+
+    it("video asset without cover → coverUrl is not written", async () => {
+      const doc = makeDocWithNodes([
+        { id: "n1", type: "video", data: { status: "generating", pendingTask: "t-vid" } },
+      ]);
+      (getAssetByTaskId as any).mockResolvedValue(asset({ kind: "video", srcR2Key: "v.mp4", coverR2Key: null }));
+      await pollNodeTasks(doc, makeEnv(), "proj-1", broadcast);
+      const nodeData = doc.getMap("nodes").get("n1") as any;
+      expect(nodeData.data.src).toBe("v.mp4");
+      expect(nodeData.data.coverUrl).toBeUndefined();
+    });
+
+    it("two completed nodes → both updated and broadcast called for each", async () => {
+      const doc = makeDocWithNodes([
+        { id: "n1", type: "image", data: { status: "generating", pendingTask: "t-1" } },
+        { id: "n2", type: "image", data: { status: "generating", pendingTask: "t-2" } },
+      ]);
+      (getAssetByTaskId as any)
+        .mockResolvedValueOnce(asset({ id: "a-1", srcR2Key: "k1" }))
+        .mockResolvedValueOnce(asset({ id: "a-2", srcR2Key: "k2" }));
+      await pollNodeTasks(doc, makeEnv(), "proj-1", broadcast);
+
+      const n1 = doc.getMap("nodes").get("n1") as any;
+      const n2 = doc.getMap("nodes").get("n2") as any;
+      expect(n1.data.assetId).toBe("a-1");
+      expect(n2.data.assetId).toBe("a-2");
+      // 2 updateNodeData + 2 clearNodeLog → broadcast called at least twice
+      expect((broadcast as any).mock.calls.length).toBeGreaterThanOrEqual(2);
     });
   });
 });

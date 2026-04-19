@@ -7,7 +7,7 @@ import { generateDescription } from "../services/describe";
 import { resolveImageProvider } from "../services/image-provider";
 import { resolveVideoProvider } from "../services/video-provider";
 import { uploadFromUrl, uploadBytes } from "../services/r2";
-import { createAsset } from "../services/asset-store";
+import { createAsset, getProjectOwner } from "../services/assets";
 import { transcribeAudio } from "../services/asr";
 import { analyzeVisual } from "../services/visual-understanding";
 import { fal } from "@fal-ai/client";
@@ -166,32 +166,30 @@ export class GenerationWorkflow extends WorkflowEntrypoint<Env, GenerationParams
       return key;
     });
 
-    // TODO: description generation temporarily disabled
-    const description = null;
-
-    await step.do("save-asset", {
+    const assetId = await step.do("save-asset", {
       retries: { limit: 3, delay: "2 seconds", backoff: "exponential" },
       timeout: "30 seconds",
     }, async () => {
-      await createAsset(this.env.DB, {
-        id: params.nodeId,
-        name: `image-${params.nodeId.slice(0, 8)}`,
+      const userId = (await getProjectOwner(this.env.DB, params.projectId)) ?? "";
+      const { id } = await createAsset(this.env.DB, {
+        id: params.taskId,                    // deterministic on workflow retry
+        userId,
+        kind: "image",
+        srcR2Key: storageKey,
         projectId: params.projectId,
-        storageKey,
-        url: "",
-        type: "image",
-        status: Status.Completed,
-        taskId: params.taskId,
-        description: description ?? null,
-        metadata: JSON.stringify({ prompt: params.prompt, model: params.modelName }),
+        sourceModel: params.modelName,
+        sourcePrompt: params.prompt,
+        sourceTaskId: params.taskId,
       });
-      log.info("Asset saved to D1", { ...tag, status: "completed" });
+      log.info("Asset saved to D1", { ...tag, assetId: id });
+      return id;
     });
 
     // Notify ProjectRoom immediately (don't wait for polling)
     await this.notifyRoom(params.projectId, params.nodeId, {
       pendingTask: undefined,
       status: Status.Completed,
+      assetId,
       src: storageKey,
       _log: undefined,
     });
@@ -256,34 +254,31 @@ export class GenerationWorkflow extends WorkflowEntrypoint<Env, GenerationParams
       return { storageKey: sk, coverKey };
     });
 
-    // TODO: description generation temporarily disabled
-    const description = null;
-
-    await step.do("save-asset", {
+    const assetId = await step.do("save-asset", {
       retries: { limit: 3, delay: "2 seconds", backoff: "exponential" },
       timeout: "30 seconds",
     }, async () => {
-      const metadata: Record<string, unknown> = { prompt: params.prompt, model: params.videoModel };
-      if (coverKey) metadata.cover_url = coverKey;
-      await createAsset(this.env.DB, {
-        id: params.nodeId,
-        name: `video-${params.nodeId.slice(0, 8)}`,
+      const userId = (await getProjectOwner(this.env.DB, params.projectId)) ?? "";
+      const { id } = await createAsset(this.env.DB, {
+        id: params.taskId,
+        userId,
+        kind: "video",
+        srcR2Key: storageKey,
+        coverR2Key: coverKey,
         projectId: params.projectId,
-        storageKey,
-        url: "",
-        type: "video",
-        status: Status.Completed,
-        taskId: params.taskId,
-        description: description ?? null,
-        metadata: JSON.stringify(metadata),
+        sourceModel: params.videoModel,
+        sourcePrompt: params.prompt,
+        sourceTaskId: params.taskId,
       });
-      log.info("Video asset saved to D1", { ...tag, status: "completed" });
+      log.info("Video asset saved to D1", { ...tag, assetId: id, hasCover: !!coverKey });
+      return id;
     });
 
     // Notify ProjectRoom immediately
     await this.notifyRoom(params.projectId, params.nodeId, {
       pendingTask: undefined,
       status: Status.Completed,
+      assetId,
       src: storageKey,
       ...(coverKey ? { coverUrl: coverKey } : {}),
       _log: undefined,
@@ -334,27 +329,27 @@ export class GenerationWorkflow extends WorkflowEntrypoint<Env, GenerationParams
       return key;
     });
 
-    await step.do("save-asset", {
+    const assetId = await step.do("save-asset", {
       retries: { limit: 3, delay: "2 seconds", backoff: "exponential" },
       timeout: "30 seconds",
     }, async () => {
-      await createAsset(this.env.DB, {
-        id: params.nodeId,
-        name: `render-${params.nodeId.slice(0, 8)}`,
+      const userId = (await getProjectOwner(this.env.DB, params.projectId)) ?? "";
+      const { id } = await createAsset(this.env.DB, {
+        id: params.taskId,
+        userId,
+        kind: "video",
+        srcR2Key: storageKey,
         projectId: params.projectId,
-        storageKey,
-        url: "",
-        type: "video",
-        status: Status.Completed,
-        taskId: params.taskId,
-        description: null,
+        sourceTaskId: params.taskId,
       });
-      log.info("Render asset saved to D1", { ...tag, status: "completed" });
+      log.info("Render asset saved to D1", { ...tag, assetId: id });
+      return id;
     });
 
     await this.notifyRoom(params.projectId, params.nodeId, {
       pendingTask: undefined,
       status: Status.Completed,
+      assetId,
       src: storageKey,
       _log: undefined,
     });
@@ -437,23 +432,25 @@ export class GenerationWorkflow extends WorkflowEntrypoint<Env, GenerationParams
     }
 
     // Step 4: Save asset to D1
+    let assetId: string | undefined;
     if (storageKey) {
-      await step.do("save-asset", {
+      assetId = await step.do("save-asset", {
         retries: { limit: 3, delay: "2 seconds", backoff: "exponential" },
         timeout: "30 seconds",
       }, async () => {
-        await createAsset(this.env.DB, {
-          id: params.nodeId,
-          name: `custom-${params.nodeId.slice(0, 8)}`,
+        const userId = (await getProjectOwner(this.env.DB, params.projectId)) ?? "";
+        const kind = (result.type === "video" ? "video" : result.type === "audio" ? "audio" : "image") as "image" | "video" | "audio";
+        const { id } = await createAsset(this.env.DB, {
+          id: params.taskId,
+          userId,
+          kind,
+          srcR2Key: storageKey!,
           projectId: params.projectId,
-          storageKey: storageKey!,
-          url: "",
-          type: result.type || "image",
-          status: Status.Completed,
-          taskId: params.taskId,
-          description: result.description || null,
-          metadata: JSON.stringify({ actionId: params.customActionId }),
+          sourceModel: params.customActionId,
+          sourcePrompt: params.prompt,
+          sourceTaskId: params.taskId,
         });
+        return id;
       });
     }
 
@@ -461,6 +458,7 @@ export class GenerationWorkflow extends WorkflowEntrypoint<Env, GenerationParams
     await this.notifyRoom(params.projectId, params.nodeId, {
       pendingTask: undefined,
       status: Status.Completed,
+      ...(assetId ? { assetId } : {}),
       src: storageKey || "",
       content: result.content || undefined,
       description: result.description || undefined,

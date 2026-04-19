@@ -312,16 +312,13 @@ describe("Hono routes", () => {
         bind: vi.fn().mockReturnValue({
           first: vi.fn().mockResolvedValue({
             id: "asset-1",
-            name: "image",
-            projectId: "proj-1",
-            storageKey: "key",
-            url: "https://r2.example.com/img.png",
-            type: "image",
-            status: "completed",
-            taskId: "task-123",
-            metadata: null,
-            description: "A cat",
-            createdAt: 1234567890,
+            userId: "user-1",
+            kind: "image",
+            srcR2Key: "projects/proj-1/assets/img.png",
+            coverR2Key: null,
+            width: null, height: null, durationMs: null, bytes: null,
+            sourceModel: null, sourcePrompt: null, sourceTaskId: "task-123",
+            createdAt: 1234567890, updatedAt: 1234567890,
           }),
         }),
       });
@@ -332,8 +329,8 @@ describe("Hono routes", () => {
       const json: any = await res.json();
       expect(json.task_id).toBe("task-123");
       expect(json.status).toBe("completed");
-      expect(json.result_url).toBe("https://r2.example.com/img.png");
-      expect(json.result_data.description).toBe("A cat");
+      expect(json.asset_id).toBe("asset-1");
+      expect(json.result_url).toBe("projects/proj-1/assets/img.png");
     });
 
     it("returns 404 for missing task", async () => {
@@ -345,6 +342,123 @@ describe("Hono routes", () => {
 
       const res = await app.request("/api/tasks/missing", {}, env);
       expect(res.status).toBe(404);
+    });
+
+    it("propagates cover_r2_key into response when present", async () => {
+      (env.DB.prepare as any).mockReturnValue({
+        bind: vi.fn().mockReturnValue({
+          first: vi.fn().mockResolvedValue({
+            id: "asset-vid",
+            userId: "u-1",
+            kind: "video",
+            srcR2Key: "projects/p1/assets/v.mp4",
+            coverR2Key: "projects/p1/assets/v-cover.jpg",
+            width: null, height: null, durationMs: null, bytes: null,
+            sourceModel: null, sourcePrompt: null, sourceTaskId: "t-vid",
+            createdAt: 1, updatedAt: 1,
+          }),
+        }),
+      });
+
+      const res = await app.request("/api/tasks/t-vid", {}, env);
+      expect(res.status).toBe(200);
+      const json: any = await res.json();
+      expect(json.asset_id).toBe("asset-vid");
+      expect(json.result_url).toBe("projects/p1/assets/v.mp4");
+      expect(json.result_data.cover_url).toBe("projects/p1/assets/v-cover.jpg");
+    });
+  });
+
+  // ─── submitToWorkflow failure path ───
+
+  describe("POST /api/tasks/submit error handling", () => {
+    it("returns 500 when workflow.create throws (does NOT write to D1)", async () => {
+      (env.GENERATION_WORKFLOW.create as any).mockRejectedValueOnce(new Error("Workflow service unavailable"));
+      const dbRun = vi.fn().mockResolvedValue({});
+      (env.DB.prepare as any).mockReturnValue({
+        bind: vi.fn().mockReturnValue({ run: dbRun, first: vi.fn().mockResolvedValue(null), all: vi.fn().mockResolvedValue({ results: [] }) }),
+      });
+
+      const res = await app.request(
+        "/api/tasks/submit",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            task_type: "image_gen",
+            project_id: "proj-1",
+            node_id: "node-1",
+            params: { prompt: "x" },
+          }),
+        },
+        env,
+      );
+
+      expect(res.status).toBe(500);
+      // Asset creation only happens inside the workflow; submit-failure must not write D1.
+      expect(dbRun).not.toHaveBeenCalled();
+    });
+  });
+
+  // ─── POST /api/custom-action/upload ───
+
+  describe("POST /api/custom-action/upload", () => {
+    it("rejects when required form fields are missing", async () => {
+      const form = new FormData();
+      form.append("file", new File([new Uint8Array([1, 2, 3])], "x.png", { type: "image/png" }));
+      // missing projectId / taskId / nodeId
+
+      const res = await app.request("/api/custom-action/upload", { method: "POST", body: form }, env);
+      expect(res.status).toBe(400);
+    });
+
+    it("text outputType returns content without R2 upload or DB write", async () => {
+      const r2Put = env.R2_BUCKET.put as any;
+      const dbPrepare = env.DB.prepare as any;
+
+      const form = new FormData();
+      form.append("projectId", "p1");
+      form.append("taskId", "task-1");
+      form.append("nodeId", "node-1");
+      form.append("outputType", "text");
+      form.append("content", "hello world");
+
+      const res = await app.request("/api/custom-action/upload", { method: "POST", body: form }, env);
+      expect(res.status).toBe(200);
+      const json: any = await res.json();
+      expect(json.success).toBe(true);
+      expect(json.content).toBe("hello world");
+      expect(json.storageKey).toBeNull();
+      expect(r2Put).not.toHaveBeenCalled();
+      expect(dbPrepare).not.toHaveBeenCalled();
+    });
+
+    it("image outputType uploads to R2 + writes asset row + returns assetId", async () => {
+      // Project owner lookup returns user-1; subsequent prepare calls run insert.
+      (env.DB.prepare as any).mockImplementation((sql: string) => ({
+        bind: vi.fn().mockReturnValue({
+          run: vi.fn().mockResolvedValue({}),
+          first: vi.fn().mockImplementation(async () => {
+            if (sql.includes("FROM project")) return { ownerId: "user-1" };
+            return null;
+          }),
+        }),
+      }));
+
+      const form = new FormData();
+      form.append("projectId", "p1");
+      form.append("taskId", "task-img");
+      form.append("nodeId", "node-1");
+      form.append("outputType", "image");
+      form.append("file", new File([new Uint8Array([1, 2, 3])], "x.png", { type: "image/png" }));
+
+      const res = await app.request("/api/custom-action/upload", { method: "POST", body: form }, env);
+      expect(res.status).toBe(200);
+      const json: any = await res.json();
+      expect(json.success).toBe(true);
+      expect(json.storageKey).toMatch(/projects\/p1\/custom\/task-img\.png/);
+      expect(json.assetId).toBe("task-img");
+      expect(env.R2_BUCKET.put).toHaveBeenCalled();
     });
   });
 
