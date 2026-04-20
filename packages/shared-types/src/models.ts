@@ -178,7 +178,8 @@ export const ModelInputModeSchema = z.object({
   images: RefSpecSchema.optional(),
   videos: RefSpecSchema.optional(),
   audios: RefSpecSchema.optional(),
-  startEnd: z.object({}).passthrough().optional(),
+  /** First / last frame reference pair. Start frame is required, end frame optional. */
+  startEnd: z.object({}).optional(),
 });
 export type ModelInputMode = z.infer<typeof ModelInputModeSchema>;
 
@@ -253,6 +254,49 @@ export function resolveAspectRatio(
   // Reverse-lookup: provider value → our label
   const option = arParam.options?.find(o => o.value === value);
   return option?.label ?? card.defaultAspectRatio;
+}
+
+/**
+ * Snap raw width/height to the closest aspect-ratio option the given model card
+ * exposes. Returns the provider-facing option `value` (what goes into modelParams)
+ * or null when the card has no aspect-ratio selector or no usable options.
+ *
+ * Used to default a generation node's ratio from its start reference frame —
+ * Kling / Seedance i2v all derive output ratio from the source image, so letting
+ * the UI preselect the nearest match keeps the pending-node placeholder honest.
+ */
+export function snapAspectRatio(
+  modelId: string,
+  width: number,
+  height: number,
+): { paramId: string; value: string | number; canonical: string } | null {
+  if (!width || !height) return null;
+  const card = MODEL_CARDS.find(c => c.id === modelId);
+  if (!card) return null;
+  const paramId = card.aspectRatioParam || 'aspect_ratio';
+  const arParam = card.parameters.find(p => p.id === paramId);
+  if (!arParam?.options?.length) return null;
+
+  const ratio = width / height;
+  let best: { option: (typeof arParam.options)[number]; canonical: string } | null = null;
+  let bestDiff = Infinity;
+  for (const opt of arParam.options) {
+    // Parse canonical ratio from the option's label (preferred) or value.
+    const candidates = [opt.label, typeof opt.value === 'string' ? opt.value : ''];
+    let canonical: string | null = null;
+    for (const s of candidates) {
+      const m = /^(\d+):(\d+)$/.exec(s);
+      if (m) { canonical = `${m[1]}:${m[2]}`; break; }
+    }
+    if (!canonical) continue;
+    const [a, b] = canonical.split(':').map(Number);
+    const diff = Math.abs(Math.log(ratio / (a / b)));
+    if (diff < bestDiff) {
+      bestDiff = diff;
+      best = { option: opt, canonical };
+    }
+  }
+  return best ? { paramId, value: best.option.value, canonical: best.canonical } : null;
 }
 
 export const MODEL_CARDS: ModelCard[] = [
@@ -448,18 +492,16 @@ export const MODEL_CARDS: ModelCard[] = [
     input: { requiresPrompt: true, inputMode: { images: { max: 1 } } },
   },
 
-  // ─── Video: Seedance 2.0 (ByteDance via fal.ai) ────────────
-  // Single card — provider (fal-video) auto-routes between `/text-to-video` and
-  // `/image-to-video` based on whether a reference image is attached.
-  // The `/image-to-video` endpoint also accepts an optional `end_image_url`;
-  // that'll be exposed once the ModelInputMode refactor adds `first_last` UI.
+  // ─── Video: Seedance 2.0 text-to-video ─────────────────────
+  // Pure t2v (separate fal endpoint with separate pricing). Stays split from
+  // the i2v variant so UI/pricing stays honest per card.
   {
-    id: 'seedance-2',
-    name: 'Seedance 2.0',
+    id: 'seedance-2-text',
+    name: 'Seedance 2.0 (Text)',
     provider: 'fal.ai',
     kind: 'video',
     defaultAspectRatio: '16:9',
-    description: 'ByteDance Seedance 2.0 — text-to-video or animate a still image, with optional native audio.',
+    description: 'ByteDance Seedance 2.0 — text-to-video with native audio.',
     parameters: [
       {
         id: 'duration',
@@ -505,7 +547,58 @@ export const MODEL_CARDS: ModelCard[] = [
       resolution: '720p',
       generate_audio: true,
     },
-    input: { requiresPrompt: true, inputMode: { images: { max: 1 } } },
+    input: { requiresPrompt: true, inputMode: {} },
+  },
+
+  // ─── Video: Seedance 2.0 image-to-video ────────────────────
+  // Start frame required, end frame optional — the native shape of
+  // bytedance/seedance-2.0/image-to-video (a single image is just the start
+  // slot; optional end slot constrains the final frame).
+  {
+    id: 'seedance-2-startend',
+    name: 'Seedance 2.0 (Start/End)',
+    provider: 'fal.ai',
+    kind: 'video',
+    defaultAspectRatio: '16:9',
+    description: 'Seedance 2.0 — animate from a start frame, optionally constrained to a target end frame.',
+    parameters: [
+      {
+        id: 'duration',
+        label: 'Duration',
+        type: 'select',
+        options: [
+          { label: 'Auto', value: 'auto' },
+          { label: '4s', value: 4 },
+          { label: '6s', value: 6 },
+          { label: '8s', value: 8 },
+          { label: '10s', value: 10 },
+          { label: '15s', value: 15 },
+        ],
+        defaultValue: 'auto',
+      },
+      {
+        id: 'resolution',
+        label: 'Resolution',
+        type: 'select',
+        options: [
+          { label: '480p', value: '480p' },
+          { label: '720p', value: '720p' },
+        ],
+        defaultValue: '720p',
+      },
+      {
+        id: 'generate_audio',
+        label: 'Native audio',
+        type: 'boolean',
+        defaultValue: true,
+      },
+    ],
+    defaultParams: {
+      duration: 'auto',
+      resolution: '720p',
+      generate_audio: true,
+    },
+    input: { requiresPrompt: true, inputMode: { startEnd: {} } },
   },
 
   // ─── Video: Seedance 2.0 reference-to-video ────────────────

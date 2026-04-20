@@ -57,7 +57,7 @@ export async function generateFalVideo(
     return generateVeo3Video(params);
   }
 
-  if (params.videoModel === 'seedance-2') {
+  if (params.videoModel === 'seedance-2-text' || params.videoModel === 'seedance-2-startend') {
     return generateSeedance2Video(params);
   }
 

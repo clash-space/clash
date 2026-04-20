@@ -3,6 +3,7 @@
 import { usePathname } from 'next/navigation';
 import TopNavigation from './TopNavigation';
 import Background from './Background';
+import { ConfirmDialogProvider } from './ConfirmDialog';
 
 export default function LayoutContent({
   children,
@@ -23,17 +24,17 @@ export default function LayoutContent({
   // If unauthenticated, or on login page, or on fullscreen project page, or explicit landing page
   // Don't show dashboard navigation and background
   if (!isAuthenticated || isLoginPage || isProjectDetailPage || isLandingPage || isSettingsPage || isAuthPage) {
-    return <>{children}</>;
+    return <ConfirmDialogProvider>{children}</ConfirmDialogProvider>;
   }
 
   // 其他页面 (Dashboard/App): 显示TopNavigation和背景
   return (
-    <>
+    <ConfirmDialogProvider>
       <Background />
       <TopNavigation />
       <main className="pt-24 min-h-screen">
         {children}
       </main>
-    </>
+    </ConfirmDialogProvider>
   );
 }

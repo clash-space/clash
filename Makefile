@@ -93,7 +93,8 @@ dev-gateway: ## Start gateway (user-facing entry point)
 		FRONTEND_URL=http://127.0.0.1:$(WEB_PORT) \
 		API_CF_URL=http://127.0.0.1:$(API_CF_PORT) \
 		NO_PROXY="localhost,127.0.0.1,::1,.local" \
-		pnpm dev
+		NODE_OPTIONS="--max-old-space-size=4096" \
+		pnpm dev 2>&1 | tee /tmp/gateway-current.log
 
 #==============================================================================
 # Combined Development

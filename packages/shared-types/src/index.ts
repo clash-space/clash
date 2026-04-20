@@ -99,6 +99,7 @@ export {
   ModelCardSchema,
   MODEL_CARDS,
   resolveAspectRatio,
+  snapAspectRatio,
   type ModelInputMode,
   type ModelInputRule,
   type ModelKind,

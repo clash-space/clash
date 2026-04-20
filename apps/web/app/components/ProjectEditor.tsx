@@ -709,6 +709,33 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
 
     }, [setNodes, loroSync, applyAutoZIndex]);
 
+    // GC-style protection: a canvas asset that's been "consumed" by a frozen
+    // (already-run) ActionBadge can't be silently yanked out from under it.
+    // Block both the upstream node and the edge feeding the action — once the
+    // generation has gone out, the lineage is locked.
+    const onBeforeDelete = useCallback(async ({ nodes: nds, edges: eds }: { nodes: Node[]; edges: Edge[] }) => {
+        const frozenActionIds = new Set<string>();
+        for (const n of nodes) {
+            if (n.type === 'action-badge' && (n.data as Record<string, unknown>)?.hasRun) {
+                frozenActionIds.add(n.id);
+            }
+        }
+        if (frozenActionIds.size === 0) return { nodes: nds, edges: eds };
+
+        const lockedEdgeIds = new Set<string>();
+        const pinnedNodeIds = new Set<string>();
+        for (const e of edges) {
+            if (frozenActionIds.has(e.target)) {
+                lockedEdgeIds.add(e.id);
+                pinnedNodeIds.add(e.source);
+            }
+        }
+
+        const allowedNodes = nds.filter(n => !pinnedNodeIds.has(n.id));
+        const allowedEdges = eds.filter(e => !lockedEdgeIds.has(e.id));
+        return { nodes: allowedNodes, edges: allowedEdges };
+    }, [nodes, edges]);
+
     // Reliable sync handlers
     const onNodesDelete = useCallback((deletedNodes: Node[]) => {
         deletedNodes.forEach(node => {
@@ -838,6 +865,13 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
             if (srcId && tgtId) {
                 const src = nodes.find(n => n.id === srcId);
                 const tgt = nodes.find(n => n.id === tgtId);
+                // GC-style protection: a frozen action-badge has already shipped
+                // its generation — its refs are part of that lineage and can't
+                // be extended after the fact.
+                if (tgt?.type === 'action-badge' && (tgt.data as Record<string, unknown>)?.hasRun) {
+                    console.warn(`[onConnect] rejected: target action-badge is frozen (already run)`);
+                    return;
+                }
                 const tgtIsImageGen = tgt?.type === 'action-badge' && (tgt.data as any)?.actionType === 'image-gen';
                 if (tgtIsImageGen && (src?.type === 'video' || src?.type === 'audio')) {
                     console.warn(`[onConnect] rejected: ${src?.type} cannot feed an image-gen node`);
@@ -889,9 +923,18 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
                 setShowDebugIds(v => !v);
             }
 
-            // Del/Backspace: delete selected edges (ReactFlow's deleteKeyCode isn't firing reliably)
+            // Del/Backspace: delete selected edges (ReactFlow's deleteKeyCode isn't firing reliably).
+            // Honor the same freeze guard as `onBeforeDelete` — edges into a frozen
+            // ActionBadge are part of a shipped lineage and can't be detached.
             if (e.key === 'Delete' || e.key === 'Backspace') {
-                const selectedEdgeIds = edges.filter(ed => ed.selected).map(ed => ed.id);
+                const frozenActionIds = new Set(
+                    nodes
+                        .filter(n => n.type === 'action-badge' && (n.data as Record<string, unknown>)?.hasRun)
+                        .map(n => n.id),
+                );
+                const selectedEdgeIds = edges
+                    .filter(ed => ed.selected && !frozenActionIds.has(ed.target))
+                    .map(ed => ed.id);
                 if (selectedEdgeIds.length > 0) {
                     e.preventDefault();
                     setEdges(eds => eds.filter(ed => !selectedEdgeIds.includes(ed.id)));
@@ -1842,6 +1885,7 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
                                     edges={edges}
                                     onNodesChange={handleNodesChange}
                                     onEdgesChange={handleEdgesChange}
+                                    onBeforeDelete={onBeforeDelete}
                                     onNodesDelete={onNodesDelete}
                                     onNodeDragStop={onNodeDragStop}
                                     onConnect={onConnect}

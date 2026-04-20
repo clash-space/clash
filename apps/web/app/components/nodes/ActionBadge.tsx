@@ -1,4 +1,4 @@
-import { memo, useState, useEffect, useCallback, useMemo, useRef, type KeyboardEvent as ReactKeyboardEvent } from 'react';
+import { memo, useState, useEffect, useCallback, useMemo, useRef, Fragment, type KeyboardEvent as ReactKeyboardEvent } from 'react';
 import { Handle, Position, type Node as RFNode, NodeProps, useReactFlow, useEdges } from '@xyflow/react';
 import { VideoCamera, Image as ImageIcon, CaretDown, X, Play, Spinner, PuzzlePiece, Plus, Lock, Copy } from '@phosphor-icons/react';
 import { motion, AnimatePresence, Reorder } from 'framer-motion';
@@ -9,10 +9,11 @@ import { useLayoutManager } from '@/lib/layout';
 import { generateSemanticId } from '@/lib/utils/semanticId';
 import { SignedImg } from '../SignedMedia';
 import { getSignedUrl } from '../../../lib/hooks/useSignedUrl';
-import { MODEL_CARDS, resolveAspectRatio, validateGenerationInput, parsePromptParts, extractPromptText, buildMention, type ModelCard, type ModelParameter, type CustomActionDefinition } from '@clash/shared-types';
+import { MODEL_CARDS, resolveAspectRatio, snapAspectRatio, validateGenerationInput, parsePromptParts, extractPromptText, buildMention, type ModelCard, type ModelParameter, type CustomActionDefinition } from '@clash/shared-types';
 import { applyLayoutPatchesToLoro, collectLayoutNodePatches } from '../../lib/loroNodeSync';
 import { useCustomActions } from '../../hooks/useCustomActions';
 import MilkdownEditor from '../MilkdownEditor';
+import { useConfirm } from '../ConfirmDialog';
 
 type ModelParams = Record<string, string | number | boolean>;
 
@@ -37,7 +38,10 @@ const extractLabelFromPrompt = (promptText: string, fallback: string): string =>
 };
 
 const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string, any>>>) => {
-    const [showPanel, setShowPanel] = useState(false);
+    // `data.openPanel` is a one-shot handoff from `handleCopy` — a freshly
+    // cloned node mounts with its config panel already open, then clears the
+    // flag in an effect so subsequent loads don't re-open.
+    const [showPanel, setShowPanel] = useState<boolean>(() => !!data.openPanel);
     const [showModal, setShowModal] = useState(false);
     const [showModelDropdown, setShowModelDropdown] = useState(false);
     const [isExecuting, setIsExecuting] = useState(false);
@@ -50,11 +54,16 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
     const [mentionCursor, setMentionCursor] = useState(0);
     const [mentionIndex, setMentionIndex] = useState(0);
 
+    // Canvas-node ref picker (click + to attach). Value is slot target:
+    // 'append' for non-startEnd strip, 'start' | 'end' for startEnd slots.
+    const [refPickerTarget, setRefPickerTarget] = useState<null | 'append' | 'start' | 'end'>(null);
+
     // React Flow hooks
     const { projectId } = useProject();
     const { getNodes, addEdges, setNodes, setEdges } = useReactFlow();
     const loroSync = useOptionalLoroSyncContext();
     const edges = useEdges();
+    const confirm = useConfirm();
     const onNodesMutated = useCallback(
         (prevNodes: RFNode[], nextNodes: RFNode[]) => {
             if (!loroSync?.connected) return;
@@ -152,6 +161,7 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
     const acceptsImageRef = !!inputMode.images || !!inputMode.startEnd;
     const acceptsVideoRef = !!inputMode.videos;
     const acceptsAudioRef = !!inputMode.audios;
+    const acceptsAnyRef = acceptsImageRef || acceptsVideoRef || acceptsAudioRef;
 
     // Resolve a node's ref source if its kind is accepted by the current model.
     // Returns the raw R2 key — renderers use cover for video, placeholder for audio.
@@ -185,35 +195,84 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
         return [...ordered, ...extras];
     }, [attachedNodeIds, data.referenceImageOrder]);
 
-    // If any ref images are attached, hide models that can't consume them.
-    const selectableModels = useMemo(() => {
-        if (refNodeIds.length === 0) return availableModels;
-        return availableModels.filter(card => {
-            const im = card.input.inputMode;
-            return !!im.images || !!im.startEnd;
-        });
-    }, [availableModels, refNodeIds.length]);
-
-    // If the currently selected model no longer accepts refs but refs are attached, auto-switch.
-    useEffect(() => {
-        if (refNodeIds.length === 0) return;
-        const current = availableModels.find(card => card.id === modelId);
-        if (!current) return;
-        const accepts = !!current.input.inputMode.images || !!current.input.inputMode.startEnd;
-        if (accepts) return;
-        const fallback = selectableModels[0];
-        if (!fallback || fallback.id === modelId) return;
-        const nextParams = { ...(fallback.defaultParams ?? {}) } as ModelParams;
-        setModelId(fallback.id);
-        setModelParams(nextParams);
-        setNodes(nds => nds.map(n => n.id === id
-            ? { ...n, data: { ...n.data, modelId: fallback.id, model: fallback.id, modelParams: nextParams } }
-            : n
-        ));
-        if (loroSync?.connected) {
-            loroSync.updateNode(id, { data: { modelId: fallback.id, model: fallback.id, modelParams: nextParams } });
+    // Group attached refs by kind once — used by the model-compat check below.
+    const refKindCounts = useMemo(() => {
+        const byKind: Record<'image' | 'video' | 'audio', number> = { image: 0, video: 0, audio: 0 };
+        for (const nid of refNodeIds) {
+            const n = getNodes().find((x) => x.id === nid);
+            const t = n?.type as 'image' | 'video' | 'audio' | undefined;
+            if (t === 'image' || t === 'video' || t === 'audio') byKind[t] += 1;
         }
-    }, [refNodeIds.length, modelId, availableModels, selectableModels, id, setNodes, loroSync]);
+        return byKind;
+    }, [refNodeIds, getNodes]);
+
+    // Whether `card` can consume the currently attached refs as-is. Used to mark
+    // (not hide) incompatible models in the dropdown — picking one prompts to
+    // clear refs rather than silently dropping them.
+    const isModelCompatibleWithRefs = useCallback((card: ModelCard): boolean => {
+        const im = card.input.inputMode;
+        const acceptsImg = !!im.images || !!im.startEnd;
+        if (refKindCounts.image > 0 && !acceptsImg) return false;
+        if (refKindCounts.video > 0 && !im.videos) return false;
+        if (refKindCounts.audio > 0 && !im.audios) return false;
+        if (im.startEnd && refKindCounts.image > 2) return false;
+        if (im.images && refKindCounts.image > im.images.max) return false;
+        if (im.videos && refKindCounts.video > im.videos.max) return false;
+        if (im.audios && refKindCounts.audio > im.audios.max) return false;
+        return true;
+    }, [refKindCounts]);
+
+    const clearAllRefs = useCallback(() => {
+        const edgeIds = edges.filter(e => e.target === id).map(e => e.id);
+        if (edgeIds.length === 0) return;
+        setEdges(eds => eds.filter(e => !edgeIds.includes(e.id)));
+        if (loroSync?.connected) {
+            edgeIds.forEach(eid => loroSync.removeEdge(eid));
+        }
+    }, [id, edges, setEdges, loroSync]);
+
+    // Read natural dims from an image/video node. Videos store width/height too.
+    const getNodeNaturalDims = useCallback((nodeId?: string): { w: number; h: number } | null => {
+        if (!nodeId) return null;
+        const n = getNodes().find(x => x.id === nodeId);
+        if (!n) return null;
+        const w = Number(n.data?.naturalWidth) || 0;
+        const h = Number(n.data?.naturalHeight) || 0;
+        if (!w || !h) return null;
+        return { w, h };
+    }, [getNodes]);
+
+    // Default the model's aspect_ratio from the start reference whenever it
+    // changes. Kling i2v / Kling 3 / Seedance i2v all derive output ratio from
+    // the source image; pre-selecting the nearest option keeps the pending-node
+    // placeholder honest and gives the user a chance to override before submit.
+    const startRefId = refNodeIds[0];
+    useEffect(() => {
+        const dims = getNodeNaturalDims(startRefId);
+        if (!dims) return;
+        const snap = snapAspectRatio(modelId, dims.w, dims.h);
+        if (!snap) return;
+        const currentValue = modelParams[snap.paramId];
+        if (currentValue === snap.value) return;
+        const next = { ...modelParams, [snap.paramId]: snap.value } as ModelParams;
+        setModelParams(next);
+        syncModelState(modelId, next);
+    // Only re-run when the start ref itself changes (or model switches), not on
+    // every modelParams update — otherwise user overrides would be clobbered.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [startRefId, modelId]);
+
+    // startEnd mismatch warning: flag when start and end frames have different
+    // aspect ratios (fal's Kling 3 / Seedance i2v derive output from start, so a
+    // mismatched end frame commonly produces distorted interpolation).
+    const startEndMismatch = useMemo(() => {
+        if (!isStartEnd) return null;
+        const s = getNodeNaturalDims(refNodeIds[0]);
+        const e = getNodeNaturalDims(refNodeIds[1]);
+        if (!s || !e) return null;
+        // 3% tolerance on log-ratio difference — covers pixel rounding.
+        return Math.abs(Math.log((s.w / s.h) / (e.w / e.h))) > 0.03 ? { s, e } : null;
+    }, [isStartEnd, refNodeIds, getNodeNaturalDims]);
 
     const persistRefOrder = useCallback((next: string[]) => {
         setNodes(nds => nds.map(n => n.id === id ? { ...n, data: { ...n.data, referenceImageOrder: next } } : n));
@@ -238,6 +297,33 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
             edgeIds.forEach(eid => loroSync.removeEdge(eid));
         }
     }, [id, edges, setEdges, loroSync]);
+
+    // Canvas nodes eligible for "+" picker: accepted kind, has src, not already attached.
+    const refPickerCandidates = useMemo(() => {
+        const attached = new Set(refNodeIds);
+        return getNodes().filter(n => {
+            if (attached.has(n.id)) return false;
+            if (n.id === id) return false;
+            const t = n.type;
+            if (t === 'image' && !acceptsImageRef) return false;
+            if (t === 'video' && !acceptsVideoRef) return false;
+            if (t === 'audio' && !acceptsAudioRef) return false;
+            if (t !== 'image' && t !== 'video' && t !== 'audio') return false;
+            return !!resolveRefSrc(n);
+        });
+    }, [refNodeIds, getNodes, id, acceptsImageRef, acceptsVideoRef, acceptsAudioRef, resolveRefSrc]);
+
+    // Attach a picked canvas node into the target slot. For startEnd, pad the
+    // order array so slot 0/1 are stable even when the other slot is empty.
+    const attachRefToSlot = useCallback((sourceNodeId: string, target: 'append' | 'start' | 'end') => {
+        addRefNode(sourceNodeId);
+        if (target === 'append') return;
+        const existing = Array.isArray(data.referenceImageOrder) ? [...(data.referenceImageOrder as string[])] : [...refNodeIds];
+        const slotIdx = target === 'start' ? 0 : 1;
+        while (existing.length <= slotIdx) existing.push('');
+        existing[slotIdx] = sourceNodeId;
+        persistRefOrder(existing.filter(Boolean));
+    }, [addRefNode, data.referenceImageOrder, refNodeIds, persistRefOrder]);
 
     // @ mention: only attached reference images, with positional labels "Image 1", "Image 2"...
     const mentionableNodes = useMemo(() => {
@@ -473,14 +559,25 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
         [id, loroSync, setNodes]
     );
 
-    const handleModelChange = useCallback((nextId: string) => {
+    const handleModelChange = useCallback(async (nextId: string) => {
         const nextModel = MODEL_CARDS.find((card) => card.id === nextId) || availableModels[0];
+        if (nextModel && refNodeIds.length > 0 && !isModelCompatibleWithRefs(nextModel)) {
+            const ok = await confirm({
+                title: `Switch to ${nextModel.name}?`,
+                message: `This model can't use the ${refNodeIds.length} attached reference${refNodeIds.length === 1 ? '' : 's'}. Switching will detach them.`,
+                confirmText: 'Switch & clear',
+                cancelText: 'Keep current',
+                destructive: true,
+            });
+            if (!ok) return;
+            clearAllRefs();
+        }
         const nextParams = { ...(nextModel?.defaultParams ?? {}) } as ModelParams;
         const resolvedId = nextModel?.id ?? nextId;
         setModelId(resolvedId);
         setModelParams(nextParams);
         syncModelState(resolvedId, nextParams);
-    }, [availableModels, syncModelState]);
+    }, [availableModels, refNodeIds.length, isModelCompatibleWithRefs, clearAllRefs, confirm, syncModelState]);
 
     const updateModelParam = useCallback((paramId: string, value: string | number | boolean) => {
         const next = { ...modelParams, [paramId]: value };
@@ -506,6 +603,18 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
             setActionType(incomingType);
         }
     }, [data.actionType, actionType]);
+
+    // Clear the one-shot `openPanel` flag once consumed, so reloading or
+    // re-hydrating from Loro doesn't force the panel open on every mount.
+    useEffect(() => {
+        if (!data.openPanel) return;
+        setNodes((nds) => nds.map((n) => n.id === id ? { ...n, data: { ...n.data, openPanel: undefined } } : n));
+        if (loroSync?.connected) {
+            loroSync.updateNode(id, { data: { openPanel: undefined } });
+        }
+    // Run once on mount if the flag is present; deps intentionally minimal.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
 
     useEffect(() => {
         const incomingModelId = mapLegacyModelId(actionType, data.modelId as string | undefined, data.modelName);
@@ -567,7 +676,10 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
             id: newId,
             type: 'action-badge' as const,
             position: { x: pos.x + 290, y: pos.y },
-            data: { label, content, actionType, modelId, modelParams, referenceImageOrder: refNodeIds },
+            // `openPanel: true` — one-shot flag the mounted ActionBadge consumes
+            // to auto-open its config panel. Clone also re-attaches ref edges,
+            // so the user lands in a ready-to-tweak state.
+            data: { label, content, actionType, modelId, modelParams, referenceImageOrder: refNodeIds, openPanel: true },
         };
         setNodes(nds => [...nds, newNode as any]);
         if (loroSync?.connected) {
@@ -582,6 +694,7 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
             }
         });
         setShowModal(false);
+        setShowPanel(false);
     }, [id, label, content, actionType, modelId, modelParams, refNodeIds, projectId, getNodes, setNodes, addEdges, loroSync]);
 
     const handleLabelChange = (evt: React.ChangeEvent<HTMLInputElement>) => {
@@ -1225,66 +1338,150 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
             >
                 <div ref={panelRef} className="w-full max-w-2xl flex flex-col items-start">
                     {/* Reference images strip above the prompt panel.
-                        Sourced from `refNodeIds` (image-bearing connected nodes, image src or
-                        video cover). Drag to reorder, × to detach. When the model declares
-                        inputMode.startEnd, the first two slots show 首/尾 badges. */}
-                    {refNodeIds.length > 0 && (
-                        <div className="pointer-events-auto mb-2 px-1">
-                            <Reorder.Group
-                                axis="x"
-                                values={refNodeIds}
-                                onReorder={persistRefOrder}
-                                className="flex gap-1.5"
-                                as="div"
-                            >
-                                {refNodeIds.map((nodeId, i) => {
-                                    const node = getNodes().find(n => n.id === nodeId);
-                                    if (!node) return null;
-                                    const thumb = node.type === 'image'
+                        - startEnd models: two labeled Start/End slots joined by ⇌, always visible.
+                        - Other models: Reorder.Group of numbered thumbs (drag to reorder, × to detach). */}
+                    {isStartEnd ? (
+                        <div className="pointer-events-auto mb-2 px-1 relative">
+                            <div className="flex items-center gap-1.5">
+                                {(['start', 'end'] as const).map((slot, slotIdx) => {
+                                    const nodeId = refNodeIds[slotIdx];
+                                    const node = nodeId ? getNodes().find(n => n.id === nodeId) : undefined;
+                                    const thumb = node?.type === 'image'
                                         ? (node.data.src as string | undefined)
-                                        : node.type === 'video'
+                                        : node?.type === 'video'
                                             ? (node.data.coverUrl as string | undefined)
                                             : undefined;
-                                    const isAudio = node.type === 'audio';
-                                    if (!thumb && !isAudio) return null;
-                                    const badge = isStartEnd
-                                        ? (i === 0 ? '首' : i === 1 ? '尾' : `${i + 1}`)
-                                        : `${i + 1}`;
+                                    const badge = slot === 'start' ? 'S' : 'E';
+                                    const fullLabel = slot === 'start' ? 'Start' : 'End';
+
                                     return (
-                                        <Reorder.Item
-                                            key={nodeId}
-                                            value={nodeId}
-                                            drag={isFrozen ? false : 'x'}
-                                            as="div"
-                                            className="relative group/thumb flex-shrink-0"
-                                            whileDrag={{ scale: 1.08, zIndex: 10 }}
-                                            style={{ cursor: isFrozen ? 'default' : 'grab' }}
-                                        >
-                                            {isAudio ? (
-                                                <div className="h-10 w-10 rounded-lg bg-violet-100 border border-slate-200 shadow-sm flex items-center justify-center text-violet-600 text-lg pointer-events-none">
-                                                    ♪
-                                                </div>
-                                            ) : (
-                                                <SignedImg
-                                                    src={thumb!}
-                                                    alt={(node.data.label as string) || nodeId}
-                                                    className="h-10 w-10 rounded-lg object-cover border border-slate-200 shadow-sm pointer-events-none"
-                                                />
+                                        <Fragment key={slot}>
+                                            {slotIdx === 1 && (
+                                                <span className="text-slate-400 text-xs select-none px-0.5" aria-hidden>⇌</span>
                                             )}
-                                            <span className="absolute -top-1 -left-1 bg-slate-700 text-white text-[9px] font-bold rounded px-1 min-w-[14px] text-center leading-[14px] pointer-events-none">
-                                                {badge}
-                                            </span>
-                                            {!isFrozen && (
-                                                <button
-                                                    className="absolute -top-1 -right-1 bg-red-400 text-white rounded-full w-4 h-4 hidden group-hover/thumb:flex items-center justify-center text-[11px] leading-none"
-                                                    onPointerDown={e => e.stopPropagation()}
-                                                    onClick={() => removeRefNode(nodeId)}
-                                                >×</button>
-                                            )}
-                                        </Reorder.Item>
+                                            <div className="relative group/thumb flex-shrink-0">
+                                                {node && thumb ? (
+                                                    <>
+                                                        <SignedImg
+                                                            src={thumb}
+                                                            alt={fullLabel}
+                                                            className="h-10 w-10 rounded-lg object-cover border border-slate-200 shadow-sm"
+                                                        />
+                                                        {!isFrozen && (
+                                                            <button
+                                                                className="absolute -top-1 -right-1 bg-red-400 text-white rounded-full w-4 h-4 hidden group-hover/thumb:flex items-center justify-center text-[11px] leading-none"
+                                                                onPointerDown={e => e.stopPropagation()}
+                                                                onClick={() => removeRefNode(nodeId!)}
+                                                                aria-label={`Clear ${fullLabel} frame`}
+                                                            >×</button>
+                                                        )}
+                                                    </>
+                                                ) : (
+                                                    <button
+                                                        type="button"
+                                                        disabled={isFrozen}
+                                                        onClick={() => setRefPickerTarget(slot)}
+                                                        className="h-10 w-10 rounded-lg border border-dashed border-slate-300 bg-white/60 hover:bg-white hover:border-slate-400 transition-colors flex items-center justify-center text-slate-400 shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                                                        aria-label={`Pick ${fullLabel} frame`}
+                                                    >
+                                                        <Plus size={14} weight="bold" />
+                                                    </button>
+                                                )}
+                                                <span className="absolute -top-1 -left-1 bg-slate-700 text-white text-[9px] font-bold rounded px-1 min-w-[14px] text-center leading-[14px] pointer-events-none">
+                                                    {badge}
+                                                </span>
+                                            </div>
+                                        </Fragment>
                                     );
                                 })}
-                            </Reorder.Group>
+                            </div>
+                            {startEndMismatch && (
+                                <p className="mt-1.5 text-[10px] text-amber-600 leading-tight">
+                                    Start and end frames have different aspect ratios ({formatRatio(startEndMismatch.s.w, startEndMismatch.s.h)} vs {formatRatio(startEndMismatch.e.w, startEndMismatch.e.h)}). Output will likely be distorted — use frames with matching dimensions.
+                                </p>
+                            )}
+                            {refPickerTarget && (
+                                <RefPickerPopover
+                                    candidates={refPickerCandidates}
+                                    onPick={(nid) => { attachRefToSlot(nid, refPickerTarget); setRefPickerTarget(null); }}
+                                    onClose={() => setRefPickerTarget(null)}
+                                />
+                            )}
+                        </div>
+                    ) : acceptsAnyRef && (
+                        <div className="pointer-events-auto mb-2 px-1 relative">
+                            <div className="flex items-center gap-1.5">
+                                <Reorder.Group
+                                    axis="x"
+                                    values={refNodeIds}
+                                    onReorder={persistRefOrder}
+                                    className="flex gap-1.5"
+                                    as="div"
+                                >
+                                    {refNodeIds.map((nodeId, i) => {
+                                        const node = getNodes().find(n => n.id === nodeId);
+                                        if (!node) return null;
+                                        const thumb = node.type === 'image'
+                                            ? (node.data.src as string | undefined)
+                                            : node.type === 'video'
+                                                ? (node.data.coverUrl as string | undefined)
+                                                : undefined;
+                                        const isAudio = node.type === 'audio';
+                                        if (!thumb && !isAudio) return null;
+                                        const badge = `${i + 1}`;
+                                        return (
+                                            <Reorder.Item
+                                                key={nodeId}
+                                                value={nodeId}
+                                                drag={isFrozen ? false : 'x'}
+                                                as="div"
+                                                className="relative group/thumb flex-shrink-0"
+                                                whileDrag={{ scale: 1.08, zIndex: 10 }}
+                                                style={{ cursor: isFrozen ? 'default' : 'grab' }}
+                                            >
+                                                {isAudio ? (
+                                                    <div className="h-10 w-10 rounded-lg bg-violet-100 border border-slate-200 shadow-sm flex items-center justify-center text-violet-600 text-lg pointer-events-none">
+                                                        ♪
+                                                    </div>
+                                                ) : (
+                                                    <SignedImg
+                                                        src={thumb!}
+                                                        alt={(node.data.label as string) || nodeId}
+                                                        className="h-10 w-10 rounded-lg object-cover border border-slate-200 shadow-sm pointer-events-none"
+                                                    />
+                                                )}
+                                                <span className="absolute -top-1 -left-1 bg-slate-700 text-white text-[9px] font-bold rounded px-1 min-w-[14px] text-center leading-[14px] pointer-events-none">
+                                                    {badge}
+                                                </span>
+                                                {!isFrozen && (
+                                                    <button
+                                                        className="absolute -top-1 -right-1 bg-red-400 text-white rounded-full w-4 h-4 hidden group-hover/thumb:flex items-center justify-center text-[11px] leading-none"
+                                                        onPointerDown={e => e.stopPropagation()}
+                                                        onClick={() => removeRefNode(nodeId)}
+                                                    >×</button>
+                                                )}
+                                            </Reorder.Item>
+                                        );
+                                    })}
+                                </Reorder.Group>
+                                {!isFrozen && (
+                                    <button
+                                        type="button"
+                                        onClick={() => setRefPickerTarget('append')}
+                                        className="h-10 w-10 rounded-lg border border-dashed border-slate-300 bg-white/60 hover:bg-white hover:border-slate-400 transition-colors flex items-center justify-center text-slate-500 shadow-sm flex-shrink-0"
+                                        aria-label="Add reference from canvas"
+                                    >
+                                        <Plus size={14} weight="bold" />
+                                    </button>
+                                )}
+                            </div>
+                            {refPickerTarget && (
+                                <RefPickerPopover
+                                    candidates={refPickerCandidates}
+                                    onPick={(nid) => { attachRefToSlot(nid, refPickerTarget); setRefPickerTarget(null); }}
+                                    onClose={() => setRefPickerTarget(null)}
+                                />
+                            )}
                         </div>
                     )}
 
@@ -1292,17 +1489,21 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
                     className="pointer-events-auto w-full rounded-2xl bg-white shadow-2xl border border-slate-200 overflow-visible"
                     onClick={() => { setShowModelDropdown(false); setActiveParamDropdown(null); }}
                 >
-                    {/* Prompt editor with inline @ mention chips */}
+                    {/* Prompt editor with inline @ mention chips.
+                        Frozen (post-run) panels render the prompt read-only —
+                        the lineage of a shipped generation is locked. */}
                     <div className="relative px-4 pt-3 pb-4 nodrag">
                         <div
                             ref={editorRef}
-                            contentEditable
+                            contentEditable={!isFrozen}
                             suppressContentEditableWarning
-                            className="w-full max-h-[40vh] overflow-y-auto text-sm text-gray-900 focus:outline-none leading-relaxed empty:before:content-[attr(data-placeholder)] empty:before:text-gray-400"
-                            style={{ minHeight: '1.5em' }}
+                            className={`w-full max-h-[40vh] overflow-y-auto text-sm focus:outline-none leading-relaxed empty:before:content-[attr(data-placeholder)] empty:before:text-gray-400 ${
+                                isFrozen ? 'text-gray-500 cursor-default select-text' : 'text-gray-900'
+                            }`}
+                            style={{ minHeight: '3em' }}
                             data-placeholder="Describe anything you want to generate... (@ to ref assets)"
-                            onInput={handleEditorInput}
-                            onKeyDown={(e) => {
+                            onInput={isFrozen ? undefined : handleEditorInput}
+                            onKeyDown={isFrozen ? undefined : (e) => {
                                 if (e.key === 'Enter') {
                                     if (showMentionMenu && filteredMentionNodes.length > 0) {
                                         e.preventDefault();
@@ -1358,22 +1559,40 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
                                 <CaretDown size={10} weight="bold" className="text-gray-400" />
                             </button>
                             {showModelDropdown && (
-                                <div className="absolute left-0 bottom-full mb-2 w-[220px] bg-white border border-slate-200 rounded-2xl shadow-xl z-50 max-h-48 overflow-hidden [&:hover]:overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-                                    {selectableModels.map((card) => (
-                                        <div
-                                            key={card.id}
-                                            className={`px-3 py-2 text-xs cursor-pointer transition-colors ${
-                                                card.id === modelId ? 'bg-gray-900 text-white' : 'text-gray-700 hover:bg-gray-50'
-                                            }`}
-                                            onClick={() => {
-                                                handleModelChange(card.id);
-                                                setShowModelDropdown(false);
-                                            }}
-                                        >
-                                            <div className="font-bold leading-tight">{card.name}</div>
-                                            <div className={`text-[10px] ${card.id === modelId ? 'text-gray-300' : 'text-gray-400'}`}>{card.provider}</div>
-                                        </div>
-                                    ))}
+                                <div className="absolute left-0 bottom-full mb-2 w-[240px] bg-white border border-slate-200 rounded-2xl shadow-xl z-50 max-h-48 overflow-hidden [&:hover]:overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                                    {[...availableModels]
+                                        .sort((a, b) => {
+                                            // Compatible first, incompatible after — keeps the "broken" options
+                                            // discoverable without pushing the good choices offscreen.
+                                            const ca = refNodeIds.length === 0 || isModelCompatibleWithRefs(a) ? 0 : 1;
+                                            const cb = refNodeIds.length === 0 || isModelCompatibleWithRefs(b) ? 0 : 1;
+                                            return ca - cb;
+                                        })
+                                        .map((card) => {
+                                        const compat = refNodeIds.length === 0 || isModelCompatibleWithRefs(card);
+                                        const selected = card.id === modelId;
+                                        return (
+                                            <div
+                                                key={card.id}
+                                                className={`px-3 py-2 text-xs cursor-pointer transition-colors ${
+                                                    selected
+                                                        ? 'bg-gray-900 text-white'
+                                                        : compat
+                                                            ? 'text-gray-700 hover:bg-gray-50'
+                                                            : 'text-gray-400 hover:bg-amber-50'
+                                                }`}
+                                                onClick={() => {
+                                                    handleModelChange(card.id);
+                                                    setShowModelDropdown(false);
+                                                }}
+                                            >
+                                                <div className="font-bold leading-tight">{card.name}</div>
+                                                <div className={`text-[10px] ${selected ? 'text-gray-300' : compat ? 'text-gray-400' : 'text-amber-600'}`}>
+                                                    {compat ? card.provider : 'clears current refs'}
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
                                 </div>
                             )}
                         </div>
@@ -1469,7 +1688,8 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
                         {/* Spacer */}
                         <div className="flex-1 min-w-[8px]" />
 
-                        {/* Batch count chip (xN) */}
+                        {/* Batch count chip (xN). Stays interactive even when frozen —
+                            user can bump the count and then Run to spawn more siblings. */}
                         <div className="relative flex-shrink-0">
                             <button
                                 className="flex items-center gap-1 px-2.5 py-1 rounded-full bg-gray-100 hover:bg-gray-200 text-xs font-medium text-gray-700 transition-colors"
@@ -1497,6 +1717,36 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
                                 </div>
                             )}
                         </div>
+
+                        {/* Frozen-only: Run (re-generate with current params) + Copy (clone into a fresh panel). */}
+                        {isFrozen && (
+                            <>
+                                <button
+                                    type="button"
+                                    onClick={(e) => { e.stopPropagation(); handleCopy(); }}
+                                    disabled={isExecuting}
+                                    className="flex items-center gap-1 h-7 px-2.5 rounded-full bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-medium transition-colors flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
+                                    title="Duplicate this panel and open the copy"
+                                >
+                                    <Copy size={12} weight="bold" />
+                                    Copy & open
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={(e) => { e.stopPropagation(); handleExecute(); }}
+                                    disabled={isExecuting}
+                                    className="flex items-center gap-1 px-3 h-7 rounded-full bg-gray-900 hover:bg-black text-white text-xs font-semibold transition-colors flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
+                                    title="Run again with current parameters"
+                                >
+                                    {isExecuting ? (
+                                        <Spinner size={12} weight="bold" className="animate-spin" />
+                                    ) : (
+                                        <Play size={11} weight="fill" />
+                                    )}
+                                    Run
+                                </button>
+                            </>
+                        )}
                     </div>
                 </div>
                 </div>
@@ -1585,6 +1835,93 @@ const MarkdownPreview = ({ content }: { content: string }) => {
                     .replace(/\n/gim, '<br />')
             }}
         />
+    );
+};
+
+// Reduce raw W/H dimensions to a simplest-form "W:H" label via GCD. Works
+// because image/video natural dims are integers, so common ratios collapse
+// cleanly (1920×1080 → 16:9) without any hardcoded table of "known" ratios.
+function formatRatio(w: number, h: number): string {
+    const a = Math.max(1, Math.round(w));
+    const b = Math.max(1, Math.round(h));
+    const gcd = (x: number, y: number): number => y ? gcd(y, x % y) : x;
+    const g = gcd(a, b);
+    return `${a / g}:${b / g}`;
+}
+
+// Popover grid for picking an existing canvas node as a reference.
+// Anchors to the nearest relative parent (the strip container sets `relative`).
+const RefPickerPopover = ({
+    candidates,
+    onPick,
+    onClose,
+}: {
+    candidates: RFNode[];
+    onPick: (nodeId: string) => void;
+    onClose: () => void;
+}) => {
+    const ref = useRef<HTMLDivElement>(null);
+    useEffect(() => {
+        // Capture phase on document so React Flow's pointer handlers can't
+        // stopPropagation before we see the click.
+        const onDown = (e: Event) => {
+            if (ref.current && !ref.current.contains(e.target as Node)) onClose();
+        };
+        const onEsc = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+        document.addEventListener('mousedown', onDown, true);
+        document.addEventListener('pointerdown', onDown, true);
+        document.addEventListener('keydown', onEsc);
+        return () => {
+            document.removeEventListener('mousedown', onDown, true);
+            document.removeEventListener('pointerdown', onDown, true);
+            document.removeEventListener('keydown', onEsc);
+        };
+    }, [onClose]);
+
+    return (
+        <div
+            ref={ref}
+            className="absolute bottom-full left-0 mb-2 z-[9999] w-[320px] rounded-xl bg-white shadow-2xl border border-slate-200 overflow-hidden"
+            onPointerDown={(e) => e.stopPropagation()}
+        >
+            <div className="px-3 py-2 text-[11px] font-semibold text-slate-500 uppercase tracking-wide border-b border-slate-100">
+                Pick a canvas asset
+            </div>
+            {candidates.length === 0 ? (
+                <div className="px-3 py-6 text-xs text-slate-400 text-center">
+                    No eligible canvas nodes available.
+                </div>
+            ) : (
+                <div className="max-h-60 overflow-y-auto p-2 grid grid-cols-4 gap-2">
+                    {candidates.map((n) => {
+                        const thumb = n.type === 'video'
+                            ? (n.data?.coverUrl as string | undefined) ?? (n.data?.src as string | undefined)
+                            : (n.data?.src as string | undefined);
+                        const label = (n.data?.label as string) || n.id;
+                        return (
+                            <button
+                                key={n.id}
+                                type="button"
+                                onClick={() => onPick(n.id)}
+                                className="group relative rounded-lg overflow-hidden border border-slate-200 hover:border-slate-900 hover:shadow-md transition-all"
+                                title={label}
+                            >
+                                {n.type === 'audio' || !thumb ? (
+                                    <div className="h-16 w-full bg-violet-50 flex items-center justify-center text-violet-500 text-xl">
+                                        {n.type === 'audio' ? '♪' : '?'}
+                                    </div>
+                                ) : (
+                                    <SignedImg src={thumb} alt={label} className="h-16 w-full object-cover" />
+                                )}
+                                <div className="absolute bottom-0 inset-x-0 bg-gradient-to-t from-black/70 to-transparent px-1.5 py-1 text-[10px] text-white truncate">
+                                    {label}
+                                </div>
+                            </button>
+                        );
+                    })}
+                </div>
+            )}
+        </div>
     );
 };
 

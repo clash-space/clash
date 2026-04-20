@@ -166,7 +166,16 @@ export function useLoroSync(options: LoroSyncOptions): UseLoroSyncReturn {
   } = options;
 
   const [doc] = useState(() => new LoroDoc());
-  const [undoManager] = useState(() => new UndoManager(doc, {}));
+  // Explicit config per Loro docs:
+  // - mergeInterval 300ms: tight enough that each user action is its own step,
+  //   loose enough that React's batched commits within a single handler merge.
+  // - excludeOriginPrefixes ["sys:"]: commits tagged `sys:<thing>` (internal
+  //   repairs like the parentId sanitizer) are kept OUT of the user undo stack.
+  const [undoManager] = useState(() => new UndoManager(doc, {
+    mergeInterval: 300,
+    maxUndoSteps: 200,
+    excludeOriginPrefixes: ["sys:"],
+  }));
 
   const [canUndo, setCanUndo] = useState(false);
   const [canRedo, setCanRedo] = useState(false);
@@ -183,10 +192,17 @@ export function useLoroSync(options: LoroSyncOptions): UseLoroSyncReturn {
   // Track pending local updates that haven't been acknowledged by server
   
 
-  // Update undo/redo state
+  // Update undo/redo state.
+  //
+  // Loro's `doc.subscribe` fires synchronously during commit, and our listener
+  // may run BEFORE the UndoManager's own internal subscription has pushed the
+  // new op onto its stack. Reading `canUndo()` at that moment returns stale
+  // `false`. Defer one microtask so every subscriber has drained.
   const updateUndoRedoState = useCallback(() => {
-    setCanUndo(undoManager.canUndo());
-    setCanRedo(undoManager.canRedo());
+    queueMicrotask(() => {
+      setCanUndo(undoManager.canUndo());
+      setCanRedo(undoManager.canRedo());
+    });
   }, [undoManager]);
 
   // Helper to read current state from Loro doc
@@ -218,13 +234,15 @@ export function useLoroSync(options: LoroSyncOptions): UseLoroSyncReturn {
       }
     }
 
-    // Permanently fix invalid parentIds in Loro doc (deferred to avoid triggering loops)
+    // Permanently fix invalid parentIds in Loro doc (deferred to avoid triggering loops).
+    // Tagged `sys:parent-fix` so the UndoManager's excludeOriginPrefixes keeps it
+    // out of the user's undo stack — repairs aren't something the user asked for.
     if (nodesToFix.length > 0) {
       queueMicrotask(() => {
         for (const { key, cleanedData } of nodesToFix) {
           nodesMap.set(key, cleanedData);
         }
-        doc.commit();
+        doc.commit({ origin: "sys:parent-fix" });
       });
     }
 
@@ -494,7 +512,8 @@ export function useLoroSync(options: LoroSyncOptions): UseLoroSyncReturn {
     const nodesMap = doc.getMap('nodes');
     nodesMap.set(nodeId, nodeData);
     doc.commit(); // Commit to trigger subscribeLocalUpdate
-  }, [doc]);
+    updateUndoRedoState();
+  }, [doc, updateUndoRedoState]);
 
   const updateNode = useCallback((nodeId: string, nodeData: any) => {
     const nodesMap = doc.getMap('nodes');
@@ -509,7 +528,8 @@ export function useLoroSync(options: LoroSyncOptions): UseLoroSyncReturn {
       });
     }
     doc.commit(); // Commit to trigger subscribeLocalUpdate
-  }, [doc]);
+    updateUndoRedoState();
+  }, [doc, updateUndoRedoState]);
 
   const removeNode = useCallback((nodeId: string) => {
     const nodesMap = doc.getMap('nodes');
@@ -527,7 +547,8 @@ export function useLoroSync(options: LoroSyncOptions): UseLoroSyncReturn {
 
     nodesMap.delete(nodeId);
     doc.commit(); // Commit to trigger subscribeLocalUpdate
-  }, [doc]);
+    updateUndoRedoState();
+  }, [doc, updateUndoRedoState]);
 
   const addEdge = useCallback((edgeId: string, edgeData: any) => {
     const edgesMap = doc.getMap('edges');
@@ -548,21 +569,35 @@ export function useLoroSync(options: LoroSyncOptions): UseLoroSyncReturn {
     doc.commit(); // Commit to trigger subscribeLocalUpdate
   }, [doc]);
 
+  // Replay the doc's current state into React. Used by undo/redo, because the
+  // subscribe handler skips `event.by === 'local'` to avoid echo-loops with
+  // the caller-state path used by addNode/updateNode/... — but undo/redo DO
+  // need React to re-read, since their "caller" never held the new state.
+  const pushStateToReact = useCallback(() => {
+    const { nodes, edges, tasks } = readStateFromLoro();
+    const cb = callbacksRef.current;
+    if (cb.onNodesChange) cb.onNodesChange(nodes);
+    if (cb.onEdgesChange) cb.onEdgesChange(edges);
+    if (cb.onTaskUpdate) tasks.forEach(t => cb.onTaskUpdate!(t.id, t.data));
+  }, [readStateFromLoro]);
+
   const undo = useCallback(() => {
     if (undoManager.canUndo()) {
       undoManager.undo();
       doc.commit(); // Commit to trigger subscribeLocalUpdate
+      pushStateToReact();
       updateUndoRedoState();
     }
-  }, [doc, undoManager, updateUndoRedoState]);
+  }, [doc, undoManager, updateUndoRedoState, pushStateToReact]);
 
   const redo = useCallback(() => {
     if (undoManager.canRedo()) {
       undoManager.redo();
       doc.commit(); // Commit to trigger subscribeLocalUpdate
+      pushStateToReact();
       updateUndoRedoState();
     }
-  }, [doc, undoManager, updateUndoRedoState]);
+  }, [doc, undoManager, updateUndoRedoState, pushStateToReact]);
 
   return {
     projectId,
