@@ -9,39 +9,61 @@ import {
   useVideoConfig,
   interpolate,
 } from 'remotion';
-import type { Track, Item } from '@master-clash/remotion-core';
+import { getItemLookupIds, type Track, type Item } from '@master-clash/remotion-core';
 
 // Debug logging disabled for performance
+
+type ResolvedTimelineItem = Item & {
+  naturalWidth?: number;
+  naturalHeight?: number;
+  resolvedSrcUrl?: string;
+};
+
+type PreparedSequenceItem = {
+  item: ResolvedTimelineItem;
+  seqFrom: number;
+  visibleFromRel: number;
+  endFrameRel: number;
+  isGlobalEndItem: boolean;
+};
+
+type PreparedTrack = {
+  id: string;
+  hidden?: boolean;
+  playbackItems: PreparedSequenceItem[];
+};
 
 /**
  * Resolves timeline item references to asset data.
  *
- * Timeline items store only assetId references. This function resolves
- * those references to the actual src/type/dimensions data from asset nodes.
+ * Timeline items store sourceNodeId plus, when known, assetId references.
+ * This function resolves those references to the actual src/type/dimensions
+ * data from asset nodes.
  * This is the frontend equivalent of the backend resolve_item function.
  *
  * @param item Timeline item with potential assetId reference
  * @param allNodesMap Map of all nodes (node ID -> node data)
  * @returns Item with src/type/dimensions resolved from asset node if assetId present
  */
-const resolveTimelineItem = (item: Item, allNodesMap: Map<string, any>): Item & { naturalWidth?: number; naturalHeight?: number } => {
+const resolveTimelineItem = (
+  item: Item,
+  allNodesMap: Map<string, any>,
+  srcNodeMap: Map<string, any>,
+): ResolvedTimelineItem => {
   let asset = null;
 
-  // 1. Try to find asset by assetId
-  if (item.assetId) {
-    asset = allNodesMap.get(item.assetId);
+  // 1. Try explicit source node id, then backing asset id, with legacy fallback.
+  for (const lookupId of getItemLookupIds(item)) {
+    asset = allNodesMap.get(lookupId);
+    if (asset) {
+      break;
+    }
   }
 
-  // 2. If not found by assetId, try to find by src
+  // 2. If not found by references, try to find by src
   if (!asset && 'src' in item) {
     const itemSrc = (item as any).src;
-    // Iterate over all assets to find a match by src
-    for (const [_, node] of allNodesMap.entries()) {
-      if (node.data?.src === itemSrc) {
-        asset = node;
-        break;
-      }
-    }
+    asset = srcNodeMap.get(itemSrc) ?? null;
   }
 
   if (asset) {
@@ -64,18 +86,59 @@ const resolveTimelineItem = (item: Item, allNodesMap: Map<string, any>): Item & 
       }
     }
 
-
     return {
       ...item,
       src: assetData.src || ('src' in item ? item.src : undefined),
       type: asset.type || item.type,
       naturalWidth,
       naturalHeight,
+      resolvedSrcUrl: resolveAssetUrl(assetData.src || ('src' in item ? item.src : undefined)),
     };
   }
 
   // Return as-is for non-asset items (solid, text) or if asset not found
-  return item;
+  return {
+    ...item,
+    resolvedSrcUrl: resolveAssetUrl('src' in item ? item.src : undefined),
+  };
+};
+
+const mergeContiguousMediaItems = (items: ResolvedTimelineItem[]): ResolvedTimelineItem[] => {
+  const sorted = [...items].sort((a, b) => a.from - b.from);
+  const result: ResolvedTimelineItem[] = [];
+
+  for (const itm of sorted) {
+    const last = result[result.length - 1];
+    const isMedia = itm.type === 'video' || itm.type === 'audio';
+    const lastIsMedia = last && (last.type === 'video' || last.type === 'audio');
+
+    if (
+      last &&
+      isMedia &&
+      lastIsMedia &&
+      last.resolvedSrcUrl &&
+      itm.resolvedSrcUrl &&
+      itm.resolvedSrcUrl === last.resolvedSrcUrl
+    ) {
+      const lastEnd = last.from + last.durationInFrames;
+      const isContiguous = itm.from === lastEnd;
+      const lastOffset = (last as any).sourceStartInFrames || 0;
+      const currOffset = (itm as any).sourceStartInFrames || 0;
+      const offsetContinuous = currOffset === lastOffset + last.durationInFrames;
+
+      if (isContiguous && offsetContinuous) {
+        result[result.length - 1] = {
+          ...last,
+          durationInFrames: last.durationInFrames + itm.durationInFrames,
+        };
+        continue;
+      }
+    }
+
+    result.push({ ...itm });
+  }
+
+  return result;
 };
 
 // Helper to ensure src is a proper URL
@@ -111,24 +174,37 @@ const resolveAssetUrl = (src: string | undefined): string => {
   return `/api/assets/view/${src}`;
 };
 
-// Component to render individual items
-const ItemComponent: React.FC<{ item: Item; allNodesMap: Map<string, any>; durationInFrames: number; visibleFrom?: number; endFrame?: number; globalEndFrame?: number; trackZIndex: number; itemsDomMapRef?: React.RefObject<Map<string, HTMLElement>> }> = ({ item, allNodesMap, durationInFrames: _durationInFrames, visibleFrom, endFrame, globalEndFrame, trackZIndex, itemsDomMapRef }) => {
+// Component to render individual items.
+//
+// IMPORTANT: `visibleFrom` and `endFrame` are SEQUENCE-RELATIVE frames (i.e.
+// offsets from the enclosing <Sequence from=...>'s start), not composition-
+// absolute frames. `useCurrentFrame()` inside a Sequence is sequence-relative
+// too, so the comparisons below line up. Mixing the two coord systems was the
+// original bug: every item with `item.from > 0` was computing `hidden=true`
+// for its entire Sequence and only the outer black-bg wrapper showed.
+const ItemComponent: React.FC<{
+  item: ResolvedTimelineItem;
+  durationInFrames: number;
+  visibleFrom?: number;
+  endFrame?: number;
+  isGlobalEndItem?: boolean;
+  trackZIndex: number;
+  itemsDomMapRef?: React.RefObject<Map<string, HTMLElement>>;
+}> = ({ item, durationInFrames: _durationInFrames, visibleFrom, endFrame, isGlobalEndItem, trackZIndex, itemsDomMapRef }) => {
   const frame = useCurrentFrame();
   const { width: compWidth, height: compHeight } = useVideoConfig();
-
-  // Resolve item references dynamically from asset nodes
-  const resolvedItem = resolveTimelineItem(item, allNodesMap);
+  const resolvedItem = item;
 
   // Apply transform properties
   // width and height are scale factors relative to the asset's natural dimensions
   // width=1, height=1 means 100% of the asset's original size (not canvas size)
-  const applyTransform = (baseStyle: React.CSSProperties = {}): React.CSSProperties => {
+  const transformStyle = React.useMemo((): React.CSSProperties => {
     const props = resolvedItem.properties;
-    if (!props) return { ...baseStyle, zIndex: trackZIndex };
+    if (!props) return { zIndex: trackZIndex };
 
     // Get natural dimensions from resolved item
-    const naturalWidth = (resolvedItem as any).naturalWidth || compWidth;
-    const naturalHeight = (resolvedItem as any).naturalHeight || compHeight;
+    const naturalWidth = resolvedItem.naturalWidth || compWidth;
+    const naturalHeight = resolvedItem.naturalHeight || compHeight;
 
     // Scale relative to natural dimensions
     // props.width/height are multipliers of the asset's natural size
@@ -157,7 +233,6 @@ const ItemComponent: React.FC<{ item: Item; allNodesMap: Map<string, any>; durat
     const top = `calc(50% + ${props.y}px)`;
 
     return {
-      ...baseStyle,
       position: 'absolute',
       left,
       top,
@@ -168,7 +243,15 @@ const ItemComponent: React.FC<{ item: Item; allNodesMap: Map<string, any>; durat
       opacity: props.opacity ?? 1,
       zIndex: trackZIndex, // Use track-based z-index
     };
-  };
+  }, [resolvedItem.properties, resolvedItem.naturalWidth, resolvedItem.naturalHeight, compWidth, compHeight, trackZIndex]);
+
+  const applyTransform = React.useCallback(
+    (baseStyle: React.CSSProperties = {}): React.CSSProperties => ({
+      ...transformStyle,
+      ...baseStyle,
+    }),
+    [transformStyle],
+  );
 
   if (resolvedItem.type === 'solid') {
     return (
@@ -219,10 +302,11 @@ const ItemComponent: React.FC<{ item: Item; allNodesMap: Map<string, any>; durat
     const sourceStart = (resolvedItem as any).sourceStartInFrames || 0;
     const isBeforeVisible = typeof visibleFrom === 'number' ? frame < visibleFrom : false;
     const isLastFrameOfItem = typeof endFrame === 'number' ? frame === endFrame : false;
-    const shouldHideLastFrame = typeof globalEndFrame === 'number' && typeof endFrame === 'number'
-      ? (endFrame !== globalEndFrame && isLastFrameOfItem)
-      : false;
+    // Skip the global-end item's last frame guard — that item is supposed to
+    // still be visible at the composition's final frame.
+    const shouldHideLastFrame = !isGlobalEndItem && isLastFrameOfItem;
     const hidden = isBeforeVisible || shouldHideLastFrame;
+    const resolvedSrc = resolvedItem.resolvedSrcUrl || resolveAssetUrl(resolvedItem.src);
 
     return (
       <AbsoluteFill
@@ -234,7 +318,7 @@ const ItemComponent: React.FC<{ item: Item; allNodesMap: Map<string, any>; durat
       >
         <AbsoluteFill style={{ opacity: hidden ? 0 : 1, width: '100%', height: '100%' }}>
           <OffthreadVideo
-            src={resolveAssetUrl(resolvedItem.src)}
+            src={resolvedSrc}
             style={{ width: '100%', height: '100%', objectFit: 'fill' }}
             startFrom={sourceStart}
             pauseWhenBuffering={false}
@@ -250,7 +334,7 @@ const ItemComponent: React.FC<{ item: Item; allNodesMap: Map<string, any>; durat
   if (resolvedItem.type === 'audio') {
     const sourceStart = (resolvedItem as any).sourceStartInFrames || 0;
     const baseVolume = resolvedItem.volume || 1;
-    return <Audio src={resolveAssetUrl(resolvedItem.src)} startFrom={sourceStart} volume={baseVolume} />;
+    return <Audio src={resolvedItem.resolvedSrcUrl || resolveAssetUrl(resolvedItem.src)} startFrom={sourceStart} volume={baseVolume} />;
   }
 
   if (resolvedItem.type === 'image') {
@@ -262,7 +346,7 @@ const ItemComponent: React.FC<{ item: Item; allNodesMap: Map<string, any>; durat
         })}
       >
         <Img
-          src={resolveAssetUrl(resolvedItem.src)}
+          src={resolvedItem.resolvedSrcUrl || resolveAssetUrl(resolvedItem.src)}
           ref={(el) => {
             if (!itemsDomMapRef?.current || !el) return;
             itemsDomMapRef.current.set(resolvedItem.id, el as HTMLElement);
@@ -277,70 +361,29 @@ const ItemComponent: React.FC<{ item: Item; allNodesMap: Map<string, any>; durat
 };
 
 // Component to render a single track
-const TrackComponent: React.FC<{ track: Track; allNodesMap: Map<string, any>; globalEndFrame: number; trackZIndex: number; itemsDomMapRef?: React.RefObject<Map<string, HTMLElement>> }> = ({ track, allNodesMap, globalEndFrame, trackZIndex, itemsDomMapRef }) => {
+const TrackComponent: React.FC<{
+  track: PreparedTrack;
+  trackZIndex: number;
+  itemsDomMapRef?: React.RefObject<Map<string, HTMLElement>>;
+}> = React.memo(({ track, trackZIndex, itemsDomMapRef }) => {
   if (track.hidden) {
     return null;
   }
-
-  // 合并同源且时间/偏移连续的媒体分段（仅渲染层副本，不改state）
-  const mergeContiguousMediaItems = (items: Item[]): Item[] => {
-    const sorted = [...items].sort((a, b) => a.from - b.from);
-    const result: Item[] = [];
-
-    for (const itm of sorted) {
-      const last = result[result.length - 1];
-      const isMedia = itm.type === 'video' || itm.type === 'audio';
-      const lastIsMedia = last && (last.type === 'video' || last.type === 'audio');
-
-      if (
-        last && isMedia && lastIsMedia && ('src' in itm) && ('src' in last) && (itm as any).src === (last as any).src
-      ) {
-        const lastEnd = last.from + last.durationInFrames;
-        const isContiguous = itm.from === lastEnd;
-        const lastOffset = (last as any).sourceStartInFrames || 0;
-        const currOffset = (itm as any).sourceStartInFrames || 0;
-        const offsetContinuous = currOffset === lastOffset + last.durationInFrames;
-
-        if (isContiguous && offsetContinuous) {
-          // 合并：延长上一段的时长（使用副本）
-          const extended = { ...last, durationInFrames: last.durationInFrames + itm.durationInFrames } as Item;
-          result[result.length - 1] = extended;
-          continue;
-        }
-      }
-
-      result.push({ ...itm } as Item);
-    }
-
-    return result;
-  };
-
-  const playbackItems = mergeContiguousMediaItems(track.items);
 
   const PREMOUNT_FRAMES = 45; // ~1.5秒@30fps，提前挂载以减少边界卡顿
 
   return (
     <AbsoluteFill>
-      {playbackItems.map((item, idx) => {
-        const prev = idx > 0 ? playbackItems[idx - 1] : undefined;
-        const isPrevContiguous = prev && (prev.type === item.type) && ('src' in prev) && ('src' in item)
-          && (prev as any).src === (item as any).src
-          && (prev.from + prev.durationInFrames === item.from)
-          && (((prev as any).sourceStartInFrames || 0) + prev.durationInFrames === ((item as any).sourceStartInFrames || 0));
-
-        const seqFrom = isPrevContiguous ? Math.max(0, item.from - 1) : item.from;
-        const visibleFrom = item.from;
-        const endFrame = item.from + item.durationInFrames - 1;
-
+      {track.playbackItems.map(({ item, seqFrom, visibleFromRel, endFrameRel, isGlobalEndItem }) => {
         return (
           <Sequence key={item.id} from={seqFrom} durationInFrames={item.durationInFrames} premountFor={PREMOUNT_FRAMES}>
-            <ItemComponent item={item} allNodesMap={allNodesMap} durationInFrames={item.durationInFrames} visibleFrom={visibleFrom} endFrame={endFrame} globalEndFrame={globalEndFrame} trackZIndex={trackZIndex} itemsDomMapRef={itemsDomMapRef} />
+            <ItemComponent item={item} durationInFrames={item.durationInFrames} visibleFrom={visibleFromRel} endFrame={endFrameRel} isGlobalEndItem={isGlobalEndItem} trackZIndex={trackZIndex} itemsDomMapRef={itemsDomMapRef} />
           </Sequence>
         );
       })}
     </AbsoluteFill>
   );
-};
+});
 
 // Main composition component
 export const VideoComposition: React.FC<{
@@ -352,8 +395,45 @@ export const VideoComposition: React.FC<{
 }> = ({ tracks, allNodes, selectedItemId, selectionBoxRef, itemsDomMapRef }) => {
   const { width: compWidth, height: compHeight } = useVideoConfig();
 
+  console.log('[VideoComposition] INPUT', {
+    tracks: tracks?.map((t) => ({
+      name: t.name,
+      id: t.id,
+      items: t.items?.map((it: any) => ({
+        id: it.id,
+        type: it.type,
+        from: it.from,
+        durationInFrames: it.durationInFrames,
+        sourceNodeId: it.sourceNodeId,
+        assetId: it.assetId,
+        src: it.src?.slice?.(0, 80),
+      })),
+    })),
+    allNodesCount: allNodes?.size ?? 0,
+    allNodesEntries: allNodes
+      ? [...allNodes.entries()].slice(0, 20).map(([k, v]) => ({
+          key: k,
+          type: v?.type,
+          src: v?.data?.src?.slice?.(0, 80),
+          naturalW: v?.data?.naturalWidth,
+          naturalH: v?.data?.naturalHeight,
+          dataKeys: v?.data ? Object.keys(v.data) : null,
+        }))
+      : [],
+  });
+
   // Create empty nodes map if not provided (for backward compatibility)
-  const nodesMap = allNodes || new Map();
+  const nodesMap = React.useMemo(() => allNodes || new Map(), [allNodes]);
+  const srcNodeMap = React.useMemo(() => {
+    const next = new Map<string, any>();
+    for (const [, node] of nodesMap.entries()) {
+      const src = node?.data?.src;
+      if (src) {
+        next.set(src, node);
+      }
+    }
+    return next;
+  }, [nodesMap]);
 
   // 计算全局最后一帧（与上面的 TrackComponent 用到的 globalEndFrame 保持一致）
   const globalEndFrame = React.useMemo(() => {
@@ -367,17 +447,54 @@ export const VideoComposition: React.FC<{
     return maxEnd;
   }, [tracks]);
 
+  const preparedTracks = React.useMemo<PreparedTrack[]>(() => {
+    return tracks.map((track) => {
+      const resolvedItems = track.items.map((item) => resolveTimelineItem(item, nodesMap, srcNodeMap));
+      const mergedItems = mergeContiguousMediaItems(resolvedItems);
+      const playbackItems = mergedItems.map((item, idx) => {
+        const prev = idx > 0 ? mergedItems[idx - 1] : undefined;
+        const isPrevContiguous =
+          !!prev &&
+          prev.type === item.type &&
+          !!prev.resolvedSrcUrl &&
+          !!item.resolvedSrcUrl &&
+          prev.resolvedSrcUrl === item.resolvedSrcUrl &&
+          prev.from + prev.durationInFrames === item.from &&
+          (((prev as any).sourceStartInFrames || 0) + prev.durationInFrames === ((item as any).sourceStartInFrames || 0));
+
+        const seqFrom = isPrevContiguous ? Math.max(0, item.from - 1) : item.from;
+        const visibleFromRel = item.from - seqFrom;
+        const endFrameRel = (item.from + item.durationInFrames - 1) - seqFrom;
+        const isGlobalEndItem = item.from + item.durationInFrames - 1 === globalEndFrame;
+
+        return {
+          item,
+          seqFrom,
+          visibleFromRel,
+          endFrameRel,
+          isGlobalEndItem,
+        };
+      });
+
+      return {
+        id: track.id,
+        hidden: track.hidden,
+        playbackItems,
+      };
+    });
+  }, [tracks, nodesMap, srcNodeMap, globalEndFrame]);
+
   // 找到选中的 item 和它的 properties，同时解析 natural dimensions
   const selectedItemResolved = React.useMemo(() => {
     if (!selectedItemId) return null;
-    for (const track of tracks) {
-      const item = track.items.find((i) => i.id === selectedItemId);
-      if (item) {
-        return resolveTimelineItem(item, nodesMap);
+    for (const track of preparedTracks) {
+      const matched = track.playbackItems.find(({ item }) => item.id === selectedItemId);
+      if (matched) {
+        return matched.item;
       }
     }
     return null;
-  }, [tracks, selectedItemId, nodesMap]);
+  }, [preparedTracks, selectedItemId]);
 
   // Calculate selection box dimensions using the same logic as applyTransform
   const selectionBoxStyle = React.useMemo(() => {
@@ -421,12 +538,12 @@ export const VideoComposition: React.FC<{
 
   return (
     <AbsoluteFill style={{ backgroundColor: 'black', top: 0, left: 0, right: 0, bottom: 0 }}>
-      {tracks.map((track, trackIndex) => {
+      {preparedTracks.map((track, trackIndex) => {
         // Track 0 (first/top) should have highest z-index
         // Higher index = lower in timeline = lower z-index
-        const trackZIndex = tracks.length - trackIndex;
+        const trackZIndex = preparedTracks.length - trackIndex;
         return (
-          <TrackComponent key={`${track.id}-${trackIndex}`} track={track} allNodesMap={nodesMap} globalEndFrame={globalEndFrame} trackZIndex={trackZIndex} itemsDomMapRef={itemsDomMapRef} />
+          <TrackComponent key={`${track.id}-${trackIndex}`} track={track} trackZIndex={trackZIndex} itemsDomMapRef={itemsDomMapRef} />
         );
       })}
 

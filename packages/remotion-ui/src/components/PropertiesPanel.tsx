@@ -1,23 +1,36 @@
 import React from 'react';
-import { useEditor } from '@master-clash/remotion-core';
+import {
+  useEditorDispatch,
+  useEditorPlayback,
+  useEditorStaticState,
+} from '@master-clash/remotion-core';
 import type { TextItem, SolidItem } from '@master-clash/remotion-core';
 
 
 export const PropertiesPanel: React.FC = () => {
-  const { state, dispatch } = useEditor();
+  const dispatch = useEditorDispatch();
+  const {
+    tracks,
+    selectedItemId,
+    compositionWidth,
+    compositionHeight,
+    durationInFrames,
+    fps,
+  } = useEditorStaticState();
+  const { currentFrame } = useEditorPlayback();
   const [showExportModal, setShowExportModal] = React.useState(false);
 
   // Find selected item
-  const selectedItem = state.selectedItemId
-    ? state.tracks
+  const selectedItem = selectedItemId
+    ? tracks
       .flatMap((t) => t.items.map((i) => ({ trackId: t.id, item: i })))
-      .find((x) => x.item.id === state.selectedItemId)
+      .find((x) => x.item.id === selectedItemId)
     : null;
 
   // Calculate split quality and recommendations (must be before early return)
   const selectedItemData = selectedItem?.item;
   const itemEnd = selectedItemData ? selectedItemData.from + selectedItemData.durationInFrames : 0;
-  const canSplit = selectedItemData ? (state.currentFrame > selectedItemData.from && state.currentFrame < itemEnd) : false;
+  const canSplit = selectedItemData ? (currentFrame > selectedItemData.from && currentFrame < itemEnd) : false;
 
 
 
@@ -25,7 +38,7 @@ export const PropertiesPanel: React.FC = () => {
 
   // Format time helper
   const formatTime = (frames: number): string => {
-    const totalSeconds = frames / state.fps;
+    const totalSeconds = frames / fps;
     const minutes = Math.floor(totalSeconds / 60);
     const seconds = Math.floor(totalSeconds % 60);
     const centiseconds = Math.floor(((totalSeconds % 1) * 100));
@@ -62,7 +75,7 @@ export const PropertiesPanel: React.FC = () => {
                       type: 'SET_COMPOSITION_SIZE',
                       payload: { width: preset.w, height: preset.h },
                     })}
-                    className={`px-2 py-1.5 rounded text-xs font-medium transition-colors ${state.compositionWidth === preset.w && state.compositionHeight === preset.h
+                    className={`px-2 py-1.5 rounded text-xs font-medium transition-colors ${compositionWidth === preset.w && compositionHeight === preset.h
                         ? 'bg-red-500 text-white shadow-sm'
                         : 'bg-white text-slate-700 border border-slate-200 hover:border-red-300 hover:text-red-500'
                       }`}
@@ -78,13 +91,13 @@ export const PropertiesPanel: React.FC = () => {
           <div className="mb-6">
             <h3 className="mb-3 text-xs font-bold text-slate-500 uppercase tracking-wider">Duration</h3>
             <div className="text-2xl font-semibold text-slate-900 mb-4 font-mono tracking-tight">
-              {formatTime(state.durationInFrames)}
+              {formatTime(durationInFrames)}
             </div>
             <div className="mb-3">
               <label className="block text-xs text-slate-500 mb-1.5">Duration (frames)</label>
               <input
                 type="number"
-                value={state.durationInFrames}
+                value={durationInFrames}
                 onChange={(e) => dispatch({
                   type: 'SET_DURATION',
                   payload: parseInt(e.target.value) || 600,
@@ -94,7 +107,7 @@ export const PropertiesPanel: React.FC = () => {
             </div>
             <div className="mb-3">
               <label className="block text-xs text-slate-500 mb-1.5">Frame Rate (FPS)</label>
-              <div className="px-2 py-1.5 bg-slate-100 text-slate-600 rounded text-sm border border-slate-200">{state.fps} fps</div>
+              <div className="px-2 py-1.5 bg-slate-100 text-slate-600 rounded text-sm border border-slate-200">{fps} fps</div>
             </div>
           </div>
 
@@ -181,7 +194,7 @@ export const PropertiesPanel: React.FC = () => {
       payload: {
         trackId,
         itemId: item.id,
-        splitFrame: state.currentFrame,
+        splitFrame: currentFrame,
       },
     });
   };
@@ -200,7 +213,7 @@ export const PropertiesPanel: React.FC = () => {
               }`}
             title={
               canSplit
-                ? `Split at frame ${state.currentFrame}`
+                ? `Split at frame ${currentFrame}`
                 : 'Move playhead onto the selected item to split'
             }
           >

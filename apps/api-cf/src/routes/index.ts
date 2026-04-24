@@ -349,7 +349,37 @@ api.post("/api/tasks/submit", async (c) => {
   }
 
   if (task_type === "audio_gen") {
-    return c.json({ error: "Audio generation is not yet supported" }, 501);
+    const genParams: GenerationParams = {
+      taskId,
+      nodeId: node_id,
+      type: "audio_gen",
+      projectId: project_id,
+      prompt: params.prompt ?? "",
+      modelName: params.model as string | undefined,
+      modelParams: params.model_params as Record<string, unknown> | undefined,
+    };
+
+    const errorResponse = await submitToWorkflow(c, taskId, genParams);
+    if (errorResponse) return errorResponse;
+
+    return c.json({ task_id: taskId, status: Status.Pending });
+  }
+
+  if (task_type === "text_gen") {
+    const genParams: GenerationParams = {
+      taskId,
+      nodeId: node_id,
+      type: "text_gen",
+      projectId: project_id,
+      prompt: params.prompt ?? "",
+      modelName: params.model,
+      modelParams: params.model_params as Record<string, unknown> | undefined,
+    };
+
+    const errorResponse = await submitToWorkflow(c, taskId, genParams);
+    if (errorResponse) return errorResponse;
+
+    return c.json({ task_id: taskId, status: Status.Pending });
   }
 
   if (task_type === "video_render") {
@@ -381,12 +411,12 @@ api.post("/api/custom-action/upload", async (c) => {
   }
 
   if (!file) {
-    return c.json({ error: "Missing file for image/video output" }, 400);
+    return c.json({ error: "Missing file for image/video/audio output" }, 400);
   }
 
   // Determine file extension and content type
-  const ext = outputType === "video" ? "mp4" : "png";
-  const contentType = outputType === "video" ? "video/mp4" : file.type || "image/png";
+  const ext = outputType === "video" ? "mp4" : outputType === "audio" ? "mp3" : "png";
+  const contentType = outputType === "video" ? "video/mp4" : outputType === "audio" ? file.type || "audio/mpeg" : file.type || "image/png";
   const key = `projects/${projectId}/custom/${taskId}.${ext}`;
 
   await c.env.R2_BUCKET.put(key, file.stream(), {

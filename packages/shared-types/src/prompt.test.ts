@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   parsePromptParts,
   extractPromptText,
+  composePromptWithTextRefs,
   extractAssetRefs,
   buildMention,
   hasAssetMentions,
@@ -109,6 +110,20 @@ describe("extractPromptText", () => {
 
   it("returns empty string for empty parts", () => {
     expect(extractPromptText([])).toBe("");
+  });
+});
+
+describe("composePromptWithTextRefs", () => {
+  it("appends text refs after the action prompt", () => {
+    expect(composePromptWithTextRefs("Summarize", ["Scene one", "Scene two"])).toBe(
+      "Summarize\n\nScene one\n\nScene two",
+    );
+  });
+
+  it("uses text refs when the action prompt is still the default placeholder", () => {
+    expect(composePromptWithTextRefs("# Prompt\nEnter your prompt here...", ["Narrate this"])).toBe(
+      "Narrate this",
+    );
   });
 });
 

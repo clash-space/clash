@@ -28,7 +28,7 @@ from typing import Any, Literal
 # === Enums ===
 
 NodeStatus = Literal["idle", "pending", "generating", "completed", "failed"]
-ActionType = Literal["image-gen", "video-gen"]
+ActionType = Literal["image-gen", "video-gen", "audio-gen", "text-gen"]
 
 
 # === Canvas Types ===

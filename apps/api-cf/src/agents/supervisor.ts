@@ -23,6 +23,7 @@ import { createModel } from "../providers";
 import { createCanvasTools } from "./tools/canvas";
 import { createTimelineTools } from "./tools/timeline";
 import { createDelegationTool } from "./tools/delegation";
+import { createWorkflowTools } from "./tools/workflow";
 import { SUPERVISOR_PROMPT } from "../prompts/supervisor";
 import { withCacheControl, cachedSystemPrompt } from "./cache-control";
 
@@ -270,8 +271,9 @@ export class SupervisorAgent extends AIChatAgent<Env> {
     const getWorkspaceGroupId = () => this.workspaceGroupId;
 
     const canvasTools = createCanvasTools(this.doc, this.broadcastToRoom, sendMsg, generateId, getWorkspaceGroupId, this.env, this.projectId);
+    const workflowTools = createWorkflowTools(this.doc, this.broadcastToRoom, generateId);
     const timelineTools = createTimelineTools(sendMsg);
-    const allTools = { ...canvasTools, ...timelineTools };
+    const allTools = { ...canvasTools, ...workflowTools, ...timelineTools };
     const delegationTool = createDelegationTool(model as any, allTools, provider);
     const tools = { ...allTools, task_delegation: delegationTool };
 

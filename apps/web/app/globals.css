@@ -1,11 +1,20 @@
-@import 'tailwindcss';
-@source "../remotion-fast";
+@import "tailwindcss";
+
+@source "../../../packages/web-ui/src";
+@source "../../../packages/remotion-ui/src";
+@source "../../../packages/remotion-components/src";
+@source "../../../packages/remotion-core/src";
 
 :root {
   --background: #ffffff;
   --foreground: #171717;
   --canvas-bg: #f1f5f9;
   --canvas-dot: #cbd5e1;
+
+  --font-inter: "Inter Variable", -apple-system, BlinkMacSystemFont, "Segoe UI",
+    Roboto, sans-serif;
+  --font-space-grotesk: "Space Grotesk Variable", var(--font-inter);
+  --font-jetbrains-mono: "JetBrains Mono Variable", "Courier New", monospace;
 }
 
 @theme inline {
@@ -14,29 +23,21 @@
   --color-canvas-bg: var(--canvas-bg);
   --color-canvas-dot: var(--canvas-dot);
 
-  /* ── Semantic Color System ──────────────────────────
-   * Brand: Coral Red #FF6B50
-   * Derived via split-complementary + analogous harmony:
-   *   - Image (brand):  coral #FF6B50
-   *   - Video (complement): teal #2EBFA5
-   *   - Audio (analogous):  amber #F5A623
-   *   - Custom (triadic):   indigo #6366F1
-   */
-  --color-brand: #FF6B50;
-  --color-brand-light: #FFF0ED;
+  --color-brand: #ff6b50;
+  --color-brand-light: #fff0ed;
   --color-brand-foreground: #ffffff;
 
-  --color-image: #FF6B50;
-  --color-image-light: #FFF0ED;
+  --color-image: #ff6b50;
+  --color-image-light: #fff0ed;
 
-  --color-video: #3B82F6;
-  --color-video-light: #EFF6FF;
+  --color-video: #3b82f6;
+  --color-video-light: #eff6ff;
 
-  --color-audio: #F5A623;
-  --color-audio-light: #FFFBEB;
+  --color-audio: #f5a623;
+  --color-audio-light: #fffbeb;
 
-  --color-custom: #6366F1;
-  --color-custom-light: #EEF2FF;
+  --color-custom: #6366f1;
+  --color-custom-light: #eef2ff;
 
   --font-sans: var(--font-inter);
   --font-display: var(--font-space-grotesk);
@@ -56,127 +57,67 @@
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family:
-    var(--font-inter),
-    -apple-system,
-    BlinkMacSystemFont,
-    'Segoe UI',
-    'Roboto',
-    'Helvetica',
-    'Arial',
-    sans-serif;
+  font-family: var(--font-inter);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
 
-h1,
-h2,
-h3,
-h4,
-h5,
-h6 {
+h1, h2, h3, h4, h5, h6 {
   font-family: var(--font-space-grotesk), var(--font-inter), sans-serif;
   font-weight: 700;
   letter-spacing: -0.02em;
 }
 
-code,
-kbd,
-pre {
-  font-family: var(--font-jetbrains-mono), 'Courier New', monospace;
+code, kbd, pre {
+  font-family: var(--font-jetbrains-mono), "Courier New", monospace;
 }
 
-/* Always show scrollbar gutter to prevent layout shift */
-html {
-  overflow-y: scroll;
-}
+html { overflow-y: scroll; }
 
-/* Smooth scrollbars */
-::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
-}
-
-::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-::-webkit-scrollbar-thumb {
-  background: rgba(0, 0, 0, 0.2);
-  border-radius: 4px;
-}
-
-::-webkit-scrollbar-thumb:hover {
-  background: rgba(0, 0, 0, 0.3);
-}
-
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.2); border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(0,0,0,0.3); }
 @media (prefers-color-scheme: dark) {
-  ::-webkit-scrollbar-thumb {
-    background: rgba(255, 255, 255, 0.2);
-  }
-
-  ::-webkit-scrollbar-thumb:hover {
-    background: rgba(255, 255, 255, 0.3);
-  }
+  ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.2); }
+  ::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.3); }
 }
 
-/* Smooth transitions */
-* {
-  transition-property:
-    color, background-color, border-color, text-decoration-color, fill, stroke;
-  transition-duration: 150ms;
-  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
-}
-
-/* Selection styles */
 ::selection {
   background-color: rgba(239, 68, 68, 0.2);
   color: inherit;
 }
 
-/* Remove default React Flow selection style for Group Node */
 .react-flow__node-group.selected,
 .react-flow__node-group:focus,
-.react-flow__node-group:focus-visible {
-  border-radius: 0 !important;
-  outline: none !important;
-  border: none !important;
-  box-shadow: none !important;
-}
-
-/* Remove default React Flow selection style if it exists on the wrapper */
+.react-flow__node-group:focus-visible,
 .react-flow__node-group {
   border: none !important;
   outline: none !important;
-  padding: 0 !important;
+  box-shadow: none !important;
   background: transparent !important;
+  padding: 0 !important;
 }
 
-/* Aggressive override for custom group node class */
-.group-node,
-.group-node.selected,
-.group-node:focus,
-.group-node:focus-visible {
+.group-node, .group-node.selected, .group-node:focus, .group-node:focus-visible {
   border: none !important;
   outline: none !important;
   box-shadow: none !important;
   background: transparent !important;
   padding: 0 !important;
-  /* Ensure wrapper doesn't have background */
 }
 
-/* ─── @-mention asset chips in MilkdownEditor ─────────── */
 .asset-mention {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  background: #f1f5f9; /* slate-100 */
-  border: 1px solid #e2e8f0; /* slate-200 */
+  background: #f1f5f9;
+  border: 1px solid #e2e8f0;
   border-radius: 6px;
   padding: 1px 6px;
   font-size: 12px;
   font-weight: 500;
-  color: #334155; /* slate-700 */
+  color: #334155;
   vertical-align: baseline;
   cursor: default;
 }
@@ -187,58 +128,20 @@ html {
   object-fit: cover;
 }
 
-/* Group drag feedback classes removed */
-
-/* Compact MilkdownEditor inside ChatInput */
-.milkdown-chat-input .milkdown-editor-wrapper {
-  padding: 8px 16px 4px;
-}
-.milkdown-chat-input .ProseMirror {
-  font-size: 14px;
-  line-height: 1.5;
-  min-height: 24px;
-}
-.milkdown-chat-input .ProseMirror p {
-  margin: 0;
-}
+.milkdown-chat-input .milkdown-editor-wrapper { padding: 8px 16px 4px; }
+.milkdown-chat-input .ProseMirror { font-size: 14px; line-height: 1.5; min-height: 24px; }
+.milkdown-chat-input .ProseMirror p { margin: 0; }
 .milkdown-chat-input .ProseMirror img {
-  height: 1.2em;
-  width: auto;
-  border-radius: 3px;
-  object-fit: cover;
-  display: inline;
-  vertical-align: text-bottom;
-  margin: 0 2px;
+  height: 1.2em; width: auto; border-radius: 3px;
+  object-fit: cover; display: inline; vertical-align: text-bottom; margin: 0 2px;
 }
-/* Mention images (alt starts with "mention:") — render as inline thumbnails */
 .ProseMirror img[alt^="mention:"] {
-  height: 20px;
-  width: 20px;
-  border-radius: 4px;
-  object-fit: cover;
-  display: inline-block;
-  vertical-align: middle;
-  margin: 0 2px;
+  height: 20px; width: 20px; border-radius: 4px;
+  object-fit: cover; display: inline-block; vertical-align: middle; margin: 0 2px;
 }
-.milkdown-chat-input .ProseMirror:focus {
-  outline: none;
-}
+.milkdown-chat-input .ProseMirror:focus { outline: none; }
 
-/* Edge interaction: ensure the invisible hit-area actually catches clicks */
-.react-flow__edge {
-  pointer-events: visibleStroke;
-}
-.react-flow__edge-interaction {
-  pointer-events: stroke;
-  stroke-opacity: 0;
-}
-.react-flow__edge.selected .react-flow__edge-path {
-  stroke: #3b82f6;
-  stroke-width: 2.5;
-}
-.react-flow__edge:hover .react-flow__edge-path {
-  stroke: #64748b;
-}
-.react-flow__edge {
-  cursor: pointer;
-}
+.react-flow__edge { pointer-events: visibleStroke; cursor: pointer; }
+.react-flow__edge-interaction { pointer-events: stroke; stroke-opacity: 0; }
+.react-flow__edge.selected .react-flow__edge-path { stroke: #3b82f6; stroke-width: 2.5; }
+.react-flow__edge:hover .react-flow__edge-path { stroke: #64748b; }

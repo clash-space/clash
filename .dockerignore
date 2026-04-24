@@ -1,0 +1,41 @@
+# The RenderContainer build context is the monorepo root (see
+# apps/api-cf/wrangler.toml image_build_context). Exclude everything that
+# the Dockerfile doesn't COPY to keep the context small and the build fast.
+
+# Build + dependency caches — pnpm install inside the container repopulates.
+**/node_modules
+**/.turbo
+**/dist
+**/.next
+**/build
+
+# Wrangler local state (miniflare sqlite, R2 files, DO storage).
+**/.wrangler
+
+# Git + editor + OS junk.
+.git
+.gitignore
+.github
+.vscode
+.idea
+.DS_Store
+**/.DS_Store
+
+# Worktrees and per-developer caches we keep under .claude/.
+.claude
+
+# Unrelated apps not copied into the render-server image.
+apps/api-cf
+apps/web
+apps/gateway
+apps/loro-sync-server
+
+# Test artifacts.
+**/coverage
+**/*.log
+
+# Local env files — never bake secrets into images.
+.env
+.env.local
+**/.env
+**/.env.local

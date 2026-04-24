@@ -1,6 +1,83 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { colors } from './styles';
 
+// Hoisted CSS — built once per module rather than re-templated on every render.
+const ZOOM_SLIDER_STYLES = `
+  .zoom-slider::-webkit-slider-runnable-track {
+    width: 100%;
+    height: 4px;
+    background: ${colors.border.default};
+    border-radius: 2px;
+  }
+
+  .zoom-slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: ${colors.accent.primary};
+    cursor: grab;
+    margin-top: -6px;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+    transition: all 0.15s ease;
+    border: 2px solid #fff;
+  }
+
+  .zoom-slider:hover::-webkit-slider-thumb {
+    transform: scale(1.1);
+    box-shadow: 0 3px 8px rgba(0, 0, 0, 0.4);
+  }
+
+  .zoom-slider:active::-webkit-slider-thumb {
+    cursor: grabbing;
+    transform: scale(1.15);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+  }
+
+  .zoom-slider::-moz-range-track {
+    width: 100%;
+    height: 4px;
+    background: ${colors.border.default};
+    border-radius: 2px;
+    border: none;
+  }
+
+  .zoom-slider::-moz-range-thumb {
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: ${colors.accent.primary};
+    cursor: grab;
+    border: 2px solid #fff;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+    transition: all 0.15s ease;
+  }
+
+  .zoom-slider:hover::-moz-range-thumb {
+    transform: scale(1.1);
+    box-shadow: 0 3px 8px rgba(0, 0, 0, 0.4);
+  }
+
+  .zoom-slider:active::-moz-range-thumb {
+    cursor: grabbing;
+    transform: scale(1.15);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+  }
+
+  .zoom-slider:focus-visible::-webkit-slider-thumb {
+    outline: 2px solid ${colors.accent.primary};
+    outline-offset: 2px;
+  }
+  .zoom-slider:focus-visible::-moz-range-thumb {
+    outline: 2px solid ${colors.accent.primary};
+    outline-offset: 2px;
+  }
+  .timeline-icon-btn:focus-visible {
+    outline: 2px solid ${colors.accent.primary};
+    outline-offset: 2px;
+  }
+`;
+
 interface ZoomControlProps {
   zoom: number;
   min: number;
@@ -75,6 +152,8 @@ export const ZoomControl: React.FC<ZoomControlProps> = ({
       <button
         onClick={onZoomOut}
         disabled={!canZoomOut}
+        aria-label="Zoom out"
+        className="timeline-icon-btn"
         style={{
           width: 28,
           height: 28,
@@ -131,6 +210,8 @@ export const ZoomControl: React.FC<ZoomControlProps> = ({
             updateTooltipPosition();
           }}
           onMouseLeave={() => !isDragging && setShowTooltip(false)}
+          aria-label="Timeline zoom"
+          aria-valuetext={`${zoom.toFixed(2)} times`}
           className="zoom-slider"
           style={{
             width: '100%',
@@ -144,74 +225,15 @@ export const ZoomControl: React.FC<ZoomControlProps> = ({
           }}
         />
 
-        <style>{`
-          .zoom-slider::-webkit-slider-runnable-track {
-            width: 100%;
-            height: 4px;
-            background: ${colors.border.default};
-            border-radius: 2px;
-          }
-
-          .zoom-slider::-webkit-slider-thumb {
-            -webkit-appearance: none;
-            width: 16px;
-            height: 16px;
-            border-radius: 50%;
-            background: ${colors.accent.primary};
-            cursor: grab;
-            margin-top: -6px; /* (16px - 4px) / 2 = 6px */
-            box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
-            transition: all 0.15s ease;
-            border: 2px solid #fff;
-          }
-
-          .zoom-slider:hover::-webkit-slider-thumb {
-            transform: scale(1.1);
-            box-shadow: 0 3px 8px rgba(0, 0, 0, 0.4);
-          }
-
-          .zoom-slider:active::-webkit-slider-thumb {
-            cursor: grabbing;
-            transform: scale(1.15);
-            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
-          }
-
-          .zoom-slider::-moz-range-track {
-            width: 100%;
-            height: 4px;
-            background: ${colors.border.default};
-            border-radius: 2px;
-            border: none;
-          }
-
-          .zoom-slider::-moz-range-thumb {
-            width: 16px;
-            height: 16px;
-            border-radius: 50%;
-            background: ${colors.accent.primary};
-            cursor: grab;
-            border: 2px solid #fff;
-            box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
-            transition: all 0.15s ease;
-          }
-
-          .zoom-slider:hover::-moz-range-thumb {
-            transform: scale(1.1);
-            box-shadow: 0 3px 8px rgba(0, 0, 0, 0.4);
-          }
-
-          .zoom-slider:active::-moz-range-thumb {
-            cursor: grabbing;
-            transform: scale(1.15);
-            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
-          }
-        `}</style>
+        <style>{ZOOM_SLIDER_STYLES}</style>
       </div>
 
       {/* Zoom In Button */}
       <button
         onClick={onZoomIn}
         disabled={!canZoomIn}
+        aria-label="Zoom in"
+        className="timeline-icon-btn"
         style={{
           width: 28,
           height: 28,
@@ -308,6 +330,10 @@ export const SnapButton: React.FC<SnapButtonProps> = ({ enabled, onToggle }) => 
       <button
         ref={buttonRef}
         onClick={onToggle}
+        aria-label={enabled ? 'Disable snapping' : 'Enable snapping'}
+        title={enabled ? 'Snapping on' : 'Snapping off'}
+        aria-pressed={enabled}
+        className="timeline-icon-btn"
         onMouseEnter={(e) => {
           setShowTooltip(true);
           updateTooltipPosition();

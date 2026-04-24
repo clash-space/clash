@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
+  buildPendingAssetNode,
   CustomActionDefinitionSchema,
   CustomActionParameterSchema,
   NodeDataSchema,
@@ -12,6 +13,11 @@ describe("ACTION_TYPE", () => {
   it("has Custom type", () => {
     expect(ACTION_TYPE.Custom).toBe("custom");
   });
+
+  it("has built-in audio and text generation types", () => {
+    expect(ACTION_TYPE.AudioGen).toBe("audio-gen");
+    expect(ACTION_TYPE.TextGen).toBe("text-gen");
+  });
 });
 
 describe("isCustomActionType", () => {
@@ -23,6 +29,8 @@ describe("isCustomActionType", () => {
   it("returns false for built-in types", () => {
     expect(isCustomActionType("image-gen")).toBe(false);
     expect(isCustomActionType("video-gen")).toBe(false);
+    expect(isCustomActionType("audio-gen")).toBe(false);
+    expect(isCustomActionType("text-gen")).toBe(false);
   });
 });
 
@@ -54,6 +62,49 @@ describe("NodeDataSchema", () => {
   it("still accepts built-in actionTypes", () => {
     const data = NodeDataSchema.parse({ actionType: "image-gen" });
     expect(data.actionType).toBe("image-gen");
+  });
+});
+
+describe("buildPendingAssetNode", () => {
+  it("builds a pending audio node for audio generation", () => {
+    const node = buildPendingAssetNode({
+      nodeId: "aud-1",
+      prompt: "Read this line out loud",
+      modelId: "minimax-tts",
+      modelParams: { voice_id: "female-warm" },
+      actionType: ACTION_TYPE.AudioGen,
+    });
+
+    expect(node.type).toBe("audio");
+    expect(node.data).toMatchObject({
+      label: "Read this line out loud",
+      src: "",
+      status: "pending",
+      prompt: "Read this line out loud",
+      model: "minimax-tts",
+      modelId: "minimax-tts",
+      modelParams: { voice_id: "female-warm" },
+    });
+  });
+
+  it("builds a pending text node for text generation", () => {
+    const node = buildPendingAssetNode({
+      nodeId: "txt-1",
+      prompt: "Write a tagline",
+      modelId: "gpt-5.4",
+      modelParams: {},
+      actionType: ACTION_TYPE.TextGen,
+    });
+
+    expect(node.type).toBe("text");
+    expect(node.data).toMatchObject({
+      label: "Write a tagline",
+      content: "",
+      status: "pending",
+      prompt: "Write a tagline",
+      model: "gpt-5.4",
+      modelId: "gpt-5.4",
+    });
   });
 });
 

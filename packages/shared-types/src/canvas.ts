@@ -9,6 +9,7 @@
 
 import { z } from 'zod';
 import { resolveAspectRatio, type ModelCard } from './models';
+import { validateRefs } from './model-capabilities';
 
 // === Position ===
 export const PositionSchema = z.object({
@@ -31,7 +32,9 @@ export const RF_NODE_TYPE = {
   Image: 'image',
   /** Video asset (completed generation or upload) */
   Video: 'video',
-  /** Generation node — renders as ActionBadge (image or video) */
+  /** Audio asset (completed generation or upload) */
+  Audio: 'audio',
+  /** Generation node — renders as ActionBadge */
   ActionBadge: 'action-badge',
 } as const;
 
@@ -39,6 +42,8 @@ export const RF_NODE_TYPE = {
 export const ACTION_TYPE = {
   ImageGen: 'image-gen',
   VideoGen: 'video-gen',
+  AudioGen: 'audio-gen',
+  TextGen: 'text-gen',
   /** Custom actions provided by local agents. Full actionType: "custom:<action-id>" */
   Custom: 'custom',
 } as const;
@@ -52,8 +57,11 @@ export const AGENT_NODE_TYPE_MAP = {
   group:     { rfType: RF_NODE_TYPE.Group },
   image:     { rfType: RF_NODE_TYPE.Image },
   video:     { rfType: RF_NODE_TYPE.Video },
+  audio:     { rfType: RF_NODE_TYPE.Audio },
   image_gen: { rfType: RF_NODE_TYPE.ActionBadge, actionType: ACTION_TYPE.ImageGen },
   video_gen: { rfType: RF_NODE_TYPE.ActionBadge, actionType: ACTION_TYPE.VideoGen },
+  audio_gen: { rfType: RF_NODE_TYPE.ActionBadge, actionType: ACTION_TYPE.AudioGen },
+  text_gen:  { rfType: RF_NODE_TYPE.ActionBadge, actionType: ACTION_TYPE.TextGen },
 } as const;
 
 // === Node Status ===
@@ -151,6 +159,7 @@ export type LoroDocumentState = z.infer<typeof LoroDocumentStateSchema>;
 
 export interface ValidateGenerationInput {
   prompt: string;
+  referenceTextSnippets?: string[];
   referenceImageUrls: string[];
   referenceVideoUrls?: string[];
   referenceAudioUrls?: string[];
@@ -160,61 +169,30 @@ export interface ValidateGenerationInput {
 /**
  * Validate generation inputs against model card requirements.
  * Returns null if valid, or an error message string if invalid.
+ *
+ * Thin wrapper around `validateRefs` (model-capabilities.ts) — kept for
+ * backward compat with existing imports. New code should call `validateRefs`
+ * directly.
  */
 export function validateGenerationInput(input: ValidateGenerationInput): string | null {
-  const { prompt, referenceImageUrls, referenceVideoUrls = [], referenceAudioUrls = [], modelCard } = input;
-  const { inputMode, requiresPrompt } = modelCard.input;
-
-  if (requiresPrompt && (!prompt || !prompt.trim())) {
-    return 'No prompt provided.';
-  }
-
-  const imgCount = referenceImageUrls.length;
-  const vidCount = referenceVideoUrls.length;
-  const audCount = referenceAudioUrls.length;
-
-  const acceptsImages = !!inputMode.images || !!inputMode.startEnd;
-  if (imgCount > 0 && !acceptsImages) {
-    return 'Selected model does not accept reference images.';
-  }
-  if (vidCount > 0 && !inputMode.videos) {
-    return 'Selected model does not accept reference videos.';
-  }
-  if (audCount > 0 && !inputMode.audios) {
-    return 'Selected model does not accept reference audio.';
-  }
-
-  if (inputMode.startEnd) {
-    if (imgCount < 1) {
-      return 'Selected model needs a start frame. Attach one via @-mention in the prompt.';
-    }
-    if (imgCount > 2) {
-      return 'Selected model uses at most two frames (start + optional end).';
-    }
-  } else if (inputMode.images) {
-    const min = inputMode.images.min ?? 0;
-    if (imgCount < min) {
-      return min === 1
-        ? 'Selected model requires a reference image. Attach one via @-mention in the prompt.'
-        : `Selected model requires at least ${min} reference images.`;
-    }
-    if (imgCount > inputMode.images.max) {
-      return `Selected model accepts at most ${inputMode.images.max} reference images (got ${imgCount}).`;
-    }
-  }
-
-  if (inputMode.videos) {
-    const min = inputMode.videos.min ?? 0;
-    if (vidCount < min) return `Selected model requires at least ${min} reference video(s).`;
-    if (vidCount > inputMode.videos.max) return `Selected model accepts at most ${inputMode.videos.max} reference video(s) (got ${vidCount}).`;
-  }
-  if (inputMode.audios) {
-    const min = inputMode.audios.min ?? 0;
-    if (audCount < min) return `Selected model requires at least ${min} reference audio clip(s).`;
-    if (audCount > inputMode.audios.max) return `Selected model accepts at most ${inputMode.audios.max} reference audio clip(s) (got ${audCount}).`;
-  }
-
-  return null;
+  const {
+    prompt,
+    referenceTextSnippets = [],
+    referenceImageUrls,
+    referenceVideoUrls = [],
+    referenceAudioUrls = [],
+    modelCard,
+  } = input;
+  return validateRefs(
+    modelCard,
+    {
+      text: referenceTextSnippets.length,
+      image: referenceImageUrls.length,
+      video: referenceVideoUrls.length,
+      audio: referenceAudioUrls.length,
+    },
+    { prompt },
+  );
 }
 
 // === Pending Asset Node Builder ===
@@ -226,7 +204,11 @@ export interface BuildPendingAssetNodeInput {
   prompt: string;
   modelId: string;
   modelParams: Record<string, string | number | boolean>;
-  actionType: typeof ACTION_TYPE.ImageGen | typeof ACTION_TYPE.VideoGen;
+  actionType:
+    | typeof ACTION_TYPE.ImageGen
+    | typeof ACTION_TYPE.VideoGen
+    | typeof ACTION_TYPE.AudioGen
+    | typeof ACTION_TYPE.TextGen;
   label?: string;
   referenceImageUrls?: string[];
   referenceMode?: string;
@@ -234,7 +216,7 @@ export interface BuildPendingAssetNodeInput {
 
 export interface PendingAssetNode {
   id: string;
-  type: typeof RF_NODE_TYPE.Image | typeof RF_NODE_TYPE.Video;
+  type: typeof RF_NODE_TYPE.Image | typeof RF_NODE_TYPE.Video | typeof RF_NODE_TYPE.Audio | typeof RF_NODE_TYPE.Text;
   data: Record<string, unknown>;
 }
 
@@ -257,21 +239,40 @@ export function buildPendingAssetNode(input: BuildPendingAssetNodeInput): Pendin
   } = input;
 
   const isVideo = actionType === ACTION_TYPE.VideoGen;
-  const rfType = isVideo ? RF_NODE_TYPE.Video : RF_NODE_TYPE.Image;
-  const defaultLabel = isVideo ? 'Generated Video' : 'Generated Image';
+  const isAudio = actionType === ACTION_TYPE.AudioGen;
+  const isText = actionType === ACTION_TYPE.TextGen;
+  const rfType = isVideo
+    ? RF_NODE_TYPE.Video
+    : isAudio
+      ? RF_NODE_TYPE.Audio
+      : isText
+        ? RF_NODE_TYPE.Text
+        : RF_NODE_TYPE.Image;
+  const defaultLabel = isVideo
+    ? 'Generated Video'
+    : isAudio
+      ? 'Generated Audio'
+      : isText
+        ? 'Generated Text'
+        : 'Generated Image';
   const label = input.label || extractLabelFromPrompt(prompt, defaultLabel);
 
   const data: Record<string, unknown> = {
     label,
-    src: '',             // Empty = not yet generated
     status: 'pending',   // NodeProcessor picks up 'pending' + empty src
     prompt,
-    aspectRatio: resolveAspectRatio(modelId, modelParams),
     model: modelId,
     modelId,
     modelParams,
-    referenceMode: referenceMode || 'none',
   };
+
+  if (isText) {
+    data.content = '';
+  } else {
+    data.src = '';             // Empty = not yet generated
+    data.aspectRatio = resolveAspectRatio(modelId, modelParams);
+    data.referenceMode = referenceMode || 'none';
+  }
 
   if (referenceImageUrls && referenceImageUrls.length > 0) {
     data.referenceImageUrls = referenceImageUrls;
@@ -287,6 +288,7 @@ export function buildPendingAssetNode(input: BuildPendingAssetNodeInput): Pendin
 
 // ─── Legacy / Agent-facing Constants ──────────────────────
 // Used by agents, CLI, and backend code that speaks in "image_gen"/"video_gen"
+// style names rather than ReactFlow action-badge types.
 // rather than the ReactFlow types above.
 
 /** Agent-facing node type names */
@@ -295,14 +297,17 @@ export const NodeType = {
   Group: "group",
   Image: "image",
   Video: "video",
+  Audio: "audio",
   ImageGen: "image_gen",
   VideoGen: "video_gen",
+  AudioGen: "audio_gen",
+  TextGen: "text_gen",
 } as const;
 
 export const ALL_NODE_TYPES = Object.values(NodeType) as [string, ...string[]];
 export const CONTENT_NODE_TYPES = [NodeType.Text, NodeType.Group] as const;
 export type ContentNodeType = (typeof CONTENT_NODE_TYPES)[number];
-export const GENERATION_NODE_TYPES = [NodeType.ImageGen, NodeType.VideoGen] as const;
+export const GENERATION_NODE_TYPES = [NodeType.ImageGen, NodeType.VideoGen, NodeType.AudioGen, NodeType.TextGen] as const;
 export type GenerationNodeType = (typeof GENERATION_NODE_TYPES)[number];
 
 export function isGenerationNodeType(t: string): boolean {
@@ -313,6 +318,8 @@ export function isGenerationNodeType(t: string): boolean {
 export const FrontendNodeType = {
   ImageGen: "action-badge",
   VideoGen: "action-badge",
+  AudioGen: "action-badge",
+  TextGen: "action-badge",
 } as const;
 
 export const ProposalType = {
@@ -371,7 +378,7 @@ export const CustomActionDefinitionSchema = z.object({
   name: z.string(),
   description: z.string().optional(),
   parameters: z.array(CustomActionParameterSchema).default([]),
-  outputType: z.enum(['image', 'video', 'text']),
+  outputType: z.enum(['image', 'video', 'audio', 'text']),
   icon: z.string().optional(),
   color: z.string().optional(),
   /** Execution runtime: 'local' = Python SDK via WebSocket, 'worker' = deployed CF Worker via HTTP */

@@ -228,7 +228,18 @@ type EditorContextType = {
   dispatch: React.Dispatch<EditorAction>;
 };
 
+type EditorStaticState = Omit<EditorState, 'currentFrame' | 'playing'>;
+type EditorPlaybackState = Pick<EditorState, 'currentFrame' | 'playing'>;
+type EditorPlaybackRefs = {
+  currentFrameRef: React.MutableRefObject<number>;
+  playingRef: React.MutableRefObject<boolean>;
+};
+
 const EditorContext = createContext<EditorContextType | undefined>(undefined);
+const EditorStaticStateContext = createContext<EditorStaticState | undefined>(undefined);
+const EditorPlaybackContext = createContext<EditorPlaybackState | undefined>(undefined);
+const EditorPlaybackRefsContext = createContext<EditorPlaybackRefs | undefined>(undefined);
+const EditorDispatchContext = createContext<React.Dispatch<EditorAction> | undefined>(undefined);
 
 // Default state for normalization
 const defaultState = initialState;
@@ -278,9 +289,72 @@ export function EditorProvider({ children, initialState: providedInitialState, o
   // This still has some overhead, but much less than before (only runs on persistable changes)
   const prevPersistableRef = React.useRef<string | null>(null);
   const stateRef = React.useRef(state);
+  const currentFrameRef = React.useRef(state.currentFrame);
+  const playingRef = React.useRef(state.playing);
   stateRef.current = state;
+  currentFrameRef.current = state.currentFrame;
+  playingRef.current = state.playing;
 
-  const { tracks, compositionWidth, compositionHeight, fps, durationInFrames, assets, zoom } = state;
+  const {
+    tracks,
+    selectedItemId,
+    selectedTrackId,
+    compositionWidth,
+    compositionHeight,
+    fps,
+    durationInFrames,
+    assets,
+    zoom,
+  } = state;
+
+  const staticState = React.useMemo<EditorStaticState>(
+    () => ({
+      tracks,
+      selectedItemId,
+      selectedTrackId,
+      zoom,
+      assets,
+      compositionWidth,
+      compositionHeight,
+      fps,
+      durationInFrames,
+    }),
+    [
+      tracks,
+      selectedItemId,
+      selectedTrackId,
+      zoom,
+      assets,
+      compositionWidth,
+      compositionHeight,
+      fps,
+      durationInFrames,
+    ],
+  );
+
+  const playbackState = React.useMemo<EditorPlaybackState>(
+    () => ({
+      currentFrame: state.currentFrame,
+      playing: state.playing,
+    }),
+    [state.currentFrame, state.playing],
+  );
+
+  const playbackRefs = React.useMemo<EditorPlaybackRefs>(
+    () => ({
+      currentFrameRef,
+      playingRef,
+    }),
+    [],
+  );
+
+  const fullContext = React.useMemo<EditorContextType>(
+    () => ({
+      state,
+      dispatch,
+    }),
+    [state, dispatch],
+  );
 
   React.useEffect(() => {
     if (!onStateChange) return;
@@ -293,17 +367,43 @@ export function EditorProvider({ children, initialState: providedInitialState, o
   }, [onStateChange, tracks, compositionWidth, compositionHeight, fps, durationInFrames, assets, zoom]);
 
   return (
-    <EditorContext.Provider value={{ state, dispatch }}>
-      {children}
-    </EditorContext.Provider>
+    <EditorDispatchContext.Provider value={dispatch}>
+      <EditorPlaybackRefsContext.Provider value={playbackRefs}>
+        <EditorStaticStateContext.Provider value={staticState}>
+          <EditorPlaybackContext.Provider value={playbackState}>
+            <EditorContext.Provider value={fullContext}>{children}</EditorContext.Provider>
+          </EditorPlaybackContext.Provider>
+        </EditorStaticStateContext.Provider>
+      </EditorPlaybackRefsContext.Provider>
+    </EditorDispatchContext.Provider>
   );
 }
 
-// Hook
-export function useEditor() {
-  const context = useContext(EditorContext);
-  if (!context) {
-    throw new Error('useEditor must be used within EditorProvider');
+function useRequiredContext<T>(context: React.Context<T | undefined>, hookName: string): T {
+  const value = useContext(context);
+  if (!value) {
+    throw new Error(`${hookName} must be used within EditorProvider`);
   }
-  return context;
+  return value;
+}
+
+// Full editor hook for consumers that truly need the complete state object.
+export function useEditor() {
+  return useRequiredContext(EditorContext, 'useEditor');
+}
+
+export function useEditorStaticState() {
+  return useRequiredContext(EditorStaticStateContext, 'useEditorStaticState');
+}
+
+export function useEditorPlayback() {
+  return useRequiredContext(EditorPlaybackContext, 'useEditorPlayback');
+}
+
+export function useEditorPlaybackRefs() {
+  return useRequiredContext(EditorPlaybackRefsContext, 'useEditorPlaybackRefs');
+}
+
+export function useEditorDispatch() {
+  return useRequiredContext(EditorDispatchContext, 'useEditorDispatch');
 }

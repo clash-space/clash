@@ -3,21 +3,28 @@ import { useDraggable } from '@dnd-kit/core';
 import { CSS as _DndCSS } from '@dnd-kit/utilities';
 import { motion } from 'framer-motion';
 import type { Item, BaseItem, Asset, Track } from '@master-clash/remotion-core';
-import { useEditor } from '@master-clash/remotion-core';
+import {
+  findAssetForItem,
+  getItemResolvedSrc,
+  getItemResolvedType,
+  getItemSourceNodeId,
+  useEditorStaticState,
+} from '@master-clash/remotion-core';
 import { frameToPixels, secondsToFrames } from './utils/timeFormatter';
 import { getRendererForItem } from './items/registry';
-
-// Simple in-memory cache for per-asset filmstrips built at a high sample rate
-type FilmstripCacheEntry = {
-  canvas: HTMLCanvasElement;
-  frameWidth: number;
-  frameHeight: number;
-  framesPerRow: number;
-  sampleCount: number;
-  duration: number; // seconds
-};
-
-const filmstripCache = new Map<string, FilmstripCacheEntry>();
+import { generateVideoThumbnailAtTime, thumbnailCache } from '../../utils/thumbnailCache';
+import {
+  DEFAULT_FILMSTRIP_SAMPLE_COUNT,
+  createFilmstripColumnMapping,
+  createFilmstripCacheEntry,
+  createSerializedTaskQueue,
+  drawFilmstripColumnsForSample,
+  type FilmstripCacheEntry,
+  generateVideoFilmstrip,
+  getOrCreatePendingTask,
+  getPersistentVideoCacheId,
+  renderFilmstripToCanvas,
+} from './videoThumbnailUtils';
 
 // Store dragged item globally on window object for cross-module access
 declare global {
@@ -25,6 +32,9 @@ declare global {
     currentDraggedItem: { item: Item; trackId: string } | null;
   }
 }
+
+const pendingFilmstripBuilds = new Map<string, Promise<string | undefined>>();
+const enqueueFilmstripBuild = createSerializedTaskQueue();
 
 interface TimelineItemProps {
   item: Item;
@@ -77,39 +87,26 @@ export const TimelineItem: React.FC<TimelineItemProps> = ({
   style: customStyle,
   isDragOverlay = false,
 }) => {
-  const { state } = useEditor();
+  const { fps } = useEditorStaticState();
   const [isHovered, setIsHovered] = useState(false);
   const [resizingEdge, setResizingEdge] = useState<'left' | 'right' | null>(null);
   const [draggingFade, setDraggingFade] = useState<{ type: 'in' | 'out' } | null>(null);
   const [draggingVolume, setDraggingVolume] = useState(false);
   const [isEditingText, setIsEditingText] = useState(false);
   const [tempText, setTempText] = useState('');
+  const waveformContainerRef = React.useRef<HTMLDivElement | null>(null);
 
   const width = frameToPixels(item.durationInFrames, pixelsPerFrame);
 
   // Resolve item type and src from asset if using reference-based model
   // This is needed because reference-based items only have assetId, not type/src directly
   const resolvedItemType = React.useMemo(() => {
-    if (item.type) return item.type;
-    // Try to resolve from assets via assetId
-    const baseItem = item as BaseItem;
-    if (baseItem.assetId) {
-      const asset = assets.find((a) => a.id === baseItem.assetId);
-      if (asset?.type) return asset.type;
-    }
-    return undefined;
-  }, [item.type, (item as BaseItem).assetId, assets]);
+    return getItemResolvedType(item as BaseItem & { type?: Item['type']; src?: string }, assets);
+  }, [item, assets]);
 
   const resolvedItemSrc = React.useMemo(() => {
-    if ((item as any).src) return (item as any).src;
-    // Try to resolve from assets via assetId
-    const baseItem = item as BaseItem;
-    if (baseItem.assetId) {
-      const asset = assets.find((a) => a.id === baseItem.assetId);
-      if (asset?.src) return asset.src;
-    }
-    return undefined;
-  }, [(item as any).src, (item as BaseItem).assetId, assets]);
+    return getItemResolvedSrc(item as BaseItem & { src?: string }, assets);
+  }, [item, assets]);
 
   // Get item color based on type (use resolved type)
   const getColor = () => {
@@ -131,33 +128,51 @@ export const TimelineItem: React.FC<TimelineItemProps> = ({
 
   // Get asset data (for thumbnail and waveform) - use resolved type
   const asset = React.useMemo(() => {
-    if (resolvedItemType === 'video' || resolvedItemType === 'audio' || resolvedItemType === 'image') {
-      // Priority 1: Lookup by assetId (if present)
-      if ('assetId' in item && item.assetId) {
-        const found = assets.find((a) => a.id === item.assetId);
-        if (found) return found;
-      }
-      // Priority 2: Fallback to lookup by src (legacy/direct link)
-      return assets.find((a) => a.src === (item as any).src) ?? null;
-    }
-    // Also try assetId lookup even if type is unknown (reference-based model)
-    if (item.assetId) {
-      const found = assets.find((a) => a.id === item.assetId);
-      if (found) return found;
-    }
-    return null;
-  }, [item, assets, resolvedItemType]);
+    return findAssetForItem(item as BaseItem & { src?: string; type?: Item['type'] }, assets);
+  }, [item, assets]);
 
-  // Use resolved src for thumbnail fallback
-  const thumbnail = asset?.thumbnail || (resolvedItemType === 'image' ? resolvedItemSrc : undefined);
+  const staticThumbnail = asset?.thumbnail || (resolvedItemType === 'image' ? resolvedItemSrc : undefined);
   const itemWaveform: number[] | undefined =
     (resolvedItemType === 'audio' || resolvedItemType === 'video') && 'waveform' in item
       ? (item as any).waveform as number[] | undefined
       : undefined;
   const hasWaveform: boolean = Array.isArray(itemWaveform) && itemWaveform.length > 0;
+  const sourceStartInFrames = (item as any).sourceStartInFrames || 0;
+  const sourceNodeId = getItemSourceNodeId(item);
+  const itemBackingAssetId = item.sourceNodeId ? item.assetId : undefined;
+  const persistentVideoCacheId = React.useMemo(
+    () => getPersistentVideoCacheId(
+      asset?.backingAssetId ?? itemBackingAssetId,
+      sourceNodeId,
+      resolvedItemSrc
+    ),
+    [asset?.backingAssetId, itemBackingAssetId, sourceNodeId, resolvedItemSrc]
+  );
+  const filmstripCacheKey = persistentVideoCacheId ? `filmstrip:${persistentVideoCacheId}` : null;
+  const fallbackThumbnailCacheKey = persistentVideoCacheId
+    ? `thumb:${persistentVideoCacheId}:${sourceStartInFrames}`
+    : null;
+  const [filmstripThumbnail, setFilmstripThumbnail] = React.useState<string | null>(null);
+  const [fallbackVideoThumbnail, setFallbackVideoThumbnail] = React.useState<string | null>(null);
+  const [isGeneratingThumbnail, setIsGeneratingThumbnail] = React.useState(false);
+  const filmstripGenerationRef = React.useRef(0);
+  const fallbackThumbnailGenerationRef = React.useRef(0);
+  const attemptedFilmstripKeyRef = React.useRef<string | null>(null);
+  const progressiveFilmstripCanvasRef = React.useRef<HTMLCanvasElement | null>(null);
+  const [hasProgressiveFilmstripFrame, setHasProgressiveFilmstripFrame] = React.useState(false);
+
+  const displayThumbnail = resolvedItemType === 'video'
+    ? (fallbackVideoThumbnail || asset?.thumbnail || undefined)
+    : staticThumbnail;
+  const hasVideoThumbnailSurface = resolvedItemType === 'video' && Boolean(
+    hasProgressiveFilmstripFrame ||
+    filmstripThumbnail ||
+    fallbackVideoThumbnail ||
+    asset?.thumbnail
+  );
 
   // Calculate heights - ensure items fit within 72px track height
-  const hasVideoWithThumbnail = resolvedItemType === 'video' && thumbnail && hasWaveform;
+  const hasVideoWithThumbnail = hasVideoThumbnailSurface && hasWaveform;
   const itemHeight = hasVideoWithThumbnail ? 60 : (hasWaveform ? 56 : 44);
   const borderSize = isSelected ? 2 : 1;
   const availableHeight = itemHeight - (borderSize * 2);
@@ -167,301 +182,299 @@ export const TimelineItem: React.FC<TimelineItemProps> = ({
     ? Math.max(1, Math.floor(availableHeight * 0.7))
     : (hasWaveform ? Math.floor(availableHeight * 0.6) : 44);
 
-  // Dynamic thumbnail generation based on zoom level
-  const [dynamicThumbnail, ] = React.useState<string | null>(null);
-  const [isGeneratingThumbnail, setIsGeneratingThumbnail] = React.useState(false);
-  const thumbnailCanvasRef = React.useRef<HTMLCanvasElement | null>(null);
-  const canvasPixelWidthRef = React.useRef<number>(0);
+  const fullVideoFrames = asset?.duration
+    ? secondsToFrames(asset.duration, fps)
+    : item.durationInFrames;
+  const fullVideoPixelWidth = frameToPixels(fullVideoFrames, pixelsPerFrame);
 
+  React.useEffect(() => {
+    attemptedFilmstripKeyRef.current = null;
+    setHasProgressiveFilmstripFrame(false);
+  }, [filmstripCacheKey]);
 
-  // Generate thumbnail based on current zoom level
-  // 绘制整个视频的缩略图，trim 由外层 CSS transform 完成
-  const generateDynamicThumbnail = React.useCallback(async () => {
-    if (!asset?.duration || resolvedItemType !== 'video' || !resolvedItemSrc) {
+  React.useEffect(() => {
+    if (resolvedItemType !== 'video') {
+      setFilmstripThumbnail(null);
+      setFallbackVideoThumbnail(null);
       return;
     }
 
-    setIsGeneratingThumbnail(true);
+    setFilmstripThumbnail(filmstripCacheKey ? thumbnailCache.get(filmstripCacheKey) : null);
+    setFallbackVideoThumbnail(
+      fallbackThumbnailCacheKey ? thumbnailCache.get(fallbackThumbnailCacheKey) : null
+    );
+  }, [resolvedItemType, filmstripCacheKey, fallbackThumbnailCacheKey]);
 
-    try {
-      const videoSrc = resolvedItemSrc;
-      const duration = asset.duration;
-      const totalFrames = secondsToFrames(duration, state.fps);
+  React.useEffect(() => {
+    if (
+      resolvedItemType !== 'video' ||
+      !filmstripThumbnail ||
+      !asset?.duration
+    ) {
+      return;
+    }
 
-      // 计算目标显示区域的高度和宽度（像素）
-      // 注意：这里使用 totalFrames 而不是 item.durationInFrames，绘制完整视频
-      const displayHeight = hasWaveform ? thumbnailHeight : itemHeight;
-      const fullVideoPixelWidth = frameToPixels(totalFrames, pixelsPerFrame);
+    let cancelled = false;
+    const targetCanvas = progressiveFilmstripCanvasRef.current;
+    const targetContext = targetCanvas?.getContext('2d');
+    if (!targetCanvas || !targetContext) {
+      return;
+    }
 
-      const canvasEl = thumbnailCanvasRef.current;
-      const ctx = canvasEl?.getContext('2d');
-      if (!canvasEl || !ctx) {
-        setIsGeneratingThumbnail(false);
+    const destHeight = Math.max(16, Math.floor(hasWaveform ? thumbnailHeight : itemHeight));
+    const previewWidth = Math.max(1, Math.ceil(fullVideoPixelWidth));
+
+    const renderCachedStrip = (image: HTMLImageElement) => {
+      if (cancelled) {
         return;
       }
 
-      // 初始化画布尺寸（基于完整视频）并先填充全黑
-      const destHeight = Math.max(16, Math.floor(displayHeight));
-      canvasEl.width = Math.max(1, Math.ceil(fullVideoPixelWidth));
-      canvasEl.height = destHeight;
-      // Record canvas width for CSS viewport logic
-      canvasPixelWidthRef.current = canvasEl.width;
-      ctx.clearRect(0, 0, canvasEl.width, canvasEl.height);
-      ctx.fillStyle = 'black';
-      ctx.fillRect(0, 0, canvasEl.width, canvasEl.height);
-
-
-      // Generate filmstrip progressively; avoid runtime logs in production
-
-      // 1) Ensure we have a max-sample filmstrip cached for this asset
-      const ensureFilmstrip = async (
-        onSample?: (sampleIndex: number, entry: FilmstripCacheEntry) => void
-      ): Promise<FilmstripCacheEntry> => {
-        const cached = filmstripCache.get(videoSrc);
-        if (cached && Math.abs(cached.duration - duration) < 0.001) {
-          return cached;
-        }
-
-        const video = document.createElement('video');
-        video.src = videoSrc;
-        video.crossOrigin = 'anonymous';
-        video.preload = 'metadata';
-
-        await new Promise<void>((resolve, reject) => {
-          const onLoaded = () => resolve();
-          const onError = () => reject(new Error('video metadata error'));
-          video.addEventListener('loadedmetadata', onLoaded, { once: true });
-          video.addEventListener('error', onError, { once: true });
-        });
-
-        const BASE_HEIGHT = 80; // 基础缓存高度
-        const frameHeight = BASE_HEIGHT;
-        const frameWidth = Math.max(1, Math.floor((video.videoWidth / video.videoHeight) * frameHeight));
-
-        // 固定采样数量 - 减少以提升速度
-        const SAMPLE_COUNT = 40;
-        const sampleCount = Math.min(SAMPLE_COUNT, totalFrames);
-        const framesPerRow = 60; // 网格每行放置帧数，控制宽度
-        const rows = Math.ceil(sampleCount / framesPerRow);
-
-        const filmstrip = document.createElement('canvas');
-        filmstrip.width = frameWidth * Math.min(sampleCount, framesPerRow);
-        filmstrip.height = frameHeight * rows;
-        const fctx = filmstrip.getContext('2d');
-        if (!fctx) {
-          throw new Error('Cannot get filmstrip context');
-        }
-
-        const interval = duration / Math.max(sampleCount, 1);
-        for (let i = 0; i < sampleCount; i++) {
-          const time = Math.min(i * interval, Math.max(0, duration - 0.05));
-          await new Promise<void>((resolveSeek) => {
-            const seeked = () => {
-              video.removeEventListener('seeked', seeked);
-              resolveSeek();
-            };
-            video.addEventListener('seeked', seeked);
-            video.currentTime = time;
-          });
-
-          const row = Math.floor(i / framesPerRow);
-          const col = i % framesPerRow;
-          const dx = col * frameWidth;
-          const dy = row * frameHeight;
-          fctx.drawImage(
-            video,
-            0, 0, video.videoWidth, video.videoHeight,
-            dx, dy, frameWidth, frameHeight
-          );
-
-          if (onSample) {
-            onSample(i, {
-              canvas: filmstrip,
-              frameWidth,
-              frameHeight,
-              framesPerRow,
-              sampleCount,
-              duration,
-            });
-          }
-        }
-
-        const entry: FilmstripCacheEntry = {
-          canvas: filmstrip,
-          frameWidth,
-          frameHeight,
-          framesPerRow,
-          sampleCount,
-          duration,
-        };
-        filmstripCache.set(videoSrc, entry);
-        return entry;
-      };
-
-      // Helpers to map columns to sample indices and draw
-      // 绘制整个视频的缩略图（0 到 1 的完整范围）
-      const drawFromEntry = (entry: FilmstripCacheEntry) => {
-        const destFrameWidth = Math.max(1, Math.floor(entry.frameWidth * (destHeight / entry.frameHeight)));
-        const columns = Math.max(1, Math.ceil(fullVideoPixelWidth / destFrameWidth));
-        const colToIdx: number[] = new Array(columns);
-        // Map columns to samples across the entire video [0, 1]
-        for (let col = 0; col < columns; col++) {
-          const ratio = columns === 1 ? 0 : col / (columns - 1);
-          colToIdx[col] = Math.min(entry.sampleCount - 1, Math.max(0, Math.round(ratio * (entry.sampleCount - 1))));
-        }
-
-        const BATCH = 64; // 增加批处理大小,加快绘制速度
-        let col = 0;
-        const step = () => {
-          const end = Math.min(columns, col + BATCH);
-          for (; col < end; col++) {
-            const idx = colToIdx[col];
-            const srcRow = Math.floor(idx / entry.framesPerRow);
-            const srcCol = idx % entry.framesPerRow;
-            const sx = srcCol * entry.frameWidth;
-            const sy = srcRow * entry.frameHeight;
-            const dx = col * destFrameWidth;
-            ctx.drawImage(entry.canvas, sx, sy, entry.frameWidth, entry.frameHeight, dx, 0, destFrameWidth, destHeight);
-          }
-          if (col < columns) requestAnimationFrame(step);
-          else setIsGeneratingThumbnail(false);
-        };
-        requestAnimationFrame(step);
-      };
-
-      const cached = filmstripCache.get(videoSrc);
-      if (cached && Math.abs(cached.duration - duration) < 0.001) {
-        drawFromEntry(cached);
-      } else {
-        // Build cache and progressively paint as samples become available
-        let mapped = false;
-        let entryForMap: FilmstripCacheEntry | null = null;
-        let destFrameWidth = 1;
-        let columns = 1;
-        let colToIdx: number[] = [];
-        let idxToCols: number[][] = [];
-
-        await ensureFilmstrip((readyIdx, entry) => {
-          if (!mapped) {
-            entryForMap = entry;
-            destFrameWidth = Math.max(1, Math.floor(entry.frameWidth * (destHeight / entry.frameHeight)));
-            columns = Math.max(1, Math.ceil(fullVideoPixelWidth / destFrameWidth));
-            colToIdx = new Array(columns);
-            idxToCols = new Array(entry.sampleCount).fill(null).map(() => []);
-            // 绘制整个视频范围 [0, 1]
-            for (let col = 0; col < columns; col++) {
-              const ratio = columns === 1 ? 0 : col / (columns - 1);
-              const idx = Math.min(entry.sampleCount - 1, Math.max(0, Math.round(ratio * (entry.sampleCount - 1))));
-              colToIdx[col] = idx;
-              idxToCols[idx].push(col);
-            }
-            mapped = true;
-          }
-
-          if (!entryForMap) return;
-          const cols = idxToCols[readyIdx];
-          if (cols && cols.length) {
-            for (const c of cols) {
-              const idx = colToIdx[c];
-              const srcRow = Math.floor(idx / entryForMap.framesPerRow);
-              const srcCol = idx % entryForMap.framesPerRow;
-              const sx = srcCol * entryForMap.frameWidth;
-              const sy = srcRow * entryForMap.frameHeight;
-              const dx = c * destFrameWidth;
-              ctx.drawImage(entry.canvas, sx, sy, entryForMap.frameWidth, entryForMap.frameHeight, dx, 0, destFrameWidth, destHeight);
-            }
-          }
-        });
-        setIsGeneratingThumbnail(false);
-      }
-    } catch (error) {
-      console.error('Error generating dynamic thumbnail:', error);
-      setIsGeneratingThumbnail(false);
-    }
-  }, [asset?.duration, resolvedItemType, resolvedItemSrc, pixelsPerFrame, thumbnailHeight, itemHeight, hasWaveform, state.fps]);
-
-  // 在以下情况触发绘制：
-  // 1. 素材首次拖入 timeline (justInserted) - 采样 + 绘制
-  // 2. zoom 级别显著变化 - 仅重绘（从缓存的 filmstrip 中取样，不重新采样视频）
-  // 注意：trim 和移动操作只改变 CSS transform，不触发重绘
-  const didInitRef = React.useRef(false);
-  const pendingClearInsertFlagRef = React.useRef(false);
-  const lastZoomLevelRef = React.useRef<number>(pixelsPerFrame);
-  const redrawTimeoutRef = React.useRef<NodeJS.Timeout | null>(null);
-
-  React.useEffect(() => {
-    if (!didInitRef.current) {
-      didInitRef.current = true;
-      lastZoomLevelRef.current = pixelsPerFrame;
-
-      // 对于视频类型，如果有 justInserted 标记，初始绘制（采样 + 绘制）
-      if (resolvedItemType === 'video' && asset?.duration) {
-        if ((item as any).justInserted) {
-          pendingClearInsertFlagRef.current = true;
-        }
-        generateDynamicThumbnail();
-      }
-      return;
-    }
-
-    // zoom 级别变化时，立即重绘（无防抖）
-    // 因为只是从缓存 filmstrip 中重新采样绘制，很快，不需要防抖
-    const zoomChanged = Math.abs(pixelsPerFrame - lastZoomLevelRef.current) > 0.01;
-    if (zoomChanged && resolvedItemType === 'video' && asset?.duration) {
-      lastZoomLevelRef.current = pixelsPerFrame;
-
-      // 清除之前的定时器
-      if (redrawTimeoutRef.current) {
-        clearTimeout(redrawTimeoutRef.current);
+      const stripWidth = image.naturalWidth || image.width;
+      const stripHeight = image.naturalHeight || image.height;
+      if (!stripWidth || !stripHeight) {
+        return;
       }
 
-      // 立即重绘（从缓存绘制，不重新采样）
-      generateDynamicThumbnail();
+      const stripCanvas = document.createElement('canvas');
+      stripCanvas.width = stripWidth;
+      stripCanvas.height = stripHeight;
+      const stripContext = stripCanvas.getContext('2d');
+      if (!stripContext) {
+        return;
+      }
+
+      stripContext.drawImage(image, 0, 0, stripWidth, stripHeight);
+
+      const entry = createFilmstripCacheEntry({
+        canvas: stripCanvas,
+        sampleCount: DEFAULT_FILMSTRIP_SAMPLE_COUNT,
+        duration: asset.duration ?? 0,
+      });
+
+      targetCanvas.width = previewWidth;
+      targetCanvas.height = destHeight;
+      targetContext.clearRect(0, 0, targetCanvas.width, targetCanvas.height);
+      renderFilmstripToCanvas({
+        target: targetContext,
+        entry,
+        destHeight,
+        fullVideoPixelWidth,
+      });
+      setHasProgressiveFilmstripFrame(true);
+    };
+
+    const image = new Image();
+    image.decoding = 'async';
+    image.onload = () => renderCachedStrip(image);
+    image.onerror = () => {
+      if (!cancelled) {
+        setHasProgressiveFilmstripFrame(false);
+      }
+    };
+    image.src = filmstripThumbnail;
+
+    if (image.complete && image.naturalWidth > 0) {
+      renderCachedStrip(image);
     }
 
     return () => {
-      if (redrawTimeoutRef.current) {
-        clearTimeout(redrawTimeoutRef.current);
+      cancelled = true;
+      image.onload = null;
+      image.onerror = null;
+    };
+  }, [
+    resolvedItemType,
+    filmstripThumbnail,
+    asset?.duration,
+    fullVideoPixelWidth,
+    hasWaveform,
+    thumbnailHeight,
+    itemHeight,
+  ]);
+
+  React.useEffect(() => {
+    if (
+      resolvedItemType !== 'video' ||
+      !resolvedItemSrc ||
+      !fallbackThumbnailCacheKey ||
+      filmstripThumbnail ||
+      fallbackVideoThumbnail ||
+      asset?.thumbnail
+    ) {
+      return;
+    }
+
+    let cancelled = false;
+    let timeoutId: ReturnType<typeof setTimeout> | null = null;
+    let idleId: number | null = null;
+
+    const run = async () => {
+      const generationId = fallbackThumbnailGenerationRef.current + 1;
+      fallbackThumbnailGenerationRef.current = generationId;
+
+      const cached = thumbnailCache.get(fallbackThumbnailCacheKey);
+      if (cached) {
+        if (!cancelled && fallbackThumbnailGenerationRef.current === generationId) {
+          setFallbackVideoThumbnail(cached);
+        }
+        return;
+      }
+
+      const generated = await generateVideoThumbnailAtTime(
+        resolvedItemSrc,
+        sourceStartInFrames / fps
+      );
+
+      if (
+        cancelled ||
+        fallbackThumbnailGenerationRef.current !== generationId ||
+        !generated
+      ) {
+        return;
+      }
+
+      thumbnailCache.set(fallbackThumbnailCacheKey, generated);
+      setFallbackVideoThumbnail(generated);
+    };
+
+    if ('requestIdleCallback' in window) {
+      idleId = window.requestIdleCallback(run, { timeout: 500 });
+    } else {
+      timeoutId = setTimeout(run, 120);
+    }
+
+    return () => {
+      cancelled = true;
+      if (idleId !== null && 'cancelIdleCallback' in window) {
+        window.cancelIdleCallback(idleId);
+      }
+      if (timeoutId !== null) {
+        clearTimeout(timeoutId);
       }
     };
   }, [
-    pixelsPerFrame,
-    generateDynamicThumbnail,
-    item.id,
     resolvedItemType,
-    asset?.duration,
+    resolvedItemSrc,
+    fallbackThumbnailCacheKey,
+    filmstripThumbnail,
+    fallbackVideoThumbnail,
+    asset?.thumbnail,
+    sourceStartInFrames,
+    fps,
   ]);
 
-  // 绘制完成后，清除 justInserted 标记，避免后续重复绘制
   React.useEffect(() => {
-    if (!isGeneratingThumbnail && pendingClearInsertFlagRef.current && (item as any).justInserted) {
-      pendingClearInsertFlagRef.current = false;
-      onUpdate(item.id, { justInserted: false } as any);
+    if (
+      resolvedItemType !== 'video' ||
+      !resolvedItemSrc ||
+      !asset?.duration ||
+      !filmstripCacheKey ||
+      filmstripThumbnail ||
+      attemptedFilmstripKeyRef.current === filmstripCacheKey
+    ) {
+      return;
     }
-  }, [isGeneratingThumbnail, item.id, onUpdate]);
 
+    attemptedFilmstripKeyRef.current = filmstripCacheKey;
+    let cancelled = false;
+    let timeoutId: ReturnType<typeof setTimeout> | null = null;
+    let idleId: number | null = null;
 
-  // 不再因为 waveform 可用性变化而重绘，遵循“仅拖入时绘制”的策略
-  const prevHasWaveformRef = React.useRef<boolean | null>(null);
-  React.useEffect(() => {
-    prevHasWaveformRef.current = hasWaveform;
-  }, [hasWaveform]);
+    const run = async () => {
+      setIsGeneratingThumbnail(true);
+      setHasProgressiveFilmstripFrame(false);
+      const generationId = filmstripGenerationRef.current + 1;
+      filmstripGenerationRef.current = generationId;
+      const destHeight = Math.max(16, Math.floor(hasWaveform ? thumbnailHeight : itemHeight));
+      const previewCanvas = progressiveFilmstripCanvasRef.current;
+      const previewContext = previewCanvas?.getContext('2d');
+      let progressiveMapping: ReturnType<typeof createFilmstripColumnMapping> | null = null;
 
+      if (previewCanvas && previewContext) {
+        previewCanvas.width = Math.max(1, Math.ceil(fullVideoPixelWidth));
+        previewCanvas.height = destHeight;
+        previewContext.clearRect(0, 0, previewCanvas.width, previewCanvas.height);
+      }
 
-  // Revoke previously created object URLs to avoid memory leaks and reduce flicker
-  const prevThumbUrlRef = React.useRef<string | null>(null);
-  React.useEffect(() => {
-    if (prevThumbUrlRef.current && prevThumbUrlRef.current !== dynamicThumbnail) {
-      URL.revokeObjectURL(prevThumbUrlRef.current);
+      const generated = await getOrCreatePendingTask(
+        pendingFilmstripBuilds,
+        filmstripCacheKey,
+        () =>
+          enqueueFilmstripBuild(() =>
+            generateVideoFilmstrip({
+              videoSrc: resolvedItemSrc,
+              duration: asset.duration ?? 0,
+              onSample:
+                previewContext && previewCanvas
+                  ? (snapshot: FilmstripCacheEntry, sampleIndex: number) => {
+                    if (cancelled || filmstripGenerationRef.current !== generationId) {
+                      return;
+                    }
+
+                    progressiveMapping ??= createFilmstripColumnMapping({
+                      entry: snapshot,
+                      destHeight,
+                      fullVideoPixelWidth,
+                    });
+
+                    const drawnColumns = drawFilmstripColumnsForSample({
+                      target: previewContext,
+                      entry: snapshot,
+                      mapping: progressiveMapping,
+                      sampleIndex,
+                      destHeight,
+                    });
+
+                    if (drawnColumns > 0) {
+                      setHasProgressiveFilmstripFrame(true);
+                    }
+                  }
+                  : undefined,
+            })
+          )
+      );
+
+      if (cancelled || filmstripGenerationRef.current !== generationId) {
+        return;
+      }
+
+      if (generated) {
+        thumbnailCache.set(filmstripCacheKey, generated);
+        setFilmstripThumbnail(generated);
+      }
+
+      setIsGeneratingThumbnail(false);
+    };
+
+    if ('requestIdleCallback' in window) {
+      idleId = window.requestIdleCallback(run, { timeout: 700 });
+    } else {
+      timeoutId = setTimeout(run, 120);
     }
-    prevThumbUrlRef.current = dynamicThumbnail;
-  }, [dynamicThumbnail]);
 
-  // Use dynamic thumbnail if available, otherwise fallback to static one
-  const displayThumbnail = dynamicThumbnail || thumbnail;
-  const isDynamicReady = Boolean(dynamicThumbnail);
+    return () => {
+      cancelled = true;
+      if (idleId !== null && 'cancelIdleCallback' in window) {
+        window.cancelIdleCallback(idleId);
+      }
+      if (timeoutId !== null) {
+        clearTimeout(timeoutId);
+      }
+      setIsGeneratingThumbnail(false);
+      setHasProgressiveFilmstripFrame(false);
+    };
+  }, [
+    resolvedItemType,
+    resolvedItemSrc,
+    asset?.duration,
+    filmstripCacheKey,
+    filmstripThumbnail,
+    fullVideoPixelWidth,
+    hasWaveform,
+    thumbnailHeight,
+    itemHeight,
+  ]);
 
-  // (removed) Previously used to stretch thumbnail to fit width.
   // Match 3:7 ratio when video has waveform; otherwise keep previous calculation
   const waveformHeight = hasWaveform
     ? (hasVideoWithThumbnail
@@ -506,7 +519,7 @@ export const TimelineItem: React.FC<TimelineItemProps> = ({
     }
 
     // 计算完整波形的宽度（基于整个视频的时长）
-    const totalFrames = secondsToFrames(asset.duration, state.fps);
+    const totalFrames = secondsToFrames(asset.duration, fps);
     const fullWidth = frameToPixels(totalFrames, pixelsPerFrame);
 
     const barCount = waveform.length;
@@ -647,7 +660,7 @@ export const TimelineItem: React.FC<TimelineItemProps> = ({
   const handleVolumeDrag = useCallback((e: MouseEvent) => {
     if (!draggingVolume) return;
 
-    const waveformElement = document.querySelector(`[data-waveform-id="${item.id}"]`);
+    const waveformElement = waveformContainerRef.current;
     if (!waveformElement) return;
 
     const rect = waveformElement.getBoundingClientRect();
@@ -809,6 +822,11 @@ export const TimelineItem: React.FC<TimelineItemProps> = ({
       ref={setNodeRef}
       {...attributes}
       data-dnd-id={`item-${item.id}`}
+      role={isDragOverlay ? undefined : 'button'}
+      tabIndex={isDragOverlay ? undefined : 0}
+      aria-label={`${resolvedItemType ?? 'item'}: ${getItemLabel()}`}
+      aria-pressed={isSelected}
+      className="timeline-item"
       onMouseEnter={() => {
         setIsHovered(true);
         onHoverChange?.(true);
@@ -868,7 +886,7 @@ export const TimelineItem: React.FC<TimelineItemProps> = ({
               position: 'absolute',
               inset: 0,
               backgroundImage: `url(${displayThumbnail})`,
-              backgroundSize: isDynamicReady ? 'auto 100%' : 'cover',
+              backgroundSize: 'cover',
               backgroundPosition: 'left top',
               backgroundRepeat: 'no-repeat',
             }}
@@ -894,35 +912,50 @@ export const TimelineItem: React.FC<TimelineItemProps> = ({
               height: hasWaveform ? `${thumbnailHeight}px` : '100%',
               zIndex: 1,
               overflow: 'hidden',
-              backgroundColor: '#000',
+              backgroundColor: displayThumbnail ? 'transparent' : '#000',
+              backgroundImage: displayThumbnail ? `url(${displayThumbnail})` : undefined,
+              backgroundSize: 'auto 100%',
+              backgroundPosition: 'left top',
+              backgroundRepeat: 'repeat-x',
             }}
           >
-          <div
-            style={{
-              position: 'absolute',
-              top: 0,
-              left: 0,
-              height: '100%',
-              width: canvasPixelWidthRef.current ? `${canvasPixelWidthRef.current}px` : '100%',
-              transform: `translateX(${(-((item as any).sourceStartInFrames || 0) * pixelsPerFrame)}px)`,
-              willChange: 'transform',
-            }}
-          >
-            <canvas
-              ref={thumbnailCanvasRef}
+            <div
               style={{
-                width: '100%',
+                position: 'absolute',
+                top: 0,
+                left: 0,
                 height: '100%',
-                display: 'block',
+                width: `${fullVideoPixelWidth}px`,
+                transform: `translateX(${(-(sourceStartInFrames) * pixelsPerFrame)}px)`,
+                willChange: 'transform',
+                opacity: hasProgressiveFilmstripFrame ? 1 : 0,
               }}
-            />
+            >
+              <canvas
+                ref={progressiveFilmstripCanvasRef}
+                style={{
+                  width: '100%',
+                  height: '100%',
+                  display: 'block',
+                }}
+              />
+            </div>
+            {isGeneratingThumbnail && !displayThumbnail && (
+              <div
+                style={{
+                  position: 'absolute',
+                  inset: 0,
+                  backgroundColor: 'rgba(255, 255, 255, 0.08)',
+                }}
+              />
+            )}
           </div>
-        </div>
       )}
 
       {/* Waveform */}
       {hasWaveform && itemWaveform && (
         <div
+          ref={waveformContainerRef}
           data-waveform-id={item.id}
           draggable={false}
           onDragStart={(e) => e.preventDefault()}
@@ -993,6 +1026,13 @@ export const TimelineItem: React.FC<TimelineItemProps> = ({
         <>
           {/* Fade In Handle */}
           <div
+            role="slider"
+            aria-label="Fade in duration"
+            aria-valuemin={0}
+            aria-valuemax={Math.floor((item.durationInFrames * 2) / 3)}
+            aria-valuenow={audioFadeIn}
+            aria-valuetext={`${(audioFadeIn / fps).toFixed(2)} seconds`}
+            tabIndex={0}
             onMouseDown={(e) => handleFadeMouseDown(e, 'in')}
             onDragStart={(e) => e.preventDefault()}
             style={{
@@ -1009,7 +1049,7 @@ export const TimelineItem: React.FC<TimelineItemProps> = ({
               boxShadow: '0 2px 4px rgba(0,0,0,0.3)',
               pointerEvents: 'auto',
             }}
-            title={`Fade In: ${(audioFadeIn / state.fps).toFixed(1)}s`}
+            title={`Fade In: ${(audioFadeIn / fps).toFixed(1)}s`}
           >
             {draggingFade?.type === 'in' && (
               <div style={{
@@ -1025,13 +1065,20 @@ export const TimelineItem: React.FC<TimelineItemProps> = ({
                 whiteSpace: 'nowrap',
                 pointerEvents: 'none',
               }}>
-                {(audioFadeIn / state.fps).toFixed(2)}s
+                {(audioFadeIn / fps).toFixed(2)}s
               </div>
             )}
           </div>
 
           {/* Fade Out Handle */}
           <div
+            role="slider"
+            aria-label="Fade out duration"
+            aria-valuemin={0}
+            aria-valuemax={Math.floor((item.durationInFrames * 2) / 3)}
+            aria-valuenow={audioFadeOut}
+            aria-valuetext={`${(audioFadeOut / fps).toFixed(2)} seconds`}
+            tabIndex={0}
             onMouseDown={(e) => handleFadeMouseDown(e, 'out')}
             onDragStart={(e) => e.preventDefault()}
             style={{
@@ -1048,7 +1095,7 @@ export const TimelineItem: React.FC<TimelineItemProps> = ({
               boxShadow: '0 2px 4px rgba(0,0,0,0.3)',
               pointerEvents: 'auto',
             }}
-            title={`Fade Out: ${(audioFadeOut / state.fps).toFixed(1)}s`}
+            title={`Fade Out: ${(audioFadeOut / fps).toFixed(1)}s`}
           >
             {draggingFade?.type === 'out' && (
               <div style={{
@@ -1064,7 +1111,7 @@ export const TimelineItem: React.FC<TimelineItemProps> = ({
                 whiteSpace: 'nowrap',
                 pointerEvents: 'none',
               }}>
-                {(audioFadeOut / state.fps).toFixed(2)}s
+                {(audioFadeOut / fps).toFixed(2)}s
               </div>
             )}
           </div>
@@ -1082,9 +1129,9 @@ export const TimelineItem: React.FC<TimelineItemProps> = ({
         whiteSpace: 'nowrap',
         overflow: 'hidden',
         textOverflow: 'ellipsis',
-        backgroundColor: (thumbnail || hasWaveform) ? 'rgba(0, 0, 0, 0.7)' : 'transparent',
-        padding: (thumbnail || hasWaveform) ? '2px 6px' : '0',
-        borderRadius: (thumbnail || hasWaveform) ? '3px' : '0',
+        backgroundColor: (displayThumbnail || hasWaveform) ? 'rgba(0, 0, 0, 0.7)' : 'transparent',
+        padding: (displayThumbnail || hasWaveform) ? '2px 6px' : '0',
+        borderRadius: (displayThumbnail || hasWaveform) ? '3px' : '0',
         zIndex: 1,
         maxWidth: isHovered ? 'calc(100% - 40px)' : 'calc(100% - 16px)',
         pointerEvents: 'none',
@@ -1123,6 +1170,7 @@ export const TimelineItem: React.FC<TimelineItemProps> = ({
           exit={{ opacity: 0, scale: 0.8 }}
           transition={{ duration: 0.15 }}
           onClick={handleDeleteClick}
+          aria-label={`Delete ${getItemLabel()}`}
           style={{
             position: 'absolute',
             top: 4,

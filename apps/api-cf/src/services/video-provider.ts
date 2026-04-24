@@ -1,9 +1,12 @@
 /**
  * Video generation provider interface + registry.
  *
- * Workflow calls `resolveVideoProvider(modelName).generate(params)`
- * without knowing which provider handles the model.
+ * Each provider consumes raw R2 keys and resolves them internally into the
+ * shape its API expects (public URL for fal, base64 for Google Vertex).
+ * The pipeline doesn't know or care — it just hands over R2 keys.
  */
+import { fal } from "@fal-ai/client";
+import { Buffer } from "node:buffer";
 import type { Env } from "../config";
 import { generateFalVideo } from "./fal-video";
 import { generateGoogleVideo, GOOGLE_VIDEO_MODELS, type VertexCredentials } from "./google-gen";
@@ -12,14 +15,14 @@ import { generateGoogleVideo, GOOGLE_VIDEO_MODELS, type VertexCredentials } from
 
 export interface VideoGenInput {
   prompt: string;
-  /** First / source image (single or startEnd.first). */
-  imageUrl?: string;
-  /** Optional tail/end frame (startEnd models like Kling 2.5 / 3 / Seedance i2v). */
-  tailImageUrl?: string;
-  /** Multi-modal reference bundle for models with `inputMode.images/videos/audios`. */
-  referenceImageUrls?: string[];
-  referenceVideoUrls?: string[];
-  referenceAudioUrls?: string[];
+  /** First / source image R2 key (single or startEnd.first). */
+  imageR2Key?: string;
+  /** Tail/end frame R2 key (startEnd models). */
+  tailImageR2Key?: string;
+  /** Multi-modal reference bundle for models with inputMode.images/videos/audios. */
+  referenceR2Keys?: string[];
+  referenceVideoR2Keys?: string[];
+  referenceAudioR2Keys?: string[];
   aspectRatio?: string;
   duration?: number;
   modelName?: string;
@@ -40,17 +43,61 @@ export interface VideoProvider {
   generate(env: Env, params: VideoGenInput): Promise<VideoGenOutput>;
 }
 
+// ─── Shared helpers ─────────────────────────────────────
+
+async function readR2AsBase64Image(
+  bucket: R2Bucket,
+  key: string,
+): Promise<{ bytesBase64Encoded: string; mimeType: string }> {
+  const obj = await bucket.get(key);
+  if (!obj) throw new Error(`R2 object not found: ${key}`);
+  const mimeType = obj.httpMetadata?.contentType || "image/png";
+  const buf = await obj.arrayBuffer();
+  // Native C++ base64 from node:buffer (workerd nodejs_compat) — much faster
+  // and cheaper than the JS `btoa(String.fromCharCode(...))` chunked trick.
+  return { bytesBase64Encoded: Buffer.from(buf).toString("base64"), mimeType };
+}
+
+async function uploadR2ToFal(
+  bucket: R2Bucket,
+  r2Key: string,
+  falApiKey: string,
+): Promise<string> {
+  fal.config({ credentials: falApiKey });
+  const obj = await bucket.get(r2Key);
+  if (!obj) throw new Error(`R2 object not found: ${r2Key}`);
+  const buf = await obj.arrayBuffer();
+  const ct = obj.httpMetadata?.contentType || "image/png";
+  const blob = new Blob([buf], { type: ct });
+  return await fal.storage.upload(blob);
+}
+
 // ─── fal.ai Provider ────────────────────────────────────
 
 const falVideoProvider: VideoProvider = {
   async generate(env, params) {
-    const result = await generateFalVideo(env.FAL_API_KEY ?? "", {
+    const falApiKey = env.FAL_API_KEY ?? "";
+    const toFal = (k?: string) => (k ? uploadR2ToFal(env.R2_BUCKET, k, falApiKey) : Promise.resolve(undefined));
+    const toFalAll = async (keys?: string[]) => {
+      if (!keys?.length) return undefined;
+      return Promise.all(keys.map((k) => uploadR2ToFal(env.R2_BUCKET, k, falApiKey)));
+    };
+
+    const [imageUrl, tailImageUrl, referenceImageUrls, referenceVideoUrls, referenceAudioUrls] = await Promise.all([
+      toFal(params.imageR2Key),
+      toFal(params.tailImageR2Key),
+      toFalAll(params.referenceR2Keys),
+      toFalAll(params.referenceVideoR2Keys),
+      toFalAll(params.referenceAudioR2Keys),
+    ]);
+
+    const result = await generateFalVideo(falApiKey, {
       prompt: params.prompt,
-      imageUrl: params.imageUrl,
-      tailImageUrl: params.tailImageUrl,
-      referenceImageUrls: params.referenceImageUrls,
-      referenceVideoUrls: params.referenceVideoUrls,
-      referenceAudioUrls: params.referenceAudioUrls,
+      imageUrl,
+      tailImageUrl,
+      referenceImageUrls,
+      referenceVideoUrls,
+      referenceAudioUrls,
       duration: params.duration,
       aspectRatio: params.aspectRatio,
       videoModel: params.modelName,
@@ -75,11 +122,29 @@ const googleVideoProvider: VideoProvider = {
       project: env.GOOGLE_CLOUD_PROJECT ?? "",
       location: env.GOOGLE_CLOUD_LOCATION ?? "global",
     };
+
+    // Vertex wants base64 in-body — read R2 directly, no third party.
+    const toBase64 = (k?: string) =>
+      k ? readR2AsBase64Image(env.R2_BUCKET, k) : Promise.resolve(undefined);
+    const toBase64All = async (keys?: string[]) => {
+      if (!keys?.length) return undefined;
+      return Promise.all(keys.map((k) => readR2AsBase64Image(env.R2_BUCKET, k)));
+    };
+
+    const [image, tailImage, referenceImages] = await Promise.all([
+      toBase64(params.imageR2Key),
+      toBase64(params.tailImageR2Key),
+      toBase64All(params.referenceR2Keys),
+    ]);
+
     const result = await generateGoogleVideo(creds, {
       prompt: params.prompt,
       aspectRatio: params.aspectRatio,
       modelName: params.modelName,
       modelParams: params.modelParams,
+      image,
+      tailImage,
+      referenceImages,
     });
     return {
       data: result.data,

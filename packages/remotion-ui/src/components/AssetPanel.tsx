@@ -1,6 +1,12 @@
 import React, { useRef, useState } from 'react';
-import { useEditor } from '@master-clash/remotion-core';
-import type { Asset, TextItem } from '@master-clash/remotion-core';
+import {
+  getEditorAssetKey,
+  normalizeEditorAsset,
+  useEditorDispatch,
+  useEditorPlaybackRefs,
+  useEditorStaticState,
+} from '@master-clash/remotion-core';
+import type { Asset, EditorAssetInput, TextItem } from '@master-clash/remotion-core';
 
 // Export for TimelineTracksContainer to use
 export let currentDraggedAsset: any = null;
@@ -10,24 +16,8 @@ type AssetPanelProps = {
   onBack?: () => void;
   backLabel?: string;
   onAssetUpload?: (file: File, type: 'video' | 'image' | 'audio') => void;
-  availableAssets?: Array<{
-    id: string;
-    name?: string;
-    type: 'video' | 'image' | 'audio';
-    src: string;
-    width?: number;
-    height?: number;
-    sourceNodeId?: string;
-  }>;
-  onAssetPicked?: (asset: {
-    id: string;
-    name?: string;
-    type: 'video' | 'image' | 'audio';
-    src: string;
-    width?: number;
-    height?: number;
-    sourceNodeId?: string;
-  }) => void;
+  availableAssets?: EditorAssetInput[];
+  onAssetPicked?: (asset: EditorAssetInput) => void;
   onExport?: () => Promise<void>;
 };
 
@@ -39,7 +29,9 @@ export const AssetPanel: React.FC<AssetPanelProps> = ({
   onAssetPicked,
   onExport,
 }) => {
-  const { state, dispatch } = useEditor();
+  const dispatch = useEditorDispatch();
+  const { tracks, assets } = useEditorStaticState();
+  const { currentFrameRef } = useEditorPlaybackRefs();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isPickerOpen, setIsPickerOpen] = useState(false);
 
@@ -86,19 +78,19 @@ export const AssetPanel: React.FC<AssetPanelProps> = ({
 
   const handleAddTextToTrack = () => {
     const newItemDuration = 90; // 3 seconds at 30fps
-    const newItemFrom = state.currentFrame;
+    const newItemFrom = currentFrameRef.current;
     const newItemTo = newItemFrom + newItemDuration;
 
     // 检测第一轨道是否有重叠
     let trackId: string;
     let needsNewTrack = false;
 
-    if (state.tracks.length === 0) {
+    if (tracks.length === 0) {
       // 没有轨道，创建新轨道
       trackId = `track-${Date.now()}`;
       needsNewTrack = true;
     } else {
-      const firstTrack = state.tracks[0];
+      const firstTrack = tracks[0];
       // 检查第一轨道上是否有元素与新元素时间范围重叠
       const hasOverlap = firstTrack.items.some(item => {
         const itemFrom = item.from;
@@ -185,35 +177,21 @@ export const AssetPanel: React.FC<AssetPanelProps> = ({
     e.dataTransfer.setData('quickAddType', type);
   };
 
-  const handlePickAsset = (asset: {
-    id: string;
-    name?: string;
-    type: 'video' | 'image' | 'audio';
-    src: string;
-    width?: number;
-    height?: number;
-    sourceNodeId?: string;
-  }) => {
-    const exists = state.assets.some((a) =>
-      a.id === asset.id ||
-      a.src === asset.src ||
-      (asset.sourceNodeId && a.sourceNodeId === asset.sourceNodeId)
+  const handlePickAsset = (asset: EditorAssetInput) => {
+    const assetKey = getEditorAssetKey(asset);
+    const exists = assets.some((a) =>
+      getEditorAssetKey(a) === assetKey ||
+      (!!asset.src && a.src === asset.src)
     );
 
     if (!exists) {
       dispatch({
         type: 'ADD_ASSET',
-        payload: {
-          id: asset.id,
+        payload: normalizeEditorAsset({
+          ...asset,
           name: asset.name || 'Canvas Asset',
-          type: asset.type,
-          src: asset.src,
-          width: asset.width,
-          height: asset.height,
-          createdAt: Date.now(),
           readOnly: true,
-          sourceNodeId: asset.sourceNodeId,
-        },
+        }),
       });
     }
     onAssetPicked?.(asset);
@@ -280,19 +258,19 @@ export const AssetPanel: React.FC<AssetPanelProps> = ({
             <button
               onClick={() => {
                 const newItemDuration = 30; // 1 second at 30fps (smaller initial size)
-                const newItemFrom = state.currentFrame;
+                const newItemFrom = currentFrameRef.current;
                 const newItemTo = newItemFrom + newItemDuration;
 
                 // 检测第一轨道是否有重叠
                 let trackId: string;
                 let needsNewTrack = false;
 
-                if (state.tracks.length === 0) {
+                if (tracks.length === 0) {
                   // 没有轨道，创建新轨道
                   trackId = `track-${Date.now()}`;
                   needsNewTrack = true;
                 } else {
-                  const firstTrack = state.tracks[0];
+                  const firstTrack = tracks[0];
                   // 检查第一轨道上是否有元素与新元素时间范围重叠
                   const hasOverlap = firstTrack.items.some(item => {
                     const itemFrom = item.from;
@@ -393,12 +371,12 @@ export const AssetPanel: React.FC<AssetPanelProps> = ({
 
         {/* Assets List */}
         <div className="flex flex-col gap-2">
-          {state.assets.length === 0 ? (
+          {assets.length === 0 ? (
             <div className="text-center py-8 text-slate-400 text-sm bg-slate-100/50 rounded-lg border border-dashed border-slate-200">
               No assets uploaded yet
             </div>
           ) : (
-            state.assets.map((asset) => (
+            assets.map((asset) => (
               <div
                 key={asset.id}
                 draggable
@@ -413,11 +391,21 @@ export const AssetPanel: React.FC<AssetPanelProps> = ({
                   />
                 )}
                 {asset.type === 'video' && (
-                  <img
-                    src={asset.thumbnail || asset.src}
-                    alt={asset.name}
-                    className="w-12 h-12 object-cover object-left-top rounded bg-slate-100 border border-slate-100"
-                  />
+                  asset.thumbnail ? (
+                    <img
+                      src={asset.thumbnail}
+                      alt={asset.name}
+                      className="w-12 h-12 object-cover object-left-top rounded bg-slate-100 border border-slate-100"
+                    />
+                  ) : (
+                    <video
+                      src={asset.src}
+                      muted
+                      playsInline
+                      preload="metadata"
+                      className="w-12 h-12 object-cover object-left-top rounded bg-slate-100 border border-slate-100"
+                    />
+                  )
                 )}
                 {asset.type === 'audio' && (
                   <div className="w-12 h-12 flex items-center justify-center bg-slate-100 rounded text-xl border border-slate-200">🎵</div>
@@ -471,6 +459,22 @@ export const AssetPanel: React.FC<AssetPanelProps> = ({
                       alt={asset.name || 'Image'}
                       className="w-12 h-12 object-cover rounded-md bg-slate-100 border border-slate-100"
                     />
+                  ) : asset.type === 'video' ? (
+                    asset.thumbnail ? (
+                      <img
+                        src={asset.thumbnail}
+                        alt={asset.name || 'Video'}
+                        className="w-12 h-12 object-cover rounded-md bg-slate-100 border border-slate-100"
+                      />
+                    ) : (
+                      <video
+                        src={asset.src}
+                        muted
+                        playsInline
+                        preload="metadata"
+                        className="w-12 h-12 object-cover rounded-md bg-slate-100 border border-slate-100"
+                      />
+                    )
                   ) : (
                     <div className="w-12 h-12 rounded-md bg-slate-100 border border-slate-200 flex items-center justify-center text-[10px] font-bold text-slate-500">
                       {asset.type.toUpperCase()}

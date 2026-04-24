@@ -1,28 +1,36 @@
 import React, { useMemo } from "react";
-import { useEditor } from "@master-clash/remotion-core";
+import {
+  useEditorDispatch,
+  useEditorPlayback,
+  useEditorPlaybackRefs,
+  useEditorStaticState,
+} from "@master-clash/remotion-core";
 import { InteractiveCanvas } from "./InteractiveCanvasV2";
 
 export const CanvasPreview: React.FC = React.memo(() => {
-  const { state, dispatch } = useEditor();
+  const dispatch = useEditorDispatch();
+  const { tracks, assets, selectedItemId, compositionWidth, compositionHeight, fps } = useEditorStaticState();
+  const { currentFrame, playing } = useEditorPlayback();
+  const { currentFrameRef, playingRef } = useEditorPlaybackRefs();
 
   // Calculate duration from timeline (max end frame of all items)
   const timelineDuration = useMemo(() => {
     let maxEnd = 0;
-    for (const track of state.tracks) {
+    for (const track of tracks) {
       for (const item of track.items) {
         const end = item.from + item.durationInFrames;
         if (end > maxEnd) maxEnd = end;
       }
     }
     return maxEnd > 0 ? maxEnd : 300; // 300 frames = 10 seconds at 30fps as fallback
-  }, [state.tracks]);
+  }, [tracks]);
 
-  // Create allNodesMap from assets for resolving assetId references in VideoComposition
-  // Timeline items use assetId which references the canvas node ID (sourceNodeId)
-  // We need to map BOTH asset.id AND asset.sourceNodeId to support both cases
+  // Create allNodesMap from assets for resolving timeline references.
+  // sourceNodeId references the canvas node; assetId references the D1 asset row.
+  // Map all stable identities for compatibility with old and new DSL.
   const allNodesMap = useMemo(() => {
     const map = new Map<string, any>();
-    for (const asset of state.assets) {
+    for (const asset of assets) {
       const nodeData = {
         type: asset.type,
         data: {
@@ -31,16 +39,16 @@ export const CanvasPreview: React.FC = React.memo(() => {
           naturalHeight: asset.height,
         },
       };
-      // Map by asset.id (internal editor ID)
       map.set(asset.id, nodeData);
-      // Also map by sourceNodeId (canvas node ID) if different
-      // This is the ID that timeline items reference via assetId
       if (asset.sourceNodeId && asset.sourceNodeId !== asset.id) {
         map.set(asset.sourceNodeId, nodeData);
       }
+      if (asset.backingAssetId) {
+        map.set(asset.backingAssetId, nodeData);
+      }
     }
     return map;
-  }, [state.assets]);
+  }, [assets]);
 
   return (
     <div style={styles.container}>
@@ -48,13 +56,13 @@ export const CanvasPreview: React.FC = React.memo(() => {
       <div style={styles.canvasWrapper}>
         <InteractiveCanvas
           key="interactive-canvas"
-          tracks={state.tracks}
+          tracks={tracks}
           allNodesMap={allNodesMap}
-          selectedItemId={state.selectedItemId}
-          currentFrame={state.currentFrame}
-          compositionWidth={state.compositionWidth}
-          compositionHeight={state.compositionHeight}
-          fps={state.fps}
+          selectedItemId={selectedItemId}
+          currentFrame={currentFrame}
+          compositionWidth={compositionWidth}
+          compositionHeight={compositionHeight}
+          fps={fps}
           durationInFrames={timelineDuration}
           onUpdateItem={(trackId, itemId, updates) => {
             dispatch({
@@ -68,24 +76,31 @@ export const CanvasPreview: React.FC = React.memo(() => {
               payload: itemId,
             });
           }}
-          playing={state.playing}
+          playing={playing}
           onPlayingChange={(playing) => {
-            dispatch({
-              type: "SET_PLAYING",
-              payload: playing,
-            });
+            if (playingRef.current !== playing) {
+              dispatch({
+                type: "SET_PLAYING",
+                payload: playing,
+              });
+            }
           }}
           onFrameUpdate={(frame) => {
-            dispatch({
-              type: "SET_CURRENT_FRAME",
-              payload: Math.round(frame),
-            });
+            const roundedFrame = Math.round(frame);
+            if (roundedFrame !== currentFrameRef.current) {
+              dispatch({
+                type: "SET_CURRENT_FRAME",
+                payload: roundedFrame,
+              });
+            }
           }}
           onSeek={(frame) => {
-            dispatch({
-              type: "SET_CURRENT_FRAME",
-              payload: frame,
-            });
+            if (frame !== currentFrameRef.current) {
+              dispatch({
+                type: "SET_CURRENT_FRAME",
+                payload: frame,
+              });
+            }
           }}
         />
       </div>

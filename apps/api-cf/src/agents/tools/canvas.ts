@@ -181,9 +181,9 @@ export function createCanvasTools(
   });
 
   const createGenerationNode = tool({
-    description: "Create a new image or video generation node on the canvas. Pass the generation prompt directly. Returns nodeId and assetId.",
+    description: "Create a new image, video, audio, or text generation node on the canvas. Pass the generation prompt directly. Returns nodeId and assetId.",
     inputSchema: z.object({
-      node_type: z.enum(GENERATION_NODE_TYPES).describe("Generation node type: image_gen or video_gen"),
+      node_type: z.enum(GENERATION_NODE_TYPES).describe("Generation node type: image_gen, video_gen, audio_gen, or text_gen"),
       label: z.string().describe("Display label"),
       prompt: z.string().describe("The generation prompt — detailed description of what to generate"),
       model_name: z.string().optional().describe("Model ID from list_models (e.g. 'flux-2-pro')"),
@@ -199,7 +199,14 @@ export function createCanvasTools(
         const assetId = generateId();
 
         // Resolve model defaults from MODEL_CARDS
-        const kind = node_type === NodeType.ImageGen ? "image" : "video";
+        const kind =
+          node_type === NodeType.ImageGen
+            ? "image"
+            : node_type === NodeType.VideoGen
+              ? "video"
+              : node_type === NodeType.AudioGen
+                ? "audio"
+                : "text";
         const modelCard = model_name
           ? MODEL_CARDS.find(c => c.id === model_name)
           : MODEL_CARDS.find(c => c.kind === kind);
@@ -211,7 +218,14 @@ export function createCanvasTools(
           label,
           content: prompt,  // ActionBadge reads data.content for the prompt
           prompt,            // Also set prompt for NodeProcessor/legacy
-          actionType: node_type === NodeType.ImageGen ? "image-gen" : "video-gen",
+          actionType:
+            node_type === NodeType.ImageGen
+              ? "image-gen"
+              : node_type === NodeType.VideoGen
+                ? "video-gen"
+                : node_type === NodeType.AudioGen
+                  ? "audio-gen"
+                  : "text-gen",
           modelId,
           model: modelId,
           modelParams: { ...(modelCard?.defaultParams ?? {}) },
@@ -326,14 +340,14 @@ export function createCanvasTools(
 
   const listModels = tool({
     description:
-      "List available model cards for image, video, or audio generation. " +
+      "List available model cards for image, video, audio, or text generation. " +
       "Use this first to choose a model and its parameters before creating generation nodes.",
     inputSchema: z.object({
       kind: z
-        .enum(["image", "video", "audio", "image_gen", "video_gen", "audio_gen"])
+        .enum(["image", "video", "audio", "text", "image_gen", "video_gen", "audio_gen", "text_gen"])
         .optional()
         .describe(
-          "Optional asset kind to filter models. Accepts image/video/audio or image_gen/video_gen/audio_gen."
+          "Optional asset kind to filter models. Accepts image/video/audio/text or image_gen/video_gen/audio_gen/text_gen."
         ),
     }),
     execute: async (args) => {
@@ -341,6 +355,7 @@ export function createCanvasTools(
         | "image"
         | "video"
         | "audio"
+        | "text"
         | undefined;
       const cards = normalizedKind
         ? MODEL_CARDS.filter((c) => c.kind === normalizedKind)

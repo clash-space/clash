@@ -39,7 +39,7 @@ describe("assets service", () => {
         kind: "image",
         srcR2Key: "uploads/x.png",
         projectId: "p-1",
-        bytes: 1234,
+        metadata: { bytes: 1234 },
       });
 
       expect(id).toBe("asset-fixed");
@@ -73,7 +73,7 @@ describe("assets service", () => {
       expect(bind.mock.calls[0][0]).toBe("11111111-2222-3333-4444-555555555555");
     });
 
-    it("passes optional metadata or NULL for unspecified fields", async () => {
+    it("serializes metadata JSON and passes NULL for unspecified fields", async () => {
       const { db, bind } = makeDb();
       await createAsset(db, {
         id: "a",
@@ -82,25 +82,30 @@ describe("assets service", () => {
         srcR2Key: "k",
         projectId: "p",
         coverR2Key: "cover/k.jpg",
-        width: 1920,
-        height: 1080,
-        durationMs: 5000,
-        bytes: 9000,
+        metadata: {
+          width: 1920,
+          height: 1080,
+          durationMs: 5000,
+          bytes: 9000,
+        },
         sourceModel: "nano-banana-2",
         sourcePrompt: "a cat",
         sourceTaskId: "task-1",
       });
 
       const args = bind.mock.calls[0];
-      // Indices follow the SQL column order in createAsset.
+      // Indices follow the SQL column order in createAsset:
+      // id, userId, kind, srcR2Key, coverR2Key, metadata, sourceModel, sourcePrompt, sourceTaskId, createdAt, updatedAt
       expect(args[4]).toBe("cover/k.jpg");        // coverR2Key
-      expect(args[5]).toBe(1920);                 // width
-      expect(args[6]).toBe(1080);                 // height
-      expect(args[7]).toBe(5000);                 // durationMs
-      expect(args[8]).toBe(9000);                 // bytes
-      expect(args[9]).toBe("nano-banana-2");      // sourceModel
-      expect(args[10]).toBe("a cat");             // sourcePrompt
-      expect(args[11]).toBe("task-1");            // sourceTaskId
+      expect(JSON.parse(args[5] as string)).toEqual({
+        width: 1920,
+        height: 1080,
+        durationMs: 5000,
+        bytes: 9000,
+      });                                          // metadata JSON
+      expect(args[6]).toBe("nano-banana-2");      // sourceModel
+      expect(args[7]).toBe("a cat");              // sourcePrompt
+      expect(args[8]).toBe("task-1");             // sourceTaskId
     });
   });
 
@@ -133,7 +138,7 @@ describe("assets service", () => {
         kind: "image",
         srcR2Key: "k",
         coverR2Key: null,
-        width: null, height: null, durationMs: null, bytes: null,
+        metadata: null,
         sourceModel: null, sourcePrompt: null, sourceTaskId: "task-7",
         createdAt: 1, updatedAt: 1,
       });

@@ -1,0 +1,19 @@
+# Local dev env for apps/web (loaded automatically by @cloudflare/vite-plugin).
+# Copy to `.dev.vars` and fill in.
+
+# Better Auth core
+BETTER_AUTH_SECRET=dev-secret-change-me
+BETTER_AUTH_URL=http://localhost:3000
+
+# Google OAuth (needed for /login)
+# From Google Cloud Console → APIs & Services → Credentials → OAuth 2.0 Client IDs
+AUTH_GOOGLE_ID=
+AUTH_GOOGLE_SECRET=
+
+# Encryption for user variables stored in D1
+# Generate with: openssl rand -hex 32
+ACTION_SECRET_KEY=
+
+# Dev auth bypass — set to "true" to skip login and act as DEV_USER_ID
+# SKIP_LOGIN=true
+NODE_ENV=development

@@ -189,112 +189,30 @@ export function buildPreview(
   const rawFrom = Math.max(0, Math.round(args.leftWithinTracksPx / args.pixelsPerFrame));
   const duration = args.item.durationInFrames;
 
-  // 3-zone vertical decision
-  const zoneH = Math.max(1, Math.floor(args.itemHeightPx / 3));
-  const topZone: [number, number] = [args.itemTopY, args.itemTopY + zoneH];
-  const midZone: [number, number] = [args.itemTopY + zoneH, args.itemTopY + 2 * zoneH];
-  const botZone: [number, number] = [args.itemTopY + 2 * zoneH, args.itemTopY + args.itemHeightPx];
-  const tol = Math.max(2, Math.round(args.trackHeight * 0.03));
-
-  const srcIdx = Math.max(0, args.tracks.findIndex((t) => t.id === args.originalTrackId));
-  const srcTop = srcIdx * args.trackHeight;
-  const srcBottom = (srcIdx + 1) * args.trackHeight;
-
-  const overlaps = (zone: [number, number], boundaryY: number) => {
-    return !(zone[1] < boundaryY - tol || zone[0] > boundaryY + tol);
-  };
-
-  const topOverlapsSrcBottom = overlaps(topZone, srcBottom);
-  const botOverlapsSrcTop = overlaps(botZone, srcTop);
-
-  // First: explicit "between two boundaries" check using the item's visual top/bottom
+  // Vertical routing is a single-step function of the dragged item's center:
+  // the track whose band contains that y value is the target. Center beyond
+  // either extreme means "create a new track at that end". This matches the
+  // asset-panel drop path, which just targets "whichever track the mouse is
+  // over" — a mental model the user already has. The previous multi-case
+  // tree (A0/A/B/C/D/E, zone overlaps, source-item-count specials) kept
+  // accreting bugs as each case's threshold interacted with the next.
   const itemTop = args.itemTopY;
   const itemBottom = args.itemTopY + args.itemHeightPx;
-  const lowerIdx = Math.floor(itemTop / args.trackHeight);
-  const lowerBoundary = lowerIdx * args.trackHeight;
-  const upperBoundary = (lowerIdx + 1) * args.trackHeight;
-  const overlapsLower = !(itemBottom < lowerBoundary - tol || itemTop > lowerBoundary + tol);
-  const overlapsUpper = !(itemBottom < upperBoundary - tol || itemTop > upperBoundary + tol);
-  const strictlyBetween = !overlapsLower && !overlapsUpper;
-
-  // Extreme boundaries (topmost and bottommost). If there is any overlap with these,
-  // always create a new track at that extreme as requested.
-  const firstBoundary = 0;
-  const lastBoundary = args.tracks.length * args.trackHeight;
-  const overlapsTopExtreme = !(itemBottom < firstBoundary - tol || itemTop > firstBoundary + tol);
-  const overlapsBottomExtreme = !(itemBottom < lastBoundary - tol || itemTop > lastBoundary + tol);
-
-  // Scan middle zone for any boundary overlap and classify
-  const kStart = Math.max(0, Math.floor((midZone[0] - tol) / args.trackHeight));
-  const kEnd = Math.min(args.tracks.length, Math.ceil((midZone[1] + tol) / args.trackHeight));
-  let midOverlapK: number | null = null;
-  for (let k = kStart; k <= kEnd; k++) {
-    const by = k * args.trackHeight;
-    if (overlaps(midZone, by)) {
-      midOverlapK = k;
-      break;
-    }
-  }
+  const itemCenterY = (itemTop + itemBottom) / 2;
+  const bandIdx = Math.floor(itemCenterY / args.trackHeight);
 
   let willCreateNewTrack = false;
   let insertIndex: number | null = null;
   let previewTrackId = args.originalTrackId;
 
-  // Case A0: overlap with extreme top/bottom boundary → always create at extreme
-  if (overlapsTopExtreme) {
+  if (bandIdx < 0) {
     willCreateNewTrack = true;
     insertIndex = 0;
-  } else if (overlapsBottomExtreme) {
+  } else if (bandIdx >= args.tracks.length) {
     willCreateNewTrack = true;
     insertIndex = args.tracks.length;
-  }
-  // Case A: item strictly between two adjacent boundaries → move into that band (track between those boundaries)
-  else if (strictlyBetween) {
-    // Use item vertical center to choose the band to avoid bias when itemTop is close to lower boundary
-    const centerY = (itemTop + itemBottom) / 2;
-    const bandIdx = Math.max(0, Math.min(args.tracks.length - 1, Math.floor(centerY / args.trackHeight)));
+  } else {
     previewTrackId = args.tracks[bandIdx]?.id || previewTrackId;
-  }
-  // Case B: no overlap with any relevant boundary -> same-track move
-  else if (!topOverlapsSrcBottom && !botOverlapsSrcTop && midOverlapK == null) {
-    // previewTrackId stays as original
-  } else if (topOverlapsSrcBottom) {
-    // Case C: overlap top zone with srcBottom -> move to next track (or create at bottom extreme)
-    const targetIdx = srcIdx + 1;
-    if (targetIdx < args.tracks.length) {
-      previewTrackId = args.tracks[targetIdx]?.id || previewTrackId;
-    } else {
-      willCreateNewTrack = true;
-      insertIndex = args.tracks.length;
-    }
-  } else if (botOverlapsSrcTop) {
-    // Case D: overlap bottom zone with srcTop -> move to previous track (or create at top extreme)
-    const targetIdx = srcIdx - 1;
-    if (targetIdx >= 0) {
-      previewTrackId = args.tracks[targetIdx]?.id || previewTrackId;
-    } else {
-      willCreateNewTrack = true;
-      insertIndex = 0;
-    }
-  } else if (midOverlapK != null) {
-    // Case E: middle zone overlap -> create based on position and source track item count
-    const extreme = midOverlapK === 0 || midOverlapK === args.tracks.length;
-    const nonAdjacent = midOverlapK < srcIdx || midOverlapK > srcIdx + 1;
-    const isAdjacent = midOverlapK === srcIdx || midOverlapK === srcIdx + 1;
-    const sourceTrack = args.tracks.find((t) => t.id === args.originalTrackId);
-    const sourceHasMultipleItems = sourceTrack && sourceTrack.items.length > 1;
-
-    // 如果是极端位置或非相邻位置，总是创建
-    if (extreme || nonAdjacent) {
-      willCreateNewTrack = true;
-      insertIndex = midOverlapK;
-    }
-    // 如果是相邻位置，只有当源轨道有多个 item 时才创建
-    else if (isAdjacent && sourceHasMultipleItems) {
-      willCreateNewTrack = true;
-      insertIndex = midOverlapK;
-    }
-    // 否则：相邻位置且只有一个 item → 不创建（保持在原轨道）
   }
 
   const snapPref = preferItemEdgeSnap(

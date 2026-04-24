@@ -44,7 +44,7 @@ async function runCommand(projectId: string, cmd: object): Promise<any> {
 export const canvasCommand = new Command("canvas")
   .description(`Canvas node operations (via Loro CRDT sync)
 
-Node types: text, group, image, video, image_gen, video_gen
+Node types: text, group, image, video, audio, image_gen, video_gen, audio_gen, text_gen
 
 Daemon mode (recommended for multi-command sessions):
   clash canvas connect --project <id>     # start persistent connection
@@ -216,7 +216,7 @@ canvasCommand
   .command("add")
   .description("Add a text, group, or action-badge node")
   .requiredOption("--project <id>", "Project ID")
-  .requiredOption("--type <type>", "Node type: text, group, image_gen, video_gen")
+  .requiredOption("--type <type>", "Node type: text, group, image_gen, video_gen, audio_gen, text_gen")
   .requiredOption("--label <label>", "Node label")
   .option("--content <content>", "Text content")
   .option("--parent <id>", "Parent group ID")

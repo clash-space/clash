@@ -1,10 +1,9 @@
 import React, { useState, useCallback } from 'react';
 import { motion } from 'framer-motion';
 import type { Track, Asset, Item } from '@master-clash/remotion-core';
+import { getItemAssetDurationInFrames, useEditorStaticState } from '@master-clash/remotion-core';
 import { TimelineItem } from './TimelineItem';
 import { colors, timeline, typography, borderRadius } from './styles';
-import { secondsToFrames } from './utils/timeFormatter';
-import { useEditor } from '@master-clash/remotion-core';
 
 interface TimelineTrackProps {
   track: Track;
@@ -36,7 +35,7 @@ export const TimelineTrack: React.FC<TimelineTrackProps> = ({
   onDrop,
 }) => {
   // Use global editor state for fps so we never assume 30fps in calculations
-  const { state } = useEditor();
+  const { fps } = useEditorStaticState();
   const [isHovered, setIsHovered] = useState(false);
   const [isEditingName, setIsEditingName] = useState(false);
   const [editedName, setEditedName] = useState(track.name);
@@ -84,11 +83,8 @@ export const TimelineTrack: React.FC<TimelineTrackProps> = ({
 
       // 获取视频/音频素材的总时长（以帧为单位），用于约束逻辑剪裁
       let totalFramesForAsset: number | undefined;
-      if ((item.type === 'video' || item.type === 'audio') && 'src' in item) {
-        const asset = assets.find((a) => a.src === item.src);
-        if (asset?.duration) {
-          totalFramesForAsset = secondsToFrames(asset.duration, state.fps);
-        }
+      if (item.type === 'video' || item.type === 'audio') {
+        totalFramesForAsset = getItemAssetDurationInFrames(item, assets, fps);
       }
 
       if (edge === 'left') {
@@ -131,7 +127,7 @@ export const TimelineTrack: React.FC<TimelineTrackProps> = ({
         });
       }
     },
-    [track.items, assets, onUpdateItem]
+    [track.items, assets, fps, onUpdateItem]
   );
 
   return (
@@ -171,6 +167,8 @@ export const TimelineTrack: React.FC<TimelineTrackProps> = ({
               onChange={handleNameChange}
               onBlur={handleNameBlur}
               onKeyDown={handleNameKeyDown}
+              aria-label="Track name"
+              maxLength={80}
               autoFocus
               style={{
                 width: '100%',
@@ -218,6 +216,8 @@ export const TimelineTrack: React.FC<TimelineTrackProps> = ({
           >
             {/* 静音按钮 */}
             <button
+              aria-label="Mute track"
+              aria-pressed={false}
               style={{
                 width: 24,
                 height: 24,
@@ -242,6 +242,8 @@ export const TimelineTrack: React.FC<TimelineTrackProps> = ({
 
             {/* 独奏按钮 */}
             <button
+              aria-label="Solo track"
+              aria-pressed={false}
               style={{
                 width: 24,
                 height: 24,
@@ -266,6 +268,8 @@ export const TimelineTrack: React.FC<TimelineTrackProps> = ({
 
             {/* 锁定按钮 */}
             <button
+              aria-label={track.locked ? 'Unlock track' : 'Lock track'}
+              aria-pressed={!!track.locked}
               style={{
                 width: 24,
                 height: 24,

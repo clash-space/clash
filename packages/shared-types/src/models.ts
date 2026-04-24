@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-export const ModelKindSchema = z.enum(['image', 'video', 'audio']);
+export const ModelKindSchema = z.enum(['image', 'video', 'audio', 'text']);
 export type ModelKind = z.infer<typeof ModelKindSchema>;
 
 /**
@@ -111,6 +111,39 @@ export const SEEDANCE_ASPECT_RATIOS = [
   { label: '1:1', value: '1:1' },
   { label: '3:4', value: '3:4' },
   { label: '9:16', value: '9:16' },
+] as const;
+
+export const GEMINI_TTS_VOICES = [
+  { label: 'Zephyr - Bright', value: 'Zephyr' },
+  { label: 'Puck - Upbeat', value: 'Puck' },
+  { label: 'Charon - Informative', value: 'Charon' },
+  { label: 'Kore - Firm', value: 'Kore' },
+  { label: 'Fenrir - Excitable', value: 'Fenrir' },
+  { label: 'Leda - Youthful', value: 'Leda' },
+  { label: 'Orus - Firm', value: 'Orus' },
+  { label: 'Aoede - Breezy', value: 'Aoede' },
+  { label: 'Callirrhoe - Easy-going', value: 'Callirrhoe' },
+  { label: 'Autonoe - Bright', value: 'Autonoe' },
+  { label: 'Enceladus - Breathy', value: 'Enceladus' },
+  { label: 'Iapetus - Clear', value: 'Iapetus' },
+  { label: 'Umbriel - Easy-going', value: 'Umbriel' },
+  { label: 'Algieba - Smooth', value: 'Algieba' },
+  { label: 'Despina - Smooth', value: 'Despina' },
+  { label: 'Erinome - Clear', value: 'Erinome' },
+  { label: 'Algenib - Gravelly', value: 'Algenib' },
+  { label: 'Rasalgethi - Informative', value: 'Rasalgethi' },
+  { label: 'Laomedeia - Upbeat', value: 'Laomedeia' },
+  { label: 'Achernar - Soft', value: 'Achernar' },
+  { label: 'Alnilam - Firm', value: 'Alnilam' },
+  { label: 'Schedar - Even', value: 'Schedar' },
+  { label: 'Gacrux - Mature', value: 'Gacrux' },
+  { label: 'Pulcherrima - Forward', value: 'Pulcherrima' },
+  { label: 'Achird - Friendly', value: 'Achird' },
+  { label: 'Zubenelgenubi - Casual', value: 'Zubenelgenubi' },
+  { label: 'Vindemiatrix - Gentle', value: 'Vindemiatrix' },
+  { label: 'Sadachbia - Lively', value: 'Sadachbia' },
+  { label: 'Sadaltager - Knowledgeable', value: 'Sadaltager' },
+  { label: 'Sulafat - Warm', value: 'Sulafat' },
 ] as const;
 
 export const ModelParameterTypeSchema = z.enum(['select', 'slider', 'number', 'text', 'boolean']);
@@ -298,6 +331,18 @@ export function snapAspectRatio(
   }
   return best ? { paramId, value: best.option.value, canonical: best.canonical } : null;
 }
+
+const GEMINI_TTS_PARAMETERS: ModelParameter[] = [
+  {
+    id: 'voice_name',
+    label: 'Voice',
+    type: 'select',
+    options: [...GEMINI_TTS_VOICES],
+    required: false,
+    defaultValue: 'Kore',
+    description: 'Google Gemini TTS prebuilt voice.',
+  },
+];
 
 export const MODEL_CARDS: ModelCard[] = [
   // ─── Image: Nano Banana 2 (fal.ai) ──────────────────────────
@@ -968,52 +1013,21 @@ export const MODEL_CARDS: ModelCard[] = [
     input: { requiresPrompt: true, inputMode: { images: { max: 1 } }, promptModalities: ['text', 'image'] },
   },
 
-  // ─── Image: Imagen 4 (Google native via Vercel AI SDK) ──────
-
-  {
-    id: 'imagen-4',
-    name: 'Imagen 4',
-    provider: 'Google',
-    kind: 'image',
-    defaultAspectRatio: '16:9',
-    description: 'Google Imagen 4 — high-quality image generation.',
-    parameters: [
-      {
-        id: 'aspect_ratio',
-        label: 'Aspect Ratio',
-        type: 'select',
-        options: IMAGEN_ASPECT_RATIOS.map(r => ({ label: r.label, value: r.value })),
-        defaultValue: '16:9',
-      },
-    ],
-    defaultParams: {
-      aspect_ratio: '16:9',
-    },
-    input: { requiresPrompt: true, inputMode: {} },
-  },
-  {
-    id: 'imagen-4-fast',
-    name: 'Imagen 4 Fast',
-    provider: 'Google',
-    kind: 'image',
-    defaultAspectRatio: '16:9',
-    description: 'Google Imagen 4 Fast — faster generation, same quality.',
-    parameters: [
-      {
-        id: 'aspect_ratio',
-        label: 'Aspect Ratio',
-        type: 'select',
-        options: IMAGEN_ASPECT_RATIOS.map(r => ({ label: r.label, value: r.value })),
-        defaultValue: '16:9',
-      },
-    ],
-    defaultParams: {
-      aspect_ratio: '16:9',
-    },
-    input: { requiresPrompt: true, inputMode: {} },
-  },
-
   // ─── Video: Veo 3.1 (Google native via Vercel AI SDK) ──────
+  //
+  // Veo 3.1 Vertex pricing is identical across input modes (only variant +
+  // audio on/off differ), so we only split cards where the input *contract*
+  // conflicts. Specifically:
+  //   - text-only + reference-image workflows share one card, since the
+  //     reference-image rule (`images.max: 3`) already covers "zero refs" as
+  //     the text-only case.
+  //   - startEnd (first frame required, last optional) is a separate card
+  //     because the `startEnd` contract has a required slot that can't
+  //     coexist with optional ref images in the same UI.
+  //
+  // Lite variant is text-only: at this preview stage it doesn't support
+  // reference asset images, so the reference card is omitted to avoid
+  // runtime 4xx. startEnd is also preview on Lite — kept off for stability.
 
   {
     id: 'veo-3.1',
@@ -1021,7 +1035,7 @@ export const MODEL_CARDS: ModelCard[] = [
     provider: 'Google',
     kind: 'video',
     defaultAspectRatio: '16:9',
-    description: 'Google Veo 3.1 — state-of-the-art video generation with native audio.',
+    description: 'Google Veo 3.1 — text-to-video, optionally with 1–3 reference subject images.',
     parameters: [
       {
         id: 'aspect_ratio',
@@ -1042,7 +1056,36 @@ export const MODEL_CARDS: ModelCard[] = [
       aspect_ratio: '16:9',
       generate_audio: true,
     },
-    input: { requiresPrompt: true, inputMode: {} },
+    input: { requiresPrompt: true, inputMode: { images: { max: 3 } } },
+  },
+  {
+    id: 'veo-3.1-startend',
+    name: 'Veo 3.1 (Start/End)',
+    provider: 'Google',
+    kind: 'video',
+    defaultAspectRatio: '16:9',
+    description: 'Google Veo 3.1 — first-and-last-frame interpolation between two key frames.',
+    parameters: [
+      {
+        id: 'aspect_ratio',
+        label: 'Aspect Ratio',
+        type: 'select',
+        options: VEO3_ASPECT_RATIOS.map(r => ({ label: r.label, value: r.value })),
+        defaultValue: '16:9',
+      },
+      {
+        id: 'generate_audio',
+        label: 'Generate Audio',
+        type: 'boolean',
+        defaultValue: true,
+        description: 'Include natively generated audio.',
+      },
+    ],
+    defaultParams: {
+      aspect_ratio: '16:9',
+      generate_audio: true,
+    },
+    input: { requiresPrompt: true, inputMode: { startEnd: {} } },
   },
   {
     id: 'veo-3.1-lite',
@@ -1050,7 +1093,7 @@ export const MODEL_CARDS: ModelCard[] = [
     provider: 'Google',
     kind: 'video',
     defaultAspectRatio: '16:9',
-    description: 'Google Veo 3.1 Lite — cost-effective video generation at same speed.',
+    description: 'Google Veo 3.1 Lite — cheapest tier, text-to-video only.',
     parameters: [
       {
         id: 'aspect_ratio',
@@ -1079,7 +1122,7 @@ export const MODEL_CARDS: ModelCard[] = [
     provider: 'Google',
     kind: 'video',
     defaultAspectRatio: '16:9',
-    description: 'Google Veo 3.1 Fast — high-speed video generation.',
+    description: 'Google Veo 3.1 Fast — text-to-video, optionally with 1–3 reference subject images.',
     parameters: [
       {
         id: 'aspect_ratio',
@@ -1100,10 +1143,105 @@ export const MODEL_CARDS: ModelCard[] = [
       aspect_ratio: '16:9',
       generate_audio: true,
     },
-    input: { requiresPrompt: true, inputMode: {} },
+    input: { requiresPrompt: true, inputMode: { images: { max: 3 } } },
+  },
+  {
+    id: 'veo-3.1-fast-startend',
+    name: 'Veo 3.1 Fast (Start/End)',
+    provider: 'Google',
+    kind: 'video',
+    defaultAspectRatio: '16:9',
+    description: 'Google Veo 3.1 Fast — first-and-last-frame interpolation between two key frames.',
+    parameters: [
+      {
+        id: 'aspect_ratio',
+        label: 'Aspect Ratio',
+        type: 'select',
+        options: VEO3_ASPECT_RATIOS.map(r => ({ label: r.label, value: r.value })),
+        defaultValue: '16:9',
+      },
+      {
+        id: 'generate_audio',
+        label: 'Generate Audio',
+        type: 'boolean',
+        defaultValue: true,
+        description: 'Include natively generated audio.',
+      },
+    ],
+    defaultParams: {
+      aspect_ratio: '16:9',
+      generate_audio: true,
+    },
+    input: { requiresPrompt: true, inputMode: { startEnd: {} } },
+  },
+
+  // ─── Text ────────────────────────────────────────────────────
+  {
+    id: 'gpt-5.4',
+    name: 'GPT-5.4 Text',
+    provider: 'OpenAI',
+    kind: 'text',
+    defaultAspectRatio: '1:1',
+    description: 'General-purpose text generation for scripts, copy, prompts, and structured notes.',
+    parameters: [
+      {
+        id: 'system_prompt',
+        label: 'System prompt',
+        type: 'text',
+        placeholder: 'Optional instructions for tone, format, or role',
+        defaultValue: '',
+      },
+    ],
+    defaultParams: {
+      system_prompt: '',
+    },
+    input: { requiresPrompt: true, inputMode: {}, promptModalities: ['text'] },
+    maxRuntimeMs: 5 * 60 * 1000,
   },
 
   // ─── Audio ───────────────────────────────────────────────────
+  {
+    id: 'gemini-3.1-flash-tts',
+    name: 'Gemini 3.1 Flash TTS',
+    provider: 'Google',
+    kind: 'audio',
+    defaultAspectRatio: '1:1',
+    description: 'Google Gemini TTS preview for low-latency controllable single-speaker audio.',
+    parameters: GEMINI_TTS_PARAMETERS,
+    defaultParams: {
+      voice_name: 'Kore',
+    },
+    input: { requiresPrompt: true, inputMode: {}, promptModalities: ['text'] },
+    maxRuntimeMs: 5 * 60 * 1000,
+  },
+  {
+    id: 'gemini-2.5-flash-tts',
+    name: 'Gemini 2.5 Flash TTS',
+    provider: 'Google',
+    kind: 'audio',
+    defaultAspectRatio: '1:1',
+    description: 'Google Gemini TTS for cost-efficient controllable speech generation.',
+    parameters: GEMINI_TTS_PARAMETERS,
+    defaultParams: {
+      voice_name: 'Kore',
+    },
+    input: { requiresPrompt: true, inputMode: {}, promptModalities: ['text'] },
+    maxRuntimeMs: 5 * 60 * 1000,
+  },
+  {
+    id: 'gemini-2.5-pro-tts',
+    name: 'Gemini 2.5 Pro TTS',
+    provider: 'Google',
+    kind: 'audio',
+    defaultAspectRatio: '1:1',
+    description: 'Google Gemini TTS with higher control for scripts, narration, and structured speech.',
+    parameters: GEMINI_TTS_PARAMETERS,
+    defaultParams: {
+      voice_name: 'Kore',
+    },
+    input: { requiresPrompt: true, inputMode: {}, promptModalities: ['text'] },
+    maxRuntimeMs: 5 * 60 * 1000,
+  },
   {
     id: 'minimax-tts',
     name: 'MiniMax TTS',

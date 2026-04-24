@@ -12,16 +12,33 @@
 import type { AssetKind } from "@clash/shared-types/assets";
 import { log } from "../logger";
 
+/**
+ * Descriptive metadata persisted as JSON on the asset row.
+ *
+ * Rationale: none of these are query predicates — we only read them back to
+ * render UI or feed agents. Keeping them in one column lets us add fields
+ * (contentHash, hasAudio, dominantColor, codec, ...) without migrating.
+ *
+ * Waveform: downsampled audio peaks normalized to 0..1, length is up to the
+ * producer (render-server uses 128). Stored as a plain array on the JSON
+ * blob — text overhead is a few KB which is fine for an uncached single-row
+ * read; large arrays should be their own R2 object instead.
+ */
+export interface AssetMetadata {
+  width?: number;
+  height?: number;
+  durationMs?: number;
+  bytes?: number;
+  waveform?: number[];
+}
+
 export interface CreateAssetParams {
   userId: string;
   kind: AssetKind;
   srcR2Key: string;
   projectId: string;             // creates the initial asset_refs row
   coverR2Key?: string;
-  width?: number;
-  height?: number;
-  durationMs?: number;
-  bytes?: number;
+  metadata?: AssetMetadata;
   sourceModel?: string;
   sourcePrompt?: string;
   sourceTaskId?: string;
@@ -35,10 +52,7 @@ export interface AssetRecord {
   kind: AssetKind;
   srcR2Key: string;
   coverR2Key: string | null;
-  width: number | null;
-  height: number | null;
-  durationMs: number | null;
-  bytes: number | null;
+  metadata: AssetMetadata | null;
   sourceModel: string | null;
   sourcePrompt: string | null;
   sourceTaskId: string | null;
@@ -48,9 +62,26 @@ export interface AssetRecord {
 
 const SELECT_COLS =
   `id, user_id as userId, kind, src_r2_key as srcR2Key, cover_r2_key as coverR2Key,
-   width, height, duration_ms as durationMs, bytes,
+   metadata,
    source_model as sourceModel, source_prompt as sourcePrompt, source_task_id as sourceTaskId,
    created_at as createdAt, updated_at as updatedAt`;
+
+interface AssetRow extends Omit<AssetRecord, "metadata"> {
+  metadata: string | null;
+}
+
+function hydrate(row: AssetRow | null | undefined): AssetRecord | null {
+  if (!row) return null;
+  let metadata: AssetMetadata | null = null;
+  if (row.metadata) {
+    try {
+      metadata = JSON.parse(row.metadata) as AssetMetadata;
+    } catch (e) {
+      log.warn("asset.metadata JSON parse failed", { id: row.id, error: String(e) });
+    }
+  }
+  return { ...row, metadata };
+}
 
 /**
  * Create a new asset row + its initial asset_refs entry for the originating project.
@@ -63,14 +94,19 @@ export async function createAsset(
   const id = params.id ?? crypto.randomUUID();
   const now = Math.floor(Date.now() / 1000);
 
+  const metadataJson =
+    params.metadata && Object.keys(params.metadata).length > 0
+      ? JSON.stringify(params.metadata)
+      : null;
+
   await db
     .prepare(
       `INSERT OR REPLACE INTO assets (
          id, user_id, kind, src_r2_key, cover_r2_key,
-         width, height, duration_ms, bytes,
+         metadata,
          source_model, source_prompt, source_task_id,
          created_at, updated_at
-       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     )
     .bind(
       id,
@@ -78,10 +114,7 @@ export async function createAsset(
       params.kind,
       params.srcR2Key,
       params.coverR2Key ?? null,
-      params.width ?? null,
-      params.height ?? null,
-      params.durationMs ?? null,
-      params.bytes ?? null,
+      metadataJson,
       params.sourceModel ?? null,
       params.sourcePrompt ?? null,
       params.sourceTaskId ?? null,
@@ -129,8 +162,8 @@ export async function getAssetByTaskId(
   const row = await db
     .prepare(`SELECT ${SELECT_COLS} FROM assets WHERE source_task_id = ?`)
     .bind(taskId)
-    .first<AssetRecord>();
-  return row ?? null;
+    .first<AssetRow>();
+  return hydrate(row);
 }
 
 /** Lookup by asset id. */
@@ -141,8 +174,8 @@ export async function getAssetById(
   const row = await db
     .prepare(`SELECT ${SELECT_COLS} FROM assets WHERE id = ?`)
     .bind(id)
-    .first<AssetRecord>();
-  return row ?? null;
+    .first<AssetRow>();
+  return hydrate(row);
 }
 
 /** PATCH an asset's cover (called by thumbnail capture pipeline). System-only. */

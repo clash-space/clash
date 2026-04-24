@@ -2,7 +2,7 @@ import React, { useRef, useEffect, useState, useCallback } from 'react';
 import Moveable from 'react-moveable';
 import { Player, PlayerRef } from '@remotion/player';
 import { VideoComposition } from '@master-clash/remotion-components';
-import type { Track, Item, ItemProperties } from '@master-clash/remotion-core';
+import { getItemLookupIds, type Track, type Item, type ItemProperties } from '@master-clash/remotion-core';
 import { findTopItemAtPoint } from './canvas/hitTest';
 
 interface InteractiveCanvasProps {
@@ -86,15 +86,18 @@ export const InteractiveCanvas: React.FC<InteractiveCanvasProps> = ({
     let src = (item as any).src as string | undefined;
     let itemType = item.type as string | undefined;
 
-    // If no direct src/type, try to resolve from allNodesMap via assetId
-    if (item.assetId && allNodesMap) {
-      const asset = allNodesMap.get(item.assetId);
-      if (asset) {
-        if (!src && asset.data?.src) {
-          src = asset.data.src;
-        }
-        if (!itemType && asset.type) {
-          itemType = asset.type;
+    // If no direct src/type, try to resolve from allNodesMap via source/media references.
+    if (allNodesMap) {
+      for (const lookupId of getItemLookupIds(item)) {
+        const asset = allNodesMap.get(lookupId);
+        if (asset) {
+          if (!src && asset.data?.src) {
+            src = asset.data.src;
+          }
+          if (!itemType && asset.type) {
+            itemType = asset.type;
+          }
+          break;
         }
       }
     }
@@ -189,12 +192,15 @@ export const InteractiveCanvas: React.FC<InteractiveCanvasProps> = ({
       if (isInteractingRef.current) return;
       if (!selectedItemData?.item.properties) return;
 
-      // Resolve type from item directly or via assetId (reference-based model)
+      // Resolve type from item directly or via timeline references.
       let itemType = selectedItemData.item.type as string | undefined;
-      if (!itemType && selectedItemData.item.assetId && allNodesMap) {
-        const asset = allNodesMap.get(selectedItemData.item.assetId);
-        if (asset?.type) {
-          itemType = asset.type;
+      if (!itemType && allNodesMap) {
+        for (const lookupId of getItemLookupIds(selectedItemData.item)) {
+          const asset = allNodesMap.get(lookupId);
+          if (asset?.type) {
+            itemType = asset.type;
+            break;
+          }
         }
       }
       if (!itemType || !['image', 'video'].includes(itemType)) return;

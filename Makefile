@@ -1,4 +1,4 @@
-.PHONY: install dev dev-web dev-api-cf dev-gateway dev-full build test lint clean format setup db-web-local check-tools help bundle remotion-bundle remotion-render
+.PHONY: install dev dev-web dev-api-cf dev-full build test lint clean format setup db-web-local check-tools help bundle remotion-bundle remotion-render
 
 # Use interactive shell to load .zshrc environment
 
@@ -12,10 +12,12 @@ HTTPS_PROXY ?=
 NO_PROXY ?=
 
 # Service ports (single source of truth)
-# Gateway is the sole user-facing entry point on :3000.
-# Next.js runs on an internal port; users never access it directly.
-GATEWAY_PORT ?= 3000
-WEB_PORT ?= 3001
+# apps/web (Vite + RR7 + CF Vite plugin) is the user-facing entry point on :3000.
+# It absorbed the gateway's proxy logic; there is no separate gateway worker
+# anymore. /sync/*, /agents/*, /assets/*, /thumbnails/*, /upload/*, /api/v1/*,
+# /api/tasks/*, /api/describe, /api/generate/* are proxied to api-cf via the
+# service binding (or API_CF_URL fallback).
+WEB_PORT ?= 3000
 API_CF_PORT ?= 8789
 RENDER_PORT ?= 8080
 
@@ -73,47 +75,48 @@ db-local: db-web-local ## Setup all local D1 databases
 # Development Servers
 #==============================================================================
 
-dev-web: ## Start frontend development server (internal, behind gateway)
-	@echo "$(BLUE)Starting frontend on http://localhost:$(WEB_PORT) (internal)...$(NC)"
+dev-web: ## Start web app (Vite + RR7 + Cloudflare Vite plugin) on :3000
+	@echo "$(BLUE)Starting web on http://localhost:$(WEB_PORT)...$(NC)"
 	@cd apps/web && \
 		HTTP_PROXY=$(HTTP_PROXY) HTTPS_PROXY=$(HTTPS_PROXY) NO_PROXY=$(NO_PROXY) \
 		pnpm dev
 
-dev-api-cf: ## Start api-cf development server
+dev-api-cf: ## (Deprecated) api-cf is started by vite as an auxiliary worker
+	@echo "$(YELLOW)api-cf is spawned by apps/web's vite config (auxiliaryWorkers).$(NC)"
+	@echo "$(YELLOW)Running it separately will collide on ports/DO state.$(NC)"
+	@echo "$(YELLOW)Use 'make dev-web' (or 'make dev') only.$(NC)"
+
+dev-api-cf-standalone: ## Rare: run api-cf on its own for tests/debugging
 	@echo "$(BLUE)Starting api-cf on http://localhost:$(API_CF_PORT)...$(NC)"
 	@cd apps/api-cf && HTTP_PROXY=$(HTTP_PROXY) HTTPS_PROXY=$(HTTPS_PROXY) NO_PROXY=$(NO_PROXY) pnpm dev
 
-dev-render: ## Start render server
+dev-render: ## Start render server (runs outside wrangler — ffmpeg/remotion)
 	@echo "$(BLUE)Starting render server on http://localhost:$(RENDER_PORT)...$(NC)"
 	@cd apps/render-server && HTTP_PROXY=$(HTTP_PROXY) HTTPS_PROXY=$(HTTPS_PROXY) NO_PROXY=$(NO_PROXY) PORT=$(RENDER_PORT) pnpm dev
-
-dev-gateway: ## Start gateway (user-facing entry point)
-	@echo "$(BLUE)Starting gateway on http://localhost:$(GATEWAY_PORT)...$(NC)"
-	@cd apps/gateway && \
-		FRONTEND_URL=http://127.0.0.1:$(WEB_PORT) \
-		API_CF_URL=http://127.0.0.1:$(API_CF_PORT) \
-		NO_PROXY="localhost,127.0.0.1,::1,.local" \
-		NODE_OPTIONS="--max-old-space-size=4096" \
-		pnpm dev 2>&1 | tee /tmp/gateway-current.log
 
 #==============================================================================
 # Combined Development
 #==============================================================================
 
-dev: ## Start gateway + frontend + api-cf in parallel
+dev: ## Start web (with api-cf as aux worker) + render-server in parallel
 	@echo "$(BLUE)Starting development environment...$(NC)"
 	@echo ""
 	@echo "   ┌─────────────────────────────────────────────┐"
-	@echo "   │  $(GREEN)Gateway:$(NC) http://localhost:$(GATEWAY_PORT)              │"
-	@echo "   │  ├─ /          → Next.js (:$(WEB_PORT))           │"
+	@echo "   │  $(GREEN)Web:$(NC)     http://localhost:$(WEB_PORT)              │"
+	@echo "   │  (Vite + RR7 + @cloudflare/vite-plugin)    │"
+	@echo "   │  Vite also spawns api-cf as aux worker;    │"
+	@echo "   │  service binding env.API_CF is wired in.    │"
+	@echo "   │  ├─ /          → RR7 SPA                    │"
 	@echo "   │  ├─ /sync/*    → api-cf ProjectRoom        │"
 	@echo "   │  ├─ /agents/*  → api-cf SupervisorAgent    │"
 	@echo "   │  ├─ /assets/*  → api-cf R2 Assets          │"
-	@echo "   │  └─ /api/*     → api-cf REST               │"
+	@echo "   │  └─ /api/v1/*  → api-cf REST (auth-gated)  │"
+	@echo "   │                                             │"
+	@echo "   │  $(GREEN)Render:$(NC)  http://localhost:$(RENDER_PORT)              │"
+	@echo "   │  (ffmpeg: thumbnails + timeline render)    │"
 	@echo "   └─────────────────────────────────────────────┘"
 	@echo ""
-	@$(MAKE) -j2 dev-web dev-api-cf & \
-	sleep 5 && $(MAKE) dev-gateway && wait
+	@$(MAKE) -j2 dev-web dev-render
 
 dev-full: dev ## Alias for dev
 

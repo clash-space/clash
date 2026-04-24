@@ -104,6 +104,25 @@ export function extractPromptText(parts: PromptPart[]): string {
     .join('');
 }
 
+const DEFAULT_PROMPT_PLACEHOLDERS = new Set([
+  '# Prompt\nEnter your prompt here...',
+  '# Prompt\n\nEnter your prompt here...',
+]);
+
+export function normalizePromptInput(value: string | undefined): string {
+  if (!value) return '';
+  const trimmed = value.trim();
+  return DEFAULT_PROMPT_PLACEHOLDERS.has(trimmed) ? '' : value;
+}
+
+export function composePromptWithTextRefs(prompt: string, textRefs: ReadonlyArray<string>): string {
+  const cleanPrompt = normalizePromptInput(prompt).trim();
+  const refs = textRefs
+    .map((ref) => normalizePromptInput(ref).trim())
+    .filter(Boolean);
+  return [cleanPrompt, ...refs].filter(Boolean).join('\n\n');
+}
+
 /**
  * Extract all asset references from prompt parts.
  */

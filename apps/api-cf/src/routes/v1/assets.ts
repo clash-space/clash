@@ -15,6 +15,7 @@ import { z } from "zod";
 import type { Env } from "../../config";
 import { AssetKindSchema } from "@clash/shared-types/assets";
 import { createAsset, getAssetById, removeAssetRef, updateAssetCover } from "../../services/assets";
+import { probeAsset } from "../../services/asset-probe";
 import { log } from "../../logger";
 
 export const assetsRoutes = new Hono<{ Bindings: Env }>();
@@ -40,11 +41,6 @@ const CreateAssetSchema = z.object({
   projectId: z.string().min(1),
   kind: AssetKindSchema,
   srcR2Key: z.string().min(1),
-  coverR2Key: z.string().optional(),
-  width: z.number().int().positive().optional(),
-  height: z.number().int().positive().optional(),
-  durationMs: z.number().int().nonnegative().optional(),
-  bytes: z.number().int().nonnegative().optional(),
   sourceModel: z.string().optional(),
   sourcePrompt: z.string().optional(),
   /** Override id — useful for deterministic re-create on retry. */
@@ -57,16 +53,34 @@ const PatchCoverSchema = z.object({
 
 // ─── Routes ─────────────────────────────────────────────────
 
-/** POST /api/v1/assets — create asset row + register reference for the project. */
+/** POST /api/v1/assets — create asset row + register reference for the project.
+ *
+ *  Metadata is server-probed from the R2 object by `probeAsset`; clients do
+ *  NOT supply width/height/durationMs/waveform/bytes. */
 assetsRoutes.post("/", async (c) => {
   try {
     const userId = getUserId(c);
     const body = CreateAssetSchema.parse(await c.req.json());
     await assertProjectOwner(c.env, body.projectId, userId);
 
+    const { metadata, coverR2Key } = await probeAsset(
+      c.env,
+      body.kind,
+      body.srcR2Key,
+      body.projectId,
+    );
+
     const { id } = await createAsset(c.env.DB, {
       ...body,
       userId,
+      metadata,
+      coverR2Key,
+    });
+    log.info("POST /assets created", {
+      id,
+      kind: body.kind,
+      hasMetadata: Object.keys(metadata).length > 0,
+      hasCover: !!coverR2Key,
     });
     return c.json({ id });
   } catch (e) {

@@ -222,7 +222,12 @@ export class Canvas {
     let proposalType: string = ProposalType.Simple;
     let resolvedAssetId = assetId ?? null;
 
-    if (nodeType === NodeType.ImageGen || nodeType === NodeType.VideoGen) {
+    if (
+      nodeType === NodeType.ImageGen ||
+      nodeType === NodeType.VideoGen ||
+      nodeType === NodeType.AudioGen ||
+      nodeType === NodeType.TextGen
+    ) {
       proposalType = ProposalType.Generative;
       resolvedAssetId = resolvedAssetId ?? crypto.randomUUID().slice(0, 8);
     } else if (nodeType === NodeType.Group) {
@@ -341,7 +346,11 @@ export class Canvas {
 
     // Validate node is a generation type
     const isActionBadge = nodeType === RF_NODE_TYPE.ActionBadge;
-    const isGenAction = actionType === ACTION_TYPE.ImageGen || actionType === ACTION_TYPE.VideoGen;
+    const isGenAction =
+      actionType === ACTION_TYPE.ImageGen ||
+      actionType === ACTION_TYPE.VideoGen ||
+      actionType === ACTION_TYPE.AudioGen ||
+      actionType === ACTION_TYPE.TextGen;
     if (!isActionBadge || !isGenAction) {
       return { assetNodeId: "", assetNodeType: "", position: { x: 0, y: 0 }, error: `Node ${nodeId} is not a generation node` };
     }
@@ -376,7 +385,11 @@ export class Canvas {
       prompt,
       modelId,
       modelParams,
-      actionType: actionType as typeof ACTION_TYPE.ImageGen | typeof ACTION_TYPE.VideoGen,
+      actionType: actionType as
+        | typeof ACTION_TYPE.ImageGen
+        | typeof ACTION_TYPE.VideoGen
+        | typeof ACTION_TYPE.AudioGen
+        | typeof ACTION_TYPE.TextGen,
       label: nodeData.label as string | undefined,
       referenceImageUrls: nodeData.referenceImageUrls as string[] | undefined,
       referenceMode: (nodeData.referenceMode as string) || undefined,

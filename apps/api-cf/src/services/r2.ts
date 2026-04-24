@@ -93,6 +93,9 @@ export async function uploadBytes(
     : contentType.includes("png") ? "png"
     : contentType.includes("mp4") ? "mp4"
     : contentType.includes("webm") ? "webm"
+    : contentType.includes("wav") || contentType.includes("wave") ? "wav"
+    : contentType.includes("mpeg") || contentType.includes("mp3") ? "mp3"
+    : contentType.includes("ogg") ? "ogg"
     : "bin";
 
   const name = filename ?? crypto.randomUUID();

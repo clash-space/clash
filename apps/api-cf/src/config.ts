@@ -29,11 +29,15 @@ export interface Env {
   KLING_API_URL?: string;
   R2_BUCKET: R2Bucket;
   R2_PUBLIC_URL: string;
+  /** Origin that serves both /cdn-cgi/media/* and /assets/*. In prod, the
+   *  zone URL (edge handles MT). In dev, the gateway URL (Next.js ffmpeg
+   *  handler mimics MT). See services/thumbnail.ts. */
+  MEDIA_GATEWAY_URL?: string;
   ENVIRONMENT: string;
   ROOM: DurableObjectNamespace;
   SUPERVISOR: DurableObjectNamespace;
   GENERATION_WORKFLOW: Workflow;
-  RENDER_CONTAINER: DurableObjectNamespace;
+  RENDER_CONTAINER: DurableObjectNamespace<import("./containers/render").RenderContainer>;
   /** For local dev: direct URL to render-server (bypasses Container) */
   RENDER_SERVER_URL?: string;
   DB: D1Database;

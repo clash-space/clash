@@ -1,7 +1,7 @@
 import React, { useRef, useEffect, useState, useCallback } from 'react';
 import { Player, PlayerRef } from '@remotion/player';
 import { VideoComposition } from '@master-clash/remotion-components';
-import type { Track, Item, ItemProperties } from '@master-clash/remotion-core';
+import { getItemLookupIds, type Track, type Item, type ItemProperties } from '@master-clash/remotion-core';
 
 interface InteractiveCanvasProps {
   tracks: Track[];
@@ -79,9 +79,11 @@ export const InteractiveCanvas: React.FC<InteractiveCanvasProps> = ({
     let asset = null;
 
     if (allNodesMap) {
-      // 1. Try by assetId
-      if (item.assetId) {
-        asset = allNodesMap.get(item.assetId);
+      for (const lookupId of getItemLookupIds(item)) {
+        asset = allNodesMap.get(lookupId);
+        if (asset) {
+          break;
+        }
       }
 
       // 2. Try by src
@@ -123,15 +125,18 @@ export const InteractiveCanvas: React.FC<InteractiveCanvasProps> = ({
     let itemType = item.type as string | undefined;
     let asset = null;
 
-    // If no direct src/type, try to resolve from allNodesMap via assetId
-    if (item.assetId && allNodesMap) {
-      asset = allNodesMap.get(item.assetId);
-      if (asset) {
-        if (!src && asset.data?.src) {
-          src = asset.data.src;
-        }
-        if (!itemType && asset.type) {
-          itemType = asset.type;
+    // If no direct src/type, try to resolve from allNodesMap via source/media references.
+    if (allNodesMap) {
+      for (const lookupId of getItemLookupIds(item)) {
+        asset = allNodesMap.get(lookupId);
+        if (asset) {
+          if (!src && asset.data?.src) {
+            src = asset.data.src;
+          }
+          if (!itemType && asset.type) {
+            itemType = asset.type;
+          }
+          break;
         }
       }
     }
@@ -291,11 +296,16 @@ export const InteractiveCanvas: React.FC<InteractiveCanvasProps> = ({
 
 
   // 找到选中的 item
-  const selectedItemData = selectedItemId
-    ? tracks
-        .flatMap((t) => t.items.map((i) => ({ trackId: t.id, item: i })))
-        .find((x) => x.item.id === selectedItemId)
-    : null;
+  const selectedItemData = React.useMemo(() => {
+    if (!selectedItemId) return null;
+    for (const track of tracks) {
+      const item = track.items.find((candidate) => candidate.id === selectedItemId);
+      if (item) {
+        return { trackId: track.id, item };
+      }
+    }
+    return null;
+  }, [tracks, selectedItemId]);
 
   // 自动初始化 properties（如果不存在）- 智能填充逻辑
   // 注意：后端 patch_dsl 已经会自动计算并设置 properties，这里只是作为兜底
@@ -335,19 +345,6 @@ export const InteractiveCanvas: React.FC<InteractiveCanvasProps> = ({
     });
   }, [tracks, onUpdateItem, getMediaAspectRatio, compositionWidth, compositionHeight]);
 
-  // 检查 item 是否在当前帧可见
-  const isItemVisible = selectedItemData
-    ? currentFrame >= selectedItemData.item.from &&
-      currentFrame < selectedItemData.item.from + selectedItemData.item.durationInFrames
-    : false;
-
-  // 调试日志
-  useEffect(() => {
-    if (selectedItemData) {
-      const _item = selectedItemData.item;
-    }
-  }, [selectedItemData, currentFrame, isItemVisible]);
-
   // 准备 Player 的 inputProps
   const inputProps = React.useMemo(() => ({
     tracks,
@@ -361,6 +358,7 @@ export const InteractiveCanvas: React.FC<InteractiveCanvasProps> = ({
   // 关键修复：避免在暂停时强制 seek 导致的帧重置问题
   const lastPlayingStateRef = useRef<boolean>(playing);
   const lastSyncedFrameRef = useRef<number>(currentFrame);
+  const lastEmittedFrameRef = useRef<number>(Math.round(currentFrame));
 
   useEffect(() => {
     if (!playerRef.current) return;
@@ -374,10 +372,15 @@ export const InteractiveCanvas: React.FC<InteractiveCanvasProps> = ({
       playerRef.current.pause();
       lastSyncedFrameRef.current = playerRef.current.getCurrentFrame();
     } else if (isPausedToPlaying) {
-      // 从暂停切换到播放：先 seek 到当前帧，再播放
-      playerRef.current.seekTo(currentFrame);
+      // 从暂停切换到播放：到尾帧时回到起点，否则从当前帧继续
+      const startFrame = currentFrame >= durationInFrames ? 0 : currentFrame;
+      playerRef.current.seekTo(startFrame);
       playerRef.current.play();
-      lastSyncedFrameRef.current = currentFrame;
+      lastSyncedFrameRef.current = startFrame;
+      lastEmittedFrameRef.current = startFrame;
+      if (startFrame !== currentFrame) {
+        onFrameUpdate?.(startFrame);
+      }
     } else if (!playing) {
       // 保持暂停状态：只在帧数确实变化且用户主动改变时才 seek
       // 这里通过比较 currentFrame 和 Player 内部的实际帧来判断
@@ -389,7 +392,7 @@ export const InteractiveCanvas: React.FC<InteractiveCanvasProps> = ({
     }
 
     lastPlayingStateRef.current = playing;
-  }, [playing, currentFrame]);
+  }, [playing, currentFrame, durationInFrames, onFrameUpdate]);
 
   // 监听 Player 事件
   useEffect(() => {
@@ -397,7 +400,11 @@ export const InteractiveCanvas: React.FC<InteractiveCanvasProps> = ({
     if (!player) return;
 
     const handleFrame = () => {
-      const frame = player.getCurrentFrame();
+      const frame = Math.round(player.getCurrentFrame());
+      if (frame === lastEmittedFrameRef.current) {
+        return;
+      }
+      lastEmittedFrameRef.current = frame;
       if (onFrameUpdate) {
         onFrameUpdate(frame);
       }
@@ -814,7 +821,32 @@ export const InteractiveCanvas: React.FC<InteractiveCanvasProps> = ({
   }, [normalizedToScreen, getBaseMetrics, compositionWidth, compositionHeight, zoom, allNodesMap]);
 
   // 当前选中项的屏幕信息
-  const bounds = selectedItemData ? getItemRenderInfo(selectedItemData.item) : null;
+  const bounds = React.useMemo(
+    () => (selectedItemData ? getItemRenderInfo(selectedItemData.item) : null),
+    [selectedItemData, getItemRenderInfo],
+  );
+
+  const visibleCanvasItems = React.useMemo(() => {
+    const items: Array<{ trackId: string; item: Item; bounds: NonNullable<ReturnType<typeof getItemRenderInfo>> }> = [];
+
+    for (const track of tracks) {
+      for (const item of track.items) {
+        if (!item.properties) continue;
+        if (currentFrame < item.from || currentFrame >= item.from + item.durationInFrames) continue;
+
+        const itemBounds = getItemRenderInfo(item);
+        if (!itemBounds) continue;
+
+        items.push({
+          trackId: track.id,
+          item,
+          bounds: itemBounds,
+        });
+      }
+    }
+
+    return items;
+  }, [tracks, currentFrame, getItemRenderInfo]);
 
   // 统一的指针按下处理（同时处理选中和拖动）
   // const handlePointerDown = useCallback(
@@ -1105,66 +1137,50 @@ export const InteractiveCanvas: React.FC<InteractiveCanvasProps> = ({
           />
           
           {/* 为每个可见元素渲染透明点击区域 */}
-          {tracks.flatMap((track) =>
-            track.items
-              .filter((item) =>
-                item.properties &&
-                currentFrame >= item.from &&
-                currentFrame < item.from + item.durationInFrames
-              )
-              .map((item) => {
-                if (!item.properties) return null;
+          {visibleCanvasItems.map(({ trackId, item, bounds: itemBounds }) => (
+            <rect
+              key={item.id}
+              className="item-clickable"
+              x={itemBounds.left}
+              y={itemBounds.top}
+              width={itemBounds.width}
+              height={itemBounds.height}
+              fill="transparent"
+              style={{
+                pointerEvents: 'all',
+                cursor: 'pointer',
+                transform: `rotate(${itemBounds.rotation}deg)`,
+                transformOrigin: `${itemBounds.centerX}px ${itemBounds.centerY}px`,
+              }}
+              onMouseDown={(e) => {
+                e.stopPropagation();
+                e.preventDefault();
 
-                // 使用统一的计算逻辑
-                const itemBounds = getItemRenderInfo(item);
-                if (!itemBounds) return null;
+                // 选中该元素（如果未选中）
+                if (onSelectItem && selectedItemId !== item.id) {
+                  onSelectItem(item.id);
+                }
 
-                return (
-                  <rect
-                    key={item.id}
-                    className="item-clickable"
-                    x={itemBounds.left}
-                    y={itemBounds.top}
-                    width={itemBounds.width}
-                    height={itemBounds.height}
-                    fill="transparent"
-                    style={{
-                      pointerEvents: 'all',
-                      cursor: 'pointer',
-                      transform: `rotate(${itemBounds.rotation}deg)`,
-                      transformOrigin: `${itemBounds.centerX}px ${itemBounds.centerY}px`,
-                    }}
-                    onMouseDown={(e) => {
-                      e.stopPropagation();
-                      e.preventDefault();
-
-                      // 选中该元素（如果未选中）
-                      if (onSelectItem && selectedItemId !== item.id) {
-                        onSelectItem(item.id);
-                      }
-
-                      // 准备拖动
-                      const point = screenToPropertySpace(e.clientX, e.clientY);
-                      setDragState({
-                        mode: 'move',
-                        startX: point.x,
-                        startY: point.y,
-                        startProperties: {
-                          x: item.properties?.x ?? 0,
-                          y: item.properties?.y ?? 0,
-                          width: item.properties?.width ?? 1,
-                          height: item.properties?.height ?? 1,
-                          rotation: item.properties?.rotation ?? 0,
-                          opacity: item.properties?.opacity ?? 1,
-                        },
-                        item: item,
-                        trackId: track.id,
-                      });
-                    }}
-                  />
-                );
-              })
-          )}
+                // 准备拖动
+                const point = screenToPropertySpace(e.clientX, e.clientY);
+                setDragState({
+                  mode: 'move',
+                  startX: point.x,
+                  startY: point.y,
+                  startProperties: {
+                    x: item.properties?.x ?? 0,
+                    y: item.properties?.y ?? 0,
+                    width: item.properties?.width ?? 1,
+                    height: item.properties?.height ?? 1,
+                    rotation: item.properties?.rotation ?? 0,
+                    opacity: item.properties?.opacity ?? 1,
+                  },
+                  item,
+                  trackId,
+                });
+              }}
+            />
+          ))}
         </svg>
         
         {/* 交互层2 - 选中元素的蓝框和控制手柄 */}

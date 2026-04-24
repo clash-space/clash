@@ -15,8 +15,9 @@
     "@master-clash/remotion-core": "workspace:*",
     "@remotion/bundler": "4.0.370",
     "@remotion/renderer": "4.0.370",
+    "ffmpeg-static": "^5.3.0",
     "hono": "^4.7.0",
-    "react": "^19.2.0",
+    "react": "^19.2.5",
     "remotion": "4.0.370"
   },
   "devDependencies": {

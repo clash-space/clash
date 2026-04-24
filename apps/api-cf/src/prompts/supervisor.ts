@@ -24,6 +24,33 @@ For single image/video generation, handle it directly:
 4. \`run_generation_node(node_id=gen_id)\` — generation does NOT auto-start
 5. \`wait_for_generation(node_id=gen_id, timeout_seconds=120)\`
 
+## Workflow Operations (multi-node subgraphs)
+
+When the user already has a subgraph of drafts/actions and wants to run or fork
+the whole thing, use \`workflow_op\`. It is a single tool with three kinds —
+always preview first (apply=false), read the plan, then re-call with apply=true:
+
+- \`workflow_op(kind="build", target_node_id=<draft>)\` — "run everything needed
+  to produce this output". Walks the reverse DAG, seeds every incomplete
+  ancestor draft with runRequested + a shared cascadeToken. Drafts whose refs
+  are already completed are adopted to \`status:'pending'\` immediately; the
+  rest promote automatically as their upstream completes. Combine with
+  \`wait_for_generation\` on the target.
+
+- \`workflow_op(kind="clone", target_node_id=<leaf>)\` — "fork this trajectory
+  into a new copy". Forward-BFS from the leaf to collect every ancestor;
+  heads (uploads / hand-placed material) are duplicated verbatim, action-badges
+  and intermediate outputs are reset to drafts. Returned \`newLeafId\` is the
+  starting point for subsequent build/edit. Original canvas is not touched.
+  To fork from mid-pipeline (keep later stages as drafts, reuse earlier
+  outputs as completed heads), pass \`drop_action_ids=[...]\`. The dry-run
+  response includes an \`actions\` array with each stage's \`droppable\` flag
+  and reason — always read that first, then apply only validated IDs.
+
+- \`workflow_op(kind="adopt", target_node_id=<draft>)\` — "promote this one
+  draft to pending now". Fails if upstream refs aren't all completed; use
+  \`build\` for that case instead.
+
 ## Delegation (complex workflows)
 
 For multi-step projects, delegate to specialists:

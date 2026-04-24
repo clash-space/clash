@@ -22,7 +22,7 @@ import type { Env } from "../config";
 import { loadSnapshot, saveSnapshot } from "../loro/storage";
 import { processPendingNodes, recoverOrphanedTasks } from "../loro/NodeProcessor";
 import { pollNodeTasks } from "../loro/TaskPolling";
-import { updateNodeData } from "../loro/NodeUpdater";
+import { updateNodeData, appendNodeLog } from "../loro/NodeUpdater";
 import { authenticateRequest } from "../loro/auth";
 import type { ClientInfo, ClientType, PresenceMessage, ActivityMessage, ActivityAction } from "@clash/shared-types";
 
@@ -680,6 +680,8 @@ export class ProjectRoom extends DurableObject<Env> {
         const body = (await request.json()) as {
           nodeId: string;
           updates: Record<string, any>;
+          /** Optional log line to append to node.data._log (kept visible in UI). */
+          log?: string;
         };
 
         if (this.initPromise) await this.initPromise;
@@ -687,6 +689,12 @@ export class ProjectRoom extends DurableObject<Env> {
         updateNodeData(this.doc, body.nodeId, body.updates, (data) =>
           this.broadcastBinary(data)
         );
+
+        if (body.log) {
+          appendNodeLog(this.doc, body.nodeId, body.log, (data) =>
+            this.broadcastBinary(data)
+          );
+        }
 
         await this.guardedProcessPendingNodes();
 

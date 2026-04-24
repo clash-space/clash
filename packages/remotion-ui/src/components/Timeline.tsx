@@ -13,7 +13,12 @@ import {
   DragMoveEvent,
 } from '@dnd-kit/core';
 import { restrictToWindowEdges } from '@dnd-kit/modifiers';
-import { useEditor } from '@master-clash/remotion-core';
+import {
+  useEditorDispatch,
+  useEditorPlayback,
+  useEditorPlaybackRefs,
+  useEditorStaticState,
+} from '@master-clash/remotion-core';
 import type { Item } from '@master-clash/remotion-core';
 import { TimelineHeader } from './timeline/TimelineHeader';
 import { TimelineRuler } from './timeline/TimelineRuler';
@@ -34,21 +39,110 @@ declare global {
   }
 }
 
+// Hoisted so the string literal is allocated once per module (not per render)
+// and React can reconcile the <style> element by reference identity.
+const TIMELINE_ROOT_STYLES = `
+  [data-timeline-container] .timeline-item:focus-visible {
+    outline: 2px solid ${colors.accent.primary};
+    outline-offset: 2px;
+  }
+  [data-timeline-container] [role="slider"]:focus-visible {
+    outline: 2px solid ${colors.accent.primary};
+    outline-offset: 2px;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    [data-timeline-container] *,
+    [data-timeline-container] *::before,
+    [data-timeline-container] *::after {
+      animation-duration: 0.001ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.001ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+`;
+
+type TimelineHeaderPlaybackProps = {
+  fps: number;
+  durationInFrames: number;
+  zoom: number;
+  snapEnabled: boolean;
+  onZoomIn: () => void;
+  onZoomOut: () => void;
+  onZoomToFit: () => void;
+  onZoomReset: () => void;
+  onToggleSnap: () => void;
+  onTogglePlay: (playing: boolean) => void;
+  onZoomChange: (zoom: number) => void;
+  zoomLimits: { min: number; max: number };
+};
+
+const TimelineHeaderPlayback: React.FC<TimelineHeaderPlaybackProps> = React.memo((props) => {
+  const { currentFrame, playing } = useEditorPlayback();
+
+  return (
+    <TimelineHeader
+      currentFrame={currentFrame}
+      fps={props.fps}
+      durationInFrames={props.durationInFrames}
+      playing={playing}
+      zoom={props.zoom}
+      snapEnabled={props.snapEnabled}
+      onZoomIn={props.onZoomIn}
+      onZoomOut={props.onZoomOut}
+      onZoomToFit={props.onZoomToFit}
+      onZoomReset={props.onZoomReset}
+      onToggleSnap={props.onToggleSnap}
+      onTogglePlay={() => props.onTogglePlay(playing)}
+      onZoomChange={props.onZoomChange}
+      zoomLimits={props.zoomLimits}
+    />
+  );
+});
+
+type TimelinePlayheadOverlayProps = {
+  pixelsPerFrame: number;
+  fps: number;
+  timelineHeight: number;
+  onSeek: (frame: number) => void;
+  scrollLeft: number;
+  leftOffset: number;
+  durationInFrames: number;
+  onPlayEnd: () => void;
+};
+
+const TimelinePlayheadOverlay: React.FC<TimelinePlayheadOverlayProps> = React.memo((props) => {
+  const { currentFrame } = useEditorPlayback();
+
+  return (
+    <TimelinePlayhead
+      currentFrame={currentFrame}
+      pixelsPerFrame={props.pixelsPerFrame}
+      fps={props.fps}
+      timelineHeight={props.timelineHeight}
+      onSeek={props.onSeek}
+      scrollLeft={props.scrollLeft}
+      leftOffset={props.leftOffset}
+      durationInFrames={props.durationInFrames}
+      onPlayEnd={props.onPlayEnd}
+    />
+  );
+});
+
 export const Timeline: React.FC = () => {
-  const { state, dispatch } = useEditor();
+  const dispatch = useEditorDispatch();
+  const { currentFrameRef, playingRef } = useEditorPlaybackRefs();
   const {
     tracks,
     selectedItemId,
     selectedTrackId,
-    currentFrame,
     zoom,
     fps,
     durationInFrames,
     assets,
-    playing,
     compositionWidth,
     compositionHeight,
-  } = state;
+  } = useEditorStaticState();
 
   const [snapEnabled, setSnapEnabled] = useState(true);
   const [draggedItem, setDraggedItem] = useState<{ trackId: string; item: Item } | null>(null);
@@ -132,7 +226,7 @@ export const Timeline: React.FC = () => {
   }, []);
 
   // dnd-kit: item drag move/over -> update preview
-  const updatePreviewFromDnd = (
+  const updatePreviewFromDnd = useCallback((
     leftOnViewport: number,
     topOnViewport: number,
     heightPx: number
@@ -140,7 +234,12 @@ export const Timeline: React.FC = () => {
     if (!draggedItem || !dragPreview) return;
 
     const container = containerRef.current;
-    const viewportEl = document.querySelector('.tracks-viewport') as HTMLDivElement | null;
+    // Query fresh each call — the ref-cached lookup bug (captured a detached
+    // DOM node after the first portal-triggered re-render) produced rect.top
+    // and height of 0 and made band routing math land in imaginary bands.
+    const viewportEl =
+      (container?.querySelector('.tracks-viewport') as HTMLDivElement | null) ??
+      (document.querySelector('.tracks-viewport') as HTMLDivElement | null);
     if (!container || !viewportEl) return;
 
     const containerRect = container.getBoundingClientRect();
@@ -160,7 +259,7 @@ export const Timeline: React.FC = () => {
       tracks,
       item: draggedItem.item,
       originalTrackId: dragPreview.originalTrackId,
-      currentFrame,
+      currentFrame: currentFrameRef.current,
       snapEnabled: !!snapEnabled,
       trackHeight: timelineStyles.trackHeight,
       insertThresholdPx: insertThresholdPx,
@@ -177,7 +276,7 @@ export const Timeline: React.FC = () => {
       snapGuideFrame: preview.snapGuideFrame,
     });
     lastDragTopRef.current = topY;
-  };
+  }, [draggedItem, dragPreview, pixelsPerFrame, tracks, snapEnabled, currentFrameRef]);
 
   const onDndItemMove = useCallback((event: DragMoveEvent) => {
     const translated = event.active.rect.current.translated;
@@ -474,7 +573,14 @@ export const Timeline: React.FC = () => {
     // 计算 asset 左边缘的位置（减去拖动偏移量）
     const assetLeftX = mouseX - currentAssetDragOffset;
     const rawFrame = Math.max(0, Math.round(assetLeftX / pixelsPerFrame));
-    const snapResult = calculateSnap(rawFrame, tracks, null, currentFrame, snapEnabled, timelineStyles.snapThreshold);
+    const snapResult = calculateSnap(
+      rawFrame,
+      tracks,
+      null,
+      currentFrameRef.current,
+      snapEnabled,
+      timelineStyles.snapThreshold,
+    );
     const frame = Math.max(0, snapResult.snappedFrame);
 
     const trackIndex = Math.floor(y / timelineStyles.trackHeight);
@@ -590,11 +696,18 @@ export const Timeline: React.FC = () => {
       isTemporaryTrack: false, // 始终为 false，与 item 拖动逻辑一致
       insertIndex: undefined,
     });
-  }, [draggedItem, assets, tracks, currentFrame, snapEnabled, pixelsPerFrame, fps, assetDragPreview]);
+  }, [draggedItem, assets, tracks, snapEnabled, pixelsPerFrame, fps, assetDragPreview, currentFrameRef]);
 
   // 创建素材项的辅助函数
+  //
+  // Contract: items carry `sourceNodeId` for the canvas node reference and
+  // `assetId` for the D1 asset row, matching ActionBadge/media node semantics.
+  // `src` is populated only for fast within-session rendering and stripped on
+  // persistence.
   const createItemFromAsset = useCallback((asset: any, frame: number): Item | null => {
     const baseId = `item-${Date.now()}`;
+    const sourceNodeId: string | undefined = asset?.sourceNodeId ?? asset?.id;
+    const backingAssetId: string | undefined = asset?.backingAssetId ?? asset?.assetId;
     const canvasRatio = compositionWidth / compositionHeight;
     const assetRatio =
       asset?.width && asset?.height ? asset.width / asset.height : null;
@@ -625,6 +738,8 @@ export const Timeline: React.FC = () => {
         return {
           id: baseId,
           type: 'video' as const,
+          assetId: backingAssetId,
+          sourceNodeId,
           from: frame,
           // asset.duration is seconds; convert to frames using current fps (with overhang clamp)
           durationInFrames: asset.duration ? secondsToFrames(asset.duration, fps) : 90,
@@ -637,6 +752,8 @@ export const Timeline: React.FC = () => {
         return {
           id: baseId,
           type: 'audio' as const,
+          assetId: backingAssetId,
+          sourceNodeId,
           from: frame,
           durationInFrames: asset.duration ? secondsToFrames(asset.duration, fps) : 90,
           src: asset.src,
@@ -648,6 +765,8 @@ export const Timeline: React.FC = () => {
         return {
           id: baseId,
           type: 'image' as const,
+          assetId: backingAssetId,
+          sourceNodeId,
           from: frame,
           durationInFrames: 90,
           src: asset.src,
@@ -779,7 +898,7 @@ export const Timeline: React.FC = () => {
         rawFrame,
         tracks,
         null,
-        currentFrame,
+        currentFrameRef.current,
         snapEnabled,
         timelineStyles.snapThreshold
       );
@@ -843,7 +962,7 @@ export const Timeline: React.FC = () => {
       setAssetDragPreview(null);
       setInsertPosition(null);
     },
-    [draggedItem, assets, tracks, currentFrame, snapEnabled, pixelsPerFrame, dispatch, createItemFromAsset]
+    [draggedItem, assets, tracks, snapEnabled, pixelsPerFrame, dispatch, createItemFromAsset, currentFrameRef]
   );
 
   // ==================== 键盘快捷键 ====================
@@ -859,13 +978,13 @@ export const Timeline: React.FC = () => {
         }
       },
       onPlayPause: () => {
-        dispatch({ type: 'SET_PLAYING', payload: !playing });
+        dispatch({ type: 'SET_PLAYING', payload: !playingRef.current });
       },
       onFrameForward: (frames) => {
-        handleSeek(currentFrame + frames);
+        handleSeek(currentFrameRef.current + frames);
       },
       onFrameBackward: (frames) => {
-        handleSeek(currentFrame - frames);
+        handleSeek(currentFrameRef.current - frames);
       },
       onZoomIn: handleZoomIn,
       onZoomOut: handleZoomOut,
@@ -901,12 +1020,11 @@ export const Timeline: React.FC = () => {
         position: 'relative',
       }}
     >
+      <style>{TIMELINE_ROOT_STYLES}</style>
       {/* 头部工具栏 - 固定高度 */}
-      <TimelineHeader
-        currentFrame={currentFrame}
+      <TimelineHeaderPlayback
         fps={fps}
         durationInFrames={contentEndInFrames > 0 ? contentEndInFrames : durationInFrames}
-        playing={playing}
         zoom={zoom}
         snapEnabled={snapEnabled}
         onZoomIn={handleZoomIn}
@@ -914,7 +1032,7 @@ export const Timeline: React.FC = () => {
         onZoomToFit={handleZoomToFit}
         onZoomReset={handleZoomReset}
         onToggleSnap={() => setSnapEnabled(!snapEnabled)}
-        onTogglePlay={() => dispatch({ type: 'SET_PLAYING', payload: !playing })}
+        onTogglePlay={(playing) => dispatch({ type: 'SET_PLAYING', payload: !playing })}
         onZoomChange={handleZoomChange}
         zoomLimits={getSmartZoomLimits()}
       />
@@ -1072,8 +1190,7 @@ export const Timeline: React.FC = () => {
               zIndex: 20,
             }}
           >
-            <TimelinePlayhead
-              currentFrame={currentFrame}
+            <TimelinePlayheadOverlay
               pixelsPerFrame={pixelsPerFrame}
               fps={fps}
               timelineHeight={tracks.length * timelineStyles.trackHeight + timelineStyles.rulerHeight}

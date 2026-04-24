@@ -12,16 +12,19 @@ import { log } from '../logger';
 import { updateNodeData, appendNodeLog } from './NodeUpdater';
 import { Status } from '../domain/canvas';
 import type { GenerationParams } from '../agents/generation';
+import { getAssetById } from '../services/assets';
+import { signAssetPath } from '../services/asset-signing';
 
 import { MODEL_CARDS, parsePromptParts, extractPromptText } from '@clash/shared-types';
 
 const defaultImageModel = MODEL_CARDS.find((card) => card.kind === 'image')?.id ?? 'nano-banana-2';
 const defaultVideoModel = MODEL_CARDS.find((card) => card.kind === 'video')?.id ?? 'sora-2';
-const defaultAudioModel = MODEL_CARDS.find((card) => card.kind === 'audio')?.id ?? 'minimax-tts';
+const defaultAudioModel = MODEL_CARDS.find((card) => card.kind === 'audio')?.id ?? 'gemini-3.1-flash-tts';
+const defaultTextModel = MODEL_CARDS.find((card) => card.kind === 'text')?.id ?? 'gpt-5.4';
 
 const getModelCard = (modelId?: string) => MODEL_CARDS.find((card) => card.id === modelId);
 
-type NodeType = 'image' | 'video' | 'audio' | 'video_render';
+type NodeType = 'image' | 'video' | 'audio' | 'text' | 'video_render';
 
 // Fallback upper-bound wall time per node kind. Used when the selected model card
 // doesn't specify its own `maxRuntimeMs`. Set generously above the 99th-percentile
@@ -30,6 +33,7 @@ const DEFAULT_RUNNING_ORPHAN_MS: Record<string, number> = {
   image: 15 * 60 * 1000,
   video: 30 * 60 * 1000,
   audio: 10 * 60 * 1000,
+  text: 5 * 60 * 1000,
   video_render: 30 * 60 * 1000,
 };
 
@@ -103,6 +107,45 @@ function arrayBufferToBase64(buf: ArrayBuffer): string {
   return btoa(chunks.join(''));
 }
 
+function toPlainRecord(value: unknown): Record<string, any> {
+  if (typeof (value as { toJSON?: () => unknown } | null)?.toJSON === 'function') {
+    const json = (value as { toJSON: () => unknown }).toJSON();
+    return json && typeof json === 'object' ? { ...(json as Record<string, unknown>) } : {};
+  }
+  return value && typeof value === 'object' ? { ...(value as Record<string, unknown>) } : {};
+}
+
+function srcToStorageKey(src: string): string {
+  if (!src) return src;
+
+  if (src.startsWith('data:') || src.startsWith('blob:')) {
+    return src;
+  }
+
+  const prefixes = ['/assets/', '/api/assets/view/', '/api/assets/'];
+  const pathname = (() => {
+    if (!src.startsWith('/') && !src.startsWith('http://') && !src.startsWith('https://')) {
+      return src;
+    }
+    try {
+      const url = src.startsWith('http')
+        ? new URL(src)
+        : new URL(src, 'http://placeholder.local');
+      return url.pathname;
+    } catch {
+      return src;
+    }
+  })();
+
+  for (const prefix of prefixes) {
+    if (pathname.startsWith(prefix)) {
+      return pathname.slice(prefix.length);
+    }
+  }
+
+  return pathname.startsWith('/') ? pathname.slice(1) : pathname;
+}
+
 /**
  * Resolve assetId references in timeline DSL items.
  * Populates src/type/naturalWidth/naturalHeight from the referenced asset nodes.
@@ -111,23 +154,25 @@ function arrayBufferToBase64(buf: ArrayBuffer): string {
  * The backend render service doesn't have access to Loro, so we must resolve
  * these references before submitting the render task.
  */
-function resolveTimelineDslReferences(
+async function resolveTimelineDslReferences(
   timelineDsl: Record<string, any>,
-  nodesMap: Map<string, any>
-): Record<string, any> {
+  nodesMap: Map<string, any>,
+  env: Env,
+): Promise<Record<string, any>> {
   // Build a src -> node lookup for matching by src (for items without assetId)
   const srcToNode = new Map<string, any>();
   for (const [nodeId, nodeData] of nodesMap.entries()) {
-    const data = nodeData?.data || nodeData;
-    // Handle Loro proxy objects
-    const src = typeof data?.toJSON === 'function' ? data.toJSON()?.src : data?.src;
+    const data = toPlainRecord(nodeData?.data || nodeData);
+    const src = typeof data.src === 'string' ? data.src : undefined;
     if (src) {
       srcToNode.set(src, { nodeId, ...nodeData });
     }
   }
 
-  const resolvedTracks = (timelineDsl.tracks || []).map((track: any) => {
-    const resolvedItems = (track.items || []).map((item: any) => {
+  const assetCache = new Map<string, Awaited<ReturnType<typeof getAssetById>>>();
+
+  const resolvedTracks = await Promise.all((timelineDsl.tracks || []).map(async (track: any) => {
+    const resolvedItems = await Promise.all((track.items || []).map(async (item: any) => {
       let assetNode: any = null;
 
       // 1. Try to find by assetId first
@@ -156,19 +201,21 @@ function resolveTimelineDslReferences(
       }
 
       if (assetNode) {
-        let assetData: Record<string, any> = {};
-        const rawData = assetNode.data || assetNode;
+        const assetData = toPlainRecord(assetNode.data || assetNode);
+        const assetRowId = typeof assetData.assetId === 'string' ? assetData.assetId : undefined;
+        let assetRow = null;
 
-        if (typeof rawData?.toJSON === 'function') {
-          assetData = rawData.toJSON();
-        } else if (rawData) {
-          assetData = typeof rawData === 'object' ? { ...rawData } : {};
+        if (assetRowId) {
+          if (!assetCache.has(assetRowId)) {
+            assetCache.set(assetRowId, await getAssetById(env.DB, assetRowId));
+          }
+          assetRow = assetCache.get(assetRowId) ?? null;
         }
 
-        const assetType = assetNode.type || assetData.type;
+        const assetType = assetNode.type || assetRow?.kind || assetData.type || item.type;
 
-        let naturalWidth = assetData.naturalWidth;
-        let naturalHeight = assetData.naturalHeight;
+        let naturalWidth = assetRow?.metadata?.width ?? assetData.naturalWidth;
+        let naturalHeight = assetRow?.metadata?.height ?? assetData.naturalHeight;
 
         if ((!naturalWidth || !naturalHeight) && assetData.aspectRatio) {
           const ar = assetData.aspectRatio;
@@ -183,10 +230,10 @@ function resolveTimelineDslReferences(
 
         return {
           ...item,
-          src: assetData.src || item.src,
+          src: assetRow?.srcR2Key || assetData.src || item.src,
           type: assetType || item.type,
-          ...(naturalWidth && { naturalWidth }),
-          ...(naturalHeight && { naturalHeight }),
+          ...(naturalWidth != null && { naturalWidth }),
+          ...(naturalHeight != null && { naturalHeight }),
           ...(assetData.aspectRatio && { aspectRatio: assetData.aspectRatio }),
         };
       } else {
@@ -194,10 +241,10 @@ function resolveTimelineDslReferences(
       }
 
       return item;
-    });
+    }));
 
     return { ...track, items: resolvedItems };
-  });
+  }));
 
   return { ...timelineDsl, tracks: resolvedTracks };
 }
@@ -289,7 +336,7 @@ export async function processPendingNodes(
       const nodeType = data?.type as NodeType;
       const innerData = data?.data || {};
 
-      if (!['image', 'video', 'audio', 'video_render'].includes(nodeType)) continue;
+      if (!['image', 'video', 'audio', 'text', 'video_render'].includes(nodeType)) continue;
 
       const status = innerData.status as string;
       const src = innerData.src;
@@ -312,14 +359,20 @@ export async function processPendingNodes(
 
         // Resolve assetId references in timelineDsl using current Loro state
         const nodesMap = doc.getMap('nodes');
-        const resolvedDsl = resolveTimelineDslReferences(innerData.timelineDsl, nodesMap as any);
+        const resolvedDsl = await resolveTimelineDslReferences(innerData.timelineDsl, nodesMap as any, env);
 
-        // Convert R2 keys in src to full HTTP URLs so render-server's Chromium can access them
-        const workerUrl = env.WORKER_PUBLIC_URL || 'http://localhost:8787';
+        // Convert R2 keys in src to signed absolute HTTP URLs so render-server's
+        // Chromium/ffmpeg can access the source media via the asset-serving route.
+        const mediaBase = (env.MEDIA_GATEWAY_URL || env.WORKER_PUBLIC_URL || 'http://localhost:3000').replace(/\/+$/, '');
         for (const track of resolvedDsl.tracks || []) {
           for (const item of track.items || []) {
-            if (item.src && !item.src.startsWith('http') && !item.src.startsWith('data:')) {
-              item.src = `${workerUrl}/assets/${item.src}`;
+            if (typeof item.src === 'string' && item.src && !item.src.startsWith('http') && !item.src.startsWith('data:') && !item.src.startsWith('blob:')) {
+              const storageKey = srcToStorageKey(item.src);
+              if (!storageKey || storageKey.startsWith('data:') || storageKey.startsWith('blob:')) {
+                continue;
+              }
+              const signedPath = await signAssetPath(env, storageKey);
+              item.src = `${mediaBase}${signedPath}`;
             }
           }
         }
@@ -333,7 +386,7 @@ export async function processPendingNodes(
         };
 
         try {
-          await env.GENERATION_WORKFLOW.create({ id: `${projectId}-render-${nodeId}`, params: genParams });
+          await env.GENERATION_WORKFLOW.create({ id: taskId, params: genParams });
           appendNodeLog(doc, nodeId, `submitted`, broadcast);
           submitted = true;
         } catch (e: any) {
@@ -410,7 +463,14 @@ export async function processPendingNodes(
         // Deterministic taskId: same nodeId always maps to the same workflow ID,
         // so duplicate submissions (Loro race, alarm + queue, etc.) are idempotent.
         const taskId = `${projectId}-gen-${nodeId}`;
-        const taskType = nodeType === 'image' ? 'image_gen' : nodeType === 'video' ? 'video_gen' : 'audio_gen';
+        const taskType =
+          nodeType === 'image'
+            ? 'image_gen'
+            : nodeType === 'video'
+              ? 'video_gen'
+              : nodeType === 'audio'
+                ? 'audio_gen'
+                : 'text_gen';
         const tag = { nodeId, taskId, nodeType };
 
         // Set status=generating + pendingTask synchronously (optimistic lock) before any await
@@ -418,7 +478,7 @@ export async function processPendingNodes(
         appendNodeLog(doc, nodeId, `task=${taskId.slice(0, 8)} type=${taskType} model=${(innerData.modelId || innerData.model) ?? 'default'}`, broadcast);
 
         const selectedModelId = (innerData.modelId || innerData.model) ??
-          (nodeType === 'video' ? defaultVideoModel : nodeType === 'audio' ? defaultAudioModel : defaultImageModel);
+          (nodeType === 'video' ? defaultVideoModel : nodeType === 'audio' ? defaultAudioModel : nodeType === 'text' ? defaultTextModel : defaultImageModel);
         const modelParams = (innerData.modelParams || {}) as Record<string, any>;
         const referenceImages: string[] = Array.isArray(innerData.referenceImageUrls) ? innerData.referenceImageUrls : [];
         const referenceVideos: string[] = Array.isArray(innerData.referenceVideoUrls) ? innerData.referenceVideoUrls : [];
@@ -462,23 +522,37 @@ export async function processPendingNodes(
           return { type: 'text', text: part.text || '' };
         });
 
+        // Classify refs by role driven by the model's inputMode:
+        //  - startEnd:                   refs[0] = first frame, refs[1] = tail frame
+        //  - images.max === 1:           refs[0] = first frame  (legacy image-to-video)
+        //  - images.max > 1:             refs = multi-reference images (no first frame)
+        //  - otherwise (text-to-video):  no refs consumed
+        // Routing refs to BOTH imageR2Key and referenceR2Keys makes Vertex Veo reject
+        // the request with "image field is required for reference image".
+        const imagesMax = inputMode.images?.max ?? 0;
+        const isStartEnd = !!inputMode.startEnd;
+        const isSingleFirstFrame = !isStartEnd && !!inputMode.images && imagesMax <= 1;
+        const isMultiRef = !isStartEnd && !!inputMode.images && imagesMax > 1;
+        const firstFrameKey = (isStartEnd || isSingleFirstFrame) ? referenceImages[0] : undefined;
+        const tailFrameKey = isStartEnd ? referenceImages[1] : undefined;
+        const multiRefImages = isMultiRef ? referenceImages : [];
+
         const result = await submitGenTask(env, taskType as GenerationParams['type'], projectId, nodeId, taskId, {
           prompt: cleanPrompt,
           promptParts: resolvedParts,
           model: selectedModelId,
           modelParams,
-          referenceImages,
+          referenceImages: multiRefImages,
           referenceVideos,
           referenceAudios,
-          referenceMode: inputMode.startEnd ? 'start_end' : (inputMode.images ? 'multi' : 'none'),
+          referenceMode: isStartEnd ? 'start_end' : isMultiRef ? 'multi' : isSingleFirstFrame ? 'single' : 'none',
           aspectRatio: modelParams.aspect_ratio || innerData.aspectRatio || '16:9',
           duration: modelParams.duration ?? innerData.duration ?? 5,
           negativPrompt: modelParams.negative_prompt,
           cfgScale: modelParams.cfg_scale,
           resolution: modelParams.resolution,
-          // For startEnd models, first ref = first frame; second = tail/end frame.
-          tailImageR2Key: inputMode.startEnd ? referenceImages[1] : undefined,
-          imageR2Key: referenceImages[0],
+          tailImageR2Key: tailFrameKey,
+          imageR2Key: firstFrameKey,
         });
 
         if (result.error) {

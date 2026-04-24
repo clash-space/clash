@@ -1,0 +1,259 @@
+/**
+ * Client-side wrappers around the web app's HTTP API.
+ *
+ * These replace Next.js "use server" server actions. Each function fetches
+ * a route under /api/... that returns JSON. Routes live in
+ * apps/web-vite/app/routes/api.*.ts.
+ *
+ * Keeping this module in @clash/web-ui means the same code can be used by a
+ * future Electron app (which will hit the same HTTP endpoints).
+ */
+
+// ───────── Types (mirror server-side shapes) ─────────
+
+export type CommandType = "ADD_NODE" | "ADD_EDGE" | "UPDATE_NODE" | "DELETE_NODE";
+export interface Command {
+  type: CommandType;
+  payload: unknown;
+}
+
+export interface ApiTokenInfo {
+  id: string;
+  name: string;
+  tokenPrefix: string;
+  lastUsedAt: Date | null;
+  createdAt: Date | null;
+}
+
+export interface VariableInfo {
+  id: string;
+  key: string;
+  createdAt: Date | null;
+  updatedAt: Date | null;
+}
+
+export interface InstalledActionInfo {
+  id: string;
+  actionId: string;
+  name: string;
+  description: string | null;
+  runtime: string;
+  version: string | null;
+  author: string | null;
+  repository: string | null;
+  workerUrl: string | null;
+  icon: string | null;
+  color: string | null;
+  tags: string | null;
+  manifest: string;
+  createdAt: Date | null;
+}
+
+export interface InstalledSkillInfo {
+  id: string;
+  skillId: string;
+  name: string;
+  description: string | null;
+  repository: string | null;
+  version: string | null;
+  author: string | null;
+  icon: string | null;
+  tags: string | null;
+  linkedActionId: string | null;
+  createdAt: Date | null;
+}
+
+export interface RegistryItem {
+  id: string;
+  name: string;
+  type: "action" | "skill";
+  description?: string;
+  repository?: string;
+  runtime?: string;
+  outputType?: string;
+  workerUrl?: string;
+  version?: string;
+  author?: string;
+  icon?: string;
+  color?: string;
+  tags?: string[];
+  secrets?: Array<{ id: string; label: string; required?: boolean }>;
+  linkedActionId?: string;
+}
+
+// ───────── Helpers ─────────
+
+async function jsonFetch<T>(
+  input: string,
+  init: RequestInit = {},
+): Promise<T> {
+  const res = await fetch(input, {
+    credentials: "include",
+    headers: { "content-type": "application/json", ...(init.headers ?? {}) },
+    ...init,
+  });
+  if (!res.ok) {
+    const body = await res.text().catch(() => "");
+    throw new Error(`${res.status} ${res.statusText}: ${body || input}`);
+  }
+  if (res.status === 204) return undefined as T;
+  return (await res.json()) as T;
+}
+
+// ───────── Projects ─────────
+
+export async function createProject(prompt: string): Promise<void> {
+  const { id } = await jsonFetch<{ id: string }>("/api/projects", {
+    method: "POST",
+    body: JSON.stringify({ prompt }),
+  });
+  // Match legacy server-action behavior: navigate to the new project.
+  if (typeof window !== "undefined") {
+    window.location.assign(`/projects/${id}?prompt=${encodeURIComponent(prompt)}`);
+  }
+}
+
+export async function updateProjectName(id: string, name: string): Promise<void> {
+  await jsonFetch(`/api/projects/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify({ name }),
+  });
+}
+
+export async function deleteProject(id: string): Promise<void> {
+  await jsonFetch(`/api/projects/${id}`, { method: "DELETE" });
+}
+
+// ───────── Settings: API tokens ─────────
+
+export async function createApiToken(
+  name: string,
+): Promise<{ token: string; info: ApiTokenInfo }> {
+  return jsonFetch("/api/settings/tokens", {
+    method: "POST",
+    body: JSON.stringify({ name }),
+  });
+}
+
+export async function listApiTokens(): Promise<ApiTokenInfo[]> {
+  return jsonFetch("/api/settings/tokens");
+}
+
+export async function revokeApiToken(tokenId: string): Promise<void> {
+  await jsonFetch(`/api/settings/tokens/${tokenId}`, { method: "DELETE" });
+}
+
+// ───────── Settings: User variables ─────────
+
+export async function setVariable(
+  varKey: string,
+  value: string,
+): Promise<VariableInfo> {
+  return jsonFetch("/api/settings/variables", {
+    method: "POST",
+    body: JSON.stringify({ key: varKey, value }),
+  });
+}
+
+export async function listVariables(): Promise<VariableInfo[]> {
+  return jsonFetch("/api/settings/variables");
+}
+
+export async function deleteVariable(id: string): Promise<void> {
+  await jsonFetch(`/api/settings/variables/${id}`, { method: "DELETE" });
+}
+
+// ───────── Settings: Installed actions ─────────
+
+export async function listInstalledActions(): Promise<InstalledActionInfo[]> {
+  return jsonFetch("/api/settings/actions");
+}
+
+export async function installAction(
+  manifest: Record<string, unknown>,
+): Promise<InstalledActionInfo> {
+  return jsonFetch("/api/settings/actions", {
+    method: "POST",
+    body: JSON.stringify({ manifest }),
+  });
+}
+
+export async function uninstallAction(actionId: string): Promise<void> {
+  await jsonFetch(`/api/settings/actions/${encodeURIComponent(actionId)}`, {
+    method: "DELETE",
+  });
+}
+
+// ───────── Settings: Installed skills ─────────
+
+export async function listInstalledSkills(): Promise<InstalledSkillInfo[]> {
+  return jsonFetch("/api/settings/skills");
+}
+
+export async function installSkill(
+  def: Record<string, unknown>,
+): Promise<InstalledSkillInfo> {
+  return jsonFetch("/api/settings/skills", {
+    method: "POST",
+    body: JSON.stringify({ skill: def }),
+  });
+}
+
+export async function uninstallSkill(skillId: string): Promise<void> {
+  await jsonFetch(`/api/settings/skills/${encodeURIComponent(skillId)}`, {
+    method: "DELETE",
+  });
+}
+
+// ───────── Marketplace ─────────
+
+export interface RegistryData {
+  version: number;
+  actions: RegistryItem[];
+  skills: RegistryItem[];
+}
+
+export async function fetchRegistry(): Promise<RegistryData> {
+  return jsonFetch("/api/marketplace/registry");
+}
+
+export async function marketplaceInstallAction(item: RegistryItem): Promise<void> {
+  await installAction({
+    id: item.id,
+    name: item.name,
+    description: item.description,
+    runtime: item.runtime || "worker",
+    outputType: item.outputType || "image",
+    workerUrl: item.workerUrl,
+    version: item.version,
+    author: item.author,
+    repository: item.repository,
+    icon: item.icon,
+    color: item.color,
+    tags: item.tags,
+    secrets: item.secrets,
+    parameters: [],
+  });
+}
+
+export async function marketplaceUninstallAction(actionId: string): Promise<void> {
+  await uninstallAction(actionId);
+}
+
+export async function marketplaceInstallSkill(item: RegistryItem): Promise<void> {
+  await installSkill({
+    id: item.id,
+    name: item.name,
+    description: item.description,
+    repository: item.repository,
+    version: item.version,
+    author: item.author,
+    icon: item.icon,
+    tags: item.tags,
+    linkedActionId: item.linkedActionId,
+  });
+}
+
+export async function marketplaceUninstallSkill(skillId: string): Promise<void> {
+  await uninstallSkill(skillId);
+}

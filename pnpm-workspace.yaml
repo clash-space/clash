@@ -1,10 +1,10 @@
 packages:
   - 'apps/api-cf'
-  - 'apps/gateway'
   - 'apps/render-server'
   - 'apps/web'
   - 'packages/remotion-*'
   - 'packages/shared-*'
   - 'packages/action-sdk'
+  - 'packages/web-ui'
   - 'packages/cli'
   - 'packages/claude-code-plugin'

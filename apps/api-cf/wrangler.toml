@@ -23,10 +23,16 @@ binding = "GENERATION_WORKFLOW"
 class_name = "GenerationWorkflow"
 
 # Container (Remotion render server)
+# The Dockerfile's COPY statements reference monorepo paths (packages/*,
+# pnpm-lock.yaml, apps/render-server/), so build context must be the repo root.
+# image_vars land as docker --build-arg; defaults in the Dockerfile target
+# upstream registries, overridden here to China mirrors for faster local dev.
 [[containers]]
 class_name = "RenderContainer"
 image = "../render-server/Dockerfile"
+image_build_context = "../.."
 max_instances = 3
+image_vars = { NPM_REGISTRY = "https://registry.npmmirror.com/", DEBIAN_MIRROR = "mirrors.aliyun.com" }
 
 [[durable_objects.bindings]]
 name = "RENDER_CONTAINER"
@@ -87,10 +93,19 @@ bucket_name = "master-clash-assets"
 [dev]
 # Only watch src/ to prevent .wrangler/state sqlite writes from triggering reload loops
 watch_dir = "src"
-# Containers are deployed via Docker, not needed in local dev (use RENDER_SERVER_URL instead)
+# Containers off for local dev — thumbnail/render dispatch goes via
+# RENDER_SERVER_URL to a standalone tsx process on :8080 (see Makefile
+# dev-render target). Prod deploys without RENDER_SERVER_URL so the Worker
+# falls through to the RENDER_CONTAINER binding.
 enable_containers = false
 
 [vars]
 ENVIRONMENT = "development"
 BETTER_AUTH_BASE_PATH = "/api/better-auth"
 RENDER_SERVER_URL = "http://localhost:8080"
+# Base origin for signed asset URLs handed to render-server so its ffmpeg
+# can fetch source videos over HTTP.
+#   Dev:  gateway worker on :3000 (same host as the tsx render-server).
+#   Prod: override with the public zone URL so the Container (running in
+#         Cloudflare infra) can reach the zone over the internet.
+MEDIA_GATEWAY_URL = "http://localhost:3000"

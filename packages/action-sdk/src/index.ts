@@ -54,8 +54,8 @@ export interface ActionRequest {
 
 export interface ActionResponse {
   /** Output type — determines what canvas node is created */
-  type: "image" | "video" | "text";
-  /** URL to download the result (for image/video). Platform will fetch + store in R2. */
+  type: "image" | "video" | "audio" | "text";
+  /** URL to download the result (for image/video/audio). Platform will fetch + store in R2. */
   url?: string;
   /** Text content (for type='text' output) */
   content?: string;
@@ -95,7 +95,7 @@ export interface ActionManifest {
   description?: string;
   author?: string;
   repository?: string;
-  outputType: "image" | "video" | "text";
+  outputType: "image" | "video" | "audio" | "text";
   parameters?: ActionManifestParameter[];
   secrets?: ActionManifestSecret[];
   runtime: "local" | "worker";

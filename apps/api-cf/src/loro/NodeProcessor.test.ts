@@ -127,7 +127,7 @@ describe("NodeProcessor - processPendingNodes", () => {
     // GENERATION_WORKFLOW.create should have been called with correct params
     expect(env.GENERATION_WORKFLOW.create).toHaveBeenCalledWith(
       expect.objectContaining({
-        id: "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+        id: "proj-1-gen-node-img-1",
         params: expect.objectContaining({
           type: "image_gen",
           nodeId: "node-img-1",
@@ -145,7 +145,7 @@ describe("NodeProcessor - processPendingNodes", () => {
     // Node should have pendingTask set + status changed to generating
     const nodesMap = doc.getMap("nodes");
     const nodeData = nodesMap.get("node-img-1") as any;
-    expect(nodeData.data.pendingTask).toBe("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee");
+    expect(nodeData.data.pendingTask).toBe("proj-1-gen-node-img-1");
     expect(nodeData.data.status).toBe("generating");
   });
 
@@ -276,12 +276,98 @@ describe("NodeProcessor - processPendingNodes", () => {
 
     expect(env.GENERATION_WORKFLOW.create).toHaveBeenCalledWith(
       expect.objectContaining({
-        id: "proj-1-render-n-timeline",
+        id: "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
         params: expect.objectContaining({
+          taskId: "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
           nodeId: "n-timeline",
           type: "video_render",
         }),
       })
+    );
+  });
+
+  it("resolves render timeline asset refs through D1 assets and signs absolute asset URLs", async () => {
+    const doc = makeDoc([
+      {
+        id: "asset-node-1",
+        type: "image",
+        data: {
+          status: "completed",
+          assetId: "asset-row-1",
+        },
+      },
+      {
+        id: "n-render",
+        type: "video",
+        data: {
+          status: "pending",
+          timelineDsl: {
+            tracks: [
+              {
+                id: "track-1",
+                name: "Main",
+                items: [
+                  {
+                    id: "item-1",
+                    from: 0,
+                    durationInFrames: 90,
+                    assetId: "asset-node-1",
+                  },
+                ],
+              },
+            ],
+          },
+        },
+      },
+    ]);
+
+    const first = vi.fn().mockImplementation(async () => ({
+      id: "asset-row-1",
+      userId: "u-1",
+      kind: "image",
+      srcR2Key: "projects/proj-1/assets/cat.png",
+      coverR2Key: null,
+      metadata: JSON.stringify({ width: 1280, height: 720 }),
+      sourceModel: null,
+      sourcePrompt: null,
+      sourceTaskId: null,
+      createdAt: 1,
+      updatedAt: 1,
+    }));
+    const bind = vi.fn().mockReturnValue({ run: vi.fn().mockResolvedValue({}), all: vi.fn(), first });
+    const prepare = vi.fn().mockReturnValue({ bind });
+
+    const env = makeEnv({
+      JWT_SECRET: "test-secret",
+      MEDIA_GATEWAY_URL: "http://localhost:3000",
+      DB: { prepare } as any,
+    });
+
+    await processPendingNodes(doc, env, "proj-1", broadcast, triggerPolling);
+
+    expect(env.GENERATION_WORKFLOW.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        params: expect.objectContaining({
+          type: "video_render",
+          timelineDsl: expect.objectContaining({
+            tracks: [
+              expect.objectContaining({
+                items: [
+                  expect.objectContaining({
+                    assetId: "asset-node-1",
+                    type: "image",
+                    naturalWidth: 1280,
+                    naturalHeight: 720,
+                    src: expect.stringMatching(
+                      /^http:\/\/localhost:3000\/assets\/projects\/proj-1\/assets\/cat\.png\?exp=\d+&sig=/,
+                    ),
+                  }),
+                ],
+              }),
+            ],
+          }),
+        }),
+      }),
     );
   });
 
@@ -340,7 +426,7 @@ describe("NodeProcessor - processPendingNodes", () => {
     await processPendingNodes(doc, env, "proj-1", broadcast, triggerPolling);
 
     // pendingTask and status should have been set BEFORE workflow.create was called
-    expect(pendingTaskAtCreateTime).toBe("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee");
+    expect(pendingTaskAtCreateTime).toBe("proj-1-gen-node-lock");
     expect(statusAtCreateTime).toBe("generating");
   });
 

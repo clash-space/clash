@@ -73,15 +73,18 @@ export const TimelinePlayhead: React.FC<TimelinePlayheadProps> = React.memo(({
       setIsDragging(true);
       onDragStart?.();
 
-      const handleMouseMove = (moveEvent: MouseEvent) => {
-        // Prefer anchoring to the right content pane to include left inset
-        const rightPane = document.querySelector('[data-playhead-container]') as HTMLElement | null;
-        const timelineContainer = rightPane || (document.querySelector('[data-timeline-container]') as HTMLElement | null);
-        if (!timelineContainer) return;
+      // Resolve the drag container ONCE at drag start — querySelector on every
+      // mousemove was walking the DOM tree at pointer-event rate.
+      const rightPane = document.querySelector('[data-playhead-container]') as HTMLElement | null;
+      const timelineContainer =
+        rightPane || (document.querySelector('[data-timeline-container]') as HTMLElement | null);
+      const useRightPane = !!rightPane;
 
+      const handleMouseMove = (moveEvent: MouseEvent) => {
+        if (!timelineContainer) return;
         const rect = timelineContainer.getBoundingClientRect();
         const xFromContainer = moveEvent.clientX - rect.left;
-        const xRelativeToContent = rightPane
+        const xRelativeToContent = useRightPane
           ? xFromContainer - leftOffset
           : xFromContainer - timeline.trackLabelWidth - leftOffset;
         const x = xRelativeToContent + scrollLeft;
@@ -133,9 +136,33 @@ export const TimelinePlayhead: React.FC<TimelinePlayheadProps> = React.memo(({
       {/* 顶部三角形拖拽手柄 */}
       <motion.div
         ref={triangleRef}
+        role="slider"
+        aria-label="Playhead"
+        aria-valuemin={0}
+        aria-valuemax={Number.isFinite(_durationInFrames) ? _durationInFrames : undefined}
+        aria-valuenow={currentFrame}
+        aria-valuetext={formatTime(currentFrame, fps)}
+        tabIndex={0}
         onMouseDown={handleMouseDown}
         onMouseEnter={() => setIsHovered(true)}
         onMouseLeave={() => setIsHovered(false)}
+        onKeyDown={(e) => {
+          const step = e.shiftKey ? 10 : 1;
+          if (e.key === 'ArrowLeft') {
+            e.preventDefault();
+            onSeek(Math.max(0, currentFrame - step));
+          } else if (e.key === 'ArrowRight') {
+            e.preventDefault();
+            const max = Number.isFinite(_durationInFrames) ? _durationInFrames : currentFrame + step;
+            onSeek(Math.min(max, currentFrame + step));
+          } else if (e.key === 'Home') {
+            e.preventDefault();
+            onSeek(0);
+          } else if (e.key === 'End' && Number.isFinite(_durationInFrames)) {
+            e.preventDefault();
+            onSeek(_durationInFrames);
+          }
+        }}
         animate={{
           scale: isDragging ? 1.3 : isHovered ? 1.2 : 1,
         }}

@@ -1,6 +1,12 @@
 import React, { useState, useRef, useEffect, useCallback, Fragment } from 'react';
 import { createPortal } from 'react-dom';
-import { useEditor } from '@master-clash/remotion-core';
+import {
+  findAssetForItem,
+  getItemAssetDurationInFrames,
+  useEditorDispatch,
+  useEditorPlaybackRefs,
+  useEditorStaticState,
+} from '@master-clash/remotion-core';
 import type { Asset, Item } from '@master-clash/remotion-core';
 import { colors, timeline, spacing, shadows } from './styles';
 import { secondsToFrames } from './utils/timeFormatter';
@@ -74,6 +80,9 @@ interface TimelineTracksContainerProps {
 // Store dragged data globally to work around dataTransfer issues
 let globalDragData: { assetId?: string; quickAdd?: string; quickAddType?: string; asset?: string } = {};
 
+// Hoisted once: avoids re-allocating this string (and its <style> child) on every render.
+const TRACK_LABELS_SCROLLBAR_CSS = `.track-labels-panel::-webkit-scrollbar{display:none;}`;
+
 export const TimelineTracksContainer: React.FC<TimelineTracksContainerProps> = ({
   durationInFrames,
   pixelsPerFrame,
@@ -101,8 +110,9 @@ export const TimelineTracksContainer: React.FC<TimelineTracksContainerProps> = (
   contentInsetLeftPx,
   externalInsertPosition,
 }) => {
-  const { state, dispatch } = useEditor();
-  const { tracks } = state;
+  const dispatch = useEditorDispatch();
+  const { tracks } = useEditorStaticState();
+  const { currentFrameRef } = useEditorPlaybackRefs();
 
   // Track which item is being hovered for roll edit highlighting
   const [hoveredItemId, setHoveredItemId] = useState<string | null>(null);
@@ -148,8 +158,8 @@ export const TimelineTracksContainer: React.FC<TimelineTracksContainerProps> = (
     const hasWaveform = (item.type === 'audio' || item.type === 'video') && (item as any).waveform;
     // Video with waveform + thumbnail is slightly taller in actual renderer
     let hasVideoWithThumbnail = false;
-    if (item.type === 'video' && hasWaveform && 'src' in item) {
-      const asset = assets.find((a) => a.src === (item as any).src);
+    if (item.type === 'video' && hasWaveform) {
+      const asset = findAssetForItem(item, assets);
       hasVideoWithThumbnail = !!asset?.thumbnail;
     }
     if (hasVideoWithThumbnail) return 60;
@@ -321,9 +331,6 @@ export const TimelineTracksContainer: React.FC<TimelineTracksContainerProps> = (
 
 
       if (!itemToMove || !sourceTrack) {
-        console.error('ERROR: Missing item or source track information');
-        console.error('  - itemToMove:', itemToMove);
-        console.error('  - sourceTrack:', sourceTrack);
         return;
       }
 
@@ -403,7 +410,6 @@ export const TimelineTracksContainer: React.FC<TimelineTracksContainerProps> = (
     // 计算 drop 位置（与 Timeline.handleDrop 保持一致）
     const viewportEl = viewportRef.current;
     if (!viewportEl) {
-      console.error('[handleInsertDrop] No viewport element found');
       return;
     }
 
@@ -445,15 +451,18 @@ export const TimelineTracksContainer: React.FC<TimelineTracksContainerProps> = (
         // Handle regular assets
         const asset = assets.find(a => a.id === assetId) || currentDraggedAsset;
         if (!asset) {
-          console.error('No asset found for id:', assetId);
           return;
         }
+        const sourceNodeId: string | undefined = (asset as any).sourceNodeId ?? asset.id;
+        const backingAssetId: string | undefined = (asset as any).backingAssetId ?? (asset as any).assetId;
 
         switch (asset.type) {
           case 'video':
             newItem = {
               id: `item-${Date.now()}`,
               type: 'video',
+              assetId: backingAssetId,
+              sourceNodeId,
               from: dropFrame,
               durationInFrames: (asset && asset.duration) ? secondsToFrames(asset.duration, fps) : 90,
               src: asset ? asset.src : '',
@@ -464,6 +473,8 @@ export const TimelineTracksContainer: React.FC<TimelineTracksContainerProps> = (
             newItem = {
               id: `item-${Date.now()}`,
               type: 'audio',
+              assetId: backingAssetId,
+              sourceNodeId,
               from: dropFrame,
               durationInFrames: asset.duration ? secondsToFrames(asset.duration, fps) : 90,
               src: asset.src,
@@ -474,6 +485,8 @@ export const TimelineTracksContainer: React.FC<TimelineTracksContainerProps> = (
             newItem = {
               id: `item-${Date.now()}`,
               type: 'image',
+              assetId: backingAssetId,
+              sourceNodeId,
               from: dropFrame,
               durationInFrames: 90,
               src: asset.src,
@@ -563,9 +576,7 @@ export const TimelineTracksContainer: React.FC<TimelineTracksContainerProps> = (
           }}
           onScroll={handleLabelsScroll}
         >
-          <style>{`
-            .track-labels-panel::-webkit-scrollbar { display: none; }
-          `}</style>
+          <style>{TRACK_LABELS_SCROLLBAR_CSS}</style>
 
           {tracks.length === 0 ? (
             <div
@@ -574,7 +585,7 @@ export const TimelineTracksContainer: React.FC<TimelineTracksContainerProps> = (
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                color: colors.text.tertiary,
+                color: colors.text.secondary,
                 fontSize: 12,
                 padding: spacing.md,
                 textAlign: 'center',
@@ -804,11 +815,8 @@ export const TimelineTracksContainer: React.FC<TimelineTracksContainerProps> = (
                       onResize={(edge, deltaFrames) => {
                         // 获取素材总帧数
                         let totalFramesForAsset: number | undefined;
-                        if ((item.type === 'video' || item.type === 'audio') && 'src' in item) {
-                          const asset = assets.find((a) => a.src === item.src);
-                          if (asset?.duration) {
-                            totalFramesForAsset = Math.floor(asset.duration * fps);
-                          }
+                        if (item.type === 'video' || item.type === 'audio') {
+                          totalFramesForAsset = getItemAssetDurationInFrames(item, assets, fps);
                         }
 
                         const currentOffset = ((item as any).sourceStartInFrames || 0);
@@ -822,9 +830,9 @@ export const TimelineTracksContainer: React.FC<TimelineTracksContainerProps> = (
                           const snapped = calculateResizeSnap(
                             rawFrom,
                             'left',
-                            state.tracks,
+                            tracks,
                             item.id,
-                            state.currentFrame,
+                            currentFrameRef.current,
                             !!snapEnabled,
                             timeline.snapThreshold
                           );
@@ -864,9 +872,9 @@ export const TimelineTracksContainer: React.FC<TimelineTracksContainerProps> = (
                           const snapped = calculateResizeSnap(
                             rawRight,
                             'right',
-                            state.tracks,
+                            tracks,
                             item.id,
-                            state.currentFrame,
+                            currentFrameRef.current,
                             !!snapEnabled,
                             timeline.snapThreshold
                           );
@@ -1120,7 +1128,7 @@ export const TimelineTracksContainer: React.FC<TimelineTracksContainerProps> = (
         }}
         onScroll={handleLabelsScroll}
       >
-        <style>{`.track-labels-panel::-webkit-scrollbar{display:none;}`}</style>
+        <style>{TRACK_LABELS_SCROLLBAR_CSS}</style>
         {tracks.length === 0 ? (
           <div
             style={{

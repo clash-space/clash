@@ -1,28 +1,39 @@
-name = "clash-flow"
-main = ".open-next/worker.js"
-compatibility_date = "2024-11-20"
+name = "clash-web"
+main = "workers/app.ts"
+compatibility_date = "2025-04-08"
 compatibility_flags = ["nodejs_compat"]
 
+# Vite + CF plugin emits to dist/client (client bundle) + dist/clash-web (worker)
 [assets]
 binding = "ASSETS"
-directory = ".open-next/assets"
+directory = "./dist/client"
+not_found_handling = "single-page-application"
 
-# D1 Database binding
+# D1 (same DB as gateway + api-cf)
 [[d1_databases]]
 binding = "DB"
 database_name = "master-clash-frontend"
 database_id = "aab16eeb-a375-490b-ad1e-cd092cd9f4bb"
 migrations_dir = "drizzle"
 
-# Service Binding to api-cf Worker
+# Service binding to api-cf worker (prod + local when both run via wrangler)
 [[services]]
 binding = "API_CF"
 service = "master-clash-api"
 
-[vars]
-BETTER_AUTH_URL = "http://localhost:3000"
+# R2 bucket (used by /api/upload/asset + /api/assets/view/*)
+[[r2_buckets]]
+binding = "R2_BUCKET"
+bucket_name = "master-clash-assets"
 
-# Optional: Better Auth KV (rate limit / secondary storage)
-# [[kv_namespaces]]
-# binding = "KV"
-# id = "YOUR_KV_NAMESPACE_ID"
+[vars]
+BETTER_AUTH_BASE_PATH = "/api/better-auth"
+# Local dev fallback when the service binding can't resolve api-cf
+API_CF_URL = "http://127.0.0.1:8789"
+
+[dev]
+port = 3000
+ip = "0.0.0.0"
+
+[env.production.vars]
+BETTER_AUTH_BASE_PATH = "/api/better-auth"

@@ -89,6 +89,20 @@ export {
   type DOState,
 } from './tasks';
 
+// Model capability — single derivation, all consumers read fields off the
+// returned profile. See model-capabilities.ts for the rationale.
+export {
+  capability,
+  validateRefs,
+  partitionRefs,
+  pickDefaultModel,
+  type Modality,
+  type RefBound,
+  type Capability,
+  type RefNodeLike,
+  type RefPartition,
+} from './model-capabilities';
+
 // Model metadata
 export {
   ModelKindSchema,
@@ -131,6 +145,8 @@ export type { LoroSyncClientOptions } from './loro-client';
 export {
   parsePromptParts,
   extractPromptText,
+  normalizePromptInput,
+  composePromptWithTextRefs,
   extractAssetRefs,
   buildMention,
   hasAssetMentions,
@@ -144,9 +160,11 @@ export * from './presence';
 // Asset metadata (D1 assets + asset_refs tables)
 export {
   AssetKindSchema,
+  AssetMetadataSchema,
   AssetSchema,
   AssetRefRowSchema,
   type AssetKind,
+  type AssetMetadata,
   type Asset,
   type AssetRefRow,
 } from './assets';

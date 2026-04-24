@@ -14,7 +14,7 @@ NodeStatus = Literal["idle", "pending", "generating", "completed", "failed"]
 TaskType = Literal["kling_video", "nano_banana", "nano_banana_pro", "gemini_image"]
 TaskStatus = Literal["pending", "generating", "completed", "failed"]
 ExternalService = Literal["kling", "gemini", "vertex"]
-ActionType = Literal["image-gen", "video-gen"]
+ActionType = Literal["image-gen", "video-gen", "audio-gen", "text-gen"]
 
 
 # === Canvas Types ===

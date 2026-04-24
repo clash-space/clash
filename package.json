@@ -17,14 +17,13 @@
     "ai",
     "video-production",
     "cloudflare",
-    "next.js",
+    "react-router",
     "langgraph"
   ],
   "author": "hrhrng <hrhrng@foxmail.com>",
   "license": "MIT",
   "devDependencies": {
     "@changesets/cli": "^2.27.0",
-    "@opennextjs/cloudflare": "^1.14.6",
     "prettier": "^3.0.0",
     "turbo": "^2.0.0",
     "wrangler": "^4"
@@ -32,6 +31,8 @@
   "packageManager": "pnpm@8.15.0",
   "pnpm": {
     "overrides": {
+      "react": "19.2.5",
+      "react-dom": "19.2.5",
       "remotion": "4.0.370",
       "@remotion/*": "4.0.370",
       "@vitest/utils": "4.1.0",

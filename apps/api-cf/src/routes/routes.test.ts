@@ -265,7 +265,7 @@ describe("Hono routes", () => {
       expect(json.status).toBe("completed");
     });
 
-    it("submits audio_gen → 501 not supported", async () => {
+    it("submits audio_gen to the generation workflow", async () => {
       const res = await app.request(
         "/api/tasks/submit",
         {
@@ -275,13 +275,34 @@ describe("Hono routes", () => {
             task_type: "audio_gen",
             project_id: "proj-1",
             node_id: "node-1",
-            params: {},
+            params: {
+              prompt: "read this aloud",
+              model: "gemini-3.1-flash-tts",
+              model_params: { voice_name: "Kore" },
+            },
           }),
         },
         env
       );
 
-      expect(res.status).toBe(501);
+      expect(res.status).toBe(200);
+      const json: any = await res.json();
+      expect(json).toEqual({
+        task_id: "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+        status: "pending",
+      });
+      expect(env.GENERATION_WORKFLOW.create).toHaveBeenCalledWith({
+        id: "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+        params: expect.objectContaining({
+          taskId: "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+          nodeId: "node-1",
+          type: "audio_gen",
+          projectId: "proj-1",
+          prompt: "read this aloud",
+          modelName: "gemini-3.1-flash-tts",
+          modelParams: { voice_name: "Kore" },
+        }),
+      });
     });
 
     it("submits video_render → 501 client-side", async () => {

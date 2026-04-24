@@ -13,16 +13,34 @@ import { z } from 'zod';
 export const AssetKindSchema = z.enum(['image', 'video', 'audio']);
 export type AssetKind = z.infer<typeof AssetKindSchema>;
 
+/**
+ * Descriptive metadata persisted as a JSON blob on the asset row.
+ *
+ * Rationale for collapsing into one object: none of these are query predicates
+ * (we never WHERE/ORDER BY on width or duration), so there's no reason to
+ * spread them across columns. Keeping one JSON lets us grow the shape
+ * (contentHash, hasAudio, dominantColor, codec, ...) without a D1 migration.
+ *
+ * `waveform` is a downsampled peak array (0..1 floats) — default 128 samples
+ * from the audio probe. Keep sample counts reasonable; if a consumer needs a
+ * very high-resolution waveform it should be its own R2 object, not inlined.
+ */
+export const AssetMetadataSchema = z.object({
+  width: z.number().int().optional(),
+  height: z.number().int().optional(),
+  durationMs: z.number().int().optional(),
+  bytes: z.number().int().optional(),
+  waveform: z.array(z.number()).optional(),
+});
+export type AssetMetadata = z.infer<typeof AssetMetadataSchema>;
+
 export const AssetSchema = z.object({
   id: z.string(),
   userId: z.string(),
   kind: AssetKindSchema,
   srcR2Key: z.string(),
   coverR2Key: z.string().nullable().optional(),
-  width: z.number().int().nullable().optional(),
-  height: z.number().int().nullable().optional(),
-  durationMs: z.number().int().nullable().optional(),
-  bytes: z.number().int().nullable().optional(),
+  metadata: AssetMetadataSchema.nullable().optional(),
   sourceModel: z.string().nullable().optional(),
   sourcePrompt: z.string().nullable().optional(),
   sourceTaskId: z.string().nullable().optional(),

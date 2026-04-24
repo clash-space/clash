@@ -14,7 +14,10 @@ export type BaseItem = {
   id: string;
   from: number; // Start frame
   durationInFrames: number;
+  /** D1 asset row id, matching canvas node data.assetId. */
   assetId?: string;
+  /** Canvas source node id. Legacy DSL stored this value in assetId. */
+  sourceNodeId?: string;
   properties?: ItemProperties; // Canvas positioning and transform properties
 };
 
@@ -104,6 +107,8 @@ export type Asset = {
   readOnly?: boolean;
   /** ID of the source node when asset is linked from canvas (for deduplication) */
   sourceNodeId?: string;
+  /** Stable D1 asset row id for media identity (thumbnail cache, metadata, etc.) */
+  backingAssetId?: string;
 };
 
 // Editor state

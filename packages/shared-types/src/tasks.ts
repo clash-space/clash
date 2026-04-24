@@ -14,6 +14,8 @@ import { z } from 'zod';
 export const AtomicTaskTypeSchema = z.enum([
   'image_gen',   // Generate image
   'video_gen',   // Generate video
+  'audio_gen',   // Generate audio
+  'text_gen',    // Generate text
   'description', // Generate description for asset
   'understand',  // Comprehensive understanding (ASR + visual analysis)
 ]);
@@ -45,6 +47,22 @@ export const VideoGenParamsSchema = z.object({
 });
 export type VideoGenParams = z.infer<typeof VideoGenParamsSchema>;
 
+// === Audio Generation Params ===
+export const AudioGenParamsSchema = z.object({
+  prompt: z.string(),
+  model: z.string().default('gemini-3.1-flash-tts'),
+  model_params: z.record(z.union([z.string(), z.number(), z.boolean()])).optional(),
+});
+export type AudioGenParams = z.infer<typeof AudioGenParamsSchema>;
+
+// === Text Generation Params ===
+export const TextGenParamsSchema = z.object({
+  prompt: z.string(),
+  model: z.string().default('gpt-5.4'),
+  model_params: z.record(z.union([z.string(), z.number(), z.boolean()])).optional(),
+});
+export type TextGenParams = z.infer<typeof TextGenParamsSchema>;
+
 // === Description Generation Params ===
 export const DescriptionParamsSchema = z.object({
   r2_key: z.string(),
@@ -64,6 +82,8 @@ export type UnderstandParams = z.infer<typeof UnderstandParamsSchema>;
 export const AtomicTaskRequestSchema = z.discriminatedUnion('task_type', [
   z.object({ task_type: z.literal('image_gen'), params: ImageGenParamsSchema }),
   z.object({ task_type: z.literal('video_gen'), params: VideoGenParamsSchema }),
+  z.object({ task_type: z.literal('audio_gen'), params: AudioGenParamsSchema }),
+  z.object({ task_type: z.literal('text_gen'), params: TextGenParamsSchema }),
   z.object({ task_type: z.literal('description'), params: DescriptionParamsSchema }),
   z.object({ task_type: z.literal('understand'), params: UnderstandParamsSchema }),
 ]);
