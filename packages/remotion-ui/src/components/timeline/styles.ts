@@ -7,10 +7,10 @@ export const colors = {
   // 背景层次（亮色主题）
   bg: {
     primary: '#ffffff',     // 主背景
-    secondary: '#f8fafc',   // 次级背景 (slate-50)
-    elevated: '#f1f5f9',    // 悬浮元素 (slate-100)
-    hover: '#e2e8f0',       // 悬停状态 (slate-200)
-    selected: '#fff1f0',    // 选中状态背景（带品牌色调）
+    secondary: '#fbfaf8',   // 次级背景（暖中性）
+    elevated: '#f3eee9',    // 悬浮元素
+    hover: '#e7e0da',       // 悬停状态
+    selected: '#fff3f0',    // 选中状态背景（带品牌色调）
   },
 
   // 强调色（与主应用品牌色对齐）
@@ -23,9 +23,9 @@ export const colors = {
 
   // 素材类型色（柔和，适配亮色背景）
   item: {
-    video: '#6366f1',       // 靛蓝 (indigo-500)
-    audio: '#f59e0b',       // 琥珀 (amber-500)
-    image: '#a855f7',       // 紫 (purple-500)
+    video: '#3b82f6',       // 蓝（与主应用 video token 对齐）
+    audio: '#f5a623',       // 琥珀（与主应用 audio token 对齐）
+    image: '#FF6B50',       // 珊瑚（与主应用 image/brand token 对齐）
     text: '#22c55e',        // 绿 (green-500)
     solid: '#94a3b8',       // 灰 (slate-400)
   },

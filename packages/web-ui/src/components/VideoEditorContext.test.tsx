@@ -1,4 +1,5 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+// @vitest-environment jsdom
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 
 import { VideoEditorProvider, useVideoEditor } from "./VideoEditorContext";
@@ -44,12 +45,10 @@ const { mockLoroSync, mockAutoInsertNode, mockEditorState } = vi.hoisted(() => (
   } as any,
 }));
 
-vi.mock("next/dynamic", () => ({
-  default: () => {
-    return function MockEditor(props: any) {
-      props.stateRef.current = mockEditorState;
-      return <div data-testid="mock-editor" />;
-    };
+vi.mock("@master-clash/remotion-ui", () => ({
+  Editor: (props: any) => {
+    props.stateRef.current = mockEditorState;
+    return <div data-testid="mock-editor" />;
   },
 }));
 
@@ -95,7 +94,24 @@ describe("VideoEditorProvider", () => {
   });
 
   afterEach(() => {
+    cleanup();
     vi.restoreAllMocks();
+  });
+
+  it("opens the editor as a main control surface without unmounting the project surface", async () => {
+    render(
+      <VideoEditorProvider>
+        <div data-testid="project-surface">Project canvas</div>
+        <Harness />
+      </VideoEditorProvider>,
+    );
+
+    fireEvent.click(screen.getByText("Open"));
+
+    const dialog = await screen.findByRole("dialog", { name: "Video editor" });
+    expect(dialog.getAttribute("aria-modal")).toBe("true");
+    expect(screen.getByTestId("video-editor-panel")).toBeTruthy();
+    expect(screen.getByTestId("project-surface")).toBeTruthy();
   });
 
   it("pushes editor composition size into the pending render node", async () => {
@@ -116,7 +132,7 @@ describe("VideoEditorProvider", () => {
     );
 
     fireEvent.click(screen.getByText("Open"));
-    await waitFor(() => expect(screen.getByTestId("mock-editor")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByTestId("mock-editor")).toBeTruthy());
 
     fireEvent.click(screen.getByText("Export"));
 

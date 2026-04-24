@@ -6,10 +6,10 @@
 @source "../../../packages/remotion-core/src";
 
 :root {
-  --background: #ffffff;
+  --background: #fbfaf8;
   --foreground: #171717;
-  --canvas-bg: #f1f5f9;
-  --canvas-dot: #cbd5e1;
+  --canvas-bg: #f6f1eb;
+  --canvas-dot: #d8cdc2;
 
   --font-inter: "Inter Variable", -apple-system, BlinkMacSystemFont, "Segoe UI",
     Roboto, sans-serif;
@@ -22,6 +22,12 @@
   --color-foreground: var(--foreground);
   --color-canvas-bg: var(--canvas-bg);
   --color-canvas-dot: var(--canvas-dot);
+
+  --color-warm-page: #fbfaf8;
+  --color-warm-surface: #fffdfb;
+  --color-warm-muted: #f3eee9;
+  --color-warm-hover: #ebe2d8;
+  --color-warm-border: #e7ded4;
 
   --color-brand: #ff6b50;
   --color-brand-light: #fff0ed;
@@ -84,7 +90,7 @@ html { overflow-y: scroll; }
 }
 
 ::selection {
-  background-color: rgba(239, 68, 68, 0.2);
+  background-color: rgba(255, 107, 80, 0.22);
   color: inherit;
 }
 
@@ -111,13 +117,13 @@ html { overflow-y: scroll; }
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  background: #f1f5f9;
-  border: 1px solid #e2e8f0;
+  background: #f6f1eb;
+  border: 1px solid #e7ded4;
   border-radius: 6px;
   padding: 1px 6px;
   font-size: 12px;
   font-weight: 500;
-  color: #334155;
+  color: #4b423a;
   vertical-align: baseline;
   cursor: default;
 }
@@ -143,5 +149,5 @@ html { overflow-y: scroll; }
 
 .react-flow__edge { pointer-events: visibleStroke; cursor: pointer; }
 .react-flow__edge-interaction { pointer-events: stroke; stroke-opacity: 0; }
-.react-flow__edge.selected .react-flow__edge-path { stroke: #3b82f6; stroke-width: 2.5; }
-.react-flow__edge:hover .react-flow__edge-path { stroke: #64748b; }
+.react-flow__edge.selected .react-flow__edge-path { stroke: #ff6b50; stroke-width: 2.5; }
+.react-flow__edge:hover .react-flow__edge-path { stroke: #8a7a6d; }

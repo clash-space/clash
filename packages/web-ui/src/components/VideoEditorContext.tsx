@@ -29,6 +29,30 @@ const Editor = lazy(() =>
     import('@master-clash/remotion-ui').then(mod => ({ default: mod.Editor }))
 );
 
+function VideoEditorOverlay({ children }: { children: ReactNode }) {
+    return (
+        <div
+            data-testid="video-editor-overlay"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Video editor"
+            className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/[0.28] px-5 py-4 sm:px-8 sm:py-7"
+        >
+            <div
+                data-testid="video-editor-backdrop"
+                className="absolute inset-0 bg-slate-950/10"
+                aria-hidden="true"
+            />
+            <div
+                data-testid="video-editor-panel"
+                className="relative h-[min(920px,calc(100vh-48px))] w-[min(1480px,calc(100vw-48px))] overflow-hidden rounded-2xl border border-white/70 bg-white shadow-[0_24px_80px_rgba(15,23,42,0.28)] ring-1 ring-slate-950/10"
+            >
+                {children}
+            </div>
+        </div>
+    );
+}
+
 // Use TimelineDsl from remotion-core
 type TimelineDslType = Pick<
     EditorState,
@@ -309,10 +333,15 @@ export function VideoEditorProvider({
     return (
         <VideoEditorContext.Provider value={{ isOpen, openEditor, closeEditor, exportVideo }}>
             {children}
-            {/* Full-screen editor overlay - no animation for performance */}
             {isOpen && (
-                <div className="fixed inset-0 z-[100] bg-[#1a1a1a]">
-                    <Suspense fallback={<div className="text-white p-4">Loading Editor...</div>}>
+                <VideoEditorOverlay>
+                    <Suspense
+                        fallback={
+                            <div className="flex h-full w-full items-center justify-center bg-[#fbfaf8] text-sm font-medium text-slate-500">
+                                Loading Editor...
+                            </div>
+                        }
+                    >
                         <Editor
                             initialAssets={assets}
                             initialState={timelineDsl ?? undefined}
@@ -326,7 +355,7 @@ export function VideoEditorProvider({
                             onExport={exportVideo}
                         />
                     </Suspense>
-                </div>
+                </VideoEditorOverlay>
             )}
         </VideoEditorContext.Provider>
     );

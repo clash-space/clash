@@ -2,6 +2,7 @@ import React, { useRef, useEffect, useState, useCallback } from 'react';
 import { Player, PlayerRef } from '@remotion/player';
 import { VideoComposition } from '@master-clash/remotion-components';
 import { getItemLookupIds, type Track, type Item, type ItemProperties } from '@master-clash/remotion-core';
+import { getPlaybackStartFrame, getTimelineEndDisplayFrame } from './playbackSync';
 
 interface InteractiveCanvasProps {
   tracks: Track[];
@@ -373,7 +374,7 @@ export const InteractiveCanvas: React.FC<InteractiveCanvasProps> = ({
       lastSyncedFrameRef.current = playerRef.current.getCurrentFrame();
     } else if (isPausedToPlaying) {
       // 从暂停切换到播放：到尾帧时回到起点，否则从当前帧继续
-      const startFrame = currentFrame >= durationInFrames ? 0 : currentFrame;
+      const startFrame = getPlaybackStartFrame(currentFrame, durationInFrames);
       playerRef.current.seekTo(startFrame);
       playerRef.current.play();
       lastSyncedFrameRef.current = startFrame;
@@ -422,16 +423,29 @@ export const InteractiveCanvas: React.FC<InteractiveCanvasProps> = ({
       }
     };
 
+    const handleEnded = () => {
+      const endFrame = getTimelineEndDisplayFrame(durationInFrames);
+      lastEmittedFrameRef.current = endFrame;
+      if (onFrameUpdate) {
+        onFrameUpdate(endFrame);
+      }
+      if (onPlayingChange) {
+        onPlayingChange(false);
+      }
+    };
+
     player.addEventListener('frameupdate', handleFrame);
     player.addEventListener('play', handlePlay);
     player.addEventListener('pause', handlePause);
+    player.addEventListener('ended', handleEnded);
 
     return () => {
       player.removeEventListener('frameupdate', handleFrame);
       player.removeEventListener('play', handlePlay);
       player.removeEventListener('pause', handlePause);
+      player.removeEventListener('ended', handleEnded);
     };
-  }, [onFrameUpdate, onPlayingChange]);
+  }, [durationInFrames, onFrameUpdate, onPlayingChange]);
 
   // 处理缩放
   const handleZoomIn = useCallback(() => {

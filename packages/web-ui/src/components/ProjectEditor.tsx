@@ -112,18 +112,19 @@ interface ProjectEditorProps {
 }
 
 /**
- * Wrapper component that hides content when video editor is open.
- * Uses visibility:hidden to preserve layout and avoid re-renders on close.
+ * Keeps the project workspace mounted behind the video editor control layer.
+ * The overlay owns interaction while the editor is open, but the canvas remains
+ * visible as spatial context.
  */
-function HideWhenEditorOpen({ children }: { children: React.ReactNode }) {
+function ProjectSurfaceBehindEditor({ children }: { children: React.ReactNode }) {
     const { isOpen } = useVideoEditor();
     return (
         <div
+            aria-hidden={isOpen}
             style={{
-                visibility: isOpen ? 'hidden' : 'visible',
                 pointerEvents: isOpen ? 'none' : 'auto',
             }}
-            className="contents"
+            className="h-screen w-full"
         >
             {children}
         </div>
@@ -1890,7 +1891,7 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
                     nodes={nodes}
                     edges={edges}
                 >
-                    <HideWhenEditorOpen>
+                    <ProjectSurfaceBehindEditor>
                     <MediaViewerProvider>
                         <LayoutActionsProvider value={{ relayoutParent }}>
                         <div className="flex h-screen w-full flex-col bg-white overflow-hidden">
@@ -2233,7 +2234,7 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
                         </div>
                         </LayoutActionsProvider>
                     </MediaViewerProvider>
-                    </HideWhenEditorOpen>
+                    </ProjectSurfaceBehindEditor>
                 </VideoEditorProvider>
             </LoroSyncProvider>
         </ProjectProvider >

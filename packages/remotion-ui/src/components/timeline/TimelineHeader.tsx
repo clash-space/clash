@@ -102,7 +102,7 @@ export const TimelineHeader: React.FC<TimelineHeaderProps> = ({
             borderRadius: 9999,
             backgroundColor: colors.accent.primary,
             border: 'none',
-            color: colors.text.primary,
+            color: '#ffffff',
             cursor: 'pointer',
             display: 'flex',
             alignItems: 'center',

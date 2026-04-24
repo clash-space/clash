@@ -1,12 +1,12 @@
 
 export default function Background() {
   return (
-    <div className="fixed inset-0 z-[-1] pointer-events-none overflow-hidden bg-white">
+    <div className="fixed inset-0 z-[-1] pointer-events-none overflow-hidden bg-warm-page">
       {/* Infinite Canvas Dot Grid */}
       <div
         className="absolute inset-0"
         style={{
-          backgroundImage: 'radial-gradient(#cbd5e1 1px, transparent 1px)',
+          backgroundImage: 'radial-gradient(#d8cdc2 1px, transparent 1px)',
           backgroundSize: '24px 24px',
           opacity: 0.5
         }}
@@ -33,7 +33,7 @@ export default function Background() {
       </div>
 
       {/* Gradient Mask for Depth */}
-      <div className="absolute inset-0 bg-gradient-to-b from-transparent via-white/50 to-white" />
+      <div className="absolute inset-0 bg-gradient-to-b from-transparent via-warm-page/50 to-warm-page" />
     </div>
   );
 }

@@ -200,14 +200,14 @@ export const AssetPanel: React.FC<AssetPanelProps> = ({
 
   return (
 
-    <div className="relative flex flex-col h-full bg-slate-50">
-      <div className="px-4 py-3 bg-white border-b border-slate-200">
+    <div className="relative flex h-full flex-col bg-[#fbfaf8]">
+      <div className="border-b border-slate-200/80 bg-white/95 px-4 py-3">
         <div className="flex items-center justify-between">
           {onBack ? (
             <button
               type="button"
               onClick={onBack}
-              className="flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-700 shadow-sm transition-colors hover:bg-slate-50 hover:text-slate-900"
+              className="flex h-9 w-9 items-center justify-center rounded-md border border-slate-200 bg-white text-slate-600 shadow-sm transition-colors hover:border-slate-300 hover:bg-slate-50 hover:text-slate-950"
               aria-label={backLabel}
             >
               <svg
@@ -233,7 +233,7 @@ export const AssetPanel: React.FC<AssetPanelProps> = ({
             <button
               type="button"
               onClick={() => onExport()}
-              className="flex h-9 px-3 items-center justify-center rounded-lg border border-red-500 bg-red-500 text-white shadow-sm transition-colors hover:bg-red-600 text-sm font-semibold"
+              className="flex h-9 items-center justify-center rounded-md border border-[#ff6b50] bg-[#ff6b50] px-3 text-sm font-semibold text-white shadow-sm transition-colors hover:border-[#e85f47] hover:bg-[#e85f47]"
             >
               Export
             </button>
@@ -244,11 +244,11 @@ export const AssetPanel: React.FC<AssetPanelProps> = ({
       <div className="flex-1 overflow-auto p-4">
         {/* Quick Add Section */}
         <div className="mb-6">
-          <h3 className="m-0 mb-3 text-xs font-bold text-slate-500 uppercase tracking-wider">Quick Add</h3>
+          <h3 className="m-0 mb-3 text-xs font-bold uppercase tracking-wide text-slate-500">Quick Add</h3>
           <div className="flex gap-2">
             <button
               onClick={handleAddTextToTrack}
-              className="flex-1 py-2 px-3 bg-white text-slate-700 border border-slate-200 rounded-lg text-sm font-medium hover:border-red-300 hover:text-red-500 hover:bg-red-50 transition-all cursor-grab active:cursor-grabbing shadow-sm"
+              className="flex-1 cursor-grab rounded-md border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 shadow-sm transition-all hover:border-[#ffb6a8] hover:bg-[#fff3f0] hover:text-[#d94f38] active:cursor-grabbing"
               draggable
               onDragStart={(e) => handleQuickAddDragStart(e, 'text')}
               title="Click to add or drag to timeline"
@@ -332,7 +332,7 @@ export const AssetPanel: React.FC<AssetPanelProps> = ({
                   });
                 }, 0);
               }}
-              className="flex-1 py-2 px-3 bg-white text-slate-700 border border-slate-200 rounded-lg text-sm font-medium hover:border-red-300 hover:text-red-500 hover:bg-red-50 transition-all cursor-grab active:cursor-grabbing shadow-sm"
+              className="flex-1 cursor-grab rounded-md border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 shadow-sm transition-all hover:border-[#ffb6a8] hover:bg-[#fff3f0] hover:text-[#d94f38] active:cursor-grabbing"
               draggable
               onDragStart={(e) => handleQuickAddDragStart(e, 'solid')}
               title="Click to add or drag to timeline"
@@ -344,7 +344,7 @@ export const AssetPanel: React.FC<AssetPanelProps> = ({
 
         {/* Upload Section */}
         <div className="mb-6">
-          <h3 className="m-0 mb-3 text-xs font-bold text-slate-500 uppercase tracking-wider">Media Files</h3>
+          <h3 className="m-0 mb-3 text-xs font-bold uppercase tracking-wide text-slate-500">Media Files</h3>
           <input
             ref={fileInputRef}
             type="file"
@@ -355,14 +355,14 @@ export const AssetPanel: React.FC<AssetPanelProps> = ({
           />
           <button
             onClick={() => fileInputRef.current?.click()}
-            className="w-full py-3 px-4 bg-red-500 text-white rounded-lg text-sm font-semibold hover:bg-red-600 transition-colors shadow-sm hover:shadow active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="w-full rounded-md bg-[#ff6b50] px-4 py-3 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-[#e85f47] active:scale-95 disabled:cursor-not-allowed disabled:opacity-50"
             disabled={!onAssetUpload}
           >
             Upload Files
           </button>
           <button
             onClick={() => setIsPickerOpen(true)}
-            className="mt-2 w-full py-2 px-4 bg-white text-slate-700 rounded-lg text-sm font-semibold border border-slate-200 hover:border-slate-300 hover:bg-slate-50 transition-colors disabled:cursor-not-allowed disabled:opacity-50"
+            className="mt-2 w-full rounded-md border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition-colors hover:border-slate-300 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
             disabled={availableAssets.length === 0}
           >
             Add From Canvas
@@ -372,7 +372,7 @@ export const AssetPanel: React.FC<AssetPanelProps> = ({
         {/* Assets List */}
         <div className="flex flex-col gap-2">
           {assets.length === 0 ? (
-            <div className="text-center py-8 text-slate-400 text-sm bg-slate-100/50 rounded-lg border border-dashed border-slate-200">
+            <div className="rounded-md border border-dashed border-slate-200 bg-white/60 py-8 text-center text-sm text-slate-400">
               No assets uploaded yet
             </div>
           ) : (
@@ -381,7 +381,7 @@ export const AssetPanel: React.FC<AssetPanelProps> = ({
                 key={asset.id}
                 draggable
                 onDragStart={(e) => handleAssetDragStart(e, asset)}
-                className="group flex items-center p-2 bg-white border border-slate-200 rounded-lg cursor-move hover:border-red-300 hover:shadow-sm transition-all gap-3 overflow-hidden"
+                className="group flex cursor-move items-center gap-3 overflow-hidden rounded-md border border-slate-200 bg-white p-2 transition-all hover:border-[#ffb6a8] hover:shadow-sm"
               >
                 {asset.type === 'image' && (
                   <img
@@ -419,7 +419,7 @@ export const AssetPanel: React.FC<AssetPanelProps> = ({
                 {!asset.readOnly && (
                   <button
                     onClick={() => dispatch({ type: 'REMOVE_ASSET', payload: asset.id })}
-                    className="w-6 h-6 flex items-center justify-center text-slate-400 hover:text-red-500 hover:bg-red-50 rounded transition-colors opacity-0 group-hover:opacity-100"
+                    className="flex h-6 w-6 items-center justify-center rounded text-slate-400 opacity-0 transition-colors hover:bg-[#fff3f0] hover:text-[#d94f38] group-hover:opacity-100"
                   >
                     ×
                   </button>
@@ -431,8 +431,8 @@ export const AssetPanel: React.FC<AssetPanelProps> = ({
       </div>
 
       {isPickerOpen && (
-        <div className="absolute inset-0 z-20 bg-white/95 backdrop-blur-sm">
-          <div className="flex items-center justify-between px-4 py-3 border-b border-slate-200 bg-white">
+        <div className="absolute inset-0 z-20 bg-white/95">
+          <div className="flex items-center justify-between border-b border-slate-200 bg-white px-4 py-3">
             <div className="text-sm font-bold text-slate-900">Add From Canvas</div>
             <button
               onClick={() => setIsPickerOpen(false)}
@@ -451,7 +451,7 @@ export const AssetPanel: React.FC<AssetPanelProps> = ({
                 <button
                   key={asset.id}
                   onClick={() => handlePickAsset(asset)}
-                  className="w-full flex items-center gap-3 p-2 rounded-lg border border-slate-200 bg-white hover:border-red-200 hover:bg-red-50 transition-colors text-left"
+                  className="flex w-full items-center gap-3 rounded-md border border-slate-200 bg-white p-2 text-left transition-colors hover:border-[#ffb6a8] hover:bg-[#fff3f0]"
                 >
                   {asset.type === 'image' ? (
                     <img

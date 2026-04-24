@@ -113,11 +113,11 @@ const styles: Record<string, React.CSSProperties> = {
     display: "flex",
     flexDirection: "column",
     height: "100%",
-    backgroundColor: "#f1f5f9",
+    backgroundColor: "transparent",
   },
   canvasWrapper: {
     flex: 1,
-    backgroundColor: "#f1f5f9",
+    backgroundColor: "transparent",
     minWidth: 0,
     minHeight: 0,
   },

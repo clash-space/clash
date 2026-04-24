@@ -6,6 +6,12 @@ import {
 } from '@master-clash/remotion-core';
 import type { TextItem, SolidItem } from '@master-clash/remotion-core';
 
+const panelClassName = 'flex h-full flex-col overflow-hidden bg-[#fbfaf8]';
+const panelHeaderClassName = 'flex items-center justify-between border-b border-slate-200/80 bg-white/95 px-4 py-3';
+const sectionTitleClassName = 'mb-3 text-xs font-bold uppercase tracking-wide text-slate-500';
+const labelClassName = 'mb-1.5 block text-xs font-medium text-slate-500';
+const fieldClassName = 'w-full rounded-md border border-slate-200 bg-white px-2 py-1.5 text-sm text-slate-900 outline-none transition-all focus:border-[#ff9a86] focus:ring-1 focus:ring-[#ffb6a8]';
+const readOnlyFieldClassName = 'w-full cursor-not-allowed rounded-md border border-slate-200 bg-slate-100 px-2 py-1.5 text-sm text-slate-500';
 
 export const PropertiesPanel: React.FC = () => {
   const dispatch = useEditorDispatch();
@@ -49,17 +55,17 @@ export const PropertiesPanel: React.FC = () => {
   // Canvas properties when no item is selected
   if (!selectedItem) {
     return (
-      <div className="flex flex-col h-full bg-slate-50 rounded-lg overflow-hidden border-l border-slate-200">
-        <div className="flex justify-between items-center px-4 py-3 bg-white border-b border-slate-200">
+      <div className={panelClassName}>
+        <div className={panelHeaderClassName}>
           <h2 className="m-0 text-sm font-bold text-slate-900">Properties</h2>
         </div>
         <div className="flex-1 overflow-auto p-4">
           {/* Canvas Section */}
           <div className="mb-6">
-            <h3 className="mb-3 text-xs font-bold text-slate-500 uppercase tracking-wider">Canvas</h3>
+            <h3 className={sectionTitleClassName}>Canvas</h3>
 
             <div className="mb-3">
-              <label className="block text-xs text-slate-500 mb-1.5">Aspect Ratio</label>
+              <label className={labelClassName}>Aspect Ratio</label>
               <div className="grid grid-cols-3 gap-1.5">
                 {[
                   { label: '16:9', w: 1920, h: 1080 },
@@ -75,9 +81,9 @@ export const PropertiesPanel: React.FC = () => {
                       type: 'SET_COMPOSITION_SIZE',
                       payload: { width: preset.w, height: preset.h },
                     })}
-                    className={`px-2 py-1.5 rounded text-xs font-medium transition-colors ${compositionWidth === preset.w && compositionHeight === preset.h
-                        ? 'bg-red-500 text-white shadow-sm'
-                        : 'bg-white text-slate-700 border border-slate-200 hover:border-red-300 hover:text-red-500'
+                    className={`rounded-md px-2 py-1.5 text-xs font-medium transition-colors ${compositionWidth === preset.w && compositionHeight === preset.h
+                        ? 'bg-[#ff6b50] text-white shadow-sm'
+                        : 'border border-slate-200 bg-white text-slate-700 hover:border-[#ffb6a8] hover:bg-[#fff3f0] hover:text-[#d94f38]'
                       }`}
                   >
                     {preset.label}
@@ -89,12 +95,12 @@ export const PropertiesPanel: React.FC = () => {
 
           {/* Duration Section */}
           <div className="mb-6">
-            <h3 className="mb-3 text-xs font-bold text-slate-500 uppercase tracking-wider">Duration</h3>
+            <h3 className={sectionTitleClassName}>Duration</h3>
             <div className="text-2xl font-semibold text-slate-900 mb-4 font-mono tracking-tight">
               {formatTime(durationInFrames)}
             </div>
             <div className="mb-3">
-              <label className="block text-xs text-slate-500 mb-1.5">Duration (frames)</label>
+              <label className={labelClassName}>Duration (frames)</label>
               <input
                 type="number"
                 value={durationInFrames}
@@ -102,24 +108,24 @@ export const PropertiesPanel: React.FC = () => {
                   type: 'SET_DURATION',
                   payload: parseInt(e.target.value) || 600,
                 })}
-                className="w-full px-2 py-1.5 bg-white border border-slate-200 rounded text-sm text-slate-900 focus:border-blue-500 focus:ring-1 focus:ring-red-400 outline-none transition-all"
+                className={fieldClassName}
               />
             </div>
             <div className="mb-3">
-              <label className="block text-xs text-slate-500 mb-1.5">Frame Rate (FPS)</label>
-              <div className="px-2 py-1.5 bg-slate-100 text-slate-600 rounded text-sm border border-slate-200">{fps} fps</div>
+              <label className={labelClassName}>Frame Rate (FPS)</label>
+              <div className="rounded-md border border-slate-200 bg-slate-100 px-2 py-1.5 text-sm text-slate-600">{fps} fps</div>
             </div>
           </div>
 
           {/* Export Section */}
           <div className="mb-6">
-            <h3 className="mb-3 text-xs font-bold text-slate-500 uppercase tracking-wider">Export</h3>
+            <h3 className={sectionTitleClassName}>Export</h3>
             <div className="mb-3">
-              <div className="px-3 py-2 bg-slate-100 text-slate-700 rounded text-sm text-center border border-slate-200 font-medium">MP4 (H.264)</div>
+              <div className="rounded-md border border-slate-200 bg-slate-100 px-3 py-2 text-center text-sm font-medium text-slate-700">MP4 (H.264)</div>
             </div>
             <button
               onClick={() => setShowExportModal(true)}
-              className="w-full py-2.5 bg-red-500 text-white rounded-lg text-sm font-semibold hover:bg-blue-700 transition-colors shadow-sm hover:shadow active:scale-95"
+              className="w-full rounded-md bg-[#ff6b50] py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-[#e85f47] active:scale-95"
             >
               Render video
             </button>
@@ -128,16 +134,16 @@ export const PropertiesPanel: React.FC = () => {
 
         {/* Export Modal */}
         {showExportModal && (
-          <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50" onClick={() => setShowExportModal(false)}>
-            <div className="bg-white rounded-xl p-8 max-w-xl w-[90%] shadow-2xl border border-slate-200" onClick={(e) => e.stopPropagation()}>
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40" onClick={() => setShowExportModal(false)}>
+            <div className="w-[90%] max-w-xl rounded-xl border border-slate-200 bg-white p-8 shadow-2xl" onClick={(e) => e.stopPropagation()}>
               <h2 className="m-0 mb-4 text-xl font-bold text-slate-900">Export Video</h2>
               <p className="m-0 mb-6 text-sm text-slate-500 leading-relaxed">
                 To render your video, use one of these methods:
               </p>
 
-              <div className="mb-6 p-4 bg-slate-50 rounded-lg border border-slate-200">
+              <div className="mb-6 rounded-md border border-slate-200 bg-slate-50 p-4">
                 <h3 className="m-0 mb-3 text-sm font-semibold text-slate-900">Method 1: Command Line</h3>
-                <div className="mb-2 p-3 bg-slate-900 rounded border border-slate-800 overflow-x-auto">
+                <div className="mb-2 overflow-x-auto rounded-md border border-slate-800 bg-slate-900 p-3">
                   <code className="text-xs text-green-400 font-mono whitespace-pre-wrap break-all">
                     npx remotion render src/remotion/index.tsx VideoComposition out/video.mp4
                   </code>
@@ -147,19 +153,19 @@ export const PropertiesPanel: React.FC = () => {
                 </p>
               </div>
 
-              <div className="mb-6 p-4 bg-blue-50 rounded-lg border border-blue-100">
-                <h3 className="m-0 mb-3 text-sm font-semibold text-blue-900">Method 2: Remotion Studio (Recommended)</h3>
-                <div className="mb-2 p-3 bg-white rounded border border-blue-200 overflow-x-auto">
-                  <code className="text-xs text-red-500 font-mono">npm run dev</code>
+              <div className="mb-6 rounded-md border border-[#ffd3ca] bg-[#fff3f0] p-4">
+                <h3 className="m-0 mb-3 text-sm font-semibold text-slate-900">Method 2: Remotion Studio (Recommended)</h3>
+                <div className="mb-2 overflow-x-auto rounded-md border border-[#ffd3ca] bg-white p-3">
+                  <code className="font-mono text-xs text-[#d94f38]">npm run dev</code>
                 </div>
-                <p className="m-0 text-xs text-red-500/80">
+                <p className="m-0 text-xs text-[#d94f38]/80">
                   Opens Remotion Studio at localhost:3002 with GUI render controls
                 </p>
               </div>
 
               <button
                 onClick={() => setShowExportModal(false)}
-                className="w-full py-2.5 bg-slate-100 text-slate-700 border border-slate-200 rounded-lg text-sm font-semibold hover:bg-slate-200 hover:text-slate-900 transition-colors"
+                className="w-full rounded-md border border-slate-200 bg-slate-100 py-2.5 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-200 hover:text-slate-900"
               >
                 Close
               </button>
@@ -200,15 +206,15 @@ export const PropertiesPanel: React.FC = () => {
   };
 
   return (
-    <div className="flex flex-col h-full bg-slate-50 rounded-lg overflow-hidden border-l border-slate-200">
-      <div className="flex justify-between items-center px-4 py-3 bg-white border-b border-slate-200">
+    <div className={panelClassName}>
+      <div className={panelHeaderClassName}>
         <h2 className="m-0 text-sm font-bold text-slate-900">Properties</h2>
         <div className="flex gap-2">
           <button
             onClick={splitItem}
             disabled={!canSplit}
-            className={`px-3 py-1.5 rounded text-xs font-medium transition-colors border ${canSplit
-                ? 'bg-white text-red-500 border-blue-200 hover:bg-blue-50 hover:border-blue-300 cursor-pointer'
+            className={`rounded-md border px-3 py-1.5 text-xs font-medium transition-colors ${canSplit
+                ? 'cursor-pointer border-[#ffd3ca] bg-white text-[#d94f38] hover:border-[#ffb6a8] hover:bg-[#fff3f0]'
                 : 'bg-slate-50 text-slate-400 border-slate-200 cursor-not-allowed'
               }`}
             title={
@@ -221,7 +227,7 @@ export const PropertiesPanel: React.FC = () => {
           </button>
           <button
             onClick={deleteItem}
-            className="px-3 py-1.5 bg-white text-red-600 border border-red-200 rounded text-xs font-medium hover:bg-red-50 hover:border-red-300 transition-colors"
+            className="rounded-md border border-red-200 bg-white px-3 py-1.5 text-xs font-medium text-red-600 transition-colors hover:border-red-300 hover:bg-red-50"
           >
             Delete
           </button>
@@ -232,10 +238,10 @@ export const PropertiesPanel: React.FC = () => {
 
         {/* Transform Properties */}
         <div className="mb-6">
-          <h3 className="mb-3 text-xs font-bold text-slate-500 uppercase tracking-wider">Transform</h3>
+          <h3 className={sectionTitleClassName}>Transform</h3>
           <div className="grid grid-cols-2 gap-2">
             <div className="mb-3">
-              <label className="block text-xs text-slate-500 mb-1.5">X Position (px)</label>
+              <label className={labelClassName}>X Position (px)</label>
               <input
                 type="number"
                 step="1"
@@ -249,11 +255,11 @@ export const PropertiesPanel: React.FC = () => {
                     height: item.properties?.height ?? 1,
                   }
                 })}
-                className="w-full px-2 py-1.5 bg-white border border-slate-200 rounded text-sm text-slate-900 focus:border-blue-500 focus:ring-1 focus:ring-red-400 outline-none transition-all"
+                className={fieldClassName}
               />
             </div>
             <div className="mb-3">
-              <label className="block text-xs text-slate-500 mb-1.5">Y Position (px)</label>
+              <label className={labelClassName}>Y Position (px)</label>
               <input
                 type="number"
                 step="1"
@@ -267,11 +273,11 @@ export const PropertiesPanel: React.FC = () => {
                     height: item.properties?.height ?? 1,
                   }
                 })}
-                className="w-full px-2 py-1.5 bg-white border border-slate-200 rounded text-sm text-slate-900 focus:border-blue-500 focus:ring-1 focus:ring-red-400 outline-none transition-all"
+                className={fieldClassName}
               />
             </div>
             <div className="mb-3">
-              <label className="block text-xs text-slate-500 mb-1.5">Width Scale (1=100%)</label>
+              <label className={labelClassName}>Width Scale (1=100%)</label>
               <input
                 type="number"
                 step="0.01"
@@ -286,11 +292,11 @@ export const PropertiesPanel: React.FC = () => {
                     height: item.properties?.height ?? 1,
                   }
                 })}
-                className="w-full px-2 py-1.5 bg-white border border-slate-200 rounded text-sm text-slate-900 focus:border-blue-500 focus:ring-1 focus:ring-red-400 outline-none transition-all"
+                className={fieldClassName}
               />
             </div>
             <div className="mb-3">
-              <label className="block text-xs text-slate-500 mb-1.5">Height Scale (1=100%)</label>
+              <label className={labelClassName}>Height Scale (1=100%)</label>
               <input
                 type="number"
                 step="0.01"
@@ -305,12 +311,12 @@ export const PropertiesPanel: React.FC = () => {
                     height: parseFloat(e.target.value) || 0,
                   }
                 })}
-                className="w-full px-2 py-1.5 bg-white border border-slate-200 rounded text-sm text-slate-900 focus:border-blue-500 focus:ring-1 focus:ring-red-400 outline-none transition-all"
+                className={fieldClassName}
               />
             </div>
           </div>
           <div className="mb-3">
-            <label className="block text-xs text-slate-500 mb-1.5">Rotation (degrees)</label>
+            <label className={labelClassName}>Rotation (degrees)</label>
             <input
               type="number"
               step="1"
@@ -325,11 +331,11 @@ export const PropertiesPanel: React.FC = () => {
                   rotation: parseFloat(e.target.value) || 0,
                 }
               })}
-              className="w-full px-2 py-1.5 bg-white border border-slate-200 rounded text-sm text-slate-900 focus:border-blue-500 focus:ring-1 focus:ring-red-400 outline-none transition-all"
+              className={fieldClassName}
             />
           </div>
           <div className="mb-3">
-            <label className="block text-xs text-slate-500 mb-1.5">Opacity (0-1)</label>
+            <label className={labelClassName}>Opacity (0-1)</label>
             <input
               type="number"
               step="0.1"
@@ -346,12 +352,12 @@ export const PropertiesPanel: React.FC = () => {
                   opacity: parseFloat(e.target.value) ?? 1,
                 }
               })}
-              className="w-full px-2 py-1.5 bg-white border border-slate-200 rounded text-sm text-slate-900 focus:border-blue-500 focus:ring-1 focus:ring-red-400 outline-none transition-all"
+              className={fieldClassName}
             />
           </div>
           <div className="mb-3">
-            <label className="block text-xs text-slate-500 mb-1.5">Layer Order</label>
-            <div className="w-full px-2 py-1.5 bg-slate-100 text-slate-400 border border-slate-200 rounded text-sm cursor-not-allowed">
+            <label className={labelClassName}>Layer Order</label>
+            <div className={readOnlyFieldClassName}>
               Controlled by track position
             </div>
           </div>
@@ -359,25 +365,25 @@ export const PropertiesPanel: React.FC = () => {
 
         {/* Common Properties */}
         <div className="mb-6">
-          <h3 className="mb-3 text-xs font-bold text-slate-500 uppercase tracking-wider">Timing</h3>
+          <h3 className={sectionTitleClassName}>Timing</h3>
           <div className="mb-3">
-            <label className="block text-xs text-slate-500 mb-1.5">Start Frame</label>
+            <label className={labelClassName}>Start Frame</label>
             <input
               type="number"
               value={item.from}
               onChange={(e) => updateItem({ from: parseInt(e.target.value) || 0 })}
-              className="w-full px-2 py-1.5 bg-white border border-slate-200 rounded text-sm text-slate-900 focus:border-blue-500 focus:ring-1 focus:ring-red-400 outline-none transition-all"
+              className={fieldClassName}
             />
           </div>
           <div className="mb-3">
-            <label className="block text-xs text-slate-500 mb-1.5">Duration (frames)</label>
+            <label className={labelClassName}>Duration (frames)</label>
             <input
               type="number"
               value={item.durationInFrames}
               onChange={(e) =>
                 updateItem({ durationInFrames: parseInt(e.target.value) || 1 })
               }
-              className="w-full px-2 py-1.5 bg-white border border-slate-200 rounded text-sm text-slate-900 focus:border-blue-500 focus:ring-1 focus:ring-red-400 outline-none transition-all"
+              className={fieldClassName}
             />
           </div>
         </div>
@@ -385,49 +391,49 @@ export const PropertiesPanel: React.FC = () => {
         {/* Text Item Properties */}
         {item.type === 'text' && (
           <div className="mb-6">
-            <h3 className="mb-3 text-xs font-bold text-slate-500 uppercase tracking-wider">Text</h3>
+            <h3 className={sectionTitleClassName}>Text</h3>
             <div className="mb-3">
-              <label className="block text-xs text-slate-500 mb-1.5">Content</label>
+              <label className={labelClassName}>Content</label>
               <textarea
                 value={(item as TextItem).text}
                 onChange={(e) => updateItem({ text: e.target.value })}
-                className="w-full px-2 py-1.5 bg-white border border-slate-200 rounded text-sm text-slate-900 focus:border-blue-500 focus:ring-1 focus:ring-red-400 outline-none transition-all min-h-[80px] resize-y"
+                className={`${fieldClassName} min-h-[80px] resize-y`}
               />
             </div>
             <div className="mb-3">
-              <label className="block text-xs text-slate-500 mb-1.5">Color</label>
+              <label className={labelClassName}>Color</label>
               <div className="flex gap-2 items-center">
                 <input
                   type="color"
                   value={(item as TextItem).color}
                   onChange={(e) => updateItem({ color: e.target.value })}
-                  className="w-12 h-9 p-0.5 bg-white border border-slate-200 rounded cursor-pointer"
+                  className="h-9 w-12 cursor-pointer rounded-md border border-slate-200 bg-white p-0.5"
                 />
                 <input
                   type="text"
                   value={(item as TextItem).color}
                   onChange={(e) => updateItem({ color: e.target.value })}
-                  className="flex-1 px-2 py-1.5 bg-white border border-slate-200 rounded text-sm text-slate-900 focus:border-blue-500 focus:ring-1 focus:ring-red-400 outline-none transition-all"
+                  className={`flex-1 ${fieldClassName}`}
                 />
               </div>
             </div>
             <div className="mb-3">
-              <label className="block text-xs text-slate-500 mb-1.5">Font Size</label>
+              <label className={labelClassName}>Font Size</label>
               <input
                 type="number"
                 value={(item as TextItem).fontSize || 60}
                 onChange={(e) =>
                   updateItem({ fontSize: parseInt(e.target.value) || 60 })
                 }
-                className="w-full px-2 py-1.5 bg-white border border-slate-200 rounded text-sm text-slate-900 focus:border-blue-500 focus:ring-1 focus:ring-red-400 outline-none transition-all"
+                className={fieldClassName}
               />
             </div>
             <div className="mb-3">
-              <label className="block text-xs text-slate-500 mb-1.5">Font Family</label>
+              <label className={labelClassName}>Font Family</label>
               <select
                 value={(item as TextItem).fontFamily || 'Arial'}
                 onChange={(e) => updateItem({ fontFamily: e.target.value })}
-                className="w-full px-2 py-1.5 bg-white border border-slate-200 rounded text-sm text-slate-900 focus:border-blue-500 focus:ring-1 focus:ring-red-400 outline-none transition-all"
+                className={fieldClassName}
               >
                 <option value="Arial">Arial</option>
                 <option value="Helvetica">Helvetica</option>
@@ -438,11 +444,11 @@ export const PropertiesPanel: React.FC = () => {
               </select>
             </div>
             <div className="mb-3">
-              <label className="block text-xs text-slate-500 mb-1.5">Font Weight</label>
+              <label className={labelClassName}>Font Weight</label>
               <select
                 value={(item as TextItem).fontWeight || 'bold'}
                 onChange={(e) => updateItem({ fontWeight: e.target.value })}
-                className="w-full px-2 py-1.5 bg-white border border-slate-200 rounded text-sm text-slate-900 focus:border-blue-500 focus:ring-1 focus:ring-red-400 outline-none transition-all"
+                className={fieldClassName}
               >
                 <option value="normal">Normal</option>
                 <option value="bold">Bold</option>
@@ -456,21 +462,21 @@ export const PropertiesPanel: React.FC = () => {
         {/* Solid Item Properties */}
         {item.type === 'solid' && (
           <div className="mb-6">
-            <h3 className="mb-3 text-xs font-bold text-slate-500 uppercase tracking-wider">Color</h3>
+            <h3 className={sectionTitleClassName}>Color</h3>
             <div className="mb-3">
-              <label className="block text-xs text-slate-500 mb-1.5">Background Color</label>
+              <label className={labelClassName}>Background Color</label>
               <div className="flex gap-2 items-center">
                 <input
                   type="color"
                   value={(item as SolidItem).color}
                   onChange={(e) => updateItem({ color: e.target.value })}
-                  className="w-12 h-9 p-0.5 bg-white border border-slate-200 rounded cursor-pointer"
+                  className="h-9 w-12 cursor-pointer rounded-md border border-slate-200 bg-white p-0.5"
                 />
                 <input
                   type="text"
                   value={(item as SolidItem).color}
                   onChange={(e) => updateItem({ color: e.target.value })}
-                  className="flex-1 px-2 py-1.5 bg-white border border-slate-200 rounded text-sm text-slate-900 focus:border-blue-500 focus:ring-1 focus:ring-red-400 outline-none transition-all"
+                  className={`flex-1 ${fieldClassName}`}
                 />
               </div>
             </div>
@@ -480,14 +486,14 @@ export const PropertiesPanel: React.FC = () => {
         {/* Video/Image/Audio Properties */}
         {(item.type === 'video' || item.type === 'image' || item.type === 'audio') && (
           <div className="mb-6">
-            <h3 className="mb-3 text-xs font-bold text-slate-500 uppercase tracking-wider">Source</h3>
+            <h3 className={sectionTitleClassName}>Source</h3>
             <div className="mb-3">
-              <label className="block text-xs text-slate-500 mb-1.5">File Path</label>
+              <label className={labelClassName}>File Path</label>
               <input
                 type="text"
                 value={item.src}
                 readOnly
-                className="w-full px-2 py-1.5 bg-slate-100 border border-slate-200 rounded text-sm text-slate-500 cursor-not-allowed"
+                className={readOnlyFieldClassName}
               />
             </div>
           </div>

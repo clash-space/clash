@@ -116,12 +116,12 @@ export const Editor: React.FC<EditorProps> = ({
     <EditorProvider initialState={seededInitialState} onStateChange={onStateChange} key={editorKey}>
       {stateRef && <StateSyncer stateRef={stateRef} />}
       <AssetInitializer assets={initialAssets || []} />
-      <div className="w-full h-full flex flex-col bg-white font-sans text-slate-900">
-        {/* Header removed as requested */}
-
-        <div className="flex-1 flex overflow-hidden">
-          {/* Left Sidebar - Assets */}
-          <aside className="shrink-0 border-r border-slate-200 bg-slate-50/50" style={{ width: '22%', minWidth: 220, maxWidth: 360 }}>
+      <div className="h-full w-full overflow-hidden bg-[#f7f4f1] font-sans text-slate-950">
+        <div className="flex h-full gap-3 overflow-hidden p-3">
+          <aside
+            className="shrink-0 overflow-hidden rounded-xl border border-slate-200/80 bg-white shadow-sm"
+            style={{ width: '22%', minWidth: 220, maxWidth: 360 }}
+          >
             <AssetPanel
               onBack={onBack}
               backLabel={backLabel}
@@ -132,27 +132,23 @@ export const Editor: React.FC<EditorProps> = ({
             />
           </aside>
 
-          {/* Main Content Area */}
-          <main className="flex-1 flex flex-col min-w-0 bg-slate-50/30">
-            {/* Top Row - Preview and Properties */}
-            <div className="flex-1 flex" style={{ minHeight: 0 }}>
-              {/* Preview Area */}
+          <main className="flex min-w-0 flex-1 flex-col gap-3">
+            <div className="flex min-h-0 flex-1 gap-3">
               <div
-                className="flex-1 p-4 flex items-center justify-center bg-slate-100/50"
+                className="flex min-w-0 flex-1 items-center justify-center overflow-hidden rounded-xl border border-slate-200/80 bg-[#ebe7e1] p-3 shadow-sm"
                 style={{ minHeight: 0 }}
               >
-                <div className="w-full h-full rounded-lg overflow-hidden bg-white shadow-lg ring-1 ring-slate-900/5">
+                <div className="h-full w-full overflow-hidden rounded-lg bg-slate-950 shadow-inner ring-1 ring-slate-950/10">
                   <CanvasPreview />
                 </div>
               </div>
-              <aside className="w-[320px] shrink-0 border-l border-slate-200 bg-white">
+              <aside className="w-[320px] shrink-0 overflow-hidden rounded-xl border border-slate-200/80 bg-white shadow-sm">
                 <PropertiesPanel />
               </aside>
             </div>
 
-            {/* Timeline Area - Full Width with fixed height */}
             <div
-              className="border-t border-slate-200 bg-white relative"
+              className="relative overflow-hidden rounded-xl border border-slate-200/80 bg-white shadow-sm"
               style={{ height: 300, flexShrink: 0 }}
             >
               <Timeline />
