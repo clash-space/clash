@@ -1,0 +1,14 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "clash-web-next",
+  "compatibility_date": "2025-09-02",
+  "compatibility_flags": ["nodejs_compat"],
+  "main": "@tanstack/react-start/server-entry",
+  "observability": { "enabled": true },
+  // Staging subdomain so we can iterate on the TanStack Start migration
+  // without disturbing clash.video (which still serves the placeholder
+  // Worker until this app reaches feature parity).
+  "routes": [
+    { "pattern": "next.clash.video", "custom_domain": true }
+  ]
+}
