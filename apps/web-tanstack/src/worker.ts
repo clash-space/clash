@@ -16,12 +16,13 @@ export default {
       if (!env.API_CF) {
         return new Response("api-cf service binding missing", { status: 503 });
       }
-      // CF service binding rewrites the request URL's scheme to http, which
-      // makes Better Auth refuse to issue __Secure- cookies. Tell api-cf the
-      // real protocol + host via X-Forwarded-* (auth.ts has
-      // trustedProxyHeaders: true so it'll honor them).
-      const forwarded = new Request(request);
-      forwarded.headers.set("X-Forwarded-Proto", url.protocol.replace(":", ""));
+      // CF service binding rewrites the request URL's scheme to http on the
+      // way in. Force https:// in the inner request URL so Better Auth's
+      // session cookie keeps its __Secure- prefix and the Secure flag.
+      // Also keep X-Forwarded-* for any tooling that reads them.
+      url.protocol = "https:";
+      const forwarded = new Request(url.toString(), request);
+      forwarded.headers.set("X-Forwarded-Proto", "https");
       forwarded.headers.set("X-Forwarded-Host", url.host);
       return env.API_CF.fetch(forwarded);
     }
