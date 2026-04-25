@@ -1,41 +1,29 @@
-/**
- * Project editor route — verbatim port of OSS apps/web's project.$id.tsx.
- * Data fetching adapted to TanStack Query; auth gating handled by _app.tsx.
- */
 import { createFileRoute, useSearch } from "@tanstack/react-router";
-import { useQuery } from "@tanstack/react-query";
 import ProjectEditor from "@clash/web-ui/components/ProjectEditor";
 
 export const Route = createFileRoute("/_app/projects/$id")({
   component: ProjectPage,
+  // Loader runs before the route mounts → no "Loading…" flash on SPA nav.
+  // Skip on SSR (Better Auth cookies aren't forwarded server-side anyway).
+  loader: async ({ params }) => {
+    if (typeof window === "undefined") return null;
+    const [projRes, actionsRes] = await Promise.all([
+      fetch(`/api/projects/${encodeURIComponent(params.id)}`, { credentials: "include" }),
+      fetch("/api/settings/actions", { credentials: "include" }),
+    ]);
+    if (projRes.status === 404) throw new Error("Project not found");
+    if (!projRes.ok) throw new Error(`Failed to load project (${projRes.status})`);
+    const project = await projRes.json();
+    const globalActions = actionsRes.ok ? await actionsRes.json() : [];
+    return { project, globalActions };
+  },
 });
 
 function ProjectPage() {
-  const { id } = Route.useParams();
+  const data = Route.useLoaderData();
   const search = useSearch({ strict: false }) as { prompt?: string; thread?: string };
 
-  const projectQ = useQuery({
-    queryKey: ["project", id],
-    queryFn: async () => {
-      const r = await fetch(`/api/projects/${encodeURIComponent(id)}`, {
-        credentials: "include",
-      });
-      if (r.status === 404) throw new Error("Project not found");
-      if (!r.ok) throw new Error(`Failed to load project (${r.status})`);
-      return r.json();
-    },
-    enabled: typeof window !== "undefined",
-  });
-  const actionsQ = useQuery({
-    queryKey: ["settings", "actions"],
-    queryFn: async () => {
-      const r = await fetch("/api/settings/actions", { credentials: "include" });
-      return r.ok ? r.json() : [];
-    },
-    enabled: typeof window !== "undefined",
-  });
-
-  if (projectQ.isPending || !projectQ.data) {
+  if (!data) {
     return (
       <div className="min-h-[60vh] flex items-center justify-center text-sm text-neutral-500">
         Loading…
@@ -45,10 +33,10 @@ function ProjectPage() {
 
   return (
     <ProjectEditor
-      project={projectQ.data as any}
+      project={data.project as any}
       initialPrompt={search.prompt}
       initialThreadId={search.thread}
-      globalActions={(actionsQ.data ?? []) as any}
+      globalActions={(data.globalActions ?? []) as any}
     />
   );
 }
