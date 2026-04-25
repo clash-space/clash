@@ -37,3 +37,35 @@ ip = "0.0.0.0"
 
 [env.production.vars]
 BETTER_AUTH_BASE_PATH = "/api/better-auth"
+
+# clash.video deploy. Service-binds to the hosted billing-aware API Worker
+# instead of the default `master-clash-api`. Self-hosters use the default
+# top-level config; we deploy with `wrangler deploy --env hosted`.
+[env.hosted]
+name = "clash-web"
+routes = [
+  { pattern = "clash.video", custom_domain = true },
+  { pattern = "www.clash.video", custom_domain = true },
+]
+
+[env.hosted.vars]
+BETTER_AUTH_BASE_PATH = "/api/better-auth"
+
+[[env.hosted.d1_databases]]
+binding = "DB"
+database_name = "master-clash-frontend"
+database_id = "aab16eeb-a375-490b-ad1e-cd092cd9f4bb"
+migrations_dir = "drizzle"
+
+[[env.hosted.services]]
+binding = "API_CF"
+service = "master-clash-api-hosted"
+
+[[env.hosted.r2_buckets]]
+binding = "R2_BUCKET"
+bucket_name = "master-clash-assets"
+
+[env.hosted.assets]
+binding = "ASSETS"
+directory = "./dist/client"
+not_found_handling = "single-page-application"
