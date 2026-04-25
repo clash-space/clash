@@ -25,6 +25,7 @@ import { settingsD1Routes } from "./routes/settings-d1";
 import { marketplaceRoutes } from "./routes/marketplace";
 import { setPlugins, getPlugins } from "./plugins/registry";
 import type { Plugin } from "./plugins/types";
+import { getUserIdFromRequest } from "./services/session";
 
 export interface CreateAppOptions {
   plugins?: Plugin[];
@@ -36,6 +37,25 @@ export function createApp(opts: CreateAppOptions = {}): Hono<{ Bindings: Env }> 
   const app = new Hono<{ Bindings: Env }>();
 
   app.use("/*", cors());
+
+  // For /api/v1/* (and other token/header-auth endpoints), let Better Auth
+  // session cookies stand in for x-user-id. CLI / external integrations keep
+  // setting x-user-id directly (via gateway) — only fill in when missing.
+  app.use("/api/v1/*", async (c, next) => {
+    if (!c.req.header("x-user-id")) {
+      const userId = await getUserIdFromRequest(
+        c.req.raw,
+        c.env as any,
+        c.req.raw.cf as any,
+      );
+      if (userId) {
+        const req = new Request(c.req.raw);
+        req.headers.set("x-user-id", userId);
+        c.req.raw = req;
+      }
+    }
+    await next();
+  });
 
   // ─── WebSocket: /sync/:projectId → ProjectRoom DO ──────────
   app.all("/sync/:projectId{.*}", async (c) => {
