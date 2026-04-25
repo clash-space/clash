@@ -16,7 +16,7 @@ import { Route as ApiSplatRouteImport } from './routes/api.$'
 import { Route as AppSettingsRouteImport } from './routes/_app.settings'
 import { Route as AppProjectsRouteImport } from './routes/_app.projects'
 import { Route as AppBillingRouteImport } from './routes/_app.billing'
-import { Route as AppProjectIdRouteImport } from './routes/_app.project.$id'
+import { Route as AppProjectsIdRouteImport } from './routes/_app.projects.$id'
 
 const LoginRoute = LoginRouteImport.update({
   id: '/login',
@@ -52,29 +52,29 @@ const AppBillingRoute = AppBillingRouteImport.update({
   path: '/billing',
   getParentRoute: () => AppRoute,
 } as any)
-const AppProjectIdRoute = AppProjectIdRouteImport.update({
-  id: '/project/$id',
-  path: '/project/$id',
-  getParentRoute: () => AppRoute,
+const AppProjectsIdRoute = AppProjectsIdRouteImport.update({
+  id: '/$id',
+  path: '/$id',
+  getParentRoute: () => AppProjectsRoute,
 } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/login': typeof LoginRoute
   '/billing': typeof AppBillingRoute
-  '/projects': typeof AppProjectsRoute
+  '/projects': typeof AppProjectsRouteWithChildren
   '/settings': typeof AppSettingsRoute
   '/api/$': typeof ApiSplatRoute
-  '/project/$id': typeof AppProjectIdRoute
+  '/projects/$id': typeof AppProjectsIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/login': typeof LoginRoute
   '/billing': typeof AppBillingRoute
-  '/projects': typeof AppProjectsRoute
+  '/projects': typeof AppProjectsRouteWithChildren
   '/settings': typeof AppSettingsRoute
   '/api/$': typeof ApiSplatRoute
-  '/project/$id': typeof AppProjectIdRoute
+  '/projects/$id': typeof AppProjectsIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -82,10 +82,10 @@ export interface FileRoutesById {
   '/_app': typeof AppRouteWithChildren
   '/login': typeof LoginRoute
   '/_app/billing': typeof AppBillingRoute
-  '/_app/projects': typeof AppProjectsRoute
+  '/_app/projects': typeof AppProjectsRouteWithChildren
   '/_app/settings': typeof AppSettingsRoute
   '/api/$': typeof ApiSplatRoute
-  '/_app/project/$id': typeof AppProjectIdRoute
+  '/_app/projects/$id': typeof AppProjectsIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -96,7 +96,7 @@ export interface FileRouteTypes {
     | '/projects'
     | '/settings'
     | '/api/$'
-    | '/project/$id'
+    | '/projects/$id'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -105,7 +105,7 @@ export interface FileRouteTypes {
     | '/projects'
     | '/settings'
     | '/api/$'
-    | '/project/$id'
+    | '/projects/$id'
   id:
     | '__root__'
     | '/'
@@ -115,7 +115,7 @@ export interface FileRouteTypes {
     | '/_app/projects'
     | '/_app/settings'
     | '/api/$'
-    | '/_app/project/$id'
+    | '/_app/projects/$id'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -176,28 +176,38 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppBillingRouteImport
       parentRoute: typeof AppRoute
     }
-    '/_app/project/$id': {
-      id: '/_app/project/$id'
-      path: '/project/$id'
-      fullPath: '/project/$id'
-      preLoaderRoute: typeof AppProjectIdRouteImport
-      parentRoute: typeof AppRoute
+    '/_app/projects/$id': {
+      id: '/_app/projects/$id'
+      path: '/$id'
+      fullPath: '/projects/$id'
+      preLoaderRoute: typeof AppProjectsIdRouteImport
+      parentRoute: typeof AppProjectsRoute
     }
   }
 }
 
+interface AppProjectsRouteChildren {
+  AppProjectsIdRoute: typeof AppProjectsIdRoute
+}
+
+const AppProjectsRouteChildren: AppProjectsRouteChildren = {
+  AppProjectsIdRoute: AppProjectsIdRoute,
+}
+
+const AppProjectsRouteWithChildren = AppProjectsRoute._addFileChildren(
+  AppProjectsRouteChildren,
+)
+
 interface AppRouteChildren {
   AppBillingRoute: typeof AppBillingRoute
-  AppProjectsRoute: typeof AppProjectsRoute
+  AppProjectsRoute: typeof AppProjectsRouteWithChildren
   AppSettingsRoute: typeof AppSettingsRoute
-  AppProjectIdRoute: typeof AppProjectIdRoute
 }
 
 const AppRouteChildren: AppRouteChildren = {
   AppBillingRoute: AppBillingRoute,
-  AppProjectsRoute: AppProjectsRoute,
+  AppProjectsRoute: AppProjectsRouteWithChildren,
   AppSettingsRoute: AppSettingsRoute,
-  AppProjectIdRoute: AppProjectIdRoute,
 }
 
 const AppRouteWithChildren = AppRoute._addFileChildren(AppRouteChildren)
