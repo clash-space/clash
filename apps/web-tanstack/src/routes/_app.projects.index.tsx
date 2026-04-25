@@ -6,7 +6,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import ProjectsClient from "@clash/web-ui/components/ProjectsClient";
 
-export const Route = createFileRoute("/_app/projects")({
+export const Route = createFileRoute("/_app/projects/")({
   component: ProjectsPage,
 });
 

@@ -25,6 +25,9 @@ const config = defineConfig({
     // so vite-plugin-wasm handles it at request time.
     exclude: ["loro-crdt"],
   },
+  // CF Workers run modern V8 — bump target so vite-plugin-top-level-await's
+  // esbuild transform doesn't downlevel destructuring (which fails the build).
+  build: { target: "es2022" },
   server: {
     // In local dev, the worker (and its API_CF service binding) isn't running,
     // so /api/* would 404. Proxy them to the deployed API at api.clash.video
