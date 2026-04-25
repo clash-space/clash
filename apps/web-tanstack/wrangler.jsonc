@@ -3,7 +3,7 @@
   "name": "clash-web-next",
   "compatibility_date": "2025-09-02",
   "compatibility_flags": ["nodejs_compat"],
-  "main": "@tanstack/react-start/server-entry",
+  "main": "src/worker.ts",
   "observability": { "enabled": true },
 
   // Staging subdomain for the migration. clash.video stays on the
