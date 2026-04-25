@@ -4,6 +4,8 @@ import { tanstackStart } from "@tanstack/react-start/plugin/vite";
 import viteReact from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import { cloudflare } from "@cloudflare/vite-plugin";
+import wasm from "vite-plugin-wasm";
+import topLevelAwait from "vite-plugin-top-level-await";
 
 const config = defineConfig({
   resolve: { tsconfigPaths: true },
@@ -11,9 +13,18 @@ const config = defineConfig({
     devtools(),
     cloudflare({ viteEnvironment: { name: "ssr" } }),
     tailwindcss(),
+    // wasm + top-level-await must come before tanstackStart so their
+    // resolvers handle loro-crdt's static `.wasm` import.
+    wasm(),
+    topLevelAwait(),
     tanstackStart(),
     viteReact(),
   ],
+  optimizeDeps: {
+    // loro-crdt ships a .wasm alongside JS — exclude from esbuild prebundle
+    // so vite-plugin-wasm handles it at request time.
+    exclude: ["loro-crdt"],
+  },
   server: {
     // In local dev, the worker (and its API_CF service binding) isn't running,
     // so /api/* would 404. Proxy them to the deployed API at api.clash.video
