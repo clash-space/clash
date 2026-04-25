@@ -56,26 +56,15 @@ export default function LandingNav() {
               </motion.button>
             </Link>
           ) : (
-            <>
-              <Link to="/login">
-                <motion.button
-                  whileHover={{ scale: 1.02 }}
-                  whileTap={{ scale: 0.98 }}
-                  className="rounded-full px-4 py-2 text-sm font-medium text-stone-500 transition-colors hover:bg-white/55 hover:text-slate-950"
-                >
-                  Sign In
-                </motion.button>
-              </Link>
-              <Link to="/login">
-                <motion.button
-                  whileHover={{ scale: 1.05 }}
-                  whileTap={{ scale: 0.95 }}
-                  className="rounded-full bg-brand px-5 py-2.5 text-sm font-bold text-white shadow-sm shadow-brand/15 transition-all hover:bg-red-600"
-                >
-                  Get Started
-                </motion.button>
-              </Link>
-            </>
+            <Link to="/login">
+              <motion.button
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
+                className="rounded-full bg-brand px-5 py-2.5 text-sm font-bold text-white shadow-sm shadow-brand/15 transition-all hover:bg-red-600"
+              >
+                Get Started
+              </motion.button>
+            </Link>
           )}
         </div>
       </div>
