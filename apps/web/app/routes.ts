@@ -11,6 +11,7 @@ export default [
     route("projects", "routes/projects.tsx"),
     route("projects/:id", "routes/project.$id.tsx"),
     route("settings", "routes/settings.tsx"),
+    route("billing", "routes/billing.tsx"),
     route("marketplace", "routes/marketplace.tsx"),
     route("editor-standalone", "routes/editor-standalone.tsx"),
     route("auth/cli", "routes/auth.cli.tsx"),

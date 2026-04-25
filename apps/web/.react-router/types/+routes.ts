@@ -31,6 +31,9 @@ type Pages = {
   "/settings": {
     params: {};
   };
+  "/billing": {
+    params: {};
+  };
   "/marketplace": {
     params: {};
   };
@@ -51,11 +54,11 @@ type Pages = {
 type RouteFiles = {
   "root.tsx": {
     id: "root";
-    page: "/" | "/landing" | "/login" | "/projects" | "/projects/:id" | "/settings" | "/marketplace" | "/editor-standalone" | "/auth/cli" | "/terms" | "/privacy";
+    page: "/" | "/landing" | "/login" | "/projects" | "/projects/:id" | "/settings" | "/billing" | "/marketplace" | "/editor-standalone" | "/auth/cli" | "/terms" | "/privacy";
   };
   "layouts/AppLayout.tsx": {
     id: "layouts/AppLayout";
-    page: "/" | "/landing" | "/login" | "/projects" | "/projects/:id" | "/settings" | "/marketplace" | "/editor-standalone" | "/auth/cli" | "/terms" | "/privacy";
+    page: "/" | "/landing" | "/login" | "/projects" | "/projects/:id" | "/settings" | "/billing" | "/marketplace" | "/editor-standalone" | "/auth/cli" | "/terms" | "/privacy";
   };
   "routes/home.tsx": {
     id: "routes/home";
@@ -80,6 +83,10 @@ type RouteFiles = {
   "routes/settings.tsx": {
     id: "routes/settings";
     page: "/settings";
+  };
+  "routes/billing.tsx": {
+    id: "routes/billing";
+    page: "/billing";
   };
   "routes/marketplace.tsx": {
     id: "routes/marketplace";
@@ -112,6 +119,7 @@ type RouteModules = {
   "routes/projects": typeof import("./app/routes/projects.tsx");
   "routes/project.$id": typeof import("./app/routes/project.$id.tsx");
   "routes/settings": typeof import("./app/routes/settings.tsx");
+  "routes/billing": typeof import("./app/routes/billing.tsx");
   "routes/marketplace": typeof import("./app/routes/marketplace.tsx");
   "routes/editor-standalone": typeof import("./app/routes/editor-standalone.tsx");
   "routes/auth.cli": typeof import("./app/routes/auth.cli.tsx");
