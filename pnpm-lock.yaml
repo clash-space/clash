@@ -398,6 +398,9 @@ importers:
 
   apps/web-tanstack:
     dependencies:
+      '@clash/web-ui':
+        specifier: workspace:*
+        version: link:../../packages/web-ui
       '@cloudflare/vite-plugin':
         specifier: ^1.26.0
         version: 1.33.1(vite@8.0.10)(wrangler@4.84.1)

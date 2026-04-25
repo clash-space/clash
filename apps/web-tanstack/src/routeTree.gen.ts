@@ -13,7 +13,10 @@ import { Route as LoginRouteImport } from './routes/login'
 import { Route as AppRouteImport } from './routes/_app'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as ApiSplatRouteImport } from './routes/api.$'
+import { Route as AppSettingsRouteImport } from './routes/_app.settings'
+import { Route as AppProjectsRouteImport } from './routes/_app.projects'
 import { Route as AppBillingRouteImport } from './routes/_app.billing'
+import { Route as AppProjectIdRouteImport } from './routes/_app.project.$id'
 
 const LoginRoute = LoginRouteImport.update({
   id: '/login',
@@ -34,9 +37,24 @@ const ApiSplatRoute = ApiSplatRouteImport.update({
   path: '/api/$',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AppSettingsRoute = AppSettingsRouteImport.update({
+  id: '/settings',
+  path: '/settings',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppProjectsRoute = AppProjectsRouteImport.update({
+  id: '/projects',
+  path: '/projects',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppBillingRoute = AppBillingRouteImport.update({
   id: '/billing',
   path: '/billing',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppProjectIdRoute = AppProjectIdRouteImport.update({
+  id: '/project/$id',
+  path: '/project/$id',
   getParentRoute: () => AppRoute,
 } as any)
 
@@ -44,13 +62,19 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/login': typeof LoginRoute
   '/billing': typeof AppBillingRoute
+  '/projects': typeof AppProjectsRoute
+  '/settings': typeof AppSettingsRoute
   '/api/$': typeof ApiSplatRoute
+  '/project/$id': typeof AppProjectIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/login': typeof LoginRoute
   '/billing': typeof AppBillingRoute
+  '/projects': typeof AppProjectsRoute
+  '/settings': typeof AppSettingsRoute
   '/api/$': typeof ApiSplatRoute
+  '/project/$id': typeof AppProjectIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -58,14 +82,40 @@ export interface FileRoutesById {
   '/_app': typeof AppRouteWithChildren
   '/login': typeof LoginRoute
   '/_app/billing': typeof AppBillingRoute
+  '/_app/projects': typeof AppProjectsRoute
+  '/_app/settings': typeof AppSettingsRoute
   '/api/$': typeof ApiSplatRoute
+  '/_app/project/$id': typeof AppProjectIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/login' | '/billing' | '/api/$'
+  fullPaths:
+    | '/'
+    | '/login'
+    | '/billing'
+    | '/projects'
+    | '/settings'
+    | '/api/$'
+    | '/project/$id'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/login' | '/billing' | '/api/$'
-  id: '__root__' | '/' | '/_app' | '/login' | '/_app/billing' | '/api/$'
+  to:
+    | '/'
+    | '/login'
+    | '/billing'
+    | '/projects'
+    | '/settings'
+    | '/api/$'
+    | '/project/$id'
+  id:
+    | '__root__'
+    | '/'
+    | '/_app'
+    | '/login'
+    | '/_app/billing'
+    | '/_app/projects'
+    | '/_app/settings'
+    | '/api/$'
+    | '/_app/project/$id'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -105,6 +155,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiSplatRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/_app/settings': {
+      id: '/_app/settings'
+      path: '/settings'
+      fullPath: '/settings'
+      preLoaderRoute: typeof AppSettingsRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/projects': {
+      id: '/_app/projects'
+      path: '/projects'
+      fullPath: '/projects'
+      preLoaderRoute: typeof AppProjectsRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/billing': {
       id: '/_app/billing'
       path: '/billing'
@@ -112,15 +176,28 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppBillingRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/project/$id': {
+      id: '/_app/project/$id'
+      path: '/project/$id'
+      fullPath: '/project/$id'
+      preLoaderRoute: typeof AppProjectIdRouteImport
+      parentRoute: typeof AppRoute
+    }
   }
 }
 
 interface AppRouteChildren {
   AppBillingRoute: typeof AppBillingRoute
+  AppProjectsRoute: typeof AppProjectsRoute
+  AppSettingsRoute: typeof AppSettingsRoute
+  AppProjectIdRoute: typeof AppProjectIdRoute
 }
 
 const AppRouteChildren: AppRouteChildren = {
   AppBillingRoute: AppBillingRoute,
+  AppProjectsRoute: AppProjectsRoute,
+  AppSettingsRoute: AppSettingsRoute,
+  AppProjectIdRoute: AppProjectIdRoute,
 }
 
 const AppRouteWithChildren = AppRoute._addFileChildren(AppRouteChildren)

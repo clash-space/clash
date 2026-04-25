@@ -1,7 +1,7 @@
 import { useEffect } from "react";
 import { Outlet, Link, createFileRoute, useNavigate } from "@tanstack/react-router";
+import { useQuery } from "@tanstack/react-query";
 import { authClient } from "../lib/auth-client";
-import { useSession } from "../lib/use-session";
 
 /**
  * Pathless layout for authenticated routes. Anything under here gets the

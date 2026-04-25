@@ -15,6 +15,7 @@
     "deploy": "pnpm run build && wrangler deploy"
   },
   "dependencies": {
+    "@clash/web-ui": "workspace:*",
     "@cloudflare/vite-plugin": "^1.26.0",
     "@fontsource-variable/inter": "^5.2.5",
     "@fontsource-variable/jetbrains-mono": "^5.2.5",
