@@ -1,5 +1,4 @@
 import { reactRouter } from "@react-router/dev/vite";
-import { cloudflare } from "@cloudflare/vite-plugin";
 import tailwindcss from "@tailwindcss/vite";
 import { defineConfig } from "vite";
 import tsconfigPaths from "vite-tsconfig-paths";
@@ -8,19 +7,6 @@ import topLevelAwait from "vite-plugin-top-level-await";
 
 export default defineConfig({
   plugins: [
-    // CF plugin must share RR7's env name ("server") so build outputs land in
-    // dist/server/ where RR7's build plugin looks for its manifest.
-    //
-    // auxiliaryWorkers wires api-cf into the same vite/workerd dev session so
-    // the service binding `env.API_CF` resolves at dev time (wrangler's
-    // cross-process service binding doesn't work with the Vite plugin).
-    // Don't run api-cf via `pnpm dev` separately — Vite owns its workerd here.
-    cloudflare({
-      viteEnvironment: { name: "server" },
-      auxiliaryWorkers: [
-        { configPath: "../api-cf/wrangler.toml" },
-      ],
-    }),
     tailwindcss(),
     // wasm + top-level-await must come before reactRouter so their resolvers
     // handle `.wasm` imports in loro-crdt.
@@ -29,6 +15,15 @@ export default defineConfig({
     reactRouter(),
     tsconfigPaths(),
   ],
+  // SPA mode (react-router.config.ts: ssr:false). `vite build` produces
+  // dist/client which the Worker serves via the ASSETS binding. Worker
+  // itself is bundled by wrangler from workers/app.ts on deploy — the
+  // @cloudflare/vite-plugin is intentionally absent because:
+  //   (a) it doesn't support SPA mode with React Router v7 (only SSR)
+  //   (b) it conflicts with Vite 8 + Rolldown (issue cloudflare/workers-sdk#12497)
+  // For dev, run `wrangler dev` in apps/api-cf separately — the worker
+  // talks to it via API_CF_URL env var when the API_CF service binding
+  // isn't available (see workers/app.ts).
   // Force single copy of react / remotion so <Player> and <VideoComposition>
   // share the same React Context. pnpm's peer-dep-scoped store creates 4
   // remotion copies (one per react/react-dom peer combo) — useVideoConfig()

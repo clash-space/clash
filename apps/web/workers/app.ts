@@ -1,6 +1,6 @@
 /**
- * Cloudflare Worker entry — merges gateway proxy logic + Better Auth handler
- * + React Router SSR.
+ * Cloudflare Worker entry — gateway proxy + Better Auth handler + SPA
+ * shell fallback.
  *
  * Routing:
  *   /health                     → 200 OK
@@ -14,9 +14,9 @@
  *   /api/describe, /describe    → api-cf
  *   /api/generate/*             → api-cf
  *   /api/v1/*                   → api-cf (auth-gated, x-user-id injected)
- *   /*                          → React Router SSR
+ *   /api/*                      → in-worker (handleApi)
+ *   /*                          → ASSETS binding (SPA shell + static files)
  */
-import { createRequestHandler } from "react-router";
 import { createAuth } from "../app/lib/auth/better-auth.server";
 import { handleApi } from "../app/lib/server/api-router.server";
 
@@ -129,10 +129,10 @@ function json(data: unknown, status = 200): Response {
   });
 }
 
-const requestHandler = createRequestHandler(
-  () => import("virtual:react-router/server-build"),
-  import.meta.env.MODE,
-);
+// SPA mode: no server rendering. The static client built by `vite build`
+// is served via the ASSETS binding (`not_found_handling = "single-page-application"`
+// returns index.html for any path that doesn't match an asset). All data
+// fetching lives in clientLoader.
 
 export default {
   async fetch(
@@ -212,14 +212,10 @@ export default {
       if (handled) return handled;
     }
 
-    console.log(`[worker] → RR7 for ${path}`);
-    try {
-      const res = await requestHandler(request, { cloudflare: { env, ctx } });
-      console.log(`[worker] ← RR7 ${res.status} for ${path}`);
-      return res;
-    } catch (err) {
-      console.error(`[worker] RR7 threw for ${path}:`, err);
-      return new Response(`RR7 error: ${err}`, { status: 500 });
-    }
+    // Everything else: serve the SPA shell from ASSETS. The binding's
+    // `not_found_handling = "single-page-application"` returns index.html
+    // for any path that doesn't match a built asset, letting the client
+    // router take over.
+    return env.ASSETS.fetch(request);
   },
 } satisfies ExportedHandler<Env>;
