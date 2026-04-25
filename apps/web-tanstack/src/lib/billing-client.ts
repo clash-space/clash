@@ -1,7 +1,11 @@
 /**
- * Typed billing API client — talks to /api/v1/billing/* which the
- * Worker proxies to master-clash-api-hosted.
+ * Typed client for /api/v1/billing/* (mounted by the hosted billing plugin).
+ *
+ * On self-hosted deployments without the billing plugin, all endpoints
+ * return 404 — callers should treat that as "billing not enabled" and
+ * render a graceful empty state.
  */
+
 export interface PlanFeatures {
   storage_mb: number;
   max_projects: number;
@@ -23,8 +27,13 @@ export interface TopupPack {
   pack_id: string;
   credits: number;
   price_usd_cents: number;
-  paddle_price_id: string | null;
+  ls_variant_id: string | null;
   label: string;
+}
+
+export interface PlansResponse {
+  plans: Plan[];
+  packs: TopupPack[];
 }
 
 export interface Balance {
@@ -38,7 +47,8 @@ export interface Balance {
 export interface LedgerEntry {
   id: string;
   user_id: string;
-  kind: string;
+  kind:
+    | "topup" | "grant" | "hold" | "settle" | "release" | "refund" | "adjust" | "expire";
   amount: number;
   topup_after: number;
   grant_after: number;
@@ -57,7 +67,7 @@ export class BillingNotEnabledError extends Error {
   }
 }
 
-async function fetchJSON<T>(path: string, init: RequestInit = {}): Promise<T> {
+async function billingFetch<T>(path: string, init: RequestInit = {}): Promise<T> {
   const res = await fetch(`/api/v1/billing${path}`, {
     credentials: "include",
     headers: { "content-type": "application/json", ...(init.headers ?? {}) },
@@ -77,13 +87,25 @@ async function fetchJSON<T>(path: string, init: RequestInit = {}): Promise<T> {
   return res.json() as Promise<T>;
 }
 
-export const billingApi = {
-  plans: () => fetchJSON<{ plans: Plan[]; packs: TopupPack[] }>("/plans"),
-  balance: () => fetchJSON<{ balance: Balance }>("/balance"),
-  ledger: (limit = 20) => fetchJSON<{ entries: LedgerEntry[] }>(`/ledger?limit=${limit}`),
-  checkout: (input: { pack_id?: string; plan_id?: string; email?: string }) =>
-    fetchJSON<{ url: string }>("/checkout", {
-      method: "POST",
-      body: JSON.stringify(input),
-    }),
-};
+export function fetchPlans(): Promise<PlansResponse> {
+  return billingFetch<PlansResponse>("/plans");
+}
+
+export function fetchBalance(): Promise<{ balance: Balance }> {
+  return billingFetch<{ balance: Balance }>("/balance");
+}
+
+export function fetchLedger(limit = 20): Promise<{ entries: LedgerEntry[] }> {
+  return billingFetch<{ entries: LedgerEntry[] }>(`/ledger?limit=${limit}`);
+}
+
+export function createCheckout(opts: {
+  pack_id?: string;
+  plan_id?: string;
+  email?: string;
+}): Promise<{ url: string }> {
+  return billingFetch<{ url: string }>("/checkout", {
+    method: "POST",
+    body: JSON.stringify(opts),
+  });
+}
