@@ -69,6 +69,10 @@ async function sendOtpEmail(
     });
   } catch (err) {
     console.error("[auth] Email send failed:", err);
+    // Fallback: log the OTP so a `wrangler tail` operator can still complete
+    // login while the CF Email onboarding (DNS, destination verification) is
+    // in flight. Safe-ish: prod tail requires CF account access.
+    console.log(`[auth] OTP fallback for ${to} (${type}): ${otp}`);
   }
 }
 
