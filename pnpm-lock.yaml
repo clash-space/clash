@@ -434,6 +434,9 @@ importers:
       '@fontsource-variable/space-grotesk':
         specifier: ^5.2.5
         version: 5.2.10
+      '@master-clash/remotion-ui':
+        specifier: workspace:*
+        version: link:../../packages/remotion-ui
       '@milkdown/core':
         specifier: ^7.17.2
         version: 7.19.0

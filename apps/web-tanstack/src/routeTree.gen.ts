@@ -9,15 +9,30 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as TermsRouteImport } from './routes/terms'
+import { Route as PrivacyRouteImport } from './routes/privacy'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as AppRouteImport } from './routes/_app'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as AuthCliRouteImport } from './routes/auth.cli'
 import { Route as ApiSplatRouteImport } from './routes/api.$'
 import { Route as AppSettingsRouteImport } from './routes/_app.settings'
+import { Route as AppMarketplaceRouteImport } from './routes/_app.marketplace'
+import { Route as AppEditorStandaloneRouteImport } from './routes/_app.editor-standalone'
 import { Route as AppBillingRouteImport } from './routes/_app.billing'
 import { Route as AppProjectsIndexRouteImport } from './routes/_app.projects.index'
 import { Route as AppProjectsIdRouteImport } from './routes/_app.projects.$id'
 
+const TermsRoute = TermsRouteImport.update({
+  id: '/terms',
+  path: '/terms',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PrivacyRoute = PrivacyRouteImport.update({
+  id: '/privacy',
+  path: '/privacy',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const LoginRoute = LoginRouteImport.update({
   id: '/login',
   path: '/login',
@@ -32,6 +47,11 @@ const IndexRoute = IndexRouteImport.update({
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AuthCliRoute = AuthCliRouteImport.update({
+  id: '/auth/cli',
+  path: '/auth/cli',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiSplatRoute = ApiSplatRouteImport.update({
   id: '/api/$',
   path: '/api/$',
@@ -40,6 +60,16 @@ const ApiSplatRoute = ApiSplatRouteImport.update({
 const AppSettingsRoute = AppSettingsRouteImport.update({
   id: '/settings',
   path: '/settings',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppMarketplaceRoute = AppMarketplaceRouteImport.update({
+  id: '/marketplace',
+  path: '/marketplace',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppEditorStandaloneRoute = AppEditorStandaloneRouteImport.update({
+  id: '/editor-standalone',
+  path: '/editor-standalone',
   getParentRoute: () => AppRoute,
 } as any)
 const AppBillingRoute = AppBillingRouteImport.update({
@@ -61,18 +91,28 @@ const AppProjectsIdRoute = AppProjectsIdRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/login': typeof LoginRoute
+  '/privacy': typeof PrivacyRoute
+  '/terms': typeof TermsRoute
   '/billing': typeof AppBillingRoute
+  '/editor-standalone': typeof AppEditorStandaloneRoute
+  '/marketplace': typeof AppMarketplaceRoute
   '/settings': typeof AppSettingsRoute
   '/api/$': typeof ApiSplatRoute
+  '/auth/cli': typeof AuthCliRoute
   '/projects/$id': typeof AppProjectsIdRoute
   '/projects/': typeof AppProjectsIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/login': typeof LoginRoute
+  '/privacy': typeof PrivacyRoute
+  '/terms': typeof TermsRoute
   '/billing': typeof AppBillingRoute
+  '/editor-standalone': typeof AppEditorStandaloneRoute
+  '/marketplace': typeof AppMarketplaceRoute
   '/settings': typeof AppSettingsRoute
   '/api/$': typeof ApiSplatRoute
+  '/auth/cli': typeof AuthCliRoute
   '/projects/$id': typeof AppProjectsIdRoute
   '/projects': typeof AppProjectsIndexRoute
 }
@@ -81,9 +121,14 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/_app': typeof AppRouteWithChildren
   '/login': typeof LoginRoute
+  '/privacy': typeof PrivacyRoute
+  '/terms': typeof TermsRoute
   '/_app/billing': typeof AppBillingRoute
+  '/_app/editor-standalone': typeof AppEditorStandaloneRoute
+  '/_app/marketplace': typeof AppMarketplaceRoute
   '/_app/settings': typeof AppSettingsRoute
   '/api/$': typeof ApiSplatRoute
+  '/auth/cli': typeof AuthCliRoute
   '/_app/projects/$id': typeof AppProjectsIdRoute
   '/_app/projects/': typeof AppProjectsIndexRoute
 }
@@ -92,18 +137,28 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/login'
+    | '/privacy'
+    | '/terms'
     | '/billing'
+    | '/editor-standalone'
+    | '/marketplace'
     | '/settings'
     | '/api/$'
+    | '/auth/cli'
     | '/projects/$id'
     | '/projects/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
     | '/login'
+    | '/privacy'
+    | '/terms'
     | '/billing'
+    | '/editor-standalone'
+    | '/marketplace'
     | '/settings'
     | '/api/$'
+    | '/auth/cli'
     | '/projects/$id'
     | '/projects'
   id:
@@ -111,9 +166,14 @@ export interface FileRouteTypes {
     | '/'
     | '/_app'
     | '/login'
+    | '/privacy'
+    | '/terms'
     | '/_app/billing'
+    | '/_app/editor-standalone'
+    | '/_app/marketplace'
     | '/_app/settings'
     | '/api/$'
+    | '/auth/cli'
     | '/_app/projects/$id'
     | '/_app/projects/'
   fileRoutesById: FileRoutesById
@@ -122,11 +182,28 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AppRoute: typeof AppRouteWithChildren
   LoginRoute: typeof LoginRoute
+  PrivacyRoute: typeof PrivacyRoute
+  TermsRoute: typeof TermsRoute
   ApiSplatRoute: typeof ApiSplatRoute
+  AuthCliRoute: typeof AuthCliRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/terms': {
+      id: '/terms'
+      path: '/terms'
+      fullPath: '/terms'
+      preLoaderRoute: typeof TermsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/privacy': {
+      id: '/privacy'
+      path: '/privacy'
+      fullPath: '/privacy'
+      preLoaderRoute: typeof PrivacyRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/login': {
       id: '/login'
       path: '/login'
@@ -148,6 +225,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/auth/cli': {
+      id: '/auth/cli'
+      path: '/auth/cli'
+      fullPath: '/auth/cli'
+      preLoaderRoute: typeof AuthCliRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/$': {
       id: '/api/$'
       path: '/api/$'
@@ -160,6 +244,20 @@ declare module '@tanstack/react-router' {
       path: '/settings'
       fullPath: '/settings'
       preLoaderRoute: typeof AppSettingsRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/marketplace': {
+      id: '/_app/marketplace'
+      path: '/marketplace'
+      fullPath: '/marketplace'
+      preLoaderRoute: typeof AppMarketplaceRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/editor-standalone': {
+      id: '/_app/editor-standalone'
+      path: '/editor-standalone'
+      fullPath: '/editor-standalone'
+      preLoaderRoute: typeof AppEditorStandaloneRouteImport
       parentRoute: typeof AppRoute
     }
     '/_app/billing': {
@@ -188,6 +286,8 @@ declare module '@tanstack/react-router' {
 
 interface AppRouteChildren {
   AppBillingRoute: typeof AppBillingRoute
+  AppEditorStandaloneRoute: typeof AppEditorStandaloneRoute
+  AppMarketplaceRoute: typeof AppMarketplaceRoute
   AppSettingsRoute: typeof AppSettingsRoute
   AppProjectsIdRoute: typeof AppProjectsIdRoute
   AppProjectsIndexRoute: typeof AppProjectsIndexRoute
@@ -195,6 +295,8 @@ interface AppRouteChildren {
 
 const AppRouteChildren: AppRouteChildren = {
   AppBillingRoute: AppBillingRoute,
+  AppEditorStandaloneRoute: AppEditorStandaloneRoute,
+  AppMarketplaceRoute: AppMarketplaceRoute,
   AppSettingsRoute: AppSettingsRoute,
   AppProjectsIdRoute: AppProjectsIdRoute,
   AppProjectsIndexRoute: AppProjectsIndexRoute,
@@ -206,7 +308,10 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AppRoute: AppRouteWithChildren,
   LoginRoute: LoginRoute,
+  PrivacyRoute: PrivacyRoute,
+  TermsRoute: TermsRoute,
   ApiSplatRoute: ApiSplatRoute,
+  AuthCliRoute: AuthCliRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

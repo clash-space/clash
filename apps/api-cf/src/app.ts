@@ -25,7 +25,7 @@ import { settingsD1Routes } from "./routes/settings-d1";
 import { marketplaceRoutes } from "./routes/marketplace";
 import { setPlugins, getPlugins } from "./plugins/registry";
 import type { Plugin } from "./plugins/types";
-import { getUserIdFromRequest } from "./services/session";
+import { getUserIdFromApiToken, getUserIdFromRequest } from "./services/session";
 
 export interface CreateAppOptions {
   plugins?: Plugin[];
@@ -43,11 +43,13 @@ export function createApp(opts: CreateAppOptions = {}): Hono<{ Bindings: Env }> 
   // setting x-user-id directly (via gateway) — only fill in when missing.
   app.use("/api/v1/*", async (c, next) => {
     if (!c.req.header("x-user-id")) {
-      const userId = await getUserIdFromRequest(
-        c.req.raw,
-        c.env as any,
-        c.req.raw.cf as any,
-      );
+      const userId =
+        (await getUserIdFromApiToken(c.req.raw, c.env as any)) ??
+        (await getUserIdFromRequest(
+          c.req.raw,
+          c.env as any,
+          c.req.raw.cf as any,
+        ));
       if (userId) {
         const req = new Request(c.req.raw);
         req.headers.set("x-user-id", userId);
