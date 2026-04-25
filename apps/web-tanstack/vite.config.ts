@@ -54,20 +54,22 @@ const config = defineConfig({
         },
       },
       // Loro CRDT WebSocket — ProjectEditor opens ws://<host>/sync/:projectId.
-      // api-cf mounts /sync/:projectId on the Worker root (not under /api/*),
-      // so it needs its own proxy entry with ws upgrade enabled.
+      // Use wss:// target explicitly; vite/http-proxy doesn't always derive
+      // the WS protocol correctly from an https:// HTTP target.
       "/sync": {
-        target: "https://api.clash.video",
+        target: "wss://api.clash.video",
         changeOrigin: true,
         secure: true,
         ws: true,
+        rewriteWsOrigin: true,
       },
       // AI Chat / SupervisorAgent DO — same shape as /sync, websocket-only.
       "/agents": {
-        target: "https://api.clash.video",
+        target: "wss://api.clash.video",
         changeOrigin: true,
         secure: true,
         ws: true,
+        rewriteWsOrigin: true,
       },
       // Asset upload + serving — api-cf mounts /upload, /assets, /thumbnails
       // at the Worker root, not under /api/*.
