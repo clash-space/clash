@@ -68,7 +68,7 @@ const markdownComponents = {
         const match = /language-(\w+)/.exec(className || '');
         const isInline = !match && !String(children).includes('\n');
         return isInline ? (
-            <code className="bg-slate-100 px-1.5 py-0.5 rounded text-sm font-mono text-pink-500 border border-slate-200" {...props}>
+            <code className="bg-warm-muted px-1.5 py-0.5 rounded text-sm font-mono text-[#d94f38] border border-warm-border" {...props}>
                 {children}
             </code>
         ) : (
@@ -78,7 +78,7 @@ const markdownComponents = {
         );
     },
     pre: ({ children }: any) => <pre className="not-prose mb-4">{children}</pre>,
-    blockquote: ({ children }: any) => <blockquote className="border-l-4 border-slate-200 pl-4 italic text-slate-500 mb-4">{children}</blockquote>,
+    blockquote: ({ children }: any) => <blockquote className="border-l-4 border-warm-border pl-4 italic text-stone-500 mb-4">{children}</blockquote>,
     a: ({ href, children }: any) => <a href={href} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">{children}</a>,
 };
 
@@ -390,7 +390,7 @@ export default function ChatbotCopilot({
                         animate={{ opacity: 1 }}
                         exit={{ opacity: 0 }}
                         onClick={() => onCollapseChange(false)}
-                        className="absolute right-4 top-4 z-50 flex h-14 w-14 items-center justify-center rounded-full border border-slate-200/60 bg-white/80 shadow-sm backdrop-blur-xl transition-all hover:shadow-md hover:bg-white/90"
+                        className="absolute right-4 top-4 z-50 flex h-14 w-14 items-center justify-center rounded-full border border-warm-border bg-warm-surface/85 shadow-sm backdrop-blur-xl transition-all hover:shadow-md hover:bg-white"
                         whileHover={{ scale: 1.05 }}
                         whileTap={{ scale: 0.95 }}
                     >
@@ -400,7 +400,7 @@ export default function ChatbotCopilot({
             </AnimatePresence>
 
             <motion.div
-                className={`h-full bg-white/80 backdrop-blur-xl flex flex-col relative ${isCollapsed ? '' : 'border-l border-slate-200 shadow-xl'}`}
+                className={`h-full bg-warm-surface/85 backdrop-blur-xl flex flex-col relative ${isCollapsed ? '' : 'border-l border-warm-border shadow-xl'}`}
                 style={{ width: isCollapsed ? 0 : `${width}px` }}
                 animate={{ width: isCollapsed ? 0 : width }}
                 transition={isResizing ? { duration: 0 } : { type: "spring", stiffness: 300, damping: 30 }}
@@ -416,18 +416,18 @@ export default function ChatbotCopilot({
                     <>
                         <motion.button
                             onClick={() => onCollapseChange(true)}
-                            className="absolute left-2 top-4 z-20 p-2 flex items-center justify-center hover:bg-gray-100/50 rounded-full transition-all"
+                            className="absolute left-2 top-4 z-20 p-2 flex items-center justify-center hover:bg-warm-muted rounded-full transition-all"
                             whileHover={{ scale: 1.1 }}
                             whileTap={{ scale: 0.9 }}
                         >
-                            <CaretRight className="w-5 h-5 text-gray-600" weight="bold" />
+                            <CaretRight className="w-5 h-5 text-stone-600" weight="bold" />
                         </motion.button>
 
                         {/* Session Controls */}
                         <div className="absolute right-4 top-4 z-20 flex items-center gap-1">
                             <motion.button
                                 onClick={handleNewSession}
-                                className="p-2 rounded-full hover:bg-gray-100/50 text-slate-600 transition-colors"
+                                className="p-2 rounded-full hover:bg-warm-muted text-slate-700 transition-colors"
                                 whileHover={{ scale: 1.1 }}
                                 whileTap={{ scale: 0.9 }}
                                 title="New Session"
@@ -437,7 +437,7 @@ export default function ChatbotCopilot({
                             <motion.button
                                 onClick={handleHistoryClick}
                                 ref={historyButtonRef}
-                                className="p-2 rounded-full hover:bg-gray-100/50 text-slate-600 transition-colors relative"
+                                className="p-2 rounded-full hover:bg-warm-muted text-slate-700 transition-colors relative"
                                 whileHover={{ scale: 1.1 }}
                                 whileTap={{ scale: 0.9 }}
                                 title="History"
@@ -457,10 +457,10 @@ export default function ChatbotCopilot({
                                     animate={{ opacity: 1, y: 0, scale: 1 }}
                                     exit={{ opacity: 0, y: -10, scale: 0.95 }}
                                     ref={historyDropdownRef}
-                                    className="absolute top-14 right-4 z-30 w-64 bg-white rounded-xl shadow-xl border border-slate-200 overflow-hidden"
+                                    className="absolute top-14 right-4 z-30 w-64 bg-warm-surface rounded-xl shadow-xl border border-warm-border overflow-hidden"
                                 >
-                                    <div className="p-3 border-b border-slate-100 bg-slate-50">
-                                        <h3 className="font-display text-xs font-semibold text-slate-500 uppercase tracking-wider">Session History</h3>
+                                    <div className="p-3 border-b border-warm-border bg-warm-muted">
+                                        <h3 className="font-display text-xs font-semibold text-stone-500 uppercase tracking-wider">Session History</h3>
                                     </div>
                                     <div className="max-h-60 overflow-y-auto">
                                         {sessionHistory.length === 0 ? (
@@ -469,7 +469,7 @@ export default function ChatbotCopilot({
                                             sessionHistory.map((item, index) => (
                                                 <div
                                                     key={item.threadId}
-                                                    className="px-4 py-3 hover:bg-slate-50 cursor-pointer border-b border-slate-50 last:border-0 flex items-center justify-between group"
+                                                    className="px-4 py-3 hover:bg-warm-muted cursor-pointer border-b border-warm-border/70 last:border-0 flex items-center justify-between group"
                                                     onClick={() => {
                                                         onSwitchSession?.(item.threadId);
                                                         setShowHistory(false);
@@ -648,7 +648,7 @@ export default function ChatbotCopilot({
                                                 <motion.button
                                                     key={i}
                                                     onClick={() => handleSubmit(s.message)}
-                                                    className="px-4 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-200 rounded-full shadow-sm hover:bg-slate-50 hover:border-slate-300 transition-all"
+                                                    className="px-4 py-2 text-sm font-medium text-slate-800 bg-warm-surface border border-warm-border rounded-full shadow-sm hover:bg-white hover:border-brand/30 transition-all"
                                                     whileHover={{ scale: 1.03, y: -1 }}
                                                     whileTap={{ scale: 0.97 }}
                                                     transition={{ type: "spring", stiffness: 400, damping: 25 }}
@@ -672,7 +672,7 @@ export default function ChatbotCopilot({
                                         exit={{ opacity: 0, y: 10, scale: 0.9 }}
                                         className="absolute bottom-[80px] right-6 z-20 pointer-events-auto"
                                     >
-                                        <div className="bg-white/90 backdrop-blur-md text-slate-600 text-xs font-medium px-3 py-1.5 rounded-full border border-slate-200 shadow-sm flex items-center gap-2">
+                                        <div className="bg-warm-surface/90 backdrop-blur-md text-slate-700 text-xs font-medium px-3 py-1.5 rounded-full border border-warm-border shadow-sm flex items-center gap-2">
                                             <div className="flex -space-x-2">
                                                 {selectedNodes.filter(n => n.data?.src).slice(0, 3).map((node) => (
                                                     <SelectedNodeThumbnail key={node.id} node={node} />
@@ -680,7 +680,7 @@ export default function ChatbotCopilot({
                                             </div>
                                             <span>{selectedNodes.length} Selected</span>
                                             {selectedNodes.length === 1 && (
-                                                <span className="text-slate-400 border-l border-slate-200 pl-2 max-w-[100px] truncate">
+                                                <span className="text-stone-400 border-l border-warm-border pl-2 max-w-[100px] truncate">
                                                     {(typeof selectedNodes[0].data?.label === 'string' ? selectedNodes[0].data.label : undefined) || selectedNodes[0].type}
                                                 </span>
                                             )}
@@ -696,7 +696,7 @@ export default function ChatbotCopilot({
                                 )}
                             </AnimatePresence>
 
-                            <div className="absolute bottom-0 left-0 right-0 h-28 bg-gradient-to-t from-gray-50 via-gray-50/80 to-transparent pointer-events-none" />
+                            <div className="absolute bottom-0 left-0 right-0 h-28 bg-gradient-to-t from-warm-page via-warm-page/85 to-transparent pointer-events-none" />
 
                             <div className="absolute bottom-0 left-0 right-0">
                                 <ChatInput

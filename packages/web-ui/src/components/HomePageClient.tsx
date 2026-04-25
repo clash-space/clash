@@ -9,7 +9,7 @@ interface HomePageClientProps {
 
 export default function HomePageClient({ initialProjects }: HomePageClientProps) {
     return (
-        <div className="text-gray-900">
+        <div className="text-slate-950">
             <HeroSection />
             <RecentProjects projects={initialProjects} />
         </div>

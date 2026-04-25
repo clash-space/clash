@@ -101,7 +101,7 @@ function ConfirmDialog({
                     transition={{ duration: 0.12 }}
                 >
                     <div
-                        className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm"
+                        className="absolute inset-0 bg-slate-950/35 backdrop-blur-sm"
                         onClick={() => onClose(false)}
                         aria-hidden
                     />
@@ -110,7 +110,7 @@ function ConfirmDialog({
                         aria-modal="true"
                         aria-labelledby={pending.opts.title ? 'confirm-title' : undefined}
                         aria-describedby="confirm-message"
-                        className="relative w-full max-w-sm rounded-2xl bg-white shadow-2xl border border-slate-200 overflow-hidden"
+                        className="relative w-full max-w-sm rounded-2xl bg-warm-surface shadow-2xl border border-warm-border overflow-hidden"
                         initial={{ y: 8, opacity: 0, scale: 0.98 }}
                         animate={{ y: 0, opacity: 1, scale: 1 }}
                         exit={{ y: 8, opacity: 0, scale: 0.98 }}
@@ -120,20 +120,20 @@ function ConfirmDialog({
                             {pending.opts.title && (
                                 <h2
                                     id="confirm-title"
-                                    className="text-sm font-bold text-gray-900 tracking-tight mb-1.5"
+                                    className="text-sm font-bold text-slate-950 tracking-tight mb-1.5"
                                 >
                                     {pending.opts.title}
                                 </h2>
                             )}
-                            <p id="confirm-message" className="text-sm text-gray-600 leading-relaxed">
+                            <p id="confirm-message" className="text-sm text-stone-600 leading-relaxed">
                                 {pending.opts.message}
                             </p>
                         </div>
-                        <div className="flex justify-end gap-2 px-4 py-3 bg-slate-50/60 border-t border-slate-100">
+                        <div className="flex justify-end gap-2 px-4 py-3 bg-warm-muted/70 border-t border-warm-border">
                             <button
                                 type="button"
                                 onClick={() => onClose(false)}
-                                className="px-3 py-1.5 rounded-lg text-xs font-medium text-gray-600 hover:bg-slate-200/60 transition-colors"
+                                className="px-3 py-1.5 rounded-lg text-xs font-medium text-stone-600 hover:bg-warm-hover transition-colors"
                             >
                                 {pending.opts.cancelText ?? 'Cancel'}
                             </button>
@@ -144,7 +144,7 @@ function ConfirmDialog({
                                 className={`px-3 py-1.5 rounded-lg text-xs font-semibold text-white shadow-sm transition-colors ${
                                     pending.opts.destructive
                                         ? 'bg-red-500 hover:bg-red-600'
-                                        : 'bg-gray-900 hover:bg-black'
+                                        : 'bg-slate-950 hover:bg-slate-800'
                                 }`}
                             >
                                 {pending.opts.confirmText ?? 'Confirm'}

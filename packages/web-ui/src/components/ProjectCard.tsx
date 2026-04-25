@@ -63,26 +63,26 @@ export default function ProjectCard({ project }: ProjectCardProps) {
   return (
     <Link to={`/projects/${project.id}`} className="block group">
       <motion.div
-        className="relative aspect-video overflow-hidden rounded-[1.5rem] bg-gray-100 mb-4 transition-all hover:shadow-lg ring-1 ring-black/5"
+        className="relative aspect-video overflow-hidden rounded-[1.5rem] bg-warm-muted mb-4 transition-all hover:shadow-lg ring-1 ring-black/5"
         whileHover={{ y: -2 }}
         whileTap={{ scale: 0.98 }}
       >
         {/* Asset Grid Logic */}
         {assetCount === 0 ? (
           /* No Assets - Empty State */
-          <div className="absolute inset-0 flex items-center justify-center bg-gray-50 text-gray-300">
+          <div className="absolute inset-0 flex items-center justify-center bg-warm-muted text-stone-300">
              {/* Empty state placeholder */}
           </div>
         ) : (
           /* Has Assets */
-          <div className={`grid h-full w-full ${gridClass} gap-[2px] bg-white`}>
+          <div className={`grid h-full w-full ${gridClass} gap-[2px] bg-warm-border`}>
             {displayAssets.map((asset: Asset, index: number) => {
               // Special case for 3 items: the last item (index 2) spans 2 columns
               const isLastOfThree = assetCount === 3 && index === 2;
               return (
                 <div
                   key={asset.id}
-                  className={`relative overflow-hidden bg-gray-100 ${isLastOfThree ? 'col-span-2' : ''}`}
+                  className={`relative overflow-hidden bg-warm-muted ${isLastOfThree ? 'col-span-2' : ''}`}
                 >
                   <img
                     src={asset.url}
@@ -114,10 +114,10 @@ export default function ProjectCard({ project }: ProjectCardProps) {
 
       {/* Text Content Below Card */}
       <div className="px-1">
-        <h3 className="text-base font-semibold text-gray-900 group-hover:text-brand transition-colors truncate">
+        <h3 className="text-base font-semibold text-slate-950 group-hover:text-brand transition-colors truncate">
           {project.name || 'Untitled'}
         </h3>
-        <p className="mt-1 text-xs text-gray-500">
+        <p className="mt-1 text-xs text-stone-500">
           {formattedDate}
         </p>
       </div>

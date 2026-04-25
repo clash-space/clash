@@ -1,6 +1,6 @@
 
 import { useCallback, useState, useEffect, useRef, useMemo } from 'react';
-import { flushSync } from 'react-dom';
+import { createPortal, flushSync } from 'react-dom';
 import {
     ReactFlow,
     Background,
@@ -88,6 +88,7 @@ import { applyLayoutPatchesToLoro, collectLayoutNodePatches } from '@clash/web-u
 import { calculateScaledDimensions } from './nodes/assetNodeSizing';
 import { getAsset } from '@clash/web-ui/lib/hooks/useAsset';
 import { getSignedUrl } from '@clash/web-ui/lib/hooks/useSignedUrl';
+import { shouldDismissToolbarMenu, shouldDismissToolbarMenuOnKey } from './toolbarDismiss';
 
 const CHILD_NODE_Z_INDEX_BASE = 1000;
 
@@ -262,9 +263,42 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
         });
     }, [setNodesInternal]);
     const [activeMenu, setActiveMenu] = useState<string | null>(null);
+    const toolbarRef = useRef<HTMLDivElement>(null);
+    const toolbarFlyoutRef = useRef<HTMLDivElement>(null);
+    const [activeMenuPosition, setActiveMenuPosition] = useState({ top: 0, left: 0 });
     const [projectName, setProjectName] = useState(project.name);
     const [showDebugIds, setShowDebugIds] = useState(false);
     const [canvasMode, setCanvasMode] = useState<'select' | 'hand'>('select');
+
+    useEffect(() => {
+        if (!activeMenu) return;
+
+        const handlePointerDown = (event: PointerEvent) => {
+            if (shouldDismissToolbarMenu({ activeMenu, toolbarRoot: toolbarRef.current, flyoutRoot: toolbarFlyoutRef.current, target: event.target })) {
+                setActiveMenu(null);
+            }
+        };
+        const handleFocusIn = (event: FocusEvent) => {
+            if (shouldDismissToolbarMenu({ activeMenu, toolbarRoot: toolbarRef.current, flyoutRoot: toolbarFlyoutRef.current, target: event.target })) {
+                setActiveMenu(null);
+            }
+        };
+        const handleKeyDown = (event: KeyboardEvent) => {
+            if (shouldDismissToolbarMenuOnKey(activeMenu, event.key)) {
+                setActiveMenu(null);
+            }
+        };
+
+        document.addEventListener('pointerdown', handlePointerDown, true);
+        document.addEventListener('focusin', handleFocusIn);
+        document.addEventListener('keydown', handleKeyDown);
+
+        return () => {
+            document.removeEventListener('pointerdown', handlePointerDown, true);
+            document.removeEventListener('focusin', handleFocusIn);
+            document.removeEventListener('keydown', handleKeyDown);
+        };
+    }, [activeMenu]);
 
     // Collaboration visibility: presence + activity
     const [presenceClients, setPresenceClients] = useState<PresenceClient[]>([]);
@@ -1037,6 +1071,9 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
         { id: 'group', label: 'Group', icon: Square },
         { id: 'text', label: 'Text', icon: TextT },
     ];
+    const activeToolbarMenu = toolbarMenu.find((item) => item.id === activeMenu && 'items' in item) as
+        | { id: string; label: string; items: Array<{ id: string; label: string; icon: React.ComponentType<any> }> }
+        | undefined;
 
     const addNode = useCallback((type: string, extraData: any = {}) => {
         let nodeType = type;
@@ -1894,7 +1931,7 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
                     <ProjectSurfaceBehindEditor>
                     <MediaViewerProvider>
                         <LayoutActionsProvider value={{ relayoutParent }}>
-                        <div className="flex h-screen w-full flex-col bg-white overflow-hidden">
+                        <div className="flex h-screen w-full flex-col bg-warm-page overflow-hidden">
                         {/* Hidden File Input */}
                         <input
                             type="file"
@@ -1933,7 +1970,7 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
                                         whileHover={{ scale: 1.05 }}
                                         whileTap={{ scale: 0.95 }}
                                     >
-                                        <span className="font-display text-4xl font-bold tracking-tighter text-gray-900 leading-none">
+                                        <span className="font-display text-4xl font-bold tracking-tighter text-slate-950 leading-none">
                                             C
                                         </span>
                                         <div className="h-8 w-[6px] bg-brand -skew-x-[20deg] transform origin-center" />
@@ -1941,11 +1978,11 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
                                 </Link>
 
                                 {/* Separator - Aligned with Toolbar Right Edge (88px from viewport left) */}
-                                <div className="absolute left-[52px] h-8 w-px bg-slate-300" />
+                                <div className="absolute left-[52px] h-8 w-px bg-warm-border" />
 
                                 {/* Project Name Input */}
                                 <input
-                                    className="absolute left-[65px] bg-transparent text-base font-display font-medium text-slate-900 focus:outline-none focus:ring-0 placeholder-slate-400 min-w-[60px]"
+                                    className="absolute left-[65px] bg-transparent text-base font-display font-medium text-slate-950 focus:outline-none focus:ring-0 placeholder-stone-400 min-w-[60px]"
                                     value={projectName}
                                     onChange={(e) => setProjectName(e.target.value)}
                                     onBlur={() => {
@@ -2011,12 +2048,12 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
                             </div>
 
                             {/* Left Toolbar - Vertical Palette */}
-                            <div className="absolute left-6 top-1/2 -translate-y-1/2 z-50 flex flex-col gap-2 pointer-events-none">
-                                 <div className="pointer-events-auto flex flex-col items-center gap-3 rounded-full border border-slate-200 bg-white/80 py-6 px-3 shadow-lg backdrop-blur-xl transition-all">
+                            <div ref={toolbarRef} className="absolute left-6 top-1/2 -translate-y-1/2 z-50 flex flex-col items-start gap-2 pointer-events-none">
+                                 <div className="clash-canvas-toolbar-surface pointer-events-auto flex w-16 flex-none flex-col items-center gap-3 rounded-full py-6 px-3 transition-all">
                                     {/* Canvas Mode Toggle: single button switches between select/hand */}
                                     <motion.button
                                         onClick={() => setCanvasMode(prev => prev === 'select' ? 'hand' : 'select')}
-                                        className="flex h-10 w-10 items-center justify-center rounded-full bg-transparent text-slate-500 hover:bg-slate-100 hover:text-slate-900 transition-all"
+                                        className="clash-toolbar-button flex h-10 w-10 items-center justify-center rounded-full bg-transparent text-stone-500 hover:text-slate-950 transition-all"
                                         whileHover={{ scale: 1.05 }}
                                         whileTap={{ scale: 0.95 }}
                                         title={canvasMode === 'select' ? 'Select mode (V)' : 'Hand mode (H)'}
@@ -2028,7 +2065,7 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
                                     </motion.button>
 
                                     {/* Divider */}
-                                    <div className="w-8 h-px bg-slate-200" />
+                                    <div className="clash-control-divider w-8 h-px" />
 
                                     {toolbarMenu.map((item) => {
                                         const Icon = item.icon;
@@ -2039,18 +2076,23 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
                                         return (
                                             <div key={item.id} className="relative">
                                                 <motion.button
-                                                    onClick={() => {
+                                                    onClick={(event) => {
                                                         if (hasSubmenu) {
+                                                            const buttonRect = event.currentTarget.getBoundingClientRect();
+                                                            setActiveMenuPosition({
+                                                                top: buttonRect.top,
+                                                                left: buttonRect.right + 16,
+                                                            });
                                                             setActiveMenu(isActive ? null : item.id);
                                                         } else {
                                                             handleToolClick(item.id);
                                                             setActiveMenu(null);
                                                         }
                                                     }}
-                                                    className={`flex h-10 w-10 items-center justify-center rounded-full transition-all ${
+                                                    className={`clash-toolbar-button flex h-10 w-10 items-center justify-center rounded-full transition-all ${
                                                         isActive
-                                                        ? "bg-slate-900 text-white shadow-md"
-                                                        : "bg-transparent text-slate-500 hover:bg-slate-100 hover:text-slate-900"
+                                                        ? "clash-toolbar-button-active text-white"
+                                                        : "bg-transparent text-stone-500 hover:text-slate-950"
                                                     }`}
                                                     whileHover={{ scale: 1.05 }}
                                                     whileTap={{ scale: 0.95 }}
@@ -2059,51 +2101,17 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
                                                     <Icon className="h-5 w-5" weight={isActive ? "fill" : "regular"} />
                                                 </motion.button>
 
-                                                {/* Submenu Flyout */}
-                                                <AnimatePresence>
-                                                    {isActive && hasSubmenu && (
-                                                        <motion.div
-                                                            initial={{ opacity: 0, x: 10, scale: 0.95 }}
-                                                            animate={{ opacity: 1, x: 20, scale: 1 }}
-                                                            exit={{ opacity: 0, x: 10, scale: 0.95 }}
-                                                            className="absolute left-full top-0 ml-4 flex flex-col gap-1 rounded-2xl border border-slate-200 bg-white/90 p-2 shadow-xl backdrop-blur-xl min-w-[140px] z-50"
-                                                        >
-                                                            {/* Submenu Title */}
-                                                            <div className="px-2 py-1 text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">
-                                                                {item.label}
-                                                            </div>
-                                                            {(item as any).items.map((subItem: any) => {
-                                                                const SubIcon = subItem.icon;
-                                                                return (
-                                                                    <motion.button
-                                                                        key={subItem.id}
-                                                                        onClick={(e) => {
-                                                                            e.stopPropagation();
-                                                                            handleToolClick(subItem.id);
-                                                                            setActiveMenu(null);
-                                                                        }}
-                                                                        className="flex items-center gap-3 rounded-xl px-3 py-2 text-sm text-slate-600 hover:bg-slate-100 hover:text-slate-900 transition-colors text-left whitespace-nowrap"
-                                                                        whileHover={{ x: 2 }}
-                                                                    >
-                                                                        <SubIcon className="h-4 w-4" />
-                                                                        <span className="whitespace-nowrap">{subItem.label}</span>
-                                                                    </motion.button>
-                                                                );
-                                                            })}
-                                                        </motion.div>
-                                                    )}
-                                                </AnimatePresence>
                                             </div>
                                         );
                                     })}
 
                                     {/* Divider */}
-                                    <div className="w-8 h-px bg-slate-200" />
+                                    <div className="clash-control-divider w-8 h-px" />
 
                                     {/* Helper Tools (Undo/Redo/Layout) */}
                                     <motion.button
                                          onClick={onLayout}
-                                         className="flex h-10 w-10 items-center justify-center rounded-full bg-transparent text-slate-500 transition-all hover:bg-slate-100 hover:text-slate-900"
+                                         className="clash-toolbar-button flex h-10 w-10 items-center justify-center rounded-full bg-transparent text-stone-500 transition-all hover:text-slate-950"
                                          whileHover={{ scale: 1.05 }}
                                          whileTap={{ scale: 0.95 }}
                                          title="Auto Layout"
@@ -2116,7 +2124,7 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
                                          disabled={!loroSync.canUndo}
                                          className={`flex h-10 w-10 items-center justify-center rounded-full transition-all ${
                                              loroSync.canUndo
-                                             ? "text-slate-500 hover:bg-slate-100 hover:text-slate-900"
+                                             ? "clash-toolbar-button text-stone-500 hover:text-slate-950"
                                              : "text-slate-300 cursor-not-allowed"
                                          }`}
                                          whileHover={loroSync.canUndo ? { scale: 1.05 } : {}}
@@ -2130,7 +2138,7 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
                                          disabled={!loroSync.canRedo}
                                          className={`flex h-10 w-10 items-center justify-center rounded-full transition-all ${
                                              loroSync.canRedo
-                                             ? "text-slate-500 hover:bg-slate-100 hover:text-slate-900"
+                                             ? "clash-toolbar-button text-stone-500 hover:text-slate-950"
                                              : "text-slate-300 cursor-not-allowed"
                                          }`}
                                          whileHover={loroSync.canRedo ? { scale: 1.05 } : {}}
@@ -2143,24 +2151,61 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
                                      {/* Debug: toggle node IDs (dev only) */}
                                      {process.env.NODE_ENV === 'development' && (
                                          <>
-                                         <div className="w-8 h-px bg-slate-200" />
+                                         <div className="clash-control-divider w-8 h-px" />
                                          <motion.button
                                              onClick={() => setShowDebugIds(v => !v)}
                                              className={`flex h-10 w-10 items-center justify-center rounded-full transition-all ${
                                                  showDebugIds
                                                  ? "bg-green-600 text-white shadow-md"
-                                                 : "bg-transparent text-slate-400 hover:bg-slate-100 hover:text-slate-900"
+                                                 : "clash-toolbar-button bg-transparent text-stone-400 hover:text-slate-950"
                                              }`}
                                              whileHover={{ scale: 1.05 }}
                                              whileTap={{ scale: 0.95 }}
                                              title="Toggle Node IDs"
                                          >
-                                             <span className="font-mono text-xs font-bold">ID</span>
-                                         </motion.button>
-                                         </>
-                                     )}
-                                 </div>
-                            </div>
+                                              <span className="font-mono text-xs font-bold">ID</span>
+                                          </motion.button>
+                                          </>
+                                      )}
+                                  </div>
+                                  {typeof document !== 'undefined' && createPortal(
+                                      <AnimatePresence>
+                                          {activeToolbarMenu && (
+                                              <motion.div
+                                                  ref={toolbarFlyoutRef}
+                                                  initial={{ opacity: 0, x: 8, scale: 0.96 }}
+                                                  animate={{ opacity: 1, x: 0, scale: 1 }}
+                                                  exit={{ opacity: 0, x: 8, scale: 0.96 }}
+                                                  style={{ top: activeMenuPosition.top, left: activeMenuPosition.left }}
+                                                  className="clash-canvas-toolbar-flyout-layer clash-canvas-menu-surface pointer-events-auto fixed flex flex-col gap-1 rounded-2xl p-2 min-w-[140px] z-50"
+                                              >
+                                                  <div className="px-2 py-1 text-xs font-bold text-stone-400 uppercase tracking-wider mb-1">
+                                                      {activeToolbarMenu.label}
+                                                  </div>
+                                                  {activeToolbarMenu.items.map((subItem) => {
+                                                      const SubIcon = subItem.icon;
+                                                      return (
+                                                          <motion.button
+                                                              key={subItem.id}
+                                                              onClick={(e) => {
+                                                                  e.stopPropagation();
+                                                                  handleToolClick(subItem.id);
+                                                                  setActiveMenu(null);
+                                                              }}
+                                                              className="clash-input-icon-button flex items-center gap-3 rounded-xl px-3 py-2 text-sm text-stone-600 hover:text-slate-950 transition-colors text-left whitespace-nowrap"
+                                                              whileHover={{ x: 2 }}
+                                                          >
+                                                              <SubIcon className="h-4 w-4" />
+                                                              <span className="whitespace-nowrap">{subItem.label}</span>
+                                                          </motion.button>
+                                                      );
+                                                  })}
+                                              </motion.div>
+                                          )}
+                                      </AnimatePresence>,
+                                      document.body
+                                  )}
+                             </div>
 
                             <div id="copilot-container" className="fixed right-0 top-0 bottom-0 z-40 pointer-events-none">
                                 <div className="pointer-events-auto h-full">

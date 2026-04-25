@@ -7,9 +7,9 @@ export const colors = {
   // 背景层次（亮色主题）
   bg: {
     primary: '#ffffff',     // 主背景
-    secondary: '#fbfaf8',   // 次级背景（暖中性）
-    elevated: '#f3eee9',    // 悬浮元素
-    hover: '#e7e0da',       // 悬停状态
+    secondary: '#fffdfb',   // 次级背景（暖白）
+    elevated: '#f8f3ee',    // 悬浮元素
+    hover: '#f0e7de',       // 悬停状态
     selected: '#fff3f0',    // 选中状态背景（带品牌色调）
   },
 

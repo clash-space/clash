@@ -60,7 +60,7 @@ export default function UserControls() {
       {user ? (
         <div className="relative" ref={menuRef}>
           <motion.div
-            className="flex items-center gap-3 rounded-full bg-white border border-slate-200 pl-1.5 pr-4 py-1.5 shadow-sm cursor-pointer hover:shadow-md transition-all"
+            className="flex items-center gap-3 rounded-full bg-warm-surface border border-warm-border pl-1.5 pr-4 py-1.5 shadow-sm cursor-pointer hover:shadow-md transition-all"
             whileHover={{ scale: 1.02 }}
             whileTap={{ scale: 0.98 }}
             onClick={() => setOpen(prev => !prev)}
@@ -76,7 +76,7 @@ export default function UserControls() {
                 {getInitials(user.name)}
               </div>
             )}
-            <span className="text-base font-display font-medium text-gray-700 max-w-[120px] truncate">
+            <span className="text-base font-display font-medium text-stone-700 max-w-[120px] truncate">
               {user.name}
             </span>
           </motion.div>
@@ -88,19 +88,19 @@ export default function UserControls() {
                 animate={{ opacity: 1, y: 0, scale: 1 }}
                 exit={{ opacity: 0, y: 4, scale: 0.95 }}
                 transition={{ duration: 0.15 }}
-                className="absolute right-0 mt-2 w-48 rounded-xl bg-white border border-slate-200 shadow-lg py-1.5 z-50"
+                className="absolute right-0 mt-2 w-48 rounded-xl bg-warm-surface border border-warm-border shadow-lg py-1.5 z-50"
               >
                 <Link
                   to="/settings"
                   onClick={() => setOpen(false)}
-                  className="flex items-center gap-2.5 px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
+                  className="flex items-center gap-2.5 px-4 py-2.5 text-sm font-medium text-stone-700 hover:bg-warm-muted transition-colors"
                 >
                   <Gear className="h-4 w-4" />
                   Settings
                 </Link>
                 <button
                   onClick={handleSignOut}
-                  className="flex w-full items-center gap-2.5 px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
+                  className="flex w-full items-center gap-2.5 px-4 py-2.5 text-sm font-medium text-stone-700 hover:bg-warm-muted transition-colors"
                 >
                   <SignOut className="h-4 w-4" />
                   Sign out
@@ -112,7 +112,7 @@ export default function UserControls() {
       ) : (
         <motion.button
           onClick={handleSignIn}
-          className="flex items-center gap-2 rounded-full bg-gray-900 px-6 py-3 text-base font-display font-medium text-white transition-all hover:bg-gray-800 shadow-lg shadow-gray-900/20"
+          className="flex items-center gap-2 rounded-full bg-slate-950 px-6 py-3 text-base font-display font-medium text-white transition-all hover:bg-slate-800 shadow-lg shadow-slate-950/20"
           whileHover={{ scale: 1.05 }}
           whileTap={{ scale: 0.95 }}
         >

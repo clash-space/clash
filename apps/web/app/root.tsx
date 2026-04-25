@@ -44,8 +44,8 @@ export default function Root() {
 
 export function HydrateFallback() {
   return (
-    <div className="flex min-h-screen items-center justify-center">
-      <div className="h-8 w-8 animate-spin rounded-full border-2 border-gray-300 border-t-gray-900" />
+    <div className="flex min-h-screen items-center justify-center bg-warm-page">
+      <div className="h-8 w-8 animate-spin rounded-full border-2 border-warm-border border-t-slate-950" />
     </div>
   );
 }
@@ -59,9 +59,9 @@ export function ErrorBoundary() {
       : "Unknown error";
 
   return (
-    <main className="flex min-h-screen flex-col items-center justify-center p-8 text-center">
+    <main className="flex min-h-screen flex-col items-center justify-center bg-warm-page p-8 text-center">
       <h1 className="text-2xl font-bold mb-4">Something went wrong</h1>
-      <p className="text-gray-600">{message}</p>
+      <p className="text-stone-600">{message}</p>
     </main>
   );
 }

@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { LoroDoc } from "loro-crdt";
-import { processPendingNodes } from "./NodeProcessor";
+import { processPendingNodes, recoverOrphanedTasks } from "./NodeProcessor";
 import type { Env } from "../config";
 
 // Mock describe service
@@ -369,6 +369,162 @@ describe("NodeProcessor - processPendingNodes", () => {
         }),
       }),
     );
+  });
+
+  it("resolves modern render timeline refs with sourceNodeId plus D1 assetId", async () => {
+    const doc = makeDoc([
+      {
+        id: "video-node-1",
+        type: "video",
+        data: {
+          status: "completed",
+          assetId: "asset-row-video-1",
+        },
+      },
+      {
+        id: "n-render",
+        type: "video",
+        data: {
+          status: "pending",
+          timelineDsl: {
+            tracks: [
+              {
+                id: "track-video",
+                name: "Video",
+                items: [
+                  {
+                    id: "item-video-1",
+                    type: "video",
+                    from: 0,
+                    durationInFrames: 120,
+                    sourceNodeId: "video-node-1",
+                    assetId: "asset-row-video-1",
+                  },
+                ],
+              },
+            ],
+          },
+        },
+      },
+    ]);
+
+    const first = vi.fn().mockResolvedValue({
+      id: "asset-row-video-1",
+      userId: "u-1",
+      kind: "video",
+      srcR2Key: "projects/proj-1/assets/dog.mp4",
+      coverR2Key: null,
+      metadata: JSON.stringify({ width: 1920, height: 1080 }),
+      sourceModel: null,
+      sourcePrompt: null,
+      sourceTaskId: null,
+      createdAt: 1,
+      updatedAt: 1,
+    });
+    const bind = vi.fn().mockReturnValue({ run: vi.fn().mockResolvedValue({}), all: vi.fn(), first });
+    const prepare = vi.fn().mockReturnValue({ bind });
+
+    const env = makeEnv({
+      JWT_SECRET: "test-secret",
+      MEDIA_GATEWAY_URL: "http://localhost:3000",
+      DB: { prepare } as any,
+    });
+
+    await processPendingNodes(doc, env, "proj-1", broadcast, triggerPolling);
+
+    expect(env.GENERATION_WORKFLOW.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        params: expect.objectContaining({
+          type: "video_render",
+          timelineDsl: expect.objectContaining({
+            tracks: [
+              expect.objectContaining({
+                items: [
+                  expect.objectContaining({
+                    id: "item-video-1",
+                    type: "video",
+                    sourceNodeId: "video-node-1",
+                    assetId: "asset-row-video-1",
+                    naturalWidth: 1920,
+                    naturalHeight: 1080,
+                    src: expect.stringMatching(
+                      /^http:\/\/localhost:3000\/assets\/projects\/proj-1\/assets\/dog\.mp4\?exp=\d+&sig=/,
+                    ),
+                  }),
+                ],
+              }),
+            ],
+          }),
+        }),
+      }),
+    );
+  });
+
+  it("fails render submission before workflow when a media timeline item has no resolved src", async () => {
+    const doc = makeDoc([
+      {
+        id: "n-render",
+        type: "video",
+        data: {
+          status: "pending",
+          timelineDsl: {
+            tracks: [
+              {
+                id: "track-video",
+                name: "Video",
+                items: [
+                  {
+                    id: "item-video-1",
+                    type: "video",
+                    from: 0,
+                    durationInFrames: 120,
+                    assetId: "missing-asset-row",
+                  },
+                ],
+              },
+            ],
+          },
+        },
+      },
+    ]);
+    const env = makeEnv();
+
+    await processPendingNodes(doc, env, "proj-1", broadcast, triggerPolling);
+
+    expect(env.GENERATION_WORKFLOW.create).not.toHaveBeenCalled();
+    const node = doc.getMap("nodes").get("n-render") as any;
+    expect(node.data.status).toBe("failed");
+    expect(node.data.error).toContain("media item(s) without src");
+  });
+
+  it("formats workflow object errors when recovering orphaned tasks", async () => {
+    const doc = makeDoc([
+      {
+        id: "n-render",
+        type: "video_render",
+        data: {
+          status: "generating",
+          pendingTask: "task-render-1",
+        },
+      },
+    ]);
+    const env = makeEnv({
+      GENERATION_WORKFLOW: {
+        get: vi.fn().mockResolvedValue({
+          status: vi.fn().mockResolvedValue({
+            status: "errored",
+            error: { message: "Render server error 500: missing src" },
+          }),
+        }),
+      } as any,
+    });
+
+    await recoverOrphanedTasks(doc, env, broadcast);
+
+    const node = doc.getMap("nodes").get("n-render") as any;
+    expect(node.data.status).toBe("failed");
+    expect(node.data.error).toContain("Render server error 500: missing src");
+    expect(node.data.error).not.toContain("[object Object]");
   });
 
   it("does not submit description for audio nodes", async () => {

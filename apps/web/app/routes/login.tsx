@@ -21,7 +21,7 @@ export default function LoginRoute() {
   const otpInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    if (session.data?.user) navigate("/");
+    if (session.data?.user) navigate("/", { replace: true });
   }, [session.data, navigate]);
 
   // tick once a second to update the resend countdown
@@ -77,7 +77,7 @@ export default function LoginRoute() {
         otp,
       });
       if (err) throw new Error(err.message || "Invalid code");
-      navigate("/");
+      navigate("/", { replace: true });
     } catch (e) {
       setError((e as Error).message);
       setIsLoading(false);
@@ -99,7 +99,7 @@ export default function LoginRoute() {
   };
 
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center bg-white relative overflow-hidden">
+    <div className="flex min-h-screen flex-col items-center justify-center bg-warm-page relative overflow-hidden">
       <Background />
       <motion.div
         initial={{ opacity: 0, y: 20 }}
@@ -114,16 +114,16 @@ export default function LoginRoute() {
               whileHover={{ scale: 1.05 }}
               whileTap={{ scale: 0.95 }}
             >
-              <span className="font-display text-5xl font-bold tracking-tighter text-gray-900 leading-none">
+              <span className="font-display text-5xl font-bold tracking-tighter text-slate-950 leading-none">
                 Clash
               </span>
               <div className="h-10 w-[7px] bg-brand -skew-x-[20deg] transform origin-center" />
             </motion.div>
           </Link>
-          <h1 className="font-display text-2xl font-bold text-gray-900 mb-2">
+          <h1 className="font-display text-2xl font-bold text-slate-950 mb-2">
             {stage === "otp" ? "Check your email" : "Welcome"}
           </h1>
-          <p className="text-gray-600">
+          <p className="text-stone-600">
             {stage === "otp"
               ? `We sent a 6-digit code to ${email}`
               : "Sign in or create an account with your email"}
@@ -150,12 +150,12 @@ export default function LoginRoute() {
               onChange={(e) => setEmail(e.target.value)}
               autoComplete="email"
               required
-              className="w-full rounded-full border border-gray-200 bg-white px-5 py-3 text-base focus:border-gray-900 focus:outline-none"
+              className="w-full rounded-full border border-warm-border bg-warm-surface px-5 py-3 text-base focus:border-brand/70 focus:outline-none"
             />
             <motion.button
               type="submit"
               disabled={isLoading || !email}
-              className="flex w-full items-center justify-center gap-3 rounded-full bg-gray-900 px-6 py-4 text-base font-medium text-white transition-all hover:bg-gray-800 shadow-lg shadow-gray-900/20 disabled:opacity-70 disabled:cursor-not-allowed"
+              className="flex w-full items-center justify-center gap-3 rounded-full bg-slate-950 px-6 py-4 text-base font-medium text-white shadow-sm shadow-slate-950/10 transition-all hover:bg-slate-800 disabled:opacity-70 disabled:cursor-not-allowed"
               whileHover={!isLoading ? { scale: 1.02 } : {}}
               whileTap={!isLoading ? { scale: 0.98 } : {}}
             >
@@ -177,12 +177,12 @@ export default function LoginRoute() {
               onChange={(e) => setOtp(e.target.value.replace(/\D/g, ""))}
               autoComplete="one-time-code"
               required
-              className="w-full rounded-full border border-gray-200 bg-white px-5 py-3 text-center text-xl tracking-[0.4em] font-mono focus:border-gray-900 focus:outline-none"
+              className="w-full rounded-full border border-warm-border bg-warm-surface px-5 py-3 text-center text-xl tracking-[0.4em] font-mono focus:border-brand/70 focus:outline-none"
             />
             <motion.button
               type="submit"
               disabled={isLoading || otp.length !== 6}
-              className="flex w-full items-center justify-center gap-3 rounded-full bg-gray-900 px-6 py-4 text-base font-medium text-white transition-all hover:bg-gray-800 shadow-lg shadow-gray-900/20 disabled:opacity-70 disabled:cursor-not-allowed"
+              className="flex w-full items-center justify-center gap-3 rounded-full bg-slate-950 px-6 py-4 text-base font-medium text-white shadow-sm shadow-slate-950/10 transition-all hover:bg-slate-800 disabled:opacity-70 disabled:cursor-not-allowed"
               whileHover={!isLoading && otp.length === 6 ? { scale: 1.02 } : {}}
               whileTap={!isLoading && otp.length === 6 ? { scale: 0.98 } : {}}
             >
@@ -201,7 +201,7 @@ export default function LoginRoute() {
                   setError(null);
                   setInfo(null);
                 }}
-                className="text-gray-500 hover:text-gray-900"
+                className="text-stone-500 hover:text-slate-950"
               >
                 ← Change email
               </button>
@@ -209,7 +209,7 @@ export default function LoginRoute() {
                 type="button"
                 disabled={isLoading || secondsUntilResend > 0}
                 onClick={() => sendCode(true)}
-                className="text-gray-900 hover:underline disabled:text-gray-400 disabled:no-underline disabled:cursor-not-allowed"
+                className="text-slate-950 hover:underline disabled:text-stone-400 disabled:no-underline disabled:cursor-not-allowed"
               >
                 {secondsUntilResend > 0
                   ? `Resend in ${secondsUntilResend}s`
@@ -220,18 +220,18 @@ export default function LoginRoute() {
         )}
 
         <div className="my-6 flex items-center gap-3">
-          <div className="h-px flex-1 bg-gray-200" />
-          <span className="text-xs uppercase tracking-wide text-gray-400">
+          <div className="h-px flex-1 bg-warm-border" />
+          <span className="text-xs uppercase tracking-wide text-stone-400">
             or
           </span>
-          <div className="h-px flex-1 bg-gray-200" />
+          <div className="h-px flex-1 bg-warm-border" />
         </div>
 
         <motion.button
           type="button"
           onClick={handleGoogleSignIn}
           disabled={isLoading}
-          className="flex w-full items-center justify-center gap-3 rounded-full border border-gray-200 bg-white px-6 py-4 text-base font-medium text-gray-900 transition-all hover:bg-gray-50 disabled:opacity-70 disabled:cursor-not-allowed"
+          className="flex w-full items-center justify-center gap-3 rounded-full border border-warm-border bg-warm-surface px-6 py-4 text-base font-medium text-slate-950 transition-all hover:bg-white disabled:opacity-70 disabled:cursor-not-allowed"
           whileHover={!isLoading ? { scale: 1.02 } : {}}
           whileTap={!isLoading ? { scale: 0.98 } : {}}
         >
@@ -239,13 +239,13 @@ export default function LoginRoute() {
           <span>Continue with Google</span>
         </motion.button>
 
-        <p className="mt-6 text-center text-xs text-gray-500">
+        <p className="mt-6 text-center text-xs text-stone-500">
           By continuing, you agree to our{" "}
-          <Link to="/terms" className="font-medium text-gray-900 hover:underline">
+          <Link to="/terms" className="font-medium text-slate-950 hover:underline">
             Terms of Service
           </Link>{" "}
           and{" "}
-          <Link to="/privacy" className="font-medium text-gray-900 hover:underline">
+          <Link to="/privacy" className="font-medium text-slate-950 hover:underline">
             Privacy Policy
           </Link>
           .

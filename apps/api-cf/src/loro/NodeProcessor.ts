@@ -50,6 +50,30 @@ function getWorkflowBinding(env: Env): Workflow | undefined {
   return env.GENERATION_WORKFLOW as Workflow | undefined;
 }
 
+function stringifyWorkflowError(error: unknown): string | undefined {
+  if (!error) return undefined;
+  if (typeof error === 'string') return error;
+  if (error instanceof Error) return error.message;
+
+  if (typeof error === 'object') {
+    const record = error as Record<string, unknown>;
+    for (const key of ['message', 'error', 'cause']) {
+      const value = record[key];
+      if (typeof value === 'string' && value.length > 0) {
+        return value;
+      }
+    }
+
+    try {
+      return JSON.stringify(error);
+    } catch {
+      // Fall through to String() below.
+    }
+  }
+
+  return String(error);
+}
+
 /**
  * Check the workflow engine's view of a task. Returns a terminal status if the
  * workflow is effectively dead (errored / terminated / instance missing), or null
@@ -74,7 +98,7 @@ async function inspectWorkflowStatus(
     try {
       const inst = await wf.get(taskId);
       const s = await inst.status();
-      return { status: String(s.status ?? ''), error: s.error ? String(s.error) : undefined };
+      return { status: String(s.status ?? ''), error: stringifyWorkflowError(s.error) };
     } catch (e) {
       const msg = String(e);
       if (/not\s*found|Error 3001|doesn't exist/i.test(msg)) return { status: 'missing' };
@@ -115,6 +139,13 @@ function toPlainRecord(value: unknown): Record<string, any> {
   return value && typeof value === 'object' ? { ...(value as Record<string, unknown>) } : {};
 }
 
+function getTimelineItemLookupIds(item: Record<string, any>): string[] {
+  const ids = [item.sourceNodeId, item.assetId].filter(
+    (value): value is string => typeof value === 'string' && value.length > 0,
+  );
+  return Array.from(new Set(ids));
+}
+
 function srcToStorageKey(src: string): string {
   if (!src) return src;
 
@@ -146,11 +177,28 @@ function srcToStorageKey(src: string): string {
   return pathname.startsWith('/') ? pathname.slice(1) : pathname;
 }
 
+function findTimelineMediaItemsMissingSrc(timelineDsl: Record<string, any>): string[] {
+  const missing: string[] = [];
+  const mediaTypes = new Set(['image', 'video', 'audio', 'sticker']);
+
+  for (const track of timelineDsl.tracks || []) {
+    for (const item of track.items || []) {
+      if (!mediaTypes.has(item?.type)) continue;
+      if (typeof item.src === 'string' && item.src.trim().length > 0) continue;
+      missing.push(`${track.id ?? 'track'}:${item?.id ?? 'item'}`);
+    }
+  }
+
+  return missing;
+}
+
 /**
  * Resolve assetId references in timeline DSL items.
  * Populates src/type/naturalWidth/naturalHeight from the referenced asset nodes.
  *
- * Timeline items use a reference-based model where they only store assetId.
+ * Timeline items use a reference-based model. Modern items store sourceNodeId
+ * for the canvas node and assetId for the D1 asset row; legacy items stored the
+ * canvas node id in assetId.
  * The backend render service doesn't have access to Loro, so we must resolve
  * these references before submitting the render task.
  */
@@ -161,23 +209,46 @@ async function resolveTimelineDslReferences(
 ): Promise<Record<string, any>> {
   // Build a src -> node lookup for matching by src (for items without assetId)
   const srcToNode = new Map<string, any>();
+  const assetRowIdToNode = new Map<string, any>();
   for (const [nodeId, nodeData] of nodesMap.entries()) {
     const data = toPlainRecord(nodeData?.data || nodeData);
     const src = typeof data.src === 'string' ? data.src : undefined;
     if (src) {
       srcToNode.set(src, { nodeId, ...nodeData });
+      srcToNode.set(srcToStorageKey(src), { nodeId, ...nodeData });
+    }
+
+    const assetRowId = typeof data.assetId === 'string' ? data.assetId : undefined;
+    if (assetRowId) {
+      assetRowIdToNode.set(assetRowId, { nodeId, ...nodeData });
     }
   }
 
   const assetCache = new Map<string, Awaited<ReturnType<typeof getAssetById>>>();
+  const getCachedAsset = async (assetRowId: string) => {
+    if (!assetCache.has(assetRowId)) {
+      assetCache.set(assetRowId, await getAssetById(env.DB, assetRowId));
+    }
+    return assetCache.get(assetRowId) ?? null;
+  };
 
   const resolvedTracks = await Promise.all((timelineDsl.tracks || []).map(async (track: any) => {
     const resolvedItems = await Promise.all((track.items || []).map(async (item: any) => {
       let assetNode: any = null;
 
-      // 1. Try to find by assetId first
-      if (item.assetId) {
-        assetNode = nodesMap.get(item.assetId);
+      // 1. Try explicit canvas node id, D1 asset id, then legacy assetId-as-node-id.
+      for (const lookupId of getTimelineItemLookupIds(item)) {
+        const nodeById = nodesMap.get(lookupId);
+        if (nodeById) {
+          assetNode = { nodeId: lookupId, ...nodeById };
+          break;
+        }
+
+        const nodeByAssetRowId = assetRowIdToNode.get(lookupId);
+        if (nodeByAssetRowId) {
+          assetNode = nodeByAssetRowId;
+          break;
+        }
       }
 
       // 2. If no assetId or not found, try to match by src
@@ -202,15 +273,14 @@ async function resolveTimelineDslReferences(
 
       if (assetNode) {
         const assetData = toPlainRecord(assetNode.data || assetNode);
-        const assetRowId = typeof assetData.assetId === 'string' ? assetData.assetId : undefined;
-        let assetRow = null;
-
-        if (assetRowId) {
-          if (!assetCache.has(assetRowId)) {
-            assetCache.set(assetRowId, await getAssetById(env.DB, assetRowId));
-          }
-          assetRow = assetCache.get(assetRowId) ?? null;
-        }
+        const itemAssetId = typeof item.assetId === 'string' ? item.assetId : undefined;
+        const itemAssetIdIsNodeId = itemAssetId ? nodesMap.get(itemAssetId) != null : false;
+        const assetRowId = typeof assetData.assetId === 'string'
+          ? assetData.assetId
+          : itemAssetId && !itemAssetIdIsNodeId
+            ? itemAssetId
+            : undefined;
+        const assetRow = assetRowId ? await getCachedAsset(assetRowId) : null;
 
         const assetType = assetNode.type || assetRow?.kind || assetData.type || item.type;
 
@@ -236,10 +306,23 @@ async function resolveTimelineDslReferences(
           ...(naturalHeight != null && { naturalHeight }),
           ...(assetData.aspectRatio && { aspectRatio: assetData.aspectRatio }),
         };
-      } else {
-        log.warn(`No asset found for item id=${item.id}, src=${item.src?.slice(0, 50) || 'none'}`);
       }
 
+      const itemAssetId = typeof item.assetId === 'string' ? item.assetId : undefined;
+      if (itemAssetId) {
+        const assetRow = await getCachedAsset(itemAssetId);
+        if (assetRow) {
+          return {
+            ...item,
+            src: assetRow.srcR2Key || item.src,
+            type: assetRow.kind || item.type,
+            ...(assetRow.metadata?.width != null && { naturalWidth: assetRow.metadata.width }),
+            ...(assetRow.metadata?.height != null && { naturalHeight: assetRow.metadata.height }),
+          };
+        }
+      }
+
+      log.warn(`No asset found for item id=${item.id}, src=${item.src?.slice(0, 50) || 'none'}`);
       return item;
     }));
 
@@ -375,6 +458,14 @@ export async function processPendingNodes(
               item.src = `${mediaBase}${signedPath}`;
             }
           }
+        }
+
+        const missingMediaSrc = findTimelineMediaItemsMissingSrc(resolvedDsl);
+        if (missingMediaSrc.length > 0) {
+          const error = `Timeline render has media item(s) without src: ${missingMediaSrc.slice(0, 5).join(', ')}`;
+          appendNodeLog(doc, nodeId, `FAILED: ${error}`, broadcast);
+          updateNodeData(doc, nodeId, { pendingTask: undefined, pendingTaskAt: undefined, status: Status.Failed, error }, broadcast);
+          continue;
         }
 
         const genParams: GenerationParams = {

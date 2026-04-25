@@ -337,7 +337,7 @@ export function VideoEditorProvider({
                 <VideoEditorOverlay>
                     <Suspense
                         fallback={
-                            <div className="flex h-full w-full items-center justify-center bg-[#fbfaf8] text-sm font-medium text-slate-500">
+                            <div className="flex h-full w-full items-center justify-center bg-[#fffdfb] text-sm font-medium text-slate-500">
                                 Loading Editor...
                             </div>
                         }

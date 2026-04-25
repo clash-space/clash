@@ -6,7 +6,7 @@ import {
 } from '@master-clash/remotion-core';
 import type { TextItem, SolidItem } from '@master-clash/remotion-core';
 
-const panelClassName = 'flex h-full flex-col overflow-hidden bg-[#fbfaf8]';
+const panelClassName = 'flex h-full flex-col overflow-hidden bg-[#fffdfb]';
 const panelHeaderClassName = 'flex items-center justify-between border-b border-slate-200/80 bg-white/95 px-4 py-3';
 const sectionTitleClassName = 'mb-3 text-xs font-bold uppercase tracking-wide text-slate-500';
 const labelClassName = 'mb-1.5 block text-xs font-medium text-slate-500';

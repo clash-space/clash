@@ -334,7 +334,7 @@ export function ChatInput({
 
             {/* Main input card */}
             <div
-                className={`bg-white border border-slate-200 shadow-sm overflow-hidden transition-shadow hover:shadow-md focus-within:shadow-md focus-within:border-slate-300 ${isHero ? 'rounded-[2rem] p-2' : 'rounded-2xl'}`}
+                className={`clash-chat-input-surface ${isHero ? 'rounded-[2rem] p-2' : 'rounded-2xl'}`}
                 onDrop={handleDrop}
                 onDragOver={(e) => e.preventDefault()}
             >
@@ -350,19 +350,19 @@ export function ChatInput({
                                 />
                             ))}
                         </div>
-                        <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
-                            <button onClick={cleanup} className="w-8 h-8 rounded-full flex items-center justify-center text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors">
+                        <div className="clash-chat-input-actions flex items-center justify-end gap-2 pt-2">
+                            <button onClick={cleanup} className="clash-chat-input-icon-button w-8 h-8 rounded-full flex items-center justify-center text-slate-400 hover:text-slate-700 transition-colors">
                                 <X className="w-4 h-4" weight="bold" />
                             </button>
-                            <button onClick={confirmVoice} className="w-8 h-8 rounded-full flex items-center justify-center text-slate-600 hover:text-slate-800 hover:bg-slate-100 transition-colors">
+                            <button onClick={confirmVoice} className="clash-chat-input-icon-button w-8 h-8 rounded-full flex items-center justify-center text-slate-700 hover:text-slate-950 transition-colors">
                                 <Check className="w-4 h-4" weight="bold" />
                             </button>
                         </div>
                     </div>
                 ) : (
                     /* ─── Rich text input ─── */
-                    <div>
-                        <div className={`milkdown-chat-input ${isHero ? 'min-h-[100px]' : 'min-h-[40px] max-h-[200px]'} overflow-y-auto`}>
+                    <div className={isHero ? 'flex min-h-[142px] flex-col' : ''}>
+                        <div className={`clash-chat-input-editor milkdown-chat-input w-full text-left ${isHero ? 'min-h-[100px] flex-1 px-5 pt-4' : 'min-h-[40px] max-h-[200px]'} overflow-y-auto`}>
                             <MilkdownEditor
                                 ref={editorRef}
                                 value={input}
@@ -384,13 +384,13 @@ export function ChatInput({
                         )}
 
                         {/* Bottom toolbar */}
-                        <div className={`flex items-center justify-between pb-2.5 ${isHero ? 'px-5' : 'px-4'}`}>
+                        <div className={`clash-chat-input-actions flex items-center justify-between pb-2.5 pt-1.5 ${isHero ? 'px-5' : 'px-4'}`}>
                             <div className="flex items-center gap-1">
                                 <button
                                     type="button"
                                     onClick={() => fileInputRef.current?.click()}
                                     disabled={isBusy}
-                                    className="-ml-1.5 w-7 h-7 rounded-lg flex items-center justify-center text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors disabled:opacity-30"
+                                    className="clash-chat-input-icon-button -ml-1.5 w-7 h-7 rounded-lg flex items-center justify-center text-slate-400 hover:text-slate-700 transition-colors disabled:opacity-30"
                                     title="Attach files"
                                 >
                                     <Plus className="w-4 h-4" weight="bold" />
@@ -407,7 +407,7 @@ export function ChatInput({
                                     type="button"
                                     onClick={startListening}
                                     disabled={isBusy}
-                                    className="w-7 h-7 rounded-lg flex items-center justify-center text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors disabled:opacity-30"
+                                    className="clash-chat-input-icon-button w-7 h-7 rounded-lg flex items-center justify-center text-slate-400 hover:text-slate-700 transition-colors disabled:opacity-30"
                                     title="Voice input"
                                 >
                                     <Microphone className="w-4 h-4" weight="bold" />
@@ -428,8 +428,8 @@ export function ChatInput({
                                         className={`w-7 h-7 rounded-full flex items-center justify-center transition-colors ${isCreatingSession || uploading > 0
                                             ? 'bg-slate-800 text-white'
                                             : canSend
-                                                ? 'bg-slate-800 text-white hover:bg-slate-700'
-                                                : 'bg-slate-200 text-slate-400'
+                                                ? 'bg-slate-900 text-white hover:bg-slate-800'
+                                                : 'bg-slate-100 text-slate-400'
                                             }`}
                                     >
                                         {isCreatingSession || uploading > 0 ? (

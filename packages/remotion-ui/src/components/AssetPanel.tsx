@@ -200,7 +200,7 @@ export const AssetPanel: React.FC<AssetPanelProps> = ({
 
   return (
 
-    <div className="relative flex h-full flex-col bg-[#fbfaf8]">
+    <div className="relative flex h-full flex-col bg-[#fffdfb]">
       <div className="border-b border-slate-200/80 bg-white/95 px-4 py-3">
         <div className="flex items-center justify-between">
           {onBack ? (

@@ -6,14 +6,14 @@ export default function Background() {
       <div
         className="absolute inset-0"
         style={{
-          backgroundImage: 'radial-gradient(#d8cdc2 1px, transparent 1px)',
+          backgroundImage: 'radial-gradient(#d7d2cc 1px, transparent 1px)',
           backgroundSize: '24px 24px',
-          opacity: 0.5
+          opacity: 0.32
         }}
       />
 
       {/* Artistic Node Connections - Subtle Flow Lines */}
-      <div className="absolute inset-0 opacity-20">
+      <div className="absolute inset-0 opacity-[0.05]">
         <svg className="w-full h-full" xmlns="http://www.w3.org/2000/svg">
           <defs>
             <pattern id="grid-connections" x="0" y="0" width="400" height="400" patternUnits="userSpaceOnUse">
@@ -33,7 +33,7 @@ export default function Background() {
       </div>
 
       {/* Gradient Mask for Depth */}
-      <div className="absolute inset-0 bg-gradient-to-b from-transparent via-warm-page/50 to-warm-page" />
+      <div className="absolute inset-0 bg-gradient-to-b from-transparent via-transparent to-warm-page/45" />
     </div>
   );
 }
