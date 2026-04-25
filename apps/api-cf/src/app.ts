@@ -19,6 +19,10 @@ import { v1Routes } from "./routes/v1/index";
 import { assetRoutes } from "./routes/assets";
 import { thumbnailRoutes } from "./routes/thumbnails";
 import { betterAuthRoutes } from "./routes/better-auth";
+import { projectsD1Routes } from "./routes/projects-d1";
+import { internalProjectsContextRoutes } from "./routes/internal-projects-context";
+import { settingsD1Routes } from "./routes/settings-d1";
+import { marketplaceRoutes } from "./routes/marketplace";
 import { setPlugins, getPlugins } from "./plugins/registry";
 import type { Plugin } from "./plugins/types";
 
@@ -64,6 +68,12 @@ export function createApp(opts: CreateAppOptions = {}): Hono<{ Bindings: Env }> 
 
   // ─── Public REST API v1 ─────────────────────────────────────
   app.route("/api/v1", v1Routes);
+
+  // ─── OSS web's /api/* endpoints (ported from apps/web) ──────
+  app.route("/api/projects", projectsD1Routes);
+  app.route("/api/internal/projects", internalProjectsContextRoutes);
+  app.route("/api/settings", settingsD1Routes);
+  app.route("/api/marketplace", marketplaceRoutes);
 
   // ─── REST API routes ────────────────────────────────────────
   app.route("/", api);
