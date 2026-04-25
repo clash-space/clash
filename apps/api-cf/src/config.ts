@@ -48,4 +48,12 @@ export interface Env {
   WORKER_PUBLIC_URL?: string;
   /** AES-GCM key for encrypting/decrypting user variables (action secrets) */
   ACTION_SECRET_KEY?: string;
+  // Better Auth — handler runs in this Worker now (apps/api-cf/src/auth.ts).
+  KV?: KVNamespace<string>;
+  BETTER_AUTH_URL?: string;
+  BETTER_AUTH_SECRET?: string;
+  AUTH_SECRET?: string;
+  AUTH_GOOGLE_ID?: string;
+  AUTH_GOOGLE_SECRET?: string;
+  RESEND_API_KEY?: string;
 }

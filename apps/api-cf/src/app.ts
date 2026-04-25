@@ -18,6 +18,7 @@ import { api } from "./routes/index";
 import { v1Routes } from "./routes/v1/index";
 import { assetRoutes } from "./routes/assets";
 import { thumbnailRoutes } from "./routes/thumbnails";
+import { betterAuthRoutes } from "./routes/better-auth";
 import { setPlugins, getPlugins } from "./plugins/registry";
 import type { Plugin } from "./plugins/types";
 
@@ -57,6 +58,9 @@ export function createApp(opts: CreateAppOptions = {}): Hono<{ Bindings: Env }> 
   app.route("/assets", assetRoutes);
   app.route("/upload", assetRoutes);
   app.route("/thumbnails", thumbnailRoutes);
+
+  // ─── Better Auth — runs server-side so frontends just proxy ──
+  app.route("/api/better-auth", betterAuthRoutes);
 
   // ─── Public REST API v1 ─────────────────────────────────────
   app.route("/api/v1", v1Routes);
