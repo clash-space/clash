@@ -275,7 +275,9 @@ const VideoNode = ({ data, selected, id }: NodeProps<Node<Record<string, any>>>)
             >
                 {status === 'draft' ? (
                     <DraftPlaceholder nodeId={id} modality="video" />
-                ) : (status === 'completed') && (videoUrl || data.previewUrl) ? (
+                ) : videoUrl || (status === 'completed' && data.previewUrl) ? (
+                    // Same as ImageNode: prefer the resolved asset over a stale
+                    // `status:'failed'` state (asset row + R2 blob are intact).
                     <div className="relative" style={{ width: '100%', height: '100%' }}>
                         <video
                             ref={videoRef}

@@ -82,12 +82,15 @@ export function computeAdoption({
         images: refImgs,
         videos: refVids,
         audios: refAuds,
+        imageAssetIds: refImgAssetIds,
+        videoAssetIds: refVidAssetIds,
+        audioAssetIds: refAudAssetIds,
     } = selectedModel
         ? partitionRefs(
-            refNodes as Array<{ type?: string; data?: { src?: string; content?: string; prompt?: string; label?: string } }>,
+            refNodes as Array<{ type?: string; data?: { src?: string; content?: string; prompt?: string; label?: string; assetId?: string } }>,
             selectedModel,
         )
-        : { texts: [], images: [], videos: [], audios: [] };
+        : { texts: [], images: [], videos: [], audios: [], imageAssetIds: [], videoAssetIds: [], audioAssetIds: [] };
 
     const prompt = composePromptWithTextRefs(rawPrompt, refTexts);
     if (!prompt.trim()) return { ok: false, error: 'No prompt' };
@@ -131,6 +134,7 @@ export function computeAdoption({
                 status: 'pending',
                 prompt: promptText,
                 referenceImageUrls: refImgs,
+                referenceImageAssetIds: refImgAssetIds,
                 aspectRatio: resolveAspectRatio(modelId, modelParams),
                 model: modelId,
                 modelId,
@@ -151,8 +155,11 @@ export function computeAdoption({
                 status: 'pending',
                 prompt: promptText,
                 referenceImageUrls: refImgs,
+                referenceImageAssetIds: refImgAssetIds,
                 referenceVideoUrls: refVids,
+                referenceVideoAssetIds: refVidAssetIds,
                 referenceAudioUrls: refAuds,
+                referenceAudioAssetIds: refAudAssetIds,
                 duration,
                 model: modelId,
                 modelId,
@@ -187,6 +194,9 @@ export function computeAdoption({
                 content: '',
                 status: 'pending',
                 prompt: promptText,
+                referenceImageUrls: refImgs,
+                referenceVideoUrls: refVids,
+                referenceAudioUrls: refAuds,
                 model: modelId,
                 modelId,
                 modelParams,

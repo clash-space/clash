@@ -5,6 +5,7 @@ import { varsRoutes } from "./vars";
 import { sessionRoutes } from "./sessions";
 import { cliAuthRoutes } from "./cli-auth";
 import { assetsRoutes } from "./assets";
+import { editsRoutes } from "./edits";
 
 export const v1Routes = new Hono<{ Bindings: Env }>();
 
@@ -13,6 +14,7 @@ v1Routes.route("/vars", varsRoutes);
 v1Routes.route("/sessions", sessionRoutes);
 v1Routes.route("/cli-auth", cliAuthRoutes);
 v1Routes.route("/assets", assetsRoutes);
+v1Routes.route("/edits", editsRoutes);
 
 // Health check
 v1Routes.get("/", (c) => c.json({ version: "v1", status: "ok" }));

@@ -49,6 +49,49 @@ export const ACTION_TYPE = {
 } as const;
 
 /**
+ * Edit-node ReactFlow types. Distinct from action-badge generation: these
+ * carry their own UI (full-screen editor modal) and copy-on-write semantics
+ * — output is always a fresh asset, source is left untouched.
+ */
+export const EDIT_KIND = {
+  ImageEditor: 'image-editor',
+  VideoClipper: 'video-clipper',
+} as const;
+export type EditKind = (typeof EDIT_KIND)[keyof typeof EDIT_KIND];
+
+/** Pixel-space crop rectangle on the source asset's natural dimensions. */
+export const CropRectSchema = z.object({
+  x: z.number().int().nonnegative(),
+  y: z.number().int().nonnegative(),
+  width: z.number().int().positive(),
+  height: z.number().int().positive(),
+});
+export type CropRect = z.infer<typeof CropRectSchema>;
+
+/** Parameters for `image-editor`. Both fields optional → identity edit. */
+export const ImageEditParamsSchema = z.object({
+  crop: CropRectSchema.optional(),
+  /** Clockwise degrees; only multiples of 90 are honored at apply time. */
+  rotation: z.union([z.literal(0), z.literal(90), z.literal(180), z.literal(270)]).optional(),
+});
+export type ImageEditParams = z.infer<typeof ImageEditParamsSchema>;
+
+/** Parameters for `video-clipper`. */
+export const VideoClipParamsSchema = z.discriminatedUnion('mode', [
+  z.object({
+    mode: z.literal('screenshot'),
+    /** Time within the source video, in seconds. */
+    frameTimeSec: z.number().nonnegative(),
+  }),
+  z.object({
+    mode: z.literal('crop'),
+    startSec: z.number().nonnegative(),
+    endSec: z.number().positive(),
+  }),
+]);
+export type VideoClipParams = z.infer<typeof VideoClipParamsSchema>;
+
+/**
  * Map from agent-facing node type names to the ReactFlow type + actionType
  * used in Loro and the frontend.
  */

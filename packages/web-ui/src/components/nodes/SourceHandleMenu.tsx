@@ -22,7 +22,7 @@ const SourceHandleMenu = ({ nodeId }: SourceHandleMenuProps) => {
     const [cloneDialog, setCloneDialog] = useState<TrajectorySubgraph | null>(null);
     const leaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const { projectId } = useProject();
-    const { addEdges, setNodes } = useReactFlow();
+    const { addEdges } = useReactFlow();
     const allNodes = useNodes();
     const allEdges = useEdges();
     const loroSync = useOptionalLoroSyncContext();
@@ -35,7 +35,7 @@ const SourceHandleMenu = ({ nodeId }: SourceHandleMenuProps) => {
         },
         [loroSync]
     );
-    const { addNodeWithAutoLayout } = useLayoutManager({ onNodesMutated });
+    const { addNodeWithAutoLayout, addNodeWithLayout } = useLayoutManager({ onNodesMutated });
 
     // Filter options by this source's modality — e.g. video source shouldn't
     // offer Image Gen because no mainstream image model accepts video refs.
@@ -141,10 +141,21 @@ const SourceHandleMenu = ({ nodeId }: SourceHandleMenuProps) => {
 
     const handleCloneApply = useCallback(
         ({ newNodes, newEdges }: { newNodes: RFNode[]; newEdges: import('@xyflow/react').Edge[] }) => {
-            if (newNodes.length > 0) {
-                setNodes((nds) => [...nds, ...newNodes]);
-                for (const n of newNodes) {
-                    if (loroSync?.connected) loroSync.addNode(n.id, n);
+            // Route every cloned node through the canonical layout pipeline
+            // (same path the toolbar "+" / spawnDraft uses) so the layout
+            // manager handles collision avoidance against existing canvas
+            // nodes, group auto-scaling, and chain-reaction collision
+            // resolution. Each call sees the prior insertions, so multiple
+            // clones in one batch don't stack on top of each other either.
+            for (const n of newNodes) {
+                if (!n.type) continue;
+                const placed = addNodeWithLayout(
+                    { id: n.id, type: n.type, data: n.data },
+                    n.position,
+                    undefined,
+                );
+                if (placed && loroSync?.connected) {
+                    loroSync.addNode(placed.id, placed);
                 }
             }
             for (const ed of newEdges) {
@@ -153,7 +164,7 @@ const SourceHandleMenu = ({ nodeId }: SourceHandleMenuProps) => {
             }
             setCloneDialog(null);
         },
-        [setNodes, addEdges, loroSync],
+        [addNodeWithLayout, addEdges, loroSync],
     );
 
     return (

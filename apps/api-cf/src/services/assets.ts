@@ -9,7 +9,7 @@
  * directly — only routes that establish user identity may call createAsset.
  */
 
-import type { AssetKind } from "@clash/shared-types/assets";
+import type { AssetKind, AssetSource } from "@clash/shared-types/assets";
 import { log } from "../logger";
 
 /**
@@ -42,6 +42,11 @@ export interface CreateAssetParams {
   sourceModel?: string;
   sourcePrompt?: string;
   sourceTaskId?: string;
+  /**
+   * Upstream assets that contributed to this one (lineage). Empty / undefined
+   * stores NULL — distinguishes "no lineage recorded" from "explicitly empty".
+   */
+  sources?: AssetSource[];
   /** Override id (for deterministic re-create on workflow retries). */
   id?: string;
 }
@@ -56,6 +61,7 @@ export interface AssetRecord {
   sourceModel: string | null;
   sourcePrompt: string | null;
   sourceTaskId: string | null;
+  sources: AssetSource[] | null;
   createdAt: number;
   updatedAt: number;
 }
@@ -64,10 +70,12 @@ const SELECT_COLS =
   `id, user_id as userId, kind, src_r2_key as srcR2Key, cover_r2_key as coverR2Key,
    metadata,
    source_model as sourceModel, source_prompt as sourcePrompt, source_task_id as sourceTaskId,
+   sources,
    created_at as createdAt, updated_at as updatedAt`;
 
-interface AssetRow extends Omit<AssetRecord, "metadata"> {
+interface AssetRow extends Omit<AssetRecord, "metadata" | "sources"> {
   metadata: string | null;
+  sources: string | null;
 }
 
 function hydrate(row: AssetRow | null | undefined): AssetRecord | null {
@@ -80,7 +88,15 @@ function hydrate(row: AssetRow | null | undefined): AssetRecord | null {
       log.warn("asset.metadata JSON parse failed", { id: row.id, error: String(e) });
     }
   }
-  return { ...row, metadata };
+  let sources: AssetSource[] | null = null;
+  if (row.sources) {
+    try {
+      sources = JSON.parse(row.sources) as AssetSource[];
+    } catch (e) {
+      log.warn("asset.sources JSON parse failed", { id: row.id, error: String(e) });
+    }
+  }
+  return { ...row, metadata, sources };
 }
 
 /**
@@ -99,14 +115,20 @@ export async function createAsset(
       ? JSON.stringify(params.metadata)
       : null;
 
+  const sourcesJson =
+    params.sources && params.sources.length > 0
+      ? JSON.stringify(params.sources)
+      : null;
+
   await db
     .prepare(
       `INSERT OR REPLACE INTO assets (
          id, user_id, kind, src_r2_key, cover_r2_key,
          metadata,
          source_model, source_prompt, source_task_id,
+         sources,
          created_at, updated_at
-       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     )
     .bind(
       id,
@@ -118,6 +140,7 @@ export async function createAsset(
       params.sourceModel ?? null,
       params.sourcePrompt ?? null,
       params.sourceTaskId ?? null,
+      sourcesJson,
       now,
       now,
     )

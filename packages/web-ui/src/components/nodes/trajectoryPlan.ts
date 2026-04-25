@@ -1,5 +1,8 @@
 import type { Node as RFNode, Edge } from '@xyflow/react';
 import { generateSemanticId } from '@clash/web-ui/lib/utils/semanticId';
+import { getAbsoluteRect, getAbsolutePosition, rectUnion } from '@clash/shared-layout';
+import type { LayoutNode } from '@clash/shared-layout';
+import { getNodeSizeWithData } from '@clash/web-ui/lib/layout/hooks/useLayoutManager';
 
 export interface TrajectorySubgraph {
     /** Nodes to include in the preview: heads (reused from canvas) + cloneset (to be cloned). */
@@ -37,7 +40,6 @@ export function computeTrajectory(leafId: string, rfNodes: RFNode[], edges: Edge
     const headIds = new Set<string>();
     const queue: string[] = [leafId];
 
-    // If the leaf itself is a head (root upload), there's no trajectory.
     if (!hasActionParent(leafId, nodeMap, incoming)) {
         headIds.add(leafId);
     }
@@ -54,8 +56,6 @@ export function computeTrajectory(leafId: string, rfNodes: RFNode[], edges: Edge
             if (parent.type === 'action-badge') {
                 queue.push(parent.id);
             } else {
-                // Data node. Head if it has no action parent anywhere; otherwise
-                // a waypoint to keep exploring.
                 if (hasActionParent(parent.id, nodeMap, incoming)) {
                     queue.push(parent.id);
                 } else {
@@ -68,16 +68,94 @@ export function computeTrajectory(leafId: string, rfNodes: RFNode[], edges: Edge
     return { nodeIds, headIds, target: leafId };
 }
 
+const DRAFT_CONTENT_TYPES = new Set(['image', 'video', 'audio', 'text']);
+
+/**
+ * Canonical action-badge data — mirrors what `ProjectEditor.addNode('action-badge-*', ...)`
+ * writes when the user picks a fresh badge from the toolbar. Anything not in
+ * this list (hasRun, preAllocatedAssetId, status, referenceImageOrder,
+ * pendingTask, cascade flags, …) is intentionally dropped so the clone starts
+ * from a clean execution state.
+ */
+function buildClonedActionBadgeData(orig: Record<string, unknown>): Record<string, unknown> {
+    const out: Record<string, unknown> = {};
+    if (orig.label !== undefined) out.label = orig.label;
+    if (orig.actionType !== undefined) out.actionType = orig.actionType;
+    if (orig.modelId !== undefined) out.modelId = orig.modelId;
+    if (orig.model !== undefined) out.model = orig.model;
+    if (orig.modelParams && typeof orig.modelParams === 'object') {
+        out.modelParams = { ...(orig.modelParams as Record<string, unknown>) };
+    }
+    if (orig.content !== undefined) out.content = orig.content;
+    if (orig.prompt !== undefined) out.prompt = orig.prompt;
+    if (orig.customActionId !== undefined) out.customActionId = orig.customActionId;
+    if (orig.customActionParams && typeof orig.customActionParams === 'object') {
+        out.customActionParams = { ...(orig.customActionParams as Record<string, unknown>) };
+    }
+    return out;
+}
+
+/**
+ * Canonical fresh-draft data for image/video/audio/text — mirrors
+ * `useSpawnPendingAsset.buildShape('draft', …)`. Refs/aspect/model are
+ * re-resolved at adopt time from the upstream action-badge's live state, so
+ * we don't carry them on the draft itself.
+ */
+function buildClonedDraftContentData(type: string, orig: Record<string, unknown>): Record<string, unknown> {
+    const label = orig.label ?? `Draft ${type}`;
+    const promptText = (orig.prompt as string) ?? '';
+    if (type === 'text') {
+        return { label, content: '', status: 'draft', prompt: promptText };
+    }
+    const out: Record<string, unknown> = { label, src: '', status: 'draft', prompt: promptText };
+    // Carry the intended aspect ratio so the draft placeholder sizes the
+    // same as the original — `getNodeSizeWithData` reads this when computing
+    // node width/height. Adoption will overwrite it with whatever the
+    // upstream action-badge resolves to at run time.
+    if (orig.aspectRatio !== undefined) out.aspectRatio = orig.aspectRatio;
+    return out;
+}
+
+/**
+ * Canonical "completed content" data for a cloned head — only the display
+ * fields a finished asset needs. Run-state, pendingTask, error, log etc.
+ * never carry over.
+ */
+function buildClonedHeadContentData(type: string, orig: Record<string, unknown>): Record<string, unknown> {
+    const out: Record<string, unknown> = {
+        label: orig.label,
+        status: orig.status ?? 'completed',
+    };
+    if (orig.prompt !== undefined) out.prompt = orig.prompt;
+    if (type === 'text') {
+        out.content = orig.content ?? '';
+        return out;
+    }
+    if (orig.src !== undefined) out.src = orig.src;
+    if (orig.assetId !== undefined) out.assetId = orig.assetId;
+    if (orig.description !== undefined) out.description = orig.description;
+    if (orig.naturalWidth !== undefined) out.naturalWidth = orig.naturalWidth;
+    if (orig.naturalHeight !== undefined) out.naturalHeight = orig.naturalHeight;
+    if (orig.poster !== undefined) out.poster = orig.poster;
+    if (orig.coverUrl !== undefined) out.coverUrl = orig.coverUrl;
+    if (orig.thumbnail !== undefined) out.thumbnail = orig.thumbnail;
+    if (orig.duration !== undefined) out.duration = orig.duration;
+    if (orig.aspectRatio !== undefined) out.aspectRatio = orig.aspectRatio;
+    return out;
+}
+
 /**
  * Turn the final preview graph into a clone payload.
  *
- * Fork semantics: the clone is a fully independent trajectory — **every**
- * node in the preview gets a fresh id, including heads. Heads (no incoming
- * edge in the preview) preserve their data verbatim (src / assetId / etc.)
- * so they start life as their own completed-material copy; non-heads are
- * stripped to `status: 'draft'` so they show as empty placeholders the
- * user will Build. The original canvas nodes are never touched — deleting
- * or mutating one side doesn't leak into the other.
+ * Each new node is built one-by-one through the same canonical field set its
+ * normal "+" / spawn-draft pipeline would write — never via bulk `{...old}`
+ * spread. That keeps clones independent of whatever ad-hoc fields the
+ * original execution accumulated (pendingTask, log, hasRun, …) and means
+ * adding a new field elsewhere doesn't silently leak into clones.
+ *
+ * Heads (no preview-incoming edge) are cloned too: action-badges as fresh
+ * badges with the same prompt/model, content nodes as completed assets
+ * pointing at the same R2 src.
  */
 export async function applyTrajectory(
     previewNodes: RFNode[],
@@ -97,87 +175,73 @@ export async function applyTrajectory(
         else headIds.add(n.id);
     }
 
-    // Must have at least one cloneset node — otherwise we'd just copy a
-    // completed material for no reason.
     if (clonesetIds.size === 0) return { newNodes: [], newEdges: [] };
 
-    // Fresh id for every preview node (heads included).
     const idMap = new Map<string, string>();
     for (const id of [...headIds, ...clonesetIds]) {
         idMap.set(id, await generateSemanticId(projectId));
     }
 
-    // Y offset — stack below the union bounding box so the clone doesn't collide.
-    let bboxTop = Infinity;
-    let bboxBottom = -Infinity;
-    for (const n of previewNodes) {
-        const src = originalNodeById.get(n.id);
-        if (!src) continue;
-        const y = src.position?.y ?? 0;
-        const h = (typeof src.height === 'number' ? src.height : 0)
-            || (typeof src.style?.height === 'number' ? (src.style.height as number) : 0)
-            || 300;
-        bboxTop = Math.min(bboxTop, y);
-        bboxBottom = Math.max(bboxBottom, y + h);
-    }
-    const yOffset = bboxTop === Infinity ? 400 : (bboxBottom - bboxTop) + 80;
-
-    const draftStatusTypes = new Set(['image', 'video', 'text']);
+    // Compute the union bounding box of the originals via the canonical
+    // layout helpers — they walk parent hierarchy (group offsets) and use
+    // the same per-type default sizes (`getNodeSize`) the rest of the
+    // canvas uses, so a chain entirely made of unmeasured drafts still
+    // gets a realistic 400×400-per-node bbox instead of the old 300×300
+    // fallback that caused clones to overlap their originals.
+    const allCanvasNodes = Array.from(originalNodeById.values()) as unknown as LayoutNode[];
+    const previewRects = previewNodes
+        .map((n) => originalNodeById.get(n.id))
+        .filter((n): n is RFNode => !!n)
+        .map((n) => getAbsoluteRect(n as unknown as LayoutNode, allCanvasNodes));
+    const bbox = rectUnion(previewRects);
+    const yOffset = bbox ? bbox.height + 80 : 400;
 
     const newNodes: RFNode[] = [];
     for (const oldId of [...headIds, ...clonesetIds]) {
         const old = originalNodeById.get(oldId);
-        if (!old) continue;
+        if (!old || !old.type) continue;
         const newId = idMap.get(oldId)!;
-
         const origData = (old.data ?? {}) as Record<string, unknown>;
-        const nextData: Record<string, unknown> = { ...origData };
-        // Strip run-state flags regardless of role — these are tied to the
-        // original execution, not to the content.
-        delete nextData.runRequested;
-        delete nextData.cascadeToken;
-        delete nextData.cascadeCancel;
-        delete nextData.cascadePropagated;
-        delete nextData.failureReason;
-        delete nextData.openPanel;
 
-        if (headIds.has(oldId)) {
-            // Head: fresh copy, retain completed content (src/assetId/thumbnails).
-            // Clear `hasRun` defensively — a head isn't expected to be an
-            // action, but if one sneaks through, don't carry the frozen flag.
-            delete nextData.hasRun;
-        } else if (old.type === 'action-badge') {
-            delete nextData.hasRun;
-            delete nextData.preAllocatedAssetId;
-            delete nextData.status;
-            delete nextData.referenceImageOrder;
-        } else if (old.type && draftStatusTypes.has(old.type)) {
-            nextData.status = 'draft';
-            nextData.src = '';
-            delete nextData.assetId;
-            delete nextData.taskId;
-            delete nextData.description;
-            delete nextData.naturalWidth;
-            delete nextData.naturalHeight;
-            delete nextData.poster;
-            delete nextData.coverUrl;
-            delete nextData.thumbnail;
+        let nextData: Record<string, unknown> | null = null;
+        if (old.type === 'action-badge') {
+            nextData = buildClonedActionBadgeData(origData);
+        } else if (DRAFT_CONTENT_TYPES.has(old.type)) {
+            nextData = headIds.has(oldId)
+                ? buildClonedHeadContentData(old.type, origData)
+                : buildClonedDraftContentData(old.type, origData);
+        } else {
+            // Unsupported type for clone (e.g. group, video-editor) — skip.
+            continue;
         }
 
+        // Cloned nodes live at top level (no parentId — see canonical builders),
+        // so the original's coordinates have to be resolved to absolute first;
+        // a relative position from inside a group would otherwise land the
+        // clone at the wrong canvas spot.
+        const absPos = getAbsolutePosition(old as unknown as LayoutNode, allCanvasNodes);
+        const position = {
+            x: absPos.x,
+            y: absPos.y + yOffset,
+        };
+
+        // Same sizing logic the canonical addNodeWithAutoLayout uses: lets
+        // image/video drafts size by aspectRatio (or naturalWidth/Height for
+        // heads), with a per-type default fallback. Without this, RF
+        // measures the node at content min-size and the placeholder collapses
+        // to a few-pixel box.
+        const size = getNodeSizeWithData(old.type, nextData);
+
         newNodes.push({
-            ...old,
             id: newId,
-            position: {
-                x: old.position?.x ?? 0,
-                y: (old.position?.y ?? 0) + yOffset,
-            },
+            type: old.type,
+            position,
             data: nextData,
+            width: size.width,
+            height: size.height,
         });
     }
 
-    // Every edge in the preview maps cleanly to the new id space — both
-    // endpoints are guaranteed to be in `idMap` (heads + clonesets cover all
-    // preview nodes).
     const newEdges: Edge[] = [];
     for (const e of previewEdges) {
         const newSource = idMap.get(e.source);
@@ -185,10 +249,10 @@ export async function applyTrajectory(
         if (!newSource || !newTarget) continue;
         const newId = `${newSource}-${newTarget}-${Math.random().toString(36).slice(2, 8)}`;
         newEdges.push({
-            ...e,
             id: newId,
             source: newSource,
             target: newTarget,
+            type: e.type ?? 'default',
         });
     }
 

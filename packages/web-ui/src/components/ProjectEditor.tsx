@@ -50,9 +50,13 @@ import AudioNode from './nodes/AudioNode';
 import PromptActionNode from './nodes/ActionBadge'; // Renamed: ActionBadge -> PromptActionNode
 import GroupNode from './nodes/GroupNode';
 import VideoEditorNode from './nodes/VideoEditorNode';
+import ImageEditorNode from './nodes/ImageEditorNode';
+import VideoClipperNode from './nodes/VideoClipperNode';
 import { MediaViewerProvider } from './MediaViewerContext';
 import { ProjectProvider } from './ProjectContext';
 import { VideoEditorProvider, useVideoEditor } from './VideoEditorContext';
+import { ImageEditorProvider } from './ImageEditorContext';
+import { VideoClipperProvider } from './VideoClipperContext';
 import { getLayoutedElements } from '@clash/web-ui/lib/utils/elkLayout';
 import { LayoutActionsProvider } from './LayoutActionsContext';
 import {
@@ -141,6 +145,8 @@ const nodeTypes = {
     'action-badge': PromptActionNode, // Merged: Prompt + Action
 group: GroupNode,
     'video-editor': VideoEditorNode,
+    'image-editor': ImageEditorNode,
+    'video-clipper': VideoClipperNode,
 };
 
 const defaultImageModel = MODEL_CARDS.find((card) => card.kind === 'image');
@@ -1919,6 +1925,8 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
     return (
         <ProjectProvider projectId={project.id}>
             <LoroSyncProvider loroSync={loroSync}>
+              <ImageEditorProvider>
+                <VideoClipperProvider>
                 <VideoEditorProvider
                     onAssetAddedToCanvas={handleEditorAssetAdded}
                     onCanvasAssetLinked={(asset, editorNodeId) => {
@@ -2281,6 +2289,8 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
                     </MediaViewerProvider>
                     </ProjectSurfaceBehindEditor>
                 </VideoEditorProvider>
+                </VideoClipperProvider>
+              </ImageEditorProvider>
             </LoroSyncProvider>
         </ProjectProvider >
     );

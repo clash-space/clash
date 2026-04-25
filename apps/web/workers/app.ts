@@ -38,6 +38,7 @@ export interface Env {
   AUTH_GOOGLE_ID?: string;
   AUTH_GOOGLE_SECRET?: string;
   ACTION_SECRET_KEY?: string;
+  JWT_SECRET?: string;
   R2_BUCKET_NAME?: string;
   NODE_ENV?: string;
   SKIP_LOGIN?: string;

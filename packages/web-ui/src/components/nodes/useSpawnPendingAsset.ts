@@ -156,12 +156,15 @@ export function useSpawnPendingAsset(input: UseSpawnPendingAssetInput): UseSpawn
                 images: inlineImageUrls,
                 videos: inlineVideoUrls,
                 audios: inlineAudioUrls,
+                imageAssetIds: inlineImageAssetIds,
+                videoAssetIds: inlineVideoAssetIds,
+                audioAssetIds: inlineAudioAssetIds,
             } = selectedModel
                 ? partitionRefs(
-                    refNodes as Array<{ type?: string; data?: { src?: string; content?: string; prompt?: string; label?: string } }>,
+                    refNodes as Array<{ type?: string; data?: { src?: string; content?: string; prompt?: string; label?: string; assetId?: string } }>,
                     selectedModel,
                 )
-                : { texts: [], images: [], videos: [], audios: [] };
+                : { texts: [], images: [], videos: [], audios: [], imageAssetIds: [], videoAssetIds: [], audioAssetIds: [] };
 
             const rawPrompt = (content && content.trim() !== '' ? content : '') || dataPrompt || '';
             const prompt = composePromptWithTextRefs(rawPrompt, inlineTextRefs);
@@ -211,6 +214,9 @@ export function useSpawnPendingAsset(input: UseSpawnPendingAssetInput): UseSpawn
                         status,
                         prompt: promptText,
                         referenceImageUrls: inlineImageUrls,
+                        // Parallel array — index-aligned with referenceImageUrls.
+                        // Read by NodeProcessor → workflow → assets.sources.
+                        referenceImageAssetIds: inlineImageAssetIds,
                         aspectRatio: resolveAspectRatio(modelId, modelParams),
                         model: modelId,
                         modelId,
@@ -233,6 +239,9 @@ export function useSpawnPendingAsset(input: UseSpawnPendingAssetInput): UseSpawn
                         referenceImageUrls: inlineImageUrls,
                         referenceVideoUrls: inlineVideoUrls,
                         referenceAudioUrls: inlineAudioUrls,
+                        referenceImageAssetIds: inlineImageAssetIds,
+                        referenceVideoAssetIds: inlineVideoAssetIds,
+                        referenceAudioAssetIds: inlineAudioAssetIds,
                         duration: durationNumber,
                         model: modelId,
                         modelId,
@@ -267,6 +276,9 @@ export function useSpawnPendingAsset(input: UseSpawnPendingAssetInput): UseSpawn
                         content: '',
                         status,
                         prompt: promptText,
+                        referenceImageUrls: inlineImageUrls,
+                        referenceVideoUrls: inlineVideoUrls,
+                        referenceAudioUrls: inlineAudioUrls,
                         model: modelId,
                         modelId,
                         modelParams,

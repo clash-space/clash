@@ -1,4 +1,4 @@
-import { isGoogleAudioModel, isGoogleImageModel, isGoogleVideoModel } from "../services/google-gen";
+import { isGoogleAudioModel, isGoogleImageModel, isGoogleTextModel, isGoogleVideoModel } from "../services/google-gen";
 import type { GenerationParams } from "./params";
 import type { GenerationProvider } from "./provider";
 import { veoProvider } from "./providers/veo";
@@ -9,6 +9,7 @@ import { geminiTtsProvider } from "./providers/gemini-tts";
 import { videoRenderProvider } from "./providers/render";
 import { customActionProvider } from "./providers/custom-action";
 import { textGenProvider } from "./providers/text-gen";
+import { googleTextProvider } from "./providers/google-text";
 import { understandProvider } from "./providers/understand";
 import { describeProvider } from "./providers/describe";
 
@@ -32,7 +33,7 @@ export function resolveProvider(params: GenerationParams): GenerationProvider {
     case "custom_action":
       return customActionProvider;
     case "text_gen":
-      return textGenProvider;
+      return isGoogleTextModel(params.modelName) ? googleTextProvider : textGenProvider;
     case "understand":
       return understandProvider;
     case "image_desc":

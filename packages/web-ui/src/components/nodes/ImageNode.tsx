@@ -157,7 +157,12 @@ const ImageNode = ({ data, selected, id }: NodeProps<Node<Record<string, any>>>)
             >
                 {status === 'draft' ? (
                     <DraftPlaceholder nodeId={id} modality="image" />
-                ) : (status === 'completed') && (imageUrl || data.previewUrl) ? (
+                ) : imageUrl || (status === 'completed' && data.previewUrl) ? (
+                    // Show the resolved asset whenever it's available — even when
+                    // Loro still says `status:'failed'`. Stale-failed states leak
+                    // in when D1 schema migrations lag behind code (e.g. TaskPolling
+                    // sees a SELECT exception and writes failed). The asset row +
+                    // R2 blob are intact; rendering them is correct.
                     <div className="relative">
                         {imageUrl ? (
                             <SignedImg

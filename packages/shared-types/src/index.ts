@@ -28,7 +28,12 @@ export {
   // ReactFlow types
   RF_NODE_TYPE,
   ACTION_TYPE,
+  EDIT_KIND,
   AGENT_NODE_TYPE_MAP,
+  // Edit-node param schemas
+  CropRectSchema,
+  ImageEditParamsSchema,
+  VideoClipParamsSchema,
   // Agent-facing types
   NodeType,
   ALL_NODE_TYPES,
@@ -60,6 +65,10 @@ export {
   type PendingAssetNode,
   type ContentNodeType,
   type GenerationNodeType,
+  type EditKind,
+  type CropRect,
+  type ImageEditParams,
+  type VideoClipParams,
   type EdgeInfo,
   type ProjectContext,
   type CustomActionDefinition,
@@ -161,10 +170,12 @@ export * from './presence';
 export {
   AssetKindSchema,
   AssetMetadataSchema,
+  AssetSourceSchema,
   AssetSchema,
   AssetRefRowSchema,
   type AssetKind,
   type AssetMetadata,
+  type AssetSource,
   type Asset,
   type AssetRefRow,
 } from './assets';

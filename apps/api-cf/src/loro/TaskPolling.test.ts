@@ -248,15 +248,22 @@ describe("TaskPolling", () => {
       expect(result).toBe(true);
     });
 
-    it("DB query throws → marks the node failed with the thrown error string", async () => {
+    it("DB query throws → keeps the node pending (transient DB errors must not flip Loro state)", async () => {
+      // A schema-migration-lag style failure (e.g. SELECT references a column
+      // that hasn't been ALTERed in yet) used to translate into a permanent
+      // status:"failed" overwrite, which corrupted live nodes for ~all users
+      // while migration caught up. Now the catch returns Pending so the next
+      // poll retries — workflow.status() above is the authoritative failure
+      // signal, not D1 reachability.
       const doc = makeDocWithNodes([
         { id: "n1", type: "image", data: { status: "generating", pendingTask: "t-db" } },
       ]);
       (getAssetByTaskId as any).mockRejectedValueOnce(new Error("D1 down"));
-      await pollNodeTasks(doc, makeEnv(), "proj-1", broadcast);
+      const result = await pollNodeTasks(doc, makeEnv(), "proj-1", broadcast);
+      expect(result).toBe(true); // still pending → loop should keep ticking
       const nodeData = doc.getMap("nodes").get("n1") as any;
-      expect(nodeData.data.status).toBe("failed");
-      expect(nodeData.data.error).toMatch(/D1 down/);
+      expect(nodeData.data.status).toBe("generating"); // unchanged
+      expect(nodeData.data.error).toBeUndefined();
     });
 
     it("video asset without cover → coverUrl is not written", async () => {

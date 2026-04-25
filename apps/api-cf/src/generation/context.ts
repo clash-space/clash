@@ -109,12 +109,17 @@ export class GenerationContext {
     userId?: string;
   }): Promise<string> {
     const userId = input.userId ?? (await getProjectOwner(this.env.DB, this.params.projectId)) ?? "";
+    // Pull lineage from the workflow params unless the caller passed its own.
+    // Centralizing here means every provider (image / video / audio / custom)
+    // gets `sources` without each one having to thread the field through.
+    const sources = input.sources ?? this.params.sources;
     const { id } = await createAsset(this.env.DB, {
       id: this.params.taskId,            // deterministic on workflow retry
       userId,
       projectId: this.params.projectId,
       sourceTaskId: this.params.taskId,
       ...input,
+      sources,
     });
     log.info("Asset saved to D1", { ...this.tag, assetId: id, kind: input.kind });
     return id;

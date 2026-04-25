@@ -55,4 +55,18 @@ export interface GenerationParams {
   customActionId?: string;
   customActionParams?: Record<string, unknown>;
   workerUrl?: string;
+
+  /**
+   * Lineage — pre-built `assets.sources` rows describing which upstream
+   * assets contributed to this generation. The workflow forwards this to
+   * `createAsset` on success, so old assets without lineage stay null.
+   *
+   * NodeProcessor builds it from the Loro pending node's `referenceImageAssetIds`
+   * etc. fields (parallel to the URL arrays). Frontend-direct callers
+   * (legacy /api/generate/*) currently leave it undefined.
+   */
+  sources?: Array<{
+    assetId: string;
+    role: 'primary' | 'reference' | 'edit-source';
+  }>;
 }

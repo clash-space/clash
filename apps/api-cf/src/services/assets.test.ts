@@ -91,11 +91,15 @@ describe("assets service", () => {
         sourceModel: "nano-banana-2",
         sourcePrompt: "a cat",
         sourceTaskId: "task-1",
+        sources: [
+          { assetId: "src-1", role: "reference" },
+          { assetId: "src-2", role: "primary" },
+        ],
       });
 
       const args = bind.mock.calls[0];
       // Indices follow the SQL column order in createAsset:
-      // id, userId, kind, srcR2Key, coverR2Key, metadata, sourceModel, sourcePrompt, sourceTaskId, createdAt, updatedAt
+      // id, userId, kind, srcR2Key, coverR2Key, metadata, sourceModel, sourcePrompt, sourceTaskId, sources, createdAt, updatedAt
       expect(args[4]).toBe("cover/k.jpg");        // coverR2Key
       expect(JSON.parse(args[5] as string)).toEqual({
         width: 1920,
@@ -106,6 +110,23 @@ describe("assets service", () => {
       expect(args[6]).toBe("nano-banana-2");      // sourceModel
       expect(args[7]).toBe("a cat");              // sourcePrompt
       expect(args[8]).toBe("task-1");             // sourceTaskId
+      expect(JSON.parse(args[9] as string)).toEqual([
+        { assetId: "src-1", role: "reference" },
+        { assetId: "src-2", role: "primary" },
+      ]);                                          // sources JSON
+    });
+
+    it("stores NULL for sources when none provided", async () => {
+      const { db, bind } = makeDb();
+      await createAsset(db, {
+        id: "a-no-src",
+        userId: "u",
+        kind: "image",
+        srcR2Key: "k",
+        projectId: "p",
+      });
+      // sources is at index 9 in the bind call
+      expect(bind.mock.calls[0][9]).toBeNull();
     });
   });
 

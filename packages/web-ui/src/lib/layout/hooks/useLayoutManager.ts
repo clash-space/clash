@@ -78,9 +78,11 @@ function calculateDimensionsFromAspectRatio(aspectRatio?: string): Size {
 }
 
 /**
- * Get the appropriate size for a node with multiple fallback strategies
+ * Get the appropriate size for a node with multiple fallback strategies.
+ * Exported so the same sizing logic the canonical "+ flyout" / spawnDraft
+ * path uses can be applied to clones, agent-created nodes, etc.
  */
-function getNodeSizeWithData(nodeType: string, nodeData?: any): Size {
+export function getNodeSizeWithData(nodeType: string, nodeData?: any): Size {
     const defaultSize = getNodeSize(nodeType);
 
     if (nodeType === 'video' || nodeType === 'image') {

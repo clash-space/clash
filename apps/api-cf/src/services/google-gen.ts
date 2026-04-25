@@ -187,6 +187,57 @@ export async function generateGoogleAudio(
   };
 }
 
+// ─── Text Generation (Gemini multimodal) ────────────────
+
+export interface GoogleTextParams {
+  /** Pre-built Vercel AI SDK messages array. Caller assembles multimodal parts. */
+  messages: any[];
+  modelName?: string;
+  systemPrompt?: string;
+}
+
+export interface GoogleTextResult {
+  text: string;
+  model: string;
+}
+
+export const GOOGLE_TEXT_MODELS = new Set([
+  "gemini-3.1-pro",
+  "gemini-3-flash",
+]);
+
+export function isGoogleTextModel(modelName: string | undefined): boolean {
+  return !!modelName && GOOGLE_TEXT_MODELS.has(modelName);
+}
+
+// Card ID → Vertex provider model ID. Both are public preview on global only
+// (regional endpoints return 404). gemini-3-pro-preview was retired 2026-03-09;
+// 3.1-pro-preview is the live successor. Flash never had a .1 minor — it's
+// just gemini-3-flash-preview.
+//   Docs: https://docs.cloud.google.com/vertex-ai/generative-ai/docs/models/gemini/3-1-pro
+//         https://docs.cloud.google.com/vertex-ai/generative-ai/docs/models/gemini/3-flash
+const GOOGLE_TEXT_MODEL_MAP: Record<string, string> = {
+  "gemini-3.1-pro": "gemini-3.1-pro-preview",
+  "gemini-3-flash": "gemini-3-flash-preview",
+};
+
+export async function generateGoogleText(
+  creds: VertexCredentials,
+  params: GoogleTextParams,
+): Promise<GoogleTextResult> {
+  const modelId =
+    GOOGLE_TEXT_MODEL_MAP[params.modelName ?? "gemini-3-flash"] ??
+    "gemini-3-flash-preview";
+  const vertex = makeVertex(creds);
+  const result = await generateText({
+    model: vertex(modelId),
+    ...(params.systemPrompt ? { system: params.systemPrompt } : {}),
+    messages: params.messages,
+  });
+  if (!result.text) throw new Error(`Gemini text returned empty for ${modelId}.`);
+  return { text: result.text, model: modelId };
+}
+
 // ─── Image Generation (Imagen / Gemini Image) ───────────
 
 export interface GoogleImageParams {

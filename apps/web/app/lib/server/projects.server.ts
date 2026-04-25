@@ -4,6 +4,7 @@ import { DEV_USER_ID } from "../auth/session.server";
 import type { D1Database } from "@cloudflare/workers-types";
 import { projects, assets } from "../db/schema";
 import type { ProjectWithAssets } from "@clash/web-ui/lib/types";
+import { signAssetPath } from "./asset-signing.server";
 
 type ApiFetcher = { fetch: (request: Request | string) => Promise<Response> };
 interface Env {
@@ -11,6 +12,7 @@ interface Env {
   API_CF?: ApiFetcher;
   API_CF_URL?: string;
   NODE_ENV?: string;
+  JWT_SECRET?: string;
 }
 
 async function ensureDevUser(db: ReturnType<typeof getDb>, env: Env) {
@@ -73,15 +75,15 @@ export async function listProjectsWithAssets(
         : [];
       const assetById = new Map(assetRows.map((r) => [r.id, r]));
 
-      const projectAssets = mediaNodes
-        .map((node: any) => {
+      const projectAssets = await Promise.all(
+        mediaNodes.map(async (node: any) => {
           const row = assetById.get(node.data.assetId);
           if (!row) return null;
           if (node.type === "video" && !row.coverR2Key) return null;
           const r2Key = node.type === "video" ? row.coverR2Key! : row.srcR2Key;
           return {
             id: node.id,
-            url: `/assets/${r2Key}`,
+            url: await signAssetPath(env, r2Key),
             type: node.type as "image" | "video",
             storageKey: row.srcR2Key,
             createdAt: (() => {
@@ -90,8 +92,8 @@ export async function listProjectsWithAssets(
               return project.updatedAt || project.createdAt;
             })(),
           };
-        })
-        .filter((a): a is NonNullable<typeof a> => a !== null);
+        }),
+      ).then((arr) => arr.filter((a): a is NonNullable<typeof a> => a !== null));
 
       return { ...project, assets: projectAssets };
     }),

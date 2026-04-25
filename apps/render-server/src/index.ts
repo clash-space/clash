@@ -3,6 +3,7 @@ import { Hono } from "hono";
 import { renderTimeline } from "./render.js";
 import { extractFrame } from "./thumbnail.js";
 import { probeAudio } from "./audioProbe.js";
+import { clipVideo } from "./clip.js";
 
 const app = new Hono();
 
@@ -98,6 +99,60 @@ app.post("/probe-audio", async (c) => {
     return c.json({ durationMs, waveform });
   } catch (e: any) {
     console.error(`[render-server] Probe audio failed:`, tag, e);
+    return c.json({ error: e?.message ?? String(e) }, 500);
+  }
+});
+
+/**
+ * POST /clip — trim a video to [startSec, endSec], re-encoded to mp4.
+ *
+ * Body: { sourceUrl: string, startSec: number, endSec: number, width?: number }
+ * Response: video/mp4 bytes with X-Duration-Ms header.
+ *
+ * Used by the video-clipper edit pipeline (api-cf services/video-clip.ts).
+ * Re-encoded (not stream-copy) so the trim hits exact second boundaries —
+ * see clip.ts for rationale.
+ */
+app.post("/clip", async (c) => {
+  let body: { sourceUrl?: string; startSec?: number; endSec?: number; width?: number };
+  try {
+    body = await c.req.json();
+  } catch {
+    return c.json({ error: "Invalid JSON body" }, 400);
+  }
+  if (!body.sourceUrl || typeof body.sourceUrl !== "string") {
+    return c.json({ error: "Missing sourceUrl" }, 400);
+  }
+  if (typeof body.startSec !== "number" || typeof body.endSec !== "number") {
+    return c.json({ error: "Missing startSec / endSec" }, 400);
+  }
+
+  const tag = {
+    sourceUrl: body.sourceUrl.slice(0, 80),
+    startSec: body.startSec,
+    endSec: body.endSec,
+  };
+  console.log(`[render-server] Clip requested:`, tag);
+
+  try {
+    const { bytes, contentType, durationMs } = await clipVideo({
+      sourceUrl: body.sourceUrl,
+      startSec: body.startSec,
+      endSec: body.endSec,
+      width: body.width,
+    });
+    console.log(`[render-server] Clip done: ${bytes.byteLength} bytes, ${durationMs}ms`);
+    return new Response(bytes.buffer as ArrayBuffer, {
+      headers: {
+        "Content-Type": contentType,
+        "Content-Length": String(bytes.byteLength),
+        "Cache-Control": "public, max-age=60",
+        "X-Duration-Ms": String(durationMs),
+        "Access-Control-Expose-Headers": "X-Duration-Ms",
+      },
+    });
+  } catch (e: any) {
+    console.error(`[render-server] Clip failed:`, tag, e);
     return c.json({ error: e?.message ?? String(e) }, 500);
   }
 });

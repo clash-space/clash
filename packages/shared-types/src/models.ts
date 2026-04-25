@@ -1182,7 +1182,7 @@ export const MODEL_CARDS: ModelCard[] = [
     provider: 'OpenAI',
     kind: 'text',
     defaultAspectRatio: '1:1',
-    description: 'General-purpose text generation for scripts, copy, prompts, and structured notes.',
+    description: 'General-purpose text generation. Accepts image context alongside the prompt (vision).',
     parameters: [
       {
         id: 'system_prompt',
@@ -1195,7 +1195,63 @@ export const MODEL_CARDS: ModelCard[] = [
     defaultParams: {
       system_prompt: '',
     },
-    input: { requiresPrompt: true, inputMode: {}, promptModalities: ['text'] },
+    input: {
+      requiresPrompt: true,
+      inputMode: { images: { max: 10 } },
+      promptModalities: ['text', 'image'],
+    },
+    maxRuntimeMs: 5 * 60 * 1000,
+  },
+  {
+    id: 'gemini-3.1-pro',
+    name: 'Gemini 3.1 Pro',
+    provider: 'Google',
+    kind: 'text',
+    defaultAspectRatio: '1:1',
+    description: 'Google Gemini 3.1 Pro — flagship multimodal reasoning across text, image, video, and audio inputs.',
+    parameters: [
+      {
+        id: 'system_prompt',
+        label: 'System prompt',
+        type: 'text',
+        placeholder: 'Optional instructions for tone, format, or role',
+        defaultValue: '',
+      },
+    ],
+    defaultParams: {
+      system_prompt: '',
+    },
+    input: {
+      requiresPrompt: true,
+      inputMode: { images: { max: 16 }, videos: { max: 1 }, audios: { max: 1 } },
+      promptModalities: ['text', 'image', 'video', 'audio'],
+    },
+    maxRuntimeMs: 5 * 60 * 1000,
+  },
+  {
+    id: 'gemini-3-flash',
+    name: 'Gemini 3 Flash',
+    provider: 'Google',
+    kind: 'text',
+    defaultAspectRatio: '1:1',
+    description: 'Faster, cheaper Gemini 3 Flash — multimodal across text, image, video, and audio inputs.',
+    parameters: [
+      {
+        id: 'system_prompt',
+        label: 'System prompt',
+        type: 'text',
+        placeholder: 'Optional instructions for tone, format, or role',
+        defaultValue: '',
+      },
+    ],
+    defaultParams: {
+      system_prompt: '',
+    },
+    input: {
+      requiresPrompt: true,
+      inputMode: { images: { max: 16 }, videos: { max: 1 }, audios: { max: 1 } },
+      promptModalities: ['text', 'image', 'video', 'audio'],
+    },
     maxRuntimeMs: 5 * 60 * 1000,
   },
 

@@ -123,6 +123,13 @@ export const assets = sqliteTable(
         sourceModel: text("source_model"),
         sourcePrompt: text("source_prompt"),
         sourceTaskId: text("source_task_id"),
+        /**
+         * Lineage — JSON-serialized AssetSource[] (see @clash/shared-types/assets).
+         * Each entry: { assetId, role: 'edit-source' | 'reference' | 'primary' }.
+         * NULL on uploads and pre-lineage rows; populated by edit pipeline (single
+         * 'edit-source') and generation pipelines (one per reference image).
+         */
+        sources: text("sources"),
         createdAt: integer("created_at", { mode: "timestamp" }).default(sql`(strftime('%s', 'now'))`),
         updatedAt: integer("updated_at", { mode: "timestamp" }).default(sql`(strftime('%s', 'now'))`),
     },

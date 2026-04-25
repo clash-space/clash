@@ -1,12 +1,14 @@
 /**
  * Text generation via OpenAI-compatible gateway (CF AI Gateway).
+ * Accepts inline image / audio refs alongside the prompt — vision-capable
+ * GPT models read them; non-vision models will reject and surface an error.
  * No asset output — result lands on node.data.content.
  */
 import { createOpenAI } from "@ai-sdk/openai";
 import { generateText } from "ai";
 import { log } from "../../logger";
-import type { GenerationContext } from "../context";
 import type { GenerationProvider } from "../provider";
+import { buildMultimodalUserMessage } from "../multimodal";
 
 export const textGenProvider: GenerationProvider = {
   name: "text-gen",
@@ -27,11 +29,16 @@ export const textGenProvider: GenerationProvider = {
           typeof params.modelParams?.system_prompt === "string"
             ? params.modelParams.system_prompt.trim()
             : "";
-        log.info("Text generate started", { ...ctx.tag, model: modelName });
+        const userMessage = await buildMultimodalUserMessage(ctx, params);
+        log.info("Text generate started", {
+          ...ctx.tag,
+          model: modelName,
+          parts: userMessage.content.length,
+        });
         const result = await generateText({
           model: openai.chat(modelName),
           ...(systemPrompt ? { system: systemPrompt } : {}),
-          prompt: params.prompt ?? "",
+          messages: [userMessage as any],
         });
         if (!result.text) throw new Error("No text generated");
         return result.text;

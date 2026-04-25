@@ -1,4 +1,4 @@
-import { Image as ImageIcon, VideoCamera, FilmSlate, SpeakerHigh, TextT } from '@phosphor-icons/react';
+import { Image as ImageIcon, VideoCamera, FilmSlate, SpeakerHigh, TextT, PencilSimple, FilmStrip } from '@phosphor-icons/react';
 import {
     capability,
     pickDefaultModel,
@@ -106,5 +106,25 @@ export const PIPELINE_MENU_OPTIONS: PipelineMenuOption[] = [
         nodeType: 'video-editor',
         getNodeData: () => ({ label: 'Video Editor', inputs: [] }),
         isCompatibleWithSource: () => true,
+    },
+    {
+        id: 'image-editor',
+        label: 'Image Editor',
+        icon: PencilSimple,
+        nodeType: 'image-editor',
+        // Copy-on-write image editor (crop / rotate). Editor reads upstream
+        // image's signed URL, renders via canvas, uploads as a new asset.
+        getNodeData: () => ({ label: 'Image Editor' }),
+        // Only meaningful with an image upstream — generation/audio/video/text
+        // sources can't be CoW'd by the image editor.
+        isCompatibleWithSource: (sourceKind) => sourceKind === 'image',
+    },
+    {
+        id: 'video-clipper',
+        label: 'Video Clipper',
+        icon: FilmStrip,
+        nodeType: 'video-clipper',
+        getNodeData: () => ({ label: 'Video Clipper' }),
+        isCompatibleWithSource: (sourceKind) => sourceKind === 'video',
     },
 ];

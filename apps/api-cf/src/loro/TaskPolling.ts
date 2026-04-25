@@ -106,8 +106,14 @@ async function getTaskStatusDirect(
 
     return { status: Status.Pending };
   } catch (e) {
-    log.error(`Exception fetching task ${taskId}:`, e);
-    return { status: Status.Failed, error: String(e) };
+    // Don't translate DB exceptions into Status.Failed — that would let a
+    // transient SQLite hiccup (e.g. a missing column right after a code
+    // deploy that added one but before the migration ran) overwrite real
+    // task state in Loro. Treat it as an unknown intermediate state and
+    // let the next poll retry. Workflow status check above already handles
+    // genuinely-failed workflows.
+    log.error(`Exception fetching task ${taskId} — treating as Pending (will retry):`, e);
+    return { status: Status.Pending };
   }
 }
 

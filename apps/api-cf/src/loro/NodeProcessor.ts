@@ -574,6 +574,12 @@ export async function processPendingNodes(
         const referenceImages: string[] = Array.isArray(innerData.referenceImageUrls) ? innerData.referenceImageUrls : [];
         const referenceVideos: string[] = Array.isArray(innerData.referenceVideoUrls) ? innerData.referenceVideoUrls : [];
         const referenceAudios: string[] = Array.isArray(innerData.referenceAudioUrls) ? innerData.referenceAudioUrls : [];
+        // Parallel assetId arrays — same index = same ref. Used to write
+        // assets.sources for lineage; safe to be undefined / shorter than the
+        // URL array (entries default to undefined and are filtered out).
+        const referenceImageAssetIds: (string | undefined)[] = Array.isArray(innerData.referenceImageAssetIds) ? innerData.referenceImageAssetIds : [];
+        const referenceVideoAssetIds: (string | undefined)[] = Array.isArray(innerData.referenceVideoAssetIds) ? innerData.referenceVideoAssetIds : [];
+        const referenceAudioAssetIds: (string | undefined)[] = Array.isArray(innerData.referenceAudioAssetIds) ? innerData.referenceAudioAssetIds : [];
         const modelCard = getModelCard(selectedModelId);
         const inputMode = modelCard?.input.inputMode ?? {};
         log.info('Gen task params', { nodeId, model: selectedModelId, images: referenceImages.length, videos: referenceVideos.length, audios: referenceAudios.length, prompt: innerData.prompt || innerData.label });
@@ -628,6 +634,32 @@ export async function processPendingNodes(
         const tailFrameKey = isStartEnd ? referenceImages[1] : undefined;
         const multiRefImages = isMultiRef ? referenceImages : [];
 
+        // Build the lineage `sources` array. Roles:
+        //  - The first reference image of an image-to-video model is the
+        //    "primary" first frame → role:'primary'.
+        //  - For start_end models the tail frame is also lineage-significant
+        //    but still a reference (not the primary anchor) → role:'reference'.
+        //  - All multi-ref images, video refs, and audio refs → role:'reference'.
+        // We never invent assetIds — entries with no upstream assetId are
+        // dropped so old assets (pre-lineage rollout) don't pollute sources.
+        const sources: { assetId: string; role: 'primary' | 'reference' }[] = [];
+        const seen = new Set<string>();
+        const pushSource = (id: string | undefined, role: 'primary' | 'reference') => {
+          if (!id || seen.has(id)) return;
+          seen.add(id);
+          sources.push({ assetId: id, role });
+        };
+        if (isStartEnd || isSingleFirstFrame) pushSource(referenceImageAssetIds[0], 'primary');
+        if (isStartEnd) pushSource(referenceImageAssetIds[1], 'reference');
+        if (isMultiRef) {
+          for (const id of referenceImageAssetIds) pushSource(id, 'reference');
+        } else if (!isStartEnd && !isSingleFirstFrame) {
+          // image-gen / text-gen / no-i2v video: all image refs are plain refs
+          for (const id of referenceImageAssetIds) pushSource(id, 'reference');
+        }
+        for (const id of referenceVideoAssetIds) pushSource(id, 'reference');
+        for (const id of referenceAudioAssetIds) pushSource(id, 'reference');
+
         const result = await submitGenTask(env, taskType as GenerationParams['type'], projectId, nodeId, taskId, {
           prompt: cleanPrompt,
           promptParts: resolvedParts,
@@ -644,6 +676,7 @@ export async function processPendingNodes(
           resolution: modelParams.resolution,
           tailImageR2Key: tailFrameKey,
           imageR2Key: firstFrameKey,
+          sources: sources.length ? sources : undefined,
         });
 
         if (result.error) {
@@ -718,6 +751,7 @@ async function submitGenTask(
     imageR2Key?: string;
     referenceVideos?: string[];
     referenceAudios?: string[];
+    sources?: { assetId: string; role: 'primary' | 'reference' }[];
   },
 ): Promise<{ error?: string }> {
   try {
@@ -748,6 +782,7 @@ async function submitGenTask(
       duration: params.duration,
       cfgScale: params.cfgScale,
       videoModel: params.model,
+      sources: params.sources,
     };
 
     await env.GENERATION_WORKFLOW.create({ id: taskId, params: genParams });

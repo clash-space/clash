@@ -34,6 +34,27 @@ export const AssetMetadataSchema = z.object({
 });
 export type AssetMetadata = z.infer<typeof AssetMetadataSchema>;
 
+/**
+ * One upstream asset that contributed to producing this asset.
+ *
+ * Roles:
+ * - `edit-source` : the single input asset for image-editor / video-clipper
+ *                   (always exactly one entry with this role).
+ * - `reference`   : a reference image / video / audio fed into a generation
+ *                   model (image-gen, video-gen).
+ * - `primary`     : the primary input image for image-to-video generation —
+ *                   distinguished from secondary refs because most i2v models
+ *                   treat it as the first frame.
+ *
+ * Stored as JSON on `assets.sources`. NULL = lineage not recorded
+ * (uploads, pre-existing rows). Not a query predicate.
+ */
+export const AssetSourceSchema = z.object({
+  assetId: z.string(),
+  role: z.enum(['edit-source', 'reference', 'primary']),
+});
+export type AssetSource = z.infer<typeof AssetSourceSchema>;
+
 export const AssetSchema = z.object({
   id: z.string(),
   userId: z.string(),
@@ -44,6 +65,7 @@ export const AssetSchema = z.object({
   sourceModel: z.string().nullable().optional(),
   sourcePrompt: z.string().nullable().optional(),
   sourceTaskId: z.string().nullable().optional(),
+  sources: z.array(AssetSourceSchema).nullable().optional(),
   createdAt: z.number(),
   updatedAt: z.number(),
 });

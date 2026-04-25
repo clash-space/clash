@@ -171,7 +171,7 @@ export function validateRefs(
 /** Anything with a node-shape `type` field and `data.src` works as input. */
 export interface RefNodeLike {
   type?: string;
-  data?: { src?: string; content?: string; prompt?: string; label?: string } & Record<string, unknown>;
+  data?: { src?: string; content?: string; prompt?: string; label?: string; assetId?: string } & Record<string, unknown>;
 }
 
 export interface RefPartition {
@@ -179,6 +179,16 @@ export interface RefPartition {
   images: string[];
   videos: string[];
   audios: string[];
+  /**
+   * Parallel asset IDs aligned 1:1 with the URL arrays above (same index =
+   * same ref). Entry is `undefined` when the source node has no assetId —
+   * happens when the upstream is still pending or the lineage is unknown.
+   * Used to write `assets.sources` for lineage tracking. Texts have no
+   * asset lineage (they get inlined into the prompt).
+   */
+  imageAssetIds: (string | undefined)[];
+  videoAssetIds: (string | undefined)[];
+  audioAssetIds: (string | undefined)[];
 }
 
 /**
@@ -193,7 +203,10 @@ export function partitionRefs(
   card: ModelCard,
 ): RefPartition {
   const cap = capability(card);
-  const out: RefPartition = { texts: [], images: [], videos: [], audios: [] };
+  const out: RefPartition = {
+    texts: [], images: [], videos: [], audios: [],
+    imageAssetIds: [], videoAssetIds: [], audioAssetIds: [],
+  };
   for (const n of refs) {
     if (n.type === "text" && cap.ref.text.accepts) {
       const text = normalizePromptInput(n.data?.content ?? n.data?.prompt ?? n.data?.label).trim();
@@ -202,9 +215,17 @@ export function partitionRefs(
     }
     const src = n.data?.src;
     if (!src) continue;
-    if (n.type === "image" && cap.ref.image.accepts) out.images.push(src);
-    else if (n.type === "video" && cap.ref.video.accepts) out.videos.push(src);
-    else if (n.type === "audio" && cap.ref.audio.accepts) out.audios.push(src);
+    const aid = typeof n.data?.assetId === 'string' ? n.data.assetId : undefined;
+    if (n.type === "image" && cap.ref.image.accepts) {
+      out.images.push(src);
+      out.imageAssetIds.push(aid);
+    } else if (n.type === "video" && cap.ref.video.accepts) {
+      out.videos.push(src);
+      out.videoAssetIds.push(aid);
+    } else if (n.type === "audio" && cap.ref.audio.accepts) {
+      out.audios.push(src);
+      out.audioAssetIds.push(aid);
+    }
   }
   return out;
 }
