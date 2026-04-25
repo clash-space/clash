@@ -15,6 +15,7 @@ import { log } from "../logger";
 import { GenerationContext } from "../generation/context";
 import type { GenerationParams } from "../generation/params";
 import { resolveProvider } from "../generation/registry";
+import { getPlugins } from "../plugins/registry";
 
 // Re-export so existing importers (ProjectRoom, TaskPolling, tests) keep working.
 export type { GenerationParams } from "../generation/params";
@@ -27,11 +28,16 @@ export class GenerationWorkflow extends WorkflowEntrypoint<Env, GenerationParams
 
     const ctx = new GenerationContext(params, step, this.env);
     const provider = resolveProvider(params);
+    const plugins = getPlugins();
+    const hookCtx = { params, env: this.env };
 
     try {
+      await plugins.generation?.beforeGenerate?.(hookCtx);
       await provider.execute(ctx);
+      await plugins.generation?.afterGenerate?.(hookCtx, {});
       log.info("Workflow completed", { ...tag, provider: provider.name });
     } catch (err) {
+      await plugins.generation?.onFailure?.(hookCtx, err);
       const message = err instanceof Error ? err.message : String(err);
       const anyErr = err as any;
       log.error("Workflow failed — marking node Failed", {

@@ -1,0 +1,88 @@
+#:schema node_modules/wrangler/config-schema.json
+# Hosted deployment of master-clash-api. Mirrors apps/api-cf/wrangler.toml
+# bindings (DOs, Workflow, Container, R2, D1) but points main at this
+# package's entry, which installs proprietary plugins on top of the OSS
+# api-cf core.
+name = "master-clash-api-hosted"
+main = "src/index.ts"
+compatibility_date = "2025-03-14"
+compatibility_flags = ["nodejs_compat"]
+
+[observability]
+enabled = true
+
+# Durable Objects (re-exported from api-cf)
+[[durable_objects.bindings]]
+name = "ROOM"
+class_name = "ProjectRoom"
+
+[[durable_objects.bindings]]
+name = "SUPERVISOR"
+class_name = "SupervisorAgent"
+
+# Workflow
+[[workflows]]
+name = "generation-workflow-hosted"
+binding = "GENERATION_WORKFLOW"
+class_name = "GenerationWorkflow"
+
+# Container (Remotion render server) — same Dockerfile as OSS api-cf.
+[[containers]]
+class_name = "RenderContainer"
+image = "../render-server/Dockerfile"
+image_build_context = "../.."
+max_instances = 3
+image_vars = { NPM_REGISTRY = "https://registry.npmmirror.com/", DEBIAN_MIRROR = "mirrors.aliyun.com" }
+
+[[durable_objects.bindings]]
+name = "RENDER_CONTAINER"
+class_name = "RenderContainer"
+
+# Migration tags must replay the OSS app's migration history because the
+# hosted worker reuses the same DO classes via re-export. Keep this list
+# in sync with apps/api-cf/wrangler.toml.
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["SupervisorAgent"]
+
+[[migrations]]
+tag = "v2"
+new_sqlite_classes = ["GenerationAgent"]
+
+[[migrations]]
+tag = "v3"
+renamed_classes = [{from = "SupervisorAgent", to = "ProjectRoom"}]
+
+[[migrations]]
+tag = "v4"
+new_sqlite_classes = ["SupervisorAgent"]
+
+[[migrations]]
+tag = "v5"
+deleted_classes = ["GenerationAgent"]
+
+[[migrations]]
+tag = "v6"
+new_sqlite_classes = ["RenderContainer"]
+
+[ai]
+binding = "AI"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "master-clash-frontend"
+database_id = "aab16eeb-a375-490b-ad1e-cd092cd9f4bb"
+
+[[r2_buckets]]
+binding = "R2_BUCKET"
+bucket_name = "master-clash-assets"
+
+[dev]
+watch_dir = "src"
+enable_containers = false
+
+[vars]
+ENVIRONMENT = "development"
+BETTER_AUTH_BASE_PATH = "/api/better-auth"
+RENDER_SERVER_URL = "http://localhost:8080"
+MEDIA_GATEWAY_URL = "http://localhost:3000"

@@ -1,5 +1,6 @@
 packages:
   - 'apps/api-cf'
+  - 'apps/api-cf-hosted'
   - 'apps/render-server'
   - 'apps/web'
   - 'packages/remotion-*'
