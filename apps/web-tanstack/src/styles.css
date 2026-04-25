@@ -1,17 +1,391 @@
-
 @import "tailwindcss";
 
-* {
-  box-sizing: border-box;
+/* Variable fonts — same set OSS apps/web declares (without ever importing).
+   Needed here because LandingHero uses `font-display` (Space Grotesk) and
+   the body uses Inter. */
+@import "@fontsource-variable/inter";
+@import "@fontsource-variable/space-grotesk";
+@import "@fontsource-variable/jetbrains-mono";
+
+/* Tailwind v4 source scanning — pick up classes from workspace packages
+   we import (web-ui still owns lots of shared bits) plus our own routes. */
+@source "../routes";
+@source "../landing";
+@source "../../../packages/web-ui/src";
+@source "../../../packages/remotion-ui/src";
+@source "../../../packages/remotion-components/src";
+@source "../../../packages/remotion-core/src";
+
+:root {
+  --background: #fbfbf9;
+  --foreground: #171717;
+  --canvas-bg: #fbfbf9;
+  --canvas-dot: #d7d2cc;
+
+  --font-inter: "Inter Variable", -apple-system, BlinkMacSystemFont, "Segoe UI",
+    Roboto, sans-serif;
+  --font-space-grotesk: "Space Grotesk Variable", var(--font-inter);
+  --font-jetbrains-mono: "JetBrains Mono Variable", "Courier New", monospace;
 }
 
-html,
-body,
-#app {
-  min-height: 100%;
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-canvas-bg: var(--canvas-bg);
+  --color-canvas-dot: var(--canvas-dot);
+
+  --color-warm-page: #fbfbf9;
+  --color-warm-surface: #fffefd;
+  --color-warm-muted: #faf7f3;
+  --color-warm-hover: #f4ede6;
+  --color-warm-border: #eee3d9;
+
+  --color-brand: #ff6b50;
+  --color-brand-light: #fff0ed;
+  --color-brand-foreground: #ffffff;
+
+  --color-image: #ff6b50;
+  --color-image-light: #fff0ed;
+
+  --color-video: #3b82f6;
+  --color-video-light: #eff6ff;
+
+  --color-audio: #f5a623;
+  --color-audio-light: #fffbeb;
+
+  --color-custom: #6366f1;
+  --color-custom-light: #eef2ff;
+
+  --font-sans: var(--font-inter);
+  --font-display: var(--font-space-grotesk);
+  --font-mono: var(--font-jetbrains-mono);
+  --radius-matrix: 16px;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #0a0a0a;
+    --foreground: #ededed;
+    --canvas-bg: #0f172a;
+    --canvas-dot: #334155;
+  }
 }
 
 body {
-  margin: 0;
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-inter);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--font-space-grotesk), var(--font-inter), sans-serif;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+code, kbd, pre {
+  font-family: var(--font-jetbrains-mono), "Courier New", monospace;
+}
+
+html { overflow-y: scroll; }
+
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.2); border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(0,0,0,0.3); }
+@media (prefers-color-scheme: dark) {
+  ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.2); }
+  ::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.3); }
+}
+
+::selection {
+  background-color: rgba(255, 107, 80, 0.22);
+  color: inherit;
+}
+
+.react-flow__node-group.selected,
+.react-flow__node-group:focus,
+.react-flow__node-group:focus-visible,
+.react-flow__node-group {
+  border: none !important;
+  outline: none !important;
+  box-shadow: none !important;
+  background: transparent !important;
+  padding: 0 !important;
+}
+
+.group-node, .group-node.selected, .group-node:focus, .group-node:focus-visible {
+  border: none !important;
+  outline: none !important;
+  box-shadow: none !important;
+  background: transparent !important;
+  padding: 0 !important;
+}
+
+.asset-mention {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: #fbf8f4;
+  border: 1px solid #eee3d9;
+  border-radius: 6px;
+  padding: 1px 6px;
+  font-size: 12px;
+  font-weight: 500;
+  color: #4b423a;
+  vertical-align: baseline;
+  cursor: default;
+}
+.asset-mention img {
+  width: 16px;
+  height: 16px;
+  border-radius: 3px;
+  object-fit: cover;
+}
+
+.milkdown-chat-input .milkdown-editor-wrapper {
+  width: 100%;
+  padding: 8px 16px 4px !important;
+}
+.milkdown-chat-input .ProseMirror {
+  width: 100%;
+  font-size: 14px;
+  line-height: 1.5;
+  min-height: 24px;
+  text-align: left;
+}
+.clash-chat-input-editor .milkdown-editor-wrapper {
+  padding-left: 0 !important;
+  padding-right: 0 !important;
+}
+.clash-chat-input-editor .ProseMirror {
+  min-height: inherit;
+}
+.milkdown-chat-input .ProseMirror p { margin: 0; }
+.milkdown-chat-input .ProseMirror img {
+  height: 1.2em; width: auto; border-radius: 3px;
+  object-fit: cover; display: inline; vertical-align: text-bottom; margin: 0 2px;
+}
+.ProseMirror img[alt^="mention:"] {
+  height: 20px; width: 20px; border-radius: 4px;
+  object-fit: cover; display: inline-block; vertical-align: middle; margin: 0 2px;
+}
+.milkdown-chat-input .ProseMirror:focus { outline: none; }
+
+.react-flow__edge { pointer-events: visibleStroke; cursor: pointer; }
+.react-flow__edge-interaction { pointer-events: stroke; stroke-opacity: 0; }
+.react-flow__edge.selected .react-flow__edge-path { stroke: #ff6b50; stroke-width: 2.5; }
+.react-flow__edge:hover .react-flow__edge-path { stroke: #8a7a6d; }
+
+.clash-control-surface,
+.clash-input-surface {
+  position: relative;
+  isolation: isolate;
+  border: 1px solid rgba(238, 227, 217, 0.72);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.82) 0%, rgba(255, 254, 250, 0.76) 58%, rgba(251, 248, 244, 0.68) 100%);
+  box-shadow:
+    0 12px 28px rgba(37, 30, 24, 0.06),
+    0 2px 8px rgba(37, 30, 24, 0.04),
+    inset 0 1px 0 rgba(255, 255, 255, 0.86),
+    inset 0 -1px 0 rgba(216, 202, 190, 0.28);
+}
+
+.clash-control-surface > *,
+.clash-input-surface > * {
+  position: relative;
+  z-index: 1;
+}
+
+.clash-control-surface::before,
+.clash-input-surface::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  z-index: 0;
+  background:
+    linear-gradient(90deg, rgba(255, 255, 255, 0.32), transparent 30%, transparent 76%, rgba(214, 194, 178, 0.1)),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.32), transparent 46%);
+}
+
+.clash-control-surface {
+  backdrop-filter: blur(14px);
+}
+
+.clash-canvas-toolbar-surface {
+  position: relative;
+}
+
+.clash-canvas-toolbar-surface,
+.clash-canvas-menu-surface {
+  isolation: isolate;
+  overflow: visible;
+  border: 1px solid rgba(231, 220, 209, 0.7);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.9), rgba(255, 254, 251, 0.82) 56%, rgba(250, 247, 242, 0.74));
+  box-shadow:
+    0 10px 24px rgba(37, 30, 24, 0.055),
+    0 1px 4px rgba(37, 30, 24, 0.035),
+    inset 0 1px 0 rgba(255, 255, 255, 0.86);
+  backdrop-filter: blur(12px);
+}
+
+.clash-canvas-toolbar-surface {
+  width: 4rem;
+  min-width: 4rem;
+  flex: none;
+  overflow: visible;
+}
+
+.clash-canvas-toolbar-surface > *,
+.clash-canvas-menu-surface > * {
+  position: relative;
+  z-index: 1;
+}
+
+.clash-canvas-toolbar-surface::before,
+.clash-canvas-menu-surface::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  z-index: 0;
+  background:
+    linear-gradient(90deg, rgba(255, 255, 255, 0.28), transparent 38%, rgba(218, 202, 187, 0.08)),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.32), transparent 44%);
+}
+
+.clash-canvas-menu-surface {
+  min-width: 140px;
+}
+
+.clash-input-surface {
+  overflow: hidden;
+  transition:
+    border-color 180ms ease,
+    box-shadow 180ms ease,
+    transform 180ms ease;
+}
+
+.clash-input-surface:hover {
+  border-color: rgba(224, 207, 192, 0.78);
+  box-shadow:
+    0 14px 32px rgba(37, 30, 24, 0.07),
+    0 3px 10px rgba(37, 30, 24, 0.05),
+    inset 0 1px 0 rgba(255, 255, 255, 0.88),
+    inset 0 -1px 0 rgba(216, 202, 190, 0.3);
+}
+
+.clash-input-surface:focus-within {
+  border-color: rgba(255, 107, 80, 0.42);
+  box-shadow:
+    0 16px 36px rgba(37, 30, 24, 0.08),
+    0 0 0 3px rgba(255, 107, 80, 0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 0.9),
+    inset 0 -1px 0 rgba(216, 202, 190, 0.3);
+}
+
+.clash-toolbar-button,
+.clash-input-icon-button {
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.68),
+    inset 0 -1px 0 rgba(216, 202, 190, 0.18);
+}
+
+.clash-toolbar-button:hover,
+.clash-input-icon-button:hover {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.86), rgba(248, 243, 238, 0.94));
+  box-shadow:
+    0 2px 6px rgba(37, 30, 24, 0.05),
+    inset 0 1px 0 rgba(255, 255, 255, 0.92),
+    inset 0 -1px 0 rgba(216, 202, 190, 0.26);
+}
+
+.clash-toolbar-button-active,
+.clash-toolbar-button-active:hover {
+  background: linear-gradient(180deg, #202839, #0f172a);
+  box-shadow:
+    0 6px 12px rgba(15, 23, 42, 0.16),
+    inset 0 1px 0 rgba(255, 255, 255, 0.18),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.35);
+}
+
+.clash-toolbar-button:focus-visible,
+.clash-input-icon-button:focus-visible {
+  outline: 2px solid rgba(255, 107, 80, 0.36);
+  outline-offset: 2px;
+}
+
+.clash-input-icon-button:disabled:hover {
+  background: transparent;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.68),
+    inset 0 -1px 0 rgba(216, 202, 190, 0.18);
+}
+
+.clash-control-divider {
+  background: linear-gradient(90deg, transparent, rgba(197, 179, 162, 0.72), transparent);
+}
+
+.clash-input-toolbar {
+  border-top: 1px solid rgba(238, 227, 217, 0.6);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.34), rgba(251, 248, 244, 0.48));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.54);
+}
+
+.clash-chat-input-surface {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  border: 1px solid rgba(203, 213, 225, 0.9);
+  background: rgba(255, 255, 255, 0.88);
+  box-shadow:
+    0 10px 26px rgba(15, 23, 42, 0.045),
+    inset 0 1px 0 rgba(255, 255, 255, 0.82);
+  transition:
+    border-color 180ms ease,
+    box-shadow 180ms ease,
+    background-color 180ms ease;
+}
+
+.clash-chat-input-surface:hover {
+  border-color: rgba(148, 163, 184, 0.7);
+  background: rgba(255, 255, 255, 0.94);
+  box-shadow:
+    0 12px 28px rgba(15, 23, 42, 0.055),
+    inset 0 1px 0 rgba(255, 255, 255, 0.88);
+}
+
+.clash-chat-input-surface:focus-within {
+  border-color: rgba(255, 107, 80, 0.34);
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow:
+    0 12px 30px rgba(15, 23, 42, 0.06),
+    0 0 0 1px rgba(255, 107, 80, 0.16),
+    inset 0 1px 0 rgba(255, 255, 255, 0.92);
+}
+
+.clash-chat-input-actions {
+  background: transparent;
+}
+
+.clash-chat-input-icon-button {
+  box-shadow: none;
+}
+
+.clash-chat-input-icon-button:hover {
+  background: rgba(241, 245, 249, 0.92);
+  box-shadow: none;
+}
+
+.clash-chat-input-icon-button:focus-visible {
+  outline: 2px solid rgba(255, 107, 80, 0.28);
+  outline-offset: 2px;
+}
