@@ -98,6 +98,19 @@ export function createAuth(env: AuthBindings, cf?: IncomingRequestCfProperties) 
         basePath,
         baseURL,
         trustedProxyHeaders: true,
+        // Origins allowed to call /api/better-auth/*. Dev hosts + the
+        // production domains. Without this, cross-origin requests from
+        // the Vite dev proxy (localhost:3001) get rejected with "Invalid origin".
+        trustedOrigins: [
+          "https://clash.video",
+          "https://www.clash.video",
+          "https://next.clash.video",
+          "https://api.clash.video",
+          "http://localhost:3000",
+          "http://localhost:3001",
+          "http://127.0.0.1:3000",
+          "http://127.0.0.1:3001",
+        ],
         secret,
         emailAndPassword: { enabled: true },
         socialProviders:
