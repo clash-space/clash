@@ -11,15 +11,16 @@ import Pricing from "@clash/web-ui/components/landing/Pricing";
 import CTASection from "@clash/web-ui/components/landing/CTASection";
 import BlogPreview from "@clash/web-ui/components/landing/BlogPreview";
 import LandingFooter from "@clash/web-ui/components/landing/LandingFooter";
-import { useSession } from "../lib/use-session";
+import { authClient } from "../lib/auth-client";
 
 export const Route = createFileRoute("/")({
   component: IndexPage,
 });
 
 function IndexPage() {
-  const { data: session, isPending } = useSession();
-  const authed = !!session?.user?.id;
+  const session = authClient.useSession();
+  const isPending = session.isPending;
+  const authed = !!session.data?.user?.id;
 
   const projectsQ = useQuery({
     queryKey: ["projects"],
