@@ -10,7 +10,7 @@ import {
   fetchBalance,
   fetchLedger,
 } from "../lib/billing-client";
-import BillingClient from "../landing/BillingClient";
+import BillingClient from "@clash/web-ui/components/BillingClient";
 
 export const Route = createFileRoute("/_app/billing")({
   component: BillingPage,

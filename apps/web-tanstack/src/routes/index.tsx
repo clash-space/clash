@@ -1,23 +1,17 @@
-/**
- * Root route — auth-aware. Logged-out users see the marketing landing
- * page; logged-in users see the dashboard (HomePageClient with their
- * projects). Mirrors apps/web's home.tsx clientLoader pattern.
- */
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import HomePageClient from "@clash/web-ui/components/HomePageClient";
+import LayoutContent from "@clash/web-ui/components/LayoutContent";
+import LandingNav from "@clash/web-ui/components/landing/LandingNav";
+import LandingHero from "@clash/web-ui/components/landing/LandingHero";
+import FeatureGrid from "@clash/web-ui/components/landing/FeatureGrid";
+import HowItWorks from "@clash/web-ui/components/landing/HowItWorks";
+import UseCases from "@clash/web-ui/components/landing/UseCases";
+import Pricing from "@clash/web-ui/components/landing/Pricing";
+import CTASection from "@clash/web-ui/components/landing/CTASection";
+import BlogPreview from "@clash/web-ui/components/landing/BlogPreview";
+import LandingFooter from "@clash/web-ui/components/landing/LandingFooter";
 import { useSession } from "../lib/use-session";
-
-import Background from "../landing/Background";
-import LandingNav from "../landing/LandingNav";
-import LandingHero from "../landing/LandingHero";
-import FeatureGrid from "../landing/FeatureGrid";
-import HowItWorks from "../landing/HowItWorks";
-import UseCases from "../landing/UseCases";
-import Pricing from "../landing/Pricing";
-import CTASection from "../landing/CTASection";
-import BlogPreview from "../landing/BlogPreview";
-import LandingFooter from "../landing/LandingFooter";
 
 export const Route = createFileRoute("/")({
   component: IndexPage,
@@ -37,17 +31,20 @@ function IndexPage() {
     enabled: typeof window !== "undefined" && authed,
   });
 
-  if (isPending || !authed) {
-    return <Landing />;
-  }
-
-  return <HomePageClient initialProjects={(projectsQ.data ?? []) as any} />;
+  return (
+    <LayoutContent isAuthenticated={authed}>
+      {isPending || !authed ? (
+        <Landing />
+      ) : (
+        <HomePageClient initialProjects={(projectsQ.data ?? []) as any} />
+      )}
+    </LayoutContent>
+  );
 }
 
 function Landing() {
   return (
-    <div className="relative">
-      <Background />
+    <>
       <LandingNav />
       <LandingHero />
       <FeatureGrid />
@@ -57,6 +54,6 @@ function Landing() {
       <CTASection />
       <BlogPreview />
       <LandingFooter />
-    </div>
+    </>
   );
 }

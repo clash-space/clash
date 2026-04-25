@@ -4,7 +4,7 @@ import { motion } from "framer-motion";
 import { GoogleLogo } from "@phosphor-icons/react";
 import { createFileRoute } from "@tanstack/react-router";
 import { authClient } from "../lib/auth-client";
-import Background from "../landing/Background";
+import Background from "@clash/web-ui/components/Background";
 
 type Stage = "email" | "otp";
 
