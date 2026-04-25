@@ -41,8 +41,6 @@ const config = defineConfig({
         target: "https://api.clash.video",
         changeOrigin: true,
         secure: true,
-        // log every proxied request to stdout so you can see Better Auth
-        // hits land at the upstream
         configure: (proxy) => {
           proxy.on("proxyReq", (_proxyReq, req) => {
             console.log(`[proxy] ${req.method} ${req.url} → api.clash.video`);
@@ -55,6 +53,27 @@ const config = defineConfig({
           });
         },
       },
+      // Loro CRDT WebSocket — ProjectEditor opens ws://<host>/sync/:projectId.
+      // api-cf mounts /sync/:projectId on the Worker root (not under /api/*),
+      // so it needs its own proxy entry with ws upgrade enabled.
+      "/sync": {
+        target: "https://api.clash.video",
+        changeOrigin: true,
+        secure: true,
+        ws: true,
+      },
+      // AI Chat / SupervisorAgent DO — same shape as /sync, websocket-only.
+      "/agents": {
+        target: "https://api.clash.video",
+        changeOrigin: true,
+        secure: true,
+        ws: true,
+      },
+      // Asset upload + serving — api-cf mounts /upload, /assets, /thumbnails
+      // at the Worker root, not under /api/*.
+      "/upload": { target: "https://api.clash.video", changeOrigin: true, secure: true },
+      "/assets": { target: "https://api.clash.video", changeOrigin: true, secure: true },
+      "/thumbnails": { target: "https://api.clash.video", changeOrigin: true, secure: true },
     },
   },
 });
