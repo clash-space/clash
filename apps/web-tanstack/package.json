@@ -29,6 +29,7 @@
     "@tanstack/react-start": "latest",
     "@tanstack/router-plugin": "^1.132.0",
     "better-auth": "^1.6.9",
+    "framer-motion": "^12.23.24",
     "lucide-react": "^0.545.0",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",

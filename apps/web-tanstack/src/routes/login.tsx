@@ -43,7 +43,7 @@ function LoginRoute() {
     setInfo(null);
     setIsLoading(true);
     try {
-      const { error: err } = await (betterAuthClient as any).emailOtp.sendVerificationOtp({
+      const { error: err } = await authClient.emailOtp.sendVerificationOtp({
         email,
         type: "sign-in",
       });
@@ -73,7 +73,7 @@ function LoginRoute() {
     setInfo(null);
     setIsLoading(true);
     try {
-      const { error: err } = await (betterAuthClient as any).signIn.emailOtp({
+      const { error: err } = await authClient.signIn.emailOtp({
         email,
         otp,
       });

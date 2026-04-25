@@ -401,6 +401,15 @@ importers:
       '@cloudflare/vite-plugin':
         specifier: ^1.26.0
         version: 1.33.1(vite@8.0.10)(wrangler@4.84.1)
+      '@fontsource-variable/inter':
+        specifier: ^5.2.5
+        version: 5.2.8
+      '@fontsource-variable/jetbrains-mono':
+        specifier: ^5.2.5
+        version: 5.2.8
+      '@fontsource-variable/space-grotesk':
+        specifier: ^5.2.5
+        version: 5.2.10
       '@tailwindcss/vite':
         specifier: ^4.1.18
         version: 4.2.4(vite@8.0.10)
@@ -431,6 +440,9 @@ importers:
       better-auth:
         specifier: ^1.6.9
         version: 1.6.9(@cloudflare/workers-types@4.20260425.1)(@tanstack/react-start@1.167.48)(mongodb@7.1.0)(react-dom@19.2.5)(react@19.2.5)(solid-js@1.9.12)(vitest@4.1.0)
+      framer-motion:
+        specifier: ^12.23.24
+        version: 12.38.0(react-dom@19.2.5)(react@19.2.5)
       lucide-react:
         specifier: ^0.545.0
         version: 0.545.0(react@19.2.5)
