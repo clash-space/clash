@@ -1,6 +1,6 @@
 
 import { motion } from 'framer-motion';
-import { Link } from 'react-router';
+import { Link } from '@tanstack/react-router';
 import betterAuthClient from '@clash/web-ui/lib/betterAuthClient';
 
 const navLinks = [

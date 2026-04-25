@@ -2,7 +2,7 @@
 import { motion } from 'framer-motion';
 import { createProject } from '@clash/web-ui/lib/clientActions';
 import { useState, useTransition } from 'react';
-import { useNavigate } from 'react-router';
+import { useNavigate } from '@tanstack/react-router';
 import betterAuthClient from '@clash/web-ui/lib/betterAuthClient';
 import { ChatInput } from '../copilot/ChatInput';
 
@@ -15,7 +15,7 @@ export default function LandingHero() {
   const handleSend = (text: string) => {
     if (!text.trim()) return;
     if (!session.data?.user) {
-      navigate('/login');
+      navigate({ to: '/login' });
       return;
     }
     startTransition(async () => {

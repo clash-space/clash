@@ -6,7 +6,7 @@
  * "Billing not available" state.
  */
 import { useCallback, useState } from "react";
-import { Link } from "react-router";
+import { Link } from "@tanstack/react-router";
 import { ArrowLeft, CreditCard, Lightning, Lock, Sparkle, Star } from "@phosphor-icons/react";
 import {
   type Balance,

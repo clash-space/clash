@@ -4,7 +4,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { GoogleLogo, Gear, SignOut } from '@phosphor-icons/react';
-import { Link } from 'react-router';
+import { Link } from '@tanstack/react-router';
 import betterAuthClient from '@clash/web-ui/lib/betterAuthClient';
 
 export default function UserControls() {
