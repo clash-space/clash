@@ -12,6 +12,12 @@ const PROXY_PREFIXES = [
 export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(request.url);
+    // Force HTTPS — browser-set Secure cookies (Better Auth session) won't
+    // store on http://, and CF custom domain doesn't auto-upgrade.
+    if (url.protocol === "http:") {
+      url.protocol = "https:";
+      return Response.redirect(url.toString(), 301);
+    }
     if (PROXY_PREFIXES.some((p) => url.pathname.startsWith(p))) {
       if (!env.API_CF) {
         return new Response("api-cf service binding missing", { status: 503 });
