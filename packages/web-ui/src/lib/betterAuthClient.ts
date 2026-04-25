@@ -2,12 +2,6 @@ import { createAuthClient } from "better-auth/react";
 import { cloudflareClient } from "better-auth-cloudflare/client";
 import { emailOTPClient } from "better-auth/client/plugins";
 
-/**
- * Lazy better-auth client. Created on first use in the browser.
- *
- * We defer construction because `createAuthClient` throws when given a
- * relative baseURL, and on the server we don't have `window.location.origin`.
- */
 type AuthClient = ReturnType<
   typeof createAuthClient<{
     plugins: [
@@ -22,9 +16,7 @@ let _client: AuthClient | null = null;
 function getClient(): AuthClient {
   if (_client) return _client;
   if (typeof window === "undefined") {
-    throw new Error(
-      "betterAuthClient can't be used during server rendering — wrap in useEffect or an event handler.",
-    );
+    return SSR_STUB as unknown as AuthClient;
   }
   _client = createAuthClient({
     baseURL: `${window.location.origin}/api/better-auth`,
@@ -32,6 +24,21 @@ function getClient(): AuthClient {
   }) as AuthClient;
   return _client;
 }
+
+// On SSR there's no `window.location.origin`, so we can't construct a real
+// client. Components that call `useSession()` during render get an empty
+// session; the real client takes over after hydration. Mutating calls
+// (signIn, signOut, …) only fire from event handlers, never during SSR,
+// so we don't need to stub those — accessing them on SSR throws, which is
+// what we want.
+const SSR_STUB = {
+  useSession: () => ({
+    data: null,
+    isPending: false,
+    error: null,
+    refetch: () => Promise.resolve(),
+  }),
+};
 
 const betterAuthClient = new Proxy(
   {},
