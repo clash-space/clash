@@ -29,6 +29,7 @@
     "tailwindcss": "^4.1.18"
   },
   "devDependencies": {
+    "@cloudflare/workers-types": "^4.20260425.1",
     "@tailwindcss/typography": "^0.5.16",
     "@tanstack/devtools-vite": "latest",
     "@testing-library/dom": "^10.4.1",
