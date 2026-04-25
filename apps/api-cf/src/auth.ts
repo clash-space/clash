@@ -21,15 +21,30 @@ import * as betterAuthSchema from "./auth-schema";
 
 const basePath = "/api/better-auth";
 
+/** Cloudflare Email Service `send_email` binding shape. */
+interface EmailBinding {
+  send(input: {
+    to: string;
+    from: string;
+    subject: string;
+    html?: string;
+    text?: string;
+  }): Promise<{ messageId: string }>;
+}
+
 export interface AuthBindings {
   DB: D1Database;
   KV?: KVNamespace<string>;
+  /** Cloudflare Email Service binding — wrangler [[send_email]] name = "EMAIL". */
+  EMAIL?: EmailBinding;
   BETTER_AUTH_URL?: string;
   BETTER_AUTH_SECRET?: string;
   AUTH_SECRET?: string;
   AUTH_GOOGLE_ID?: string;
   AUTH_GOOGLE_SECRET?: string;
-  RESEND_API_KEY?: string;
+  /** Sender address; falls back to `auth@clash.video` if unset. Must be on a
+   *  CF-DNS-managed domain that's onboarded into Email Service. */
+  AUTH_EMAIL_FROM?: string;
 }
 
 async function sendOtpEmail(
@@ -38,27 +53,22 @@ async function sendOtpEmail(
   otp: string,
   type: string,
 ): Promise<void> {
-  if (!env.RESEND_API_KEY) {
+  if (!env.EMAIL) {
     // Dev fallback: print to console — copy-paste from `wrangler tail` into the UI.
     console.log(`[auth] OTP for ${to} (${type}): ${otp}  (expires in 10 min)`);
     return;
   }
+  const from = env.AUTH_EMAIL_FROM ?? "Clash <auth@clash.video>";
   try {
-    await fetch("https://api.resend.com/emails", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${env.RESEND_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        from: "Clash <auth@clash.video>",
-        to,
-        subject: "Your Clash verification code",
-        html: `<p>Your code: <strong style="font-size:24px">${otp}</strong></p><p>Expires in 10 minutes.</p>`,
-      }),
+    await env.EMAIL.send({
+      to,
+      from,
+      subject: "Your Clash verification code",
+      html: `<p>Your code: <strong style="font-size:24px">${otp}</strong></p><p>Expires in 10 minutes.</p>`,
+      text: `Your Clash verification code: ${otp}\nExpires in 10 minutes.`,
     });
   } catch (err) {
-    console.error("[auth] Resend failed:", err);
+    console.error("[auth] Email send failed:", err);
   }
 }
 

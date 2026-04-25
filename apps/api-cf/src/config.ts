@@ -50,10 +50,12 @@ export interface Env {
   ACTION_SECRET_KEY?: string;
   // Better Auth — handler runs in this Worker now (apps/api-cf/src/auth.ts).
   KV?: KVNamespace<string>;
+  /** Cloudflare Email Service binding — wrangler [[send_email]] name = "EMAIL". */
+  EMAIL?: import("./auth").AuthBindings["EMAIL"];
   BETTER_AUTH_URL?: string;
   BETTER_AUTH_SECRET?: string;
   AUTH_SECRET?: string;
   AUTH_GOOGLE_ID?: string;
   AUTH_GOOGLE_SECRET?: string;
-  RESEND_API_KEY?: string;
+  AUTH_EMAIL_FROM?: string;
 }
