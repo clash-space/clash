@@ -78,7 +78,9 @@ function LoginRoute() {
         otp,
       });
       if (err) throw new Error(err.message || "Invalid code");
-      navigate({ to: "/", replace: true });
+      // Hard redirect so SSR runs fresh and the React Query session cache
+      // (which may already be primed as "no user") gets discarded.
+      window.location.href = "/";
     } catch (e) {
       setError((e as Error).message);
       setIsLoading(false);
