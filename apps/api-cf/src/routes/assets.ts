@@ -93,46 +93,15 @@ assetRoutes.get('/*', async (c) => {
     return c.text('Invalid signature', 403);
   }
 
-  // If prod (MEDIA_GATEWAY_URL is set), check if the object is an image.
-  // Use R2.head() since we only need Content-Type to decide routing.
-  const mediaGatewayUrl = c.env.MEDIA_GATEWAY_URL;
-  if (mediaGatewayUrl) {
-    const head = await c.env.R2_BUCKET.head(storageKey);
-    if (!head) return c.text('Asset not found', 404);
-
-    const contentType = head.httpMetadata?.contentType || '';
-    if (contentType.startsWith('image/')) {
-      // Rebuild the absolute signed URL and forward through CF Image
-      // Transformations. CF strips EXIF/metadata and chooses the best format.
-      const origin = mediaGatewayUrl.replace(/\/+$/, '');
-      const signedSelfUrl = `${origin}/assets/${storageKey}?exp=${exp}&sig=${sig}`;
-      const cfUrl = `${origin}/cdn-cgi/image/format=auto,metadata=none/${signedSelfUrl}`;
-
-      try {
-        const cfResp = await fetch(cfUrl);
-        if (cfResp.ok) {
-          const headers = new Headers();
-          const respCt = cfResp.headers.get('Content-Type');
-          if (respCt) headers.set('Content-Type', respCt);
-          headers.set('Access-Control-Allow-Origin', '*');
-          headers.set('Cache-Control', 'public, max-age=3600');
-          return new Response(cfResp.body, {
-            status: cfResp.status,
-            headers,
-          });
-        }
-        console.warn(
-          `[assets] CF Image Transformations returned ${cfResp.status} for ${storageKey}; falling back to R2`,
-        );
-      } catch (err) {
-        console.warn(
-          `[assets] CF Image Transformations fetch failed for ${storageKey}; falling back to R2:`,
-          err,
-        );
-      }
-      // Fall through to R2.get below on CF failure.
-    }
-  }
+  // Edge cache hit-path. The cache key strips the signature/exp so the same
+  // asset hits cache regardless of which signed-URL variant the browser asks
+  // for (signatures are TTL'd, so a fresh URL every minute would otherwise
+  // never share a cache slot). Signature was already verified above.
+  const cacheKey = new Request(
+    new URL(`/__asset_cache/${storageKey}`, c.req.url).toString(),
+  );
+  const cached = await caches.default.match(cacheKey);
+  if (cached) return cached;
 
   // Fetch from R2. Honor HTTP Range requests so byte-seek-capable clients
   // (ffmpeg reading mp4s with trailing moov atoms, <video> element seeks,
@@ -176,7 +145,7 @@ assetRoutes.get('/*', async (c) => {
   const object = await c.env.R2_BUCKET.get(storageKey);
   if (!object) return c.text('Asset not found', 404);
 
-  return new Response(object.body, {
+  const resp = new Response(object.body, {
     headers: {
       'Content-Type': object.httpMetadata?.contentType || 'application/octet-stream',
       'Content-Length': String(object.size),
@@ -185,6 +154,12 @@ assetRoutes.get('/*', async (c) => {
       'Cache-Control': 'public, max-age=3600',
     },
   });
+  // Write back to edge cache under the signature-stripped key. Worker
+  // responses don't auto-cache; using caches.default.put is the way to
+  // persist them. Range requests above intentionally skip the cache —
+  // partial bodies can't satisfy a non-Range hit.
+  c.executionCtx.waitUntil(caches.default.put(cacheKey, resp.clone()));
+  return resp;
 });
 
 /**
