@@ -25,12 +25,17 @@ export function updateNodeData(
       return;
     }
 
+    // Treat null as "delete this field" so callers can clear flags like
+    // `pendingTask` (notifyFailed/notifyCompleted use null over the wire
+    // because JSON.stringify drops undefined silently).
+    const newData: Record<string, any> = { ...(existingNode.data || {}) };
+    for (const [k, v] of Object.entries(updates)) {
+      if (v === null) delete newData[k];
+      else newData[k] = v;
+    }
     const updatedNode: Record<string, any> = {
       ...existingNode,
-      data: {
-        ...(existingNode.data || {}),
-        ...updates,
-      },
+      data: newData,
     };
 
     // Ensure position is preserved

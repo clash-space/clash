@@ -128,8 +128,16 @@ export class GenerationContext {
   // ─── Loro notification ──────────────────────────────────
 
   /** POST to ProjectRoom DO's /update-node. If `logEntry` is given it's
-   *  appended to node.data._log (visible in the node's audit log overlay). */
+   *  appended to node.data._log (visible in the node's audit log overlay).
+   *
+   *  `undefined` values mean "clear this field"; we serialize them as
+   *  explicit `null` so they survive JSON.stringify (which drops undefined
+   *  silently) — the DO-side updateNodeData treats null as a delete. */
   async notify(updates: Record<string, unknown>, logEntry?: string): Promise<void> {
+    const wireUpdates: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(updates)) {
+      wireUpdates[k] = v === undefined ? null : v;
+    }
     try {
       const roomId = this.env.ROOM.idFromName(this.params.projectId);
       const stub = this.env.ROOM.get(roomId);
@@ -139,7 +147,7 @@ export class GenerationContext {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             nodeId: this.params.nodeId,
-            updates,
+            updates: wireUpdates,
             ...(logEntry ? { log: logEntry } : {}),
           }),
         }),
