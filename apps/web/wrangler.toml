@@ -1,22 +1,31 @@
+# OSS reference config for self-hosters. The hosted clash.video deploy lives
+# in clash-hosted/apps/web-hosted/wrangler.toml — that one points its `main`
+# at this directory's workers/app.ts via the OSS git submodule.
+
 name = "clash-web"
 main = "workers/app.ts"
 compatibility_date = "2025-04-08"
 compatibility_flags = ["nodejs_compat"]
 
-# Vite + CF plugin emits to dist/client (client bundle) + dist/clash-web (worker)
 [assets]
 binding = "ASSETS"
 directory = "./dist/client"
 not_found_handling = "single-page-application"
+# Without this, the assets layer answers any text/html GET (incl. OAuth
+# callbacks like /api/better-auth/callback/google) with index.html before the
+# Worker sees it. With run_worker_first the Worker handles the request first
+# and decides whether to fall through to env.ASSETS for the SPA shell.
+run_worker_first = true
 
-# D1 (same DB as gateway + api-cf)
+# D1 (shared with api-cf for users / sessions / app tables)
 [[d1_databases]]
 binding = "DB"
 database_name = "master-clash-frontend"
 database_id = "aab16eeb-a375-490b-ad1e-cd092cd9f4bb"
 migrations_dir = "drizzle"
 
-# Service binding to api-cf worker (prod + local when both run via wrangler)
+# Service binding to api-cf worker. Self-hosters point this at their own
+# api-cf deploy; the hosted overlay overrides this to master-clash-api-hosted.
 [[services]]
 binding = "API_CF"
 service = "master-clash-api"
@@ -28,44 +37,10 @@ bucket_name = "master-clash-assets"
 
 [vars]
 BETTER_AUTH_BASE_PATH = "/api/better-auth"
-# Local dev fallback when the service binding can't resolve api-cf
+# Dev fallback when the service binding can't resolve api-cf (e.g. running
+# wrangler dev for one Worker but not the other).
 API_CF_URL = "http://127.0.0.1:8789"
 
 [dev]
-port = 3000
+port = 3001
 ip = "0.0.0.0"
-
-[env.production.vars]
-BETTER_AUTH_BASE_PATH = "/api/better-auth"
-
-# clash.video deploy. Service-binds to the hosted billing-aware API Worker
-# instead of the default `master-clash-api`. Self-hosters use the default
-# top-level config; we deploy with `wrangler deploy --env hosted`.
-[env.hosted]
-name = "clash-web"
-routes = [
-  { pattern = "clash.video", custom_domain = true },
-  { pattern = "www.clash.video", custom_domain = true },
-]
-
-[env.hosted.vars]
-BETTER_AUTH_BASE_PATH = "/api/better-auth"
-
-[[env.hosted.d1_databases]]
-binding = "DB"
-database_name = "master-clash-frontend"
-database_id = "aab16eeb-a375-490b-ad1e-cd092cd9f4bb"
-migrations_dir = "drizzle"
-
-[[env.hosted.services]]
-binding = "API_CF"
-service = "master-clash-api-hosted"
-
-[[env.hosted.r2_buckets]]
-binding = "R2_BUCKET"
-bucket_name = "master-clash-assets"
-
-[env.hosted.assets]
-binding = "ASSETS"
-directory = "./dist/client"
-not_found_handling = "single-page-application"
