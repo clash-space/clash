@@ -186,6 +186,19 @@ export default function ChatbotCopilot({
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
+    // Cover the gap between mount and the first send actually firing. During
+    // that ~300-800ms window (POST settled but WS still handshaking,
+    // queueMessageOnOpen waiting for `connected`), `status` is still 'ready'
+    // and `isCreatingSession` has flipped back to false — so without this
+    // flag ChatInput briefly shows the idle "arrow" submit button, which
+    // looks like nothing is happening. Cleared as soon as the first message
+    // shows up in the array (sendMessage's optimistic insert), at which point
+    // status takes over → 'submitted' → 'streaming'.
+    const [waitingFirstSend, setWaitingFirstSend] = useState(!!initialPrompt);
+    useEffect(() => {
+        if (waitingFirstSend && messages.length > 0) setWaitingFirstSend(false);
+    }, [messages.length, waitingFirstSend]);
+
     // Auto-restore failed message to input
     useEffect(() => {
         if (lastFailedMessage && !input) {
@@ -700,7 +713,7 @@ export default function ChatbotCopilot({
                                     onSubmit={handleSubmit}
                                     onStop={handleStop}
                                     isProcessing={isProcessing}
-                                    isCreatingSession={isCreatingSession}
+                                    isCreatingSession={isCreatingSession || waitingFirstSend}
                                     connected={connected}
                                     error={sessionError || connectionError}
                                     onDismissError={() => { setSessionError(null); clearConnectionError(); }}
