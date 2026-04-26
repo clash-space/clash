@@ -1,5 +1,7 @@
 # Clash
 
+[English](./README.md) · [简体中文](./README.zh-CN.md)
+
 Multi-agent canvas for creative video work — humans and AI editing the
 same Loro CRDT graph in real time. Backend on Cloudflare Workers + D1 +
 R2; frontend is a Vite SPA. Self-hostable end-to-end.
@@ -8,11 +10,6 @@ R2; frontend is a Vite SPA. Self-hostable end-to-end.
 ([`clash-space/clash-hosted`](https://github.com/clash-space/clash-hosted))
 that vendors this repo as a submodule and adds billing. Everything in
 this repo runs without it.
-
-> 多智能体的视频创作画布。人和 Agent 编辑同一份 Loro CRDT 图，全程实时。后端
-> 跑在 Cloudflare Workers + D1 + R2，前端是 Vite SPA。可完整自托管。`clash.video`
-> 用的是私有 overlay（`clash-hosted`，把这个仓库当 submodule 套上 billing），
-> 但本仓库本身不依赖它。
 
 ---
 
@@ -98,14 +95,11 @@ packages/
 
 ---
 
-## Self-hosting / 自托管
+## Self-hosting
 
 The `wrangler.toml` files in this repo use neutral resource names
 (`clash-api`, `clash-d1`, `clash-r2`) with placeholder UUIDs. Create your
 own Cloudflare resources and paste the IDs back in.
-
-> 仓库里的 `wrangler.toml` 用的是中性名（`clash-*`）+ 占位 UUID。先在
-> 自己的 Cloudflare 账号里建好资源，把真实 ID 填回去。
 
 ### Prerequisites
 
@@ -214,7 +208,3 @@ pnpm type-check    # tsc --noEmit across all packages
 You can fork, modify, distribute, run internally, contribute back, study,
 benchmark — anything except provide a product that competes with this
 software (i.e. don't host clash-clone.com as a paid service).
-
-> 你可以 fork、改、分发、内部商用、贡献、学术使用 —— 唯一禁止的是把它做成
-> 跟 clash 竞争的商业产品/服务（比如开 clash-clone.com 卖钱）。本许可永久有效，
-> 不会自动转回宽松协议。
