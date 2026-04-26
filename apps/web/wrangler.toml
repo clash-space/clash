@@ -34,7 +34,6 @@ run_worker_first = [
   "/upload",
   "/upload/*",
   "/health",
-  "/dev-log",
 ]
 
 # D1 (shared with api-cf for users / sessions / app tables)
