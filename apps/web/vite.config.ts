@@ -1,4 +1,4 @@
-import { reactRouter } from "@react-router/dev/vite";
+import { cloudflare } from "@cloudflare/vite-plugin";
 import tailwindcss from "@tailwindcss/vite";
 import { defineConfig } from "vite";
 import tsconfigPaths from "vite-tsconfig-paths";
@@ -10,24 +10,59 @@ import { dirname, resolve } from "node:path";
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(__dirname, "../..");
 
-export default defineConfig({
+// Pure Vite SPA. index.html is the entry; main.tsx mounts a
+// createBrowserRouter-based React app. No SSR at any layer.
+//
+// `@cloudflare/vite-plugin` is enabled only in `vite dev` so workers/app.ts
+// runs inside the same vite dev process and `env.API_CF` resolves to the
+// auxiliary api-cf worker (same path as prod).
+//
+// `vite build` skips the plugin so it emits a plain SPA bundle without the
+// plugin's wrangler.json redirect. The deploy step (`wrangler deploy` with
+// the project's own wrangler.toml — or the wrapper wrangler.toml in
+// clash-hosted/apps/web-hosted) bundles workers/app.ts itself.
+export default defineConfig(({ command }) => ({
   plugins: [
+    // command is 'serve' for `vite dev`, 'build' for `vite build`/`vite preview`.
+    // Skip plugin in build so deploys (which read wrangler.toml directly) get
+    // a plain SPA bundle without the plugin's wrangler.json redirect.
+    ...(command === "serve"
+      ? [
+          cloudflare({
+            remoteBindings: false,
+            // Share .wrangler/state with api-cf (whose dev script also uses
+            // ../../.wrangler/state). Without this each worker gets its own
+            // miniflare D1 → Better Auth verification rows written by web
+            // don't exist when api-cf reads them, breaking Google OAuth.
+            persistState: { path: resolve(repoRoot, ".wrangler/state") },
+            auxiliaryWorkers: [{ configPath: "../api-cf/wrangler.toml" }],
+          }),
+        ]
+      : []),
     tailwindcss(),
-    // wasm + top-level-await must come before reactRouter so their resolvers
-    // handle `.wasm` imports in loro-crdt.
+    // wasm + top-level-await are required for loro-crdt's .wasm import.
     wasm(),
     topLevelAwait(),
-    reactRouter(),
     tsconfigPaths(),
   ],
-  // SPA mode (react-router.config.ts: ssr:false). `vite build` produces
-  // dist/client which the Worker serves via the ASSETS binding. Worker
-  // itself is bundled by wrangler from workers/app.ts on deploy.
-  //
-  // We don't use @cloudflare/vite-plugin: it doesn't support SPA mode with
-  // React Router v7 (cloudflare/workers-sdk#12497) and the project is SPA
-  // by design. For dev with workspace deps below the cwd, see server.fs.allow.
-
+  build: {
+    outDir: "dist/client",
+    emptyOutDir: true,
+    assetsDir: "_app",
+    rollupOptions: {
+      output: {
+        // Force @phosphor-icons/react into its own chunk. Default chunk
+        // splitting picks the icon defs into whichever chunk first uses
+        // them and emits `let X; X = forwardRef(...)` patterns that read
+        // as `undefined` from cross-chunk named imports → React #130.
+        // Keeping the whole package in one chunk preserves top-level
+        // const exports so cross-chunk imports resolve correctly.
+        manualChunks(id) {
+          if (id.includes("@phosphor-icons")) return "phosphor";
+        },
+      },
+    },
+  },
   // Force single copy of react / remotion so <Player> and <VideoComposition>
   // share the same React Context. pnpm's peer-dep-scoped store creates 4
   // remotion copies (one per react/react-dom peer combo) — useVideoConfig()
@@ -43,7 +78,7 @@ export default defineConfig({
     ],
   },
   server: {
-    port: 3000,
+    port: 3001,
     host: "0.0.0.0",
     // Vite restricts dev fs to cwd by default; in our pnpm monorepo,
     // workspace packages (packages/web-ui, etc.) live above apps/web/.
@@ -51,30 +86,12 @@ export default defineConfig({
     fs: { allow: [repoRoot] },
   },
   preview: {
-    port: 3000,
-  },
-  // SPA mode still runs a single SSR pass at build time to render the
-  // static index.html shell. Workspace packages must be bundled into that
-  // SSR pass (not treated as external imports) so vite-plugin-wasm,
-  // top-level-await, etc. apply consistently — otherwise the SSR render
-  // can produce a broken shell that breaks hydration with React #130.
-  ssr: {
-    noExternal: [
-      "@master-clash/remotion-ui",
-      "@master-clash/remotion-components",
-      "@master-clash/remotion-core",
-      "@clash/shared-layout",
-      "@clash/shared-types",
-      "@clash/web-ui",
-    ],
+    port: 3001,
   },
   optimizeDeps: {
     // loro-crdt ships a .wasm alongside JS — exclude from esbuild prebundle so
     // vite-plugin-wasm handles it at request time.
     exclude: ["loro-crdt"],
-    include: [
-      "react-dom/client",
-      "react/jsx-runtime",
-    ],
+    include: ["react-dom/client", "react/jsx-runtime"],
   },
-});
+}));
