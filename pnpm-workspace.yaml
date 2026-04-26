@@ -2,7 +2,6 @@ packages:
   - 'apps/api-cf'
   - 'apps/render-server'
   - 'apps/web'
-  - 'apps/web-tanstack'
   - 'packages/remotion-*'
   - 'packages/shared-*'
   - 'packages/action-sdk'
