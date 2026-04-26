@@ -113,7 +113,6 @@ jobs:
             R2_PUBLIC_URL
             KLING_ACCESS_KEY
             KLING_SECRET_KEY
-            JWT_SECRET
             BETTER_AUTH_SECRET
             BETTER_AUTH_URL
             AUTH_GOOGLE_ID
@@ -132,7 +131,6 @@ jobs:
           R2_PUBLIC_URL: ${{ secrets.R2_PUBLIC_URL }}
           KLING_ACCESS_KEY: ${{ secrets.KLING_ACCESS_KEY }}
           KLING_SECRET_KEY: ${{ secrets.KLING_SECRET_KEY }}
-          JWT_SECRET: ${{ secrets.JWT_SECRET }}
           BETTER_AUTH_SECRET: ${{ secrets.BETTER_AUTH_SECRET }}
           BETTER_AUTH_URL: ${{ secrets.BETTER_AUTH_URL }}
           AUTH_GOOGLE_ID: ${{ secrets.AUTH_GOOGLE_ID }}
