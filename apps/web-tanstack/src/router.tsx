@@ -9,6 +9,10 @@ export function getRouter() {
     scrollRestoration: true,
     defaultPreload: "intent",
     defaultPreloadStaleTime: 0,
+    // Run as pure SPA — no SSR. Most pages are session-aware (Landing vs
+    // HomePageClient, /projects list, etc.); SSR'ing them produced a logged-
+    // out HTML that flipped on the client, hence the universal flash.
+    defaultSsr: false,
     context: { queryClient },
   });
   return routerWithQueryClient(router, queryClient);
