@@ -38,24 +38,12 @@ export const googleImageProvider: GenerationProvider = {
       "resolve-references",
       { retries: { limit: 2, delay: "2 seconds" }, timeout: "3 minutes" },
       async () => {
-        // Union of @-mention asset_refs (preserving interleave order) +
-        // any badge-attached refs in referenceImageR2Keys, dedup'd. Earlier
-        // bug: gating on `promptParts?.length` (which is always truthy
-        // because it includes text parts) silently dropped badge refs.
-        const seen = new Set<string>();
-        const r2Keys: string[] = [];
-        for (const p of params.promptParts ?? []) {
-          if (p.type === "asset_ref" && p.r2Key && !seen.has(p.r2Key)) {
-            seen.add(p.r2Key);
-            r2Keys.push(p.r2Key);
-          }
-        }
-        for (const k of params.referenceImageR2Keys ?? []) {
-          if (!seen.has(k)) {
-            seen.add(k);
-            r2Keys.push(k);
-          }
-        }
+        // referenceImageR2Keys is the single source of truth for refs.
+        // Frontend invariant: any asset_ref in promptParts is also listed
+        // here (promptParts only encodes prompt-position interleaving,
+        // which an image-out model doesn't consume — it just wants the
+        // flat list).
+        const r2Keys = params.referenceImageR2Keys ?? [];
         if (!r2Keys.length) return undefined;
         const out: VertexInlineImage[] = [];
         for (const k of r2Keys) {
