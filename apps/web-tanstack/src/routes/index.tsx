@@ -32,9 +32,15 @@ function IndexPage() {
     enabled: typeof window !== "undefined" && authed,
   });
 
+  // Render nothing until session resolves; otherwise we'd render Landing
+  // first (the unauth branch), then flip to HomePageClient — visible flash.
+  if (isPending) {
+    return <LayoutContent isAuthenticated={false}><div /></LayoutContent>;
+  }
+
   return (
     <LayoutContent isAuthenticated={authed}>
-      {isPending || !authed ? (
+      {!authed ? (
         <Landing />
       ) : (
         <HomePageClient initialProjects={(projectsQ.data ?? []) as any} />

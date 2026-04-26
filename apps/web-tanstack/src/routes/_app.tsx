@@ -19,6 +19,16 @@ function AppLayout() {
     }
   }, [isPending, userId, navigate]);
 
+  // Wait for session to resolve before mounting children — otherwise
+  // session-aware UI (UserControls, etc.) flashes from logged-out → user.
+  if (isPending) {
+    return (
+      <LayoutContent isAuthenticated>
+        <div className="min-h-[60vh]" />
+      </LayoutContent>
+    );
+  }
+
   return (
     <LayoutContent isAuthenticated>
       <Outlet />
