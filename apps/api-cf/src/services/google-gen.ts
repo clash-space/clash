@@ -245,6 +245,11 @@ export interface GoogleImageParams {
   aspectRatio?: string;
   modelName?: string;
   modelParams?: Record<string, unknown>;
+  /** Reference / edit-source images to condition the generation on. When
+   *  present, generation always goes through the Gemini `:generateContent`
+   *  multimodal path (image-in + image-out) regardless of which model is
+   *  selected — the Imagen-style `:predict` path doesn't accept image inputs. */
+  referenceImages?: VertexInlineImage[];
 }
 
 export interface GoogleImageResult {
@@ -321,13 +326,35 @@ export async function generateGoogleImage(
     "gemini-2.5-flash-image";
   const vertex = makeVertex(creds);
 
-  if (GEMINI_GENERATE_CONTENT_MODELS.has(modelId)) {
-    // Gemini content-API path: the model only exposes `:generateContent`, so
-    // we use `generateText` with responseModalities=['TEXT','IMAGE']. Images
-    // land in `result.files` as { mediaType, uint8Array } entries.
+  // Force the Gemini `:generateContent` (multimodal) path when references
+  // are present — the Imagen `:predict` handler ignores image inputs, so
+  // "reference image + prompt" used to silently behave like "prompt only"
+  // on gemini-2.5-flash-image (GA).
+  const useGenerateContent =
+    GEMINI_GENERATE_CONTENT_MODELS.has(modelId) ||
+    (params.referenceImages?.length ?? 0) > 0;
+
+  if (useGenerateContent) {
+    // Gemini content-API path: pass references as inline image parts in the
+    // user message, then text. Returned images land in `result.files`.
+    const refs = params.referenceImages ?? [];
+    const userContent: Array<
+      | { type: "text"; text: string }
+      | { type: "image"; image: Uint8Array; mediaType: string }
+    > = [
+      ...refs.map((img) => ({
+        type: "image" as const,
+        image: base64ToBytes(img.bytesBase64Encoded),
+        mediaType: img.mimeType,
+      })),
+      { type: "text" as const, text: params.prompt },
+    ];
     const result = await generateText({
       model: vertex(modelId),
-      prompt: params.prompt,
+      // Cast to any: ai-sdk's ModelMessage union typing is over-restrictive
+      // for the multimodal { type: "image", image: Uint8Array, mediaType }
+      // shape that Vertex actually accepts.
+      messages: [{ role: "user", content: userContent as any }],
       providerOptions: {
         vertex: {
           responseModalities: ["TEXT", "IMAGE"],
@@ -347,9 +374,8 @@ export async function generateGoogleImage(
     };
   }
 
-  // Imagen-style `:predict` path (works for gemini-2.5-flash-image GA which
-  // registers both handlers on Vertex). Richer aspectRatio / sampleImageSize
-  // / negativePrompt plumbing goes through here.
+  // Imagen-style `:predict` path — text-to-image only, but exposes richer
+  // aspectRatio / sampleImageSize / negativePrompt plumbing.
   const ar = (params.aspectRatio || "16:9") as `${number}:${number}`;
   const result = await generateImage({
     model: vertex.image(modelId),
