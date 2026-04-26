@@ -2,6 +2,11 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { Hono } from "hono";
 import type { Env } from "../../config";
 
+vi.mock("cloudflare:workers", () => ({
+  DurableObject: class MockDurableObject {},
+  WorkerEntrypoint: class MockWorkerEntrypoint {},
+}));
+
 // Pull the routes directly — no need to mock the rest of the app.
 import { assetsRoutes } from "./assets";
 
@@ -11,6 +16,7 @@ function makeDb() {
   const responses = {
     project: null as { ownerId: string } | null,
     asset: null as Record<string, unknown> | null,
+    assets: [] as Record<string, unknown>[],
   };
   const prepare = vi.fn((sql: string) => {
     return {
@@ -23,6 +29,10 @@ function makeDb() {
             if (sql.includes("FROM assets")) return responses.asset;
             return null;
           }),
+          all: vi.fn().mockImplementation(async () => {
+            if (sql.includes("FROM assets")) return { results: responses.assets };
+            return { results: [] };
+          }),
         };
       },
     };
@@ -34,7 +44,10 @@ function makeEnv(overrides: { db?: D1Database } = {}): Env {
   const { db } = makeDb();
   return {
     DB: overrides.db ?? db,
-    R2_BUCKET: {} as any,
+    R2_BUCKET: {
+      head: vi.fn().mockResolvedValue({ size: 1024 }),
+      get: vi.fn().mockResolvedValue(null),
+    } as any,
     R2_PUBLIC_URL: "",
     ENVIRONMENT: "test",
     GOOGLE_API_KEY: "",
@@ -162,6 +175,43 @@ describe("assetsRoutes", () => {
   });
 
   // ─── GET /v1/assets/:id ──────────────────────────────────
+
+  describe("POST /v1/assets/batch", () => {
+    it("returns owned asset rows in one response", async () => {
+      const dbMock = makeDb();
+      dbMock.responses.assets = [
+        {
+          id: "a",
+          userId: "user-1",
+          kind: "image",
+          srcR2Key: "uploads/a.png",
+          coverR2Key: null,
+          metadata: "{\"width\":100,\"height\":50}",
+          sourceModel: null,
+          sourcePrompt: null,
+          sourceTaskId: null,
+          sources: null,
+          createdAt: 1,
+          updatedAt: 1,
+        },
+      ];
+      const env = makeEnv({ db: dbMock.db });
+      const { app } = makeApp(env);
+
+      const res = await app.request("/v1/assets/batch", {
+        method: "POST",
+        headers: { ...AUTH, "content-type": "application/json" },
+        body: JSON.stringify({ ids: ["a", "b"] }),
+      }, env);
+
+      expect(res.status).toBe(200);
+      const body = await res.json() as { assets: Array<{ id: string; metadata: { width: number } }> };
+      expect(body.assets).toHaveLength(1);
+      expect(body.assets[0].id).toBe("a");
+      expect(body.assets[0].metadata.width).toBe(100);
+      expect(dbMock.calls.at(-1)?.binds).toEqual(["user-1", "a", "b"]);
+    });
+  });
 
   describe("GET /v1/assets/:id", () => {
     it("404 when not found", async () => {

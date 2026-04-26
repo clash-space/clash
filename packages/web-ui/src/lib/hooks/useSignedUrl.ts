@@ -8,6 +8,11 @@ import { fetchWithRetry } from './retryFetch';
  */
 const cache = new Map<string, { url: string; exp: number }>();
 const inflight = new Map<string, Promise<{ url: string; exp: number }>>();
+const pending = new Map<string, {
+  resolve: (value: { url: string; exp: number }) => void;
+  reject: (err: unknown) => void;
+}>();
+let pendingTimer: ReturnType<typeof setTimeout> | undefined;
 
 const REFRESH_MARGIN = 300; // refresh 5 min before expiry
 
@@ -16,10 +21,83 @@ function isAlreadyUrl(src: string): boolean {
   return src.startsWith('http') || src.startsWith('blob:') || src.startsWith('data:') || src.startsWith('/');
 }
 
+function parseExpFromUrl(url: string): number | undefined {
+  try {
+    const origin = typeof window === 'undefined' ? 'http://localhost' : window.location.origin;
+    const parsed = new URL(url, origin);
+    const exp = Number(parsed.searchParams.get('exp'));
+    return Number.isFinite(exp) ? exp : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+export function primeSignedUrl(storageKey: string | undefined, url: string | undefined, exp?: number): void {
+  if (!storageKey || !url) return;
+  cache.set(storageKey, {
+    url,
+    exp: exp ?? parseExpFromUrl(url) ?? Math.floor(Date.now() / 1000) + REFRESH_MARGIN,
+  });
+  inflight.delete(storageKey);
+  pending.delete(storageKey);
+}
+
 async function fetchSigned(storageKey: string): Promise<{ url: string; exp: number }> {
   const res = await fetchWithRetry(`/assets/sign?key=${encodeURIComponent(storageKey)}`);
   if (!res.ok) throw new Error('Failed to sign URL');
   return res.json();
+}
+
+async function fetchSignedBatch(storageKeys: string[]): Promise<Array<{ key: string; url: string; exp: number }>> {
+  const res = await fetchWithRetry('/assets/sign-batch', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ keys: storageKeys }),
+  });
+  if (!res.ok) throw new Error('Failed to sign URLs');
+  const json = (await res.json()) as { urls?: Array<{ key: string; url: string; exp: number }> };
+  return json.urls ?? [];
+}
+
+function scheduleFlush(): void {
+  if (pendingTimer) return;
+  pendingTimer = setTimeout(() => {
+    pendingTimer = undefined;
+    void flushPending();
+  }, 0);
+}
+
+async function flushPending(): Promise<void> {
+  const entries = Array.from(pending.entries());
+  pending.clear();
+  if (entries.length === 0) return;
+
+  const keys = entries.map(([key]) => key);
+  try {
+    if (keys.length === 1) {
+      const signed = await fetchSigned(keys[0]);
+      cache.set(keys[0], signed);
+      entries[0][1].resolve(signed);
+      return;
+    }
+
+    const signedUrls = await fetchSignedBatch(keys);
+    const byKey = new Map(signedUrls.map((signed) => [signed.key, signed]));
+    for (const signed of signedUrls) cache.set(signed.key, { url: signed.url, exp: signed.exp });
+
+    for (const [key, handlers] of entries) {
+      const signed = byKey.get(key);
+      if (signed) {
+        handlers.resolve({ url: signed.url, exp: signed.exp });
+      } else {
+        handlers.reject(new Error(`Signed URL for ${key} not returned`));
+      }
+    }
+  } catch (err) {
+    for (const [, handlers] of entries) handlers.reject(err);
+  } finally {
+    for (const key of keys) inflight.delete(key);
+  }
 }
 
 function getOrFetch(storageKey: string): Promise<{ url: string; exp: number }> {
@@ -30,13 +108,9 @@ function getOrFetch(storageKey: string): Promise<{ url: string; exp: number }> {
 
   let p = inflight.get(storageKey);
   if (!p) {
-    p = fetchSigned(storageKey).then(result => {
-      cache.set(storageKey, result);
-      inflight.delete(storageKey);
-      return result;
-    }).catch(err => {
-      inflight.delete(storageKey);
-      throw err;
+    p = new Promise<{ url: string; exp: number }>((resolve, reject) => {
+      pending.set(storageKey, { resolve, reject });
+      scheduleFlush();
     });
     inflight.set(storageKey, p);
   }

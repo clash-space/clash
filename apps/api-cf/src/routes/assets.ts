@@ -68,6 +68,31 @@ assetRoutes.get('/sign', async (c) => {
 });
 
 /**
+ * POST /sign-batch — Generate signed URLs for many assets in one Worker hit.
+ * Body: { keys: string[] }
+ */
+assetRoutes.post('/sign-batch', async (c) => {
+  const body = await c.req.json().catch(() => null) as { keys?: unknown } | null;
+  const keys = Array.isArray(body?.keys)
+    ? [...new Set(body.keys.filter((k): k is string => typeof k === 'string' && k.length > 0))].slice(0, 100)
+    : [];
+  if (keys.length === 0) return c.json({ error: 'Missing keys' }, 400);
+
+  const exp = Math.floor(Date.now() / 1000) + SIGNED_URL_TTL;
+  const key = await getSigningKey(c.env);
+  const urls = await Promise.all(
+    keys.map(async (storageKey) => ({
+      key: storageKey,
+      url: `/assets/${storageKey}?exp=${exp}&sig=${await computeSignature(key, storageKey, exp)}`,
+      exp,
+    })),
+  );
+
+  c.header('Cache-Control', 'private, max-age=300');
+  return c.json({ urls });
+});
+
+/**
  * GET /* — Serve file from R2 (requires valid signature)
  *
  * For images in prod (MEDIA_GATEWAY_URL set), transparently proxy through
@@ -101,22 +126,6 @@ assetRoutes.get('/*', async (c) => {
     return c.text('Invalid signature', 403);
   }
 
-  // Edge cache hit-path. The cache key strips the signature/exp so the same
-  // asset hits cache regardless of which signed-URL variant the browser asks
-  // for (signatures are TTL'd, so a fresh URL every minute would otherwise
-  // never share a cache slot). Signature was already verified above.
-  const cacheKey = new Request(
-    new URL(`/__asset_cache/${storageKey}`, c.req.url).toString(),
-  );
-  const cached = await caches.default.match(cacheKey);
-  if (cached) {
-    // Tag the cache hit so DevTools / curl can see it (caches.default
-    // hits don't get a cf-cache-status header automatically).
-    const tagged = new Response(cached.body, cached);
-    tagged.headers.set('x-cache', 'HIT');
-    return tagged;
-  }
-
   // Fetch from R2. Honor HTTP Range requests so byte-seek-capable clients
   // (ffmpeg reading mp4s with trailing moov atoms, <video> element seeks,
   // partial downloads) work correctly. Without this, ffmpeg gets the full
@@ -124,6 +133,24 @@ assetRoutes.get('/*', async (c) => {
   // prematurely" during mp4 demuxing.
   const rangeHeader = c.req.header('range');
   const parsedRange = parseRangeHeader(rangeHeader);
+
+  // Edge cache hit-path. The cache key strips the signature/exp so the same
+  // asset hits cache regardless of which signed-URL variant the browser asks
+  // for. Range requests must skip this full-body cache; returning a cached 200
+  // to a byte-range client breaks video seek/demux callers that require 206.
+  const cacheKey = new Request(
+    new URL(`/__asset_cache/${storageKey}`, c.req.url).toString(),
+  );
+  if (!parsedRange) {
+    const cached = await caches.default.match(cacheKey);
+    if (cached) {
+      // Tag the cache hit so DevTools / curl can see it (caches.default
+      // hits don't get a cf-cache-status header automatically).
+      const tagged = new Response(cached.body, cached);
+      tagged.headers.set('x-cache', 'HIT');
+      return tagged;
+    }
+  }
 
   if (parsedRange) {
     const head = await c.env.R2_BUCKET.head(storageKey);
@@ -152,11 +179,11 @@ assetRoutes.get('/*', async (c) => {
         'Accept-Ranges': 'bytes',
         'Access-Control-Allow-Origin': '*',
         // Asset URLs include a unique gen-id / upload-uuid in the path, so the
-// bytes at a given key never change. Mark immutable + 1y so the browser
-// disk-caches forever (no revalidation). When an asset is deleted the
-// signed URL stops being issued, so the browser cache only holds bytes
-// the user is still authorized to see.
-'Cache-Control': 'public, max-age=31536000, immutable',
+        // bytes at a given key never change. Mark immutable + 1y so the browser
+        // disk-caches forever (no revalidation). When an asset is deleted the
+        // signed URL stops being issued, so the browser cache only holds bytes
+        // the user is still authorized to see.
+        'Cache-Control': 'public, max-age=31536000, immutable',
       },
     });
   }
@@ -171,11 +198,11 @@ assetRoutes.get('/*', async (c) => {
       'Accept-Ranges': 'bytes',
       'Access-Control-Allow-Origin': '*',
       // Asset URLs include a unique gen-id / upload-uuid in the path, so the
-// bytes at a given key never change. Mark immutable + 1y so the browser
-// disk-caches forever (no revalidation). When an asset is deleted the
-// signed URL stops being issued, so the browser cache only holds bytes
-// the user is still authorized to see.
-'Cache-Control': 'public, max-age=31536000, immutable',
+      // bytes at a given key never change. Mark immutable + 1y so the browser
+      // disk-caches forever (no revalidation). When an asset is deleted the
+      // signed URL stops being issued, so the browser cache only holds bytes
+      // the user is still authorized to see.
+      'Cache-Control': 'public, max-age=31536000, immutable',
       'x-cache': 'MISS',
     },
   });
@@ -185,7 +212,11 @@ assetRoutes.get('/*', async (c) => {
   // partial bodies can't satisfy a non-Range hit. The cached copy keeps
   // x-cache: MISS in its headers; we overwrite it to HIT in the match
   // branch above when serving from cache.
-  c.executionCtx.waitUntil(caches.default.put(cacheKey, resp.clone()));
+  try {
+    c.executionCtx.waitUntil(caches.default.put(cacheKey, resp.clone()));
+  } catch {
+    // Unit tests using app.request() do not provide an ExecutionContext.
+  }
   return resp;
 });
 

@@ -64,7 +64,8 @@ describe("useAsset", () => {
     const r2 = renderHook(() => useAsset("asset-2"));
     const r3 = renderHook(() => useAsset("asset-2"));
 
-    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(fetchSpy).toHaveBeenCalledTimes(1));
+    expect(fetchSpy.mock.calls[0][0]).toBe("/api/v1/assets/asset-2");
 
     await act(async () => {
       resolveFetch!(jsonResponse(makeAsset({ id: "asset-2" })));
@@ -75,6 +76,29 @@ describe("useAsset", () => {
       expect(r1.result.current?.id).toBe("asset-2");
       expect(r2.result.current?.id).toBe("asset-2");
       expect(r3.result.current?.id).toBe("asset-2");
+    });
+  });
+
+  it("batches concurrent requests for different ids", async () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(jsonResponse({
+      assets: [
+        makeAsset({ id: "asset-1" }),
+        makeAsset({ id: "asset-2" }),
+      ],
+    }));
+
+    const r1 = renderHook(() => useAsset("asset-1"));
+    const r2 = renderHook(() => useAsset("asset-2"));
+
+    await waitFor(() => {
+      expect(r1.result.current?.id).toBe("asset-1");
+      expect(r2.result.current?.id).toBe("asset-2");
+    });
+
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    expect(fetchSpy.mock.calls[0][0]).toBe("/api/v1/assets/batch");
+    expect(JSON.parse((fetchSpy.mock.calls[0][1] as RequestInit).body as string)).toEqual({
+      ids: ["asset-1", "asset-2"],
     });
   });
 

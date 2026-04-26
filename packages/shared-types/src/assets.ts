@@ -66,6 +66,10 @@ export const AssetSchema = z.object({
   sourcePrompt: z.string().nullable().optional(),
   sourceTaskId: z.string().nullable().optional(),
   sources: z.array(AssetSourceSchema).nullable().optional(),
+  signedUrl: z.string().optional(),
+  signedUrlExp: z.number().optional(),
+  signedCoverUrl: z.string().optional(),
+  signedCoverUrlExp: z.number().optional(),
   createdAt: z.number(),
   updatedAt: z.number(),
 });

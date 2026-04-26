@@ -201,6 +201,26 @@ export async function getAssetById(
   return hydrate(row);
 }
 
+/** Lookup multiple assets owned by a user. Missing/forbidden ids are omitted. */
+export async function getAssetsByIds(
+  db: D1Database,
+  ids: string[],
+  userId: string,
+): Promise<AssetRecord[]> {
+  const uniqueIds = [...new Set(ids)].filter(Boolean);
+  if (uniqueIds.length === 0) return [];
+
+  const placeholders = uniqueIds.map(() => "?").join(", ");
+  const { results } = await db
+    .prepare(`SELECT ${SELECT_COLS} FROM assets WHERE user_id = ? AND id IN (${placeholders})`)
+    .bind(userId, ...uniqueIds)
+    .all<AssetRow>();
+
+  return (results ?? [])
+    .map((row) => hydrate(row))
+    .filter((asset): asset is AssetRecord => asset !== null);
+}
+
 /** PATCH an asset's cover (called by thumbnail capture pipeline). System-only. */
 export async function updateAssetCover(
   db: D1Database,

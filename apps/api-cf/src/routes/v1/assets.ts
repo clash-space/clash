@@ -14,9 +14,11 @@ import { Hono } from "hono";
 import { z } from "zod";
 import type { Env } from "../../config";
 import { AssetKindSchema } from "@clash/shared-types/assets";
-import { createAsset, getAssetById, removeAssetRef, updateAssetCover } from "../../services/assets";
+import { createAsset, getAssetById, getAssetsByIds, removeAssetRef, updateAssetCover } from "../../services/assets";
 import { probeAsset } from "../../services/asset-probe";
+import { SIGNED_URL_TTL, computeSignature, getSigningKey } from "../../services/asset-signing";
 import { log } from "../../logger";
+import type { AssetRecord } from "../../services/assets";
 
 export const assetsRoutes = new Hono<{ Bindings: Env }>();
 
@@ -35,6 +37,34 @@ async function assertProjectOwner(env: Env, projectId: string, userId: string): 
   if (row.ownerId !== userId) throw new Error(`Project ${projectId} not owned by user`);
 }
 
+async function attachSignedUrlsWithKey(asset: AssetRecord, key: CryptoKey, exp: number): Promise<AssetRecord & {
+  signedUrl: string;
+  signedUrlExp: number;
+  signedCoverUrl?: string;
+  signedCoverUrlExp?: number;
+}> {
+  const sign = async (storageKey: string) =>
+    `/assets/${storageKey}?exp=${exp}&sig=${await computeSignature(key, storageKey, exp)}`;
+
+  return {
+    ...asset,
+    signedUrl: await sign(asset.srcR2Key),
+    signedUrlExp: exp,
+    ...(asset.coverR2Key
+      ? {
+          signedCoverUrl: await sign(asset.coverR2Key),
+          signedCoverUrlExp: exp,
+        }
+      : {}),
+  };
+}
+
+async function attachSignedUrls(env: Env, asset: AssetRecord) {
+  const exp = Math.floor(Date.now() / 1000) + SIGNED_URL_TTL;
+  const key = await getSigningKey(env);
+  return attachSignedUrlsWithKey(asset, key, exp);
+}
+
 // ─── Schemas ────────────────────────────────────────────────
 
 const CreateAssetSchema = z.object({
@@ -49,6 +79,10 @@ const CreateAssetSchema = z.object({
 
 const PatchCoverSchema = z.object({
   coverR2Key: z.string().min(1),
+});
+
+const BatchAssetsSchema = z.object({
+  ids: z.array(z.string().min(1)).min(1).max(100),
 });
 
 // ─── Routes ─────────────────────────────────────────────────
@@ -89,6 +123,21 @@ assetsRoutes.post("/", async (c) => {
   }
 });
 
+/** POST /api/v1/assets/batch — fetch many asset rows in one D1 round-trip. */
+assetsRoutes.post("/batch", async (c) => {
+  try {
+    const userId = getUserId(c);
+    const body = BatchAssetsSchema.parse(await c.req.json());
+    const assets = await getAssetsByIds(c.env.DB, body.ids, userId);
+    const exp = Math.floor(Date.now() / 1000) + SIGNED_URL_TTL;
+    const key = await getSigningKey(c.env);
+    return c.json({ assets: await Promise.all(assets.map((asset) => attachSignedUrlsWithKey(asset, key, exp))) });
+  } catch (e) {
+    log.warn("POST /assets/batch failed", { error: String(e) });
+    return c.json({ error: String(e) }, 400);
+  }
+});
+
 /** GET /api/v1/assets/:id — fetch metadata. Owner-only. */
 assetsRoutes.get("/:id", async (c) => {
   try {
@@ -96,7 +145,7 @@ assetsRoutes.get("/:id", async (c) => {
     const asset = await getAssetById(c.env.DB, c.req.param("id"));
     if (!asset) return c.json({ error: "not found" }, 404);
     if (asset.userId !== userId) return c.json({ error: "forbidden" }, 403);
-    return c.json(asset);
+    return c.json(await attachSignedUrls(c.env, asset));
   } catch (e) {
     log.warn("GET /assets/:id failed", { error: String(e) });
     return c.json({ error: String(e) }, 400);

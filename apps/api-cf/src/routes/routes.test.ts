@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import type { Env } from "../config";
+import { computeSignature, getSigningKey } from "../services/asset-signing";
 
 // Mock the agents package which uses cloudflare: protocol imports
 vi.mock("agents", () => ({
@@ -48,6 +49,7 @@ function makeEnv(overrides: Partial<Env> = {}): Env {
       put: vi.fn().mockResolvedValue(undefined),
     } as any,
     R2_PUBLIC_URL: "https://r2.example.com",
+    JWT_SECRET: "test-secret",
     ENVIRONMENT: "production",
     ROOM: {
       idFromName: vi.fn().mockReturnValue("room-id"),
@@ -78,10 +80,23 @@ describe("Hono routes", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.stubGlobal("caches", {
+      default: {
+        match: vi.fn().mockResolvedValue(null),
+        put: vi.fn().mockResolvedValue(undefined),
+      },
+    });
     env = makeEnv();
     // Mock crypto.randomUUID
     vi.spyOn(crypto, "randomUUID").mockReturnValue("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee");
   });
+
+  async function signedAssetPath(storageKey: string): Promise<string> {
+    const exp = Math.floor(Date.now() / 1000) + 3600;
+    const key = await getSigningKey(env);
+    const sig = await computeSignature(key, storageKey, exp);
+    return `/assets/${storageKey}?exp=${exp}&sig=${sig}`;
+  }
 
   // ─── Health check ───
 
@@ -102,9 +117,10 @@ describe("Hono routes", () => {
       (env.R2_BUCKET.get as any).mockResolvedValue({
         body: new Response(body).body,
         httpMetadata: { contentType: "image/png" },
+        size: body.byteLength,
       });
 
-      const res = await app.request("/assets/projects/p1/img.png", {}, env);
+      const res = await app.request(await signedAssetPath("projects/p1/img.png"), {}, env);
       expect(res.status).toBe(200);
       expect(res.headers.get("Content-Type")).toBe("image/png");
     });
@@ -112,8 +128,48 @@ describe("Hono routes", () => {
     it("returns 404 for missing asset", async () => {
       (env.R2_BUCKET.get as any).mockResolvedValue(null);
 
-      const res = await app.request("/assets/missing-key", {}, env);
+      const res = await app.request(await signedAssetPath("missing-key"), {}, env);
       expect(res.status).toBe(404);
+    });
+
+    it("signs multiple assets in one request", async () => {
+      const res = await app.request("/assets/sign-batch", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ keys: ["uploads/a.png", "uploads/b.png"] }),
+      }, env);
+
+      expect(res.status).toBe(200);
+      const body = await res.json() as { urls: Array<{ key: string; url: string; exp: number }> };
+      expect(body.urls).toHaveLength(2);
+      expect(body.urls[0].key).toBe("uploads/a.png");
+      expect(body.urls[0].url).toMatch(/^\/assets\/uploads\/a\.png\?exp=\d+&sig=/);
+      expect(body.urls[1].key).toBe("uploads/b.png");
+    });
+
+    it("serves range requests from R2 even when the full object is cached", async () => {
+      const storageKey = "projects/p1/video.mp4";
+      const cached = new Response(new Uint8Array([1, 2, 3, 4]), {
+        status: 200,
+        headers: { "Content-Type": "video/mp4" },
+      });
+      (caches.default.match as any).mockResolvedValue(cached);
+      (env.R2_BUCKET.head as any) = vi.fn().mockResolvedValue({ size: 100 });
+      (env.R2_BUCKET.get as any).mockResolvedValue({
+        body: new Response(new Uint8Array([10, 11, 12, 13, 14, 15])).body,
+        httpMetadata: { contentType: "video/mp4" },
+      });
+
+      const res = await app.request(await signedAssetPath(storageKey), {
+        headers: { Range: "bytes=10-15" },
+      }, env);
+
+      expect(res.status).toBe(206);
+      expect(res.headers.get("Content-Range")).toBe("bytes 10-15/100");
+      expect(caches.default.match).not.toHaveBeenCalled();
+      expect(env.R2_BUCKET.get).toHaveBeenCalledWith(storageKey, {
+        range: { offset: 10, length: 6 },
+      });
     });
   });
 
@@ -135,8 +191,7 @@ describe("Hono routes", () => {
       expect(res.status).toBe(200);
 
       const json: any = await res.json();
-      expect(json.storageKey).toMatch(/^projects\/proj-1\/assets\//);
-      expect(json.url).toMatch(/^https:\/\/api\.example\.com\/assets\//);
+      expect(json.storageKey).toMatch(/^uploads\/aaaaaaaa-test\.png$/);
 
       expect(env.R2_BUCKET.put).toHaveBeenCalled();
     });
