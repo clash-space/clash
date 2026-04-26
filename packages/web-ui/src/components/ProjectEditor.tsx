@@ -924,16 +924,24 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
                     return;
                 }
             }
-            const paramsWithDefaults = { ...params, interactionWidth: 30, focusable: true, selectable: true, deletable: true };
+            // Canonical edgeId — same shape ActionBadge.addRefNode uses.
+            // Without this, drag-connect and @-mention auto-connect produce
+            // two parallel edges (different ids, same source/target) and
+            // the badge surfaces the same ref twice.
+            const canonicalId = `${(params as Connection).source}-${(params as Connection).target}`;
+            const paramsWithDefaults = {
+                ...params,
+                id: canonicalId,
+                interactionWidth: 30,
+                focusable: true,
+                selectable: true,
+                deletable: true,
+            };
             setEdges((eds) => {
+                if (eds.some(e => e.id === canonicalId)) return eds;
                 const newEdges = addEdge(paramsWithDefaults as any, eds);
-                const addedEdge = newEdges.find(e =>
-                    e.source === (params as Connection).source &&
-                    e.target === (params as Connection).target
-                );
-                if (addedEdge) {
-                    loroSync.addEdge(addedEdge.id, addedEdge);
-                }
+                const addedEdge = newEdges.find(e => e.id === canonicalId);
+                if (addedEdge) loroSync.addEdge(addedEdge.id, addedEdge);
                 return newEdges;
             });
         },

@@ -400,21 +400,49 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
         }
     }, [id, edges, setEdges, loroSync]);
 
-    // One-shot cleanup: pre-existing canvases may have duplicate ids in
-    // referenceImageOrder (from before persistRefOrder dedup'd). Detect on
-    // mount and rewrite a clean copy via the canonical writer. No-op for
-    // already-clean data.
+    // One-shot cleanup for pre-existing dirty data:
+    //   1. referenceImageOrder may have duplicate ids (from before
+    //      persistRefOrder dedup'd).
+    //   2. Loro may have parallel incoming edges (drag-connect + @-mention
+    //      created two edges with different ids for the same source-target,
+    //      from before ProjectEditor.onConnect used the canonical id).
+    // Rewrite via the canonical writers; no-op for clean data.
     useEffect(() => {
         const order = Array.isArray(data.referenceImageOrder) ? (data.referenceImageOrder as string[]) : null;
-        if (!order || order.length === 0) return;
-        const seen = new Set<string>();
-        const cleaned: string[] = [];
-        for (const nid of order) {
-            if (!nid || seen.has(nid)) continue;
-            seen.add(nid);
-            cleaned.push(nid);
+        if (order && order.length > 0) {
+            const seen = new Set<string>();
+            const cleaned: string[] = [];
+            for (const nid of order) {
+                if (!nid || seen.has(nid)) continue;
+                seen.add(nid);
+                cleaned.push(nid);
+            }
+            if (cleaned.length !== order.length) persistRefOrder(cleaned);
         }
-        if (cleaned.length !== order.length) persistRefOrder(cleaned);
+
+        const incoming = edges.filter(e => e.target === id);
+        const bySource = new Map<string, typeof incoming>();
+        for (const e of incoming) {
+            const list = bySource.get(e.source) ?? [];
+            list.push(e);
+            bySource.set(e.source, list);
+        }
+        const stale: string[] = [];
+        for (const [, list] of bySource) {
+            if (list.length <= 1) continue;
+            // Prefer the canonical id; if absent, keep the first.
+            const canonical = `${list[0].source}-${id}`;
+            const keeper = list.find(e => e.id === canonical) ?? list[0];
+            for (const e of list) {
+                if (e.id !== keeper.id) stale.push(e.id);
+            }
+        }
+        if (stale.length > 0) {
+            setEdges(eds => eds.filter(e => !stale.includes(e.id)));
+            if (loroSync?.connected) {
+                stale.forEach(eid => loroSync.removeEdge(eid));
+            }
+        }
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
     // Drafts qualify (src empty for now — cascade runner waits for them before
