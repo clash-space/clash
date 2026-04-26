@@ -209,4 +209,12 @@ pnpm type-check    # tsc --noEmit across all packages
 
 ## License
 
-MIT.
+[PolyForm Shield 1.0.0](./LICENSE). Source-available, never converts.
+
+You can fork, modify, distribute, run internally, contribute back, study,
+benchmark — anything except provide a product that competes with this
+software (i.e. don't host clash-clone.com as a paid service).
+
+> 你可以 fork、改、分发、内部商用、贡献、学术使用 —— 唯一禁止的是把它做成
+> 跟 clash 竞争的商业产品/服务（比如开 clash-clone.com 卖钱）。本许可永久有效，
+> 不会自动转回宽松协议。
