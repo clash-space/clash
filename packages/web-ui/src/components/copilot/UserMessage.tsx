@@ -4,12 +4,7 @@ import ReactMarkdown from 'react-markdown';
 import { SignedImg } from '../SignedMedia';
 import { useMediaViewer } from '../MediaViewerContext';
 import { useSignedUrl } from '@clash/web-ui/lib/hooks/useSignedUrl';
-
-interface MentionNode {
-    id: string;
-    label: string;
-    src?: string;
-}
+import type { MentionableNode } from '../MilkdownEditor';
 
 /** Inline thumbnail that opens MediaViewer on double-click */
 function InlineThumbnail({ src, alt, title }: { src?: string; alt: string; title: string }) {
@@ -29,16 +24,18 @@ function InlineThumbnail({ src, alt, title }: { src?: string; alt: string; title
     );
 }
 
-export function UserMessage({ content, mentionNodes }: { content: string; mentionNodes?: MentionNode[] }) {
+export function UserMessage({ content, mentionNodes }: { content: string; mentionNodes?: MentionableNode[] }) {
     // Strip <!-- asset-keys: ... --> comments (legacy format)
     let cleaned = content.replace(/<!--\s*asset-keys:.+?-->/g, '').replace(/📎\s*\S+/g, '').trim();
 
-    // Convert @[label](node:id) → ![mention:id:label](src) for image mentions, or keep as text chip
+    // Convert @[label](node:id) → ![mention:id:label](r2Key) for image / video mentions,
+    // or keep as a text chip when no thumbnail is resolved yet (asset still loading,
+    // or mention points at a non-media node like text).
     if (mentionNodes?.length) {
         cleaned = cleaned.replace(/@\[([^\]]*)\]\(node:([^)]+)\)/g, (_match, label, nodeId) => {
             const node = mentionNodes.find(n => n.id === nodeId);
-            if (node?.src) {
-                return `![mention:${nodeId}:${label}](${node.src})`;
+            if (node?.thumbnail) {
+                return `![mention:${nodeId}:${label}](${node.thumbnail})`;
             }
             return `\`@${label}\``;
         });
