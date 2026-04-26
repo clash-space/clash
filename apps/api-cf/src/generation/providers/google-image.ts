@@ -34,30 +34,23 @@ export const googleImageProvider: GenerationProvider = {
   async execute(ctx) {
     const { params, env } = ctx;
 
-    const referenceImages = await ctx.step(
-      "resolve-references",
-      { retries: { limit: 2, delay: "2 seconds" }, timeout: "3 minutes" },
-      async () => {
-        // referenceImageR2Keys is the single source of truth for refs.
-        // Frontend invariant: any asset_ref in promptParts is also listed
-        // here (promptParts only encodes prompt-position interleaving,
-        // which an image-out model doesn't consume — it just wants the
-        // flat list).
-        const r2Keys = params.referenceImageR2Keys ?? [];
-        if (!r2Keys.length) return undefined;
-        const out: VertexInlineImage[] = [];
-        for (const k of r2Keys) {
-          const inline = await loadInlineFromR2(env.R2_BUCKET, k);
-          if (inline) out.push(inline);
-        }
-        return out.length ? out : undefined;
-      },
-    );
-
     const storageKey = await ctx.step(
       "google-image-generate",
       { retries: { limit: 2, delay: "5 seconds", backoff: "exponential" }, timeout: "5 minutes" },
       async () => {
+        // R2 read + base64 encode happens INSIDE this step. Don't return
+        // base64 bytes from a separate step — CF Workflow's per-step output
+        // cap is 1 MiB, and a 1280×720 PNG base64 is ~1–2 MiB. R2 reads are
+        // cheap (same isolate, no egress); re-reading on retry is fine.
+        // Only the final R2 storage key (a short string) crosses the step
+        // boundary. Same trick as veo.ts.
+        const r2Keys = params.referenceImageR2Keys ?? [];
+        const referenceImages: VertexInlineImage[] = [];
+        for (const k of r2Keys) {
+          const inline = await loadInlineFromR2(env.R2_BUCKET, k);
+          if (inline) referenceImages.push(inline);
+        }
+
         const creds: VertexCredentials = {
           clientEmail: env.GOOGLE_CLIENT_EMAIL ?? "",
           privateKey: env.GOOGLE_PRIVATE_KEY ?? "",
@@ -67,14 +60,14 @@ export const googleImageProvider: GenerationProvider = {
         log.info("Google image generate started", {
           ...ctx.tag,
           model: params.modelName,
-          refs: referenceImages?.length ?? 0,
+          refs: referenceImages.length,
         });
         const result = await generateGoogleImage(creds, {
           prompt: params.prompt ?? "",
           aspectRatio: params.aspectRatio,
           modelName: params.modelName,
           modelParams: params.modelParams,
-          referenceImages,
+          referenceImages: referenceImages.length ? referenceImages : undefined,
         });
         log.info("Google image generated", { ...ctx.tag, model: result.model });
         return ctx.uploadBytes(result.data, result.mediaType ?? "image/png");
