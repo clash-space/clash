@@ -3,7 +3,6 @@ import tailwindcss from "@tailwindcss/vite";
 import { defineConfig } from "vite";
 import tsconfigPaths from "vite-tsconfig-paths";
 import wasm from "vite-plugin-wasm";
-import topLevelAwait from "vite-plugin-top-level-await";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
 
@@ -40,15 +39,20 @@ export default defineConfig(({ command }) => ({
         ]
       : []),
     tailwindcss(),
-    // wasm + top-level-await are required for loro-crdt's .wasm import.
+    // wasm support for loro-crdt; modern build target lets the runtime
+    // handle top-level await natively (no vite-plugin-top-level-await
+    // needed, which had esbuild version-skew issues across workspaces).
     wasm(),
-    topLevelAwait(),
     tsconfigPaths(),
   ],
   build: {
     outDir: "dist/client",
     emptyOutDir: true,
     assetsDir: "_app",
+    // Workers/CF Pages run a modern V8 — no need to transpile destructuring
+    // etc., and skipping the transform avoids esbuild version-skew issues
+    // hit by vite-plugin-top-level-await on the WASM init code.
+    target: "esnext",
     rollupOptions: {
       output: {
         // Force @phosphor-icons/react into its own chunk. Default chunk
