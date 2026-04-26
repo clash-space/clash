@@ -5,20 +5,15 @@
  * Routing:
  *   /health                     → 200 OK
  *   /api/better-auth/*          → handled in-worker via better-auth handler
- *   /sync/*                     → api-cf (WebSocket + HTTP, DO ProjectRoom)
- *   /agents/*                   → api-cf (WebSocket, DO SupervisorAgent)
- *   /assets/*                   → api-cf (signed R2 serving)
- *   /thumbnails/*               → api-cf
- *   /upload, /upload/*          → api-cf
- *   /api/tasks/*                → api-cf
- *   /api/describe, /describe    → api-cf
- *   /api/generate/*             → api-cf
  *   /api/v1/*                   → api-cf (auth-gated, x-user-id injected)
- *   /api/*                      → in-worker (handleApi)
+ *   /sync/*, /agents/*          → api-cf (WebSocket, Durable Objects)
+ *   /assets/*, /thumbnails/*    → api-cf (signed R2 serving)
+ *   /upload, /upload/*          → api-cf
+ *   /api/*                      → api-cf (projects, settings, marketplace,
+ *                                  tasks, describe, generate, internal)
  *   /*                          → ASSETS binding (SPA shell + static files)
  */
 import { createAuth } from "../app/lib/auth/better-auth.server";
-import { handleApi } from "../app/lib/server/api-router.server";
 
 type CloudflareFetcher = {
   fetch: (request: Request) => Promise<Response>;
@@ -42,15 +37,6 @@ export interface Env {
   R2_BUCKET_NAME?: string;
   NODE_ENV?: string;
   SKIP_LOGIN?: string;
-}
-
-declare module "react-router" {
-  interface AppLoadContext {
-    cloudflare: {
-      env: Env;
-      ctx: ExecutionContext;
-    };
-  }
 }
 
 async function proxyToApiCf(request: Request, env: Env): Promise<Response> {
@@ -132,38 +118,17 @@ function json(data: unknown, status = 200): Response {
 // SPA mode: no server rendering. The static client built by `vite build`
 // is served via the ASSETS binding (`not_found_handling = "single-page-application"`
 // returns index.html for any path that doesn't match an asset). All data
-// fetching lives in clientLoader.
+// fetching lives in client loaders.
 
 export default {
-  async fetch(
-    request: Request,
-    env: Env,
-    ctx: ExecutionContext,
-  ): Promise<Response> {
+  async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
     const path = url.pathname;
-    console.log(`[worker] ${request.method} ${path}`);
 
-    if (path === "/health") {
-      return new Response("OK", { status: 200 });
-    }
-
-    // TEMP bypass: raw HTML to isolate RR7 from worker.
-    if (path === "/raw") {
-      return new Response("<h1>raw ok</h1>", {
-        headers: { "content-type": "text/html" },
-      });
-    }
-
-    // Browser dev telemetry — swallow silently so it doesn't flood the SSR runner.
-    if (path === "/dev-log" && request.method === "POST") {
-      request.body?.getReader().read().catch(() => {});
-      return new Response(null, { status: 204 });
-    }
+    if (path === "/health") return new Response("OK", { status: 200 });
 
     // Fast-fail /sync and /agents if the service binding is absent. These
-    // paths must go to api-cf DOs and HTTP fallback doesn't help (WebSockets
-    // can't round-trip via fetch across local workerd processes anyway).
+    // paths must go to api-cf DOs — HTTP fallback can't carry WebSockets.
     if (
       (path.startsWith("/sync/") || path.startsWith("/agents/")) &&
       !env.API_CF
@@ -171,28 +136,13 @@ export default {
       return new Response("api-cf service binding missing", { status: 503 });
     }
 
-    // Better Auth handler (mounted directly in the worker — playheads pattern)
+    // Better Auth handler (mounted directly in the worker so the session
+    // cookie origin matches the browser-visible domain).
     if (path.startsWith("/api/better-auth/")) {
-      const auth = createAuth(env);
-      return auth.handler(request);
+      return createAuth(env).handler(request);
     }
 
-    // Pass-through to api-cf
-    if (
-      path === "/upload" ||
-      path.startsWith("/upload/") ||
-      path.startsWith("/assets/") ||
-      path.startsWith("/thumbnails/") ||
-      path.startsWith("/sync/") ||
-      path.startsWith("/agents/") ||
-      path.startsWith("/api/tasks/") ||
-      path.startsWith("/api/describe") ||
-      path.startsWith("/api/generate/")
-    ) {
-      return proxyToApiCf(request, env);
-    }
-
-    // Auth-gated public REST API v1
+    // Auth-gated public REST API v1 — inject x-user-id then proxy.
     if (path.startsWith("/api/v1/")) {
       const userId =
         (await getUserIdFromApiToken(request, env)) ??
@@ -203,19 +153,22 @@ export default {
       return proxyToApiCf(proxied, env);
     }
 
-    // In-worker /api/* (projects, settings, marketplace, internal).
-    // SPA mode means RR7 resource routes don't run server-side, so we
-    // dispatch directly here. The same .server.ts helpers power this and
-    // the api.*.ts resource routes (unused while ssr:false).
-    if (path.startsWith("/api/")) {
-      const handled = await handleApi(request, env);
-      if (handled) return handled;
+    // Everything else under /api/* + /sync/* + /agents/* + asset paths
+    // proxies straight to api-cf (projects, settings, marketplace, internal,
+    // tasks, describe, generate, assets, thumbnails, upload).
+    if (
+      path.startsWith("/api/") ||
+      path === "/upload" ||
+      path.startsWith("/upload/") ||
+      path.startsWith("/assets/") ||
+      path.startsWith("/thumbnails/") ||
+      path.startsWith("/sync/") ||
+      path.startsWith("/agents/")
+    ) {
+      return proxyToApiCf(request, env);
     }
 
-    // Everything else: serve the SPA shell from ASSETS. The binding's
-    // `not_found_handling = "single-page-application"` returns index.html
-    // for any path that doesn't match a built asset, letting the client
-    // router take over.
+    // Everything else → ASSETS binding (SPA shell + static files).
     return env.ASSETS.fetch(request);
   },
 } satisfies ExportedHandler<Env>;
