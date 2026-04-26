@@ -44,6 +44,13 @@ assetRoutes.post('/', async (c) => {
 
 /**
  * GET /sign?key=xxx — Generate a signed URL for an asset
+ *
+ * The response is private-browser-cached so a page reload reuses signed
+ * URLs for the in-memory `useSignedUrl` cache window without round-
+ * tripping for every <img> on the canvas. Cache TTL is conservative
+ * (5min) so revoked / rotated keys still propagate within reason; the
+ * URL itself is good for SIGNED_URL_TTL (1h) so a cached signature is
+ * still valid by the time the browser uses it.
  */
 assetRoutes.get('/sign', async (c) => {
   const storageKey = c.req.query('key');
@@ -53,6 +60,7 @@ assetRoutes.get('/sign', async (c) => {
   const key = await getSigningKey(c.env);
   const sig = await computeSignature(key, storageKey, exp);
 
+  c.header('Cache-Control', 'private, max-age=300');
   return c.json({
     url: `/assets/${storageKey}?exp=${exp}&sig=${sig}`,
     exp,
