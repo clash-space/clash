@@ -426,7 +426,12 @@ export async function processPendingNodes(
 
         // Convert R2 keys in src to signed absolute HTTP URLs so render-server's
         // Chromium/ffmpeg can access the source media via the asset-serving route.
-        const mediaBase = (env.MEDIA_GATEWAY_URL || env.WORKER_PUBLIC_URL || 'http://localhost:3000').replace(/\/+$/, '');
+        const mediaBaseRaw = env.MEDIA_GATEWAY_URL || env.WORKER_PUBLIC_URL
+          || (env.ENVIRONMENT === 'development' ? 'http://localhost:3000' : null);
+        if (!mediaBaseRaw) {
+          throw new Error('MEDIA_GATEWAY_URL or WORKER_PUBLIC_URL must be set — render-server cannot fetch media without an absolute origin');
+        }
+        const mediaBase = mediaBaseRaw.replace(/\/+$/, '');
         for (const track of resolvedDsl.tracks || []) {
           for (const item of track.items || []) {
             if (typeof item.src === 'string' && item.src && !item.src.startsWith('http') && !item.src.startsWith('data:') && !item.src.startsWith('blob:')) {

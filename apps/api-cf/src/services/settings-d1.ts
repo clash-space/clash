@@ -7,8 +7,9 @@ import {
   installedSkills,
 } from "../db/app.schema";
 import { getDb } from "../db";
+import { requireSecret } from "./require-secret";
 
-type Env = { DB: D1Database; ACTION_SECRET_KEY?: string };
+type Env = { DB: D1Database; ACTION_SECRET_KEY?: string; ENVIRONMENT: string };
 
 // ───────── API tokens ─────────
 
@@ -122,7 +123,7 @@ export async function setVariable(
   value: string,
 ) {
   const db = getDb(env.DB);
-  const secret = env.ACTION_SECRET_KEY || "dev-secret-key-change-in-prod";
+  const secret = requireSecret(env, "ACTION_SECRET_KEY", env.ACTION_SECRET_KEY, "dev-secret-key-change-in-prod");
   const encrypted = await encryptValue(secret, value);
   await db
     .delete(userVariables)

@@ -18,6 +18,7 @@ import { withCloudflare } from "better-auth-cloudflare";
 import { drizzle } from "drizzle-orm/d1";
 
 import * as betterAuthSchema from "./auth-schema";
+import { requireSecret } from "./services/require-secret";
 
 const basePath = "/api/better-auth";
 
@@ -45,6 +46,7 @@ export interface AuthBindings {
   /** Sender address; falls back to `auth@clash.video` if unset. Must be on a
    *  CF-DNS-managed domain that's onboarded into Email Service. */
   AUTH_EMAIL_FROM?: string;
+  ENVIRONMENT: string;
 }
 
 async function sendOtpEmail(
@@ -78,7 +80,12 @@ async function sendOtpEmail(
 
 /** Build a Better Auth instance bound to the current request's env. */
 export function createAuth(env: AuthBindings, cf?: IncomingRequestCfProperties) {
-  const secret = env.BETTER_AUTH_SECRET ?? env.AUTH_SECRET ?? "dev-secret-change-me";
+  const secret = requireSecret(
+    env,
+    "BETTER_AUTH_SECRET / AUTH_SECRET",
+    env.BETTER_AUTH_SECRET ?? env.AUTH_SECRET,
+    "dev-secret-change-me",
+  );
   const baseURL = env.BETTER_AUTH_URL;
   const googleClientId = env.AUTH_GOOGLE_ID;
   const googleClientSecret = env.AUTH_GOOGLE_SECRET;
@@ -106,18 +113,23 @@ export function createAuth(env: AuthBindings, cf?: IncomingRequestCfProperties) 
         basePath,
         baseURL,
         trustedProxyHeaders: true,
-        // Origins allowed to call /api/better-auth/*. Dev hosts + the
-        // production domains. Without this, cross-origin requests from
-        // the Vite dev proxy (localhost:3001) get rejected with "Invalid origin".
+        // Origins allowed to call /api/better-auth/*. Localhost entries are
+        // only added in development so prod doesn't trust dev hosts (weakens
+        // CSRF). Without these, cross-origin requests from the Vite dev proxy
+        // (localhost:3001) get rejected with "Invalid origin".
         trustedOrigins: [
           "https://clash.video",
           "https://www.clash.video",
           "https://next.clash.video",
           "https://api.clash.video",
-          "http://localhost:3000",
-          "http://localhost:3001",
-          "http://127.0.0.1:3000",
-          "http://127.0.0.1:3001",
+          ...(env.ENVIRONMENT === "development"
+            ? [
+                "http://localhost:3000",
+                "http://localhost:3001",
+                "http://127.0.0.1:3000",
+                "http://127.0.0.1:3001",
+              ]
+            : []),
         ],
         secret,
         emailAndPassword: { enabled: true },

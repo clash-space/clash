@@ -9,6 +9,7 @@
  */
 
 import type { Env } from "../config";
+import { requireSecret } from "./require-secret";
 
 export const SIGNED_URL_TTL = 3600; // 1 hour
 
@@ -20,7 +21,7 @@ function toBase64Url(bytes: ArrayBuffer): string {
 }
 
 export async function getSigningKey(env: Env): Promise<CryptoKey> {
-  const secret = env.JWT_SECRET || "dev-asset-signing-key";
+  const secret = requireSecret(env, "JWT_SECRET", env.JWT_SECRET, "dev-asset-signing-key");
   return crypto.subtle.importKey(
     "raw",
     new TextEncoder().encode(secret),
