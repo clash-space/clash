@@ -968,7 +968,7 @@ export const MODEL_CARDS: ModelCard[] = [
     defaultParams: {
       aspect_ratio: '16:9',
     },
-    input: { requiresPrompt: true, inputMode: { images: { max: 1 } }, promptModalities: ['text', 'image'] },
+    input: { requiresPrompt: true, inputMode: { images: { max: 8 } }, promptModalities: ['text', 'image'] },
   },
   {
     id: 'gemini-flash-image-2',
@@ -989,7 +989,7 @@ export const MODEL_CARDS: ModelCard[] = [
     defaultParams: {
       aspect_ratio: '16:9',
     },
-    input: { requiresPrompt: true, inputMode: { images: { max: 1 } }, promptModalities: ['text', 'image'] },
+    input: { requiresPrompt: true, inputMode: { images: { max: 8 } }, promptModalities: ['text', 'image'] },
   },
   {
     id: 'gemini-pro-image',
@@ -1010,7 +1010,7 @@ export const MODEL_CARDS: ModelCard[] = [
     defaultParams: {
       aspect_ratio: '16:9',
     },
-    input: { requiresPrompt: true, inputMode: { images: { max: 1 } }, promptModalities: ['text', 'image'] },
+    input: { requiresPrompt: true, inputMode: { images: { max: 8 } }, promptModalities: ['text', 'image'] },
   },
 
   // ─── Video: Veo 3.1 (Google native via Vercel AI SDK) ──────

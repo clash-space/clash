@@ -1,6 +1,6 @@
 /**
  * fal.ai image generation (nano-banana-2, flux, etc.). Reference images go
- * through fal.storage first. Supports both flat `referenceR2Keys` and ordered
+ * through fal.storage first. Supports both flat `referenceImageR2Keys` and ordered
  * `promptParts` (asset_ref parts interleaved with text).
  */
 import { fal } from "@fal-ai/client";
@@ -40,9 +40,9 @@ export const falImageProvider: GenerationProvider = {
           return urls.length ? urls : undefined;
         }
         // Fallback: flat list.
-        if (params.referenceR2Keys?.length) {
+        if (params.referenceImageR2Keys?.length) {
           const urls: string[] = [];
-          for (const k of params.referenceR2Keys) {
+          for (const k of params.referenceImageR2Keys) {
             urls.push(await uploadR2ToFal(env.R2_BUCKET, k, falKey));
           }
           return urls;

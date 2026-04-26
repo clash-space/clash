@@ -27,10 +27,16 @@ export const veoProvider: GenerationProvider = {
           if (!keys?.length) return undefined;
           return Promise.all(keys.map((k) => ctx.readR2Base64(k)));
         };
+        // Vertex Veo wire shape:
+        //   startFrameR2Key       → inst.image      (startEnd anchor)
+        //   endFrameR2Key         → inst.lastFrame  (startEnd tail)
+        //   referenceImageR2Keys  → inst.referenceImages (multi-subject)
+        // Veo cards routed here are either startEnd or multi-ref — no
+        // single-image-i2v ambiguity (legacy veo3 lives on fal-video).
         const [image, tailImage, referenceImages] = await Promise.all([
-          read(params.imageR2Key),
-          read(params.tailImageR2Key),
-          readAll(params.referenceR2Keys),
+          read(params.startFrameR2Key),
+          read(params.endFrameR2Key),
+          readAll(params.referenceImageR2Keys),
         ]);
 
         const creds: VertexCredentials = {

@@ -5,7 +5,7 @@
  *   1. `params.promptParts` — preserves @-mention interleaving. Each
  *      `asset_ref` becomes an inline content part right where the user typed
  *      the @-mention; surrounding text becomes a `text` part.
- *   2. Otherwise, append flat refs (`referenceR2Keys`, `referenceVideoR2Keys`,
+ *   2. Otherwise, append flat refs (`referenceImageR2Keys`, `referenceVideoR2Keys`,
  *      `referenceAudioR2Keys`) after the prompt text.
  *
  * R2 bytes are inlined as `Uint8Array`. The AI SDK normalizes per provider:
@@ -71,7 +71,7 @@ export async function buildMultimodalUserMessage(
     content.push({ type: "text", text: params.prompt });
   }
 
-  for (const k of params.referenceR2Keys ?? []) await fetchAndAppend(k);
+  for (const k of params.referenceImageR2Keys ?? []) await fetchAndAppend(k);
   for (const k of params.referenceVideoR2Keys ?? []) await fetchAndAppend(k);
   for (const k of params.referenceAudioR2Keys ?? []) await fetchAndAppend(k);
 

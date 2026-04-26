@@ -28,16 +28,25 @@ export interface GenerationParams {
   /** Ordered prompt parts preserving text + image_ref interleaving. */
   promptParts?: Array<{ type: string; text?: string; nodeId?: string; r2Key?: string }>;
 
-  /** Reference images (flat list, used when promptParts isn't provided). */
-  referenceR2Keys?: string[];
+  // ─── Input resources (4 orthogonal categories) ────────────────────
+  // NodeProcessor maps Loro node ref arrays into these slots based purely
+  // on inputMode shape (startEnd vs images vs videos vs audios). Providers
+  // own the wire mapping — e.g. Veo decides whether referenceImageR2Keys[0]
+  // becomes Vertex `inst.image` (i2v anchor) or `inst.referenceImages[]`
+  // (multi-subject) based on its model id.
 
-  /** video_gen: first frame for image-to-video / startEnd.first */
-  imageR2Key?: string;
-  /** video_gen: last frame for startEnd models */
-  tailImageR2Key?: string;
-  /** video_gen: multi-modal reference bundle (Seedance ref-to-video etc.) */
+  /** startEnd: first frame anchor */
+  startFrameR2Key?: string;
+  /** startEnd: last frame anchor */
+  endFrameR2Key?: string;
+  /** Flat list of reference images. Used when promptParts isn't provided. */
+  referenceImageR2Keys?: string[];
+  /** Flat list of reference videos. */
   referenceVideoR2Keys?: string[];
+  /** Flat list of reference audios. */
   referenceAudioR2Keys?: string[];
+
+  // ─── Other generation params ──────────────────────────────────────
   duration?: number;
   cfgScale?: number;
   /** Deprecated alias kept for wire-compat; readers should fall back to modelName. */

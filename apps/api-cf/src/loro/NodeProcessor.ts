@@ -620,29 +620,22 @@ export async function processPendingNodes(
           return { type: 'text', text: part.text || '' };
         });
 
-        // Classify refs by role driven by the model's inputMode:
-        //  - startEnd:                   refs[0] = first frame, refs[1] = tail frame
-        //  - images.max === 1:           refs[0] = first frame  (legacy image-to-video)
-        //  - images.max > 1:             refs = multi-reference images (no first frame)
-        //  - otherwise (text-to-video):  no refs consumed
-        // Routing refs to BOTH imageR2Key and referenceR2Keys makes Vertex Veo reject
-        // the request with "image field is required for reference image".
-        const imagesMax = inputMode.images?.max ?? 0;
+        // Map Loro ref arrays into the 4 orthogonal resource slots driven
+        // by inputMode shape. NodeProcessor is a pure schema translator —
+        // wire-shape decisions (e.g. Vertex `inst.image` vs `inst.referenceImages`,
+        // fal `image_url` vs `image_urls[]`) are the provider's job.
+        //   - startEnd       → ref[0] = startFrame, ref[1] = endFrame
+        //   - images         → flat referenceImageR2Keys (any max)
+        //   - videos/audios  → flat lists, analogously
         const isStartEnd = !!inputMode.startEnd;
-        const isSingleFirstFrame = !isStartEnd && !!inputMode.images && imagesMax <= 1;
-        const isMultiRef = !isStartEnd && !!inputMode.images && imagesMax > 1;
-        const firstFrameKey = (isStartEnd || isSingleFirstFrame) ? referenceImages[0] : undefined;
-        const tailFrameKey = isStartEnd ? referenceImages[1] : undefined;
-        const multiRefImages = isMultiRef ? referenceImages : [];
+        const startFrameKey = isStartEnd ? referenceImages[0] : undefined;
+        const endFrameKey = isStartEnd ? referenceImages[1] : undefined;
+        const flatRefImages = !isStartEnd && !!inputMode.images ? referenceImages : [];
 
-        // Build the lineage `sources` array. Roles:
-        //  - The first reference image of an image-to-video model is the
-        //    "primary" first frame → role:'primary'.
-        //  - For start_end models the tail frame is also lineage-significant
-        //    but still a reference (not the primary anchor) → role:'reference'.
-        //  - All multi-ref images, video refs, and audio refs → role:'reference'.
-        // We never invent assetIds — entries with no upstream assetId are
-        // dropped so old assets (pre-lineage rollout) don't pollute sources.
+        // Lineage `sources` rows. The startEnd first frame is the only
+        // "primary" anchor (it's the keyframe the generation pivots around).
+        // Everything else is a plain reference. Entries without assetId are
+        // dropped so pre-lineage assets stay null.
         const sources: { assetId: string; role: 'primary' | 'reference' }[] = [];
         const seen = new Set<string>();
         const pushSource = (id: string | undefined, role: 'primary' | 'reference') => {
@@ -650,12 +643,10 @@ export async function processPendingNodes(
           seen.add(id);
           sources.push({ assetId: id, role });
         };
-        if (isStartEnd || isSingleFirstFrame) pushSource(referenceImageAssetIds[0], 'primary');
-        if (isStartEnd) pushSource(referenceImageAssetIds[1], 'reference');
-        if (isMultiRef) {
-          for (const id of referenceImageAssetIds) pushSource(id, 'reference');
-        } else if (!isStartEnd && !isSingleFirstFrame) {
-          // image-gen / text-gen / no-i2v video: all image refs are plain refs
+        if (isStartEnd) {
+          pushSource(referenceImageAssetIds[0], 'primary');
+          pushSource(referenceImageAssetIds[1], 'reference');
+        } else {
           for (const id of referenceImageAssetIds) pushSource(id, 'reference');
         }
         for (const id of referenceVideoAssetIds) pushSource(id, 'reference');
@@ -666,17 +657,17 @@ export async function processPendingNodes(
           promptParts: resolvedParts,
           model: selectedModelId,
           modelParams,
-          referenceImages: multiRefImages,
+          referenceImages: flatRefImages,
           referenceVideos,
           referenceAudios,
-          referenceMode: isStartEnd ? 'start_end' : isMultiRef ? 'multi' : isSingleFirstFrame ? 'single' : 'none',
+          referenceMode: isStartEnd ? 'start_end' : flatRefImages.length ? 'multi' : 'none',
           aspectRatio: modelParams.aspect_ratio || innerData.aspectRatio || '16:9',
           duration: modelParams.duration ?? innerData.duration ?? 5,
           negativPrompt: modelParams.negative_prompt,
           cfgScale: modelParams.cfg_scale,
           resolution: modelParams.resolution,
-          tailImageR2Key: tailFrameKey,
-          imageR2Key: firstFrameKey,
+          startFrameR2Key: startFrameKey,
+          endFrameR2Key: endFrameKey,
           sources: sources.length ? sources : undefined,
         });
 
@@ -748,8 +739,8 @@ async function submitGenTask(
     negativPrompt?: string;
     cfgScale?: number;
     resolution?: string;
-    tailImageR2Key?: string;
-    imageR2Key?: string;
+    startFrameR2Key?: string;
+    endFrameR2Key?: string;
     referenceVideos?: string[];
     referenceAudios?: string[];
     sources?: { assetId: string; role: 'primary' | 'reference' }[];
@@ -758,12 +749,10 @@ async function submitGenTask(
   try {
     const validR2 = (ref: string) =>
       ref.startsWith('projects/') || ref.startsWith('uploads/') || ref.startsWith('http://') || ref.startsWith('https://');
-    const referenceR2Keys = params.referenceImages.filter(validR2);
+    const referenceImageR2Keys = params.referenceImages.filter(validR2);
     const referenceVideoR2Keys = (params.referenceVideos ?? []).filter(validR2);
     const referenceAudioR2Keys = (params.referenceAudios ?? []).filter(validR2);
-    log.info('submitGenTask refs', { taskId, images: referenceR2Keys.length, videos: referenceVideoR2Keys.length, audios: referenceAudioR2Keys.length });
-
-    const imageR2Key = taskType === 'video_gen' ? params.imageR2Key : undefined;
+    log.info('submitGenTask refs', { taskId, images: referenceImageR2Keys.length, videos: referenceVideoR2Keys.length, audios: referenceAudioR2Keys.length });
 
     const genParams: GenerationParams = {
       taskId,
@@ -775,11 +764,11 @@ async function submitGenTask(
       aspectRatio: params.aspectRatio,
       modelName: params.model,
       modelParams: params.modelParams as Record<string, unknown>,
-      referenceR2Keys: referenceR2Keys.length ? referenceR2Keys : undefined,
+      referenceImageR2Keys: referenceImageR2Keys.length ? referenceImageR2Keys : undefined,
       referenceVideoR2Keys: referenceVideoR2Keys.length ? referenceVideoR2Keys : undefined,
       referenceAudioR2Keys: referenceAudioR2Keys.length ? referenceAudioR2Keys : undefined,
-      imageR2Key,
-      tailImageR2Key: params.tailImageR2Key,
+      startFrameR2Key: params.startFrameR2Key,
+      endFrameR2Key: params.endFrameR2Key,
       duration: params.duration,
       cfgScale: params.cfgScale,
       videoModel: params.model,

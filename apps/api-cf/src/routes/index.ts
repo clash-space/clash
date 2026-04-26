@@ -111,10 +111,10 @@ api.post("/api/generate/image", async (c) => {
   const allImages = [...base64Inputs, ...urlInputs];
 
   // Upload resolved base64 images to R2 to get R2 keys
-  const referenceR2Keys: string[] = [];
+  const referenceImageR2Keys: string[] = [];
   for (const b64 of allImages) {
     const key = await uploadBase64Image(c.env.R2_BUCKET, b64, body.project_id);
-    referenceR2Keys.push(key);
+    referenceImageR2Keys.push(key);
   }
 
   // Submit to Workflow (D1 asset created inside workflow on completion)
@@ -127,7 +127,7 @@ api.post("/api/generate/image", async (c) => {
     systemPrompt: body.system_prompt,
     aspectRatio: body.aspect_ratio,
     modelName: body.model_name ?? undefined,
-    referenceR2Keys: referenceR2Keys.length ? referenceR2Keys : undefined,
+    referenceImageR2Keys: referenceImageR2Keys.length ? referenceImageR2Keys : undefined,
   };
 
   const errorResponse = await submitToWorkflow(c, taskId, genParams);
@@ -172,8 +172,10 @@ api.post("/api/generate/video", async (c) => {
     return c.json({ error: "Failed to resolve image to base64" }, 400);
   }
 
-  // Upload base64 image to R2 to get an R2 key
-  const imageR2Key = await uploadBase64Image(c.env.R2_BUCKET, imageToUse, body.project_id);
+  // Upload base64 image to R2 to get an R2 key. Routed as a flat reference
+  // image — provider (e.g. fal-video for Sora 2) maps it to the i2v anchor
+  // slot internally based on its model id.
+  const imageKey = await uploadBase64Image(c.env.R2_BUCKET, imageToUse, body.project_id);
 
   // Submit to Workflow (D1 asset created inside workflow on completion)
   const genParams: GenerationParams = {
@@ -182,7 +184,7 @@ api.post("/api/generate/video", async (c) => {
     type: "video_gen",
     projectId: body.project_id,
     prompt: body.prompt,
-    imageR2Key,
+    referenceImageR2Keys: [imageKey],
     duration: body.duration,
     cfgScale: body.cfg_scale,
     videoModel: body.model,
@@ -277,7 +279,7 @@ api.post("/api/tasks/submit", async (c) => {
       prompt: params.prompt ?? "",
       aspectRatio: params.aspect_ratio ?? "16:9",
       modelName: params.model,
-      referenceR2Keys: resolvedR2Keys.length ? resolvedR2Keys : undefined,
+      referenceImageR2Keys: resolvedR2Keys.length ? resolvedR2Keys : undefined,
     };
 
     const errorResponse = await submitToWorkflow(c, taskId, genParams);
@@ -287,18 +289,18 @@ api.post("/api/tasks/submit", async (c) => {
   }
 
   if (task_type === "video_gen") {
-    let imageR2Key: string | undefined;
+    let imageKey: string | undefined;
     const imageRef = params.image_r2_key ?? params.reference_images?.[0];
     if (imageRef) {
       if (imageRef.startsWith("http://") || imageRef.startsWith("https://")) {
         const b64 = await fetchUrlToBase64(imageRef);
-        imageR2Key = await uploadBase64Image(c.env.R2_BUCKET, b64, project_id);
+        imageKey = await uploadBase64Image(c.env.R2_BUCKET, b64, project_id);
       } else if (imageRef.startsWith("projects/")) {
-        imageR2Key = imageRef;
+        imageKey = imageRef;
       }
     }
 
-    if (!imageR2Key) {
+    if (!imageKey) {
       return c.json({ error: "No image provided for video generation" }, 400);
     }
 
@@ -308,7 +310,7 @@ api.post("/api/tasks/submit", async (c) => {
       type: "video_gen",
       projectId: project_id,
       prompt: params.prompt ?? "",
-      imageR2Key,
+      referenceImageR2Keys: [imageKey],
       duration: params.duration,
       cfgScale: params.cfg_scale,
       videoModel: params.model,

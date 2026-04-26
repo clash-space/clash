@@ -15,12 +15,12 @@ import { generateGoogleVideo, GOOGLE_VIDEO_MODELS, type VertexCredentials } from
 
 export interface VideoGenInput {
   prompt: string;
-  /** First / source image R2 key (single or startEnd.first). */
-  imageR2Key?: string;
-  /** Tail/end frame R2 key (startEnd models). */
-  tailImageR2Key?: string;
-  /** Multi-modal reference bundle for models with inputMode.images/videos/audios. */
-  referenceR2Keys?: string[];
+  /** startEnd: first frame anchor */
+  startFrameR2Key?: string;
+  /** startEnd: last frame anchor */
+  endFrameR2Key?: string;
+  /** Flat list of reference images (provider decides wire mapping). */
+  referenceImageR2Keys?: string[];
   referenceVideoR2Keys?: string[];
   referenceAudioR2Keys?: string[];
   aspectRatio?: string;
@@ -83,18 +83,18 @@ const falVideoProvider: VideoProvider = {
       return Promise.all(keys.map((k) => uploadR2ToFal(env.R2_BUCKET, k, falApiKey)));
     };
 
-    const [imageUrl, tailImageUrl, referenceImageUrls, referenceVideoUrls, referenceAudioUrls] = await Promise.all([
-      toFal(params.imageR2Key),
-      toFal(params.tailImageR2Key),
-      toFalAll(params.referenceR2Keys),
+    const [startFrameUrl, endFrameUrl, referenceImageUrls, referenceVideoUrls, referenceAudioUrls] = await Promise.all([
+      toFal(params.startFrameR2Key),
+      toFal(params.endFrameR2Key),
+      toFalAll(params.referenceImageR2Keys),
       toFalAll(params.referenceVideoR2Keys),
       toFalAll(params.referenceAudioR2Keys),
     ]);
 
     const result = await generateFalVideo(falApiKey, {
       prompt: params.prompt,
-      imageUrl,
-      tailImageUrl,
+      startFrameUrl,
+      endFrameUrl,
       referenceImageUrls,
       referenceVideoUrls,
       referenceAudioUrls,
@@ -132,9 +132,9 @@ const googleVideoProvider: VideoProvider = {
     };
 
     const [image, tailImage, referenceImages] = await Promise.all([
-      toBase64(params.imageR2Key),
-      toBase64(params.tailImageR2Key),
-      toBase64All(params.referenceR2Keys),
+      toBase64(params.startFrameR2Key),
+      toBase64(params.endFrameR2Key),
+      toBase64All(params.referenceImageR2Keys),
     ]);
 
     const result = await generateGoogleVideo(creds, {

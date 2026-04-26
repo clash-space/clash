@@ -11,11 +11,13 @@ import { fal } from "@fal-ai/client";
 
 interface FalVideoParams {
   prompt: string;
-  /** URL of source image (fal CDN URL, not base64). Single or startEnd.first. */
-  imageUrl?: string;
-  /** Tail/end frame URL (Kling 2.5/3, Seedance i2v with end_image_url). */
-  tailImageUrl?: string;
-  /** Multi-modal ref URLs (Seedance reference-to-video). */
+  /** startEnd: first frame anchor (fal CDN URL). */
+  startFrameUrl?: string;
+  /** startEnd: last frame anchor (fal CDN URL). */
+  endFrameUrl?: string;
+  /** Flat list of reference images. i2v dispatchers (Sora 2, Kling 2.1, veo3)
+   *  use [0] as their single source frame; multi-ref dispatchers
+   *  (Seedance ref-to-video) consume the whole list. */
   referenceImageUrls?: string[];
   referenceVideoUrls?: string[];
   referenceAudioUrls?: string[];
@@ -70,7 +72,9 @@ export async function generateFalVideo(
 }
 
 async function generateSoraVideo(params: FalVideoParams): Promise<FalVideoResult> {
-  const hasImage = !!params.imageUrl;
+  // Sora 2 is i2v — single source frame comes from referenceImageUrls[0].
+  const sourceImageUrl = params.referenceImageUrls?.[0];
+  const hasImage = !!sourceImageUrl;
   const modelId = hasImage
     ? "fal-ai/sora-2/image-to-video/pro"
     : "fal-ai/sora-2/text-to-video";
@@ -86,7 +90,7 @@ async function generateSoraVideo(params: FalVideoParams): Promise<FalVideoResult
   };
 
   if (hasImage) {
-    input.image_url = params.imageUrl;
+    input.image_url = sourceImageUrl;
   }
 
   const result = await fal.subscribe(modelId, {
@@ -114,7 +118,9 @@ async function generateSoraVideo(params: FalVideoParams): Promise<FalVideoResult
 }
 
 async function generateKlingVideo(params: FalVideoParams): Promise<FalVideoResult> {
-  const hasImage = !!params.imageUrl;
+  // Kling 2.1 is i2v — single source frame comes from referenceImageUrls[0].
+  const sourceImageUrl = params.referenceImageUrls?.[0];
+  const hasImage = !!sourceImageUrl;
   const modelId = hasImage
     ? "fal-ai/kling-video/v2.1/standard/image-to-video"
     : "fal-ai/kling-video/v2.1/standard/text-to-video";
@@ -132,8 +138,7 @@ async function generateKlingVideo(params: FalVideoParams): Promise<FalVideoResul
   };
 
   if (hasImage) {
-    input.image_url = params.imageUrl;
-    if (params.tailImageUrl) input.tail_image_url = params.tailImageUrl;
+    input.image_url = sourceImageUrl;
   }
 
   const result = await fal.subscribe(modelId, {
@@ -159,8 +164,9 @@ async function generateKlingVideo(params: FalVideoParams): Promise<FalVideoResul
 }
 
 async function generateSeedance2Video(params: FalVideoParams): Promise<FalVideoResult> {
-  const hasImage = !!params.imageUrl;
-  // Provider-internal dispatch: same model id in our cards, two fal endpoints.
+  // seedance-2-text uses no frames; seedance-2-startend uses startFrame + endFrame.
+  // Both share this dispatcher; presence of startFrameUrl decides the endpoint.
+  const hasImage = !!params.startFrameUrl;
   const modelId = hasImage
     ? "bytedance/seedance-2.0/image-to-video"
     : "bytedance/seedance-2.0/text-to-video";
@@ -179,8 +185,8 @@ async function generateSeedance2Video(params: FalVideoParams): Promise<FalVideoR
   };
 
   if (hasImage) {
-    input.image_url = params.imageUrl;
-    if (params.tailImageUrl) input.end_image_url = params.tailImageUrl;
+    input.image_url = params.startFrameUrl;
+    if (params.endFrameUrl) input.end_image_url = params.endFrameUrl;
   } else {
     // text-to-video takes aspect_ratio; image-to-video infers from the source image.
     input.aspect_ratio = params.aspectRatio || 'auto';
@@ -211,7 +217,10 @@ async function generateSeedance2Video(params: FalVideoParams): Promise<FalVideoR
 }
 
 async function generateVeo3Video(params: FalVideoParams): Promise<FalVideoResult> {
-  const hasImage = !!params.imageUrl;
+  // veo3 is i2v — single source frame from referenceImageUrls[0].
+  // veo3-fast-text-to-video is text-only.
+  const sourceImageUrl = params.referenceImageUrls?.[0];
+  const hasImage = !!sourceImageUrl;
 
   let modelId: string;
   if (params.videoModel === 'veo3-fast-text-to-video') {
@@ -240,7 +249,7 @@ async function generateVeo3Video(params: FalVideoParams): Promise<FalVideoResult
   };
 
   if (hasImage) {
-    input.image_url = params.imageUrl;
+    input.image_url = sourceImageUrl;
   }
 
   const result = await fal.subscribe(modelId, {
@@ -272,8 +281,8 @@ async function generateVeo3Video(params: FalVideoParams): Promise<FalVideoResult
  * This is the canonical startEnd model. No text-to-video on v3 yet.
  */
 async function generateKling3Video(params: FalVideoParams): Promise<FalVideoResult> {
-  if (!params.imageUrl) {
-    throw new Error("Kling 3 Pro requires a start frame (image_url)");
+  if (!params.startFrameUrl) {
+    throw new Error("Kling 3 Pro requires a start frame");
   }
 
   const modelId = "fal-ai/kling-video/v3/pro/image-to-video";
@@ -286,10 +295,10 @@ async function generateKling3Video(params: FalVideoParams): Promise<FalVideoResu
   const input: Record<string, unknown> = {
     prompt: params.prompt,
     duration: durationStr,
-    start_image_url: params.imageUrl,
+    start_image_url: params.startFrameUrl,
     generate_audio: (params.modelParams?.generate_audio as boolean) ?? true,
   };
-  if (params.tailImageUrl) input.end_image_url = params.tailImageUrl;
+  if (params.endFrameUrl) input.end_image_url = params.endFrameUrl;
 
   const result = await fal.subscribe(modelId, {
     input,

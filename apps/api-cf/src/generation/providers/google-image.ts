@@ -39,14 +39,14 @@ export const googleImageProvider: GenerationProvider = {
       { retries: { limit: 2, delay: "2 seconds" }, timeout: "3 minutes" },
       async () => {
         // promptParts preserves text + image interleaving when set, otherwise
-        // fall back to the flat referenceR2Keys list.
+        // fall back to the flat referenceImageR2Keys list.
         const r2Keys: string[] = (() => {
           if (params.promptParts?.length) {
             return params.promptParts
               .filter((p) => p.type === "asset_ref" && p.r2Key)
               .map((p) => p.r2Key as string);
           }
-          return params.referenceR2Keys ?? [];
+          return params.referenceImageR2Keys ?? [];
         })();
         if (!r2Keys.length) return undefined;
         const out: VertexInlineImage[] = [];

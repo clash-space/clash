@@ -37,15 +37,15 @@ export const falVideoProvider: GenerationProvider = {
           for (const k of keys) out.push(await uploadR2ToFal(env.R2_BUCKET, k, falKey));
           return out;
         };
-        const [imageUrl, tailImageUrl, referenceImageUrls, referenceVideoUrls, referenceAudioUrls] =
+        const [startFrameUrl, endFrameUrl, referenceImageUrls, referenceVideoUrls, referenceAudioUrls] =
           await Promise.all([
-            one(params.imageR2Key),
-            one(params.tailImageR2Key),
-            many(params.referenceR2Keys),
+            one(params.startFrameR2Key),
+            one(params.endFrameR2Key),
+            many(params.referenceImageR2Keys),
             many(params.referenceVideoR2Keys),
             many(params.referenceAudioR2Keys),
           ]);
-        return { imageUrl, tailImageUrl, referenceImageUrls, referenceVideoUrls, referenceAudioUrls };
+        return { startFrameUrl, endFrameUrl, referenceImageUrls, referenceVideoUrls, referenceAudioUrls };
       },
     );
 
@@ -57,8 +57,8 @@ export const falVideoProvider: GenerationProvider = {
         log.info("fal-video generate started", { ...ctx.tag, model });
         const result = await generateFalVideo(falKey, {
           prompt: params.prompt ?? "",
-          imageUrl: sources.imageUrl,
-          tailImageUrl: sources.tailImageUrl,
+          startFrameUrl: sources.startFrameUrl,
+          endFrameUrl: sources.endFrameUrl,
           referenceImageUrls: sources.referenceImageUrls,
           referenceVideoUrls: sources.referenceVideoUrls,
           referenceAudioUrls: sources.referenceAudioUrls,
