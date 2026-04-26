@@ -111,14 +111,6 @@ function SelectedNodeThumbnail({ node }: { node: RFNode }) {
     );
 }
 
-// Module-level pending prompt — survives React Strict Mode double-mount
-// and component remounts. Set by onCreateSession, consumed by auto-send.
-let __pendingPrompt: { threadId: string; text: string } | null = null;
-
-export function setPendingPrompt(threadId: string, text: string) {
-    __pendingPrompt = { threadId, text };
-}
-
 export default function ChatbotCopilot({
     projectId,
     threadId,
@@ -169,6 +161,7 @@ export default function ChatbotCopilot({
         clearConnectionError,
         customEvents,
         clearCustomEvents,
+        queueMessageOnOpen,
     } = useAgentCopilot({
         projectId,
         threadId,
@@ -180,7 +173,18 @@ export default function ChatbotCopilot({
     });
 
     const isProcessing = status === 'submitted' || status === 'streaming';
-    const hasPendingPrompt = !!__pendingPrompt && __pendingPrompt.threadId === threadId;
+
+    // Mount-time send of the pending first message. Parent gives us a fresh
+    // `key={threadId}` whenever the session changes, so this component remounts
+    // cleanly on every session change — no useChat id-transition race, no
+    // module-level pending state. queueMessageOnOpen waits for the WS handshake
+    // to land before firing; subsequent sends just hit `sendMessage` directly.
+    const initialMessageRef = useRef(initialPrompt);
+    useEffect(() => {
+        const msg = initialMessageRef.current;
+        if (msg && threadId) queueMessageOnOpen(msg);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
 
     // Auto-restore failed message to input
     useEffect(() => {
@@ -337,52 +341,14 @@ export default function ChatbotCopilot({
         }
     };
 
-    // Auto-send pending prompt after a fresh session is created.
-    //
-    // Why this is poll-based instead of "wait for connected + 300ms":
-    //   - On threadId change, useAgentChat re-creates its Chat (id changes
-    //     because room name `projectId:threadId` is part of the cache key),
-    //     and sendMessage's identity changes too. A single setTimeout that
-    //     depends on sendMessage gets repeatedly cancelled by re-renders.
-    //   - "Connected" only tells you the WS handshake completed; it doesn't
-    //     tell you the new Chat finished loading initial messages or that
-    //     the supervisor DO has settled. The first attempt used to silently
-    //     drop the message because the timer fired too early or got cancelled.
-    //   - The second send always worked because by then everything had
-    //     settled and sendMessage was called directly (not via this path).
-    //
-    // Polling every 200ms is robust to all of those races: keep trying until
-    // we actually invoked sendMessage on a stable Chat, or give up after 10s.
-    const sendMessageRef = useRef(sendMessage);
-    useEffect(() => { sendMessageRef.current = sendMessage; }, [sendMessage]);
-
+    // Strip the ?prompt= query param after first use so a manual reload
+    // doesn't re-send the original landing prompt.
     useEffect(() => {
-        if (!__pendingPrompt || __pendingPrompt.threadId !== threadId) return;
-        const startedAt = Date.now();
-        const tryFlush = (): boolean => {
-            if (!__pendingPrompt || __pendingPrompt.threadId !== threadId) return true;
-            if (!connected) return false;
-            if (status === 'submitted' || status === 'streaming') return false;
-            const text = __pendingPrompt.text;
-            __pendingPrompt = null;
-            sendMessageRef.current({ text });
-            if (window.location.search.includes('prompt=')) {
-                window.history.replaceState({}, '', window.location.pathname);
-            }
-            return true;
-        };
-        if (tryFlush()) return;
-        const interval = setInterval(() => {
-            if (tryFlush() || Date.now() - startedAt > 10_000) {
-                clearInterval(interval);
-                if (__pendingPrompt && __pendingPrompt.threadId === threadId) {
-                    console.warn('[ChatbotCopilot] Pending first-message dropped — could not flush within 10s');
-                    __pendingPrompt = null;
-                }
-            }
-        }, 200);
-        return () => clearInterval(interval);
-    }, [threadId, status, connected]);
+        if (initialPrompt && window.location.search.includes('prompt=')) {
+            window.history.replaceState({}, '', window.location.pathname);
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
 
     // ─── Resize ──────────────────────────────────────────────
     const startResizing = () => setIsResizing(true);
@@ -734,7 +700,7 @@ export default function ChatbotCopilot({
                                     onSubmit={handleSubmit}
                                     onStop={handleStop}
                                     isProcessing={isProcessing}
-                                    isCreatingSession={isCreatingSession || hasPendingPrompt}
+                                    isCreatingSession={isCreatingSession}
                                     connected={connected}
                                     error={sessionError || connectionError}
                                     onDismissError={() => { setSessionError(null); clearConnectionError(); }}

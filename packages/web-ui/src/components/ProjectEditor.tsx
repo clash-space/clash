@@ -40,7 +40,7 @@ import {
 import { Link } from 'react-router';
 import { useNavigate } from 'react-router';
 import type { Project } from '@clash/web-ui/lib/types';
-import ChatbotCopilot, { setPendingPrompt } from './ChatbotCopilot';
+import ChatbotCopilot from './ChatbotCopilot';
 import { useSessionHistory } from '@clash/web-ui/hooks/useSessionHistory';
 import { updateProjectName } from '@clash/web-ui/lib/clientActions';
 import VideoNode from './nodes/VideoNode';
@@ -545,7 +545,10 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
         if (id === threadId) setThreadId('');
     }, [removeSession, threadId]);
 
-    // Auto-create session for initialPrompt from HomePage
+    // Auto-create session for initialPrompt from HomePage. The initial prompt
+    // rides along on chatInitialPrompt → ChatbotCopilot's mount-time
+    // queueMessageOnOpen. The threadId-keyed remount makes the new mount
+    // pick it up cleanly.
     const hasCreatedSessionRef = useRef(false);
     useEffect(() => {
         if (initialPrompt && !threadId && !hasCreatedSessionRef.current) {
@@ -553,7 +556,7 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
             handleCreateSession(initialPrompt).then(result => {
                 if (result) {
                     upsertSession(result.threadId, result.title);
-                    setPendingPrompt(result.threadId, initialPrompt!);
+                    setChatInitialPrompt(initialPrompt!);
                     setThreadId(result.threadId);
                 }
             });
@@ -2218,12 +2221,17 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
                             <div id="copilot-container" className="fixed right-0 top-0 bottom-0 z-40 pointer-events-none">
                                 <div className="pointer-events-auto h-full">
                                     <ChatbotCopilot
-                                        key={`copilot_${sessionKey}`}
+                                        // Key on threadId so a fresh session forces a clean remount
+                                        // (no useChat id-transition race that used to swallow the
+                                        // first message). sessionKey is part of the key only so
+                                        // "New Session" → "" → newId → "" still gets a fresh mount
+                                        // even if newId happens to repeat.
+                                        key={`copilot_${sessionKey}_${threadId || 'empty'}`}
                                         onCreateSession={async (msg) => {
                                             const result = await handleCreateSession(msg);
                                             if (result) {
                                                 upsertSession(result.threadId, result.title);
-                                                setPendingPrompt(result.threadId, msg);
+                                                setChatInitialPrompt(msg);
                                                 setThreadId(result.threadId);
                                             }
                                         }}
