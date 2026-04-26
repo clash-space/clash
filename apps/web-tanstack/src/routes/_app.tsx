@@ -19,19 +19,6 @@ function AppLayout() {
     }
   }, [isPending, userId, navigate]);
 
-  // Don't mount children until auth is confirmed — otherwise the editor
-  // fires a WS handshake with no cookie, the server closes it, and the
-  // canvas comes up with an empty Loro doc.
-  if (typeof window !== "undefined" && (isPending || !userId)) {
-    return (
-      <LayoutContent isAuthenticated>
-        <div className="min-h-[60vh] flex items-center justify-center text-sm text-neutral-500">
-          Loading…
-        </div>
-      </LayoutContent>
-    );
-  }
-
   return (
     <LayoutContent isAuthenticated>
       <Outlet />
