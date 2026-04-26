@@ -267,41 +267,20 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
     // Attached node IDs = incoming edges whose source has a compatible modality,
     // including drafts (empty src, will materialize when Build runs).
     const attachedNodeIds = useMemo(() => {
-        // Dedup by node id: multiple edges from the same source (e.g. an
-        // @-mention that races a manual drag-connect) used to surface the
-        // same ref twice in the preview row.
-        const seen = new Set<string>();
-        const out: string[] = [];
-        for (const e of edges) {
-            if (e.target !== id) continue;
-            if (seen.has(e.source)) continue;
-            const n = getNodes().find(nn => nn.id === e.source);
-            if (!n || !hasCompatibleModality(n)) continue;
-            seen.add(e.source);
-            out.push(n.id);
-        }
-        return out;
+        return edges
+            .filter(e => e.target === id)
+            .map(e => getNodes().find(n => n.id === e.source))
+            .filter((n): n is NonNullable<typeof n> => !!n && hasCompatibleModality(n))
+            .map(n => n.id);
     }, [edges, id, getNodes, hasCompatibleModality]);
 
     const refNodeIds = useMemo(() => {
         const order = Array.isArray(data.referenceImageOrder) ? (data.referenceImageOrder as string[]) : [];
-        // Dedup as we go: a stale `referenceImageOrder` row with duplicates
-        // (or a race that wrote the same id twice) would otherwise surface
-        // the same ref twice in the preview row.
         const attachedSet = new Set(attachedNodeIds);
-        const seen = new Set<string>();
-        const out: string[] = [];
-        for (const nid of order) {
-            if (!attachedSet.has(nid) || seen.has(nid)) continue;
-            seen.add(nid);
-            out.push(nid);
-        }
-        for (const nid of attachedNodeIds) {
-            if (seen.has(nid)) continue;
-            seen.add(nid);
-            out.push(nid);
-        }
-        return out;
+        const ordered = order.filter(nid => attachedSet.has(nid));
+        const seen = new Set(ordered);
+        const extras = attachedNodeIds.filter(nid => !seen.has(nid));
+        return [...ordered, ...extras];
     }, [attachedNodeIds, data.referenceImageOrder]);
 
     // Group attached refs by kind once — used by the model-compat check below.
@@ -383,19 +362,34 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
     }, [isStartEnd, refNodeIds, getNodeNaturalDims]);
 
     const persistRefOrder = useCallback((next: string[]) => {
-        setNodes(nds => nds.map(n => n.id === id ? { ...n, data: { ...n.data, referenceImageOrder: next } } : n));
+        // Single writer for referenceImageOrder — dedup here so no duplicate
+        // ever lands in Loro. Order preserved (first occurrence wins).
+        const seen = new Set<string>();
+        const cleaned: string[] = [];
+        for (const nid of next) {
+            if (!nid || seen.has(nid)) continue;
+            seen.add(nid);
+            cleaned.push(nid);
+        }
+        setNodes(nds => nds.map(n => n.id === id ? { ...n, data: { ...n.data, referenceImageOrder: cleaned } } : n));
         if (loroSync?.connected) {
-            loroSync.updateNode(id, { data: { referenceImageOrder: next } });
+            loroSync.updateNode(id, { data: { referenceImageOrder: cleaned } });
         }
     }, [id, setNodes, loroSync]);
 
     const addRefNode = useCallback((sourceNodeId: string) => {
+        // Deterministic edgeId means re-adding the same source is a no-op
+        // *iff* we early-return when the edge already exists. Without this
+        // guard reactflow's setEdges still grows the array (it dedups on
+        // change-set, not against current state) and Loro overwrites the
+        // entry — but transient duplicates flicker through React Flow.
         const edgeId = `${sourceNodeId}-${id}`;
+        if (edges.some(e => e.id === edgeId)) return;
         addEdges({ id: edgeId, source: sourceNodeId, target: id, type: 'default' });
         if (loroSync?.connected) {
             loroSync.addEdge(edgeId, { id: edgeId, source: sourceNodeId, target: id, type: 'default' });
         }
-    }, [id, addEdges, loroSync]);
+    }, [id, edges, addEdges, loroSync]);
 
     const removeRefNode = useCallback((sourceNodeId: string) => {
         const edgeIds = edges.filter(e => e.target === id && e.source === sourceNodeId).map(e => e.id);
@@ -406,7 +400,23 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
         }
     }, [id, edges, setEdges, loroSync]);
 
-    // Canvas nodes eligible for "+" picker: accepted kind, not already attached.
+    // One-shot cleanup: pre-existing canvases may have duplicate ids in
+    // referenceImageOrder (from before persistRefOrder dedup'd). Detect on
+    // mount and rewrite a clean copy via the canonical writer. No-op for
+    // already-clean data.
+    useEffect(() => {
+        const order = Array.isArray(data.referenceImageOrder) ? (data.referenceImageOrder as string[]) : null;
+        if (!order || order.length === 0) return;
+        const seen = new Set<string>();
+        const cleaned: string[] = [];
+        for (const nid of order) {
+            if (!nid || seen.has(nid)) continue;
+            seen.add(nid);
+            cleaned.push(nid);
+        }
+        if (cleaned.length !== order.length) persistRefOrder(cleaned);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
     // Drafts qualify (src empty for now — cascade runner waits for them before
     // adopting this action). Cycle guard: exclude anything that transitively
     // depends on this action so users can't pick a descendant.
