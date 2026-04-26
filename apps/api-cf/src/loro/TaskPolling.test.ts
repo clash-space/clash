@@ -99,7 +99,7 @@ describe("TaskPolling", () => {
       expect(result).toBe(false);
     });
 
-    it("asset row found → writes assetId/src + status=completed + clears pendingTask", async () => {
+    it("asset row found → writes assetId + status=completed + clears pendingTask", async () => {
       const doc = makeDocWithNodes([
         { id: "n1", type: "image", data: { status: "generating", pendingTask: "task-1" } },
       ]);
@@ -112,7 +112,7 @@ describe("TaskPolling", () => {
 
       const nodeData = doc.getMap("nodes").get("n1") as any;
       expect(nodeData.data.assetId).toBe("asset-xyz");
-      expect(nodeData.data.src).toBe("projects/p1/assets/img.png");
+      expect(nodeData.data.src).toBeUndefined();
       expect(nodeData.data.status).toBe("completed");
       expect(nodeData.data.pendingTask).toBeNull();
     });
@@ -132,7 +132,7 @@ describe("TaskPolling", () => {
       await pollNodeTasks(doc, makeEnv(), "proj-1", broadcast);
 
       const nodeData = doc.getMap("nodes").get("n1") as any;
-      expect(nodeData.data.src).toBe("projects/p1/assets/vid.mp4");
+      expect(nodeData.data.assetId).toBe("asset-1");
       expect(nodeData.data.coverUrl).toBe("projects/p1/assets/vid-cover.jpg");
     });
 
@@ -273,7 +273,7 @@ describe("TaskPolling", () => {
       (getAssetByTaskId as any).mockResolvedValue(asset({ kind: "video", srcR2Key: "v.mp4", coverR2Key: null }));
       await pollNodeTasks(doc, makeEnv(), "proj-1", broadcast);
       const nodeData = doc.getMap("nodes").get("n1") as any;
-      expect(nodeData.data.src).toBe("v.mp4");
+      expect(nodeData.data.assetId).toBe("asset-1");
       expect(nodeData.data.coverUrl).toBeUndefined();
     });
 

@@ -415,7 +415,6 @@ export class ProjectRoom extends DurableObject<Env> {
         status: status === "failed" ? "failed" : "completed",
       };
 
-      if (result?.storageKey) nodeUpdates.src = result.storageKey;
       if (result?.content) nodeUpdates.content = result.content;
       if (result?.description) nodeUpdates.description = result.description;
       if (result?.error) nodeUpdates.error = result.error;

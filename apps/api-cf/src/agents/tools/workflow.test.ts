@@ -64,7 +64,7 @@ function seedTwoStageChain(draft1Status = "draft", draft2Status = "draft"): Loro
 
   return seedDoc(
     [
-      { id: "img1", type: "image", data: { label: "Original", status: "completed", src: "img1.png" } },
+      { id: "img1", type: "image", data: { label: "Original", status: "completed", assetId: "asset-img1" } },
       { id: "act1", type: "action-badge", data: actionData("stylize as anime") },
       { id: "draft1", type: "image", data: { label: "Stage 1", status: draft1Status } },
       { id: "act2", type: "action-badge", data: actionData("add bokeh") },
@@ -156,7 +156,7 @@ describe("workflow_op", () => {
       expect(d1.data.cascadeToken).toBe(res.cascadeToken);
       expect(d1.data.runRequested).toBe(false);
       expect(d1.data.prompt).toBe("stylize as anime");
-      expect(d1.data.referenceImageUrls).toEqual(["img1.png"]);
+      expect(d1.data.referenceImageAssetIds).toEqual(["asset-img1"]);
 
       const d2 = readNode(doc, "draft2")!;
       expect(d2.data.status).toBe("draft"); // still draft; cascade runner will adopt later
@@ -220,12 +220,12 @@ describe("workflow_op", () => {
       const doc = seedTwoStageChain();
       doc.getMap("nodes").set("draft1", {
         type: "image",
-        data: { label: "Stage 1", status: "completed", src: "d1.png" },
+        data: { label: "Stage 1", status: "completed", assetId: "asset-d1" },
         position: { x: 0, y: 0 },
       });
       doc.getMap("nodes").set("draft2", {
         type: "image",
-        data: { label: "Stage 2", status: "completed", src: "d2.png" },
+        data: { label: "Stage 2", status: "completed", assetId: "asset-d2" },
         position: { x: 0, y: 0 },
       });
       return doc;
@@ -269,19 +269,18 @@ describe("workflow_op", () => {
 
       // Original nodes untouched.
       expect(readNode(doc, "draft2")!.data.status).toBe("completed");
-      expect(readNode(doc, "draft2")!.data.src).toBe("d2.png");
+      expect(readNode(doc, "draft2")!.data.assetId).toBe("asset-d2");
 
-      // Head clone retains src.
+      // Head clone retains assetId.
       const clonedImg1 = readNode(doc, res.idMap["img1"])!;
       expect(clonedImg1.type).toBe("image");
       expect(clonedImg1.data.status).toBe("completed");
-      expect(clonedImg1.data.src).toBe("img1.png");
+      expect(clonedImg1.data.assetId).toBe("asset-img1");
 
-      // Cloneset outputs are reset to drafts with src stripped.
+      // Cloneset outputs are reset to drafts with assetId stripped.
       const clonedLeaf = readNode(doc, res.newLeafId)!;
       expect(clonedLeaf.type).toBe("image");
       expect(clonedLeaf.data.status).toBe("draft");
-      expect(clonedLeaf.data.src).toBe("");
       expect(clonedLeaf.data.assetId).toBeUndefined();
     });
 
@@ -303,10 +302,10 @@ describe("workflow_op", () => {
       expect(res.createdNodes).toHaveLength(3);
       expect(res.createdEdges).toHaveLength(2);
 
-      // draft1's clone is a HEAD (status completed, src preserved).
+      // draft1's clone is a HEAD (status completed, assetId preserved).
       const clonedDraft1 = readNode(doc, res.idMap["draft1"])!;
       expect(clonedDraft1.data.status).toBe("completed");
-      expect(clonedDraft1.data.src).toBe("d1.png");
+      expect(clonedDraft1.data.assetId).toBe("asset-d1");
 
       // act1 and img1 were NOT cloned.
       expect(res.idMap["act1"]).toBeUndefined();
@@ -320,7 +319,7 @@ describe("workflow_op", () => {
       // Mark draft2 completed so clone makes sense.
       doc.getMap("nodes").set("draft2", {
         type: "image",
-        data: { label: "Stage 2", status: "completed", src: "d2.png" },
+        data: { label: "Stage 2", status: "completed", assetId: "asset-d2" },
         position: { x: 0, y: 0 },
       });
       const tools = createWorkflowTools(doc, broadcast, makeSequentialIds("c"));
@@ -370,7 +369,7 @@ describe("workflow_op", () => {
     function seedSingleStageReady(): LoroDoc {
       return seedDoc(
         [
-          { id: "img1", type: "image", data: { label: "Ref", status: "completed", src: "img1.png" } },
+          { id: "img1", type: "image", data: { label: "Ref", status: "completed", assetId: "asset-img1" } },
           {
             id: "act1",
             type: "action-badge",
@@ -420,7 +419,7 @@ describe("workflow_op", () => {
       const d1 = readNode(doc, "draft1")!;
       expect(d1.data.status).toBe("pending");
       expect(d1.data.prompt).toBe("a photo");
-      expect(d1.data.referenceImageUrls).toEqual(["img1.png"]);
+      expect(d1.data.referenceImageAssetIds).toEqual(["asset-img1"]);
       expect(d1.data.modelId).toBe("nano-banana-2");
     });
 

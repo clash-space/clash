@@ -611,7 +611,6 @@ function applyClone(
       delete nextData.referenceImageOrder;
     } else if (old.type && draftStatusTypes.has(old.type)) {
       nextData.status = "draft";
-      nextData.src = "";
       delete nextData.assetId;
       delete nextData.taskId;
       delete nextData.description;

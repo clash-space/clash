@@ -50,7 +50,7 @@ describe("Canvas tools", () => {
       {
         id: "n2",
         type: "image",
-        data: { label: "Cat photo", status: "completed", src: "cat.png" },
+        data: { label: "Cat photo", status: "completed", assetId: "asset-cat" },
         parentId: "g1",
       },
       {
@@ -118,7 +118,9 @@ describe("Canvas tools", () => {
         { toolCallId: "1", messages: [] }
       ) as string;
       expect(result).toContain("Cat photo");
-      expect(result).toContain("cat.png");
+      // No env → no D1 lookup → no R2 key resolved → no Storage key line, no marker.
+      expect(result).not.toContain("Storage key");
+      expect(result).not.toContain("CANVAS_IMAGE");
     });
 
     it("embeds CANVAS_IMAGE marker with base64 for image nodes", async () => {
@@ -127,7 +129,30 @@ describe("Canvas tools", () => {
         httpMetadata: { contentType: "image/png" },
         arrayBuffer: () => Promise.resolve(fakeImageBytes),
       };
+      const mockAssetRow = {
+        id: "asset-cat",
+        userId: "u-1",
+        kind: "image",
+        srcR2Key: "projects/p/assets/cat.png",
+        coverR2Key: null,
+        metadata: null,
+        sources: null,
+        sourceModel: null,
+        sourcePrompt: null,
+        sourceTaskId: null,
+        bytes: 0,
+        createdAt: 1,
+        updatedAt: 1,
+      };
+      const first = vi.fn().mockResolvedValue({
+        ...mockAssetRow,
+        metadata: null,
+      });
+      const bind = vi.fn().mockReturnValue({ first });
+      const prepare = vi.fn().mockReturnValue({ bind });
+
       const mockEnv = {
+        DB: { prepare } as any,
         R2_BUCKET: { get: vi.fn().mockResolvedValue(mockR2Object) },
       } as any;
 
@@ -142,7 +167,8 @@ describe("Canvas tools", () => {
 
       expect(result).toContain("Cat photo");
       expect(result).toMatch(/\[\[CANVAS_IMAGE:image\/png:[A-Za-z0-9+/=]+\]\]/);
-      expect(mockEnv.R2_BUCKET.get).toHaveBeenCalledWith("cat.png");
+      expect(bind).toHaveBeenCalledWith("asset-cat");
+      expect(mockEnv.R2_BUCKET.get).toHaveBeenCalledWith("projects/p/assets/cat.png");
     });
   });
 

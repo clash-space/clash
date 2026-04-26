@@ -280,7 +280,7 @@ async function resolveTimelineDslReferences(
 
         return {
           ...item,
-          src: assetRow?.srcR2Key || assetData.src || item.src,
+          src: assetRow?.srcR2Key || item.src,
           type: assetType || item.type,
           ...(naturalWidth != null && { naturalWidth }),
           ...(naturalHeight != null && { naturalHeight }),
@@ -402,7 +402,7 @@ export async function processPendingNodes(
       if (!['image', 'video', 'audio', 'text', 'video_render'].includes(nodeType)) continue;
 
       const status = innerData.status as string;
-      const src = innerData.src;
+      const assetId = typeof innerData.assetId === 'string' ? innerData.assetId : undefined;
       const description = innerData.description;
       const pendingTask = innerData.pendingTask;
       const pendingTaskAt = typeof innerData.pendingTaskAt === 'number' ? innerData.pendingTaskAt : undefined;
@@ -472,7 +472,7 @@ export async function processPendingNodes(
       }
 
       // Case: custom action pending → route based on runtime (local agent or CF Worker)
-      if (status === Status.Pending && !src && innerData.actionType?.startsWith('custom:')) {
+      if (status === Status.Pending && !assetId && innerData.actionType?.startsWith('custom:')) {
         const taskId = crypto.randomUUID();
         const actionId = innerData.customActionId ?? innerData.actionType.replace('custom:', '');
         updateNodeData(doc, nodeId, { status: Status.Generating, pendingTask: taskId, pendingTaskAt: Date.now() }, broadcast);
@@ -529,8 +529,8 @@ export async function processPendingNodes(
         continue;
       }
 
-      // Case 1: pending + no src -> submit generation task
-      if (status === Status.Pending && !src) {
+      // Case 1: pending + no asset yet -> submit generation task
+      if (status === Status.Pending && !assetId) {
         // Deterministic taskId: same nodeId always maps to the same workflow ID,
         // so duplicate submissions (Loro race, alarm + queue, etc.) are idempotent.
         const taskId = `${projectId}-gen-${nodeId}`;
@@ -710,8 +710,14 @@ export async function processPendingNodes(
         }
       }
 
-      // Case 2: completed + has src + no description -> submit description task
-      if (status === Status.Completed && src && !description && nodeType !== 'audio' && !pendingTask) {
+      // Case 2: completed + has asset + no description -> submit description task
+      if (status === Status.Completed && assetId && !description && nodeType !== 'audio' && !pendingTask) {
+        const assetRow = await getAssetById(env.DB, assetId);
+        if (!assetRow?.srcR2Key) {
+          log.warn('desc.skip_no_asset', { nodeId, assetId });
+          continue;
+        }
+
         const taskId = crypto.randomUUID();
         const tag = { nodeId, taskId, type: 'desc' };
 
@@ -721,13 +727,8 @@ export async function processPendingNodes(
 
         const taskType: GenerationParams['type'] = nodeType === 'image' ? 'image_desc' : 'video_desc';
 
-        // Normalise key — strip any accidental full-URL prefix
-        const cleanKey = src.startsWith('http://') || src.startsWith('https://')
-          ? new URL(src).pathname.replace(/^\//, '')
-          : src;
-
         const result = await submitDescTask(env, taskType, projectId, nodeId, taskId, {
-          r2Key: cleanKey,
+          r2Key: assetRow.srcR2Key,
           mimeType: nodeType === 'image' ? 'image/png' : 'video/mp4',
         });
 

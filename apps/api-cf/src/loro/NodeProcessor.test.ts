@@ -181,10 +181,33 @@ describe("NodeProcessor - processPendingNodes", () => {
       {
         id: "node-img-2",
         type: "image",
-        data: { status: "completed", src: "projects/proj-1/assets/img.png" },
+        data: { status: "completed", assetId: "asset-img-2" },
       },
     ]);
-    const env = makeEnv();
+    const env = makeEnv({
+      DB: {
+        prepare: vi.fn().mockReturnValue({
+          bind: vi.fn().mockReturnValue({
+            run: vi.fn().mockResolvedValue({}),
+            all: vi.fn().mockResolvedValue({ results: [] }),
+            first: vi.fn().mockResolvedValue({
+              id: "asset-img-2",
+              userId: "u-1",
+              kind: "image",
+              srcR2Key: "projects/proj-1/assets/img.png",
+              coverR2Key: null,
+              metadata: null,
+              sources: null,
+              sourceModel: null,
+              sourcePrompt: null,
+              sourceTaskId: null,
+              createdAt: 1,
+              updatedAt: 1,
+            }),
+          }),
+        }),
+      } as any,
+    });
 
     await processPendingNodes(doc, env, "proj-1", broadcast, triggerPolling);
 

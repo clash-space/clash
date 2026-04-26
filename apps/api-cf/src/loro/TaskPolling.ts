@@ -43,7 +43,6 @@ export async function pollNodeTasks(
           status: Status.Completed,
         };
         if (taskStatus.assetId) updates.assetId = taskStatus.assetId;
-        if (taskStatus.srcR2Key) updates.src = taskStatus.srcR2Key;
         if (taskStatus.coverR2Key) updates.coverUrl = taskStatus.coverR2Key;
 
         updateNodeData(doc, nodeId, updates, broadcast);

@@ -1,6 +1,6 @@
 import { Command } from "commander";
 import WebSocket from "ws";
-import { writeFileSync, mkdirSync, existsSync } from "node:fs";
+import { writeFileSync, mkdirSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { homedir } from "node:os";
 import {
@@ -129,25 +129,34 @@ canvasCommand
 const ASSET_CACHE_DIR = join(homedir(), ".clash", "cache", "assets");
 
 /**
- * Download media asset with caching. Returns file path, or null on failure.
- * Skips download if file already exists in cache.
+ * Download media asset by D1 asset id. Returns file path, or null on failure.
+ *
+ * Caches by assetId (immutable identifier — same id always means the same
+ * underlying R2 object), so repeat calls skip the metadata round-trip
+ * entirely. Extension is sniffed from srcR2Key the first time so file viewers
+ * pick the right type.
  */
-async function downloadAsset(src: string): Promise<string | null> {
+export async function downloadAssetById(assetId: string): Promise<string | null> {
   try {
-    const fileName = src.replace(/[/\\:]/g, "_");
     mkdirSync(ASSET_CACHE_DIR, { recursive: true });
-    const filePath = join(ASSET_CACHE_DIR, fileName);
 
-    // Check cache
-    if (existsSync(filePath)) return filePath;
+    // Cache hit: any file starting with `${assetId}.` is the same asset.
+    // Glob would be cleaner but readdirSync is dependency-free and fast for a tiny dir.
+    const safeId = assetId.replace(/[/\\:]/g, "_");
+    for (const name of readdirSync(ASSET_CACHE_DIR)) {
+      if (name === safeId || name.startsWith(`${safeId}.`)) {
+        return join(ASSET_CACHE_DIR, name);
+      }
+    }
 
-    // Get signed URL
-    const signRes = await apiFetch(`/assets/sign?key=${encodeURIComponent(src)}`);
-    if (!signRes.ok) return null;
-    const { url: signedPath } = (await signRes.json()) as { url: string };
+    const metaRes = await apiFetch(`/api/v1/assets/${encodeURIComponent(assetId)}`);
+    if (!metaRes.ok) return null;
+    const asset = (await metaRes.json()) as { srcR2Key: string; signedUrl: string };
 
-    // Download
-    const fullUrl = `${getServerUrl()}${signedPath}`;
+    const ext = asset.srcR2Key.match(/\.[a-zA-Z0-9]+$/)?.[0] ?? "";
+    const filePath = join(ASSET_CACHE_DIR, `${safeId}${ext}`);
+
+    const fullUrl = `${getServerUrl()}${asset.signedUrl}`;
     const res = await fetch(fullUrl);
     if (!res.ok) return null;
 
@@ -191,12 +200,12 @@ canvasCommand
       }
     }
 
-    // For media nodes, download the asset
-    const src = node.data?.src as string | undefined;
+    // For media nodes, download the asset via D1 assetId.
+    const assetId = typeof node.data?.assetId === "string" ? node.data.assetId : undefined;
     const isMedia = ["image", "video", "audio"].includes(node.type);
     let assetPath: string | null = null;
-    if (isMedia && src) {
-      assetPath = await downloadAsset(src);
+    if (isMedia && assetId) {
+      assetPath = await downloadAssetById(assetId);
     }
 
     if (isJsonMode(options)) {

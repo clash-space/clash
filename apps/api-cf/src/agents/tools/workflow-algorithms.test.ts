@@ -84,9 +84,9 @@ describe("computeBuildPlan", () => {
     // head → act1 → draft1(completed) → act2 → draft2(draft). Building draft2
     // should produce just one entry (draft2); draft1 is a ready boundary.
     const nodes = [
-      n({ id: "head", type: "image", data: { status: "completed", src: "h.png" } }),
+      n({ id: "head", type: "image", data: { status: "completed", assetId: "asset-h" } }),
       n({ id: "act1", type: "action-badge", data: actionData("one") }),
-      n({ id: "draft1", type: "image", data: { status: "completed", src: "d1.png" } }),
+      n({ id: "draft1", type: "image", data: { status: "completed", assetId: "asset-d1" } }),
       n({ id: "act2", type: "action-badge", data: actionData("two") }),
       n({ id: "draft2", type: "image", data: { status: "draft" } }),
     ];
@@ -106,7 +106,7 @@ describe("computeBuildPlan", () => {
   it("post-order: deepest ancestor appears first in entries", () => {
     // 3-stage chain; we want [draft1, draft2, draft3] in that order.
     const nodes = [
-      n({ id: "head", type: "image", data: { status: "completed", src: "h.png" } }),
+      n({ id: "head", type: "image", data: { status: "completed", assetId: "asset-h" } }),
       n({ id: "a1", type: "action-badge", data: actionData("1") }),
       n({ id: "d1", type: "image", data: { status: "draft" } }),
       n({ id: "a2", type: "action-badge", data: actionData("2") }),
@@ -132,7 +132,7 @@ describe("computeBuildPlan", () => {
 
   it("flags blocker when upstream action lacks a modelId", () => {
     const nodes = [
-      n({ id: "head", type: "image", data: { status: "completed", src: "h.png" } }),
+      n({ id: "head", type: "image", data: { status: "completed", assetId: "asset-h" } }),
       n({
         id: "act",
         type: "action-badge",
@@ -149,7 +149,7 @@ describe("computeBuildPlan", () => {
 
   it("flags blocker when upstream action has empty prompt", () => {
     const nodes = [
-      n({ id: "head", type: "image", data: { status: "completed", src: "h.png" } }),
+      n({ id: "head", type: "image", data: { status: "completed", assetId: "asset-h" } }),
       n({
         id: "act",
         type: "action-badge",
@@ -172,7 +172,7 @@ describe("computeBuildPlan", () => {
   });
 
   it("returns 'nothing to build' warning when target is already completed", () => {
-    const nodes = [n({ id: "done", type: "image", data: { status: "completed", src: "x.png" } })];
+    const nodes = [n({ id: "done", type: "image", data: { status: "completed", assetId: "asset-x" } })];
     const plan = computeBuildPlan("done", nodes, []);
     expect(plan.entries).toEqual([]);
     expect(plan.warnings.some((w) => w.toLowerCase().includes("nothing to build"))).toBe(true);
@@ -180,7 +180,7 @@ describe("computeBuildPlan", () => {
 
   it("accepts 'idle' as a draft-equivalent status", () => {
     const nodes = [
-      n({ id: "head", type: "image", data: { status: "completed", src: "h.png" } }),
+      n({ id: "head", type: "image", data: { status: "completed", assetId: "asset-h" } }),
       n({ id: "act", type: "action-badge", data: actionData() }),
       n({ id: "idle", type: "image", data: { status: "idle" } }),
     ];
@@ -193,7 +193,7 @@ describe("computeBuildPlan", () => {
 
   it("labels fallback: uses id when label is empty or missing", () => {
     const nodes = [
-      n({ id: "head", type: "image", data: { status: "completed", src: "h.png" } }),
+      n({ id: "head", type: "image", data: { status: "completed", assetId: "asset-h" } }),
       n({ id: "act", type: "action-badge", data: actionData() }),
       n({ id: "unnamed", type: "image", data: { status: "draft" } }),
     ];
@@ -208,7 +208,7 @@ describe("computeBuildPlan", () => {
     //             → actB → target (via another branch)
     // Actually a true diamond: target depends on draftMid AND another path.
     const nodes = [
-      n({ id: "head", type: "image", data: { status: "completed", src: "h.png" } }),
+      n({ id: "head", type: "image", data: { status: "completed", assetId: "asset-h" } }),
       n({ id: "actL", type: "action-badge", data: actionData("L") }),
       n({ id: "draftL", type: "image", data: { status: "draft" } }),
       n({ id: "actR", type: "action-badge", data: actionData("R") }),
@@ -247,17 +247,17 @@ describe("computeAdoptionPayload", () => {
     const action = n({ id: "act", type: "action-badge", data: actionData("test prompt") });
     const nodes = [
       action,
-      n({ id: "img1", type: "image", data: { src: "a.png", status: "completed" } }),
-      n({ id: "vid1", type: "video", data: { src: "v.mp4", status: "completed" } }),
+      n({ id: "img1", type: "image", data: { assetId: "asset-a", status: "completed" } }),
+      n({ id: "vid1", type: "video", data: { assetId: "asset-v", status: "completed" } }),
     ];
     const edges = [e("1", "img1", "act"), e("2", "vid1", "act")];
 
     const res = computeAdoptionPayload(action, nodes, edges);
     expect(res.ok).toBe(true);
     expect(res.type).toBe("image");
-    expect(res.data?.referenceImageUrls).toEqual(["a.png"]);
-    // No referenceVideoUrls field on image payload.
-    expect(res.data).not.toHaveProperty("referenceVideoUrls");
+    expect(res.data?.referenceImageAssetIds).toEqual(["asset-a"]);
+    // No referenceVideoAssetIds field on image payload.
+    expect(res.data).not.toHaveProperty("referenceVideoAssetIds");
   });
 
   it("video-gen: partitions image + video refs", () => {
@@ -273,15 +273,15 @@ describe("computeAdoptionPayload", () => {
     });
     const nodes = [
       action,
-      n({ id: "img1", type: "image", data: { src: "a.png" } }),
-      n({ id: "vid1", type: "video", data: { src: "v.mp4" } }),
+      n({ id: "img1", type: "image", data: { assetId: "asset-a" } }),
+      n({ id: "vid1", type: "video", data: { assetId: "asset-v" } }),
     ];
     const edges = [e("1", "img1", "act"), e("2", "vid1", "act")];
 
     const res = computeAdoptionPayload(action, nodes, edges);
     expect(res.ok).toBe(true);
     expect(res.type).toBe("video");
-    expect(res.data?.referenceImageUrls).toEqual(["a.png"]);
+    expect(res.data?.referenceImageAssetIds).toEqual(["asset-a"]);
     expect(res.data?.duration).toBe(5);
   });
 
@@ -388,13 +388,13 @@ describe("computeAdoptionPayload", () => {
     const action = n({ id: "act", type: "action-badge", data: actionData("test") });
     const nodes = [
       action,
-      n({ id: "img1", type: "image", data: { src: "a.png" } }),
+      n({ id: "img1", type: "image", data: { assetId: "asset-a" } }),
       n({ id: "img2", type: "image", data: {} }), // no src
     ];
     const edges = [e("1", "img1", "act"), e("2", "img2", "act")];
 
     const res = computeAdoptionPayload(action, nodes, edges);
-    expect(res.data?.referenceImageUrls).toEqual(["a.png"]);
+    expect(res.data?.referenceImageAssetIds).toEqual(["asset-a"]);
   });
 });
 
@@ -414,9 +414,9 @@ describe("computeTrajectory", () => {
 
   it("simple chain: head classified as head, action-badge + output as cloneset", () => {
     const nodes = [
-      n({ id: "h", type: "image", data: { status: "completed", src: "x" } }),
+      n({ id: "h", type: "image", data: { status: "completed", assetId: "asset-h2" } }),
       n({ id: "a", type: "action-badge", data: actionData() }),
-      n({ id: "l", type: "image", data: { status: "completed", src: "y" } }),
+      n({ id: "l", type: "image", data: { status: "completed", assetId: "asset-l2" } }),
     ];
     const edges = [e("1", "h", "a"), e("2", "a", "l")];
 
@@ -485,11 +485,11 @@ describe("simulateDrop", () => {
   /** Build a 2-stage chain with completed outputs. Used by several tests. */
   function twoStage(): { nodes: NodeInfo[]; edges: EdgeWithId[]; sub: TrajectorySubgraph } {
     const nodes = [
-      n({ id: "h", type: "image", data: { status: "completed", src: "h.png" } }),
+      n({ id: "h", type: "image", data: { status: "completed", assetId: "asset-h" } }),
       n({ id: "a1", type: "action-badge", data: actionData() }),
-      n({ id: "m", type: "image", data: { status: "completed", src: "m.png" } }),
+      n({ id: "m", type: "image", data: { status: "completed", assetId: "asset-m" } }),
       n({ id: "a2", type: "action-badge", data: actionData() }),
-      n({ id: "l", type: "image", data: { status: "completed", src: "l.png" } }),
+      n({ id: "l", type: "image", data: { status: "completed", assetId: "asset-l" } }),
     ];
     const edges = [e("1", "h", "a1"), e("2", "a1", "m"), e("3", "m", "a2"), e("4", "a2", "l")];
     const sub = computeTrajectory("l", nodes, edges);
@@ -499,7 +499,7 @@ describe("simulateDrop", () => {
   it("drop last-before-leaf action: nothing remains upstream, leaf orphans — rejected", () => {
     // Single-stage: dropping the only action leaves the leaf as a root.
     const nodes = [
-      n({ id: "h", type: "image", data: { status: "completed", src: "h.png" } }),
+      n({ id: "h", type: "image", data: { status: "completed", assetId: "asset-h" } }),
       n({ id: "a", type: "action-badge", data: actionData() }),
       n({ id: "l", type: "image", data: { status: "draft" } }), // draft leaf
     ];
@@ -541,13 +541,13 @@ describe("simulateDrop", () => {
     // merge at a3 → leaf. Dropping a1 should NOT orphan the head because
     // a2 still consumes it.
     const nodes = [
-      n({ id: "h", type: "image", data: { status: "completed", src: "h.png" } }),
+      n({ id: "h", type: "image", data: { status: "completed", assetId: "asset-h" } }),
       n({ id: "a1", type: "action-badge", data: actionData() }),
-      n({ id: "m1", type: "image", data: { status: "completed", src: "m1.png" } }),
+      n({ id: "m1", type: "image", data: { status: "completed", assetId: "asset-m1" } }),
       n({ id: "a2", type: "action-badge", data: actionData() }),
-      n({ id: "m2", type: "image", data: { status: "completed", src: "m2.png" } }),
+      n({ id: "m2", type: "image", data: { status: "completed", assetId: "asset-m2" } }),
       n({ id: "a3", type: "action-badge", data: actionData() }),
-      n({ id: "l", type: "image", data: { status: "completed", src: "l.png" } }),
+      n({ id: "l", type: "image", data: { status: "completed", assetId: "asset-l" } }),
     ];
     const edges = [
       e("1", "h", "a1"), e("2", "a1", "m1"),
@@ -581,9 +581,9 @@ describe("simulateDrop", () => {
     // an action hanging. Easier: two actions in series with no head feeding a1.
     const nodes = [
       n({ id: "a1", type: "action-badge", data: actionData() }),
-      n({ id: "m", type: "image", data: { status: "completed", src: "m.png" } }),
+      n({ id: "m", type: "image", data: { status: "completed", assetId: "asset-m" } }),
       n({ id: "a2", type: "action-badge", data: actionData() }),
-      n({ id: "l", type: "image", data: { status: "completed", src: "l.png" } }),
+      n({ id: "l", type: "image", data: { status: "completed", assetId: "asset-l" } }),
     ];
     const edges = [e("1", "a1", "m"), e("2", "m", "a2"), e("3", "a2", "l")];
     const sub = computeTrajectory("l", nodes, edges);
@@ -603,11 +603,11 @@ describe("simulateDrop", () => {
 describe("describeActions", () => {
   it("reports every action-badge in the trajectory with its output node", () => {
     const nodes = [
-      n({ id: "h", type: "image", data: { status: "completed", src: "h.png" } }),
+      n({ id: "h", type: "image", data: { status: "completed", assetId: "asset-h" } }),
       n({ id: "a1", type: "action-badge", data: actionData() }),
-      n({ id: "m", type: "image", data: { status: "completed", src: "m.png" } }),
+      n({ id: "m", type: "image", data: { status: "completed", assetId: "asset-m" } }),
       n({ id: "a2", type: "action-badge", data: actionData() }),
-      n({ id: "l", type: "image", data: { status: "completed", src: "l.png" } }),
+      n({ id: "l", type: "image", data: { status: "completed", assetId: "asset-l" } }),
     ];
     const edges = [e("1", "h", "a1"), e("2", "a1", "m"), e("3", "m", "a2"), e("4", "a2", "l")];
     const sub = computeTrajectory("l", nodes, edges);
@@ -625,11 +625,11 @@ describe("describeActions", () => {
     // Chain where the middle is a draft (not completed). Dropping a1 would
     // promote the draft `m` to head — but m isn't completed.
     const nodes = [
-      n({ id: "h", type: "image", data: { status: "completed", src: "h.png" } }),
+      n({ id: "h", type: "image", data: { status: "completed", assetId: "asset-h" } }),
       n({ id: "a1", type: "action-badge", data: actionData() }),
       n({ id: "m", type: "image", data: { status: "draft" } }), // draft!
       n({ id: "a2", type: "action-badge", data: actionData() }),
-      n({ id: "l", type: "image", data: { status: "completed", src: "l.png" } }),
+      n({ id: "l", type: "image", data: { status: "completed", assetId: "asset-l" } }),
     ];
     const edges = [e("1", "h", "a1"), e("2", "a1", "m"), e("3", "m", "a2"), e("4", "a2", "l")];
     const sub = computeTrajectory("l", nodes, edges);
