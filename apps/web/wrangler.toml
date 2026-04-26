@@ -17,11 +17,25 @@ mode = "smart"
 binding = "ASSETS"
 directory = "./dist/client"
 not_found_handling = "single-page-application"
-# Without this, the assets layer answers any text/html GET (incl. OAuth
-# callbacks like /api/better-auth/callback/google) with index.html before the
-# Worker sees it. With run_worker_first the Worker handles the request first
-# and decides whether to fall through to env.ASSETS for the SPA shell.
-run_worker_first = true
+# Only route dynamic paths through the Worker — static SPA assets
+# (/_app/*, /favicon, the SPA shell at /) go straight from the assets
+# layer + CF edge cache, served from the user's nearest colo.
+#
+# Without this list any text/html GET (incl. /api/better-auth/callback/google)
+# would be answered by the SPA fallback before the Worker saw it; with
+# the list, OAuth callback / API / WS upgrade paths still hit the Worker
+# first and decide whether to fall through to env.ASSETS for the shell.
+run_worker_first = [
+  "/api/*",
+  "/sync/*",
+  "/agents/*",
+  "/assets/*",
+  "/thumbnails/*",
+  "/upload",
+  "/upload/*",
+  "/health",
+  "/dev-log",
+]
 
 # D1 (shared with api-cf for users / sessions / app tables)
 [[d1_databases]]
