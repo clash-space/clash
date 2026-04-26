@@ -13,6 +13,7 @@ import {
 } from "../../domain/canvas";
 import type { Env } from "../../config";
 import type { GenerationParams } from "../generation";
+import { startGeneration } from "../../generation/start";
 import { log } from "../../logger";
 
 /**
@@ -400,7 +401,7 @@ export function createCanvasTools(
           language,
         };
 
-        await env.GENERATION_WORKFLOW.create({ id: taskId, params: genParams });
+        await startGeneration(env, taskId, genParams);
         return `Understanding task submitted for node ${node_id} (taskId: ${taskId}). Results will appear in node.data.understanding.`;
       } catch (e) {
         return `Error: ${e}`;

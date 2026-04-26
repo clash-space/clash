@@ -8,6 +8,7 @@
 
 import { LoroDoc } from 'loro-crdt';
 import type { Env } from '../config';
+import { startGeneration } from '../generation/start';
 import { log } from '../logger';
 import { updateNodeData, appendNodeLog } from './NodeUpdater';
 import { Status } from '../domain/canvas';
@@ -477,7 +478,7 @@ export async function processPendingNodes(
         };
 
         try {
-          await env.GENERATION_WORKFLOW.create({ id: taskId, params: genParams });
+          await startGeneration(env, taskId, genParams);
           appendNodeLog(doc, nodeId, `submitted`, broadcast);
           submitted = true;
         } catch (e: any) {
@@ -518,7 +519,7 @@ export async function processPendingNodes(
           };
 
           try {
-            await env.GENERATION_WORKFLOW.create({ id: taskId, params: genParams });
+            await startGeneration(env, taskId, genParams);
             appendNodeLog(doc, nodeId, `submitted to worker: ${workerUrl}`, broadcast);
             submitted = true;
           } catch (e: any) {
@@ -785,7 +786,7 @@ async function submitGenTask(
       sources: params.sources,
     };
 
-    await env.GENERATION_WORKFLOW.create({ id: taskId, params: genParams });
+    await startGeneration(env, taskId, genParams);
     return {};
   } catch (e: any) {
     if (String(e).includes('already exists')) {
@@ -818,7 +819,7 @@ async function submitDescTask(
       mimeType: params.mimeType,
     };
 
-    await env.GENERATION_WORKFLOW.create({ id: taskId, params: genParams });
+    await startGeneration(env, taskId, genParams);
     return {};
   } catch (e) {
     log.error('Exception during desc submission:', e);

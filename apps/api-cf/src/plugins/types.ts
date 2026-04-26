@@ -54,6 +54,19 @@ export interface Plugin {
     /** Pick which API key to use for `provider` (e.g. "fal", "google", "kling"). Returning null falls back to env vars. */
     resolveKey?: (provider: string, ctx: GenerationHookCtx) => Promise<ResolvedKey | null>;
 
+    /**
+     * Called synchronously before GENERATION_WORKFLOW.create — runs in the
+     * caller's request/DO context (HTTP handler, NodeProcessor, agent tool).
+     * Throw to refuse the task: the error surfaces immediately to the caller
+     * (HTTP 4xx, node `error` field, agent tool result), without spending
+     * the workflow scheduling latency budget.
+     *
+     * Use for fast-fail checks like budget/quota/rate-limit. The per-step
+     * `beforeGenerate` hook still runs inside the workflow body and remains
+     * the source of truth for credit holds (this hook is read-only).
+     */
+    beforeGenerationStart?: (ctx: GenerationHookCtx) => Promise<void>;
+
     /** Called before provider.execute. Throw to reject the workflow. */
     beforeGenerate?: (ctx: GenerationHookCtx) => Promise<void>;
 

@@ -33,6 +33,7 @@ export function composePlugins(plugins: Plugin[]): Plugin {
 
   const authResolveUsers = plugins.flatMap((p) => (p.auth?.resolveUser ? [p.auth.resolveUser] : []));
   const genResolveKeys = plugins.flatMap((p) => (p.generation?.resolveKey ? [p.generation.resolveKey] : []));
+  const beforeGenerationStarts = plugins.flatMap((p) => (p.generation?.beforeGenerationStart ? [p.generation.beforeGenerationStart] : []));
   const beforeGens = plugins.flatMap((p) => (p.generation?.beforeGenerate ? [p.generation.beforeGenerate] : []));
   const afterGens = plugins.flatMap((p) => (p.generation?.afterGenerate ? [p.generation.afterGenerate] : []));
   const onFailures = plugins.flatMap((p) => (p.generation?.onFailure ? [p.generation.onFailure] : []));
@@ -60,6 +61,11 @@ export function composePlugins(plugins: Plugin[]): Plugin {
               if (got) return got;
             }
             return null;
+          }
+        : undefined,
+      beforeGenerationStart: beforeGenerationStarts.length
+        ? async (ctx: GenerationHookCtx): Promise<void> => {
+            for (const fn of beforeGenerationStarts) await fn(ctx);
           }
         : undefined,
       beforeGenerate: beforeGens.length

@@ -4,6 +4,7 @@ import { ZodError } from "zod";
 
 import type { Env } from "../config";
 import { log } from "../logger";
+import { startGeneration } from "../generation/start";
 import { Status } from "../domain/canvas";
 import { createAsset, getAssetByTaskId, getProjectOwner } from "../services/assets";
 import { uploadBase64Image } from "../services/r2";
@@ -88,7 +89,7 @@ async function submitToWorkflow(
   genParams: GenerationParams
 ): Promise<Response | null> {
   try {
-    await c.env.GENERATION_WORKFLOW.create({ id: taskId, params: genParams });
+    await startGeneration(c.env, taskId, genParams);
     return null; // success
   } catch (e) {
     // Asset row is created inside the workflow on completion; nothing to mark failed here.
@@ -214,7 +215,7 @@ api.post("/api/describe", async (c) => {
   };
 
   try {
-    await c.env.GENERATION_WORKFLOW.create({ id: `desc-${taskId}`, params: genParams });
+    await startGeneration(c.env, `desc-${taskId}`, genParams);
   } catch (e) {
     log.error("Failed to create description workflow:", e);
     return c.json({ error: "Failed to start description task" }, 500);
