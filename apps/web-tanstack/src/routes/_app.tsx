@@ -19,15 +19,10 @@ function AppLayout() {
     }
   }, [isPending, userId, navigate]);
 
-  // Wait for session to resolve before mounting children — otherwise
-  // session-aware UI (UserControls, etc.) flashes from logged-out → user.
-  if (isPending) {
-    return (
-      <LayoutContent isAuthenticated>
-        <div className="min-h-[60vh]" />
-      </LayoutContent>
-    );
-  }
+  // Wait for session to resolve before mounting anything — including the
+  // TopNav. UserControls inside TopNav flips from "Sign in" to avatar once
+  // session resolves; rendering during pending shows the "Sign in" frame.
+  if (isPending) return null;
 
   return (
     <LayoutContent isAuthenticated>

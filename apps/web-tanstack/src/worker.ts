@@ -14,13 +14,6 @@ export default {
     const url = new URL(request.url);
     const isWebSocket = request.headers.get("upgrade")?.toLowerCase() === "websocket";
 
-    // Force HTTPS — browser-set Secure cookies (Better Auth session) won't
-    // store on http://, and CF custom domain doesn't auto-upgrade.
-    // Skip for WS upgrades: a 301 makes the browser drop the upgrade.
-    if (url.protocol === "http:" && !isWebSocket) {
-      url.protocol = "https:";
-      return Response.redirect(url.toString(), 301);
-    }
     if (PROXY_PREFIXES.some((p) => url.pathname.startsWith(p))) {
       if (!env.API_CF) {
         return new Response("api-cf service binding missing", { status: 503 });
