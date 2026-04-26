@@ -29,25 +29,27 @@ export const falImageProvider: GenerationProvider = {
       "resolve-references",
       { retries: { limit: 2, delay: "2 seconds" }, timeout: "3 minutes" },
       async () => {
-        // Prefer promptParts (preserves text + image interleaving).
-        if (params.promptParts?.length) {
-          const urls: string[] = [];
-          for (const part of params.promptParts) {
-            if (part.type === "asset_ref" && part.r2Key) {
-              urls.push(await uploadR2ToFal(env.R2_BUCKET, part.r2Key, falKey));
-            }
+        // Union of @-mention asset_refs (interleave order) + badge-attached
+        // refs, dedup'd. See google-image.ts for the same pattern + the
+        // bug it fixes (gating on promptParts.length swallowed badge refs).
+        const seen = new Set<string>();
+        const r2Keys: string[] = [];
+        for (const p of params.promptParts ?? []) {
+          if (p.type === "asset_ref" && p.r2Key && !seen.has(p.r2Key)) {
+            seen.add(p.r2Key);
+            r2Keys.push(p.r2Key);
           }
-          return urls.length ? urls : undefined;
         }
-        // Fallback: flat list.
-        if (params.referenceImageR2Keys?.length) {
-          const urls: string[] = [];
-          for (const k of params.referenceImageR2Keys) {
-            urls.push(await uploadR2ToFal(env.R2_BUCKET, k, falKey));
+        for (const k of params.referenceImageR2Keys ?? []) {
+          if (!seen.has(k)) {
+            seen.add(k);
+            r2Keys.push(k);
           }
-          return urls;
         }
-        return undefined;
+        if (!r2Keys.length) return undefined;
+        const urls: string[] = [];
+        for (const k of r2Keys) urls.push(await uploadR2ToFal(env.R2_BUCKET, k, falKey));
+        return urls;
       },
     );
 
