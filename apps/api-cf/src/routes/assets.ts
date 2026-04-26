@@ -109,7 +109,13 @@ assetRoutes.get('/*', async (c) => {
     new URL(`/__asset_cache/${storageKey}`, c.req.url).toString(),
   );
   const cached = await caches.default.match(cacheKey);
-  if (cached) return cached;
+  if (cached) {
+    // Tag the cache hit so DevTools / curl can see it (caches.default
+    // hits don't get a cf-cache-status header automatically).
+    const tagged = new Response(cached.body, cached);
+    tagged.headers.set('x-cache', 'HIT');
+    return tagged;
+  }
 
   // Fetch from R2. Honor HTTP Range requests so byte-seek-capable clients
   // (ffmpeg reading mp4s with trailing moov atoms, <video> element seeks,
@@ -160,12 +166,15 @@ assetRoutes.get('/*', async (c) => {
       'Accept-Ranges': 'bytes',
       'Access-Control-Allow-Origin': '*',
       'Cache-Control': 'public, max-age=3600',
+      'x-cache': 'MISS',
     },
   });
   // Write back to edge cache under the signature-stripped key. Worker
   // responses don't auto-cache; using caches.default.put is the way to
   // persist them. Range requests above intentionally skip the cache —
-  // partial bodies can't satisfy a non-Range hit.
+  // partial bodies can't satisfy a non-Range hit. The cached copy keeps
+  // x-cache: MISS in its headers; we overwrite it to HIT in the match
+  // branch above when serving from cache.
   c.executionCtx.waitUntil(caches.default.put(cacheKey, resp.clone()));
   return resp;
 });
