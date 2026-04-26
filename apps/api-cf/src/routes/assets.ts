@@ -151,7 +151,12 @@ assetRoutes.get('/*', async (c) => {
         'Content-Range': `bytes ${start}-${clampedEnd}/${total}`,
         'Accept-Ranges': 'bytes',
         'Access-Control-Allow-Origin': '*',
-        'Cache-Control': 'public, max-age=3600',
+        // Asset URLs include a unique gen-id / upload-uuid in the path, so the
+// bytes at a given key never change. Mark immutable + 1y so the browser
+// disk-caches forever (no revalidation). When an asset is deleted the
+// signed URL stops being issued, so the browser cache only holds bytes
+// the user is still authorized to see.
+'Cache-Control': 'public, max-age=31536000, immutable',
       },
     });
   }
@@ -165,7 +170,12 @@ assetRoutes.get('/*', async (c) => {
       'Content-Length': String(object.size),
       'Accept-Ranges': 'bytes',
       'Access-Control-Allow-Origin': '*',
-      'Cache-Control': 'public, max-age=3600',
+      // Asset URLs include a unique gen-id / upload-uuid in the path, so the
+// bytes at a given key never change. Mark immutable + 1y so the browser
+// disk-caches forever (no revalidation). When an asset is deleted the
+// signed URL stops being issued, so the browser cache only holds bytes
+// the user is still authorized to see.
+'Cache-Control': 'public, max-age=31536000, immutable',
       'x-cache': 'MISS',
     },
   });
