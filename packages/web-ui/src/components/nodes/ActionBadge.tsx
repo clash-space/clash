@@ -429,54 +429,9 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
         persistRefOrder(existing.filter(Boolean));
     }, [addRefNode, data.referenceImageOrder, refNodeIds, persistRefOrder]);
 
-    // @ mention: only attached reference images, with positional labels "Image 1", "Image 2"...
-    const mentionableNodes = useMemo(() => {
-        return refNodeIds.map((nodeId, i) => {
-            const node = getNodes().find(n => n.id === nodeId);
-            const type = (node?.type as string) || 'image';
-            const prefix = type === 'text'
-                ? 'Text'
-                : type === 'video'
-                    ? 'Video'
-                    : type === 'audio'
-                        ? 'Audio'
-                        : 'Image';
-            return {
-                id: nodeId,
-                type,
-                label: `${prefix} ${i + 1}`,
-                thumbnail: resolveRefSrc(node),
-            };
-        });
-    }, [refNodeIds, getNodes, resolveRefSrc]);
-
-    const filteredMentionNodes = useMemo(() => {
-        if (!mentionQuery) return mentionableNodes;
-        return mentionableNodes.filter((n) =>
-            n.label.toLowerCase().includes(mentionQuery) || n.id.toLowerCase().includes(mentionQuery)
-        );
-    }, [mentionableNodes, mentionQuery]);
-
-    // Pre-resolve signed URLs for mentionable node thumbnails (used in contentToHtml)
-    const [signedUrlMap, setSignedUrlMap] = useState<Record<string, string>>({});
-    useEffect(() => {
-        let cancelled = false;
-        const srcs = mentionableNodes.filter((n) => n.thumbnail).map((n) => n.thumbnail!);
-        if (srcs.length === 0) return;
-        Promise.all(srcs.map(async (src) => {
-            const url = await getSignedUrl(src);
-            return [src, url] as const;
-        })).then((entries) => {
-            if (cancelled) return;
-            setSignedUrlMap(Object.fromEntries(entries));
-        });
-        return () => { cancelled = true; };
-    }, [mentionableNodes]);
-
-    // Resolve ref node → asset R2 key map. Ref thumbnails (startEnd slots +
-    // generic reference grid) used to read node.data.src / node.data.coverUrl
-    // directly; asset metadata now lives on the D1 asset row, so we fetch
-    // each ref node's asset once and cache its srcR2Key / coverR2Key here.
+    // Resolve ref node → asset R2 key map. Used for @-mention thumbnails,
+    // startEnd slot previews, and the generic ref grid. node.data.src is
+    // no longer maintained — srcR2Key / coverR2Key live on the D1 asset row.
     const [refThumbByNodeId, setRefThumbByNodeId] = useState<Map<string, string>>(
         () => new Map(),
     );
@@ -507,6 +462,50 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
         })();
         return () => { cancelled = true; };
     }, [refNodeIds, getNodes]);
+
+    // @ mention: only attached reference images, with positional labels "Image 1", "Image 2"...
+    const mentionableNodes = useMemo(() => {
+        return refNodeIds.map((nodeId, i) => {
+            const node = getNodes().find(n => n.id === nodeId);
+            const type = (node?.type as string) || 'image';
+            const prefix = type === 'text'
+                ? 'Text'
+                : type === 'video'
+                    ? 'Video'
+                    : type === 'audio'
+                        ? 'Audio'
+                        : 'Image';
+            return {
+                id: nodeId,
+                type,
+                label: `${prefix} ${i + 1}`,
+                thumbnail: refThumbByNodeId.get(nodeId),
+            };
+        });
+    }, [refNodeIds, getNodes, refThumbByNodeId]);
+
+    const filteredMentionNodes = useMemo(() => {
+        if (!mentionQuery) return mentionableNodes;
+        return mentionableNodes.filter((n) =>
+            n.label.toLowerCase().includes(mentionQuery) || n.id.toLowerCase().includes(mentionQuery)
+        );
+    }, [mentionableNodes, mentionQuery]);
+
+    // Pre-resolve signed URLs for mentionable node thumbnails (used in contentToHtml)
+    const [signedUrlMap, setSignedUrlMap] = useState<Record<string, string>>({});
+    useEffect(() => {
+        let cancelled = false;
+        const srcs = mentionableNodes.filter((n) => n.thumbnail).map((n) => n.thumbnail!);
+        if (srcs.length === 0) return;
+        Promise.all(srcs.map(async (src) => {
+            const url = await getSignedUrl(src);
+            return [src, url] as const;
+        })).then((entries) => {
+            if (cancelled) return;
+            setSignedUrlMap(Object.fromEntries(entries));
+        });
+        return () => { cancelled = true; };
+    }, [mentionableNodes]);
 
     // Render content string → HTML with inline mention chips
     const contentToHtml = useCallback((raw: string) => {
