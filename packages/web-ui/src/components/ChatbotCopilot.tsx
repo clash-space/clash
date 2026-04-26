@@ -337,23 +337,52 @@ export default function ChatbotCopilot({
         }
     };
 
-    // Auto-send pending prompt when connected and ready.
-    // setTimeout ensures useAgentChat's internal WS handlers are fully set up
-    // after onOpen fires. cleanup cancels on Strict Mode's first unmount.
+    // Auto-send pending prompt after a fresh session is created.
+    //
+    // Why this is poll-based instead of "wait for connected + 300ms":
+    //   - On threadId change, useAgentChat re-creates its Chat (id changes
+    //     because room name `projectId:threadId` is part of the cache key),
+    //     and sendMessage's identity changes too. A single setTimeout that
+    //     depends on sendMessage gets repeatedly cancelled by re-renders.
+    //   - "Connected" only tells you the WS handshake completed; it doesn't
+    //     tell you the new Chat finished loading initial messages or that
+    //     the supervisor DO has settled. The first attempt used to silently
+    //     drop the message because the timer fired too early or got cancelled.
+    //   - The second send always worked because by then everything had
+    //     settled and sendMessage was called directly (not via this path).
+    //
+    // Polling every 200ms is robust to all of those races: keep trying until
+    // we actually invoked sendMessage on a stable Chat, or give up after 10s.
+    const sendMessageRef = useRef(sendMessage);
+    useEffect(() => { sendMessageRef.current = sendMessage; }, [sendMessage]);
+
     useEffect(() => {
-        if (!__pendingPrompt || __pendingPrompt.threadId !== threadId || !connected) return;
-        if (status === 'submitted' || status === 'streaming') return;
-        const timer = setTimeout(() => {
-            if (!__pendingPrompt || __pendingPrompt.threadId !== threadId) return;
+        if (!__pendingPrompt || __pendingPrompt.threadId !== threadId) return;
+        const startedAt = Date.now();
+        const tryFlush = (): boolean => {
+            if (!__pendingPrompt || __pendingPrompt.threadId !== threadId) return true;
+            if (!connected) return false;
+            if (status === 'submitted' || status === 'streaming') return false;
             const text = __pendingPrompt.text;
             __pendingPrompt = null;
-            sendMessage({ text });
+            sendMessageRef.current({ text });
             if (window.location.search.includes('prompt=')) {
                 window.history.replaceState({}, '', window.location.pathname);
             }
-        }, 300);
-        return () => clearTimeout(timer);
-    }, [threadId, status, connected, sendMessage]);
+            return true;
+        };
+        if (tryFlush()) return;
+        const interval = setInterval(() => {
+            if (tryFlush() || Date.now() - startedAt > 10_000) {
+                clearInterval(interval);
+                if (__pendingPrompt && __pendingPrompt.threadId === threadId) {
+                    console.warn('[ChatbotCopilot] Pending first-message dropped — could not flush within 10s');
+                    __pendingPrompt = null;
+                }
+            }
+        }, 200);
+        return () => clearInterval(interval);
+    }, [threadId, status, connected]);
 
     // ─── Resize ──────────────────────────────────────────────
     const startResizing = () => setIsResizing(true);
