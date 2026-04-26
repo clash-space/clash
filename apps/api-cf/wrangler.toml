@@ -23,16 +23,15 @@ binding = "GENERATION_WORKFLOW"
 class_name = "GenerationWorkflow"
 
 # Container (Remotion render server)
-# The Dockerfile's COPY statements reference monorepo paths (packages/*,
-# pnpm-lock.yaml, apps/render-server/), so build context must be the repo root.
-# image_vars land as docker --build-arg; defaults in the Dockerfile target
-# upstream registries, overridden here to China mirrors for faster local dev.
+# Uses Dockerfile.cf which `FROM ghcr.io/clash-space/render-server:latest` —
+# the heavy multi-stage build runs in CI (build-render-image.yml), pushed
+# to GHCR. Local `wrangler deploy` just pulls the prebuilt layer instead
+# of churning through node-prod-deps + chromium + ffmpeg locally.
 [[containers]]
 class_name = "RenderContainer"
-image = "../render-server/Dockerfile"
+image = "../render-server/Dockerfile.cf"
 image_build_context = "../.."
 max_instances = 3
-image_vars = { NPM_REGISTRY = "https://registry.npmmirror.com/", DEBIAN_MIRROR = "mirrors.aliyun.com" }
 
 [[durable_objects.bindings]]
 name = "RENDER_CONTAINER"
