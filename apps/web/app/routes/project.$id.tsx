@@ -1,8 +1,8 @@
-import type { ClientLoaderFunctionArgs } from "react-router";
+import type { LoaderFunctionArgs } from "react-router";
 import { redirect, useLoaderData, useSearchParams } from "react-router";
 import ProjectEditor from "@clash/web-ui/components/ProjectEditor";
 
-export async function clientLoader({ params }: ClientLoaderFunctionArgs) {
+export async function loader({ params }: LoaderFunctionArgs) {
   const id = params.id!;
   const [projRes, actionsRes] = await Promise.all([
     fetch(`/api/projects/${encodeURIComponent(id)}`, { credentials: "include" }),
@@ -21,12 +21,9 @@ export async function clientLoader({ params }: ClientLoaderFunctionArgs) {
   const globalActions = actionsRes.ok ? await actionsRes.json() : [];
   return { project, globalActions };
 }
-// Run on initial page load too (not only client-side navigation). Root
-// route's HydrateFallback covers the loading state.
-clientLoader.hydrate = true as const;
 
 export default function ProjectRoute() {
-  const { project, globalActions } = useLoaderData<typeof clientLoader>();
+  const { project, globalActions } = useLoaderData<typeof loader>();
   const [searchParams] = useSearchParams();
   const prompt = searchParams.get("prompt") ?? undefined;
   const thread = searchParams.get("thread") ?? undefined;

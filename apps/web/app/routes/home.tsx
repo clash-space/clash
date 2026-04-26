@@ -1,9 +1,9 @@
-import type { ClientLoaderFunctionArgs } from "react-router";
+import type { LoaderFunctionArgs } from "react-router";
 import { useLoaderData } from "react-router";
 import HomePageClient from "@clash/web-ui/components/HomePageClient";
 import LandingRoute from "./landing";
 
-export async function clientLoader(_: ClientLoaderFunctionArgs) {
+export async function loader(_: LoaderFunctionArgs) {
   try {
     const session = await fetch("/api/better-auth/get-session", {
       credentials: "include",
@@ -21,7 +21,7 @@ export async function clientLoader(_: ClientLoaderFunctionArgs) {
 }
 
 export default function Home() {
-  const data = useLoaderData<typeof clientLoader>();
+  const data = useLoaderData<typeof loader>();
   if (!data.authed) return <LandingRoute />;
   return <HomePageClient initialProjects={data.projects as any} />;
 }

@@ -1,8 +1,8 @@
-import type { ClientLoaderFunctionArgs } from "react-router";
+import type { LoaderFunctionArgs } from "react-router";
 import { redirect, useLoaderData } from "react-router";
 import ProjectsClient from "@clash/web-ui/components/ProjectsClient";
 
-export async function clientLoader(_: ClientLoaderFunctionArgs) {
+export async function loader(_: LoaderFunctionArgs) {
   const res = await fetch("/api/projects", { credentials: "include" });
   if (res.status === 401) throw redirect("/login");
   if (!res.ok) throw new Response("Failed to load projects", { status: 500 });
@@ -11,6 +11,6 @@ export async function clientLoader(_: ClientLoaderFunctionArgs) {
 }
 
 export default function ProjectsRoute() {
-  const { projects } = useLoaderData<typeof clientLoader>();
+  const { projects } = useLoaderData<typeof loader>();
   return <ProjectsClient projects={projects as any} />;
 }

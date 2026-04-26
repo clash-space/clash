@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Outlet, useLoaderData, useLocation } from "react-router";
-import type { ClientLoaderFunctionArgs } from "react-router";
+import type { LoaderFunctionArgs } from "react-router";
 import LayoutContent from "@clash/web-ui/components/LayoutContent";
 import DevLogBridge from "@clash/web-ui/components/DevLogBridge";
 import { ConfirmDialogProvider } from "@clash/web-ui/components/ConfirmDialog";
@@ -9,7 +9,7 @@ import {
   shouldProbeSessionForChrome,
 } from "./authChrome";
 
-export async function clientLoader(_: ClientLoaderFunctionArgs) {
+export async function loader(_: LoaderFunctionArgs) {
   try {
     const res = await fetch("/api/better-auth/get-session", {
       credentials: "include",
@@ -23,7 +23,7 @@ export async function clientLoader(_: ClientLoaderFunctionArgs) {
 }
 
 export default function AppLayout() {
-  const { isAuthenticated } = useLoaderData<typeof clientLoader>();
+  const { isAuthenticated } = useLoaderData<typeof loader>();
   const pathname = useLocation().pathname;
   const [probedAuthenticated, setProbedAuthenticated] =
     useState(isAuthenticated);

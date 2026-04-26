@@ -1,4 +1,4 @@
-import type { ClientLoaderFunctionArgs } from "react-router";
+import type { LoaderFunctionArgs } from "react-router";
 import { redirect, useLoaderData } from "react-router";
 import MarketplaceClient from "@clash/web-ui/components/MarketplaceClient";
 import type { RegistryItem } from "@clash/web-ui/lib/clientActions";
@@ -9,7 +9,7 @@ interface RegistryData {
   skills: RegistryItem[];
 }
 
-export async function clientLoader(_: ClientLoaderFunctionArgs) {
+export async function loader(_: LoaderFunctionArgs) {
   const guard = await fetch("/api/settings/actions", { credentials: "include" });
   if (guard.status === 401) throw redirect("/login");
 
@@ -37,7 +37,7 @@ export async function clientLoader(_: ClientLoaderFunctionArgs) {
 
 export default function MarketplaceRoute() {
   const { items, installedActionIds, installedSkillIds } =
-    useLoaderData<typeof clientLoader>();
+    useLoaderData<typeof loader>();
   return (
     <MarketplaceClient
       items={items}

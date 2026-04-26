@@ -1,4 +1,4 @@
-import type { ClientLoaderFunctionArgs } from "react-router";
+import type { LoaderFunctionArgs } from "react-router";
 import { redirect, useLoaderData } from "react-router";
 import BillingClient from "@clash/web-ui/components/BillingClient";
 import {
@@ -20,7 +20,7 @@ interface LoaderData {
   notEnabled: boolean;
 }
 
-export async function clientLoader(_: ClientLoaderFunctionArgs): Promise<LoaderData> {
+export async function loader(_: LoaderFunctionArgs): Promise<LoaderData> {
   // /plans is the cheapest probe — if it 404s, the whole billing API is absent.
   let plans: Plan[] = [];
   let packs: TopupPack[] = [];
@@ -58,7 +58,7 @@ export async function clientLoader(_: ClientLoaderFunctionArgs): Promise<LoaderD
 }
 
 export default function BillingRoute() {
-  const data = useLoaderData<typeof clientLoader>();
+  const data = useLoaderData<typeof loader>();
   return (
     <BillingClient
       balance={data.balance}

@@ -1,4 +1,4 @@
-import type { ClientLoaderFunctionArgs } from "react-router";
+import type { LoaderFunctionArgs } from "react-router";
 import { redirect, useLoaderData } from "react-router";
 import SettingsClient from "@clash/web-ui/components/SettingsClient";
 
@@ -9,7 +9,7 @@ async function fetchJsonOrRedirect(url: string): Promise<unknown[]> {
   return res.json() as Promise<unknown[]>;
 }
 
-export async function clientLoader(_: ClientLoaderFunctionArgs) {
+export async function loader(_: LoaderFunctionArgs) {
   const [tokens, variables, actions, skills] = await Promise.all([
     fetchJsonOrRedirect("/api/settings/tokens"),
     fetchJsonOrRedirect("/api/settings/variables"),
@@ -21,7 +21,7 @@ export async function clientLoader(_: ClientLoaderFunctionArgs) {
 
 export default function SettingsRoute() {
   const { tokens, variables, actions, skills } =
-    useLoaderData<typeof clientLoader>();
+    useLoaderData<typeof loader>();
   return (
     <SettingsClient
       initialTokens={tokens as any}

@@ -1,46 +1,4 @@
-import {
-  Links,
-  Meta,
-  Outlet,
-  Scripts,
-  ScrollRestoration,
-  isRouteErrorResponse,
-  useRouteError,
-} from "react-router";
-import type { LinksFunction, MetaFunction } from "react-router";
-
-import "./globals.css";
-
-export const links: LinksFunction = () => [
-  { rel: "icon", type: "image/svg+xml", href: "/favicon.svg" },
-];
-
-export const meta: MetaFunction = () => [
-  { title: "Clash - Video Agent" },
-  { name: "description", content: "AI-powered video creation and editing platform" },
-];
-
-export function Layout({ children }: { children: React.ReactNode }) {
-  return (
-    <html lang="en" suppressHydrationWarning>
-      <head>
-        <meta charSet="utf-8" />
-        <meta name="viewport" content="width=device-width, initial-scale=1" />
-        <Meta />
-        <Links />
-      </head>
-      <body suppressHydrationWarning className="font-sans antialiased">
-        {children}
-        <ScrollRestoration />
-        <Scripts />
-      </body>
-    </html>
-  );
-}
-
-export default function Root() {
-  return <Outlet />;
-}
+import { isRouteErrorResponse, useRouteError } from "react-router";
 
 export function HydrateFallback() {
   return (

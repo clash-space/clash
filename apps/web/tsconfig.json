@@ -2,15 +2,13 @@
   "include": [
     "**/*.ts",
     "**/*.tsx",
-    ".react-router/types/**/*",
     "workers/**/*.ts"
   ],
   "compilerOptions": {
     "lib": ["DOM", "DOM.Iterable", "ES2022"],
     "types": [
       "@cloudflare/workers-types",
-      "vite/client",
-      "@react-router/node"
+      "vite/client"
     ],
     "isolatedModules": true,
     "esModuleInterop": true,
@@ -24,7 +22,6 @@
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
     "baseUrl": ".",
-    "rootDirs": [".", "./.react-router/types"],
     "paths": {
       "@/*": ["./app/*"],
       "~/*": ["./app/*"]
