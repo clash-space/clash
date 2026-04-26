@@ -1,7 +1,7 @@
 
 import { motion } from 'framer-motion';
 import { Check } from '@phosphor-icons/react';
-import { Link } from '@tanstack/react-router';
+import { Link } from 'react-router';
 
 const tiers = [
   {

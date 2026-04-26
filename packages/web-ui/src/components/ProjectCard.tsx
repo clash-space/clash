@@ -2,7 +2,7 @@
 /* eslint-disable @next/next/no-img-element */
 
 import { motion } from 'framer-motion';
-import { Link } from '@tanstack/react-router';
+import { Link } from 'react-router';
 import { Trash } from '@phosphor-icons/react';
 import { deleteProject } from '@clash/web-ui/lib/clientActions';
 

@@ -1,6 +1,6 @@
 
 import { motion } from 'framer-motion';
-import { Link } from '@tanstack/react-router';
+import { Link } from 'react-router';
 import { ArrowRight } from '@phosphor-icons/react';
 
 export default function CTASection() {

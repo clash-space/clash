@@ -1,5 +1,5 @@
 
-import { Link } from '@tanstack/react-router';
+import { Link } from 'react-router';
 
 const navigation = {
   product: [

@@ -1,7 +1,7 @@
 
 import { motion } from 'framer-motion';
-import { Link } from '@tanstack/react-router';
-import { useLocation } from '@tanstack/react-router';
+import { Link } from 'react-router';
+import { useLocation } from 'react-router';
 import {
   House,
   FolderOpen,

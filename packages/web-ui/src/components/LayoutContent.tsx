@@ -1,5 +1,5 @@
 
-import { useLocation } from '@tanstack/react-router';
+import { useLocation } from 'react-router';
 import TopNavigation from './TopNavigation';
 import Background from './Background';
 import { ConfirmDialogProvider } from './ConfirmDialog';

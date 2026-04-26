@@ -3,7 +3,7 @@ import { motion } from 'framer-motion';
 import {
     Plus,
 } from '@phosphor-icons/react';
-import { Link } from '@tanstack/react-router';
+import { Link } from 'react-router';
 import ProjectCard from './ProjectCard';
 
 interface RecentProjectsProps {

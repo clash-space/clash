@@ -37,8 +37,8 @@ import {
     CursorClick,
     HandGrabbing,
 } from '@phosphor-icons/react';
-import { Link } from '@tanstack/react-router';
-import { useNavigate } from '@tanstack/react-router';
+import { Link } from 'react-router';
+import { useNavigate } from 'react-router';
 import type { Project } from '@clash/web-ui/lib/types';
 import ChatbotCopilot, { setPendingPrompt } from './ChatbotCopilot';
 import { useSessionHistory } from '@clash/web-ui/hooks/useSessionHistory';
