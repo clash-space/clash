@@ -71,8 +71,12 @@ export function createAuth(env: AuthBindings, cf?: IncomingRequestCfProperties) 
   return betterAuth(
     withCloudflare(
       {
-        autoDetectIpAddress: true,
-        geolocationTracking: true,
+        // off — these turned every get-session into a SELECT + UPDATE
+        // (writing IP/country/lastActive back to the sessions row), and
+        // the UPDATE has to round-trip to D1's primary region. The geo
+        // captured at sign-in is enough for our use cases.
+        autoDetectIpAddress: false,
+        geolocationTracking: false,
         cf: (cf ?? {}) as IncomingRequestCfProperties,
         d1: {
           db: drizzle(env.DB, { schema: betterAuthSchema }) as unknown as any,

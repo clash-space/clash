@@ -7,6 +7,12 @@ main = "workers/app.ts"
 compatibility_date = "2025-04-08"
 compatibility_flags = ["nodejs_compat"]
 
+# Let CF run the Worker close to the bindings it talks to most (D1 in
+# this case). Without smart placement the Worker runs near the user, and
+# every D1 round-trip pays cross-region RTT (200-400ms over CN→SIN).
+[placement]
+mode = "smart"
+
 [assets]
 binding = "ASSETS"
 directory = "./dist/client"
