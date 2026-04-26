@@ -203,9 +203,10 @@ export type LoroDocumentState = z.infer<typeof LoroDocumentStateSchema>;
 export interface ValidateGenerationInput {
   prompt: string;
   referenceTextSnippets?: string[];
-  referenceImageUrls: string[];
-  referenceVideoUrls?: string[];
-  referenceAudioUrls?: string[];
+  /** D1 asset IDs of image refs (parallel to partitionRefs output). */
+  referenceImageAssetIds?: string[];
+  referenceVideoAssetIds?: string[];
+  referenceAudioAssetIds?: string[];
   modelCard: ModelCard;
 }
 
@@ -221,18 +222,18 @@ export function validateGenerationInput(input: ValidateGenerationInput): string 
   const {
     prompt,
     referenceTextSnippets = [],
-    referenceImageUrls,
-    referenceVideoUrls = [],
-    referenceAudioUrls = [],
+    referenceImageAssetIds = [],
+    referenceVideoAssetIds = [],
+    referenceAudioAssetIds = [],
     modelCard,
   } = input;
   return validateRefs(
     modelCard,
     {
       text: referenceTextSnippets.length,
-      image: referenceImageUrls.length,
-      video: referenceVideoUrls.length,
-      audio: referenceAudioUrls.length,
+      image: referenceImageAssetIds.length,
+      video: referenceVideoAssetIds.length,
+      audio: referenceAudioAssetIds.length,
     },
     { prompt },
   );
@@ -253,7 +254,8 @@ export interface BuildPendingAssetNodeInput {
     | typeof ACTION_TYPE.AudioGen
     | typeof ACTION_TYPE.TextGen;
   label?: string;
-  referenceImageUrls?: string[];
+  /** D1 asset IDs of image refs. Server resolves to R2 keys. */
+  referenceImageAssetIds?: string[];
   referenceMode?: string;
 }
 
@@ -273,12 +275,13 @@ function extractLabelFromPrompt(promptText: string, fallback: string): string {
 
 /**
  * Build a pending asset node ready to be inserted into Loro.
- * NodeProcessor will detect status:"pending" and submit the generation task.
+ * NodeProcessor picks up `status:"pending"` (no src field — assets live on
+ * D1, server resolves via assetId).
  */
 export function buildPendingAssetNode(input: BuildPendingAssetNodeInput): PendingAssetNode {
   const {
     nodeId, prompt, modelId, modelParams, actionType,
-    referenceImageUrls, referenceMode,
+    referenceImageAssetIds, referenceMode,
   } = input;
 
   const isVideo = actionType === ACTION_TYPE.VideoGen;
@@ -302,7 +305,7 @@ export function buildPendingAssetNode(input: BuildPendingAssetNodeInput): Pendin
 
   const data: Record<string, unknown> = {
     label,
-    status: 'pending',   // NodeProcessor picks up 'pending' + empty src
+    status: 'pending',
     prompt,
     model: modelId,
     modelId,
@@ -312,13 +315,12 @@ export function buildPendingAssetNode(input: BuildPendingAssetNodeInput): Pendin
   if (isText) {
     data.content = '';
   } else {
-    data.src = '';             // Empty = not yet generated
     data.aspectRatio = resolveAspectRatio(modelId, modelParams);
     data.referenceMode = referenceMode || 'none';
   }
 
-  if (referenceImageUrls && referenceImageUrls.length > 0) {
-    data.referenceImageUrls = referenceImageUrls;
+  if (referenceImageAssetIds && referenceImageAssetIds.length > 0) {
+    data.referenceImageAssetIds = referenceImageAssetIds;
   }
 
   if (isVideo) {

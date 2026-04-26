@@ -168,32 +168,32 @@ export function validateRefs(
   return null;
 }
 
-/** Anything with a node-shape `type` field and `data.src` works as input. */
+/**
+ * Canvas node shape consumed by partitionRefs. Image / video / audio refs
+ * are identified by `data.assetId` (the D1 asset row); text refs read
+ * inlined content. Note: `data.src` is intentionally NOT in this contract —
+ * the asset row is the source of truth and the server resolves R2 keys.
+ */
 export interface RefNodeLike {
   type?: string;
-  data?: { src?: string; content?: string; prompt?: string; label?: string; assetId?: string } & Record<string, unknown>;
+  data?: { content?: string; prompt?: string; label?: string; assetId?: string } & Record<string, unknown>;
 }
 
 export interface RefPartition {
+  /** Text refs: full content strings, inlined into the prompt. */
   texts: string[];
-  images: string[];
-  videos: string[];
-  audios: string[];
-  /**
-   * Parallel asset IDs aligned 1:1 with the URL arrays above (same index =
-   * same ref). Entry is `undefined` when the source node has no assetId —
-   * happens when the upstream is still pending or the lineage is unknown.
-   * Used to write `assets.sources` for lineage tracking. Texts have no
-   * asset lineage (they get inlined into the prompt).
-   */
-  imageAssetIds: (string | undefined)[];
-  videoAssetIds: (string | undefined)[];
-  audioAssetIds: (string | undefined)[];
+  /** Image refs: D1 asset IDs. Server resolves to R2 keys. */
+  imageAssetIds: string[];
+  /** Video refs: D1 asset IDs. */
+  videoAssetIds: string[];
+  /** Audio refs: D1 asset IDs. */
+  audioAssetIds: string[];
 }
 
 /**
  * Split a list of ref nodes into modality buckets the model accepts.
- * Drops nodes whose modality isn't accepted, and nodes without a `src`.
+ * Drops nodes whose modality isn't accepted, and image/video/audio nodes
+ * without an assetId (drafts / orphans — backend can't resolve them).
  *
  * Order is preserved within each bucket — callers expecting positional
  * semantics (e.g. start/end frames) should pre-sort the input.
@@ -204,8 +204,10 @@ export function partitionRefs(
 ): RefPartition {
   const cap = capability(card);
   const out: RefPartition = {
-    texts: [], images: [], videos: [], audios: [],
-    imageAssetIds: [], videoAssetIds: [], audioAssetIds: [],
+    texts: [],
+    imageAssetIds: [],
+    videoAssetIds: [],
+    audioAssetIds: [],
   };
   for (const n of refs) {
     if (n.type === "text" && cap.ref.text.accepts) {
@@ -213,17 +215,13 @@ export function partitionRefs(
       if (text) out.texts.push(text);
       continue;
     }
-    const src = n.data?.src;
-    if (!src) continue;
     const aid = typeof n.data?.assetId === 'string' ? n.data.assetId : undefined;
+    if (!aid) continue;
     if (n.type === "image" && cap.ref.image.accepts) {
-      out.images.push(src);
       out.imageAssetIds.push(aid);
     } else if (n.type === "video" && cap.ref.video.accepts) {
-      out.videos.push(src);
       out.videoAssetIds.push(aid);
     } else if (n.type === "audio" && cap.ref.audio.accepts) {
-      out.audios.push(src);
       out.audioAssetIds.push(aid);
     }
   }

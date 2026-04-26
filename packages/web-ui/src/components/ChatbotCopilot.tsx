@@ -682,7 +682,7 @@ export default function ChatbotCopilot({
                                     >
                                         <div className="bg-warm-surface/90 backdrop-blur-md text-slate-700 text-xs font-medium px-3 py-1.5 rounded-full border border-warm-border shadow-sm flex items-center gap-2">
                                             <div className="flex -space-x-2">
-                                                {selectedNodes.filter(n => n.data?.src).slice(0, 3).map((node) => (
+                                                {selectedNodes.filter(n => !!n.data?.assetId).slice(0, 3).map((node) => (
                                                     <SelectedNodeThumbnail key={node.id} node={node} />
                                                 ))}
                                             </div>

@@ -153,18 +153,12 @@ export function useSpawnPendingAsset(input: UseSpawnPendingAssetInput): UseSpawn
                 .filter((n): n is NonNullable<typeof n> => !!n);
             const {
                 texts: inlineTextRefs,
-                images: inlineImageUrls,
-                videos: inlineVideoUrls,
-                audios: inlineAudioUrls,
                 imageAssetIds: inlineImageAssetIds,
                 videoAssetIds: inlineVideoAssetIds,
                 audioAssetIds: inlineAudioAssetIds,
             } = selectedModel
-                ? partitionRefs(
-                    refNodes as Array<{ type?: string; data?: { src?: string; content?: string; prompt?: string; label?: string; assetId?: string } }>,
-                    selectedModel,
-                )
-                : { texts: [], images: [], videos: [], audios: [], imageAssetIds: [], videoAssetIds: [], audioAssetIds: [] };
+                ? partitionRefs(refNodes, selectedModel)
+                : { texts: [], imageAssetIds: [], videoAssetIds: [], audioAssetIds: [] };
 
             const rawPrompt = (content && content.trim() !== '' ? content : '') || dataPrompt || '';
             const prompt = composePromptWithTextRefs(rawPrompt, inlineTextRefs);
@@ -180,9 +174,9 @@ export function useSpawnPendingAsset(input: UseSpawnPendingAssetInput): UseSpawn
                 const err = validateGenerationInput({
                     prompt: promptText,
                     referenceTextSnippets: inlineTextRefs,
-                    referenceImageUrls: inlineImageUrls,
-                    referenceVideoUrls: inlineVideoUrls,
-                    referenceAudioUrls: inlineAudioUrls,
+                    referenceImageAssetIds: inlineImageAssetIds,
+                    referenceVideoAssetIds: inlineVideoAssetIds,
+                    referenceAudioAssetIds: inlineAudioAssetIds,
                     modelCard: selectedModel,
                 });
                 if (err) throw new Error(err);
@@ -204,18 +198,20 @@ export function useSpawnPendingAsset(input: UseSpawnPendingAssetInput): UseSpawn
                 return { type, data };
             }
 
+            // Pending media nodes intentionally omit `data.src`. Asset
+            // identity lives on `referenceImage/Video/AudioAssetIds`; the
+            // server resolves R2 keys via D1 lookup. Keeping a stale src
+            // field used to be the trap that made partitionRefs / NodeProcessor
+            // disagree about what the source of truth is.
+
             if (actionType === 'image-gen') {
                 const generatedLabel = labelOverride ?? extractLabelFromPrompt(promptText, 'Generated Image');
                 return {
                     type: 'image',
                     data: {
                         label: generatedLabel,
-                        src: '',
                         status,
                         prompt: promptText,
-                        referenceImageUrls: inlineImageUrls,
-                        // Parallel array — index-aligned with referenceImageUrls.
-                        // Read by NodeProcessor → workflow → assets.sources.
                         referenceImageAssetIds: inlineImageAssetIds,
                         aspectRatio: resolveAspectRatio(modelId, modelParams),
                         model: modelId,
@@ -233,12 +229,8 @@ export function useSpawnPendingAsset(input: UseSpawnPendingAssetInput): UseSpawn
                     type: 'video',
                     data: {
                         label: generatedLabel,
-                        src: '',
                         status,
                         prompt: promptText,
-                        referenceImageUrls: inlineImageUrls,
-                        referenceVideoUrls: inlineVideoUrls,
-                        referenceAudioUrls: inlineAudioUrls,
                         referenceImageAssetIds: inlineImageAssetIds,
                         referenceVideoAssetIds: inlineVideoAssetIds,
                         referenceAudioAssetIds: inlineAudioAssetIds,
@@ -257,7 +249,6 @@ export function useSpawnPendingAsset(input: UseSpawnPendingAssetInput): UseSpawn
                     type: 'audio',
                     data: {
                         label: generatedLabel,
-                        src: '',
                         status,
                         prompt: promptText,
                         model: modelId,
@@ -276,9 +267,9 @@ export function useSpawnPendingAsset(input: UseSpawnPendingAssetInput): UseSpawn
                         content: '',
                         status,
                         prompt: promptText,
-                        referenceImageUrls: inlineImageUrls,
-                        referenceVideoUrls: inlineVideoUrls,
-                        referenceAudioUrls: inlineAudioUrls,
+                        referenceImageAssetIds: inlineImageAssetIds,
+                        referenceVideoAssetIds: inlineVideoAssetIds,
+                        referenceAudioAssetIds: inlineAudioAssetIds,
                         model: modelId,
                         modelId,
                         modelParams,

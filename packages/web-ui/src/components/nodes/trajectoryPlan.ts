@@ -131,7 +131,6 @@ function buildClonedHeadContentData(type: string, orig: Record<string, unknown>)
         out.content = orig.content ?? '';
         return out;
     }
-    if (orig.src !== undefined) out.src = orig.src;
     if (orig.assetId !== undefined) out.assetId = orig.assetId;
     if (orig.description !== undefined) out.description = orig.description;
     if (orig.naturalWidth !== undefined) out.naturalWidth = orig.naturalWidth;

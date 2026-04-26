@@ -370,7 +370,7 @@ export class Canvas {
     if (modelCard) {
       const validationError = validateGenerationInput({
         prompt,
-        referenceImageUrls: (nodeData.referenceImageUrls as string[]) || [],
+        referenceImageAssetIds: (nodeData.referenceImageAssetIds as string[]) || [],
         modelCard,
       });
       if (validationError) {
@@ -391,7 +391,7 @@ export class Canvas {
         | typeof ACTION_TYPE.AudioGen
         | typeof ACTION_TYPE.TextGen,
       label: nodeData.label as string | undefined,
-      referenceImageUrls: nodeData.referenceImageUrls as string[] | undefined,
+      referenceImageAssetIds: nodeData.referenceImageAssetIds as string[] | undefined,
       referenceMode: (nodeData.referenceMode as string) || undefined,
     });
 

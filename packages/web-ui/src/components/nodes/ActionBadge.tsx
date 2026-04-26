@@ -902,7 +902,9 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
             const d = n.data as Record<string, unknown> | undefined;
             if (!d) continue;
             if (d.status !== 'draft' && d.status !== 'idle') continue;
-            if (outputKind !== 'text' && d.src !== '' && d.src != null) continue;
+            // Media drafts: still empty if no asset has been attached.
+            // text drafts: empty/idle is the only reusable state (handled by status check above).
+            if (outputKind !== 'text' && d.assetId != null) continue;
             return n;
         }
         return null;

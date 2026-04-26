@@ -723,6 +723,36 @@ export class ProjectRoom extends DurableObject<Env> {
       }
     }
 
+    // Debug endpoint: full Loro snapshot (nodes + edges + projectMeta).
+    // Curl it to see exactly what the source of truth has — way faster than
+    // hunting down race conditions through frontend console.log.
+    if (url.pathname.endsWith("/loro-dump") && request.method === "GET") {
+      try {
+        if (this.initPromise) await this.initPromise;
+
+        const nodes = this.doc.getMap("nodes").toJSON() as Record<string, any>;
+        const edges = this.doc.getMap("edges").toJSON() as Record<string, any>;
+        const projectMeta = (() => {
+          try { return this.doc.getMap("projectMeta").toJSON(); } catch { return null; }
+        })();
+
+        return Response.json({
+          nodes,
+          edges,
+          projectMeta,
+          counts: {
+            nodes: Object.keys(nodes).length,
+            edges: Object.keys(edges).length,
+          },
+        }, {
+          headers: { "cache-control": "no-store" },
+        });
+      } catch (error) {
+        log.error("Loro dump error:", error);
+        return Response.json({ error: "Failed to dump loro state", detail: String(error) }, { status: 500 });
+      }
+    }
+
     return new Response("ProjectRoom", { status: 200 });
   }
 }

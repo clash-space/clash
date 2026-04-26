@@ -186,7 +186,6 @@ function ImageEditorPanel({
                 parentId: input.parentId,
                 projectId: input.projectId,
                 assetId: result.assetId,
-                srcR2Key: result.srcR2Key,
                 nodes: input.nodes,
                 edges: input.edges,
                 loroSync,
@@ -631,14 +630,13 @@ interface SpawnInput {
     parentId?: string;
     projectId: string;
     assetId: string;
-    srcR2Key: string;
     nodes: Node[];
     edges: Edge[];
     loroSync: ReturnType<typeof useOptionalLoroSyncContext>;
 }
 
 async function spawnCompletedImageDownstream({
-    editorNodeId, parentId, projectId, assetId, srcR2Key, nodes, edges, loroSync,
+    editorNodeId, parentId, projectId, assetId, nodes, edges, loroSync,
 }: SpawnInput): Promise<void> {
     if (!loroSync?.connected) return;
 
@@ -655,7 +653,7 @@ async function spawnCompletedImageDownstream({
         id: newNodeId,
         type: 'image',
         position: { x: 0, y: 0 },
-        data: { label: 'Edited Image', status: 'completed', assetId, src: srcR2Key },
+        data: { label: 'Edited Image', status: 'completed', assetId },
         parentId: parentId ?? editorNode?.parentId,
     };
     const layout = autoInsertNode(newNodeId, [...nodes, tempNode], [...edges, tempEdge]);
@@ -665,7 +663,7 @@ async function spawnCompletedImageDownstream({
         type: 'image',
         position: layout.position,
         parentId: parentId ?? editorNode?.parentId,
-        data: { label: 'Edited Image', status: 'completed', assetId, src: srcR2Key },
+        data: { label: 'Edited Image', status: 'completed', assetId },
     };
     loroSync.addNode(newNodeId, finalNode);
 

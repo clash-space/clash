@@ -14,6 +14,7 @@ import {
 import type { Env } from "../../config";
 import type { GenerationParams } from "../generation";
 import { startGeneration } from "../../generation/start";
+import { getAssetById } from "../../services/assets";
 import { log } from "../../logger";
 
 /**
@@ -114,7 +115,10 @@ export function createCanvasTools(
         const description = (data.description as string) || "";
         const content = (data.content as string) || "";
         const understanding = (data.understanding as string) || "";
-        const src = data.src as string | undefined;
+        const assetId = typeof data.assetId === 'string' ? data.assetId : undefined;
+        // Resolve src R2 key via the D1 asset row — node.data.src is no
+        // longer maintained (was a stale legacy mirror).
+        const src = assetId && env?.DB ? (await getAssetById(env.DB, assetId).catch(() => null))?.srcR2Key : undefined;
         const isImage = node.type === "image";
 
         const lines: string[] = [`Node ${node_id} (${node.type}): ${name}`];
@@ -381,8 +385,11 @@ export function createCanvasTools(
         const node = canvas.readNode(node_id);
         if (!node) return `Error: Node ${node_id} not found`;
 
-        const src = node.data.src as string | undefined;
-        if (!src) return `Error: Node ${node_id} has no asset (src is empty)`;
+        const assetId = typeof node.data.assetId === 'string' ? node.data.assetId : undefined;
+        if (!assetId || !env?.DB) return `Error: Node ${node_id} has no asset attached`;
+        const asset = await getAssetById(env.DB, assetId).catch(() => null);
+        const src = asset?.srcR2Key;
+        if (!src) return `Error: Node ${node_id} asset ${assetId} not found in D1`;
 
         const nodeType = node.type;
         let mimeType = "image/png";

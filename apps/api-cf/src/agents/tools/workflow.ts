@@ -254,15 +254,12 @@ export function computeAdoptionPayload(
     .filter((n): n is NodeInfo => !!n);
   const {
     texts: refTexts,
-    images: refImgs,
-    videos: refVids,
-    audios: refAuds,
+    imageAssetIds: refImgAssetIds,
+    videoAssetIds: refVidAssetIds,
+    audioAssetIds: refAudAssetIds,
   } = selectedModel
-    ? partitionRefs(
-        refNodes as Array<{ type?: string; data?: { src?: string; content?: string; prompt?: string; label?: string } }>,
-        selectedModel,
-      )
-    : { texts: [], images: [], videos: [], audios: [] };
+    ? partitionRefs(refNodes, selectedModel)
+    : { texts: [], imageAssetIds: [], videoAssetIds: [], audioAssetIds: [] };
 
   const prompt = composePromptWithTextRefs(rawPrompt, refTexts);
   if (!prompt.trim()) return { ok: false, error: "No prompt on upstream action-badge." };
@@ -273,13 +270,17 @@ export function computeAdoptionPayload(
     const err = validateGenerationInput({
       prompt: promptText,
       referenceTextSnippets: refTexts,
-      referenceImageUrls: refImgs,
-      referenceVideoUrls: refVids,
-      referenceAudioUrls: refAuds,
+      referenceImageAssetIds: refImgAssetIds,
+      referenceVideoAssetIds: refVidAssetIds,
+      referenceAudioAssetIds: refAudAssetIds,
       modelCard: selectedModel,
     });
     if (err) return { ok: false, error: err };
   }
+
+  // Pending media nodes carry assetIds only — server resolves R2 keys
+  // via D1. node.data.src is intentionally omitted (was a stale legacy
+  // mirror that caused refs to drop silently when only assetId was set).
 
   if (actionType === "image-gen") {
     return {
@@ -287,10 +288,9 @@ export function computeAdoptionPayload(
       type: "image",
       data: {
         label: extractLabelFromPrompt(promptText, "Generated Image"),
-        src: "",
         status: "pending",
         prompt: promptText,
-        referenceImageUrls: refImgs,
+        referenceImageAssetIds: refImgAssetIds,
         aspectRatio: resolveAspectRatio(modelId, modelParams),
         model: modelId,
         modelId,
@@ -307,12 +307,11 @@ export function computeAdoptionPayload(
       type: "video",
       data: {
         label: extractLabelFromPrompt(promptText, "Generated Video"),
-        src: "",
         status: "pending",
         prompt: promptText,
-        referenceImageUrls: refImgs,
-        referenceVideoUrls: refVids,
-        referenceAudioUrls: refAuds,
+        referenceImageAssetIds: refImgAssetIds,
+        referenceVideoAssetIds: refVidAssetIds,
+        referenceAudioAssetIds: refAudAssetIds,
         duration,
         model: modelId,
         modelId,
@@ -328,7 +327,6 @@ export function computeAdoptionPayload(
       type: "audio",
       data: {
         label: extractLabelFromPrompt(promptText, "Generated Audio"),
-        src: "",
         status: "pending",
         prompt: promptText,
         model: modelId,
@@ -347,9 +345,9 @@ export function computeAdoptionPayload(
         content: "",
         status: "pending",
         prompt: promptText,
-        referenceImageUrls: refImgs,
-        referenceVideoUrls: refVids,
-        referenceAudioUrls: refAuds,
+        referenceImageAssetIds: refImgAssetIds,
+        referenceVideoAssetIds: refVidAssetIds,
+        referenceAudioAssetIds: refAudAssetIds,
         model: modelId,
         modelId,
         modelParams,

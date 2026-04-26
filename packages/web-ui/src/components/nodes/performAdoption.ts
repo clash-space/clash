@@ -79,18 +79,12 @@ export function computeAdoption({
         .filter((n): n is RFNode => !!n);
     const {
         texts: refTexts,
-        images: refImgs,
-        videos: refVids,
-        audios: refAuds,
         imageAssetIds: refImgAssetIds,
         videoAssetIds: refVidAssetIds,
         audioAssetIds: refAudAssetIds,
     } = selectedModel
-        ? partitionRefs(
-            refNodes as Array<{ type?: string; data?: { src?: string; content?: string; prompt?: string; label?: string; assetId?: string } }>,
-            selectedModel,
-        )
-        : { texts: [], images: [], videos: [], audios: [], imageAssetIds: [], videoAssetIds: [], audioAssetIds: [] };
+        ? partitionRefs(refNodes, selectedModel)
+        : { texts: [], imageAssetIds: [], videoAssetIds: [], audioAssetIds: [] };
 
     const prompt = composePromptWithTextRefs(rawPrompt, refTexts);
     if (!prompt.trim()) return { ok: false, error: 'No prompt' };
@@ -101,9 +95,9 @@ export function computeAdoption({
         const err = validateGenerationInput({
             prompt: promptText,
             referenceTextSnippets: refTexts,
-            referenceImageUrls: refImgs,
-            referenceVideoUrls: refVids,
-            referenceAudioUrls: refAuds,
+            referenceImageAssetIds: refImgAssetIds,
+            referenceVideoAssetIds: refVidAssetIds,
+            referenceAudioAssetIds: refAudAssetIds,
             modelCard: selectedModel,
         });
         if (err) return { ok: false, error: err };
@@ -124,16 +118,17 @@ export function computeAdoption({
         return { ok: true, type, data };
     }
 
+    // Pending media nodes intentionally omit `data.src` — see useSpawnPendingAsset
+    // for the same contract: assetIds are the source of truth, server resolves R2.
+
     if (actionType === 'image-gen') {
         return {
             ok: true,
             type: 'image',
             data: {
                 label: extractLabel(promptText, 'Generated Image'),
-                src: '',
                 status: 'pending',
                 prompt: promptText,
-                referenceImageUrls: refImgs,
                 referenceImageAssetIds: refImgAssetIds,
                 aspectRatio: resolveAspectRatio(modelId, modelParams),
                 model: modelId,
@@ -151,14 +146,10 @@ export function computeAdoption({
             type: 'video',
             data: {
                 label: extractLabel(promptText, 'Generated Video'),
-                src: '',
                 status: 'pending',
                 prompt: promptText,
-                referenceImageUrls: refImgs,
                 referenceImageAssetIds: refImgAssetIds,
-                referenceVideoUrls: refVids,
                 referenceVideoAssetIds: refVidAssetIds,
-                referenceAudioUrls: refAuds,
                 referenceAudioAssetIds: refAudAssetIds,
                 duration,
                 model: modelId,
@@ -175,7 +166,6 @@ export function computeAdoption({
             type: 'audio',
             data: {
                 label: extractLabel(promptText, 'Generated Audio'),
-                src: '',
                 status: 'pending',
                 prompt: promptText,
                 model: modelId,
@@ -194,9 +184,9 @@ export function computeAdoption({
                 content: '',
                 status: 'pending',
                 prompt: promptText,
-                referenceImageUrls: refImgs,
-                referenceVideoUrls: refVids,
-                referenceAudioUrls: refAuds,
+                referenceImageAssetIds: refImgAssetIds,
+                referenceVideoAssetIds: refVidAssetIds,
+                referenceAudioAssetIds: refAudAssetIds,
                 model: modelId,
                 modelId,
                 modelParams,

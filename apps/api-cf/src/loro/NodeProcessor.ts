@@ -13,7 +13,7 @@ import { log } from '../logger';
 import { updateNodeData, appendNodeLog } from './NodeUpdater';
 import { Status } from '../domain/canvas';
 import type { GenerationParams } from '../agents/generation';
-import { getAssetById } from '../services/assets';
+import { getAssetById, getAssetsByIds, getProjectOwner } from '../services/assets';
 import { signAssetPath } from '../services/asset-signing';
 
 import { MODEL_CARDS, parsePromptParts, extractPromptText } from '@clash/shared-types';
@@ -208,17 +208,12 @@ async function resolveTimelineDslReferences(
   nodesMap: Map<string, any>,
   env: Env,
 ): Promise<Record<string, any>> {
-  // Build a src -> node lookup for matching by src (for items without assetId)
-  const srcToNode = new Map<string, any>();
+  // Asset rows are the source of truth — match timeline items to canvas
+  // nodes by `data.assetId`. Legacy src-based matching is gone (the field
+  // is no longer maintained).
   const assetRowIdToNode = new Map<string, any>();
   for (const [nodeId, nodeData] of nodesMap.entries()) {
     const data = toPlainRecord(nodeData?.data || nodeData);
-    const src = typeof data.src === 'string' ? data.src : undefined;
-    if (src) {
-      srcToNode.set(src, { nodeId, ...nodeData });
-      srcToNode.set(srcToStorageKey(src), { nodeId, ...nodeData });
-    }
-
     const assetRowId = typeof data.assetId === 'string' ? data.assetId : undefined;
     if (assetRowId) {
       assetRowIdToNode.set(assetRowId, { nodeId, ...nodeData });
@@ -252,25 +247,9 @@ async function resolveTimelineDslReferences(
         }
       }
 
-      // 2. If no assetId or not found, try to match by src
-      if (!assetNode && item.src) {
-        let srcKey = item.src;
-        const viewMatch = srcKey.match(/\/api\/assets\/view\/(.+)$/);
-        if (viewMatch) {
-          srcKey = viewMatch[1];
-        }
-
-        assetNode = srcToNode.get(item.src) || srcToNode.get(srcKey);
-
-        if (!assetNode) {
-          for (const [storedSrc, node] of srcToNode.entries()) {
-            if (storedSrc.includes(srcKey) || srcKey.includes(storedSrc)) {
-              assetNode = node;
-              break;
-            }
-          }
-        }
-      }
+      // (Legacy src-based fallback removed — timeline items must reference
+      // canvas nodes by sourceNodeId or D1 assetId. node.data.src is no
+      // longer maintained.)
 
       if (assetNode) {
         const assetData = toPlainRecord(assetNode.data || assetNode);
@@ -563,8 +542,6 @@ export async function processPendingNodes(
               : nodeType === 'audio'
                 ? 'audio_gen'
                 : 'text_gen';
-        const tag = { nodeId, taskId, nodeType };
-
         // Set status=generating + pendingTask synchronously (optimistic lock) before any await
         updateNodeData(doc, nodeId, { status: Status.Generating, pendingTask: taskId, pendingTaskAt: Date.now() }, broadcast);
         appendNodeLog(doc, nodeId, `task=${taskId.slice(0, 8)} type=${taskType} model=${(innerData.modelId || innerData.model) ?? 'default'}`, broadcast);
@@ -572,34 +549,36 @@ export async function processPendingNodes(
         const selectedModelId = (innerData.modelId || innerData.model) ??
           (nodeType === 'video' ? defaultVideoModel : nodeType === 'audio' ? defaultAudioModel : nodeType === 'text' ? defaultTextModel : defaultImageModel);
         const modelParams = (innerData.modelParams || {}) as Record<string, any>;
-        const referenceImages: string[] = Array.isArray(innerData.referenceImageUrls) ? innerData.referenceImageUrls : [];
-        const referenceVideos: string[] = Array.isArray(innerData.referenceVideoUrls) ? innerData.referenceVideoUrls : [];
-        const referenceAudios: string[] = Array.isArray(innerData.referenceAudioUrls) ? innerData.referenceAudioUrls : [];
-        // Parallel assetId arrays — same index = same ref. Used to write
-        // assets.sources for lineage; safe to be undefined / shorter than the
-        // URL array (entries default to undefined and are filtered out).
-        const referenceImageAssetIds: (string | undefined)[] = Array.isArray(innerData.referenceImageAssetIds) ? innerData.referenceImageAssetIds : [];
-        const referenceVideoAssetIds: (string | undefined)[] = Array.isArray(innerData.referenceVideoAssetIds) ? innerData.referenceVideoAssetIds : [];
-        const referenceAudioAssetIds: (string | undefined)[] = Array.isArray(innerData.referenceAudioAssetIds) ? innerData.referenceAudioAssetIds : [];
+        // Frontend writes asset IDs only (never URLs). Server resolves IDs
+        // to R2 keys via D1 — single source of truth, no schema drift.
+        const referenceImageAssetIds: string[] = (Array.isArray(innerData.referenceImageAssetIds) ? innerData.referenceImageAssetIds : [])
+          .filter((id: unknown): id is string => typeof id === 'string' && id.length > 0);
+        const referenceVideoAssetIds: string[] = (Array.isArray(innerData.referenceVideoAssetIds) ? innerData.referenceVideoAssetIds : [])
+          .filter((id: unknown): id is string => typeof id === 'string' && id.length > 0);
+        const referenceAudioAssetIds: string[] = (Array.isArray(innerData.referenceAudioAssetIds) ? innerData.referenceAudioAssetIds : [])
+          .filter((id: unknown): id is string => typeof id === 'string' && id.length > 0);
         const modelCard = getModelCard(selectedModelId);
         const inputMode = modelCard?.input.inputMode ?? {};
-        log.info('Gen task params', { nodeId, model: selectedModelId, images: referenceImages.length, videos: referenceVideos.length, audios: referenceAudios.length, prompt: innerData.prompt || innerData.label });
+
+        const tag = { nodeId, taskId, projectId, type: taskType, model: selectedModelId, nodeType };
+        log.info('gen.classify', { ...tag, refs: { images: referenceImageAssetIds.length, videos: referenceVideoAssetIds.length, audios: referenceAudioAssetIds.length }, prompt: (innerData.prompt || innerData.label || '').slice(0, 80) });
 
         // Pre-flight: refuse to submit the workflow when image refs violate the inputMode.
         // Only enforced for video gen (image gen is more forgiving).
         if (nodeType === 'video') {
           let msg: string | null = null;
-          if (inputMode.startEnd && referenceImages.length < 1) {
+          if (inputMode.startEnd && referenceImageAssetIds.length < 1) {
             msg = 'Start frame required for selected model';
           } else if (inputMode.images) {
             const min = inputMode.images.min ?? 0;
-            if (referenceImages.length < min) {
+            if (referenceImageAssetIds.length < min) {
               msg = min === 1
                 ? 'Reference image required for selected model'
                 : `At least ${min} reference images required for selected model`;
             }
           }
           if (msg) {
+            log.warn('gen.preflight_failed', { ...tag, reason: msg });
             updateNodeData(doc, nodeId, { pendingTask: undefined, status: Status.Failed, error: msg }, broadcast);
             continue;
           }
@@ -610,12 +589,53 @@ export async function processPendingNodes(
         const parts = parsePromptParts(rawPrompt);
         const cleanPrompt = extractPromptText(parts);
 
-        // Resolve @-mentioned asset refs to R2 keys
+        // Resolve all asset IDs in one batch — image/video/audio refs +
+        // any @-mentioned nodes from promptParts. One D1 query, no N+1.
+        const mentionAssetIds: string[] = [];
+        for (const part of parts) {
+          if (part.type === 'asset_ref' && part.nodeId) {
+            const refNode = nodesMap.get(part.nodeId) as Record<string, any> | undefined;
+            const aid = typeof refNode?.data?.assetId === 'string' ? refNode.data.assetId : undefined;
+            if (aid) mentionAssetIds.push(aid);
+          }
+        }
+
+        const allAssetIds = [
+          ...referenceImageAssetIds,
+          ...referenceVideoAssetIds,
+          ...referenceAudioAssetIds,
+          ...mentionAssetIds,
+        ];
+
+        let assetById = new Map<string, { srcR2Key: string; coverR2Key: string | null }>();
+        if (allAssetIds.length > 0) {
+          const ownerId = await getProjectOwner(env.DB, projectId);
+          if (!ownerId) {
+            const msg = 'Project owner not found';
+            log.error('gen.owner_lookup_failed', { ...tag });
+            updateNodeData(doc, nodeId, { pendingTask: undefined, status: Status.Failed, error: msg }, broadcast);
+            continue;
+          }
+          const assets = await getAssetsByIds(env.DB, allAssetIds, ownerId);
+          assetById = new Map(assets.map((a) => [a.id, { srcR2Key: a.srcR2Key, coverR2Key: a.coverR2Key }]));
+
+          const missing = allAssetIds.filter((id) => !assetById.has(id));
+          if (missing.length > 0) {
+            log.warn('gen.assets_missing', { ...tag, missingCount: missing.length, missing: missing.slice(0, 5) });
+          }
+        }
+
+        const resolveImageKey = (aid: string): string | undefined => assetById.get(aid)?.srcR2Key;
+        const resolveVideoKey = (aid: string): string | undefined => assetById.get(aid)?.srcR2Key;
+        const resolveAudioKey = (aid: string): string | undefined => assetById.get(aid)?.srcR2Key;
+
+        // Resolve @-mention parts now that we have the asset map
         const resolvedParts = parts.map((part) => {
           if (part.type === 'asset_ref' && part.nodeId) {
             const refNode = nodesMap.get(part.nodeId) as Record<string, any> | undefined;
-            const refSrc = refNode?.data?.src as string | undefined;
-            return { type: 'asset_ref', nodeId: part.nodeId, r2Key: refSrc || undefined };
+            const aid = typeof refNode?.data?.assetId === 'string' ? refNode.data.assetId : undefined;
+            const r2Key = aid ? resolveImageKey(aid) : undefined;
+            return { type: 'asset_ref', nodeId: part.nodeId, r2Key };
           }
           return { type: 'text', text: part.text || '' };
         });
@@ -628,14 +648,25 @@ export async function processPendingNodes(
         //   - images         → flat referenceImageR2Keys (any max)
         //   - videos/audios  → flat lists, analogously
         const isStartEnd = !!inputMode.startEnd;
-        const startFrameKey = isStartEnd ? referenceImages[0] : undefined;
-        const endFrameKey = isStartEnd ? referenceImages[1] : undefined;
-        const flatRefImages = !isStartEnd && !!inputMode.images ? referenceImages : [];
+        const imageR2Keys = referenceImageAssetIds
+          .map(resolveImageKey)
+          .filter((k): k is string => !!k);
+        const videoR2Keys = referenceVideoAssetIds
+          .map(resolveVideoKey)
+          .filter((k): k is string => !!k);
+        const audioR2Keys = referenceAudioAssetIds
+          .map(resolveAudioKey)
+          .filter((k): k is string => !!k);
+
+        const startFrameKey = isStartEnd ? imageR2Keys[0] : undefined;
+        const endFrameKey = isStartEnd ? imageR2Keys[1] : undefined;
+        const flatRefImageKeys = !isStartEnd && !!inputMode.images ? imageR2Keys : [];
+
+        log.info('gen.refs_resolved', { ...tag, resolved: { images: imageR2Keys.length, videos: videoR2Keys.length, audios: audioR2Keys.length, startEnd: isStartEnd } });
 
         // Lineage `sources` rows. The startEnd first frame is the only
         // "primary" anchor (it's the keyframe the generation pivots around).
-        // Everything else is a plain reference. Entries without assetId are
-        // dropped so pre-lineage assets stay null.
+        // Everything else is a plain reference.
         const sources: { assetId: string; role: 'primary' | 'reference' }[] = [];
         const seen = new Set<string>();
         const pushSource = (id: string | undefined, role: 'primary' | 'reference') => {
@@ -657,10 +688,9 @@ export async function processPendingNodes(
           promptParts: resolvedParts,
           model: selectedModelId,
           modelParams,
-          referenceImages: flatRefImages,
-          referenceVideos,
-          referenceAudios,
-          referenceMode: isStartEnd ? 'start_end' : flatRefImages.length ? 'multi' : 'none',
+          referenceImageR2Keys: flatRefImageKeys,
+          referenceVideoR2Keys: videoR2Keys,
+          referenceAudioR2Keys: audioR2Keys,
           aspectRatio: modelParams.aspect_ratio || innerData.aspectRatio || '16:9',
           duration: modelParams.duration ?? innerData.duration ?? 5,
           negativPrompt: modelParams.negative_prompt,
@@ -732,8 +762,10 @@ async function submitGenTask(
     promptParts?: Array<{ type: string; text?: string; nodeId?: string; r2Key?: string }>;
     model: string;
     modelParams: Record<string, any>;
-    referenceImages: string[];
-    referenceMode: string;
+    /** Pre-resolved R2 keys (NodeProcessor turned assetIds into these). */
+    referenceImageR2Keys: string[];
+    referenceVideoR2Keys: string[];
+    referenceAudioR2Keys: string[];
     aspectRatio: string;
     duration: number;
     negativPrompt?: string;
@@ -741,19 +773,11 @@ async function submitGenTask(
     resolution?: string;
     startFrameR2Key?: string;
     endFrameR2Key?: string;
-    referenceVideos?: string[];
-    referenceAudios?: string[];
     sources?: { assetId: string; role: 'primary' | 'reference' }[];
   },
 ): Promise<{ error?: string }> {
+  const tag = { nodeId, taskId, projectId, type: taskType, model: params.model };
   try {
-    const validR2 = (ref: string) =>
-      ref.startsWith('projects/') || ref.startsWith('uploads/') || ref.startsWith('http://') || ref.startsWith('https://');
-    const referenceImageR2Keys = params.referenceImages.filter(validR2);
-    const referenceVideoR2Keys = (params.referenceVideos ?? []).filter(validR2);
-    const referenceAudioR2Keys = (params.referenceAudios ?? []).filter(validR2);
-    log.info('submitGenTask refs', { taskId, images: referenceImageR2Keys.length, videos: referenceVideoR2Keys.length, audios: referenceAudioR2Keys.length });
-
     const genParams: GenerationParams = {
       taskId,
       nodeId,
@@ -764,9 +788,9 @@ async function submitGenTask(
       aspectRatio: params.aspectRatio,
       modelName: params.model,
       modelParams: params.modelParams as Record<string, unknown>,
-      referenceImageR2Keys: referenceImageR2Keys.length ? referenceImageR2Keys : undefined,
-      referenceVideoR2Keys: referenceVideoR2Keys.length ? referenceVideoR2Keys : undefined,
-      referenceAudioR2Keys: referenceAudioR2Keys.length ? referenceAudioR2Keys : undefined,
+      referenceImageR2Keys: params.referenceImageR2Keys.length ? params.referenceImageR2Keys : undefined,
+      referenceVideoR2Keys: params.referenceVideoR2Keys.length ? params.referenceVideoR2Keys : undefined,
+      referenceAudioR2Keys: params.referenceAudioR2Keys.length ? params.referenceAudioR2Keys : undefined,
       startFrameR2Key: params.startFrameR2Key,
       endFrameR2Key: params.endFrameR2Key,
       duration: params.duration,
@@ -775,14 +799,15 @@ async function submitGenTask(
       sources: params.sources,
     };
 
+    log.info('gen.submit', { ...tag });
     await startGeneration(env, taskId, genParams);
     return {};
   } catch (e: any) {
     if (String(e).includes('already exists')) {
-      log.info('Gen workflow already exists, skipping duplicate submission', { taskId, nodeId });
+      log.info('gen.submit_dedup', { ...tag, note: 'workflow already exists, skipping duplicate' });
       return {};
     }
-    log.error('Exception during task submission:', e);
+    log.error('gen.submit_failed', { ...tag, error: String(e) });
     return { error: String(e) };
   }
 }
