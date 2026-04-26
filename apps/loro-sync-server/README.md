@@ -74,14 +74,14 @@ pnpm install
 ### 2. Create D1 Database (if not exists)
 
 ```bash
-wrangler d1 create master-clash-frontend
+wrangler d1 create clash-d1
 ```
 
 ### 3. Run Migrations
 
 ```bash
-wrangler d1 migrations apply master-clash-frontend --local  # For local dev
-wrangler d1 migrations apply master-clash-frontend           # For production
+wrangler d1 migrations apply clash-d1 --local  # For local dev
+wrangler d1 migrations apply clash-d1           # For production
 ```
 
 Migrations include:

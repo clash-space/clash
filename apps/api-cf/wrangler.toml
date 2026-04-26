@@ -1,5 +1,5 @@
 #:schema node_modules/wrangler/config-schema.json
-name = "master-clash-api"
+name = "clash-api"
 main = "src/index.ts"
 compatibility_date = "2025-03-14"
 compatibility_flags = ["nodejs_compat"]
@@ -68,13 +68,13 @@ binding = "AI"
 # D1 Database (shared with frontend)
 [[d1_databases]]
 binding = "DB"
-database_name = "master-clash-frontend"
-database_id = "aab16eeb-a375-490b-ad1e-cd092cd9f4bb"
+database_name = "clash-d1"
+database_id = "00000000-0000-0000-0000-000000000000"  # Replace with your D1 id (`wrangler d1 create clash-d1` prints it)
 
 # R2 Bucket
 [[r2_buckets]]
 binding = "R2_BUCKET"
-bucket_name = "master-clash-assets"
+bucket_name = "clash-r2"
 
 # Environment variables (set via `wrangler secret put`)
 # GOOGLE_API_KEY

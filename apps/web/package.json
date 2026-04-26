@@ -9,7 +9,7 @@
     "preview": "vite preview",
     "type-check": "tsc --noEmit",
     "deploy": "pnpm build && wrangler deploy",
-    "db:migrate:local": "wrangler d1 migrations apply master-clash-frontend --local",
+    "db:migrate:local": "wrangler d1 migrations apply clash-d1 --local",
     "test": "vitest run",
     "test:watch": "vitest",
     "lint": "eslint",

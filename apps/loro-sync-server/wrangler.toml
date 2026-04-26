@@ -15,13 +15,13 @@ class_name = "LoroRoom"
 
 [[d1_databases]]
 binding = "DB"
-database_name = "master-clash-frontend"
-database_id = "aab16eeb-a375-490b-ad1e-cd092cd9f4bb"
+database_name = "clash-d1"
+database_id = "00000000-0000-0000-0000-000000000000"  # Replace with your D1 id (`wrangler d1 create clash-d1` prints it)
 
 # R2 bucket for generated assets
 [[r2_buckets]]
 binding = "ASSETS"
-bucket_name = "master-clash-assets"
+bucket_name = "clash-r2"
 
 # Environment variables
 [vars]
@@ -39,7 +39,7 @@ vars = { ENVIRONMENT = "production" }
 # Service Bindings
 [[services]]
 binding = "API_CF"
-service = "master-clash-api"
+service = "clash-api"
 
 [dev]
 # (no extra dev config needed)

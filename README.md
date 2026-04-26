@@ -1,167 +1,221 @@
 # Clash
 
 > **Next-Gen Co-Creation Platform** — 重新定义 AI 与人类在创意画布上的共生关系。
-
-## Core Vision: Creative Democratization (创作平权)
-
-Clash 致力于进一步降低优质内容的创作门槛，不仅是简单的工具降权，更是创意的升维。
-
-- **Anti-Slop (反垃圾内容)**: 我们反对 AI 生成大量同质化的垃圾内容 (Slop)。我们的目标是利用 AI 赋能人类，去创作原本受限于技术或成本而无法实现的**高质量内容**。
-- **Co-Creators (人机共创)**: Human 和 Agent 是平等的合作伙伴。
-  1. **Idea First**: 在制作之前，AI 与你共同打磨创意，确保从源头就是高质量的。
-  2. **Comprehensive Realization**: 通过 AI 辅助剪辑、AIGC 生成、Motion Graphics 等手段，全方位落地你的想象。
-
-## Core Features
-
-### 1. Idea Co-creation (创意共创)
-不再是简单的 "Prompt -> Video"。Agent 会深度参与你的构思过程，提供灵感、挑战逻辑、完善脚本，确保每一个视频都有扎实的创意内核。
-
-### 2. Sleep-time Production (异步制作)
-当你休息或专注于构思时，Agent 们正在后台进行繁重的执行工作：深度思考与资产预生成、脚本优化与分镜设计、自动化的粗剪与时间轴编排。
-
-### 3. Skill-Based Agent System (基于技能的智能体系统)
-将工业界的最佳实践（SOP）沉淀为可复用的 **Skills**。Agent 可根据意图自动调用专业子智能体完成任务。
-
-### 4. Multi-Client Collaboration (多端协作)
-浏览器、CLI、Claude Code 插件共享同一画布状态。基于 Loro CRDT 的实时同步，支持离线编辑与自动冲突解决。
+> Where agents co-create, humans are welcome too.
 
 ---
 
-## Architecture
+## 🎯 愿景 / Vision
 
-```mermaid
-graph TD
-    Browser((Browser)) --> Gateway["Auth Gateway (:8788)"]
-    CLI((CLI)) --> Gateway
-    Plugin((Claude Code)) --> Gateway
+Clash 致力于降低优质内容的创作门槛，不只是工具降权，更是创意的升维。
+Clash lowers the barrier to high-quality creative work — not by automating people away, but by amplifying them.
 
-    Gateway -->|/| Web["Frontend<br/>Next.js 15"]
-    Gateway -->|/sync/*| Room["ProjectRoom DO<br/>Loro CRDT Sync"]
-    Gateway -->|/agents/*| Agent["SupervisorAgent DO<br/>AI Chat"]
-    Gateway -->|/api/*| API["REST API<br/>Hono"]
+- **Anti-Slop / 反垃圾内容**：拒绝 AI 灌水。我们用 AI 帮人完成原本受限于成本的高质量产出，而不是批量生产同质化内容。
+- **Co-Creators / 人机共创**：Human 和 Agent 是平等合作伙伴。先共创创意，再分头落地（剪辑、AIGC、Motion Graphics）。
+- **Skill-Based Agents / 技能化智能体**：把行业 SOP 沉淀成可复用 Skill，Agent 按意图调度子代理执行。
+- **Multi-Client Collaboration / 多端协作**：浏览器、CLI、Claude Code 插件共享同一画布，Loro CRDT 实时同步、离线可编辑。
 
-    Room <-->|WebSocket| Browser
-    Room <-->|WebSocket| CLI
-    Agent <-->|WebSocket| Browser
+---
 
-    subgraph "Cloudflare Workers"
-        Room
-        Agent
-        API
-        Workflow["GenerationWorkflow"]
-    end
+## 🏗 架构 / Architecture
 
-    subgraph "Storage"
-        D1[("D1 (SQLite)<br/>Users, Projects")]
-        R2[("R2 Bucket<br/>Assets")]
-        DO_Storage[("DO Storage<br/>Loro Snapshots")]
-    end
-
-    API --> Workflow
-    Workflow -->|generate| Providers["AI Providers<br/>Gemini / Kling / FAL"]
-    Workflow -->|upload| R2
-    Workflow -->|update node| Room
-    Room --> DO_Storage
-    API --> D1
+```
+                       ┌──────────────────────────────────────┐
+                       │  clash.video (Worker: web)           │
+   Browser ─────WS────▶│  ├─ Vite SPA + Better Auth (in-DO)   │
+                       │  └─ /api/* /sync/* /agents/* /assets/*│
+                       └──────────────┬───────────────────────┘
+                                      │  service binding
+                                      ▼
+                       ┌──────────────────────────────────────┐
+                       │  api.clash.video (Worker: api)       │
+                       │  ├─ Hono routes (REST)               │
+                       │  ├─ DO ProjectRoom    (Loro sync)    │
+                       │  ├─ DO SupervisorAgent (AI chat)     │
+                       │  ├─ DO RenderContainer (Remotion)    │
+                       │  └─ Workflow generation-workflow     │
+                       └──────────────┬───────────────────────┘
+                                      │
+                       ┌──────────────┴────────┬──────────────┐
+                       ▼                       ▼              ▼
+                  D1 (clash-d1)          R2 (clash-r2)    GHCR (render-server)
+                  users / projects /     all generated    pre-built Remotion image
+                  assets / asset_refs    media / covers   pulled by Container DO
 ```
 
 ### Tech Stack
 
-| Layer | Technology |
-|-------|-----------|
-| Frontend | Next.js 15, React 19, Tailwind CSS v4, Framer Motion, ReactFlow |
-| Backend | Cloudflare Workers (Hono), Durable Objects, Workflows |
-| Real-time | Loro CRDT (binary WebSocket protocol) |
-| Database | Cloudflare D1 (SQLite), Drizzle ORM |
-| Storage | Cloudflare R2 |
-| Auth | Better Auth (session + API tokens) |
-| AI/ML | Google Gemini, Kling, FAL AI (Sora, Flux), OpenAI SDK |
-| Video | Remotion 4 (Cloudflare Containers) |
-| Monorepo | pnpm + Turborepo |
+| Layer        | Tech                                                        |
+| ------------ | ----------------------------------------------------------- |
+| Frontend     | Vite SPA, React 19, Tailwind v4, Framer Motion, @xyflow/react |
+| Backend      | Cloudflare Workers (Hono), Durable Objects, Workflows       |
+| Real-time    | Loro CRDT (binary WebSocket)                                |
+| DB / Storage | Cloudflare D1 (SQLite + Drizzle), R2                        |
+| Auth         | Better Auth (cookie session + API tokens)                   |
+| AI           | Google Vertex (Gemini, Veo), fal.ai (nano-banana, Sora, Kling), OpenAI |
+| Video        | Remotion 4 in Cloudflare Container                          |
+| Tooling      | pnpm workspaces + Turborepo                                 |
 
-### Monorepo Structure
+### Monorepo
 
 ```
 apps/
-  web/              Next.js frontend (Cloudflare Pages)
-  api-cf/           Hono API + Durable Objects (Cloudflare Workers)
-  auth-gateway/     Auth reverse proxy (Cloudflare Workers)
-  render-server/    Remotion video renderer (Cloudflare Containers)
-
+  web/                Vite SPA + Cloudflare Worker entry
+  api-cf/             Hono API + Durable Objects + Workflow
+  render-server/      Remotion renderer (Cloudflare Container, image on GHCR)
+  loro-sync-server/   (legacy shell — sync moved into api-cf)
 packages/
-  shared-types/     Zod schemas, TypeScript types, model cards
-  shared-layout/    Canvas node layout algorithms
-  cli/              Terminal CLI tool
-  claude-code-plugin/  Claude Code integration
-  remotion-core/    Video editor state management
-  remotion-components/ Remotion rendering components
-  remotion-ui/      Video editor UI
+  shared-types/       Zod schemas, model cards, capability + ref helpers
+  shared-layout/      Canvas auto-layout
+  web-ui/             Shared React components (ProjectEditor, ChatbotCopilot, …)
+  cli/                Terminal CLI
+  claude-code-plugin/ Claude Code integration
+  remotion-core/      Timeline state
+  remotion-components/ Render components
+  remotion-ui/        Video editor UI
 ```
+
+### Generation Flow（生成链路）
+
+```
+canvas drag image + select model + Run
+  │  frontend writes pending node to Loro
+  │    data: { status: 'pending', referenceImageAssetIds: [X], modelId }
+  │
+  ▼  ProjectRoom DO sees pending → NodeProcessor
+  │  batch-resolves D1 assets WHERE id IN (...) → R2 keys
+  │
+  ▼  env.GENERATION_WORKFLOW.create({ params: { referenceImageR2Keys } })
+  │  resolveProvider → google-image / fal-image / veo / fal-video / …
+  │
+  ▼  ctx.step("generate"): inline R2 read → upstream API → upload result to R2
+  ▼  ctx.step("save-asset"): insert D1 asset row
+  ▼  notifyCompleted → POST /sync/<projectId>/update-node
+  │
+  ▼  ProjectRoom updates Loro node: { status: 'completed', assetId }
+  ▼  Loro broadcast → browser ImageNode → useAsset(id).srcR2Key → 显示
+```
+
+**关键不变量 / Key invariant**: `assetId` 是单一来源（single source of truth）。Loro node 上**只**写 `assetId`，永不写 `srcR2Key` —— 服务端通过 D1 解析。前端组件读图时走 `useAsset(assetId).srcR2Key`。
 
 ---
 
-## Quick Start
+## 🚀 自托管 / Self-Hosting
+
+OSS 这个仓库的 wrangler 配置是**模板**，资源名都改成中性的 `clash-*`，要部到自己的 Cloudflare 账号上之前先把资源建好。
+This repo's wrangler config is a **template** with neutral names. Create your own CF resources before deploying.
 
 ### Prerequisites
 
-- Node.js 20+
-- pnpm 8.15+
-- Wrangler CLI (`npm i -g wrangler`)
+- Node 20+
+- pnpm 10+
+- Wrangler 4+ (`npm i -g wrangler`)
+- Cloudflare account with Workers Paid plan (Durable Objects + Workflows + Containers require it)
 
-### Local Development
+### One-time CF resource setup
 
 ```bash
-# Install dependencies
-make install
+# Authenticate
+wrangler login
 
-# Run D1 migrations
-make db-local
+# D1 — note the printed `database_id` and paste it into all 3 wrangler.toml files
+wrangler d1 create clash-d1
 
-# Start all services behind auth gateway
-make dev-gateway-full
+# R2
+wrangler r2 bucket create clash-r2
+
+# Apply schema
+cd apps/web && pnpm wrangler d1 migrations apply clash-d1
 ```
 
-| Service | URL |
-|---------|-----|
-| **Main entry (gateway)** | `http://localhost:8788` |
-| Frontend | `http://localhost:3000` |
-| API | `http://localhost:8789` |
+`apps/{api-cf,web,loro-sync-server}/wrangler.toml` 里 `database_id` 默认是 `00000000-...`，把它替换成上面 `wrangler d1 create` 输出的真 UUID。
 
-### CLI Access
+### Secrets
+
+| Secret               | Where to get it                                    |
+| -------------------- | -------------------------------------------------- |
+| `BETTER_AUTH_SECRET` | `openssl rand -base64 32`                          |
+| `BETTER_AUTH_URL`    | Your deployed domain, e.g. `https://your.app`      |
+| `GOOGLE_API_KEY`     | Google AI Studio                                   |
+| `GOOGLE_CLIENT_EMAIL` / `GOOGLE_PRIVATE_KEY` / `GOOGLE_CLOUD_PROJECT` | Vertex AI service account JSON |
+| `FAL_API_KEY`        | fal.ai dashboard                                   |
+| `KLING_ACCESS_KEY` / `KLING_SECRET_KEY` | Kuaishou Kling                  |
+| `CF_AIG_TOKEN` / `CF_AIG_OPENAI_URL` / `GOOGLE_AI_STUDIO_BASE_URL` / `FAL_GATEWAY_URL` | Cloudflare AI Gateway (optional but recommended) |
+| `R2_PUBLIC_URL`      | Public bucket URL or signed-URL host               |
+| `AUTH_GOOGLE_ID` / `AUTH_GOOGLE_SECRET` | Google OAuth (optional)         |
 
 ```bash
-# Install CLI
+# Local dev: copy and fill apps/api-cf/.dev.vars (gitignored)
+cp apps/api-cf/.dev.vars.example apps/api-cf/.dev.vars
+
+# Production: bulk-upload to your Worker
+cd apps/api-cf && wrangler secret bulk .dev.vars
+```
+
+### Deploy
+
+```bash
+# Build the render-server image once and push to GHCR (or your registry)
+docker build -f apps/render-server/Dockerfile -t ghcr.io/<you>/clash-render:latest .
+docker push ghcr.io/<you>/clash-render:latest
+# Then point apps/render-server/Dockerfile.cf at your image
+
+# Deploy Workers
+cd apps/web && pnpm run deploy
+cd apps/api-cf && pnpm run deploy
+```
+
+CI 模板在 `.github/workflows/deploy.yml`。要 enable 在 repo Settings → Secrets 里加：
+The CI template is at `.github/workflows/deploy.yml`. Enable it by adding to repo Settings → Secrets:
+
+- `CLOUDFLARE_API_TOKEN` — token with `Account.Workers Scripts(Edit)`, `Workers KV(Edit)`, `D1(Edit)`, `R2(Edit)`, `Workflows(Edit)`
+- `CLOUDFLARE_ACCOUNT_ID` — visible on CF dashboard home
+- 加上 `Secrets` 表里那些 worker secrets（CI 会通过 `wrangler-action` 推同步到 Worker） / Plus the worker secrets above.
+
+---
+
+## 💻 本地开发 / Local Development
+
+```bash
+pnpm install
+pnpm -w dev                 # web :3000 + api-cf :8789 + sync :8790
+```
+
+Vite proxy 把 `/api/*` `/sync/*` `/agents/*` 转到 api-cf；本地 D1/R2 状态共享在 `.wrangler/state/`。
+
+### CLI
+
+```bash
 cd packages/cli && pnpm link --global
-
-# Authenticate
 clash auth login
-
-# List projects
 clash projects list
-
-# Work with canvas
-clash canvas list --project <id>
 clash canvas execute --project <id> --node <id>
 ```
 
-### Useful Commands
+### Tests
 
 ```bash
-make dev              # Start web + api-cf (no gateway)
-make test             # Run all tests
-make lint             # Lint all packages
-make format           # Format with Prettier
-make clean            # Remove build artifacts
+pnpm test          # unit
+pnpm type-check    # tsc --noEmit, all packages
 ```
 
 ---
 
-## Technical Philosophy
+## 🧠 设计原则 / Design Principles
 
-- **Shared Context (Canvas)**: 画布即环境 (Environment)。Agent 的操作被简化为对画布状态的 **Read** 和 **Write**。
-- **Lightweight Core**: 保持 Agent 骨架的轻量化，通过扩展 **Skills** 来赋予其强大的能力。
-- **CRDT-first**: 所有画布状态通过 Loro CRDT 同步，天然支持多端协作与离线编辑。
-- **Async-first**: 生成任务通过 Cloudflare Workflows 异步执行，支持长时间运行与自动重试。
+- **Canvas as Environment（画布即环境）**：所有 Agent 操作 = 对画布状态的 **read/write**。没有藏在 prompt 里的隐式上下文。
+- **Lightweight Core, Skill-Heavy（轻核重技能）**：Agent 骨架最小化，能力来自可挂载的 Skill。
+- **CRDT-first**：Loro 同步原生支持多端协作 + 离线编辑 + 自动冲突解决。
+- **Async-first**：所有生成走 Cloudflare Workflows，长任务可重试、可恢复，前端只 watch 节点状态。
+- **Asset-id is truth（assetId 单一来源）**：节点上只写 ID，资源在 D1 asset 行；服务端解析 R2 key。前端跨组件查图统一走 `useAsset`。
+
+---
+
+## 🔧 Hosted Variant
+
+`clash.video` 跑的是 [`clash-space/clash-hosted`](https://github.com/clash-space/clash-hosted)（私有），它把这个仓库当 git submodule，叠加 billing / BYOK / plan gating。OSS 版本你自己建账号自己控制，没有 billing。
+
+`clash.video` runs from the private [`clash-space/clash-hosted`](https://github.com/clash-space/clash-hosted) overlay, which vendors this repo as a git submodule and adds billing / BYOK keys / plan gating on top. The OSS version is fully self-contained — bring your own CF account and you own everything.
 
 ---
 
@@ -171,4 +225,5 @@ MIT
 
 ---
 
-*"让计算永不停歇，让创意自然流淌。"*
+*让计算永不停歇，让创意自然流淌。*
+*Computation never sleeps; creativity flows.*

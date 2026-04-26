@@ -39,20 +39,20 @@ run_worker_first = [
 # D1 (shared with api-cf for users / sessions / app tables)
 [[d1_databases]]
 binding = "DB"
-database_name = "master-clash-frontend"
-database_id = "aab16eeb-a375-490b-ad1e-cd092cd9f4bb"
+database_name = "clash-d1"
+database_id = "00000000-0000-0000-0000-000000000000"  # Replace with your D1 id (`wrangler d1 create clash-d1` prints it)
 migrations_dir = "drizzle"
 
 # Service binding to api-cf worker. Self-hosters point this at their own
-# api-cf deploy; the hosted overlay overrides this to master-clash-api-hosted.
+# api-cf deploy; the hosted overlay overrides this to clash-api-hosted.
 [[services]]
 binding = "API_CF"
-service = "master-clash-api"
+service = "clash-api"
 
 # R2 bucket (used by /api/upload/asset + /api/assets/view/*)
 [[r2_buckets]]
 binding = "R2_BUCKET"
-bucket_name = "master-clash-assets"
+bucket_name = "clash-r2"
 
 [vars]
 BETTER_AUTH_BASE_PATH = "/api/better-auth"
