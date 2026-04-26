@@ -267,20 +267,41 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
     // Attached node IDs = incoming edges whose source has a compatible modality,
     // including drafts (empty src, will materialize when Build runs).
     const attachedNodeIds = useMemo(() => {
-        return edges
-            .filter(e => e.target === id)
-            .map(e => getNodes().find(n => n.id === e.source))
-            .filter((n): n is NonNullable<typeof n> => !!n && hasCompatibleModality(n))
-            .map(n => n.id);
+        // Dedup by node id: multiple edges from the same source (e.g. an
+        // @-mention that races a manual drag-connect) used to surface the
+        // same ref twice in the preview row.
+        const seen = new Set<string>();
+        const out: string[] = [];
+        for (const e of edges) {
+            if (e.target !== id) continue;
+            if (seen.has(e.source)) continue;
+            const n = getNodes().find(nn => nn.id === e.source);
+            if (!n || !hasCompatibleModality(n)) continue;
+            seen.add(e.source);
+            out.push(n.id);
+        }
+        return out;
     }, [edges, id, getNodes, hasCompatibleModality]);
 
     const refNodeIds = useMemo(() => {
         const order = Array.isArray(data.referenceImageOrder) ? (data.referenceImageOrder as string[]) : [];
+        // Dedup as we go: a stale `referenceImageOrder` row with duplicates
+        // (or a race that wrote the same id twice) would otherwise surface
+        // the same ref twice in the preview row.
         const attachedSet = new Set(attachedNodeIds);
-        const ordered = order.filter(nid => attachedSet.has(nid));
-        const seen = new Set(ordered);
-        const extras = attachedNodeIds.filter(nid => !seen.has(nid));
-        return [...ordered, ...extras];
+        const seen = new Set<string>();
+        const out: string[] = [];
+        for (const nid of order) {
+            if (!attachedSet.has(nid) || seen.has(nid)) continue;
+            seen.add(nid);
+            out.push(nid);
+        }
+        for (const nid of attachedNodeIds) {
+            if (seen.has(nid)) continue;
+            seen.add(nid);
+            out.push(nid);
+        }
+        return out;
     }, [attachedNodeIds, data.referenceImageOrder]);
 
     // Group attached refs by kind once — used by the model-compat check below.
