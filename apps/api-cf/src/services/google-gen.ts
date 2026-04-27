@@ -7,6 +7,8 @@
  */
 import { generateImage, generateText, experimental_generateVideo } from "ai";
 import { createVertex } from "@ai-sdk/google-vertex/edge";
+import type { Env } from "../config";
+import { getVertexAccessToken } from "./vertex-auth";
 
 // ─── Shared ─────────────────────────────────────────────
 
@@ -558,4 +560,153 @@ export async function generateGoogleVideo(
     mediaType: result.video.mediaType,
     model: modelId,
   };
+}
+
+// ─── Veo Long-Running Operation (split submit + poll) ────────────────
+// `generateGoogleVideo` above wraps the AI SDK's `experimental_generateVideo`,
+// which hides the operation name and awaits internally. That's fine for a
+// monolithic call but means a DO/Workflow reset mid-poll re-submits to Veo
+// on retry — and Veo bills $0.50/sec, so a single retry can cost $2-5.
+//
+// The split below talks to Vertex REST directly, exposing the operation name
+// so callers can checkpoint it in workflow step state. On retry the same
+// operation gets re-polled instead of re-submitted → zero double-billing.
+
+export interface SubmitVeoOperationResult {
+  operationName: string;
+  modelId: string;
+}
+
+function vertexBaseHost(location: string): string {
+  return location === "global" ? "aiplatform.googleapis.com" : `${location}-aiplatform.googleapis.com`;
+}
+
+function vertexModelUrl(env: Env, modelId: string, action: string): string {
+  const project = env.GOOGLE_CLOUD_PROJECT ?? "";
+  const location = env.GOOGLE_CLOUD_LOCATION ?? "global";
+  if (!project) throw new Error("GOOGLE_CLOUD_PROJECT not set");
+  return `https://${vertexBaseHost(location)}/v1/projects/${project}/locations/${location}/publishers/google/models/${modelId}:${action}`;
+}
+
+/**
+ * Submit a Veo generation as a Vertex Long-Running Operation.
+ *
+ * Returns the `operationName` — a stable handle to the in-flight job on
+ * Google's side. Cache it in step state and poll on subsequent retries
+ * instead of re-submitting (which would re-bill).
+ */
+export async function submitVeoOperation(
+  env: Env,
+  input: GoogleVideoParams,
+): Promise<SubmitVeoOperationResult> {
+  const modelId = GOOGLE_VIDEO_MODEL_MAP[input.modelName ?? "veo-3.1"] ?? "veo-3.1-generate-001";
+  const url = vertexModelUrl(env, modelId, "predictLongRunning");
+  const token = await getVertexAccessToken(env);
+
+  const instance: Record<string, unknown> = { prompt: input.prompt };
+  if (input.image) {
+    instance.image = { bytesBase64Encoded: input.image.bytesBase64Encoded, mimeType: input.image.mimeType };
+  }
+  if (input.tailImage) {
+    instance.lastFrame = { bytesBase64Encoded: input.tailImage.bytesBase64Encoded, mimeType: input.tailImage.mimeType };
+  }
+  if (input.referenceImages?.length) {
+    instance.referenceImages = input.referenceImages.map((img) => ({
+      image: { bytesBase64Encoded: img.bytesBase64Encoded, mimeType: img.mimeType },
+      referenceType: "asset",
+    }));
+  }
+
+  const parameters: Record<string, unknown> = {
+    aspectRatio: input.aspectRatio ?? "16:9",
+    sampleCount: 1,
+    ...buildVideoProviderOptions(input.modelParams),
+  };
+  delete parameters.image;
+  delete parameters.lastFrame;
+  delete parameters.referenceImages;
+
+  const resp = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ instances: [instance], parameters }),
+  });
+  if (!resp.ok) {
+    const text = await resp.text().catch(() => "<unreadable>");
+    throw new Error(`Veo predictLongRunning failed (${resp.status}): ${text.slice(0, 500)}`);
+  }
+  const data = (await resp.json()) as { name?: string };
+  if (!data.name) {
+    throw new Error(`Veo predictLongRunning returned no operation name: ${JSON.stringify(data).slice(0, 300)}`);
+  }
+  return { operationName: data.name, modelId };
+}
+
+/** One-shot poll. Returns `{ done, response?, error? }`. */
+export async function fetchVeoOperationOnce(
+  env: Env,
+  modelId: string,
+  operationName: string,
+): Promise<{ done?: boolean; response?: any; error?: any; name?: string }> {
+  const url = vertexModelUrl(env, modelId, "fetchPredictOperation");
+  const token = await getVertexAccessToken(env);
+  const resp = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ operationName }),
+  });
+  if (!resp.ok) {
+    const text = await resp.text().catch(() => "<unreadable>");
+    throw new Error(`Veo fetchPredictOperation failed (${resp.status}): ${text.slice(0, 500)}`);
+  }
+  return resp.json() as Promise<{ done?: boolean; response?: any; error?: any; name?: string }>;
+}
+
+export interface VeoVideoBytes {
+  bytes: Uint8Array;
+  mediaType: string;
+}
+
+/**
+ * Poll a previously-submitted Veo operation until done. Returns the inline
+ * video bytes. Re-entrant: calling again with the same `operationName`
+ * keeps polling the same job — Vertex tracks state independently of us, so
+ * a DO reset mid-poll causes a re-poll, not a re-submit.
+ */
+export async function pollVeoOperation(
+  env: Env,
+  modelId: string,
+  operationName: string,
+  opts: { intervalMs?: number; maxWaitMs?: number } = {},
+): Promise<VeoVideoBytes> {
+  const intervalMs = opts.intervalMs ?? 5000;
+  const maxWaitMs = opts.maxWaitMs ?? 9 * 60 * 1000;
+  const start = Date.now();
+  // eslint-disable-next-line no-constant-condition
+  while (true) {
+    const op = await fetchVeoOperationOnce(env, modelId, operationName);
+    if (op.done) {
+      if (op.error) {
+        throw new Error(`Veo operation errored: ${JSON.stringify(op.error).slice(0, 500)}`);
+      }
+      // Vertex uses different field names across API versions / models —
+      // accept either generated_samples[] or videos[].
+      const samples = op.response?.generated_samples ?? op.response?.videos;
+      const video = samples?.[0]?.video ?? samples?.[0];
+      const b64 = video?.bytesBase64Encoded;
+      if (!b64) {
+        const uri = video?.uri ?? video?.gcsUri;
+        if (uri) {
+          throw new Error(`Veo returned GCS URI but inline bytes not present: ${uri}`);
+        }
+        throw new Error(`Veo done but no video in response: ${JSON.stringify(op.response).slice(0, 500)}`);
+      }
+      const bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+      return { bytes, mediaType: video?.mimeType ?? "video/mp4" };
+    }
+    if (Date.now() - start > maxWaitMs) {
+      throw new Error(`Veo operation poll timeout after ${maxWaitMs}ms: ${operationName}`);
+    }
+    await new Promise((r) => setTimeout(r, intervalMs));
+  }
 }
