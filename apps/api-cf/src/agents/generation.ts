@@ -16,6 +16,7 @@ import { GenerationContext } from "../generation/context";
 import type { GenerationParams } from "../generation/params";
 import { resolveProvider } from "../generation/registry";
 import { getPlugins } from "../plugins/registry";
+import { recordGenerationEvent } from "../observability/events";
 
 // Re-export so existing importers (ProjectRoom, TaskPolling, tests) keep working.
 export type { GenerationParams } from "../generation/params";
@@ -24,18 +25,28 @@ export class GenerationWorkflow extends WorkflowEntrypoint<Env, GenerationParams
   async run(event: WorkflowEvent<GenerationParams>, step: WorkflowStep): Promise<void> {
     const params = event.payload;
     const tag = { taskId: params.taskId, nodeId: params.nodeId, type: params.type };
+    const startedAt = Date.now();
     log.info("Workflow started", tag);
 
     const ctx = new GenerationContext(params, step, this.env);
     const provider = resolveProvider(params);
     const plugins = getPlugins();
     const hookCtx = { params, env: this.env };
+    const eventBase = {
+      type: params.type,
+      provider: provider.name,
+      taskId: params.taskId,
+      nodeId: params.nodeId,
+      projectId: (params as any).projectId,
+      modelId: (params as any).modelId,
+    };
 
     try {
       await plugins.generation?.beforeGenerate?.(hookCtx);
       await provider.execute(ctx);
       await plugins.generation?.afterGenerate?.(hookCtx, {});
       log.info("Workflow completed", { ...tag, provider: provider.name });
+      recordGenerationEvent({ ...eventBase, outcome: "success", durationMs: Date.now() - startedAt });
     } catch (err) {
       await plugins.generation?.onFailure?.(hookCtx, err);
       const message = err instanceof Error ? err.message : String(err);
@@ -57,6 +68,12 @@ export class GenerationWorkflow extends WorkflowEntrypoint<Env, GenerationParams
               responseBody: anyErr.cause?.responseBody ?? anyErr.cause?.body,
             }
           : undefined,
+      });
+      recordGenerationEvent({
+        ...eventBase,
+        outcome: "failure",
+        durationMs: Date.now() - startedAt,
+        errorMessage: message,
       });
       await ctx.notifyFailed(err);
       // Rethrow so the Workflow itself is recorded as errored — retention,
