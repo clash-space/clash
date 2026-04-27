@@ -1,0 +1,8 @@
+# Override the repo-root .gitignore which excludes `dist/`. Without this
+# file, `npm publish` falls back to .gitignore + the `files` field gets
+# silently ignored, so the published tarball lands without dist/cli.js.
+# Empty-ish .npmignore tells npm to use the `files` field instead.
+node_modules
+src
+tsconfig.json
+tsup.config.ts
