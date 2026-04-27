@@ -1,7 +1,7 @@
 
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { CaretLeft, CaretRight, Plus, ClockCounterClockwise, Trash } from '@phosphor-icons/react';
+import { CaretLeft, CaretRight, Plus, ClockCounterClockwise, Trash, Plug } from '@phosphor-icons/react';
 import { useNavigate } from 'react-router';
 import { Command } from '@clash/web-ui/lib/clientActions';
 import { UserMessage } from './copilot/UserMessage';
@@ -13,6 +13,8 @@ import { ChatInput } from './copilot/ChatInput';
 import { TodoList, TodoItem } from './copilot/TodoList';
 import { ThinkingIndicator } from './copilot/ThinkingIndicator';
 import { MessageErrorBoundary } from './copilot/MessageErrorBoundary';
+import { ByoAgentDialog } from './copilot/ByoAgentDialog';
+import { useAgentByoBridge } from '@clash/web-ui/hooks/useAgentByoBridge';
 import type { Node as RFNode, Edge as RFEdge, Connection as RFConnection } from '@xyflow/react';
 import ReactMarkdown from 'react-markdown';
 import { useSignedUrl } from '@clash/web-ui/lib/hooks/useSignedUrl';
@@ -143,6 +145,13 @@ export default function ChatbotCopilot({
     const [todoItems, setTodoItems] = useState<TodoItem[]>([]);
     const [suggestions, setSuggestions] = useState<Array<{ label: string; message: string }>>([]);
 
+    // BYO local-agent mode. Coexists with cloud chat — switching mode swaps
+    // the rendered transport but doesn't touch cloud state. v1: dialog opens
+    // pairing flow; once connected, chat panel renders BYO messages instead.
+    const [chatMode, setChatMode] = useState<'cloud' | 'byo'>('cloud');
+    const [byoDialogOpen, setByoDialogOpen] = useState(false);
+    const byo = useAgentByoBridge();
+
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const scrollContainerRef = useRef<HTMLDivElement>(null);
     const [shouldStickToBottom, setShouldStickToBottom] = useState(true);
@@ -173,7 +182,17 @@ export default function ChatbotCopilot({
         }, []),
     });
 
-    const isProcessing = status === 'submitted' || status === 'streaming';
+    const cloudIsProcessing = status === 'submitted' || status === 'streaming';
+    // Auto-switch into BYO mode the first time a bridge connects, and back
+    // to cloud when it drops. Explicit shutdown via the header button also
+    // resets here. Keeps the modes from drifting out of sync silently.
+    useEffect(() => {
+        if (chatMode === 'cloud' && byo.status === 'connected') setChatMode('byo');
+        if (chatMode === 'byo' && byo.status === 'disconnected') setChatMode('cloud');
+    }, [byo.status, chatMode]);
+
+    const byoIsProcessing = byo.status === 'sending' || byo.status === 'streaming';
+    const isProcessing = chatMode === 'byo' ? byoIsProcessing : cloudIsProcessing;
 
     // Mount-time send of the pending first message. Parent gives us a fresh
     // `key={threadId}` whenever the session changes, so this component remounts
@@ -220,6 +239,10 @@ export default function ChatbotCopilot({
     }, [onDeleteSession]);
 
     const handleStop = async () => {
+        if (chatMode === 'byo') {
+            byo.cancel();
+            return;
+        }
         await stop();
     };
 
@@ -343,6 +366,13 @@ export default function ChatbotCopilot({
         setSessionError(null);
         clearConnectionError();
         setShouldStickToBottom(true);
+
+        // BYO mode: skip session/upload plumbing — local agents don't have
+        // a clash thread or asset upload pipeline. Just route the prompt.
+        if (chatMode === 'byo') {
+            byo.sendMessage(value);
+            return;
+        }
 
         // Create canvas nodes for uploaded attachments
         if (attachments.length > 0 && onUploadFiles) {
@@ -473,6 +503,29 @@ export default function ChatbotCopilot({
                                     <div className="absolute top-1.5 right-1.5 w-2 h-2 bg-red-500 rounded-full border border-white" />
                                 )}
                             </motion.button>
+                            {/* BYO local-agent toggle.
+                                - In cloud mode: opens pairing dialog (single click → npx command).
+                                - In byo mode: clicking shuts down the bridge and switches back to cloud. */}
+                            <motion.button
+                                onClick={() => {
+                                    if (chatMode === 'byo') {
+                                        byo.shutdown();
+                                        setChatMode('cloud');
+                                    } else {
+                                        setByoDialogOpen(true);
+                                    }
+                                }}
+                                className={`p-2 rounded-full transition-colors ${
+                                    chatMode === 'byo'
+                                        ? 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200'
+                                        : 'hover:bg-warm-muted text-slate-700'
+                                }`}
+                                whileHover={{ scale: 1.1 }}
+                                whileTap={{ scale: 0.9 }}
+                                title={chatMode === 'byo' ? `Local agent connected — click to disconnect` : 'Connect local agent'}
+                            >
+                                <Plug className="w-5 h-5" weight="bold" />
+                            </motion.button>
                         </div>
 
                         {/* History Dropdown */}
@@ -543,6 +596,15 @@ export default function ChatbotCopilot({
                                 className="absolute inset-0 top-16 overflow-y-auto px-6 pt-4 pb-32"
                             >
                                 <div className="space-y-6">
+                                    {/* BYO mode renders its own simpler message list — local agent
+                                        events don't fit the cloud UIMessage shape (no Loro tools,
+                                        different streaming model). When in BYO, skip the rest of
+                                        the cloud render block below. */}
+                                    {chatMode === 'byo' && (
+                                        <ByoMessageList messages={byo.messages} />
+                                    )}
+                                    {chatMode === 'cloud' && (
+                                    <>
                                     {/* Render messages from useAgentChat */}
                                     {messages.map((msg: any) => (
                                         <motion.div
@@ -660,6 +722,8 @@ export default function ChatbotCopilot({
                                             </MessageErrorBoundary>
                                         </motion.div>
                                     ))}
+                                    </>
+                                    )}
 
                                     {isProcessing && (
                                         <ThinkingIndicator message={status === 'submitted' ? 'Thinking' : 'Streaming'} />
@@ -746,6 +810,81 @@ export default function ChatbotCopilot({
                     )}
                 </AnimatePresence>
             </motion.div>
+
+            {/* BYO pairing dialog. Lives at the panel level rather than inside
+                the chat scroll area so it overlays correctly. */}
+            <ByoAgentDialog
+                open={byoDialogOpen}
+                status={byo.status}
+                pairTokenDisplay={byo.pairTokenDisplay}
+                errorMessage={byo.errorMessage}
+                onStartPairing={byo.startPairing}
+                onClose={() => setByoDialogOpen(false)}
+            />
+        </>
+    );
+}
+
+/**
+ * Stripped-down message list for BYO mode. The cloud render path is heavy
+ * (tool cards, agent personas, thinking process, mentions, …) and assumes
+ * UIMessage shape from useAgentChat. BYO messages from useAgentByoBridge
+ * have a much simpler shape and don't have analogues for most of that
+ * UI — render them simply and add structure later as needed.
+ */
+function ByoMessageList({
+    messages,
+}: {
+    messages: import('@clash/web-ui/hooks/useAgentByoBridge').ByoMessage[];
+}) {
+    if (messages.length === 0) {
+        return (
+            <div className="text-center text-sm text-stone-400 py-12">
+                Local agent connected. Send a message to start.
+            </div>
+        );
+    }
+    return (
+        <>
+            {messages.map((m) => (
+                <motion.div
+                    key={m.id}
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ type: 'spring', stiffness: 500, damping: 30 }}
+                    className={m.role === 'user' ? 'flex justify-end' : ''}
+                >
+                    {m.role === 'user' ? (
+                        <div className="max-w-[82%] px-4 py-3 rounded-matrix shadow-sm border bg-gradient-to-br from-red-50/90 to-pink-50/90 border-red-100/50 text-gray-900">
+                            {m.parts.map((p, i) => (p.type === 'text' ? <p key={i} className="text-sm leading-relaxed mb-1 last:mb-0">{p.text}</p> : null))}
+                        </div>
+                    ) : (
+                        <div className="space-y-2">
+                            {m.parts.map((p, i) => {
+                                if (p.type === 'text') {
+                                    return <div key={i} className="text-base text-slate-800 leading-relaxed px-1 whitespace-pre-wrap">{p.text}</div>;
+                                }
+                                if (p.type === 'tool_call') {
+                                    return (
+                                        <div key={i} className="text-xs font-mono bg-warm-muted border border-warm-border rounded px-2.5 py-1.5 text-slate-600">
+                                            <span className="font-semibold">{p.name}</span>
+                                            {p.input !== undefined ? <span className="opacity-70"> {JSON.stringify(p.input)}</span> : null}
+                                        </div>
+                                    );
+                                }
+                                // raw_event fallback — show JSON in collapsed form so we can debug
+                                // unrecognized ACP events without losing them.
+                                return (
+                                    <details key={i} className="text-[11px] font-mono text-stone-400">
+                                        <summary className="cursor-pointer">event</summary>
+                                        <pre className="mt-1 bg-warm-muted/60 p-2 rounded overflow-x-auto">{JSON.stringify(p.event, null, 2)}</pre>
+                                    </details>
+                                );
+                            })}
+                        </div>
+                    )}
+                </motion.div>
+            ))}
         </>
     );
 }

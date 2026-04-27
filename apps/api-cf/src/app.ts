@@ -23,6 +23,7 @@ import { projectsD1Routes } from "./routes/projects-d1";
 import { internalProjectsContextRoutes } from "./routes/internal-projects-context";
 import { settingsD1Routes } from "./routes/settings-d1";
 import { marketplaceRoutes } from "./routes/marketplace";
+import { byoBridgeRoutes } from "./routes/byo-bridge";
 import { setPlugins, getPlugins } from "./plugins/registry";
 import type { Plugin } from "./plugins/types";
 import { getUserIdFromApiToken, getUserIdFromRequest } from "./services/session";
@@ -92,6 +93,37 @@ export function createApp(opts: CreateAppOptions = {}): Hono<{ Bindings: Env }> 
     } catch { /* observability only — never block the connection */ }
     return c.env.SUPERVISOR.get(id).fetch(req);
   });
+
+  // ─── BYO local agent bridge ────────────────────────────────
+  // Auto-fill x-user-id from Better Auth so the route + DO can use it.
+  // (CLI side is exempt: its credential is the pair token, not a session cookie.)
+  app.use("/agents/byo-bridge/pair", async (c, next) => {
+    if (!c.req.header("x-user-id")) {
+      const userId =
+        (await getUserIdFromApiToken(c.req.raw, c.env as any)) ??
+        (await getUserIdFromRequest(c.req.raw, c.env as any, c.req.raw.cf as any));
+      if (userId) {
+        const req = new Request(c.req.raw);
+        req.headers.set("x-user-id", userId);
+        c.req.raw = req;
+      }
+    }
+    await next();
+  });
+  app.use("/agents/byo-bridge/browser", async (c, next) => {
+    if (!c.req.header("x-user-id")) {
+      const userId =
+        (await getUserIdFromApiToken(c.req.raw, c.env as any)) ??
+        (await getUserIdFromRequest(c.req.raw, c.env as any, c.req.raw.cf as any));
+      if (userId) {
+        const req = new Request(c.req.raw);
+        req.headers.set("x-user-id", userId);
+        c.req.raw = req;
+      }
+    }
+    await next();
+  });
+  app.route("/agents/byo-bridge", byoBridgeRoutes);
 
   // ─── Asset routes (ported from loro-sync-server) ────────────
   app.route("/assets", assetRoutes);

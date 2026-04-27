@@ -37,6 +37,10 @@ max_instances = 3
 name = "RENDER_CONTAINER"
 class_name = "RenderContainer"
 
+[[durable_objects.bindings]]
+name = "BYO_BRIDGE"
+class_name = "ByoBridgeRoom"
+
 [[migrations]]
 tag = "v1"
 new_sqlite_classes = ["SupervisorAgent"]
@@ -60,6 +64,10 @@ deleted_classes = ["GenerationAgent"]
 [[migrations]]
 tag = "v6"
 new_sqlite_classes = ["RenderContainer"]
+
+[[migrations]]
+tag = "v7"
+new_sqlite_classes = ["ByoBridgeRoom"]
 
 # Workers AI
 [ai]

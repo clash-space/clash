@@ -7,4 +7,5 @@ packages:
   - 'packages/action-sdk'
   - 'packages/web-ui'
   - 'packages/cli'
+  - 'packages/clash-bridge'
   - 'packages/claude-code-plugin'
