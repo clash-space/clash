@@ -60,6 +60,27 @@ export class SupervisorAgent extends AIChatAgent<Env> {
     return `[sup proj=${this.projectId.slice(-6)} thr=${this.threadId.slice(-6)} usr=${this.userId.slice(-6)}]`;
   }
 
+  /**
+   * Re-derive identity from `this.name` (hydrated from storage by the agents
+   * runtime even after hibernation) when in-memory state was lost. Without
+   * this, a hibernated DO that wakes on an incoming chat message has empty
+   * projectId/threadId — and `connectToRoom("")` then routes to a wrong /
+   * empty ProjectRoom, breaking every canvas tool. `onConnect` only runs on
+   * the original WS upgrade, so we can't rely on it for identity recovery.
+   */
+  private ensureIdentity(): void {
+    if (this.projectId) return;
+    const name = (this as unknown as { name?: string }).name;
+    if (!name) return;
+    const colonIdx = name.indexOf(":");
+    if (colonIdx > 0) {
+      this.projectId = name.substring(0, colonIdx);
+      this.threadId = name.substring(colonIdx + 1);
+    } else {
+      this.projectId = name;
+    }
+  }
+
   // ─── Connection Lifecycle ──────────────────────────────────
 
   async onConnect(connection: Connection, ctx: { request: Request }): Promise<void> {
@@ -266,6 +287,10 @@ export class SupervisorAgent extends AIChatAgent<Env> {
     onFinish?: Parameters<AIChatAgent<Env>["onChatMessage"]>[0],
     options?: Parameters<AIChatAgent<Env>["onChatMessage"]>[1],
   ) {
+    // Recover identity if hibernation wiped it. Must run before tag() / room
+    // connect / anything else that reads this.projectId.
+    this.ensureIdentity();
+
     const turn = ++this.turnSeq;
     const turnStart = Date.now();
     const reqId = (options as any)?.requestId?.toString().slice(-6) ?? "?";
