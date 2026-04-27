@@ -37,6 +37,14 @@ const token = env.NPM_TOKEN ?? env.NODE_AUTH_TOKEN;
 const tarball = await readFile(tarballPath);
 const pkg = JSON.parse(await readFile("./package.json", "utf-8"));
 
+// `private: true` is a CLI-side guard to stop `npm publish` from running.
+// The registry doesn't enforce it, but its presence in version metadata
+// would be confusing. Strip before building the envelope. We rely on
+// `private: true` in package.json to make `pnpm -r publish` (run by the
+// changesets release workflow) skip this package — only this script,
+// invoked by the manual publish-beta workflow, is allowed to publish it.
+delete pkg.private;
+
 const { name, version } = pkg;
 if (!name || !version) fail("package.json missing name or version");
 
