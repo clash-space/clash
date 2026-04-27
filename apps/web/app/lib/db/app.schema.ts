@@ -160,6 +160,103 @@ export const assetRefs = sqliteTable(
 )
 
 /**
+ * Runtime — a user's machine running the clash daemon.
+ * Keyed by (owner, machine_id) — machine_id is a daemon-computed stable
+ * fingerprint so reinstalling on the same box reuses the row instead of
+ * accumulating zombies.
+ *
+ * `agents_json` is the manifest the daemon last reported (PATH-detected
+ * ACP agents). `status` is set to 'online' when the WS attaches and
+ * back to 'offline' on close or via a sweeper if heartbeat goes stale.
+ */
+export const runtime = sqliteTable(
+    "runtime",
+    {
+        id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+        ownerUserId: text("owner_user_id").notNull(),
+        machineId: text("machine_id").notNull(),
+        hostname: text("hostname").notNull(),
+        os: text("os").notNull(),
+        agentsJson: text("agents_json").notNull().default("[]"),
+        version: text("version").notNull(),
+        status: text("status").notNull().default("offline"),
+        lastHeartbeat: integer("last_heartbeat", { mode: "timestamp" }),
+        createdAt: integer("created_at", { mode: "timestamp" }).default(sql`(strftime('%s', 'now'))`),
+    },
+    (table) => ({
+        runtimeOwnerIdx: index("runtime_owner_idx").on(table.ownerUserId),
+        runtimeUniqueIdx: index("runtime_unique_idx").on(table.ownerUserId, table.machineId),
+    })
+)
+
+/**
+ * Runtime Token — long-lived bearer credential the daemon uses to attach.
+ * Token format: `sk_machine_<60-hex>`. Only sha256(token) is stored.
+ *
+ * `created_by_user_id` separated from runtime.owner_user_id so v2 (org
+ * admin issues tokens for shared runtimes) can land without migration.
+ */
+export const runtimeToken = sqliteTable(
+    "runtime_token",
+    {
+        id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+        runtimeId: text("runtime_id").notNull(),
+        tokenHash: text("token_hash").notNull(),
+        createdByUserId: text("created_by_user_id").notNull(),
+        createdAt: integer("created_at", { mode: "timestamp" }).default(sql`(strftime('%s', 'now'))`),
+        lastUsedAt: integer("last_used_at", { mode: "timestamp" }),
+        revokedAt: integer("revoked_at", { mode: "timestamp" }),
+    },
+    (table) => ({
+        runtimeTokenRuntimeIdx: index("runtime_token_runtime_idx").on(table.runtimeId),
+        runtimeTokenHashIdx: index("runtime_token_hash_idx").on(table.tokenHash),
+    })
+)
+
+/**
+ * Connect Daemon Code — short-lived OAuth-style code from `clash setup`.
+ * Browser POSTs /connect-daemon (auth'd via session cookie), gets a code,
+ * redirects to localhost callback. CLI exchanges code → runtime token.
+ * 5-min TTL, single-use.
+ */
+export const connectDaemonCode = sqliteTable(
+    "connect_daemon_code",
+    {
+        code: text("code").primaryKey(),
+        userId: text("user_id").notNull(),
+        state: text("state").notNull(),
+        expiresAt: integer("expires_at", { mode: "timestamp" }).notNull(),
+        usedAt: integer("used_at", { mode: "timestamp" }),
+    },
+)
+
+/**
+ * Runtime Session — index of agent sessions on user runtimes.
+ * Powers resume / history. The actual transcript lives on the user's disk
+ * (e.g. ~/.claude/projects/<hash>/<acp_session_id>.jsonl); we just store
+ * enough metadata to tell the daemon "load session X next time".
+ */
+export const runtimeSession = sqliteTable(
+    "runtime_session",
+    {
+        id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+        userId: text("user_id").notNull(),
+        runtimeId: text("runtime_id").notNull(),
+        agentId: text("agent_id").notNull(),
+        acpSessionId: text("acp_session_id"),
+        cwd: text("cwd").notNull(),
+        title: text("title"),
+        status: text("status").notNull().default("active"),
+        createdAt: integer("created_at", { mode: "timestamp" }).default(sql`(strftime('%s', 'now'))`),
+        lastActiveAt: integer("last_active_at", { mode: "timestamp" }).default(sql`(strftime('%s', 'now'))`),
+    },
+    (table) => ({
+        runtimeSessionUserIdx: index("runtime_session_user_idx").on(table.userId, table.lastActiveAt),
+        runtimeSessionRuntimeIdx: index("runtime_session_runtime_idx").on(table.runtimeId),
+    })
+)
+
+/**
  * Installed Skills — globally installed AI agent skills per user.
  * Skills are SKILL.md instruction sets for Claude Code.
  */
