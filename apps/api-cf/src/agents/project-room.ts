@@ -625,8 +625,22 @@ export class ProjectRoom extends DurableObject<Env> {
       await this.saveDocumentSnapshot();
     }
 
-    // Run task polling
+    // Run task polling. Snapshot the version so we can detect whether
+    // anything actually mutated the doc (orphan recovery / completed-task
+    // writeback both touch the doc).
+    const versionBeforePoll = this.doc.version().toString();
     await this.taskPoll();
+    const versionAfterPoll = this.doc.version().toString();
+
+    // If taskPoll changed the doc, persist immediately. Without this the
+    // hibernation API drops the in-memory mutation between alarms — next
+    // wake reloads the old snapshot, sees pendingTask still set, re-runs
+    // recovery, broadcasts another "FAILED" update… every 60s, forever.
+    // saveDocumentSnapshot is idempotent + serialised, so calling it here
+    // is safe even if the 5-min branch above already ran.
+    if (versionAfterPoll !== versionBeforePoll) {
+      await this.saveDocumentSnapshot();
+    }
 
     // Re-schedule next alarm only if clients are connected
     if (this.ctx.getWebSockets().length > 0) {
