@@ -67,17 +67,42 @@ export class SupervisorAgent extends AIChatAgent<Env> {
    * projectId/threadId — and `connectToRoom("")` then routes to a wrong /
    * empty ProjectRoom, breaking every canvas tool. `onConnect` only runs on
    * the original WS upgrade, so we can't rely on it for identity recovery.
+   *
+   * Also rehydrates workspaceGroupId / userId from ctx.storage. These were
+   * previously instance-only fields, which meant after hibernation the
+   * sub-agent delegation path lost its workspace scoping and every log
+   * line read `usr=anon`.
    */
-  private ensureIdentity(): void {
-    if (this.projectId) return;
-    const name = (this as unknown as { name?: string }).name;
-    if (!name) return;
-    const colonIdx = name.indexOf(":");
-    if (colonIdx > 0) {
-      this.projectId = name.substring(0, colonIdx);
-      this.threadId = name.substring(colonIdx + 1);
-    } else {
-      this.projectId = name;
+  private async ensureIdentity(): Promise<void> {
+    if (!this.projectId) {
+      const name = (this as unknown as { name?: string }).name;
+      if (name) {
+        const colonIdx = name.indexOf(":");
+        if (colonIdx > 0) {
+          this.projectId = name.substring(0, colonIdx);
+          this.threadId = name.substring(colonIdx + 1);
+        } else {
+          this.projectId = name;
+        }
+      }
+    }
+    if (this.userId === "anon") {
+      const u = await this.ctx.storage.get<string>("sup:userId");
+      if (u) this.userId = u;
+    }
+    if (!this.workspaceGroupId) {
+      const g = await this.ctx.storage.get<string>("sup:workspaceGroupId");
+      if (g) this.workspaceGroupId = g;
+    }
+  }
+
+  /** Persist a single identity field to ctx.storage so it survives hibernation. */
+  private async persistField(key: "sup:userId" | "sup:workspaceGroupId", value: string | undefined): Promise<void> {
+    try {
+      if (value) await this.ctx.storage.put(key, value);
+      else await this.ctx.storage.delete(key);
+    } catch (e) {
+      log.warn(`${this.tag()} persistField ${key} failed (non-fatal):`, e);
     }
   }
 
@@ -93,7 +118,11 @@ export class SupervisorAgent extends AIChatAgent<Env> {
     }
     this.projectId = projectId;
     const u = ctx.request.headers.get("x-user-id");
-    if (u) this.userId = u;
+    if (u && u !== this.userId) {
+      this.userId = u;
+      // Fire-and-forget: persist so post-hibernation logs still know which user.
+      void this.persistField("sup:userId", u);
+    }
     log.info(`${this.tag()} onConnect (clients=${[...this.getConnections()].length + 1})`);
   }
 
@@ -102,24 +131,29 @@ export class SupervisorAgent extends AIChatAgent<Env> {
    * to finish, then disconnect from ProjectRoom so the DO can hibernate.
    */
   async onClose(_connection: Connection): Promise<void> {
-    const remaining = [...this.getConnections()].length;
-    log.info(`${this.tag()} onClose remaining=${remaining}`);
+    // CF runtime swallows sync throws here (outcome=exception, exceptions:[]
+    // empty in tail). Wrap top-level so the actual stack lands in logs and
+    // we stop guessing.
+    try {
+      const remaining = [...this.getConnections()].length;
+      log.info(`${this.tag()} onClose remaining=${remaining}`);
 
-    if (remaining > 0) return;
+      if (remaining > 0) return;
 
-    // No more browser clients — wait for active work to finish
-    log.info(`${this.tag()} waitUntilStable…`);
-    const t0 = Date.now();
-    await this.waitUntilStable({ timeout: 300_000 }); // 5 min max
-    log.info(`${this.tag()} waitUntilStable done in ${Date.now() - t0}ms`);
+      log.info(`${this.tag()} waitUntilStable…`);
+      const t0 = Date.now();
+      await this.waitUntilStable({ timeout: 300_000 }); // 5 min max
+      log.info(`${this.tag()} waitUntilStable done in ${Date.now() - t0}ms`);
 
-    // Disconnect from ProjectRoom → presence disappears → DO can hibernate
-    if (this.roomWs) {
-      log.info(`${this.tag()} disconnecting from ProjectRoom`);
-      this.roomWs.close();
-      this.roomWs = null;
-      this.roomInitialized = false;
-      this.roomConnection = null;
+      if (this.roomWs) {
+        log.info(`${this.tag()} disconnecting from ProjectRoom`);
+        this.roomWs.close();
+        this.roomWs = null;
+        this.roomInitialized = false;
+        this.roomConnection = null;
+      }
+    } catch (e) {
+      log.error(`${this.tag()} onClose THREW (was previously invisible as outcome=exception):`, e);
     }
   }
 
@@ -254,7 +288,10 @@ export class SupervisorAgent extends AIChatAgent<Env> {
         }
 
         if (parsed.type === "context" && parsed.workspaceGroupId) {
-          this.workspaceGroupId = parsed.workspaceGroupId;
+          if (parsed.workspaceGroupId !== this.workspaceGroupId) {
+            this.workspaceGroupId = parsed.workspaceGroupId;
+            void this.persistField("sup:workspaceGroupId", parsed.workspaceGroupId);
+          }
           return;
         }
 
@@ -264,7 +301,10 @@ export class SupervisorAgent extends AIChatAgent<Env> {
 
         // Legacy "chat" type — extract workspaceGroupId if present
         if (parsed.type === "chat" && parsed.workspaceGroupId) {
-          this.workspaceGroupId = parsed.workspaceGroupId;
+          if (parsed.workspaceGroupId !== this.workspaceGroupId) {
+            this.workspaceGroupId = parsed.workspaceGroupId;
+            void this.persistField("sup:workspaceGroupId", parsed.workspaceGroupId);
+          }
         }
       } catch {
         // Not JSON — fall through to AIChatAgent
@@ -289,7 +329,7 @@ export class SupervisorAgent extends AIChatAgent<Env> {
   ) {
     // Recover identity if hibernation wiped it. Must run before tag() / room
     // connect / anything else that reads this.projectId.
-    this.ensureIdentity();
+    await this.ensureIdentity();
 
     const turn = ++this.turnSeq;
     const turnStart = Date.now();

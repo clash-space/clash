@@ -436,8 +436,20 @@ export class ProjectRoom extends DurableObject<Env> {
   }
 
   async webSocketClose(ws: WebSocket, code: number, reason: string): Promise<void> {
-    this.clients.delete(ws);
-    this.broadcastPresence();
+    // Wrap top-level: previously a sync throw here surfaced as
+    // outcome=exception with empty exceptions[] in wrangler tail (CF runtime
+    // swallows the details), so we couldn't tell what was failing. Catch +
+    // log so the next occurrence names the failing line.
+    try {
+      this.clients.delete(ws);
+    } catch (e) {
+      log.error(`[room proj=${this.projectId.slice(-6)}] webSocketClose: clients.delete threw:`, e);
+    }
+    try {
+      this.broadcastPresence();
+    } catch (e) {
+      log.error(`[room proj=${this.projectId.slice(-6)}] webSocketClose: broadcastPresence threw:`, e);
+    }
     try {
       ws.close(code, reason);
     } catch {
@@ -447,8 +459,16 @@ export class ProjectRoom extends DurableObject<Env> {
 
   async webSocketError(ws: WebSocket, error: unknown): Promise<void> {
     log.error("WebSocket error:", error);
-    this.clients.delete(ws);
-    this.broadcastPresence();
+    try {
+      this.clients.delete(ws);
+    } catch (e) {
+      log.error(`[room proj=${this.projectId.slice(-6)}] webSocketError: clients.delete threw:`, e);
+    }
+    try {
+      this.broadcastPresence();
+    } catch (e) {
+      log.error(`[room proj=${this.projectId.slice(-6)}] webSocketError: broadcastPresence threw:`, e);
+    }
     try {
       ws.close(1011, "WebSocket error");
     } catch {
