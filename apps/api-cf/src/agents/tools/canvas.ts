@@ -28,6 +28,14 @@ export function createCanvasTools(
   getWorkspaceGroupId: () => string | undefined,
   env?: Env,
   projectId?: string,
+  /**
+   * Optional: re-establish the supervisor's WS to ProjectRoom if it's
+   * dropped. Only wait_for_generation needs this — long polling against the
+   * supervisor's local doc replica goes stale when the room WS dies, since
+   * incremental updates from ProjectRoom (= "the workflow finished") never
+   * arrive. Calling ensureRoomFresh before each poll forces re-snapshot.
+   */
+  ensureRoomFresh?: () => Promise<void>,
 ) {
   const canvas = new Canvas(doc, broadcast);
 
@@ -264,6 +272,19 @@ export function createCanvasTools(
         const deadline = Date.now() + timeout_seconds * 1000;
 
         while (Date.now() < deadline) {
+          // Re-sync our local doc with ProjectRoom before reading status.
+          // If the room WS dropped while we were polling (common when
+          // ProjectRoom hibernates/crashes), the workflow's "completed" /
+          // "failed" update is broadcast to live browser clients but not
+          // to a disconnected supervisor — and our local doc would
+          // forever say pending. ensureRoomFresh is best-effort; failures
+          // are logged but don't break the poll loop.
+          if (ensureRoomFresh) {
+            try { await ensureRoomFresh(); } catch (e) {
+              log.warn("wait_for_generation ensureRoomFresh failed:", e);
+            }
+          }
+
           const result = canvas.getNodeStatus(node_id);
 
           if (result.status === Status.NodeNotFound) return `Node not found: ${node_id}`;

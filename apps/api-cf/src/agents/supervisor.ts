@@ -484,7 +484,22 @@ export class SupervisorAgent extends AIChatAgent<Env> {
     const generateId = () => crypto.randomUUID().slice(0, 8);
     const getWorkspaceGroupId = () => this.workspaceGroupId;
 
-    const canvasTools = createCanvasTools(this.doc, this.broadcastToRoom, sendMsg, generateId, getWorkspaceGroupId, this.env, this.projectId);
+    // ensureRoomFresh: re-establish the room WS if it died mid-turn so a
+    // long-polling tool (wait_for_generation) doesn't read a stale local doc.
+    const ensureRoomFresh = async (): Promise<void> => {
+      if (this.roomWs?.readyState === WebSocket.OPEN && this.roomInitialized) return;
+      if (!this.roomConnection) {
+        this.roomConnection = this.connectToRoom(this.projectId);
+      }
+      try {
+        await this.roomConnection;
+      } catch {
+        this.roomConnection = null;
+        this.roomInitialized = false;
+        // Caller logs and continues — staleness self-heals on next poll.
+      }
+    };
+    const canvasTools = createCanvasTools(this.doc, this.broadcastToRoom, sendMsg, generateId, getWorkspaceGroupId, this.env, this.projectId, ensureRoomFresh);
     const workflowTools = createWorkflowTools(this.doc, this.broadcastToRoom, generateId);
     const timelineTools = createTimelineTools(sendMsg);
     const allTools = { ...canvasTools, ...workflowTools, ...timelineTools };
