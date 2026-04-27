@@ -19,6 +19,12 @@ export async function loadSnapshot(
 
 /**
  * Save Loro snapshot to DO storage.
+ *
+ * CRITICAL: Loro returns a Uint8Array that is a *view* into a larger backing
+ * buffer. Writing `snapshot.buffer` directly persists trailing junk past the
+ * actual snapshot bytes — and on next load `new Uint8Array(arrayBuffer)` reads
+ * the full corrupt buffer. Symptom: `RangeError: Invalid array buffer length`
+ * inside `doc.export()` after the next restore. Always slice to a fresh buffer.
  */
 export async function saveSnapshot(
   storage: DurableObjectStorage,
@@ -26,8 +32,12 @@ export async function saveSnapshot(
   snapshot: Uint8Array,
   version: string,
 ): Promise<void> {
+  const exact =
+    snapshot.byteOffset === 0 && snapshot.byteLength === snapshot.buffer.byteLength
+      ? snapshot.buffer
+      : snapshot.slice().buffer;
   await storage.put({
-    [SNAPSHOT_KEY]: snapshot.buffer,
+    [SNAPSHOT_KEY]: exact,
     [VERSION_KEY]: version,
   });
 }

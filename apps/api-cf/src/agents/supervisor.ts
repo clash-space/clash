@@ -44,6 +44,21 @@ export class SupervisorAgent extends AIChatAgent<Env> {
   private workspaceGroupId?: string;
   /** Cached model instance + provider type — avoids recreating per message. */
   private _model: ReturnType<typeof createModel> | null = null;
+  /** User ID from gateway — populated on connect; included in every log line for grep. */
+  private userId = "anon";
+  /** Monotonic per-DO chat-turn counter; threads through logs so we can spot the 2nd-message hang. */
+  private turnSeq = 0;
+
+  // ─── Hang-recovery knobs ──────────────────────────────────
+  // Stream silence past this point is almost certainly a wedged upstream LLM.
+  // Hard-abort so the client gets a real error instead of "Thinking…" forever.
+  private static readonly FIRST_CHUNK_TIMEOUT_MS = 60_000;
+  private static readonly TOTAL_TURN_TIMEOUT_MS = 5 * 60_000;
+
+  /** Tag every log line so `wrangler tail` can be filtered per agent / user. */
+  private tag(): string {
+    return `[sup proj=${this.projectId.slice(-6)} thr=${this.threadId.slice(-6)} usr=${this.userId.slice(-6)}]`;
+  }
 
   // ─── Connection Lifecycle ──────────────────────────────────
 
@@ -56,6 +71,9 @@ export class SupervisorAgent extends AIChatAgent<Env> {
       return;
     }
     this.projectId = projectId;
+    const u = ctx.request.headers.get("x-user-id");
+    if (u) this.userId = u;
+    log.info(`${this.tag()} onConnect (clients=${[...this.getConnections()].length + 1})`);
   }
 
   /**
@@ -64,17 +82,19 @@ export class SupervisorAgent extends AIChatAgent<Env> {
    */
   async onClose(_connection: Connection): Promise<void> {
     const remaining = [...this.getConnections()].length;
-    log.info(`Client disconnected. Remaining clients: ${remaining}`);
+    log.info(`${this.tag()} onClose remaining=${remaining}`);
 
     if (remaining > 0) return;
 
     // No more browser clients — wait for active work to finish
-    log.info("No clients remaining. Waiting for agent to become stable...");
+    log.info(`${this.tag()} waitUntilStable…`);
+    const t0 = Date.now();
     await this.waitUntilStable({ timeout: 300_000 }); // 5 min max
+    log.info(`${this.tag()} waitUntilStable done in ${Date.now() - t0}ms`);
 
     // Disconnect from ProjectRoom → presence disappears → DO can hibernate
     if (this.roomWs) {
-      log.info("Agent stable. Disconnecting from ProjectRoom.");
+      log.info(`${this.tag()} disconnecting from ProjectRoom`);
       this.roomWs.close();
       this.roomWs = null;
       this.roomInitialized = false;
@@ -173,14 +193,15 @@ export class SupervisorAgent extends AIChatAgent<Env> {
         }
       });
 
-      ws.addEventListener("close", () => {
+      ws.addEventListener("close", (ev) => {
+        log.warn(`${this.tag()} room WS closed (code=${(ev as CloseEvent).code} reason=${(ev as CloseEvent).reason || "—"} initialized=${this.roomInitialized})`);
         this.roomWs = null;
         this.roomInitialized = false;
         this.roomConnection = null;
       });
 
       ws.addEventListener("error", (e) => {
-        log.error("ProjectRoom WebSocket error:", e);
+        log.error(`${this.tag()} room WS error:`, e);
         clearTimeout(timeout);
         reject(new Error("ProjectRoom WebSocket error"));
       });
@@ -245,12 +266,35 @@ export class SupervisorAgent extends AIChatAgent<Env> {
     onFinish?: Parameters<AIChatAgent<Env>["onChatMessage"]>[0],
     options?: Parameters<AIChatAgent<Env>["onChatMessage"]>[1],
   ) {
+    const turn = ++this.turnSeq;
+    const turnStart = Date.now();
+    const reqId = (options as any)?.requestId?.toString().slice(-6) ?? "?";
+    log.info(`${this.tag()} turn=${turn} req=${reqId} start (msgs=${this.messages.length} roomInit=${this.roomInitialized} aborted=${options?.abortSignal?.aborted ?? "n/a"})`);
+
+    // Sweep stale resumable streams. Upstream's ResumableStream.restore() only
+    // runs at DO construction — if the DO stays warm for >5min after a stream
+    // wedges (LLM hang, eviction mid-stream, etc.), `hasActiveStream()` stays
+    // true forever and every new WS connection gets a `_notifyStreamResuming`
+    // for a stream that will never produce another chunk. Force-resolve here.
+    this.sweepStaleStream(turn);
+
     // Lazily connect to ProjectRoom on first chat message
     if (!this.roomConnection) {
+      log.info(`${this.tag()} turn=${turn} connecting to room…`);
       this.roomConnection = this.connectToRoom(this.projectId);
     }
     if (!this.roomInitialized) {
-      await this.roomConnection;
+      const t = Date.now();
+      try {
+        await this.roomConnection;
+        log.info(`${this.tag()} turn=${turn} room ready in ${Date.now() - t}ms`);
+      } catch (e) {
+        log.error(`${this.tag()} turn=${turn} room connect FAILED in ${Date.now() - t}ms:`, e);
+        // Reset so subsequent turns retry instead of awaiting a rejected promise.
+        this.roomConnection = null;
+        this.roomInitialized = false;
+        throw e;
+      }
     }
 
     if (!this._model) this._model = createModel(this.env);
@@ -279,8 +323,37 @@ export class SupervisorAgent extends AIChatAgent<Env> {
 
     const { streamText, convertToModelMessages, stepCountIs, createUIMessageStream, createUIMessageStreamResponse } = await import("ai");
 
+    const cT = Date.now();
     const modelMessages = await convertToModelMessages(this.messages, { tools });
+    log.info(`${this.tag()} turn=${turn} convertToModelMessages done in ${Date.now() - cT}ms (model-msgs=${modelMessages.length})`);
     const MAX_STEPS = 100;
+    let prepareStepCount = 0;
+    let firstChunkAt: number | null = null;
+
+    // Compose three abort sources into one signal:
+    //   1. caller's abortSignal (user clicked stop, request canceled)
+    //   2. firstChunk timeout — model never started streaming
+    //   3. total-turn timeout  — turn exceeded budget
+    // When any fires, streamText sees the abort and tears down cleanly.
+    const turnAbort = new AbortController();
+    const upstreamAbort = options?.abortSignal;
+    if (upstreamAbort) {
+      if (upstreamAbort.aborted) turnAbort.abort();
+      else upstreamAbort.addEventListener("abort", () => turnAbort.abort(), { once: true });
+    }
+    let abortReason: string | null = null;
+    const firstChunkTimer = setTimeout(() => {
+      if (firstChunkAt === null) {
+        abortReason = `no firstChunk within ${SupervisorAgent.FIRST_CHUNK_TIMEOUT_MS}ms`;
+        log.error(`${this.tag()} turn=${turn} ABORT: ${abortReason}`);
+        turnAbort.abort();
+      }
+    }, SupervisorAgent.FIRST_CHUNK_TIMEOUT_MS);
+    const totalTimer = setTimeout(() => {
+      abortReason = `turn exceeded ${SupervisorAgent.TOTAL_TURN_TIMEOUT_MS}ms`;
+      log.error(`${this.tag()} turn=${turn} ABORT: ${abortReason}`);
+      turnAbort.abort();
+    }, SupervisorAgent.TOTAL_TURN_TIMEOUT_MS);
 
     const stream = createUIMessageStream({
       execute: ({ writer }) => {
@@ -290,12 +363,25 @@ export class SupervisorAgent extends AIChatAgent<Env> {
           messages: withCacheControl(modelMessages, provider),
           tools,
           stopWhen: stepCountIs(MAX_STEPS),
-          abortSignal: options?.abortSignal,
+          abortSignal: turnAbort.signal,
+          onError: (e) => {
+            log.error(`${this.tag()} turn=${turn} streamText.onError after ${Date.now() - turnStart}ms (firstChunkAt=${firstChunkAt}):`, e);
+          },
+          onChunk: () => {
+            if (firstChunkAt === null) {
+              firstChunkAt = Date.now() - turnStart;
+              log.info(`${this.tag()} turn=${turn} firstChunk @ ${firstChunkAt}ms`);
+            }
+          },
+          onAbort: () => {
+            log.warn(`${this.tag()} turn=${turn} streamText.onAbort after ${Date.now() - turnStart}ms (reason=${abortReason ?? "client"})`);
+          },
           // OpenAI Chat Completions tool messages only accept text content.
           // Tools that want to surface an image embed a [[CANVAS_IMAGE:mime:b64]] marker
           // in their text output. prepareStep strips the marker and injects a follow-up
           // user message with the image as image_url so the model can actually see it.
           prepareStep: ({ messages }) => {
+            const stepNo = ++prepareStepCount;
             const out: any[] = [];
             const pendingImages: Array<{ mime: string; b64: string; toolCallId?: string }> = [];
             for (const msg of messages) {
@@ -341,11 +427,13 @@ export class SupervisorAgent extends AIChatAgent<Env> {
                 out.push(msg);
               }
             }
+            log.info(`${this.tag()} turn=${turn} prepareStep #${stepNo} (in=${messages.length} out=${out.length})`);
             return { messages: out };
           },
-          onFinish: async ({ steps }) => {
+          onFinish: async ({ steps, finishReason, usage }) => {
+            log.info(`${this.tag()} turn=${turn} streamText.onFinish steps=${steps.length} reason=${finishReason} tokens=${(usage as any)?.totalTokens ?? "?"} elapsed=${Date.now() - turnStart}ms`);
             if (steps.length >= MAX_STEPS) {
-              log.warn(`Step limit reached (${MAX_STEPS} steps)`);
+              log.warn(`${this.tag()} turn=${turn} step limit reached (${MAX_STEPS})`);
               sendMsg({
                 type: "suggestions",
                 suggestions: [
@@ -358,8 +446,52 @@ export class SupervisorAgent extends AIChatAgent<Env> {
 
         writer.merge(result.toUIMessageStream());
       },
+      onError: (e) => {
+        clearTimeout(firstChunkTimer);
+        clearTimeout(totalTimer);
+        log.error(`${this.tag()} turn=${turn} UIMessageStream.onError after ${Date.now() - turnStart}ms (abortReason=${abortReason}):`, e);
+        // Surface a structured, human-readable reason — beats "no response was generated".
+        if (abortReason) return `Agent timed out: ${abortReason}. Please retry.`;
+        return e instanceof Error ? e.message : String(e);
+      },
+      onFinish: () => {
+        clearTimeout(firstChunkTimer);
+        clearTimeout(totalTimer);
+        log.info(`${this.tag()} turn=${turn} UIMessageStream finish elapsed=${Date.now() - turnStart}ms prepareSteps=${prepareStepCount} firstChunkAt=${firstChunkAt}${abortReason ? ` ABORTED: ${abortReason}` : ""}`);
+      },
     });
 
     return createUIMessageStreamResponse({ stream });
+  }
+
+  /**
+   * Force-finalize any resumable stream that's been "streaming" longer than
+   * the upstream stale threshold (5min). The base class only sweeps in its
+   * constructor, which never re-runs while the DO stays warm. Called at the
+   * top of every onChatMessage so a wedged stream from a prior turn can't
+   * keep new connections stuck on `_notifyStreamResuming`.
+   */
+  private sweepStaleStream(turn: number): void {
+    try {
+      const rs = (this as any)._resumableStream;
+      if (!rs?.hasActiveStream?.()) return;
+      const rows = (this as any).sql`
+        select id, request_id, created_at from cf_ai_chat_stream_metadata
+        where status = 'streaming'
+        order by created_at desc limit 1
+      ` as Array<{ id: string; request_id: string; created_at: number }> | undefined;
+      const row = rows?.[0];
+      if (!row) return;
+      const age = Date.now() - row.created_at;
+      // Mirror upstream STREAM_STALE_THRESHOLD_MS (5min). Anything older is
+      // definitionally orphaned — no live producer is going to write more chunks.
+      if (age < 5 * 60_000) return;
+      log.warn(`${this.tag()} turn=${turn} sweeping stale stream id=${row.id} age=${Math.round(age / 1000)}s req=${row.request_id.slice(-6)}`);
+      // markError keeps the chunk history but flips status so hasActiveStream()
+      // returns false, releasing every subsequent reconnect from resume-limbo.
+      rs.markError?.(row.id);
+    } catch (e) {
+      log.warn(`${this.tag()} turn=${turn} sweepStaleStream error (non-fatal):`, e);
+    }
   }
 }

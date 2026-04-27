@@ -638,29 +638,55 @@ export class ProjectRoom extends DurableObject<Env> {
 
   private async taskPoll(): Promise<void> {
     if (!this.projectId) return;
+    const tag = `[room proj=${this.projectId.slice(-6)}]`;
 
     try {
-      // Submit any new pending tasks (cheap — no workflow status calls).
       await this.guardedProcessPendingNodes();
+    } catch (e) {
+      // Don't let a single broken stage take down the whole alarm — log loud
+      // so we can see WHICH project is corrupt, then continue to the next stage.
+      this.handleTaskPollFailure(tag, "guardedProcessPendingNodes", e);
+    }
 
-      // Recover orphaned tasks (slow — timeboxed workflow status RPCs).
-      // This is the ONLY place that runs the orphan-recovery scan; the WS
-      // message handler stays off this path so client edits never block on it.
+    try {
       await recoverOrphanedTasks(
         this.doc,
         this.env,
         (data: Uint8Array) => this.broadcastBinary(data),
       );
+    } catch (e) {
+      this.handleTaskPollFailure(tag, "recoverOrphanedTasks", e);
+    }
 
-      // Poll completed tasks → write back to nodes.
+    try {
       await pollNodeTasks(
         this.doc,
         this.env,
         this.projectId,
-        (data: Uint8Array) => this.broadcastBinary(data)
+        (data: Uint8Array) => this.broadcastBinary(data),
       );
-    } catch (error) {
-      log.error("Error in taskPoll:", error);
+    } catch (e) {
+      this.handleTaskPollFailure(tag, "pollNodeTasks", e);
+    }
+  }
+
+  /**
+   * Centralised failure handler for taskPoll stages. The repeating
+   * `RangeError: Invalid array buffer length` we saw was unattributed —
+   * we couldn't tell which project's doc was corrupt. Now we log the
+   * project ID, the offending stage, and (if it looks like doc corruption)
+   * a hint that the snapshot is bad.
+   */
+  private handleTaskPollFailure(tag: string, stage: string, error: unknown): void {
+    const msg = error instanceof Error ? error.message : String(error);
+    const isCorruption =
+      msg.includes("Invalid array buffer length") ||
+      msg.includes("not a snapshot") ||
+      msg.includes("UnknownVersion");
+    if (isCorruption) {
+      log.error(`${tag} ${stage} CORRUPT_DOC: ${msg} — snapshot likely poisoned, project will not sync until reset`);
+    } else {
+      log.error(`${tag} ${stage} failed:`, error);
     }
   }
 
@@ -749,6 +775,31 @@ export class ProjectRoom extends DurableObject<Env> {
       } catch (error) {
         log.error("Loro dump error:", error);
         return Response.json({ error: "Failed to dump loro state", detail: String(error) }, { status: 500 });
+      }
+    }
+
+    // Admin recovery endpoint: nuke this room's persisted snapshot + in-memory
+    // doc so a corrupt CRDT state stops poisoning every subsequent alarm.
+    // Requires the same internal-agent header used for cross-DO calls so it
+    // can't be triggered from the public internet. The next browser connect
+    // will rebuild from whatever D1 has (or start empty).
+    if (url.pathname.endsWith("/reset-doc") && request.method === "POST") {
+      const isInternal = request.headers.get("x-internal-agent") === "true";
+      if (!isInternal) return new Response("forbidden", { status: 403 });
+      try {
+        log.warn(`[room proj=${this.projectId.slice(-6)}] /reset-doc invoked — wiping snapshot + closing live WS`);
+        await this.ctx.storage.delete(["loro:snapshot", "loro:version"]);
+        // Drop in-memory doc so any subsequent connection initialises fresh.
+        this.doc = new LoroDoc();
+        this.lastSnapshotTime = 0;
+        // Close all live WS so clients reconnect cleanly against the new doc.
+        for (const ws of this.ctx.getWebSockets()) {
+          try { ws.close(1012, "doc reset"); } catch { /* already closing */ }
+        }
+        return Response.json({ ok: true, projectId: this.projectId });
+      } catch (error) {
+        log.error("Reset error:", error);
+        return Response.json({ error: "Reset failed", detail: String(error) }, { status: 500 });
       }
     }
 

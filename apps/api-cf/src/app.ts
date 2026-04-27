@@ -77,6 +77,19 @@ export function createApp(opts: CreateAppOptions = {}): Hono<{ Bindings: Env }> 
     const req = new Request(c.req.raw);
     req.headers.set("x-partykit-room", room);
     req.headers.set("x-partykit-namespace", "SUPERVISOR");
+    // Resolve userId at the gateway so supervisor logs can be filtered per user.
+    // Best-effort: don't 401 here — the WS handshake is what carries the cookie,
+    // and DO has no other way to learn the user.
+    try {
+      const userId =
+        (await getUserIdFromApiToken(c.req.raw, c.env as any)) ??
+        (await getUserIdFromRequest(
+          c.req.raw,
+          c.env as any,
+          c.req.raw.cf as any,
+        ));
+      if (userId) req.headers.set("x-user-id", userId);
+    } catch { /* observability only — never block the connection */ }
     return c.env.SUPERVISOR.get(id).fetch(req);
   });
 
