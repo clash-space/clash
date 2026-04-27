@@ -32,17 +32,15 @@ jobs:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Publish @clash-space/bridge
-        # Beta.{1..4} all uploaded a 2KB LICENSE+package.json tarball
-        # despite `npm pack` producing the correct 16KB one with dist/cli.js.
-        # Even passing the literal .tgz to `npm publish $TARBALL` from the
-        # source directory uploaded the wrong content. Hypothesis: npm
-        # publish re-walks the cwd, and something in the bridge's cwd
-        # (gitignore? files field interaction?) makes it skip dist.
+        # Five attempts via npm publish / pnpm publish (beta.{1..5}) all
+        # uploaded a 2KB LICENSE+package.json tarball even though pack +
+        # tar -tzf verification before upload showed dist/cli.js present.
+        # Whatever npm publish does between pack and PUT is uploading
+        # different bytes than what pack made.
         #
-        # Workaround: extract the verified pack into a fresh temp dir that
-        # contains nothing else, cd into it, npm publish from there. Forces
-        # npm to use exactly the files we want — same approach 1Password
-        # uses for cli releases.
+        # Bypass: scripts/publish.mjs talks to the npm registry HTTP API
+        # directly with the verified tarball as the PUT body. No re-pack,
+        # no cwd-walking, npm CLI not in the loop.
         working-directory: packages/clash-bridge
         run: |
           set -euo pipefail
@@ -53,12 +51,6 @@ jobs:
             echo "::error::pack output missing dist/cli.js"
             exit 1
           fi
-          mkdir /tmp/clash-bridge-publish
-          tar -xzf "$TARBALL" -C /tmp/clash-bridge-publish --strip-components=1
-          echo "About to publish from /tmp/clash-bridge-publish:"
-          ls -la /tmp/clash-bridge-publish
-          ls -la /tmp/clash-bridge-publish/dist
-          cd /tmp/clash-bridge-publish
-          npm publish --tag beta --access public
+          node scripts/publish.mjs "$TARBALL" --tag beta
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
