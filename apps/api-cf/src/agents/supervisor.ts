@@ -127,6 +127,26 @@ export class SupervisorAgent extends AIChatAgent<Env> {
   }
 
   /**
+   * Override the CF runtime's hibernation entry point with our own try/catch.
+   *
+   * partyserver's webSocketClose does `return this.onClose(...)` without
+   * await, so if onClose's promise rejects later, partyserver's outer
+   * try/catch can't see it — the rejection escapes and CF reports
+   * outcome=exception with empty exceptions[] in tail. The wrapper chain
+   * above our onClose body (agents lib's connection.id read, _emit
+   * "disconnect", AIChatAgent's pendingResume cleanup) all run before our
+   * code. By overriding webSocketClose here we get an awaited boundary
+   * around the whole wrapper chain.
+   */
+  async webSocketClose(ws: WebSocket, code: number, reason: string, wasClean: boolean): Promise<void> {
+    try {
+      await super.webSocketClose(ws, code, reason, wasClean);
+    } catch (e) {
+      log.error(`${this.tag()} webSocketClose chain THREW (was previously invisible as outcome=exception):`, e);
+    }
+  }
+
+  /**
    * When last browser client disconnects, wait for any in-flight work
    * to finish, then disconnect from ProjectRoom so the DO can hibernate.
    */
