@@ -32,24 +32,33 @@ jobs:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Publish @clash-space/bridge
-        # Earlier attempts (beta.{1,2,3}) all landed on the registry as a
-        # 2KB tarball missing dist/, even though the `npm publish` log said
-        # the tarball was 11KB and included dist/cli.js — and the second
-        # HTTP request errored 403 "already published". Split pack + publish
-        # so we (a) verify dist is in the tarball before upload, (b) hand
-        # npm a literal file instead of letting it re-pack mid-publish.
+        # Beta.{1..4} all uploaded a 2KB LICENSE+package.json tarball
+        # despite `npm pack` producing the correct 16KB one with dist/cli.js.
+        # Even passing the literal .tgz to `npm publish $TARBALL` from the
+        # source directory uploaded the wrong content. Hypothesis: npm
+        # publish re-walks the cwd, and something in the bridge's cwd
+        # (gitignore? files field interaction?) makes it skip dist.
+        #
+        # Workaround: extract the verified pack into a fresh temp dir that
+        # contains nothing else, cd into it, npm publish from there. Forces
+        # npm to use exactly the files we want — same approach 1Password
+        # uses for cli releases.
         working-directory: packages/clash-bridge
         run: |
           set -euo pipefail
           ls -la dist/
           npm pack --pack-destination /tmp
           TARBALL=$(ls /tmp/clash-space-bridge-*.tgz | tail -1)
-          echo "Tarball contents:"
-          tar -tzf "$TARBALL"
           if ! tar -tzf "$TARBALL" | grep -q '^package/dist/cli\.js$'; then
-            echo "::error::tarball is missing dist/cli.js, refusing to publish"
+            echo "::error::pack output missing dist/cli.js"
             exit 1
           fi
-          npm publish "$TARBALL" --tag beta --access public
+          mkdir /tmp/clash-bridge-publish
+          tar -xzf "$TARBALL" -C /tmp/clash-bridge-publish --strip-components=1
+          echo "About to publish from /tmp/clash-bridge-publish:"
+          ls -la /tmp/clash-bridge-publish
+          ls -la /tmp/clash-bridge-publish/dist
+          cd /tmp/clash-bridge-publish
+          npm publish --tag beta --access public
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
