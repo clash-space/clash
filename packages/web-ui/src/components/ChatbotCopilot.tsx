@@ -12,6 +12,7 @@ import { ThinkingProcess } from './copilot/ThinkingProcess';
 import { ChatInput } from './copilot/ChatInput';
 import { TodoList, TodoItem } from './copilot/TodoList';
 import { ThinkingIndicator } from './copilot/ThinkingIndicator';
+import { MessageErrorBoundary } from './copilot/MessageErrorBoundary';
 import type { Node as RFNode, Edge as RFEdge, Connection as RFConnection } from '@xyflow/react';
 import ReactMarkdown from 'react-markdown';
 import { useSignedUrl } from '@clash/web-ui/lib/hooks/useSignedUrl';
@@ -295,7 +296,24 @@ export default function ChatbotCopilot({
                     // asset not yet available; skip
                 }
             }
-            if (!cancelled) setAssetThumbsByNodeId(next);
+            if (cancelled) return;
+            // Skip the setState when contents are equal — the previous version
+            // always handed in a *new* Map identity, which made `mentionableNodes`
+            // (useMemo deps include this Map) recompute on every nodes change
+            // even when nothing meaningful moved. New array identity then forced
+            // child renders down through ReactMarkdown / hook-heavy thumbnails,
+            // which made render-time setState chains in those subtrees easy to
+            // tip into "Maximum update depth exceeded" (React #185).
+            setAssetThumbsByNodeId((prev) => {
+                if (prev.size === next.size) {
+                    let same = true;
+                    for (const [k, v] of next) {
+                        if (prev.get(k) !== v) { same = false; break; }
+                    }
+                    if (same) return prev;
+                }
+                return next;
+            });
         })();
         return () => { cancelled = true; };
     }, [nodes]);
@@ -533,6 +551,7 @@ export default function ChatbotCopilot({
                                             animate={{ opacity: 1, y: 0, scale: 1 }}
                                             transition={{ type: "spring", stiffness: 500, damping: 30 }}
                                         >
+                                            <MessageErrorBoundary messageId={msg.id}>
                                             {msg.role === 'user' ? (
                                                 <UserMessage
                                                     content={
@@ -638,6 +657,7 @@ export default function ChatbotCopilot({
                                                     })}
                                                 </div>
                                             )}
+                                            </MessageErrorBoundary>
                                         </motion.div>
                                     ))}
 
