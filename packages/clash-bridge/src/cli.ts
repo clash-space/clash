@@ -27,7 +27,10 @@ import {
 import { NodeSpawner } from "./_acp-runtime/spawners/node.js";
 import { Relay } from "./relay.js";
 
-const DEFAULT_SERVER = "wss://api.clash.video";
+// The Worker is fronted by clash.video (the web worker) which proxies
+// /agents/byo-bridge/* to api-cf via a service binding. There is no
+// api.clash.video subdomain. Self-hosters override with --server.
+const DEFAULT_SERVER = "wss://clash.video";
 
 function usage(): never {
   process.stderr.write(

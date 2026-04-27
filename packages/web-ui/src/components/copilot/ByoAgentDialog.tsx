@@ -52,13 +52,18 @@ export function ByoAgentDialog({
     setCopied(false);
   }, [pairTokenDisplay]);
 
-  const command = useMemo(
-    () =>
-      pairTokenDisplay
-        ? `npx @clash-space/bridge@beta --token=${pairTokenDisplay}`
-        : '',
-    [pairTokenDisplay],
-  );
+  const command = useMemo(() => {
+    if (!pairTokenDisplay) return '';
+    // Always pin --server to the current origin's wss URL. Otherwise the
+    // bridge falls back to its compiled-in default (clash.video), which
+    // breaks for staging / self-hosted deploys. `@beta` pins to the
+    // working tarball — npm `latest` may point at a broken release.
+    const origin =
+      typeof window !== 'undefined'
+        ? `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}`
+        : 'wss://clash.video';
+    return `npx @clash-space/bridge@beta --token=${pairTokenDisplay} --server=${origin}`;
+  }, [pairTokenDisplay]);
 
   const onCopy = async () => {
     if (!command) return;
