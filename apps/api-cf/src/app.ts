@@ -25,6 +25,7 @@ import { settingsD1Routes } from "./routes/settings-d1";
 import { marketplaceRoutes } from "./routes/marketplace";
 import { byoBridgeRoutes } from "./routes/byo-bridge";
 import { runtimeDaemonRoutes } from "./routes/v1/runtimes";
+import { authenticateRuntimeToken } from "./routes/v1/runtimes";
 import { setPlugins, getPlugins } from "./plugins/registry";
 import type { Plugin } from "./plugins/types";
 import { getUserIdFromApiToken, getUserIdFromRequest } from "./services/session";
@@ -131,6 +132,26 @@ export function createApp(opts: CreateAppOptions = {}): Hono<{ Bindings: Env }> 
   // code or sk_machine_* bearer token), NOT a session cookie. Mounted
   // outside /api/v1/ so the gateway doesn't enforce user auth.
   app.route("/agents/runtime", runtimeDaemonRoutes);
+
+  // WS attach for the long-running daemon ↔ RuntimeRoom DO link.
+  // Bearer token in Authorization header → identifies which runtime row.
+  // We resolve the token here (rather than inside the DO) so the DO never
+  // sees raw secrets and so we can 401 cheaply without spinning a DO.
+  app.get("/agents/runtime/_attach", async (c) => {
+    if (c.req.header("Upgrade") !== "websocket") {
+      return c.text("WebSocket only", 400);
+    }
+    const auth = c.req.header("Authorization") ?? c.req.header("authorization") ?? "";
+    if (!auth) return c.text("missing Authorization", 401);
+    const ident = await authenticateRuntimeToken(c.env, auth);
+    if (!ident) return c.text("invalid token", 401);
+
+    const id = c.env.RUNTIME_ROOM.idFromName(ident.runtime_id);
+    const fwd = new Request(c.req.raw);
+    fwd.headers.set("x-runtime-id", ident.runtime_id);
+    fwd.headers.set("x-runtime-user", ident.user_id);
+    return c.env.RUNTIME_ROOM.get(id).fetch(fwd);
+  });
 
   // ─── Asset routes (ported from loro-sync-server) ────────────
   app.route("/assets", assetRoutes);

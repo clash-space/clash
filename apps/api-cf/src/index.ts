@@ -3,6 +3,7 @@ import { ProjectRoom } from "./agents/project-room";
 import { SupervisorAgent } from "./agents/supervisor";
 import { GenerationWorkflow } from "./agents/generation";
 import { ByoBridgeRoom } from "./agents/byo-bridge";
+import { RuntimeRoom } from "./agents/runtime-room";
 
 // CF runtime swallows wrapper-chain async rejections inside DO lifecycle
 // hooks (webSocketClose, webSocketMessage, …) — surfaces them as
@@ -30,5 +31,5 @@ const app = createApp();
 export default app;
 
 // Export Durable Object classes, Workflow, and Container
-export { ProjectRoom, SupervisorAgent, GenerationWorkflow, ByoBridgeRoom };
+export { ProjectRoom, SupervisorAgent, GenerationWorkflow, ByoBridgeRoom, RuntimeRoom };
 export { RenderContainer } from "./containers/render";

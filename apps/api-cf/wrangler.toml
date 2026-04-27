@@ -41,6 +41,10 @@ class_name = "RenderContainer"
 name = "BYO_BRIDGE"
 class_name = "ByoBridgeRoom"
 
+[[durable_objects.bindings]]
+name = "RUNTIME_ROOM"
+class_name = "RuntimeRoom"
+
 [[migrations]]
 tag = "v1"
 new_sqlite_classes = ["SupervisorAgent"]
@@ -68,6 +72,10 @@ new_sqlite_classes = ["RenderContainer"]
 [[migrations]]
 tag = "v7"
 new_sqlite_classes = ["ByoBridgeRoom"]
+
+[[migrations]]
+tag = "v8"
+new_sqlite_classes = ["RuntimeRoom"]
 
 # Workers AI
 [ai]

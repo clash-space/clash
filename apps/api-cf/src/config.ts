@@ -39,6 +39,7 @@ export interface Env {
   GENERATION_WORKFLOW: Workflow;
   RENDER_CONTAINER: DurableObjectNamespace<import("./containers/render").RenderContainer>;
   BYO_BRIDGE: DurableObjectNamespace<import("./agents/byo-bridge").ByoBridgeRoom>;
+  RUNTIME_ROOM: DurableObjectNamespace<import("./agents/runtime-room").RuntimeRoom>;
   /** For local dev: direct URL to render-server (bypasses Container) */
   RENDER_SERVER_URL?: string;
   DB: D1Database;
