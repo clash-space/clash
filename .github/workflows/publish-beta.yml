@@ -32,6 +32,11 @@ jobs:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Publish @clash-space/bridge
-        run: pnpm --filter @clash-space/bridge publish --tag beta --access public --no-git-checks
+        # Use `npm publish` instead of `pnpm --filter publish`. pnpm 8.15.0
+        # has a publish bug that uploads an empty tarball then retries with
+        # a 403 — see workflow run 25002298123. npm publish from within the
+        # package directory takes a different code path and works.
+        working-directory: packages/clash-bridge
+        run: npm publish --tag beta --access public
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
