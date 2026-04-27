@@ -62,5 +62,11 @@ WORKDIR /app
 # node_modules with workspace deps already inlined.
 COPY --from=builder /tmp/deploy/ /app/
 
+# Remotion bundle() compiles from .tsx source at request time, but
+# `pnpm deploy --prod` strips workspace packages down to their `files:
+# ["dist"]` (no src/). Ship the original packages/ tree alongside so
+# render.ts can resolve ../packages/remotion-components/src/Root.tsx.
+COPY --from=builder /app/packages /app/packages
+
 EXPOSE 8080
 CMD ["node", "dist/index.js"]
