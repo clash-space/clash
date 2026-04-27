@@ -32,7 +32,11 @@ export const videoRenderProvider: GenerationProvider = {
           throw new Error(`Render server error ${resp.status}: ${errText}`);
         }
         const key = `projects/${params.projectId}/renders/${params.taskId}.mp4`;
-        await env.R2_BUCKET.put(key, resp.body, {
+        // R2.put on a ReadableStream requires a known length; container fetch
+        // body doesn't propagate Content-Length cleanly, so buffer the MP4
+        // (small enough, capped by render-server output) and upload as bytes.
+        const bytes = await resp.arrayBuffer();
+        await env.R2_BUCKET.put(key, bytes, {
           httpMetadata: { contentType: "video/mp4" },
         });
         const meta = getRenderMetadataFromHeaders(resp.headers, params.timelineDsl);
