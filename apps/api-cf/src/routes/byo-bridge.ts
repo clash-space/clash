@@ -64,8 +64,12 @@ async function upgrade(c: Ctx, side: "browser" | "cli"): Promise<Response> {
   if (c.req.header("Upgrade") !== "websocket") {
     return c.text("WebSocket only", 400);
   }
-  const token = new URL(c.req.url).searchParams.get("token");
-  if (!token) return c.text("missing token", 400);
+  const tokenRaw = new URL(c.req.url).searchParams.get("token");
+  if (!tokenRaw) return c.text("missing token", 400);
+  // Browser side uses the raw 26-char token; the user-typed CLI token has
+  // dashes for human readability (XXXX-XXXX-…). Both must address the same
+  // DO via idFromName, so normalize before lookup.
+  const token = tokenRaw.replace(/-/g, "");
 
   // Forward x-user-id (set by the api-cf gateway middleware after Better Auth)
   // only on the browser side. CLI side has no Better Auth context — its
