@@ -21,26 +21,14 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm turbo run build --filter=@clash-space/cli --filter=@clash-space/action-sdk --filter=@clash-space/bridge
 
-      - name: Publish @clash-space/cli
-        run: pnpm --filter @clash-space/cli publish --tag beta --access public --no-git-checks
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-
-      - name: Publish @clash-space/action-sdk
-        run: pnpm --filter @clash-space/action-sdk publish --tag beta --access public --no-git-checks
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-
+      # IMPORTANT — bridge MUST publish before any `pnpm --filter X publish`
+      # below. pnpm 8.x's filter-publish is not exclusive: it scans the whole
+      # workspace and silently publishes any package whose version isn't
+      # already on the registry, ignoring the filter. That's how beta.{1..6}
+      # all landed as 2KB stub tarballs — pnpm packed bridge from somewhere
+      # outside packages/clash-bridge (no dist), uploaded that, then our
+      # explicit publish step got 403 "already published".
       - name: Publish @clash-space/bridge
-        # Five attempts via npm publish / pnpm publish (beta.{1..5}) all
-        # uploaded a 2KB LICENSE+package.json tarball even though pack +
-        # tar -tzf verification before upload showed dist/cli.js present.
-        # Whatever npm publish does between pack and PUT is uploading
-        # different bytes than what pack made.
-        #
-        # Bypass: scripts/publish.mjs talks to the npm registry HTTP API
-        # directly with the verified tarball as the PUT body. No re-pack,
-        # no cwd-walking, npm CLI not in the loop.
         working-directory: packages/clash-bridge
         run: |
           set -euo pipefail
@@ -54,3 +42,13 @@ jobs:
           node scripts/publish.mjs "$TARBALL" --tag beta
         env:
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Publish @clash-space/cli
+        run: pnpm --filter @clash-space/cli publish --tag beta --access public --no-git-checks
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Publish @clash-space/action-sdk
+        run: pnpm --filter @clash-space/action-sdk publish --tag beta --access public --no-git-checks
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
