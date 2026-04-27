@@ -24,6 +24,7 @@ import { internalProjectsContextRoutes } from "./routes/internal-projects-contex
 import { settingsD1Routes } from "./routes/settings-d1";
 import { marketplaceRoutes } from "./routes/marketplace";
 import { byoBridgeRoutes } from "./routes/byo-bridge";
+import { runtimeDaemonRoutes } from "./routes/v1/runtimes";
 import { setPlugins, getPlugins } from "./plugins/registry";
 import type { Plugin } from "./plugins/types";
 import { getUserIdFromApiToken, getUserIdFromRequest } from "./services/session";
@@ -124,6 +125,12 @@ export function createApp(opts: CreateAppOptions = {}): Hono<{ Bindings: Env }> 
     await next();
   });
   app.route("/agents/byo-bridge", byoBridgeRoutes);
+
+  // ─── Local runtime daemon ──────────────────────────────────
+  // Daemon-side endpoints — auth is in the request body/header (one-time
+  // code or sk_machine_* bearer token), NOT a session cookie. Mounted
+  // outside /api/v1/ so the gateway doesn't enforce user auth.
+  app.route("/agents/runtime", runtimeDaemonRoutes);
 
   // ─── Asset routes (ported from loro-sync-server) ────────────
   app.route("/assets", assetRoutes);

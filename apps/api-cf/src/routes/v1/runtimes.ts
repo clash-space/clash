@@ -1,31 +1,35 @@
 /**
- * /api/v1/runtimes/* — daemon registry and onboarding.
+ * Runtime registry and onboarding routes — split across two trust boundaries:
  *
- * The setup flow is OAuth-style with a localhost callback (Wrangler / GitHub
- * CLI / Vercel all do this):
+ *   /api/v1/runtimes/*    browser, gateway requires user auth
+ *     POST /connect-daemon    → one-time code (5-min TTL)
+ *     GET  /                  → list my runtimes
+ *     DELETE /:id             → revoke a runtime + its tokens
  *
+ *   /agents/runtime/*     daemon, gateway proxies through (auth is in body/header)
+ *     POST /exchange          → { code, machine_id, … } → { runtime_id, token }
+ *
+ * Setup flow:
  *   1. CLI binds 127.0.0.1:<rand-port>, opens browser to
  *      `https://clash.video/connect-daemon?cb=…&state=…`
- *   2. Browser (auth'd via Better Auth cookie) POSTs `/connect-daemon` with
- *      the state echo → gets back a one-time `code` (5-min TTL).
+ *   2. Browser (auth'd via Better Auth cookie) POSTs `/api/v1/runtimes/connect-daemon`
+ *      with the state echo → gets back a one-time `code`.
  *   3. Browser redirects to `http://127.0.0.1:<port>/cb?code=…&state=…`.
  *      Localhost server is the CLI; it grabs the code and closes.
- *   4. CLI POSTs `/exchange` with `{ code, machine_id, hostname, os, version }`.
+ *   4. CLI POSTs `/agents/runtime/exchange` with `{ code, machine_id, hostname, os, version }`.
  *      Server validates code, inserts `runtime` row + `runtime_token` row,
  *      returns the token plaintext (only time it's ever transmitted).
  *   5. CLI writes ~/.config/clash/credentials.json + installs launchd plist.
- *
- * Routes:
- *   POST /api/v1/runtimes/connect-daemon   browser, auth required → { code }
- *   POST /api/v1/runtimes/exchange         daemon, no auth (code IS auth) → { runtime_id, token }
- *   GET  /api/v1/runtimes                  browser, list my runtimes
- *   DELETE /api/v1/runtimes/:id            browser, revoke a runtime + tokens
  */
 
 import { Hono } from "hono";
 import type { Env } from "../../config";
 
+/** Browser-facing routes — mounted under /api/v1/runtimes. */
 export const runtimesRoutes = new Hono<{ Bindings: Env }>();
+
+/** Daemon-facing routes — mounted under /agents/runtime. */
+export const runtimeDaemonRoutes = new Hono<{ Bindings: Env }>();
 
 const CODE_TTL_SECONDS = 5 * 60;
 
@@ -81,8 +85,9 @@ runtimesRoutes.post("/connect-daemon", async (c) => {
 });
 
 // POST /exchange — daemon exchanges code for a runtime token.
+// Mounted at /agents/runtime/exchange (outside the user-auth gateway).
 // No auth header — the code is the credential.
-runtimesRoutes.post("/exchange", async (c) => {
+runtimeDaemonRoutes.post("/exchange", async (c) => {
   const body = (await c.req.json().catch(() => ({}))) as {
     code?: string;
     state?: string;
