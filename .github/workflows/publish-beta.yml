@@ -32,11 +32,24 @@ jobs:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Publish @clash-space/bridge
-        # Use `npm publish` instead of `pnpm --filter publish`. pnpm 8.15.0
-        # has a publish bug that uploads an empty tarball then retries with
-        # a 403 — see workflow run 25002298123. npm publish from within the
-        # package directory takes a different code path and works.
+        # Earlier attempts (beta.{1,2,3}) all landed on the registry as a
+        # 2KB tarball missing dist/, even though the `npm publish` log said
+        # the tarball was 11KB and included dist/cli.js — and the second
+        # HTTP request errored 403 "already published". Split pack + publish
+        # so we (a) verify dist is in the tarball before upload, (b) hand
+        # npm a literal file instead of letting it re-pack mid-publish.
         working-directory: packages/clash-bridge
-        run: npm publish --tag beta --access public
+        run: |
+          set -euo pipefail
+          ls -la dist/
+          npm pack --pack-destination /tmp
+          TARBALL=$(ls /tmp/clash-space-bridge-*.tgz | tail -1)
+          echo "Tarball contents:"
+          tar -tzf "$TARBALL"
+          if ! tar -tzf "$TARBALL" | grep -q '^package/dist/cli\.js$'; then
+            echo "::error::tarball is missing dist/cli.js, refusing to publish"
+            exit 1
+          fi
+          npm publish "$TARBALL" --tag beta --access public
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
