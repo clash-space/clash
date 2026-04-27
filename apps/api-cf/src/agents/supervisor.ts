@@ -273,6 +273,12 @@ export class SupervisorAgent extends AIChatAgent<Env> {
         this.roomWs = null;
         this.roomInitialized = false;
         this.roomConnection = null;
+        // Drop the local doc replica too. Without this, the next chat turn
+        // would reuse stale doc state — tools like wait_for_generation would
+        // poll the OLD pendingTask/status fields and never see the
+        // ProjectRoom-side recovery writes that happened while we were
+        // disconnected. New replica, full snapshot pull, no surprises.
+        this.doc = new LoroDoc();
       });
 
       ws.addEventListener("error", (e) => {

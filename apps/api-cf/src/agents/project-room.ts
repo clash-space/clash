@@ -19,7 +19,7 @@ import { LoroDoc } from "loro-crdt";
 
 import { log } from "../logger";
 import type { Env } from "../config";
-import { loadSnapshot, saveSnapshot } from "../loro/storage";
+import { loadDocState, appendUpdate, compactToSnapshot, wipeDocState } from "../loro/storage";
 import { processPendingNodes, recoverOrphanedTasks } from "../loro/NodeProcessor";
 import { pollNodeTasks } from "../loro/TaskPolling";
 import { updateNodeData, appendNodeLog } from "../loro/NodeUpdater";
@@ -27,9 +27,12 @@ import { authenticateRequest } from "../loro/auth";
 import type { ClientInfo, ClientType, PresenceMessage, ActivityMessage, ActivityAction } from "@clash/shared-types";
 
 /** Alarm intervals in milliseconds */
-const SNAPSHOT_INTERVAL_MS = 300_000; // 5 minutes
 const TASK_POLL_INTERVAL_MS = 60_000; // 60 seconds
 const TASK_POLL_URGENT_MS = 2_000; // 2 seconds (after new task submission)
+/** Compact the update log into a fresh shallow snapshot every N appended updates. */
+const UPDATES_PER_COMPACT = 100;
+/** Hard cap — if compaction is somehow stuck, force one to keep load fast. */
+const UPDATES_HARD_COMPACT_THRESHOLD = 500;
 
 export class ProjectRoom extends DurableObject<Env> {
   private doc: LoroDoc = new LoroDoc();
@@ -38,10 +41,15 @@ export class ProjectRoom extends DurableObject<Env> {
   private messageQueue: Array<{ sender: WebSocket; data: Uint8Array }> = [];
   private isProcessingQueue = false;
   private isProcessingNodes = false;
-  private isSaving = false;
-  private needsSave = false;
-  private saveDebounceTimer: ReturnType<typeof setTimeout> | null = null;
-  private lastSnapshotTime = 0;
+
+  /** Next sequence number for an appended update (loaded from storage on init). */
+  private nextSeq = 0;
+  /** Updates appended since last compaction. Triggers compactToSnapshot when it crosses UPDATES_PER_COMPACT. */
+  private updatesSinceCompact = 0;
+  /** Guard so we don't fire two compactions concurrently. */
+  private compactionInFlight = false;
+  /** Unsubscribe handle for the local-updates listener; cleared on destroy. */
+  private unsubscribeLocalUpdates: (() => void) | null = null;
 
   /** Connected client identity map for presence tracking. */
   private clients: Map<WebSocket, ClientInfo> = new Map();
@@ -156,29 +164,77 @@ export class ProjectRoom extends DurableObject<Env> {
   private async initRoom(projectId: string): Promise<void> {
     this.projectId = projectId;
 
-    // Persist projectId so alarm() can recover after hibernation
+    // Persist projectId so alarm() can recover after hibernation.
     await this.ctx.storage.put("projectId", projectId);
 
-    // Load Loro document from DO storage
-    const snapshot = await loadSnapshot(this.ctx.storage);
-    if (snapshot) {
-      try {
-        this.doc = LoroDoc.fromSnapshot(snapshot);
-      } catch (error) {
-        log.error("Failed to import snapshot:", error);
-        this.doc = new LoroDoc();
-      }
-    } else {
-      this.doc = new LoroDoc();
-    }
+    // Load via update-log: snapshot + replay all updates since.
+    const state = await loadDocState(this.ctx.storage);
+    this.doc = state.doc;
+    this.nextSeq = state.nextSeq;
+    this.updatesSinceCompact = state.nextSeq - state.snapshotSeq;
 
-    this.lastSnapshotTime = Date.now();
+    // Subscribe to LOCAL commits (taskPoll / orphan recovery / HTTP /update-node).
+    // Imports from client WebSockets are persisted explicitly in
+    // processMessageQueue — Loro's subscribeLocalUpdates does NOT fire for
+    // imported updates, by design.
+    if (this.unsubscribeLocalUpdates) this.unsubscribeLocalUpdates();
+    this.unsubscribeLocalUpdates = this.doc.subscribeLocalUpdates((update) => {
+      void this.persistAndMaybeCompact(update);
+    });
 
-    // Schedule first alarm for snapshot save + task polling
+    // Schedule first alarm for task polling. Persistence is event-driven now,
+    // not alarm-driven — the alarm is only for polling external task state.
     await this.ctx.storage.setAlarm(Date.now() + TASK_POLL_INTERVAL_MS);
 
-    // Process any pending nodes and trigger polling
+    // Process any pending nodes and trigger polling.
     await this.taskPoll();
+  }
+
+  /**
+   * Append one update to the persisted log and trigger compaction if
+   * the log has grown past the threshold. Single funnel for both local
+   * commits (via subscribeLocalUpdates) and remote imports (called
+   * from processMessageQueue after doc.import).
+   */
+  private async persistAndMaybeCompact(update: Uint8Array): Promise<void> {
+    const tag = `[room proj=${this.projectId.slice(-6)}]`;
+    try {
+      const seq = this.nextSeq;
+      this.nextSeq = seq + 1;
+      await appendUpdate(this.ctx.storage, seq, update);
+      this.updatesSinceCompact++;
+      if (
+        !this.compactionInFlight &&
+        this.updatesSinceCompact >= UPDATES_PER_COMPACT
+      ) {
+        this.compactionInFlight = true;
+        // Run after the current write returns so we don't block the caller.
+        queueMicrotask(() => {
+          void this.runCompaction(tag);
+        });
+      } else if (
+        this.compactionInFlight &&
+        this.updatesSinceCompact >= UPDATES_HARD_COMPACT_THRESHOLD
+      ) {
+        log.warn(`${tag} update log past hard threshold (${this.updatesSinceCompact}); compaction stuck?`);
+      }
+    } catch (e) {
+      log.error(`${tag} appendUpdate seq=${this.nextSeq - 1} failed:`, e);
+    }
+  }
+
+  private async runCompaction(tag: string): Promise<void> {
+    try {
+      const compactionSeq = this.nextSeq;
+      const t0 = Date.now();
+      await compactToSnapshot(this.ctx.storage, this.doc, compactionSeq);
+      this.updatesSinceCompact = this.nextSeq - compactionSeq;
+      log.info(`${tag} compacted at seq ${compactionSeq} in ${Date.now() - t0}ms`);
+    } catch (e) {
+      log.error(`${tag} compaction failed:`, e);
+    } finally {
+      this.compactionInFlight = false;
+    }
   }
 
   // ─── Presence & Activity Broadcasts ─────────────────────────
@@ -351,7 +407,6 @@ export class ProjectRoom extends DurableObject<Env> {
       }
       const update = this.doc.export({ mode: "update", from: versionBefore });
       this.broadcastBinary(update);
-      this.debouncedSave();
 
       log.info("Custom actions registered", {
         count: actions.length,
@@ -371,7 +426,6 @@ export class ProjectRoom extends DurableObject<Env> {
       }
       const update = this.doc.export({ mode: "update", from: versionBefore });
       this.broadcastBinary(update);
-      this.debouncedSave();
     }
 
     if (msg.type === "write_understanding") {
@@ -400,7 +454,6 @@ export class ProjectRoom extends DurableObject<Env> {
       });
       const update = this.doc.export({ mode: "update", from: versionBefore });
       this.broadcastBinary(update);
-      this.debouncedSave();
 
       log.info("Understanding written", { nodeId, keys: Object.keys(understanding) });
     }
@@ -430,7 +483,6 @@ export class ProjectRoom extends DurableObject<Env> {
       const update = this.doc.export({ mode: "update", from: versionBefore });
       this.broadcastBinary(update);
 
-      this.debouncedSave();
       log.info("Custom task completed", { taskId, nodeId, status });
     }
   }
@@ -503,6 +555,11 @@ export class ProjectRoom extends DurableObject<Env> {
 
           this.doc.import(msg.data);
 
+          // Persist this remote update — subscribeLocalUpdates does NOT fire
+          // for imports, so this is the only persistence hook for client-
+          // originated changes. Append-only, so it's safe to do unconditionally.
+          void this.persistAndMaybeCompact(msg.data);
+
           // Broadcast to all other clients FIRST so they have the base state
           // before receiving any derived updates from processPendingNodes.
           this.broadcastBinary(msg.data, msg.sender);
@@ -535,8 +592,7 @@ export class ProjectRoom extends DurableObject<Env> {
           // Check for pending nodes (may emit additional broadcasts)
           await this.guardedProcessPendingNodes();
 
-          this.debouncedSave();
-        } catch (error) {
+            } catch (error) {
           log.error("Failed to process Loro update:", error);
         }
       }
@@ -583,53 +639,10 @@ export class ProjectRoom extends DurableObject<Env> {
     }
   }
 
-  // ─── Snapshots ──────────────────────────────────────────────
-
-  /**
-   * Debounce snapshot saves — wait 5s after last update before saving.
-   */
-  private debouncedSave(): void {
-    if (this.saveDebounceTimer) {
-      clearTimeout(this.saveDebounceTimer);
-    }
-    this.saveDebounceTimer = setTimeout(() => {
-      this.saveDebounceTimer = null;
-      this.saveDocumentSnapshot().catch((err) =>
-        log.error("Failed to save snapshot:", err)
-      );
-    }, 5_000);
-  }
-
-  private async saveDocumentSnapshot(): Promise<void> {
-    if (!this.projectId) return;
-
-    if (this.isSaving) {
-      this.needsSave = true;
-      return;
-    }
-
-    this.isSaving = true;
-    this.needsSave = false;
-
-    try {
-      const snapshot = this.doc.export({ mode: "snapshot" });
-      const version = this.doc.version().toString();
-      await saveSnapshot(this.ctx.storage, this.projectId, snapshot, version);
-      this.lastSnapshotTime = Date.now();
-    } catch (error) {
-      log.error("Failed to save snapshot:", error);
-    } finally {
-      this.isSaving = false;
-      if (this.needsSave) {
-        setTimeout(() => this.saveDocumentSnapshot(), 100);
-      }
-    }
-  }
-
   // ─── Alarm (replaces schedule/cancelSchedule) ────────────────
 
   async alarm(): Promise<void> {
-    // After hibernation, in-memory state is lost — re-initialize if needed
+    // After hibernation, in-memory state is lost — re-initialize if needed.
     if (!this.projectId) {
       const storedId = await this.ctx.storage.get<string>("projectId");
       if (!storedId) return; // No project ever connected, nothing to do
@@ -639,30 +652,13 @@ export class ProjectRoom extends DurableObject<Env> {
       await this.initPromise;
     }
 
-    // Save snapshot if enough time has passed
-    const sinceLastSnapshot = Date.now() - this.lastSnapshotTime;
-    if (sinceLastSnapshot >= SNAPSHOT_INTERVAL_MS) {
-      await this.saveDocumentSnapshot();
-    }
-
-    // Run task polling. Snapshot the version so we can detect whether
-    // anything actually mutated the doc (orphan recovery / completed-task
-    // writeback both touch the doc).
-    const versionBeforePoll = this.doc.version().toString();
+    // Persistence is event-driven now — every doc commit (local via
+    // subscribeLocalUpdates, or imported via processMessageQueue) appends
+    // to the update log inside persistAndMaybeCompact. The alarm only
+    // runs task polling; it doesn't need to coordinate snapshot saves.
     await this.taskPoll();
-    const versionAfterPoll = this.doc.version().toString();
 
-    // If taskPoll changed the doc, persist immediately. Without this the
-    // hibernation API drops the in-memory mutation between alarms — next
-    // wake reloads the old snapshot, sees pendingTask still set, re-runs
-    // recovery, broadcasts another "FAILED" update… every 60s, forever.
-    // saveDocumentSnapshot is idempotent + serialised, so calling it here
-    // is safe even if the 5-min branch above already ran.
-    if (versionAfterPoll !== versionBeforePoll) {
-      await this.saveDocumentSnapshot();
-    }
-
-    // Re-schedule next alarm only if clients are connected
+    // Re-schedule next alarm only if clients are connected.
     if (this.ctx.getWebSockets().length > 0) {
       await this.ctx.storage.setAlarm(Date.now() + TASK_POLL_INTERVAL_MS);
     }
@@ -757,8 +753,7 @@ export class ProjectRoom extends DurableObject<Env> {
 
         await this.guardedProcessPendingNodes();
 
-        this.debouncedSave();
-
+  
         return Response.json({ ok: true });
       } catch (error) {
         log.error("Update node error:", error);
@@ -821,11 +816,17 @@ export class ProjectRoom extends DurableObject<Env> {
       const isInternal = request.headers.get("x-internal-agent") === "true";
       if (!isInternal) return new Response("forbidden", { status: 403 });
       try {
-        log.warn(`[room proj=${this.projectId.slice(-6)}] /reset-doc invoked — wiping snapshot + closing live WS`);
-        await this.ctx.storage.delete(["loro:snapshot", "loro:version"]);
-        // Drop in-memory doc so any subsequent connection initialises fresh.
+        log.warn(`[room proj=${this.projectId.slice(-6)}] /reset-doc invoked — wiping snapshot + update log + closing live WS`);
+        await wipeDocState(this.ctx.storage);
+        // Drop in-memory doc + reset seq counters so any subsequent
+        // connection initialises fresh from an empty store.
+        if (this.unsubscribeLocalUpdates) {
+          this.unsubscribeLocalUpdates();
+          this.unsubscribeLocalUpdates = null;
+        }
         this.doc = new LoroDoc();
-        this.lastSnapshotTime = 0;
+        this.nextSeq = 0;
+        this.updatesSinceCompact = 0;
         // Close all live WS so clients reconnect cleanly against the new doc.
         for (const ws of this.ctx.getWebSockets()) {
           try { ws.close(1012, "doc reset"); } catch { /* already closing */ }
