@@ -7,25 +7,31 @@ import { renderMedia, selectComposition } from "@remotion/renderer";
 // Cache the bundle path across renders
 let bundlePath: string | null = null;
 
+// Pre-built bundle written by prebundle.ts during Docker build, copied into
+// the runtime stage at /app/.remotion-bundle. See Dockerfile.
+const PREBUILT_BUNDLE = path.resolve(import.meta.dirname, "../.remotion-bundle");
+
 async function ensureBundle(): Promise<string> {
   if (bundlePath && fs.existsSync(bundlePath)) return bundlePath;
 
-  // Path is relative to the BUILT entry's dirname, not the source layout.
-  // Monorepo source: apps/render-server/src/render.ts → ../../../packages/...
-  // Container runtime (pnpm deploy --prod, see Dockerfile): /app/dist/index.js
-  // → ../packages/... (workspace `packages/` is shipped alongside via an
-  // explicit COPY in the runtime stage; see Dockerfile).
-  // import.meta.dirname disambiguates dev (tsx watch on src/) vs prod (built dist/).
-  const isBuilt = import.meta.dirname.endsWith("dist");
-  const entryPoint = isBuilt
-    ? path.resolve(import.meta.dirname, "../packages/remotion-components/src/Root.tsx")
-    : path.resolve(import.meta.dirname, "../../../packages/remotion-components/src/Root.tsx");
+  if (fs.existsSync(PREBUILT_BUNDLE)) {
+    bundlePath = PREBUILT_BUNDLE;
+    console.log("[render] Using pre-built bundle:", bundlePath);
+    return bundlePath;
+  }
 
+  // Dev fallback (tsx watch on src/): compile from source. Slow first time
+  // but only happens once per process and the dev DX of editing components
+  // and re-rendering is worth it.
+  const entryPoint = path.resolve(
+    import.meta.dirname,
+    "../../../packages/remotion-components/src/Root.tsx",
+  );
   if (!fs.existsSync(entryPoint)) {
     throw new Error(`Remotion entry point not found: ${entryPoint}`);
   }
 
-  console.log("[render] Bundling Remotion components...");
+  console.log("[render] Bundling Remotion components from source (dev)...");
   bundlePath = await bundle({
     entryPoint,
     onProgress: (pct) => {

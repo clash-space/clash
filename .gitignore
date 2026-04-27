@@ -106,6 +106,7 @@ uv.lock
 /assets
 packages/remotion-components/build
 .claude/worktrees/
+.remotion-bundle/
 
 # React Router 7 framework-mode typegen output (no longer used; kept ignored
 # in case `react-router build` is ever run by mistake)

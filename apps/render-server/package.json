@@ -6,7 +6,7 @@
   "type": "module",
   "scripts": {
     "dev": "tsx watch src/index.ts",
-    "build": "tsup src/index.ts --format esm --target node20",
+    "build": "tsup src/index.ts src/prebundle.ts --format esm --target node20",
     "start": "node dist/index.js"
   },
   "dependencies": {

@@ -33,6 +33,13 @@ COPY apps/render-server/ apps/render-server/
 
 RUN pnpm --filter @master-clash/render-server build
 
+# Pre-compile the Remotion webpack bundle. Doing this here (vs at request
+# time) keeps cold /render requests under Cloudflare Containers' DO fetch
+# timeout — a fresh bundle() takes 60-90s and was causing
+# WorkflowInternalError retries in prod. Output: /app/.remotion-bundle.
+# Must run before `pnpm deploy --prod` strips the source tree.
+RUN node apps/render-server/dist/prebundle.js
+
 # pnpm deploy: copies only prod deps + the workspace deps the target needs,
 # inlined into a self-contained tree at /tmp/deploy that we can copy as-is.
 RUN pnpm deploy --filter @master-clash/render-server --prod /tmp/deploy
@@ -62,11 +69,9 @@ WORKDIR /app
 # node_modules with workspace deps already inlined.
 COPY --from=builder /tmp/deploy/ /app/
 
-# Remotion bundle() compiles from .tsx source at request time, but
-# `pnpm deploy --prod` strips workspace packages down to their `files:
-# ["dist"]` (no src/). Ship the original packages/ tree alongside so
-# render.ts can resolve ../packages/remotion-components/src/Root.tsx.
-COPY --from=builder /app/packages /app/packages
+# Pre-compiled Remotion webpack bundle from stage 1 (see prebundle.ts).
+# Runtime resolves ../.remotion-bundle from dist/index.js.
+COPY --from=builder /app/.remotion-bundle /app/.remotion-bundle
 
 EXPOSE 8080
 CMD ["node", "dist/index.js"]
