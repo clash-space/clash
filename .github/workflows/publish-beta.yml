@@ -19,7 +19,7 @@ jobs:
           registry-url: https://registry.npmjs.org/
 
       - run: pnpm install --frozen-lockfile
-      - run: pnpm turbo run build --filter=@clash-space/cli --filter=@clash-space/action-sdk
+      - run: pnpm turbo run build --filter=@clash-space/cli --filter=@clash-space/action-sdk --filter=@clash-space/bridge
 
       - name: Publish @clash-space/cli
         run: pnpm --filter @clash-space/cli publish --tag beta --access public --no-git-checks
@@ -28,5 +28,10 @@ jobs:
 
       - name: Publish @clash-space/action-sdk
         run: pnpm --filter @clash-space/action-sdk publish --tag beta --access public --no-git-checks
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Publish @clash-space/bridge
+        run: pnpm --filter @clash-space/bridge publish --tag beta --access public --no-git-checks
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

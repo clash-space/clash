@@ -395,9 +395,9 @@ importers:
 
   packages/clash-bridge:
     dependencies:
-      '@open-managed-agents/acp-runtime':
-        specifier: file:../../../open-managed-agents/packages/acp-runtime
-        version: file:../open-managed-agents/packages/acp-runtime
+      '@agentclientprotocol/sdk':
+        specifier: ^0.20.0
+        version: 0.20.0(zod@4.3.6)
       ws:
         specifier: ^8.18.0
         version: 8.18.0
@@ -756,12 +756,12 @@ packages:
     resolution: {integrity: sha512-Elp+iwUx5rN5+Y8xLt5/GRoG20WGoDCQ/1Fb+1LiGtvwbDavuSk0jhD/eZdckHAuzcDzccnkv+rEjyWfRx18gg==}
     dev: true
 
-  /@agentclientprotocol/sdk@0.20.0(zod@3.25.76):
+  /@agentclientprotocol/sdk@0.20.0(zod@4.3.6):
     resolution: {integrity: sha512-BxEHyE4MvwyOsdyVPub1vEtyrq8E0JSdjC+ckXWimY1VabFCTXdPyXv2y2Omz1j+iod7Z8oBJDXFCJptM0GBqQ==}
     peerDependencies:
       zod: ^3.25.0 || ^4.0.0
     dependencies:
-      zod: 3.25.76
+      zod: 4.3.6
     dev: false
 
   /@ai-sdk/anthropic@3.0.64(zod@3.25.76):
@@ -14648,12 +14648,4 @@ packages:
 
   /zwitch@2.0.4:
     resolution: {integrity: sha512-bXE4cR/kVZhKZX/RjPEflHaKVhUVl85noU3v6b8apfQEc1x4A+zBxjZ4lN8LqGd6WZ3dl98pY4o717VFmoPp+A==}
-    dev: false
-
-  file:../open-managed-agents/packages/acp-runtime:
-    resolution: {directory: ../open-managed-agents/packages/acp-runtime, type: directory}
-    name: '@open-managed-agents/acp-runtime'
-    dependencies:
-      '@agentclientprotocol/sdk': 0.20.0(zod@3.25.76)
-      zod: 3.25.76
     dev: false

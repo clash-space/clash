@@ -55,7 +55,7 @@ export function ByoAgentDialog({
   const command = useMemo(
     () =>
       pairTokenDisplay
-        ? `npx @clash-space/bridge --token=${pairTokenDisplay}`
+        ? `npx @clash-space/bridge@beta --token=${pairTokenDisplay}`
         : '',
     [pairTokenDisplay],
   );

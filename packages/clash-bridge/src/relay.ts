@@ -18,7 +18,7 @@
  * is deferred to v2 — minimum-viable BYO chat first.
  */
 
-import type { AcpSession } from "@open-managed-agents/acp-runtime";
+import type { AcpSession } from "./_acp-runtime/index.js";
 import type { WebSocket } from "ws";
 
 interface InMessage {

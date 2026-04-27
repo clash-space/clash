@@ -23,8 +23,8 @@ import { parseArgs } from "node:util";
 import {
   AcpRuntimeImpl,
   KNOWN_ACP_AGENTS,
-} from "@open-managed-agents/acp-runtime";
-import { NodeSpawner } from "@open-managed-agents/acp-runtime/node-spawner";
+} from "./_acp-runtime/index.js";
+import { NodeSpawner } from "./_acp-runtime/spawners/node.js";
 import { Relay } from "./relay.js";
 
 const DEFAULT_SERVER = "wss://api.clash.video";

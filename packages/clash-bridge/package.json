@@ -1,10 +1,17 @@
 {
   "name": "@clash-space/bridge",
-  "version": "0.0.0",
+  "version": "0.1.0-beta.1",
   "description": "Clash bridge — pair a local Claude Code (or other ACP agent) with the Clash web UI.",
   "type": "module",
   "bin": {
     "clash-bridge": "./dist/cli.js"
+  },
+  "main": "./dist/cli.js",
+  "files": [
+    "dist"
+  ],
+  "publishConfig": {
+    "access": "public"
   },
   "scripts": {
     "build": "tsup",
@@ -13,8 +20,8 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
-    "ws": "^8.18.0",
-    "@open-managed-agents/acp-runtime": "file:../../../open-managed-agents/packages/acp-runtime"
+    "@agentclientprotocol/sdk": "^0.20.0",
+    "ws": "^8.18.0"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
