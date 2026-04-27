@@ -437,6 +437,17 @@ export class SupervisorAgent extends AIChatAgent<Env> {
     // for a stream that will never produce another chunk. Force-resolve here.
     this.sweepStaleStream(turn);
 
+    // Repair half-finished tool calls in persisted history. If a previous turn
+    // crashed / was evicted between recording the assistant's tool-call and
+    // persisting its output, the message log has a tool part stuck in
+    // input-available / input-streaming / approval-requested. OpenAI rejects
+    // any chat completion request whose assistant message contains a tool
+    // call without a matching tool_result ("Tool result is missing for tool
+    // call call_xxx"), so the *next* turn fails before even reaching the
+    // model. Force a synthetic output-error onto every dangling tool part
+    // so convertToModelMessages can produce a well-formed transcript.
+    await this.repairDanglingToolCalls(turn);
+
     // Lazily connect to ProjectRoom on first chat message
     if (!this.roomConnection) {
       log.info(`${this.tag()} turn=${turn} connecting to room…`);
@@ -651,6 +662,62 @@ export class SupervisorAgent extends AIChatAgent<Env> {
       rs.markError?.(row.id);
     } catch (e) {
       log.warn(`${this.tag()} turn=${turn} sweepStaleStream error (non-fatal):`, e);
+    }
+  }
+
+  /**
+   * Mark every dangling tool-call part in this.messages as output-error.
+   *
+   * "Dangling" = state in {input-streaming, input-available, approval-requested}.
+   * These states mean the model issued a tool call (and we possibly even
+   * approved/started it) but no result was ever recorded — almost always
+   * because the previous turn was killed mid-tool-execution by a DO
+   * eviction, network drop, or upstream LLM stream error. OpenAI's chat
+   * completions API rejects any subsequent request whose history contains
+   * an assistant tool_use without a matching tool_result, so this
+   * supervisor would 400 on every retry until manually rescued.
+   *
+   * The repaired part gets a synthetic errorText. The model sees "this
+   * tool failed; figure out what to do next" and the conversation
+   * unblocks. We persist the repair via persistMessages so the fix
+   * survives the next hibernation.
+   */
+  private async repairDanglingToolCalls(turn: number): Promise<void> {
+    const DANGLING = new Set(["input-streaming", "input-available", "approval-requested"]);
+    let repaired = 0;
+    let touched = false;
+    const repairedMessages = this.messages.map((msg: any) => {
+      if (msg.role !== "assistant" || !Array.isArray(msg.parts)) return msg;
+      let msgChanged = false;
+      const newParts = msg.parts.map((part: any) => {
+        const isToolPart =
+          typeof part?.type === "string" &&
+          (part.type.startsWith("tool-") || part.type === "dynamic-tool");
+        if (!isToolPart) return part;
+        if (!DANGLING.has(part.state)) return part;
+        repaired++;
+        msgChanged = true;
+        return {
+          ...part,
+          state: "output-error",
+          errorText:
+            "Tool call did not complete in the previous turn (likely worker eviction or stream interruption). Treat as failed and proceed.",
+        };
+      });
+      if (!msgChanged) return msg;
+      touched = true;
+      return { ...msg, parts: newParts };
+    });
+    if (!touched) return;
+    log.warn(`${this.tag()} turn=${turn} repaired ${repaired} dangling tool call(s) in history`);
+    try {
+      await (this as any).persistMessages(repairedMessages);
+    } catch (e) {
+      // Non-fatal: even without persistence, this turn proceeds correctly
+      // because we updated the in-memory this.messages via persistMessages's
+      // own assignment. If persist itself fails (storage hiccup), the next
+      // turn will repair again.
+      log.warn(`${this.tag()} turn=${turn} repaired-history persistMessages failed (non-fatal):`, e);
     }
   }
 }
