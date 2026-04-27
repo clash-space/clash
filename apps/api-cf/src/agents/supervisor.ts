@@ -48,6 +48,16 @@ export class SupervisorAgent extends AIChatAgent<Env> {
   private userId = "anon";
   /** Monotonic per-DO chat-turn counter; threads through logs so we can spot the 2nd-message hang. */
   private turnSeq = 0;
+  /**
+   * Updates that broadcastToRoom couldn't deliver (room WS not OPEN at the
+   * time). Drained on next successful reconnect. Without this, supervisor
+   * writes that happen during a ProjectRoom outage are lost — symptom we hit
+   * was "supervisor created node X, ProjectRoom doesn't have it, workflow
+   * writeback warns 'Node not found', wait_for_generation polls forever".
+   */
+  private pendingBroadcasts: Uint8Array[] = [];
+  /** Cap so a stuck WS can't blow up DO memory. ~1000 small updates ≈ a few MB. */
+  private static readonly MAX_PENDING_BROADCASTS = 1000;
 
   // ─── Hang-recovery knobs ──────────────────────────────────
   // Stream silence past this point is almost certainly a wedged upstream LLM.
@@ -243,20 +253,43 @@ export class SupervisorAgent extends AIChatAgent<Env> {
         const data = new Uint8Array(event.data as ArrayBuffer);
 
         if (!this.roomInitialized) {
-          // First binary message = snapshot
+          // First binary message = ProjectRoom's current snapshot.
+          //
+          // CRITICAL: this.doc may already hold local writes that we
+          // couldn't get to ProjectRoom (queued in pendingBroadcasts, OR
+          // sent via ws.send() that succeeded locally but ProjectRoom never
+          // committed because it crashed mid-flight). doc.import() merges
+          // the snapshot INTO our existing doc — Loro CRDT handles dedup —
+          // so we don't lose those local writes the way fromSnapshot would.
           try {
-            this.doc = LoroDoc.fromSnapshot(data);
-          } catch {
-            // Might be an update rather than a snapshot — try import
-            this.doc = new LoroDoc();
+            this.doc.import(data);
+          } catch (e) {
+            log.error(`${this.tag()} room snapshot import failed; falling back to fromSnapshot (loses local writes):`, e);
             try {
-              this.doc.import(data);
-            } catch (e) {
-              log.error("Failed to initialize doc:", e);
+              this.doc = LoroDoc.fromSnapshot(data);
+            } catch (e2) {
+              log.error(`${this.tag()} fromSnapshot also failed; starting empty doc:`, e2);
+              this.doc = new LoroDoc();
             }
           }
           this.roomInitialized = true;
           clearTimeout(timeout);
+
+          // Push our full state back to ProjectRoom so any local writes that
+          // never made it (queued OR appeared-to-send-but-lost) get a second
+          // chance. CRDT merge is idempotent, so re-sending what ProjectRoom
+          // already has is harmless. Then drain the explicit queue too.
+          try {
+            const ourState = this.doc.export({ mode: "update" });
+            if (ourState.byteLength > 0 && this.roomWs?.readyState === WebSocket.OPEN) {
+              this.roomWs.send(ourState);
+              log.info(`${this.tag()} pushed full state (${ourState.byteLength}B) to room on connect`);
+            }
+          } catch (e) {
+            log.warn(`${this.tag()} full-state push to room failed:`, e);
+          }
+          this.flushPendingBroadcasts();
+
           resolve();
         } else {
           // Subsequent messages = incremental updates
@@ -269,16 +302,16 @@ export class SupervisorAgent extends AIChatAgent<Env> {
       });
 
       ws.addEventListener("close", (ev) => {
-        log.warn(`${this.tag()} room WS closed (code=${(ev as CloseEvent).code} reason=${(ev as CloseEvent).reason || "—"} initialized=${this.roomInitialized})`);
+        log.warn(`${this.tag()} room WS closed (code=${(ev as CloseEvent).code} reason=${(ev as CloseEvent).reason || "—"} initialized=${this.roomInitialized} pending=${this.pendingBroadcasts.length})`);
         this.roomWs = null;
         this.roomInitialized = false;
         this.roomConnection = null;
-        // Drop the local doc replica too. Without this, the next chat turn
-        // would reuse stale doc state — tools like wait_for_generation would
-        // poll the OLD pendingTask/status fields and never see the
-        // ProjectRoom-side recovery writes that happened while we were
-        // disconnected. New replica, full snapshot pull, no surprises.
-        this.doc = new LoroDoc();
+        // KEEP this.doc — wiping it would lose any local writes that
+        // haven't propagated yet (the broadcast queue only has writes that
+        // never even attempted send; ws.send() that returned successfully
+        // but ProjectRoom was tearing down concurrently is invisible to us).
+        // On reconnect we push the full doc state to ProjectRoom; CRDT
+        // merge dedups what was already there.
       });
 
       ws.addEventListener("error", (e) => {
@@ -291,15 +324,50 @@ export class SupervisorAgent extends AIChatAgent<Env> {
 
   /**
    * Send a Loro update to ProjectRoom for broadcast.
-   * Used as the `broadcast` function for canvas tools.
+   *
+   * If the room WS isn't OPEN we queue the update instead of dropping it —
+   * a re-connect will flush. WebSockets give no delivery ack, so a
+   * fire-and-forget broadcast that "succeeded" by ws.send() returning can
+   * still be lost if ProjectRoom was tearing down at the same moment. The
+   * full-state push in connectToRoom (after snapshot) covers that case via
+   * Loro's CRDT merge — duplicate updates are idempotent.
    */
   private broadcastToRoom = (update: Uint8Array): void => {
     if (this.roomWs?.readyState === WebSocket.OPEN) {
-      this.roomWs.send(update);
+      try {
+        this.roomWs.send(update);
+        return;
+      } catch (e) {
+        log.warn(`${this.tag()} broadcastToRoom send threw, queueing:`, e);
+        // fall through to queue
+      }
+    }
+    if (this.pendingBroadcasts.length < SupervisorAgent.MAX_PENDING_BROADCASTS) {
+      this.pendingBroadcasts.push(update);
     } else {
-      log.warn("Cannot broadcast — room WS not open");
+      log.error(`${this.tag()} broadcastToRoom queue full (${this.pendingBroadcasts.length}); dropping update — room sync will diverge`);
     }
   };
+
+  /**
+   * Drain pendingBroadcasts to a now-OPEN room WS. Idempotent — failed sends
+   * go back on the queue, so a partial drain is safe.
+   */
+  private flushPendingBroadcasts(): void {
+    if (this.pendingBroadcasts.length === 0) return;
+    if (this.roomWs?.readyState !== WebSocket.OPEN) return;
+    const queue = this.pendingBroadcasts;
+    this.pendingBroadcasts = [];
+    log.info(`${this.tag()} flushing ${queue.length} buffered broadcasts to room`);
+    for (const u of queue) {
+      try {
+        this.roomWs.send(u);
+      } catch (e) {
+        log.warn(`${this.tag()} flush send threw, requeueing:`, e);
+        this.pendingBroadcasts.push(u);
+      }
+    }
+  }
 
   // ─── Message Handling ──────────────────────────────────────
 
