@@ -78,7 +78,6 @@ describe("buildPendingAssetNode", () => {
     expect(node.type).toBe("audio");
     expect(node.data).toMatchObject({
       label: "Read this line out loud",
-      src: "",
       status: "pending",
       prompt: "Read this line out loud",
       model: "minimax-tts",

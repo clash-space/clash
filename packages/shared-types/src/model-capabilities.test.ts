@@ -169,37 +169,37 @@ describe("validateRefs", () => {
 
 describe("partitionRefs", () => {
   const refs = [
-    { type: "image", data: { src: "i1.png" } },
-    { type: "image", data: { src: "i2.png" } },
-    { type: "video", data: { src: "v1.mp4" } },
-    { type: "audio", data: { src: "a1.mp3" } },
-    { type: "image", data: { src: undefined } }, // dropped: no src
+    { type: "image", data: { assetId: "i1" } },
+    { type: "image", data: { assetId: "i2" } },
+    { type: "video", data: { assetId: "v1" } },
+    { type: "audio", data: { assetId: "a1" } },
+    { type: "image", data: { assetId: undefined } }, // dropped: no assetId
     { type: "text", data: { content: "story beat" } },
   ];
 
   it("drops modalities the model doesn't accept", () => {
     const out = partitionRefs(refs, NANO_BANANA);
-    expect(out.images).toEqual(["i1.png", "i2.png"]);
+    expect(out.imageAssetIds).toEqual(["i1", "i2"]);
     expect(out.texts).toEqual(["story beat"]);
-    expect(out.videos).toEqual([]);
-    expect(out.audios).toEqual([]);
+    expect(out.videoAssetIds).toEqual([]);
+    expect(out.audioAssetIds).toEqual([]);
   });
 
   it("keeps all accepted modalities", () => {
     const out = partitionRefs(refs, SEEDANCE_REF);
-    expect(out.images).toEqual(["i1.png", "i2.png"]);
+    expect(out.imageAssetIds).toEqual(["i1", "i2"]);
     expect(out.texts).toEqual(["story beat"]);
-    expect(out.videos).toEqual(["v1.mp4"]);
-    expect(out.audios).toEqual(["a1.mp3"]);
+    expect(out.videoAssetIds).toEqual(["v1"]);
+    expect(out.audioAssetIds).toEqual(["a1"]);
   });
 
   it("preserves order within bucket", () => {
     const ordered = [
-      { type: "image", data: { src: "z" } },
-      { type: "image", data: { src: "a" } },
-      { type: "image", data: { src: "m" } },
+      { type: "image", data: { assetId: "z" } },
+      { type: "image", data: { assetId: "a" } },
+      { type: "image", data: { assetId: "m" } },
     ];
-    expect(partitionRefs(ordered, NANO_BANANA).images).toEqual(["z", "a", "m"]);
+    expect(partitionRefs(ordered, NANO_BANANA).imageAssetIds).toEqual(["z", "a", "m"]);
   });
 });
 
