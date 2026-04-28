@@ -102,8 +102,6 @@ export class RuntimeRoom extends DurableObject<Env> {
     const sessionId = request.headers.get("x-session-id") ?? "";
     if (!sessionId) return new Response("missing x-session-id", { status: 400 });
 
-    // Make sure runtime identity is loaded from storage so logs are useful
-    // when a client attaches before any daemon traffic has woken the DO.
     await this.ensureIdentity();
 
     const pair = new WebSocketPair();
@@ -111,15 +109,28 @@ export class RuntimeRoom extends DurableObject<Env> {
     this.ctx.acceptWebSocket(server, [clientTag(sessionId)]);
     log.info(`${this.tag()} client attached for session ${sessionId.slice(0, 8)}`);
 
-    // Tell the client whether the daemon is even online. If it's not,
-    // they can render "machine offline — start your daemon" without
-    // waiting on a request that'll never come.
     const daemonUp = this.ctx.getWebSockets("daemon").length > 0;
     try {
       server.send(JSON.stringify({ type: "attached", daemon_online: daemonUp }));
     } catch { /* race: client already closed */ }
 
+    // Replay last terminal/transition state for this session if any.
+    // POST /sessions → daemon session.start → daemon session.ready almost
+    // always arrives BEFORE the client opens its WS, so the broadcast
+    // would otherwise hit zero subscribers and the client would hang
+    // waiting for a session.ready that already happened.
+    const replay = await this.ctx.storage.get<Record<string, unknown>>(
+      this.sessionStateKey(sessionId),
+    );
+    if (replay) {
+      try { server.send(JSON.stringify(replay)); } catch { /* client closed */ }
+    }
+
     return new Response(null, { status: 101, webSocket: client });
+  }
+
+  private sessionStateKey(sessionId: string): string {
+    return `session_state:${sessionId}`;
   }
 
   async webSocketMessage(ws: WebSocket, message: string | ArrayBuffer): Promise<void> {
@@ -197,6 +208,19 @@ export class RuntimeRoom extends DurableObject<Env> {
       if (!sid) {
         log.warn(`${this.tag()} daemon ${parsed.type} missing session_id`);
         return;
+      }
+      // Persist transition states so a client that opens its WS *after*
+      // session.ready / session.error arrived still gets the message.
+      // Per-turn events (session.event/.complete) are NOT replayed —
+      // those are streamed and lost-events are tolerable for a v1.
+      if (parsed.type === "session.ready" || parsed.type === "session.error") {
+        await this.ctx.storage.put(this.sessionStateKey(sid), parsed);
+      }
+      if (parsed.type === "session.disposed") {
+        // Dispose terminates the session; remove cached state so a re-use
+        // of the same session_id (shouldn't happen in v1, but defensive)
+        // doesn't accidentally replay a stale "ready".
+        await this.ctx.storage.delete(this.sessionStateKey(sid));
       }
       // Persist acp_session_id when daemon reports it (powers slice-3 resume).
       if (parsed.type === "session.ready") {

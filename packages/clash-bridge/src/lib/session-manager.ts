@@ -84,10 +84,12 @@ export class SessionManager {
       });
       return;
     }
+    process.stderr.write(`  → SessionManager.start spawning ${agent.spec.command}\n`);
     try {
       const session = await this.#runtime.start({
         agent: { ...agent.spec, cwd: p.cwd ?? process.cwd() },
       });
+      process.stderr.write(`  ✓ agent ready, session id=${(session as unknown as { id?: string }).id}\n`);
       // TODO(slice-3): hand `p.resume?.acp_session_id` into AcpSession.init()
       // so it calls `session/load` instead of `session/new`. The current
       // AcpSession always news a session — needs an option flag.

@@ -113,11 +113,13 @@ export async function runDaemon(): Promise<void> {
       ws.on("message", (data: Buffer) => {
         let msg: { type?: string; [k: string]: unknown };
         try { msg = JSON.parse(data.toString()); } catch { return; }
+        process.stderr.write(`← server: ${msg.type ?? "?"}\n`);
         switch (msg.type) {
           case "welcome":
           case "pong":
             return;
           case "session.start":
+            process.stderr.write(`  session.start sid=${(msg.session_id as string)?.slice(0, 8)} agent=${msg.agent_id}\n`);
             void sessions.start(msg as never);
             return;
           case "session.prompt":
