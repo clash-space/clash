@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { appendAcpEvent, type ByoMessage as SharedByoMessage } from '@clash/web-ui/lib/acpEvents';
 
 /**
  * Hook for "Bring Your Own (local) Agent" mode.
@@ -33,15 +34,10 @@ export type ByoStatus =
   | 'disconnected'      // bridge dropped or WS closed
   | 'error';
 
-export interface ByoMessage {
-  id: string;
-  role: 'user' | 'assistant';
-  parts: Array<
-    | { type: 'text'; text: string }
-    | { type: 'tool_call'; name: string; input?: unknown; output?: unknown }
-    | { type: 'raw_event'; event: unknown }
-  >;
-}
+/** Re-exported for callers that imported it from this hook. The canonical
+ *  definition is now in lib/acpEvents.ts so the BYO hook and useClashRuntime
+ *  share one parser + message shape. */
+export type ByoMessage = SharedByoMessage;
 
 export interface ByoBridgeState {
   /** Token issued by /pair, displayed in dialog so user can paste into npx command. */
@@ -198,56 +194,11 @@ export function useAgentByoBridge() {
    */
   const handleAcpEvent = useCallback((turnId: string, event: unknown) => {
     setState((s) => {
-      const idx = turnToMsgIdx.current.get(turnId);
       const messages = s.messages.slice();
-      const ensure = (): number => {
-        if (idx !== undefined) return idx;
-        const newIdx = messages.length;
-        messages.push({
-          id: `asst-${turnId}`,
-          role: 'assistant',
-          parts: [],
-        });
-        turnToMsgIdx.current.set(turnId, newIdx);
-        return newIdx;
-      };
-
-      const ev = event as { sessionUpdate?: string; content?: { type?: string; text?: string }; toolCall?: unknown };
-      const update = ev?.sessionUpdate;
-
-      if (update === 'agent_message_chunk' || update === 'agent_thought_chunk') {
-        const text = ev.content?.text;
-        if (typeof text === 'string') {
-          const i = ensure();
-          const last = messages[i].parts[messages[i].parts.length - 1];
-          if (last && last.type === 'text') {
-            last.text += text;
-          } else {
-            messages[i] = {
-              ...messages[i],
-              parts: [...messages[i].parts, { type: 'text', text }],
-            };
-          }
-          return { ...s, messages, status: 'streaming', ready: true };
-        }
-      }
-      if (update === 'tool_call' && ev.toolCall) {
-        const tc = ev.toolCall as { name?: string; input?: unknown; output?: unknown };
-        const i = ensure();
-        messages[i] = {
-          ...messages[i],
-          parts: [...messages[i].parts, { type: 'tool_call', name: tc.name ?? 'tool', input: tc.input, output: tc.output }],
-        };
-        return { ...s, messages };
-      }
-
-      // Fallback: keep the raw event so debugging is possible.
-      const i = ensure();
-      messages[i] = {
-        ...messages[i],
-        parts: [...messages[i].parts, { type: 'raw_event', event }],
-      };
-      return { ...s, messages };
+      const knownIdx = turnToMsgIdx.current.get(turnId);
+      const idx = appendAcpEvent(messages, turnId, knownIdx, event);
+      if (knownIdx === undefined) turnToMsgIdx.current.set(turnId, idx);
+      return { ...s, messages, status: 'streaming', ready: true };
     });
   }, []);
 

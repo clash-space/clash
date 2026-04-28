@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { ByoMessage } from '@clash/web-ui/hooks/useAgentByoBridge';
+import { appendAcpEvent, type ByoMessage } from '@clash/web-ui/lib/acpEvents';
 
 /**
  * useClashRuntime — chat through a registered local-runtime daemon.
@@ -118,56 +118,12 @@ export function useClashRuntime(): UseClashRuntimeReturn {
     };
   }, []);
 
-  // Append an ACP event to the assistant message for `turnId`.
-  // Mirrors useAgentByoBridge.handleAcpEvent (same wire format).
   const handleAcpEvent = useCallback((turnId: string, event: unknown) => {
     setMessages((prev) => {
-      const idx = turnToMsgIdx.current.get(turnId);
       const messages = prev.slice();
-      const ensure = (): number => {
-        if (idx !== undefined) return idx;
-        const newIdx = messages.length;
-        messages.push({
-          id: `asst-${turnId}`,
-          role: 'assistant',
-          parts: [],
-        });
-        turnToMsgIdx.current.set(turnId, newIdx);
-        return newIdx;
-      };
-      const ev = event as {
-        sessionUpdate?: string;
-        update?: { sessionUpdate?: string; content?: { type?: string; text?: string }; toolCall?: unknown };
-        content?: { type?: string; text?: string };
-        toolCall?: unknown;
-      };
-      // ACP events from claude-code-acp wrap content under `update`. Older
-      // shapes (from the openma vendored runtime) had it at top level.
-      // Look at both so the same renderer covers everything.
-      const update = ev?.update?.sessionUpdate ?? ev?.sessionUpdate;
-      const content = ev?.update?.content ?? ev?.content;
-      const toolCall = ev?.update?.toolCall ?? ev?.toolCall;
-
-      if ((update === 'agent_message_chunk' || update === 'agent_thought_chunk') && typeof content?.text === 'string') {
-        const i = ensure();
-        const last = messages[i].parts[messages[i].parts.length - 1];
-        if (last && last.type === 'text') last.text += content.text;
-        else {
-          messages[i] = { ...messages[i], parts: [...messages[i].parts, { type: 'text', text: content.text }] };
-        }
-        return messages;
-      }
-      if (update === 'tool_call' && toolCall) {
-        const tc = toolCall as { name?: string; input?: unknown; output?: unknown };
-        const i = ensure();
-        messages[i] = {
-          ...messages[i],
-          parts: [...messages[i].parts, { type: 'tool_call', name: tc.name ?? 'tool', input: tc.input, output: tc.output }],
-        };
-        return messages;
-      }
-      const i = ensure();
-      messages[i] = { ...messages[i], parts: [...messages[i].parts, { type: 'raw_event', event }] };
+      const knownIdx = turnToMsgIdx.current.get(turnId);
+      const idx = appendAcpEvent(messages, turnId, knownIdx, event);
+      if (knownIdx === undefined) turnToMsgIdx.current.set(turnId, idx);
       return messages;
     });
   }, []);
