@@ -1,6 +1,6 @@
 {
   "name": "@clash-space/bridge",
-  "version": "0.1.0-beta.26",
+  "version": "0.1.0-beta.27",
   "description": "Clash bridge — pair a local Claude Code (or other ACP agent) with the Clash web UI.",
   "private": true,
   "type": "module",
@@ -15,8 +15,8 @@
     "access": "public"
   },
   "scripts": {
-    "build": "tsup && pnpm bundle:cc-config",
-    "bundle:cc-config": "rm -rf dist/cc-config && mkdir -p dist/cc-config && cp -R assets/cc/. dist/cc-config/",
+    "build": "tsup && pnpm bundle:crew",
+    "bundle:crew": "node scripts/bundle-crew.mjs",
     "dev": "tsup --watch",
     "typecheck": "tsc --noEmit",
     "clean": "rm -rf dist"

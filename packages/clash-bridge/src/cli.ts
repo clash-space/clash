@@ -27,12 +27,11 @@
 
 import { parseArgs } from "node:util";
 import WebSocket from "ws";
-import { randomBytes } from "node:crypto";
 import { AcpRuntimeImpl, KNOWN_ACP_AGENTS } from "./_acp-runtime/index.js";
 import { NodeSpawner } from "./_acp-runtime/spawners/node.js";
 import { detectAll } from "./_acp-runtime/registry.js";
 import { listLocalCcSessions } from "./lib/cc-sessions.js";
-import { ensureSessionCwd } from "./lib/session-cwd.js";
+import { ensureCrewCwd, listBundledCrew, readCrewRuntime } from "./lib/session-cwd.js";
 import { Relay } from "./relay.js";
 
 const DEFAULT_API_SERVER_URL = "https://api.clash.video";
@@ -217,15 +216,16 @@ async function runAdHocPair(): Promise<void> {
     process.stderr.write("✓ paired\n");
 
     if (!session) {
-      // First attach — let the browser pick agent + (optional) resume id.
-      // Re-enumerate sessions every attach so the picker is fresh.
+      // First attach — let the browser pick crew + (optional) resume id.
+      // Re-enumerate local sessions every attach so the picker is fresh.
       const sessions = await listLocalCcSessions(20).catch(() => []);
+      const crew = await listBundledCrew();
       ws.send(JSON.stringify({
         type: "bridge_setup",
-        agents: candidates.map((a) => ({ id: a.id, label: a.label, command: a.spec.command })),
+        crew,
         sessions,
       }));
-      process.stderr.write(`→ waiting for browser to pick agent${sessions.length ? " / session" : ""} …\n`);
+      process.stderr.write(`→ waiting for browser to pick crew${sessions.length ? " / session" : ""} …\n`);
 
       const startMsg = await waitForStart(ws).catch((e) => {
         process.stderr.write(`✗ ${e instanceof Error ? e.message : String(e)}\n`);
@@ -233,17 +233,20 @@ async function runAdHocPair(): Promise<void> {
       });
       if (!startMsg) continue; // WS dropped before pick — reconnect, browser repicks
 
+      // Resolve picked crew member → which ACP agent CLI to spawn.
+      const crewId = startMsg.crew_id ?? crew[0]?.id ?? "director";
+      const crewRuntime = await readCrewRuntime(crewId);
       const pickedAgent =
-        candidates.find((a) => a.id === startMsg.agent_id) ?? candidates[0];
+        candidates.find((a) => a.id === crewRuntime?.agent_id) ??
+        candidates.find((a) => a.id === "claude-code-acp") ??
+        candidates[0];
       process.stderr.write(
-        `→ spawning ${pickedAgent.spec.command} (${pickedAgent.id})${
+        `→ spawning crew=${crewId} via ${pickedAgent.spec.command} (${pickedAgent.id})${
           startMsg.resume_session_id ? ` resume=${startMsg.resume_session_id.slice(0, 8)}…` : ""
         } …\n`,
       );
-      // Same per-session cwd treatment as the daemon path: spawn into
-      // ~/.clash/sessions/<short-id>/ so plugin + AGENTS.md are present
-      // and we don't pollute whichever folder the user ran npx from.
-      const sessionCwd = await ensureSessionCwd(randomBytes(6).toString("hex"));
+      // Workspace cwd: ~/.clash/crew/<crewId>/<projectId-or-default>/
+      const sessionCwd = await ensureCrewCwd(crewId);
       // Browser passed CLASH_API_KEY (issued by /pair); inject so the
       // spawned ACP agent's `clash` CLI / plugin hooks authenticate
       // without prompting.
@@ -291,6 +294,14 @@ function sleep(ms: number): Promise<void> {
 
 interface StartMessage {
   type: "start";
+  /** Picked crew member id (director / canvas-editor / …). Bridge
+   *  resolves to the underlying ACP agent CLI via the bundled
+   *  crew/<id>/runtime.json. */
+  crew_id?: string;
+  /** Legacy field retained for the brief window between releases —
+   *  older browsers still send agent_id. Treated as a hint at picker
+   *  default; the crew runtime.json is always the source of truth for
+   *  which CLI gets spawned. */
   agent_id?: string;
   resume_session_id?: string;
   /** Server-issued clsh_* — bridge sets as CLASH_API_KEY in spawn env. */

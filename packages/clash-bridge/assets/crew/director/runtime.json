@@ -1,0 +1,4 @@
+{
+  "agent_id": "claude-code-acp",
+  "_doc": "Which ACP agent runtime SessionManager spawns for this employee. Daemon reads this when spawning into the employee's cwd. Other employees may pick different agents (openclaw / hermes / ...)."
+}

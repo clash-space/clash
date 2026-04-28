@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, CircleNotch } from '@phosphor-icons/react';
-import { SessionStartPicker } from './SessionStartPicker';
+import { SessionStartPicker, type CrewMember } from './SessionStartPicker';
 import type { Runtime } from '@clash/web-ui/hooks/useClashRuntime';
 import type { BridgeSession } from '@clash/web-ui/hooks/useAgentByoBridge';
 
@@ -11,12 +11,20 @@ import type { BridgeSession } from '@clash/web-ui/hooks/useAgentByoBridge';
  * dialog so the experience is identical the moment the user has
  * picked "where to run".
  *
- * Phase 1: agents come from runtime.agents (already in the runtime
- * manifest the daemon reported on attach). Sessions list is loaded via
- * `loadResumeOptions(runtimeId)` which RPCs the daemon. While the RPC
- * is in flight we render the picker without a Resume section so the
- * user can still proceed with "Start fresh".
+ * Crew list is hardcoded for v1 to match the bundled clash-bridge
+ * crew (Director / Canvas Editor / Generator / Storyboard Artist /
+ * Project Manager). v2 fetches it from the runtime via DO RPC so
+ * user-customizable crew works.
  */
+
+const BUILTIN_CREW: CrewMember[] = [
+  { id: 'director',        label: 'Director',          summary: 'Plans the video and orchestrates the other roles.' },
+  { id: 'canvas-editor',   label: 'Canvas Editor',     summary: 'Adds / edits / reorders / deletes nodes on the canvas.' },
+  { id: 'generator',       label: 'Generator',         summary: 'Dispatches and tracks image / video / clip generation.' },
+  { id: 'storyboard',      label: 'Storyboard Artist', summary: 'Sketches a shot list and lays it on the canvas.' },
+  { id: 'project-manager', label: 'Project Manager',   summary: 'Lists / creates / switches / deletes projects.' },
+];
+
 export function RuntimePickerDialog({
   open,
   runtime,
@@ -28,14 +36,13 @@ export function RuntimePickerDialog({
   open: boolean;
   runtime: Runtime | null;
   loadResumeOptions: (runtimeId: string) => Promise<BridgeSession[]>;
-  onPick: (agentId: string | null, resumeSessionId?: string) => void;
+  onPick: (crewId: string | null, resumeSessionId?: string) => void;
   onClose: () => void;
   busy?: boolean;
 }) {
   const [sessions, setSessions] = useState<BridgeSession[]>([]);
   const [loadingSessions, setLoadingSessions] = useState(false);
 
-  // Refresh the resume list every time the dialog opens for a runtime.
   useEffect(() => {
     if (!open || !runtime) return;
     let cancelled = false;
@@ -80,8 +87,8 @@ export function RuntimePickerDialog({
               Start a chat on {runtime.hostname}
             </h2>
             <p className="text-sm text-stone-500 mb-5">
-              Pick which local agent to run, or resume a previous session on
-              this machine. Conversations stay on your computer.
+              Pick which crew member to talk to, or resume a previous chat
+              on this machine. Conversations stay on your computer.
             </p>
 
             {loadingSessions && (
@@ -92,7 +99,7 @@ export function RuntimePickerDialog({
             )}
 
             <SessionStartPicker
-              agents={runtime.agents.map((a) => ({ id: a.id, label: a.id, command: a.binary }))}
+              crew={BUILTIN_CREW}
               sessions={sessions}
               onStart={onPick}
               busy={busy}

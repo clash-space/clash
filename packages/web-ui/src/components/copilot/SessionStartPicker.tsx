@@ -1,75 +1,88 @@
 import { useEffect, useState } from 'react';
-import type { BridgeAgent, BridgeSession } from '@clash/web-ui/hooks/useAgentByoBridge';
+import type { BridgeSession } from '@clash/web-ui/hooks/useAgentByoBridge';
 
 /**
- * Shared agent + (optional) resume picker — same UX for Quick connect
- * and persistent-runtime flows. Extracted so the two paths feel identical
- * the moment the user has picked "where to run".
- *
- * Doesn't manage any of its own transport. Caller hands in the agent
- * list and the resumeable session list, and gets a `(agentId, resumeId?)`
- * tuple via onStart.
+ * One bundled crew member (Director / Canvas Editor / …). Shape mirrors
+ * the manifest the bridge daemon ships in its dist/crew/manifest.json.
+ */
+export interface CrewMember {
+  id: string;
+  label: string;
+  summary?: string;
+  /** Underlying ACP runtime CLI this crew member spawns (claude-code-acp,
+   *  openclaw, hermes, …). Diagnostic only — picker shows label, not this. */
+  agent_id?: string;
+}
+
+/**
+ * Shared crew + (optional) resume picker — same UX for Quick connect
+ * and persistent-runtime flows. Caller hands in the crew list and the
+ * resumeable session list, and gets a `(crewId, resumeId?)` tuple via
+ * onStart.
  */
 export function SessionStartPicker({
-  agents,
+  crew,
   sessions,
   onStart,
   busy = false,
   startLabel = 'Start chat',
 }: {
-  agents: BridgeAgent[];
+  crew: CrewMember[];
   sessions: BridgeSession[];
-  onStart: (agentId: string | null, resumeSessionId?: string) => void;
+  onStart: (crewId: string | null, resumeSessionId?: string) => void;
   busy?: boolean;
   startLabel?: string;
 }) {
-  const [agentId, setAgentId] = useState<string | null>(agents[0]?.id ?? null);
+  const [crewId, setCrewId] = useState<string | null>(crew[0]?.id ?? null);
   const [resumeId, setResumeId] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!agentId || !agents.some((a) => a.id === agentId)) {
-      setAgentId(agents[0]?.id ?? null);
+    if (!crewId || !crew.some((m) => m.id === crewId)) {
+      setCrewId(crew[0]?.id ?? null);
     }
-  }, [agents, agentId]);
+  }, [crew, crewId]);
 
   return (
     <div className="space-y-4">
       <div>
-        <div className="text-xs uppercase tracking-wider text-stone-400 mb-2">Agent</div>
-        {agents.length === 0 ? (
-          <div className="text-sm text-amber-700">No ACP agents detected on PATH.</div>
+        <div className="text-xs uppercase tracking-wider text-stone-400 mb-2">Crew</div>
+        {crew.length === 0 ? (
+          <div className="text-sm text-amber-700">
+            No crew members reported by this runtime — upgrade the daemon
+            to populate the list.
+          </div>
         ) : (
           <div className="grid grid-cols-1 gap-1.5">
-            {agents.map((a) => (
+            {crew.map((m) => (
               <label
-                key={a.id}
-                className={`flex items-center gap-2.5 px-3 py-2 rounded-lg cursor-pointer border transition-colors ${
-                  agentId === a.id
+                key={m.id}
+                className={`flex items-start gap-2.5 px-3 py-2 rounded-lg cursor-pointer border transition-colors ${
+                  crewId === m.id
                     ? 'border-emerald-300 bg-emerald-50/40'
                     : 'border-stone-200 hover:bg-warm-muted'
                 }`}
               >
                 <input
                   type="radio"
-                  name="picker-agent"
-                  className="accent-emerald-600"
-                  checked={agentId === a.id}
-                  onChange={() => setAgentId(a.id)}
+                  name="picker-crew"
+                  className="accent-emerald-600 mt-0.5"
+                  checked={crewId === m.id}
+                  onChange={() => setCrewId(m.id)}
                 />
-                <span className="text-sm font-medium text-slate-700">{a.label}</span>
-                {a.command && (
-                  <span className="text-[11px] text-stone-400 font-mono">{a.command}</span>
-                )}
+                <div className="min-w-0 flex-1">
+                  <div className="text-sm font-medium text-slate-700">{m.label}</div>
+                  {m.summary && (
+                    <div className="text-[11px] text-stone-400">{m.summary}</div>
+                  )}
+                </div>
               </label>
             ))}
           </div>
         )}
       </div>
 
-      {/* Always render the Resume section — even empty — so the picker
-          shape is consistent. When no sessions exist, the user sees the
-          header + "Start fresh" + a one-line explanation rather than
-          a blank where the section would be. */}
+      {/* Always render Resume even when empty — picker shape stays
+          consistent regardless of state. */}
       <div>
         <div className="text-xs uppercase tracking-wider text-stone-400 mb-2">Resume a session</div>
         <div className="grid grid-cols-1 gap-1.5 max-h-56 overflow-y-auto">
@@ -123,12 +136,10 @@ export function SessionStartPicker({
         </div>
       </div>
 
-
-
       <button
         type="button"
-        onClick={() => onStart(agentId, resumeId ?? undefined)}
-        disabled={!agentId || busy}
+        onClick={() => onStart(crewId, resumeId ?? undefined)}
+        disabled={!crewId || busy}
         className="w-full rounded-full bg-gray-900 text-white py-2.5 text-sm font-medium hover:bg-gray-800 disabled:opacity-40 disabled:cursor-not-allowed"
       >
         {busy ? 'Starting…' : startLabel}

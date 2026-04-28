@@ -69,10 +69,10 @@ export interface UseClashRuntimeReturn {
   ready: boolean;
   /** Re-fetch the runtime list. Cheap; safe to call from a settings page. */
   refresh: () => Promise<void>;
-  /** Pick a runtime + (optional) explicit agent + resume target. Disposes
-   *  any existing session and starts a fresh one. agentId defaults to the
-   *  runtime's first reported agent. */
-  select: (runtimeId: string | null, agentId?: string, resumeAcpSessionId?: string) => Promise<void>;
+  /** Pick a runtime + crew member + (optional) project + resume target.
+   *  Disposes any existing session and starts a fresh one. crewId
+   *  defaults to "director" when not supplied. */
+  select: (runtimeId: string | null, crewId?: string, opts?: { projectId?: string; resumeAcpSessionId?: string }) => Promise<void>;
   /** RPC the daemon for resumeable local CC sessions. Returns [] if the
    *  runtime is offline or the daemon doesn't respond. Used by the
    *  picker dialog so the user can pick "Resume X" instead of fresh. */
@@ -182,8 +182,8 @@ export function useClashRuntime(): UseClashRuntimeReturn {
 
   const select = useCallback(async (
     runtimeId: string | null,
-    explicitAgentId?: string,
-    resumeAcpSessionId?: string,
+    crewId?: string,
+    opts?: { projectId?: string; resumeAcpSessionId?: string },
   ) => {
     // Tear down anything already open.
     try { wsRef.current?.close(); } catch { /* */ }
@@ -198,20 +198,15 @@ export function useClashRuntime(): UseClashRuntimeReturn {
 
     setStatus('connecting');
     try {
-      // Caller may pass an explicit agent id (from the picker dialog).
-      // Otherwise default to the runtime's first reported agent —
-      // matches the previous always-default-to-first behaviour for
-      // call sites that don't go through the picker.
-      const runtime = runtimes.find((r) => r.id === runtimeId);
-      const agentId = explicitAgentId ?? runtime?.agents[0]?.id ?? 'claude-code-acp';
-
+      const finalCrewId = crewId ?? 'director';
       const res = await fetch(`${RUNTIMES_PATH}/${runtimeId}/sessions`, {
         method: 'POST',
         credentials: 'same-origin',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
-          agent_id: agentId,
-          ...(resumeAcpSessionId ? { resume_session_id: resumeAcpSessionId } : {}),
+          crew_id: finalCrewId,
+          ...(opts?.projectId ? { project_id: opts.projectId } : {}),
+          ...(opts?.resumeAcpSessionId ? { resume_session_id: opts.resumeAcpSessionId } : {}),
         }),
       });
       if (!res.ok) {
@@ -239,7 +234,7 @@ export function useClashRuntime(): UseClashRuntimeReturn {
       setErrorMessage(e instanceof Error ? e.message : String(e));
       setStatus('error');
     }
-  }, [runtimes, onWsMessage]);
+  }, [onWsMessage]);
 
   const sendMessage = useCallback((text: string) => {
     const ws = wsRef.current;

@@ -238,31 +238,33 @@ runtimesRoutes.post("/:rid/sessions", async (c) => {
 
   const rid = c.req.param("rid");
   const body = (await c.req.json().catch(() => ({}))) as {
+    crew_id?: string;
+    project_id?: string;
+    /** @deprecated kept for older browsers; prefer crew_id. */
     agent_id?: string;
     cwd?: string;
     resume_session_id?: string;
   };
-  if (!body.agent_id) return c.json({ error: "agent_id required" }, 400);
+  // Browser sends crew_id; legacy clients may send agent_id (mapped to
+  // a default crew). Reject if neither.
+  const crewId = body.crew_id ?? (body.agent_id ? "director" : null);
+  if (!crewId) return c.json({ error: "crew_id required" }, 400);
 
   const runtime = await c.env.DB.prepare(
-    "SELECT id, status, agents_json FROM runtime WHERE id = ? AND owner_user_id = ?",
-  ).bind(rid, userId).first<{ id: string; status: string; agents_json: string }>();
+    "SELECT id, status FROM runtime WHERE id = ? AND owner_user_id = ?",
+  ).bind(rid, userId).first<{ id: string; status: string }>();
   if (!runtime) return c.json({ error: "runtime not found" }, 404);
   if (runtime.status !== "online") return c.json({ error: "runtime offline" }, 409);
 
-  let agents: Array<{ id: string }> = [];
-  try { agents = JSON.parse(runtime.agents_json) as Array<{ id: string }>; } catch { /* ignore */ }
-  if (!agents.some((a) => a.id === body.agent_id)) {
-    return c.json({ error: `agent '${body.agent_id}' not detected on this runtime` }, 400);
-  }
-
   const sessionId = crypto.randomUUID();
-  const cwd = body.cwd ?? "";
-
+  // Persist crew + project on the row so resume / history can show
+  // which crew member the user was talking to. agent_id column is
+  // repurposed to store crew_id (no schema change in v1; cleaner
+  // rename can come later).
   await c.env.DB.prepare(
     `INSERT INTO runtime_session (id, user_id, runtime_id, agent_id, cwd, status, created_at, last_active_at)
      VALUES (?, ?, ?, ?, ?, 'active', unixepoch(), unixepoch())`,
-  ).bind(sessionId, userId, rid, body.agent_id, cwd).run();
+  ).bind(sessionId, userId, rid, crewId, body.project_id ?? "").run();
 
   const doStub = c.env.RUNTIME_ROOM.get(c.env.RUNTIME_ROOM.idFromName(rid));
   const ok = await (doStub as unknown as {
@@ -270,8 +272,8 @@ runtimesRoutes.post("/:rid/sessions", async (c) => {
   }).sendToDaemon({
     type: "session.start",
     session_id: sessionId,
-    agent_id: body.agent_id,
-    cwd,
+    crew_id: crewId,
+    ...(body.project_id ? { project_id: body.project_id } : {}),
     ...(body.resume_session_id ? { resume: { acp_session_id: body.resume_session_id } } : {}),
   });
 

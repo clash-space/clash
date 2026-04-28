@@ -938,7 +938,7 @@ export default function ChatbotCopilot({
                 status={byo.status}
                 pairTokenDisplay={byo.pairTokenDisplay}
                 errorMessage={byo.errorMessage}
-                agents={byo.agents}
+                crew={byo.crew}
                 sessions={byo.sessions}
                 onStartPairing={byo.startPairing}
                 onStartWith={byo.startWith}
@@ -949,13 +949,16 @@ export default function ChatbotCopilot({
                 open={!!runtimePicker}
                 runtime={runtimePicker}
                 loadResumeOptions={clashRt.loadResumeOptions}
-                onPick={async (agentId, resumeId) => {
+                onPick={async (crewId, resumeId) => {
                     const rt = runtimePicker;
                     setRuntimePicker(null);
                     if (!rt) return;
                     if (chatMode === 'byo') byo.shutdown();
                     setChatMode('runtime');
-                    await clashRt.select(rt.id, agentId ?? undefined, resumeId);
+                    await clashRt.select(rt.id, crewId ?? undefined, {
+                        projectId,
+                        resumeAcpSessionId: resumeId,
+                    });
                 }}
                 onClose={() => setRuntimePicker(null)}
                 busy={clashRt.status === 'connecting'}

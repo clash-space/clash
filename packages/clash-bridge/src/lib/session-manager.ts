@@ -26,11 +26,26 @@ import { AcpRuntimeImpl } from "../_acp-runtime/index.js";
 import { NodeSpawner } from "../_acp-runtime/spawners/node.js";
 import { KNOWN_ACP_AGENTS } from "../_acp-runtime/registry.js";
 import type { AcpSession } from "../_acp-runtime/types.js";
-import { ensureSessionCwd } from "./session-cwd.js";
+import { ensureCrewCwd, readCrewRuntime } from "./session-cwd.js";
 
 export interface SessionStartParams {
   session_id: string;
-  agent_id: string;
+  /**
+   * Crew member id (e.g. "director", "canvas-editor") — daemon resolves
+   * to the bundled CLAUDE.md / skills + the agent runtime configured in
+   * that crew member's runtime.json. Replaces the older `agent_id`
+   * field which mixed runtime selection with role definition.
+   */
+  crew_id: string;
+  /**
+   * Optional clash project id. Different projects get isolated
+   * workspaces (~/.clash/crew/<crew>/<project>/), so the same crew
+   * member's memory and tool state don't bleed across projects.
+   */
+  project_id?: string;
+  /** Server-supplied advisory cwd. Currently ignored — we always spawn
+   *  into the crew/project workspace. Kept in the type so older bridges
+   *  / future tooling don't trip. */
   cwd?: string;
   resume?: { acp_session_id: string };
 }
@@ -109,20 +124,31 @@ export class SessionManager {
       });
       return;
     }
-    const agent = KNOWN_ACP_AGENTS.find((a) => a.id === p.agent_id);
+    // Resolve crew member → which ACP runtime to spawn. Bundled crew
+    // members carry their own runtime.json that picks the right CLI;
+    // user-customizable crew (v2) will follow the same convention.
+    const crewRuntime = await readCrewRuntime(p.crew_id);
+    if (!crewRuntime) {
+      this.#send({
+        type: "session.error",
+        session_id: p.session_id,
+        message: `unknown crew member: ${p.crew_id}`,
+      });
+      return;
+    }
+    const agent = KNOWN_ACP_AGENTS.find((a) => a.id === crewRuntime.agent_id);
     if (!agent) {
       this.#send({
         type: "session.error",
         session_id: p.session_id,
-        message: `unknown agent: ${p.agent_id}`,
+        message: `crew member '${p.crew_id}' wants agent '${crewRuntime.agent_id}' but it's not in the registry`,
       });
       return;
     }
     const resumeId = p.resume?.acp_session_id;
-    // Spawn into ~/.clash/sessions/<sid>/ — never the user's pwd. The
-    // server's `cwd` field is currently advisory (we ignore it for v1)
-    // but kept in the protocol so future per-project workspaces can use it.
-    const sessionCwd = await ensureSessionCwd(p.session_id);
+    // Workspace cwd: ~/.clash/crew/<crew>/<project>/. Per-project
+    // isolation prevents memory bleed between different clash projects.
+    const sessionCwd = await ensureCrewCwd(p.crew_id, p.project_id);
     process.stderr.write(
       `  → SessionManager.start ${agent.spec.command}${resumeId ? ` (resume ${resumeId.slice(0, 8)}…)` : ""} cwd=${sessionCwd}\n`,
     );

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, Copy, Check, CircleNotch } from '@phosphor-icons/react';
-import type { ByoStatus, BridgeAgent, BridgeSession } from '@clash/web-ui/hooks/useAgentByoBridge';
+import type { ByoStatus, BridgeCrewMember, BridgeSession } from '@clash/web-ui/hooks/useAgentByoBridge';
 import { SessionStartPicker } from './SessionStartPicker';
 
 /**
@@ -19,10 +19,10 @@ interface Props {
   status: ByoStatus;
   pairTokenDisplay: string | null;
   errorMessage: string | null;
-  agents: BridgeAgent[];
+  crew: BridgeCrewMember[];
   sessions: BridgeSession[];
   onStartPairing: () => void;
-  onStartWith: (agentId: string | null, resumeSessionId?: string) => void;
+  onStartWith: (crewId: string | null, resumeSessionId?: string) => void;
   onClose: () => void;
 }
 
@@ -31,7 +31,7 @@ export function ByoAgentDialog({
   status,
   pairTokenDisplay,
   errorMessage,
-  agents,
+  crew,
   sessions,
   onStartPairing,
   onStartWith,
@@ -120,7 +120,7 @@ export function ByoAgentDialog({
 
             {status === 'awaiting_choice' ? (
               <SessionStartPicker
-                agents={agents}
+                crew={crew}
                 sessions={sessions}
                 onStart={onStartWith}
               />
