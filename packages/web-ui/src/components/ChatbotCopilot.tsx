@@ -155,6 +155,7 @@ export default function ChatbotCopilot({
     const [chatMode, setChatMode] = useState<'cloud' | 'byo' | 'runtime'>('cloud');
     const [byoDialogOpen, setByoDialogOpen] = useState(false);
     const [runtimeMenuOpen, setRuntimeMenuOpen] = useState(false);
+    const [addMachineOpen, setAddMachineOpen] = useState(false);
     const byo = useAgentByoBridge();
     const clashRt = useClashRuntime();
 
@@ -611,7 +612,7 @@ export default function ChatbotCopilot({
                                                     sub="Register a persistent local runtime"
                                                     onClick={() => {
                                                         setRuntimeMenuOpen(false);
-                                                        window.open('/connect-daemon', '_blank');
+                                                        setAddMachineOpen(true);
                                                     }}
                                                 />
                                             </div>
@@ -923,7 +924,90 @@ export default function ChatbotCopilot({
                 onStartPairing={byo.startPairing}
                 onClose={() => setByoDialogOpen(false)}
             />
+            <AddMachineDialog open={addMachineOpen} onClose={() => setAddMachineOpen(false)} />
         </>
+    );
+}
+
+/**
+ * AddMachineDialog — shows the npx setup command. The actual OAuth
+ * exchange happens when the user runs that command in their terminal —
+ * the CLI binds a localhost callback and opens /connect-daemon with
+ * cb + state params (which is why opening /connect-daemon directly is
+ * useless; this dialog is the right entry point).
+ */
+function AddMachineDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
+    const cmd = 'npx @clash-space/bridge@beta setup';
+    const [copied, setCopied] = useState(false);
+    const onCopy = async () => {
+        try {
+            await navigator.clipboard.writeText(cmd);
+            setCopied(true);
+            setTimeout(() => setCopied(false), 1500);
+        } catch { /* no clipboard access; user can select-all */ }
+    };
+    return (
+        <AnimatePresence>
+            {open && (
+                <motion.div
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm"
+                    onClick={onClose}
+                >
+                    <motion.div
+                        initial={{ scale: 0.95, opacity: 0 }}
+                        animate={{ scale: 1, opacity: 1 }}
+                        exit={{ scale: 0.95, opacity: 0 }}
+                        className="relative w-[560px] max-w-[92vw] rounded-2xl bg-warm-surface border border-warm-border shadow-xl p-6"
+                        onClick={(e) => e.stopPropagation()}
+                    >
+                        <h2 className="font-display text-lg font-bold text-slate-800 mb-1">
+                            Register a machine
+                        </h2>
+                        <p className="text-sm text-stone-500 mb-5">
+                            On the computer you want to use, run this in a terminal. It opens
+                            your browser, asks you to allow the connection, then installs a
+                            background daemon. After that, the machine appears in the "Run on"
+                            menu — automatically and persistently.
+                        </p>
+                        <div className="text-xs uppercase tracking-wider text-stone-400 mb-2">
+                            Run this in your terminal
+                        </div>
+                        <div className="flex items-stretch gap-2 mb-3">
+                            <code className="flex-1 font-mono text-sm bg-slate-900 text-slate-50 px-3 py-2.5 rounded-lg break-all select-all">
+                                {cmd}
+                            </code>
+                            <button
+                                type="button"
+                                onClick={onCopy}
+                                className="px-3 rounded-lg bg-warm-muted hover:bg-warm-border text-slate-700 transition-colors text-sm font-medium"
+                            >
+                                {copied ? 'Copied' : 'Copy'}
+                            </button>
+                        </div>
+                        <p className="text-xs text-stone-400 leading-relaxed">
+                            Requires Node 18+. The daemon installs as a launchd / systemd user
+                            service (auto-starts on boot). Remove anytime with{' '}
+                            <code className="font-mono text-[11px] bg-warm-muted px-1.5 py-0.5 rounded">
+                                npx @clash-space/bridge@beta uninstall
+                            </code>
+                            .
+                        </p>
+                        <div className="mt-5 text-right">
+                            <button
+                                type="button"
+                                onClick={onClose}
+                                className="text-sm text-stone-500 hover:text-stone-700"
+                            >
+                                Close
+                            </button>
+                        </div>
+                    </motion.div>
+                </motion.div>
+            )}
+        </AnimatePresence>
     );
 }
 

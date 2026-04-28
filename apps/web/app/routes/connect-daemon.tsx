@@ -17,7 +17,7 @@ import Background from "@clash/web-ui/components/Background";
  *     runtime token, writes credentials, and installs the launchd plist.
  */
 
-type Status = "loading" | "signin" | "ready" | "authorizing" | "redirecting" | "done" | "error";
+type Status = "loading" | "signin" | "ready" | "authorizing" | "redirecting" | "done" | "error" | "instructions";
 
 function isLocalhostCallback(url: string): boolean {
   try {
@@ -45,10 +45,23 @@ export default function ConnectDaemonRoute() {
 
   useEffect(() => {
     if (session.isPending) return;
-    if (!cb || !state) { setStatus("error"); setError("missing cb or state in URL"); return; }
+    // No cb/state → user landed here directly (likely from a stale link
+    // or curiosity). Don't error — show the setup-instructions view that
+    // tells them what command to run on the machine they want to register.
+    if (!cb || !state) { setStatus("instructions" as Status); return; }
     if (!cbValid)      { setStatus("error"); setError("callback must be on 127.0.0.1 / localhost"); return; }
     setStatus(session.data?.user ? "ready" : "signin");
   }, [session.data, session.isPending, cb, state, cbValid]);
+
+  const setupCmd = "npx @clash-space/bridge@beta setup";
+  const [copied, setCopied] = useState(false);
+  const onCopySetup = async () => {
+    try {
+      await navigator.clipboard.writeText(setupCmd);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch { /* */ }
+  };
 
   const onAllow = async () => {
     setStatus("authorizing");
@@ -93,6 +106,30 @@ export default function ConnectDaemonRoute() {
           </p>
 
           {status === "loading" && <p className="text-sm text-stone-500">Loading…</p>}
+
+          {status === "instructions" && (
+            <div className="text-left space-y-3">
+              <p className="text-sm text-stone-600">
+                This page is the browser side of the <code className="text-xs">clash-bridge setup</code> flow.
+                To register a machine, run this command on it:
+              </p>
+              <div className="flex items-stretch gap-2">
+                <code className="flex-1 font-mono text-sm bg-slate-900 text-slate-50 px-3 py-2.5 rounded-lg break-all select-all">
+                  {setupCmd}
+                </code>
+                <button
+                  type="button"
+                  onClick={onCopySetup}
+                  className="px-3 rounded-lg bg-stone-100 hover:bg-stone-200 text-slate-700 transition-colors text-sm font-medium"
+                >
+                  {copied ? "Copied" : "Copy"}
+                </button>
+              </div>
+              <p className="text-xs text-stone-400 pt-1">
+                The CLI opens this page automatically with the right parameters once you run that command.
+              </p>
+            </div>
+          )}
 
           {status === "signin" && (
             <button
