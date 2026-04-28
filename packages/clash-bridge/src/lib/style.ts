@@ -25,33 +25,20 @@ export const c = {
 };
 
 /**
- * "C/" lockup. A chunky 5-line block that reads as a stylized C with a
- * forward slash baked into its right edge — same vibe as the web logo.
+ * Two-line minimal banner. Block-art "C/" attempts looked like clipart
+ * in real terminals (slash too far from the C, glyph weight uneven
+ * across fonts). A typographic mark works better at this size — bold
+ * "C/" inline with the wordmark, cyan, no multi-line ASCII.
  *
- * Exported so other commands can reuse the exact same banner — single
- * source of truth for "what does clash-bridge look like at startup".
+ * Single source of truth for command-startup chrome.
  */
-export function logo(): string {
-  // Built with light-shade + full-block characters so it renders the
-  // same width across most terminal fonts. The "/" is the right cap.
-  const lines = [
-    "  ▄▄████▄  ▗▌",
-    "  █       ▟▘",
-    "  █      ▟▘",
-    "  █     ▟▘",
-    "  █▄▄▄▟▘",
-  ];
-  return lines.map((l) => c.cyan(c.bold(l))).join("\n");
-}
-
-/** "clash bridge — <subtitle>" header line, used right after the logo. */
-export function header(subtitle: string, version: string): string {
-  return `${c.bold("clash bridge")}  ${c.dim(`v${version}`)}\n${c.gray(subtitle)}`;
-}
-
-/** Print the standard banner (logo + header) once at command start. */
 export function printBanner(subtitle: string, version: string): void {
-  process.stderr.write(`\n${logo()}\n\n${header(subtitle, version)}\n\n`);
+  const mark = c.cyan(c.bold("C/"));
+  const word = c.bold("clash bridge");
+  const ver = c.dim(`v${version}`);
+  process.stderr.write(
+    `\n  ${mark}  ${word}  ${ver}\n  ${c.gray(subtitle)}\n\n`,
+  );
 }
 
 export const sym = {

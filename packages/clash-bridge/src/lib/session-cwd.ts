@@ -18,14 +18,13 @@
  * powers Resume.
  */
 
-import { mkdir, readdir, rm, stat, symlink, lstat, readlink, copyFile, access } from "node:fs/promises";
+import { mkdir, readdir, rm, stat, cp } from "node:fs/promises";
 import { createHash } from "node:crypto";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { paths } from "./platform.js";
 
 const GC_AGE_SECONDS = 7 * 24 * 60 * 60;
-const PLUGIN_NAME = "clash-video-production";
 const DIR_NAME_LEN = 12;
 
 /**
@@ -53,74 +52,43 @@ function dirNameFor(sessionId: string): string {
  */
 export async function ensureSessionCwd(sessionId: string): Promise<string> {
   const cwd = join(paths().sessionsDir, dirNameFor(sessionId));
-  const pluginsDir = join(cwd, ".claude", "plugins");
-  await mkdir(pluginsDir, { recursive: true });
-  await ensurePluginLink(pluginsDir);
-  await ensureAgentsMd(cwd);
+  await mkdir(cwd, { recursive: true });
+  await installCcConfig(cwd);
   return cwd;
 }
 
 /**
- * Drop AGENTS.md (the cross-agent system-prompt convention shared by
- * Claude Code, openai-codex, and others) into each session's cwd. CC
- * reads it on initialize so the agent knows it's running as a clash
- * local agent + how to call the `clash` CLI.
+ * Copy the bundled CC configuration tree into the session cwd. This
+ * lays out files at the paths Claude Code actually scans:
  *
- * Copy (not symlink) so the user can hand-edit per-session if they want
- * to scope the agent down without affecting other sessions or future
- * spawns.
+ *   <cwd>/CLAUDE.md                          system prompt
+ *   <cwd>/.claude/skills/<name>/SKILL.md     auto-loadable skills
+ *   <cwd>/.claude/commands/<name>.md         user-invokable /commands
+ *
+ * Earlier versions used the openclaw "plugin" format
+ * (<cwd>/.claude/plugins/clash-video-production/openclaw.plugin.json
+ * + skills below it). CC ignores that format — only openclaw / acpx
+ * read it. Putting the files at CC's canonical paths is what actually
+ * makes the spawned Claude Code aware that it's running as a clash
+ * agent.
+ *
+ * `cp -R` is reapplied every spawn so a stale tree from a prior
+ * version of clash-bridge gets refreshed. Per-session hand-edits are
+ * preserved on the same session id (we only overwrite identically-
+ * named files in the bundled tree).
  */
-async function ensureAgentsMd(cwd: string): Promise<void> {
-  const dst = join(cwd, "AGENTS.md");
-  try { await access(dst); return; } catch { /* not present yet */ }
-  const src = fileURLToPath(new URL("../assets/AGENTS.md", import.meta.url));
-  try { await copyFile(src, dst); }
-  catch (e: unknown) {
-    // Bundled assets missing — should never happen in a published build,
-    // but don't fail spawn just because the file isn't there.
+async function installCcConfig(cwd: string): Promise<void> {
+  const src = fileURLToPath(new URL("../cc-config/", import.meta.url));
+  try {
+    await cp(src, cwd, { recursive: true, force: true });
+  } catch (e: unknown) {
+    // Missing bundle would only happen in a broken dev install; don't
+    // crash spawn — the agent just won't have skills/commands set up.
     if ((e as NodeJS.ErrnoException).code === "ENOENT") return;
     throw e;
   }
 }
 
-/** Resolves the absolute path to dist/plugin/<name>/ in the bundled output. */
-function bundledPluginSrc(): string {
-  // After tsup bundling, this module lives at dist/<chunk>.js. The plugin
-  // dir is dist/plugin/<name>/, sibling. import.meta.url resolves to the
-  // chunk file regardless of which command invoked us.
-  return fileURLToPath(new URL(`../plugin/${PLUGIN_NAME}/`, import.meta.url));
-}
-
-async function ensurePluginLink(pluginsDir: string): Promise<void> {
-  const dst = join(pluginsDir, PLUGIN_NAME);
-  const src = bundledPluginSrc();
-  try {
-    const st = await lstat(dst);
-    if (st.isSymbolicLink()) {
-      const target = await readlink(dst);
-      if (target === src) return; // already correct
-      await rm(dst, { force: true });
-    } else if (st.isDirectory()) {
-      // Old copy from a previous version. Remove and re-link to current.
-      await rm(dst, { recursive: true, force: true });
-    }
-  } catch (e: unknown) {
-    if ((e as NodeJS.ErrnoException).code !== "ENOENT") throw e;
-  }
-  try {
-    await symlink(src, dst, "dir");
-  } catch (e: unknown) {
-    if ((e as NodeJS.ErrnoException).code === "EPERM" || (e as NodeJS.ErrnoException).code === "ENOSYS") {
-      // FS doesn't support symlinks (Windows w/o developer mode, some
-      // exotic mounts). Fall back to a recursive copy. Plugin is small
-      // (~few KB), so the cost is negligible.
-      const { cp } = await import("node:fs/promises");
-      await cp(src, dst, { recursive: true });
-      return;
-    }
-    throw e;
-  }
-}
 
 /**
  * Best-effort: drop session directories not touched in `GC_AGE_SECONDS`.

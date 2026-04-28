@@ -14,7 +14,8 @@
  * runs in foreground; users wire their own startup later.
  */
 
-import { homedir, platform } from "node:os";
+import { homedir, platform, hostname as osHostname } from "node:os";
+import { execSync } from "node:child_process";
 import { join } from "node:path";
 
 export type Platform = "darwin" | "linux" | "win32" | "unknown";
@@ -65,4 +66,41 @@ export function paths(): Paths {
 /** "darwin/arm64" — sent to server as the runtime's `os` field. */
 export function osTag(): string {
   return `${platform()}/${process.arch}`;
+}
+
+/**
+ * User-visible machine name for the runtime list.
+ *
+ * `os.hostname()` is unreliable on macOS — Sequoia and later return
+ * `localhost` for many users because the system's HostName setting is
+ * only auto-populated for machines on a managed network. The actual
+ * user-facing label ("Xiaoyang's MacBook Pro") lives in ComputerName.
+ *
+ * Fall through:
+ *   macOS  →  `scutil --get ComputerName`     (e.g. "Xiaoyang's MacBook Pro")
+ *   linux  →  `hostnamectl --pretty`           (e.g. "xiaoyang-thinkpad")
+ *   any    →  os.hostname()                    (last resort)
+ *
+ * If everything fails or returns `localhost`, returns the user's login
+ * name + the OS — better than misleading "localhost" in the runtime list.
+ */
+export function machineName(): string {
+  const p = currentPlatform();
+  const candidates: Array<() => string | undefined> = [];
+  if (p === "darwin") {
+    candidates.push(() => execSync("scutil --get ComputerName", { stdio: ["ignore", "pipe", "ignore"], timeout: 1000 }).toString().trim());
+  } else if (p === "linux") {
+    candidates.push(() => execSync("hostnamectl --pretty", { stdio: ["ignore", "pipe", "ignore"], timeout: 1000 }).toString().trim());
+  }
+  candidates.push(() => osHostname());
+
+  for (const tryFn of candidates) {
+    try {
+      const v = tryFn();
+      if (v && v.toLowerCase() !== "localhost") return v;
+    } catch { /* try next */ }
+  }
+  // Genuine fallback so the picker never shows "localhost".
+  const user = process.env.USER || process.env.USERNAME || "user";
+  return `${user}'s ${p === "darwin" ? "Mac" : p === "linux" ? "Linux box" : "computer"}`;
 }

@@ -1,16 +1,13 @@
 {
   "name": "@clash-space/cli",
-  "version": "0.1.0-beta.1",
+  "version": "0.1.0-beta.2",
   "description": "Clash CLI — manage projects and canvas from your terminal",
-  "type": "module",
   "bin": {
     "clash": "./dist/index.js"
   },
   "main": "./dist/index.js",
   "exports": {
-    ".": {
-      "import": "./dist/index.js"
-    }
+    ".": "./dist/index.js"
   },
   "publishConfig": {
     "access": "public"

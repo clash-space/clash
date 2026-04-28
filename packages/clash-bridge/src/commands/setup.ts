@@ -22,6 +22,7 @@ import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import { spawn } from "node:child_process";
 import { hostname } from "node:os";
+import { machineName } from "../lib/platform.js";
 import { randomBytes } from "node:crypto";
 import { writeCreds, readCreds, getOrCreateMachineId } from "../lib/config.js";
 import { paths, currentPlatform, osTag } from "../lib/platform.js";
