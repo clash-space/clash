@@ -278,7 +278,6 @@ export class ProjectRoom extends DurableObject<Env> {
       userId: c.userId,
       name: c.name,
       avatar: c.avatar,
-      editingNodeId: c.editingNodeId ?? null,
     }));
 
     log.debug(`Presence: ${clients.length} clients`);
@@ -386,22 +385,6 @@ export class ProjectRoom extends DurableObject<Env> {
    */
   private async handleTextMessage(sender: WebSocket, msg: Record<string, any>): Promise<void> {
     if (this.initPromise) await this.initPromise;
-
-    if (msg.type === "set_editing_node") {
-      // Soft edit-lock declaration. Clients announce which timeline node they
-      // are actively editing; server-side writers (agent tools) consult
-      // presence before mutating that node's timelineDsl. See
-      // packages/shared-types/src/presence.ts → SetEditingNodeMessage.
-      const nodeId = typeof msg.nodeId === "string" && msg.nodeId.length > 0 ? msg.nodeId : null;
-      const client = this.clients.get(sender);
-      if (!client) return;
-      if (client.editingNodeId === nodeId) return; // no-op
-      client.editingNodeId = nodeId;
-      // Persist via attachment so it survives hibernation.
-      sender.serializeAttachment(client);
-      this.broadcastPresence();
-      return;
-    }
 
     if (msg.type === "register_custom_actions") {
       // Local agent registering custom action definitions

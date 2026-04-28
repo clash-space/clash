@@ -59,14 +59,6 @@ export class SupervisorAgent extends AIChatAgent<Env> {
   /** Cap so a stuck WS can't blow up DO memory. ~1000 small updates ≈ a few MB. */
   private static readonly MAX_PENDING_BROADCASTS = 1000;
 
-  /**
-   * Set of node IDs currently held by a real-user client (timeline soft-lock).
-   * Populated from `presence` text messages on the room WS. Tools consult
-   * this before mutating node.data.timelineDsl. See
-   * packages/shared-types/src/presence.ts → PresenceClient.editingNodeId.
-   */
-  private lockedNodeIds: Set<string> = new Set();
-
   // ─── Hang-recovery knobs ──────────────────────────────────
   // Stream silence past this point is almost certainly a wedged upstream LLM.
   // Hard-abort so the client gets a real error instead of "Thinking…" forever.
@@ -255,30 +247,8 @@ export class SupervisorAgent extends AIChatAgent<Env> {
       }, 30_000);
 
       ws.addEventListener("message", (event) => {
-        // Text messages are sideband (presence/activity). Only `presence`
-        // is consumed here — to maintain the locked-nodes cache used by
-        // the timeline tool. Activity messages are ignored on the agent side.
-        if (typeof event.data === "string") {
-          try {
-            const parsed = JSON.parse(event.data);
-            if (parsed && parsed.type === "presence" && Array.isArray(parsed.clients)) {
-              const next = new Set<string>();
-              for (const c of parsed.clients) {
-                // Only real-user (browser) clients hold timeline locks. Agents
-                // and CLIs should not advertise editingNodeId, but defensively
-                // ignore them anyway so a buggy CLI can never lock out agents.
-                if (c?.clientType !== "browser") continue;
-                if (typeof c?.editingNodeId === "string" && c.editingNodeId.length > 0) {
-                  next.add(c.editingNodeId);
-                }
-              }
-              this.lockedNodeIds = next;
-            }
-          } catch {
-            // Non-JSON text or parse error — ignore.
-          }
-          return;
-        }
+        // Only handle binary messages (Loro updates)
+        if (typeof event.data === "string") return;
 
         const data = new Uint8Array(event.data as ArrayBuffer);
 
@@ -531,8 +501,7 @@ export class SupervisorAgent extends AIChatAgent<Env> {
     };
     const canvasTools = createCanvasTools(this.doc, this.broadcastToRoom, sendMsg, generateId, getWorkspaceGroupId, this.env, this.projectId, ensureRoomFresh);
     const workflowTools = createWorkflowTools(this.doc, this.broadcastToRoom, generateId);
-    const isNodeLocked = (nodeId: string) => this.lockedNodeIds.has(nodeId);
-    const timelineTools = createTimelineTools(this.doc, this.broadcastToRoom, isNodeLocked);
+    const timelineTools = createTimelineTools(sendMsg);
     const allTools = { ...canvasTools, ...workflowTools, ...timelineTools };
     const delegationTool = createDelegationTool(model as any, allTools, provider);
     const tools = { ...allTools, task_delegation: delegationTool };
