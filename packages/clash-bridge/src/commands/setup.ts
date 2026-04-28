@@ -23,7 +23,7 @@ import type { AddressInfo } from "node:net";
 import { spawn } from "node:child_process";
 import { hostname } from "node:os";
 import { randomBytes } from "node:crypto";
-import { writeCreds, getOrCreateMachineId } from "../lib/config.js";
+import { writeCreds, readCreds, getOrCreateMachineId } from "../lib/config.js";
 import { paths, currentPlatform, osTag } from "../lib/platform.js";
 import { install as installLaunchd } from "../lib/launchd.js";
 import { detectAll } from "../_acp-runtime/registry.js";
@@ -37,11 +37,36 @@ interface SetupOpts {
   browserOrigin: string;
   /** When true, skip launchd install (useful for dev / non-macOS). */
   noService?: boolean;
+  /** Force a fresh OAuth even if credentials.json already exists. */
+  force?: boolean;
 }
 
 
 export async function runSetup(opts: SetupOpts): Promise<void> {
   printBanner(`setup — register this machine with ${opts.serverUrl}`, PKG_VERSION);
+
+  // Fast path: if creds already exist (and the user didn't pass --force),
+  // skip the OAuth dance and just refresh the launchd plist (binary path
+  // changes when the user upgrades the npm package — the plist must be
+  // re-generated to point at the new dist/cli.js). This makes
+  // `npx @clash-space/bridge@beta setup` a clean upgrade flow: same one
+  // command for first install and every subsequent version bump.
+  if (!opts.force) {
+    const existing = await readCreds();
+    if (existing) {
+      log.ok(`existing credentials found  ${c.dim(paths().credsFile)}`);
+      log.hint(`runtime ${existing.runtimeId.slice(0, 8)}… (use --force to re-register)`);
+      if (!opts.noService && currentPlatform() === "darwin") {
+        await installLaunchd({ binaryPath: process.argv[1] });
+        log.ok(`launchd plist refreshed  ${c.dim(paths().serviceFile ?? "")}`);
+        log.ok(`daemon restarted  ${c.dim("logs: " + paths().logFile)}`);
+      } else {
+        log.hint("run `clash-bridge daemon` to start the bridge");
+      }
+      process.stderr.write(`\n${c.bold("Up to date.")}\n\n`);
+      return;
+    }
+  }
 
   log.step("waiting for browser to authorize");
   const state = randomBytes(16).toString("hex");

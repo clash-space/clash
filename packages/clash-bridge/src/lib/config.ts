@@ -11,8 +11,9 @@
  * unix user → different machine_id, by design; runtimes are per-user).
  */
 
-import { mkdir, readFile, writeFile, chmod } from "node:fs/promises";
-import { dirname } from "node:path";
+import { mkdir, readFile, writeFile, chmod, rename, rm } from "node:fs/promises";
+import { dirname, join } from "node:path";
+import { homedir } from "node:os";
 import { randomUUID } from "node:crypto";
 import { paths } from "./platform.js";
 
@@ -37,12 +38,48 @@ export interface Credentials {
 }
 
 export async function readCreds(): Promise<Credentials | null> {
+  await migrateLegacyConfigDir();
   try {
     const text = await readFile(paths().credsFile, "utf-8");
     return JSON.parse(text) as Credentials;
   } catch (e: unknown) {
     if ((e as NodeJS.ErrnoException).code === "ENOENT") return null;
     throw e;
+  }
+}
+
+/**
+ * Pre-beta.12 daemons stored everything under
+ * `~/Library/Application Support/clash/` (macOS) or `~/.config/clash/` (linux).
+ * beta.12+ uses `~/.clash/` on every platform. Move the legacy creds + machine
+ * id into the new spot the first time we see them, then delete the old dir
+ * (it'll otherwise just sit there confusing future debugging).
+ */
+async function migrateLegacyConfigDir(): Promise<void> {
+  const newDir = paths().configDir;
+  // Already migrated if the new creds file exists.
+  try { await readFile(paths().credsFile, "utf-8"); return; } catch { /* fall through */ }
+
+  const legacyCandidates = [
+    join(homedir(), "Library", "Application Support", "clash"),
+    join(homedir(), ".config", "clash"),
+  ].filter((p) => p !== newDir);
+
+  for (const legacy of legacyCandidates) {
+    let legacyCreds: string;
+    try { legacyCreds = await readFile(join(legacy, "credentials.json"), "utf-8"); }
+    catch { continue; }
+    await mkdir(newDir, { recursive: true, mode: 0o700 });
+    await writeFile(paths().credsFile, legacyCreds, { mode: 0o600 });
+    // Also migrate machine-id so we re-attach as the same runtime.
+    try {
+      const mid = await readFile(join(legacy, "machine-id"), "utf-8");
+      await writeFile(paths().machineIdFile, mid, { mode: 0o600 });
+    } catch { /* legacy install never persisted one — fine */ }
+    // Best-effort cleanup; if rm fails the user can `rm -rf` themselves.
+    try { await rm(legacy, { recursive: true, force: true }); } catch { /* ignore */ }
+    process.stderr.write(`→ migrated config from ${legacy} to ${newDir}\n`);
+    return;
   }
 }
 

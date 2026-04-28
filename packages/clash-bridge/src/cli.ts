@@ -29,6 +29,7 @@ import { parseArgs } from "node:util";
 import WebSocket from "ws";
 import { AcpRuntimeImpl, KNOWN_ACP_AGENTS } from "./_acp-runtime/index.js";
 import { NodeSpawner } from "./_acp-runtime/spawners/node.js";
+import { detectAll } from "./_acp-runtime/registry.js";
 import { Relay } from "./relay.js";
 
 const DEFAULT_API_SERVER_URL = "https://api.clash.video";
@@ -40,13 +41,19 @@ function printUsage(): never {
     `clash-bridge — pair a local AI agent with the Clash web UI\n` +
       `\n` +
       `Persistent runtime (recommended):\n` +
-      `  clash-bridge setup [--server-url=<https://...>] [--browser-origin=<https://...>] [--no-service]\n` +
+      `  clash-bridge setup [--server-url=<https://...>] [--no-service] [--force]\n` +
+      `        First run: opens browser to register. Re-run anytime to upgrade —\n` +
+      `        skips OAuth + just refreshes the launchd plist + restarts daemon.\n` +
+      `        --force does the OAuth dance again (e.g. after a server-side revoke).\n` +
       `  clash-bridge daemon\n` +
       `  clash-bridge status\n` +
       `  clash-bridge uninstall\n` +
       `\n` +
       `Ad-hoc pairing (one-shot, no install):\n` +
-      `  clash-bridge --token=<PAIR_CODE> [--server=<wss://host>]\n` +
+      `  clash-bridge --token=<PAIR_CODE> [--server=<wss://host>] [--agent=<id>]\n` +
+      `        Auto-detects whichever ACP agent is on PATH (claude-code-acp,\n` +
+      `        codex, gemini, opencode, hermes, openclaw via acpx). --agent picks\n` +
+      `        explicitly when more than one is installed.\n` +
       `\n` +
       `Get a pair code from the chat panel ("Quick connect"). For persistent\n` +
       `setup, your browser opens to clash.video to authorize this machine.\n`,
@@ -79,6 +86,7 @@ async function dispatchSubcommand(name: string): Promise<void> {
           "server-url":     { type: "string" },
           "browser-origin": { type: "string" },
           "no-service":     { type: "boolean" },
+          force:            { type: "boolean" },
           help:             { type: "boolean", short: "h" },
         },
         strict: true,
@@ -89,6 +97,7 @@ async function dispatchSubcommand(name: string): Promise<void> {
         serverUrl:     values["server-url"]     ?? DEFAULT_API_SERVER_URL,
         browserOrigin: values["browser-origin"] ?? DEFAULT_BROWSER_ORIGIN,
         noService:     !!values["no-service"],
+        force:         !!values.force,
       });
       return;
     }
@@ -124,6 +133,7 @@ async function runAdHocPair(): Promise<void> {
     options: {
       token:  { type: "string" },
       server: { type: "string" },
+      agent:  { type: "string" },           // explicit override (id from registry)
       help:   { type: "boolean", short: "h" },
     },
     strict: true,
@@ -134,10 +144,42 @@ async function runAdHocPair(): Promise<void> {
   const server = (values.server ?? DEFAULT_PAIR_WS_SERVER).replace(/\/+$/, "");
   const wsUrl = `${server}/agents/byo-bridge/cli?token=${encodeURIComponent(values.token!)}`;
 
-  const cc = KNOWN_ACP_AGENTS.find((a) => a.id === "claude-code-acp");
-  if (!cc) {
-    process.stderr.write("internal: claude-code-acp not in registry\n");
+  // Pick which agent to spawn:
+  //   1. If user passed --agent <id>, use that (must exist in registry).
+  //   2. Otherwise scan PATH for any known agent. Prefer claude-code-acp
+  //      because it's the most polished. If multiple are present and the
+  //      user wanted a specific one, they should pass --agent.
+  //   3. None on PATH → fail with install hints.
+  let chosen = values.agent
+    ? KNOWN_ACP_AGENTS.find((a) => a.id === values.agent) ?? null
+    : null;
+  if (values.agent && !chosen) {
+    process.stderr.write(
+      `✗ unknown --agent: ${values.agent}\n` +
+        `  available: ${KNOWN_ACP_AGENTS.map((a) => a.id).join(", ")}\n`,
+    );
     process.exit(1);
+  }
+  if (!chosen) {
+    const detected = await detectAll();
+    if (detected.length === 0) {
+      process.stderr.write(
+        `✗ no ACP agents detected on PATH\n` +
+          `  install one of:\n` +
+          KNOWN_ACP_AGENTS.map((a) => `    ${a.id}  →  ${a.installHint ?? a.homepage ?? "?"}`).join("\n") +
+          `\n`,
+      );
+      process.exit(1);
+    }
+    chosen =
+      detected.find((a) => a.id === "claude-code-acp") ??
+      detected[0];
+    if (detected.length > 1) {
+      process.stderr.write(
+        `→ ${detected.length} agents on PATH; using ${chosen.id}\n` +
+          `  (others: ${detected.filter((a) => a.id !== chosen!.id).map((a) => a.id).join(", ")} — pass --agent <id> to pick)\n`,
+      );
+    }
   }
 
   process.stderr.write(`→ connecting to ${server} …\n`);
@@ -152,15 +194,15 @@ async function runAdHocPair(): Promise<void> {
   });
   process.stderr.write("✓ paired\n");
 
-  process.stderr.write(`→ spawning ${cc.spec.command} …\n`);
+  process.stderr.write(`→ spawning ${chosen.spec.command} (${chosen.id}) …\n`);
   const runtime = new AcpRuntimeImpl(new NodeSpawner());
   let session;
   try {
-    session = await runtime.start({ agent: cc.spec });
+    session = await runtime.start({ agent: chosen.spec });
   } catch (e) {
     process.stderr.write(
-      `✗ could not start ${cc.spec.command}: ${e instanceof Error ? e.message : String(e)}\n` +
-        (cc.installHint ? `  install: ${cc.installHint}\n` : ""),
+      `✗ could not start ${chosen.spec.command}: ${e instanceof Error ? e.message : String(e)}\n` +
+        (chosen.installHint ? `  install: ${chosen.installHint}\n` : ""),
     );
     ws.close(1011, "spawn failed");
     process.exit(1);
