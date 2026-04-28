@@ -257,6 +257,37 @@ export const runtimeSession = sqliteTable(
 )
 
 /**
+ * Chat history per local-runtime session.
+ *
+ * One row per logical message (user prompt or assembled crew turn).
+ * Streaming chunks aren't persisted — they're broadcast live via the
+ * RuntimeRoom DO and the assembled message gets written on
+ * session.complete (events_json holds the raw ACP events; browser
+ * uses the same parser as the live stream to render).
+ *
+ * Why D1 not Loro: chat is append-only, no concurrent-edit case.
+ * Cross-session queries (history page, future search) are trivial
+ * SQL here vs cross-DO fan-out for Loro.
+ */
+export const chatMessage = sqliteTable(
+    "chat_message",
+    {
+        id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+        sessionId: text("session_id").notNull(),
+        userId: text("user_id").notNull(),
+        senderKind: text("sender_kind").notNull(), // 'user' | 'crew'
+        senderId: text("sender_id").notNull(),     // crew_id or user_id
+        turnId: text("turn_id"),
+        eventsJson: text("events_json").notNull(),
+        createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
+    },
+    (table) => ({
+        chatMessageSessionIdx: index("chat_message_session_idx").on(table.sessionId, table.createdAt),
+        chatMessageUserIdx: index("chat_message_user_idx").on(table.userId, table.createdAt),
+    })
+)
+
+/**
  * Installed Skills — globally installed AI agent skills per user.
  * Skills are SKILL.md instruction sets for Claude Code.
  */

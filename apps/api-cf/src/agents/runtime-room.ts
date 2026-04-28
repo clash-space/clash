@@ -222,18 +222,13 @@ export class RuntimeRoom extends DurableObject<Env> {
       }
       // Persist transition states so a client that opens its WS *after*
       // session.ready / session.error arrived still gets the message.
-      // Per-turn events (session.event/.complete) are NOT replayed —
-      // those are streamed and lost-events are tolerable for a v1.
       if (parsed.type === "session.ready" || parsed.type === "session.error") {
         await this.ctx.storage.put(this.sessionStateKey(sid), parsed);
       }
       if (parsed.type === "session.disposed") {
-        // Dispose terminates the session; remove cached state so a re-use
-        // of the same session_id (shouldn't happen in v1, but defensive)
-        // doesn't accidentally replay a stale "ready".
         await this.ctx.storage.delete(this.sessionStateKey(sid));
       }
-      // Persist acp_session_id when daemon reports it (powers slice-3 resume).
+      // Persist acp_session_id when daemon reports it (powers resume).
       if (parsed.type === "session.ready") {
         const acpId = (parsed as { acp_session_id?: string }).acp_session_id;
         if (acpId) {
@@ -247,11 +242,107 @@ export class RuntimeRoom extends DurableObject<Env> {
           "UPDATE runtime_session SET status = 'closed', last_active_at = unixepoch() WHERE id = ?",
         ).bind(sid).run().catch((e: unknown) => log.error("close session row failed:", e));
       }
+      // Chat history: accumulate session.event chunks per (session, turn);
+      // INSERT one chat_message row when session.complete arrives.
+      // session.error also gets persisted (so users see what failed).
+      if (parsed.type === "session.event") {
+        const turnId = (parsed as { turn_id?: string }).turn_id;
+        if (turnId) {
+          const key = this.turnAccumulatorKey(sid, turnId);
+          const existing = await this.ctx.storage.get<unknown[]>(key) ?? [];
+          existing.push((parsed as { event?: unknown }).event);
+          await this.ctx.storage.put(key, existing);
+        }
+      }
+      if (parsed.type === "session.complete") {
+        const turnId = (parsed as { turn_id?: string }).turn_id;
+        if (turnId) await this.flushTurnToHistory(sid, turnId, "complete");
+      }
+      if (parsed.type === "session.error") {
+        const turnId = (parsed as { turn_id?: string }).turn_id;
+        if (turnId) await this.flushTurnToHistory(sid, turnId, "error", (parsed as { message?: string }).message);
+      }
       this.broadcastToSession(sid, parsed as Record<string, unknown>);
       return;
     }
 
     log.info(`${this.tag()} unhandled daemon message: ${parsed.type}`);
+  }
+
+  /** Storage key for the per-turn accumulator buffer. */
+  private turnAccumulatorKey(sid: string, turnId: string): string {
+    return `turn_acc:${sid}:${turnId}`;
+  }
+
+  /**
+   * On session.complete (or .error), assemble the accumulated raw ACP
+   * events for a turn into one chat_message row and clear the buffer.
+   * The browser's parser (lib/acpEvents.ts) reads the events_json on
+   * history fetch to render the same content it would have shown live.
+   */
+  private async flushTurnToHistory(sid: string, turnId: string, kind: "complete" | "error", errMsg?: string): Promise<void> {
+    const key = this.turnAccumulatorKey(sid, turnId);
+    const events = await this.ctx.storage.get<unknown[]>(key) ?? [];
+    if (events.length === 0 && kind !== "error") {
+      // Nothing happened in this turn (rare). Skip.
+      await this.ctx.storage.delete(key);
+      return;
+    }
+    const eventsToStore = kind === "error"
+      ? [...events, { type: "synthetic_error", message: errMsg ?? "unknown error" }]
+      : events;
+
+    // Look up the session's user_id + crew_id (sender) from the row
+    // we wrote at POST /sessions time.
+    const row = await this.env.DB.prepare(
+      "SELECT user_id, agent_id FROM runtime_session WHERE id = ?",
+    ).bind(sid).first<{ user_id: string; agent_id: string }>();
+    if (!row) {
+      log.warn(`${this.tag()} flushTurn: no runtime_session row for ${sid}`);
+      await this.ctx.storage.delete(key);
+      return;
+    }
+
+    try {
+      await this.env.DB.prepare(
+        `INSERT INTO chat_message (id, session_id, user_id, sender_kind, sender_id, turn_id, events_json, created_at)
+         VALUES (?, ?, ?, 'crew', ?, ?, ?, unixepoch())`,
+      ).bind(
+        crypto.randomUUID(),
+        sid,
+        row.user_id,
+        row.agent_id,  // crew_id is stored in runtime_session.agent_id (legacy column name)
+        turnId,
+        JSON.stringify(eventsToStore),
+      ).run();
+    } catch (e) {
+      log.error(`${this.tag()} chat_message INSERT failed:`, e);
+    } finally {
+      await this.ctx.storage.delete(key);
+    }
+  }
+
+  /** Write a user message row before forwarding the prompt to the daemon. */
+  private async persistUserMessage(sid: string, turnId: string, text: string): Promise<void> {
+    const row = await this.env.DB.prepare(
+      "SELECT user_id FROM runtime_session WHERE id = ?",
+    ).bind(sid).first<{ user_id: string }>();
+    if (!row) return;
+    try {
+      await this.env.DB.prepare(
+        `INSERT INTO chat_message (id, session_id, user_id, sender_kind, sender_id, turn_id, events_json, created_at)
+         VALUES (?, ?, ?, 'user', ?, ?, ?, unixepoch())`,
+      ).bind(
+        crypto.randomUUID(),
+        sid,
+        row.user_id,
+        row.user_id,
+        turnId,
+        JSON.stringify([{ type: "text", text }]),
+      ).run();
+    } catch (e) {
+      log.error(`${this.tag()} user chat_message INSERT failed:`, e);
+    }
   }
 
   private onClientMessage(sessionId: string, parsed: DaemonMessage): void {
@@ -273,11 +364,18 @@ export class RuntimeRoom extends DurableObject<Env> {
     }
     let outbound: Record<string, unknown> | null = null;
     if (parsed.type === "prompt") {
+      const turnId = (parsed as { turn_id?: string }).turn_id;
+      const text = (parsed as { text?: string }).text;
+      // Persist user message immediately. Forwarding to daemon doesn't
+      // wait for the INSERT — it's a fire-and-forget alongside.
+      if (turnId && typeof text === "string") {
+        void this.persistUserMessage(sessionId, turnId, text);
+      }
       outbound = {
         type: "session.prompt",
         session_id: sessionId,
-        turn_id: (parsed as { turn_id?: string }).turn_id,
-        text: (parsed as { text?: string }).text,
+        turn_id: turnId,
+        text,
       };
     } else if (parsed.type === "cancel") {
       outbound = {

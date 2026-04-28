@@ -85,6 +85,44 @@ sessionsRuntimeRoutes.delete("/:sid", async (c) => {
   return c.body(null, 204);
 });
 
+// GET /:sid/messages — chat history for a local-runtime session.
+// Returns one row per logical message (user prompt or assembled crew
+// turn). Browser uses the same lib/acpEvents parser to render
+// events_json that it uses for live stream events.
+sessionsRuntimeRoutes.get("/:sid/messages", async (c) => {
+  const userId = c.req.header("x-user-id");
+  if (!userId) return c.json({ error: "unauthorized" }, 401);
+
+  const sid = c.req.param("sid");
+  const owns = await c.env.DB.prepare(
+    "SELECT id FROM runtime_session WHERE id = ? AND user_id = ?",
+  ).bind(sid, userId).first<{ id: string }>();
+  if (!owns) return c.json({ error: "not found" }, 404);
+
+  const { results } = await c.env.DB.prepare(
+    `SELECT id, sender_kind, sender_id, turn_id, events_json, created_at
+     FROM chat_message WHERE session_id = ? ORDER BY created_at ASC LIMIT 500`,
+  ).bind(sid).all<{
+    id: string;
+    sender_kind: string;
+    sender_id: string;
+    turn_id: string | null;
+    events_json: string;
+    created_at: number;
+  }>();
+
+  return c.json({
+    messages: (results ?? []).map((r) => ({
+      id: r.id,
+      sender_kind: r.sender_kind,
+      sender_id: r.sender_id,
+      turn_id: r.turn_id,
+      events: JSON.parse(r.events_json) as unknown[],
+      created_at: r.created_at,
+    })),
+  });
+});
+
 // GET /api/v1/sessions/:sid/_stream  (WebSocket upgrade)
 sessionsRuntimeRoutes.get("/:sid/_stream", async (c) => {
   if (c.req.header("Upgrade") !== "websocket") {
