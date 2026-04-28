@@ -12,9 +12,8 @@
  * thanks to KeepAlive=true.
  */
 
-import { hostname } from "node:os";
 import { readCreds } from "../lib/config.js";
-import { osTag } from "../lib/platform.js";
+import { osTag, machineName } from "../lib/platform.js";
 import { detectAll } from "../_acp-runtime/registry.js";
 import { SessionManager } from "../lib/session-manager.js";
 import { gcOldSessions } from "../lib/session-cwd.js";
@@ -100,7 +99,7 @@ export async function runDaemon(): Promise<void> {
       ws.send(JSON.stringify({
         type: "hello",
         machine_id: creds.machineId,
-        hostname: hostname(),
+        hostname: machineName(),
         os: osTag(),
         version: PKG_VERSION,
         agents,

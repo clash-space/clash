@@ -21,7 +21,6 @@
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import { spawn } from "node:child_process";
-import { hostname } from "node:os";
 import { machineName } from "../lib/platform.js";
 import { randomBytes } from "node:crypto";
 import { writeCreds, readCreds, getOrCreateMachineId } from "../lib/config.js";
@@ -79,7 +78,7 @@ export async function runSetup(opts: SetupOpts): Promise<void> {
     code,
     state,
     machine_id: machineId,
-    hostname: hostname(),
+    hostname: machineName(),
     os: osTag(),
     version: PKG_VERSION,
   });
