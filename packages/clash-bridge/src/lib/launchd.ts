@@ -24,8 +24,19 @@ export interface InstallOptions {
 
 function buildPlist(opts: InstallOptions): string {
   const p = paths();
-  // launchd's xml is unforgiving; use a single template literal with no
-  // accidental whitespace inside <string> elements.
+  // launchd starts processes with a stripped PATH (~ /usr/bin:/bin only),
+  // so agents installed under nvm / fnm / asdf / pyenv / cargo etc. are
+  // invisible to daemon's `which`. Capture the user's currently-active
+  // PATH at setup time and merge with the launchd defaults so common
+  // homebrew + system locations are guaranteed even if the user's shell
+  // PATH happens to be slim.
+  const userPath = (process.env.PATH ?? "").split(":").filter(Boolean);
+  const baseline = ["/opt/homebrew/bin", "/usr/local/bin", "/usr/bin", "/bin"];
+  const merged = Array.from(new Set([...userPath, ...baseline]));
+  // Also forward HOME explicitly — some tools (claude-code-acp) read
+  // ~/.claude/credentials based on HOME, which launchd already sets,
+  // but being explicit doesn't hurt and helps when the daemon is
+  // launched manually for testing.
   return `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -50,7 +61,9 @@ function buildPlist(opts: InstallOptions): string {
   <key>EnvironmentVariables</key>
   <dict>
     <key>PATH</key>
-    <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+    <string>${merged.join(":")}</string>
+    <key>HOME</key>
+    <string>${process.env.HOME ?? ""}</string>
   </dict>
 </dict>
 </plist>
