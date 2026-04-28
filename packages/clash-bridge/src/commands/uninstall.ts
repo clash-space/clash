@@ -18,24 +18,21 @@
 import { uninstall as uninstallLaunchd } from "../lib/launchd.js";
 import { readCreds, deleteCreds } from "../lib/config.js";
 import { paths, currentPlatform } from "../lib/platform.js";
+import { printBanner, log, c, sym } from "../lib/style.js";
+import { PKG_VERSION } from "../lib/version.js";
 
 export async function runUninstall(): Promise<void> {
-  process.stderr.write(`→ clash-bridge uninstall\n`);
+  printBanner("uninstall — remove daemon + local credentials", PKG_VERSION);
 
   // Step 1: stop the service first, so it isn't in the middle of writing
   // to creds file when we delete it.
   if (currentPlatform() === "darwin") {
     try {
       const r = await uninstallLaunchd();
-      process.stderr.write(
-        r.removed
-          ? `✓ launchd plist removed (${paths().serviceFile})\n`
-          : `· launchd plist not present\n`,
-      );
+      if (r.removed) log.ok(`launchd plist removed  ${c.dim(paths().serviceFile ?? "")}`);
+      else process.stderr.write(`${sym.dot()} ${c.dim("launchd plist not present")}\n`);
     } catch (e) {
-      process.stderr.write(
-        `! launchd uninstall failed: ${e instanceof Error ? e.message : String(e)}\n`,
-      );
+      log.warn(`launchd uninstall failed: ${e instanceof Error ? e.message : String(e)}`);
     }
   }
 
@@ -47,31 +44,24 @@ export async function runUninstall(): Promise<void> {
       const res = await fetch(url, {
         method: "DELETE",
         headers: { "x-runtime-token": creds.token },
-        // Server's DELETE /api/v1/runtimes/:id requires user auth via session
-        // cookie / API token — our runtime token isn't accepted there. We
-        // call it anyway so logs show an attempt; expected outcome is 401
-        // when daemon-only credentials are present. Browser-side uninstall
-        // (Settings → Remove machine) is the supported revoke path.
+        // Server's DELETE requires user auth via session cookie / API token
+        // — our runtime token isn't accepted there. Best-effort call;
+        // expected 401. Browser-side revoke (Settings → Remove) is the
+        // supported path.
       });
-      process.stderr.write(
-        `· server revoke: HTTP ${res.status} (browser-side revoke is the supported path)\n`,
-      );
+      process.stderr.write(`${sym.dot()} ${c.dim(`server revoke: HTTP ${res.status} (browser is the canonical revoke path)`)}\n`);
     } catch (e) {
-      process.stderr.write(
-        `· server revoke skipped: ${e instanceof Error ? e.message : String(e)}\n`,
-      );
+      process.stderr.write(`${sym.dot()} ${c.dim(`server revoke skipped: ${e instanceof Error ? e.message : String(e)}`)}\n`);
     }
   }
 
   // Step 3: delete creds.
   try {
     await deleteCreds();
-    process.stderr.write(`✓ credentials removed (${paths().credsFile})\n`);
+    log.ok(`credentials removed  ${c.dim(paths().credsFile)}`);
   } catch (e) {
-    process.stderr.write(
-      `! creds removal failed: ${e instanceof Error ? e.message : String(e)}\n`,
-    );
+    log.warn(`creds removal failed: ${e instanceof Error ? e.message : String(e)}`);
   }
 
-  process.stderr.write(`Done.\n`);
+  process.stderr.write(`\n${c.bold("Done.")}\n\n`);
 }

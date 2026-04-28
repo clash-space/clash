@@ -1,16 +1,17 @@
 /**
- * OS-specific paths for daemon state, logs, and service files.
+ * OS paths for daemon state, logs, service files, and per-session cwd.
  *
- * macOS pattern follows Apple's "App Sandbox / Application Support" guidance
- * (Library/Application Support for state, Library/Logs for log files,
- * Library/LaunchAgents for user service plists).
+ * Single convention across platforms: `~/.clash/` is the user-level root,
+ * matching every other modern AI tool (`~/.claude`, `~/.codex`, `~/.gemini`,
+ * `~/.cursor`). XDG and Library/Application-Support paths were noisier and
+ * inconsistent; the one downside (slightly less Linux-purist) is acceptable.
  *
- * Linux follows XDG Base Directory: ~/.config for config, ~/.local/state
- * for runtime state, ~/.config/systemd/user for user units.
+ * Service files (launchd plist / systemd user unit) stay in their
+ * platform-canonical locations because the OS scans those directories —
+ * we can't move them.
  *
- * Windows isn't supported in v1 — daemon mode is gated to macOS/linux.
- * The launchd self-install logic refuses to run on win32 with a clear
- * "use --foreground for now" message.
+ * Windows isn't supported in v1 for service mode — daemon command still
+ * runs in foreground; users wire their own startup later.
  */
 
 import { homedir, platform } from "node:os";
@@ -25,7 +26,7 @@ export function currentPlatform(): Platform {
 }
 
 export interface Paths {
-  /** ~/.config/clash on linux; ~/Library/Application Support/clash on macOS. */
+  /** `~/.clash` — root of all daemon state on every platform. */
   configDir: string;
   /** Credentials file (server_url, runtime_id, token, machine_id). */
   credsFile: string;
@@ -33,6 +34,8 @@ export interface Paths {
   machineIdFile: string;
   /** Daemon log file. */
   logFile: string;
+  /** Per-session cwd root. Each spawned ACP agent gets a subdir under this. */
+  sessionsDir: string;
   /** launchd plist (macOS) / systemd user unit (linux). null on win32. */
   serviceFile: string | null;
   /** Service identifier — reverse-DNS style. */
@@ -44,43 +47,19 @@ const SERVICE_LABEL = "space.clash.bridge";
 export function paths(): Paths {
   const home = homedir();
   const p = currentPlatform();
-  if (p === "darwin") {
-    const configDir = join(home, "Library", "Application Support", "clash");
-    return {
-      configDir,
-      credsFile: join(configDir, "credentials.json"),
-      machineIdFile: join(configDir, "machine-id"),
-      logFile: join(home, "Library", "Logs", "clash", "bridge.log"),
-      serviceFile: join(home, "Library", "LaunchAgents", `${SERVICE_LABEL}.plist`),
-      serviceLabel: SERVICE_LABEL,
-    };
-  }
-  if (p === "linux") {
-    const configDir = process.env.XDG_CONFIG_HOME
-      ? join(process.env.XDG_CONFIG_HOME, "clash")
-      : join(home, ".config", "clash");
-    const stateDir = process.env.XDG_STATE_HOME
-      ? join(process.env.XDG_STATE_HOME, "clash")
-      : join(home, ".local", "state", "clash");
-    return {
-      configDir,
-      credsFile: join(configDir, "credentials.json"),
-      machineIdFile: join(configDir, "machine-id"),
-      logFile: join(stateDir, "bridge.log"),
-      serviceFile: join(home, ".config", "systemd", "user", `${SERVICE_LABEL}.service`),
-      serviceLabel: SERVICE_LABEL,
-    };
-  }
-  // win32 / unknown — no service file. Daemon can still run in foreground.
   const configDir = join(home, ".clash");
-  return {
-    configDir,
-    credsFile: join(configDir, "credentials.json"),
-    machineIdFile: join(configDir, "machine-id"),
-    logFile: join(configDir, "bridge.log"),
-    serviceFile: null,
-    serviceLabel: SERVICE_LABEL,
-  };
+  const credsFile = join(configDir, "credentials.json");
+  const machineIdFile = join(configDir, "machine-id");
+  const sessionsDir = join(configDir, "sessions");
+  const logFile = join(configDir, "logs", "bridge.log");
+
+  let serviceFile: string | null = null;
+  if (p === "darwin") {
+    serviceFile = join(home, "Library", "LaunchAgents", `${SERVICE_LABEL}.plist`);
+  } else if (p === "linux") {
+    serviceFile = join(home, ".config", "systemd", "user", `${SERVICE_LABEL}.service`);
+  }
+  return { configDir, credsFile, machineIdFile, sessionsDir, logFile, serviceFile, serviceLabel: SERVICE_LABEL };
 }
 
 /** "darwin/arm64" — sent to server as the runtime's `os` field. */

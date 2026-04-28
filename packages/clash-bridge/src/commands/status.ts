@@ -11,35 +11,32 @@
 
 import { readCreds } from "../lib/config.js";
 import { paths } from "../lib/platform.js";
+import { printBanner, log, c, sym } from "../lib/style.js";
+import { PKG_VERSION } from "../lib/version.js";
 
 export async function runStatus(): Promise<void> {
+  printBanner("status", PKG_VERSION);
   const p = paths();
   const creds = await readCreds();
 
   if (!creds) {
-    process.stderr.write(
-      `Not set up. Run \`clash-bridge setup\` to register this machine.\n` +
-        `(Looked for: ${p.credsFile})\n`,
-    );
+    log.warn("not set up — run `clash-bridge setup` to register this machine");
+    log.hint(`looked for ${p.credsFile}`);
     process.exit(1);
   }
 
-  process.stdout.write(`Local credentials\n`);
-  process.stdout.write(`  server:     ${creds.serverUrl}\n`);
-  process.stdout.write(`  runtime_id: ${creds.runtimeId}\n`);
-  process.stdout.write(`  machine_id: ${creds.machineId}\n`);
-  process.stdout.write(`  registered: ${new Date(creds.createdAt * 1000).toISOString()}\n`);
-  process.stdout.write(`  creds file: ${p.credsFile}\n`);
-  process.stdout.write(`  log file:   ${p.logFile}\n`);
-  if (p.serviceFile) {
-    process.stdout.write(`  service:    ${p.serviceFile}\n`);
-  }
+  const row = (k: string, v: string) =>
+    process.stderr.write(`  ${c.dim(k.padEnd(11))} ${v}\n`);
+  row("server",     creds.serverUrl);
+  row("runtime_id", creds.runtimeId);
+  row("machine_id", creds.machineId);
+  row("registered", new Date(creds.createdAt * 1000).toISOString());
+  row("creds file", c.dim(p.credsFile));
+  row("log file",   c.dim(p.logFile));
+  if (p.serviceFile) row("service",    c.dim(p.serviceFile));
 
-  // Probe by opening a WS to /attach — if the token is valid we'll get
-  // 101, then close immediately. We won't hang waiting for messages.
-  // (We don't have a /api/v1/me-style probe yet that the daemon could
-  // call; the WS handshake is the cheapest reachability check.)
-  process.stdout.write(`\nProbing server …\n`);
+  process.stderr.write("\n");
+  log.step("probing server");
   try {
     const wsUrl = `${creds.serverUrl.replace(/^http(s?):\/\//, "ws$1://").replace(/\/$/, "")}/agents/runtime/_attach`;
     const WebSocket = (await import("ws")).default;
@@ -48,7 +45,7 @@ export async function runStatus(): Promise<void> {
         headers: { Authorization: `Bearer ${creds.token}` },
       });
       ws.once("open", () => {
-        process.stdout.write(`  ✓ token accepted (server reachable)\n`);
+        log.ok("token accepted (server reachable)");
         ws.close(1000, "status probe");
         resolve();
       });
@@ -59,9 +56,8 @@ export async function runStatus(): Promise<void> {
       setTimeout(() => reject(new Error("timeout")), 8000);
     });
   } catch (e) {
-    process.stdout.write(
-      `  ✗ probe failed: ${e instanceof Error ? e.message : String(e)}\n`,
-    );
+    process.stderr.write(`  ${sym.err()} ${c.red(`probe failed: ${e instanceof Error ? e.message : String(e)}`)}\n`);
     process.exit(1);
   }
+  process.stderr.write("\n");
 }

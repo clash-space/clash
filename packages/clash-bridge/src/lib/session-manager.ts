@@ -26,6 +26,7 @@ import { AcpRuntimeImpl } from "../_acp-runtime/index.js";
 import { NodeSpawner } from "../_acp-runtime/spawners/node.js";
 import { KNOWN_ACP_AGENTS } from "../_acp-runtime/registry.js";
 import type { AcpSession } from "../_acp-runtime/types.js";
+import { ensureSessionCwd } from "./session-cwd.js";
 
 export interface SessionStartParams {
   session_id: string;
@@ -105,12 +106,16 @@ export class SessionManager {
       return;
     }
     const resumeId = p.resume?.acp_session_id;
+    // Spawn into ~/.clash/sessions/<sid>/ — never the user's pwd. The
+    // server's `cwd` field is currently advisory (we ignore it for v1)
+    // but kept in the protocol so future per-project workspaces can use it.
+    const sessionCwd = await ensureSessionCwd(p.session_id);
     process.stderr.write(
-      `  → SessionManager.start ${agent.spec.command}${resumeId ? ` (resume ${resumeId.slice(0, 8)}…)` : ""}\n`,
+      `  → SessionManager.start ${agent.spec.command}${resumeId ? ` (resume ${resumeId.slice(0, 8)}…)` : ""} cwd=${sessionCwd}\n`,
     );
     try {
       const session = await this.#runtime.start({
-        agent: { ...agent.spec, cwd: p.cwd ?? process.cwd() },
+        agent: { ...agent.spec, cwd: sessionCwd },
         resumeAcpSessionId: resumeId,
       });
       process.stderr.write(`  ✓ agent ready, session id=${(session as unknown as { id?: string }).id}\n`);

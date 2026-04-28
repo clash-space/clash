@@ -27,6 +27,8 @@ import { writeCreds, getOrCreateMachineId } from "../lib/config.js";
 import { paths, currentPlatform, osTag } from "../lib/platform.js";
 import { install as installLaunchd } from "../lib/launchd.js";
 import { detectAll } from "../_acp-runtime/registry.js";
+import { printBanner, log, c } from "../lib/style.js";
+import { PKG_VERSION } from "../lib/version.js";
 
 interface SetupOpts {
   serverUrl: string;
@@ -37,25 +39,14 @@ interface SetupOpts {
   noService?: boolean;
 }
 
-import { createRequire } from "node:module";
-const PKG_VERSION: string = (() => {
-  // After tsup bundling, this file lives at dist/<chunk>.js — package.json
-  // is one level up. The first try covers the bundled case; second covers
-  // running source via tsx (npm script dev).
-  const req = createRequire(import.meta.url);
-  for (const path of ["../package.json", "../../package.json"]) {
-    try { return req(path).version as string; } catch { /* try next */ }
-  }
-  return "0.0.0-dev";
-})();
 
 export async function runSetup(opts: SetupOpts): Promise<void> {
-  process.stderr.write(`→ clash-bridge setup (server: ${opts.serverUrl})\n`);
+  printBanner(`setup — register this machine with ${opts.serverUrl}`, PKG_VERSION);
 
+  log.step("waiting for browser to authorize");
   const state = randomBytes(16).toString("hex");
   const code = await waitForCallback(state, opts.browserOrigin);
-
-  process.stderr.write(`✓ received code from browser\n`);
+  log.ok("received code from browser");
 
   const machineId = await getOrCreateMachineId();
   const exchange = await postExchange(opts.serverUrl, {
@@ -66,7 +57,7 @@ export async function runSetup(opts: SetupOpts): Promise<void> {
     os: osTag(),
     version: PKG_VERSION,
   });
-  process.stderr.write(`✓ runtime registered (id: ${exchange.runtime_id.slice(0, 8)}…)\n`);
+  log.ok(`runtime registered  ${c.dim(exchange.runtime_id.slice(0, 8) + "…")}`);
 
   await writeCreds({
     serverUrl: opts.serverUrl,
@@ -75,34 +66,31 @@ export async function runSetup(opts: SetupOpts): Promise<void> {
     machineId,
     createdAt: Math.floor(Date.now() / 1000),
   });
-  process.stderr.write(`✓ credentials written to ${paths().credsFile}\n`);
+  log.ok(`credentials written  ${c.dim(paths().credsFile)}`);
 
   // Quick agent scan so the user can see what we'll report on first daemon
   // startup. Manifest gets re-sent on every WS attach so this is just for
   // setup-time feedback.
   const agents = await detectAll();
   if (agents.length > 0) {
-    process.stderr.write(`✓ detected agents: ${agents.map((a) => a.id).join(", ")}\n`);
+    log.ok(`agents detected  ${c.dim(agents.map((a) => a.id).join(", "))}`);
   } else {
-    process.stderr.write(
-      `! no ACP agents on PATH yet — install one (e.g. \`npm i -g @zed-industries/claude-code-acp\`)\n`,
-    );
+    log.warn("no ACP agents on PATH yet");
+    log.hint("install one, e.g. `npm i -g @zed-industries/claude-code-acp`");
   }
 
   if (opts.noService || currentPlatform() !== "darwin") {
-    process.stderr.write(
-      `\n→ Service install skipped. Run \`clash-bridge daemon\` to start the bridge in the foreground.\n`,
-    );
+    process.stderr.write("\n");
+    log.step("service install skipped");
+    log.hint("run `clash-bridge daemon` to start the bridge in the foreground");
     return;
   }
 
-  const binary = process.execPath === "node" ? process.argv[1] : process.argv[1];
-  // process.argv[1] is the bin entry path under npm/npx — that's the
-  // resolved script, exactly what launchd should invoke.
   await installLaunchd({ binaryPath: process.argv[1] });
-  process.stderr.write(`✓ launchd plist installed at ${paths().serviceFile}\n`);
-  process.stderr.write(`✓ daemon started — logs: ${paths().logFile}\n`);
-  process.stderr.write(`\nDone. The runtime should appear online at ${opts.browserOrigin}\n`);
+  log.ok(`launchd plist installed  ${c.dim(paths().serviceFile ?? "")}`);
+  log.ok(`daemon started  ${c.dim("logs: " + paths().logFile)}`);
+  process.stderr.write("\n");
+  process.stderr.write(`${c.bold("Done.")} the runtime should appear online at ${c.cyan(opts.browserOrigin)}\n\n`);
 }
 
 /** Wait for browser to redirect to localhost cb. Returns the code. */

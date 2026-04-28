@@ -17,20 +17,15 @@ import { readCreds } from "../lib/config.js";
 import { osTag } from "../lib/platform.js";
 import { detectAll } from "../_acp-runtime/registry.js";
 import { SessionManager } from "../lib/session-manager.js";
+import { gcOldSessions } from "../lib/session-cwd.js";
+import { printBanner, log, c } from "../lib/style.js";
+import { PKG_VERSION } from "../lib/version.js";
 import WebSocket from "ws";
 
 const HEARTBEAT_INTERVAL_MS = 5 * 60 * 1000;
 const RECONNECT_BACKOFF_MIN_MS = 1000;
 const RECONNECT_BACKOFF_MAX_MS = 60 * 1000;
 
-import { createRequire } from "node:module";
-const PKG_VERSION: string = (() => {
-  const req = createRequire(import.meta.url);
-  for (const path of ["../package.json", "../../package.json"]) {
-    try { return req(path).version as string; } catch { /* try next */ }
-  }
-  return "0.0.0-dev";
-})();
 
 export async function runDaemon(): Promise<void> {
   const creds = await readCreds();
@@ -41,9 +36,14 @@ export async function runDaemon(): Promise<void> {
     process.exit(2);
   }
 
-  process.stderr.write(
-    `→ daemon starting (runtime ${creds.runtimeId.slice(0, 8)}…, server ${creds.serverUrl})\n`,
-  );
+  printBanner(`daemon — runtime ${creds.runtimeId.slice(0, 8)}… → ${creds.serverUrl}`, PKG_VERSION);
+
+  // Best-effort GC of session dirs older than 7 days. Non-blocking — if
+  // it fails the daemon still starts; user can clean ~/.clash/sessions/
+  // by hand if it ever piles up.
+  void gcOldSessions().then((r) => {
+    if (r.removed > 0) log.step(`GC: removed ${r.removed} stale session dir${r.removed === 1 ? "" : "s"}`);
+  }).catch(() => undefined);
 
   // Convert https:// → wss:// (or http→ws for dev). The exchange flow
   // wrote whatever scheme the user passed via --server-url to setup.
@@ -56,7 +56,7 @@ export async function runDaemon(): Promise<void> {
   const stop = (sig: string) => {
     if (stopping) return;
     stopping = true;
-    process.stderr.write(`→ ${sig} received, shutting down\n`);
+    log.step(`${sig} received, shutting down`);
     // Tear down agents first so the child processes get SIGTERM-style
     // dispose instead of being orphaned when the daemon process exits.
     void sessions.disposeAll();
@@ -84,7 +84,7 @@ export async function runDaemon(): Promise<void> {
 
       await waitOpen(ws);
       backoffMs = RECONNECT_BACKOFF_MIN_MS;
-      process.stderr.write(`✓ attached to ${wsBase}\n`);
+      log.ok(`attached to ${c.cyan(wsBase)}`);
 
       const agents = (await detectAll()).map((a) => ({
         id: a.id,
@@ -146,9 +146,7 @@ export async function runDaemon(): Promise<void> {
       await new Promise<void>((resolve) => {
         ws.once("close", (code, reason) => {
           clearInterval(heartbeat);
-          process.stderr.write(
-            `→ WS closed code=${code} reason=${reason?.toString() || "—"}\n`,
-          );
+          log.step(`WS closed  ${c.dim(`code=${code} reason=${reason?.toString() || "—"}`)}`);
           resolve();
         });
       });
@@ -157,18 +155,16 @@ export async function runDaemon(): Promise<void> {
       // reachable again on the next successful attach. Backoff loop
       // continues below.
     } catch (e) {
-      process.stderr.write(
-        `! WS attach failed: ${e instanceof Error ? e.message : String(e)}\n`,
-      );
+      log.warn(`WS attach failed: ${e instanceof Error ? e.message : String(e)}`);
     }
 
     if (stopping) break;
-    process.stderr.write(`→ reconnecting in ${backoffMs}ms\n`);
+    log.step(`reconnecting in ${backoffMs}ms`);
     await sleep(backoffMs);
     backoffMs = Math.min(backoffMs * 2, RECONNECT_BACKOFF_MAX_MS);
   }
 
-  process.stderr.write("→ daemon exited\n");
+  log.step("daemon exited");
   process.exit(0);
 }
 
