@@ -28,11 +28,26 @@ export type ByoStatus =
   | 'idle'              // not paired
   | 'pairing'           // /pair POST in flight or browser WS opening
   | 'awaiting_bridge'   // browser WS open, waiting for bridge to connect
+  | 'awaiting_choice'   // bridge is up, sent us its setup; user must pick agent / session
+  | 'starting'          // user picked, waiting for agent spawn
   | 'connected'         // bridge attached + ready
   | 'sending'           // user prompt in flight
   | 'streaming'         // receiving events from bridge
   | 'disconnected'      // bridge dropped or WS closed
   | 'error';
+
+export interface BridgeAgent {
+  id: string;
+  label: string;
+  command?: string;
+}
+
+export interface BridgeSession {
+  id: string;       // ACP session id, what the agent's session/load expects
+  title: string;    // first user message or summary, for the picker
+  cwd: string;      // human-readable cwd from CC's project encoding
+  modifiedAt: number; // unix seconds
+}
 
 /** Re-exported for callers that imported it from this hook. The canonical
  *  definition is now in lib/acpEvents.ts so the BYO hook and useClashRuntime
@@ -49,6 +64,9 @@ export interface ByoBridgeState {
   messages: ByoMessage[];
   /** True iff status === connected/sending/streaming. UI uses this to gate input. */
   ready: boolean;
+  /** Populated when the bridge sends `bridge_setup`. UI shows a picker. */
+  agents: BridgeAgent[];
+  sessions: BridgeSession[];
 }
 
 interface PairResponse {
@@ -64,6 +82,8 @@ export function useAgentByoBridge() {
     errorMessage: null,
     messages: [],
     ready: false,
+    agents: [],
+    sessions: [],
   });
 
   const wsRef = useRef<WebSocket | null>(null);
@@ -88,6 +108,8 @@ export function useAgentByoBridge() {
    * with that token. Step 2 (openWs) needs the token from step 1.
    */
   const startPairing = useCallback(async (): Promise<{ token: string; display: string } | null> => {
+    explicitShutdown.current = false;
+    reconnectBackoffMs.current = 1000;
     updateStatus('pairing');
     try {
       const res = await fetch(PAIR_PATH, { method: 'POST', credentials: 'same-origin' });
@@ -107,6 +129,14 @@ export function useAgentByoBridge() {
     }
   }, [updateStatus]);
 
+  /** Auto-reconnect backoff state. Reset to base when a WS open succeeds. */
+  const reconnectBackoffMs = useRef(1000);
+  const explicitShutdown = useRef(false);
+  // Forward-decl: openBrowserSocket needs onWsMessage but onWsMessage is
+  // defined below it. Ref lets the closure look up the latest value at
+  // message arrival time without TDZ tripping useCallback creation.
+  const onWsMessageRef = useRef<(data: unknown) => void>(() => undefined);
+
   /** Step 2: open the browser-side WS to the relay DO. */
   const openBrowserSocket = useCallback((token: string) => {
     // Close any prior socket to avoid two-bridge confusion.
@@ -119,6 +149,7 @@ export function useAgentByoBridge() {
     wsRef.current = ws;
 
     ws.onopen = () => {
+      reconnectBackoffMs.current = 1000;
       updateStatus('awaiting_bridge');
     };
     ws.onerror = () => {
@@ -127,11 +158,23 @@ export function useAgentByoBridge() {
     };
     ws.onclose = (ev) => {
       wsRef.current = null;
-      // Any in-flight assistant turn loses its stream — mark them ended.
-      turnToMsgIdx.current.clear();
-      updateStatus('disconnected', ev.reason || `closed (code ${ev.code})`);
+      if (explicitShutdown.current) {
+        turnToMsgIdx.current.clear();
+        updateStatus('idle');
+        return;
+      }
+      // Auto-reconnect with the same pair token. Bridge keeps the ACP
+      // child alive across this gap, so the user resumes the chat
+      // without re-pairing. Backoff caps at 30s.
+      updateStatus('disconnected', ev.reason || `closed (code ${ev.code}), reconnecting…`);
+      const delay = reconnectBackoffMs.current;
+      reconnectBackoffMs.current = Math.min(delay * 2, 30_000);
+      setTimeout(() => {
+        if (explicitShutdown.current) return;
+        openBrowserSocket(token);
+      }, delay);
     };
-    ws.onmessage = (ev) => onWsMessage(ev.data);
+    ws.onmessage = (ev) => onWsMessageRef.current(ev.data);
   }, [updateStatus]);
 
   /**
@@ -139,13 +182,21 @@ export function useAgentByoBridge() {
    * Schema:
    *   { type: "bridge_connected" }                 (DO synthetic)
    *   { type: "bridge_disconnected" }              (DO synthetic)
-   *   { type: "ready" }                            (bridge → ready to accept prompts)
+   *   { type: "bridge_setup", agents, sessions }   (bridge → here are choices)
+   *   { type: "ready" }                            (bridge → spawn done)
    *   { type: "event", id, event }                 (bridge → ACP notification)
    *   { type: "complete", id }                     (bridge → turn finished)
    *   { type: "error", id?, message }              (bridge → error)
    */
   const onWsMessage = useCallback((data: unknown) => {
-    let msg: { type: string; id?: string; event?: unknown; message?: string };
+    let msg: {
+      type: string;
+      id?: string;
+      event?: unknown;
+      message?: string;
+      agents?: BridgeAgent[];
+      sessions?: BridgeSession[];
+    };
     try {
       msg = JSON.parse(typeof data === 'string' ? data : '');
     } catch {
@@ -153,11 +204,24 @@ export function useAgentByoBridge() {
     }
 
     if (msg.type === 'bridge_connected') {
-      updateStatus('awaiting_bridge'); // stay awaiting until we see "ready"
+      updateStatus('awaiting_bridge'); // wait for either bridge_setup or ready
       return;
     }
     if (msg.type === 'bridge_disconnected') {
-      updateStatus('disconnected', 'bridge dropped — re-run `npx @clash-space/bridge` to reconnect');
+      // Don't mark disconnected immediately — bridge may reconnect on its
+      // own side. Just go back to awaiting_bridge so the input is gated
+      // and the UI can show "reconnecting" if it wants.
+      updateStatus('awaiting_bridge', 'bridge dropped — waiting for reconnect');
+      return;
+    }
+    if (msg.type === 'bridge_setup') {
+      setState((s) => ({
+        ...s,
+        agents: msg.agents ?? [],
+        sessions: msg.sessions ?? [],
+        status: 'awaiting_choice',
+        ready: false,
+      }));
       return;
     }
     if (msg.type === 'ready') {
@@ -170,8 +234,6 @@ export function useAgentByoBridge() {
     }
     if (msg.type === 'complete' && msg.id) {
       turnToMsgIdx.current.delete(msg.id);
-      // If no other turn is in flight, return to connected. Otherwise stay
-      // streaming (multi-turn isn't on for v1 but the bookkeeping is cheap).
       if (turnToMsgIdx.current.size === 0) updateStatus('connected');
       return;
     }
@@ -179,6 +241,23 @@ export function useAgentByoBridge() {
       updateStatus('error', msg.message ?? 'unknown error');
       return;
     }
+  }, [updateStatus]);
+
+  // Wire onWsMessage into the ref so openBrowserSocket's WS handler picks
+  // up the current closure on every render (in particular: after handleAcpEvent
+  // changes when state mutates).
+  onWsMessageRef.current = onWsMessage;
+
+  /** Send the bridge a `start` message after the user picks. */
+  const startWith = useCallback((agentId: string | null, resumeSessionId?: string) => {
+    const ws = wsRef.current;
+    if (!ws || ws.readyState !== WebSocket.OPEN) return;
+    updateStatus('starting');
+    ws.send(JSON.stringify({
+      type: 'start',
+      ...(agentId ? { agent_id: agentId } : {}),
+      ...(resumeSessionId ? { resume_session_id: resumeSessionId } : {}),
+    }));
   }, [updateStatus]);
 
   /**
@@ -228,6 +307,7 @@ export function useAgentByoBridge() {
   }, []);
 
   const shutdown = useCallback(() => {
+    explicitShutdown.current = true;
     const ws = wsRef.current;
     if (ws && ws.readyState === WebSocket.OPEN) {
       ws.send(JSON.stringify({ type: 'shutdown' }));
@@ -242,6 +322,8 @@ export function useAgentByoBridge() {
       errorMessage: null,
       messages: [],
       ready: false,
+      agents: [],
+      sessions: [],
     });
   }, []);
 
@@ -256,6 +338,8 @@ export function useAgentByoBridge() {
   return {
     ...state,
     startPairing,
+    /** Tell the bridge to spawn the picked agent (with optional resume id). */
+    startWith,
     sendMessage,
     cancel,
     shutdown,

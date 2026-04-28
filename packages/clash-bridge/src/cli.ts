@@ -30,6 +30,7 @@ import WebSocket from "ws";
 import { AcpRuntimeImpl, KNOWN_ACP_AGENTS } from "./_acp-runtime/index.js";
 import { NodeSpawner } from "./_acp-runtime/spawners/node.js";
 import { detectAll } from "./_acp-runtime/registry.js";
+import { listLocalCcSessions } from "./lib/cc-sessions.js";
 import { Relay } from "./relay.js";
 
 const DEFAULT_API_SERVER_URL = "https://api.clash.video";
@@ -144,79 +145,162 @@ async function runAdHocPair(): Promise<void> {
   const server = (values.server ?? DEFAULT_PAIR_WS_SERVER).replace(/\/+$/, "");
   const wsUrl = `${server}/agents/byo-bridge/cli?token=${encodeURIComponent(values.token!)}`;
 
-  // Pick which agent to spawn:
-  //   1. If user passed --agent <id>, use that (must exist in registry).
-  //   2. Otherwise scan PATH for any known agent. Prefer claude-code-acp
-  //      because it's the most polished. If multiple are present and the
-  //      user wanted a specific one, they should pass --agent.
-  //   3. None on PATH → fail with install hints.
-  let chosen = values.agent
-    ? KNOWN_ACP_AGENTS.find((a) => a.id === values.agent) ?? null
-    : null;
-  if (values.agent && !chosen) {
-    process.stderr.write(
-      `✗ unknown --agent: ${values.agent}\n` +
-        `  available: ${KNOWN_ACP_AGENTS.map((a) => a.id).join(", ")}\n`,
-    );
-    process.exit(1);
-  }
-  if (!chosen) {
-    const detected = await detectAll();
-    if (detected.length === 0) {
+  // --agent narrows the picker the browser sees down to a single option;
+  // otherwise we publish every detected agent and let the user choose
+  // in-dialog. Bridge no longer auto-picks claude-code-acp on connect.
+  let chosen: typeof KNOWN_ACP_AGENTS[number] | null = null;
+  if (values.agent) {
+    chosen = KNOWN_ACP_AGENTS.find((a) => a.id === values.agent) ?? null;
+    if (!chosen) {
       process.stderr.write(
-        `✗ no ACP agents detected on PATH\n` +
-          `  install one of:\n` +
-          KNOWN_ACP_AGENTS.map((a) => `    ${a.id}  →  ${a.installHint ?? a.homepage ?? "?"}`).join("\n") +
-          `\n`,
+        `✗ unknown --agent: ${values.agent}\n` +
+          `  available: ${KNOWN_ACP_AGENTS.map((a) => a.id).join(", ")}\n`,
       );
       process.exit(1);
     }
-    chosen =
-      detected.find((a) => a.id === "claude-code-acp") ??
-      detected[0];
-    if (detected.length > 1) {
-      process.stderr.write(
-        `→ ${detected.length} agents on PATH; using ${chosen.id}\n` +
-          `  (others: ${detected.filter((a) => a.id !== chosen!.id).map((a) => a.id).join(", ")} — pass --agent <id> to pick)\n`,
-      );
-    }
   }
 
-  process.stderr.write(`→ connecting to ${server} …\n`);
-  const ws = new WebSocket(wsUrl);
-
-  await new Promise<void>((resolve, reject) => {
-    ws.once("open", () => resolve());
-    ws.once("error", reject);
-    ws.once("unexpected-response", (_req, res) => {
-      reject(new Error(`pairing rejected: HTTP ${res.statusCode}`));
-    });
-  });
-  process.stderr.write("✓ paired\n");
-
-  process.stderr.write(`→ spawning ${chosen.spec.command} (${chosen.id}) …\n`);
-  const runtime = new AcpRuntimeImpl(new NodeSpawner());
-  let session;
-  try {
-    session = await runtime.start({ agent: chosen.spec });
-  } catch (e) {
+  // Persistent process state — survives WS reconnects. ACP session is
+  // kept alive across blips so a brief network drop doesn't lose the
+  // conversation; user explicit ctrl-C is the only thing that disposes.
+  const detected = await detectAll();
+  const candidates = chosen ? [chosen] : detected;
+  if (candidates.length === 0) {
     process.stderr.write(
-      `✗ could not start ${chosen.spec.command}: ${e instanceof Error ? e.message : String(e)}\n` +
-        (chosen.installHint ? `  install: ${chosen.installHint}\n` : ""),
+      `✗ no ACP agents detected on PATH\n` +
+        `  install one of:\n` +
+        KNOWN_ACP_AGENTS.map((a) => `    ${a.id}  →  ${a.installHint ?? a.homepage ?? "?"}`).join("\n") +
+        `\n`,
     );
-    ws.close(1011, "spawn failed");
     process.exit(1);
   }
-  process.stderr.write("✓ agent ready\n");
+  const runtime = new AcpRuntimeImpl(new NodeSpawner());
+  let session: import("./_acp-runtime/types.js").AcpSession | null = null;
 
-  const relay = new Relay(ws, session);
-  relay.notifyReady();
+  let stopping = false;
+  const stop = (sig: string) => {
+    if (stopping) return;
+    stopping = true;
+    process.stderr.write(`→ ${sig}, shutting down\n`);
+    void session?.dispose().catch(() => {});
+    process.exit(0);
+  };
+  process.on("SIGINT", () => stop("SIGINT"));
+  process.on("SIGTERM", () => stop("SIGTERM"));
 
-  await new Promise<void>((resolve) => {
-    ws.once("close", resolve);
+  let backoffMs = 1000;
+  const RECONNECT_MAX_MS = 30 * 1000;
+
+  while (!stopping) {
+    process.stderr.write(`→ connecting to ${server} …\n`);
+    let ws: WebSocket;
+    try {
+      ws = new WebSocket(wsUrl);
+      await new Promise<void>((resolve, reject) => {
+        ws.once("open", () => resolve());
+        ws.once("error", reject);
+        ws.once("unexpected-response", (_req, res) => {
+          reject(new Error(`pairing rejected: HTTP ${res.statusCode}`));
+        });
+      });
+    } catch (e) {
+      process.stderr.write(`✗ ${e instanceof Error ? e.message : String(e)}\n`);
+      if (stopping) break;
+      process.stderr.write(`→ reconnecting in ${backoffMs}ms\n`);
+      await sleep(backoffMs);
+      backoffMs = Math.min(backoffMs * 2, RECONNECT_MAX_MS);
+      continue;
+    }
+    backoffMs = 1000;
+    process.stderr.write("✓ paired\n");
+
+    if (!session) {
+      // First attach — let the browser pick agent + (optional) resume id.
+      // Re-enumerate sessions every attach so the picker is fresh.
+      const sessions = await listLocalCcSessions(20).catch(() => []);
+      ws.send(JSON.stringify({
+        type: "bridge_setup",
+        agents: candidates.map((a) => ({ id: a.id, label: a.label, command: a.spec.command })),
+        sessions,
+      }));
+      process.stderr.write(`→ waiting for browser to pick agent${sessions.length ? " / session" : ""} …\n`);
+
+      const startMsg = await waitForStart(ws).catch((e) => {
+        process.stderr.write(`✗ ${e instanceof Error ? e.message : String(e)}\n`);
+        return null;
+      });
+      if (!startMsg) continue; // WS dropped before pick — reconnect, browser repicks
+
+      const pickedAgent =
+        candidates.find((a) => a.id === startMsg.agent_id) ?? candidates[0];
+      process.stderr.write(
+        `→ spawning ${pickedAgent.spec.command} (${pickedAgent.id})${
+          startMsg.resume_session_id ? ` resume=${startMsg.resume_session_id.slice(0, 8)}…` : ""
+        } …\n`,
+      );
+      try {
+        session = await runtime.start({
+          agent: pickedAgent.spec,
+          resumeAcpSessionId: startMsg.resume_session_id,
+        });
+      } catch (e) {
+        const msg = `could not start ${pickedAgent.spec.command}: ${e instanceof Error ? e.message : String(e)}`;
+        process.stderr.write(`✗ ${msg}\n${pickedAgent.installHint ? "  install: " + pickedAgent.installHint + "\n" : ""}`);
+        try { ws.send(JSON.stringify({ type: "error", message: msg })); } catch { /* */ }
+        // Don't kill the process — let the user re-pair / re-pick.
+        ws.close(1011, "spawn failed");
+        if (stopping) break;
+        await sleep(backoffMs);
+        continue;
+      }
+      process.stderr.write("✓ agent ready\n");
+    } else {
+      // Reconnect after WS drop — agent is still alive; resume relay.
+      process.stderr.write(`→ reattached, agent still alive\n`);
+    }
+
+    const relay = new Relay(ws, session);
+    relay.notifyReady();
+
+    // Wait for this WS to drop. ACP child stays put.
+    await new Promise<void>((resolve) => ws.once("close", resolve));
+    if (stopping) break;
+    process.stderr.write(`→ WS dropped, reconnecting in ${backoffMs}ms (agent kept alive)\n`);
+    await sleep(backoffMs);
+    backoffMs = Math.min(backoffMs * 2, RECONNECT_MAX_MS);
+  }
+
+  await session?.dispose().catch(() => {});
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+interface StartMessage {
+  type: "start";
+  agent_id?: string;
+  resume_session_id?: string;
+}
+
+/** Block until the browser sends `{type: "start"}`. Other messages ignored. */
+function waitForStart(ws: WebSocket): Promise<StartMessage> {
+  return new Promise((resolve, reject) => {
+    const onMessage = (data: WebSocket.RawData) => {
+      let msg: { type?: string; [k: string]: unknown };
+      try { msg = JSON.parse(data.toString()); } catch { return; }
+      if (msg.type !== "start") return; // ignore anything sent before start
+      ws.off("message", onMessage);
+      ws.off("close", onClose);
+      resolve(msg as StartMessage);
+    };
+    const onClose = () => {
+      ws.off("message", onMessage);
+      reject(new Error("WS closed before start"));
+    };
+    ws.on("message", onMessage);
+    ws.once("close", onClose);
   });
-  process.stderr.write("→ disconnected\n");
-  await session.dispose().catch(() => {});
 }
 
 main().catch((e) => {

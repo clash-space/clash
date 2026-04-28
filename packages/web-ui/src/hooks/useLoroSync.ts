@@ -51,6 +51,13 @@ export interface UseLoroSyncReturn {
   redo: () => void;
   canUndo: boolean;
   canRedo: boolean;
+  /**
+   * Send a JSON sideband message over the same WS used for binary CRDT sync.
+   * Best-effort: silently dropped if the socket isn't OPEN (the server side
+   * tolerates missing presence updates — disconnect releases any held lock
+   * automatically). Currently used for the timeline soft edit-lock.
+   */
+  sendSideband: (msg: object) => void;
 }
 
 // IndexedDB helpers
@@ -382,6 +389,21 @@ export function useLoroSync(options: LoroSyncOptions): UseLoroSyncReturn {
     }
   }, []);
 
+  // Send a JSON sideband message (presence-style) on the same WS. Best-effort:
+  // if the socket isn't open we silently drop. The server treats absence of
+  // presence updates as "no lock held", which is the right semantic for a
+  // soft-lock — a disconnected client cannot be editing.
+  const sendSideband = useCallback((msg: object) => {
+    const ws = wsRef.current;
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      try {
+        ws.send(JSON.stringify(msg));
+      } catch {
+        // Send failure is recoverable: next openEditor / closeEditor will retry.
+      }
+    }
+  }, []);
+
   // Forward declaration for recursion
   const connectRef = useRef<() => void>(() => {});
 
@@ -616,5 +638,6 @@ export function useLoroSync(options: LoroSyncOptions): UseLoroSyncReturn {
     redo,
     canUndo,
     canRedo,
+    sendSideband,
   };
 }

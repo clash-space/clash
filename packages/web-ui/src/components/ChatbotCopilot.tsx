@@ -921,7 +921,10 @@ export default function ChatbotCopilot({
                 status={byo.status}
                 pairTokenDisplay={byo.pairTokenDisplay}
                 errorMessage={byo.errorMessage}
+                agents={byo.agents}
+                sessions={byo.sessions}
                 onStartPairing={byo.startPairing}
+                onStartWith={byo.startWith}
                 onClose={() => setByoDialogOpen(false)}
             />
             <AddMachineDialog open={addMachineOpen} onClose={() => setAddMachineOpen(false)} />

@@ -46,10 +46,18 @@ export class ByoBridgeRoom extends DurableObject<Env> {
         : null;
     if (!side) return new Response("unknown side", { status: 404 });
 
-    // Each side may attach exactly once. A reconnect needs a fresh token.
+    // Each side has at most one live WS. A reconnecting side (network blip,
+    // browser tab refocus) may arrive before CF detects the prior socket
+    // closed. Probe the existing one with a ping; if send throws it's
+    // dead, evict and let the new attach through.
     const existing = this.ctx.getWebSockets(side);
     if (existing.length > 0) {
-      return new Response(`${side} already attached for this token`, { status: 409 });
+      try {
+        existing[0].send(JSON.stringify({ type: "ping" }));
+        return new Response(`${side} already attached for this token`, { status: 409 });
+      } catch {
+        try { existing[0].close(1011, "stale"); } catch { /* already closing */ }
+      }
     }
 
     if (side === "browser") {
@@ -119,24 +127,23 @@ export class ByoBridgeRoom extends DurableObject<Env> {
     log.info(`${this.tag()} ${side} closed (code=${code} reason=${reason || "—"})`);
 
     if (side === "bridge") {
-      // Browser stays — tell it the bridge is gone so the UI can show
-      // "reconnect" and the chat can stop showing "agent typing…".
+      // Browser stays — tell it the bridge dropped so the dialog can
+      // show "reconnecting…". Bridge auto-reconnects with the same
+      // pair token; DO accepts the new attach and forwards
+      // bridge_connected to the browser again.
       const browser = this.ctx.getWebSockets("browser")[0];
       try {
         browser?.send(JSON.stringify({ type: "bridge_disconnected" }));
-      } catch {
-        /* browser may have closed too */
-      }
-      // Don't tear down the browser side — user might re-pair.
+      } catch { /* browser may have closed too */ }
     } else {
-      // Browser left. The chat session is over; close the bridge so the
-      // local agent process can exit and the user gets their terminal back.
-      const bridge = this.ctx.getWebSockets("bridge")[0];
-      try {
-        bridge?.close(1001, "browser disconnected");
-      } catch {
-        /* already closing */
-      }
+      // Browser dropped. Both the browser tab and the bridge will try
+      // to reconnect with the same pair token; do NOT close the bridge.
+      // Holding the ACP child alive is the whole point of the
+      // reconnect path — browser just needs to reattach.
+      // (User explicit shutdown comes through as `{type: "shutdown"}`
+      // forwarded to bridge, which exits cleanly. Tab close without
+      // shutdown leaves the bridge running until user ctrl-C — the
+      // ad-hoc model expects user to manage the terminal lifecycle.)
     }
   }
 
