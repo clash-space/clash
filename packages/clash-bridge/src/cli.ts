@@ -1,64 +1,139 @@
 /**
- * clash-bridge — entrypoint for `npx @clash-space/bridge`.
+ * clash-bridge — entry point for `npx @clash-space/bridge`.
  *
- * Run on a user's machine to pair a local Claude Code instance with the
- * Clash web UI.
+ * Two modes (kept side-by-side; pick whichever fits the user's flow):
  *
- * Usage:
- *   npx @clash-space/bridge --token <PAIR_CODE> [--server <URL>]
+ *   A. Persistent runtime (recommended for daily use)
+ *      $ npx @clash-space/bridge setup     # one-time OAuth + launchd install
+ *      $ npx @clash-space/bridge status
+ *      $ npx @clash-space/bridge uninstall
  *
- * What it does:
- *   1. Dial the clash Worker's bridge endpoint with the pairing token.
- *   2. Spawn `claude-code-acp` locally, do the ACP handshake.
- *   3. Tell the Worker we're ready.
- *   4. Relay prompts ↔ events until the Worker closes us or the agent dies.
+ *      After `setup`, a launchd-managed daemon keeps the machine attached
+ *      to clash.video. The web UI shows it as a Runtime; chats route to
+ *      it like any other agent. See commands/setup.ts.
  *
- * Out of scope for v1: agent picker (CC hardcoded), reconnect on drop
- * (just exit and prompt the user to re-run), permission prompts beyond
- * default-deny, persistent pairing.
+ *   B. Ad-hoc one-shot pairing (zero install, single chat session)
+ *      $ npx @clash-space/bridge --token=<PAIR_CODE> [--server=<wss://host>]
+ *
+ *      Pair token is shown in the chat panel ("Quick connect"). Bridge
+ *      spawns claude-code-acp, talks to it for the duration of one
+ *      browser session, exits when the user closes the chat. See
+ *      relay.ts + the existing byo-bridge flow on the server.
+ *
+ * Mode B exists because (a) some users only want a one-off chat without
+ * leaving a daemon running and (b) it's the path we shipped first; users
+ * have working terminals that depend on it.
  */
 
-import WebSocket from "ws";
 import { parseArgs } from "node:util";
-import {
-  AcpRuntimeImpl,
-  KNOWN_ACP_AGENTS,
-} from "./_acp-runtime/index.js";
+import WebSocket from "ws";
+import { AcpRuntimeImpl, KNOWN_ACP_AGENTS } from "./_acp-runtime/index.js";
 import { NodeSpawner } from "./_acp-runtime/spawners/node.js";
 import { Relay } from "./relay.js";
 
-// The Worker is fronted by clash.video (the web worker) which proxies
-// /agents/byo-bridge/* to api-cf via a service binding. There is no
-// api.clash.video subdomain. Self-hosters override with --server.
-const DEFAULT_SERVER = "wss://clash.video";
+const DEFAULT_API_SERVER_URL = "https://api.clash.video";
+const DEFAULT_BROWSER_ORIGIN = "https://clash.video";
+const DEFAULT_PAIR_WS_SERVER = "wss://clash.video";
 
-function usage(): never {
+function printUsage(): never {
   process.stderr.write(
-    `Usage: clash-bridge --token <PAIR_CODE> [--server <wss://host>]\n` +
+    `clash-bridge — pair a local AI agent with the Clash web UI\n` +
       `\n` +
-      `Get a pairing code from the Clash chat panel ("Connect local agent").\n`,
+      `Persistent runtime (recommended):\n` +
+      `  clash-bridge setup [--server-url=<https://...>] [--browser-origin=<https://...>] [--no-service]\n` +
+      `  clash-bridge daemon\n` +
+      `  clash-bridge status\n` +
+      `  clash-bridge uninstall\n` +
+      `\n` +
+      `Ad-hoc pairing (one-shot, no install):\n` +
+      `  clash-bridge --token=<PAIR_CODE> [--server=<wss://host>]\n` +
+      `\n` +
+      `Get a pair code from the chat panel ("Quick connect"). For persistent\n` +
+      `setup, your browser opens to clash.video to authorize this machine.\n`,
   );
   process.exit(2);
 }
 
 async function main(): Promise<void> {
+  const sub = process.argv[2];
+
+  // Subcommand mode (A) — anything that doesn't start with "-".
+  if (sub && !sub.startsWith("-")) {
+    return await dispatchSubcommand(sub);
+  }
+
+  // Flag mode (B) — existing --token pairing flow. Preserved verbatim.
+  return await runAdHocPair();
+}
+
+async function dispatchSubcommand(name: string): Promise<void> {
+  // Trim the subcommand from argv before delegating to parseArgs in
+  // command modules. node:util parseArgs reads from argv directly when
+  // called without an `args` option.
+  process.argv.splice(2, 1);
+
+  switch (name) {
+    case "setup": {
+      const { values } = parseArgs({
+        options: {
+          "server-url":     { type: "string" },
+          "browser-origin": { type: "string" },
+          "no-service":     { type: "boolean" },
+          help:             { type: "boolean", short: "h" },
+        },
+        strict: true,
+      });
+      if (values.help) printUsage();
+      const { runSetup } = await import("./commands/setup.js");
+      await runSetup({
+        serverUrl:     values["server-url"]     ?? DEFAULT_API_SERVER_URL,
+        browserOrigin: values["browser-origin"] ?? DEFAULT_BROWSER_ORIGIN,
+        noService:     !!values["no-service"],
+      });
+      return;
+    }
+    case "daemon": {
+      // No flags — daemon reads everything from credentials.json
+      const { runDaemon } = await import("./commands/daemon.js");
+      await runDaemon();
+      return;
+    }
+    case "status": {
+      const { runStatus } = await import("./commands/status.js");
+      await runStatus();
+      return;
+    }
+    case "uninstall": {
+      const { runUninstall } = await import("./commands/uninstall.js");
+      await runUninstall();
+      return;
+    }
+    case "help":
+    case "-h":
+    case "--help":
+      printUsage();
+    // eslint-disable-next-line no-fallthrough
+    default:
+      process.stderr.write(`unknown subcommand: ${name}\n\n`);
+      printUsage();
+  }
+}
+
+async function runAdHocPair(): Promise<void> {
   const { values } = parseArgs({
     options: {
-      token: { type: "string" },
+      token:  { type: "string" },
       server: { type: "string" },
-      help: { type: "boolean", short: "h" },
+      help:   { type: "boolean", short: "h" },
     },
     strict: true,
   });
 
-  if (values.help || !values.token) usage();
+  if (values.help || !values.token) printUsage();
 
-  const server = (values.server ?? DEFAULT_SERVER).replace(/\/+$/, "");
+  const server = (values.server ?? DEFAULT_PAIR_WS_SERVER).replace(/\/+$/, "");
   const wsUrl = `${server}/agents/byo-bridge/cli?token=${encodeURIComponent(values.token!)}`;
 
-  // Pick the CC entry from the registry. Hardcoded for v1 — we don't yet
-  // expose agent choice over the wire. If CC isn't installed, fail fast
-  // with the install hint instead of letting spawn ENOENT.
   const cc = KNOWN_ACP_AGENTS.find((a) => a.id === "claude-code-acp");
   if (!cc) {
     process.stderr.write("internal: claude-code-acp not in registry\n");
@@ -95,7 +170,6 @@ async function main(): Promise<void> {
   const relay = new Relay(ws, session);
   relay.notifyReady();
 
-  // Stay alive until either side closes.
   await new Promise<void>((resolve) => {
     ws.once("close", resolve);
   });
