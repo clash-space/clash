@@ -14,8 +14,9 @@ import { TodoList, TodoItem } from './copilot/TodoList';
 import { ThinkingIndicator } from './copilot/ThinkingIndicator';
 import { MessageErrorBoundary } from './copilot/MessageErrorBoundary';
 import { ByoAgentDialog } from './copilot/ByoAgentDialog';
+import { RuntimePickerDialog } from './copilot/RuntimePickerDialog';
 import { useAgentByoBridge } from '@clash/web-ui/hooks/useAgentByoBridge';
-import { useClashRuntime } from '@clash/web-ui/hooks/useClashRuntime';
+import { useClashRuntime, type Runtime } from '@clash/web-ui/hooks/useClashRuntime';
 import type { Node as RFNode, Edge as RFEdge, Connection as RFConnection } from '@xyflow/react';
 import ReactMarkdown from 'react-markdown';
 import { useSignedUrl } from '@clash/web-ui/lib/hooks/useSignedUrl';
@@ -156,6 +157,8 @@ export default function ChatbotCopilot({
     const [byoDialogOpen, setByoDialogOpen] = useState(false);
     const [runtimeMenuOpen, setRuntimeMenuOpen] = useState(false);
     const [addMachineOpen, setAddMachineOpen] = useState(false);
+    /** When set, the runtime picker dialog is open for this runtime. */
+    const [runtimePicker, setRuntimePicker] = useState<Runtime | null>(null);
     const byo = useAgentByoBridge();
     const clashRt = useClashRuntime();
 
@@ -589,11 +592,12 @@ export default function ChatbotCopilot({
                                                             sub={online ? `online · ${rt.agents.length} agent${rt.agents.length === 1 ? '' : 's'}` : 'offline'}
                                                             active={chatMode === 'runtime' && clashRt.selectedRuntimeId === rt.id}
                                                             disabled={!online || rt.agents.length === 0}
-                                                            onClick={async () => {
-                                                                if (chatMode === 'byo') byo.shutdown();
+                                                            onClick={() => {
+                                                                // Open the picker dialog (same SessionStartPicker
+                                                                // as Quick connect) so the daemon flow has the
+                                                                // matching agent + resume-session UX.
                                                                 setRuntimeMenuOpen(false);
-                                                                setChatMode('runtime');
-                                                                await clashRt.select(rt.id);
+                                                                setRuntimePicker(rt);
                                                             }}
                                                         />
                                                     );
@@ -941,6 +945,21 @@ export default function ChatbotCopilot({
                 onClose={() => setByoDialogOpen(false)}
             />
             <AddMachineDialog open={addMachineOpen} onClose={() => setAddMachineOpen(false)} />
+            <RuntimePickerDialog
+                open={!!runtimePicker}
+                runtime={runtimePicker}
+                loadResumeOptions={clashRt.loadResumeOptions}
+                onPick={async (agentId, resumeId) => {
+                    const rt = runtimePicker;
+                    setRuntimePicker(null);
+                    if (!rt) return;
+                    if (chatMode === 'byo') byo.shutdown();
+                    setChatMode('runtime');
+                    await clashRt.select(rt.id, agentId ?? undefined, resumeId);
+                }}
+                onClose={() => setRuntimePicker(null)}
+                busy={clashRt.status === 'connecting'}
+            />
         </>
     );
 }

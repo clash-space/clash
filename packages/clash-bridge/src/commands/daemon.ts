@@ -14,6 +14,7 @@
 
 import { readCreds } from "../lib/config.js";
 import { osTag, machineName } from "../lib/platform.js";
+import { listLocalCcSessions } from "../lib/cc-sessions.js";
 import { detectAll } from "../_acp-runtime/registry.js";
 import { SessionManager } from "../lib/session-manager.js";
 import { gcOldSessions } from "../lib/session-cwd.js";
@@ -142,6 +143,20 @@ export async function runDaemon(): Promise<void> {
             return;
           case "session.dispose":
             void sessions.dispose(msg.session_id as string);
+            return;
+          case "rpc.list_local_sessions":
+            // Server is asking us to enumerate this machine's
+            // CC transcripts so the picker dialog has a Resume list.
+            (async () => {
+              const list = await listLocalCcSessions(20).catch(() => []);
+              if (ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({
+                  type: "rpc.list_local_sessions.response",
+                  request_id: msg.request_id,
+                  sessions: list,
+                }));
+              }
+            })();
             return;
           default:
             process.stderr.write(`! unhandled server message: ${msg.type ?? "?"}\n`);

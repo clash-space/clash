@@ -15,6 +15,7 @@
 import { readdir, readFile, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
+import { paths } from "./platform.js";
 
 export interface CcSessionInfo {
   /** ACP sessionId — same string `session/load` accepts to resume. */
@@ -38,8 +39,16 @@ export async function listLocalCcSessions(limit = 20): Promise<CcSessionInfo[]> 
     throw e;
   }
 
+  // Only show sessions that THIS bridge created — cwd under
+  // ~/.clash/sessions/. Otherwise the picker would be polluted with the
+  // user's unrelated CC chats from coding work, IDE plugins, etc.
+  const sessionsRoot = paths().sessionsDir;
+
   const all: CcSessionInfo[] = [];
   for (const projDir of projectDirs) {
+    const decoded = decodeCcProjectDir(projDir);
+    if (!decoded.startsWith(sessionsRoot + "/") && decoded !== sessionsRoot) continue;
+
     const projPath = join(ROOT, projDir);
     let entries: string[] = [];
     try { entries = await readdir(projPath); } catch { continue; }
@@ -54,7 +63,9 @@ export async function listLocalCcSessions(limit = 20): Promise<CcSessionInfo[]> 
         all.push({
           id,
           title,
-          cwd: decodeCcProjectDir(projDir),
+          // Strip the ~/.clash/sessions/ prefix so the picker shows just
+          // the short session id rather than the long machine path.
+          cwd: decoded.slice(sessionsRoot.length).replace(/^\//, "") || "(this machine)",
           modifiedAt: Math.floor(st.mtimeMs / 1000),
         });
       } catch {

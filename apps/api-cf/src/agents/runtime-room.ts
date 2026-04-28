@@ -196,6 +196,17 @@ export class RuntimeRoom extends DurableObject<Env> {
       return;
     }
 
+    // RPC response from the daemon → resolve the matching waiter.
+    if (parsed.type === "rpc.list_local_sessions.response") {
+      const reqId = (parsed as { request_id?: string }).request_id;
+      const sessions = (parsed as { sessions?: unknown[] }).sessions ?? [];
+      if (reqId && this.#pendingRpcs.has(reqId)) {
+        this.#pendingRpcs.get(reqId)!(sessions);
+        this.#pendingRpcs.delete(reqId);
+      }
+      return;
+    }
+
     // Session-related daemon messages — fan out to clients of that session.
     // Wire shape from session-manager.ts:
     //   session.ready    { session_id, acp_session_id }
@@ -314,6 +325,48 @@ export class RuntimeRoom extends DurableObject<Env> {
     try { daemon.send(JSON.stringify(msg)); return true; }
     catch { return false; }
   }
+
+  /**
+   * RPC the daemon for the list of resumeable local CC sessions on
+   * that machine. Returns [] if the daemon is offline or doesn't
+   * respond within the timeout.
+   *
+   * Implemented as fire-and-await: send rpc.list_local_sessions with a
+   * fresh request_id, store the resolver in #pendingRpcs, resolve when
+   * webSocketMessage sees the matching response. Hibernation-safe
+   * because the resolver lives in DO memory and the response comes
+   * back on the same DO instance (idFromName(runtime_id) is sticky).
+   */
+  async listLocalSessions(timeoutMs = 5000): Promise<unknown[]> {
+    await this.ensureIdentity();
+    const daemon = this.ctx.getWebSockets("daemon")[0];
+    if (!daemon) return [];
+    const requestId = crypto.randomUUID();
+    const promise = new Promise<unknown[]>((resolve) => {
+      const t = setTimeout(() => {
+        this.#pendingRpcs.delete(requestId);
+        resolve([]);
+      }, timeoutMs);
+      this.#pendingRpcs.set(requestId, (sessions) => {
+        clearTimeout(t);
+        resolve(sessions);
+      });
+    });
+    try {
+      daemon.send(JSON.stringify({ type: "rpc.list_local_sessions", request_id: requestId }));
+    } catch {
+      this.#pendingRpcs.delete(requestId);
+      return [];
+    }
+    return promise;
+  }
+
+  /**
+   * In-flight RPC resolvers keyed by request_id. Daemon's response
+   * messages (rpc.<name>.response) look up by request_id and resolve
+   * the corresponding waiter.
+   */
+  #pendingRpcs = new Map<string, (result: unknown[]) => void>();
 
   async webSocketClose(ws: WebSocket, code: number, reason: string): Promise<void> {
     await this.ensureIdentity();

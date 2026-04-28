@@ -285,6 +285,28 @@ runtimesRoutes.post("/:rid/sessions", async (c) => {
   return c.json({ session_id: sessionId });
 });
 
+// GET /:rid/local-sessions/scan — RPC the daemon for local CC transcripts
+// it can resume. Used by the runtime picker dialog so the user can pick
+// "Resume X" instead of "Start fresh". Returns [] if daemon offline /
+// unreachable / RPC times out.
+runtimesRoutes.get("/:rid/local-sessions/scan", async (c) => {
+  const userId = c.req.header("x-user-id");
+  if (!userId) return c.json({ error: "unauthorized" }, 401);
+
+  const rid = c.req.param("rid");
+  const runtime = await c.env.DB.prepare(
+    "SELECT id, status FROM runtime WHERE id = ? AND owner_user_id = ?",
+  ).bind(rid, userId).first<{ id: string; status: string }>();
+  if (!runtime) return c.json({ error: "runtime not found" }, 404);
+  if (runtime.status !== "online") return c.json({ sessions: [] });
+
+  const doStub = c.env.RUNTIME_ROOM.get(c.env.RUNTIME_ROOM.idFromName(rid));
+  const sessions = await (doStub as unknown as {
+    listLocalSessions(timeoutMs?: number): Promise<unknown[]>;
+  }).listLocalSessions(5000).catch(() => []);
+  return c.json({ sessions });
+});
+
 // DELETE /:id — revoke runtime: kill all its tokens + delete runtime row.
 // The daemon will get auth-rejected on next /attach and stop reconnecting
 // after a few backoff cycles.

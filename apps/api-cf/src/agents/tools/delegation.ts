@@ -52,6 +52,9 @@ const TOOL_ALLOWLISTS: Record<string, string[]> = {
     "read_canvas_node",
     "search_canvas",
     "timeline_editor",
+    "read_timeline",
+    "edit_timeline",
+    "write_timeline",
   ],
 };
 

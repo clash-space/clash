@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, Copy, Check, CircleNotch } from '@phosphor-icons/react';
 import type { ByoStatus, BridgeAgent, BridgeSession } from '@clash/web-ui/hooks/useAgentByoBridge';
+import { SessionStartPicker } from './SessionStartPicker';
 
 /**
  * ByoAgentDialog — pairing flow for "Bring your own local agent".
@@ -118,7 +119,7 @@ export function ByoAgentDialog({
             </p>
 
             {status === 'awaiting_choice' ? (
-              <PickerBlock
+              <SessionStartPicker
                 agents={agents}
                 sessions={sessions}
                 onStart={onStartWith}
@@ -244,122 +245,3 @@ function PairingStatus({ status }: { status: ByoStatus }) {
   return null;
 }
 
-/**
- * Agent + (optional) resume picker shown after the bridge sends bridge_setup.
- * Defaults: agent = first in list (registry-ordered, claude-code-acp first
- * when present), session = "Start fresh". One Start button to commit.
- */
-function PickerBlock({
-  agents,
-  sessions,
-  onStart,
-}: {
-  agents: BridgeAgent[];
-  sessions: BridgeSession[];
-  onStart: (agentId: string | null, resumeSessionId?: string) => void;
-}) {
-  const [agentId, setAgentId] = useState<string | null>(agents[0]?.id ?? null);
-  const [resumeId, setResumeId] = useState<string | null>(null);
-
-  // Pick a sensible default if the list mutates after a reconnect.
-  useEffect(() => {
-    if (!agentId || !agents.some((a) => a.id === agentId)) {
-      setAgentId(agents[0]?.id ?? null);
-    }
-  }, [agents, agentId]);
-
-  return (
-    <div className="space-y-4">
-      <div>
-        <div className="text-xs uppercase tracking-wider text-stone-400 mb-2">Agent</div>
-        {agents.length === 0 ? (
-          <div className="text-sm text-amber-700">No ACP agents detected on PATH.</div>
-        ) : (
-          <div className="grid grid-cols-1 gap-1.5">
-            {agents.map((a) => (
-              <label
-                key={a.id}
-                className={`flex items-center gap-2.5 px-3 py-2 rounded-lg cursor-pointer border transition-colors ${
-                  agentId === a.id
-                    ? 'border-emerald-300 bg-emerald-50/40'
-                    : 'border-stone-200 hover:bg-warm-muted'
-                }`}
-              >
-                <input
-                  type="radio"
-                  name="byo-agent"
-                  className="accent-emerald-600"
-                  checked={agentId === a.id}
-                  onChange={() => setAgentId(a.id)}
-                />
-                <span className="text-sm font-medium text-slate-700">{a.label}</span>
-                {a.command && (
-                  <span className="text-[11px] text-stone-400 font-mono">{a.command}</span>
-                )}
-              </label>
-            ))}
-          </div>
-        )}
-      </div>
-
-      {sessions.length > 0 && (
-        <div>
-          <div className="text-xs uppercase tracking-wider text-stone-400 mb-2">Resume a session</div>
-          <div className="grid grid-cols-1 gap-1.5 max-h-56 overflow-y-auto">
-            <label
-              className={`flex items-center gap-2.5 px-3 py-2 rounded-lg cursor-pointer border transition-colors ${
-                resumeId === null
-                  ? 'border-emerald-300 bg-emerald-50/40'
-                  : 'border-stone-200 hover:bg-warm-muted'
-              }`}
-            >
-              <input
-                type="radio"
-                name="byo-session"
-                className="accent-emerald-600"
-                checked={resumeId === null}
-                onChange={() => setResumeId(null)}
-              />
-              <span className="text-sm text-slate-700">Start fresh</span>
-            </label>
-            {sessions.map((s) => (
-              <label
-                key={s.id}
-                className={`flex items-start gap-2.5 px-3 py-2 rounded-lg cursor-pointer border transition-colors ${
-                  resumeId === s.id
-                    ? 'border-emerald-300 bg-emerald-50/40'
-                    : 'border-stone-200 hover:bg-warm-muted'
-                }`}
-              >
-                <input
-                  type="radio"
-                  name="byo-session"
-                  className="accent-emerald-600 mt-0.5"
-                  checked={resumeId === s.id}
-                  onChange={() => setResumeId(s.id)}
-                />
-                <div className="min-w-0 flex-1">
-                  <div className="text-sm text-slate-700 truncate">
-                    {s.title || <span className="text-stone-400 italic">untitled</span>}
-                  </div>
-                  <div className="text-[11px] text-stone-400 truncate">
-                    {s.cwd} · {new Date(s.modifiedAt * 1000).toLocaleString()}
-                  </div>
-                </div>
-              </label>
-            ))}
-          </div>
-        </div>
-      )}
-
-      <button
-        type="button"
-        onClick={() => onStart(agentId, resumeId ?? undefined)}
-        disabled={!agentId}
-        className="w-full rounded-full bg-gray-900 text-white py-2.5 text-sm font-medium hover:bg-gray-800 disabled:opacity-40 disabled:cursor-not-allowed"
-      >
-        Start chat
-      </button>
-    </div>
-  );
-}

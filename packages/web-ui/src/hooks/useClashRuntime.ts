@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { appendAcpEvent, type ByoMessage, type AvailableCommand } from '@clash/web-ui/lib/acpEvents';
+import type { BridgeSession } from '@clash/web-ui/hooks/useAgentByoBridge';
 
 /**
  * useClashRuntime — chat through a registered local-runtime daemon.
@@ -68,8 +69,14 @@ export interface UseClashRuntimeReturn {
   ready: boolean;
   /** Re-fetch the runtime list. Cheap; safe to call from a settings page. */
   refresh: () => Promise<void>;
-  /** Pick a runtime. Disposes any existing session and starts a fresh one. */
-  select: (runtimeId: string | null) => Promise<void>;
+  /** Pick a runtime + (optional) explicit agent + resume target. Disposes
+   *  any existing session and starts a fresh one. agentId defaults to the
+   *  runtime's first reported agent. */
+  select: (runtimeId: string | null, agentId?: string, resumeAcpSessionId?: string) => Promise<void>;
+  /** RPC the daemon for resumeable local CC sessions. Returns [] if the
+   *  runtime is offline or the daemon doesn't respond. Used by the
+   *  picker dialog so the user can pick "Resume X" instead of fresh. */
+  loadResumeOptions: (runtimeId: string) => Promise<BridgeSession[]>;
   sendMessage: (text: string) => void;
   cancel: () => void;
   shutdown: () => void;
@@ -173,7 +180,11 @@ export function useClashRuntime(): UseClashRuntimeReturn {
     }
   }, [handleAcpEvent]);
 
-  const select = useCallback(async (runtimeId: string | null) => {
+  const select = useCallback(async (
+    runtimeId: string | null,
+    explicitAgentId?: string,
+    resumeAcpSessionId?: string,
+  ) => {
     // Tear down anything already open.
     try { wsRef.current?.close(); } catch { /* */ }
     wsRef.current = null;
@@ -187,17 +198,21 @@ export function useClashRuntime(): UseClashRuntimeReturn {
 
     setStatus('connecting');
     try {
-      // Pick the first agent the runtime reports. v1 doesn't expose a
-      // chooser; if users have multiple agents installed they'd want a
-      // dropdown — defer to slice 3.
+      // Caller may pass an explicit agent id (from the picker dialog).
+      // Otherwise default to the runtime's first reported agent —
+      // matches the previous always-default-to-first behaviour for
+      // call sites that don't go through the picker.
       const runtime = runtimes.find((r) => r.id === runtimeId);
-      const agentId = runtime?.agents[0]?.id ?? 'claude-code-acp';
+      const agentId = explicitAgentId ?? runtime?.agents[0]?.id ?? 'claude-code-acp';
 
       const res = await fetch(`${RUNTIMES_PATH}/${runtimeId}/sessions`, {
         method: 'POST',
         credentials: 'same-origin',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ agent_id: agentId }),
+        body: JSON.stringify({
+          agent_id: agentId,
+          ...(resumeAcpSessionId ? { resume_session_id: resumeAcpSessionId } : {}),
+        }),
       });
       if (!res.ok) {
         const text = await res.text();
@@ -263,6 +278,19 @@ export function useClashRuntime(): UseClashRuntimeReturn {
     setStatus('idle');
   }, []);
 
+  const loadResumeOptions = useCallback(async (runtimeId: string): Promise<BridgeSession[]> => {
+    try {
+      const res = await fetch(`${RUNTIMES_PATH}/${runtimeId}/local-sessions/scan`, {
+        credentials: 'same-origin',
+      });
+      if (!res.ok) return [];
+      const json = (await res.json()) as { sessions: BridgeSession[] };
+      return json.sessions ?? [];
+    } catch {
+      return [];
+    }
+  }, []);
+
   return {
     runtimes,
     selectedRuntimeId,
@@ -274,6 +302,7 @@ export function useClashRuntime(): UseClashRuntimeReturn {
     ready,
     refresh,
     select,
+    loadResumeOptions,
     sendMessage,
     cancel,
     shutdown,
