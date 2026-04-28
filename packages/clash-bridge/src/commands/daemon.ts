@@ -16,6 +16,7 @@ import { hostname } from "node:os";
 import { readCreds } from "../lib/config.js";
 import { osTag } from "../lib/platform.js";
 import { detectAll } from "../_acp-runtime/registry.js";
+import { SessionManager } from "../lib/session-manager.js";
 import WebSocket from "ws";
 
 const HEARTBEAT_INTERVAL_MS = 5 * 60 * 1000;
@@ -56,8 +57,9 @@ export async function runDaemon(): Promise<void> {
     if (stopping) return;
     stopping = true;
     process.stderr.write(`→ ${sig} received, shutting down\n`);
-    // The connect loop will check `stopping` and break out next iteration;
-    // the active WS gets closed below if any.
+    // Tear down agents first so the child processes get SIGTERM-style
+    // dispose instead of being orphaned when the daemon process exits.
+    void activeSessions?.disposeAll();
     if (currentWs) {
       try { currentWs.close(1000, "shutdown"); } catch { /* already closing */ }
     }
@@ -66,6 +68,7 @@ export async function runDaemon(): Promise<void> {
   process.on("SIGINT", () => stop("SIGINT"));
 
   let currentWs: WebSocket | null = null;
+  let activeSessions: SessionManager | null = null;
 
   while (!stopping) {
     try {
@@ -97,13 +100,38 @@ export async function runDaemon(): Promise<void> {
         }
       }, HEARTBEAT_INTERVAL_MS);
 
+      // Per-WS-attach SessionManager. Across WS reconnects we currently
+      // throw away in-flight sessions on the daemon side (the server
+      // would have to re-send `session.start` for them). Slice-3 can
+      // persist session state across reconnects; for now treat WS drop
+      // as "lost the conversation but kept the agent alive on disk".
+      const sessions = new SessionManager((msg) => {
+        if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(msg));
+      });
+      activeSessions = sessions;
+
       ws.on("message", (data: Buffer) => {
-        let msg: { type?: string };
+        let msg: { type?: string; [k: string]: unknown };
         try { msg = JSON.parse(data.toString()); } catch { return; }
-        // Slice 1 only handles welcome/pong from the server. Future:
-        // session.start, session.prompt, session.cancel, session.dispose.
-        if (msg.type === "welcome" || msg.type === "pong") return;
-        process.stderr.write(`! unhandled server message: ${msg.type ?? "?"}\n`);
+        switch (msg.type) {
+          case "welcome":
+          case "pong":
+            return;
+          case "session.start":
+            void sessions.start(msg as never);
+            return;
+          case "session.prompt":
+            void sessions.prompt(msg as never);
+            return;
+          case "session.cancel":
+            sessions.cancel(msg.session_id as string, msg.turn_id as string);
+            return;
+          case "session.dispose":
+            void sessions.dispose(msg.session_id as string);
+            return;
+          default:
+            process.stderr.write(`! unhandled server message: ${msg.type ?? "?"}\n`);
+        }
       });
 
       // Wait until the WS closes (clean shutdown or transport drop).
@@ -116,6 +144,12 @@ export async function runDaemon(): Promise<void> {
           resolve();
         });
       });
+
+      // Lost the WS. Tear down agents — server will re-issue
+      // session.start when (if) it re-routes a chat to us. Slice 3 can
+      // keep them alive across reconnect once we have a re-attach RPC.
+      await sessions.disposeAll();
+      activeSessions = null;
     } catch (e) {
       process.stderr.write(
         `! WS attach failed: ${e instanceof Error ? e.message : String(e)}\n`,
