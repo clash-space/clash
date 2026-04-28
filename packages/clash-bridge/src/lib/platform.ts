@@ -35,8 +35,12 @@ export interface Paths {
   machineIdFile: string;
   /** Daemon log file. */
   logFile: string;
-  /** Per-session cwd root. Each spawned ACP agent gets a subdir under this. */
-  sessionsDir: string;
+  /** Per-chat workspace root. Each spawned ACP agent runs in a subdir
+   *  under this; the subdir is the cwd, holds .claude/ config + the
+   *  CC transcript that powers Resume. Named "workspaces" to avoid
+   *  conflating with CC's own notion of "session" (the conversation
+   *  transcript, identified by acp_session_id). */
+  workspacesDir: string;
   /** launchd plist (macOS) / systemd user unit (linux). null on win32. */
   serviceFile: string | null;
   /** Service identifier — reverse-DNS style. */
@@ -51,7 +55,7 @@ export function paths(): Paths {
   const configDir = join(home, ".clash");
   const credsFile = join(configDir, "credentials.json");
   const machineIdFile = join(configDir, "machine-id");
-  const sessionsDir = join(configDir, "sessions");
+  const workspacesDir = join(configDir, "workspaces");
   const logFile = join(configDir, "logs", "bridge.log");
 
   let serviceFile: string | null = null;
@@ -60,7 +64,7 @@ export function paths(): Paths {
   } else if (p === "linux") {
     serviceFile = join(home, ".config", "systemd", "user", `${SERVICE_LABEL}.service`);
   }
-  return { configDir, credsFile, machineIdFile, sessionsDir, logFile, serviceFile, serviceLabel: SERVICE_LABEL };
+  return { configDir, credsFile, machineIdFile, workspacesDir, logFile, serviceFile, serviceLabel: SERVICE_LABEL };
 }
 
 /** "darwin/arm64" — sent to server as the runtime's `os` field. */

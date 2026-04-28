@@ -40,9 +40,9 @@ export async function listLocalCcSessions(limit = 20): Promise<CcSessionInfo[]> 
   }
 
   // Only show sessions that THIS bridge created — cwd under
-  // ~/.clash/sessions/. Otherwise the picker would be polluted with the
-  // user's unrelated CC chats from coding work, IDE plugins, etc.
-  const sessionsRoot = paths().sessionsDir;
+  // ~/.clash/workspaces/. Otherwise the picker would be polluted with
+  // the user's unrelated CC chats from coding work, IDE plugins, etc.
+  const sessionsRoot = paths().workspacesDir;
 
   const all: CcSessionInfo[] = [];
   for (const projDir of projectDirs) {
