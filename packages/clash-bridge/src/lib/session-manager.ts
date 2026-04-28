@@ -66,6 +66,26 @@ export class SessionManager {
     this.#send = send;
   }
 
+  /** Swap the outbound sender (e.g. when WS reconnects with a fresh socket). */
+  setSender(send: Sender): void {
+    this.#send = send;
+  }
+
+  /** True iff a session with this id is currently alive on this daemon. */
+  has(session_id: string): boolean {
+    return this.#sessions.has(session_id);
+  }
+
+  /** Re-announce alive sessions to the server (used after WS reconnect). */
+  announceAll(): void {
+    for (const [session_id] of this.#sessions) {
+      // We don't store acp_session_id locally — the server already has it
+      // in runtime_session.acp_session_id from the original ready event.
+      // Send a generic ack so the server can update its session_state cache.
+      this.#send({ type: "session.ready", session_id, acp_session_id: "" });
+    }
+  }
+
   async start(p: SessionStartParams): Promise<void> {
     if (this.#sessions.has(p.session_id)) {
       this.#send({
@@ -84,23 +104,25 @@ export class SessionManager {
       });
       return;
     }
-    process.stderr.write(`  → SessionManager.start spawning ${agent.spec.command}\n`);
+    const resumeId = p.resume?.acp_session_id;
+    process.stderr.write(
+      `  → SessionManager.start ${agent.spec.command}${resumeId ? ` (resume ${resumeId.slice(0, 8)}…)` : ""}\n`,
+    );
     try {
       const session = await this.#runtime.start({
         agent: { ...agent.spec, cwd: p.cwd ?? process.cwd() },
+        resumeAcpSessionId: resumeId,
       });
       process.stderr.write(`  ✓ agent ready, session id=${(session as unknown as { id?: string }).id}\n`);
-      // TODO(slice-3): hand `p.resume?.acp_session_id` into AcpSession.init()
-      // so it calls `session/load` instead of `session/new`. The current
-      // AcpSession always news a session — needs an option flag.
       this.#sessions.set(p.session_id, { acp: session, turns: new Map() });
-      // AcpSessionImpl exposes its ACP session id through internals; we
-      // grab it from the public-ish field. (It's the id the agent created
-      // via session/new.) For now we don't need to thread it back to
-      // server because resume isn't wired yet — but we send something so
-      // the server can persist it later.
-      const acpId = (session as unknown as { id?: string }).id ?? "unknown";
-      this.#send({ type: "session.ready", session_id: p.session_id, acp_session_id: acpId });
+      // session.acpSessionId is the id the agent issued via session/new
+      // (or echoed back via session/load). Server persists it to
+      // runtime_session.acp_session_id so a future resume can re-attach.
+      this.#send({
+        type: "session.ready",
+        session_id: p.session_id,
+        acp_session_id: session.acpSessionId,
+      });
     } catch (e) {
       this.#send({
         type: "session.error",

@@ -121,6 +121,16 @@ export interface SessionOptions {
    * ACP request and surfaces a timeout error if exceeded. Default: 10 min.
    */
   perTurnTimeoutMs?: number;
+  /**
+   * If set, init() calls ACP `session/load` with this id instead of
+   * `session/new`. Powers cross-process resume — the agent re-hydrates
+   * a previous conversation from its on-disk transcript.
+   *
+   * Agents that don't support `session/load` (capability check at init
+   * fails) fall back to a fresh `session/new` and the caller is expected
+   * to surface the loss of history.
+   */
+  resumeAcpSessionId?: string;
 }
 
 /**
@@ -134,6 +144,8 @@ export interface SessionOptions {
 export interface AcpSession {
   /** Stable identifier for logging / pairing / multiplex routing. */
   readonly id: string;
+  /** The ACP-side session id (returned by `session/new` or echoed by `session/load`). */
+  readonly acpSessionId: string;
   /** Read-only snapshot of how this session was started. */
   readonly options: SessionOptions;
 

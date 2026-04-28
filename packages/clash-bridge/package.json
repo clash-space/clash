@@ -1,6 +1,6 @@
 {
   "name": "@clash-space/bridge",
-  "version": "0.1.0-beta.10",
+  "version": "0.1.0-beta.11",
   "description": "Clash bridge — pair a local Claude Code (or other ACP agent) with the Clash web UI.",
   "private": true,
   "type": "module",

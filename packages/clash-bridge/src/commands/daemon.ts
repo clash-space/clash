@@ -59,7 +59,7 @@ export async function runDaemon(): Promise<void> {
     process.stderr.write(`→ ${sig} received, shutting down\n`);
     // Tear down agents first so the child processes get SIGTERM-style
     // dispose instead of being orphaned when the daemon process exits.
-    void activeSessions?.disposeAll();
+    void sessions.disposeAll();
     if (currentWs) {
       try { currentWs.close(1000, "shutdown"); } catch { /* already closing */ }
     }
@@ -68,7 +68,12 @@ export async function runDaemon(): Promise<void> {
   process.on("SIGINT", () => stop("SIGINT"));
 
   let currentWs: WebSocket | null = null;
-  let activeSessions: SessionManager | null = null;
+  // SessionManager survives WS drops — keeps the ACP child processes alive
+  // so a brief network blip doesn't kill in-progress conversations. Each
+  // WS attach calls setSender() to point at the new socket.
+  const sessions = new SessionManager(() => {
+    /* placeholder — replaced on first attach via setSender */
+  });
 
   while (!stopping) {
     try {
@@ -93,6 +98,9 @@ export async function runDaemon(): Promise<void> {
         version: PKG_VERSION,
         agents,
       }));
+      // Re-announce any sessions we were running before the WS drop.
+      // First-attach this is a no-op (no sessions yet).
+      sessions.announceAll();
 
       const heartbeat = setInterval(() => {
         if (ws.readyState === WebSocket.OPEN) {
@@ -100,15 +108,13 @@ export async function runDaemon(): Promise<void> {
         }
       }, HEARTBEAT_INTERVAL_MS);
 
-      // Per-WS-attach SessionManager. Across WS reconnects we currently
-      // throw away in-flight sessions on the daemon side (the server
-      // would have to re-send `session.start` for them). Slice-3 can
-      // persist session state across reconnects; for now treat WS drop
-      // as "lost the conversation but kept the agent alive on disk".
-      const sessions = new SessionManager((msg) => {
+      // Re-point SessionManager at the new socket. Sessions from the prior
+      // attach are still alive (their ACP children kept running across the
+      // WS drop). Re-announce them so the server's session_state cache
+      // gets refreshed and any browser that reattaches sees ready again.
+      sessions.setSender((msg) => {
         if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(msg));
       });
-      activeSessions = sessions;
 
       ws.on("message", (data: Buffer) => {
         let msg: { type?: string; [k: string]: unknown };
@@ -147,11 +153,9 @@ export async function runDaemon(): Promise<void> {
         });
       });
 
-      // Lost the WS. Tear down agents — server will re-issue
-      // session.start when (if) it re-routes a chat to us. Slice 3 can
-      // keep them alive across reconnect once we have a re-attach RPC.
-      await sessions.disposeAll();
-      activeSessions = null;
+      // Lost the WS but keep the ACP children alive — they'll be
+      // reachable again on the next successful attach. Backoff loop
+      // continues below.
     } catch (e) {
       process.stderr.write(
         `! WS attach failed: ${e instanceof Error ? e.message : String(e)}\n`,
