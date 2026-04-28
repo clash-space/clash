@@ -894,6 +894,19 @@ export default function ChatbotCopilot({
                             <div className="absolute bottom-0 left-0 right-0 h-28 bg-gradient-to-t from-warm-page via-warm-page/85 to-transparent pointer-events-none" />
 
                             <div className="absolute bottom-0 left-0 right-0">
+                                {/* Slash commands the spawned ACP agent advertises (only present
+                                    in BYO / runtime modes). Click → prepends `/<name> ` into the
+                                    input so the user can finish typing args before sending. */}
+                                {chatMode !== 'cloud' && (() => {
+                                    const cmds = chatMode === 'byo' ? byo.availableCommands : clashRt.availableCommands;
+                                    if (!cmds || cmds.length === 0) return null;
+                                    return (
+                                        <SlashCommandBar
+                                            commands={cmds}
+                                            onPick={(name) => setInput((prev) => `/${name} ` + (prev?.startsWith('/') ? '' : prev))}
+                                        />
+                                    );
+                                })()}
                                 <ChatInput
                                     input={input}
                                     onInputChange={setInput}
@@ -1011,6 +1024,43 @@ function AddMachineDialog({ open, onClose }: { open: boolean; onClose: () => voi
                 </motion.div>
             )}
         </AnimatePresence>
+    );
+}
+
+/**
+ * Horizontal scrollable bar of `/` commands the spawned ACP agent
+ * advertised via available_commands_update. Hidden when the agent
+ * hasn't reported any (or when in cloud mode). One-click prepends
+ * `/<name> ` into the input so the user can add args + send.
+ *
+ * Capped to first ~12 commands so the bar doesn't dominate the panel
+ * — claude-code-acp ships ~50 by default. Tooltip shows description.
+ */
+function SlashCommandBar({
+    commands,
+    onPick,
+}: {
+    commands: import('@clash/web-ui/lib/acpEvents').AvailableCommand[];
+    onPick: (name: string) => void;
+}) {
+    const visible = commands.slice(0, 12);
+    return (
+        <div className="px-4 pb-1 -mb-1 overflow-x-auto whitespace-nowrap text-xs">
+            {visible.map((c) => (
+                <button
+                    key={c.name}
+                    type="button"
+                    onClick={() => onPick(c.name)}
+                    title={c.description ?? c.name}
+                    className="inline-flex items-center mr-1.5 px-2 py-0.5 rounded-full bg-warm-muted text-stone-600 hover:bg-warm-border transition-colors font-mono"
+                >
+                    /{c.name}
+                </button>
+            ))}
+            {commands.length > visible.length && (
+                <span className="text-stone-400 ml-1">+{commands.length - visible.length} more</span>
+            )}
+        </div>
     );
 }
 

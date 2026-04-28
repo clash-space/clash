@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { appendAcpEvent, type ByoMessage as SharedByoMessage } from '@clash/web-ui/lib/acpEvents';
+import { appendAcpEvent, type ByoMessage as SharedByoMessage, type AvailableCommand } from '@clash/web-ui/lib/acpEvents';
 
 /**
  * Hook for "Bring Your Own (local) Agent" mode.
@@ -67,11 +67,17 @@ export interface ByoBridgeState {
   /** Populated when the bridge sends `bridge_setup`. UI shows a picker. */
   agents: BridgeAgent[];
   sessions: BridgeSession[];
+  /** Slash commands the agent currently supports (replaced by each
+   *  available_commands_update event). UI uses this to power the `/`
+   *  picker in the chat input. */
+  availableCommands: AvailableCommand[];
 }
 
 interface PairResponse {
   token: string;
   display: string;
+  /** Server-issued clsh_* token; bridge injects as CLASH_API_KEY in spawn env. */
+  agent_api_key?: string;
 }
 
 export function useAgentByoBridge() {
@@ -84,6 +90,7 @@ export function useAgentByoBridge() {
     ready: false,
     agents: [],
     sessions: [],
+    availableCommands: [],
   });
 
   const wsRef = useRef<WebSocket | null>(null);
@@ -107,6 +114,12 @@ export function useAgentByoBridge() {
    * Step 1: ask api-cf for a pair token. UI then displays the npx command
    * with that token. Step 2 (openWs) needs the token from step 1.
    */
+  // API key issued by /pair, forwarded to the bridge in the `start`
+  // message so it can spawn the ACP agent with CLASH_API_KEY in env.
+  // Stored in a ref (not state) so React re-renders don't accidentally
+  // expose it to the DOM.
+  const agentApiKey = useRef<string | null>(null);
+
   const startPairing = useCallback(async (): Promise<{ token: string; display: string } | null> => {
     explicitShutdown.current = false;
     reconnectBackoffMs.current = 1000;
@@ -118,6 +131,7 @@ export function useAgentByoBridge() {
         return null;
       }
       const json = (await res.json()) as PairResponse;
+      agentApiKey.current = json.agent_api_key ?? null;
       setState((s) => ({ ...s, pairToken: json.token, pairTokenDisplay: json.display }));
       // Open the browser WS immediately — we want to be waiting on the relay
       // before the user has time to run the npx command.
@@ -257,6 +271,14 @@ export function useAgentByoBridge() {
       type: 'start',
       ...(agentId ? { agent_id: agentId } : {}),
       ...(resumeSessionId ? { resume_session_id: resumeSessionId } : {}),
+      // Forward the server-issued API key + URL so the spawned agent's
+      // env has CLASH_API_KEY without prompting the user to log in.
+      // (api_url tracks the origin so self-hosted deploys work too.)
+      ...(agentApiKey.current ? { api_key: agentApiKey.current } : {}),
+      api_url:
+        typeof window !== 'undefined'
+          ? `${window.location.protocol}//${window.location.host}`
+          : undefined,
     }));
   }, [updateStatus]);
 
@@ -275,9 +297,11 @@ export function useAgentByoBridge() {
     setState((s) => {
       const messages = s.messages.slice();
       const knownIdx = turnToMsgIdx.current.get(turnId);
-      const idx = appendAcpEvent(messages, turnId, knownIdx, event);
-      if (knownIdx === undefined && idx >= 0) turnToMsgIdx.current.set(turnId, idx);
-      return { ...s, messages, status: 'streaming', ready: true };
+      const result = appendAcpEvent(messages, turnId, knownIdx, event);
+      if (knownIdx === undefined && result.idx >= 0) turnToMsgIdx.current.set(turnId, result.idx);
+      const next: ByoBridgeState = { ...s, messages, status: 'streaming', ready: true };
+      if (result.commands) next.availableCommands = result.commands;
+      return next;
     });
   }, []);
 
@@ -324,6 +348,7 @@ export function useAgentByoBridge() {
       ready: false,
       agents: [],
       sessions: [],
+      availableCommands: [],
     });
   }, []);
 

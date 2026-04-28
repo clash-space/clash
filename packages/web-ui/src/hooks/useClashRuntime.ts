@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { appendAcpEvent, type ByoMessage } from '@clash/web-ui/lib/acpEvents';
+import { appendAcpEvent, type ByoMessage, type AvailableCommand } from '@clash/web-ui/lib/acpEvents';
 
 /**
  * useClashRuntime — chat through a registered local-runtime daemon.
@@ -61,6 +61,9 @@ export interface UseClashRuntimeReturn {
   status: ClashRuntimeStatus;
   errorMessage: string | null;
   messages: ByoMessage[];
+  /** Slash commands the agent currently advertises (replaced per
+   *  available_commands_update event). UI uses this for the `/` picker. */
+  availableCommands: AvailableCommand[];
   /** True iff status === connected/sending/streaming. */
   ready: boolean;
   /** Re-fetch the runtime list. Cheap; safe to call from a settings page. */
@@ -86,6 +89,7 @@ export function useClashRuntime(): UseClashRuntimeReturn {
   const [status, setStatus] = useState<ClashRuntimeStatus>('idle');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [messages, setMessages] = useState<ByoMessage[]>([]);
+  const [availableCommands, setAvailableCommands] = useState<AvailableCommand[]>([]);
 
   const wsRef = useRef<WebSocket | null>(null);
   const turnSeq = useRef(0);
@@ -122,10 +126,9 @@ export function useClashRuntime(): UseClashRuntimeReturn {
     setMessages((prev) => {
       const messages = prev.slice();
       const knownIdx = turnToMsgIdx.current.get(turnId);
-      const idx = appendAcpEvent(messages, turnId, knownIdx, event);
-      // -1 means the event was silently dropped (e.g. available_commands_update,
-      // empty text chunk). Don't cache that as the bubble index.
-      if (knownIdx === undefined && idx >= 0) turnToMsgIdx.current.set(turnId, idx);
+      const result = appendAcpEvent(messages, turnId, knownIdx, event);
+      if (knownIdx === undefined && result.idx >= 0) turnToMsgIdx.current.set(turnId, result.idx);
+      if (result.commands) setAvailableCommands(result.commands);
       return messages;
     });
   }, []);
@@ -176,6 +179,7 @@ export function useClashRuntime(): UseClashRuntimeReturn {
     wsRef.current = null;
     turnToMsgIdx.current.clear();
     setMessages([]);
+    setAvailableCommands([]);
     setErrorMessage(null);
     setSessionId(null);
     setSelectedRuntimeId(runtimeId);
@@ -254,6 +258,7 @@ export function useClashRuntime(): UseClashRuntimeReturn {
     setSessionId(null);
     setSelectedRuntimeId(null);
     setMessages([]);
+    setAvailableCommands([]);
     setErrorMessage(null);
     setStatus('idle');
   }, []);
@@ -265,6 +270,7 @@ export function useClashRuntime(): UseClashRuntimeReturn {
     status,
     errorMessage,
     messages,
+    availableCommands,
     ready,
     refresh,
     select,

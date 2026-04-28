@@ -26,27 +26,32 @@ export interface ByoMessage {
   >;
 }
 
+export interface AvailableCommand {
+  name: string;
+  description?: string;
+  /** ACP includes a `hint` for the value the command takes (e.g. "[target]"). */
+  input?: { hint?: string } | null;
+}
+
 interface ParsedEvent {
-  kind: 'text' | 'tool_call' | 'silent' | 'raw';
+  kind: 'text' | 'tool_call' | 'commands' | 'silent' | 'raw';
   /** For 'text' events. */
   text?: string;
   /** For 'tool_call' events. */
   toolCall?: { name?: string; input?: unknown; output?: unknown };
+  /** For 'commands' events — the agent's slash menu. Replaces (not merges). */
+  commands?: AvailableCommand[];
   /** Original event, used for the raw_event fallback. */
   event: unknown;
 }
 
 /**
- * Updates that are useful protocol-level signals but not user-visible chat
- * content. We drop these silently rather than render them as raw_event
- * clutter — the user shouldn't see the "agent registered 100 slash
- * commands" notification as a JSON dump in the middle of the conversation.
- *
- * If we ever want to surface any of these (e.g. populate a slash menu from
- * available_commands_update), we'll add a dedicated kind.
+ * Updates that are protocol-level signals but not user-visible chat
+ * content. Dropped silently rather than rendered as raw_event JSON.
+ * `available_commands_update` is special-cased above as `kind: commands`
+ * so the chat panel can populate a slash menu from it.
  */
 const SILENT_SESSION_UPDATES = new Set([
-  'available_commands_update',
   'current_mode_update',
   'plan_update',
   'plan_step_update',
@@ -55,22 +60,30 @@ const SILENT_SESSION_UPDATES = new Set([
 export function parseAcpEvent(event: unknown): ParsedEvent {
   const ev = event as {
     sessionUpdate?: string;
-    update?: { sessionUpdate?: string; content?: { type?: string; text?: string }; toolCall?: unknown };
+    update?: {
+      sessionUpdate?: string;
+      content?: { type?: string; text?: string };
+      toolCall?: unknown;
+      availableCommands?: AvailableCommand[];
+    };
     content?: { type?: string; text?: string };
     toolCall?: unknown;
+    availableCommands?: AvailableCommand[];
   };
   const update = ev?.update?.sessionUpdate ?? ev?.sessionUpdate;
   const content = ev?.update?.content ?? ev?.content;
   const toolCall = ev?.update?.toolCall ?? ev?.toolCall;
+  const cmds = ev?.update?.availableCommands ?? ev?.availableCommands;
 
   if ((update === 'agent_message_chunk' || update === 'agent_thought_chunk') && typeof content?.text === 'string') {
-    // Empty chunks happen at the start of streaming — drop them rather
-    // than create a zero-length text bubble that flickers.
     if (content.text.length === 0) return { kind: 'silent', event };
     return { kind: 'text', text: content.text, event };
   }
   if (update === 'tool_call' && toolCall) {
     return { kind: 'tool_call', toolCall: toolCall as ParsedEvent['toolCall'], event };
+  }
+  if (update === 'available_commands_update' && Array.isArray(cmds)) {
+    return { kind: 'commands', commands: cmds, event };
   }
   if (update && SILENT_SESSION_UPDATES.has(update)) {
     return { kind: 'silent', event };
@@ -89,16 +102,26 @@ export function parseAcpEvent(event: unknown): ParsedEvent {
 /**
  * Append a parsed event to the right message bubble. Returns the bubble
  * index (or -1 when the event was silently dropped — caller should not
- * cache that index). Both hooks treat -1 as "do nothing further".
+ * cache that index). Side info (e.g. command lists for the slash menu)
+ * is returned via the `commands` field; caller copies it into hook
+ * state before discarding the result.
  */
+export interface AppendResult {
+  idx: number;
+  commands?: AvailableCommand[];
+}
+
 export function appendAcpEvent(
   messages: ByoMessage[],
   turnId: string,
   knownIdx: number | undefined,
   event: unknown,
-): number {
+): AppendResult {
   const parsed = parseAcpEvent(event);
-  if (parsed.kind === 'silent') return knownIdx ?? -1;
+  if (parsed.kind === 'silent') return { idx: knownIdx ?? -1 };
+  if (parsed.kind === 'commands') {
+    return { idx: knownIdx ?? -1, commands: parsed.commands };
+  }
 
   const ensure = (): number => {
     if (knownIdx !== undefined) return knownIdx;
@@ -117,7 +140,7 @@ export function appendAcpEvent(
         parts: [...messages[i].parts, { type: 'text', text: parsed.text }],
       };
     }
-    return i;
+    return { idx: i };
   }
 
   if (parsed.kind === 'tool_call' && parsed.toolCall) {
@@ -127,7 +150,7 @@ export function appendAcpEvent(
       ...messages[i],
       parts: [...messages[i].parts, { type: 'tool_call', name: tc.name ?? 'tool', input: tc.input, output: tc.output }],
     };
-    return i;
+    return { idx: i };
   }
 
   // Raw fallback: keep the event so debugging is possible without losing data.
@@ -136,5 +159,5 @@ export function appendAcpEvent(
     ...messages[i],
     parts: [...messages[i].parts, { type: 'raw_event', event }],
   };
-  return i;
+  return { idx: i };
 }

@@ -244,9 +244,15 @@ async function runAdHocPair(): Promise<void> {
       // ~/.clash/sessions/<short-id>/ so plugin + AGENTS.md are present
       // and we don't pollute whichever folder the user ran npx from.
       const sessionCwd = await ensureSessionCwd(randomBytes(6).toString("hex"));
+      // Browser passed CLASH_API_KEY (issued by /pair); inject so the
+      // spawned ACP agent's `clash` CLI / plugin hooks authenticate
+      // without prompting.
+      const spawnEnv: Record<string, string> = { ...(pickedAgent.spec.env ?? {}) };
+      if (startMsg.api_key) spawnEnv.CLASH_API_KEY = startMsg.api_key;
+      if (startMsg.api_url) spawnEnv.CLASH_API_URL = startMsg.api_url;
       try {
         session = await runtime.start({
-          agent: { ...pickedAgent.spec, cwd: sessionCwd },
+          agent: { ...pickedAgent.spec, cwd: sessionCwd, env: spawnEnv },
           resumeAcpSessionId: startMsg.resume_session_id,
         });
       } catch (e) {
@@ -287,6 +293,10 @@ interface StartMessage {
   type: "start";
   agent_id?: string;
   resume_session_id?: string;
+  /** Server-issued clsh_* — bridge sets as CLASH_API_KEY in spawn env. */
+  api_key?: string;
+  /** Origin to call back to (e.g. https://clash.video) — CLASH_API_URL. */
+  api_url?: string;
 }
 
 /** Block until the browser sends `{type: "start"}`. Other messages ignored. */
