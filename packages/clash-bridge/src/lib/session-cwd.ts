@@ -19,12 +19,26 @@
  */
 
 import { mkdir, readdir, rm, stat, symlink, lstat, readlink, copyFile, access } from "node:fs/promises";
+import { createHash } from "node:crypto";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { paths } from "./platform.js";
 
 const GC_AGE_SECONDS = 7 * 24 * 60 * 60;
 const PLUGIN_NAME = "clash-video-production";
+const DIR_NAME_LEN = 12;
+
+/**
+ * Derive a short, filesystem-friendly dir name from any session id. UUIDs
+ * are 36 chars and look unwieldy when listed in `~/.clash/sessions/`;
+ * 12 hex chars (48 bits) are short enough to scan visually but still
+ * have enough entropy to avoid practical collisions. Deterministic so
+ * the same session_id always maps to the same dir (resume / GC work).
+ */
+function dirNameFor(sessionId: string): string {
+  if (/^[a-f0-9]{1,12}$/i.test(sessionId)) return sessionId.toLowerCase();
+  return createHash("sha256").update(sessionId).digest("hex").slice(0, DIR_NAME_LEN);
+}
 
 /**
  * Returns the cwd path for a session; creates it (and its `.claude` skeleton)
@@ -38,7 +52,7 @@ const PLUGIN_NAME = "clash-video-production";
  * permission).
  */
 export async function ensureSessionCwd(sessionId: string): Promise<string> {
-  const cwd = join(paths().sessionsDir, sessionId);
+  const cwd = join(paths().sessionsDir, dirNameFor(sessionId));
   const pluginsDir = join(cwd, ".claude", "plugins");
   await mkdir(pluginsDir, { recursive: true });
   await ensurePluginLink(pluginsDir);

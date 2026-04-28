@@ -27,10 +27,12 @@
 
 import { parseArgs } from "node:util";
 import WebSocket from "ws";
+import { randomBytes } from "node:crypto";
 import { AcpRuntimeImpl, KNOWN_ACP_AGENTS } from "./_acp-runtime/index.js";
 import { NodeSpawner } from "./_acp-runtime/spawners/node.js";
 import { detectAll } from "./_acp-runtime/registry.js";
 import { listLocalCcSessions } from "./lib/cc-sessions.js";
+import { ensureSessionCwd } from "./lib/session-cwd.js";
 import { Relay } from "./relay.js";
 
 const DEFAULT_API_SERVER_URL = "https://api.clash.video";
@@ -238,9 +240,13 @@ async function runAdHocPair(): Promise<void> {
           startMsg.resume_session_id ? ` resume=${startMsg.resume_session_id.slice(0, 8)}…` : ""
         } …\n`,
       );
+      // Same per-session cwd treatment as the daemon path: spawn into
+      // ~/.clash/sessions/<short-id>/ so plugin + AGENTS.md are present
+      // and we don't pollute whichever folder the user ran npx from.
+      const sessionCwd = await ensureSessionCwd(randomBytes(6).toString("hex"));
       try {
         session = await runtime.start({
-          agent: pickedAgent.spec,
+          agent: { ...pickedAgent.spec, cwd: sessionCwd },
           resumeAcpSessionId: startMsg.resume_session_id,
         });
       } catch (e) {
