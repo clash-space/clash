@@ -52,12 +52,35 @@ byoBridgeRoutes.post("/pair", async (c) => {
   const userId = c.req.header("x-user-id");
   if (!userId) return c.json({ error: "unauthorized" }, 401);
   const token = generatePairToken();
+
+  // Issue a clsh_ API key alongside so the spawned agent can call clash
+  // APIs without a separate login step. Browser receives both, hands the
+  // api key over the WS to the bridge as part of the pairing handshake.
+  const agentApiKey = await issueQuickConnectApiKey(c.env, userId);
+
   return c.json({
     token,
     // Suggested display: "ABCD-EFGH-…". Leaves UI free to format.
     display: token.match(/.{1,4}/g)?.join("-") ?? token,
+    agent_api_key: agentApiKey,
   });
 });
+
+async function issueQuickConnectApiKey(env: Env, userId: string): Promise<string> {
+  const bytes = new Uint8Array(20);
+  crypto.getRandomValues(bytes);
+  const hex = Array.from(bytes).map((b) => b.toString(16).padStart(2, "0")).join("");
+  const plain = `clsh_${hex}`;
+  const data = new TextEncoder().encode(plain);
+  const hashBuf = await crypto.subtle.digest("SHA-256", data);
+  const hash = Array.from(new Uint8Array(hashBuf)).map((b) => b.toString(16).padStart(2, "0")).join("");
+  const id = crypto.randomUUID();
+  const prefix = plain.slice(0, 13) + "...";
+  await env.DB.prepare(
+    "INSERT INTO api_token (id, user_id, name, token_hash, token_prefix, created_at) VALUES (?, ?, ?, ?, ?, unixepoch())",
+  ).bind(id, userId, `Quick connect ${new Date().toISOString().slice(0, 10)}`, hash, prefix).run();
+  return plain;
+}
 
 // WS upgrade routes — both forward to the DO addressed by token.
 async function upgrade(c: Ctx, side: "browser" | "cli"): Promise<Response> {

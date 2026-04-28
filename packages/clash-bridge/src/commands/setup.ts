@@ -63,6 +63,7 @@ export async function runSetup(opts: SetupOpts): Promise<void> {
     serverUrl: opts.serverUrl,
     runtimeId: exchange.runtime_id,
     token: exchange.token,
+    agentApiKey: exchange.agent_api_key,
     machineId,
     createdAt: Math.floor(Date.now() / 1000),
   });
@@ -155,6 +156,7 @@ function waitForCallback(state: string, browserOrigin: string): Promise<string> 
 interface ExchangeResponse {
   runtime_id: string;
   token: string;
+  agent_api_key?: string;
 }
 
 async function postExchange(

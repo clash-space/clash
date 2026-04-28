@@ -23,6 +23,13 @@ export interface Credentials {
   runtimeId: string;
   /** sk_machine_… — bearer token for /agents/runtime/_attach. */
   token: string;
+  /**
+   * `clsh_*` API key the spawned ACP agent uses to call clash REST APIs
+   * (the bundled `clash` CLI / plugin hooks read it as CLASH_API_KEY).
+   * Issued by the server during /exchange so the user never needs a
+   * separate login step on the daemon machine.
+   */
+  agentApiKey?: string;
   /** Echoed for diagnostics; daemon also reads machineIdFile directly. */
   machineId: string;
   /** When this machine was first registered (unix seconds). */

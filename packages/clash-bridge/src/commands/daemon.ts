@@ -74,6 +74,13 @@ export async function runDaemon(): Promise<void> {
   const sessions = new SessionManager(() => {
     /* placeholder — replaced on first attach via setSender */
   });
+  // Forward the agent API key (issued during /exchange) into every
+  // spawned ACP child as CLASH_API_KEY so its bundled `clash` CLI /
+  // plugin hooks can authenticate without prompting the user.
+  sessions.setSpawnEnv({
+    CLASH_API_KEY: creds.agentApiKey,
+    CLASH_API_URL: creds.serverUrl,
+  });
 
   while (!stopping) {
     try {

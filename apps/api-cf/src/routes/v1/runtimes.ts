@@ -159,11 +159,39 @@ runtimeDaemonRoutes.post("/exchange", async (c) => {
      VALUES (?, ?, ?, ?, ?)`,
   ).bind(tokenId, runtimeId, tokenHash, row.user_id, now).run();
 
+  // Issue an agent-side API key alongside. The spawned ACP agent uses
+  // it as `CLASH_API_KEY` so the bundled `clash` CLI / clash plugin
+  // hooks can call /api/v1/* without prompting the user to log in
+  // separately. Stored same way as user-created tokens (api_token row,
+  // sha256 hash); daemon persists the plaintext locally in credentials.json.
+  const agentApiKey = await issueAgentApiKey(c.env, row.user_id, hostname);
+
   return c.json({
     runtime_id: runtimeId,
     token: tokenPlain,
+    agent_api_key: agentApiKey,
   });
 });
+
+/**
+ * Mint a `clsh_*` API token for use by an ACP agent spawned on a runtime.
+ * Same shape as user-created tokens (api_token row, sha256 hash) so the
+ * existing /api/v1 auth middleware accepts it. Plaintext is returned once;
+ * we never re-issue, never log it.
+ */
+async function issueAgentApiKey(env: Env, userId: string, displayLabel: string): Promise<string> {
+  const bytes = new Uint8Array(20);
+  crypto.getRandomValues(bytes);
+  const hex = Array.from(bytes).map((b) => b.toString(16).padStart(2, "0")).join("");
+  const plain = `clsh_${hex}`;
+  const hash = await sha256(plain);
+  const id = crypto.randomUUID();
+  const prefix = plain.slice(0, 13) + "...";
+  await env.DB.prepare(
+    "INSERT INTO api_token (id, user_id, name, token_hash, token_prefix, created_at) VALUES (?, ?, ?, ?, ?, unixepoch())",
+  ).bind(id, userId, `Local agent (${displayLabel})`, hash, prefix).run();
+  return plain;
+}
 
 // GET / — list user's runtimes (with derived agents array, no token).
 runtimesRoutes.get("/", async (c) => {

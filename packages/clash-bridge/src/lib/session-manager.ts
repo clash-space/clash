@@ -57,14 +57,27 @@ interface ActiveSession {
   turns: Map<string, AbortController>;
 }
 
+export interface SessionManagerEnv {
+  /** Bridge passes its identity / configuration here so spawned agents
+   *  can call back to clash. Currently just the API key + server URL. */
+  CLASH_API_KEY?: string;
+  CLASH_API_URL?: string;
+}
+
 export class SessionManager {
   #send: Sender;
   #spawner = new NodeSpawner();
   #runtime = new AcpRuntimeImpl(this.#spawner);
   #sessions = new Map<string, ActiveSession>();
+  #env: SessionManagerEnv = {};
 
   constructor(send: Sender) {
     this.#send = send;
+  }
+
+  /** Update the env injected into every subsequent spawn. */
+  setSpawnEnv(env: SessionManagerEnv): void {
+    this.#env = env;
   }
 
   /** Swap the outbound sender (e.g. when WS reconnects with a fresh socket). */
@@ -114,8 +127,15 @@ export class SessionManager {
       `  → SessionManager.start ${agent.spec.command}${resumeId ? ` (resume ${resumeId.slice(0, 8)}…)` : ""} cwd=${sessionCwd}\n`,
     );
     try {
+      // Inject CLASH_API_KEY / CLASH_API_URL into the spawned agent's env.
+      // Without these the bundled clash plugin's SessionStart hook
+      // (`clash auth status`) prompts the user to log in, even though
+      // the daemon itself is already authenticated.
+      const spawnEnv: Record<string, string> = { ...(agent.spec.env ?? {}) };
+      if (this.#env.CLASH_API_KEY) spawnEnv.CLASH_API_KEY = this.#env.CLASH_API_KEY;
+      if (this.#env.CLASH_API_URL) spawnEnv.CLASH_API_URL = this.#env.CLASH_API_URL;
       const session = await this.#runtime.start({
-        agent: { ...agent.spec, cwd: sessionCwd },
+        agent: { ...agent.spec, cwd: sessionCwd, env: spawnEnv },
         resumeAcpSessionId: resumeId,
       });
       process.stderr.write(`  ✓ agent ready, session id=${(session as unknown as { id?: string }).id}\n`);
