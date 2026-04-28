@@ -200,6 +200,63 @@ runtimesRoutes.get("/", async (c) => {
   });
 });
 
+// POST /:rid/sessions — start a new local-runtime chat session on a runtime.
+// Creates the runtime_session row, tells the daemon to spawn the agent,
+// returns the session_id. Browser then opens
+// /api/v1/local-sessions/:sid/_stream to receive ready/event/complete.
+runtimesRoutes.post("/:rid/sessions", async (c) => {
+  const userId = c.req.header("x-user-id");
+  if (!userId) return c.json({ error: "unauthorized" }, 401);
+
+  const rid = c.req.param("rid");
+  const body = (await c.req.json().catch(() => ({}))) as {
+    agent_id?: string;
+    cwd?: string;
+    resume_session_id?: string;
+  };
+  if (!body.agent_id) return c.json({ error: "agent_id required" }, 400);
+
+  const runtime = await c.env.DB.prepare(
+    "SELECT id, status, agents_json FROM runtime WHERE id = ? AND owner_user_id = ?",
+  ).bind(rid, userId).first<{ id: string; status: string; agents_json: string }>();
+  if (!runtime) return c.json({ error: "runtime not found" }, 404);
+  if (runtime.status !== "online") return c.json({ error: "runtime offline" }, 409);
+
+  let agents: Array<{ id: string }> = [];
+  try { agents = JSON.parse(runtime.agents_json) as Array<{ id: string }>; } catch { /* ignore */ }
+  if (!agents.some((a) => a.id === body.agent_id)) {
+    return c.json({ error: `agent '${body.agent_id}' not detected on this runtime` }, 400);
+  }
+
+  const sessionId = crypto.randomUUID();
+  const cwd = body.cwd ?? "";
+
+  await c.env.DB.prepare(
+    `INSERT INTO runtime_session (id, user_id, runtime_id, agent_id, cwd, status, created_at, last_active_at)
+     VALUES (?, ?, ?, ?, ?, 'active', unixepoch(), unixepoch())`,
+  ).bind(sessionId, userId, rid, body.agent_id, cwd).run();
+
+  const doStub = c.env.RUNTIME_ROOM.get(c.env.RUNTIME_ROOM.idFromName(rid));
+  const ok = await (doStub as unknown as {
+    sendToDaemon(msg: Record<string, unknown>): Promise<boolean>;
+  }).sendToDaemon({
+    type: "session.start",
+    session_id: sessionId,
+    agent_id: body.agent_id,
+    cwd,
+    ...(body.resume_session_id ? { resume: { acp_session_id: body.resume_session_id } } : {}),
+  });
+
+  if (!ok) {
+    await c.env.DB.prepare(
+      "UPDATE runtime_session SET status = 'closed' WHERE id = ?",
+    ).bind(sessionId).run();
+    return c.json({ error: "runtime daemon not reachable; try again" }, 503);
+  }
+
+  return c.json({ session_id: sessionId });
+});
+
 // DELETE /:id — revoke runtime: kill all its tokens + delete runtime row.
 // The daemon will get auth-rejected on next /attach and stop reconnecting
 // after a few backoff cycles.

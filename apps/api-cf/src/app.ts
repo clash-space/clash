@@ -148,6 +148,7 @@ export function createApp(opts: CreateAppOptions = {}): Hono<{ Bindings: Env }> 
 
     const id = c.env.RUNTIME_ROOM.idFromName(ident.runtime_id);
     const fwd = new Request(c.req.raw);
+    fwd.headers.set("x-attach-role", "daemon");
     fwd.headers.set("x-runtime-id", ident.runtime_id);
     fwd.headers.set("x-runtime-user", ident.user_id);
     return c.env.RUNTIME_ROOM.get(id).fetch(fwd);

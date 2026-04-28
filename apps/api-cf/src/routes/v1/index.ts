@@ -7,6 +7,7 @@ import { cliAuthRoutes } from "./cli-auth";
 import { assetsRoutes } from "./assets";
 import { editsRoutes } from "./edits";
 import { runtimesRoutes } from "./runtimes";
+import { sessionsRuntimeRoutes } from "./sessions-runtime";
 
 export const v1Routes = new Hono<{ Bindings: Env }>();
 
@@ -17,6 +18,11 @@ v1Routes.route("/cli-auth", cliAuthRoutes);
 v1Routes.route("/assets", assetsRoutes);
 v1Routes.route("/edits", editsRoutes);
 v1Routes.route("/runtimes", runtimesRoutes);
+// Local-runtime session lifecycle (BYO local agent; distinct from cloud
+// /api/v1/sessions). Browser opens WS to /api/v1/local-sessions/:id/_stream
+// for the duplex event/prompt stream. Session creation lives next to it
+// at POST /api/v1/runtimes/:rid/sessions (registered inside runtimes.ts).
+v1Routes.route("/local-sessions", sessionsRuntimeRoutes);
 
 // Health check
 v1Routes.get("/", (c) => c.json({ version: "v1", status: "ok" }));
