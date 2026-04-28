@@ -35,8 +35,13 @@ jobs:
           ls -la dist/
           npm pack --pack-destination /tmp
           TARBALL=$(ls /tmp/clash-space-bridge-*.tgz | tail -1)
-          if ! tar -tzf "$TARBALL" | grep -q '^package/dist/cli\.js$'; then
+          # List into a tmp file first — `tar | grep -q` triggers SIGPIPE
+          # on tar (grep -q exits early on first match), and pipefail then
+          # aborts the script even though both commands "succeeded".
+          tar -tzf "$TARBALL" > /tmp/tarball-list
+          if ! grep -q '^package/dist/cli\.js$' /tmp/tarball-list; then
             echo "::error::pack output missing dist/cli.js"
+            cat /tmp/tarball-list
             exit 1
           fi
           node scripts/publish.mjs "$TARBALL" --tag beta
