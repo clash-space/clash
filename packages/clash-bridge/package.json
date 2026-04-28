@@ -1,6 +1,6 @@
 {
   "name": "@clash-space/bridge",
-  "version": "0.1.0-beta.17",
+  "version": "0.1.0-beta.18",
   "description": "Clash bridge — pair a local Claude Code (or other ACP agent) with the Clash web UI.",
   "private": true,
   "type": "module",
@@ -15,8 +15,9 @@
     "access": "public"
   },
   "scripts": {
-    "build": "tsup && pnpm bundle:plugin",
+    "build": "tsup && pnpm bundle:plugin && pnpm bundle:assets",
     "bundle:plugin": "rm -rf dist/plugin && mkdir -p dist/plugin/clash-video-production && cp -R ../claude-code-plugin/commands ../claude-code-plugin/hooks ../claude-code-plugin/index.mjs ../claude-code-plugin/openclaw.plugin.json dist/plugin/clash-video-production/",
+    "bundle:assets": "rm -rf dist/assets && mkdir -p dist/assets && cp -R assets/. dist/assets/",
     "dev": "tsup --watch",
     "typecheck": "tsc --noEmit",
     "clean": "rm -rf dist"

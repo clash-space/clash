@@ -18,7 +18,7 @@
  * powers Resume.
  */
 
-import { mkdir, readdir, rm, stat, symlink, lstat, readlink } from "node:fs/promises";
+import { mkdir, readdir, rm, stat, symlink, lstat, readlink, copyFile, access } from "node:fs/promises";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { paths } from "./platform.js";
@@ -42,7 +42,31 @@ export async function ensureSessionCwd(sessionId: string): Promise<string> {
   const pluginsDir = join(cwd, ".claude", "plugins");
   await mkdir(pluginsDir, { recursive: true });
   await ensurePluginLink(pluginsDir);
+  await ensureAgentsMd(cwd);
   return cwd;
+}
+
+/**
+ * Drop AGENTS.md (the cross-agent system-prompt convention shared by
+ * Claude Code, openai-codex, and others) into each session's cwd. CC
+ * reads it on initialize so the agent knows it's running as a clash
+ * local agent + how to call the `clash` CLI.
+ *
+ * Copy (not symlink) so the user can hand-edit per-session if they want
+ * to scope the agent down without affecting other sessions or future
+ * spawns.
+ */
+async function ensureAgentsMd(cwd: string): Promise<void> {
+  const dst = join(cwd, "AGENTS.md");
+  try { await access(dst); return; } catch { /* not present yet */ }
+  const src = fileURLToPath(new URL("../assets/AGENTS.md", import.meta.url));
+  try { await copyFile(src, dst); }
+  catch (e: unknown) {
+    // Bundled assets missing — should never happen in a published build,
+    // but don't fail spawn just because the file isn't there.
+    if ((e as NodeJS.ErrnoException).code === "ENOENT") return;
+    throw e;
+  }
 }
 
 /** Resolves the absolute path to dist/plugin/<name>/ in the bundled output. */
