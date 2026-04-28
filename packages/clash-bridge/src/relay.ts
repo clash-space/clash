@@ -74,6 +74,14 @@ export class Relay {
     try {
       for await (const event of this.#session.prompt(text, { abortSignal: ctrl.signal })) {
         if (ctrl.signal.aborted) break;
+        // AcpSession yields an internal `{type: "promptComplete"}` /
+        // `{type: "promptError"}` sentinel as its last event. That's not
+        // an ACP notification — it's a marker that the SDK promise
+        // resolved. Outer `complete` / `error` messages already cover
+        // it; forwarding this confuses the browser-side parser and
+        // shows up as raw event clutter.
+        const t = (event as { type?: string } | null | undefined)?.type;
+        if (t === "promptComplete" || t === "promptError") continue;
         this.#send({ type: "event", id, event });
       }
       this.#send({ type: "complete", id });

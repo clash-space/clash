@@ -27,7 +27,7 @@ export interface ByoMessage {
 }
 
 interface ParsedEvent {
-  kind: 'text' | 'tool_call' | 'raw';
+  kind: 'text' | 'tool_call' | 'silent' | 'raw';
   /** For 'text' events. */
   text?: string;
   /** For 'tool_call' events. */
@@ -35,6 +35,22 @@ interface ParsedEvent {
   /** Original event, used for the raw_event fallback. */
   event: unknown;
 }
+
+/**
+ * Updates that are useful protocol-level signals but not user-visible chat
+ * content. We drop these silently rather than render them as raw_event
+ * clutter — the user shouldn't see the "agent registered 100 slash
+ * commands" notification as a JSON dump in the middle of the conversation.
+ *
+ * If we ever want to surface any of these (e.g. populate a slash menu from
+ * available_commands_update), we'll add a dedicated kind.
+ */
+const SILENT_SESSION_UPDATES = new Set([
+  'available_commands_update',
+  'current_mode_update',
+  'plan_update',
+  'plan_step_update',
+]);
 
 export function parseAcpEvent(event: unknown): ParsedEvent {
   const ev = event as {
@@ -48,10 +64,16 @@ export function parseAcpEvent(event: unknown): ParsedEvent {
   const toolCall = ev?.update?.toolCall ?? ev?.toolCall;
 
   if ((update === 'agent_message_chunk' || update === 'agent_thought_chunk') && typeof content?.text === 'string') {
+    // Empty chunks happen at the start of streaming — drop them rather
+    // than create a zero-length text bubble that flickers.
+    if (content.text.length === 0) return { kind: 'silent', event };
     return { kind: 'text', text: content.text, event };
   }
   if (update === 'tool_call' && toolCall) {
     return { kind: 'tool_call', toolCall: toolCall as ParsedEvent['toolCall'], event };
+  }
+  if (update && SILENT_SESSION_UPDATES.has(update)) {
+    return { kind: 'silent', event };
   }
   return { kind: 'raw', event };
 }
@@ -64,19 +86,26 @@ export function parseAcpEvent(event: unknown): ParsedEvent {
  * Returns the (possibly created) bubble index; useful for the caller to
  * cache turnId → idx if they want O(1) routing on subsequent events.
  */
+/**
+ * Append a parsed event to the right message bubble. Returns the bubble
+ * index (or -1 when the event was silently dropped — caller should not
+ * cache that index). Both hooks treat -1 as "do nothing further".
+ */
 export function appendAcpEvent(
   messages: ByoMessage[],
   turnId: string,
   knownIdx: number | undefined,
   event: unknown,
 ): number {
+  const parsed = parseAcpEvent(event);
+  if (parsed.kind === 'silent') return knownIdx ?? -1;
+
   const ensure = (): number => {
     if (knownIdx !== undefined) return knownIdx;
     const newIdx = messages.length;
     messages.push({ id: `asst-${turnId}`, role: 'assistant', parts: [] });
     return newIdx;
   };
-  const parsed = parseAcpEvent(event);
 
   if (parsed.kind === 'text' && typeof parsed.text === 'string') {
     const i = ensure();

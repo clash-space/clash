@@ -123,7 +123,9 @@ export function useClashRuntime(): UseClashRuntimeReturn {
       const messages = prev.slice();
       const knownIdx = turnToMsgIdx.current.get(turnId);
       const idx = appendAcpEvent(messages, turnId, knownIdx, event);
-      if (knownIdx === undefined) turnToMsgIdx.current.set(turnId, idx);
+      // -1 means the event was silently dropped (e.g. available_commands_update,
+      // empty text chunk). Don't cache that as the bubble index.
+      if (knownIdx === undefined && idx >= 0) turnToMsgIdx.current.set(turnId, idx);
       return messages;
     });
   }, []);

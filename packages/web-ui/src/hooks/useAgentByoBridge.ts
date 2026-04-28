@@ -197,7 +197,7 @@ export function useAgentByoBridge() {
       const messages = s.messages.slice();
       const knownIdx = turnToMsgIdx.current.get(turnId);
       const idx = appendAcpEvent(messages, turnId, knownIdx, event);
-      if (knownIdx === undefined) turnToMsgIdx.current.set(turnId, idx);
+      if (knownIdx === undefined && idx >= 0) turnToMsgIdx.current.set(turnId, idx);
       return { ...s, messages, status: 'streaming', ready: true };
     });
   }, []);

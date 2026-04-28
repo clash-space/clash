@@ -173,6 +173,15 @@ export class SessionManager {
     try {
       for await (const ev of sess.acp.prompt(p.text, { abortSignal: ctrl.signal })) {
         if (ctrl.signal.aborted) break;
+        // Filter out AcpSession's iterator-end sentinels — they're an
+        // internal "the SDK promise resolved" marker, not real ACP
+        // notifications. The outer session.complete / session.error
+        // already conveys turn termination to the client. Forwarding
+        // these would (a) show as raw_event clutter in the UI and
+        // (b) confuse the parser that's looking for sessionUpdate-shaped
+        // events.
+        const t = (ev as { type?: string } | null | undefined)?.type;
+        if (t === "promptComplete" || t === "promptError") continue;
         this.#send({
           type: "session.event",
           session_id: p.session_id,
