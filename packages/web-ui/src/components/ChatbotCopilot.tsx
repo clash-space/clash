@@ -15,6 +15,7 @@ import { ThinkingIndicator } from './copilot/ThinkingIndicator';
 import { MessageErrorBoundary } from './copilot/MessageErrorBoundary';
 import { ByoAgentDialog } from './copilot/ByoAgentDialog';
 import { useAgentByoBridge } from '@clash/web-ui/hooks/useAgentByoBridge';
+import { useClashRuntime } from '@clash/web-ui/hooks/useClashRuntime';
 import type { Node as RFNode, Edge as RFEdge, Connection as RFConnection } from '@xyflow/react';
 import ReactMarkdown from 'react-markdown';
 import { useSignedUrl } from '@clash/web-ui/lib/hooks/useSignedUrl';
@@ -145,12 +146,17 @@ export default function ChatbotCopilot({
     const [todoItems, setTodoItems] = useState<TodoItem[]>([]);
     const [suggestions, setSuggestions] = useState<Array<{ label: string; message: string }>>([]);
 
-    // BYO local-agent mode. Coexists with cloud chat — switching mode swaps
-    // the rendered transport but doesn't touch cloud state. v1: dialog opens
-    // pairing flow; once connected, chat panel renders BYO messages instead.
-    const [chatMode, setChatMode] = useState<'cloud' | 'byo'>('cloud');
+    // Three transports coexist:
+    //   - 'cloud'   : useAgentCopilot (cloud LLM, default)
+    //   - 'byo'     : useAgentByoBridge (one-shot pair token, ad-hoc local)
+    //   - 'runtime' : useClashRuntime  (persistent daemon registered via setup)
+    // The picker (Plug button → menu) sets `chatMode`; the picked hook drives
+    // input + message render. Switching transports doesn't touch the others.
+    const [chatMode, setChatMode] = useState<'cloud' | 'byo' | 'runtime'>('cloud');
     const [byoDialogOpen, setByoDialogOpen] = useState(false);
+    const [runtimeMenuOpen, setRuntimeMenuOpen] = useState(false);
     const byo = useAgentByoBridge();
+    const clashRt = useClashRuntime();
 
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const scrollContainerRef = useRef<HTMLDivElement>(null);
@@ -190,9 +196,21 @@ export default function ChatbotCopilot({
         if (chatMode === 'cloud' && byo.status === 'connected') setChatMode('byo');
         if (chatMode === 'byo' && byo.status === 'disconnected') setChatMode('cloud');
     }, [byo.status, chatMode]);
+    // Same idea for runtime mode: drop back to cloud if the WS dies.
+    useEffect(() => {
+        if (chatMode === 'runtime' && (clashRt.status === 'disconnected' || clashRt.status === 'idle')) {
+            // Don't reset on 'idle' if it's the *initial* idle (no select yet);
+            // we only want this on transition away from a working session.
+            if (clashRt.status === 'disconnected') setChatMode('cloud');
+        }
+    }, [clashRt.status, chatMode]);
 
     const byoIsProcessing = byo.status === 'sending' || byo.status === 'streaming';
-    const isProcessing = chatMode === 'byo' ? byoIsProcessing : cloudIsProcessing;
+    const runtimeIsProcessing = clashRt.status === 'connecting' || clashRt.status === 'sending' || clashRt.status === 'streaming';
+    const isProcessing =
+        chatMode === 'byo' ? byoIsProcessing :
+        chatMode === 'runtime' ? runtimeIsProcessing :
+        cloudIsProcessing;
 
     // Mount-time send of the pending first message. Parent gives us a fresh
     // `key={threadId}` whenever the session changes, so this component remounts
@@ -239,6 +257,10 @@ export default function ChatbotCopilot({
     }, [onDeleteSession]);
 
     const handleStop = async () => {
+        if (chatMode === 'runtime') {
+            clashRt.cancel();
+            return;
+        }
         if (chatMode === 'byo') {
             byo.cancel();
             return;
@@ -373,6 +395,11 @@ export default function ChatbotCopilot({
             byo.sendMessage(value);
             return;
         }
+        // Persistent-runtime mode: same shape (raw prompt, daemon handles it).
+        if (chatMode === 'runtime') {
+            clashRt.sendMessage(value);
+            return;
+        }
 
         // Create canvas nodes for uploaded attachments
         if (attachments.length > 0 && onUploadFiles) {
@@ -503,29 +530,95 @@ export default function ChatbotCopilot({
                                     <div className="absolute top-1.5 right-1.5 w-2 h-2 bg-red-500 rounded-full border border-white" />
                                 )}
                             </motion.button>
-                            {/* BYO local-agent toggle.
-                                - In cloud mode: opens pairing dialog (single click → npx command).
-                                - In byo mode: clicking shuts down the bridge and switches back to cloud. */}
-                            <motion.button
-                                onClick={() => {
-                                    if (chatMode === 'byo') {
-                                        byo.shutdown();
-                                        setChatMode('cloud');
-                                    } else {
-                                        setByoDialogOpen(true);
-                                    }
-                                }}
-                                className={`p-2 rounded-full transition-colors ${
-                                    chatMode === 'byo'
-                                        ? 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200'
-                                        : 'hover:bg-warm-muted text-slate-700'
-                                }`}
-                                whileHover={{ scale: 1.1 }}
-                                whileTap={{ scale: 0.9 }}
-                                title={chatMode === 'byo' ? `Local agent connected — click to disconnect` : 'Connect local agent'}
-                            >
-                                <Plug className="w-5 h-5" weight="bold" />
-                            </motion.button>
+                            {/* "Run on:" picker.
+                                Click → menu with Cloud + each registered runtime + ad-hoc options.
+                                Plug is filled green when something other than Cloud is active. */}
+                            <div className="relative">
+                                <motion.button
+                                    onClick={() => {
+                                        // Refresh the runtime list each time the menu opens
+                                        // so users don't see a stale offline marker right
+                                        // after starting their daemon.
+                                        if (!runtimeMenuOpen) void clashRt.refresh();
+                                        setRuntimeMenuOpen((v) => !v);
+                                    }}
+                                    className={`p-2 rounded-full transition-colors ${
+                                        chatMode !== 'cloud'
+                                            ? 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200'
+                                            : 'hover:bg-warm-muted text-slate-700'
+                                    }`}
+                                    whileHover={{ scale: 1.1 }}
+                                    whileTap={{ scale: 0.9 }}
+                                    title="Run on (Cloud / local runtime)"
+                                >
+                                    <Plug className="w-5 h-5" weight="bold" />
+                                </motion.button>
+                                <AnimatePresence>
+                                    {runtimeMenuOpen && (
+                                        <motion.div
+                                            initial={{ opacity: 0, y: -6, scale: 0.96 }}
+                                            animate={{ opacity: 1, y: 0, scale: 1 }}
+                                            exit={{ opacity: 0, y: -6, scale: 0.96 }}
+                                            className="absolute top-11 right-0 z-30 w-72 bg-warm-surface rounded-xl shadow-xl border border-warm-border overflow-hidden"
+                                        >
+                                            <div className="px-3 py-2 border-b border-warm-border bg-warm-muted">
+                                                <div className="font-display text-[10px] font-semibold text-stone-500 uppercase tracking-wider">Run on</div>
+                                            </div>
+                                            <div className="py-1">
+                                                <RuntimeMenuRow
+                                                    label="Cloud"
+                                                    sub="Default — clash.video LLMs"
+                                                    active={chatMode === 'cloud'}
+                                                    onClick={() => {
+                                                        if (chatMode === 'byo') byo.shutdown();
+                                                        if (chatMode === 'runtime') clashRt.shutdown();
+                                                        setChatMode('cloud');
+                                                        setRuntimeMenuOpen(false);
+                                                    }}
+                                                />
+                                                {clashRt.runtimes.length > 0 && (
+                                                    <div className="px-3 pt-1 pb-0.5 text-[10px] text-stone-400 uppercase tracking-wider">My machines</div>
+                                                )}
+                                                {clashRt.runtimes.map((rt) => {
+                                                    const online = rt.status === 'online';
+                                                    return (
+                                                        <RuntimeMenuRow
+                                                            key={rt.id}
+                                                            label={rt.hostname || rt.machine_id.slice(0, 10)}
+                                                            sub={online ? `online · ${rt.agents.length} agent${rt.agents.length === 1 ? '' : 's'}` : 'offline'}
+                                                            active={chatMode === 'runtime' && clashRt.selectedRuntimeId === rt.id}
+                                                            disabled={!online || rt.agents.length === 0}
+                                                            onClick={async () => {
+                                                                if (chatMode === 'byo') byo.shutdown();
+                                                                setRuntimeMenuOpen(false);
+                                                                setChatMode('runtime');
+                                                                await clashRt.select(rt.id);
+                                                            }}
+                                                        />
+                                                    );
+                                                })}
+                                                <div className="border-t border-warm-border/70 my-1" />
+                                                <RuntimeMenuRow
+                                                    label="Quick connect…"
+                                                    sub="One-shot npx pairing (no install)"
+                                                    onClick={() => {
+                                                        setRuntimeMenuOpen(false);
+                                                        setByoDialogOpen(true);
+                                                    }}
+                                                />
+                                                <RuntimeMenuRow
+                                                    label="Add machine…"
+                                                    sub="Register a persistent local runtime"
+                                                    onClick={() => {
+                                                        setRuntimeMenuOpen(false);
+                                                        window.open('/connect-daemon', '_blank');
+                                                    }}
+                                                />
+                                            </div>
+                                        </motion.div>
+                                    )}
+                                </AnimatePresence>
+                            </div>
                         </div>
 
                         {/* History Dropdown */}
@@ -596,12 +689,21 @@ export default function ChatbotCopilot({
                                 className="absolute inset-0 top-16 overflow-y-auto px-6 pt-4 pb-32"
                             >
                                 <div className="space-y-6">
-                                    {/* BYO mode renders its own simpler message list — local agent
-                                        events don't fit the cloud UIMessage shape (no Loro tools,
-                                        different streaming model). When in BYO, skip the rest of
-                                        the cloud render block below. */}
+                                    {/* BYO + runtime modes both produce ByoMessage[]; same renderer.
+                                        Cloud renders the heavier UIMessage path. */}
                                     {chatMode === 'byo' && (
                                         <ByoMessageList messages={byo.messages} />
+                                    )}
+                                    {chatMode === 'runtime' && (
+                                        <>
+                                            {clashRt.status === 'connecting' && (
+                                                <div className="text-xs text-stone-400 italic">Connecting to runtime…</div>
+                                            )}
+                                            {clashRt.errorMessage && (
+                                                <div className="text-sm text-red-600">⚠ {clashRt.errorMessage}</div>
+                                            )}
+                                            <ByoMessageList messages={clashRt.messages} />
+                                        </>
                                     )}
                                     {chatMode === 'cloud' && (
                                     <>
@@ -822,6 +924,46 @@ export default function ChatbotCopilot({
                 onClose={() => setByoDialogOpen(false)}
             />
         </>
+    );
+}
+
+/**
+ * One row in the "Run on" dropdown. Active row gets a checkmark + bg.
+ * Disabled rows (offline runtime, no agents detected) are unclickable
+ * but still visible so the user knows the runtime exists.
+ */
+function RuntimeMenuRow({
+    label,
+    sub,
+    active,
+    disabled,
+    onClick,
+}: {
+    label: string;
+    sub?: string;
+    active?: boolean;
+    disabled?: boolean;
+    onClick: () => void;
+}) {
+    return (
+        <button
+            type="button"
+            disabled={disabled}
+            onClick={onClick}
+            className={`w-full text-left px-3 py-2 flex items-center gap-3 transition-colors ${
+                disabled
+                    ? 'opacity-50 cursor-not-allowed'
+                    : 'hover:bg-warm-muted cursor-pointer'
+            } ${active ? 'bg-emerald-50/50' : ''}`}
+        >
+            <span className={`inline-block w-1.5 h-1.5 rounded-full flex-shrink-0 ${
+                active ? 'bg-emerald-500' : 'bg-stone-300'
+            }`} />
+            <div className="flex-1 min-w-0">
+                <div className="text-sm font-medium text-slate-700 truncate">{label}</div>
+                {sub && <div className="text-[11px] text-stone-400 truncate">{sub}</div>}
+            </div>
+        </button>
     );
 }
 
