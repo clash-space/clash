@@ -110,8 +110,13 @@ async function readFirstSummary(file: string): Promise<string> {
 
 /**
  * CC encodes a cwd like /Users/xiaoyang/Proj/clash → -Users-xiaoyang-Proj-clash.
- * Decode is best-effort; we only use it for display, not as a path.
+ * Decode is best-effort + display-only:
+ *   - Leading `-` represents the absolute root `/`.
+ *   - Embedded `-` is genuinely ambiguous (could be a path separator or a
+ *     real dash in a directory name); we treat it as `/` because that's
+ *     the common case (most user dirs don't have dashes).
  */
 function decodeCcProjectDir(name: string): string {
-  return name.startsWith("-") ? name.slice(1).replace(/-/g, "/") : name;
+  if (!name.startsWith("-")) return name;
+  return "/" + name.slice(1).replace(/-/g, "/");
 }
