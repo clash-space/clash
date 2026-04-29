@@ -235,7 +235,7 @@ export function GroupChatPanel({
     return (
       <motion.button
         onClick={() => onCollapseChange(false)}
-        className="fixed right-0 top-1/2 -translate-y-1/2 z-50 bg-warm-surface/90 backdrop-blur-md border border-warm-border border-r-0 rounded-l-xl p-2.5 shadow-lg hover:bg-warm-muted"
+        className="fixed right-0 top-1/2 -translate-y-1/2 z-50 bg-warm-surface/90 backdrop-blur-md rounded-l-matrix p-2.5 shadow-lg hover:bg-warm-muted"
         whileHover={{ scale: 1.05, x: -2 }}
         whileTap={{ scale: 0.95 }}
         aria-label="Expand group chat"
@@ -257,7 +257,7 @@ export function GroupChatPanel({
 
   return (
     <div
-      className="h-full bg-warm-surface/90 backdrop-blur-xl border-l border-warm-border shadow-xl flex flex-col relative"
+      className="h-full bg-warm-surface/85 backdrop-blur-xl shadow-2xl flex flex-col relative"
       style={{ width }}
     >
       {/* Floating top-left: collapse */}
@@ -276,28 +276,56 @@ export function GroupChatPanel({
         <PresenceBar clients={otherClients} />
       </div>
 
-      <div className="flex-1 flex min-h-0 pt-16">
-        {/* Crew rail */}
-        <div className="w-16 border-r border-warm-border flex flex-col items-center py-3 gap-2.5 bg-warm-muted/40">
-          <div className="relative">
+      <div className="flex-1 flex flex-col min-w-0 pt-16">
+        {/* Tab pill row — single nav element. Each pill is a rounded-matrix
+            chip with avatar + label; + at end opens the invite popover. */}
+        <div className="px-4 pb-2 flex items-center gap-1.5 overflow-x-auto scrollbar-thin">
+          <TabPill
+            label="Room"
+            active={activeTab === ROOM_TAB}
+            onClick={() => setActiveTab(ROOM_TAB)}
+            kind="room"
+          />
+          {invitedCrew.map((c) => {
+            const live = group.crew.find((x) => x.crewId === c.id);
+            return (
+              <TabPill
+                key={c.id}
+                label={c.display_name}
+                active={activeTab === c.id}
+                onClick={() => {
+                  setActiveTab(c.id);
+                  group.focus(c.id);
+                }}
+                onClose={() => uninvite(c.id)}
+                unread={!!live?.unread}
+                pendingCount={live?.pendingPrompts.length ?? 0}
+                statusDot={statusToDot(live?.status)}
+                initials={c.display_name.slice(0, 2).toUpperCase()}
+              />
+            );
+          })}
+
+          {/* Invite-crew + button + popover */}
+          <div className="relative shrink-0">
             <motion.button
               onClick={() => setShowAddMenu((v) => !v)}
               whileHover={{ scale: 1.05 }}
               whileTap={{ scale: 0.95 }}
-              className="w-10 h-10 rounded-full bg-warm-surface border-2 border-dashed border-warm-border flex items-center justify-center hover:border-red-300 hover:text-red-500 text-stone-500 transition-colors"
+              className="h-8 w-8 rounded-matrix bg-warm-muted/70 backdrop-blur-sm hover:bg-warm-muted hover:text-red-500 text-stone-500 flex items-center justify-center transition-colors"
               title="Invite crew"
             >
-              <Plus className="w-4 h-4" weight="bold" />
+              <Plus className="w-3.5 h-3.5" weight="bold" />
             </motion.button>
             <AnimatePresence>
               {showAddMenu && (
                 <motion.div
-                  initial={{ opacity: 0, x: -8, scale: 0.96 }}
-                  animate={{ opacity: 1, x: 0, scale: 1 }}
-                  exit={{ opacity: 0, x: -8, scale: 0.96 }}
-                  className="absolute left-12 top-0 z-30 w-72 bg-warm-surface rounded-xl shadow-xl border border-warm-border overflow-hidden"
+                  initial={{ opacity: 0, y: -6, scale: 0.96 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  exit={{ opacity: 0, y: -6, scale: 0.96 }}
+                  className="absolute right-0 top-10 z-30 w-72 bg-warm-surface/95 backdrop-blur-xl rounded-matrix shadow-xl border border-warm-border overflow-hidden"
                 >
-                  <div className="px-3 py-2 border-b border-warm-border bg-warm-muted">
+                  <div className="px-3 py-2 border-b border-warm-border bg-warm-muted/60">
                     <div className="font-display text-[10px] font-semibold text-stone-500 uppercase tracking-wider">Invite crew</div>
                   </div>
                   {crewLoading ? (
@@ -340,106 +368,38 @@ export function GroupChatPanel({
               )}
             </AnimatePresence>
           </div>
-
-          {invitedCrew.map((c) => {
-            const live = group.crew.find((x) => x.crewId === c.id);
-            const isActive = activeTab === c.id;
-            const dot = live?.status === 'streaming' || live?.status === 'sending'
-              ? 'bg-amber-500'
-              : live?.status === 'connected'
-              ? 'bg-emerald-500'
-              : live?.status === 'error' || live?.status === 'disconnected'
-              ? 'bg-stone-400'
-              : 'bg-stone-300';
-            const initials = c.display_name.slice(0, 2).toUpperCase();
-            return (
-              <motion.button
-                key={c.id}
-                onClick={() => {
-                  setActiveTab(c.id);
-                  group.focus(c.id);
-                }}
-                whileHover={{ scale: 1.05 }}
-                whileTap={{ scale: 0.95 }}
-                className={`w-10 h-10 rounded-full flex items-center justify-center text-xs font-semibold relative transition-all ${
-                  isActive
-                    ? 'bg-gradient-to-br from-red-500 to-pink-500 text-white shadow-md ring-2 ring-red-200'
-                    : 'bg-warm-surface border border-warm-border text-stone-700 hover:border-red-300'
-                }`}
-                title={`${c.display_name}${live ? ` — ${live.status}` : ''}`}
-              >
-                <span>{initials}</span>
-                <span className={`absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border-2 border-warm-surface ${dot}`} />
-                {live?.unread && (
-                  <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-red-500 border border-warm-surface" />
-                )}
-                {live && live.pendingPrompts.length > 0 && (
-                  <span className="absolute -top-1 -left-1 px-1 min-w-[16px] h-4 rounded-full bg-amber-500 text-white text-[9px] font-bold flex items-center justify-center border border-warm-surface">
-                    {live.pendingPrompts.length}
-                  </span>
-                )}
-              </motion.button>
-            );
-          })}
         </div>
 
-        {/* Main column */}
-        <div className="flex-1 flex flex-col min-w-0">
-          {/* Tabs */}
-          <div className="flex items-center border-b border-warm-border px-3 gap-1 overflow-x-auto bg-warm-muted/30">
-            <TabButton
-              label="Room"
-              active={activeTab === ROOM_TAB}
-              onClick={() => setActiveTab(ROOM_TAB)}
+        {/* Body */}
+        <div className="flex-1 overflow-y-auto px-5 pt-2 pb-6">
+          {activeTab === ROOM_TAB ? (
+            <RoomView
+              messages={room.messages}
+              userId={userId}
+              labelFor={(id) => claimById(id)?.display_name ?? id}
+              empty={!room.loading && room.messages.length === 0}
+              hasInvited={invitedCrew.length > 0}
             />
-            {invitedCrew.map((c) => {
-              const live = group.crew.find((x) => x.crewId === c.id);
-              return (
-                <TabButton
-                  key={c.id}
-                  label={c.display_name}
-                  active={activeTab === c.id}
-                  onClick={() => {
-                    setActiveTab(c.id);
-                    group.focus(c.id);
-                  }}
-                  unread={!!live?.unread}
-                  onClose={() => uninvite(c.id)}
-                />
-              );
-            })}
-          </div>
+          ) : (
+            <CrewView messages={focusedCrew?.messages ?? []} />
+          )}
+        </div>
 
-          {/* Body */}
-          <div className="flex-1 overflow-y-auto px-5 py-4">
-            {activeTab === ROOM_TAB ? (
-              <RoomView
-                messages={room.messages}
-                userId={userId}
-                labelFor={(id) => claimById(id)?.display_name ?? id}
-                empty={!room.loading && room.messages.length === 0}
-                hasInvited={invitedCrew.length > 0}
-              />
-            ) : (
-              <CrewView messages={focusedCrew?.messages ?? []} />
-            )}
-          </div>
-
-          {/* Input */}
-          <div className="border-t border-warm-border bg-warm-surface/60 backdrop-blur-sm p-3">
-            <div className="flex gap-2 items-end">
-              <textarea
-                value={draft}
-                onChange={(e) => setDraft(e.target.value)}
-                onKeyDown={handleKeyDown}
-                placeholder={
-                  invitedCrew.length === 0
-                    ? 'Invite a crew member with + to start chatting'
-                    : `Type to chat the room, or @${firstInvitedHandle} to address a crew member`
-                }
-                rows={2}
-                className="flex-1 resize-none rounded-xl border border-warm-border bg-warm-surface px-3 py-2 text-sm text-stone-800 placeholder:text-stone-400 focus:outline-none focus:ring-2 focus:ring-red-200 focus:border-red-300 transition-shadow"
-              />
+        {/* Input — frosted, rounded-matrix bubble */}
+        <div className="px-4 pb-4 pt-2">
+          <div className="flex gap-2 items-end bg-warm-muted/60 backdrop-blur-md rounded-matrix shadow-sm p-2 focus-within:bg-warm-muted/80 focus-within:shadow-md transition">
+            <textarea
+              value={draft}
+              onChange={(e) => setDraft(e.target.value)}
+              onKeyDown={handleKeyDown}
+              placeholder={
+                invitedCrew.length === 0
+                  ? 'Invite a crew member with + to start chatting'
+                  : `Chat the room, or @${firstInvitedHandle} a crew member`
+              }
+              rows={2}
+              className="flex-1 resize-none bg-transparent px-2 py-1 text-sm text-stone-800 placeholder:text-stone-400 focus:outline-none"
+            />
               <motion.button
                 onClick={() => void send()}
                 disabled={!draft.trim()}
@@ -451,50 +411,100 @@ export function GroupChatPanel({
                 <PaperPlaneRight className="w-4 h-4" weight="fill" />
               </motion.button>
             </div>
-            {room.error && <div className="text-xs text-red-600 mt-1.5 px-1">{room.error}</div>}
-          </div>
+          {room.error && <div className="text-xs text-red-600 mt-1.5 px-1">{room.error}</div>}
         </div>
       </div>
     </div>
   );
 }
 
-function TabButton({
+function statusToDot(status: string | undefined): string {
+  if (status === 'streaming' || status === 'sending') return 'bg-amber-500';
+  if (status === 'connected') return 'bg-emerald-500';
+  if (status === 'error' || status === 'disconnected') return 'bg-stone-400';
+  return 'bg-stone-300';
+}
+
+/**
+ * Pill-shaped chip used for the tab row. Active = filled red→pink
+ * gradient; inactive = frosted warm-surface with a subtle border.
+ * Crew pills carry an avatar (initials) with status pip + unread /
+ * pending-prompts indicators; Room pill is plain text.
+ */
+function TabPill({
   label,
   active,
   onClick,
-  unread,
   onClose,
+  unread,
+  pendingCount,
+  statusDot,
+  initials,
+  kind = 'crew',
 }: {
   label: string;
   active: boolean;
   onClick: () => void;
-  unread?: boolean;
   onClose?: () => void;
+  unread?: boolean;
+  pendingCount?: number;
+  statusDot?: string;
+  initials?: string;
+  kind?: 'room' | 'crew';
 }) {
   return (
-    <div className={`flex items-center group relative ${active ? 'border-b-2 border-red-500' : 'border-b-2 border-transparent'} -mb-px`}>
+    <motion.div
+      whileHover={{ scale: 1.02 }}
+      whileTap={{ scale: 0.98 }}
+      className="shrink-0"
+    >
       <button
         onClick={onClick}
-        className={`px-3 py-2.5 text-sm relative transition-colors ${
-          active ? 'text-stone-900 font-semibold' : 'text-stone-500 hover:text-stone-800'
+        className={`group relative flex items-center gap-2 h-8 pl-1.5 pr-3 rounded-matrix text-xs font-medium transition-all ${
+          active
+            ? 'bg-gradient-to-br from-red-500 to-pink-500 text-white shadow-md'
+            : 'bg-warm-muted/70 backdrop-blur-sm text-stone-700 hover:bg-warm-muted hover:text-stone-900'
         }`}
       >
-        {label}
+        {kind === 'room' ? (
+          <span className={`flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-bold ${
+            active ? 'bg-white/25 text-white' : 'bg-warm-surface/80 text-stone-500'
+          }`}>#</span>
+        ) : (
+          <span className="relative">
+            <span className={`flex h-5 w-5 items-center justify-center rounded-full text-[9px] font-bold ${
+              active ? 'bg-white/25 text-white' : 'bg-warm-surface/80 text-stone-700'
+            }`}>{initials}</span>
+            {statusDot && (
+              <span className={`absolute -bottom-0.5 -right-0.5 w-1.5 h-1.5 rounded-full ${statusDot}`} />
+            )}
+          </span>
+        )}
+        <span>{label}</span>
         {unread && !active && (
-          <span className="absolute top-1.5 right-0.5 w-1.5 h-1.5 rounded-full bg-red-500" />
+          <span className="w-1.5 h-1.5 rounded-full bg-red-500" />
+        )}
+        {pendingCount && pendingCount > 0 ? (
+          <span className={`min-w-[16px] h-4 px-1 rounded-full text-[9px] font-bold flex items-center justify-center ${
+            active ? 'bg-white/30 text-white' : 'bg-amber-500 text-white'
+          }`}>
+            {pendingCount}
+          </span>
+        ) : null}
+        {onClose && (
+          <span
+            role="button"
+            onClick={(e) => { e.stopPropagation(); onClose(); }}
+            className={`ml-0.5 text-[14px] leading-none opacity-0 group-hover:opacity-100 transition-opacity ${
+              active ? 'text-white/80 hover:text-white' : 'text-stone-400 hover:text-red-500'
+            }`}
+            title="Remove from room"
+          >
+            ×
+          </span>
         )}
       </button>
-      {onClose && (
-        <button
-          onClick={(e) => { e.stopPropagation(); onClose(); }}
-          className="text-xs text-stone-300 hover:text-red-500 pr-2 opacity-0 group-hover:opacity-100 transition-opacity"
-          title="Remove from room"
-        >
-          ×
-        </button>
-      )}
-    </div>
+    </motion.div>
   );
 }
 
@@ -542,12 +552,12 @@ function RoomView({
             <div className="max-w-[82%]">
               <div className={`text-[11px] text-stone-500 mb-1 px-1 ${isMe ? 'text-right' : ''}`}>{sender}</div>
               <div
-                className={`px-4 py-2.5 rounded-matrix text-sm whitespace-pre-wrap break-words shadow-sm border ${
+                className={`px-4 py-2.5 rounded-matrix text-sm whitespace-pre-wrap break-words shadow-sm ${
                   isMe
-                    ? 'bg-gradient-to-br from-red-50/90 to-pink-50/90 border-red-100/50 text-gray-900'
+                    ? 'bg-gradient-to-br from-red-500 to-pink-500 text-white'
                     : m.sender_kind === 'crew'
-                    ? 'bg-amber-50/80 border-amber-200/60 text-stone-800'
-                    : 'bg-warm-surface border-warm-border text-stone-800'
+                    ? 'bg-amber-50/90 text-stone-800'
+                    : 'bg-warm-muted/80 text-stone-800'
                 }`}
               >
                 {m.text}
