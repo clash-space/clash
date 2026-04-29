@@ -30,7 +30,8 @@
  */
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { CaretLeft, CaretRight, Plus, Users, Gear } from '@phosphor-icons/react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { CaretLeft, CaretRight, Plus, Users, Gear, PaperPlaneRight } from '@phosphor-icons/react';
 import { useGroupChat, type ClaimedCrew } from '@clash/web-ui/hooks/useGroupChat';
 import { useProjectRoom } from '@clash/web-ui/hooks/useProjectRoom';
 import { AcpMessageList } from '@clash/web-ui/components/copilot/AcpMessageList';
@@ -224,88 +225,110 @@ export function GroupChatPanel({
 
   if (isCollapsed) {
     return (
-      <button
+      <motion.button
         onClick={() => onCollapseChange(false)}
-        className="fixed right-0 top-1/2 -translate-y-1/2 z-50 bg-white border border-stone-200 border-r-0 rounded-l-lg p-2 shadow-sm hover:bg-stone-50"
+        className="fixed right-0 top-1/2 -translate-y-1/2 z-50 bg-warm-surface/90 backdrop-blur-md border border-warm-border border-r-0 rounded-l-xl p-2.5 shadow-lg hover:bg-warm-muted"
+        whileHover={{ scale: 1.05, x: -2 }}
+        whileTap={{ scale: 0.95 }}
         aria-label="Expand group chat"
       >
         <CaretLeft className="w-5 h-5 text-stone-600" weight="bold" />
-      </button>
+      </motion.button>
     );
   }
 
   const uninvitedClaimed = claimedCrew.filter((c) => !invitedIds.includes(c.id));
   const focusedCrew = group.crew.find((c) => c.crewId === activeTab);
+  const firstInvitedHandle = invitedCrew[0]?.display_name.toLowerCase().replace(/\s+/g, '-');
 
   return (
     <div
-      className="h-full bg-white border-l border-stone-200 flex flex-col"
+      className="h-full bg-warm-surface/90 backdrop-blur-xl border-l border-warm-border shadow-xl flex flex-col"
       style={{ width }}
     >
       {/* Header */}
-      <div className="flex items-center justify-between px-3 py-2 border-b border-stone-200">
-        <div className="flex items-center gap-2 min-w-0">
-          <Users className="w-4 h-4 text-stone-600 flex-shrink-0" weight="bold" />
-          <span className="text-sm font-medium text-stone-800">Group Chat</span>
+      <div className="flex items-center justify-between px-5 py-4 border-b border-warm-border">
+        <div className="flex items-center gap-2.5 min-w-0">
+          <Users className="w-4 h-4 text-red-500 flex-shrink-0" weight="duotone" />
+          <span className="font-display text-sm font-semibold text-stone-800 tracking-tight">Group chat</span>
+          {invitedCrew.length > 0 && (
+            <span className="text-xs text-stone-400">· {invitedCrew.length} crew</span>
+          )}
         </div>
-        <button
+        <motion.button
           onClick={() => onCollapseChange(true)}
-          className="p-1 rounded hover:bg-stone-100 text-stone-500"
+          whileHover={{ scale: 1.1 }}
+          whileTap={{ scale: 0.9 }}
+          className="p-1.5 rounded-full hover:bg-warm-muted text-stone-500"
           aria-label="Collapse"
         >
           <CaretRight className="w-4 h-4" weight="bold" />
-        </button>
+        </motion.button>
       </div>
 
       <div className="flex-1 flex min-h-0">
         {/* Crew rail */}
-        <div className="w-14 border-r border-stone-200 flex flex-col items-center py-2 gap-2 bg-stone-50/50">
+        <div className="w-16 border-r border-warm-border flex flex-col items-center py-3 gap-2.5 bg-warm-muted/40">
           <div className="relative">
-            <button
+            <motion.button
               onClick={() => setShowAddMenu((v) => !v)}
-              className="w-9 h-9 rounded-full bg-white border border-stone-200 flex items-center justify-center hover:bg-stone-100 text-stone-600"
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
+              className="w-10 h-10 rounded-full bg-warm-surface border-2 border-dashed border-warm-border flex items-center justify-center hover:border-red-300 hover:text-red-500 text-stone-500 transition-colors"
               title="Invite crew"
             >
               <Plus className="w-4 h-4" weight="bold" />
-            </button>
-            {showAddMenu && (
-              <div className="absolute left-12 top-0 z-30 w-72 bg-white border border-stone-200 rounded-lg shadow-lg py-1">
-                {crewLoading ? (
-                  <div className="px-3 py-2 text-xs text-stone-400">Loading…</div>
-                ) : claimedCrew.length === 0 ? (
-                  <div className="px-3 py-2 text-xs text-stone-500">
-                    No crew claimed yet.{' '}
-                    <a href="/settings" className="text-stone-700 underline inline-flex items-center gap-0.5">
-                      Open Settings <Gear className="w-3 h-3" />
-                    </a>
+            </motion.button>
+            <AnimatePresence>
+              {showAddMenu && (
+                <motion.div
+                  initial={{ opacity: 0, x: -8, scale: 0.96 }}
+                  animate={{ opacity: 1, x: 0, scale: 1 }}
+                  exit={{ opacity: 0, x: -8, scale: 0.96 }}
+                  className="absolute left-12 top-0 z-30 w-72 bg-warm-surface rounded-xl shadow-xl border border-warm-border overflow-hidden"
+                >
+                  <div className="px-3 py-2 border-b border-warm-border bg-warm-muted">
+                    <div className="font-display text-[10px] font-semibold text-stone-500 uppercase tracking-wider">Invite crew</div>
                   </div>
-                ) : uninvitedClaimed.length === 0 ? (
-                  <div className="px-3 py-2 text-xs text-stone-400">All claimed crew already invited.</div>
-                ) : (
-                  uninvitedClaimed.map((c) => {
-                    const offline = c.runtime_status !== 'online';
-                    return (
-                      <button
-                        key={c.id}
-                        onClick={() => invite(c)}
-                        disabled={offline}
-                        className="w-full text-left px-3 py-1.5 text-xs hover:bg-stone-50 disabled:opacity-50"
-                        title={offline ? 'Runtime offline' : ''}
-                      >
-                        <div className="font-medium text-stone-800 flex items-center gap-1.5">
-                          <span className={`inline-block w-1.5 h-1.5 rounded-full ${offline ? 'bg-stone-300' : 'bg-emerald-500'}`} />
-                          {c.display_name}
-                        </div>
-                        <div className="text-stone-500 mt-0.5">
-                          {c.template_id} · {c.runtime_label || c.runtime_id.slice(0, 8)}
-                          {offline && ' · offline'}
-                        </div>
-                      </button>
-                    );
-                  })
-                )}
-              </div>
-            )}
+                  {crewLoading ? (
+                    <div className="px-3 py-3 text-xs text-stone-400">Loading…</div>
+                  ) : claimedCrew.length === 0 ? (
+                    <div className="px-3 py-3 text-xs text-stone-500 leading-relaxed">
+                      No crew claimed yet.{' '}
+                      <a href="/settings" className="text-red-500 hover:text-red-600 underline inline-flex items-center gap-0.5">
+                        Open Settings <Gear className="w-3 h-3" />
+                      </a>
+                    </div>
+                  ) : uninvitedClaimed.length === 0 ? (
+                    <div className="px-3 py-3 text-xs text-stone-400">All claimed crew already invited.</div>
+                  ) : (
+                    <div className="py-1">
+                      {uninvitedClaimed.map((c) => {
+                        const offline = c.runtime_status !== 'online';
+                        return (
+                          <button
+                            key={c.id}
+                            onClick={() => invite(c)}
+                            disabled={offline}
+                            className="w-full text-left px-3 py-2 text-xs hover:bg-warm-muted disabled:opacity-50 disabled:hover:bg-transparent transition-colors"
+                            title={offline ? 'Runtime offline' : ''}
+                          >
+                            <div className="font-medium text-stone-800 flex items-center gap-1.5">
+                              <span className={`inline-block w-1.5 h-1.5 rounded-full ${offline ? 'bg-stone-300' : 'bg-emerald-500'}`} />
+                              {c.display_name}
+                            </div>
+                            <div className="text-stone-500 mt-0.5">
+                              {c.template_id} · {c.runtime_label || c.runtime_id.slice(0, 8)}
+                              {offline && ' · offline'}
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </motion.div>
+              )}
+            </AnimatePresence>
           </div>
 
           {invitedCrew.map((c) => {
@@ -320,23 +343,32 @@ export function GroupChatPanel({
               : 'bg-stone-300';
             const initials = c.display_name.slice(0, 2).toUpperCase();
             return (
-              <button
+              <motion.button
                 key={c.id}
                 onClick={() => {
                   setActiveTab(c.id);
                   group.focus(c.id);
                 }}
-                className={`w-9 h-9 rounded-full border flex items-center justify-center text-xs font-semibold relative ${
-                  isActive ? 'border-stone-700 bg-white' : 'border-stone-200 bg-white hover:bg-stone-100'
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
+                className={`w-10 h-10 rounded-full flex items-center justify-center text-xs font-semibold relative transition-all ${
+                  isActive
+                    ? 'bg-gradient-to-br from-red-500 to-pink-500 text-white shadow-md ring-2 ring-red-200'
+                    : 'bg-warm-surface border border-warm-border text-stone-700 hover:border-red-300'
                 }`}
                 title={`${c.display_name}${live ? ` — ${live.status}` : ''}`}
               >
-                <span className="text-stone-700">{initials}</span>
-                <span className={`absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border-2 border-white ${dot}`} />
+                <span>{initials}</span>
+                <span className={`absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border-2 border-warm-surface ${dot}`} />
                 {live?.unread && (
-                  <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-red-500 border border-white" />
+                  <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-red-500 border border-warm-surface" />
                 )}
-              </button>
+                {live && live.pendingPrompts.length > 0 && (
+                  <span className="absolute -top-1 -left-1 px-1 min-w-[16px] h-4 rounded-full bg-amber-500 text-white text-[9px] font-bold flex items-center justify-center border border-warm-surface">
+                    {live.pendingPrompts.length}
+                  </span>
+                )}
+              </motion.button>
             );
           })}
         </div>
@@ -344,7 +376,7 @@ export function GroupChatPanel({
         {/* Main column */}
         <div className="flex-1 flex flex-col min-w-0">
           {/* Tabs */}
-          <div className="flex items-center border-b border-stone-200 px-2 gap-1 overflow-x-auto">
+          <div className="flex items-center border-b border-warm-border px-3 gap-1 overflow-x-auto bg-warm-muted/30">
             <TabButton
               label="Room"
               active={activeTab === ROOM_TAB}
@@ -369,7 +401,7 @@ export function GroupChatPanel({
           </div>
 
           {/* Body */}
-          <div className="flex-1 overflow-y-auto px-3 py-2">
+          <div className="flex-1 overflow-y-auto px-5 py-4">
             {activeTab === ROOM_TAB ? (
               <RoomView
                 messages={room.messages}
@@ -384,8 +416,8 @@ export function GroupChatPanel({
           </div>
 
           {/* Input */}
-          <div className="border-t border-stone-200 p-2">
-            <div className="flex gap-2">
+          <div className="border-t border-warm-border bg-warm-surface/60 backdrop-blur-sm p-3">
+            <div className="flex gap-2 items-end">
               <textarea
                 value={draft}
                 onChange={(e) => setDraft(e.target.value)}
@@ -393,20 +425,23 @@ export function GroupChatPanel({
                 placeholder={
                   invitedCrew.length === 0
                     ? 'Invite a crew member with + to start chatting'
-                    : `@${invitedCrew[0]?.display_name.toLowerCase().replace(/\s+/g, '-')} ... or just talk to the room (Enter to send)`
+                    : `Type to chat the room, or #${firstInvitedHandle} to address a crew member`
                 }
                 rows={2}
-                className="flex-1 resize-none rounded border border-stone-200 px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-stone-400 disabled:bg-stone-50 disabled:text-stone-400"
+                className="flex-1 resize-none rounded-xl border border-warm-border bg-warm-surface px-3 py-2 text-sm text-stone-800 placeholder:text-stone-400 focus:outline-none focus:ring-2 focus:ring-red-200 focus:border-red-300 transition-shadow"
               />
-              <button
+              <motion.button
                 onClick={() => void send()}
                 disabled={!draft.trim()}
-                className="self-end px-3 py-1.5 rounded bg-stone-800 text-white text-sm hover:bg-stone-700 disabled:bg-stone-300"
+                whileHover={{ scale: draft.trim() ? 1.05 : 1 }}
+                whileTap={{ scale: draft.trim() ? 0.95 : 1 }}
+                className="self-end h-9 w-9 rounded-full bg-gradient-to-br from-red-500 to-pink-500 text-white flex items-center justify-center shadow-md disabled:opacity-40 disabled:cursor-not-allowed"
+                aria-label="Send"
               >
-                Send
-              </button>
+                <PaperPlaneRight className="w-4 h-4" weight="fill" />
+              </motion.button>
             </div>
-            {room.error && <div className="text-xs text-red-600 mt-1">{room.error}</div>}
+            {room.error && <div className="text-xs text-red-600 mt-1.5 px-1">{room.error}</div>}
           </div>
         </div>
       </div>
@@ -428,22 +463,22 @@ function TabButton({
   onClose?: () => void;
 }) {
   return (
-    <div className={`flex items-center group ${active ? 'border-b-2 border-stone-700' : ''}`}>
+    <div className={`flex items-center group relative ${active ? 'border-b-2 border-red-500' : 'border-b-2 border-transparent'} -mb-px`}>
       <button
         onClick={onClick}
-        className={`px-3 py-1.5 text-sm relative ${
-          active ? 'text-stone-900 font-medium' : 'text-stone-500 hover:text-stone-700'
+        className={`px-3 py-2.5 text-sm relative transition-colors ${
+          active ? 'text-stone-900 font-semibold' : 'text-stone-500 hover:text-stone-800'
         }`}
       >
         {label}
         {unread && !active && (
-          <span className="absolute top-1 right-0.5 w-1.5 h-1.5 rounded-full bg-red-500" />
+          <span className="absolute top-1.5 right-0.5 w-1.5 h-1.5 rounded-full bg-red-500" />
         )}
       </button>
       {onClose && (
         <button
           onClick={(e) => { e.stopPropagation(); onClose(); }}
-          className="text-xs text-stone-300 hover:text-stone-600 px-1 opacity-0 group-hover:opacity-100"
+          className="text-xs text-stone-300 hover:text-red-500 pr-2 opacity-0 group-hover:opacity-100 transition-opacity"
           title="Remove from room"
         >
           ×
@@ -468,16 +503,16 @@ function RoomView({
 }) {
   if (empty) {
     return (
-      <div className="text-center text-sm text-stone-400 py-8">
+      <div className="text-center text-sm text-stone-400 py-12">
         {hasInvited
-          ? <>Nothing in the room yet. Try <code className="px-1 rounded bg-stone-100">@&lt;name&gt;</code> to talk to a crew member.</>
-          : <>Invite a crew member with the <span className="px-1 rounded bg-stone-100">+</span> button to start.</>
+          ? <>Nothing in the room yet. Try <code className="px-1.5 py-0.5 rounded bg-warm-muted text-red-500 font-mono">#&lt;name&gt;</code> to address a crew member.</>
+          : <>Invite a crew member with the <span className="px-1.5 py-0.5 rounded bg-warm-muted">+</span> button to start.</>
         }
       </div>
     );
   }
   return (
-    <div className="space-y-3">
+    <div className="space-y-4">
       {messages.map((m) => {
         const isMe = m.sender_kind === 'user' && m.sender_user_id === userId;
         const sender =
@@ -487,22 +522,28 @@ function RoomView({
             ? 'You'
             : m.sender_id.slice(0, 8);
         return (
-          <div key={m.id} className={`flex ${isMe ? 'justify-end' : 'justify-start'}`}>
-            <div className="max-w-[80%]">
-              <div className={`text-xs text-stone-500 mb-0.5 ${isMe ? 'text-right' : ''}`}>{sender}</div>
+          <motion.div
+            key={m.id}
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ type: 'spring', stiffness: 500, damping: 30 }}
+            className={`flex ${isMe ? 'justify-end' : 'justify-start'}`}
+          >
+            <div className="max-w-[82%]">
+              <div className={`text-[11px] text-stone-500 mb-1 px-1 ${isMe ? 'text-right' : ''}`}>{sender}</div>
               <div
-                className={`px-3 py-2 rounded-lg text-sm whitespace-pre-wrap break-words ${
+                className={`px-4 py-2.5 rounded-matrix text-sm whitespace-pre-wrap break-words shadow-sm border ${
                   isMe
-                    ? 'bg-stone-800 text-white'
+                    ? 'bg-gradient-to-br from-red-50/90 to-pink-50/90 border-red-100/50 text-gray-900'
                     : m.sender_kind === 'crew'
-                    ? 'bg-amber-50 border border-amber-200 text-stone-800'
-                    : 'bg-stone-100 text-stone-800'
+                    ? 'bg-amber-50/80 border-amber-200/60 text-stone-800'
+                    : 'bg-warm-surface border-warm-border text-stone-800'
                 }`}
               >
                 {m.text}
               </div>
             </div>
-          </div>
+          </motion.div>
         );
       })}
     </div>
