@@ -288,6 +288,39 @@ export const chatMessage = sqliteTable(
 )
 
 /**
+ * Project room — group-chat IM layer.
+ *
+ * One row per "speech act" — humans typing in the room input or crews
+ * broadcasting via the say_to_room tool. Crew internal activity (tool
+ * calls, streamed text chunks) does NOT land here — that lives in
+ * chat_message scoped to the crew's runtime_session.
+ *
+ * sender_user_id is on every row (even when sender_kind='crew') so the
+ * UI can render "director (alice)". Per-user crew model: each user runs
+ * their own daemon; the room is shared across the project's members.
+ *
+ * mentions_json — array of {user_id, crew_id?}. ProjectRoom DO uses it
+ * to look up the matching runtime_session and push room.mention into
+ * that crew's react loop.
+ */
+export const roomMessage = sqliteTable(
+    "room_message",
+    {
+        id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+        projectId: text("project_id").notNull(),
+        senderKind: text("sender_kind").notNull(), // 'user' | 'crew'
+        senderId: text("sender_id").notNull(),     // user_id (when 'user') or crew_id (when 'crew')
+        senderUserId: text("sender_user_id").notNull(),
+        mentionsJson: text("mentions_json").notNull(),
+        text: text("text").notNull(),
+        createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
+    },
+    (table) => ({
+        roomMessageProjectIdx: index("room_message_project_idx").on(table.projectId, table.createdAt),
+    })
+)
+
+/**
  * Installed Skills — globally installed AI agent skills per user.
  * Skills are SKILL.md instruction sets for Claude Code.
  */

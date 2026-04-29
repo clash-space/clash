@@ -83,3 +83,174 @@ projectRoutes.delete("/:id", async (c) => {
 
   return c.json({ deleted: true });
 });
+
+// ─── Project room (group-chat IM layer) ──────────────────────────
+//
+// Multi-user, multi-crew speech-act log. Crews broadcast via the
+// say_to_room tool (HTTP POST here); humans type into the room input
+// (same POST). Crew internal activity (tool calls, streaming text)
+// stays in chat_message — it does NOT come through here.
+//
+// Mention dispatch: each {user_id, crew_id} entry → look up that
+// user's active runtime_session for the crew → push room.mention via
+// RuntimeRoom DO RPC. Best-effort: if no live session, the mention is
+// silently dropped (the room message itself is still visible — the
+// crew just won't auto-respond until next time it's spawned).
+
+interface RoomMention {
+  user_id: string;
+  crew_id?: string;
+}
+
+// Membership check — for v1, "in the project" means owner. When
+// project_member lands, change this single function and the rest of
+// the room layer is unchanged.
+async function userInProject(
+  env: Env,
+  userId: string,
+  projectId: string,
+): Promise<boolean> {
+  const row = await env.DB.prepare(
+    "SELECT 1 FROM project WHERE id = ? AND owner_id = ?",
+  ).bind(projectId, userId).first();
+  return !!row;
+}
+
+// GET /api/v1/projects/:pid/room/messages — most recent first, paginated by `before`
+projectRoutes.get("/:pid/room/messages", async (c) => {
+  const userId = getUserId(c);
+  const projectId = c.req.param("pid");
+  if (!(await userInProject(c.env, userId, projectId))) {
+    return c.json({ error: "not found" }, 404);
+  }
+
+  const limit = Math.min(Number(c.req.query("limit") ?? 50), 200);
+  const before = c.req.query("before");
+
+  const stmt = before
+    ? c.env.DB.prepare(
+        `SELECT id, sender_kind, sender_id, sender_user_id, mentions_json, text, created_at
+         FROM room_message
+         WHERE project_id = ?
+           AND created_at < (SELECT created_at FROM room_message WHERE id = ?)
+         ORDER BY created_at DESC LIMIT ?`,
+      ).bind(projectId, before, limit)
+    : c.env.DB.prepare(
+        `SELECT id, sender_kind, sender_id, sender_user_id, mentions_json, text, created_at
+         FROM room_message WHERE project_id = ?
+         ORDER BY created_at DESC LIMIT ?`,
+      ).bind(projectId, limit);
+
+  const { results } = await stmt.all<{
+    id: string;
+    sender_kind: string;
+    sender_id: string;
+    sender_user_id: string;
+    mentions_json: string;
+    text: string;
+    created_at: number;
+  }>();
+
+  return c.json({
+    messages: (results ?? []).map((r) => ({
+      id: r.id,
+      sender_kind: r.sender_kind,
+      sender_id: r.sender_id,
+      sender_user_id: r.sender_user_id,
+      mentions: JSON.parse(r.mentions_json) as RoomMention[],
+      text: r.text,
+      at: r.created_at,
+    })),
+  });
+});
+
+// POST /api/v1/projects/:pid/room/messages — write + broadcast + mention-dispatch
+projectRoutes.post("/:pid/room/messages", async (c) => {
+  const userId = getUserId(c);
+  const projectId = c.req.param("pid");
+  if (!(await userInProject(c.env, userId, projectId))) {
+    return c.json({ error: "not found" }, 404);
+  }
+
+  const body = (await c.req.json().catch(() => ({}))) as {
+    text?: string;
+    mentions?: RoomMention[];
+    /** Required when sender is a crew (called by say_to_room tool). */
+    sender_kind?: "user" | "crew";
+    sender_id?: string;
+  };
+
+  const text = body.text?.trim();
+  if (!text) return c.json({ error: "text required" }, 400);
+
+  const senderKind = body.sender_kind === "crew" ? "crew" : "user";
+  const senderId =
+    senderKind === "crew"
+      ? (body.sender_id?.trim() ?? "")
+      : userId;
+  if (senderKind === "crew" && !senderId) {
+    return c.json({ error: "sender_id required for crew sender" }, 400);
+  }
+
+  const mentions: RoomMention[] = Array.isArray(body.mentions)
+    ? body.mentions.filter((m) => m && typeof m.user_id === "string")
+    : [];
+
+  const id = crypto.randomUUID();
+  const at = Math.floor(Date.now() / 1000);
+  const mentionsJson = JSON.stringify(mentions);
+
+  await c.env.DB.prepare(
+    `INSERT INTO room_message
+     (id, project_id, sender_kind, sender_id, sender_user_id, mentions_json, text, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+  ).bind(id, projectId, senderKind, senderId, userId, mentionsJson, text, at).run();
+
+  const payload = {
+    id,
+    project_id: projectId,
+    sender_kind: senderKind,
+    sender_id: senderId,
+    sender_user_id: userId,
+    mentions,
+    text,
+    at,
+  };
+
+  // Live broadcast to every browser attached to the project's ProjectRoom.
+  const projectStub = c.env.ROOM.get(c.env.ROOM.idFromName(projectId));
+  await (projectStub as unknown as {
+    broadcastRoomMessage(p: Record<string, unknown>): Promise<void>;
+  }).broadcastRoomMessage(payload).catch(() => undefined);
+
+  // Mention dispatch: best-effort. For each mention, find the target
+  // user's most-recently-active runtime_session for that crew, and push
+  // a room.mention frame to that session's RuntimeRoom DO. The browser
+  // CrewSession decides what to do with it (queue as next-turn prompt).
+  //
+  // NOTE: runtime_session.cwd is currently overloaded to hold project_id
+  // (existing hack — see runtimes.ts:267). Filtering by it here scopes
+  // the mention to the right project. If the cwd column gets a real
+  // dedicated project_id column later, swap the predicate.
+  for (const m of mentions) {
+    if (!m.crew_id) continue;
+    const target = await c.env.DB.prepare(
+      `SELECT id, runtime_id FROM runtime_session
+       WHERE user_id = ? AND agent_id = ? AND status = 'active' AND cwd = ?
+       ORDER BY last_active_at DESC LIMIT 1`,
+    ).bind(m.user_id, m.crew_id, projectId).first<{ id: string; runtime_id: string }>();
+    if (!target) continue;
+    const runtimeStub = c.env.RUNTIME_ROOM.get(c.env.RUNTIME_ROOM.idFromName(target.runtime_id));
+    void (runtimeStub as unknown as {
+      pushRoomMention(sid: string, mention: Record<string, unknown>): Promise<void>;
+    }).pushRoomMention(target.id, {
+      message_id: id,
+      from_kind: senderKind,
+      from_id: senderId,
+      from_user_id: userId,
+      text,
+    }).catch(() => undefined);
+  }
+
+  return c.json(payload, 201);
+});
