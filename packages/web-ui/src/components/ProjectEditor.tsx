@@ -40,7 +40,10 @@ import {
 import { Link } from 'react-router';
 import { useNavigate } from 'react-router';
 import type { Project } from '@clash/web-ui/lib/types';
-import ChatbotCopilot from './ChatbotCopilot';
+// Old single-agent panel kept in the repo at './ChatbotCopilot' — reimport
+// to revert. New chat UX is GroupChatPanel.
+import { GroupChatPanel } from './GroupChatPanel';
+import type { RoomMessageEvent } from '@clash/shared-types';
 import { useSessionHistory } from '@clash/web-ui/hooks/useSessionHistory';
 import { updateProjectName } from '@clash/web-ui/lib/clientActions';
 import VideoNode from './nodes/VideoNode';
@@ -313,6 +316,14 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
     const { toasts, addToast, dismiss: dismissToast } = useActivityToasts();
     const { highlights, addHighlight } = useNodeHighlights();
 
+    // GroupChatPanel registers a sink for room.message frames so the
+    // single useLoroSync WS can fan room IM out to the new chat UI
+    // without opening a second connection.
+    const roomSinkRef = useRef<((msg: RoomMessageEvent) => void) | null>(null);
+    const registerRoomSink = useCallback((sink: (msg: RoomMessageEvent) => void) => {
+        roomSinkRef.current = sink;
+    }, []);
+
     // Loro CRDT sync
     const loroSync = useLoroSync({
         projectId: project.id,
@@ -323,6 +334,9 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
         onActivity: (activity) => {
             addToast(activity);
             addHighlight(activity);
+        },
+        onRoomMessage: (msg) => {
+            roomSinkRef.current?.(msg);
         },
         onNodesChange: (syncedNodes) => {
             // Loro is the SINGLE SOURCE OF TRUTH - use its state directly
@@ -2228,74 +2242,14 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
 
                             <div id="copilot-container" className="fixed right-0 top-0 bottom-0 z-40 pointer-events-none">
                                 <div className="pointer-events-auto h-full">
-                                    <ChatbotCopilot
-                                        // Key on threadId so a fresh session forces a clean remount
-                                        // (no useChat id-transition race that used to swallow the
-                                        // first message). sessionKey is part of the key only so
-                                        // "New Session" → "" → newId → "" still gets a fresh mount
-                                        // even if newId happens to repeat.
-                                        key={`copilot_${sessionKey}_${threadId || 'empty'}`}
-                                        onCreateSession={async (msg) => {
-                                            const result = await handleCreateSession(msg);
-                                            if (result) {
-                                                upsertSession(result.threadId, result.title);
-                                                setChatInitialPrompt(msg);
-                                                setThreadId(result.threadId);
-                                            }
-                                        }}
+                                    <GroupChatPanel
                                         projectId={project.id}
-                                        threadId={threadId}
-                                        initialMessages={[]}
-                                        onCommand={handleCommand}
+                                        userId={project.ownerId}
                                         width={sidebarWidth}
                                         onWidthChange={setSidebarWidth}
                                         isCollapsed={isSidebarCollapsed}
                                         onCollapseChange={setIsSidebarCollapsed}
-                                        selectedNodes={selectedNodes}
-                                        onAddNode={addNode}
-                                        onAddEdge={onConnect}
-                                        onUpdateNode={updateNode}
-                                        findNodeIdByName={findNodeIdByName}
-                                        nodes={nodes}
-                                        edges={edges}
-                                        initialPrompt={chatInitialPrompt}
-                                        sessionHistory={sessionHistory}
-                                        onNewSession={handleNewSession}
-                                        onSwitchSession={handleSwitchSession}
-                                        onDeleteSession={handleDeleteSession}
-                                        onUploadFiles={useCallback(async (attachments: import('./copilot/ChatInput').UploadedAttachment[]) => {
-                                            for (const a of attachments) {
-                                                if (a.type === 'image' || a.type === 'video' || a.type === 'audio') {
-                                                    // Get natural dimensions from signed URL (same as canvas upload)
-                                                    let naturalWidth: number | undefined;
-                                                    let naturalHeight: number | undefined;
-                                                    if (a.type === 'image' && a.storageKey) {
-                                                        try {
-                                                            const { getSignedUrl: getUrl } = await import('@clash/web-ui/lib/hooks/useSignedUrl');
-                                                            const url = await getUrl(a.storageKey);
-                                                            const dims = await new Promise<{ w: number; h: number }>((resolve, reject) => {
-                                                                const img = new Image();
-                                                                img.onload = () => resolve({ w: img.naturalWidth, h: img.naturalHeight });
-                                                                img.onerror = reject;
-                                                                img.src = url;
-                                                            });
-                                                            naturalWidth = dims.w;
-                                                            naturalHeight = dims.h;
-                                                        } catch { /* use defaults */ }
-                                                    }
-                                                    addNode(a.type, {
-                                                        label: a.fileName,
-                                                        src: a.storageKey,
-                                                        storageKey: a.storageKey,
-                                                        url: a.url,
-                                                        status: 'completed',
-                                                        ...(naturalWidth && naturalHeight ? { naturalWidth, naturalHeight } : {}),
-                                                    });
-                                                } else {
-                                                    addNode('text', { label: a.fileName, content: `[Uploaded: ${a.fileName}](${a.storageKey})` });
-                                                }
-                                            }
-                                        }, [addNode])}
+                                        registerRoomSink={registerRoomSink}
                                     />
                                 </div>
                             </div>

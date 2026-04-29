@@ -75,7 +75,27 @@ export interface ActivityMessage {
   timestamp: number;
 }
 
-export type SidebandMessage = PresenceMessage | ActivityMessage;
+// ─── Project Room (group-chat IM) ─────────────────────────────
+
+export interface RoomMention {
+  user_id: string;
+  crew_id?: string;
+}
+
+/** Server → client: a new room message (matches D1 row + mentions parsed). */
+export interface RoomMessageEvent {
+  type: "room.message";
+  id: string;
+  project_id: string;
+  sender_kind: "user" | "crew";
+  sender_id: string;       // crew_id when 'crew', user_id when 'user'
+  sender_user_id: string;  // always the human (daemon owner for crew)
+  mentions: RoomMention[];
+  text: string;
+  at: number;              // unix seconds
+}
+
+export type SidebandMessage = PresenceMessage | ActivityMessage | RoomMessageEvent;
 
 /**
  * Type guard: check if a parsed JSON message is a valid sideband message.
@@ -83,5 +103,5 @@ export type SidebandMessage = PresenceMessage | ActivityMessage;
 export function isSidebandMessage(msg: unknown): msg is SidebandMessage {
   if (!msg || typeof msg !== "object") return false;
   const t = (msg as any).type;
-  return t === "presence" || t === "activity";
+  return t === "presence" || t === "activity" || t === "room.message";
 }

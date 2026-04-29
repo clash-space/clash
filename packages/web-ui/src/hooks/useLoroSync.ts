@@ -1,7 +1,7 @@
 import { useEffect, useRef, useCallback, useState } from 'react';
 import { LoroDoc, UndoManager } from 'loro-crdt';
 import { Node, Edge } from '@xyflow/react';
-import type { PresenceClient, ActivityMessage } from '@clash/shared-types';
+import type { PresenceClient, ActivityMessage, RoomMessageEvent } from '@clash/shared-types';
 import { isSidebandMessage } from '@clash/shared-types';
 
 // ReactFlow v12: parent nodes must appear before children in the nodes array.
@@ -32,6 +32,8 @@ interface LoroSyncOptions {
   onTaskUpdate?: (taskId: string, taskData: any) => void;
   onPresenceChange?: (clients: PresenceClient[]) => void;
   onActivity?: (activity: ActivityMessage) => void;
+  /** Group-chat IM: a new message just landed in this project's room. */
+  onRoomMessage?: (msg: RoomMessageEvent) => void;
 }
 
 export interface UseLoroSyncReturn {
@@ -170,6 +172,7 @@ export function useLoroSync(options: LoroSyncOptions): UseLoroSyncReturn {
     onTaskUpdate,
     onPresenceChange,
     onActivity,
+    onRoomMessage,
   } = options;
 
   const [doc] = useState(() => new LoroDoc());
@@ -193,10 +196,10 @@ export function useLoroSync(options: LoroSyncOptions): UseLoroSyncReturn {
 
   // Stash callbacks in a ref so init / subscribe effects don't re-run when the caller
   // passes inline closures (which get a new reference on every parent render).
-  const callbacksRef = useRef({ onNodesChange, onEdgesChange, onTaskUpdate, onPresenceChange, onActivity });
+  const callbacksRef = useRef({ onNodesChange, onEdgesChange, onTaskUpdate, onPresenceChange, onActivity, onRoomMessage });
   useEffect(() => {
-    callbacksRef.current = { onNodesChange, onEdgesChange, onTaskUpdate, onPresenceChange, onActivity };
-  }, [onNodesChange, onEdgesChange, onTaskUpdate, onPresenceChange, onActivity]);
+    callbacksRef.current = { onNodesChange, onEdgesChange, onTaskUpdate, onPresenceChange, onActivity, onRoomMessage };
+  }, [onNodesChange, onEdgesChange, onTaskUpdate, onPresenceChange, onActivity, onRoomMessage]);
 
   // Track pending local updates that haven't been acknowledged by server
   
@@ -465,6 +468,8 @@ export function useLoroSync(options: LoroSyncOptions): UseLoroSyncReturn {
               callbacksRef.current.onPresenceChange(msg.clients);
             } else if (msg.type === 'activity' && callbacksRef.current.onActivity) {
               callbacksRef.current.onActivity(msg);
+            } else if (msg.type === 'room.message' && callbacksRef.current.onRoomMessage) {
+              callbacksRef.current.onRoomMessage(msg);
             }
           }
         } catch {
