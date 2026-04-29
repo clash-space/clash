@@ -132,7 +132,9 @@ export async function runDaemon(): Promise<void> {
           case "pong":
             return;
           case "session.start":
-            process.stderr.write(`  session.start sid=${(msg.session_id as string)?.slice(0, 8)} agent=${msg.agent_id}\n`);
+            process.stderr.write(
+              `  session.start sid=${(msg.session_id as string)?.slice(0, 8)} crew=${msg.crew_id}${msg.agent_id ? ` agent=${msg.agent_id}` : ""}\n`,
+            );
             void sessions.start(msg as never);
             return;
           case "session.prompt":

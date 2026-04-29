@@ -346,6 +346,10 @@ export const crewMember = sqliteTable(
         userId: text("user_id").notNull(),
         templateId: text("template_id").notNull(),
         runtimeId: text("runtime_id").notNull(),
+        // ACP CLI to spawn (claude-code-acp / codex / gemini / …).
+        // Nullable for back-compat with rows claimed before agent_id
+        // existed; server falls back to the template's bundled default.
+        agentId: text("agent_id"),
         displayName: text("display_name").notNull(),
         createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
     },

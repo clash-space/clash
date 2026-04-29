@@ -54,13 +54,15 @@ interface CrewRow {
   user_id: string;
   template_id: string;
   runtime_id: string;
+  agent_id: string | null;
   display_name: string;
   created_at: number;
 }
 
-interface CrewWithRuntime extends CrewRow {
-  runtime_label: string | null;
+interface CrewJoinRow extends CrewRow {
+  runtime_hostname: string | null;
   runtime_status: string | null;
+  runtime_agents_json: string | null;
 }
 
 // GET /api/v1/crew
@@ -68,19 +70,40 @@ crewRoutes.get("/", async (c) => {
   const userId = c.req.header("x-user-id");
   if (!userId) return c.json({ error: "unauthorized" }, 401);
 
+  // runtime.label doesn't exist; UI label is hostname (with os as a
+  // small qualifier — see RuntimesSection in SettingsClient).
   const { results } = await c.env.DB.prepare(
     `SELECT
-        cm.id, cm.user_id, cm.template_id, cm.runtime_id,
+        cm.id, cm.user_id, cm.template_id, cm.runtime_id, cm.agent_id,
         cm.display_name, cm.created_at,
-        r.label  AS runtime_label,
-        r.status AS runtime_status
+        r.hostname    AS runtime_hostname,
+        r.status      AS runtime_status,
+        r.agents_json AS runtime_agents_json
      FROM crew_member cm
      LEFT JOIN runtime r ON r.id = cm.runtime_id
      WHERE cm.user_id = ?
      ORDER BY cm.created_at ASC`,
-  ).bind(userId).all<CrewWithRuntime>();
+  ).bind(userId).all<CrewJoinRow>();
 
-  return c.json({ crew: results ?? [] });
+  // Map runtime_hostname → runtime_label so the UI can stay generic if
+  // the underlying column moves later (e.g., when we add an explicit
+  // user-set label column).
+  const crew = (results ?? []).map((r) => ({
+    id: r.id,
+    user_id: r.user_id,
+    template_id: r.template_id,
+    runtime_id: r.runtime_id,
+    agent_id: r.agent_id,
+    display_name: r.display_name,
+    created_at: r.created_at,
+    runtime_label: r.runtime_hostname,
+    runtime_status: r.runtime_status,
+    runtime_agents: r.runtime_agents_json
+      ? (JSON.parse(r.runtime_agents_json) as Array<{ id: string }>)
+      : [],
+  }));
+
+  return c.json({ crew });
 });
 
 // POST /api/v1/crew
@@ -91,6 +114,7 @@ crewRoutes.post("/", async (c) => {
   const body = (await c.req.json().catch(() => ({}))) as {
     template_id?: string;
     runtime_id?: string;
+    agent_id?: string;
     display_name?: string;
   };
 
@@ -103,12 +127,29 @@ crewRoutes.post("/", async (c) => {
   const rid = body.runtime_id?.trim() ?? "";
   if (!rid) return c.json({ error: "runtime_id required" }, 400);
 
-  // Verify runtime ownership — fail-fast 404 instead of 403 to keep
-  // the existence of other users' runtimes opaque.
+  const agentId = body.agent_id?.trim() ?? "";
+  if (!agentId) return c.json({ error: "agent_id required" }, 400);
+
+  // Verify runtime ownership AND that the requested agent is detected
+  // on it. agents_json is what the daemon reported at attach time;
+  // claiming an agent that isn't on PATH would just fail at session
+  // spawn, so reject upfront.
   const runtime = await c.env.DB.prepare(
-    "SELECT id FROM runtime WHERE id = ? AND owner_user_id = ?",
-  ).bind(rid, userId).first<{ id: string }>();
+    "SELECT id, agents_json FROM runtime WHERE id = ? AND owner_user_id = ?",
+  ).bind(rid, userId).first<{ id: string; agents_json: string }>();
   if (!runtime) return c.json({ error: "runtime not found" }, 404);
+
+  const detected = (() => {
+    try {
+      const arr = JSON.parse(runtime.agents_json ?? "[]");
+      return Array.isArray(arr) ? arr.map((a) => a?.id).filter(Boolean) : [];
+    } catch { return []; }
+  })();
+  if (!detected.includes(agentId)) {
+    return c.json({
+      error: `agent '${agentId}' not detected on runtime; available: ${detected.join(", ") || "(none)"}`,
+    }, 400);
+  }
 
   const id = crypto.randomUUID();
   const at = Math.floor(Date.now() / 1000);
@@ -116,15 +157,16 @@ crewRoutes.post("/", async (c) => {
 
   await c.env.DB.prepare(
     `INSERT INTO crew_member
-     (id, user_id, template_id, runtime_id, display_name, created_at)
-     VALUES (?, ?, ?, ?, ?, ?)`,
-  ).bind(id, userId, tplId, rid, displayName, at).run();
+     (id, user_id, template_id, runtime_id, agent_id, display_name, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+  ).bind(id, userId, tplId, rid, agentId, displayName, at).run();
 
   return c.json({
     id,
     user_id: userId,
     template_id: tplId,
     runtime_id: rid,
+    agent_id: agentId,
     display_name: displayName,
     created_at: at,
   }, 201);

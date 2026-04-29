@@ -555,6 +555,7 @@ interface CrewMemberRow {
     user_id: string;
     template_id: string;
     runtime_id: string;
+    agent_id: string | null;
     display_name: string;
     created_at: number;
     runtime_label: string | null;
@@ -576,6 +577,7 @@ function CrewSection() {
     const [claimOpen, setClaimOpen] = useState(false);
     const [claimingTpl, setClaimingTpl] = useState<string>('');
     const [claimingRid, setClaimingRid] = useState<string>('');
+    const [claimingAgent, setClaimingAgent] = useState<string>('');
     const [claimingName, setClaimingName] = useState<string>('');
     const [claimBusy, setClaimBusy] = useState(false);
     const [removingId, setRemovingId] = useState<string | null>(null);
@@ -594,7 +596,7 @@ function CrewSection() {
     useEffect(() => { void refresh(); }, [refresh]);
 
     const onClaim = async () => {
-        if (!claimingTpl || !claimingRid) return;
+        if (!claimingTpl || !claimingRid || !claimingAgent) return;
         setClaimBusy(true);
         try {
             const res = await fetch('/api/v1/crew', {
@@ -604,6 +606,7 @@ function CrewSection() {
                 body: JSON.stringify({
                     template_id: claimingTpl,
                     runtime_id: claimingRid,
+                    agent_id: claimingAgent,
                     ...(claimingName.trim() ? { display_name: claimingName.trim() } : {}),
                 }),
             });
@@ -616,6 +619,7 @@ function CrewSection() {
             setClaimOpen(false);
             setClaimingTpl('');
             setClaimingRid('');
+            setClaimingAgent('');
             setClaimingName('');
         } finally {
             setClaimBusy(false);
@@ -709,6 +713,35 @@ function CrewSection() {
                         )}
                     </div>
 
+                    {/* Agent picker — filtered to what the chosen runtime has on PATH. */}
+                    {(() => {
+                        const chosen = rt.runtimes.find((r) => r.id === claimingRid);
+                        const detected = chosen?.agents ?? [];
+                        return (
+                            <div>
+                                <label className="block text-xs font-medium text-gray-600 mb-1.5">Agent (which CLI powers this crew)</label>
+                                <select
+                                    value={claimingAgent}
+                                    onChange={(e) => setClaimingAgent(e.target.value)}
+                                    disabled={!claimingRid || detected.length === 0}
+                                    className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm disabled:bg-slate-100"
+                                >
+                                    <option value="">— pick an agent —</option>
+                                    {detected.map((a) => (
+                                        <option key={a.id} value={a.id}>
+                                            {a.id}{a.version ? ` · v${a.version}` : ''}
+                                        </option>
+                                    ))}
+                                </select>
+                                {claimingRid && detected.length === 0 && (
+                                    <p className="text-xs text-amber-600 mt-1">
+                                        No ACP agents detected on this runtime. Install one (e.g. <code>npm i -g @zed-industries/claude-code-acp</code>) and re-run <code>clash-bridge setup --force</code>.
+                                    </p>
+                                )}
+                            </div>
+                        );
+                    })()}
+
                     <div>
                         <label className="block text-xs font-medium text-gray-600 mb-1.5">Name</label>
                         <input
@@ -732,7 +765,7 @@ function CrewSection() {
                         <button
                             type="button"
                             onClick={() => void onClaim()}
-                            disabled={!claimingTpl || !claimingRid || claimBusy}
+                            disabled={!claimingTpl || !claimingRid || !claimingAgent || claimBusy}
                             className="rounded-full bg-gray-900 text-white px-3.5 py-1.5 text-sm hover:bg-gray-800 disabled:bg-gray-300"
                         >
                             {claimBusy ? 'Claiming…' : 'Claim'}
@@ -766,6 +799,7 @@ function CrewSection() {
                                     </div>
                                     <div className="text-xs text-gray-500">
                                         On: {c.runtime_label || c.runtime_id.slice(0, 12)}
+                                        {c.agent_id && <span className="ml-2">· {c.agent_id}</span>}
                                         {!online && <span className="text-amber-600 ml-2">(runtime offline)</span>}
                                     </div>
                                 </div>

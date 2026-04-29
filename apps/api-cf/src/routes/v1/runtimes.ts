@@ -263,15 +263,16 @@ runtimesRoutes.post("/:rid/sessions", async (c) => {
     resume_session_id?: string;
   };
 
-  let crewId: string | null = null;          // template id sent to daemon
-  let crewMemberId: string | null = null;    // null in legacy path
+  let crewId: string | null = null;            // template id sent to daemon
+  let crewMemberId: string | null = null;      // null in legacy path
+  let agentOverride: string | null = null;     // ACP CLI override from claim
 
   if (body.crew_member_id) {
     // Modern path — resolve through claim layer.
     const cm = await c.env.DB.prepare(
-      "SELECT id, template_id, runtime_id FROM crew_member WHERE id = ? AND user_id = ?",
+      "SELECT id, template_id, runtime_id, agent_id FROM crew_member WHERE id = ? AND user_id = ?",
     ).bind(body.crew_member_id, userId).first<{
-      id: string; template_id: string; runtime_id: string;
+      id: string; template_id: string; runtime_id: string; agent_id: string | null;
     }>();
     if (!cm) return c.json({ error: "crew member not found" }, 404);
     if (cm.runtime_id !== rid) {
@@ -279,6 +280,7 @@ runtimesRoutes.post("/:rid/sessions", async (c) => {
     }
     crewId = cm.template_id;
     crewMemberId = cm.id;
+    agentOverride = cm.agent_id;
   } else {
     // Legacy path — accept template id directly. Soon to be removed.
     crewId = body.crew_id ?? (body.agent_id ? "director" : null);
@@ -308,6 +310,10 @@ runtimesRoutes.post("/:rid/sessions", async (c) => {
     type: "session.start",
     session_id: sessionId,
     crew_id: crewId,
+    // agent_id override — daemon prefers this over the bundled
+    // template's runtime.json default. Lets each user pick which CLI
+    // (claude-code-acp / codex / gemini / …) powers their crew.
+    ...(agentOverride ? { agent_id: agentOverride } : {}),
     ...(body.project_id ? { project_id: body.project_id } : {}),
     ...(body.resume_session_id ? { resume: { acp_session_id: body.resume_session_id } } : {}),
   });

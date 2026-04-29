@@ -38,6 +38,14 @@ export interface SessionStartParams {
    */
   crew_id: string;
   /**
+   * Optional ACP CLI override (e.g. "claude-code-acp", "codex",
+   * "gemini"). When set, daemon spawns this CLI instead of the one
+   * the crew template's bundled runtime.json points at. Server fills
+   * this in from crew_member.agent_id when the user has claimed a
+   * crew with a specific CLI choice.
+   */
+  agent_id?: string;
+  /**
    * Optional clash project id. Different projects get isolated
    * workspaces (~/.clash/crew/<crew>/<project>/), so the same crew
    * member's memory and tool state don't bleed across projects.
@@ -124,24 +132,28 @@ export class SessionManager {
       });
       return;
     }
-    // Resolve crew member → which ACP runtime to spawn. Bundled crew
-    // members carry their own runtime.json that picks the right CLI;
-    // user-customizable crew (v2) will follow the same convention.
-    const crewRuntime = await readCrewRuntime(p.crew_id);
-    if (!crewRuntime) {
+    // Resolve crew template → role definition (CLAUDE.md / skills).
+    // Existence check only; the agent CLI choice now comes from the
+    // server's session.start payload (crew_member.agent_id) so users
+    // can pick claude-code-acp / codex / gemini per claim. Falls back
+    // to the template's bundled runtime.json default when the server
+    // didn't supply an override (legacy crew_id-only path).
+    const tpl = await readCrewRuntime(p.crew_id);
+    if (!tpl) {
       this.#send({
         type: "session.error",
         session_id: p.session_id,
-        message: `unknown crew member: ${p.crew_id}`,
+        message: `unknown crew template: ${p.crew_id}`,
       });
       return;
     }
-    const agent = KNOWN_ACP_AGENTS.find((a) => a.id === crewRuntime.agent_id);
+    const resolvedAgentId = p.agent_id ?? tpl.agent_id;
+    const agent = KNOWN_ACP_AGENTS.find((a) => a.id === resolvedAgentId);
     if (!agent) {
       this.#send({
         type: "session.error",
         session_id: p.session_id,
-        message: `crew member '${p.crew_id}' wants agent '${crewRuntime.agent_id}' but it's not in the registry`,
+        message: `agent '${resolvedAgentId}' (for crew '${p.crew_id}') not in the registry`,
       });
       return;
     }
