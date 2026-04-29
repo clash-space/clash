@@ -4,7 +4,19 @@ import {
   useEditorPlayback,
   useEditorStaticState,
 } from '@master-clash/remotion-core';
-import type { TextItem, SolidItem } from '@master-clash/remotion-core';
+import type { TextItem, SolidItem, TransitionItem, TransitionType } from '@master-clash/remotion-core';
+
+const TRANSITION_TYPES: TransitionType[] = [
+  'crossfade',
+  'push-left',
+  'push-right',
+  'slide-up',
+  'slide-down',
+  'wipe-left',
+  'wipe-right',
+  'circle-wipe',
+  'zoom-in',
+];
 
 const panelClassName = 'flex h-full flex-col overflow-hidden bg-[#fffdfb]';
 const panelHeaderClassName = 'flex items-center justify-between border-b border-slate-200/80 bg-white/95 px-4 py-3';
@@ -387,6 +399,180 @@ export const PropertiesPanel: React.FC = () => {
             />
           </div>
         </div>
+
+        {/* Transition Item Properties */}
+        {item.type === 'transition' && (
+          <div className="mb-6">
+            <h3 className={sectionTitleClassName}>Transition</h3>
+            <div className="mb-3">
+              <label className={labelClassName}>Type</label>
+              <select
+                value={(item as TransitionItem).transitionType}
+                onChange={(e) =>
+                  updateItem({ transitionType: e.target.value as TransitionType } as Partial<typeof item>)
+                }
+                className={fieldClassName}
+              >
+                {TRANSITION_TYPES.map((t) => (
+                  <option key={t} value={t}>
+                    {t}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="mb-3 grid grid-cols-2 gap-2">
+              <div>
+                <label className={labelClassName}>From item ID</label>
+                <input
+                  type="text"
+                  value={(item as TransitionItem).fromItemId ?? ''}
+                  onChange={(e) =>
+                    updateItem({ fromItemId: e.target.value } as Partial<typeof item>)
+                  }
+                  className={fieldClassName}
+                  placeholder="clip leaving"
+                />
+              </div>
+              <div>
+                <label className={labelClassName}>To item ID</label>
+                <input
+                  type="text"
+                  value={(item as TransitionItem).toItemId ?? ''}
+                  onChange={(e) =>
+                    updateItem({ toItemId: e.target.value } as Partial<typeof item>)
+                  }
+                  className={fieldClassName}
+                  placeholder="clip entering"
+                />
+              </div>
+            </div>
+            <p className="m-0 text-xs text-slate-500">
+              Both clips are auto-hidden on their original tracks during the transition window.
+            </p>
+          </div>
+        )}
+
+        {/* Fades & Transitions */}
+        {(item.type === 'video' || item.type === 'audio' || item.type === 'image') && (
+          <div className="mb-6">
+            <h3 className={sectionTitleClassName}>Fades & Transitions</h3>
+
+            {item.type === 'video' && (
+              <>
+                <div className="mb-3 grid grid-cols-2 gap-2">
+                  <div>
+                    <label className={labelClassName}>Video fade in (frames)</label>
+                    <input
+                      type="number"
+                      min={0}
+                      value={(item as { videoFadeIn?: number }).videoFadeIn ?? 0}
+                      onChange={(e) =>
+                        updateItem({ videoFadeIn: Math.max(0, parseInt(e.target.value) || 0) } as Partial<typeof item>)
+                      }
+                      className={fieldClassName}
+                    />
+                  </div>
+                  <div>
+                    <label className={labelClassName}>Video fade out (frames)</label>
+                    <input
+                      type="number"
+                      min={0}
+                      value={(item as { videoFadeOut?: number }).videoFadeOut ?? 0}
+                      onChange={(e) =>
+                        updateItem({ videoFadeOut: Math.max(0, parseInt(e.target.value) || 0) } as Partial<typeof item>)
+                      }
+                      className={fieldClassName}
+                    />
+                  </div>
+                </div>
+                <div className="mb-3 grid grid-cols-2 gap-2">
+                  <div>
+                    <label className={labelClassName}>Fade-in color (optional)</label>
+                    <input
+                      type="text"
+                      placeholder="e.g. white, #000"
+                      value={(item as { videoFadeInColor?: string }).videoFadeInColor ?? ''}
+                      onChange={(e) =>
+                        updateItem({ videoFadeInColor: e.target.value || undefined } as Partial<typeof item>)
+                      }
+                      className={fieldClassName}
+                    />
+                  </div>
+                  <div>
+                    <label className={labelClassName}>Fade-out color (optional)</label>
+                    <input
+                      type="text"
+                      placeholder="e.g. white, #000"
+                      value={(item as { videoFadeOutColor?: string }).videoFadeOutColor ?? ''}
+                      onChange={(e) =>
+                        updateItem({ videoFadeOutColor: e.target.value || undefined } as Partial<typeof item>)
+                      }
+                      className={fieldClassName}
+                    />
+                  </div>
+                </div>
+              </>
+            )}
+
+            <div className="mb-3 grid grid-cols-2 gap-2">
+              <div>
+                <label className={labelClassName}>Audio fade in (frames)</label>
+                <input
+                  type="number"
+                  min={0}
+                  value={(item as { audioFadeIn?: number }).audioFadeIn ?? 0}
+                  onChange={(e) =>
+                    updateItem({ audioFadeIn: Math.max(0, parseInt(e.target.value) || 0) } as Partial<typeof item>)
+                  }
+                  className={fieldClassName}
+                  disabled={item.type === 'image'}
+                />
+              </div>
+              <div>
+                <label className={labelClassName}>Audio fade out (frames)</label>
+                <input
+                  type="number"
+                  min={0}
+                  value={(item as { audioFadeOut?: number }).audioFadeOut ?? 0}
+                  onChange={(e) =>
+                    updateItem({ audioFadeOut: Math.max(0, parseInt(e.target.value) || 0) } as Partial<typeof item>)
+                  }
+                  className={fieldClassName}
+                  disabled={item.type === 'image'}
+                />
+              </div>
+            </div>
+
+            {item.type === 'image' && (
+              <div className="mb-3 grid grid-cols-2 gap-2">
+                <div>
+                  <label className={labelClassName}>Image fade in (frames)</label>
+                  <input
+                    type="number"
+                    min={0}
+                    value={(item as { imageFadeIn?: number }).imageFadeIn ?? 0}
+                    onChange={(e) =>
+                      updateItem({ imageFadeIn: Math.max(0, parseInt(e.target.value) || 0) } as Partial<typeof item>)
+                    }
+                    className={fieldClassName}
+                  />
+                </div>
+                <div>
+                  <label className={labelClassName}>Image fade out (frames)</label>
+                  <input
+                    type="number"
+                    min={0}
+                    value={(item as { imageFadeOut?: number }).imageFadeOut ?? 0}
+                    onChange={(e) =>
+                      updateItem({ imageFadeOut: Math.max(0, parseInt(e.target.value) || 0) } as Partial<typeof item>)
+                    }
+                    className={fieldClassName}
+                  />
+                </div>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Text Item Properties */}
         {item.type === 'text' && (

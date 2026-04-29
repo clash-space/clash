@@ -1,8 +1,8 @@
 import React, { createContext, useContext, useReducer, ReactNode } from 'react';
 import type { EditorState, EditorAction, Item } from '../types';
 
-// Initial state
-const initialState: EditorState = {
+// Initial state (also exported for unit tests)
+export const editorInitialState: EditorState = {
   tracks: [],
   selectedItemId: null,
   selectedTrackId: null,
@@ -16,8 +16,9 @@ const initialState: EditorState = {
   durationInFrames: 1500, // 50 seconds at 30fps
 };
 
-// Reducer function
-function editorReducer(state: EditorState, action: EditorAction): EditorState {
+// Reducer function — exported for unit tests; in app code consumers should
+// dispatch through useEditorDispatch and let the provider drive it.
+export function editorReducer(state: EditorState, action: EditorAction): EditorState {
   switch (action.type) {
     case 'ADD_TRACK':
       return {
@@ -242,7 +243,7 @@ const EditorPlaybackRefsContext = createContext<EditorPlaybackRefs | undefined>(
 const EditorDispatchContext = createContext<React.Dispatch<EditorAction> | undefined>(undefined);
 
 // Default state for normalization
-const defaultState = initialState;
+const defaultState = editorInitialState;
 
 // Normalize initial state by merging with defaults
 function normalizeInitialState(providedState?: Partial<EditorState>): EditorState {

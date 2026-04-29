@@ -1,4 +1,4 @@
-.PHONY: install dev dev-web dev-api-cf dev-full build test lint clean format setup db-web-local check-tools help bundle remotion-bundle remotion-render
+.PHONY: install dev dev-web dev-api-cf dev-full build test lint clean format setup db-web-local check-tools help bundle remotion-bundle remotion-render deploy deploy-api deploy-web deploy-loro-sync deploy-all predeploy-check wrangler-whoami deploy-staging deploy-api-staging deploy-web-staging
 
 # Use interactive shell to load .zshrc environment
 
@@ -174,6 +174,102 @@ format: check-tools ## Format all code
 format-check: ## Check if code is formatted (CI use)
 	@echo "$(BLUE)Checking TypeScript formatting...$(NC)"
 	@pnpm prettier --check "**/*.{ts,tsx,json,md}"
+
+#==============================================================================
+# Deployment (Cloudflare Workers / Pages)
+#==============================================================================
+#
+# What deploys where (per apps/*/wrangler.toml):
+#   - api-cf      : Cloudflare Worker `clash-api`. Includes the
+#                   RenderContainer DO whose image is built from
+#                   apps/render-server/Dockerfile.cf during deploy. So
+#                   deploying api-cf also updates the render container.
+#                   render-server itself is NOT deployed standalone.
+#   - web         : Cloudflare Pages/Worker `clash-web` (built by Vite +
+#                   @cloudflare/vite-plugin). Has a `pnpm build` step
+#                   before wrangler deploy.
+#   - loro-sync   : Legacy worker. Functionality merged into api-cf —
+#                   only deploy on explicit request.
+#
+# Order matters: deploy api-cf BEFORE web so web's runtime sees the new
+# bindings/DO classes. The combined `make deploy` enforces this.
+#
+# Pre-deploy gates:
+#   - `make lint` runs first (unless SKIP_CHECKS=1)
+#   - wrangler must be authenticated; we surface `wrangler whoami` early
+#     so failures don't happen mid-deploy.
+
+WRANGLER ?= pnpm --silent dlx wrangler
+
+wrangler-whoami: ## Confirm wrangler is logged in (warns, doesn't fail)
+	@echo "$(BLUE)Checking wrangler auth...$(NC)"
+	@cd apps/api-cf && pnpm exec wrangler whoami 2>&1 | tail -3 || \
+		echo "$(YELLOW)Not logged in. Run: pnpm exec wrangler login$(NC)"
+
+predeploy-check: ## Run lint before any deploy (skip with SKIP_CHECKS=1)
+	@if [ "$(SKIP_CHECKS)" = "1" ]; then \
+		echo "$(YELLOW)⚠ SKIP_CHECKS=1 — skipping pre-deploy lint$(NC)"; \
+	else \
+		echo "$(BLUE)Pre-deploy lint...$(NC)"; \
+		$(MAKE) lint || { echo "$(RED)Pre-deploy lint failed. Fix or set SKIP_CHECKS=1 to override.$(NC)"; exit 1; }; \
+	fi
+
+deploy-api: predeploy-check ## Deploy api-cf (Workers + RenderContainer image)
+	@echo "$(BLUE)Deploying clash-api → Cloudflare Workers...$(NC)"
+	@# `pnpm run deploy` (not `pnpm deploy`) — the latter is pnpm's built-in
+	@# workspace-deployment command and does NOT execute package.json scripts.
+	@cd apps/api-cf && pnpm run deploy
+	@echo "$(GREEN)✓ api-cf deployed$(NC)"
+
+deploy-web: predeploy-check ## Build + deploy web (Pages/Worker)
+	@echo "$(BLUE)Deploying clash-web → Cloudflare...$(NC)"
+	@cd apps/web && pnpm run deploy
+	@echo "$(GREEN)✓ web deployed$(NC)"
+
+deploy-loro-sync: predeploy-check ## Deploy legacy loro-sync-server (rare)
+	@echo "$(YELLOW)⚠ loro-sync-server is legacy — verify you really want to deploy it.$(NC)"
+	@cd apps/loro-sync-server && pnpm run deploy
+	@echo "$(GREEN)✓ loro-sync-server deployed$(NC)"
+
+deploy: predeploy-check ## Deploy api-cf then web (the standard production path)
+	@echo "$(BLUE)Deploying api-cf + web (in order)...$(NC)"
+	@$(MAKE) deploy-api SKIP_CHECKS=1
+	@$(MAKE) deploy-web SKIP_CHECKS=1
+	@echo ""
+	@echo "$(GREEN)✓ Standard deploy complete (api-cf + web)$(NC)"
+	@echo "$(YELLOW)Note: loro-sync-server is legacy and was not deployed.$(NC)"
+	@echo "$(YELLOW)      Run 'make deploy-loro-sync' explicitly if needed.$(NC)"
+
+deploy-all: predeploy-check ## Deploy everything including legacy loro-sync-server
+	@$(MAKE) deploy-api SKIP_CHECKS=1
+	@$(MAKE) deploy-web SKIP_CHECKS=1
+	@$(MAKE) deploy-loro-sync SKIP_CHECKS=1
+	@echo "$(GREEN)✓ All workers deployed$(NC)"
+
+# ─── Staging ──────────────────────────────────────────────────────────
+# `[env.staging]` in each app's wrangler.toml binds staging workers to
+# PRODUCTION data (real D1 / R2). Worker names get a `-staging` suffix so
+# they don't collide with the prod workers. The wrangler.toml staging
+# sections must NOT be committed (they contain real resource IDs).
+
+deploy-api-staging: predeploy-check ## Deploy clash-api-staging (uses prod data)
+	@echo "$(BLUE)Deploying clash-api-staging → Cloudflare Workers...$(NC)"
+	@cd apps/api-cf && pnpm exec wrangler deploy --env staging
+	@echo "$(GREEN)✓ api-cf staging deployed$(NC)"
+
+deploy-web-staging: predeploy-check ## Build + deploy clash-web-staging (uses prod data)
+	@echo "$(BLUE)Deploying clash-web-staging → Cloudflare...$(NC)"
+	@cd apps/web && pnpm build && pnpm exec wrangler deploy --env staging
+	@echo "$(GREEN)✓ web staging deployed$(NC)"
+
+deploy-staging: predeploy-check ## Deploy api-cf + web staging (in order)
+	@echo "$(BLUE)Deploying staging (api-cf → web)...$(NC)"
+	@$(MAKE) deploy-api-staging SKIP_CHECKS=1
+	@$(MAKE) deploy-web-staging SKIP_CHECKS=1
+	@echo ""
+	@echo "$(GREEN)✓ Staging deploy complete$(NC)"
+	@echo "$(YELLOW)Reminder: set MEDIA_GATEWAY_URL on api-cf-staging if rendering.$(NC)"
+	@echo "$(YELLOW)  → wrangler secret put MEDIA_GATEWAY_URL --env staging$(NC)"
 
 #==============================================================================
 # Cleanup

@@ -166,6 +166,22 @@ export {
 // Collaboration visibility (presence + activity)
 export * from './presence';
 
+// Timeline YAML projection (agent-facing surface)
+export {
+  timelineDslToYaml,
+  timelineDslFromYaml,
+  timelineDslHash,
+  parseFromExpression,
+  resolveFromExpression,
+} from './timeline-yaml';
+export type {
+  ResolvedTimelineDsl,
+  ResolvedItem,
+  ResolvedTrack,
+  FromExpression,
+  FromYamlResult,
+} from './timeline-yaml';
+
 // Asset metadata (D1 assets + asset_refs tables)
 export {
   AssetKindSchema,

@@ -20,6 +20,7 @@ import { ImageRenderer } from './renderers/ImageRenderer';
 import { TextRenderer } from './renderers/TextRenderer';
 import { SolidRenderer } from './renderers/SolidRenderer';
 import { StickerRenderer } from './renderers/StickerRenderer';
+import { TransitionRenderer } from './renderers/TransitionRenderer';
 
 // Registry: map item.type to its renderer.
 // Adding a new type only requires wiring here and implementing its renderer.
@@ -31,6 +32,7 @@ export const itemRendererRegistry: Record<string, ItemRenderer> = {
   solid: SolidRenderer,
   // Future: animated stickers (webp, image sequences)
   sticker: StickerRenderer,
+  transition: TransitionRenderer,
 } as const;
 
 export function getRendererForItem(item: Item): ItemRenderer {

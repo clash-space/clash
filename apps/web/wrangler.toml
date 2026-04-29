@@ -63,3 +63,49 @@ API_CF_URL = "http://127.0.0.1:8789"
 [dev]
 port = 3001
 ip = "0.0.0.0"
+
+# ╔══════════════════════════════════════════════════════════════════╗
+# ║  [env.staging] — DO NOT COMMIT real resource IDs upstream.       ║
+# ║  This section binds the staging worker to PRODUCTION data        ║
+# ║  (master-clash-frontend D1 + master-clash-assets R2). The OSS    ║
+# ║  template should keep placeholder IDs only.                      ║
+# ╚══════════════════════════════════════════════════════════════════╝
+#
+# Deploy with:  wrangler deploy --env staging   (or `make deploy-web-staging`)
+[env.staging]
+name = "clash-web-staging"
+
+[env.staging.placement]
+mode = "smart"
+
+[env.staging.assets]
+binding = "ASSETS"
+directory = "./dist/client"
+not_found_handling = "single-page-application"
+run_worker_first = [
+  "/api/*",
+  "/sync/*",
+  "/agents/*",
+  "/assets/*",
+  "/thumbnails/*",
+  "/upload",
+  "/upload/*",
+  "/health",
+]
+
+[[env.staging.d1_databases]]
+binding = "DB"
+database_name = "master-clash-frontend"
+database_id = "aab16eeb-a375-490b-ad1e-cd092cd9f4bb"
+migrations_dir = "drizzle"
+
+[[env.staging.services]]
+binding = "API_CF"
+service = "clash-api-staging"
+
+[[env.staging.r2_buckets]]
+binding = "R2_BUCKET"
+bucket_name = "master-clash-assets"
+
+[env.staging.vars]
+BETTER_AUTH_BASE_PATH = "/api/better-auth"

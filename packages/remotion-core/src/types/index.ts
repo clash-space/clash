@@ -12,13 +12,30 @@ export type ItemProperties = {
 // Base types for timeline items
 export type BaseItem = {
   id: string;
-  from: number; // Start frame
+  from: number; // Start frame (resolved absolute frame; the canonical value
+                // every consumer reads — VideoComposition, render-server, DnD)
   durationInFrames: number;
   /** D1 asset row id, matching canvas node data.assetId. */
   assetId?: string;
   /** Canvas source node id. Legacy DSL stored this value in assetId. */
   sourceNodeId?: string;
   properties?: ItemProperties; // Canvas positioning and transform properties
+  /**
+   * Original relative-position expression authored by the agent or user via
+   * YAML — kept as an opaque memo. The `from` field above is the resolved
+   * absolute frame and is what every internal consumer actually reads.
+   *
+   * Examples (parsed by packages/shared-types/src/timeline-yaml.ts):
+   *   "30"          → absolute 30
+   *   "prev"        → previous item in the same track + 0
+   *   "prev+15"     → previous item's end + 15
+   *   "clip-A-30"   → item with id "clip-A" — 30 (overlap)
+   *   "start"       → 0
+   *
+   * Cleared whenever the user moves the item via DnD (the absolute
+   * position no longer matches the expression's intent).
+   */
+  fromExpr?: string;
 };
 
 // Different item types
@@ -48,6 +65,16 @@ export type VideoItem = BaseItem & {
   videoFadeOut?: number; // Video fade out duration in frames
   audioFadeIn?: number; // Audio fade in duration in frames
   audioFadeOut?: number; // Audio fade out duration in frames
+  /**
+   * Optional CSS color (e.g. "white", "#000"). If set, the videoFadeIn
+   * window is rendered as a colored overlay ramping out (the clip emerges
+   * FROM that color) instead of opacity-fading the video. Pair with the
+   * previous clip's videoFadeOutColor to produce a flash / fade-through-
+   * color transition.
+   */
+  videoFadeInColor?: string;
+  /** Mirror of videoFadeInColor for the fade-out window. */
+  videoFadeOutColor?: string;
 };
 
 export type AudioItem = BaseItem & {
@@ -65,6 +92,14 @@ export type AudioItem = BaseItem & {
 export type ImageItem = BaseItem & {
   type: 'image';
   src: string;
+  /** Image fade-in duration in frames. */
+  imageFadeIn?: number;
+  /** Image fade-out duration in frames. */
+  imageFadeOut?: number;
+  /** See VideoItem.videoFadeInColor — same semantics for images. */
+  imageFadeInColor?: string;
+  /** See VideoItem.videoFadeOutColor — same semantics for images. */
+  imageFadeOutColor?: string;
 };
 
 export type StickerItem = BaseItem & {
@@ -79,7 +114,46 @@ export type StickerItem = BaseItem & {
   };
 };
 
-export type Item = SolidItem | TextItem | VideoItem | AudioItem | ImageItem | StickerItem;
+/**
+ * Transition between two clips. Sits on the timeline like any other item;
+ * during [from, from + durationInFrames) it renders fromItem and toItem
+ * simultaneously with a transition effect applied. The referenced items
+ * are auto-hidden on their original tracks during the transition window
+ * (the renderer wires this up — see VideoComposition).
+ *
+ * Phase B v1 effects:
+ *  - push-left / push-right: translateX both clips
+ *  - circle-wipe: animated clip-path circle reveals toItem over fromItem
+ *  - crossfade: opacity blend (cleaner alternative to dual fadeIn/fadeOut)
+ */
+export type TransitionType =
+  | 'crossfade'
+  | 'push-left'
+  | 'push-right'
+  | 'slide-up'
+  | 'slide-down'
+  | 'wipe-left'
+  | 'wipe-right'
+  | 'circle-wipe'
+  | 'zoom-in';
+
+export type TransitionItem = BaseItem & {
+  type: 'transition';
+  transitionType: TransitionType;
+  /** ID of the clip leaving the screen. */
+  fromItemId: string;
+  /** ID of the clip entering the screen. */
+  toItemId: string;
+};
+
+export type Item =
+  | SolidItem
+  | TextItem
+  | VideoItem
+  | AudioItem
+  | ImageItem
+  | StickerItem
+  | TransitionItem;
 
 // Track definition
 export type Track = {

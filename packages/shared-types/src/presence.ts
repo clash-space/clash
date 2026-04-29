@@ -16,6 +16,19 @@ export interface ClientInfo {
   name: string;
   avatar?: string;
   connectedAt: number;
+  /**
+   * If set, this client has the timeline editor open on the given node and
+   * holds a soft edit-lock. Server-side writers (e.g. agent tools) should
+   * refuse to mutate node.data.timelineDsl while the lock is held.
+   *
+   * Lock is released when:
+   *   - client sends `set_editing_node` with nodeId=null (Editor closed)
+   *   - WebSocket disconnects (presence is WS-bound)
+   *
+   * "Soft" because nothing physically prevents a writer that ignores the
+   * advertisement; all timelineDsl writers are expected to consult presence.
+   */
+  editingNodeId?: string | null;
 }
 
 // ─── Sideband Message Types ───────────────────────────────────
@@ -26,6 +39,18 @@ export interface PresenceClient {
   userId: string;
   name: string;
   avatar?: string;
+  /** See ClientInfo.editingNodeId. Re-broadcast so all clients know who holds what. */
+  editingNodeId?: string | null;
+}
+
+/**
+ * Client → server: declare or release the soft edit-lock on a node.
+ * Sent over the same WebSocket as binary CRDT updates.
+ */
+export interface SetEditingNodeMessage {
+  type: "set_editing_node";
+  /** nodeId to start editing, or null to release any held lock. */
+  nodeId: string | null;
 }
 
 export interface PresenceMessage {
