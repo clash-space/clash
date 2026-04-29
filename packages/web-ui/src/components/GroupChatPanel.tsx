@@ -31,7 +31,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { CaretLeft, CaretRight, Plus, Gear, PaperPlaneRight, ArrowClockwise } from '@phosphor-icons/react';
+import { CaretRight, Plus, Gear, PaperPlaneRight, ArrowClockwise, ChatsCircle } from '@phosphor-icons/react';
 import { useGroupChat, type ClaimedCrew } from '@clash/web-ui/hooks/useGroupChat';
 import { useProjectRoom } from '@clash/web-ui/hooks/useProjectRoom';
 import { AcpMessageList } from '@clash/web-ui/components/copilot/AcpMessageList';
@@ -232,15 +232,20 @@ export function GroupChatPanel({
   };
 
   if (isCollapsed) {
+    // Floating circular ball — brand-tinted, slightly inset from the
+    // edge so it reads as "stuck to the page" not "sliced off the
+    // panel". Hover lifts + shifts left to invite the click.
     return (
       <motion.button
         onClick={() => onCollapseChange(false)}
-        className="fixed right-0 top-1/2 -translate-y-1/2 z-50 bg-warm-surface/90 backdrop-blur-md rounded-l-matrix p-2.5 shadow-lg hover:bg-warm-muted"
-        whileHover={{ scale: 1.05, x: -2 }}
-        whileTap={{ scale: 0.95 }}
+        className="fixed right-4 top-1/2 -translate-y-1/2 z-50 h-12 w-12 rounded-full bg-warm-surface/90 backdrop-blur-md shadow-xl hover:shadow-2xl flex items-center justify-center group"
+        whileHover={{ scale: 1.08, x: -4 }}
+        whileTap={{ scale: 0.92 }}
+        transition={{ type: 'spring', stiffness: 400, damping: 25 }}
         aria-label="Expand group chat"
+        title="Open group chat"
       >
-        <CaretLeft className="w-5 h-5 text-stone-600" weight="bold" />
+        <ChatsCircle className="w-6 h-6 text-brand group-hover:scale-110 transition-transform" weight="duotone" />
       </motion.button>
     );
   }
