@@ -354,7 +354,7 @@ export function GroupChatPanel({
 
   return (
     <div
-      className="h-full bg-warm-surface/85 backdrop-blur-xl shadow-2xl flex flex-col relative"
+      className="h-full bg-warm-surface/85 backdrop-blur-xl shadow-2xl flex flex-col relative rounded-matrix overflow-hidden"
       style={{ width }}
     >
       {/* Floating top-left: collapse */}

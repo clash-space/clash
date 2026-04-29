@@ -2240,7 +2240,7 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
                                   )}
                              </div>
 
-                            <div id="copilot-container" className="fixed right-0 top-0 bottom-0 z-40 pointer-events-none">
+                            <div id="copilot-container" className="fixed right-3 top-3 bottom-3 z-40 pointer-events-none">
                                 <div className="pointer-events-auto h-full">
                                     <GroupChatPanel
                                         projectId={project.id}
