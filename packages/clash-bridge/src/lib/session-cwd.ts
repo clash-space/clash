@@ -30,7 +30,11 @@ const DEFAULT_PROJECT = "_default";
 
 /** Bridge's bundled `dist/crew/` root. */
 function bundledCrewDir(): string {
-  return fileURLToPath(new URL("../crew/", import.meta.url));
+  // After tsup bundles, this module lives in `dist/<chunk>.js`, so the
+  // crew tree is the SIBLING `dist/crew/` — i.e. ./crew/ from here.
+  // Source-tree callers see the same shape (build emits dist/crew/
+  // before any code that touches this dir runs).
+  return fileURLToPath(new URL("./crew/", import.meta.url));
 }
 
 export interface CrewMemberManifest {
