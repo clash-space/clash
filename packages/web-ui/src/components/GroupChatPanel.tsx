@@ -312,7 +312,7 @@ export function GroupChatPanel({
               onClick={() => setShowAddMenu((v) => !v)}
               whileHover={{ scale: 1.05 }}
               whileTap={{ scale: 0.95 }}
-              className="h-8 w-8 rounded-matrix bg-warm-muted/70 backdrop-blur-sm hover:bg-warm-muted hover:text-red-500 text-stone-500 flex items-center justify-center transition-colors"
+              className="h-8 w-8 rounded-matrix bg-warm-muted/70 backdrop-blur-sm hover:bg-warm-muted hover:text-brand text-stone-500 flex items-center justify-center transition-colors"
               title="Invite crew"
             >
               <Plus className="w-3.5 h-3.5" weight="bold" />
@@ -333,7 +333,7 @@ export function GroupChatPanel({
                   ) : claimedCrew.length === 0 ? (
                     <div className="px-3 py-3 text-xs text-stone-500 leading-relaxed">
                       No crew claimed yet.{' '}
-                      <a href="/settings" className="text-red-500 hover:text-red-600 underline inline-flex items-center gap-0.5">
+                      <a href="/settings" className="text-brand hover:text-brand/80 underline inline-flex items-center gap-0.5">
                         Open Settings <Gear className="w-3 h-3" />
                       </a>
                     </div>
@@ -405,13 +405,13 @@ export function GroupChatPanel({
                 disabled={!draft.trim()}
                 whileHover={{ scale: draft.trim() ? 1.05 : 1 }}
                 whileTap={{ scale: draft.trim() ? 0.95 : 1 }}
-                className="self-end h-9 w-9 rounded-full bg-gradient-to-br from-red-500 to-pink-500 text-white flex items-center justify-center shadow-md disabled:opacity-40 disabled:cursor-not-allowed"
+                className="self-end h-9 w-9 rounded-full bg-gradient-to-br from-brand to-red-500 text-white flex items-center justify-center shadow-md disabled:opacity-40 disabled:cursor-not-allowed"
                 aria-label="Send"
               >
                 <PaperPlaneRight className="w-4 h-4" weight="fill" />
               </motion.button>
             </div>
-          {room.error && <div className="text-xs text-red-600 mt-1.5 px-1">{room.error}</div>}
+          {room.error && <div className="text-xs text-brand mt-1.5 px-1">{room.error}</div>}
         </div>
       </div>
     </div>
@@ -462,7 +462,7 @@ function TabPill({
         onClick={onClick}
         className={`group relative flex items-center gap-2 h-8 pl-1.5 pr-3 rounded-matrix text-xs font-medium transition-all ${
           active
-            ? 'bg-gradient-to-br from-red-500 to-pink-500 text-white shadow-md'
+            ? 'bg-gradient-to-br from-brand to-red-500 text-white shadow-md'
             : 'bg-warm-muted/70 backdrop-blur-sm text-stone-700 hover:bg-warm-muted hover:text-stone-900'
         }`}
       >
@@ -482,7 +482,7 @@ function TabPill({
         )}
         <span>{label}</span>
         {unread && !active && (
-          <span className="w-1.5 h-1.5 rounded-full bg-red-500" />
+          <span className="w-1.5 h-1.5 rounded-full bg-brand" />
         )}
         {pendingCount && pendingCount > 0 ? (
           <span className={`min-w-[16px] h-4 px-1 rounded-full text-[9px] font-bold flex items-center justify-center ${
@@ -496,7 +496,7 @@ function TabPill({
             role="button"
             onClick={(e) => { e.stopPropagation(); onClose(); }}
             className={`ml-0.5 text-[14px] leading-none opacity-0 group-hover:opacity-100 transition-opacity ${
-              active ? 'text-white/80 hover:text-white' : 'text-stone-400 hover:text-red-500'
+              active ? 'text-white/80 hover:text-white' : 'text-stone-400 hover:text-brand'
             }`}
             title="Remove from room"
           >
@@ -525,7 +525,7 @@ function RoomView({
     return (
       <div className="text-center text-sm text-stone-400 py-12">
         {hasInvited
-          ? <>Nothing in the room yet. Try <code className="px-1.5 py-0.5 rounded bg-warm-muted text-red-500 font-mono">@&lt;name&gt;</code> to address a crew member.</>
+          ? <>Nothing in the room yet. Try <code className="px-1.5 py-0.5 rounded bg-brand-light text-brand font-mono">@&lt;name&gt;</code> to address a crew member.</>
           : <>Invite a crew member with the <span className="px-1.5 py-0.5 rounded bg-warm-muted">+</span> button to start.</>
         }
       </div>
@@ -554,7 +554,7 @@ function RoomView({
               <div
                 className={`px-4 py-2.5 rounded-matrix text-sm whitespace-pre-wrap break-words shadow-sm ${
                   isMe
-                    ? 'bg-gradient-to-br from-red-500 to-pink-500 text-white'
+                    ? 'bg-gradient-to-br from-brand to-red-500 text-white'
                     : m.sender_kind === 'crew'
                     ? 'bg-amber-50/90 text-stone-800'
                     : 'bg-warm-muted/80 text-stone-800'
