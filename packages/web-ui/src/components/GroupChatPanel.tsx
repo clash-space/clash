@@ -29,7 +29,7 @@
  * swapping the JSX in ProjectEditor.tsx.
  */
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { CaretRight, Plus, Gear, PaperPlaneRight, ArrowClockwise, ChatsCircle } from '@phosphor-icons/react';
 import { useGroupChat, type ClaimedCrew } from '@clash/web-ui/hooks/useGroupChat';
@@ -224,7 +224,99 @@ export function GroupChatPanel({
     }
   }, [draft, userId, room, group, resolveMention]);
 
+  // ─── @-mention autocomplete ───────────────────────────────────
+  //
+  // Detect when the cursor sits right after a fresh `@<query>` token
+  // (no intervening space) — show a popover of invited crew filtered
+  // by the partial handle. Picking inserts the full @<handle> + space
+  // and dismisses. Arrow keys + Enter navigate; Escape dismisses.
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const [acOpen, setAcOpen] = useState(false);
+  const [acQuery, setAcQuery] = useState('');
+  const [acIdx, setAcIdx] = useState(0);
+
+  // Take the partial token immediately before the cursor that starts
+  // with @ (no spaces in between). null if no live mention being
+  // composed at the cursor.
+  const partialMention = useCallback((): { query: string; start: number } | null => {
+    const ta = textareaRef.current;
+    if (!ta) return null;
+    const pos = ta.selectionStart ?? 0;
+    const before = draft.slice(0, pos);
+    const m = before.match(/(?:^|\s)@([a-z0-9-]*)$/i);
+    if (!m) return null;
+    const start = pos - m[0].length + (m[0].startsWith('@') ? 0 : 1);
+    return { query: m[1], start };
+  }, [draft]);
+
+  const acMatches = useMemo(() => {
+    if (!acOpen) return [];
+    const q = acQuery.toLowerCase();
+    return invitedCrew.filter((c) => {
+      const handle = c.display_name.toLowerCase().replace(/\s+/g, '-');
+      return handle.startsWith(q) || c.template_id.startsWith(q);
+    });
+  }, [acOpen, acQuery, invitedCrew]);
+
+  // Re-evaluate autocomplete state whenever the draft / cursor moves.
+  const onDraftChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    setDraft(e.target.value);
+    // Defer one tick so selectionStart reflects the new value.
+    queueMicrotask(() => {
+      const partial = partialMention();
+      if (partial) {
+        setAcOpen(true);
+        setAcQuery(partial.query);
+        setAcIdx(0);
+      } else {
+        setAcOpen(false);
+      }
+    });
+  };
+
+  const insertMention = useCallback((row: CrewRow) => {
+    const ta = textareaRef.current;
+    if (!ta) return;
+    const partial = partialMention();
+    if (!partial) return;
+    const handle = row.display_name.toLowerCase().replace(/\s+/g, '-');
+    const before = draft.slice(0, partial.start);
+    const after = draft.slice((ta.selectionStart ?? 0));
+    const inserted = `@${handle} `;
+    const next = before + inserted + after;
+    setDraft(next);
+    setAcOpen(false);
+    // Move cursor to end of inserted mention on next paint.
+    queueMicrotask(() => {
+      const newPos = (before + inserted).length;
+      ta.focus();
+      ta.setSelectionRange(newPos, newPos);
+    });
+  }, [draft, partialMention]);
+
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (acOpen && acMatches.length > 0) {
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        setAcIdx((i) => (i + 1) % acMatches.length);
+        return;
+      }
+      if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        setAcIdx((i) => (i - 1 + acMatches.length) % acMatches.length);
+        return;
+      }
+      if (e.key === 'Enter' || e.key === 'Tab') {
+        e.preventDefault();
+        insertMention(acMatches[acIdx]);
+        return;
+      }
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        setAcOpen(false);
+        return;
+      }
+    }
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       void send();
@@ -413,12 +505,53 @@ export function GroupChatPanel({
         </div>
 
         {/* Input — frosted, rounded-matrix bubble */}
-        <div className="px-4 pb-4 pt-2">
+        <div className="px-4 pb-4 pt-2 relative">
+          {/* @-mention autocomplete popover. Floats just above the input. */}
+          <AnimatePresence>
+            {acOpen && acMatches.length > 0 && (
+              <motion.div
+                initial={{ opacity: 0, y: 4 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: 4 }}
+                className="absolute left-4 right-4 bottom-full mb-2 z-30 bg-warm-surface/95 backdrop-blur-xl rounded-matrix shadow-xl overflow-hidden"
+              >
+                <div className="px-3 py-1.5 bg-warm-muted/60">
+                  <div className="font-display text-[10px] font-semibold text-stone-500 uppercase tracking-wider">Address crew</div>
+                </div>
+                {acMatches.map((c, idx) => {
+                  const handle = c.display_name.toLowerCase().replace(/\s+/g, '-');
+                  const initials = c.display_name.slice(0, 2).toUpperCase();
+                  const offline = c.runtime_status !== 'online';
+                  return (
+                    <button
+                      key={c.id}
+                      type="button"
+                      onMouseDown={(e) => { e.preventDefault(); insertMention(c); }}
+                      onMouseEnter={() => setAcIdx(idx)}
+                      className={`w-full flex items-center gap-2 px-3 py-2 text-xs transition-colors ${
+                        idx === acIdx ? 'bg-warm-muted' : 'hover:bg-warm-muted/60'
+                      }`}
+                    >
+                      <span className="flex h-6 w-6 items-center justify-center rounded-full bg-warm-muted text-[10px] font-bold text-stone-700">{initials}</span>
+                      <span className="flex-1 text-left">
+                        <span className="font-medium text-stone-800">@{handle}</span>
+                        <span className="text-stone-400 ml-1.5">{c.display_name}</span>
+                      </span>
+                      <span className={`w-1.5 h-1.5 rounded-full ${offline ? 'bg-stone-300' : 'bg-emerald-500'}`} />
+                    </button>
+                  );
+                })}
+              </motion.div>
+            )}
+          </AnimatePresence>
+
           <div className="flex gap-2 items-end bg-warm-muted/60 backdrop-blur-md rounded-matrix shadow-sm p-2 focus-within:bg-warm-muted/80 focus-within:shadow-md transition">
             <textarea
+              ref={textareaRef}
               value={draft}
-              onChange={(e) => setDraft(e.target.value)}
+              onChange={onDraftChange}
               onKeyDown={handleKeyDown}
+              onBlur={() => queueMicrotask(() => setAcOpen(false))}
               placeholder={
                 invitedCrew.length === 0
                   ? 'Invite a crew member with + to start chatting'
