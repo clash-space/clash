@@ -2245,6 +2245,7 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
                                     <GroupChatPanel
                                         projectId={project.id}
                                         userId={project.ownerId}
+                                        presenceClients={presenceClients}
                                         width={sidebarWidth}
                                         onWidthChange={setSidebarWidth}
                                         isCollapsed={isSidebarCollapsed}

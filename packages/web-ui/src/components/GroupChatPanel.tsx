@@ -31,11 +31,12 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { CaretLeft, CaretRight, Plus, Users, Gear, PaperPlaneRight } from '@phosphor-icons/react';
+import { CaretLeft, CaretRight, Plus, Gear, PaperPlaneRight } from '@phosphor-icons/react';
 import { useGroupChat, type ClaimedCrew } from '@clash/web-ui/hooks/useGroupChat';
 import { useProjectRoom } from '@clash/web-ui/hooks/useProjectRoom';
 import { AcpMessageList } from '@clash/web-ui/components/copilot/AcpMessageList';
-import type { RoomMessageEvent } from '@clash/shared-types';
+import PresenceBar from '@clash/web-ui/components/PresenceBar';
+import type { PresenceClient, RoomMessageEvent } from '@clash/shared-types';
 import { parseMention } from '../_group-chat/mention';
 
 const ROOM_TAB = '__room__';
@@ -46,6 +47,12 @@ export interface GroupChatPanelProps {
   projectId: string;
   /** Current user id — used to label your own messages and stamp mentions. */
   userId: string;
+  /**
+   * Browser / cli / agent clients currently attached to this project's
+   * ProjectRoom DO. Surfaces "who's also looking at this room" as a
+   * stack of avatars next to the collapse control.
+   */
+  presenceClients: PresenceClient[];
   width: number;
   onWidthChange: (w: number) => void;
   isCollapsed: boolean;
@@ -114,6 +121,7 @@ function saveInvited(projectId: string, ids: string[]): void {
 export function GroupChatPanel({
   projectId,
   userId,
+  presenceClients,
   width,
   isCollapsed,
   onCollapseChange,
@@ -241,32 +249,34 @@ export function GroupChatPanel({
   const focusedCrew = group.crew.find((c) => c.crewId === activeTab);
   const firstInvitedHandle = invitedCrew[0]?.display_name.toLowerCase().replace(/\s+/g, '-');
 
+  // "Other clients" — humans / cli / agents connected to this project's
+  // ProjectRoom besides the local user. Mirrors the canvas presence
+  // filter (ProjectEditor.tsx:315) so the same set of dots shows up
+  // here and on the canvas, never inflated by your own session.
+  const otherClients = presenceClients.filter((c) => c.userId !== userId);
+
   return (
     <div
-      className="h-full bg-warm-surface/90 backdrop-blur-xl border-l border-warm-border shadow-xl flex flex-col"
+      className="h-full bg-warm-surface/90 backdrop-blur-xl border-l border-warm-border shadow-xl flex flex-col relative"
       style={{ width }}
     >
-      {/* Header */}
-      <div className="flex items-center justify-between px-5 py-4 border-b border-warm-border">
-        <div className="flex items-center gap-2.5 min-w-0">
-          <Users className="w-4 h-4 text-red-500 flex-shrink-0" weight="duotone" />
-          <span className="font-display text-sm font-semibold text-stone-800 tracking-tight">Group chat</span>
-          {invitedCrew.length > 0 && (
-            <span className="text-xs text-stone-400">· {invitedCrew.length} crew</span>
-          )}
-        </div>
-        <motion.button
-          onClick={() => onCollapseChange(true)}
-          whileHover={{ scale: 1.1 }}
-          whileTap={{ scale: 0.9 }}
-          className="p-1.5 rounded-full hover:bg-warm-muted text-stone-500"
-          aria-label="Collapse"
-        >
-          <CaretRight className="w-4 h-4" weight="bold" />
-        </motion.button>
+      {/* Floating top-left: collapse */}
+      <motion.button
+        onClick={() => onCollapseChange(true)}
+        whileHover={{ scale: 1.1 }}
+        whileTap={{ scale: 0.9 }}
+        className="absolute left-2 top-4 z-20 p-2 flex items-center justify-center hover:bg-warm-muted rounded-full transition-all"
+        aria-label="Collapse"
+      >
+        <CaretRight className="w-5 h-5 text-stone-600" weight="bold" />
+      </motion.button>
+
+      {/* Floating top-right: presence stack (humans + agents in this room) */}
+      <div className="absolute right-4 top-4 z-20 flex items-center gap-2">
+        <PresenceBar clients={otherClients} />
       </div>
 
-      <div className="flex-1 flex min-h-0">
+      <div className="flex-1 flex min-h-0 pt-16">
         {/* Crew rail */}
         <div className="w-16 border-r border-warm-border flex flex-col items-center py-3 gap-2.5 bg-warm-muted/40">
           <div className="relative">
