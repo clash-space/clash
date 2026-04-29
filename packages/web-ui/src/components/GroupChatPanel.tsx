@@ -395,10 +395,10 @@ export function GroupChatPanel({
         )}
       </div>
 
-      <div className="flex-1 flex flex-col min-w-0 pt-16">
+      <div className="flex-1 flex flex-col min-w-0 min-h-0 pt-16">
         {/* Tab pill row — single nav element. Each pill is a rounded-matrix
             chip with avatar + label; + at end opens the invite popover. */}
-        <div className="px-4 pb-2 flex items-center gap-1.5 overflow-x-auto scrollbar-thin">
+        <div className="px-4 pb-2 flex items-center gap-1.5 overflow-x-auto scrollbar-thin shrink-0">
           <TabPill
             label="Room"
             active={activeTab === ROOM_TAB}
@@ -505,7 +505,7 @@ export function GroupChatPanel({
         </div>
 
         {/* Input — frosted, rounded-matrix bubble */}
-        <div className="px-4 pb-4 pt-2 relative">
+        <div className="px-4 pb-4 pt-2 relative shrink-0">
           {/* @-mention autocomplete popover. Floats just above the input. */}
           <AnimatePresence>
             {acOpen && acMatches.length > 0 && (
