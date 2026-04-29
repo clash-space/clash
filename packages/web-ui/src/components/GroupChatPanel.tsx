@@ -31,7 +31,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { CaretLeft, CaretRight, Plus, Gear, PaperPlaneRight } from '@phosphor-icons/react';
+import { CaretLeft, CaretRight, Plus, Gear, PaperPlaneRight, ArrowClockwise } from '@phosphor-icons/react';
 import { useGroupChat, type ClaimedCrew } from '@clash/web-ui/hooks/useGroupChat';
 import { useProjectRoom } from '@clash/web-ui/hooks/useProjectRoom';
 import { AcpMessageList } from '@clash/web-ui/components/copilot/AcpMessageList';
@@ -271,9 +271,31 @@ export function GroupChatPanel({
         <CaretRight className="w-5 h-5 text-stone-600" weight="bold" />
       </motion.button>
 
-      {/* Floating top-right: presence stack (humans + agents in this room) */}
-      <div className="absolute right-4 top-4 z-20 flex items-center gap-2">
-        <PresenceBar clients={otherClients} />
+      {/* Floating top-right: action balls + presence stack. Same
+          motion-button pattern ChatbotCopilot used so the panel reads
+          continuous with the rest of the surface. */}
+      <div className="absolute right-4 top-4 z-20 flex items-center gap-1">
+        <motion.button
+          onClick={() => void room.refetch()}
+          whileHover={{ scale: 1.1 }}
+          whileTap={{ scale: 0.9 }}
+          className="p-2 rounded-full hover:bg-warm-muted text-slate-700 transition-colors"
+          title="Refresh room"
+        >
+          <ArrowClockwise className="w-5 h-5" weight="bold" />
+        </motion.button>
+        <a
+          href="/settings"
+          className="p-2 rounded-full hover:bg-warm-muted text-slate-700 transition-colors flex items-center justify-center"
+          title="Manage crew"
+        >
+          <Gear className="w-5 h-5" weight="bold" />
+        </a>
+        {otherClients.length > 0 && (
+          <div className="ml-1.5">
+            <PresenceBar clients={otherClients} />
+          </div>
+        )}
       </div>
 
       <div className="flex-1 flex flex-col min-w-0 pt-16">
