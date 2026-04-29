@@ -259,19 +259,22 @@ export function GroupChatPanel({
   }, [acOpen, acQuery, invitedCrew]);
 
   // Re-evaluate autocomplete state whenever the draft / cursor moves.
+  // Run the regex against the EVENT VALUE directly, not partialMention()
+  // — that helper reads `draft` from closure which is still the previous
+  // value at this point (setDraft is async).
   const onDraftChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    setDraft(e.target.value);
-    // Defer one tick so selectionStart reflects the new value.
-    queueMicrotask(() => {
-      const partial = partialMention();
-      if (partial) {
-        setAcOpen(true);
-        setAcQuery(partial.query);
-        setAcIdx(0);
-      } else {
-        setAcOpen(false);
-      }
-    });
+    const next = e.target.value;
+    const pos = e.target.selectionStart ?? next.length;
+    setDraft(next);
+    const before = next.slice(0, pos);
+    const m = before.match(/(?:^|\s)@([a-z0-9-]*)$/i);
+    if (m) {
+      setAcOpen(true);
+      setAcQuery(m[1] ?? '');
+      setAcIdx(0);
+    } else {
+      setAcOpen(false);
+    }
   };
 
   const insertMention = useCallback((row: CrewRow) => {
