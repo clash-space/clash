@@ -204,24 +204,24 @@ export function GroupChatPanel({
     if (!text) return;
     setDraft('');
 
-    const { crewId: handle, body: cleanText } = parseMention(text);
+    const { crewId: handle } = parseMention(text);
     const target = handle ? resolveMention(handle) : null;
 
-    // Post to room (always — it's the durable record).
+    // POST to room — server's mention dispatcher pushes a room.mention
+    // frame back to the target crew's session, useGroupChat queues it,
+    // and drainPending sends it to the daemon as a prompt. That is the
+    // SINGLE dispatch path: don't also call sendToFocused here, or the
+    // agent receives the same message twice (once raw, once prefixed
+    // with "[room from human]"). The brief round-trip is worth the
+    // single-source-of-truth.
     const mentions = target
       ? [{ user_id: userId, crew_member_id: target.id }]
       : [];
     await room.send(text, mentions);
 
-    // If we mentioned someone, dispatch the cleaned text directly to
-    // their session so they actually respond. (Server-side room.mention
-    // forwarding handles the case where the crew is in the room but
-    // not yet attached on this browser; that's the next-turn-append
-    // path. Here we do the immediate-prompt path for the focused user.)
-    if (target) {
-      group.focus(target.id);
-      queueMicrotask(() => group.sendToFocused(cleanText));
-    }
+    // Switch focus to the target crew so the user sees the reply
+    // stream into the right tab.
+    if (target) group.focus(target.id);
   }, [draft, userId, room, group, resolveMention]);
 
   // ─── @-mention autocomplete ───────────────────────────────────

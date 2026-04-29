@@ -1,6 +1,6 @@
 {
   "name": "@clash-space/cli",
-  "version": "0.1.0-beta.2",
+  "version": "0.1.0-beta.3",
   "description": "Clash CLI — manage projects and canvas from your terminal",
   "bin": {
     "clash": "./dist/index.js"

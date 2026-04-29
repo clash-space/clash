@@ -203,6 +203,19 @@ projectRoutes.post("/:pid/room/messages", async (c) => {
     return c.json({ error: "sender_id required for crew sender" }, 400);
   }
 
+  // Crew sender hardening: prevent an API-key holder from spoofing
+  // someone else's crew. sender_id MUST be a crew_member.id owned by
+  // the calling user. Without this check, alice's token could write a
+  // room message claiming to be bob's Director.
+  if (senderKind === "crew") {
+    const owns = await c.env.DB.prepare(
+      "SELECT id FROM crew_member WHERE id = ? AND user_id = ?",
+    ).bind(senderId, userId).first<{ id: string }>();
+    if (!owns) {
+      return c.json({ error: "sender_id is not a crew_member you own" }, 403);
+    }
+  }
+
   const mentions: RoomMention[] = Array.isArray(body.mentions)
     ? body.mentions.filter((m) => m && typeof m.user_id === "string")
     : [];

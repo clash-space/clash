@@ -5,6 +5,7 @@ import { canvasCommand } from "./commands/canvas";
 import { tasksCommand } from "./commands/tasks";
 import { actionsCommand } from "./commands/actions";
 import { varsCommand } from "./commands/vars";
+import { roomCommand } from "./commands/room";
 
 const program = new Command();
 
@@ -30,5 +31,6 @@ program.addCommand(canvasCommand);
 program.addCommand(tasksCommand);
 program.addCommand(actionsCommand);
 program.addCommand(varsCommand);
+program.addCommand(roomCommand);
 
 program.parse();

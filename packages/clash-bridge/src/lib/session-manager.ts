@@ -46,9 +46,17 @@ export interface SessionStartParams {
    */
   agent_id?: string;
   /**
+   * Server-side crew_member.id. Daemon injects it into the spawned
+   * agent's env as CLASH_CREW_MEMBER_ID — used by `clash room say`
+   * to identify itself when broadcasting to the project room.
+   */
+  crew_member_id?: string;
+  /**
    * Optional clash project id. Different projects get isolated
    * workspaces (~/.clash/crew/<crew>/<project>/), so the same crew
    * member's memory and tool state don't bleed across projects.
+   * Also injected into the agent's env as CLASH_PROJECT_ID so room
+   * tools know which room to target.
    */
   project_id?: string;
   /** Server-supplied advisory cwd. Currently ignored — we always spawn
@@ -172,6 +180,11 @@ export class SessionManager {
       const spawnEnv: Record<string, string> = { ...(agent.spec.env ?? {}) };
       if (this.#env.CLASH_API_KEY) spawnEnv.CLASH_API_KEY = this.#env.CLASH_API_KEY;
       if (this.#env.CLASH_API_URL) spawnEnv.CLASH_API_URL = this.#env.CLASH_API_URL;
+      // Identity for room tools (`clash room say` / `clash room read`)
+      // — without these the agent has no way to know which crew_member
+      // it is, or which project's room to target.
+      if (p.crew_member_id) spawnEnv.CLASH_CREW_MEMBER_ID = p.crew_member_id;
+      if (p.project_id) spawnEnv.CLASH_PROJECT_ID = p.project_id;
       const session = await this.#runtime.start({
         agent: { ...agent.spec, cwd: sessionCwd, env: spawnEnv },
         resumeAcpSessionId: resumeId,

@@ -310,6 +310,10 @@ runtimesRoutes.post("/:rid/sessions", async (c) => {
     type: "session.start",
     session_id: sessionId,
     crew_id: crewId,
+    // crew_member_id forwarded so the daemon can inject it into the
+    // spawned agent's env (CLASH_CREW_MEMBER_ID). The agent then uses
+    // it as the sender_id when calling `clash room say`.
+    ...(crewMemberId ? { crew_member_id: crewMemberId } : {}),
     // agent_id override — daemon prefers this over the bundled
     // template's runtime.json default. Lets each user pick which CLI
     // (claude-code-acp / codex / gemini / …) powers their crew.
