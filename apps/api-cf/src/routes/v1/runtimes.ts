@@ -229,15 +229,32 @@ runtimesRoutes.get("/", async (c) => {
 });
 
 // POST /:rid/sessions — start a new local-runtime chat session on a runtime.
-// Creates the runtime_session row, tells the daemon to spawn the agent,
-// returns the session_id. Browser then opens
-// /api/v1/local-sessions/:sid/_stream to receive ready/event/complete.
+//
+// Two payload shapes (Phase 2 added crew_member_id; old crew_id kept for
+// back-compat with browsers that haven't been refreshed yet):
+//
+//   Modern: { crew_member_id, project_id }
+//     Server resolves the claimed crew_member → template_id (used for
+//     daemon dispatch) and verifies crew_member.runtime_id == :rid +
+//     crew_member.user_id == caller. Single source of truth — caller
+//     doesn't pass template_id directly.
+//
+//   Legacy: { crew_id (template), project_id }
+//     Used by the old GroupChatPanel before the claim layer landed.
+//     Server still spawns the daemon agent, but the row's
+//     crew_member_id is NULL — it has no claimed identity. Stops
+//     working once we fully migrate; for now keeps refresh-during-
+//     deploy from breaking.
+//
+// Browser then opens /api/v1/local-sessions/:sid/_stream for the
+// session's event stream.
 runtimesRoutes.post("/:rid/sessions", async (c) => {
   const userId = c.req.header("x-user-id");
   if (!userId) return c.json({ error: "unauthorized" }, 401);
 
   const rid = c.req.param("rid");
   const body = (await c.req.json().catch(() => ({}))) as {
+    crew_member_id?: string;
     crew_id?: string;
     project_id?: string;
     /** @deprecated kept for older browsers; prefer crew_id. */
@@ -245,10 +262,28 @@ runtimesRoutes.post("/:rid/sessions", async (c) => {
     cwd?: string;
     resume_session_id?: string;
   };
-  // Browser sends crew_id; legacy clients may send agent_id (mapped to
-  // a default crew). Reject if neither.
-  const crewId = body.crew_id ?? (body.agent_id ? "director" : null);
-  if (!crewId) return c.json({ error: "crew_id required" }, 400);
+
+  let crewId: string | null = null;          // template id sent to daemon
+  let crewMemberId: string | null = null;    // null in legacy path
+
+  if (body.crew_member_id) {
+    // Modern path — resolve through claim layer.
+    const cm = await c.env.DB.prepare(
+      "SELECT id, template_id, runtime_id FROM crew_member WHERE id = ? AND user_id = ?",
+    ).bind(body.crew_member_id, userId).first<{
+      id: string; template_id: string; runtime_id: string;
+    }>();
+    if (!cm) return c.json({ error: "crew member not found" }, 404);
+    if (cm.runtime_id !== rid) {
+      return c.json({ error: "crew member belongs to a different runtime" }, 400);
+    }
+    crewId = cm.template_id;
+    crewMemberId = cm.id;
+  } else {
+    // Legacy path — accept template id directly. Soon to be removed.
+    crewId = body.crew_id ?? (body.agent_id ? "director" : null);
+    if (!crewId) return c.json({ error: "crew_member_id or crew_id required" }, 400);
+  }
 
   const runtime = await c.env.DB.prepare(
     "SELECT id, status FROM runtime WHERE id = ? AND owner_user_id = ?",
@@ -257,14 +292,14 @@ runtimesRoutes.post("/:rid/sessions", async (c) => {
   if (runtime.status !== "online") return c.json({ error: "runtime offline" }, 409);
 
   const sessionId = crypto.randomUUID();
-  // Persist crew + project on the row so resume / history can show
-  // which crew member the user was talking to. agent_id column is
-  // repurposed to store crew_id (no schema change in v1; cleaner
-  // rename can come later).
+  // cwd column overload remains: it's still being used to hold project_id
+  // (existing hack). When that's split into its own column the room
+  // mention dispatcher in projects.ts will need the same change.
   await c.env.DB.prepare(
-    `INSERT INTO runtime_session (id, user_id, runtime_id, agent_id, cwd, status, created_at, last_active_at)
-     VALUES (?, ?, ?, ?, ?, 'active', unixepoch(), unixepoch())`,
-  ).bind(sessionId, userId, rid, crewId, body.project_id ?? "").run();
+    `INSERT INTO runtime_session
+       (id, user_id, runtime_id, agent_id, crew_member_id, cwd, status, created_at, last_active_at)
+     VALUES (?, ?, ?, ?, ?, ?, 'active', unixepoch(), unixepoch())`,
+  ).bind(sessionId, userId, rid, crewId, crewMemberId, body.project_id ?? "").run();
 
   const doStub = c.env.RUNTIME_ROOM.get(c.env.RUNTIME_ROOM.idFromName(rid));
   const ok = await (doStub as unknown as {

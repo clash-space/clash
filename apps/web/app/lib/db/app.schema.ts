@@ -243,6 +243,9 @@ export const runtimeSession = sqliteTable(
         userId: text("user_id").notNull(),
         runtimeId: text("runtime_id").notNull(),
         agentId: text("agent_id").notNull(),
+        // Phase 2: links a session to its claimed crew_member. Nullable
+        // for back-compat with rows created before the claim layer.
+        crewMemberId: text("crew_member_id"),
         acpSessionId: text("acp_session_id"),
         cwd: text("cwd").notNull(),
         title: text("title"),
@@ -253,6 +256,7 @@ export const runtimeSession = sqliteTable(
     (table) => ({
         runtimeSessionUserIdx: index("runtime_session_user_idx").on(table.userId, table.lastActiveAt),
         runtimeSessionRuntimeIdx: index("runtime_session_runtime_idx").on(table.runtimeId),
+        runtimeSessionCrewMemberIdx: index("runtime_session_crew_member_idx").on(table.crewMemberId),
     })
 )
 

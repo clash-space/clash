@@ -4,27 +4,34 @@ import { appendAcpEvent, type ByoMessage, type AvailableCommand } from '@clash/w
 /**
  * useGroupChat — multi-crew chat panel state.
  *
- * Each crew member the user has @-mentioned (or picked) gets its own
- * server-side runtime_session + browser WebSocket; this hook manages
- * the Map and exposes a tidy surface to the chat panel:
- *
- *   addCrew(crewId, opts)    spawn a new session for this crew member
- *   focus(crewId)            which crew's timeline the main panel shows
- *   sendToFocused(text)      send a prompt to the currently focused crew
+ * Phase 2: identity is the **claimed crew_member.id**, not the bundled
+ * template id. Caller passes the crew_member objects (id + runtime +
+ * display name); this hook spawns a runtime_session per claimed member
+ * the user wants in the chat. addCrew(crewMemberId) → POST /sessions
+ * with crew_member_id; server resolves to template + runtime via the
+ * claim row.
  *
  * Each crew runs in its own per-project workspace cwd
- * (`~/.clash/crew/<id>/<project>/`), so concurrent crew don't see each
- * other's tool state.
+ * (`~/.clash/crew/<template>/<project>/`), so concurrent crew don't
+ * see each other's tool state.
  *
- * UI display contract: messages are KEPT PER-CREW (not interleaved
- * server-side). The chat panel renders the focused crew's `messages`
- * timeline as the main view, plus chips/avatars for the other crew
- * with unread indicators. Clicking another crew = focus switch =
- * different `messages` rendered.
+ * UI contract: messages are KEPT PER-CREW (not interleaved server-
+ * side). The chat panel renders the focused crew's `messages` timeline
+ * as the main view, plus avatars for the other crew with unread
+ * indicators. Clicking another crew = focus switch = different
+ * `messages` rendered.
  */
 
 const RUNTIMES_PATH = '/api/v1/runtimes';
 const SESSIONS_BASE = '/api/v1/local-sessions';
+
+/** Caller passes this — usually fetched from /api/v1/crew. */
+export interface ClaimedCrew {
+  id: string;             // crew_member.id — the identity we use everywhere
+  template_id: string;
+  runtime_id: string;
+  display_name: string;
+}
 
 export type GroupChatStatus =
   | 'connecting'
@@ -35,8 +42,14 @@ export type GroupChatStatus =
   | 'error';
 
 export interface CrewSession {
+  /** crew_member.id — stable identity across the chat (formerly template id). */
   crewId: string;
+  /** Server-side runtime_session.id, "" until POST /sessions returns. */
   sessionId: string;
+  /** Mirror of the claim metadata for convenience in the UI. */
+  templateId: string;
+  runtimeId: string;
+  displayName: string;
   status: GroupChatStatus;
   errorMessage: string | null;
   messages: ByoMessage[];
@@ -45,6 +58,8 @@ export interface CrewSession {
   unread: boolean;
   /** Unix ms of the most recent inbound or outbound message. */
   lastActiveAt: number;
+  /** Number of room.mention prompts queued for the next-turn drain. */
+  pendingPrompts: string[];
 }
 
 export interface UseGroupChatReturn {
@@ -58,12 +73,12 @@ export interface UseGroupChatReturn {
   /** True iff focused crew is sending/streaming — gates the input UI. */
   isProcessing: boolean;
 
-  addCrew: (crewId: string, opts?: { resumeAcpSessionId?: string }) => Promise<void>;
+  addCrew: (claim: ClaimedCrew, opts?: { resumeAcpSessionId?: string }) => Promise<void>;
   focus: (crewId: string) => void;
   removeCrew: (crewId: string) => void;
   sendToFocused: (text: string) => void;
   cancelFocused: () => void;
-  /** Tear down everything (panel close, runtime change). */
+  /** Tear down everything (panel close, project change). */
   shutdown: () => void;
 }
 
@@ -72,9 +87,16 @@ interface InternalCrewState extends CrewSession {
   ws: WebSocket | null;
   /** turnId → assistant-message bubble idx, for routing streamed events. */
   turnToMsgIdx: Map<string, number>;
+  /**
+   * Prompts queued by inbound room.mention frames. Drained one-per-
+   * turn on session.complete (append-on-next-turn semantics — never
+   * interrupts an in-flight turn). UI doesn't render these; the user-
+   * message bubble appears once the prompt actually goes out.
+   */
+  pendingPrompts: string[];
 }
 
-export function useGroupChat(runtimeId: string | null, projectId?: string): UseGroupChatReturn {
+export function useGroupChat(projectId?: string): UseGroupChatReturn {
   const [crew, setCrew] = useState<InternalCrewState[]>([]);
   const [focusedCrewId, setFocusedCrewId] = useState<string | null>(null);
   // Mirror state into a ref so stable callbacks can read the latest
@@ -92,7 +114,8 @@ export function useGroupChat(runtimeId: string | null, projectId?: string): UseG
     };
   }, []);
 
-  // Runtime / project changed → blow away all crew sessions.
+  // Project changed → blow away all crew sessions. (Runtime is now
+  // per-crew; there's no panel-wide runtime to react to.)
   useEffect(() => {
     setCrew((prev) => {
       for (const c of prev) {
@@ -101,7 +124,7 @@ export function useGroupChat(runtimeId: string | null, projectId?: string): UseG
       return [];
     });
     setFocusedCrewId(null);
-  }, [runtimeId, projectId]);
+  }, [projectId]);
 
   /** Patch one crew's state by id. */
   const patchCrew = useCallback((crewId: string, patch: Partial<InternalCrewState>) => {
@@ -114,8 +137,61 @@ export function useGroupChat(runtimeId: string | null, projectId?: string): UseG
     setCrew((prev) => prev.map((c) => (c.crewId === crewId ? { ...c, unread: false } : c)));
   }, []);
 
+  /**
+   * Send one prompt to a crew's session. Internal helper — used by
+   * sendToFocused (immediate, with optimistic user-message bubble) and
+   * by drainPending (after session.complete fires, room.mention queue).
+   */
+  const dispatchPrompt = useCallback((crewId: string, text: string, withUserBubble: boolean) => {
+    const target = crewRef.current.find((c) => c.crewId === crewId);
+    if (!target?.ws || target.ws.readyState !== WebSocket.OPEN) return;
+    const turnId = `t-${++turnSeq.current}-${Date.now().toString(36)}`;
+    setCrew((prev) => prev.map((c) =>
+      c.crewId === crewId
+        ? {
+            ...c,
+            messages: withUserBubble
+              ? [...c.messages, { id: `user-${turnId}`, role: 'user' as const, parts: [{ type: 'text' as const, text }] }]
+              : c.messages,
+            status: 'sending',
+            lastActiveAt: Date.now(),
+          }
+        : c,
+    ));
+    target.ws.send(JSON.stringify({ type: 'prompt', turn_id: turnId, text }));
+  }, []);
+
+  /**
+   * If a crew is idle and has queued room.mentions, send the next one.
+   * Called from session.complete handler. Append-on-next-turn — never
+   * interrupts.
+   */
+  const drainPending = useCallback((crewId: string) => {
+    const target = crewRef.current.find((c) => c.crewId === crewId);
+    if (!target) return;
+    if (target.turnToMsgIdx.size > 0) return; // still in a turn
+    if (target.pendingPrompts.length === 0) return;
+    const next = target.pendingPrompts[0];
+    setCrew((prev) => prev.map((c) =>
+      c.crewId === crewId ? { ...c, pendingPrompts: c.pendingPrompts.slice(1) } : c,
+    ));
+    dispatchPrompt(crewId, next, true);
+  }, [dispatchPrompt]);
+
   const handleCrewMessage = useCallback((crewId: string, raw: unknown) => {
-    let msg: { type: string; turn_id?: string; event?: unknown; message?: string; daemon_online?: boolean };
+    let msg: {
+      type: string;
+      turn_id?: string;
+      event?: unknown;
+      message?: string;
+      daemon_online?: boolean;
+      // room.mention payload (forwarded by server's pushRoomMention)
+      message_id?: string;
+      from_kind?: string;
+      from_id?: string;
+      from_user_id?: string;
+      text?: string;
+    };
     try { msg = JSON.parse(typeof raw === 'string' ? raw : ''); }
     catch { return; }
 
@@ -125,6 +201,8 @@ export function useGroupChat(runtimeId: string | null, projectId?: string): UseG
     if (msg.type === 'attached') return; // synthetic — handled elsewhere
     if (msg.type === 'session.ready') {
       patchCrew(crewId, { status: 'connected', lastActiveAt: now });
+      // If a mention got queued before the WS opened, drain on ready.
+      drainPending(crewId);
       return;
     }
     if (msg.type === 'session.event' && msg.turn_id) {
@@ -133,8 +211,6 @@ export function useGroupChat(runtimeId: string | null, projectId?: string): UseG
         const messages = c.messages.slice();
         const knownIdx = c.turnToMsgIdx.get(msg.turn_id!);
         const result = appendAcpEvent(messages, msg.turn_id!, knownIdx, msg.event);
-        // Update turn map mutably (it's a ref in the state; replace the
-        // whole map for immutability if needed — fine here).
         const newTurnMap = new Map(c.turnToMsgIdx);
         if (knownIdx === undefined && result.idx >= 0) newTurnMap.set(msg.turn_id!, result.idx);
         return {
@@ -161,6 +237,9 @@ export function useGroupChat(runtimeId: string | null, projectId?: string): UseG
           lastActiveAt: now,
         };
       }));
+      // Queue drain runs AFTER the state flip so its idle check sees
+      // the right value. Microtask is enough; no need to wait for paint.
+      queueMicrotask(() => drainPending(crewId));
       return;
     }
     if (msg.type === 'session.error') {
@@ -177,10 +256,25 @@ export function useGroupChat(runtimeId: string | null, projectId?: string): UseG
       patchCrew(crewId, { status: 'disconnected', errorMessage: 'runtime offline' });
       return;
     }
-  }, [focusedCrewId, patchCrew]);
+    if (msg.type === 'room.mention' && typeof msg.text === 'string') {
+      // Server-side pushRoomMention forwarded a room message that
+      // tagged this crew. Format with sender header so the agent has
+      // context, then queue. If the crew is idle, drain immediately;
+      // otherwise it goes out on the next session.complete.
+      const sender = msg.from_kind === 'user' ? `[room from human] ` : `[room from ${msg.from_id ?? 'crew'}] `;
+      const body = `${sender}${msg.text}`;
+      setCrew((prev) => prev.map((c) =>
+        c.crewId === crewId
+          ? { ...c, pendingPrompts: [...c.pendingPrompts, body], lastActiveAt: now }
+          : c,
+      ));
+      drainPending(crewId);
+      return;
+    }
+  }, [focusedCrewId, patchCrew, drainPending]);
 
-  const addCrew = useCallback(async (crewId: string, opts?: { resumeAcpSessionId?: string }) => {
-    if (!runtimeId) return;
+  const addCrew = useCallback(async (claim: ClaimedCrew, opts?: { resumeAcpSessionId?: string }) => {
+    const crewId = claim.id; // crew_member.id is the in-panel identity
     if (crewRef.current.some((c) => c.crewId === crewId)) {
       // Already in panel — just focus.
       focus(crewId);
@@ -194,6 +288,9 @@ export function useGroupChat(runtimeId: string | null, projectId?: string): UseG
       {
         crewId,
         sessionId: '',
+        templateId: claim.template_id,
+        runtimeId: claim.runtime_id,
+        displayName: claim.display_name,
         ws: null,
         status: 'connecting',
         errorMessage: null,
@@ -202,17 +299,18 @@ export function useGroupChat(runtimeId: string | null, projectId?: string): UseG
         unread: false,
         lastActiveAt: Date.now(),
         turnToMsgIdx: new Map(),
+        pendingPrompts: [],
       },
     ]);
     setFocusedCrewId(crewId);
 
     try {
-      const res = await fetch(`${RUNTIMES_PATH}/${runtimeId}/sessions`, {
+      const res = await fetch(`${RUNTIMES_PATH}/${claim.runtime_id}/sessions`, {
         method: 'POST',
         credentials: 'same-origin',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
-          crew_id: crewId,
+          crew_member_id: claim.id,
           ...(projectId ? { project_id: projectId } : {}),
           ...(opts?.resumeAcpSessionId ? { resume_session_id: opts.resumeAcpSessionId } : {}),
         }),
@@ -247,7 +345,7 @@ export function useGroupChat(runtimeId: string | null, projectId?: string): UseG
         errorMessage: e instanceof Error ? e.message : String(e),
       });
     }
-  }, [runtimeId, projectId, focus, patchCrew, handleCrewMessage]);
+  }, [projectId, focus, patchCrew, handleCrewMessage]);
 
   const removeCrew = useCallback((crewId: string) => {
     setCrew((prev) => {
@@ -268,21 +366,8 @@ export function useGroupChat(runtimeId: string | null, projectId?: string): UseG
 
   const sendToFocused = useCallback((text: string) => {
     if (!focusedCrewId) return;
-    const target = crewRef.current.find((c) => c.crewId === focusedCrewId);
-    if (!target?.ws || target.ws.readyState !== WebSocket.OPEN) return;
-    const turnId = `t-${++turnSeq.current}-${Date.now().toString(36)}`;
-    setCrew((prev) => prev.map((c) =>
-      c.crewId === focusedCrewId
-        ? {
-            ...c,
-            messages: [...c.messages, { id: `user-${turnId}`, role: 'user' as const, parts: [{ type: 'text' as const, text }] }],
-            status: 'sending',
-            lastActiveAt: Date.now(),
-          }
-        : c,
-    ));
-    target.ws.send(JSON.stringify({ type: 'prompt', turn_id: turnId, text }));
-  }, [focusedCrewId]);
+    dispatchPrompt(focusedCrewId, text, true);
+  }, [focusedCrewId, dispatchPrompt]);
 
   const cancelFocused = useCallback(() => {
     if (!focusedCrewId) return;
@@ -310,7 +395,8 @@ export function useGroupChat(runtimeId: string | null, projectId?: string): UseG
     ? crew.find((c) => c.crewId === focusedCrewId) ?? null
     : null;
 
-  // Strip internal-only fields from the public crew array.
+  // Strip internal-only fields from the public crew array. (pendingPrompts
+  // intentionally exposed — UI wants to show "N pending" indicator.)
   const publicCrew: CrewSession[] = crew.map(({ ws: _ws, turnToMsgIdx: _t, ...rest }) => {
     void _ws; void _t; return rest;
   });

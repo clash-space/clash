@@ -99,6 +99,17 @@ projectRoutes.delete("/:id", async (c) => {
 
 interface RoomMention {
   user_id: string;
+  /**
+   * Phase 2 preferred — references a claimed crew_member.id. Server
+   * looks up the active runtime_session by crew_member_id directly.
+   */
+  crew_member_id?: string;
+  /**
+   * @deprecated template id — only used by browsers that haven't
+   * picked up the claim layer yet. Server falls back to looking up
+   * runtime_session by (user_id, agent_id=template). Drop once all
+   * clients send crew_member_id.
+   */
   crew_id?: string;
 }
 
@@ -233,12 +244,22 @@ projectRoutes.post("/:pid/room/messages", async (c) => {
   // the mention to the right project. If the cwd column gets a real
   // dedicated project_id column later, swap the predicate.
   for (const m of mentions) {
-    if (!m.crew_id) continue;
-    const target = await c.env.DB.prepare(
-      `SELECT id, runtime_id FROM runtime_session
-       WHERE user_id = ? AND agent_id = ? AND status = 'active' AND cwd = ?
-       ORDER BY last_active_at DESC LIMIT 1`,
-    ).bind(m.user_id, m.crew_id, projectId).first<{ id: string; runtime_id: string }>();
+    let target: { id: string; runtime_id: string } | null = null;
+    if (m.crew_member_id) {
+      // Modern path — crew_member_id pins user + runtime + template.
+      target = await c.env.DB.prepare(
+        `SELECT id, runtime_id FROM runtime_session
+         WHERE crew_member_id = ? AND status = 'active' AND cwd = ?
+         ORDER BY last_active_at DESC LIMIT 1`,
+      ).bind(m.crew_member_id, projectId).first<{ id: string; runtime_id: string }>();
+    } else if (m.crew_id) {
+      // Legacy path — agent_id stores template id.
+      target = await c.env.DB.prepare(
+        `SELECT id, runtime_id FROM runtime_session
+         WHERE user_id = ? AND agent_id = ? AND status = 'active' AND cwd = ?
+         ORDER BY last_active_at DESC LIMIT 1`,
+      ).bind(m.user_id, m.crew_id, projectId).first<{ id: string; runtime_id: string }>();
+    }
     if (!target) continue;
     const runtimeStub = c.env.RUNTIME_ROOM.get(c.env.RUNTIME_ROOM.idFromName(target.runtime_id));
     void (runtimeStub as unknown as {

@@ -1,49 +1,45 @@
 /**
- * GroupChatPanel — multi-crew group chat replacing the per-chat
- * ChatbotCopilot single-agent panel.
+ * GroupChatPanel — group chat panel built on the claim layer.
+ *
+ * Identity model:
+ *   - Templates (Director / Canvas Editor / …) live in the bridge as
+ *     read-only role definitions.
+ *   - User claims them in Settings → produces crew_member rows.
+ *   - This panel works on **claimed crew**: the + dropdown shows the
+ *     user's claimed crew (via /api/v1/crew); each claim is bound to a
+ *     specific runtime, so there's no panel-wide runtime picker.
+ *   - Per-project, the user "invites" claimed crew into the room;
+ *     invitations persist in localStorage (keyed by project_id) so
+ *     refreshing the page doesn't re-empty the rail.
  *
  * Three views, switched via top tabs:
  *   - Room       (default): the project-wide IM log. Humans typing +
  *                future crew broadcasts (via say_to_room) land here.
- *   - <Crew>     One per spawned crew. Shows that crew's full event
- *                stream (tool calls, streamed text, etc.) — same data
- *                as the old single-session panel, just per-member.
+ *   - <Crew>     One per invited crew. Shows that crew's full event
+ *                stream (tool calls, streamed text, etc.).
  *
- * Crew rail (left) lists every spawned crew with status + unread dot;
- * + opens a dropdown of bundled crew the user can pull into the room
- * (which spawns their session). Clicking a crew row focuses its tab.
- *
- * Input parses leading `@<crewid>` — if present, posts to room with
- * mentions=[{crew_id, user_id: self}] AND auto-spawns the crew if it
- * isn't in the room yet. Without @, posts to room as a plain user
- * message. Crew responses (until say_to_room ships) only show in their
- * own crew tab — not in the room — by design.
- *
- * Live room messages arrive via the parent's useLoroSync `onRoomMessage`
- * callback — same WS as Loro CRDT. History fetch on mount.
+ * Input parses leading `@<displayname>` (matched against invited crew's
+ * display name; falls back to template id for back-compat). Mention
+ * encodes crew_member_id in the room message; server's mention
+ * dispatcher uses that to find the right runtime_session and push a
+ * room.mention frame to the crew's react loop (which queues it as
+ * next-turn prompt — append-on-next-turn semantics).
  *
  * Old ChatbotCopilot is kept in the repo (no import). Restore by
  * swapping the JSX in ProjectEditor.tsx.
  */
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { CaretLeft, CaretRight, Plus, Users } from '@phosphor-icons/react';
-import { useGroupChat } from '@clash/web-ui/hooks/useGroupChat';
+import { CaretLeft, CaretRight, Plus, Users, Gear } from '@phosphor-icons/react';
+import { useGroupChat, type ClaimedCrew } from '@clash/web-ui/hooks/useGroupChat';
 import { useProjectRoom } from '@clash/web-ui/hooks/useProjectRoom';
-import type { CrewMember } from '@clash/web-ui/components/copilot/SessionStartPicker';
 import type { ByoMessage } from '@clash/web-ui/lib/acpEvents';
 import type { RoomMessageEvent } from '@clash/shared-types';
 import { parseMention } from '../_group-chat/mention';
 
-const BUILTIN_CREW: CrewMember[] = [
-  { id: 'director',        label: 'Director',          summary: 'Plans the video and orchestrates the other roles.' },
-  { id: 'canvas-editor',   label: 'Canvas Editor',     summary: 'Adds / edits / reorders / deletes nodes on the canvas.' },
-  { id: 'generator',       label: 'Generator',         summary: 'Dispatches and tracks image / video / clip generation.' },
-  { id: 'storyboard',      label: 'Storyboard Artist', summary: 'Sketches a shot list and lays it on the canvas.' },
-  { id: 'project-manager', label: 'Project Manager',   summary: 'Lists / creates / switches / deletes projects.' },
-];
-
 const ROOM_TAB = '__room__';
+
+const invitedKey = (projectId: string) => `clash:invitedCrew:${projectId}`;
 
 export interface GroupChatPanelProps {
   projectId: string;
@@ -60,34 +56,58 @@ export interface GroupChatPanelProps {
   registerRoomSink?: (sink: (msg: RoomMessageEvent) => void) => void;
 }
 
-interface RuntimeListItem {
+interface CrewRow {
   id: string;
-  label: string;
-  status: string;
+  template_id: string;
+  runtime_id: string;
+  display_name: string;
+  runtime_label: string | null;
+  runtime_status: string | null;
 }
 
-function useFirstOnlineRuntime(): { runtimeId: string | null; runtimeLabel: string | null; runtimes: RuntimeListItem[] } {
-  const [list, setList] = useState<RuntimeListItem[]>([]);
-  useEffect(() => {
-    let cancelled = false;
-    void (async () => {
-      try {
-        const res = await fetch('/api/v1/runtimes', { credentials: 'same-origin' });
-        if (!res.ok) return;
-        const json = (await res.json()) as { runtimes?: RuntimeListItem[] };
-        if (!cancelled) setList(json.runtimes ?? []);
-      } catch {
-        // Ignore — UI will show "no runtime"
-      }
-    })();
-    return () => { cancelled = true; };
+function useClaimedCrew(): {
+  crew: CrewRow[];
+  loading: boolean;
+  refetch: () => Promise<void>;
+} {
+  const [crew, setCrew] = useState<CrewRow[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  const refetch = useCallback(async () => {
+    try {
+      const res = await fetch('/api/v1/crew', { credentials: 'same-origin' });
+      if (!res.ok) return;
+      const json = (await res.json()) as { crew: CrewRow[] };
+      setCrew(json.crew ?? []);
+    } finally {
+      setLoading(false);
+    }
   }, []);
-  const online = list.find((r) => r.status === 'online');
-  return {
-    runtimeId: online?.id ?? null,
-    runtimeLabel: online?.label ?? null,
-    runtimes: list,
-  };
+
+  useEffect(() => { void refetch(); }, [refetch]);
+
+  return { crew, loading, refetch };
+}
+
+function loadInvited(projectId: string): string[] {
+  if (typeof window === 'undefined') return [];
+  try {
+    const raw = window.localStorage.getItem(invitedKey(projectId));
+    if (!raw) return [];
+    const arr = JSON.parse(raw);
+    return Array.isArray(arr) ? arr.filter((x): x is string => typeof x === 'string') : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveInvited(projectId: string, ids: string[]): void {
+  if (typeof window === 'undefined') return;
+  try {
+    window.localStorage.setItem(invitedKey(projectId), JSON.stringify(ids));
+  } catch {
+    // Quota / disabled — ignore; UI just won't persist.
+  }
 }
 
 export function GroupChatPanel({
@@ -98,55 +118,102 @@ export function GroupChatPanel({
   onCollapseChange,
   registerRoomSink,
 }: GroupChatPanelProps) {
-  const { runtimeId, runtimeLabel } = useFirstOnlineRuntime();
   const room = useProjectRoom(projectId);
-  const group = useGroupChat(runtimeId, projectId);
+  const group = useGroupChat(projectId);
+  const { crew: claimedCrew, loading: crewLoading } = useClaimedCrew();
+  const [invitedIds, setInvitedIds] = useState<string[]>(() => loadInvited(projectId));
   const [activeTab, setActiveTab] = useState<string>(ROOM_TAB);
   const [showAddMenu, setShowAddMenu] = useState(false);
   const [draft, setDraft] = useState('');
 
-  // Wire our setLiveMessage into the parent's useLoroSync subscription.
-  // useEffect-style register-once: parent stores the ref and forwards
-  // every onRoomMessage frame here.
+  // Refresh invited list on project change (refresh, navigation).
+  useEffect(() => {
+    setInvitedIds(loadInvited(projectId));
+  }, [projectId]);
+
+  // Persist invited list whenever it changes.
+  useEffect(() => {
+    saveInvited(projectId, invitedIds);
+  }, [projectId, invitedIds]);
+
+  // Wire room.message frames from the parent's useLoroSync subscription.
   useMemo(() => {
     registerRoomSink?.(room.setLiveMessage);
   }, [registerRoomSink, room.setLiveMessage]);
 
-  const labelFor = useCallback((id: string) => {
-    return BUILTIN_CREW.find((c) => c.id === id)?.label ?? id;
+  const claimById = useCallback((id: string) => claimedCrew.find((c) => c.id === id), [claimedCrew]);
+  const invitedCrew = useMemo(
+    () => invitedIds.map(claimById).filter((c): c is CrewRow => !!c),
+    [invitedIds, claimById],
+  );
+
+  // Auto-spawn sessions for invited crew that don't have one yet.
+  // Runs whenever invited list or claimed crew changes.
+  useEffect(() => {
+    for (const c of invitedCrew) {
+      const exists = group.crew.some((x) => x.crewId === c.id);
+      if (!exists) {
+        void group.addCrew({
+          id: c.id,
+          template_id: c.template_id,
+          runtime_id: c.runtime_id,
+          display_name: c.display_name,
+        });
+      }
+    }
+  }, [invitedCrew, group]);
+
+  const invite = useCallback((row: CrewRow) => {
+    setInvitedIds((prev) => (prev.includes(row.id) ? prev : [...prev, row.id]));
+    setShowAddMenu(false);
+    setActiveTab(row.id);
   }, []);
+
+  const uninvite = useCallback((id: string) => {
+    setInvitedIds((prev) => prev.filter((x) => x !== id));
+    group.removeCrew(id);
+    setActiveTab((cur) => (cur === id ? ROOM_TAB : cur));
+  }, [group]);
+
+  // Mention name resolution: try invited crew display_name first, then
+  // fall back to template id (lets `@director` still work as a shortcut
+  // when there's exactly one Director invited). Returns the matching
+  // claim id (= crew_member.id) or null.
+  const resolveMention = useCallback((handle: string): CrewRow | null => {
+    const lower = handle.toLowerCase();
+    const byName = invitedCrew.find((c) =>
+      c.display_name.toLowerCase().replace(/\s+/g, '-') === lower,
+    );
+    if (byName) return byName;
+    const byTemplate = invitedCrew.filter((c) => c.template_id === lower);
+    if (byTemplate.length === 1) return byTemplate[0]; // ambiguous → null
+    return null;
+  }, [invitedCrew]);
 
   const send = useCallback(async () => {
     const text = draft.trim();
-    if (!text || !runtimeId) return;
+    if (!text) return;
     setDraft('');
 
-    const { crewId: targetCrewId, body: cleanText } = parseMention(text);
+    const { crewId: handle, body: cleanText } = parseMention(text);
+    const target = handle ? resolveMention(handle) : null;
 
-    // Auto-spawn the mentioned crew if it isn't in the room yet.
-    if (targetCrewId) {
-      const exists = group.crew.some((c) => c.crewId === targetCrewId);
-      if (!exists) await group.addCrew(targetCrewId);
-    }
-
-    // Post to the room — this is the durable record. Server will
-    // broadcast back via the WS sideband; we don't optimistically insert.
-    const mentions = targetCrewId
-      ? [{ user_id: userId, crew_id: targetCrewId }]
+    // Post to room (always — it's the durable record).
+    const mentions = target
+      ? [{ user_id: userId, crew_member_id: target.id }]
       : [];
     await room.send(text, mentions);
 
-    // Dispatch the cleaned text to the mentioned crew's session so it
-    // actually responds. (Without this, the message lives in the room
-    // but no crew acts on it — equivalent to talking to nobody.)
-    if (targetCrewId) {
-      // group.sendToFocused requires focus first; switch then send.
-      group.focus(targetCrewId);
-      // sendToFocused reads focusedCrewId from the hook's state; allow
-      // a microtask for the focus state to settle, then send.
+    // If we mentioned someone, dispatch the cleaned text directly to
+    // their session so they actually respond. (Server-side room.mention
+    // forwarding handles the case where the crew is in the room but
+    // not yet attached on this browser; that's the next-turn-append
+    // path. Here we do the immediate-prompt path for the focused user.)
+    if (target) {
+      group.focus(target.id);
       queueMicrotask(() => group.sendToFocused(cleanText));
     }
-  }, [draft, runtimeId, userId, room, group]);
+  }, [draft, userId, room, group, resolveMention]);
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -167,6 +234,9 @@ export function GroupChatPanel({
     );
   }
 
+  const uninvitedClaimed = claimedCrew.filter((c) => !invitedIds.includes(c.id));
+  const focusedCrew = group.crew.find((c) => c.crewId === activeTab);
+
   return (
     <div
       className="h-full bg-white border-l border-stone-200 flex flex-col"
@@ -177,9 +247,6 @@ export function GroupChatPanel({
         <div className="flex items-center gap-2 min-w-0">
           <Users className="w-4 h-4 text-stone-600 flex-shrink-0" weight="bold" />
           <span className="text-sm font-medium text-stone-800">Group Chat</span>
-          {runtimeLabel && (
-            <span className="text-xs text-stone-500 truncate">· on {runtimeLabel}</span>
-          )}
         </div>
         <button
           onClick={() => onCollapseChange(true)}
@@ -197,60 +264,76 @@ export function GroupChatPanel({
             <button
               onClick={() => setShowAddMenu((v) => !v)}
               className="w-9 h-9 rounded-full bg-white border border-stone-200 flex items-center justify-center hover:bg-stone-100 text-stone-600"
-              title="Add crew"
+              title="Invite crew"
             >
               <Plus className="w-4 h-4" weight="bold" />
             </button>
             {showAddMenu && (
-              <div className="absolute left-12 top-0 z-30 w-56 bg-white border border-stone-200 rounded-lg shadow-lg py-1">
-                {BUILTIN_CREW.filter((c) => !group.crew.some((x) => x.crewId === c.id)).map((c) => (
-                  <button
-                    key={c.id}
-                    onClick={() => {
-                      void group.addCrew(c.id);
-                      setShowAddMenu(false);
-                      setActiveTab(c.id);
-                    }}
-                    className="w-full text-left px-3 py-1.5 text-xs hover:bg-stone-50"
-                  >
-                    <div className="font-medium text-stone-800">{c.label}</div>
-                    {c.summary && (
-                      <div className="text-stone-500 mt-0.5 line-clamp-2">{c.summary}</div>
-                    )}
-                  </button>
-                ))}
-                {group.crew.length === BUILTIN_CREW.length && (
-                  <div className="px-3 py-1.5 text-xs text-stone-400">All crew added</div>
+              <div className="absolute left-12 top-0 z-30 w-72 bg-white border border-stone-200 rounded-lg shadow-lg py-1">
+                {crewLoading ? (
+                  <div className="px-3 py-2 text-xs text-stone-400">Loading…</div>
+                ) : claimedCrew.length === 0 ? (
+                  <div className="px-3 py-2 text-xs text-stone-500">
+                    No crew claimed yet.{' '}
+                    <a href="/settings" className="text-stone-700 underline inline-flex items-center gap-0.5">
+                      Open Settings <Gear className="w-3 h-3" />
+                    </a>
+                  </div>
+                ) : uninvitedClaimed.length === 0 ? (
+                  <div className="px-3 py-2 text-xs text-stone-400">All claimed crew already invited.</div>
+                ) : (
+                  uninvitedClaimed.map((c) => {
+                    const offline = c.runtime_status !== 'online';
+                    return (
+                      <button
+                        key={c.id}
+                        onClick={() => invite(c)}
+                        disabled={offline}
+                        className="w-full text-left px-3 py-1.5 text-xs hover:bg-stone-50 disabled:opacity-50"
+                        title={offline ? 'Runtime offline' : ''}
+                      >
+                        <div className="font-medium text-stone-800 flex items-center gap-1.5">
+                          <span className={`inline-block w-1.5 h-1.5 rounded-full ${offline ? 'bg-stone-300' : 'bg-emerald-500'}`} />
+                          {c.display_name}
+                        </div>
+                        <div className="text-stone-500 mt-0.5">
+                          {c.template_id} · {c.runtime_label || c.runtime_id.slice(0, 8)}
+                          {offline && ' · offline'}
+                        </div>
+                      </button>
+                    );
+                  })
                 )}
               </div>
             )}
           </div>
 
-          {group.crew.map((c) => {
-            const isActive = activeTab === c.crewId;
-            const dot = c.status === 'streaming' || c.status === 'sending'
+          {invitedCrew.map((c) => {
+            const live = group.crew.find((x) => x.crewId === c.id);
+            const isActive = activeTab === c.id;
+            const dot = live?.status === 'streaming' || live?.status === 'sending'
               ? 'bg-amber-500'
-              : c.status === 'connected'
+              : live?.status === 'connected'
               ? 'bg-emerald-500'
-              : c.status === 'error' || c.status === 'disconnected'
+              : live?.status === 'error' || live?.status === 'disconnected'
               ? 'bg-stone-400'
               : 'bg-stone-300';
-            const initials = labelFor(c.crewId).slice(0, 2).toUpperCase();
+            const initials = c.display_name.slice(0, 2).toUpperCase();
             return (
               <button
-                key={c.crewId}
+                key={c.id}
                 onClick={() => {
-                  setActiveTab(c.crewId);
-                  group.focus(c.crewId);
+                  setActiveTab(c.id);
+                  group.focus(c.id);
                 }}
                 className={`w-9 h-9 rounded-full border flex items-center justify-center text-xs font-semibold relative ${
                   isActive ? 'border-stone-700 bg-white' : 'border-stone-200 bg-white hover:bg-stone-100'
                 }`}
-                title={`${labelFor(c.crewId)} — ${c.status}`}
+                title={`${c.display_name}${live ? ` — ${live.status}` : ''}`}
               >
                 <span className="text-stone-700">{initials}</span>
                 <span className={`absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border-2 border-white ${dot}`} />
-                {c.unread && (
+                {live?.unread && (
                   <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-red-500 border border-white" />
                 )}
               </button>
@@ -267,18 +350,22 @@ export function GroupChatPanel({
               active={activeTab === ROOM_TAB}
               onClick={() => setActiveTab(ROOM_TAB)}
             />
-            {group.crew.map((c) => (
-              <TabButton
-                key={c.crewId}
-                label={labelFor(c.crewId)}
-                active={activeTab === c.crewId}
-                onClick={() => {
-                  setActiveTab(c.crewId);
-                  group.focus(c.crewId);
-                }}
-                unread={c.unread}
-              />
-            ))}
+            {invitedCrew.map((c) => {
+              const live = group.crew.find((x) => x.crewId === c.id);
+              return (
+                <TabButton
+                  key={c.id}
+                  label={c.display_name}
+                  active={activeTab === c.id}
+                  onClick={() => {
+                    setActiveTab(c.id);
+                    group.focus(c.id);
+                  }}
+                  unread={!!live?.unread}
+                  onClose={() => uninvite(c.id)}
+                />
+              );
+            })}
           </div>
 
           {/* Body */}
@@ -287,13 +374,12 @@ export function GroupChatPanel({
               <RoomView
                 messages={room.messages}
                 userId={userId}
-                labelFor={labelFor}
+                labelFor={(id) => claimById(id)?.display_name ?? id}
                 empty={!room.loading && room.messages.length === 0}
+                hasInvited={invitedCrew.length > 0}
               />
             ) : (
-              <CrewView
-                messages={group.crew.find((c) => c.crewId === activeTab)?.messages ?? []}
-              />
+              <CrewView messages={focusedCrew?.messages ?? []} />
             )}
           </div>
 
@@ -305,17 +391,16 @@ export function GroupChatPanel({
                 onChange={(e) => setDraft(e.target.value)}
                 onKeyDown={handleKeyDown}
                 placeholder={
-                  runtimeId
-                    ? '@director ... or just talk to the room (Enter to send, Shift+Enter for newline)'
-                    : 'Pick a runtime first'
+                  invitedCrew.length === 0
+                    ? 'Invite a crew member with + to start chatting'
+                    : `@${invitedCrew[0]?.display_name.toLowerCase().replace(/\s+/g, '-')} ... or just talk to the room (Enter to send)`
                 }
-                disabled={!runtimeId}
                 rows={2}
                 className="flex-1 resize-none rounded border border-stone-200 px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-stone-400 disabled:bg-stone-50 disabled:text-stone-400"
               />
               <button
                 onClick={() => void send()}
-                disabled={!draft.trim() || !runtimeId}
+                disabled={!draft.trim()}
                 className="self-end px-3 py-1.5 rounded bg-stone-800 text-white text-sm hover:bg-stone-700 disabled:bg-stone-300"
               >
                 Send
@@ -334,26 +419,37 @@ function TabButton({
   active,
   onClick,
   unread,
+  onClose,
 }: {
   label: string;
   active: boolean;
   onClick: () => void;
   unread?: boolean;
+  onClose?: () => void;
 }) {
   return (
-    <button
-      onClick={onClick}
-      className={`px-3 py-1.5 text-sm relative ${
-        active
-          ? 'border-b-2 border-stone-700 text-stone-900 font-medium'
-          : 'text-stone-500 hover:text-stone-700'
-      }`}
-    >
-      {label}
-      {unread && !active && (
-        <span className="absolute top-1 right-0.5 w-1.5 h-1.5 rounded-full bg-red-500" />
+    <div className={`flex items-center group ${active ? 'border-b-2 border-stone-700' : ''}`}>
+      <button
+        onClick={onClick}
+        className={`px-3 py-1.5 text-sm relative ${
+          active ? 'text-stone-900 font-medium' : 'text-stone-500 hover:text-stone-700'
+        }`}
+      >
+        {label}
+        {unread && !active && (
+          <span className="absolute top-1 right-0.5 w-1.5 h-1.5 rounded-full bg-red-500" />
+        )}
+      </button>
+      {onClose && (
+        <button
+          onClick={(e) => { e.stopPropagation(); onClose(); }}
+          className="text-xs text-stone-300 hover:text-stone-600 px-1 opacity-0 group-hover:opacity-100"
+          title="Remove from room"
+        >
+          ×
+        </button>
       )}
-    </button>
+    </div>
   );
 }
 
@@ -362,16 +458,21 @@ function RoomView({
   userId,
   labelFor,
   empty,
+  hasInvited,
 }: {
   messages: RoomMessageEvent[];
   userId: string;
   labelFor: (id: string) => string;
   empty: boolean;
+  hasInvited: boolean;
 }) {
   if (empty) {
     return (
       <div className="text-center text-sm text-stone-400 py-8">
-        Nothing in the room yet. Try <code className="px-1 rounded bg-stone-100">@director</code> to pull a crew in.
+        {hasInvited
+          ? <>Nothing in the room yet. Try <code className="px-1 rounded bg-stone-100">@&lt;name&gt;</code> to talk to a crew member.</>
+          : <>Invite a crew member with the <span className="px-1 rounded bg-stone-100">+</span> button to start.</>
+        }
       </div>
     );
   }
@@ -381,7 +482,7 @@ function RoomView({
         const isMe = m.sender_kind === 'user' && m.sender_user_id === userId;
         const sender =
           m.sender_kind === 'crew'
-            ? `${labelFor(m.sender_id)}${m.sender_user_id !== userId ? ` (${m.sender_user_id.slice(0, 8)})` : ''}`
+            ? labelFor(m.sender_id)
             : isMe
             ? 'You'
             : m.sender_id.slice(0, 8);
