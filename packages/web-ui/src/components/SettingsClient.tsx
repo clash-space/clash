@@ -1,7 +1,7 @@
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Key, Plus, Trash, Copy, Check, ArrowLeft, Lock, Eye, EyeSlash, PuzzlePiece, BookOpen, Terminal, Plug } from '@phosphor-icons/react';
+import { Key, Plus, Trash, Copy, Check, ArrowLeft, Lock, Eye, EyeSlash, PuzzlePiece, BookOpen, Terminal, Plug, Users } from '@phosphor-icons/react';
 import { useClashRuntime } from '@clash/web-ui/hooks/useClashRuntime';
 import { Link } from 'react-router';
 import {
@@ -141,6 +141,9 @@ export default function SettingsClient({ initialTokens, initialVariables, initia
 
                 {/* ── Runtimes ── */}
                 <RuntimesSection />
+
+                {/* ── Crew ── */}
+                <CrewSection />
 
                 {/* ── API Tokens ── */}
                 <section>
@@ -530,6 +533,249 @@ function RuntimesSection() {
                                     className="text-xs text-gray-400 hover:text-red-600 disabled:opacity-50"
                                 >
                                     {removingId === r.id ? "Removing…" : "Remove"}
+                                </button>
+                            </div>
+                        );
+                    })}
+                </div>
+            )}
+        </section>
+    );
+}
+
+// ─── Crew (claimed crew members) ───────────────────────────────
+//
+// "Templates" are the bundled crew roles in the bridge daemon (Director,
+// Canvas Editor, …). A "crew member" is the user's CLAIM: a specific
+// (template × runtime) instance that gets invited into project rooms.
+// See drizzle/0012_crew_member.sql for the why-this-layer rationale.
+
+interface CrewMemberRow {
+    id: string;
+    user_id: string;
+    template_id: string;
+    runtime_id: string;
+    display_name: string;
+    created_at: number;
+    runtime_label: string | null;
+    runtime_status: string | null;
+}
+
+const BUILTIN_TEMPLATES: Array<{ id: string; label: string; summary: string }> = [
+    { id: 'director',        label: 'Director',          summary: 'Plans the video and orchestrates the other roles.' },
+    { id: 'canvas-editor',   label: 'Canvas Editor',     summary: 'Adds / edits / reorders / deletes nodes on the canvas.' },
+    { id: 'generator',       label: 'Generator',         summary: 'Dispatches and tracks image / video / clip generation.' },
+    { id: 'storyboard',      label: 'Storyboard Artist', summary: 'Sketches a shot list and lays it on the canvas.' },
+    { id: 'project-manager', label: 'Project Manager',   summary: 'Lists / creates / switches / deletes projects.' },
+];
+
+function CrewSection() {
+    const rt = useClashRuntime();
+    const [crew, setCrew] = useState<CrewMemberRow[]>([]);
+    const [loading, setLoading] = useState(true);
+    const [claimOpen, setClaimOpen] = useState(false);
+    const [claimingTpl, setClaimingTpl] = useState<string>('');
+    const [claimingRid, setClaimingRid] = useState<string>('');
+    const [claimingName, setClaimingName] = useState<string>('');
+    const [claimBusy, setClaimBusy] = useState(false);
+    const [removingId, setRemovingId] = useState<string | null>(null);
+
+    const refresh = useCallback(async () => {
+        try {
+            const res = await fetch('/api/v1/crew', { credentials: 'same-origin' });
+            if (!res.ok) return;
+            const json = (await res.json()) as { crew: CrewMemberRow[] };
+            setCrew(json.crew ?? []);
+        } finally {
+            setLoading(false);
+        }
+    }, []);
+
+    useEffect(() => { void refresh(); }, [refresh]);
+
+    const onClaim = async () => {
+        if (!claimingTpl || !claimingRid) return;
+        setClaimBusy(true);
+        try {
+            const res = await fetch('/api/v1/crew', {
+                method: 'POST',
+                credentials: 'same-origin',
+                headers: { 'content-type': 'application/json' },
+                body: JSON.stringify({
+                    template_id: claimingTpl,
+                    runtime_id: claimingRid,
+                    ...(claimingName.trim() ? { display_name: claimingName.trim() } : {}),
+                }),
+            });
+            if (!res.ok) {
+                const text = await res.text();
+                alert(`Claim failed: ${text.slice(0, 200)}`);
+                return;
+            }
+            await refresh();
+            setClaimOpen(false);
+            setClaimingTpl('');
+            setClaimingRid('');
+            setClaimingName('');
+        } finally {
+            setClaimBusy(false);
+        }
+    };
+
+    const onRemove = async (id: string) => {
+        if (!confirm('Unclaim this crew member? Existing chat sessions keep working.')) return;
+        setRemovingId(id);
+        try {
+            const res = await fetch(`/api/v1/crew/${id}`, {
+                method: 'DELETE',
+                credentials: 'same-origin',
+            });
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            await refresh();
+        } catch (e) {
+            alert(`Failed to remove: ${e instanceof Error ? e.message : String(e)}`);
+        } finally {
+            setRemovingId(null);
+        }
+    };
+
+    const onlineRuntimes = rt.runtimes.filter((r) => r.status === 'online');
+    const tplLabel = (id: string) => BUILTIN_TEMPLATES.find((t) => t.id === id)?.label ?? id;
+
+    return (
+        <section>
+            <div className="flex items-center gap-3 mb-5">
+                <Users className="h-5 w-5 text-gray-400" weight="bold" />
+                <div className="flex-1">
+                    <h2 className="font-display text-base font-bold text-gray-900">Crew</h2>
+                    <p className="text-sm text-gray-500">
+                        Claim crew members from bundled templates and bind them to your runtimes.
+                        Invite them into projects to chat.
+                    </p>
+                </div>
+                <button
+                    type="button"
+                    onClick={() => setClaimOpen((v) => !v)}
+                    disabled={onlineRuntimes.length === 0}
+                    title={onlineRuntimes.length === 0 ? 'Register an online runtime first' : ''}
+                    className="inline-flex items-center gap-1.5 rounded-full bg-gray-900 text-white px-3.5 py-1.5 text-sm hover:bg-gray-800 disabled:bg-gray-300"
+                >
+                    <Plus className="h-3.5 w-3.5" /> Claim crew
+                </button>
+            </div>
+
+            {claimOpen && (
+                <div className="mb-4 rounded-xl border border-slate-200 bg-gray-50 p-4 space-y-3">
+                    <div>
+                        <label className="block text-xs font-medium text-gray-600 mb-1.5">Template</label>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                            {BUILTIN_TEMPLATES.map((t) => (
+                                <button
+                                    key={t.id}
+                                    type="button"
+                                    onClick={() => {
+                                        setClaimingTpl(t.id);
+                                        if (!claimingName) setClaimingName(t.label);
+                                    }}
+                                    className={`text-left rounded-lg border px-3 py-2 ${
+                                        claimingTpl === t.id
+                                            ? 'border-gray-900 bg-white'
+                                            : 'border-slate-200 bg-white hover:border-slate-400'
+                                    }`}
+                                >
+                                    <div className="text-sm font-medium text-gray-900">{t.label}</div>
+                                    <div className="text-xs text-gray-500 mt-0.5">{t.summary}</div>
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+
+                    <div>
+                        <label className="block text-xs font-medium text-gray-600 mb-1.5">Runtime</label>
+                        <select
+                            value={claimingRid}
+                            onChange={(e) => setClaimingRid(e.target.value)}
+                            className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm"
+                        >
+                            <option value="">— pick a runtime —</option>
+                            {onlineRuntimes.map((r) => (
+                                <option key={r.id} value={r.id}>
+                                    {r.hostname || r.machine_id.slice(0, 12)} · {r.os}
+                                </option>
+                            ))}
+                        </select>
+                        {onlineRuntimes.length === 0 && (
+                            <p className="text-xs text-amber-600 mt-1">No online runtimes — start one with <code>clash-bridge setup</code> first.</p>
+                        )}
+                    </div>
+
+                    <div>
+                        <label className="block text-xs font-medium text-gray-600 mb-1.5">Name</label>
+                        <input
+                            type="text"
+                            value={claimingName}
+                            onChange={(e) => setClaimingName(e.target.value)}
+                            placeholder={claimingTpl ? tplLabel(claimingTpl) : 'Director'}
+                            className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm"
+                        />
+                        <p className="text-xs text-gray-400 mt-1">Defaults to template name. Rename if you claim multiple of the same template.</p>
+                    </div>
+
+                    <div className="flex justify-end gap-2 pt-2">
+                        <button
+                            type="button"
+                            onClick={() => setClaimOpen(false)}
+                            className="px-3 py-1.5 text-sm text-gray-600 hover:text-gray-900"
+                        >
+                            Cancel
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => void onClaim()}
+                            disabled={!claimingTpl || !claimingRid || claimBusy}
+                            className="rounded-full bg-gray-900 text-white px-3.5 py-1.5 text-sm hover:bg-gray-800 disabled:bg-gray-300"
+                        >
+                            {claimBusy ? 'Claiming…' : 'Claim'}
+                        </button>
+                    </div>
+                </div>
+            )}
+
+            {loading ? (
+                <div className="rounded-xl border border-dashed border-slate-200 p-6 text-center">
+                    <p className="text-sm text-gray-400">Loading…</p>
+                </div>
+            ) : crew.length === 0 ? (
+                <div className="rounded-xl border border-dashed border-slate-200 p-6 text-center">
+                    <p className="text-sm text-gray-400">No crew claimed yet</p>
+                </div>
+            ) : (
+                <div className="space-y-2">
+                    {crew.map((c) => {
+                        const online = c.runtime_status === 'online';
+                        return (
+                            <div
+                                key={c.id}
+                                className="flex items-start justify-between gap-3 rounded-xl border border-slate-200 bg-white p-4"
+                            >
+                                <div className="flex-1 min-w-0">
+                                    <div className="flex items-center gap-2 mb-1">
+                                        <span className={`inline-block w-2 h-2 rounded-full ${online ? 'bg-emerald-500' : 'bg-stone-300'}`} />
+                                        <span className="font-medium text-gray-900">{c.display_name}</span>
+                                        <span className="text-xs text-gray-400">{tplLabel(c.template_id)}</span>
+                                    </div>
+                                    <div className="text-xs text-gray-500">
+                                        On: {c.runtime_label || c.runtime_id.slice(0, 12)}
+                                        {!online && <span className="text-amber-600 ml-2">(runtime offline)</span>}
+                                    </div>
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={() => void onRemove(c.id)}
+                                    disabled={removingId === c.id}
+                                    className="text-xs text-gray-400 hover:text-red-600 disabled:opacity-50"
+                                >
+                                    {removingId === c.id ? 'Removing…' : 'Unclaim'}
                                 </button>
                             </div>
                         );

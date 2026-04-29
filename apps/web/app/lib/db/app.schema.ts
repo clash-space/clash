@@ -321,6 +321,37 @@ export const roomMessage = sqliteTable(
 )
 
 /**
+ * Claimed crew members — concrete instances of bundled crew templates.
+ *
+ * Templates (Director / Canvas Editor / …) ship in the bridge daemon
+ * as read-only role definitions. A user "claims" a template + runtime
+ * to create one of these rows — e.g. "Alice's Director on alice-mac".
+ *
+ * Once claimed, the row is what gets invited into project rooms, what
+ * room mentions target, and what spawns sessions. runtime_session
+ * eventually references crew_member.id (currently stores template_id
+ * in agent_id; migration to crew_member_id is a follow-up).
+ *
+ * Display name defaults to template label; user can rename to
+ * distinguish multiple instances of the same template.
+ */
+export const crewMember = sqliteTable(
+    "crew_member",
+    {
+        id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+        userId: text("user_id").notNull(),
+        templateId: text("template_id").notNull(),
+        runtimeId: text("runtime_id").notNull(),
+        displayName: text("display_name").notNull(),
+        createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
+    },
+    (table) => ({
+        crewMemberUserIdx: index("crew_member_user_idx").on(table.userId, table.createdAt),
+        crewMemberRuntimeIdx: index("crew_member_runtime_idx").on(table.runtimeId),
+    })
+)
+
+/**
  * Installed Skills — globally installed AI agent skills per user.
  * Skills are SKILL.md instruction sets for Claude Code.
  */
