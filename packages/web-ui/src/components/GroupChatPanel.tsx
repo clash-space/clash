@@ -33,7 +33,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { CaretLeft, CaretRight, Plus, Users, Gear } from '@phosphor-icons/react';
 import { useGroupChat, type ClaimedCrew } from '@clash/web-ui/hooks/useGroupChat';
 import { useProjectRoom } from '@clash/web-ui/hooks/useProjectRoom';
-import type { ByoMessage } from '@clash/web-ui/lib/acpEvents';
+import { AcpMessageList } from '@clash/web-ui/components/copilot/AcpMessageList';
 import type { RoomMessageEvent } from '@clash/shared-types';
 import { parseMention } from '../_group-chat/mention';
 
@@ -509,35 +509,16 @@ function RoomView({
   );
 }
 
-function CrewView({ messages }: { messages: ByoMessage[] }) {
-  if (messages.length === 0) {
-    return (
-      <div className="text-center text-sm text-stone-400 py-8">
-        No messages yet for this crew. @-mention them in the Room to get them going.
-      </div>
-    );
-  }
+// Per-crew tab uses the same renderer as the old single-agent panel
+// so tool calls, streamed text, and unknown events all show the same
+// way users are used to.
+function CrewView({ messages }: { messages: import('@clash/web-ui/lib/acpEvents').ByoMessage[] }) {
   return (
     <div className="space-y-3">
-      {messages.map((msg) => {
-        const isUser = msg.role === 'user';
-        const text = msg.parts
-          .filter((p) => p.type === 'text')
-          .map((p) => (p as { type: 'text'; text: string }).text)
-          .join('\n');
-        if (!text) return null;
-        return (
-          <div key={msg.id} className={`flex ${isUser ? 'justify-end' : 'justify-start'}`}>
-            <div
-              className={`max-w-[80%] px-3 py-2 rounded-lg text-sm whitespace-pre-wrap break-words ${
-                isUser ? 'bg-stone-800 text-white' : 'bg-stone-100 text-stone-800'
-              }`}
-            >
-              {text}
-            </div>
-          </div>
-        );
-      })}
+      <AcpMessageList
+        messages={messages}
+        emptyHint="No messages yet for this crew. @-mention them in the Room to get them going."
+      />
     </div>
   );
 }
