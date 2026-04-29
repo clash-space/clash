@@ -18,7 +18,7 @@ import { getSignedUrl } from '@clash/web-ui/lib/hooks/useSignedUrl';
 import '@milkdown/theme-nord/style.css';
 import 'prismjs/themes/prism.css';
 
-/** A canvas node that can be @-mentioned in the prompt */
+/** A canvas node that can be #-attached to the prompt */
 export interface MentionableNode {
     id: string;
     type: string;       // 'image' | 'video' | 'text' | etc.
@@ -55,10 +55,21 @@ interface MilkdownEditorProps {
 
 const mentionPluginKey = new PluginKey('asset-mention-trigger');
 
+/**
+ * Trigger character for the canvas-node attachment picker.
+ *
+ * Convention split (per user direction): `@` always means "address a
+ * crew member" (handled in the GroupChatPanel input — see
+ * _group-chat/mention.ts). `#` means "attach a canvas node" — that's
+ * what this picker drives. Keeping them on different keys means typing
+ * one never accidentally fires the other.
+ */
+const MENTION_TRIGGER = '#';
+
 interface MentionPluginState {
     active: boolean;
     query: string;
-    from: number;  // Position of the @ character
+    from: number;  // Position of the trigger character (#)
     cursorCoords: { left: number; top: number; bottom: number } | null;
 }
 
@@ -74,7 +85,7 @@ function createMentionPlugin(
                     const meta = tr.getMeta(mentionPluginKey);
                     if (meta) return meta;
 
-                    // If not active, check if user just typed @
+                    // If not active, check if user just typed the trigger.
                     if (!prev.active) {
                         if (!tr.docChanged) return prev;
                         const { $from } = newState.selection;
@@ -83,30 +94,31 @@ function createMentionPlugin(
                             $from.parentOffset,
                             ''
                         );
-                        if (textBefore === '@') {
+                        if (textBefore === MENTION_TRIGGER) {
                             return { active: true, query: '', from: $from.pos - 1, cursorCoords: null };
                         }
                         return prev;
                     }
 
-                    // If active, update query or deactivate
+                    // If active, update query or deactivate.
                     const { $from } = newState.selection;
                     const pos = $from.pos;
                     if (pos <= prev.from) {
                         return { active: false, query: '', from: 0, cursorCoords: null };
                     }
-                    const textAfterAt = $from.parent.textBetween(
+                    const textAfterTrigger = $from.parent.textBetween(
                         prev.from - $from.start(),
                         $from.parentOffset,
                         ''
                     );
 
-                    // Check the text starts with @ and hasn't hit a space-breaking pattern
-                    if (!textAfterAt.startsWith('@')) {
+                    // Bail out if the trigger char got deleted or the query
+                    // wandered onto a new line / grew too long.
+                    if (!textAfterTrigger.startsWith(MENTION_TRIGGER)) {
                         return { active: false, query: '', from: 0, cursorCoords: null };
                     }
 
-                    const query = textAfterAt.slice(1); // Remove the @
+                    const query = textAfterTrigger.slice(1);
                     // Deactivate if query gets too long or has newlines
                     if (query.length > 50 || query.includes('\n')) {
                         return { active: false, query: '', from: 0, cursorCoords: null };

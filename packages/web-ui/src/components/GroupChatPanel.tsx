@@ -425,7 +425,7 @@ export function GroupChatPanel({
                 placeholder={
                   invitedCrew.length === 0
                     ? 'Invite a crew member with + to start chatting'
-                    : `Type to chat the room, or #${firstInvitedHandle} to address a crew member`
+                    : `Type to chat the room, or @${firstInvitedHandle} to address a crew member`
                 }
                 rows={2}
                 className="flex-1 resize-none rounded-xl border border-warm-border bg-warm-surface px-3 py-2 text-sm text-stone-800 placeholder:text-stone-400 focus:outline-none focus:ring-2 focus:ring-red-200 focus:border-red-300 transition-shadow"
@@ -505,7 +505,7 @@ function RoomView({
     return (
       <div className="text-center text-sm text-stone-400 py-12">
         {hasInvited
-          ? <>Nothing in the room yet. Try <code className="px-1.5 py-0.5 rounded bg-warm-muted text-red-500 font-mono">#&lt;name&gt;</code> to address a crew member.</>
+          ? <>Nothing in the room yet. Try <code className="px-1.5 py-0.5 rounded bg-warm-muted text-red-500 font-mono">@&lt;name&gt;</code> to address a crew member.</>
           : <>Invite a crew member with the <span className="px-1.5 py-0.5 rounded bg-warm-muted">+</span> button to start.</>
         }
       </div>
