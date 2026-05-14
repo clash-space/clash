@@ -3,9 +3,10 @@
 
 import { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { GoogleLogo, Gear, SignOut } from '@phosphor-icons/react';
+import { GoogleLogo, Gear, SignOut, CreditCard, Lightning } from '@phosphor-icons/react';
 import { Link } from 'react-router';
 import betterAuthClient from '@clash/web-ui/lib/betterAuthClient';
+import { useBillingBalance } from '@clash/web-ui/hooks/useBillingBalance';
 
 export default function UserControls() {
   const sessionQuery = betterAuthClient.useSession();
@@ -13,6 +14,7 @@ export default function UserControls() {
   const user = session?.user;
   const [open, setOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
+  const balance = useBillingBalance(!!user);
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
@@ -58,7 +60,22 @@ export default function UserControls() {
   return (
     <div className="flex items-center gap-3">
       {user ? (
-        <div className="relative" ref={menuRef}>
+        <div className="relative flex items-center gap-2" ref={menuRef}>
+          {(balance.status === 'ready' || balance.status === 'loading') && (
+            <Link
+              to="/billing"
+              className="flex items-center gap-1.5 rounded-full bg-warm-surface border border-warm-border px-3 py-1.5 shadow-sm hover:shadow-md hover:border-brand/40 transition-all text-sm font-display font-medium text-stone-700"
+              aria-label="Credits balance — click to manage billing"
+              title="Credits balance"
+            >
+              <Lightning weight="fill" className="h-3.5 w-3.5 text-brand" />
+              {balance.status === 'ready' ? (
+                <span className="tabular-nums">{balance.balance.available.toLocaleString()}</span>
+              ) : (
+                <span className="inline-block h-3 w-8 rounded bg-warm-muted animate-pulse" />
+              )}
+            </Link>
+          )}
           <motion.div
             className="flex items-center gap-3 rounded-full bg-warm-surface border border-warm-border pl-1.5 pr-4 py-1.5 shadow-sm cursor-pointer hover:shadow-md transition-all"
             whileHover={{ scale: 1.02 }}
@@ -98,6 +115,23 @@ export default function UserControls() {
                   <Gear className="h-4 w-4" />
                   Settings
                 </Link>
+                {balance.status !== 'unavailable' && (
+                  <Link
+                    to="/billing"
+                    onClick={() => setOpen(false)}
+                    className="flex items-center justify-between px-4 py-2.5 text-sm font-medium text-stone-700 hover:bg-warm-muted transition-colors"
+                  >
+                    <span className="flex items-center gap-2.5">
+                      <CreditCard className="h-4 w-4" />
+                      Billing
+                    </span>
+                    {balance.status === 'ready' && (
+                      <span className="text-xs tabular-nums text-stone-500">
+                        {balance.balance.available.toLocaleString()}
+                      </span>
+                    )}
+                  </Link>
+                )}
                 <button
                   onClick={handleSignOut}
                   className="flex w-full items-center gap-2.5 px-4 py-2.5 text-sm font-medium text-stone-700 hover:bg-warm-muted transition-colors"

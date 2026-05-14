@@ -27,7 +27,7 @@ export interface TopupPack {
   pack_id: string;
   credits: number;
   price_usd_cents: number;
-  ls_variant_id: string | null;
+  paddle_price_id: string | null;
   label: string;
 }
 

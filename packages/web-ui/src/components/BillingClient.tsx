@@ -115,7 +115,7 @@ function TopupSection({ packs }: { packs: TopupPack[] }) {
 function PackCard({ pack }: { pack: TopupPack }) {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
-  const disabled = !pack.ls_variant_id;
+  const disabled = !pack.paddle_price_id;
 
   const handle = useCallback(async () => {
     if (disabled || busy) return;
