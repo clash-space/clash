@@ -100,6 +100,13 @@ export class SessionManager {
   #spawner = new NodeSpawner();
   #runtime = new AcpRuntimeImpl(this.#spawner);
   #sessions = new Map<string, ActiveSession>();
+  /** session_id → Promise that resolves once start() has populated #sessions
+   *  (or rejected if start failed). The server may push session.prompt
+   *  before the corresponding session.start has finished the slow ACP
+   *  newSession dance (claude-code-acp with skills + history reloads can
+   *  take 10–15s on a fresh cwd); without this queue, prompt() looks up
+   *  the session, finds nothing, and silently aborts the turn. */
+  #starting = new Map<string, Promise<void>>();
   #env: SessionManagerEnv = {};
 
   constructor(send: Sender) {
@@ -140,6 +147,24 @@ export class SessionManager {
       });
       return;
     }
+    // Track in-flight start so prompt() can await it (prompts often arrive
+    // before newSession finishes).
+    let resolveStart!: () => void;
+    let rejectStart!: (e: unknown) => void;
+    const startPromise = new Promise<void>((res, rej) => { resolveStart = res; rejectStart = rej; });
+    this.#starting.set(p.session_id, startPromise);
+    try {
+      await this.#startInner(p);
+      resolveStart();
+    } catch (e) {
+      rejectStart(e);
+      throw e;
+    } finally {
+      this.#starting.delete(p.session_id);
+    }
+  }
+
+  async #startInner(p: SessionStartParams): Promise<void> {
     // Resolve crew template → role definition (CLAUDE.md / skills).
     // Existence check only; the agent CLI choice now comes from the
     // server's session.start payload (crew_member.agent_id) so users
@@ -209,6 +234,16 @@ export class SessionManager {
   }
 
   async prompt(p: SessionPromptParams): Promise<void> {
+    // If the session is currently being started, wait for it. Server
+    // often pushes session.prompt right after session.start (an idle
+    // crew that just got @-mentioned has both frames queued), and
+    // claude-code-acp's newSession can take 10–15s on a populated
+    // cwd. Without this wait, the prompt arrives before #sessions has
+    // the entry and we'd silently 404 — turn disappears.
+    const pending = this.#starting.get(p.session_id);
+    if (pending) {
+      try { await pending; } catch { /* start failed; falls through to no-such-session below */ }
+    }
     const sess = this.#sessions.get(p.session_id);
     if (!sess) {
       this.#send({
