@@ -41,6 +41,18 @@ export class NodeSpawner implements Spawner {
       toWeb(s: NodeJS.ReadableStream): ReadableStream<Uint8Array>;
     }).toWeb(child.stderr);
 
+    // Drain agent stderr to our own stderr with a [acp.child] prefix.
+    // Without this, the OS pipe buffer fills (~64KB) and the agent
+    // process blocks on its next stderr write — looks like the agent
+    // "hung" with zero progress, no events, no responses.
+    child.stderr.setEncoding("utf8");
+    child.stderr.on("data", (chunk: string) => {
+      for (const line of chunk.split(/\r?\n/)) {
+        if (line.length > 0) process.stderr.write(`[acp.child] ${line}\n`);
+      }
+    });
+    child.stderr.on("error", () => { /* ignore — child died */ });
+
     // Single resolution of `exited` — first of (exit, close) wins.
     const exited = new Promise<{ code: number | null; signal: string | null }>((resolve) => {
       let settled = false;

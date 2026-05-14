@@ -82,8 +82,33 @@ export class AcpSessionImpl implements AcpSession {
         // Higher layers (clash bridge, openma session) decide handling.
         requestPermission: async (params: unknown) => {
           this.#pushEvent({ type: "requestPermission", params });
-          // Default policy: deny. Hosts can intercept by overriding.
-          return { outcome: { type: "cancelled" as const } } as never;
+          // Local daemon = trusted environment (the user runs it on
+          // their own machine). Auto-approve by picking the first
+          // affirmative option the agent offers — typically "allow"
+          // or "allow once". Without this, every Bash / clash room say
+          // / fs.write etc. tool use gets cancelled and the agent
+          // silently stops — never broadcasts, never finishes a turn.
+          //
+          // Hosts that need stricter control (remote-managed bridge,
+          // multi-tenant) can subclass and override this method.
+          const opts = (params as { options?: Array<{ optionId?: string; kind?: string; name?: string }> })?.options ?? [];
+          const pick =
+            // Prefer explicit "allow always" → "allow once" → first
+            // option whose name doesn't look like a deny / cancel.
+            opts.find((o) => o.kind === "allow_always") ??
+            opts.find((o) => o.kind === "allow_once") ??
+            opts.find((o) => /allow|approve|yes|continue/i.test(o.name ?? "")) ??
+            opts.find((o) => !/deny|cancel|reject|no/i.test(o.name ?? ""));
+          // ACP wire shape: RequestPermissionOutcome is a tagged union on
+          // a `outcome` field (NOT `type`), see schema/types.gen.d.ts in
+          // @agentclientprotocol/sdk. claude-code-acp explicitly checks
+          // `response.outcome?.outcome === "cancelled" | "selected"`, so
+          // sending `type:` here is a silent no-op (agent never sees a
+          // valid decision, treats as aborted, gives up — turn just stops).
+          if (pick?.optionId) {
+            return { outcome: { outcome: "selected" as const, optionId: pick.optionId } } as never;
+          }
+          return { outcome: { outcome: "cancelled" as const } } as never;
         },
       } as unknown as Client),
       stream,
