@@ -21,14 +21,58 @@
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import { spawn } from "node:child_process";
+import { realpathSync } from "node:fs";
 import { machineName } from "../lib/platform.js";
 import { randomBytes } from "node:crypto";
 import { writeCreds, readCreds, getOrCreateMachineId } from "../lib/config.js";
 import { paths, currentPlatform, osTag } from "../lib/platform.js";
 import { install as installLaunchd } from "../lib/launchd.js";
 import { detectAll } from "../_acp-runtime/registry.js";
+import { probeRuntimeToken } from "../lib/probe.js";
 import { printBanner, log, c } from "../lib/style.js";
 import { PKG_VERSION } from "../lib/version.js";
+
+/** Resolve the daemon's launch path once, here, when we know the user's
+ *  intent. realpath unwraps the npm/.bin/clash-bridge symlink so the
+ *  plist points at the real dist/cli.js, not the shim — npm's package
+ *  layout can shift the .bin target across upgrades, and a stale plist
+ *  pointed at a missing shim silently breaks the daemon.
+ *  Frozen at setup time because launchd doesn't re-source the user's
+ *  shell or PATH; the only moment we know which binary the user
+ *  actually wants is when they run `clash-bridge setup`. */
+function resolveDaemonBinary(): string {
+  const argv1 = process.argv[1];
+  if (!argv1) throw new Error("process.argv[1] missing — can't resolve daemon binary path");
+  try {
+    return realpathSync(argv1);
+  } catch {
+    return argv1;
+  }
+}
+
+/** Replace this process with `clash-bridge daemon` (foreground). Used
+ *  when launchd install is skipped (--no-service or non-macOS) so the
+ *  user gets a running daemon without typing a second command. spawn +
+ *  inherit means the daemon's stdio shares the user's terminal and
+ *  Ctrl-C flows through naturally; setup process exits with whatever
+ *  the daemon exits with. */
+function execIntoDaemon(): never {
+  const child = spawn(process.execPath, [resolveDaemonBinary(), "daemon"], {
+    stdio: "inherit",
+    env: { ...process.env },
+  });
+  child.once("exit", (code, signal) => {
+    if (signal) {
+      process.kill(process.pid, signal);
+      return;
+    }
+    process.exit(code ?? 0);
+  });
+  // Block forever — the child's exit handler above is what eventually
+  // terminates this process. The setImmediate(exit) wrapper in runSetup
+  // would otherwise kill us before the child is even ready.
+  return new Promise<never>(() => undefined) as never;
+}
 
 interface SetupOpts {
   serverUrl: string;
@@ -43,28 +87,66 @@ interface SetupOpts {
 
 
 export async function runSetup(opts: SetupOpts): Promise<void> {
+  try {
+    await runSetupInner(opts);
+  } finally {
+    // Force-exit. Node's built-in fetch (undici) keeps HTTP keep-alive
+    // sockets open ~5min after the last request — without this, setup
+    // prints "Done." then hangs the user's terminal until those time
+    // out. Anything that genuinely needs to outlive setup (e.g. the
+    // launchd-installed daemon) has already forked off via launchctl.
+    setImmediate(() => process.exit(0));
+  }
+}
+
+async function runSetupInner(opts: SetupOpts): Promise<void> {
   printBanner(`setup — register this machine with ${opts.serverUrl}`, PKG_VERSION);
 
   // Fast path: if creds already exist (and the user didn't pass --force),
-  // skip the OAuth dance and just refresh the launchd plist (binary path
-  // changes when the user upgrades the npm package — the plist must be
-  // re-generated to point at the new dist/cli.js). This makes
-  // `npx @clash-space/bridge@beta setup` a clean upgrade flow: same one
-  // command for first install and every subsequent version bump.
+  // probe the server first. This catches the "I deleted the runtime in the
+  // console and re-ran setup" recovery flow — without the probe we'd happily
+  // refresh the launchd plist and restart the daemon with a token the server
+  // no longer recognizes, leaving the runtime offline with no hint why.
+  //
+  // Three probe outcomes:
+  //   - ok          → original fast path (refresh service / exec daemon, exit)
+  //   - invalid     → server forgot us; fall through to OAuth dance, same as
+  //                   if --force was passed. The stale creds get overwritten
+  //                   below by writeCreds().
+  //   - unreachable → can't tell; refresh service anyway (offline tolerance)
+  //                   and warn that we couldn't verify.
   if (!opts.force) {
     const existing = await readCreds();
     if (existing) {
       log.ok(`existing credentials found  ${c.dim(paths().credsFile)}`);
-      log.hint(`runtime ${existing.runtimeId.slice(0, 8)}… (use --force to re-register)`);
-      if (!opts.noService && currentPlatform() === "darwin") {
-        await installLaunchd({ binaryPath: process.argv[1] });
-        log.ok(`launchd plist refreshed  ${c.dim(paths().serviceFile ?? "")}`);
-        log.ok(`daemon restarted  ${c.dim("logs: " + paths().logFile)}`);
+      const probe = await probeRuntimeToken(existing.serverUrl, existing.token);
+      if (!probe.ok && probe.reason === "invalid") {
+        log.warn(`server no longer recognises this runtime (${probe.detail}) — re-registering`);
+        log.hint(`(was runtime ${existing.runtimeId.slice(0, 8)}…)`);
+        // Fall through to the OAuth path; writeCreds() will overwrite
+        // the stale file with the new runtime_id + token.
       } else {
-        log.hint("run `clash-bridge daemon` to start the bridge");
+        if (!probe.ok) {
+          log.warn(`could not verify with server (${probe.detail}) — proceeding anyway`);
+        } else {
+          log.hint(`runtime ${existing.runtimeId.slice(0, 8)}… (use --force to re-register)`);
+        }
+        if (!opts.noService && currentPlatform() === "darwin") {
+          await installLaunchd({ binaryPath: resolveDaemonBinary() });
+          log.ok(`launchd plist refreshed  ${c.dim(paths().serviceFile ?? "")}`);
+          log.ok(`daemon restarted  ${c.dim("logs: " + paths().logFile)}`);
+          process.stderr.write(`\n${c.bold("Up to date.")}\n\n`);
+          return;
+        }
+        // No service install (--no-service or non-macOS): exec into the
+        // daemon foreground so the user has a running bridge without
+        // having to type a second command. Never returns.
+        process.stderr.write(`\n${c.bold("Up to date.")}\n`);
+        log.step(opts.noService ? "--no-service: starting daemon in foreground" : `service install not supported on ${process.platform}; running daemon in foreground`);
+        log.hint("Ctrl-C to stop. To install as a launchd service, re-run setup without --no-service.");
+        process.stderr.write("\n");
+        execIntoDaemon();
       }
-      process.stderr.write(`\n${c.bold("Up to date.")}\n\n`);
-      return;
     }
   }
 
@@ -107,12 +189,13 @@ export async function runSetup(opts: SetupOpts): Promise<void> {
 
   if (opts.noService || currentPlatform() !== "darwin") {
     process.stderr.write("\n");
-    log.step("service install skipped");
-    log.hint("run `clash-bridge daemon` to start the bridge in the foreground");
-    return;
+    log.step(opts.noService ? "--no-service: starting daemon in foreground" : `service install not supported on ${process.platform}; running daemon in foreground`);
+    log.hint("Ctrl-C to stop. To install as a launchd service, re-run setup without --no-service.");
+    process.stderr.write("\n");
+    execIntoDaemon();
   }
 
-  await installLaunchd({ binaryPath: process.argv[1] });
+  await installLaunchd({ binaryPath: resolveDaemonBinary() });
   log.ok(`launchd plist installed  ${c.dim(paths().serviceFile ?? "")}`);
   log.ok(`daemon started  ${c.dim("logs: " + paths().logFile)}`);
   process.stderr.write("\n");
