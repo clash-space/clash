@@ -76,6 +76,10 @@ export interface UseGroupChatReturn {
   addCrew: (claim: ClaimedCrew, opts?: { resumeAcpSessionId?: string }) => Promise<void>;
   focus: (crewId: string) => void;
   removeCrew: (crewId: string) => void;
+  /** Re-establish the WS session for an existing (errored / disconnected)
+   *  crew without removing + re-adding it. Wired by the CrewView retry
+   *  button. Optional until task #10 lands the implementation. */
+  retryCrew?: (crewId: string) => void;
   sendToFocused: (text: string) => void;
   cancelFocused: () => void;
   /** Tear down everything (panel close, project change). */
@@ -96,6 +100,16 @@ interface InternalCrewState extends CrewSession {
   pendingPrompts: string[];
 }
 
+/** Cap on auto-reconnect attempts before we give up and surface the
+ *  retry button in CrewView. Five attempts at exp backoff gives roughly
+ *  60s of "is the network back?" before we stop and ask the user. */
+const MAX_RECONNECT_ATTEMPTS = 5;
+
+/** Exponential backoff: 1s, 2s, 4s, 8s, 16s, then capped at 30s. */
+function reconnectDelay(attempt: number): number {
+  return Math.min(1000 * 2 ** Math.max(0, attempt - 1), 30_000);
+}
+
 export function useGroupChat(projectId?: string): UseGroupChatReturn {
   const [crew, setCrew] = useState<InternalCrewState[]>([]);
   const [focusedCrewId, setFocusedCrewId] = useState<string | null>(null);
@@ -104,6 +118,15 @@ export function useGroupChat(projectId?: string): UseGroupChatReturn {
   const crewRef = useRef<InternalCrewState[]>([]);
   crewRef.current = crew;
   const turnSeq = useRef(0);
+  // Tracks crew ids the user has explicitly removed, so the onclose
+  // reconnect path can distinguish "user wants this gone" from a
+  // transport drop. Mutated synchronously inside removeCrew (refs, not
+  // state) so the close event fires AFTER the flag is set.
+  const removingRef = useRef<Set<string>>(new Set());
+  /** crewId → reconnect attempt count. Reset to 0 on successful open. */
+  const reconnectAttemptsRef = useRef<Map<string, number>>(new Map());
+  /** crewId → pending setTimeout id, so retryCrew / removeCrew can cancel. */
+  const reconnectTimersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
 
   // Tear down all WS on unmount or runtime change.
   useEffect(() => {
@@ -111,6 +134,8 @@ export function useGroupChat(projectId?: string): UseGroupChatReturn {
       for (const c of crewRef.current) {
         try { c.ws?.close(); } catch { /* ignore */ }
       }
+      for (const t of reconnectTimersRef.current.values()) clearTimeout(t);
+      reconnectTimersRef.current.clear();
     };
   }, []);
 
@@ -268,10 +293,72 @@ export function useGroupChat(projectId?: string): UseGroupChatReturn {
           ? { ...c, pendingPrompts: [...c.pendingPrompts, body], lastActiveAt: now }
           : c,
       ));
-      drainPending(crewId);
+      // Defer to next macrotask: setCrew schedules a re-render, but
+      // crewRef.current is mutated only on the NEXT render's body.
+      // Calling drainPending synchronously (or via microtask — runs
+      // before React commits) reads stale crewRef state where
+      // pendingPrompts is still empty, drain bails, and the prompt
+      // stays queued forever (until the next session.complete, which
+      // never comes if the crew is idle). setTimeout(0) gives React
+      // a chance to flush the commit phase first.
+      setTimeout(() => drainPending(crewId), 0);
       return;
     }
   }, [focusedCrewId, patchCrew, drainPending]);
+
+  /**
+   * Open (or re-open) the WS stream for an existing crew + session id.
+   * Extracted so both initial connect (from addCrew) and reconnect /
+   * retry paths share the same lifecycle wiring. On unexpected close,
+   * schedules an exponential-backoff reconnect up to MAX_RECONNECT_ATTEMPTS;
+   * after that the crew lands in `disconnected` with a Retry button on
+   * the CrewView header.
+   */
+  const openCrewWs = useCallback((crewId: string, sessionId: string) => {
+    const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const ws = new WebSocket(
+      `${proto}//${window.location.host}${SESSIONS_BASE}/${encodeURIComponent(sessionId)}/_stream`,
+    );
+    ws.onmessage = (ev) => handleCrewMessage(crewId, ev.data);
+    ws.onopen = () => {
+      // Reset backoff counter on successful re-attach. Status flips to
+      // 'connected' once the server's session.ready event arrives via
+      // handleCrewMessage — don't pre-empt that here.
+      reconnectAttemptsRef.current.set(crewId, 0);
+    };
+    ws.onclose = () => {
+      // Intentional removal? Don't reconnect.
+      if (removingRef.current.has(crewId)) return;
+      const attempts = (reconnectAttemptsRef.current.get(crewId) ?? 0) + 1;
+      reconnectAttemptsRef.current.set(crewId, attempts);
+
+      if (attempts > MAX_RECONNECT_ATTEMPTS) {
+        // Give up; surface to the user via the Retry button in CrewView.
+        setCrew((prev) => prev.map((c) =>
+          c.crewId === crewId
+            ? { ...c, ws: null, status: c.status === 'error' ? c.status : 'disconnected' as const, errorMessage: `Lost connection after ${MAX_RECONNECT_ATTEMPTS} attempts. Click Retry.` }
+            : c,
+        ));
+        return;
+      }
+
+      const delay = reconnectDelay(attempts);
+      setCrew((prev) => prev.map((c) =>
+        c.crewId === crewId
+          ? { ...c, ws: null, status: 'disconnected' as const, errorMessage: `Reconnecting (${attempts}/${MAX_RECONNECT_ATTEMPTS})…` }
+          : c,
+      ));
+      const t = setTimeout(() => {
+        reconnectTimersRef.current.delete(crewId);
+        if (removingRef.current.has(crewId)) return;
+        // Bail if the crew was removed from state between schedule and fire.
+        if (!crewRef.current.some((c) => c.crewId === crewId)) return;
+        openCrewWs(crewId, sessionId);
+      }, delay);
+      reconnectTimersRef.current.set(crewId, t);
+    };
+    patchCrew(crewId, { ws });
+  }, [handleCrewMessage, patchCrew]);
 
   const addCrew = useCallback(async (claim: ClaimedCrew, opts?: { resumeAcpSessionId?: string }) => {
     const crewId = claim.id; // crew_member.id is the in-panel identity
@@ -322,32 +409,29 @@ export function useGroupChat(projectId?: string): UseGroupChatReturn {
       }
       const json = (await res.json()) as { session_id: string };
       patchCrew(crewId, { sessionId: json.session_id });
-
-      const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-      const ws = new WebSocket(
-        `${proto}//${window.location.host}${SESSIONS_BASE}/${encodeURIComponent(json.session_id)}/_stream`,
-      );
-      ws.onmessage = (ev) => handleCrewMessage(crewId, ev.data);
-      ws.onclose = () => {
-        // session.disposed already handles intentional teardown; this
-        // covers transport drop. Keep crew in the list with disconnected
-        // status so the user can see what happened.
-        setCrew((prev) => prev.map((c) =>
-          c.crewId === crewId
-            ? { ...c, ws: null, status: c.status === 'error' ? c.status : 'disconnected' as const }
-            : c,
-        ));
-      };
-      patchCrew(crewId, { ws });
+      // Clear any stale removal flag from a previous lifecycle so the
+      // new connection's onclose path doesn't get short-circuited.
+      removingRef.current.delete(crewId);
+      reconnectAttemptsRef.current.set(crewId, 0);
+      openCrewWs(crewId, json.session_id);
     } catch (e) {
       patchCrew(crewId, {
         status: 'error',
         errorMessage: e instanceof Error ? e.message : String(e),
       });
     }
-  }, [projectId, focus, patchCrew, handleCrewMessage]);
+  }, [projectId, focus, patchCrew, openCrewWs]);
 
   const removeCrew = useCallback((crewId: string) => {
+    // Set BEFORE closing the WS so the close handler sees the flag and
+    // skips the reconnect path.
+    removingRef.current.add(crewId);
+    const pending = reconnectTimersRef.current.get(crewId);
+    if (pending) {
+      clearTimeout(pending);
+      reconnectTimersRef.current.delete(crewId);
+    }
+    reconnectAttemptsRef.current.delete(crewId);
     setCrew((prev) => {
       const target = prev.find((c) => c.crewId === crewId);
       if (target?.ws && target.ws.readyState === WebSocket.OPEN) {
@@ -363,6 +447,24 @@ export function useGroupChat(projectId?: string): UseGroupChatReturn {
       return next?.crewId ?? null;
     });
   }, []);
+
+  /** User-triggered reconnect for an errored / disconnected crew. Cancels
+   *  any pending backoff timer and immediately opens a fresh WS to the
+   *  existing session id. If the session id is missing (we never got past
+   *  POST /sessions), there's nothing to retry — caller should removeCrew
+   *  + re-add instead. */
+  const retryCrew = useCallback((crewId: string) => {
+    const target = crewRef.current.find((c) => c.crewId === crewId);
+    if (!target || !target.sessionId) return;
+    const pending = reconnectTimersRef.current.get(crewId);
+    if (pending) {
+      clearTimeout(pending);
+      reconnectTimersRef.current.delete(crewId);
+    }
+    reconnectAttemptsRef.current.set(crewId, 0);
+    patchCrew(crewId, { status: 'connecting', errorMessage: null });
+    openCrewWs(crewId, target.sessionId);
+  }, [openCrewWs, patchCrew]);
 
   const sendToFocused = useCallback((text: string) => {
     if (!focusedCrewId) return;
@@ -416,6 +518,7 @@ export function useGroupChat(projectId?: string): UseGroupChatReturn {
     addCrew,
     focus,
     removeCrew,
+    retryCrew,
     sendToFocused,
     cancelFocused,
     shutdown,

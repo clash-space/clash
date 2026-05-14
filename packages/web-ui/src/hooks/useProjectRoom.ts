@@ -49,15 +49,18 @@ export function useProjectRoom(projectId: string | null): UseProjectRoomReturn {
 
   const append = useCallback((batch: RoomMessageEvent[]) => {
     if (batch.length === 0) return;
-    setMessages((prev) => {
-      const fresh = batch.filter((m) => !seenIds.current.has(m.id));
-      for (const m of fresh) seenIds.current.add(m.id);
-      if (fresh.length === 0) return prev;
-      // Keep stable created_at order. Backfill batches arrive newest-
-      // first from the API; live frames arrive one-at-a-time. Concat,
-      // then sort by `at` ascending for render.
-      return [...prev, ...fresh].sort((a, b) => a.at - b.at);
-    });
+    // Dedup + mutate seenIds OUTSIDE the setMessages updater. React
+    // StrictMode double-invokes updaters; if we mutate seenIds inside,
+    // the first invoke marks every id seen, the second invoke filters
+    // them all out, and we commit an empty state — silently losing the
+    // entire batch. Pure updater is required for StrictMode safety.
+    const fresh = batch.filter((m) => !seenIds.current.has(m.id));
+    if (fresh.length === 0) return;
+    for (const m of fresh) seenIds.current.add(m.id);
+    // Keep stable created_at order. Backfill batches arrive newest-
+    // first from the API; live frames arrive one-at-a-time. Concat,
+    // then sort by `at` ascending for render.
+    setMessages((prev) => [...prev, ...fresh].sort((a, b) => a.at - b.at));
   }, []);
 
   const refetch = useCallback(async () => {
