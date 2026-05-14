@@ -109,3 +109,6 @@ bucket_name = "master-clash-assets"
 
 [env.staging.vars]
 BETTER_AUTH_BASE_PATH = "/api/better-auth"
+# Wrangler refuses to inherit top-level vars; redeclare to silence the warning.
+# Empty = "service binding will resolve" — only used as a dev fallback.
+API_CF_URL = ""

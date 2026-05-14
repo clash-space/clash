@@ -165,15 +165,12 @@ name = "RENDER_CONTAINER"
 class_name = "RenderContainer"
 script_name = "master-clash-api"
 
-[[env.staging.durable_objects.bindings]]
-name = "BYO_BRIDGE"
-class_name = "ByoBridgeRoom"
-script_name = "master-clash-api"
-
-[[env.staging.durable_objects.bindings]]
-name = "RUNTIME_ROOM"
-class_name = "RuntimeRoom"
-script_name = "master-clash-api"
+# BYO_BRIDGE and RUNTIME_ROOM omitted — those DO classes are NEW (added in
+# the runtime-multiplexing commits) and the prod worker hasn't been
+# redeployed since, so it doesn't export them yet. Staging requests to
+# byo/runtime endpoints will 503 until the prod worker catches up; the
+# timeline / video-editing surface this branch tests doesn't depend on
+# them.
 
 # Workflow lives in the prod worker too — bind by reference, no new instance.
 [[env.staging.workflows]]
