@@ -5,12 +5,16 @@ import { GoogleLogo } from "@phosphor-icons/react";
 import betterAuthClient from "@clash/web-ui/lib/betterAuthClient";
 import Background from "@clash/web-ui/components/Background";
 
-type Stage = "email" | "otp";
+type Stage = "email" | "otp" | "password";
+type PwAction = "signin" | "signup";
 
 export default function LoginRoute() {
   const [stage, setStage] = useState<Stage>("email");
+  const [pwAction, setPwAction] = useState<PwAction>("signin");
   const [email, setEmail] = useState("");
   const [otp, setOtp] = useState("");
+  const [password, setPassword] = useState("");
+  const [name, setName] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
@@ -84,6 +88,33 @@ export default function LoginRoute() {
     }
   };
 
+  const handlePassword = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    setError(null);
+    setInfo(null);
+    setIsLoading(true);
+    try {
+      if (pwAction === "signin") {
+        const { error: err } = await betterAuthClient.signIn.email({
+          email,
+          password,
+        });
+        if (err) throw new Error(err.message || "Sign in failed");
+      } else {
+        const { error: err } = await betterAuthClient.signUp.email({
+          email,
+          password,
+          name: name || email.split("@")[0],
+        });
+        if (err) throw new Error(err.message || "Sign up failed");
+      }
+      navigate("/", { replace: true });
+    } catch (e) {
+      setError((e as Error).message);
+      setIsLoading(false);
+    }
+  };
+
   const handleGoogleSignIn = async () => {
     setError(null);
     setIsLoading(true);
@@ -121,12 +152,22 @@ export default function LoginRoute() {
             </motion.div>
           </Link>
           <h1 className="font-display text-2xl font-bold text-slate-950 mb-2">
-            {stage === "otp" ? "Check your email" : "Welcome"}
+            {stage === "otp"
+              ? "Check your email"
+              : stage === "password"
+                ? pwAction === "signin"
+                  ? "Welcome back"
+                  : "Create account"
+                : "Welcome"}
           </h1>
           <p className="text-stone-600">
             {stage === "otp"
               ? `We sent a 6-digit code to ${email}`
-              : "Sign in or create an account with your email"}
+              : stage === "password"
+                ? pwAction === "signin"
+                  ? "Sign in with your email and password"
+                  : "Pick an email and password to get started"
+                : "Sign in or create an account with your email"}
           </p>
         </div>
 
@@ -164,6 +205,91 @@ export default function LoginRoute() {
               )}
               <span>{isLoading ? "Sending code..." : "Send code"}</span>
             </motion.button>
+            <button
+              type="button"
+              onClick={() => {
+                setStage("password");
+                setError(null);
+                setInfo(null);
+              }}
+              className="block w-full pt-2 text-center text-sm text-stone-500 hover:text-slate-950"
+            >
+              Use password instead →
+            </button>
+          </form>
+        ) : stage === "password" ? (
+          <form onSubmit={handlePassword} className="space-y-3">
+            <input
+              type="email"
+              placeholder="you@example.com"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              autoComplete="email"
+              required
+              className="w-full rounded-full border border-warm-border bg-warm-surface px-5 py-3 text-base focus:border-brand/70 focus:outline-none"
+            />
+            {pwAction === "signup" && (
+              <input
+                type="text"
+                placeholder="Display name (optional)"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                autoComplete="name"
+                className="w-full rounded-full border border-warm-border bg-warm-surface px-5 py-3 text-base focus:border-brand/70 focus:outline-none"
+              />
+            )}
+            <input
+              type="password"
+              placeholder="Password (min 8 chars)"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              autoComplete={pwAction === "signin" ? "current-password" : "new-password"}
+              minLength={8}
+              required
+              className="w-full rounded-full border border-warm-border bg-warm-surface px-5 py-3 text-base focus:border-brand/70 focus:outline-none"
+            />
+            <motion.button
+              type="submit"
+              disabled={isLoading || !email || password.length < 8}
+              className="flex w-full items-center justify-center gap-3 rounded-full bg-slate-950 px-6 py-4 text-base font-medium text-white shadow-sm shadow-slate-950/10 transition-all hover:bg-slate-800 disabled:opacity-70 disabled:cursor-not-allowed"
+              whileHover={!isLoading ? { scale: 1.02 } : {}}
+              whileTap={!isLoading ? { scale: 0.98 } : {}}
+            >
+              {isLoading && (
+                <div className="h-5 w-5 animate-spin rounded-full border-2 border-white border-t-transparent" />
+              )}
+              <span>
+                {isLoading
+                  ? pwAction === "signin" ? "Signing in..." : "Creating..."
+                  : pwAction === "signin" ? "Sign in" : "Create account"}
+              </span>
+            </motion.button>
+
+            <div className="flex items-center justify-between pt-2 text-sm">
+              <button
+                type="button"
+                onClick={() => {
+                  setStage("email");
+                  setPassword("");
+                  setName("");
+                  setError(null);
+                  setInfo(null);
+                }}
+                className="text-stone-500 hover:text-slate-950"
+              >
+                ← Use email code
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setPwAction((a) => (a === "signin" ? "signup" : "signin"));
+                  setError(null);
+                }}
+                className="text-slate-950 hover:underline"
+              >
+                {pwAction === "signin" ? "Create account" : "Have an account?"}
+              </button>
+            </div>
           </form>
         ) : (
           <form onSubmit={handleVerify} className="space-y-3">
