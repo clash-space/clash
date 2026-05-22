@@ -5,6 +5,8 @@ import { motion, AnimatePresence, Reorder } from 'framer-motion';
 import { createPortal } from 'react-dom';
 import { useProject } from '../ProjectContext';
 import { useOptionalLoroSyncContext } from '../LoroSyncContext';
+import { usePeersSelectingNode } from '../PresenceAwarenessContext';
+import PeerSelectionRing from '../PeerSelectionRing';
 import { useLayoutManager } from '@clash/web-ui/lib/layout';
 import { generateSemanticId } from '@clash/web-ui/lib/utils/semanticId';
 import { SignedImg } from '../SignedMedia';
@@ -68,6 +70,8 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
     // flag in an effect so subsequent loads don't re-open.
     const [showPanel, setShowPanel] = useState<boolean>(() => !!data.openPanel);
     const [showModal, setShowModal] = useState(false);
+    // Peers (other connected users) who currently have this node selected.
+    const peersSelecting = usePeersSelectingNode(id);
     const [showModelDropdown, setShowModelDropdown] = useState(false);
     const [isExecuting, setIsExecuting] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -1936,6 +1940,11 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
                 the visible edges. Without `w-[260px]`, the wrapper inherits
                 the wider React Flow bounding rect and the handle floats. */}
             <div className="group relative w-[260px]">
+                {/* Peer selection rings — drawn behind the capsule. Local
+                    blue ring is inset on the capsule itself, so peer rings
+                    on the outside don't visually fight it. */}
+                <PeerSelectionRing peers={peersSelecting} />
+
                 {/* Compact Badge — click opens config panel */}
                 <div
                     className={`w-[260px] ${bgClass} rounded-xl overflow-hidden transition-all duration-300 hover:shadow-lg cursor-pointer ${

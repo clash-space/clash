@@ -1,0 +1,292 @@
+/**
+ * Live cursor + selection awareness over the existing /sync/:projectId WS.
+ *
+ * Architecture: never touches the Loro CRDT doc — awareness is pure
+ * ephemeral sideband JSON. See `apps/api-cf/src/agents/project-room.ts`
+ * for the matching server-side broadcaster (throttled to ~12Hz outbound;
+ * stale entries pruned after 8s).
+ *
+ * Throttling chain:
+ *   - Local cursor/selection deltas are coalesced here to ~50ms (20Hz)
+ *     before hitting the WS — see SEND_THROTTLE_MS below.
+ *   - Server coalesces outbound broadcasts at ~80ms (12Hz).
+ *   - Server prunes entries idle > 8s; we mirror that on receive as
+ *     defence-in-depth (a server pause shouldn't strand cursors forever).
+ *
+ * Identity: the server stamps each WS with the authenticated user's
+ * userId/userName/userAvatar — clients can NOT claim their own identity.
+ * The broadcast we receive already excludes us, so `peers` here is
+ * straightforwardly everyone-else.
+ */
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import type { AwarenessBroadcastMessage, AwarenessPeer } from '@clash/shared-types';
+
+/** Outbound throttle for local cursor/selection updates. */
+const SEND_THROTTLE_MS = 50;
+/** Defence-in-depth: drop peers we haven't heard about for this long. */
+const PEER_STALE_MS = 8_000;
+
+/**
+ * 10-colour palette — picked for decent contrast in light + dark canvas
+ * backgrounds and clear distinguishability between adjacent cursors.
+ * Keep it small so two random users have a real chance of colliding;
+ * stable hash ensures the SAME user always gets the SAME colour across
+ * reconnects (so others' mental model "Alice is purple" survives).
+ */
+const PEER_COLORS = [
+  '#ef4444', // red-500
+  '#f97316', // orange-500
+  '#eab308', // yellow-500
+  '#22c55e', // green-500
+  '#06b6d4', // cyan-500
+  '#3b82f6', // blue-500
+  '#8b5cf6', // violet-500
+  '#ec4899', // pink-500
+  '#14b8a6', // teal-500
+  '#f43f5e', // rose-500
+] as const;
+
+function hashString(s: string): number {
+  let h = 0;
+  for (let i = 0; i < s.length; i++) {
+    h = ((h << 5) - h + s.charCodeAt(i)) | 0;
+  }
+  return Math.abs(h);
+}
+
+export function colorForUserId(userId: string): string {
+  return PEER_COLORS[hashString(userId) % PEER_COLORS.length];
+}
+
+export interface Peer {
+  userId: string;
+  userName: string;
+  userAvatar?: string;
+  color: string;
+  cursor?: { x: number; y: number };
+  selectedNodeIds: string[];
+}
+
+interface InternalPeer extends Peer {
+  /** Local-side timestamp from the last awareness broadcast that included this peer. */
+  lastSeen: number;
+}
+
+export interface UsePresenceAwarenessReturn {
+  /** All other connected browser clients with live awareness state. */
+  peers: Peer[];
+  /** Update the local cursor in flow coordinates. Pass null/undefined when leaving the canvas. */
+  setLocalCursor: (cursor: { x: number; y: number } | null | undefined) => void;
+  /** Update the local selection (ReactFlow node IDs). */
+  setLocalSelection: (nodeIds: string[]) => void;
+}
+
+interface UsePresenceAwarenessOptions {
+  /**
+   * Subscribe to incoming awareness broadcasts. Pass `onAwareness` from
+   * the matching `useLoroSync` instance — this hook does NOT open its
+   * own WebSocket; it rides on the existing /sync connection.
+   */
+  registerOnAwareness: (handler: ((msg: AwarenessBroadcastMessage) => void) | null) => void;
+  /** Send a JSON frame on the existing /sync WS (best-effort, drops if not OPEN). */
+  sendSideband: (msg: object) => void;
+}
+
+/**
+ * Internal helper to wire up cursor + selection awareness without re-creating
+ * the LoroSync WS. ProjectEditor passes the same WS plumbing it already uses
+ * for presence/activity here so we get one socket for everything.
+ */
+export function usePresenceAwareness(
+  options: UsePresenceAwarenessOptions,
+): UsePresenceAwarenessReturn {
+  const { registerOnAwareness, sendSideband } = options;
+
+  // Peer map keyed by userId — same user with two tabs collapses to one peer
+  // (their LAST update wins). That matches user intuition: "where is Alice?"
+  // has one answer per logical user, not one per browser tab.
+  const [peers, setPeers] = useState<Peer[]>([]);
+
+  // Latest local state — kept in a ref so the throttle setTimeout can flush
+  // the most-recent values rather than the values captured at scheduling time.
+  const localStateRef = useRef<{
+    cursor: { x: number; y: number } | undefined;
+    selectedNodeIds: string[];
+  }>({ cursor: undefined, selectedNodeIds: [] });
+
+  // Track what was actually SENT so we can skip no-op flushes.
+  const lastSentRef = useRef<{
+    cursor: { x: number; y: number } | undefined;
+    selectedNodeIds: string[];
+    cursorPresent: boolean;
+  }>({ cursor: undefined, selectedNodeIds: [], cursorPresent: false });
+
+  const sendTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastSendAtRef = useRef(0);
+
+  const flushSend = useCallback(() => {
+    sendTimerRef.current = null;
+    lastSendAtRef.current = Date.now();
+    const { cursor, selectedNodeIds } = localStateRef.current;
+
+    // Skip identical resends to keep the WS quiet during idle periods.
+    const prev = lastSentRef.current;
+    const cursorSame =
+      (prev.cursor?.x === cursor?.x && prev.cursor?.y === cursor?.y) &&
+      // Distinguish "no cursor right now" from "haven't sent yet"
+      ((cursor === undefined) === (prev.cursor === undefined));
+    const selectionSame =
+      prev.selectedNodeIds.length === selectedNodeIds.length &&
+      prev.selectedNodeIds.every((id, i) => id === selectedNodeIds[i]);
+    if (cursorSame && selectionSame && prev.cursorPresent) return;
+
+    sendSideband({
+      type: 'awareness.update',
+      // `null` is the explicit "I left the canvas" signal — the server
+      // distinguishes that from "no field provided" only by what we send,
+      // so we always pass an explicit value once we've started sending.
+      cursor: cursor ?? null,
+      selectedNodeIds,
+    });
+
+    lastSentRef.current = {
+      cursor,
+      selectedNodeIds: [...selectedNodeIds],
+      cursorPresent: true,
+    };
+  }, [sendSideband]);
+
+  const scheduleSend = useCallback(() => {
+    if (sendTimerRef.current) return;
+    const now = Date.now();
+    const sinceLast = now - lastSendAtRef.current;
+    const delay = sinceLast >= SEND_THROTTLE_MS ? 0 : SEND_THROTTLE_MS - sinceLast;
+    sendTimerRef.current = setTimeout(flushSend, delay);
+  }, [flushSend]);
+
+  const setLocalCursor = useCallback(
+    (cursor: { x: number; y: number } | null | undefined) => {
+      // Both null and undefined collapse to "no cursor" — peers should see it
+      // disappear in either case (window blur, leave canvas, unmount).
+      const next = cursor && typeof cursor.x === 'number' && typeof cursor.y === 'number'
+        ? { x: cursor.x, y: cursor.y }
+        : undefined;
+      const prev = localStateRef.current.cursor;
+      if (prev?.x === next?.x && prev?.y === next?.y) return;
+      localStateRef.current.cursor = next;
+      scheduleSend();
+    },
+    [scheduleSend],
+  );
+
+  const setLocalSelection = useCallback(
+    (nodeIds: string[]) => {
+      const prev = localStateRef.current.selectedNodeIds;
+      const same =
+        prev.length === nodeIds.length && prev.every((id, i) => id === nodeIds[i]);
+      if (same) return;
+      localStateRef.current.selectedNodeIds = nodeIds;
+      scheduleSend();
+    },
+    [scheduleSend],
+  );
+
+  // Subscribe to incoming broadcasts. We replace the broadcast snapshot
+  // wholesale on every frame — the server sends the full set, so a stale
+  // peer that vanished from the snapshot is simply dropped here too.
+  useEffect(() => {
+    const handler = (msg: AwarenessBroadcastMessage) => {
+      const now = Date.now();
+      const next: Peer[] = msg.users.map((u) => peerFromBroadcast(u, now));
+      setPeers((current) => {
+        // Merge with any local-only "still alive" entries we haven't yet
+        // pruned via stale-sweep — but normally `next` is the whole truth.
+        const surviving = current.filter(
+          (p) => !next.some((n) => n.userId === p.userId) &&
+            // Keep only entries fresh enough to display
+            internalLastSeen(p) > now - PEER_STALE_MS,
+        );
+        return [...next, ...surviving];
+      });
+    };
+    registerOnAwareness(handler);
+    return () => registerOnAwareness(null);
+  }, [registerOnAwareness]);
+
+  // Defence-in-depth stale sweep. The server already prunes, but a brief
+  // server pause or in-flight reconnect shouldn't leave cursors stranded.
+  useEffect(() => {
+    const id = setInterval(() => {
+      const cutoff = Date.now() - PEER_STALE_MS;
+      setPeers((current) => {
+        const next = current.filter((p) => internalLastSeen(p) > cutoff);
+        return next.length === current.length ? current : next;
+      });
+    }, 2000);
+    return () => clearInterval(id);
+  }, []);
+
+  // Periodically resend our local state — keeps the server-side TTL fresh
+  // for peers' staleness sweeps even when the user holds the cursor still.
+  // Cheap: one frame every 4s when nothing changes.
+  useEffect(() => {
+    const id = setInterval(() => {
+      if (localStateRef.current.cursor || localStateRef.current.selectedNodeIds.length > 0) {
+        // Force a send even if values match prev — the heartbeat is the point.
+        lastSentRef.current.cursorPresent = false;
+        scheduleSend();
+      }
+    }, 4000);
+    return () => clearInterval(id);
+  }, [scheduleSend]);
+
+  // Cleanup: explicit "cursor gone" on unmount so peers don't see a ghost.
+  useEffect(() => {
+    return () => {
+      if (sendTimerRef.current) {
+        clearTimeout(sendTimerRef.current);
+        sendTimerRef.current = null;
+      }
+      sendSideband({ type: 'awareness.update', cursor: null, selectedNodeIds: [] });
+    };
+  }, [sendSideband]);
+
+  return useMemo(
+    () => ({ peers, setLocalCursor, setLocalSelection }),
+    [peers, setLocalCursor, setLocalSelection],
+  );
+}
+
+// ─── Internals ────────────────────────────────────────────────
+
+/**
+ * We stash `lastSeen` on Peer via a non-enumerable symbol so the public
+ * `Peer` shape stays minimal. This avoids leaking infrastructure timing
+ * into consumer types while still letting our stale sweeper see it.
+ */
+const LAST_SEEN_SYMBOL: unique symbol = Symbol('lastSeen');
+
+function peerFromBroadcast(u: AwarenessPeer, now: number): Peer {
+  const peer: Peer & { [LAST_SEEN_SYMBOL]?: number } = {
+    userId: u.userId,
+    userName: u.userName,
+    userAvatar: u.userAvatar,
+    color: colorForUserId(u.userId),
+    cursor: u.cursor,
+    selectedNodeIds: u.selectedNodeIds ?? [],
+  };
+  Object.defineProperty(peer, LAST_SEEN_SYMBOL, {
+    value: now,
+    enumerable: false,
+    writable: true,
+  });
+  return peer;
+}
+
+function internalLastSeen(p: Peer): number {
+  return (p as unknown as { [LAST_SEEN_SYMBOL]?: number })[LAST_SEEN_SYMBOL] ?? 0;
+}
+
+// Re-export for consumers that need to render the local user's own colour
+// (e.g. "you are this colour" hint in a peers UI).
+export type { InternalPeer };

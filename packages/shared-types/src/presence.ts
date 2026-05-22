@@ -95,7 +95,54 @@ export interface RoomMessageEvent {
   at: number;              // unix seconds
 }
 
-export type SidebandMessage = PresenceMessage | ActivityMessage | RoomMessageEvent;
+// ─── Live Cursor / Selection Awareness (ephemeral) ────────────
+//
+// These messages ride the same /sync/:projectId WS as the binary Loro CRDT
+// stream and the presence/activity sideband. They are pure ephemeral state:
+// the server never persists awareness into the Loro doc — it only fans the
+// latest map of (userId → cursor + selection) out to every connected peer.
+//
+// Throttling lives on both ends. The client coalesces local cursor/selection
+// to ~50ms (20Hz) before sending `awareness.update`; the server coalesces
+// outbound `awareness.broadcast` to ~80ms (12Hz). Without these caps, five
+// users mousing on the canvas at 60Hz would flood the WS at 300 msg/sec.
+
+/** Client → server: declare local cursor + selection. */
+export interface AwarenessUpdateMessage {
+  type: "awareness.update";
+  /**
+   * Cursor in flow-coordinate space (NOT screen pixels). The receiving peer
+   * applies the React Flow viewport transform to render it at the right
+   * screen position. Omit / set to `null` when the cursor leaves the canvas
+   * (window blur, mouseleave, tab hidden) so peers see it disappear.
+   */
+  cursor?: { x: number; y: number } | null;
+  /** Currently selected node IDs (ReactFlow). Empty array = nothing selected. */
+  selectedNodeIds?: string[];
+}
+
+export interface AwarenessPeer {
+  /** Identity stamped by the server from the WS auth — clients can't claim. */
+  userId: string;
+  userName: string;
+  userAvatar?: string;
+  /** Cursor in flow coordinates; absent when the peer's cursor left the canvas. */
+  cursor?: { x: number; y: number };
+  /** Currently selected node IDs. */
+  selectedNodeIds: string[];
+}
+
+/** Server → client: snapshot of every other connected peer's awareness state. */
+export interface AwarenessBroadcastMessage {
+  type: "awareness.broadcast";
+  users: AwarenessPeer[];
+}
+
+export type SidebandMessage =
+  | PresenceMessage
+  | ActivityMessage
+  | RoomMessageEvent
+  | AwarenessBroadcastMessage;
 
 /**
  * Type guard: check if a parsed JSON message is a valid sideband message.
@@ -103,5 +150,10 @@ export type SidebandMessage = PresenceMessage | ActivityMessage | RoomMessageEve
 export function isSidebandMessage(msg: unknown): msg is SidebandMessage {
   if (!msg || typeof msg !== "object") return false;
   const t = (msg as any).type;
-  return t === "presence" || t === "activity" || t === "room.message";
+  return (
+    t === "presence" ||
+    t === "activity" ||
+    t === "room.message" ||
+    t === "awareness.broadcast"
+  );
 }

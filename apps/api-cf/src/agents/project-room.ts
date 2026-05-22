@@ -25,7 +25,15 @@ import { pollNodeTasks } from "../loro/TaskPolling";
 import { updateNodeData, appendNodeLog } from "../loro/NodeUpdater";
 import { authenticateRequest } from "../loro/auth";
 import { deriveRuntimeStatus } from "../lib/runtime-status";
-import type { ClientInfo, ClientType, PresenceMessage, ActivityMessage, ActivityAction } from "@clash/shared-types";
+import type {
+  ClientInfo,
+  ClientType,
+  PresenceMessage,
+  ActivityMessage,
+  ActivityAction,
+  AwarenessBroadcastMessage,
+  AwarenessPeer,
+} from "@clash/shared-types";
 import { Canvas } from "@clash/shared-types";
 
 /**
@@ -51,6 +59,10 @@ const UPDATES_PER_COMPACT = 100;
 /** Hard cap — if compaction is somehow stuck, force one to keep load fast. */
 const UPDATES_HARD_COMPACT_THRESHOLD = 500;
 
+/** Awareness throttling. Cap outbound broadcasts at ~12Hz; stale entries pruned after 8s. */
+const AWARENESS_BROADCAST_MIN_INTERVAL_MS = 80;
+const AWARENESS_STALE_MS = 8_000;
+
 export class ProjectRoom extends DurableObject<Env> {
   private doc: LoroDoc = new LoroDoc();
   private projectId = "";
@@ -73,6 +85,28 @@ export class ProjectRoom extends DurableObject<Env> {
 
   /** Throttle activity broadcasts: nodeId → last broadcast timestamp */
   private activityThrottle: Map<string, number> = new Map();
+
+  /**
+   * Ephemeral awareness state: per-WS cursor + selection.
+   *
+   * Never persisted — if the DO hibernates, this map drops and is rebuilt
+   * organically as clients send their next awareness.update. Browser clients
+   * resend cursor on every mousemove (throttled), so the rebuild window is
+   * effectively zero seconds for active users; idle users blink once.
+   */
+  private awareness: Map<
+    WebSocket,
+    {
+      cursor?: { x: number; y: number };
+      selectedNodeIds: string[];
+      updatedAt: number;
+    }
+  > = new Map();
+
+  /** Coalesce outbound awareness broadcasts (timestamp of the last fan-out). */
+  private lastAwarenessBroadcastAt = 0;
+  /** If an update arrives while throttled, schedule one trailing-edge flush. */
+  private awarenessFlushTimer: ReturnType<typeof setTimeout> | null = null;
 
   // ─── Fetch: entry point for all requests ─────────────────────
 
@@ -380,6 +414,88 @@ export class ProjectRoom extends DurableObject<Env> {
   }
 
   /**
+   * Coalesce outbound awareness broadcasts to ~12Hz. Internal state is kept
+   * always-fresh — only the *broadcast* is throttled. If an update arrives
+   * inside the cool-down window, we schedule one trailing-edge flush so the
+   * last position before the user stopped moving still reaches peers.
+   */
+  private scheduleAwarenessBroadcast(): void {
+    const now = Date.now();
+    const sinceLast = now - this.lastAwarenessBroadcastAt;
+    if (sinceLast >= AWARENESS_BROADCAST_MIN_INTERVAL_MS) {
+      this.flushAwarenessBroadcast();
+      return;
+    }
+    // Already-scheduled trailing flush will pick this up.
+    if (this.awarenessFlushTimer) return;
+    const delay = AWARENESS_BROADCAST_MIN_INTERVAL_MS - sinceLast;
+    this.awarenessFlushTimer = setTimeout(() => {
+      this.awarenessFlushTimer = null;
+      this.flushAwarenessBroadcast();
+    }, delay);
+  }
+
+  /**
+   * Fan the current awareness map out to all clients except the sender of
+   * each frame. We send PER-RECIPIENT payloads so each WS sees everyone
+   * else (a peer never sees themselves) — same shape Liveblocks/yjs use.
+   *
+   * Stale entries (no update in AWARENESS_STALE_MS) are pruned defensively
+   * here too — webSocketClose normally removes entries, but a half-open
+   * socket might miss the close event.
+   */
+  private flushAwarenessBroadcast(): void {
+    this.lastAwarenessBroadcastAt = Date.now();
+
+    // Rebuild clients map first — hibernation can drop in-memory state.
+    this.rebuildClientsFromWebSockets();
+
+    const now = Date.now();
+    // Prune stale entries from the in-memory map.
+    for (const [ws, entry] of this.awareness.entries()) {
+      if (now - entry.updatedAt > AWARENESS_STALE_MS) {
+        this.awareness.delete(ws);
+      }
+    }
+
+    // Build the canonical peer list once; recipients filter themselves out.
+    const peersByWs = new Map<WebSocket, AwarenessPeer>();
+    for (const [ws, entry] of this.awareness.entries()) {
+      const info = this.clients.get(ws);
+      if (!info) continue;
+      // Skip non-browser clients — CLI/agent connections shouldn't appear
+      // as live cursors on the canvas.
+      if (info.clientType !== "browser") continue;
+      const peer: AwarenessPeer = {
+        userId: info.userId,
+        userName: info.name,
+        userAvatar: info.avatar,
+        selectedNodeIds: entry.selectedNodeIds,
+      };
+      if (entry.cursor) peer.cursor = entry.cursor;
+      peersByWs.set(ws, peer);
+    }
+
+    for (const ws of this.ctx.getWebSockets()) {
+      const recipientInfo = this.clients.get(ws);
+      if (!recipientInfo || recipientInfo.clientType !== "browser") continue;
+      // Exclude self by WebSocket identity, not by userId — same user with
+      // two tabs open should see their own other-tab cursor.
+      const users: AwarenessPeer[] = [];
+      for (const [peerWs, peer] of peersByWs.entries()) {
+        if (peerWs === ws) continue;
+        users.push(peer);
+      }
+      const msg: AwarenessBroadcastMessage = { type: "awareness.broadcast", users };
+      try {
+        ws.send(JSON.stringify(msg));
+      } catch {
+        // Connection may have closed
+      }
+    }
+  }
+
+  /**
    * Broadcast a JSON text message to all connected clients.
    */
   private broadcastText(text: string): void {
@@ -436,6 +552,33 @@ export class ProjectRoom extends DurableObject<Env> {
    */
   private async handleTextMessage(sender: WebSocket, msg: Record<string, any>): Promise<void> {
     if (this.initPromise) await this.initPromise;
+
+    if (msg.type === "awareness.update") {
+      // Ephemeral cursor + selection sideband. Never enters the Loro doc.
+      // Per-WS state is always kept fresh on receive; broadcast end is
+      // coalesced (see scheduleAwarenessBroadcast) to keep outbound load
+      // bounded regardless of how many clients are moving their mouse.
+      const incomingCursor = msg.cursor;
+      const cursor =
+        incomingCursor &&
+        typeof incomingCursor === "object" &&
+        typeof incomingCursor.x === "number" &&
+        typeof incomingCursor.y === "number"
+          ? { x: incomingCursor.x, y: incomingCursor.y }
+          : undefined;
+
+      const selectedNodeIds = Array.isArray(msg.selectedNodeIds)
+        ? msg.selectedNodeIds.filter((id: unknown): id is string => typeof id === "string")
+        : [];
+
+      this.awareness.set(sender, {
+        cursor,
+        selectedNodeIds,
+        updatedAt: Date.now(),
+      });
+      this.scheduleAwarenessBroadcast();
+      return;
+    }
 
     if (msg.type === "register_custom_actions") {
       // Local agent registering custom action definitions.
@@ -741,6 +884,7 @@ export class ProjectRoom extends DurableObject<Env> {
     // log so the next occurrence names the failing line.
     try {
       this.clients.delete(ws);
+      this.awareness.delete(ws);
     } catch (e) {
       log.error(`[room proj=${this.projectId.slice(-6)}] webSocketClose: clients.delete threw:`, e);
     }
@@ -748,6 +892,13 @@ export class ProjectRoom extends DurableObject<Env> {
       this.broadcastPresence();
     } catch (e) {
       log.error(`[room proj=${this.projectId.slice(-6)}] webSocketClose: broadcastPresence threw:`, e);
+    }
+    try {
+      // Fan out one extra awareness frame so peers see the cursor disappear
+      // immediately rather than waiting for the 8-second staleness sweep.
+      this.flushAwarenessBroadcast();
+    } catch (e) {
+      log.error(`[room proj=${this.projectId.slice(-6)}] webSocketClose: awareness flush threw:`, e);
     }
     try {
       ws.close(code, reason);
@@ -760,6 +911,7 @@ export class ProjectRoom extends DurableObject<Env> {
     log.error("WebSocket error:", error);
     try {
       this.clients.delete(ws);
+      this.awareness.delete(ws);
     } catch (e) {
       log.error(`[room proj=${this.projectId.slice(-6)}] webSocketError: clients.delete threw:`, e);
     }
@@ -767,6 +919,11 @@ export class ProjectRoom extends DurableObject<Env> {
       this.broadcastPresence();
     } catch (e) {
       log.error(`[room proj=${this.projectId.slice(-6)}] webSocketError: broadcastPresence threw:`, e);
+    }
+    try {
+      this.flushAwarenessBroadcast();
+    } catch (e) {
+      log.error(`[room proj=${this.projectId.slice(-6)}] webSocketError: awareness flush threw:`, e);
     }
     try {
       ws.close(1011, "WebSocket error");

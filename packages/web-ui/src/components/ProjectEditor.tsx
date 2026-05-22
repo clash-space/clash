@@ -88,6 +88,10 @@ import type { PresenceClient } from '@clash/shared-types';
 import PresenceBar from './PresenceBar';
 import ActivityToast, { useActivityToasts } from './ActivityToast';
 import NodeActivityIndicator, { useNodeHighlights } from './NodeActivityIndicator';
+import AwarenessLayer from './AwarenessLayer';
+import { PresenceAwarenessProvider } from './PresenceAwarenessContext';
+import { usePresenceAwareness } from '@clash/web-ui/hooks/usePresenceAwareness';
+import type { AwarenessBroadcastMessage } from '@clash/shared-types';
 import { CascadeRunnerMount } from '@clash/web-ui/hooks/useCascadeRunner';
 import { MODEL_CARDS } from '@clash/shared-types';
 import { useCustomActions } from '@clash/web-ui/hooks/useCustomActions';
@@ -324,6 +328,17 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
         roomSinkRef.current = sink;
     }, []);
 
+    // Awareness: live cursor + selection over the same WS.
+    // The handler ref is set by usePresenceAwareness below; useLoroSync
+    // forwards every `awareness.broadcast` frame into it.
+    const awarenessSinkRef = useRef<((msg: AwarenessBroadcastMessage) => void) | null>(null);
+    const registerOnAwareness = useCallback(
+        (handler: ((msg: AwarenessBroadcastMessage) => void) | null) => {
+            awarenessSinkRef.current = handler;
+        },
+        [],
+    );
+
     // Loro CRDT sync
     const loroSync = useLoroSync({
         projectId: project.id,
@@ -337,6 +352,9 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
         },
         onRoomMessage: (msg) => {
             roomSinkRef.current?.(msg);
+        },
+        onAwareness: (msg) => {
+            awarenessSinkRef.current?.(msg);
         },
         onNodesChange: (syncedNodes) => {
             // Loro is the SINGLE SOURCE OF TRUTH - use its state directly
@@ -488,6 +506,14 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
     useEffect(() => {
         loroSyncRef.current = loroSync;
     }, [loroSync]);
+
+    // Awareness: cursor + selection. Rides on loroSync's WS via sendSideband.
+    // sendSideband doesn't change identity once loroSync is created, so we
+    // pass it directly without ref'ing.
+    const awareness = usePresenceAwareness({
+        registerOnAwareness,
+        sendSideband: loroSync.sendSideband,
+    });
 
 
 
@@ -897,7 +923,10 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
 
     const onSelectionChange = useCallback(({ nodes }: { nodes: Node[] }) => {
         setSelectedNodes(nodes);
-    }, []);
+        // Broadcast selection to peers via the awareness sideband. Throttled
+        // inside the hook, so frequent selection-rectangle drags don't flood.
+        awareness.setLocalSelection(nodes.map((n) => n.id));
+    }, [awareness]);
 
     // Auto-save logic removed: Loro is the single source of truth.
 
@@ -1950,6 +1979,7 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
     return (
         <ProjectProvider projectId={project.id}>
             <LoroSyncProvider loroSync={loroSync}>
+              <PresenceAwarenessProvider peers={awareness.peers}>
               <ImageEditorProvider>
                 <VideoClipperProvider>
                 <VideoEditorProvider
@@ -2074,6 +2104,14 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
 
                                     {/* Debug: show node IDs as selectable labels */}
                                     {showDebugIds && <DebugNodeIds nodes={nodes} />}
+
+                                    {/* Live cursor + selection awareness from other peers.
+                                        Must be inside ReactFlow so it can read viewport
+                                        (zoom/pan) for translating flow-coords → screen. */}
+                                    <AwarenessLayer
+                                        peers={awareness.peers}
+                                        setLocalCursor={awareness.setLocalCursor}
+                                    />
 
                                     {/* Unix-pipe cascade dispatcher: adopts drafts on run
                                         request, propagates cascadeToken across stages. */}
@@ -2268,6 +2306,7 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
                 </VideoEditorProvider>
                 </VideoClipperProvider>
               </ImageEditorProvider>
+              </PresenceAwarenessProvider>
             </LoroSyncProvider>
         </ProjectProvider >
     );

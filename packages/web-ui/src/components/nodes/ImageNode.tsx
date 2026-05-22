@@ -5,6 +5,8 @@ import DraftPlaceholder from './DraftPlaceholder';
 import { Image as ImageIcon, TextT } from '@phosphor-icons/react';
 import { useMediaViewer } from '../MediaViewerContext';
 import { useOptionalLoroSyncContext } from '../LoroSyncContext';
+import { usePeersSelectingNode } from '../PresenceAwarenessContext';
+import PeerSelectionRing from '../PeerSelectionRing';
 import { normalizeStatus, isActiveStatus, type AssetStatus } from '@clash/web-ui/lib/assetStatus';
 import { SignedImg } from '../SignedMedia';
 import { useSignedUrl } from '@clash/web-ui/lib/hooks/useSignedUrl';
@@ -21,6 +23,10 @@ const ImageNode = ({ data, selected, id }: NodeProps<Node<Record<string, any>>>)
     const { setNodes } = useReactFlow();
     const nodes = useNodes();
     const loroSync = useOptionalLoroSyncContext();
+    // Peers (other connected users) who currently have THIS node selected.
+    // Empty array reference is stable when no peer is selecting us, so the
+    // memoised PeerSelectionRing renders nothing without extra reconciles.
+    const peersSelecting = usePeersSelectingNode(id);
     const [status, setStatus] = useState<AssetStatus>(normalizeStatus(data.status) || (data.assetId ? 'completed' : 'generating'));
     const asset = useAsset(data.assetId);
     const imageR2Key = asset?.srcR2Key;
@@ -120,7 +126,7 @@ const ImageNode = ({ data, selected, id }: NodeProps<Node<Record<string, any>>>)
                 onDoubleClick={(e) => e.stopPropagation()}
             >
                 <input
-                    className="bg-transparent text-lg font-bold font-display text-slate-500 focus:text-slate-900 focus:outline-none"
+                    className="bg-transparent text-lg font-bold font-display text-slate-700 dark:text-slate-300 focus:text-slate-900 focus:outline-none"
                     value={label}
                     onChange={(evt) => {
                         const newLabel = evt.target.value;
@@ -143,9 +149,13 @@ const ImageNode = ({ data, selected, id }: NodeProps<Node<Record<string, any>>>)
                 />
             </div>
 
+            {/* Peer selection rings — drawn behind the card so the local
+                blue ring (inset on the card itself) reads cleanly on top. */}
+            <PeerSelectionRing peers={peersSelecting} />
+
             {/* Main Card */}
             <div
-                className={`relative bg-white shadow-md rounded-matrix overflow-hidden transition-all duration-300 hover:shadow-lg ${selected ? 'ring-4 ring-blue-500 ring-offset-2' : 'ring-1 ring-slate-200'
+                className={`relative bg-warm-surface shadow-md rounded-matrix overflow-hidden transition-all duration-300 hover:shadow-lg ${selected ? 'ring-4 ring-blue-500 ring-offset-2' : 'ring-1 ring-slate-200'
                     }`}
                 style={{
                     width: nodeWidth,
@@ -228,9 +238,9 @@ const ImageNode = ({ data, selected, id }: NodeProps<Node<Record<string, any>>>)
                         </div>
                     </div>
                 ) : isActiveStatus(status) ? (
-                    <div className="flex items-center justify-center bg-slate-50 text-slate-400" style={{ width: '100%', height: '100%' }}>
+                    <div className="flex items-center justify-center bg-warm-muted text-slate-700 dark:text-slate-300" style={{ width: '100%', height: '100%' }}>
                         <div className="flex flex-col items-center gap-3">
-                            <div className="h-8 w-8 animate-spin rounded-full border-4 border-slate-200 border-t-blue-500" />
+                            <div className="h-8 w-8 animate-spin rounded-full border-4 border-warm-border border-t-blue-500" />
                             <span className="text-xs font-medium animate-pulse">Generating Image...</span>
                         </div>
                     </div>
@@ -242,7 +252,7 @@ const ImageNode = ({ data, selected, id }: NodeProps<Node<Record<string, any>>>)
                         </div>
                     </div>
                 ) : (
-                    <div className="flex items-center justify-center bg-slate-100 text-slate-400" style={{ width: '100%', height: '100%' }}>
+                    <div className="flex items-center justify-center bg-warm-muted text-slate-700 dark:text-slate-300" style={{ width: '100%', height: '100%' }}>
                         <div className="flex flex-col items-center gap-2">
                             <ImageIcon size={32} />
                             <span className="text-xs">No Image</span>
@@ -253,11 +263,11 @@ const ImageNode = ({ data, selected, id }: NodeProps<Node<Record<string, any>>>)
                 {/* Description Box */}
                 {showDescription && (
                     <div
-                        className="absolute left-0 right-0 bottom-0 z-20 border-t border-slate-100 bg-slate-50/95 p-3 backdrop-blur"
+                        className="absolute left-0 right-0 bottom-0 z-20 border-t border-warm-border bg-slate-50/95 p-3 backdrop-blur"
                         onDoubleClick={(e) => e.stopPropagation()}
                     >
                         <textarea
-                            className="w-full h-24 resize-none bg-transparent text-xs text-slate-600 focus:outline-none"
+                            className="w-full h-24 resize-none bg-transparent text-xs text-slate-700 dark:text-slate-300 focus:outline-none"
                             value={description || ((status === 'completed') ? 'Generating description...' : 'No description available.')}
                             readOnly
                         />
