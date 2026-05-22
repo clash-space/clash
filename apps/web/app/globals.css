@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@plugin "@tailwindcss/typography";
 
 @source "../../../packages/web-ui/src";
 @source "../../../packages/remotion-ui/src";
@@ -10,6 +11,57 @@
   --foreground: #171717;
   --canvas-bg: #fbfbf9;
   --canvas-dot: #d7d2cc;
+
+  /* Warm surface scale — flips to a desaturated dark plate in dark mode
+   * so `bg-warm-surface` etc. auto-theme without per-class dark: variants. */
+  --warm-page: #fbfbf9;
+  --warm-surface: #fffefd;
+  --warm-muted: #faf7f3;
+  --warm-hover: #f4ede6;
+  --warm-border: #eee3d9;
+
+  --brand: #ff6b50;
+  --brand-light: #fff0ed;
+  --brand-foreground: #ffffff;
+
+  /* Node-kind semantics — hue stays constant; *-light surface dims for dark. */
+  --kind-image: #ff6b50;
+  --kind-image-light: #fff0ed;
+  --kind-video: #3b82f6;
+  --kind-video-light: #eff6ff;
+  --kind-audio: #f5a623;
+  --kind-audio-light: #fffbeb;
+  --kind-custom: #6366f1;
+  --kind-custom-light: #eef2ff;
+
+  /* Crew status semantics — only used for status dots, not surfaces. */
+  --status-ready: #10b981;
+  --status-busy: #f59e0b;
+  --status-down: #a8a29e;
+  --status-idle: #d6d3d1;
+
+  /* shadcn primitives' theme tokens (Badge / Button / Tooltip etc.).
+   * Mapped to our warm + brand palette so the shadcn-style components
+   * shipped by ai-elements look at home in this app instead of
+   * defaulting to the gray slate of a fresh shadcn install. */
+  --primary: #ff6b50;
+  --primary-foreground: #ffffff;
+  --secondary: #faf7f3;
+  --secondary-foreground: #1c1815;
+  --destructive: #dc2626;
+  --destructive-foreground: #ffffff;
+  --muted: #faf7f3;
+  --muted-foreground: #78716c;
+  --accent: #f4ede6;
+  --accent-foreground: #1c1815;
+  --card: #fffefd;
+  --card-foreground: #171717;
+  --popover: #fffefd;
+  --popover-foreground: #171717;
+  --border: #eee3d9;
+  --input: #eee3d9;
+  --ring: #ff6b50;
+  --radius: 0.5rem;
 
   --font-inter: "Inter Variable", -apple-system, BlinkMacSystemFont, "Segoe UI",
     Roboto, sans-serif;
@@ -23,27 +75,53 @@
   --color-canvas-bg: var(--canvas-bg);
   --color-canvas-dot: var(--canvas-dot);
 
-  --color-warm-page: #fbfbf9;
-  --color-warm-surface: #fffefd;
-  --color-warm-muted: #faf7f3;
-  --color-warm-hover: #f4ede6;
-  --color-warm-border: #eee3d9;
+  --color-warm-page: var(--warm-page);
+  --color-warm-surface: var(--warm-surface);
+  --color-warm-muted: var(--warm-muted);
+  --color-warm-hover: var(--warm-hover);
+  --color-warm-border: var(--warm-border);
 
-  --color-brand: #ff6b50;
-  --color-brand-light: #fff0ed;
-  --color-brand-foreground: #ffffff;
+  --color-brand: var(--brand);
+  --color-brand-light: var(--brand-light);
+  --color-brand-foreground: var(--brand-foreground);
 
-  --color-image: #ff6b50;
-  --color-image-light: #fff0ed;
+  --color-image: var(--kind-image);
+  --color-image-light: var(--kind-image-light);
 
-  --color-video: #3b82f6;
-  --color-video-light: #eff6ff;
+  --color-video: var(--kind-video);
+  --color-video-light: var(--kind-video-light);
 
-  --color-audio: #f5a623;
-  --color-audio-light: #fffbeb;
+  --color-audio: var(--kind-audio);
+  --color-audio-light: var(--kind-audio-light);
 
-  --color-custom: #6366f1;
-  --color-custom-light: #eef2ff;
+  --color-custom: var(--kind-custom);
+  --color-custom-light: var(--kind-custom-light);
+
+  --color-status-ready: var(--status-ready);
+  --color-status-busy: var(--status-busy);
+  --color-status-down: var(--status-down);
+  --color-status-idle: var(--status-idle);
+
+  /* Expose shadcn theme tokens to Tailwind v4 so `bg-primary`,
+   * `text-muted-foreground`, `border-border` etc. (used inside the
+   * ai-elements + shadcn primitive sources) resolve correctly. */
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
 
   --font-sans: var(--font-inter);
   --font-display: var(--font-space-grotesk);
@@ -57,6 +135,37 @@
     --foreground: #ededed;
     --canvas-bg: #0f172a;
     --canvas-dot: #334155;
+
+    --warm-page: #14110f;
+    --warm-surface: #1c1815;
+    --warm-muted: #221d19;
+    --warm-hover: #2b2622;
+    --warm-border: #2e2823;
+
+    --brand-light: #3a1a14;
+
+    --kind-image-light: #3a1a14;
+    --kind-video-light: #0f1f3a;
+    --kind-audio-light: #3a2a0f;
+    --kind-custom-light: #1f1f3a;
+
+    --status-ready: #34d399;
+    --status-busy: #fbbf24;
+    --status-down: #78716c;
+    --status-idle: #57534e;
+
+    --secondary: #221d19;
+    --secondary-foreground: #ededed;
+    --muted: #221d19;
+    --muted-foreground: #a8a29e;
+    --accent: #2b2622;
+    --accent-foreground: #ededed;
+    --card: #1c1815;
+    --card-foreground: #ededed;
+    --popover: #1c1815;
+    --popover-foreground: #ededed;
+    --border: #2e2823;
+    --input: #2e2823;
   }
 }
 
@@ -84,6 +193,29 @@ html { overflow-y: scroll; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.2); border-radius: 4px; }
 ::-webkit-scrollbar-thumb:hover { background: rgba(0,0,0,0.3); }
+
+/* Chat panel — scrollbar always reserves its 6px track but the thumb
+   is transparent until hover. Critical: keep the *width* stable so
+   hovering doesn't reflow the message column. Only the thumb color
+   transitions. (Earlier attempt toggled scrollbar width 0↔6 on hover
+   which caused content to jump every time the mouse entered/left.) */
+.chat-scroll-hidden {
+  scrollbar-width: thin;                        /* Firefox: always thin */
+  scrollbar-color: transparent transparent;    /* thumb / track — transparent at rest */
+  transition: scrollbar-color 0.15s ease;
+}
+.chat-scroll-hidden::-webkit-scrollbar { width: 6px; height: 6px; }
+.chat-scroll-hidden::-webkit-scrollbar-track { background: transparent; }
+.chat-scroll-hidden::-webkit-scrollbar-thumb {
+  background: transparent;
+  border-radius: 3px;
+  transition: background-color 0.15s ease;
+}
+.chat-scroll-hidden:hover {
+  scrollbar-color: rgba(0,0,0,0.18) transparent;
+}
+.chat-scroll-hidden:hover::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.18); }
+.chat-scroll-hidden:hover::-webkit-scrollbar-thumb:hover { background: rgba(0,0,0,0.28); }
 @media (prefers-color-scheme: dark) {
   ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.2); }
   ::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.3); }
@@ -146,8 +278,16 @@ html { overflow-y: scroll; }
   text-align: left;
 }
 .clash-chat-input-editor .milkdown-editor-wrapper {
-  padding-left: 0 !important;
-  padding-right: 0 !important;
+  /* The wrapper carries the chat composer's horizontal padding directly.
+     Previously this was 0 + padding pushed onto the outer
+     .clash-chat-input-editor — but the outer has no horizontal padding
+     in the non-hero variant, so text ended up flush against the white
+     card's left edge. Putting padding here keeps the caret a sensible
+     12px in from both sides regardless of variant. */
+  padding-left: 14px !important;
+  padding-right: 14px !important;
+  padding-top: 6px !important;
+  padding-bottom: 6px !important;
 }
 .clash-chat-input-editor .ProseMirror {
   min-height: inherit;
@@ -365,16 +505,15 @@ html { overflow-y: scroll; }
   background: transparent;
 }
 
-.clash-chat-input-icon-button {
-  box-shadow: none;
-}
-
-.clash-chat-input-icon-button:hover {
-  background: rgba(241, 245, 249, 0.92);
-  box-shadow: none;
-}
-
-.clash-chat-input-icon-button:focus-visible {
-  outline: 2px solid rgba(255, 107, 80, 0.28);
-  outline-offset: 2px;
+/* Hide canvas chrome (toolbar, presence bar, header, etc.) when a
+   modal dialog is open. The Dialog primitive renders [role="dialog"]
+   with aria-modal="true"; :has() walks up to <body> and applies this
+   when any descendant matches. Without this, the dialog's bg-black/50
+   backdrop only half-dims the toolbar — users perceive the toolbar as
+   still in front of the dialog even though z-index is correct. */
+body:has([role="dialog"][aria-modal="true"]) [data-canvas-chrome] {
+  /* `visibility: hidden` got overridden by descendants (framer-motion +
+     focus states write `visibility: visible` inline). `display: none`
+     can't be overridden — the children stop rendering, period. */
+  display: none !important;
 }
