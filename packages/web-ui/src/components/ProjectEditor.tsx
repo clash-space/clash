@@ -1980,7 +1980,7 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
                         <div className="flex flex-1 overflow-hidden relative">
                             {/* Presence Bar - Top Right, shifts left to avoid overlap with sidebar / expand button */}
                             <motion.div
-                                className="absolute top-6 z-[60] pointer-events-auto"
+                                className="absolute top-6 z-10 pointer-events-auto"
                                 animate={{ right: isSidebarCollapsed ? 80 : sidebarWidth + 24 }}
                                 transition={{ type: 'spring', stiffness: 400, damping: 30 }}
                             >
@@ -1995,8 +1995,10 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
                                 isSidebarCollapsed={isSidebarCollapsed}
                             />
 
-                            {/* Logo + Project Name - No Background */}
-                            <div id="editor-header" className="absolute top-6 left-[36px] z-[60] flex items-center pointer-events-auto">
+                            {/* Logo + Project Name - No Background.
+                                z-10 — same stacking band as toolbar / chatbot panel
+                                so modal dialogs cover it cleanly without backdrop tricks. */}
+                            <div id="editor-header" className="absolute top-6 left-[36px] z-10 flex items-center pointer-events-auto">
                                 <Link to="/" className="group">
                                     <motion.div
                                         className="flex items-center gap-1"
