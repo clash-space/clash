@@ -13,6 +13,12 @@ import { getAsset } from '@clash/web-ui/lib/hooks/useAsset';
 import { MODEL_CARDS, snapAspectRatio, parsePromptParts, extractPromptText, composePromptWithTextRefs, buildMention, capability, type ModelCard, type ModelParameter, type CustomActionDefinition, type Modality } from '@clash/shared-types';
 import { applyLayoutPatchesToLoro, collectLayoutNodePatches } from '@clash/web-ui/lib/loroNodeSync';
 import { useCustomActions } from '@clash/web-ui/hooks/useCustomActions';
+import {
+    useRuntimes,
+    isCustomActionRuntimeOnline,
+    RUNTIME_OFFLINE_TOOLTIP,
+    RUNTIME_OFFLINE_LABEL,
+} from '@clash/web-ui/hooks/useRuntimes';
 import MilkdownEditor from '../MilkdownEditor';
 import { useConfirm } from '../ConfirmDialog';
 import { useSpawnPendingAsset } from './useSpawnPendingAsset';
@@ -134,6 +140,18 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
         ? customActions.find((a) => a.id === customActionId)
         : undefined;
 
+    // Live runtime list (polled). Used to grey out custom-action affordances
+    // when their owning runtime is offline — the server already refuses
+    // dispatch in that case, this is just to tell the user beforehand.
+    const { runtimes: knownRuntimes, loading: runtimesLoading } = useRuntimes();
+    // While the first /api/v1/runtimes response is in flight, treat the
+    // action as online to avoid a flash-disabled state on every mount.
+    // Once we have data, the helper does the real check.
+    const customActionOnline = isCustom
+        ? (runtimesLoading ? true : isCustomActionRuntimeOnline(customDef, knownRuntimes))
+        : true;
+    const customActionOffline = !customActionOnline;
+
     // Custom action params state
     const [customActionParams, setCustomActionParams] = useState<ModelParams>(
         (data.customActionParams as ModelParams) ?? {}
@@ -170,7 +188,7 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
             : actionKind === 'audio'
                 ? 'text-audio'
                 : actionKind === 'text'
-                    ? 'text-slate-700'
+                    ? 'text-slate-800 dark:text-slate-200'
                     : 'text-image';
     const bgClass = isCustom
         ? 'bg-custom-light'
@@ -179,7 +197,7 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
             : actionKind === 'audio'
                 ? 'bg-audio-light'
                 : actionKind === 'text'
-                    ? 'bg-slate-100'
+                    ? 'bg-warm-muted'
                     : 'bg-image-light';
     const ringClass = isCustom
         ? 'ring-custom'
@@ -205,12 +223,20 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
         [actionKind]
     );
     const selectedModel = useMemo<ModelCard | undefined>(
-        () => availableModels.find((card) => card.id === modelId) ?? availableModels[0],
-        [availableModels, modelId]
+        // For custom actions, fall back to `undefined` rather than the
+        // first image model card — otherwise the picker chip shows
+        // "Nano Banana 2" on a grid-split badge because the .find()
+        // returned nothing and `?? availableModels[0]` picked a random
+        // image model. Custom actions have their own name source
+        // (`customDef.name`) — see modelDisplay below.
+        () => isCustom ? undefined : (availableModels.find((card) => card.id === modelId) ?? availableModels[0]),
+        [availableModels, modelId, isCustom]
     );
 
-    const modelDisplay = selectedModel?.name || modelId;
-    const providerDisplay = selectedModel?.provider || '';
+    const modelDisplay = isCustom
+        ? (customDef?.name ?? customActionId ?? 'Custom action')
+        : (selectedModel?.name || modelId);
+    const providerDisplay = isCustom ? 'Custom' : (selectedModel?.provider || '');
     const countValue = Number(modelParams.count ?? 1);
 
     // Single derivation — all per-modality questions read fields off `cap`.
@@ -857,6 +883,14 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
     }, [actionType, data.modelId, data.modelName, data.modelParams, modelId, selectedModel]);
 
     useEffect(() => {
+        // Custom actions intentionally have selectedModel === undefined
+        // (they don't use ModelCard at all — see the useMemo at line ~207).
+        // Without this guard, the fallback fires for every custom badge,
+        // writes modelId = nano-banana-2, which re-renders, selectedModel
+        // is still undefined because isCustom is true, fallback fires
+        // again — infinite update loop. The fallback only makes sense
+        // for built-in gens that lost their model card (legacy data).
+        if (isCustom) return;
         if (!selectedModel && availableModels[0]) {
             const fallback = availableModels[0];
             const nextParams = { ...(fallback.defaultParams ?? {}) } as ModelParams;
@@ -864,7 +898,7 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
             setModelParams(nextParams);
             syncModelState(fallback.id, nextParams);
         }
-    }, [availableModels, selectedModel, syncModelState]);
+    }, [availableModels, selectedModel, syncModelState, isCustom]);
 
     // Prompt editing handlers (from PromptNode)
     const handleDoubleClick = useCallback(() => {
@@ -1094,7 +1128,7 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
             const numericValue = typeof currentValue === 'number' ? currentValue : Number(currentValue ?? 0);
             return (
                 <div key={param.id} className="space-y-1">
-                    <div className="flex justify-between text-[10px] font-medium text-gray-500">
+                    <div className="flex justify-between text-[10px] font-medium text-gray-700 dark:text-gray-300">
                         <span>{param.label}</span>
                         <span>{numericValue}</span>
                     </div>
@@ -1108,7 +1142,7 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
                         className="w-full h-1 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-gray-900"
                     />
                     {param.description && (
-                        <p className="text-[10px] text-gray-400 leading-snug">{param.description}</p>
+                        <p className="text-[10px] text-gray-700 dark:text-gray-300 leading-snug">{param.description}</p>
                     )}
                 </div>
             );
@@ -1119,11 +1153,11 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
             const selected = options.find((opt) => String(opt.value) === String(currentValue))?.value ?? options[0]?.value ?? '';
             return (
                 <div key={param.id} className="space-y-1">
-                    <div className="flex justify-between text-[10px] font-medium text-gray-500">
+                    <div className="flex justify-between text-[10px] font-medium text-gray-700 dark:text-gray-300">
                         <span>{param.label}</span>
                     </div>
                     <select
-                        className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-gray-900 focus:outline-none focus:border-gray-400 transition-colors"
+                        className="w-full rounded-xl border border-warm-border bg-warm-surface px-3 py-2 text-xs font-medium text-slate-900 dark:text-slate-50 focus:outline-none focus:border-gray-400 transition-colors"
                         value={String(selected)}
                         onChange={(e) => {
                             const next = options.find((opt) => String(opt.value) === e.target.value);
@@ -1138,7 +1172,7 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
                         ))}
                     </select>
                     {param.description && (
-                        <p className="text-[10px] text-gray-400 leading-snug">{param.description}</p>
+                        <p className="text-[10px] text-gray-700 dark:text-gray-300 leading-snug">{param.description}</p>
                     )}
                 </div>
             );
@@ -1147,7 +1181,7 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
         if (param.type === 'number') {
             return (
                 <div key={param.id} className="space-y-1">
-                    <div className="flex justify-between text-[10px] font-medium text-gray-500">
+                    <div className="flex justify-between text-[10px] font-medium text-gray-700 dark:text-gray-300">
                         <span>{param.label}</span>
                     </div>
                     <input
@@ -1157,11 +1191,11 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
                         step={param.step}
                         value={currentValue as number | string}
                         onChange={(e) => updateModelParam(param.id, Number(e.target.value))}
-                        className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-gray-900 focus:outline-none focus:border-gray-400 transition-colors"
+                        className="w-full rounded-xl border border-warm-border bg-warm-surface px-3 py-2 text-xs font-medium text-slate-900 dark:text-slate-50 focus:outline-none focus:border-gray-400 transition-colors"
                         onMouseDown={(e) => e.stopPropagation()}
                     />
                     {param.description && (
-                        <p className="text-[10px] text-gray-400 leading-snug">{param.description}</p>
+                        <p className="text-[10px] text-gray-700 dark:text-gray-300 leading-snug">{param.description}</p>
                     )}
                 </div>
             );
@@ -1170,7 +1204,7 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
         if (param.type === 'text') {
             return (
                 <div key={param.id} className="space-y-1">
-                    <div className="flex justify-between text-[10px] font-medium text-gray-500">
+                    <div className="flex justify-between text-[10px] font-medium text-gray-700 dark:text-gray-300">
                         <span>{param.label}</span>
                     </div>
                     <textarea
@@ -1178,11 +1212,11 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
                         value={String(currentValue)}
                         onChange={(e) => updateModelParam(param.id, e.target.value)}
                         placeholder={param.placeholder}
-                        className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-gray-900 focus:outline-none focus:border-gray-400 resize-none transition-colors"
+                        className="w-full rounded-xl border border-warm-border bg-warm-surface px-3 py-2 text-xs font-medium text-slate-900 dark:text-slate-50 focus:outline-none focus:border-gray-400 resize-none transition-colors"
                         onMouseDown={(e) => e.stopPropagation()}
                     />
                     {param.description && (
-                        <p className="text-[10px] text-gray-400 leading-snug">{param.description}</p>
+                        <p className="text-[10px] text-gray-700 dark:text-gray-300 leading-snug">{param.description}</p>
                     )}
                 </div>
             );
@@ -1190,11 +1224,11 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
 
         if (param.type === 'boolean') {
             return (
-                <label key={param.id} className="flex items-center justify-between rounded-xl bg-gray-50 px-3 py-2 border border-slate-200 cursor-pointer">
+                <label key={param.id} className="flex items-center justify-between rounded-xl bg-warm-muted px-3 py-2 border border-warm-border cursor-pointer">
                     <div className="flex flex-col">
-                        <span className="text-xs font-medium text-gray-900">{param.label}</span>
+                        <span className="text-xs font-medium text-slate-900 dark:text-slate-50">{param.label}</span>
                         {param.description && (
-                            <span className="text-[10px] text-gray-400">{param.description}</span>
+                            <span className="text-[10px] text-gray-700 dark:text-gray-300">{param.description}</span>
                         )}
                     </div>
                     <input
@@ -1230,7 +1264,7 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
                     animate={{ opacity: 1, scale: 1, y: 0 }}
                     exit={{ opacity: 0, scale: 0.95, y: 20 }}
                     transition={{ type: 'spring', damping: 30, stiffness: 300 }}
-                    className="relative z-10 w-full max-w-5xl h-[85vh] bg-white rounded-xl shadow-lg overflow-hidden flex flex-col border border-slate-200"
+                    className="relative z-10 w-full max-w-5xl h-[85vh] bg-warm-surface rounded-xl shadow-lg overflow-hidden flex flex-col border border-warm-border"
                     onClick={(e) => e.stopPropagation()}
                 >
                     {/* Header with Title Input */}
@@ -1241,7 +1275,7 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
                             onChange={handleLabelChange}
                             disabled={isFrozen}
                             placeholder="Untitled Prompt"
-                            className="w-full text-4xl font-bold text-gray-900 placeholder:text-gray-300 bg-transparent border-none outline-none focus:outline-none disabled:opacity-60"
+                            className="w-full text-4xl font-bold text-slate-900 dark:text-slate-50 placeholder:text-gray-300 bg-transparent border-none outline-none focus:outline-none disabled:opacity-60"
                             style={{
                                 fontFamily: 'var(--font-space-grotesk), var(--font-inter), sans-serif',
                                 letterSpacing: '-0.02em'
@@ -1250,7 +1284,7 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
                         <div className="flex gap-2 items-center">
                             {isFrozen ? (
                                 <>
-                                    <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 text-slate-500 text-sm font-medium">
+                                    <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-warm-muted text-slate-700 dark:text-slate-300 text-sm font-medium">
                                         <Lock size={13} weight="bold" />
                                         Frozen
                                     </div>
@@ -1272,7 +1306,7 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
                             )}
                             <button
                                 onClick={handleCancel}
-                                className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+                                className="p-2 text-gray-700 dark:text-gray-300 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
                             >
                                 <X className="w-5 h-5" weight="bold" />
                             </button>
@@ -1281,7 +1315,7 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
 
                     {/* Image Attachment Row */}
                     {(refNodeIds.length > 0 || !isFrozen) && (
-                        <div className="px-12 py-3 flex items-center gap-2 flex-wrap border-b border-slate-100">
+                        <div className="px-12 py-3 flex items-center gap-2 flex-wrap border-b border-warm-border">
                             <Reorder.Group
                                 axis="x"
                                 values={refNodeIds}
@@ -1304,13 +1338,13 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
                                             whileDrag={{ scale: 1.08, zIndex: 10 }}
                                             style={{ cursor: isFrozen ? 'default' : 'grab' }}
                                         >
-                                            <div className="w-10 h-10 rounded-lg overflow-hidden border border-slate-200 bg-slate-50 flex items-center justify-center pointer-events-none">
+                                            <div className="w-10 h-10 rounded-lg overflow-hidden border border-warm-border bg-warm-muted flex items-center justify-center pointer-events-none">
                                                 {src ? (
                                                     <SignedImg src={src} alt={`Image ${i + 1}`} className="w-full h-full object-cover" />
                                                 ) : isText && textRef ? (
-                                                    <TextT size={16} className="text-slate-500" weight="bold" />
+                                                    <TextT size={16} className="text-slate-700 dark:text-slate-300" weight="bold" />
                                                 ) : (
-                                                    <ImageIcon size={16} className="text-slate-400" />
+                                                    <ImageIcon size={16} className="text-slate-700 dark:text-slate-300" />
                                                 )}
                                             </div>
                                             <span className="absolute -top-1 -left-1 bg-slate-700 text-white text-[9px] font-bold rounded px-1 min-w-[14px] text-center leading-[14px] pointer-events-none">
@@ -1330,20 +1364,20 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
                             {!isFrozen && (
                                 <div className="relative flex-shrink-0">
                                     <button
-                                        className="w-10 h-10 rounded-lg border border-dashed border-slate-300 flex items-center justify-center text-slate-400 hover:border-slate-500 hover:text-slate-600 transition-colors"
+                                        className="w-10 h-10 rounded-lg border border-dashed border-slate-300 flex items-center justify-center text-slate-700 dark:text-slate-300 hover:border-slate-500 hover:text-slate-600 transition-colors"
                                         onClick={() => setShowRefPicker(p => !p)}
                                     >
                                         <Plus size={16} weight="bold" />
                                     </button>
                                     {showRefPicker && (
-                                        <div className="absolute left-0 top-full mt-1 w-56 bg-white border border-slate-200 rounded-xl shadow-lg z-50 overflow-hidden">
+                                        <div className="absolute left-0 top-full mt-1 w-56 bg-warm-surface border border-warm-border rounded-xl shadow-lg z-50 overflow-hidden">
                                             {(() => {
                                                 const available = getNodes().filter(n => {
                                                     if (refNodeIds.includes(n.id)) return false;
                                                     return !!resolveRefSrc(n) || !!resolveTextRef(n);
                                                 });
                                                 if (available.length === 0) {
-                                                    return <div className="px-3 py-3 text-xs text-slate-400">No references available</div>;
+                                                    return <div className="px-3 py-3 text-xs text-slate-700 dark:text-slate-300">No references available</div>;
                                                 }
                                                 return available.map(n => {
                                                     const refSrc = resolveRefSrc(n);
@@ -1358,16 +1392,16 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
                                                                 setShowRefPicker(false);
                                                             }}
                                                         >
-                                                            <div className="w-7 h-7 rounded overflow-hidden border border-slate-200 flex-shrink-0">
+                                                            <div className="w-7 h-7 rounded overflow-hidden border border-warm-border flex-shrink-0">
                                                                 {refSrc ? (
                                                                     <SignedImg src={refSrc} className="w-full h-full object-cover" />
                                                                 ) : (
-                                                                    <div className="w-full h-full bg-slate-50 flex items-center justify-center text-slate-500">
+                                                                    <div className="w-full h-full bg-warm-muted flex items-center justify-center text-slate-700 dark:text-slate-300">
                                                                         <TextT size={14} weight="bold" />
                                                                     </div>
                                                                 )}
                                                             </div>
-                                                            <span className="text-xs text-slate-700 truncate">{(n.data.label as string) || n.id}</span>
+                                                            <span className="text-xs text-slate-800 dark:text-slate-200 truncate">{(n.data.label as string) || n.id}</span>
                                                         </button>
                                                     );
                                                 });
@@ -1380,7 +1414,7 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
                     )}
 
                     {/* Editor Content */}
-                    <div className="flex-1 overflow-y-auto bg-white" style={isFrozen ? { pointerEvents: 'none', opacity: 0.7 } : undefined}>
+                    <div className="flex-1 overflow-y-auto bg-warm-surface" style={isFrozen ? { pointerEvents: 'none', opacity: 0.7 } : undefined}>
                         <MilkdownEditor
                             value={content}
                             onChange={setContent}
@@ -1467,7 +1501,7 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
                                     return (
                                         <Fragment key={slot}>
                                             {slotIdx === 1 && (
-                                                <span className="text-slate-400 text-xs select-none px-0.5" aria-hidden>⇌</span>
+                                                <span className="text-slate-700 dark:text-slate-300 text-xs select-none px-0.5" aria-hidden>⇌</span>
                                             )}
                                             <div className="relative group/thumb flex-shrink-0">
                                                 {node && thumb ? (
@@ -1475,7 +1509,7 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
                                                         <SignedImg
                                                             src={thumb}
                                                             alt={fullLabel}
-                                                            className="h-10 w-10 rounded-lg object-cover border border-slate-200 shadow-sm"
+                                                            className="h-10 w-10 rounded-lg object-cover border border-warm-border shadow-sm"
                                                         />
                                                         {!isFrozen && (
                                                             <button
@@ -1491,7 +1525,7 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
                                                         type="button"
                                                         disabled={isFrozen}
                                                         onClick={() => setRefPickerTarget(slot)}
-                                                        className="h-10 w-10 rounded-lg border border-dashed border-slate-300 bg-white/60 hover:bg-white hover:border-slate-400 transition-colors flex items-center justify-center text-slate-400 shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                                                        className="h-10 w-10 rounded-lg border border-dashed border-slate-300 bg-white/60 hover:bg-white hover:border-slate-400 transition-colors flex items-center justify-center text-slate-700 dark:text-slate-300 shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
                                                         aria-label={`Pick ${fullLabel} frame`}
                                                     >
                                                         <Plus size={14} weight="bold" />
@@ -1552,22 +1586,22 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
                                                 style={{ cursor: isFrozen ? 'default' : 'grab' }}
                                             >
                                                 {isText ? (
-                                                    <div className="h-10 w-10 rounded-lg bg-slate-100 border border-slate-200 shadow-sm flex items-center justify-center text-slate-600 pointer-events-none">
+                                                    <div className="h-10 w-10 rounded-lg bg-warm-muted border border-warm-border shadow-sm flex items-center justify-center text-slate-700 dark:text-slate-300 pointer-events-none">
                                                         <TextT size={16} weight="bold" />
                                                     </div>
                                                 ) : isAudio ? (
-                                                    <div className="h-10 w-10 rounded-lg bg-violet-100 border border-slate-200 shadow-sm flex items-center justify-center text-violet-600 text-lg pointer-events-none">
+                                                    <div className="h-10 w-10 rounded-lg bg-violet-100 border border-warm-border shadow-sm flex items-center justify-center text-violet-600 text-lg pointer-events-none">
                                                         ♪
                                                     </div>
                                                 ) : isVideo && !thumb ? (
-                                                    <div className="h-10 w-10 rounded-lg bg-blue-50 border border-slate-200 shadow-sm flex items-center justify-center text-blue-600 pointer-events-none">
+                                                    <div className="h-10 w-10 rounded-lg bg-blue-50 border border-warm-border shadow-sm flex items-center justify-center text-blue-600 pointer-events-none">
                                                         <VideoCamera size={14} weight="bold" />
                                                     </div>
                                                 ) : (
                                                     <SignedImg
                                                         src={thumb!}
                                                         alt={(node.data.label as string) || nodeId}
-                                                        className="h-10 w-10 rounded-lg object-cover border border-slate-200 shadow-sm pointer-events-none"
+                                                        className="h-10 w-10 rounded-lg object-cover border border-warm-border shadow-sm pointer-events-none"
                                                     />
                                                 )}
                                                 <span className="absolute -top-1 -left-1 bg-slate-700 text-white text-[9px] font-bold rounded px-1 min-w-[14px] text-center leading-[14px] pointer-events-none">
@@ -1588,7 +1622,7 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
                                     <button
                                         type="button"
                                         onClick={() => setRefPickerTarget('append')}
-                                        className="h-10 w-10 rounded-lg border border-dashed border-slate-300 bg-white/60 hover:bg-white hover:border-slate-400 transition-colors flex items-center justify-center text-slate-500 shadow-sm flex-shrink-0"
+                                        className="h-10 w-10 rounded-lg border border-dashed border-slate-300 bg-white/60 hover:bg-white hover:border-slate-400 transition-colors flex items-center justify-center text-slate-700 dark:text-slate-300 shadow-sm flex-shrink-0"
                                         aria-label="Add reference from canvas"
                                     >
                                         <Plus size={14} weight="bold" />
@@ -1606,7 +1640,7 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
                     )}
 
                 <div
-                    className="pointer-events-auto w-full rounded-2xl bg-white shadow-2xl border border-slate-200 overflow-visible"
+                    className="pointer-events-auto w-full rounded-2xl bg-warm-surface shadow-2xl border border-warm-border overflow-visible"
                     onClick={() => { setShowModelDropdown(false); setActiveParamDropdown(null); }}
                 >
                     {/* Prompt editor with inline @ mention chips.
@@ -1618,7 +1652,7 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
                             contentEditable={!isFrozen}
                             suppressContentEditableWarning
                             className={`w-full max-h-[40vh] overflow-y-auto text-sm focus:outline-none leading-relaxed empty:before:content-[attr(data-placeholder)] empty:before:text-gray-400 ${
-                                isFrozen ? 'text-gray-500 cursor-default select-text' : 'text-gray-900'
+                                isFrozen ? 'text-gray-700 dark:text-gray-300 cursor-default select-text' : 'text-slate-900 dark:text-slate-50'
                             }`}
                             style={{ minHeight: '3em' }}
                             data-placeholder="Describe anything you want to generate... (@ to ref assets)"
@@ -1639,12 +1673,12 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
                         />
                         {/* @ mention dropdown with thumbnails */}
                         {showMentionMenu && filteredMentionNodes.length > 0 && (
-                            <div className="absolute left-4 right-4 bottom-full mb-1 bg-white border border-slate-200 rounded-xl shadow-lg z-50 max-h-48 overflow-y-auto">
+                            <div className="absolute left-4 right-4 bottom-full mb-1 bg-warm-surface border border-warm-border rounded-xl shadow-lg z-50 max-h-48 overflow-y-auto">
                                 {filteredMentionNodes.map((node, idx) => (
                                     <div
                                         key={node.id}
                                         className={`px-3 py-2 text-xs cursor-pointer flex items-center gap-2.5 transition-colors ${
-                                            idx === mentionIndex ? 'bg-gray-100' : 'hover:bg-gray-50'
+                                            idx === mentionIndex ? 'bg-warm-muted' : 'hover:bg-gray-50'
                                         }`}
                                         onMouseDown={(e) => { e.preventDefault(); insertMention(node); }}
                                     >
@@ -1652,14 +1686,14 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
                                             <SignedImg
                                                 src={node.thumbnail}
                                                 alt={node.label}
-                                                className="h-8 w-8 rounded object-cover flex-shrink-0 border border-slate-200"
+                                                className="h-8 w-8 rounded object-cover flex-shrink-0 border border-warm-border"
                                             />
                                         ) : (
-                                            <div className="h-8 w-8 rounded bg-gray-100 flex-shrink-0 flex items-center justify-center border border-slate-200">
-                                                <span className="text-[9px] uppercase text-gray-400">{node.type}</span>
+                                            <div className="h-8 w-8 rounded bg-warm-muted flex-shrink-0 flex items-center justify-center border border-warm-border">
+                                                <span className="text-[9px] uppercase text-gray-700 dark:text-gray-300">{node.type}</span>
                                             </div>
                                         )}
-                                        <span className="font-medium text-gray-900 truncate">{node.label}</span>
+                                        <span className="font-medium text-slate-900 dark:text-slate-50 truncate">{node.label}</span>
                                     </div>
                                 ))}
                             </div>
@@ -1668,18 +1702,39 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
 
                     {/* Bottom toolbar: model selector + clickable param chips */}
                     <div className="flex items-center gap-1.5 px-3 pb-3 flex-nowrap overflow-visible">
-                        {/* Model selector chip */}
-                        <div className="relative">
+                        {/* Model selector chip. For custom actions whose runtime is
+                            offline, render in a disabled, low-opacity state with a
+                            tooltip — we don't auto-switch off the action, but we
+                            also don't open the model picker (custom actions don't
+                            have alternative models anyway). */}
+                        <div
+                            className="relative"
+                            style={customActionOffline ? { opacity: 0.5 } : undefined}
+                        >
                             <button
-                                className="flex items-center gap-1 px-2.5 py-1 rounded-full bg-gray-100 hover:bg-gray-200 text-xs font-medium text-gray-700 transition-colors"
-                                onClick={(e) => { e.stopPropagation(); setShowModelDropdown(!showModelDropdown); setActiveParamDropdown(null); }}
+                                className={`flex items-center gap-1 px-2.5 py-1 rounded-full bg-warm-muted text-xs font-medium text-gray-800 dark:text-gray-200 transition-colors ${
+                                    customActionOffline ? 'cursor-not-allowed' : 'hover:bg-gray-200'
+                                }`}
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    if (customActionOffline) return;
+                                    setShowModelDropdown(!showModelDropdown);
+                                    setActiveParamDropdown(null);
+                                }}
+                                title={customActionOffline ? RUNTIME_OFFLINE_TOOLTIP : undefined}
+                                aria-disabled={customActionOffline || undefined}
                             >
                                 <Icon size={12} weight="bold" className={colorClass} />
                                 {modelDisplay}
-                                <CaretDown size={10} weight="bold" className="text-gray-400" />
+                                <CaretDown size={10} weight="bold" className="text-gray-700 dark:text-gray-300" />
                             </button>
+                            {customActionOffline && (
+                                <span className="ml-2 text-[10px] text-slate-700 dark:text-slate-300 align-middle">
+                                    {RUNTIME_OFFLINE_LABEL}
+                                </span>
+                            )}
                             {showModelDropdown && (
-                                <div className="absolute left-0 bottom-full mb-2 w-[240px] bg-white border border-slate-200 rounded-2xl shadow-xl z-50 max-h-48 overflow-hidden [&:hover]:overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                                <div className="absolute left-0 bottom-full mb-2 w-[240px] bg-warm-surface border border-warm-border rounded-2xl shadow-xl z-50 max-h-48 overflow-hidden [&:hover]:overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
                                     {[...availableModels]
                                         .sort((a, b) => {
                                             // Compatible first, incompatible after — keeps the "broken" options
@@ -1698,8 +1753,8 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
                                                     selected
                                                         ? 'bg-gray-900 text-white'
                                                         : compat
-                                                            ? 'text-gray-700 hover:bg-gray-50'
-                                                            : 'text-gray-400 hover:bg-amber-50'
+                                                            ? 'text-gray-800 dark:text-gray-200 hover:bg-gray-50'
+                                                            : 'text-gray-700 dark:text-gray-300 hover:bg-amber-50'
                                                 }`}
                                                 onClick={() => {
                                                     handleModelChange(card.id);
@@ -1707,7 +1762,7 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
                                                 }}
                                             >
                                                 <div className="font-bold leading-tight">{card.name}</div>
-                                                <div className={`text-[10px] ${selected ? 'text-gray-300' : compat ? 'text-gray-400' : 'text-amber-600'}`}>
+                                                <div className={`text-[10px] ${selected ? 'text-gray-300' : compat ? 'text-gray-700 dark:text-gray-300' : 'text-amber-600'}`}>
                                                     {compat ? card.provider : 'clears current refs'}
                                                 </div>
                                             </div>
@@ -1722,17 +1777,17 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
                             <div className="relative flex-shrink-0">
                                 <button
                                     className={`flex items-center gap-1 px-2.5 py-1 rounded-full text-xs transition-colors ${
-                                        activeParamDropdown === '_params' ? 'bg-gray-200 text-gray-900' : 'bg-gray-100 hover:bg-gray-200 text-gray-600'
+                                        activeParamDropdown === '_params' ? 'bg-gray-200 text-slate-900 dark:text-slate-50' : 'bg-warm-muted hover:bg-gray-200 text-gray-700 dark:text-gray-300'
                                     }`}
                                     onClick={(e) => { e.stopPropagation(); setActiveParamDropdown(activeParamDropdown === '_params' ? null : '_params'); setShowModelDropdown(false); }}
                                 >
                                     <span className="font-medium text-gray-800">
                                         {paramChips.map((c) => c.value).join(' · ')}
                                     </span>
-                                    <CaretDown size={10} weight="bold" className="text-gray-400" />
+                                    <CaretDown size={10} weight="bold" className="text-gray-700 dark:text-gray-300" />
                                 </button>
                                 {activeParamDropdown === '_params' && (
-                                    <div className="absolute left-0 bottom-full mb-2 bg-white border border-slate-200 rounded-2xl shadow-xl z-50 min-w-[240px] overflow-hidden">
+                                    <div className="absolute left-0 bottom-full mb-2 bg-warm-surface border border-warm-border rounded-2xl shadow-xl z-50 min-w-[240px] overflow-hidden">
                                         {((isCustom ? customDef?.parameters : selectedModel?.parameters) ?? []).map((param: any, idx: number) => {
                                             const p = param as ModelParameter;
                                             const currentVal = modelParams[p.id] ?? p.defaultValue;
@@ -1741,15 +1796,15 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
                                                 : p.type === 'boolean' ? (currentVal ? 'On' : 'Off') : String(currentVal);
                                             const isExpanded = expandedParam === p.id;
                                             return (
-                                                <div key={p.id} className={idx > 0 ? 'border-t border-slate-100' : ''}>
+                                                <div key={p.id} className={idx > 0 ? 'border-t border-warm-border' : ''}>
                                                     <button
                                                         className="w-full flex items-center justify-between px-4 py-2.5 hover:bg-gray-50 transition-colors"
                                                         onClick={(e) => { e.stopPropagation(); setExpandedParam(isExpanded ? null : p.id); }}
                                                     >
-                                                        <span className="text-xs text-gray-500">{p.label}</span>
-                                                        <span className="flex items-center gap-1 text-xs font-semibold text-gray-900">
+                                                        <span className="text-xs text-gray-700 dark:text-gray-300">{p.label}</span>
+                                                        <span className="flex items-center gap-1 text-xs font-semibold text-slate-900 dark:text-slate-50">
                                                             {currentLabel}
-                                                            <CaretDown size={10} weight="bold" className={`text-gray-400 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
+                                                            <CaretDown size={10} weight="bold" className={`text-gray-700 dark:text-gray-300 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
                                                         </span>
                                                     </button>
                                                     {isExpanded && (
@@ -1758,7 +1813,7 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
                                                                 <div className="flex flex-wrap gap-1.5">
                                                                     {p.options?.map((opt) => (
                                                                         <button key={String(opt.value)}
-                                                                            className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${String(currentVal) === String(opt.value) ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
+                                                                            className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${String(currentVal) === String(opt.value) ? 'bg-gray-900 text-white' : 'bg-warm-muted text-gray-800 dark:text-gray-200 hover:bg-gray-200'}`}
                                                                             onClick={(e) => { e.stopPropagation(); updateModelParam(p.id, opt.value); setExpandedParam(null); }}
                                                                         >{opt.label}</button>
                                                                     ))}
@@ -1768,7 +1823,7 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
                                                                 <div className="flex gap-1.5">
                                                                     {[{ l: 'On', v: true }, { l: 'Off', v: false }].map((o) => (
                                                                         <button key={o.l}
-                                                                            className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${Boolean(currentVal) === o.v ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
+                                                                            className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${Boolean(currentVal) === o.v ? 'bg-gray-900 text-white' : 'bg-warm-muted text-gray-800 dark:text-gray-200 hover:bg-gray-200'}`}
                                                                             onClick={(e) => { e.stopPropagation(); updateModelParam(p.id, o.v); setExpandedParam(null); }}
                                                                         >{o.l}</button>
                                                                     ))}
@@ -1778,14 +1833,14 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
                                                                 <input type="number" min={p.min} max={p.max} step={p.step}
                                                                     value={currentVal as number}
                                                                     onChange={(e) => updateModelParam(p.id, Number(e.target.value))}
-                                                                    className="w-full text-xs border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:border-gray-400"
+                                                                    className="w-full text-xs border border-warm-border rounded-lg px-3 py-2 focus:outline-none focus:border-gray-400"
                                                                     onClick={(e) => e.stopPropagation()} onMouseDown={(e) => e.stopPropagation()}
                                                                 />
                                                             )}
                                                             {p.type === 'slider' && (
                                                                 <div className="space-y-1.5" onClick={(e) => e.stopPropagation()}>
-                                                                    <div className="flex justify-between text-[10px] text-gray-500">
-                                                                        <span>{p.min}</span><span className="font-semibold text-gray-900">{currentVal}</span><span>{p.max}</span>
+                                                                    <div className="flex justify-between text-[10px] text-gray-700 dark:text-gray-300">
+                                                                        <span>{p.min}</span><span className="font-semibold text-slate-900 dark:text-slate-50">{currentVal}</span><span>{p.max}</span>
                                                                     </div>
                                                                     <input type="range" min={p.min} max={p.max} step={p.step}
                                                                         value={currentVal as number}
@@ -1812,19 +1867,19 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
                             user can bump the count and then Run to spawn more siblings. */}
                         <div className="relative flex-shrink-0">
                             <button
-                                className="flex items-center gap-1 px-2.5 py-1 rounded-full bg-gray-100 hover:bg-gray-200 text-xs font-medium text-gray-700 transition-colors"
+                                className="flex items-center gap-1 px-2.5 py-1 rounded-full bg-warm-muted hover:bg-gray-200 text-xs font-medium text-gray-800 dark:text-gray-200 transition-colors"
                                 onClick={(e) => { e.stopPropagation(); setActiveParamDropdown(activeParamDropdown === '_count' ? null : '_count'); setShowModelDropdown(false); }}
                             >
                                 x{countValue}
-                                <CaretDown size={10} weight="bold" className="text-gray-400" />
+                                <CaretDown size={10} weight="bold" className="text-gray-700 dark:text-gray-300" />
                             </button>
                             {activeParamDropdown === '_count' && (
-                                <div className="absolute right-0 bottom-full mb-1 min-w-[80px] bg-white border border-slate-200 rounded-xl shadow-lg overflow-hidden z-50">
+                                <div className="absolute right-0 bottom-full mb-1 min-w-[80px] bg-warm-surface border border-warm-border rounded-xl shadow-lg overflow-hidden z-50">
                                     {[1, 2, 3, 4].map((n) => (
                                         <div
                                             key={n}
                                             className={`px-3 py-2 text-xs cursor-pointer text-center transition-colors ${
-                                                countValue === n ? 'bg-gray-900 text-white' : 'text-gray-700 hover:bg-gray-50'
+                                                countValue === n ? 'bg-gray-900 text-white' : 'text-gray-800 dark:text-gray-200 hover:bg-gray-50'
                                             }`}
                                             onClick={() => {
                                                 updateModelParam('count', n);
@@ -1845,7 +1900,7 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
                                     type="button"
                                     onClick={(e) => { e.stopPropagation(); handleCopy(); }}
                                     disabled={isExecuting}
-                                    className="flex items-center gap-1 h-7 px-2.5 rounded-full bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-medium transition-colors flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
+                                    className="flex items-center gap-1 h-7 px-2.5 rounded-full bg-warm-muted hover:bg-gray-200 text-gray-800 dark:text-gray-200 text-xs font-medium transition-colors flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
                                     title="Duplicate this panel and open the copy"
                                 >
                                     <Copy size={12} weight="bold" />
@@ -1853,10 +1908,11 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
                                 </button>
                                 <button
                                     type="button"
-                                    onClick={(e) => { e.stopPropagation(); handleExecute(); }}
-                                    disabled={isExecuting}
+                                    onClick={(e) => { e.stopPropagation(); if (customActionOffline) return; handleExecute(); }}
+                                    disabled={isExecuting || customActionOffline}
                                     className="flex items-center gap-1 px-3 h-7 rounded-full bg-gray-900 hover:bg-black text-white text-xs font-semibold transition-colors flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
-                                    title="Run again with current parameters"
+                                    title={customActionOffline ? RUNTIME_OFFLINE_TOOLTIP : 'Run again with current parameters'}
+                                    aria-disabled={customActionOffline || undefined}
                                 >
                                     {isExecuting ? (
                                         <Spinner size={12} weight="bold" className="animate-spin" />
@@ -1895,15 +1951,17 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
                             <span className={`text-xs font-bold font-display ${colorClass} truncate`}>
                                 {label || 'Action'}
                             </span>
-                            <span className="text-[10px] text-slate-400 truncate leading-none">
+                            <span className="text-[10px] text-slate-700 dark:text-slate-300 truncate leading-none">
                                 {badgeDisplayName}
                             </span>
                         </div>
                         {/* Run button — separate click target */}
                         <button
                             className={`nodrag flex-shrink-0 flex h-7 items-center gap-1.5 px-3 rounded-lg text-xs font-semibold text-white transition-all hover:scale-[1.02] active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed ${btnClass}`}
-                            onClick={(e) => { e.stopPropagation(); handleExecute(); }}
-                            disabled={isExecuting}
+                            onClick={(e) => { e.stopPropagation(); if (customActionOffline) return; handleExecute(); }}
+                            disabled={isExecuting || customActionOffline}
+                            title={customActionOffline ? RUNTIME_OFFLINE_TOOLTIP : undefined}
+                            aria-disabled={customActionOffline || undefined}
                         >
                             {isExecuting ? (
                                 <Spinner size={12} className="animate-spin" />
@@ -2005,14 +2063,14 @@ const RefPickerPopover = ({
     return (
         <div
             ref={ref}
-            className="absolute bottom-full left-0 mb-2 z-[9999] w-[320px] rounded-xl bg-white shadow-2xl border border-slate-200 overflow-hidden"
+            className="absolute bottom-full left-0 mb-2 z-[9999] w-[320px] rounded-xl bg-warm-surface shadow-2xl border border-warm-border overflow-hidden"
             onPointerDown={(e) => e.stopPropagation()}
         >
-            <div className="px-3 py-2 text-[11px] font-semibold text-slate-500 uppercase tracking-wide border-b border-slate-100">
+            <div className="px-3 py-2 text-[11px] font-semibold text-slate-700 dark:text-slate-300 uppercase tracking-wide border-b border-warm-border">
                 Pick a canvas asset
             </div>
             {candidates.length === 0 ? (
-                <div className="px-3 py-6 text-xs text-slate-400 text-center">
+                <div className="px-3 py-6 text-xs text-slate-700 dark:text-slate-300 text-center">
                     No eligible canvas nodes available.
                 </div>
             ) : (
@@ -2027,11 +2085,11 @@ const RefPickerPopover = ({
                                 key={n.id}
                                 type="button"
                                 onClick={() => onPick(n.id)}
-                                className="group relative rounded-lg overflow-hidden border border-slate-200 hover:border-slate-900 hover:shadow-md transition-all"
+                                className="group relative rounded-lg overflow-hidden border border-warm-border hover:border-slate-900 hover:shadow-md transition-all"
                                 title={label}
                             >
                                 {n.type === 'text' ? (
-                                    <div className="h-16 w-full bg-slate-50 flex items-center justify-center text-slate-500">
+                                    <div className="h-16 w-full bg-warm-muted flex items-center justify-center text-slate-700 dark:text-slate-300">
                                         <TextT size={22} weight="bold" />
                                     </div>
                                 ) : n.type === 'audio' || !thumb ? (
