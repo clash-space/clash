@@ -3,7 +3,6 @@ import { useCallback, useState, useEffect, useRef, useMemo } from 'react';
 import { createPortal, flushSync } from 'react-dom';
 import {
     ReactFlow,
-    ReactFlowProvider,
     Background,
     BackgroundVariant,
     useNodesState,
@@ -17,7 +16,6 @@ import {
     useViewport,
     SelectionMode,
 } from '@xyflow/react';
-import { CanvasFocusProvider } from './CanvasFocusContext';
 
 // Use a flexible data type to preserve v11-style data access patterns throughout the codebase.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -44,7 +42,7 @@ import { useNavigate } from 'react-router';
 import type { Project } from '@clash/web-ui/lib/types';
 // Old single-agent panel kept in the repo at './ChatbotCopilot' — reimport
 // to revert. New chat UX is GroupChatPanel.
-import { GroupChatPanel, CHAT_PANEL_RAIL_WIDTH } from './GroupChatPanel';
+import { GroupChatPanel } from './GroupChatPanel';
 import type { RoomMessageEvent } from '@clash/shared-types';
 import { useSessionHistory } from '@clash/web-ui/hooks/useSessionHistory';
 import { updateProjectName } from '@clash/web-ui/lib/clientActions';
@@ -93,12 +91,6 @@ import NodeActivityIndicator, { useNodeHighlights } from './NodeActivityIndicato
 import { CascadeRunnerMount } from '@clash/web-ui/hooks/useCascadeRunner';
 import { MODEL_CARDS } from '@clash/shared-types';
 import { useCustomActions } from '@clash/web-ui/hooks/useCustomActions';
-import {
-    useRuntimes,
-    isCustomActionRuntimeOnline,
-    RUNTIME_OFFLINE_TOOLTIP,
-    RUNTIME_OFFLINE_LABEL,
-} from '@clash/web-ui/hooks/useRuntimes';
 import { applyLayoutPatchesToLoro, collectLayoutNodePatches } from '@clash/web-ui/lib/loroNodeSync';
 import { calculateScaledDimensions } from './nodes/assetNodeSizing';
 import { getAsset } from '@clash/web-ui/lib/hooks/useAsset';
@@ -1050,10 +1042,6 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
 
     // Merge local (Loro) + global (D1) custom actions, deduplicate by ID
     const loroActions = useCustomActions(loroSync.doc);
-    // Polled runtime list — toolbar items for custom actions whose owning
-    // runtime is offline are rendered disabled with a tooltip so users see
-    // the gate before they place a node that the server would refuse.
-    const { runtimes: knownRuntimes, loading: runtimesLoading } = useRuntimes();
     const customActions = useMemo(() => {
         const merged = new Map<string, typeof loroActions[number]>();
         // Global actions first (from D1)
@@ -1103,20 +1091,11 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
                 { id: 'action-badge-video', label: 'Video Gen', icon: FilmSlate },
                 { id: 'action-badge-audio', label: 'Audio Gen', icon: SpeakerHigh },
                 { id: 'action-badge-text', label: 'Text Gen', icon: TextT },
-                ...customActions.map((a) => {
-                    // Worker actions are always available. Local actions need their
-                    // owning runtime to be online — during the first fetch (loading)
-                    // assume online so we don't flash-disable on initial paint.
-                    const offline = !runtimesLoading && !isCustomActionRuntimeOnline(a, knownRuntimes);
-                    return {
-                        id: `action-badge-custom-${a.id}`,
-                        label: `${a.runtime === 'worker' ? '☁️ ' : ''}${a.name}`,
-                        icon: PuzzlePiece,
-                        disabled: offline,
-                        disabledReason: offline ? RUNTIME_OFFLINE_TOOLTIP : undefined,
-                        sublabel: offline ? RUNTIME_OFFLINE_LABEL : undefined,
-                    };
-                }),
+                ...customActions.map((a) => ({
+                    id: `action-badge-custom-${a.id}`,
+                    label: `${a.runtime === 'worker' ? '☁️ ' : ''}${a.name}`,
+                    icon: PuzzlePiece,
+                })),
             ]
         },
         { id: 'video-editor', label: 'Editor', icon: FilmSlate },
@@ -1124,18 +1103,7 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
         { id: 'text', label: 'Text', icon: TextT },
     ];
     const activeToolbarMenu = toolbarMenu.find((item) => item.id === activeMenu && 'items' in item) as
-        | {
-              id: string;
-              label: string;
-              items: Array<{
-                  id: string;
-                  label: string;
-                  icon: React.ComponentType<any>;
-                  disabled?: boolean;
-                  disabledReason?: string;
-                  sublabel?: string;
-              }>;
-          }
+        | { id: string; label: string; items: Array<{ id: string; label: string; icon: React.ComponentType<any> }> }
         | undefined;
 
     const addNode = useCallback((type: string, extraData: any = {}) => {
@@ -1978,77 +1946,9 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
         return node?.id;
     }, [nodes]);
 
-    // ─── @-mention thumbnails (ported from legacy ChatbotCopilot) ─
-    // Resolve `asset.srcR2Key` (images) / `asset.coverR2Key` (videos)
-    // for every node that carries an `assetId`, then thread it into
-    // the `mentionableNodes` list as `thumbnail` so the picker chips
-    // can render the actual asset preview instead of a generic 🖼/🎬
-    // glyph. Skips text nodes (no asset) and skips writes when nothing
-    // changed (otherwise the Map identity churn cascades into render
-    // loops in deep mention-aware subtrees — historical "Maximum
-    // update depth" trap that the legacy code documented).
-    const [assetThumbsByNodeId, setAssetThumbsByNodeId] = useState<Map<string, string>>(
-        () => new Map(),
-    );
-    useEffect(() => {
-        let cancelled = false;
-        (async () => {
-            const next = new Map<string, string>();
-            for (const n of nodes) {
-                if (!['image', 'video'].includes(n.type as string)) continue;
-                const assetId = typeof (n.data as Record<string, unknown> | undefined)?.assetId === 'string'
-                    ? ((n.data as Record<string, unknown>).assetId as string)
-                    : undefined;
-                if (!assetId) continue;
-                try {
-                    const asset = await getAsset(assetId);
-                    const r2Key = n.type === 'video'
-                        ? (asset.coverR2Key ?? asset.srcR2Key)
-                        : asset.srcR2Key;
-                    if (r2Key) next.set(n.id, r2Key);
-                } catch {
-                    // asset row not yet present (just-spawned node) — skip; the
-                    // effect will re-run once `nodes` changes.
-                }
-            }
-            if (cancelled) return;
-            setAssetThumbsByNodeId((prev) => {
-                if (prev.size === next.size) {
-                    let same = true;
-                    for (const [k, v] of next) {
-                        if (prev.get(k) !== v) { same = false; break; }
-                    }
-                    if (same) return prev;
-                }
-                return next;
-            });
-        })();
-        return () => { cancelled = true; };
-    }, [nodes]);
-
-    const mentionableNodes = useMemo(() => {
-        return nodes
-            .filter((n) => ['image', 'video', 'text'].includes(n.type as string))
-            .map((n) => ({
-                id: n.id,
-                type: n.type as string,
-                label: ((n.data as Record<string, unknown> | undefined)?.label as string) || n.id,
-                thumbnail: assetThumbsByNodeId.get(n.id),
-            }));
-    }, [nodes, assetThumbsByNodeId]);
-
 
     return (
         <ProjectProvider projectId={project.id}>
-            {/* ReactFlowProvider lets descendants that aren't children of
-                <ReactFlow> (notably the chat panel under GroupChatPanel)
-                still access the live React Flow instance via
-                useReactFlow(). CanvasFocusProvider builds on top to
-                expose a single `focusNode(id)` method so chat thumbnails,
-                copilot suggestions, etc. can fly the camera to a node
-                without coupling to React Flow internals. */}
-            <ReactFlowProvider>
-            <CanvasFocusProvider>
             <LoroSyncProvider loroSync={loroSync}>
               <ImageEditorProvider>
                 <VideoClipperProvider>
@@ -2080,19 +1980,8 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
                         <div className="flex flex-1 overflow-hidden relative">
                             {/* Presence Bar - Top Right, shifts left to avoid overlap with sidebar / expand button */}
                             <motion.div
-                                data-canvas-chrome
                                 className="absolute top-6 z-[60] pointer-events-auto"
-                                // sidebarWidth = just the panel card; the rail floats to
-                                // the LEFT of the panel and adds CHAT_PANEL_RAIL_WIDTH
-                                // to the total horizontal footprint we need to clear.
-                                // Rail stays visible even when collapsed, so always
-                                // reserve its footprint; add the panel width only when
-                                // expanded.
-                                animate={{
-                                    right: isSidebarCollapsed
-                                        ? CHAT_PANEL_RAIL_WIDTH + 24
-                                        : sidebarWidth + CHAT_PANEL_RAIL_WIDTH + 24,
-                                }}
+                                animate={{ right: isSidebarCollapsed ? 80 : sidebarWidth + 24 }}
                                 transition={{ type: 'spring', stiffness: 400, damping: 30 }}
                             >
                                 <PresenceBar clients={otherClients} />
@@ -2102,15 +1991,12 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
                             <ActivityToast
                                 toasts={toasts}
                                 dismiss={dismissToast}
-                                // ActivityToast adds 12px of gutter on top of
-                                // the sidebar width — add the rail width here
-                                // since the rail floats outside the panel.
-                                sidebarWidth={sidebarWidth + CHAT_PANEL_RAIL_WIDTH}
+                                sidebarWidth={sidebarWidth}
                                 isSidebarCollapsed={isSidebarCollapsed}
                             />
 
                             {/* Logo + Project Name - No Background */}
-                            <div id="editor-header" data-canvas-chrome className="absolute top-6 left-[36px] z-[60] flex items-center pointer-events-auto">
+                            <div id="editor-header" className="absolute top-6 left-[36px] z-[60] flex items-center pointer-events-auto">
                                 <Link to="/" className="group">
                                     <motion.div
                                         className="flex items-center gap-1"
@@ -2195,17 +2081,12 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
                             </div>
 
                             {/* Left Toolbar - Vertical Palette */}
-                            {/* data-canvas-chrome: hidden via global CSS when a modal/dialog is open
-                                (see apps/web/app/globals.css) — the backdrop's bg-black/50 only
-                                half-dims the toolbar icons, and users perceive the toolbar as "still
-                                in front" of the dialog even though z-index is correct. Hiding the
-                                whole element resolves that. */}
-                            <div ref={toolbarRef} data-canvas-chrome className="absolute left-6 top-1/2 -translate-y-1/2 z-50 flex flex-col items-start gap-2 pointer-events-none">
+                            <div ref={toolbarRef} className="absolute left-6 top-1/2 -translate-y-1/2 z-50 flex flex-col items-start gap-2 pointer-events-none">
                                  <div className="clash-canvas-toolbar-surface pointer-events-auto flex w-16 flex-none flex-col items-center gap-3 rounded-full py-6 px-3 transition-all">
                                     {/* Canvas Mode Toggle: single button switches between select/hand */}
                                     <motion.button
                                         onClick={() => setCanvasMode(prev => prev === 'select' ? 'hand' : 'select')}
-                                        className="clash-toolbar-button flex h-10 w-10 items-center justify-center rounded-full bg-transparent text-stone-700 hover:text-slate-950 dark:text-stone-300 dark:hover:text-slate-50 transition-all"
+                                        className="clash-toolbar-button flex h-10 w-10 items-center justify-center rounded-full bg-transparent text-stone-500 hover:text-slate-950 transition-all"
                                         whileHover={{ scale: 1.05 }}
                                         whileTap={{ scale: 0.95 }}
                                         title={canvasMode === 'select' ? 'Select mode (V)' : 'Hand mode (H)'}
@@ -2244,7 +2125,7 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
                                                     className={`clash-toolbar-button flex h-10 w-10 items-center justify-center rounded-full transition-all ${
                                                         isActive
                                                         ? "clash-toolbar-button-active text-white"
-                                                        : "bg-transparent text-stone-700 hover:text-slate-950 dark:text-stone-300 dark:hover:text-slate-50"
+                                                        : "bg-transparent text-stone-500 hover:text-slate-950"
                                                     }`}
                                                     whileHover={{ scale: 1.05 }}
                                                     whileTap={{ scale: 0.95 }}
@@ -2263,7 +2144,7 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
                                     {/* Helper Tools (Undo/Redo/Layout) */}
                                     <motion.button
                                          onClick={onLayout}
-                                         className="clash-toolbar-button flex h-10 w-10 items-center justify-center rounded-full bg-transparent text-stone-700 transition-all hover:text-slate-950 dark:text-stone-300 dark:hover:text-slate-50"
+                                         className="clash-toolbar-button flex h-10 w-10 items-center justify-center rounded-full bg-transparent text-stone-500 transition-all hover:text-slate-950"
                                          whileHover={{ scale: 1.05 }}
                                          whileTap={{ scale: 0.95 }}
                                          title="Auto Layout"
@@ -2276,8 +2157,8 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
                                          disabled={!loroSync.canUndo}
                                          className={`flex h-10 w-10 items-center justify-center rounded-full transition-all ${
                                              loroSync.canUndo
-                                             ? "clash-toolbar-button text-stone-700 hover:text-slate-950 dark:text-stone-300 dark:hover:text-slate-50"
-                                             : "text-slate-400 cursor-not-allowed dark:text-slate-600"
+                                             ? "clash-toolbar-button text-stone-500 hover:text-slate-950"
+                                             : "text-slate-300 cursor-not-allowed"
                                          }`}
                                          whileHover={loroSync.canUndo ? { scale: 1.05 } : {}}
                                          whileTap={loroSync.canUndo ? { scale: 0.95 } : {}}
@@ -2290,8 +2171,8 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
                                          disabled={!loroSync.canRedo}
                                          className={`flex h-10 w-10 items-center justify-center rounded-full transition-all ${
                                              loroSync.canRedo
-                                             ? "clash-toolbar-button text-stone-700 hover:text-slate-950 dark:text-stone-300 dark:hover:text-slate-50"
-                                             : "text-slate-400 cursor-not-allowed dark:text-slate-600"
+                                             ? "clash-toolbar-button text-stone-500 hover:text-slate-950"
+                                             : "text-slate-300 cursor-not-allowed"
                                          }`}
                                          whileHover={loroSync.canRedo ? { scale: 1.05 } : {}}
                                          whileTap={loroSync.canRedo ? { scale: 0.95 } : {}}
@@ -2309,7 +2190,7 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
                                              className={`flex h-10 w-10 items-center justify-center rounded-full transition-all ${
                                                  showDebugIds
                                                  ? "bg-green-600 text-white shadow-md"
-                                                 : "clash-toolbar-button bg-transparent text-stone-600 hover:text-slate-950 dark:text-stone-400 dark:hover:text-slate-50"
+                                                 : "clash-toolbar-button bg-transparent text-stone-400 hover:text-slate-950"
                                              }`}
                                              whileHover={{ scale: 1.05 }}
                                              whileTap={{ scale: 0.95 }}
@@ -2331,38 +2212,24 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
                                                   style={{ top: activeMenuPosition.top, left: activeMenuPosition.left }}
                                                   className="clash-canvas-toolbar-flyout-layer clash-canvas-menu-surface pointer-events-auto fixed flex flex-col gap-1 rounded-2xl p-2 min-w-[140px] z-50"
                                               >
-                                                  <div className="px-2 py-1 text-xs font-bold text-stone-600 uppercase tracking-wider mb-1 dark:text-stone-400">
+                                                  <div className="px-2 py-1 text-xs font-bold text-stone-400 uppercase tracking-wider mb-1">
                                                       {activeToolbarMenu.label}
                                                   </div>
                                                   {activeToolbarMenu.items.map((subItem) => {
                                                       const SubIcon = subItem.icon;
-                                                      const offline = !!subItem.disabled;
                                                       return (
                                                           <motion.button
                                                               key={subItem.id}
                                                               onClick={(e) => {
                                                                   e.stopPropagation();
-                                                                  if (offline) return;
                                                                   handleToolClick(subItem.id);
                                                                   setActiveMenu(null);
                                                               }}
-                                                              className={`clash-input-icon-button flex items-center gap-3 rounded-xl px-3 py-2 text-sm transition-colors text-left whitespace-nowrap ${
-                                                                  offline
-                                                                      ? 'text-stone-400 cursor-not-allowed'
-                                                                      : 'text-stone-600 hover:text-slate-950'
-                                                              }`}
-                                                              whileHover={offline ? undefined : { x: 2 }}
-                                                              style={offline ? { opacity: 0.5 } : undefined}
-                                                              title={offline ? (subItem.disabledReason ?? RUNTIME_OFFLINE_TOOLTIP) : undefined}
-                                                              aria-disabled={offline || undefined}
+                                                              className="clash-input-icon-button flex items-center gap-3 rounded-xl px-3 py-2 text-sm text-stone-600 hover:text-slate-950 transition-colors text-left whitespace-nowrap"
+                                                              whileHover={{ x: 2 }}
                                                           >
                                                               <SubIcon className="h-4 w-4" />
-                                                              <span className="whitespace-nowrap flex flex-col leading-tight">
-                                                                  <span>{subItem.label}</span>
-                                                                  {offline && subItem.sublabel && (
-                                                                      <span className="text-[10px] text-stone-500">{subItem.sublabel}</span>
-                                                                  )}
-                                                              </span>
+                                                              <span className="whitespace-nowrap">{subItem.label}</span>
                                                           </motion.button>
                                                       );
                                                   })}
@@ -2384,14 +2251,6 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
                                         isCollapsed={isSidebarCollapsed}
                                         onCollapseChange={setIsSidebarCollapsed}
                                         registerRoomSink={registerRoomSink}
-                                        // Canvas-side mentionable nodes for ChatInput's
-                                        // @-mention picker. Filter is the same as
-                                        // ChatbotCopilot used (image / video / text); the
-                                        // `thumbnail` field is resolved by the effect that
-                                        // populates `assetThumbsByNodeId` so the chip
-                                        // renders the actual image / video cover instead
-                                        // of a generic glyph.
-                                        mentionableNodes={mentionableNodes}
                                     />
                                 </div>
                             </div>
@@ -2404,8 +2263,6 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
                 </VideoClipperProvider>
               </ImageEditorProvider>
             </LoroSyncProvider>
-            </CanvasFocusProvider>
-            </ReactFlowProvider>
         </ProjectProvider >
     );
 }
