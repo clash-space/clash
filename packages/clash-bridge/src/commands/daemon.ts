@@ -22,7 +22,14 @@ import { printBanner, log, c } from "../lib/style.js";
 import { PKG_VERSION } from "../lib/version.js";
 import WebSocket from "ws";
 
-const HEARTBEAT_INTERVAL_MS = 5 * 60 * 1000;
+// Server's deriveRuntimeStatus treats last_heartbeat older than 90s as
+// offline (RUNTIME_HEARTBEAT_STALE_SEC). 5-minute pings guaranteed the
+// runtime spent 4+ minutes of every cycle marked offline — the browser
+// then can't create new sessions (POST /sessions returns 409 "runtime
+// offline" via the deriveRuntimeStatus check in routes/v1/runtimes.ts),
+// so Test Director was effectively unreachable. 30s gives comfortable
+// headroom under the 90s threshold.
+const HEARTBEAT_INTERVAL_MS = 30 * 1000;
 const RECONNECT_BACKOFF_MIN_MS = 1000;
 const RECONNECT_BACKOFF_MAX_MS = 60 * 1000;
 
