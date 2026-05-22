@@ -1,0 +1,29 @@
+{
+  "name": "@clash-space/sdk",
+  "version": "0.1.0",
+  "description": "Clash SDK — register and run local Node.js code as canvas actions",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": ["dist", "src"],
+  "scripts": {
+    "build": "tsup src/index.ts --format esm --clean --target node20 && tsc --emitDeclarationOnly --outDir dist",
+    "dev": "tsup src/index.ts --format esm --watch --target node20",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@types/ws": "^8.5.10",
+    "tsup": "^8.0.0",
+    "typescript": "^5.0.0"
+  }
+}

@@ -514,17 +514,46 @@ export class ActionsHost {
       childEnv.PYTHONPATH = prev ? `${sdkPythonDir}:${prev}` : sdkPythonDir;
     }
 
-    // Pick python interpreter: PYTHON env var first, then `python3` from
-    // PATH. Action authors with a venv export `PYTHON=/path/to/venv/bin/python`.
-    const pythonBin = process.env.CLASH_ACTIONS_PYTHON || "python3";
+    // Pick interpreter by entrypoint file extension.
+    //
+    // - `.py`              → python (CLASH_ACTIONS_PYTHON env or `python3`)
+    // - `.js` / `.mjs`     → node from current process (process.execPath)
+    // - `.ts`              → not supported in production; reject so action
+    //                        authors compile to .js (the marketplace install
+    //                        endpoint serves built .js, not .ts).
+    //
+    // Why two languages: we ship both a Python SDK (existing) and a JS SDK
+    // (`@clash-space/sdk`). The wire protocol is identical; only the host
+    // language differs. The bridge is interpreter-agnostic — it just spawns
+    // whatever runtime the manifest's entrypoint demands.
+    const ext = entrypoint.toLowerCase().slice(entrypoint.lastIndexOf("."));
+    let bin: string;
+    let args: string[];
+    if (ext === ".py") {
+      bin = process.env.CLASH_ACTIONS_PYTHON || "python3";
+      args = [entrypointPath];
+    } else if (ext === ".js" || ext === ".mjs") {
+      bin = process.execPath; // same node that's running this bridge
+      args = [entrypointPath];
+    } else if (ext === ".ts") {
+      process.stderr.write(
+        `actions: ${manifest.id}: .ts entrypoint not supported — compile to .js before installing\n`,
+      );
+      return;
+    } else {
+      process.stderr.write(
+        `actions: ${manifest.id}: unknown entrypoint extension '${ext}' — expected .py / .js / .mjs\n`,
+      );
+      return;
+    }
 
     process.stderr.write(
-      `actions: spawn id=${manifest.id} entrypoint=${entrypoint} bin=${pythonBin}\n`,
+      `actions: spawn id=${manifest.id} entrypoint=${entrypoint} bin=${bin}\n`,
     );
 
     let child: ChildProcess;
     try {
-      child = spawn(pythonBin, [entrypointPath], {
+      child = spawn(bin, args, {
         cwd: dir,
         env: childEnv,
         // Inherit stdio so action logs land in the bridge's stdout/stderr.

@@ -5,6 +5,7 @@ packages:
   - 'packages/remotion-*'
   - 'packages/shared-*'
   - 'packages/action-sdk'
+  - 'packages/clash-sdk/js'
   - 'packages/web-ui'
   - 'packages/cli'
   - 'packages/clash-bridge'
