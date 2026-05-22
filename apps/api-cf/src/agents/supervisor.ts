@@ -499,7 +499,21 @@ export class SupervisorAgent extends AIChatAgent<Env> {
         // Caller logs and continues — staleness self-heals on next poll.
       }
     };
-    const canvasTools = createCanvasTools(this.doc, this.broadcastToRoom, sendMsg, generateId, getWorkspaceGroupId, this.env, this.projectId, ensureRoomFresh);
+    // The in-API supervisor is the user's own chat — every canvas node
+    // it creates inherits the user's identity (NOT a crew_member).
+    // ACP crew supervisors (Director / Generator / …) live outside this
+    // file; when they wire createCanvasTools they pass actorType='agent'.
+    const canvasTools = createCanvasTools(
+      this.doc,
+      this.broadcastToRoom,
+      sendMsg,
+      generateId,
+      getWorkspaceGroupId,
+      this.env,
+      this.projectId,
+      ensureRoomFresh,
+      { actorType: "user", actorUserId: this.userId },
+    );
     const workflowTools = createWorkflowTools(this.doc, this.broadcastToRoom, generateId);
     const timelineTools = createTimelineTools(sendMsg);
     const allTools = { ...canvasTools, ...workflowTools, ...timelineTools };

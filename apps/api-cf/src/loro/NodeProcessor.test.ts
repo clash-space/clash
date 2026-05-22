@@ -117,7 +117,7 @@ describe("NodeProcessor - processPendingNodes", () => {
       {
         id: "node-img-1",
         type: "image",
-        data: { status: "pending", prompt: "a cat" },
+        data: { status: "pending", prompt: "a cat", actorType: "user", actorUserId: "u-test" },
       },
     ]);
     const env = makeEnv();
@@ -158,6 +158,8 @@ describe("NodeProcessor - processPendingNodes", () => {
           status: "pending",
           prompt: "a sunset",
           referenceImageUrls: ["projects/proj-1/assets/ref.png"],
+          actorType: "user",
+          actorUserId: "u-test",
         },
       },
     ]);
@@ -227,7 +229,7 @@ describe("NodeProcessor - processPendingNodes", () => {
       {
         id: "node-fail",
         type: "image",
-        data: { status: "pending", prompt: "test" },
+        data: { status: "pending", prompt: "test", actorType: "user", actorUserId: "u-test" },
       },
     ]);
 
@@ -252,7 +254,7 @@ describe("NodeProcessor - processPendingNodes", () => {
       {
         id: "node-fail2",
         type: "image",
-        data: { status: "pending", prompt: "test" },
+        data: { status: "pending", prompt: "test", actorType: "user", actorUserId: "u-test" },
       },
     ]);
 
@@ -290,10 +292,13 @@ describe("NodeProcessor - processPendingNodes", () => {
       {
         id: "n-timeline",
         type: "video",
-        data: { status: "pending", timelineDsl: { tracks: [] } },
+        data: { status: "pending", timelineDsl: { tracks: [] }, actorType: "user", actorUserId: "u-test" },
       },
     ]);
-    const env = makeEnv();
+    // Render branch refuses to dispatch without an absolute media base URL
+    // (the worker signs asset paths against it). Production env has no
+    // dev-localhost fallback — provide one explicitly.
+    const env = makeEnv({ MEDIA_GATEWAY_URL: "http://localhost:3000" });
 
     await processPendingNodes(doc, env, "proj-1", broadcast, triggerPolling);
 
@@ -324,6 +329,8 @@ describe("NodeProcessor - processPendingNodes", () => {
         type: "video",
         data: {
           status: "pending",
+          actorType: "user",
+          actorUserId: "u-test",
           timelineDsl: {
             tracks: [
               {
@@ -409,6 +416,8 @@ describe("NodeProcessor - processPendingNodes", () => {
         type: "video",
         data: {
           status: "pending",
+          actorType: "user",
+          actorUserId: "u-test",
           timelineDsl: {
             tracks: [
               {
@@ -490,6 +499,8 @@ describe("NodeProcessor - processPendingNodes", () => {
         type: "video",
         data: {
           status: "pending",
+          actorType: "user",
+          actorUserId: "u-test",
           timelineDsl: {
             tracks: [
               {
@@ -510,7 +521,7 @@ describe("NodeProcessor - processPendingNodes", () => {
         },
       },
     ]);
-    const env = makeEnv();
+    const env = makeEnv({ MEDIA_GATEWAY_URL: "http://localhost:3000" });
 
     await processPendingNodes(doc, env, "proj-1", broadcast, triggerPolling);
 
@@ -583,7 +594,7 @@ describe("NodeProcessor - processPendingNodes", () => {
       {
         id: "node-lock",
         type: "image",
-        data: { status: "pending", prompt: "test" },
+        data: { status: "pending", prompt: "test", actorType: "user", actorUserId: "u-test" },
       },
     ]);
 

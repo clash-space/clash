@@ -33,3 +33,17 @@ v1Routes.route("/local-sessions", sessionsRuntimeRoutes);
 
 // Health check
 v1Routes.get("/", (c) => c.json({ version: "v1", status: "ok" }));
+
+// GET /api/v1/me — resolve the calling user from the x-user-id header
+// (set by the /api/v1/* middleware from cookie OR API token).
+//
+// Used by the CLI's `clash canvas add` (Phase 0 attribution) to stamp
+// `data.actorUserId` onto the nodes it creates: the CLI doesn't carry
+// the user id directly — it only has the API token — so this endpoint
+// is the single round-trip translator. Cheap enough to call inline
+// without caching; the CLI does one add per command.
+v1Routes.get("/me", (c) => {
+  const userId = c.req.header("x-user-id");
+  if (!userId) return c.json({ error: "unauthorized" }, 401);
+  return c.json({ id: userId });
+});

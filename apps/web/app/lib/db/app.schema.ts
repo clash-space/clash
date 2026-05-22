@@ -352,6 +352,16 @@ export const crewMember = sqliteTable(
         agentId: text("agent_id"),
         displayName: text("display_name").notNull(),
         createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
+        // ── Per-agent budget (Phase 0 multi-actor billing) ───────
+        // Set in Settings → Agent budgets; read by the (closed-source)
+        // billing plugin at generation time. Platform code only plumbs.
+        // budgetCredits = NULL means "no cap" (unlimited).
+        budgetCredits: integer("budget_credits"),
+        // 'monthly' | 'one-time' | 'unlimited'. Plugin owns the reset
+        // semantics; we just store the user's choice.
+        budgetPeriod: text("budget_period").default("monthly"),
+        budgetUsed: integer("budget_used").default(0),
+        budgetResetAt: integer("budget_reset_at"),
     },
     (table) => ({
         crewMemberUserIdx: index("crew_member_user_idx").on(table.userId, table.createdAt),

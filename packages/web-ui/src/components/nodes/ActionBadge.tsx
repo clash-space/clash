@@ -25,6 +25,7 @@ import MilkdownEditor from '../MilkdownEditor';
 import { useConfirm } from '../ConfirmDialog';
 import { useSpawnPendingAsset } from './useSpawnPendingAsset';
 import ActionBadgePipelineMenu from './ActionBadgePipelineMenu';
+import AttributionLine from './AttributionLine';
 
 type ModelParams = Record<string, string | number | boolean>;
 type BuiltInActionKind = 'image' | 'video' | 'audio' | 'text';
@@ -1963,6 +1964,12 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
                             <span className="text-[10px] text-slate-700 dark:text-slate-300 truncate leading-none">
                                 {badgeDisplayName}
                             </span>
+                            {/* Phase 0 attribution — only renders when actor info is populated. */}
+                            <AttributionLine
+                                actorType={data.actorType as 'user' | 'agent' | undefined}
+                                actorUserId={data.actorUserId as string | undefined}
+                                actorAgentId={data.actorAgentId as string | undefined}
+                            />
                         </div>
                         {/* Run button — separate click target */}
                         <button

@@ -52,3 +52,10 @@ export function usePeersSelectingNode(nodeId: string): Peer[] {
   const ctx = useContext(Ctx);
   return ctx.peersByNodeId.get(nodeId) ?? EMPTY_PEERS;
 }
+
+/** All peers currently broadcasting awareness in this project — used
+ *  by attribution UI to resolve userId → userName cheaply without an
+ *  API round-trip when the actor is also a live participant. */
+export function useAllPeers(): Peer[] {
+  return useContext(Ctx).peers;
+}

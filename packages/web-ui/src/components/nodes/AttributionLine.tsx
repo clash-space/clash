@@ -1,0 +1,100 @@
+/**
+ * AttributionLine — small "Made by X" label for canvas nodes.
+ *
+ * Renders inside an ImageNode header or ActionBadge chip, showing who
+ * is responsible for the node:
+ *   - actorType='user'  → that user's display name ("Made by Alice")
+ *   - actorType='agent' → the agent's display name plus, when the agent
+ *                          isn't owned by the local user, a parenthetical
+ *                          owner suffix ("Made by Test Director (Bob's)").
+ *
+ * Name resolution prefers cheap in-memory sources:
+ *   1. Presence peers (already loaded by the awareness layer) carry
+ *      `userName` for every live participant — zero network cost.
+ *   2. The Loro `customActions` map indirectly identifies which crew
+ *      member registered each action; for full crew labels we fall back
+ *      to `/api/v1/crew` cached per-mount.
+ *   3. Worst case: show the raw id (truncated) so the UI never blanks.
+ */
+import { useEffect, useState } from 'react';
+import { useAllPeers } from '../PresenceAwarenessContext';
+import betterAuthClient from '@clash/web-ui/lib/betterAuthClient';
+
+interface CrewLite {
+    id: string;
+    user_id: string;
+    display_name: string;
+}
+
+// Module-scoped crew cache. Crew membership rarely changes during a
+// session and the same handful of agents appear across every node;
+// caching once per page load avoids N round-trips per render. Not a
+// React state on purpose — components mounting later still see the
+// fetched result. Refresh happens on full page reload.
+let crewCachePromise: Promise<CrewLite[]> | null = null;
+function loadCrewOnce(): Promise<CrewLite[]> {
+    if (!crewCachePromise) {
+        crewCachePromise = fetch('/api/v1/crew', { credentials: 'same-origin' })
+            .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
+            .then((j) => (j as { crew?: CrewLite[] }).crew ?? [])
+            .catch(() => []);
+    }
+    return crewCachePromise;
+}
+
+interface AttributionLineProps {
+    actorType?: 'user' | 'agent';
+    actorUserId?: string;
+    actorAgentId?: string;
+}
+
+export default function AttributionLine({ actorType, actorUserId, actorAgentId }: AttributionLineProps) {
+    // Awareness peers carry userName for every live participant; using
+    // them first means most of the time we never hit the network.
+    const peers = useAllPeers();
+    const session = betterAuthClient.useSession();
+    const localUserId = session.data?.user?.id;
+    const localUserName = session.data?.user?.name ?? session.data?.user?.email;
+
+    const [crew, setCrew] = useState<CrewLite[]>([]);
+    useEffect(() => {
+        let cancelled = false;
+        void loadCrewOnce().then((rows) => {
+            if (!cancelled) setCrew(rows);
+        });
+        return () => {
+            cancelled = true;
+        };
+    }, []);
+
+    if (!actorType || !actorUserId) return null;
+
+    // Resolve user display name.
+    const resolveUserName = (uid: string): string => {
+        if (uid === localUserId) return localUserName || 'you';
+        const peer = peers.find((p) => p.userId === uid);
+        if (peer) return peer.userName;
+        return uid.slice(0, 8);
+    };
+
+    if (actorType === 'user') {
+        const name = resolveUserName(actorUserId);
+        return (
+            <span className="text-[10px] text-slate-500 dark:text-slate-400" title={`actorUserId=${actorUserId}`}>
+                Made by {name}
+            </span>
+        );
+    }
+
+    // actorType === 'agent'
+    const agent = actorAgentId ? crew.find((c) => c.id === actorAgentId) : undefined;
+    const agentName = agent?.display_name ?? (actorAgentId ? actorAgentId.slice(0, 8) : 'agent');
+    const ownerSuffix = actorUserId !== localUserId
+        ? ` (${resolveUserName(actorUserId)}'s)`
+        : '';
+    return (
+        <span className="text-[10px] text-slate-500 dark:text-slate-400" title={`actorAgentId=${actorAgentId} actorUserId=${actorUserId}`}>
+            Made by {agentName}{ownerSuffix}
+        </span>
+    );
+}

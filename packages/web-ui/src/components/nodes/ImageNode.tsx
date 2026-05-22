@@ -7,6 +7,7 @@ import { useMediaViewer } from '../MediaViewerContext';
 import { useOptionalLoroSyncContext } from '../LoroSyncContext';
 import { usePeersSelectingNode } from '../PresenceAwarenessContext';
 import PeerSelectionRing from '../PeerSelectionRing';
+import AttributionLine from './AttributionLine';
 import { normalizeStatus, isActiveStatus, type AssetStatus } from '@clash/web-ui/lib/assetStatus';
 import { SignedImg } from '../SignedMedia';
 import { useSignedUrl } from '@clash/web-ui/lib/hooks/useSignedUrl';
@@ -146,6 +147,13 @@ const ImageNode = ({ data, selected, id }: NodeProps<Node<Record<string, any>>>)
                             })
                         );
                     }}
+                />
+                {/* Phase 0 attribution chip — shown only when actor info is
+                    populated. Legacy nodes (pre-rollout) render nothing. */}
+                <AttributionLine
+                    actorType={data.actorType as 'user' | 'agent' | undefined}
+                    actorUserId={data.actorUserId as string | undefined}
+                    actorAgentId={data.actorAgentId as string | undefined}
                 />
             </div>
 

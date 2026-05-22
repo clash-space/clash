@@ -18,6 +18,25 @@ import { getAssetById } from "../../services/assets";
 import { log } from "../../logger";
 
 /**
+ * Phase 0 attribution: the supervisor knows which actor is acting and
+ * threads it into every canvas tool call so the nodes it creates carry
+ * `data.actorType` / `data.actorUserId` / `data.actorAgentId`. For the
+ * built-in in-API supervisor this is `{ actorType: 'user', actorUserId }`;
+ * for ACP crew sessions (Test Director / Generator / …) the room WS layer
+ * supplies `{ actorType: 'agent', actorUserId: owner_id, actorAgentId: cm_id }`.
+ *
+ * Optional only because tests / call sites pre-Phase-0 don't have it yet;
+ * any tool that creates a generation node falls back to {actorType:'user',
+ * actorUserId:''} when missing, which NodeProcessor will then reject —
+ * surfacing the bug at the point of creation instead of swallowing it.
+ */
+export interface CanvasToolActor {
+  actorType: "user" | "agent";
+  actorUserId: string;
+  actorAgentId?: string;
+}
+
+/**
  * Create canvas tools that operate on the Loro CRDT document.
  */
 export function createCanvasTools(
@@ -36,8 +55,20 @@ export function createCanvasTools(
    * arrive. Calling ensureRoomFresh before each poll forces re-snapshot.
    */
   ensureRoomFresh?: () => Promise<void>,
+  actor?: CanvasToolActor,
 ) {
   const canvas = new Canvas(doc, broadcast);
+
+  // Stamp attribution onto a `data` object. No-op when actor isn't
+  // supplied (tests, pre-Phase-0 call sites) — downstream NodeProcessor
+  // will refuse to dispatch and surface the missing-actor failure.
+  const stampActor = (data: Record<string, unknown>): Record<string, unknown> => {
+    if (!actor) return data;
+    data.actorType = actor.actorType;
+    data.actorUserId = actor.actorUserId;
+    if (actor.actorAgentId) data.actorAgentId = actor.actorAgentId;
+    return data;
+  };
 
   const listCanvasNodes = tool({
     description: "List nodes on the canvas, optionally filtered by type or parent group. Returns a tree view.",
@@ -183,6 +214,7 @@ export function createCanvasTools(
         const data: Record<string, unknown> = { label };
         if (content) data.content = content;
         if (description) data.description = description;
+        stampActor(data);
 
         const result = canvas.createNode(nodeId, node_type, data, position, resolvedParent);
         if (result.error) return `Error: ${result.error}`;
@@ -243,6 +275,7 @@ export function createCanvasTools(
           model: modelId,
           modelParams: { ...(modelCard?.defaultParams ?? {}) },
         };
+        stampActor(data);
 
         const result = canvas.createNode(nodeId, node_type, data, position, resolvedParent, assetId);
         log.info("create_generation_node result", { node_id: result.node_id, asset_id: result.asset_id, error: result.error });
@@ -427,12 +460,137 @@ export function createCanvasTools(
           r2Key: src,
           mimeType,
           language,
+          // Attribution flows from the agent runtime calling this tool.
+          // No actor → degenerate to "" (the workflow uses it for the
+          // asset row owner; createAsset throws on "" so this fails fast).
+          actorType: actor?.actorType ?? "user",
+          actorUserId: actor?.actorUserId ?? "",
+          actorAgentId: actor?.actorAgentId,
         };
 
         await startGeneration(env, taskId, genParams);
         return `Understanding task submitted for node ${node_id} (taskId: ${taskId}). Results will appear in node.data.understanding.`;
       } catch (e) {
         return `Error: ${e}`;
+      }
+    },
+  });
+
+  const listCustomActions = tool({
+    description:
+      "List custom marketplace actions installed in this project (e.g. grid-split, upscale). Each entry shows its id, name, description, output type, declared input modalities, and parameters. Use this BEFORE create_custom_action_node — the agent doesn't know which actions are available a priori.",
+    inputSchema: z.object({}),
+    execute: async () => {
+      try {
+        const actionsMap = doc.getMap("customActions");
+        const entries: Array<Record<string, unknown>> = [];
+        for (const [, raw] of actionsMap.entries()) {
+          if (!raw || typeof raw !== "object") continue;
+          entries.push(raw as Record<string, unknown>);
+        }
+        if (entries.length === 0) {
+          return "No custom actions are registered in this project. The user needs to run a local agent (e.g. `python examples/grid_split.py`) that calls register_custom_actions before any can be used.";
+        }
+        return JSON.stringify(
+          entries.map((a) => ({
+            id: a.id,
+            name: a.name,
+            description: a.description,
+            outputType: a.outputType,
+            promptModalities: a.promptModalities ?? ["text"],
+            parameters: a.parameters ?? [],
+            runtime: a.runtime ?? "local",
+          })),
+          null,
+          2,
+        );
+      } catch (e) {
+        return `Error listing custom actions: ${e}`;
+      }
+    },
+  });
+
+  const createCustomActionNode = tool({
+    description:
+      "Create an action-badge that runs a custom marketplace action (one of the ids from list_custom_actions). The action-badge is the input node; after creation call run_generation_node to spawn its pending child + dispatch the task to the registered agent. Reference assets (e.g. a source image for grid-split) MUST be passed via `reference_ids` — those become canvas edges that the executor reads as inputs.",
+    inputSchema: z.object({
+      action_id: z
+        .string()
+        .describe("The custom action id (e.g. 'grid-split'). Must be one of the ids returned by list_custom_actions."),
+      label: z.string().describe("Display label shown above the action-badge"),
+      prompt: z
+        .string()
+        .describe(
+          "Free-text prompt. Required by the current validation gate even when the action ignores text (the agent should pass a short descriptive string). For prompt-driven actions, write the actual instruction here.",
+        ),
+      reference_ids: z
+        .array(z.string())
+        .optional()
+        .describe(
+          "Canvas node ids of upstream image/video/audio assets to wire as inputs. Each becomes an incoming edge to the new action-badge. Required for actions whose promptModalities include 'image'/'video'/'audio'.",
+        ),
+      params: z
+        .record(z.union([z.string(), z.number(), z.boolean()]))
+        .optional()
+        .describe(
+          "Custom action parameters (data.customActionParams). Schema is per-action — read it from list_custom_actions.parameters before populating.",
+        ),
+      position: z.object({ x: z.number(), y: z.number() }).optional(),
+      parent_id: z.string().optional(),
+    }),
+    execute: async (args) => {
+      const { action_id, label, prompt, reference_ids, params, position, parent_id } = args;
+      try {
+        // Look up the custom action definition so we know its outputType.
+        const def = canvas.getCustomAction(action_id);
+        if (!def) {
+          return `Error: custom action '${action_id}' is not registered. Run list_custom_actions to see what's available.`;
+        }
+        const resolvedParent = parent_id ?? getWorkspaceGroupId() ?? null;
+        const nodeId = generateId();
+        const assetId = generateId();
+
+        const data: Record<string, unknown> = {
+          label,
+          content: prompt,
+          prompt,
+          actionType: `custom:${action_id}`,
+          customActionId: action_id,
+          customActionParams: params ?? {},
+          outputType: def.outputType,
+        };
+        stampActor(data);
+
+        // ActionBadge reads refs from incoming edges (matching the web
+        // UI). referenceImageOrder is what the prompt-editor chips use
+        // for stable positional rendering.
+        const refs = (reference_ids ?? []).filter((id) => !!id);
+        if (refs.length > 0) data.referenceImageOrder = refs;
+
+        // Map image_gen -> the right node type based on the action's
+        // declared outputType. Custom actions can output any modality.
+        const nodeType =
+          def.outputType === "video"
+            ? NodeType.VideoGen
+            : def.outputType === "audio"
+              ? NodeType.AudioGen
+              : def.outputType === "text"
+                ? NodeType.TextGen
+                : NodeType.ImageGen;
+
+        const result = canvas.createNode(nodeId, nodeType, data, position, resolvedParent, assetId);
+        if (result.error) return `Error: ${result.error}`;
+
+        // Wire each ref as an incoming edge to the new badge.
+        for (const sourceNodeId of refs) {
+          if (!canvas.readNode(sourceNodeId)) continue;
+          canvas.insertEdge(`${sourceNodeId}-${nodeId}`, sourceNodeId, nodeId, "default");
+        }
+
+        return `Created custom action node ${result.node_id} (action=${action_id}, refs=${refs.length}). Call run_generation_node next to dispatch.`;
+      } catch (e) {
+        log.error("create_custom_action_node error", e);
+        return `Error creating custom action node: ${e}`;
       }
     },
   });
@@ -447,6 +605,8 @@ export function createCanvasTools(
     rerun_generation_node: rerunGenerationNode,
     search_canvas: searchCanvas,
     list_models: listModels,
+    list_custom_actions: listCustomActions,
+    create_custom_action_node: createCustomActionNode,
     understand_asset: understandAsset,
   };
 }

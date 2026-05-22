@@ -156,6 +156,18 @@ export const NodeDataSchema = z.object({
   customActionId: z.string().optional(),
   /** User-configured parameters for custom actions */
   customActionParams: z.record(z.unknown()).optional(),
+  // ─── Actor attribution (Phase 0 multi-actor billing) ────────
+  // Stamped by the creation site (web UI / ACP tool / CLI). For
+  // legacy nodes created before this rollout these are absent —
+  // NodeProcessor surfaces missing attribution as a clear node
+  // failure rather than silently falling back to the project owner.
+  /** 'user' or 'agent' — who placed this node on the canvas. */
+  actorType: z.enum(['user', 'agent']).optional(),
+  /** The accountable human user id. Always set for new nodes; for
+   *  actorType='agent' this is the agent's owner / claimer. */
+  actorUserId: z.string().optional(),
+  /** crew_member.id when actorType='agent'. */
+  actorAgentId: z.string().optional(),
   /** Structured understanding results (ASR transcription, visual analysis, etc.).
    *  Keys are overwritten, not merged — each key is independently owned. */
   understanding: z.object({

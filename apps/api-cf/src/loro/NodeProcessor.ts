@@ -13,7 +13,7 @@ import { log } from '../logger';
 import { updateNodeData, appendNodeLog } from './NodeUpdater';
 import { Status } from '../domain/canvas';
 import type { GenerationParams } from '../agents/generation';
-import { getAssetById, getAssetsByIds, getProjectOwner } from '../services/assets';
+import { getAssetById, getAssetsByIds } from '../services/assets';
 import { signAssetPath } from '../services/asset-signing';
 
 import { MODEL_CARDS, parsePromptParts, extractPromptText } from '@clash/shared-types';
@@ -422,6 +422,23 @@ export async function processPendingNodes(
 
       // Case 0: video_render with timelineDsl → submit render task
       if (shouldRenderVideo && status === Status.Pending) {
+        // Phase 0 attribution gate (same shape as other cases below).
+        // Render nodes also need an actor — the resulting asset row
+        // attributes to whomever pressed Render.
+        const renderActorUserId = typeof innerData.actorUserId === 'string' ? innerData.actorUserId : undefined;
+        const renderActorType: 'user' | 'agent' = innerData.actorType === 'agent' ? 'agent' : 'user';
+        const renderActorAgentId = typeof innerData.actorAgentId === 'string' ? innerData.actorAgentId : undefined;
+        if (!renderActorUserId) {
+          const error = 'Missing actor attribution — node created before Phase 0 attribution rollout';
+          log.warn('attribution.missing.render', { nodeId });
+          updateNodeData(doc, nodeId, {
+            pendingTask: undefined,
+            status: Status.Failed,
+            error,
+          }, broadcast);
+          continue;
+        }
+
         const taskId = crypto.randomUUID();
         updateNodeData(doc, nodeId, { status: Status.Generating, pendingTask: taskId, pendingTaskAt: Date.now() }, broadcast);
         appendNodeLog(doc, nodeId, `task=${taskId.slice(0, 8)} type=video_render`, broadcast);
@@ -465,6 +482,9 @@ export async function processPendingNodes(
           type: 'video_render',
           projectId,
           timelineDsl: resolvedDsl,
+          actorType: renderActorType,
+          actorUserId: renderActorUserId,
+          actorAgentId: renderActorAgentId,
         };
 
         try {
@@ -484,6 +504,25 @@ export async function processPendingNodes(
 
       // Case: custom action pending → route based on runtime (local agent or CF Worker)
       if (status === Status.Pending && !assetId && innerData.actionType?.startsWith('custom:')) {
+        // Phase 0 attribution: every generation needs an actor. Legacy
+        // nodes (created before this rollout) won't have one — refuse
+        // to dispatch rather than silently fall back to the project
+        // owner (which was the bug). One log line + a failed-node
+        // status keeps the loop moving past the bad row.
+        const nodeActorUserId = typeof innerData.actorUserId === 'string' ? innerData.actorUserId : undefined;
+        const nodeActorType: 'user' | 'agent' = innerData.actorType === 'agent' ? 'agent' : 'user';
+        const nodeActorAgentId = typeof innerData.actorAgentId === 'string' ? innerData.actorAgentId : undefined;
+        if (!nodeActorUserId) {
+          const error = 'Missing actor attribution — node created before Phase 0 attribution rollout';
+          log.warn('attribution.missing.custom', { nodeId, actionType: innerData.actionType });
+          updateNodeData(doc, nodeId, {
+            pendingTask: undefined,
+            status: Status.Failed,
+            error,
+          }, broadcast);
+          continue;
+        }
+
         const actionId = innerData.customActionId ?? innerData.actionType.replace('custom:', '');
 
         // Check runtime from Loro customActions map
@@ -567,7 +606,11 @@ export async function processPendingNodes(
         const customRefAudioR2Keys: string[] = [];
         const customSources: Array<{ assetId: string; role: 'primary' | 'reference' | 'edit-source' }> = [];
         if (customAllAssetIds.length > 0) {
-          const ownerId = await getProjectOwner(env.DB, projectId);
+          // Use the actor as the asset owner for the lookup. Pre-Phase-0
+          // this consulted getProjectOwner; the actor is the right
+          // answer in single-user mode and the only correct answer
+          // once multiple humans share a project.
+          const ownerId = nodeActorUserId;
           if (ownerId) {
             const assets = await getAssetsByIds(env.DB, customAllAssetIds, ownerId);
             const assetById = new Map(assets.map((a) => [a.id, a.srcR2Key]));
@@ -601,6 +644,9 @@ export async function processPendingNodes(
             referenceVideoR2Keys: customRefVideoR2Keys.length > 0 ? customRefVideoR2Keys : undefined,
             referenceAudioR2Keys: customRefAudioR2Keys.length > 0 ? customRefAudioR2Keys : undefined,
             sources: customSources.length > 0 ? customSources : undefined,
+            actorType: nodeActorType,
+            actorUserId: nodeActorUserId,
+            actorAgentId: nodeActorAgentId,
           };
 
           try {
@@ -637,6 +683,13 @@ export async function processPendingNodes(
             referenceImageR2Keys: customRefImageR2Keys.length > 0 ? customRefImageR2Keys : undefined,
             referenceVideoR2Keys: customRefVideoR2Keys.length > 0 ? customRefVideoR2Keys : undefined,
             referenceAudioR2Keys: customRefAudioR2Keys.length > 0 ? customRefAudioR2Keys : undefined,
+            // Phase 0 attribution: SDK echoes these back as form fields
+            // on the upload POST + the complete_custom_task message so
+            // the asset row's user_id and any plugin-side budget
+            // accounting use the actor, not the project owner.
+            actorType: nodeActorType,
+            actorUserId: nodeActorUserId,
+            actorAgentId: nodeActorAgentId,
             sources: customSources.length > 0 ? customSources : undefined,
             status: 'waiting_for_agent',
             createdAt: Date.now(),
@@ -665,6 +718,23 @@ export async function processPendingNodes(
 
       // Case 1: pending + no asset yet -> submit generation task
       if (status === Status.Pending && !assetId) {
+        // Phase 0 attribution gate — same shape as the custom-action
+        // branch above. Legacy nodes get a single warning + a failed
+        // status; we don't crash the whole loop on one bad row.
+        const nodeActorUserId = typeof innerData.actorUserId === 'string' ? innerData.actorUserId : undefined;
+        const nodeActorType: 'user' | 'agent' = innerData.actorType === 'agent' ? 'agent' : 'user';
+        const nodeActorAgentId = typeof innerData.actorAgentId === 'string' ? innerData.actorAgentId : undefined;
+        if (!nodeActorUserId) {
+          const error = 'Missing actor attribution — node created before Phase 0 attribution rollout';
+          log.warn('attribution.missing.gen', { nodeId, nodeType });
+          updateNodeData(doc, nodeId, {
+            pendingTask: undefined,
+            status: Status.Failed,
+            error,
+          }, broadcast);
+          continue;
+        }
+
         // Deterministic taskId: same nodeId always maps to the same workflow ID,
         // so duplicate submissions (Loro race, alarm + queue, etc.) are idempotent.
         const taskId = `${projectId}-gen-${nodeId}`;
@@ -743,13 +813,10 @@ export async function processPendingNodes(
 
         let assetById = new Map<string, { srcR2Key: string; coverR2Key: string | null }>();
         if (allAssetIds.length > 0) {
-          const ownerId = await getProjectOwner(env.DB, projectId);
-          if (!ownerId) {
-            const msg = 'Project owner not found';
-            log.error('gen.owner_lookup_failed', { ...tag });
-            updateNodeData(doc, nodeId, { pendingTask: undefined, status: Status.Failed, error: msg }, broadcast);
-            continue;
-          }
+          // Resolve refs against the actor's assets, not the project
+          // owner's. In single-user mode these are the same row;
+          // multi-actor will diverge once Phase 1 lands project_member.
+          const ownerId = nodeActorUserId;
           const assets = await getAssetsByIds(env.DB, allAssetIds, ownerId);
           assetById = new Map(assets.map((a) => [a.id, { srcR2Key: a.srcR2Key, coverR2Key: a.coverR2Key }]));
 
@@ -833,6 +900,9 @@ export async function processPendingNodes(
           startFrameR2Key: startFrameKey,
           endFrameR2Key: endFrameKey,
           sources: sources.length ? sources : undefined,
+          actorType: nodeActorType,
+          actorUserId: nodeActorUserId,
+          actorAgentId: nodeActorAgentId,
         });
 
         if (result.error) {
@@ -861,9 +931,23 @@ export async function processPendingNodes(
 
         const taskType: GenerationParams['type'] = nodeType === 'image' ? 'image_desc' : 'video_desc';
 
+        // Desc is an automation triggered by completion. Inherit actor
+        // from the source node's data (set at creation time). If the
+        // node was created before Phase 0 attribution we attribute the
+        // description to the asset's stored owner — desc isn't billed
+        // anyway today, so falling back to assetRow.userId is safe.
+        const descActorUserId = (typeof innerData.actorUserId === 'string' ? innerData.actorUserId : undefined)
+          ?? assetRow.userId
+          ?? '';
+        const descActorType: 'user' | 'agent' = innerData.actorType === 'agent' ? 'agent' : 'user';
+        const descActorAgentId = typeof innerData.actorAgentId === 'string' ? innerData.actorAgentId : undefined;
+
         const result = await submitDescTask(env, taskType, projectId, nodeId, taskId, {
           r2Key: assetRow.srcR2Key,
           mimeType: nodeType === 'image' ? 'image/png' : 'video/mp4',
+          actorType: descActorType,
+          actorUserId: descActorUserId,
+          actorAgentId: descActorAgentId,
         });
 
         if (result.error) {
@@ -909,6 +993,9 @@ async function submitGenTask(
     startFrameR2Key?: string;
     endFrameR2Key?: string;
     sources?: { assetId: string; role: 'primary' | 'reference' }[];
+    actorType: 'user' | 'agent';
+    actorUserId: string;
+    actorAgentId?: string;
   },
 ): Promise<{ error?: string }> {
   const tag = { nodeId, taskId, projectId, type: taskType, model: params.model };
@@ -932,6 +1019,9 @@ async function submitGenTask(
       cfgScale: params.cfgScale,
       videoModel: params.model,
       sources: params.sources,
+      actorType: params.actorType,
+      actorUserId: params.actorUserId,
+      actorAgentId: params.actorAgentId,
     };
 
     log.info('gen.submit', { ...tag });
@@ -956,7 +1046,13 @@ async function submitDescTask(
   projectId: string,
   nodeId: string,
   taskId: string,
-  params: { r2Key: string; mimeType: string },
+  params: {
+    r2Key: string;
+    mimeType: string;
+    actorType: 'user' | 'agent';
+    actorUserId: string;
+    actorAgentId?: string;
+  },
 ): Promise<{ error?: string }> {
   try {
     const genParams: GenerationParams = {
@@ -966,6 +1062,9 @@ async function submitDescTask(
       projectId,
       r2Key: params.r2Key,
       mimeType: params.mimeType,
+      actorType: params.actorType,
+      actorUserId: params.actorUserId,
+      actorAgentId: params.actorAgentId,
     };
 
     await startGeneration(env, taskId, genParams);

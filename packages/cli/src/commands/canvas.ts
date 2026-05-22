@@ -12,7 +12,36 @@ import {
 import { requireApiKey, getServerUrl } from "../lib/config";
 import { isJsonMode, printJson } from "../lib/output";
 import { isDaemonRunning, sendCommand, startDaemon, getSocketPath } from "../lib/daemon";
-import { apiFetch } from "../lib/api";
+import { apiFetch, apiJson } from "../lib/api";
+
+/**
+ * Resolve the actor that's running this CLI invocation for Phase 0
+ * attribution. There are two shapes:
+ *
+ *   - User-driven (default): the CLI was launched by a human with their
+ *     own API token. Hit /api/v1/me to translate the token into a
+ *     user id, then stamp `{actorType:'user', actorUserId:<user>}`.
+ *   - Agent-driven: the CLI was launched by the bridge daemon as the
+ *     subprocess of an ACP crew member. Bridge stamps
+ *     CLASH_CREW_MEMBER_ID + CLASH_API_KEY into the env. The API token
+ *     still resolves to the crew member's owner (because crew claims
+ *     run under the user's bearer); we stamp `{actorType:'agent',
+ *     actorAgentId:<cm>, actorUserId:<owner>}` so the resulting node
+ *     attributes back to the human accountable for it.
+ *
+ * Both lookups go through the same /api/v1/me endpoint — agent-driven
+ * just additionally carries the crew_member id from the env.
+ */
+async function resolveActor(): Promise<{ actorType: "user" | "agent"; actorUserId: string; actorAgentId?: string }> {
+  const me = await apiJson<{ id: string }>("/api/v1/me").catch((e) => {
+    throw new Error(`Failed to resolve user from API key: ${e instanceof Error ? e.message : String(e)}`);
+  });
+  const crewMemberId = process.env.CLASH_CREW_MEMBER_ID;
+  if (crewMemberId) {
+    return { actorType: "agent", actorUserId: me.id, actorAgentId: crewMemberId };
+  }
+  return { actorType: "user", actorUserId: me.id };
+}
 
 /**
  * Resolve project id from `--project` flag or fall back to env. Matches
@@ -397,7 +426,17 @@ canvasCommand
   )
   .option("--json", "Output as JSON")
   .action(async (options) => {
-    const extraData: Record<string, unknown> = {};
+    // Phase 0 attribution: every node landed via the CLI gets stamped
+    // with the actor that's running it. NodeProcessor refuses to
+    // dispatch generations without these fields, so they're mandatory
+    // for *_gen nodes; we attach them to text / group nodes too so
+    // the inspector can show "Made by X" uniformly.
+    const actor = await resolveActor();
+    const extraData: Record<string, unknown> = {
+      actorType: actor.actorType,
+      actorUserId: actor.actorUserId,
+      ...(actor.actorAgentId ? { actorAgentId: actor.actorAgentId } : {}),
+    };
     const isGenNode = !!ACTION_TYPE_BY_NODE_TYPE[options.type];
 
     const isCustomAction = isGenNode && typeof options.action === "string" && options.action.length > 0;

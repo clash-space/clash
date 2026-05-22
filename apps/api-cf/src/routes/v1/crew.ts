@@ -31,6 +31,7 @@
 
 import { Hono } from "hono";
 import type { Env } from "../../config";
+import { deriveRuntimeStatus } from "../../lib/runtime-status";
 
 export const crewRoutes = new Hono<{ Bindings: Env }>();
 
@@ -57,11 +58,17 @@ interface CrewRow {
   agent_id: string | null;
   display_name: string;
   created_at: number;
+  // Phase 0 multi-actor billing — see drizzle/0015_crew_member_budget.sql.
+  budget_credits: number | null;
+  budget_period: string | null;
+  budget_used: number | null;
+  budget_reset_at: number | null;
 }
 
 interface CrewJoinRow extends CrewRow {
   runtime_hostname: string | null;
   runtime_status: string | null;
+  runtime_last_heartbeat: number | null;
   runtime_agents_json: string | null;
 }
 
@@ -76,9 +83,11 @@ crewRoutes.get("/", async (c) => {
     `SELECT
         cm.id, cm.user_id, cm.template_id, cm.runtime_id, cm.agent_id,
         cm.display_name, cm.created_at,
-        r.hostname    AS runtime_hostname,
-        r.status      AS runtime_status,
-        r.agents_json AS runtime_agents_json
+        cm.budget_credits, cm.budget_period, cm.budget_used, cm.budget_reset_at,
+        r.hostname       AS runtime_hostname,
+        r.status         AS runtime_status,
+        r.last_heartbeat AS runtime_last_heartbeat,
+        r.agents_json    AS runtime_agents_json
      FROM crew_member cm
      LEFT JOIN runtime r ON r.id = cm.runtime_id
      WHERE cm.user_id = ?
@@ -87,7 +96,10 @@ crewRoutes.get("/", async (c) => {
 
   // Map runtime_hostname → runtime_label so the UI can stay generic if
   // the underlying column moves later (e.g., when we add an explicit
-  // user-set label column).
+  // user-set label column). `runtime_status` goes through the shared
+  // staleness derivation so the Settings → Crew section reads the
+  // same truth as the chat panel rail — daemon dead > 90s flips to
+  // 'offline' even if the row's raw status column still says 'online'.
   const crew = (results ?? []).map((r) => ({
     id: r.id,
     user_id: r.user_id,
@@ -97,13 +109,80 @@ crewRoutes.get("/", async (c) => {
     display_name: r.display_name,
     created_at: r.created_at,
     runtime_label: r.runtime_hostname,
-    runtime_status: r.runtime_status,
+    runtime_status: r.runtime_status == null
+      ? null
+      : deriveRuntimeStatus(r.runtime_status, r.runtime_last_heartbeat),
     runtime_agents: r.runtime_agents_json
       ? (JSON.parse(r.runtime_agents_json) as Array<{ id: string }>)
       : [],
+    budget_credits: r.budget_credits,
+    budget_period: r.budget_period ?? "monthly",
+    budget_used: r.budget_used ?? 0,
+    budget_reset_at: r.budget_reset_at,
   }));
 
   return c.json({ crew });
+});
+
+// PUT /api/v1/crew/:id/budget — update an agent's per-period budget.
+//
+// Phase 0 plumbing only — the (closed-source) billing plugin reads these
+// values at enforcement time; the platform just stores them. Owner-only
+// because budgets are personal. Resetting `budget_used` to 0 whenever the
+// period changes prevents a stale balance from a previous one-time / month
+// from being misapplied under the new period.
+crewRoutes.put("/:id/budget", async (c) => {
+  const userId = c.req.header("x-user-id");
+  if (!userId) return c.json({ error: "unauthorized" }, 401);
+
+  const id = c.req.param("id");
+  const owns = await c.env.DB.prepare(
+    "SELECT id, budget_period FROM crew_member WHERE id = ? AND user_id = ?",
+  ).bind(id, userId).first<{ id: string; budget_period: string | null }>();
+  if (!owns) return c.json({ error: "not found" }, 404);
+
+  const body = (await c.req.json().catch(() => ({}))) as {
+    budget_credits?: number | null;
+    budget_period?: string;
+  };
+
+  // budget_credits=null/undefined ⇒ unlimited. Anything ≥0 is honored;
+  // negatives are nonsense and rejected.
+  let credits: number | null = null;
+  if (body.budget_credits != null) {
+    if (!Number.isFinite(body.budget_credits) || body.budget_credits < 0) {
+      return c.json({ error: "budget_credits must be a non-negative integer or null" }, 400);
+    }
+    credits = Math.floor(body.budget_credits);
+  }
+
+  const period = body.budget_period ?? owns.budget_period ?? "monthly";
+  if (!["monthly", "one-time", "unlimited"].includes(period)) {
+    return c.json({ error: `budget_period must be one of: monthly, one-time, unlimited (got: ${period})` }, 400);
+  }
+
+  // Reset usage when the period changes — a fresh window starts at 0.
+  const periodChanged = period !== (owns.budget_period ?? "monthly");
+  const usedExpr = periodChanged ? "0" : "budget_used";
+
+  await c.env.DB.prepare(
+    `UPDATE crew_member
+     SET budget_credits = ?,
+         budget_period = ?,
+         budget_used = ${usedExpr}
+     WHERE id = ?`,
+  ).bind(credits, period, id).run();
+
+  const updated = await c.env.DB.prepare(
+    "SELECT id, budget_credits, budget_period, budget_used, budget_reset_at FROM crew_member WHERE id = ?",
+  ).bind(id).first<{
+    id: string;
+    budget_credits: number | null;
+    budget_period: string | null;
+    budget_used: number | null;
+    budget_reset_at: number | null;
+  }>();
+  return c.json(updated ?? { id });
 });
 
 // POST /api/v1/crew

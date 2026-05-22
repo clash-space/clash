@@ -10,6 +10,7 @@ import {
 } from '@clash/shared-types';
 import { generateSemanticId } from '@clash/web-ui/lib/utils/semanticId';
 import { useOptionalLoroSyncContext } from '../LoroSyncContext';
+import betterAuthClient from '@clash/web-ui/lib/betterAuthClient';
 
 type ModelParams = Record<string, string | number | boolean>;
 type LoroSync = ReturnType<typeof useOptionalLoroSyncContext>;
@@ -100,6 +101,17 @@ export function useSpawnPendingAsset(input: UseSpawnPendingAssetInput): UseSpawn
         loroSync,
     } = input;
 
+    // Pull the signed-in user once per render — used to stamp
+    // `data.actorUserId` on every node we spawn / draft / adopt.
+    // Phase 0 attribution: NodeProcessor refuses to dispatch a
+    // generation without this, so missing it during spawn means a
+    // failed node immediately. The Better Auth client returns null
+    // mid-hydration; we tolerate that and stamp `''` so the node
+    // builder still produces a structurally-valid record (the user
+    // would see the failure on submit anyway).
+    const session = betterAuthClient.useSession();
+    const currentUserId = session.data?.user?.id ?? '';
+
     const outputKind = useMemo<'image' | 'video' | 'audio' | 'text'>(() => {
         if (isCustom) {
             const ot = customDef?.outputType;
@@ -178,6 +190,12 @@ export function useSpawnPendingAsset(input: UseSpawnPendingAssetInput): UseSpawn
                 status,
             });
 
+            // Stamp actor attribution. The web UI is always a user-driven
+            // path — the agent path goes through createCanvasTools (server)
+            // and the CLI path stamps in commands/canvas.ts.
+            node.data.actorType = 'user';
+            node.data.actorUserId = currentUserId;
+
             // Pending media nodes intentionally omit `data.src`. Asset
             // identity lives on `referenceImage/Video/AudioAssetIds`; the
             // server resolves R2 keys via D1 lookup. Keeping a stale src
@@ -197,6 +215,7 @@ export function useSpawnPendingAsset(input: UseSpawnPendingAssetInput): UseSpawn
             dataPrompt,
             refNodeIds,
             getNodes,
+            currentUserId,
         ],
     );
 

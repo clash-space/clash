@@ -11,7 +11,7 @@ import { Buffer } from "node:buffer";
 import type { Env } from "../config";
 import { log } from "../logger";
 import { Status } from "../domain/canvas";
-import { createAsset, getProjectOwner, type AssetMetadata, type CreateAssetParams } from "../services/assets";
+import { createAsset, type AssetMetadata, type CreateAssetParams } from "../services/assets";
 import { probeAsset, type ProbeOptions } from "../services/asset-probe";
 import { uploadBytes, uploadFromUrl } from "../services/r2";
 import type { GenerationParams } from "./params";
@@ -108,7 +108,18 @@ export class GenerationContext {
   async createAsset(input: Omit<CreateAssetParams, "id" | "userId" | "projectId" | "sourceTaskId"> & {
     userId?: string;
   }): Promise<string> {
-    const userId = input.userId ?? (await getProjectOwner(this.env.DB, this.params.projectId)) ?? "";
+    // Attribution path: caller-supplied userId wins (rare — only
+    // tests and a couple of explicit-owner paths), otherwise we use
+    // the actor that triggered the generation. The old
+    // getProjectOwner fallback was wrong in any multi-actor scenario
+    // (two humans in a project, agent acting on behalf of owner, …)
+    // — see params.ts for the migration plan.
+    const userId = input.userId ?? this.params.actorUserId;
+    if (!userId) {
+      throw new Error(
+        "createAsset: actorUserId is required (was: input.userId / params.actorUserId both unset)",
+      );
+    }
     // Pull lineage from the workflow params unless the caller passed its own.
     // Centralizing here means every provider (image / video / audio / custom)
     // gets `sources` without each one having to thread the field through.

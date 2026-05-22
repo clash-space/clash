@@ -242,6 +242,13 @@ class ClashAgent:
         self.active_tasks[task_id] = state
         logger.info("Executing task %s (action: %s)", task_id, action_id)
 
+        # Phase 0 attribution: server stamps actorUserId / actorAgentId
+        # onto the task record before assigning it. Echo them back on
+        # /api/custom-action/upload so the resulting asset row attributes
+        # to the actor that placed the node (not the project owner).
+        actor_user_id = task.get("actorUserId") or ""
+        actor_agent_id = task.get("actorAgentId") or ""
+
         try:
             state.status = "running"
             refs = task.get("refs") or {}
@@ -279,7 +286,9 @@ class ClashAgent:
                         f"AssetOutput[{idx}] type={out.type} has no data"
                     )
                 storage_key = await self._upload_one(
-                    project_id, task_id, node_id, out, idx
+                    project_id, task_id, node_id, out, idx,
+                    actor_user_id=actor_user_id,
+                    actor_agent_id=actor_agent_id,
                 )
                 assets.append({
                     "type": out.type,
@@ -356,6 +365,8 @@ class ClashAgent:
         node_id: str,
         out: AssetOutput,
         idx: int,
+        actor_user_id: str = "",
+        actor_agent_id: str = "",
     ) -> str:
         """Upload one binary asset; returns its R2 storage key.
 
@@ -373,6 +384,10 @@ class ClashAgent:
         form.add_field("nodeId", node_id)
         form.add_field("outputType", out.type)
         form.add_field("outputIndex", str(idx))
+        if actor_user_id:
+            form.add_field("actorUserId", actor_user_id)
+        if actor_agent_id:
+            form.add_field("actorAgentId", actor_agent_id)
         form.add_field(
             "file",
             out.data or b"",

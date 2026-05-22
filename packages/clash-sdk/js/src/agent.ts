@@ -231,9 +231,16 @@ export class ClashAgent {
       fetchAsset: (key) => this.fetchAsset(key),
     };
 
+    // Phase 0 attribution: server stamps actorUserId / actorAgentId
+    // onto the task record before assigning it. Echo them back on
+    // /api/custom-action/upload so the resulting asset row attributes
+    // to the actor that placed the node (not the project owner).
+    const actorUserId = (task.actorUserId as string) ?? '';
+    const actorAgentId = (task.actorAgentId as string) ?? '';
+
     try {
       const result = await def.handler(ctx);
-      const assets = await this.uploadOutputs(projectId, taskId, nodeId, result.outputs);
+      const assets = await this.uploadOutputs(projectId, taskId, nodeId, result.outputs, actorUserId, actorAgentId);
       this.sendComplete(taskId, nodeId, 'completed', assets, result.description);
       this.log(`Task ${taskId} completed in ${Date.now() - startedAt}ms`);
     } catch (e) {
@@ -253,6 +260,8 @@ export class ClashAgent {
     taskId: string,
     nodeId: string,
     outputs: AssetOutput[],
+    actorUserId = '',
+    actorAgentId = '',
   ): Promise<Array<Record<string, unknown>>> {
     const results: Array<Record<string, unknown>> = [];
     for (let idx = 0; idx < outputs.length; idx++) {
@@ -264,7 +273,7 @@ export class ClashAgent {
       if (!out.data) {
         throw new Error(`AssetOutput[${idx}] type=${out.type} has no data`);
       }
-      const storageKey = await this.uploadOne(projectId, taskId, nodeId, out, idx);
+      const storageKey = await this.uploadOne(projectId, taskId, nodeId, out, idx, actorUserId, actorAgentId);
       results.push({
         type: out.type,
         storageKey,
@@ -281,6 +290,8 @@ export class ClashAgent {
     nodeId: string,
     out: AssetOutput,
     idx: number,
+    actorUserId = '',
+    actorAgentId = '',
   ): Promise<string> {
     const form = new FormData();
     form.set('projectId', projectId);
@@ -288,6 +299,8 @@ export class ClashAgent {
     form.set('nodeId', nodeId);
     form.set('outputType', out.type);
     form.set('outputIndex', String(idx));
+    if (actorUserId) form.set('actorUserId', actorUserId);
+    if (actorAgentId) form.set('actorAgentId', actorAgentId);
     // Node's BlobPart typing collides with Buffer<ArrayBufferLike> in
     // recent @types/node. Copying into a fresh Uint8Array gives the
     // FormData encoder a clean buffer.

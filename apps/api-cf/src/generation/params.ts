@@ -19,6 +19,28 @@ export interface GenerationParams {
     | "custom_action"
     | "understand";
 
+  // ─── Actor attribution (Phase 0 multi-actor billing) ──────────
+  // Threaded from the node-creation site (web UI / ACP tool / CLI)
+  // through NodeProcessor to here. The (closed-source) billing plugin
+  // reads these to attribute usage; createAsset uses actorUserId as
+  // the asset's owner (replacing the legacy getProjectOwner fallback
+  // — that fallback was wrong as soon as a project had two humans
+  // collaborating or an agent acting on behalf of its owner).
+  //
+  // actorUserId is REQUIRED — non-optional in the type so any new
+  // call site that forgets to populate fails at compile time. There
+  // is no fallback path; legacy nodes without an actor are surfaced
+  // as failures in NodeProcessor with a clear error message.
+  /** Who is responsible for this generation. */
+  actorType: "user" | "agent";
+  /** The accountable human user id. Always set, even for actorType='agent'
+   *  (in which case it's the agent's owner / claimer). createAsset uses
+   *  this as the asset row's user_id. */
+  actorUserId: string;
+  /** crew_member.id when actorType='agent'. Undefined otherwise. The
+   *  plugin uses this to look up the agent's budget pocket. */
+  actorAgentId?: string;
+
   prompt?: string;
   systemPrompt?: string;
   aspectRatio?: string;

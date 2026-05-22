@@ -6,7 +6,7 @@ import type { Env } from "../config";
 import { log } from "../logger";
 import { startGeneration } from "../generation/start";
 import { Status } from "../domain/canvas";
-import { createAsset, getAssetByTaskId, getProjectOwner } from "../services/assets";
+import { createAsset, getAssetByTaskId } from "../services/assets";
 import { probeAsset } from "../services/asset-probe";
 import { uploadBase64Image } from "../services/r2";
 import type { GenerationParams } from "../agents/generation";
@@ -83,6 +83,16 @@ function resolveImagesToBase64(
   return { base64Inputs, urlPromises };
 }
 
+/** Resolve the calling user's id from the request. The /api/v1 middleware
+ *  already populated x-user-id from cookie or API token; the legacy
+ *  /api/generate/* endpoints don't pass through that gateway but the
+ *  edge gateway still stamps the header. Used by Phase 0 attribution to
+ *  populate actorUserId on every GenerationParams the route mints.
+ *  Returns "" when nothing is available; the route then 401s explicitly. */
+function getActorUserId(c: Context<{ Bindings: Env }>): string {
+  return c.req.header("x-user-id") ?? "";
+}
+
 /** Submit a generation task to the Workflow. Returns error response if create fails. */
 async function submitToWorkflow(
   c: Context<{ Bindings: Env }>,
@@ -118,6 +128,9 @@ api.post("/api/generate/image", async (c) => {
     referenceImageR2Keys.push(key);
   }
 
+  const actorUserId = getActorUserId(c);
+  if (!actorUserId) return c.json({ error: "unauthorized" }, 401);
+
   // Submit to Workflow (D1 asset created inside workflow on completion)
   const genParams: GenerationParams = {
     taskId,
@@ -129,6 +142,8 @@ api.post("/api/generate/image", async (c) => {
     aspectRatio: body.aspect_ratio,
     modelName: body.model_name ?? undefined,
     referenceImageR2Keys: referenceImageR2Keys.length ? referenceImageR2Keys : undefined,
+    actorType: "user",
+    actorUserId,
   };
 
   const errorResponse = await submitToWorkflow(c, taskId, genParams);
@@ -178,6 +193,9 @@ api.post("/api/generate/video", async (c) => {
   // slot internally based on its model id.
   const imageKey = await uploadBase64Image(c.env.R2_BUCKET, imageToUse, body.project_id);
 
+  const actorUserId = getActorUserId(c);
+  if (!actorUserId) return c.json({ error: "unauthorized" }, 401);
+
   // Submit to Workflow (D1 asset created inside workflow on completion)
   const genParams: GenerationParams = {
     taskId,
@@ -189,6 +207,8 @@ api.post("/api/generate/video", async (c) => {
     duration: body.duration,
     cfgScale: body.cfg_scale,
     videoModel: body.model,
+    actorType: "user",
+    actorUserId,
   };
 
   const errorResponse = await submitToWorkflow(c, taskId, genParams);
@@ -208,6 +228,13 @@ api.post("/api/describe", async (c) => {
   const body = GenerateDescriptionRequestSchema.parse(await c.req.json());
   const taskId = body.task_id;
 
+  // /api/describe is a freestanding description endpoint that doesn't
+  // have a project / node context — used only by the legacy frontend
+  // direct calls. Attribute the call to whoever's making the request;
+  // the asset row this produces never lands in a project canvas.
+  const actorUserId = getActorUserId(c);
+  if (!actorUserId) return c.json({ error: "unauthorized" }, 401);
+
   // Submit description via Workflow for durability
   const genParams: GenerationParams = {
     taskId,
@@ -215,6 +242,8 @@ api.post("/api/describe", async (c) => {
     type: "image_desc",
     projectId: "",
     r2Key: body.url,
+    actorType: "user",
+    actorUserId,
   };
 
   try {
@@ -254,6 +283,8 @@ api.post("/api/tasks/submit", async (c) => {
   const body = TaskSubmitRequestSchema.parse(await c.req.json());
   const taskId = crypto.randomUUID();
   const { task_type, project_id, node_id, params } = body;
+  const actorUserId = getActorUserId(c);
+  if (!actorUserId) return c.json({ error: "unauthorized" }, 401);
 
   if (task_type === "image_gen") {
     const referenceImages: string[] = params.reference_images ?? [];
@@ -281,6 +312,8 @@ api.post("/api/tasks/submit", async (c) => {
       aspectRatio: params.aspect_ratio ?? "16:9",
       modelName: params.model,
       referenceImageR2Keys: resolvedR2Keys.length ? resolvedR2Keys : undefined,
+      actorType: "user",
+      actorUserId,
     };
 
     const errorResponse = await submitToWorkflow(c, taskId, genParams);
@@ -315,6 +348,8 @@ api.post("/api/tasks/submit", async (c) => {
       duration: params.duration,
       cfgScale: params.cfg_scale,
       videoModel: params.model,
+      actorType: "user",
+      actorUserId,
     };
 
     const errorResponse = await submitToWorkflow(c, taskId, genParams);
@@ -340,6 +375,8 @@ api.post("/api/tasks/submit", async (c) => {
       projectId: project_id,
       r2Key: cleanKey,
       mimeType: params.mime_type as string || "image/png",
+      actorType: "user",
+      actorUserId,
     };
 
     const errorResponse = await submitToWorkflow(c, taskId, genParams);
@@ -361,6 +398,8 @@ api.post("/api/tasks/submit", async (c) => {
       prompt: params.prompt ?? "",
       modelName: params.model as string | undefined,
       modelParams: params.model_params as Record<string, unknown> | undefined,
+      actorType: "user",
+      actorUserId,
     };
 
     const errorResponse = await submitToWorkflow(c, taskId, genParams);
@@ -378,6 +417,8 @@ api.post("/api/tasks/submit", async (c) => {
       prompt: params.prompt ?? "",
       modelName: params.model,
       modelParams: params.model_params as Record<string, unknown> | undefined,
+      actorType: "user",
+      actorUserId,
     };
 
     const errorResponse = await submitToWorkflow(c, taskId, genParams);
@@ -403,6 +444,13 @@ api.post("/api/custom-action/upload", async (c) => {
   const taskId = formData.get("taskId") as string;
   const nodeId = formData.get("nodeId") as string;
   const outputType = (formData.get("outputType") as string) || "image";
+  // Phase 0 attribution — SDK echoes back the actorUserId / actorAgentId
+  // that landed on the custom_task_assigned message. Without these the
+  // resulting asset row would fall back to projectOwner (the bug we're
+  // killing). We accept missing actorUserId only for the legacy SDK that
+  // hasn't been updated yet; in that case the route 400s rather than
+  // silently mis-attributing.
+  const formActorUserId = (formData.get("actorUserId") as string) || "";
   // Multi-output actions call this endpoint once per output. The
   // index disambiguates R2 keys and asset ids so siblings from the
   // same task don't overwrite each other. Single-output actions omit
@@ -434,7 +482,14 @@ api.post("/api/custom-action/upload", async (c) => {
     httpMetadata: { contentType },
   });
 
-  const userId = (await getProjectOwner(c.env.DB, projectId)) ?? "";
+  // Fallback chain when the form omitted actorUserId: caller's
+  // x-user-id (set by the gateway from cookie / token). If both are
+  // missing we still bail loudly — silent attribution is worse than a
+  // visible 400 the SDK can react to.
+  const userId = formActorUserId || c.req.header("x-user-id") || "";
+  if (!userId) {
+    return c.json({ error: "Missing actorUserId — Phase 0 attribution requires the SDK to echo actorUserId from the task record" }, 400);
+  }
   const kind = (outputType === "video" ? "video" : outputType === "audio" ? "audio" : "image") as "image" | "video" | "audio";
   const assetIdSeed = outputIndex > 0 ? `${taskId}${indexSuffix}` : taskId;
 
