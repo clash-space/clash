@@ -10,6 +10,7 @@ import { join } from "node:path";
 import { tmpdir, homedir } from "node:os";
 import WebSocket from "ws";
 import { LoroSyncClient, Canvas } from "@clash/shared-types";
+import { CliActionsHost, readBridgeRuntimeId } from "./actions-host";
 
 const IDLE_TIMEOUT_MS = 10 * 60 * 1000; // 10 minutes
 const HEARTBEAT_INTERVAL_MS = 30 * 1000; // 30 seconds
@@ -110,6 +111,32 @@ export async function startDaemon(
 
   await client.connect();
 
+  // Custom-action host: spawns one python subprocess per
+  // ~/.clash/actions/<id>/manifest.json. Reuses the bridge's runtime_id
+  // from credentials.json — same machine, same runtime row. If no
+  // bridge has been set up, `creds` is null and we silently skip.
+  const creds = readBridgeRuntimeId();
+  let actionsHost: CliActionsHost | null = null;
+  if (creds) {
+    actionsHost = new CliActionsHost({
+      serverUrl: creds.serverUrl,
+      apiKey: creds.apiKey,
+      runtimeId: creds.runtimeId,
+    });
+    try {
+      const result = await actionsHost.start();
+      if (result.spawned.length > 0) {
+        process.stderr.write(
+          `[canvas-connect] actions: hosting ${result.spawned.join(", ")}\n`,
+        );
+      }
+    } catch (e) {
+      process.stderr.write(
+        `[canvas-connect] actions: start failed ${(e as Error).message}\n`,
+      );
+    }
+  }
+
   // Idle timer
   let idleTimer = setTimeout(shutdown, IDLE_TIMEOUT_MS);
   function resetIdle() {
@@ -162,6 +189,13 @@ export async function startDaemon(
     clearInterval(heartbeat);
     server.close();
     cleanup(projectId);
+    // Tear down action subprocesses BEFORE closing the LoroSyncClient
+    // so they get SIGTERM and disconnect their WS — the server then
+    // sees them go offline immediately rather than waiting for the
+    // heartbeat-stale timeout.
+    if (actionsHost) {
+      try { await actionsHost.stopAll(); } catch { /* best effort */ }
+    }
     await client.disconnect();
     process.exit(0);
   }
@@ -190,14 +224,14 @@ function handleCommand(client: LoroSyncClient, cmd: any): object {
 
     case "add": {
       const nodeId = crypto.randomUUID().slice(0, 8);
-      const data: Record<string, unknown> = { label: cmd.label };
+      const data: Record<string, unknown> = { ...(cmd.data ?? {}), label: cmd.label };
       if (cmd.content) data.content = cmd.content;
       const result = client.createNode(nodeId, cmd.type, data, null, cmd.parentId ?? null);
       return result;
     }
 
     case "update": {
-      const updates: Record<string, unknown> = {};
+      const updates: Record<string, unknown> = { ...(cmd.data ?? {}) };
       if (cmd.label) updates.label = cmd.label;
       if (cmd.content) updates.content = cmd.content;
       const ok = client.updateNode(cmd.nodeId, updates);
@@ -219,9 +253,30 @@ function handleCommand(client: LoroSyncClient, cmd: any): object {
 
     case "execute": {
       const canvas = new Canvas(client.doc, () => {});
-      const result = canvas.executeGeneration(cmd.nodeId, () => crypto.randomUUID().slice(0, 8));
-      if (result.error) return { error: result.error };
-      return { executed: true, assetNodeId: result.assetNodeId, assetNodeType: result.assetNodeType };
+      const r = canvas.execute(cmd.nodeId, () => crypto.randomUUID().slice(0, 8));
+      if (r.error) return { error: r.error };
+      // Echo `kind` so the CLI can pick the right log line. Both
+      // pipelines also fill `childNodeId` so the agent can poll the
+      // resulting asset/render node for status.
+      return { executed: true, kind: r.kind, childNodeId: r.childNodeId, childNodeType: r.childNodeType };
+    }
+
+    case "ensure_edge": {
+      // Add a default edge from source → target IF no edge between that
+      // exact pair already exists. Idempotent so callers don't have to
+      // track which edges they've already wired. Used by `clash canvas
+      // timeline push` to reflect timeline items' sourceNodeId
+      // references as visible canvas edges. Goes through client.canvas
+      // so the LoroSyncClient's subscribeLocalUpdates loop broadcasts
+      // the change to the project room.
+      const source: string = cmd.source;
+      const target: string = cmd.target;
+      for (const e of client.canvas.listEdges()) {
+        if (e.source === source && e.target === target) return { existed: true };
+      }
+      const edgeId = `e-${source}-${target}-${crypto.randomUUID().slice(0, 4)}`;
+      client.canvas.insertEdge(edgeId, source, target, "default");
+      return { existed: false, edgeId };
     }
 
     case "ping": {

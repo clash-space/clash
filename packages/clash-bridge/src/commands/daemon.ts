@@ -18,6 +18,7 @@ import { listLocalCcSessions } from "../lib/cc-sessions.js";
 import { detectAll } from "../_acp-runtime/registry.js";
 import { SessionManager } from "../lib/session-manager.js";
 import { gcOldSessions } from "../lib/session-cwd.js";
+import { ActionsHost } from "../lib/actions-loader.js";
 import { printBanner, log, c } from "../lib/style.js";
 import { PKG_VERSION } from "../lib/version.js";
 import WebSocket from "ws";
@@ -60,6 +61,31 @@ export async function runDaemon(): Promise<void> {
   let backoffMs = RECONNECT_BACKOFF_MIN_MS;
   let stopping = false;
 
+  // Custom-action host: scans ~/.clash/actions/ and supervises one
+  // subprocess per local-runtime action. Each child inherits creds +
+  // CLASH_RUNTIME_ID so the server can stamp registrations as owned
+  // by this machine. Started before WS attach because the server's
+  // gating only requires the runtime row to be heartbeating — not
+  // that the bridge's main WS link is up.
+  const actionsHost = new ActionsHost({
+    serverUrl: creds.serverUrl,
+    apiKey: creds.agentApiKey ?? creds.token,
+    runtimeId: creds.runtimeId,
+  });
+  try {
+    const result = await actionsHost.start();
+    if (result.spawned.length > 0) {
+      log.ok(`actions: hosting ${result.spawned.length} action${result.spawned.length === 1 ? "" : "s"} — ${result.spawned.join(", ")}`);
+    } else if (result.skipped.length === 0) {
+      log.step(`actions: nothing under ~/.clash/actions/`);
+    }
+    if (result.skipped.length > 0) {
+      log.warn(`actions: skipped ${result.skipped.length} (see preceding lines)`);
+    }
+  } catch (e) {
+    log.warn(`actions: host start failed: ${e instanceof Error ? e.message : String(e)}`);
+  }
+
   const stop = (sig: string) => {
     if (stopping) return;
     stopping = true;
@@ -67,6 +93,10 @@ export async function runDaemon(): Promise<void> {
     // Tear down agents first so the child processes get SIGTERM-style
     // dispose instead of being orphaned when the daemon process exits.
     void sessions.disposeAll();
+    // SIGTERM all action subprocesses too so the server sees their WS
+    // close and immediately frees the customActions map entries on
+    // next heartbeat-derived offline transition.
+    void actionsHost.stopAll();
     if (currentWs) {
       try { currentWs.close(1000, "shutdown"); } catch { /* already closing */ }
     }
