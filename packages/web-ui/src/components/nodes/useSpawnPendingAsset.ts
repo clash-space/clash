@@ -1,12 +1,10 @@
 import { useCallback, useMemo } from 'react';
 import type { Node as RFNode } from '@xyflow/react';
 import {
-    parsePromptParts,
-    extractPromptText,
-    composePromptWithTextRefs,
-    resolveAspectRatio,
-    validateGenerationInput,
-    partitionRefs,
+    buildGenerationPayload,
+    buildPendingAssetNode,
+    ACTION_TYPE,
+    type GenerationConfig,
     type ModelCard,
     type CustomActionDefinition,
 } from '@clash/shared-types';
@@ -63,17 +61,6 @@ export interface UseSpawnPendingAssetResult {
     disabledReason: string | null;
     /** The modality of the node this hook will create. */
     outputKind: 'image' | 'video' | 'audio' | 'text';
-}
-
-function extractLabelFromPrompt(promptText: string, fallback: string): string {
-    if (!promptText || promptText.trim() === '') return fallback;
-    const lines = promptText
-        .split('\n')
-        .map((line) => line.trim())
-        .filter((line) => line && !line.startsWith('#') && line !== 'Prompt' && line !== 'Enter your prompt here...');
-    if (lines.length === 0) return fallback;
-    const firstLine = lines[0];
-    return firstLine.length > 50 ? firstLine.substring(0, 50) + '...' : firstLine;
 }
 
 /**
@@ -145,139 +132,58 @@ export function useSpawnPendingAsset(input: UseSpawnPendingAssetInput): UseSpawn
      */
     const buildShape = useCallback(
         (status: 'draft' | 'pending', labelOverride: string | undefined): { type: 'image' | 'video' | 'audio' | 'text'; data: Record<string, unknown> } => {
-            // Partition refs into modality buckets the model accepts. For
-            // custom actions (no selectedModel), the buckets aren't included
-            // in the payload anyway, so default to empties.
             const refNodes = refNodeIds
                 .map((nid) => getNodes().find((n) => n.id === nid))
                 .filter((n): n is NonNullable<typeof n> => !!n);
-            const {
-                texts: inlineTextRefs,
-                imageAssetIds: inlineImageAssetIds,
-                videoAssetIds: inlineVideoAssetIds,
-                audioAssetIds: inlineAudioAssetIds,
-            } = selectedModel
-                ? partitionRefs(refNodes, selectedModel)
-                : { texts: [], imageAssetIds: [], videoAssetIds: [], audioAssetIds: [] };
 
             const rawPrompt = (content && content.trim() !== '' ? content : '') || dataPrompt || '';
-            const prompt = composePromptWithTextRefs(rawPrompt, inlineTextRefs);
 
-            if (status === 'pending' && (!prompt || prompt.trim() === '')) {
-                throw new Error('No prompt provided. Please edit the node or connect a text/prompt node.');
+            // Same `GenerationConfig` discriminator used server-side:
+            // custom actions are no longer a separate code path, just
+            // a different kind of config riding the same pipeline.
+            // The pending child now carries `referenceXAssetIds` for
+            // custom too (previously they were dropped, leaving
+            // marketplace actions unable to consume canvas assets
+            // despite their manifest declaring they could).
+            const config: GenerationConfig = isCustom && customDef
+                ? { kind: 'custom', customDef, customActionParams }
+                : { kind: 'model', modelCard: selectedModel, modelParams };
+
+            const configId = config.kind === 'custom' ? config.customDef.id : modelId;
+
+            const { pendingInput, validationError, cleanedPrompt } = buildGenerationPayload({
+                prompt: rawPrompt,
+                refNodes,
+                configId,
+                config,
+                actionType: actionType as
+                    | typeof ACTION_TYPE.ImageGen
+                    | typeof ACTION_TYPE.VideoGen
+                    | typeof ACTION_TYPE.AudioGen
+                    | typeof ACTION_TYPE.TextGen
+                    | `custom:${string}`,
+                label: labelOverride,
+            });
+
+            if (status === 'pending') {
+                if (!cleanedPrompt || cleanedPrompt.trim() === '') {
+                    throw new Error('No prompt provided. Please edit the node or connect a text/prompt node.');
+                }
+                if (validationError) throw new Error(validationError);
             }
 
-            const promptParts = parsePromptParts(prompt);
-            const promptText = extractPromptText(promptParts);
-
-            if (status === 'pending' && !isCustom && selectedModel) {
-                const err = validateGenerationInput({
-                    prompt: promptText,
-                    referenceTextSnippets: inlineTextRefs,
-                    referenceImageAssetIds: inlineImageAssetIds,
-                    referenceVideoAssetIds: inlineVideoAssetIds,
-                    referenceAudioAssetIds: inlineAudioAssetIds,
-                    modelCard: selectedModel,
-                });
-                if (err) throw new Error(err);
-            }
-
-            if (isCustom && customDef) {
-                const outputType = customDef.outputType || 'image';
-                const type = (outputType === 'text' ? 'text' : outputType) as 'image' | 'video' | 'audio' | 'text';
-                const generatedLabel = labelOverride ?? extractLabelFromPrompt(prompt, `${customDef.name} Result`);
-                const data: Record<string, unknown> = {
-                    label: generatedLabel,
-                    status,
-                    actionType,
-                    customActionId: customDef.id,
-                    customActionParams,
-                    prompt,
-                    outputType,
-                };
-                return { type, data };
-            }
+            const node = buildPendingAssetNode({
+                ...pendingInput,
+                nodeId: 'tmp', // overwritten by caller before insertion
+                status,
+            });
 
             // Pending media nodes intentionally omit `data.src`. Asset
             // identity lives on `referenceImage/Video/AudioAssetIds`; the
             // server resolves R2 keys via D1 lookup. Keeping a stale src
-            // field used to be the trap that made partitionRefs / NodeProcessor
-            // disagree about what the source of truth is.
-
-            if (actionType === 'image-gen') {
-                const generatedLabel = labelOverride ?? extractLabelFromPrompt(promptText, 'Generated Image');
-                return {
-                    type: 'image',
-                    data: {
-                        label: generatedLabel,
-                        status,
-                        prompt: promptText,
-                        referenceImageAssetIds: inlineImageAssetIds,
-                        aspectRatio: resolveAspectRatio(modelId, modelParams),
-                        model: modelId,
-                        modelId,
-                        modelParams: { ...modelParams, count: 1 },
-                    },
-                };
-            }
-
-            if (actionType === 'video-gen') {
-                const durationValue = modelParams.duration ?? 5;
-                const durationNumber = typeof durationValue === 'string' ? parseInt(durationValue, 10) : Number(durationValue) || 5;
-                const generatedLabel = labelOverride ?? extractLabelFromPrompt(promptText, 'Generated Video');
-                return {
-                    type: 'video',
-                    data: {
-                        label: generatedLabel,
-                        status,
-                        prompt: promptText,
-                        referenceImageAssetIds: inlineImageAssetIds,
-                        referenceVideoAssetIds: inlineVideoAssetIds,
-                        referenceAudioAssetIds: inlineAudioAssetIds,
-                        duration: durationNumber,
-                        model: modelId,
-                        modelId,
-                        modelParams,
-                        aspectRatio: resolveAspectRatio(modelId, modelParams),
-                    },
-                };
-            }
-
-            if (actionType === 'audio-gen') {
-                const generatedLabel = labelOverride ?? extractLabelFromPrompt(promptText, 'Generated Audio');
-                return {
-                    type: 'audio',
-                    data: {
-                        label: generatedLabel,
-                        status,
-                        prompt: promptText,
-                        model: modelId,
-                        modelId,
-                        modelParams,
-                    },
-                };
-            }
-
-            if (actionType === 'text-gen') {
-                const generatedLabel = labelOverride ?? extractLabelFromPrompt(promptText, 'Generated Text');
-                return {
-                    type: 'text',
-                    data: {
-                        label: generatedLabel,
-                        content: '',
-                        status,
-                        prompt: promptText,
-                        referenceImageAssetIds: inlineImageAssetIds,
-                        referenceVideoAssetIds: inlineVideoAssetIds,
-                        referenceAudioAssetIds: inlineAudioAssetIds,
-                        model: modelId,
-                        modelId,
-                        modelParams,
-                    },
-                };
-            }
-
-            throw new Error(`Unsupported actionType: ${actionType}`);
+            // field used to be the trap that made partitionRefs /
+            // NodeProcessor disagree about what the source of truth is.
+            return { type: node.type, data: node.data };
         },
         [
             actionType,

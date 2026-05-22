@@ -19,6 +19,7 @@ class ActionDefinition:
         parameters: list[dict[str, Any]] | None = None,
         icon: str = "",
         color: str = "",
+        prompt_modalities: list[str] | None = None,
     ):
         self.handler = handler
         self.id = id
@@ -28,6 +29,11 @@ class ActionDefinition:
         self.parameters = parameters or []
         self.icon = icon
         self.color = color
+        # Defaults to ["text"] (prompt-only) to match the canvas schema
+        # default. Actions that consume reference images / video / audio
+        # MUST declare them here — otherwise the action-badge UI won't
+        # let users wire upstream asset nodes in.
+        self.prompt_modalities = prompt_modalities or ["text"]
 
     def to_manifest(self) -> dict[str, Any]:
         """Convert to the manifest format expected by ProjectRoom."""
@@ -39,6 +45,8 @@ class ActionDefinition:
             "outputType": self.output_type,
             "icon": self.icon,
             "color": self.color,
+            "promptModalities": self.prompt_modalities,
+            "runtime": "local",
         }
 
 
@@ -50,6 +58,7 @@ def action(
     parameters: list[dict[str, Any]] | None = None,
     icon: str = "",
     color: str = "",
+    prompt_modalities: list[str] | None = None,
 ) -> Callable:
     """
     Decorator to register a function as a custom canvas action.
@@ -72,6 +81,7 @@ def action(
             parameters=parameters,
             icon=icon,
             color=color,
+            prompt_modalities=prompt_modalities,
         )
 
     return decorator

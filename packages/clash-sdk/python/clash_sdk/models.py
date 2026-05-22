@@ -1,9 +1,23 @@
-"""Data models for action context and results."""
+"""Data models for action context and results.
+
+Result protocol supports 0..N outputs per task.
+
+    ActionResult.outputs = [AssetOutput(type='image', data=b'...'), ...]
+
+Single-output actions can still use the convenience factories
+(`ActionResult.image(...)`, etc.) — they wrap one `AssetOutput` in
+`outputs`. Multi-output actions build the list explicitly via
+`ActionResult.many([...])` or the bare constructor.
+
+Server-side: the first output lands on the pending action-badge child
+that was spawned at execute time; outputs 2..N spawn sibling asset
+nodes positioned next to the first, sharing the same lineage edges.
+"""
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Optional
+from typing import Any, Awaitable, Callable, Literal, Optional
 
 
 @dataclass
@@ -17,17 +31,43 @@ class ActionContext:
     prompt: str
     params: dict[str, Any] = field(default_factory=dict)
     output_type: str = "image"
+    # Reference asset R2 keys forwarded from NodeProcessor when the
+    # action-badge had incoming asset edges. Empty if none attached.
+    reference_image_r2_keys: list[str] = field(default_factory=list)
+    reference_video_r2_keys: list[str] = field(default_factory=list)
+    reference_audio_r2_keys: list[str] = field(default_factory=list)
+    # Injected by ClashAgent at dispatch time. Handlers call
+    # `await ctx.fetch_asset(r2_key)` to pull bytes for any reference.
+    fetch_asset: Optional[Callable[[str], Awaitable[bytes]]] = None
+
+
+@dataclass
+class AssetOutput:
+    """One asset produced by an action.
+
+    For text outputs set `content` instead of `data` (skips R2 upload).
+    `label` becomes the resulting node's display name; multi-output
+    actions should set distinct labels ("tile 1/4", "tile 2/4", …) so
+    siblings are tellable apart on the canvas.
+    """
+
+    type: Literal["image", "video", "audio", "text"]
+    data: Optional[bytes] = None
+    content: Optional[str] = None
+    mime_type: Optional[str] = None
+    label: Optional[str] = None
 
 
 @dataclass
 class ActionResult:
-    """Result returned from an action handler."""
+    """Result returned from an action handler — 0..N outputs.
 
-    type: str  # "image" | "video" | "text"
-    data: Optional[bytes] = None
-    content: Optional[str] = None
+    `description` lands on the primary output's node as
+    `data.description`.
+    """
+
+    outputs: list[AssetOutput] = field(default_factory=list)
     description: Optional[str] = None
-    mime_type: Optional[str] = None
 
     @classmethod
     def image(
@@ -35,8 +75,12 @@ class ActionResult:
         data: bytes,
         description: str | None = None,
         mime_type: str = "image/png",
+        label: str | None = None,
     ) -> ActionResult:
-        return cls(type="image", data=data, description=description, mime_type=mime_type)
+        return cls(
+            outputs=[AssetOutput(type="image", data=data, mime_type=mime_type, label=label)],
+            description=description,
+        )
 
     @classmethod
     def video(
@@ -44,9 +88,38 @@ class ActionResult:
         data: bytes,
         description: str | None = None,
         mime_type: str = "video/mp4",
+        label: str | None = None,
     ) -> ActionResult:
-        return cls(type="video", data=data, description=description, mime_type=mime_type)
+        return cls(
+            outputs=[AssetOutput(type="video", data=data, mime_type=mime_type, label=label)],
+            description=description,
+        )
 
     @classmethod
-    def text(cls, content: str, description: str | None = None) -> ActionResult:
-        return cls(type="text", content=content, description=description)
+    def audio(
+        cls,
+        data: bytes,
+        description: str | None = None,
+        mime_type: str = "audio/mpeg",
+        label: str | None = None,
+    ) -> ActionResult:
+        return cls(
+            outputs=[AssetOutput(type="audio", data=data, mime_type=mime_type, label=label)],
+            description=description,
+        )
+
+    @classmethod
+    def text(
+        cls,
+        content: str,
+        description: str | None = None,
+        label: str | None = None,
+    ) -> ActionResult:
+        return cls(
+            outputs=[AssetOutput(type="text", content=content, label=label)],
+            description=description,
+        )
+
+    @classmethod
+    def many(cls, outputs: list[AssetOutput], description: str | None = None) -> ActionResult:
+        return cls(outputs=outputs, description=description)

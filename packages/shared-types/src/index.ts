@@ -53,6 +53,9 @@ export {
   // Validation & Builders
   validateGenerationInput,
   buildPendingAssetNode,
+  buildGenerationPayload,
+  extractLabelFromPrompt,
+  type GenerationConfig,
   // TypeScript types
   type Position,
   type NodeStatus,

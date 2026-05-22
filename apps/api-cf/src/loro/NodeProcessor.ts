@@ -17,6 +17,7 @@ import { getAssetById, getAssetsByIds, getProjectOwner } from '../services/asset
 import { signAssetPath } from '../services/asset-signing';
 
 import { MODEL_CARDS, parsePromptParts, extractPromptText } from '@clash/shared-types';
+import { deriveRuntimeStatus } from '../lib/runtime-status';
 
 const defaultImageModel = MODEL_CARDS.find((card) => card.kind === 'image')?.id ?? 'nano-banana-2';
 const defaultVideoModel = MODEL_CARDS.find((card) => card.kind === 'video')?.id ?? 'sora-2';
@@ -388,7 +389,12 @@ export async function processPendingNodes(
   env: Env,
   projectId: string,
   broadcast: (data: Uint8Array) => void,
-  triggerPolling: () => Promise<void>
+  triggerPolling: () => Promise<void>,
+  // Optional JSON sideband — used to notify local agents (Python SDK
+  // over `x-client-type: cli` WS) when a new custom-action task is
+  // assigned. The SDK doesn't speak Loro, so binary CRDT updates pass
+  // it by; this sideband is the only way it learns there's work to do.
+  broadcastJson?: (json: unknown) => void,
 ): Promise<void> {
   try {
     const nodesMap = doc.getMap('nodes');
@@ -478,16 +484,107 @@ export async function processPendingNodes(
 
       // Case: custom action pending → route based on runtime (local agent or CF Worker)
       if (status === Status.Pending && !assetId && innerData.actionType?.startsWith('custom:')) {
-        const taskId = crypto.randomUUID();
         const actionId = innerData.customActionId ?? innerData.actionType.replace('custom:', '');
-        updateNodeData(doc, nodeId, { status: Status.Generating, pendingTask: taskId, pendingTaskAt: Date.now() }, broadcast);
-        appendNodeLog(doc, nodeId, `task=${taskId.slice(0, 8)} type=custom action=${actionId}`, broadcast);
 
         // Check runtime from Loro customActions map
         const actionsMap = doc.getMap('customActions');
         const actionDef = actionsMap.get(actionId) as Record<string, any> | undefined;
         const runtime = actionDef?.runtime || 'local';
         const workerUrl = actionDef?.workerUrl;
+        const registeredByRuntime: string | undefined =
+          typeof actionDef?.registeredByRuntime === 'string' && actionDef.registeredByRuntime.length > 0
+            ? actionDef.registeredByRuntime
+            : undefined;
+
+        // Local-runtime gate: refuse to dispatch when the runtime that
+        // registered this action is offline. Without this check, the
+        // task would sit in the Loro tasks map indefinitely and the UI
+        // would happily show the action as "running" while nothing is
+        // actually listening to execute it.
+        //
+        // Worker-runtime actions skip this gate — they're CF-hosted, so
+        // there's no local liveness signal to consult.
+        if (runtime === 'local') {
+          if (!registeredByRuntime) {
+            const error = 'Local runtime offline — start your bridge to run this action';
+            log.warn('custom.dispatch.no_runtime', { nodeId, actionId });
+            appendNodeLog(doc, nodeId, `FAILED: ${error}`, broadcast);
+            updateNodeData(doc, nodeId, {
+              pendingTask: undefined,
+              status: Status.Failed,
+              error,
+            }, broadcast);
+            continue;
+          }
+          const runtimeRow = await env.DB
+            .prepare('SELECT status, last_heartbeat FROM runtime WHERE id = ? LIMIT 1')
+            .bind(registeredByRuntime)
+            .first<{ status: string; last_heartbeat: number | null }>();
+          const derivedStatus = runtimeRow
+            ? deriveRuntimeStatus(runtimeRow.status, runtimeRow.last_heartbeat)
+            : 'offline';
+          if (derivedStatus !== 'online') {
+            const error = 'Local runtime offline — start your bridge to run this action';
+            log.warn('custom.dispatch.runtime_offline', {
+              nodeId,
+              actionId,
+              registeredByRuntime,
+              derivedStatus,
+            });
+            appendNodeLog(doc, nodeId, `FAILED: ${error}`, broadcast);
+            updateNodeData(doc, nodeId, {
+              pendingTask: undefined,
+              status: Status.Failed,
+              error,
+            }, broadcast);
+            continue;
+          }
+        }
+
+        // Past the gate: now allocate the taskId and lock the node.
+        const taskId = crypto.randomUUID();
+        updateNodeData(doc, nodeId, { status: Status.Generating, pendingTask: taskId, pendingTaskAt: Date.now() }, broadcast);
+        appendNodeLog(doc, nodeId, `task=${taskId.slice(0, 8)} type=custom action=${actionId}`, broadcast);
+
+        // Resolve attached refs into R2 keys + lineage rows. Before
+        // this, custom actions silently ignored every referenced
+        // canvas asset — the manifest's `promptModalities` declared
+        // "this action accepts image inputs" but the pending node's
+        // `referenceImageAssetIds` were dropped on the floor here.
+        // Mirroring the standard-model path's resolution closes the
+        // gap so worker / local actions see the same refs the user
+        // wired through the prompt @-mention picker.
+        const customRefImageAssetIds: string[] = (Array.isArray(innerData.referenceImageAssetIds) ? innerData.referenceImageAssetIds : [])
+          .filter((id: unknown): id is string => typeof id === 'string' && id.length > 0);
+        const customRefVideoAssetIds: string[] = (Array.isArray(innerData.referenceVideoAssetIds) ? innerData.referenceVideoAssetIds : [])
+          .filter((id: unknown): id is string => typeof id === 'string' && id.length > 0);
+        const customRefAudioAssetIds: string[] = (Array.isArray(innerData.referenceAudioAssetIds) ? innerData.referenceAudioAssetIds : [])
+          .filter((id: unknown): id is string => typeof id === 'string' && id.length > 0);
+        const customAllAssetIds = [...customRefImageAssetIds, ...customRefVideoAssetIds, ...customRefAudioAssetIds];
+
+        const customRefImageR2Keys: string[] = [];
+        const customRefVideoR2Keys: string[] = [];
+        const customRefAudioR2Keys: string[] = [];
+        const customSources: Array<{ assetId: string; role: 'primary' | 'reference' | 'edit-source' }> = [];
+        if (customAllAssetIds.length > 0) {
+          const ownerId = await getProjectOwner(env.DB, projectId);
+          if (ownerId) {
+            const assets = await getAssetsByIds(env.DB, customAllAssetIds, ownerId);
+            const assetById = new Map(assets.map((a) => [a.id, a.srcR2Key]));
+            for (const id of customRefImageAssetIds) {
+              const k = assetById.get(id);
+              if (k) { customRefImageR2Keys.push(k); customSources.push({ assetId: id, role: 'reference' }); }
+            }
+            for (const id of customRefVideoAssetIds) {
+              const k = assetById.get(id);
+              if (k) { customRefVideoR2Keys.push(k); customSources.push({ assetId: id, role: 'reference' }); }
+            }
+            for (const id of customRefAudioAssetIds) {
+              const k = assetById.get(id);
+              if (k) { customRefAudioR2Keys.push(k); customSources.push({ assetId: id, role: 'reference' }); }
+            }
+          }
+        }
 
         if (runtime === 'worker' && workerUrl) {
           // Route to CF Worker via GenerationWorkflow (retries + durability)
@@ -500,6 +597,10 @@ export async function processPendingNodes(
             customActionId: actionId,
             customActionParams: innerData.customActionParams || {},
             workerUrl,
+            referenceImageR2Keys: customRefImageR2Keys.length > 0 ? customRefImageR2Keys : undefined,
+            referenceVideoR2Keys: customRefVideoR2Keys.length > 0 ? customRefVideoR2Keys : undefined,
+            referenceAudioR2Keys: customRefAudioR2Keys.length > 0 ? customRefAudioR2Keys : undefined,
+            sources: customSources.length > 0 ? customSources : undefined,
           };
 
           try {
@@ -514,7 +615,16 @@ export async function processPendingNodes(
           // Route to local agent via Loro tasks map
           const versionBefore = doc.version();
           const tasksMap = doc.getMap('tasks');
-          tasksMap.set(taskId, {
+          // Wire shape note: refs are nested under `refs.{image,video,audio}`
+          // so the SDK has one place to look. The legacy flat
+          // `referenceXR2Keys` fields are kept alongside for any callers
+          // (worker code path notifications, debug dumps) that still
+          // peek at them.
+          const refs: Record<string, string[]> = {};
+          if (customRefImageR2Keys.length > 0) refs.image = customRefImageR2Keys;
+          if (customRefVideoR2Keys.length > 0) refs.video = customRefVideoR2Keys;
+          if (customRefAudioR2Keys.length > 0) refs.audio = customRefAudioR2Keys;
+          const taskRecord: Record<string, any> = {
             taskId,
             nodeId,
             projectId,
@@ -523,11 +633,30 @@ export async function processPendingNodes(
             params: innerData.customActionParams || {},
             prompt: innerData.prompt || innerData.content || '',
             outputType: innerData.outputType || 'image',
+            refs,
+            referenceImageR2Keys: customRefImageR2Keys.length > 0 ? customRefImageR2Keys : undefined,
+            referenceVideoR2Keys: customRefVideoR2Keys.length > 0 ? customRefVideoR2Keys : undefined,
+            referenceAudioR2Keys: customRefAudioR2Keys.length > 0 ? customRefAudioR2Keys : undefined,
+            sources: customSources.length > 0 ? customSources : undefined,
             status: 'waiting_for_agent',
             createdAt: Date.now(),
-          });
+            // Lets ProjectRoom's replay scan re-dispatch only to the
+            // runtime that originally owned the registration.
+            registeredByRuntime,
+          };
+          tasksMap.set(taskId, taskRecord);
           const update = doc.export({ mode: 'update', from: versionBefore });
           broadcast(update);
+
+          // Notify connected local agents over JSON sideband. Python
+          // SDK clients can't parse the Loro binary update, so this
+          // is the only signal they get that a task is waiting.
+          if (broadcastJson) {
+            broadcastJson({
+              type: 'custom_task_assigned',
+              task: taskRecord,
+            });
+          }
         }
 
         log.info('Custom action task dispatched', { nodeId, taskId, runtime, actionType: innerData.actionType });

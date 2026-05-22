@@ -16,6 +16,7 @@
 import type { ModelCard } from "./models";
 import { MODEL_CARDS } from "./models";
 import { normalizePromptInput } from "./prompt";
+import type { CustomActionDefinition } from "./canvas";
 
 export type Modality = "text" | "image" | "video" | "audio";
 
@@ -50,8 +51,13 @@ export interface Capability {
 const NO_BOUND: RefBound = { accepts: false, min: 0, max: 0 };
 
 /**
- * The single derivation. Cheap; safe to call in render hot paths or memoize
- * with `useMemo(() => capability(card), [card])`.
+ * The single derivation for built-in models. Cheap; safe to call in
+ * render hot paths or memoize with `useMemo(() => capability(card), [card])`.
+ *
+ * For custom (marketplace) actions, use `capabilityFromCustom(def)` —
+ * both produce the same `Capability` shape so downstream helpers
+ * (`partitionRefs`, `validateRefs`, `buildGenerationPayload`,
+ * `useSpawnPendingAsset`) operate uniformly on either config kind.
  */
 export function capability(card: ModelCard): Capability {
   const im = card.input.inputMode;
@@ -89,6 +95,45 @@ export function capability(card: ModelCard): Capability {
 }
 
 /**
+ * Derive a `Capability` from a custom action definition. The mapping
+ * mirrors what marketplace actions actually express today:
+ *
+ *   - `outputKind` from `customDef.outputType` (image / video / audio / text)
+ *   - `requiresPrompt` is always true (no schema field; custom actions
+ *      that don't need a prompt should still get a placeholder one —
+ *      most language models / SDXL pipelines expect at least an
+ *      empty string)
+ *   - `ref.X.accepts` from `customDef.promptModalities` (a custom
+ *      action declares which asset kinds its prompt editor allows;
+ *      same idea as the model card's `inputMode` switches)
+ *   - `max` is unbounded — custom action definitions don't carry
+ *      per-modality count caps today. If a specific action wants
+ *      N=1 image refs, it should validate that itself; the
+ *      capability layer just says "yes you can attach images".
+ *
+ * Keeps shape-parity with `capability(card)` so partitionRefs /
+ * validateRefs / buildGenerationPayload can take either without
+ * branching.
+ */
+export function capabilityFromCustom(def: CustomActionDefinition): Capability {
+  const accepts = (m: Modality) => def.promptModalities.includes(m);
+  const unboundedIf = (ok: boolean): RefBound =>
+    ok ? { accepts: true, min: 0, max: Number.MAX_SAFE_INTEGER } : NO_BOUND;
+
+  return {
+    outputKind: def.outputType,
+    requiresPrompt: true,
+    ref: {
+      text: unboundedIf(accepts("text")),
+      image: unboundedIf(accepts("image")),
+      video: unboundedIf(accepts("video")),
+      audio: unboundedIf(accepts("audio")),
+    },
+    promptModalities: def.promptModalities,
+  };
+}
+
+/**
  * Validate ref counts (and optionally a prompt) against the model's bounds.
  * Returns the first violation message, or `null` if everything checks out.
  *
@@ -96,11 +141,17 @@ export function capability(card: ModelCard): Capability {
  * legacy ones so tests / UI copy don't shift unexpectedly.
  */
 export function validateRefs(
-  card: ModelCard,
+  cardOrCap: ModelCard | Capability,
   counts: { text?: number; image?: number; video?: number; audio?: number },
   opts: { prompt?: string } = {},
 ): string | null {
-  const cap = capability(card);
+  // Accept either a card (legacy callers) or a pre-derived capability
+  // (the new path for custom actions). Detection: capabilities have a
+  // `requiresPrompt` boolean at the root; ModelCards don't.
+  const cap: Capability =
+    typeof (cardOrCap as Capability).requiresPrompt === "boolean"
+      ? (cardOrCap as Capability)
+      : capability(cardOrCap as ModelCard);
 
   if (cap.requiresPrompt && opts.prompt !== undefined) {
     if (!opts.prompt || !opts.prompt.trim()) return "No prompt provided.";
@@ -200,9 +251,12 @@ export interface RefPartition {
  */
 export function partitionRefs(
   refs: ReadonlyArray<RefNodeLike>,
-  card: ModelCard,
+  cardOrCap: ModelCard | Capability,
 ): RefPartition {
-  const cap = capability(card);
+  const cap: Capability =
+    typeof (cardOrCap as Capability).requiresPrompt === "boolean"
+      ? (cardOrCap as Capability)
+      : capability(cardOrCap as ModelCard);
   const out: RefPartition = {
     texts: [],
     imageAssetIds: [],

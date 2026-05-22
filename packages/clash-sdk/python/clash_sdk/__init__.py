@@ -24,7 +24,14 @@ Usage:
 """
 
 from .decorators import action
-from .models import ActionContext, ActionResult
+from .models import ActionContext, ActionResult, AssetOutput
 from .agent import ClashAgent, run
 
-__all__ = ["action", "ActionContext", "ActionResult", "ClashAgent", "run"]
+__all__ = [
+    "action",
+    "ActionContext",
+    "ActionResult",
+    "AssetOutput",
+    "ClashAgent",
+    "run",
+]

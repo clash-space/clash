@@ -9,7 +9,20 @@
 
 import { z } from 'zod';
 import { resolveAspectRatio, type ModelCard } from './models';
-import { validateRefs } from './model-capabilities';
+import {
+  validateRefs,
+  partitionRefs,
+  capability as capabilityFromCard,
+  capabilityFromCustom,
+  type Capability,
+  type RefNodeLike,
+  type RefPartition,
+} from './model-capabilities';
+import {
+  composePromptWithTextRefs,
+  extractPromptText,
+  parsePromptParts,
+} from './prompt';
 
 // === Position ===
 export const PositionSchema = z.object({
@@ -207,16 +220,19 @@ export interface ValidateGenerationInput {
   referenceImageAssetIds?: string[];
   referenceVideoAssetIds?: string[];
   referenceAudioAssetIds?: string[];
-  modelCard: ModelCard;
+  /** Either supply the raw ModelCard (legacy) or a pre-derived
+   *  Capability (the new unified path that covers custom actions too). */
+  modelCard?: ModelCard;
+  capability?: import("./model-capabilities").Capability;
 }
 
 /**
- * Validate generation inputs against model card requirements.
- * Returns null if valid, or an error message string if invalid.
+ * Validate generation inputs against the bound's capability. Returns
+ * null if valid, or an error message string if invalid.
  *
- * Thin wrapper around `validateRefs` (model-capabilities.ts) — kept for
- * backward compat with existing imports. New code should call `validateRefs`
- * directly.
+ * Thin wrapper around `validateRefs` (model-capabilities.ts). Pre-
+ * computed `capability` wins over `modelCard` so the same call works
+ * for model-backed and custom-action gens.
  */
 export function validateGenerationInput(input: ValidateGenerationInput): string | null {
   const {
@@ -226,9 +242,12 @@ export function validateGenerationInput(input: ValidateGenerationInput): string 
     referenceVideoAssetIds = [],
     referenceAudioAssetIds = [],
     modelCard,
+    capability,
   } = input;
+  const cardOrCap = capability ?? modelCard;
+  if (!cardOrCap) return null;
   return validateRefs(
-    modelCard,
+    cardOrCap,
     {
       text: referenceTextSnippets.length,
       image: referenceImageAssetIds.length,
@@ -246,17 +265,45 @@ export function validateGenerationInput(input: ValidateGenerationInput): string 
 export interface BuildPendingAssetNodeInput {
   nodeId: string;
   prompt: string;
+  /** For built-in models: the modelId (`gemini-flash-image`, etc.).
+   *  For custom actions: empty string (the action id lives in
+   *  `customActionId` instead). NodeProcessor switches by
+   *  `actionType.startsWith('custom:')`. */
   modelId: string;
   modelParams: Record<string, string | number | boolean>;
+  /** Either a built-in actionType or `custom:<id>`. NodeProcessor
+   *  uses this discriminator to pick the dispatch path. */
   actionType:
     | typeof ACTION_TYPE.ImageGen
     | typeof ACTION_TYPE.VideoGen
     | typeof ACTION_TYPE.AudioGen
-    | typeof ACTION_TYPE.TextGen;
+    | typeof ACTION_TYPE.TextGen
+    | `custom:${string}`;
   label?: string;
   /** D1 asset IDs of image refs. Server resolves to R2 keys. */
   referenceImageAssetIds?: string[];
+  /** D1 asset IDs of video refs. Only consumed by video-gen / text-gen
+   *  pending nodes (image-gen / audio-gen ignore them per partitionRefs). */
+  referenceVideoAssetIds?: string[];
+  /** D1 asset IDs of audio refs. Only consumed by video-gen / text-gen
+   *  pending nodes. */
+  referenceAudioAssetIds?: string[];
   referenceMode?: string;
+  /** Pipeline status to stamp on the node. The default `'pending'`
+   *  fits the executor / Run flow (NodeProcessor picks these up). The
+   *  web's lazy-draft path stamps `'draft'` instead — a placeholder
+   *  slot the user can fill before submit. */
+  status?: 'pending' | 'draft';
+  /** Custom-action only: the marketplace action id. NodeProcessor
+   *  reads this to fetch the runtime / workerUrl manifest. */
+  customActionId?: string;
+  /** Custom-action only: the declarative param values from the form
+   *  the user filled in. Forwarded verbatim to the action runtime. */
+  customActionParams?: Record<string, string | number | boolean>;
+  /** Custom-action only: the action's declared output modality
+   *  (image / video / audio / text). Overrides what we'd otherwise
+   *  derive from actionType. */
+  outputType?: 'image' | 'video' | 'audio' | 'text';
 }
 
 export interface PendingAssetNode {
@@ -265,8 +312,11 @@ export interface PendingAssetNode {
   data: Record<string, unknown>;
 }
 
-/** Extract a short label from prompt text */
-function extractLabelFromPrompt(promptText: string, fallback: string): string {
+/** Extract a short label from prompt text. Skips markdown heading
+ *  prefixes and trims to 60 chars so it fits on the node chip. Shared
+ *  between server `executeGeneration` and web `useSpawnPendingAsset`
+ *  so both paths produce the same label. */
+export function extractLabelFromPrompt(promptText: string, fallback: string): string {
   if (!promptText || promptText.trim() === '') return fallback;
   const lines = promptText.split('\n').map(l => l.replace(/^#+\s*/, '').trim()).filter(Boolean);
   const first = lines[0] || fallback;
@@ -281,12 +331,29 @@ function extractLabelFromPrompt(promptText: string, fallback: string): string {
 export function buildPendingAssetNode(input: BuildPendingAssetNodeInput): PendingAssetNode {
   const {
     nodeId, prompt, modelId, modelParams, actionType,
-    referenceImageAssetIds, referenceMode,
+    referenceImageAssetIds, referenceVideoAssetIds, referenceAudioAssetIds,
+    referenceMode, customActionId, customActionParams, outputType,
   } = input;
 
-  const isVideo = actionType === ACTION_TYPE.VideoGen;
-  const isAudio = actionType === ACTION_TYPE.AudioGen;
-  const isText = actionType === ACTION_TYPE.TextGen;
+  // Custom-action flag drives a few small divergences: we don't pin
+  // `count: 1`, we carry customActionId + customActionParams as the
+  // dispatch payload, and the output modality comes from the action's
+  // declared `outputType` rather than the built-in actionType enum.
+  const isCustom = typeof actionType === 'string' && actionType.startsWith('custom:');
+  const effectiveOutputKind: 'image' | 'video' | 'audio' | 'text' = isCustom
+    ? (outputType ?? 'image')
+    : actionType === ACTION_TYPE.VideoGen
+      ? 'video'
+      : actionType === ACTION_TYPE.AudioGen
+        ? 'audio'
+        : actionType === ACTION_TYPE.TextGen
+          ? 'text'
+          : 'image';
+
+  const isImage = effectiveOutputKind === 'image';
+  const isVideo = effectiveOutputKind === 'video';
+  const isAudio = effectiveOutputKind === 'audio';
+  const isText = effectiveOutputKind === 'text';
   const rfType = isVideo
     ? RF_NODE_TYPE.Video
     : isAudio
@@ -303,32 +370,246 @@ export function buildPendingAssetNode(input: BuildPendingAssetNodeInput): Pendin
         : 'Generated Image';
   const label = input.label || extractLabelFromPrompt(prompt, defaultLabel);
 
+  // image-gen (built-in only) pins `count: 1` on its modelParams the
+  // way the web's useSpawnPendingAsset does so downstream batch-size
+  // logic doesn't assume a missing count means "use the action-badge's
+  // count". Custom actions follow their own param schema.
+  const effectiveModelParams: Record<string, string | number | boolean> = isImage && !isCustom
+    ? { ...modelParams, count: 1 }
+    : modelParams;
+
   const data: Record<string, unknown> = {
     label,
-    status: 'pending',
+    status: input.status ?? 'pending',
     prompt,
-    model: modelId,
-    modelId,
-    modelParams,
+    actionType,
   };
+
+  if (isCustom) {
+    if (customActionId) data.customActionId = customActionId;
+    if (customActionParams) data.customActionParams = customActionParams;
+    if (outputType) data.outputType = outputType;
+  } else {
+    data.model = modelId;
+    data.modelId = modelId;
+    data.modelParams = effectiveModelParams;
+  }
 
   if (isText) {
     data.content = '';
   } else {
-    data.aspectRatio = resolveAspectRatio(modelId, modelParams);
+    if (!isCustom) data.aspectRatio = resolveAspectRatio(modelId, modelParams);
     data.referenceMode = referenceMode || 'none';
   }
 
-  if (referenceImageAssetIds && referenceImageAssetIds.length > 0) {
+  // Ref arrays. The pending child carries whichever buckets came out
+  // of partitionRefs — for custom this fixes the pre-unification bug
+  // where the manifest's `promptModalities` declared (say) image
+  // input but the pending node dropped all refs, leaving the action
+  // unable to consume canvas assets.
+  if (referenceImageAssetIds && referenceImageAssetIds.length > 0 && !isAudio) {
     data.referenceImageAssetIds = referenceImageAssetIds;
   }
+  if ((isVideo || isText || isCustom) && referenceVideoAssetIds && referenceVideoAssetIds.length > 0) {
+    data.referenceVideoAssetIds = referenceVideoAssetIds;
+  }
+  if ((isVideo || isText || isCustom) && referenceAudioAssetIds && referenceAudioAssetIds.length > 0) {
+    data.referenceAudioAssetIds = referenceAudioAssetIds;
+  }
 
-  if (isVideo) {
+  if (isVideo && !isCustom) {
     const dur = modelParams.duration ?? 5;
     data.duration = typeof dur === 'string' ? parseInt(dur, 10) : Number(dur) || 5;
   }
 
   return { id: nodeId, type: rfType, data };
+}
+
+// === Unified generation payload pipeline ===
+//
+// `buildGenerationPayload` is the single staging step that turns the
+// raw inputs an action-badge carries (a markdown prompt with
+// `@[Label](node:id)` mentions, a list of attached ref nodes, the
+// chosen model card, and modelParams) into the validated, normalized
+// shape the executor feeds to `buildPendingAssetNode`.
+//
+// Two call sites: the web UI's `useSpawnPendingAsset.buildShape`
+// (browser side, executes when the user clicks Run on an
+// action-badge) and the server-side `Canvas.executeGeneration` (used
+// by `clash canvas execute`, agent tools, automation). Before this
+// helper they re-implemented overlapping logic in parallel and
+// diverged on three things:
+//   1. partitionRefs / model-card filtering (web honored max +
+//      modality, executor ignored both)
+//   2. composing text-ref content into the prompt
+//   3. stripping `@[Label](node:id)` markdown back to plain text
+//      before sending it to the model
+// Pulling them into one helper means new modalities / new model
+// constraints land in exactly one place.
+
+/**
+ * Either a built-in model (`{ modelCard, modelParams }`) or a
+ * marketplace custom action (`{ customDef, customActionParams }`).
+ * Both flow through the same payload builder — they're two surfaces
+ * for the same concept: declarative generation config + per-modality
+ * ref capability.
+ */
+export type GenerationConfig =
+  | {
+      kind: 'model';
+      modelCard?: ModelCard;
+      modelParams: Record<string, string | number | boolean>;
+    }
+  | {
+      kind: 'custom';
+      customDef: CustomActionDefinition;
+      customActionParams: Record<string, string | number | boolean>;
+    };
+
+export interface BuildGenerationPayloadInput {
+  /** Raw prompt as the user typed it (with `@[Label](node:id)` mentions). */
+  prompt: string;
+  /** All canvas nodes the action-badge has incoming edges from. The
+   *  helper does NOT walk edges itself — the caller supplies the
+   *  resolved nodes (web reads from React Flow state, server from
+   *  Canvas's edges + node lookup). */
+  refNodes: ReadonlyArray<RefNodeLike>;
+  /** Stable id of the gen config (modelId for built-in, customActionId
+   *  for custom). The pending child node persists it so the executor
+   *  / NodeProcessor knows what to dispatch to. */
+  configId: string;
+  /** The full gen config — `kind` discriminates which set of params is
+   *  authoritative. The helper uses this to derive a Capability so
+   *  partitionRefs / validateRefs / extractPromptText all work the
+   *  same way regardless of model vs custom. */
+  config: GenerationConfig;
+  /** Output modality of the gen. Required for custom (the action
+   *  declares it on the def); for built-in models it must match the
+   *  card's `kind`. */
+  actionType:
+    | typeof ACTION_TYPE.ImageGen
+    | typeof ACTION_TYPE.VideoGen
+    | typeof ACTION_TYPE.AudioGen
+    | typeof ACTION_TYPE.TextGen
+    | `custom:${string}`;
+  label?: string;
+  referenceMode?: string;
+}
+
+export interface BuildGenerationPayloadResult {
+  /** Ready-to-feed input for `buildPendingAssetNode`. The `nodeId`
+   *  field is left empty so the caller can mint it however it wants
+   *  (generateSemanticId on the web, Canvas.generateId on the
+   *  server). */
+  pendingInput: BuildPendingAssetNodeInput;
+  /** First validation error against the model card, or null when the
+   *  payload is acceptable / no model card supplied. Caller decides
+   *  whether to throw, surface the message, or fall through. */
+  validationError: string | null;
+  /** The partition that was computed, kept for callers that want to
+   *  log "wired 2 image refs / 1 video ref" without re-walking the
+   *  buckets themselves. */
+  partition: RefPartition;
+  /** The cleaned, plain-text prompt that ends up in
+   *  `pendingInput.prompt` — exposed separately for callers that want
+   *  to compute a label from the cleaned prompt. */
+  cleanedPrompt: string;
+}
+
+export function buildGenerationPayload(input: BuildGenerationPayloadInput): BuildGenerationPayloadResult {
+  // 1. Derive the Capability from whichever config the caller passed.
+  //    Both built-in models and custom actions go through the same
+  //    `Capability` shape so partitionRefs / validateRefs / the
+  //    helpers downstream don't branch on config kind.
+  const cap: Capability | undefined =
+    input.config.kind === 'model'
+      ? input.config.modelCard
+        ? capabilityFromCard(input.config.modelCard)
+        : undefined
+      : capabilityFromCustom(input.config.customDef);
+
+  // 2. Partition refs by modality. Without a capability the caller is
+  //    deliberately running unconstrained (e.g. a model card hasn't
+  //    loaded yet, or a custom def is mid-install) — bucket nothing.
+  const partition: RefPartition = cap
+    ? partitionRefs(input.refNodes, cap)
+    : { texts: [], imageAssetIds: [], videoAssetIds: [], audioAssetIds: [] };
+
+  // 3. Text refs fold into the prompt (`# Heading\n\nbody\n\n# …`).
+  //    The text bucket is consumed here and never reaches the
+  //    pending-asset data — that's intentional.
+  const composedPrompt = composePromptWithTextRefs(input.prompt, partition.texts);
+
+  // 4. Strip the `@[Label](node:id)` markdown markers and replace with
+  //    just the label. Models don't speak our mention syntax; sending
+  //    them the raw markdown confuses prompt adherence ("the user
+  //    mentioned @[..] is that important?").
+  const cleanedPrompt = extractPromptText(parsePromptParts(composedPrompt));
+
+  // 5. Validate against the capability. Skipped when we don't have
+  //    one (custom mid-install / model card not loaded).
+  const validationError = cap
+    ? validateGenerationInput({
+        prompt: cleanedPrompt,
+        referenceTextSnippets: partition.texts,
+        referenceImageAssetIds: partition.imageAssetIds,
+        referenceVideoAssetIds: partition.videoAssetIds,
+        referenceAudioAssetIds: partition.audioAssetIds,
+        capability: cap,
+      })
+    : null;
+
+  const totalAssetRefs =
+    partition.imageAssetIds.length + partition.videoAssetIds.length + partition.audioAssetIds.length;
+
+  // 6. Pending-asset input. Both branches write the SAME ref fields —
+  //    custom actions previously dropped them (so a marketplace
+  //    action couldn't consume canvas assets even though its manifest
+  //    declared it could); writing them here fixes that.
+  const pendingInput: BuildPendingAssetNodeInput =
+    input.config.kind === 'model'
+      ? {
+          nodeId: '', // caller fills in
+          prompt: cleanedPrompt,
+          modelId: input.configId,
+          modelParams: input.config.modelParams,
+          actionType: input.actionType as
+            | typeof ACTION_TYPE.ImageGen
+            | typeof ACTION_TYPE.VideoGen
+            | typeof ACTION_TYPE.AudioGen
+            | typeof ACTION_TYPE.TextGen,
+          label: input.label,
+          referenceImageAssetIds: partition.imageAssetIds.length > 0 ? partition.imageAssetIds : undefined,
+          referenceVideoAssetIds: partition.videoAssetIds.length > 0 ? partition.videoAssetIds : undefined,
+          referenceAudioAssetIds: partition.audioAssetIds.length > 0 ? partition.audioAssetIds : undefined,
+          referenceMode:
+            input.referenceMode ?? (totalAssetRefs > 0 ? 'image-and-prompt' : undefined),
+        }
+      : {
+          nodeId: '',
+          prompt: cleanedPrompt,
+          // Custom actions don't have a modelId, but the pending node
+          // schema still needs *something* to disambiguate the
+          // dispatch path. We stash `custom:<actionId>` in the modelId
+          // field (mirrors what NodeProcessor already reads via
+          // `innerData.actionType.startsWith('custom:')`) and also
+          // expose customActionId + customActionParams via the
+          // pending input's extra fields below.
+          modelId: '',
+          modelParams: {},
+          actionType: input.actionType as `custom:${string}`,
+          label: input.label,
+          customActionId: input.config.customDef.id,
+          customActionParams: input.config.customActionParams,
+          referenceImageAssetIds: partition.imageAssetIds.length > 0 ? partition.imageAssetIds : undefined,
+          referenceVideoAssetIds: partition.videoAssetIds.length > 0 ? partition.videoAssetIds : undefined,
+          referenceAudioAssetIds: partition.audioAssetIds.length > 0 ? partition.audioAssetIds : undefined,
+          referenceMode:
+            input.referenceMode ?? (totalAssetRefs > 0 ? 'image-and-prompt' : undefined),
+          outputType: input.config.customDef.outputType,
+        };
+
+  return { pendingInput, validationError, partition, cleanedPrompt };
 }
 
 // ─── Legacy / Agent-facing Constants ──────────────────────
@@ -442,6 +723,30 @@ export const CustomActionDefinitionSchema = z.object({
   tags: z.array(z.string()).optional(),
   /** Modalities that can be @-mentioned inline in the prompt editor */
   promptModalities: z.array(z.enum(['text', 'image', 'video', 'audio'])).default(['text']),
+  /**
+   * runtime_id of the local runtime that registered this action. The server
+   * stamps this from the connecting WS client's `x-runtime-id` header, which
+   * the python SDK forwards from the CLASH_RUNTIME_ID env var (set by the
+   * bridge daemon when it spawns each action subprocess).
+   *
+   * Custom actions are a property of THE USER'S MACHINE — when the runtime
+   * is offline, NodeProcessor refuses to dispatch the action and the node
+   * lands in `status: failed` with a clear error. This field is the link
+   * back to the runtime row that the deriveRuntimeStatus check consults.
+   */
+  registeredByRuntime: z.string().optional(),
+  /**
+   * Project ids this action attaches to. `"*"` (the default) means every
+   * project the user is in. This declaration lives in the manifest so the
+   * install endpoint can echo the user's intent forward and the bridge can
+   * spawn one subprocess per attached project.
+   *
+   * NOTE: As of this change the bridge still spawns a single subprocess per
+   * action (no `CLASH_PROJECT_ID` pinning). The field is reserved — it will
+   * be honored on the next bridge restart in a future change that wires
+   * per-project spawning.
+   */
+  attachedProjects: z.array(z.string()).default(["*"]),
 });
 export type CustomActionDefinition = z.infer<typeof CustomActionDefinitionSchema>;
 

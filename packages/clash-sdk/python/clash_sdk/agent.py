@@ -16,6 +16,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import os
 import time
 from typing import Any
 from urllib.parse import urlencode
@@ -23,7 +24,7 @@ from urllib.parse import urlencode
 import aiohttp
 
 from .decorators import ActionDefinition
-from .models import ActionContext, ActionResult
+from .models import ActionContext, ActionResult, AssetOutput
 
 logger = logging.getLogger("clash_sdk")
 
@@ -51,11 +52,22 @@ class ClashAgent:
         project_id: str,
         token: str,
         actions: list[ActionDefinition],
+        runtime_id: str | None = None,
     ):
         self.server_url = server_url.rstrip("/")
         self.project_id = project_id
         self.token = token
         self.actions = {a.id: a for a in actions}
+        # runtime_id identifies WHICH local machine hosts this action.
+        # The server uses it to gate dispatch on the runtime being online
+        # (deriveRuntimeStatus). Falls back to CLASH_RUNTIME_ID env so the
+        # bridge daemon can inject it when supervising subprocess actions.
+        #
+        # If unset, register_custom_actions on the server side will reject
+        # us — bail loudly during connect() rather than after a sleep.
+        # Dev path: `export CLASH_RUNTIME_ID=$(jq -r .runtimeId ~/.clash/credentials.json)`
+        # (the bridge writes credentials.json during `clash setup`).
+        self.runtime_id = runtime_id or os.environ.get("CLASH_RUNTIME_ID") or None
         self.active_tasks: dict[str, TaskState] = {}
         self.task_history: list[dict[str, Any]] = []
         self._ws: aiohttp.ClientWebSocketResponse | None = None
@@ -75,13 +87,30 @@ class ClashAgent:
 
     async def connect(self) -> None:
         """Establish WebSocket connection and register actions."""
+        if not self.runtime_id:
+            raise RuntimeError(
+                "CLASH_RUNTIME_ID is required to host custom actions. "
+                "Set it via env or constructor arg. Quick dev path: "
+                "export CLASH_RUNTIME_ID=$(jq -r .runtimeId ~/.clash/credentials.json)"
+            )
+
         self._session = aiohttp.ClientSession()
         ws_url = f"{self.server_url}/sync/{self.project_id}?{urlencode({'token': self.token})}"
 
-        logger.info("Connecting to %s", ws_url)
+        logger.info(
+            "Connecting to %s (runtime_id=%s…)",
+            ws_url,
+            self.runtime_id[:8] if self.runtime_id else "?",
+        )
         self._ws = await self._session.ws_connect(
             ws_url,
-            headers={"x-client-type": "cli"},
+            headers={
+                "x-client-type": "cli",
+                # Server validates this against the runtime table; the
+                # WS upgrade returns 403 if the runtime doesn't exist or
+                # belongs to a different user than the API token.
+                "x-runtime-id": self.runtime_id,
+            },
         )
 
         # Wait for initial snapshot (first binary message)
@@ -155,30 +184,40 @@ class ClashAgent:
                 break
 
     async def _handle_text_message(self, text: str) -> None:
-        """Handle JSON text sideband messages from ProjectRoom."""
+        """Handle JSON text sideband messages from ProjectRoom.
+
+        The CLI agent connection (`x-client-type: cli`) gets a JSON
+        sideband whenever NodeProcessor dispatches a custom-action
+        task to a local runtime. Wire shape:
+
+            {type: "custom_task_assigned", task: {...task record...}}
+        """
         try:
             data = json.loads(text)
         except json.JSONDecodeError:
             return
 
-        # Activity messages may contain task dispatch info
-        if data.get("type") == "activity" and data.get("action") == "added":
-            # A node was added — check if it's a pending custom action node
-            # We'll poll for tasks via HTTP as a simpler approach
-            await self._poll_for_tasks()
-
-    async def _poll_for_tasks(self) -> None:
-        """Check for pending custom action tasks by reading nodes."""
-        if not self._session:
-            return
-
-        try:
-            url = f"{self.http_url}/api/v1/projects/{self.project_id}"
-            # Use the ProjectRoom /nodes endpoint instead
-            # This is an internal call that goes through the DO
-            pass
-        except Exception as e:
-            logger.error("Failed to poll tasks: %s", e)
+        if data.get("type") == "custom_task_assigned":
+            task = data.get("task") or {}
+            task_id = task.get("taskId")
+            if not task_id:
+                logger.warning("custom_task_assigned with no taskId, ignoring")
+                return
+            logger.debug("Got custom_task_assigned task_id=%s action=%s", task_id, task.get("customActionId"))
+            # Dedup BEFORE scheduling — two sideband messages
+            # arriving in the same event-loop tick would otherwise
+            # both queue handlers before either reached the seen-set
+            # check inside _execute_task. The race fires when
+            # ProjectRoom both broadcasts a fresh dispatch and
+            # replays it on a near-simultaneous reconnect (each
+            # spawns N extra siblings server-side).
+            if task_id in self._seen_tasks:
+                return
+            self._seen_tasks.add(task_id)
+            # Long-running actions (Pillow slicing, ML inference)
+            # may take seconds — run concurrently so the receive
+            # loop keeps processing messages.
+            asyncio.create_task(self._execute_task(task))
 
     async def _execute_task(self, task: dict[str, Any]) -> None:
         """Execute a custom action task."""
@@ -187,9 +226,12 @@ class ClashAgent:
         node_id = task["nodeId"]
         project_id = task.get("projectId", self.project_id)
 
-        if task_id in self._seen_tasks:
-            return
-        self._seen_tasks.add(task_id)
+        # Dedup happens at the entry point (_handle_text_message) now —
+        # if we got here, _seen_tasks already contains task_id from the
+        # caller. Re-checking would always short-circuit. Note that the
+        # `process_loro_update` placeholder (currently a no-op) might
+        # call this directly someday; if that lands, it must add to
+        # _seen_tasks before calling.
 
         action_def = self.actions.get(action_id)
         if not action_def:
@@ -202,6 +244,7 @@ class ClashAgent:
 
         try:
             state.status = "running"
+            refs = task.get("refs") or {}
             ctx = ActionContext(
                 task_id=task_id,
                 node_id=node_id,
@@ -210,24 +253,44 @@ class ClashAgent:
                 prompt=task.get("prompt", ""),
                 params=task.get("params", {}),
                 output_type=task.get("outputType", action_def.output_type),
+                reference_image_r2_keys=list(refs.get("image") or []),
+                reference_video_r2_keys=list(refs.get("video") or []),
+                reference_audio_r2_keys=list(refs.get("audio") or []),
+                fetch_asset=self.fetch_asset,
             )
 
             result = await action_def.handler(ctx)
             state.status = "uploading"
 
-            # Upload result
-            storage_key = None
-            if result.type in ("image", "video") and result.data:
-                storage_key = await self._upload_result(
-                    project_id, task_id, node_id, result
+            # Upload each binary output, build asset descriptors for
+            # the complete message. Text outputs ride along with no
+            # upload — server stamps `data.content` directly.
+            assets: list[dict[str, Any]] = []
+            for idx, out in enumerate(result.outputs):
+                if out.type == "text":
+                    assets.append({
+                        "type": "text",
+                        "content": out.content or "",
+                        "label": out.label,
+                    })
+                    continue
+                if not out.data:
+                    raise RuntimeError(
+                        f"AssetOutput[{idx}] type={out.type} has no data"
+                    )
+                storage_key = await self._upload_one(
+                    project_id, task_id, node_id, out, idx
                 )
-            elif result.type == "text":
-                storage_key = None  # Text content is sent directly
+                assets.append({
+                    "type": out.type,
+                    "storageKey": storage_key,
+                    "mimeType": out.mime_type,
+                    "label": out.label,
+                })
 
-            # Notify completion
             state.status = "completed"
             await self._complete_task(
-                task_id, node_id, "completed", storage_key, result
+                task_id, node_id, "completed", assets, result.description
             )
 
             duration_ms = (time.time() - state.started_at) * 1000
@@ -247,7 +310,7 @@ class ClashAgent:
             logger.error("Task %s failed: %s", task_id, e)
 
             await self._complete_task(
-                task_id, node_id, "failed", None, None, error=str(e)
+                task_id, node_id, "failed", [], None, error=str(e)
             )
             self.task_history.append({
                 "taskId": task_id,
@@ -259,14 +322,47 @@ class ClashAgent:
         finally:
             del self.active_tasks[task_id]
 
-    async def _upload_result(
+    async def fetch_asset(self, storage_key: str) -> bytes:
+        """Download a reference asset by R2 storage key.
+
+        Used by action handlers that need to operate on their input
+        images (e.g. grid_split). The agent's bearer token mints a
+        signed URL, then we stream the bytes back. The signed URL
+        machinery already enforces project-level auth — we don't
+        need additional checks here.
+        """
+        if not self._session:
+            raise RuntimeError("No HTTP session")
+        sign_url = f"{self.http_url}/assets/sign?key={storage_key}"
+        headers = {"Authorization": f"Bearer {self.token}"}
+        async with self._session.get(sign_url, headers=headers) as resp:
+            if resp.status != 200:
+                body = await resp.text()
+                raise RuntimeError(f"Sign failed ({resp.status}): {body}")
+            signed = (await resp.json()).get("url")
+        if not signed:
+            raise RuntimeError(f"No signed URL returned for {storage_key}")
+        get_url = f"{self.http_url}{signed}" if signed.startswith("/") else signed
+        async with self._session.get(get_url) as resp:
+            if resp.status != 200:
+                body = await resp.text()
+                raise RuntimeError(f"Fetch failed ({resp.status}): {body}")
+            return await resp.read()
+
+    async def _upload_one(
         self,
         project_id: str,
         task_id: str,
         node_id: str,
-        result: ActionResult,
+        out: AssetOutput,
+        idx: int,
     ) -> str:
-        """Upload result file to R2 via the custom action upload endpoint."""
+        """Upload one binary asset; returns its R2 storage key.
+
+        Multi-output actions call this once per binary output. The
+        `outputIndex` form field tells the server to suffix the R2
+        key so sibling uploads from the same task don't collide.
+        """
         if not self._session:
             raise RuntimeError("No HTTP session")
 
@@ -275,15 +371,14 @@ class ClashAgent:
         form.add_field("projectId", project_id)
         form.add_field("taskId", task_id)
         form.add_field("nodeId", node_id)
-        form.add_field("outputType", result.type)
-
-        if result.data:
-            form.add_field(
-                "file",
-                result.data,
-                filename=f"result.{_ext(result.type)}",
-                content_type=result.mime_type or "application/octet-stream",
-            )
+        form.add_field("outputType", out.type)
+        form.add_field("outputIndex", str(idx))
+        form.add_field(
+            "file",
+            out.data or b"",
+            filename=f"result-{idx}.{_ext(out.type)}",
+            content_type=out.mime_type or "application/octet-stream",
+        )
 
         headers = {"Authorization": f"Bearer {self.token}"}
         async with self._session.post(url, data=form, headers=headers) as resp:
@@ -298,30 +393,38 @@ class ClashAgent:
         task_id: str,
         node_id: str,
         status: str,
-        storage_key: str | None,
-        result: ActionResult | None,
+        assets: list[dict[str, Any]],
+        description: str | None,
         error: str | None = None,
     ) -> None:
-        """Send complete_custom_task message via WebSocket."""
+        """Send complete_custom_task message via WebSocket.
+
+        Wire shape:
+            {
+              type: "complete_custom_task",
+              taskId, nodeId, status,
+              result: {
+                assets: [{type, storageKey?, content?, mimeType?, label?}, ...],
+                description?, error?
+              }
+            }
+        """
         if not self._ws or self._ws.closed:
             return
+
+        result: dict[str, Any] = {"assets": assets}
+        if description:
+            result["description"] = description
+        if error:
+            result["error"] = error
 
         msg: dict[str, Any] = {
             "type": "complete_custom_task",
             "taskId": task_id,
             "nodeId": node_id,
             "status": status,
-            "result": {},
+            "result": result,
         }
-        if storage_key:
-            msg["result"]["storageKey"] = storage_key
-        if result and result.content:
-            msg["result"]["content"] = result.content
-        if result and result.description:
-            msg["result"]["description"] = result.description
-        if error:
-            msg["result"]["error"] = error
-
         await self._ws.send_str(json.dumps(msg))
 
     def process_loro_update(self, data: bytes) -> list[dict[str, Any]]:
@@ -337,7 +440,7 @@ class ClashAgent:
 
 
 def _ext(output_type: str) -> str:
-    return {"image": "png", "video": "mp4"}.get(output_type, "bin")
+    return {"image": "png", "video": "mp4", "audio": "mp3"}.get(output_type, "bin")
 
 
 def run(
@@ -345,6 +448,7 @@ def run(
     project_id: str,
     token: str,
     actions: list[ActionDefinition] | None = None,
+    runtime_id: str | None = None,
 ) -> None:
     """
     Convenience function to create an agent and run it.
@@ -369,6 +473,7 @@ def run(
         project_id=project_id,
         token=token,
         actions=actions or [],
+        runtime_id=runtime_id,
     )
 
     async def _main() -> None:
