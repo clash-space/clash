@@ -2080,8 +2080,12 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
                                 </ReactFlow>
                             </div>
 
-                            {/* Left Toolbar - Vertical Palette */}
-                            <div ref={toolbarRef} className="absolute left-6 top-1/2 -translate-y-1/2 z-50 flex flex-col items-start gap-2 pointer-events-none">
+                            {/* Left Toolbar - Vertical Palette.
+                                z-10 keeps it above the canvas (z-0) but well below
+                                any modal Dialog (z-[70]) — same stacking band as the
+                                ChatbotCopilot panel, which has no explicit z-index
+                                (relies on natural document flow above the canvas). */}
+                            <div ref={toolbarRef} className="absolute left-6 top-1/2 -translate-y-1/2 z-10 flex flex-col items-start gap-2 pointer-events-none">
                                  <div className="clash-canvas-toolbar-surface pointer-events-auto flex w-16 flex-none flex-col items-center gap-3 rounded-full py-6 px-3 transition-all">
                                     {/* Canvas Mode Toggle: single button switches between select/hand */}
                                     <motion.button
