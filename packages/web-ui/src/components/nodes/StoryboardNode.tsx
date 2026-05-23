@@ -43,7 +43,7 @@ const StoryboardNode = ({ id, data: _data, selected }: NodeProps<Node<Record<str
 
     return (
         <div
-            className={`group relative min-w-[300px] overflow-hidden rounded-matrix bg-white shadow-lg transition-all duration-300 hover:shadow-xl ${selected ? 'ring-4 ring-purple-500 ring-offset-2' : 'ring-1 ring-slate-100'
+            className={`group relative min-w-[300px] overflow-hidden rounded-matrix bg-warm-surface shadow-lg transition-all duration-300 hover:shadow-xl ${selected ? 'ring-4 ring-purple-500 ring-offset-2' : 'ring-1 ring-slate-100'
                 }`}
         >
             {/* Header */}
@@ -57,15 +57,15 @@ const StoryboardNode = ({ id, data: _data, selected }: NodeProps<Node<Record<str
 
             <div className="p-3 space-y-3">
                 {/* Shot Selector */}
-                <div className="flex items-center justify-between rounded-md bg-slate-50 p-2 border border-slate-200">
-                    <div className="flex items-center gap-2 text-xs text-slate-500">
+                <div className="flex items-center justify-between rounded-md bg-warm-muted p-2 border border-warm-border">
+                    <div className="flex items-center gap-2 text-xs text-slate-700 dark:text-slate-300">
                         <LinkIcon size={14} />
                         <span>Linked to:</span>
                     </div>
 
                     {shots.length > 0 ? (
                         <select
-                            className="bg-transparent text-xs font-bold text-slate-700 outline-none cursor-pointer max-w-[150px]"
+                            className="bg-transparent text-xs font-bold text-slate-800 dark:text-slate-200 outline-none cursor-pointer max-w-[150px]"
                             value={linkedShotId}
                             onChange={(e) => setLinkedShotId(e.target.value)}
                         >
@@ -84,7 +84,7 @@ const StoryboardNode = ({ id, data: _data, selected }: NodeProps<Node<Record<str
 
                 {/* Reference Text (Read-only) */}
                 {linkedShot ? (
-                    <div className="text-xs text-slate-500 italic border-l-2 border-purple-200 pl-2 py-1 bg-purple-50/50 rounded-r">
+                    <div className="text-xs text-slate-700 dark:text-slate-300 italic border-l-2 border-purple-200 pl-2 py-1 bg-purple-50/50 rounded-r">
                         "{linkedShot.content}"
                     </div>
                 ) : (
@@ -96,14 +96,14 @@ const StoryboardNode = ({ id, data: _data, selected }: NodeProps<Node<Record<str
                 {/* Visual Prompt Editor */}
                 <div>
                     <div className="mb-1 flex items-center justify-between">
-                        <label className="text-[10px] font-bold uppercase text-slate-500">Visual Prompt</label>
+                        <label className="text-[10px] font-bold uppercase text-slate-700 dark:text-slate-300">Visual Prompt</label>
                         <button className="text-[10px] flex items-center gap-1 text-purple-600 hover:text-purple-700 font-medium">
                             <MagicWand size={12} />
                             AI Enhance
                         </button>
                     </div>
                     <textarea
-                        className="w-full h-24 rounded-lg border border-slate-200 bg-slate-50 p-2 text-xs text-slate-700 focus:border-purple-500 focus:ring-1 focus:ring-purple-500 outline-none resize-none"
+                        className="w-full h-24 rounded-lg border border-warm-border bg-warm-muted p-2 text-xs text-slate-800 dark:text-slate-200 focus:border-purple-500 focus:ring-1 focus:ring-purple-500 outline-none resize-none"
                         value={visualPrompt}
                         onChange={(e) => setVisualPrompt(e.target.value)}
                     />

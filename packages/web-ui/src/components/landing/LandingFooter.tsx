@@ -31,13 +31,13 @@ export default function LandingFooter() {
           <div className="space-y-8">
              <Link to="/" className="group">
               <div className="flex items-center gap-1">
-                <span className="font-display text-2xl font-bold tracking-tighter text-gray-900 leading-none">
+                <span className="font-display text-2xl font-bold tracking-tighter text-slate-900 dark:text-slate-50 leading-none">
                   Clash
                 </span>
                 <div className="h-5 w-[4px] bg-brand -skew-x-[20deg] transform origin-center" />
               </div>
             </Link>
-            <p className="text-sm leading-6 text-gray-600">
+            <p className="text-sm leading-6 text-gray-700 dark:text-gray-300">
               Making video creation accessible to everyone through the power of AI.
             </p>
             <div className="flex space-x-6">
@@ -47,11 +47,11 @@ export default function LandingFooter() {
           <div className="mt-16 grid grid-cols-2 gap-8 xl:col-span-2 xl:mt-0">
             <div className="md:grid md:grid-cols-2 md:gap-8">
               <div>
-                <h3 className="text-sm font-semibold leading-6 text-gray-900">Product</h3>
+                <h3 className="text-sm font-semibold leading-6 text-slate-900 dark:text-slate-50">Product</h3>
                 <ul role="list" className="mt-6 space-y-4">
                   {navigation.product.map((item) => (
                     <li key={item.name}>
-                      <a href={item.href} className="text-sm leading-6 text-gray-600 hover:text-gray-900">
+                      <a href={item.href} className="text-sm leading-6 text-gray-700 dark:text-gray-300 hover:text-gray-900">
                         {item.name}
                       </a>
                     </li>
@@ -59,11 +59,11 @@ export default function LandingFooter() {
                 </ul>
               </div>
               <div className="mt-10 md:mt-0">
-                <h3 className="text-sm font-semibold leading-6 text-gray-900">Company</h3>
+                <h3 className="text-sm font-semibold leading-6 text-slate-900 dark:text-slate-50">Company</h3>
                 <ul role="list" className="mt-6 space-y-4">
                   {navigation.company.map((item) => (
                     <li key={item.name}>
-                      <a href={item.href} className="text-sm leading-6 text-gray-600 hover:text-gray-900">
+                      <a href={item.href} className="text-sm leading-6 text-gray-700 dark:text-gray-300 hover:text-gray-900">
                         {item.name}
                       </a>
                     </li>
@@ -73,11 +73,11 @@ export default function LandingFooter() {
             </div>
             <div className="md:grid md:grid-cols-2 md:gap-8">
               <div>
-                <h3 className="text-sm font-semibold leading-6 text-gray-900">Legal</h3>
+                <h3 className="text-sm font-semibold leading-6 text-slate-900 dark:text-slate-50">Legal</h3>
                 <ul role="list" className="mt-6 space-y-4">
                   {navigation.legal.map((item) => (
                     <li key={item.name}>
-                      <a href={item.href} className="text-sm leading-6 text-gray-600 hover:text-gray-900">
+                      <a href={item.href} className="text-sm leading-6 text-gray-700 dark:text-gray-300 hover:text-gray-900">
                         {item.name}
                       </a>
                     </li>
@@ -88,7 +88,7 @@ export default function LandingFooter() {
           </div>
         </div>
         <div className="mt-16 border-t border-gray-900/10 pt-8 sm:mt-20 lg:mt-24">
-          <p className="text-xs leading-5 text-gray-500">
+          <p className="text-xs leading-5 text-gray-700 dark:text-gray-300">
             &copy; {new Date().getFullYear()} Clash, Inc. All rights reserved.
           </p>
         </div>

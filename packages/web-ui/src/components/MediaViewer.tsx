@@ -40,6 +40,9 @@ export default function MediaViewer({ isOpen, onClose, type, src, title }: Media
 
                     {/* Content Container */}
                     <motion.div
+                        role="dialog"
+                        aria-modal="true"
+                        aria-label={title || 'Media Viewer'}
                         initial={{ opacity: 0, scale: 0.95, y: 20 }}
                         animate={{ opacity: 1, scale: 1, y: 0 }}
                         exit={{ opacity: 0, scale: 0.95, y: 20 }}
@@ -49,10 +52,12 @@ export default function MediaViewer({ isOpen, onClose, type, src, title }: Media
                     >
                         {/* Close Button */}
                         <button
+                            type="button"
                             onClick={onClose}
-                            className="absolute -top-12 right-0 rounded-full bg-white/10 p-2 text-white transition-colors hover:bg-white/20"
+                            aria-label="Close media viewer"
+                            className="absolute -top-12 right-0 rounded-full bg-white/10 p-2 min-h-[44px] min-w-[44px] text-white transition-colors hover:bg-white/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-black"
                         >
-                            <X size={24} weight="bold" />
+                            <X size={24} weight="bold" aria-hidden="true" />
                         </button>
 
                         {/* Title */}

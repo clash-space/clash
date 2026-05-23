@@ -5,7 +5,7 @@ interface ThinkingIndicatorProps {
     message?: string;
 }
 
-export function ThinkingIndicator({ message = "Thinking..." }: ThinkingIndicatorProps) {
+export function ThinkingIndicator({ message = 'Thinking' }: ThinkingIndicatorProps) {
     return (
         <motion.div
             initial={{ opacity: 0, y: 5 }}
@@ -14,20 +14,26 @@ export function ThinkingIndicator({ message = "Thinking..." }: ThinkingIndicator
             transition={{ duration: 0.3 }}
             className="flex items-center gap-2 px-1 py-2"
         >
-            <div className="p-1 rounded-md bg-indigo-50 text-indigo-500">
-                <motion.div
+            <span className="p-1 rounded-md bg-indigo-50 text-indigo-600 dark:bg-indigo-950/40 dark:text-indigo-300" aria-hidden="true">
+                <motion.span
+                    className="block motion-reduce:hidden"
                     animate={{ rotate: 360 }}
-                    transition={{ duration: 2, repeat: Infinity, ease: "linear" }}
+                    transition={{ duration: 2, repeat: Infinity, ease: 'linear' }}
                 >
                     <Sparkle className="w-3.5 h-3.5" weight="fill" />
-                </motion.div>
-            </div>
-            <span className="text-sm font-medium text-slate-600">
+                </motion.span>
+                {/* Static fallback for reduced-motion users. */}
+                <span className="hidden motion-reduce:block">
+                    <Sparkle className="w-3.5 h-3.5" weight="fill" />
+                </span>
+            </span>
+            <span className="text-sm font-medium text-slate-700 dark:text-slate-200">
                 {message}
                 <motion.span
+                    aria-hidden="true"
                     animate={{ opacity: [0, 1, 0] }}
                     transition={{ duration: 1.5, repeat: Infinity, times: [0, 0.5, 1] }}
-                >...</motion.span>
+                >…</motion.span>
             </span>
         </motion.div>
     );

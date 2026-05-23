@@ -100,7 +100,7 @@ const PromptNode = ({ data, selected, id }: NodeProps<Node<Record<string, any>>>
                     animate={{ opacity: 1, scale: 1, y: 0 }}
                     exit={{ opacity: 0, scale: 0.95, y: 20 }}
                     transition={{ type: 'spring', damping: 25, stiffness: 300 }}
-                    className="relative z-10 w-full max-w-5xl h-[85vh] bg-white rounded-xl shadow-2xl overflow-hidden flex flex-col border border-gray-200"
+                    className="relative z-10 w-full max-w-5xl h-[85vh] bg-warm-surface rounded-xl shadow-2xl overflow-hidden flex flex-col border border-gray-200"
                     onClick={(e) => e.stopPropagation()}
                 >
                     {/* Header with Title Input */}
@@ -110,7 +110,7 @@ const PromptNode = ({ data, selected, id }: NodeProps<Node<Record<string, any>>>
                             value={label}
                             onChange={handleLabelChange}
                             placeholder="Untitled Prompt"
-                            className="w-full text-4xl font-bold text-gray-900 placeholder:text-gray-300 bg-transparent border-none outline-none focus:outline-none"
+                            className="w-full text-4xl font-bold text-slate-900 dark:text-slate-50 placeholder:text-gray-300 bg-transparent border-none outline-none focus:outline-none"
                             style={{
                                 fontFamily: 'var(--font-space-grotesk), var(--font-inter), sans-serif',
                                 letterSpacing: '-0.02em'
@@ -125,7 +125,7 @@ const PromptNode = ({ data, selected, id }: NodeProps<Node<Record<string, any>>>
                             </button>
                             <button
                                 onClick={handleCancel}
-                                className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+                                className="p-2 text-gray-700 dark:text-gray-300 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
                             >
                                 <X className="w-5 h-5" weight="bold" />
                             </button>
@@ -133,7 +133,7 @@ const PromptNode = ({ data, selected, id }: NodeProps<Node<Record<string, any>>>
                     </div>
 
                     {/* Editor Content */}
-                    <div className="flex-1 overflow-y-auto bg-white">
+                    <div className="flex-1 overflow-y-auto bg-warm-surface">
                         <MilkdownEditor value={content} onChange={setContent} />
                     </div>
                 </motion.div>

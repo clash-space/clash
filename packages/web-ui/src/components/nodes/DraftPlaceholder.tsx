@@ -108,7 +108,7 @@ const DraftPlaceholder = ({ nodeId, modality, width, height }: DraftPlaceholderP
                 role="group"
                 aria-label={`Draft ${MODALITY_LABEL[modality]} placeholder`}
             >
-                <div className="flex flex-col items-center gap-1 text-slate-500">
+                <div className="flex flex-col items-center gap-1 text-slate-700 dark:text-slate-300">
                     <Icon size={28} weight="duotone" aria-hidden="true" />
                     <span className="text-[11px] font-bold uppercase tracking-wider">Draft {MODALITY_LABEL[modality]}</span>
                 </div>

@@ -1,0 +1,102 @@
+{
+  "copilot": {
+    "panel": {
+      "label": "AI Copilot",
+      "expand": "Expand AI Copilot",
+      "collapse": "Collapse AI Copilot"
+    },
+    "header": {
+      "newSession": "New session",
+      "history": "Session history",
+      "runOn": "Run on (Cloud / local runtime)"
+    },
+    "history": {
+      "title": "Session history",
+      "empty": "No history yet",
+      "fallbackTitle": "Session {{index}}",
+      "delete": "Delete session"
+    },
+    "runtime": {
+      "menuTitle": "Run on",
+      "cloud": {
+        "label": "Cloud",
+        "sub": "Default — clash.video LLMs"
+      },
+      "machinesHeader": "My machines",
+      "machineSub_online_one": "online · {{count}} agent",
+      "machineSub_online_other": "online · {{count}} agents",
+      "machineSub_offline": "offline",
+      "quickConnect": {
+        "label": "Quick connect…",
+        "sub": "One-shot npx pairing (no install)"
+      },
+      "addMachine": {
+        "label": "Add machine…",
+        "sub": "Register a persistent local runtime"
+      }
+    },
+    "addMachine": {
+      "title": "Register a machine",
+      "intro": "On the computer you want to use, run this in a terminal. It opens your browser, asks you to allow the connection, then installs a background daemon. After that, the machine appears in the \"Run on\" menu — automatically and persistently.",
+      "runInTerminal": "Run this in your terminal",
+      "copy": "Copy",
+      "copied": "Copied",
+      "footnote": "Requires Node 18+. The daemon installs as a launchd / systemd user service (auto-starts on boot). Remove anytime with"
+    },
+    "selectedContext": {
+      "count_one": "{{count}} Selected",
+      "count_other": "{{count}} Selected"
+    },
+    "status": {
+      "connecting": "Connecting to runtime…",
+      "connected": "Connected",
+      "disconnected": "Disconnected",
+      "thinking": "Thinking",
+      "streaming": "Streaming",
+      "localAgentReady": "Local agent connected. Send a message to start.",
+      "slashCommandsMore": "+{{count}} more"
+    },
+    "errors": {
+      "createSession": "Failed to create session. Please try again.",
+      "warningPrefix": "⚠"
+    },
+    "chatInput": {
+      "placeholderDefault": "Ask anything...",
+      "placeholderWithSelection": "Ask anything about selected files...",
+      "attach": "Attach files",
+      "voice": "Voice input",
+      "cancelVoice": "Cancel voice recording",
+      "confirmVoice": "Use voice transcript",
+      "send": "Send message",
+      "stop": "Stop generating",
+      "uploading_one": "Uploading {{count}} file...",
+      "uploading_other": "Uploading {{count}} files...",
+      "uploadFailed": "⚠️ Failed to upload {{name}} "
+    },
+    "approvalCard": {
+      "approve": "Approve",
+      "reject": "Reject"
+    },
+    "agentCard": {
+      "status": {
+        "working": "Working",
+        "done": "Done",
+        "waiting": "Waiting",
+        "failed": "Failed"
+      }
+    },
+    "thinking": {
+      "label": "Thinking Process"
+    },
+    "toolCall": {
+      "input": "Input",
+      "output": "Output",
+      "expand": "Expand tool call details",
+      "collapse": "Collapse tool call details"
+    }
+  },
+  "common": {
+    "close": "Close",
+    "untitled": "untitled"
+  }
+}

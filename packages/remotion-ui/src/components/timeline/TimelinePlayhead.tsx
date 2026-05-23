@@ -35,33 +35,28 @@ export const TimelinePlayhead: React.FC<TimelinePlayheadProps> = React.memo(({
   const [isDragging, setIsDragging] = useState(false);
   const [isHovered, setIsHovered] = useState(false);
 
-  // Refs for direct DOM manipulation during playback
-  const lineRef = useRef<HTMLDivElement>(null);
-  const triangleRef = useRef<HTMLDivElement>(null);
+  // ONE absolutely-positioned wrapper holds both the playhead line and the
+  // triangle handle. Movement is applied as a `transform: translate3d` on
+  // this wrapper instead of mutating `left` on each child. Two reasons:
+  //
+  //   1. `left` writes force layout + paint on every frame; with the wrapper
+  //      we're in composite-only territory (GPU-accelerated).
+  //   2. The triangle is rendered by framer-motion (for its hover/drag scale
+  //      animation); writing `transform` directly to it from a useLayoutEffect
+  //      fought framer-motion's own transform string and produced jitter.
+  //      Pinning the translate to a non-motion ancestor sidesteps that.
+  //
+  // Within the wrapper, line + triangle are positioned with negative `left`
+  // offsets (centered on the wrapper's origin) and never change after mount.
+  const wrapperRef = useRef<HTMLDivElement>(null);
 
-  // Refs for stable access in RAF loop without restarting effect
-  const scrollLeftRef = useRef(scrollLeft);
-  const pixelsPerFrameRef = useRef(pixelsPerFrame);
-  const leftOffsetRef = useRef(leftOffset);
-
-  // Update refs on render
-  scrollLeftRef.current = scrollLeft;
-  pixelsPerFrameRef.current = pixelsPerFrame;
-  leftOffsetRef.current = leftOffset;
-
-  // Direct DOM update for static position
-  // We use useLayoutEffect to ensure it updates immediately after render
   React.useLayoutEffect(() => {
     const pos = frameToPixels(currentFrame, pixelsPerFrame);
     const cX = leftOffset + pos - scrollLeft;
-    const lL = cX - timeline.playheadWidth / 2;
-    const tL = cX - timeline.playheadTriangleSize / 2;
-
-    if (lineRef.current) {
-      lineRef.current.style.left = `${lL}px`;
-    }
-    if (triangleRef.current) {
-      triangleRef.current.style.left = `${tL}px`;
+    if (wrapperRef.current) {
+      // translate3d (not translateX) to force a GPU layer even on older
+      // browsers that don't auto-promote a 2D translate.
+      wrapperRef.current.style.transform = `translate3d(${cX}px, 0, 0)`;
     }
   }, [currentFrame, pixelsPerFrame, leftOffset, scrollLeft]);
 
@@ -117,72 +112,83 @@ export const TimelinePlayhead: React.FC<TimelinePlayheadProps> = React.memo(({
         pointerEvents: 'none',
       }}
     >
-      {/* 竖线：始终渲染。通过 label 面板更高的 z-index 进行遮挡 */}
       <div
-        ref={lineRef}
+        ref={wrapperRef}
         style={{
           position: 'absolute',
-          // REMOVED 'left' from here completely to allow direct DOM manipulation via refs
-          // Both static (useLayoutEffect) and dynamic (RAF) updates use the ref.
           top: 0,
           bottom: 0,
-          width: timeline.playheadWidth,
-          backgroundColor: colors.accent.primary,
-          boxShadow: isDragging ? '0 0 8px rgba(74, 158, 255, 0.6)' : 'none',
-          transition: isDragging ? 'none' : 'box-shadow 0.2s ease',
-        }}
-      />
-
-      {/* 顶部三角形拖拽手柄 */}
-      <motion.div
-        ref={triangleRef}
-        role="slider"
-        aria-label="Playhead"
-        aria-valuemin={0}
-        aria-valuemax={Number.isFinite(_durationInFrames) ? _durationInFrames : undefined}
-        aria-valuenow={currentFrame}
-        aria-valuetext={formatTime(currentFrame, fps)}
-        tabIndex={0}
-        onMouseDown={handleMouseDown}
-        onMouseEnter={() => setIsHovered(true)}
-        onMouseLeave={() => setIsHovered(false)}
-        onKeyDown={(e) => {
-          const step = e.shiftKey ? 10 : 1;
-          if (e.key === 'ArrowLeft') {
-            e.preventDefault();
-            onSeek(Math.max(0, currentFrame - step));
-          } else if (e.key === 'ArrowRight') {
-            e.preventDefault();
-            const max = Number.isFinite(_durationInFrames) ? _durationInFrames : currentFrame + step;
-            onSeek(Math.min(max, currentFrame + step));
-          } else if (e.key === 'Home') {
-            e.preventDefault();
-            onSeek(0);
-          } else if (e.key === 'End' && Number.isFinite(_durationInFrames)) {
-            e.preventDefault();
-            onSeek(_durationInFrames);
-          }
-        }}
-        animate={{
-          scale: isDragging ? 1.3 : isHovered ? 1.2 : 1,
-        }}
-        transition={animations.springGentle}
-        style={{
-          position: 'absolute',
-          // REMOVED 'left' from here completely
-          top: -1,
+          left: 0,
+          // Width is just a hit-test box around the playhead origin —
+          // children stick out via negative offsets. willChange tells the
+          // compositor we'll be retransforming this every frame.
           width: 0,
-          height: 0,
-          borderLeft: `${timeline.playheadTriangleSize / 2}px solid transparent`,
-          borderRight: `${timeline.playheadTriangleSize / 2}px solid transparent`,
-          borderTop: `${timeline.playheadTriangleSize}px solid ${colors.accent.primary}`,
-          cursor: 'ew-resize',
-          pointerEvents: 'auto',
-          filter: isDragging ? 'drop-shadow(0 0 4px rgba(74, 158, 255, 0.8))' : 'none',
-          // 三角形也始终渲染，由更高 z-index 的 label 遮挡
-          display: 'block',
+          willChange: 'transform',
         }}
       >
+        {/* 竖线 — centered on the wrapper's origin, never moves relative
+            to its parent (the parent's transform handles motion). */}
+        <div
+          style={{
+            position: 'absolute',
+            left: -timeline.playheadWidth / 2,
+            top: 0,
+            bottom: 0,
+            width: timeline.playheadWidth,
+            backgroundColor: colors.accent.primary,
+            boxShadow: isDragging ? '0 0 8px rgba(74, 158, 255, 0.6)' : 'none',
+            transition: isDragging ? 'none' : 'box-shadow 0.2s ease',
+          }}
+        />
+
+        {/* 顶部三角形拖拽手柄 */}
+        <motion.div
+          role="slider"
+          aria-label="Playhead"
+          aria-valuemin={0}
+          aria-valuemax={Number.isFinite(_durationInFrames) ? _durationInFrames : undefined}
+          aria-valuenow={currentFrame}
+          aria-valuetext={formatTime(currentFrame, fps)}
+          tabIndex={0}
+          onMouseDown={handleMouseDown}
+          onMouseEnter={() => setIsHovered(true)}
+          onMouseLeave={() => setIsHovered(false)}
+          onKeyDown={(e) => {
+            const step = e.shiftKey ? 10 : 1;
+            if (e.key === 'ArrowLeft') {
+              e.preventDefault();
+              onSeek(Math.max(0, currentFrame - step));
+            } else if (e.key === 'ArrowRight') {
+              e.preventDefault();
+              const max = Number.isFinite(_durationInFrames) ? _durationInFrames : currentFrame + step;
+              onSeek(Math.min(max, currentFrame + step));
+            } else if (e.key === 'Home') {
+              e.preventDefault();
+              onSeek(0);
+            } else if (e.key === 'End' && Number.isFinite(_durationInFrames)) {
+              e.preventDefault();
+              onSeek(_durationInFrames);
+            }
+          }}
+          animate={{
+            scale: isDragging ? 1.3 : isHovered ? 1.2 : 1,
+          }}
+          transition={animations.springGentle}
+          style={{
+            position: 'absolute',
+            left: -timeline.playheadTriangleSize / 2,
+            top: -1,
+            width: 0,
+            height: 0,
+            borderLeft: `${timeline.playheadTriangleSize / 2}px solid transparent`,
+            borderRight: `${timeline.playheadTriangleSize / 2}px solid transparent`,
+            borderTop: `${timeline.playheadTriangleSize}px solid ${colors.accent.primary}`,
+            cursor: 'ew-resize',
+            pointerEvents: 'auto',
+            filter: isDragging ? 'drop-shadow(0 0 4px rgba(74, 158, 255, 0.8))' : 'none',
+            display: 'block',
+          }}
+        >
         {/* Tooltip - 显示当前时间 */}
         {(isHovered || isDragging) && (
           <motion.div
@@ -210,7 +216,8 @@ export const TimelinePlayhead: React.FC<TimelinePlayheadProps> = React.memo(({
             {formatTime(currentFrame, fps)}
           </motion.div>
         )}
-      </motion.div>
+        </motion.div>
+      </div>
     </div>
   );
 });

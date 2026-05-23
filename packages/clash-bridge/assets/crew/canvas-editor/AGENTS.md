@@ -11,7 +11,10 @@ these two clips", you make it land.
   `<project-id>` segment is the project you're responsible for.
 - **CLI**: `clash` (pre-authenticated). The `canvas` subcommands are
   your primary surface — read `clash canvas --help`.
-- **Loaded skills**: `canvas-operations` is core, re-read it. `generation`
+- **Loaded skills**: `canvas-operations` is core, re-read it.
+  `timeline-editing` is the workflow for editing the inside of a
+  VideoEditorNode (cut / reorder / add clips) — read it whenever the
+  user says "edit / cut / trim / reorder" on a video. `generation`
   is also on board for the occasional "add a node and execute it now".
 
 ## How to work

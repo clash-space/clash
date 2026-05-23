@@ -490,17 +490,17 @@ const VideoEditorNode = ({ data, id }: NodeProps<Node<Record<string, any>>>) => 
             onDoubleClick={handleOpenEditor}
         >
             {/* Main Card */}
-            <div className="w-full bg-white shadow-md rounded-matrix overflow-hidden transition-all duration-300 hover:shadow-lg ring-1 ring-slate-200">
+            <div className="w-full bg-warm-surface shadow-md rounded-matrix overflow-hidden transition-all duration-300 hover:shadow-lg ring-1 ring-slate-200">
                 {/* Header Badge */}
                 <div className="absolute top-3 left-3 z-10">
                     <div className="flex items-center gap-1.5 px-2.5 py-1 bg-white/90 backdrop-blur-sm rounded-full shadow-sm border border-slate-200/50">
                         <FilmSlate className="w-3.5 h-3.5 text-blue-500" weight="fill" />
-                        <span className="text-[10px] font-bold font-display text-slate-700 uppercase tracking-wide">Timeline Editor</span>
+                        <span className="text-[10px] font-bold font-display text-slate-800 dark:text-slate-200 uppercase tracking-wide">Timeline Editor</span>
                     </div>
                 </div>
 
                 {/* Preview Area */}
-                <div className="relative w-full aspect-video bg-stone-100 flex items-center justify-center overflow-hidden border-b border-slate-100">
+                <div className="relative w-full aspect-video bg-stone-100 flex items-center justify-center overflow-hidden border-b border-warm-border">
                     {previewSrc ? (
                         previewSrc.match(/\.(mp4|webm|mov)$/i) ? (
                             signedPreviewUrl ? (
@@ -523,12 +523,12 @@ const VideoEditorNode = ({ data, id }: NodeProps<Node<Record<string, any>>>) => 
                         )
                     ) : (
                         <div className="flex flex-col items-center justify-center gap-3 p-6">
-                            <div className="rounded-full w-16 h-16 flex justify-center items-center bg-white shadow-sm group-hover:bg-blue-50 transition-colors">
-                                <FilmSlate className="w-8 h-8 text-stone-500 group-hover:text-blue-500 transition-colors" weight="duotone" />
+                            <div className="rounded-full w-16 h-16 flex justify-center items-center bg-warm-surface shadow-sm group-hover:bg-blue-50 transition-colors">
+                                <FilmSlate className="w-8 h-8 text-stone-700 dark:text-stone-300 group-hover:text-blue-500 transition-colors" weight="duotone" />
                             </div>
                             <div className="text-center">
                                 <div className="text-sm font-bold font-display text-stone-700">Video Editor</div>
-                                <div className="text-xs text-gray-400 mt-1">Double-click to open</div>
+                                <div className="text-xs text-gray-700 dark:text-gray-300 mt-1">Double-click to open</div>
                             </div>
                         </div>
                     )}
@@ -544,7 +544,7 @@ const VideoEditorNode = ({ data, id }: NodeProps<Node<Record<string, any>>>) => 
                 </div>
 
                 {/* Footer Actions */}
-                <div className="bg-slate-50 px-3 py-2 border-t border-slate-100 flex items-center justify-end h-10">
+                <div className="bg-warm-muted px-3 py-2 border-t border-warm-border flex items-center justify-end h-10">
                     <button
                         onClick={handleRender}
                         disabled={rendering}

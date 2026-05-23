@@ -24,6 +24,7 @@
 
 import { Hono } from "hono";
 import type { Env } from "../../config";
+import { deriveRuntimeStatus } from "../../lib/runtime-status";
 
 /** Browser-facing routes — mounted under /api/v1/runtimes. */
 export const runtimesRoutes = new Hono<{ Bindings: Env }>();
@@ -221,7 +222,7 @@ runtimesRoutes.get("/", async (c) => {
       os: r.os,
       agents: JSON.parse(r.agents_json || "[]"),
       version: r.version,
-      status: r.status,
+      status: deriveRuntimeStatus(r.status, r.last_heartbeat),
       last_heartbeat: r.last_heartbeat,
       created_at: r.created_at,
     })),
@@ -288,10 +289,17 @@ runtimesRoutes.post("/:rid/sessions", async (c) => {
   }
 
   const runtime = await c.env.DB.prepare(
-    "SELECT id, status FROM runtime WHERE id = ? AND owner_user_id = ?",
-  ).bind(rid, userId).first<{ id: string; status: string }>();
+    "SELECT id, status, last_heartbeat FROM runtime WHERE id = ? AND owner_user_id = ?",
+  ).bind(rid, userId).first<{ id: string; status: string; last_heartbeat: number | null }>();
   if (!runtime) return c.json({ error: "runtime not found" }, 404);
-  if (runtime.status !== "online") return c.json({ error: "runtime offline" }, 409);
+  // Use the derived status so a row that's still flagged `'online'`
+  // but hasn't heartbeat for 90s+ gets rejected here. Without this
+  // check the browser's auto-reconnect loop pumps out orphan
+  // runtime_session rows every few seconds against a dead daemon —
+  // we saw 239 leak in a single afternoon before this guard landed.
+  if (deriveRuntimeStatus(runtime.status, runtime.last_heartbeat) !== "online") {
+    return c.json({ error: "runtime offline" }, 409);
+  }
 
   const sessionId = crypto.randomUUID();
   // cwd column overload remains: it's still being used to hold project_id

@@ -70,18 +70,20 @@ export class RuntimeRoom extends DurableObject<Env> {
       return new Response("missing runtime headers", { status: 400 });
     }
 
-    // One daemon per runtime. A reconnecting daemon needs the prior WS
-    // to be reaped first — CF should fire `webSocketClose` on the old TCP
-    // long before a fresh attempt arrives, but if not we 409 the new one
-    // and let the daemon retry after the close finally lands.
-    const existing = this.ctx.getWebSockets("daemon");
-    if (existing.length > 0) {
-      try {
-        existing[0].send(JSON.stringify({ type: "ping" }));
-        return new Response("daemon already attached", { status: 409 });
-      } catch {
-        try { existing[0].close(1011, "stale"); } catch { /* already closing */ }
-      }
+    // One daemon per runtime. When a fresh attach arrives we always
+    // assume it supersedes any prior attachment — the old daemon either
+    // restarted (intentional) or its host crashed (the WS hibernated in
+    // DO memory because CF never got a clean TCP close). The previous
+    // "send ping; if ok 409 the new one" probe was unreliable: `send`
+    // on a dying-but-not-yet-noticed WS writes to a buffer and returns
+    // truthy, so we'd reject legitimate reconnects with 409 until the
+    // close event finally landed (could be minutes; in `wrangler dev`
+    // sometimes never). "Newer wins" is what users want during a
+    // restart cycle anyway, and a stale daemon getting close(1011)
+    // simply triggers its own reconnect loop where it'll lose the race
+    // for the new attach — self-healing without manual intervention.
+    for (const sock of this.ctx.getWebSockets("daemon")) {
+      try { sock.close(1011, "superseded"); } catch { /* already closing */ }
     }
 
     this.runtimeId = runtimeId;

@@ -250,25 +250,25 @@ const AudioNode = ({ data, selected, id }: NodeProps<Node<Record<string, any>>>)
                 onClick={() => setShowModal(false)}
             />
             <div
-                className="relative z-10 w-full max-w-md bg-white rounded-2xl shadow-2xl p-6 flex flex-col gap-6 animate-in fade-in zoom-in-95 duration-200"
+                className="relative z-10 w-full max-w-md bg-warm-surface rounded-2xl shadow-2xl p-6 flex flex-col gap-6 animate-in fade-in zoom-in-95 duration-200"
                 onClick={(e) => e.stopPropagation()}
             >
                 <div className="flex items-center justify-between">
                     <h3 className="text-lg font-bold text-slate-900">Audio Player</h3>
-                    <button onClick={() => setShowModal(false)} className="text-slate-400 hover:text-slate-600">
+                    <button onClick={() => setShowModal(false)} className="text-slate-700 dark:text-slate-300 hover:text-slate-600">
                         <X size={20} />
                     </button>
                 </div>
 
                 <div className="flex flex-col gap-6">
-                    <div className="flex items-center justify-center py-8 bg-slate-50 rounded-xl">
-                        <div className="h-32 w-32 rounded-full bg-slate-200 flex items-center justify-center text-slate-500 shadow-inner">
+                    <div className="flex items-center justify-center py-8 bg-warm-muted rounded-xl">
+                        <div className="h-32 w-32 rounded-full bg-slate-200 flex items-center justify-center text-slate-700 dark:text-slate-300 shadow-inner">
                             <SpeakerHigh size={48} weight="fill" />
                         </div>
                     </div>
 
                     <div className="flex flex-col gap-2">
-                        <div className="flex justify-between text-xs font-medium text-slate-500 tabular-nums">
+                        <div className="flex justify-between text-xs font-medium text-slate-700 dark:text-slate-300 tabular-nums">
                             <span>{formatTime(currentTime)}</span>
                             <span>{formatTime(duration)}</span>
                         </div>
@@ -278,7 +278,7 @@ const AudioNode = ({ data, selected, id }: NodeProps<Node<Record<string, any>>>)
                             onClick={handleWaveformClick}
                         >
                             {decoding && !peaks && (
-                                <div className="absolute inset-0 flex items-center justify-center text-slate-400">
+                                <div className="absolute inset-0 flex items-center justify-center text-slate-700 dark:text-slate-300">
                                     <Spinner size={20} className="animate-spin" />
                                 </div>
                             )}
@@ -299,7 +299,7 @@ const AudioNode = ({ data, selected, id }: NodeProps<Node<Record<string, any>>>)
                     <div className="flex items-center justify-center gap-6">
                         <button
                             onClick={handleSkipBack}
-                            className="text-slate-500 hover:text-slate-900 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+                            className="text-slate-700 dark:text-slate-300 hover:text-slate-900 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
                             disabled={!duration}
                             aria-label={`Skip back ${SKIP_SECONDS}s`}
                         >
@@ -319,7 +319,7 @@ const AudioNode = ({ data, selected, id }: NodeProps<Node<Record<string, any>>>)
                         </button>
                         <button
                             onClick={handleSkipForward}
-                            className="text-slate-500 hover:text-slate-900 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+                            className="text-slate-700 dark:text-slate-300 hover:text-slate-900 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
                             disabled={!duration}
                             aria-label={`Skip forward ${SKIP_SECONDS}s`}
                         >
@@ -339,7 +339,7 @@ const AudioNode = ({ data, selected, id }: NodeProps<Node<Record<string, any>>>)
                     onDoubleClick={(e) => e.stopPropagation()}
                 >
                     <input
-                        className="bg-transparent text-lg font-bold font-display text-slate-500 focus:text-slate-900 focus:outline-none"
+                        className="bg-transparent text-lg font-bold font-display text-slate-700 dark:text-slate-300 focus:text-slate-900 focus:outline-none"
                         value={label}
                         onChange={(evt) => {
                             setLabel(evt.target.value);
@@ -349,14 +349,14 @@ const AudioNode = ({ data, selected, id }: NodeProps<Node<Record<string, any>>>)
                 </div>
 
                 <div
-                    className={`w-full bg-white shadow-xl rounded-matrix overflow-hidden transition-all duration-300 hover:shadow-2xl cursor-pointer ${selected ? 'ring-4 ring-slate-900 ring-offset-2' : 'ring-1 ring-slate-200'}`}
+                    className={`w-full bg-warm-surface shadow-xl rounded-matrix overflow-hidden transition-all duration-300 hover:shadow-2xl cursor-pointer ${selected ? 'ring-4 ring-slate-900 ring-offset-2' : 'ring-1 ring-slate-200'}`}
                     onClick={() => audioUrl && status === 'completed' && setShowModal(true)}
                 >
                     <div className="flex items-center justify-center h-16 px-4">
                         {status === 'draft' ? (
                             <DraftPlaceholder nodeId={id} modality="audio" height={64} />
                         ) : isActiveStatus(status) && !audioUrl ? (
-                            <div className="flex items-center gap-2 text-slate-500">
+                            <div className="flex items-center gap-2 text-slate-700 dark:text-slate-300">
                                 <Spinner size={24} className="animate-spin" />
                                 <span className="text-sm font-medium">Generating audio...</span>
                             </div>
@@ -367,7 +367,7 @@ const AudioNode = ({ data, selected, id }: NodeProps<Node<Record<string, any>>>)
                             </div>
                         ) : (
                             <div className="flex items-center gap-2 w-full justify-center">
-                                <SpeakerHigh size={20} weight="fill" className="text-slate-500 shrink-0" />
+                                <SpeakerHigh size={20} weight="fill" className="text-slate-700 dark:text-slate-300 shrink-0" />
                                 <div className="flex items-center gap-[2px] h-8 flex-1 justify-center">
                                     {waveformBars.slice(0, 48).map((p, index) => (
                                         <div

@@ -25,6 +25,48 @@ const labelClassName = 'mb-1.5 block text-xs font-medium text-slate-500';
 const fieldClassName = 'w-full rounded-md border border-slate-200 bg-white px-2 py-1.5 text-sm text-slate-900 outline-none transition-all focus:border-[#ff9a86] focus:ring-1 focus:ring-[#ffb6a8]';
 const readOnlyFieldClassName = 'w-full cursor-not-allowed rounded-md border border-slate-200 bg-slate-100 px-2 py-1.5 text-sm text-slate-500';
 
+/**
+ * Split button — isolated subscriber for `currentFrame` so the rest of
+ * the 690-line PropertiesPanel doesn't re-render on every scrub or
+ * playback frame. Inline button placement still works because React
+ * happily reconciles a single child element when only it changes.
+ *
+ * `canSplit` is a function of (currentFrame, item) — keeping the
+ * subscription local means only this small subtree reconciles per
+ * frame, not all the Properties form fields below.
+ */
+const SplitButton: React.FC<{
+  itemFrom: number;
+  itemEnd: number;
+  trackId: string;
+  itemId: string;
+}> = React.memo(({ itemFrom, itemEnd, trackId, itemId }) => {
+  const dispatch = useEditorDispatch();
+  const { currentFrame } = useEditorPlayback();
+  const canSplit = currentFrame > itemFrom && currentFrame < itemEnd;
+  const splitItem = () => {
+    if (!canSplit) return;
+    dispatch({
+      type: 'SPLIT_ITEM',
+      payload: { trackId, itemId, splitFrame: currentFrame },
+    });
+  };
+  return (
+    <button
+      onClick={splitItem}
+      disabled={!canSplit}
+      className={`rounded-md border px-3 py-1.5 text-xs font-medium transition-colors ${
+        canSplit
+          ? 'cursor-pointer border-[#ffd3ca] bg-white text-[#d94f38] hover:border-[#ffb6a8] hover:bg-[#fff3f0]'
+          : 'bg-slate-50 text-slate-400 border-slate-200 cursor-not-allowed'
+      }`}
+      title={canSplit ? `Split at frame ${currentFrame}` : 'Move playhead onto the selected item to split'}
+    >
+      Split
+    </button>
+  );
+});
+
 export const PropertiesPanel: React.FC = () => {
   const dispatch = useEditorDispatch();
   const {
@@ -35,7 +77,6 @@ export const PropertiesPanel: React.FC = () => {
     durationInFrames,
     fps,
   } = useEditorStaticState();
-  const { currentFrame } = useEditorPlayback();
   const [showExportModal, setShowExportModal] = React.useState(false);
 
   // Find selected item
@@ -45,10 +86,8 @@ export const PropertiesPanel: React.FC = () => {
       .find((x) => x.item.id === selectedItemId)
     : null;
 
-  // Calculate split quality and recommendations (must be before early return)
   const selectedItemData = selectedItem?.item;
   const itemEnd = selectedItemData ? selectedItemData.from + selectedItemData.durationInFrames : 0;
-  const canSplit = selectedItemData ? (currentFrame > selectedItemData.from && currentFrame < itemEnd) : false;
 
 
 
@@ -204,39 +243,17 @@ export const PropertiesPanel: React.FC = () => {
     });
   };
 
-  const splitItem = () => {
-    if (!canSplit) return;
-
-    dispatch({
-      type: 'SPLIT_ITEM',
-      payload: {
-        trackId,
-        itemId: item.id,
-        splitFrame: currentFrame,
-      },
-    });
-  };
-
   return (
     <div className={panelClassName}>
       <div className={panelHeaderClassName}>
         <h2 className="m-0 text-sm font-bold text-slate-900">Properties</h2>
         <div className="flex gap-2">
-          <button
-            onClick={splitItem}
-            disabled={!canSplit}
-            className={`rounded-md border px-3 py-1.5 text-xs font-medium transition-colors ${canSplit
-                ? 'cursor-pointer border-[#ffd3ca] bg-white text-[#d94f38] hover:border-[#ffb6a8] hover:bg-[#fff3f0]'
-                : 'bg-slate-50 text-slate-400 border-slate-200 cursor-not-allowed'
-              }`}
-            title={
-              canSplit
-                ? `Split at frame ${currentFrame}`
-                : 'Move playhead onto the selected item to split'
-            }
-          >
-            Split
-          </button>
+          <SplitButton
+            itemFrom={item.from}
+            itemEnd={itemEnd}
+            trackId={trackId}
+            itemId={item.id}
+          />
           <button
             onClick={deleteItem}
             className="rounded-md border border-red-200 bg-white px-3 py-1.5 text-xs font-medium text-red-600 transition-colors hover:border-red-300 hover:bg-red-50"

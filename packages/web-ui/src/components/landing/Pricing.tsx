@@ -64,10 +64,10 @@ export default function Pricing() {
       <div className="mx-auto max-w-7xl px-6 lg:px-8">
         <div className="mx-auto max-w-2xl text-center mb-16 sm:mb-20">
           <h2 className="text-base font-semibold leading-7 text-brand font-display">Pricing</h2>
-          <p className="mt-2 text-3xl font-bold tracking-tight text-gray-900 sm:text-4xl font-display">
+          <p className="mt-2 text-3xl font-bold tracking-tight text-slate-900 dark:text-slate-50 sm:text-4xl font-display">
             Simple, transparent pricing
           </p>
-          <p className="mt-6 text-lg leading-8 text-gray-600">
+          <p className="mt-6 text-lg leading-8 text-gray-700 dark:text-gray-300">
             Start free. Upgrade when you're ready. No surprises.
           </p>
         </div>
@@ -83,7 +83,7 @@ export default function Pricing() {
               className={`relative flex flex-col rounded-2xl p-8 ${
                 tier.highlight
                   ? 'bg-gray-900 text-white ring-2 ring-brand shadow-xl scale-[1.02]'
-                  : 'bg-white ring-1 ring-black/5 shadow-sm'
+                  : 'bg-warm-surface ring-1 ring-black/5 shadow-sm'
               }`}
             >
               {tier.highlight && (
@@ -93,18 +93,18 @@ export default function Pricing() {
               )}
 
               <div className="mb-6">
-                <h3 className={`text-lg font-display font-bold ${tier.highlight ? 'text-white' : 'text-gray-900'}`}>
+                <h3 className={`text-lg font-display font-bold ${tier.highlight ? 'text-white' : 'text-slate-900 dark:text-slate-50'}`}>
                   {tier.name}
                 </h3>
                 <div className="mt-3 flex items-baseline gap-1">
-                  <span className={`text-4xl font-display font-bold tracking-tight ${tier.highlight ? 'text-white' : 'text-gray-900'}`}>
+                  <span className={`text-4xl font-display font-bold tracking-tight ${tier.highlight ? 'text-white' : 'text-slate-900 dark:text-slate-50'}`}>
                     {tier.price}
                   </span>
-                  <span className={`text-sm ${tier.highlight ? 'text-gray-400' : 'text-gray-500'}`}>
+                  <span className={`text-sm ${tier.highlight ? 'text-gray-700 dark:text-gray-300' : 'text-gray-700 dark:text-gray-300'}`}>
                     {tier.period}
                   </span>
                 </div>
-                <p className={`mt-3 text-sm ${tier.highlight ? 'text-gray-400' : 'text-gray-600'}`}>
+                <p className={`mt-3 text-sm ${tier.highlight ? 'text-gray-700 dark:text-gray-300' : 'text-gray-700 dark:text-gray-300'}`}>
                   {tier.description}
                 </p>
               </div>
@@ -116,7 +116,7 @@ export default function Pricing() {
                       className={`h-4 w-4 mt-0.5 flex-shrink-0 ${tier.highlight ? 'text-brand' : 'text-brand'}`}
                       weight="bold"
                     />
-                    <span className={`text-sm ${tier.highlight ? 'text-gray-300' : 'text-gray-600'}`}>
+                    <span className={`text-sm ${tier.highlight ? 'text-gray-300' : 'text-gray-700 dark:text-gray-300'}`}>
                       {feature}
                     </span>
                   </li>

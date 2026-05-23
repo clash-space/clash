@@ -56,15 +56,20 @@ interface MilkdownEditorProps {
 const mentionPluginKey = new PluginKey('asset-mention-trigger');
 
 /**
- * Trigger character for the canvas-node attachment picker.
+ * Trigger character for the unified mention picker.
  *
- * Convention split (per user direction): `@` always means "address a
- * crew member" (handled in the GroupChatPanel input — see
- * _group-chat/mention.ts). `#` means "attach a canvas node" — that's
- * what this picker drives. Keeping them on different keys means typing
- * one never accidentally fires the other.
+ * `@` opens a single picker over BOTH crew members and canvas nodes
+ * (GroupChatPanel concatenates `invitedCrew` into `mentionableNodes`
+ * before passing them in). Every selection is inserted as
+ * `@[label](node:<id>)`. The submit handler then re-partitions:
+ * if `<id>` matches an invited crew id it dispatches via the
+ * room-mention path, otherwise it's a canvas-asset attachment.
+ *
+ * Keeping a single trigger avoids the "what's the right key?"
+ * cognitive overhead — users always type `@` and let the picker
+ * disambiguate.
  */
-const MENTION_TRIGGER = '#';
+const MENTION_TRIGGER = '@';
 
 interface MentionPluginState {
     active: boolean;
@@ -184,21 +189,27 @@ function AssetMentionMenu({
 }) {
     const [selectedIndex, setSelectedIndex] = useState(0);
 
-    // Filter by modalities and query
+    // Filter by modalities and query. Crew bypass the modality filter
+    // — they aren't an "asset modality" and the user always wants to
+    // be able to @-address an invited crew member regardless of what
+    // the surrounding action expects as input.
     const filtered = nodes.filter((n) => {
-        // Filter by allowed modalities (map node type to modality)
-        const modality = n.type === 'image' ? 'image' : n.type === 'video' ? 'video' : n.type === 'audio' ? 'audio' : 'text';
-        if (!promptModalities.includes(modality)) return false;
-        // Filter by search query
+        if (n.type !== 'crew') {
+            const modality = n.type === 'image' ? 'image' : n.type === 'video' ? 'video' : n.type === 'audio' ? 'audio' : 'text';
+            if (!promptModalities.includes(modality)) return false;
+        }
         if (query && !n.label.toLowerCase().includes(query.toLowerCase())) return false;
         return true;
     });
 
-    // Sort: connected first, then others
-    const connected = filtered.filter((n) => connectedIds.has(n.id));
-    const other = filtered.filter((n) => !connectedIds.has(n.id));
-    const sorted = [...connected, ...other];
-    const hasConnected = connected.length > 0 && other.length > 0;
+    // Group: crew first (always at the top — they're who you usually
+    // want to talk to), then assets ordered by connected → other.
+    const crewEntries = filtered.filter((n) => n.type === 'crew');
+    const assetEntries = filtered.filter((n) => n.type !== 'crew');
+    const connectedAssets = assetEntries.filter((n) => connectedIds.has(n.id));
+    const otherAssets = assetEntries.filter((n) => !connectedIds.has(n.id));
+    const sortedAssets = [...connectedAssets, ...otherAssets];
+    const sorted = [...crewEntries, ...sortedAssets];
 
     useEffect(() => { setSelectedIndex(0); }, [query]);
 
@@ -223,43 +234,66 @@ function AssetMentionMenu({
         return '📝';
     };
 
+    const initialsOf = (label: string): string => {
+        const words = label.split(/\s+/).filter(Boolean);
+        if (words.length === 0) return '?';
+        if (words.length === 1) return words[0].slice(0, 2).toUpperCase();
+        return (words[0][0] + words[1][0]).toUpperCase();
+    };
+
+    const renderRow = (node: MentionableNode, i: number) => (
+        <button
+            key={node.id}
+            className={`w-full flex items-center gap-2.5 px-3 py-2 text-left transition-colors ${
+                i === selectedIndex ? 'bg-warm-muted' : 'hover:bg-gray-50'
+            }`}
+            onMouseDown={(e) => { e.preventDefault(); onSelect(node); }}
+            onMouseEnter={() => setSelectedIndex(i)}
+        >
+            {node.type === 'crew' ? (
+                <span
+                    className="w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold text-white bg-gradient-to-br from-brand to-red-500 flex-shrink-0"
+                    aria-hidden="true"
+                >
+                    {initialsOf(node.label)}
+                </span>
+            ) : node.thumbnail ? (
+                <SignedImg
+                    src={node.thumbnail}
+                    alt=""
+                    className="w-6 h-6 rounded object-cover border border-warm-border flex-shrink-0"
+                />
+            ) : (
+                <span className="w-6 h-6 flex items-center justify-center text-sm flex-shrink-0">
+                    {typeIcon(node.type)}
+                </span>
+            )}
+            <span className="text-sm text-gray-800 dark:text-gray-200 truncate flex-1">{node.label}</span>
+            {node.type === 'crew' && (
+                <span className="text-[9px] uppercase tracking-wider text-stone-700 dark:text-stone-300 font-medium">
+                    Crew
+                </span>
+            )}
+        </button>
+    );
+
     return (
         <div
-            className="fixed z-[9999] w-64 max-h-60 overflow-y-auto bg-white rounded-xl border border-slate-200 shadow-lg"
+            className="fixed z-[9999] w-64 max-h-60 overflow-y-auto bg-warm-surface rounded-xl border border-warm-border shadow-lg"
             style={{ left: coords.left, bottom: window.innerHeight - coords.top + 4 }}
         >
-            {sorted.map((node, i) => {
-                const showSeparator = hasConnected && i === connected.length;
-                return (
-                    <div key={node.id}>
-                        {showSeparator && (
-                            <div className="px-3 py-1 text-[10px] font-medium text-gray-400 uppercase tracking-wider bg-gray-50 border-t border-slate-100">
-                                Other assets
-                            </div>
-                        )}
-                        <button
-                            className={`w-full flex items-center gap-2.5 px-3 py-2 text-left transition-colors ${
-                                i === selectedIndex ? 'bg-gray-100' : 'hover:bg-gray-50'
-                            }`}
-                            onMouseDown={(e) => { e.preventDefault(); onSelect(node); }}
-                            onMouseEnter={() => setSelectedIndex(i)}
-                        >
-                            {node.thumbnail ? (
-                                <SignedImg
-                                    src={node.thumbnail}
-                                    alt=""
-                                    className="w-6 h-6 rounded object-cover border border-slate-200 flex-shrink-0"
-                                />
-                            ) : (
-                                <span className="w-6 h-6 flex items-center justify-center text-sm flex-shrink-0">
-                                    {typeIcon(node.type)}
-                                </span>
-                            )}
-                            <span className="text-sm text-gray-700 truncate">{node.label}</span>
-                        </button>
-                    </div>
-                );
-            })}
+            {crewEntries.length > 0 && (
+                <div className="px-3 py-1 text-[10px] font-medium text-gray-700 dark:text-gray-300 uppercase tracking-wider bg-warm-muted border-b border-warm-border">
+                    Crew
+                </div>
+            )}
+            {crewEntries.map((node, j) => renderRow(node, j))}
+            {sortedAssets.length > 0 && (
+                <div className={`px-3 py-1 text-[10px] font-medium text-gray-700 dark:text-gray-300 uppercase tracking-wider bg-warm-muted ${crewEntries.length > 0 ? 'border-t border-warm-border' : ''}`}>
+                    Canvas
+                </div>
+            )}
+            {sortedAssets.map((node, j) => renderRow(node, crewEntries.length + j))}
         </div>
     );
 }
@@ -420,9 +454,36 @@ const MilkdownEditorInner = forwardRef<MilkdownEditorHandle, MilkdownEditorProps
                 view.focus();
             }
         } else {
-            // Non-image nodes: insert as text mention
-            const mentionText = `@[${node.label}](node:${node.id}) `;
-            const tr = view.state.tr.replaceWith(from, to, view.state.schema.text(mentionText));
+            // Non-image entries (crew, plain text nodes, etc.): insert as
+            // a real link mark, not raw text. If we plug the literal
+            // string `@[label](node:id)` straight into a Text node,
+            // Milkdown's CommonMark serializer escapes the brackets
+            // (→ `@\[label\](node:id)`) to keep them inert on re-parse —
+            // which then breaks the submit-time regex that partitions
+            // crew vs canvas mentions (`/@\[[^\]]*\]\(node:([^)]+)\)/`).
+            // Building it as an `@` text node + a link-marked label +
+            // trailing space round-trips through the serializer as
+            // exactly `@[label](node:id) `, matches the regex, and the
+            // crew gets routed correctly.
+            const schema = view.state.schema;
+            const linkMark = schema.marks.link;
+            // IMPORTANT: do NOT set a `title` on the link mark. Milkdown's
+            // CommonMark serializer would emit it as
+            // `[label](node:<id> "title")` — and downstream regexes
+            // (`/@\[[^\]]*\]\(node:([^)]+)\)/`) then capture
+            // `<id> "title"` as the id, which fails the
+            // invitedCrewIdSet membership check and silently drops
+            // the @-mention from the dispatched crewMentions array.
+            // The label itself already serves as the human-readable
+            // text; the title attribute brought no value.
+            const labelText = linkMark
+                ? schema.text(node.label, [linkMark.create({ href: `node:${node.id}` })])
+                : schema.text(`[${node.label}](node:${node.id})`);
+            const tr = view.state.tr.replaceWith(from, to, [
+                schema.text('@'),
+                labelText,
+                schema.text(' '),
+            ]);
             tr.setMeta(mentionPluginKey, { active: false, query: '', from: 0, cursorCoords: null });
             view.dispatch(tr);
             view.focus();
@@ -461,7 +522,7 @@ const MilkdownEditorInner = forwardRef<MilkdownEditorHandle, MilkdownEditorProps
         <>
             <div
                 ref={wrapperRef}
-                className="milkdown-editor-wrapper px-12 pb-8"
+                className="milkdown-editor-wrapper px-3 py-2"
                 onClick={handleClick}
             >
                 <Milkdown />

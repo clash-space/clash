@@ -64,7 +64,7 @@ function Overlay({ children, onClose }: { children: ReactNode; onClose: () => vo
             className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/30 px-5 py-4"
             onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
         >
-            <div className="relative h-[min(820px,calc(100vh-48px))] w-[min(1200px,calc(100vw-48px))] overflow-hidden rounded-2xl bg-white shadow-2xl ring-1 ring-slate-950/10 flex flex-col">
+            <div className="relative h-[min(820px,calc(100vh-48px))] w-[min(1200px,calc(100vw-48px))] overflow-hidden rounded-2xl bg-warm-surface shadow-2xl ring-1 ring-slate-950/10 flex flex-col">
                 {children}
             </div>
         </div>
@@ -203,10 +203,10 @@ function VideoClipperPanel({
 
     return (
         <>
-            <div className="flex items-center justify-between px-5 py-3 border-b border-slate-200 bg-white">
+            <div className="flex items-center justify-between px-5 py-3 border-b border-warm-border bg-warm-surface">
                 <h2 className="text-base font-semibold text-slate-800">Video Clipper</h2>
                 <button onClick={onClose} disabled={busy}
-                    className="px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-100 rounded-md">
+                    className="px-3 py-1.5 text-sm text-slate-700 dark:text-slate-300 hover:bg-slate-100 rounded-md">
                     Cancel
                 </button>
             </div>
@@ -230,13 +230,13 @@ function VideoClipperPanel({
                             }}
                         />
                     ) : (
-                        <div className="text-slate-400">Loading…</div>
+                        <div className="text-slate-700 dark:text-slate-300">Loading…</div>
                     )}
                 </div>
 
-                <div className="w-72 border-l border-slate-200 bg-white p-4 flex flex-col gap-4 overflow-y-auto">
+                <div className="w-72 border-l border-warm-border bg-warm-surface p-4 flex flex-col gap-4 overflow-y-auto">
                     <section>
-                        <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Mode</h3>
+                        <h3 className="text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-2">Mode</h3>
                         <div className="flex gap-1">
                             <ModeButton active={mode === 'screenshot'} onClick={() => setMode('screenshot')}>
                                 Screenshot
@@ -249,26 +249,26 @@ function VideoClipperPanel({
 
                     {mode === 'screenshot' ? (
                         <section>
-                            <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">
+                            <h3 className="text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-2">
                                 Time
                             </h3>
                             <div className="text-2xl font-mono text-slate-800 tabular-nums">
                                 {formatTime(frameTimeSec)}
                             </div>
-                            <div className="text-xs text-slate-500 mt-0.5">
+                            <div className="text-xs text-slate-700 dark:text-slate-300 mt-0.5">
                                 of {formatTime(duration)}
                             </div>
                         </section>
                     ) : (
                         <section>
-                            <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">
+                            <h3 className="text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-2">
                                 Range
                             </h3>
                             <div className="grid grid-cols-2 gap-3">
                                 <RangeReadout label="Start" value={startSec} />
                                 <RangeReadout label="End" value={endSec} />
                             </div>
-                            <div className="text-[11px] text-slate-500 mt-2 tabular-nums">
+                            <div className="text-[11px] text-slate-700 dark:text-slate-300 mt-2 tabular-nums">
                                 Length {formatTime(Math.max(0, endSec - startSec))}
                             </div>
                             <div className="mt-3 text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded-md p-2">
@@ -292,7 +292,7 @@ function VideoClipperPanel({
                 </div>
             </div>
 
-            <div className="border-t border-slate-200 bg-slate-50 px-5 py-3">
+            <div className="border-t border-warm-border bg-warm-muted px-5 py-3">
                 <Timeline
                     duration={duration}
                     mode={mode}
@@ -326,7 +326,7 @@ function ModeButton({ active, onClick, children }: { active: boolean; onClick: (
             className={`flex-1 py-1.5 text-xs rounded-md border ${
                 active
                     ? 'bg-slate-900 text-white border-slate-900'
-                    : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-50'
+                    : 'bg-warm-surface text-slate-800 dark:text-slate-200 border-slate-300 hover:bg-slate-50'
             }`}>
             {children}
         </button>
@@ -336,7 +336,7 @@ function ModeButton({ active, onClick, children }: { active: boolean; onClick: (
 function RangeReadout({ label, value }: { label: string; value: number }) {
     return (
         <div className="flex flex-col">
-            <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">{label}</span>
+            <span className="text-[10px] font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider">{label}</span>
             <span className="text-base font-mono text-slate-800 tabular-nums">{formatTime(value)}</span>
         </div>
     );
@@ -517,7 +517,7 @@ function Timeline({
             </div>
 
             {/* Time ruler */}
-            <div className="relative h-4 mt-1 text-[10px] font-mono text-slate-500 tabular-nums">
+            <div className="relative h-4 mt-1 text-[10px] font-mono text-slate-700 dark:text-slate-300 tabular-nums">
                 <span className="absolute left-0">0:00</span>
                 <span className="absolute left-1/4 -translate-x-1/2">{formatTime(duration * 0.25)}</span>
                 <span className="absolute left-1/2 -translate-x-1/2">{formatTime(duration * 0.5)}</span>

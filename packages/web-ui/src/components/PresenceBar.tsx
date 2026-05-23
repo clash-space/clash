@@ -36,18 +36,18 @@ export default function PresenceBar({ clients }: PresenceBarProps) {
             className="relative group"
           >
             <div
-              className={`flex h-8 w-8 items-center justify-center rounded-full border-2 border-white shadow-sm ${
+              className={`flex h-8 w-8 items-center justify-center rounded-full border-2 border-warm-surface shadow-sm ${
                 client.clientType === 'agent'
                   ? 'bg-brand'
                   : client.clientType === 'cli'
-                    ? 'bg-white ring-1 ring-slate-200'
+                    ? 'bg-warm-surface ring-1 ring-warm-border'
                     : 'bg-gradient-to-br from-brand to-red-500'
               }`}
             >
               {client.clientType === 'agent' ? (
-                <Sparkle className="h-4 w-4 text-white" weight="fill" />
+                <Sparkle className="h-4 w-4 text-white" weight="fill" aria-hidden="true" />
               ) : client.clientType === 'cli' ? (
-                <Terminal className="h-4 w-4 text-blue-500" weight="bold" />
+                <Terminal className="h-4 w-4 text-blue-700 dark:text-blue-300" weight="bold" aria-hidden="true" />
               ) : client.avatar ? (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img
@@ -63,7 +63,7 @@ export default function PresenceBar({ clients }: PresenceBarProps) {
             </div>
 
             {/* Tooltip */}
-            <div className="absolute top-full left-1/2 -translate-x-1/2 mt-2 px-2 py-1 rounded-md bg-gray-900 text-white text-xs font-medium whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50">
+            <div role="tooltip" className="absolute top-full left-1/2 -translate-x-1/2 mt-2 px-2 py-1 rounded-md bg-slate-900 text-white text-xs font-medium whitespace-nowrap opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity pointer-events-none z-50 dark:bg-slate-100 dark:text-slate-900">
               {client.name}
             </div>
           </motion.div>
@@ -71,7 +71,7 @@ export default function PresenceBar({ clients }: PresenceBarProps) {
       </AnimatePresence>
 
       {overflow > 0 && (
-        <div className="flex h-8 w-8 items-center justify-center rounded-full border-2 border-white bg-gray-200 text-xs font-bold text-gray-600 shadow-sm">
+        <div className="flex h-8 w-8 items-center justify-center rounded-full border-2 border-warm-surface bg-warm-muted text-xs font-bold text-slate-700 shadow-sm dark:text-slate-200" aria-label={`${overflow} more participants`}>
           +{overflow}
         </div>
       )}

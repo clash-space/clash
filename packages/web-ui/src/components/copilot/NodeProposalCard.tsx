@@ -28,8 +28,8 @@ export const NodeProposalCard: React.FC<NodeProposalCardProps> = ({
     const isGenerative = proposal.type === 'generative';
 
     return (
-        <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden mb-4">
-            <div className="p-4 border-b border-slate-100 bg-slate-50/50 flex items-start gap-3">
+        <div className="bg-warm-surface rounded-xl border border-warm-border shadow-sm overflow-hidden mb-4">
+            <div className="p-4 border-b border-warm-border bg-slate-50/50 flex items-start gap-3">
                 <div className="w-8 h-8 rounded-lg bg-indigo-100 text-indigo-600 flex items-center justify-center shrink-0">
                     {isGenerative ? <MagicWand weight="fill" /> : <Cube weight="fill" />}
                 </div>
@@ -37,23 +37,23 @@ export const NodeProposalCard: React.FC<NodeProposalCardProps> = ({
                     <h3 className="text-sm font-semibold text-slate-800">
                         {isGenerative ? 'Generative Action Proposed' : 'New Node Proposed'}
                     </h3>
-                    <p className="text-xs text-slate-500 mt-1 leading-relaxed">
+                    <p className="text-xs text-slate-700 dark:text-slate-300 mt-1 leading-relaxed">
                         {proposal.message}
                     </p>
                 </div>
             </div>
 
             {/* Node Preview (Simplified) */}
-            <div className="p-3 bg-slate-50/30 border-b border-slate-100">
-                <div className="bg-white border border-slate-200 rounded-lg p-2 flex items-center gap-2">
-                    <div className="w-6 h-6 rounded bg-slate-100 flex items-center justify-center text-xs font-bold text-slate-400">
+            <div className="p-3 bg-slate-50/30 border-b border-warm-border">
+                <div className="bg-warm-surface border border-warm-border rounded-lg p-2 flex items-center gap-2">
+                    <div className="w-6 h-6 rounded bg-warm-muted flex items-center justify-center text-xs font-bold text-slate-700 dark:text-slate-300">
                         {proposal.nodeType.slice(0, 2).toUpperCase()}
                     </div>
                     <div className="flex-1 min-w-0">
-                        <div className="text-xs font-medium text-slate-700 truncate">
+                        <div className="text-xs font-medium text-slate-800 dark:text-slate-200 truncate">
                             {proposal.nodeData.label || proposal.nodeType}
                         </div>
-                        <div className="text-[10px] text-slate-400 truncate">
+                        <div className="text-[10px] text-slate-700 dark:text-slate-300 truncate">
                             {JSON.stringify(proposal.nodeData)}
                         </div>
                     </div>
@@ -63,9 +63,10 @@ export const NodeProposalCard: React.FC<NodeProposalCardProps> = ({
             <div className="p-3 flex items-center gap-2">
                 <motion.button
                     onClick={onReject}
-                    className="flex-1 py-2 px-3 rounded-lg border border-slate-200 text-slate-600 text-xs font-medium hover:bg-slate-50 transition-colors flex items-center justify-center gap-1.5"
+                    className="flex-1 py-2 px-3 rounded-lg border border-warm-border text-slate-700 dark:text-slate-300 text-xs font-medium hover:bg-slate-50 transition-colors flex items-center justify-center gap-1.5"
                     whileHover={{ scale: 1.02 }}
                     whileTap={{ scale: 0.98 }}
+                    transition={{ duration: 0.15, ease: [0.25, 1, 0.5, 1] }}
                 >
                     <X className="w-3.5 h-3.5" />
                     Reject
@@ -74,11 +75,12 @@ export const NodeProposalCard: React.FC<NodeProposalCardProps> = ({
                 <motion.button
                     onClick={onAccept}
                     className={`flex-1 py-2 px-3 rounded-lg text-xs font-medium transition-colors flex items-center justify-center gap-1.5 ${isGenerative
-                            ? 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-50'
+                            ? 'bg-warm-surface border border-warm-border text-slate-800 dark:text-slate-200 hover:bg-slate-50'
                             : 'bg-indigo-600 text-white hover:bg-indigo-700 shadow-sm'
                         }`}
                     whileHover={{ scale: 1.02 }}
                     whileTap={{ scale: 0.98 }}
+                    transition={{ duration: 0.15, ease: [0.25, 1, 0.5, 1] }}
                 >
                     <Check className="w-3.5 h-3.5" />
                     Accept
@@ -90,6 +92,7 @@ export const NodeProposalCard: React.FC<NodeProposalCardProps> = ({
                         className="flex-1 py-2 px-3 rounded-lg bg-indigo-600 text-white text-xs font-medium hover:bg-indigo-700 shadow-sm transition-colors flex items-center justify-center gap-1.5"
                         whileHover={{ scale: 1.02 }}
                         whileTap={{ scale: 0.98 }}
+                        transition={{ duration: 0.15, ease: [0.25, 1, 0.5, 1] }}
                     >
                         <Play className="w-3.5 h-3.5" weight="fill" />
                         Accept & Run

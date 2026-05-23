@@ -79,22 +79,23 @@ export default function ActivityToast({
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, x: 12 }}
               transition={{ duration: 0.2, ease: [0.25, 0.1, 0.25, 1] }}
-              className="pointer-events-auto flex items-center gap-2 rounded-full bg-white/90 backdrop-blur-xl pl-1.5 pr-3 py-1.5 shadow-sm border border-brand/15"
+              role="status"
+              className="pointer-events-auto flex items-center gap-2 rounded-full bg-warm-surface pl-1.5 pr-3 py-1.5 shadow-md border border-warm-border"
             >
-              <div className={`flex h-6 w-6 items-center justify-center rounded-full ${
-                isAgent ? 'bg-brand' : isCli ? 'bg-blue-50' : 'bg-brand/10'
-              }`}>
+              <span className={`flex h-6 w-6 items-center justify-center rounded-full ${
+                isAgent ? 'bg-brand' : isCli ? 'bg-blue-100 dark:bg-blue-950/50' : 'bg-brand/10'
+              }`} aria-hidden="true">
                 {isAgent ? (
                   <Sparkle className="h-3 w-3 text-white" weight="fill" />
                 ) : isCli ? (
-                  <Sparkle className="h-3 w-3 text-blue-500" weight="fill" />
+                  <Sparkle className="h-3 w-3 text-blue-700 dark:text-blue-300" weight="fill" />
                 ) : (
                   <User className="h-3 w-3 text-brand" weight="fill" />
                 )}
-              </div>
+              </span>
 
-              <span className="text-xs text-gray-500 whitespace-nowrap">
-                <span className="font-medium text-gray-900">{toast.activity.actor.name}</span>
+              <span className="text-xs text-slate-700 whitespace-nowrap dark:text-slate-300">
+                <span className="font-medium text-slate-900 dark:text-slate-50">{toast.activity.actor.name}</span>
                 {' '}
                 {actionVerbs[toast.activity.action] ?? toast.activity.action}
                 {' '}
@@ -105,14 +106,15 @@ export default function ActivityToast({
 
               {onGoToNode && toast.activity.action !== 'deleted' && (
                 <button
+                  type="button"
                   onClick={() => {
                     onGoToNode(toast.activity.nodeId);
                     dismiss(toast.id);
                   }}
-                  className="flex h-5 w-5 items-center justify-center rounded-full hover:bg-brand/10 transition-colors"
-                  title="Go to node"
+                  className="flex h-6 w-6 min-h-[24px] min-w-[24px] items-center justify-center rounded-full hover:bg-brand/10 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-1 focus-visible:ring-offset-warm-surface"
+                  aria-label="Go to node"
                 >
-                  <ArrowRight className="h-3 w-3 text-brand" weight="bold" />
+                  <ArrowRight className="h-3 w-3 text-brand" weight="bold" aria-hidden="true" />
                 </button>
               )}
             </motion.div>

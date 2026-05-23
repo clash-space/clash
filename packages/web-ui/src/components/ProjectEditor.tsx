@@ -192,6 +192,53 @@ const sanitizeNodes = (nodes: AppNode[]): AppNode[] => {
     return sortNodesParentFirst(cleaned);
 };
 
+/**
+ * Floating "Group" pill that appears above the bounding box of the current
+ * marquee/shift selection. Mounted inside <ReactFlow> so it can read the
+ * viewport transform — position tracks pan/zoom, size stays in screen space.
+ */
+function SelectionGroupButton({
+    bounds,
+    onGroup,
+}: {
+    bounds: { absMinX: number; absMinY: number; absMaxX: number; absMaxY: number } | null;
+    onGroup: () => void;
+}) {
+    const { x, y, zoom } = useViewport();
+    if (!bounds) return null;
+
+    const screenLeft = bounds.absMinX * zoom + x;
+    const screenTop = bounds.absMinY * zoom + y;
+    const screenWidth = (bounds.absMaxX - bounds.absMinX) * zoom;
+
+    return (
+        <div className="pointer-events-none absolute inset-0 overflow-visible" style={{ zIndex: 10000 }}>
+            <motion.button
+                type="button"
+                initial={{ opacity: 0, y: 4 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: 4 }}
+                transition={{ duration: 0.12 }}
+                onMouseDown={(e) => e.stopPropagation()}
+                onClick={(e) => {
+                    e.stopPropagation();
+                    onGroup();
+                }}
+                className="pointer-events-auto absolute flex h-7 items-center gap-1.5 rounded-md border border-warm-border bg-white/90 px-2.5 text-xs font-medium text-slate-700 shadow-sm backdrop-blur hover:bg-white hover:text-slate-900"
+                style={{
+                    left: screenLeft + screenWidth / 2,
+                    top: screenTop - 36,
+                    transform: 'translateX(-50%)',
+                }}
+                title="Wrap selected nodes in a new Group"
+            >
+                <Square className="h-3.5 w-3.5" weight="regular" />
+                Group
+            </motion.button>
+        </div>
+    );
+}
+
 function DebugNodeIds({ nodes }: { nodes: AppNode[] }) {
     const { x, y, zoom } = useViewport();
     const [expandedNode, setExpandedNode] = useState<string | null>(null);
@@ -606,6 +653,10 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
 
 	    // Selection state
 	    const [selectedNodes, setSelectedNodes] = useState<Node[]>([]);
+	    // True while the user is actively dragging the marquee. We hide the
+	    // "Group" pill until release — otherwise it flickers in mid-drag as the
+	    // selection rectangle grows past 2 nodes.
+	    const [isMarqueeing, setIsMarqueeing] = useState(false);
 
 	    // Always sanitize nodes before passing to ReactFlow to prevent "Parent node X not found" errors
 	    // This is the final safety net - removes any invalid parentId references
@@ -928,7 +979,182 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
         awareness.setLocalSelection(nodes.map((n) => n.id));
     }, [awareness]);
 
+    // Show a "Group" pill when 2+ siblings are selected. We collapse selected
+    // descendants into their selected ancestor (otherwise we'd nest a node and
+    // its own parent), and require everything left to share a parent so the
+    // new Group can sit at one well-defined level in the hierarchy.
+    const selectionBounds = useMemo(() => {
+        if (isMarqueeing) return null;
+        if (selectedNodes.length < 2) return null;
+        // Suppress while a node is being moved — bounds would lag behind the
+        // drag and the pill would float over moving content.
+        if (selectedNodes.some((n) => n.dragging)) return null;
+
+        const selectedIds = new Set(selectedNodes.map((n) => n.id));
+        const nodesById = new Map(nodes.map((n) => [n.id, n]));
+        const topLevel = selectedNodes.filter((n) => {
+            let pid = (nodesById.get(n.id) ?? n).parentId;
+            while (pid) {
+                if (selectedIds.has(pid)) return false;
+                pid = nodesById.get(pid)?.parentId;
+            }
+            return true;
+        });
+        if (topLevel.length < 2) return null;
+
+        const commonParent = (nodesById.get(topLevel[0].id) ?? topLevel[0]).parentId;
+        if (!topLevel.every((n) => ((nodesById.get(n.id) ?? n).parentId) === commonParent)) return null;
+
+        let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+        for (const sel of topLevel) {
+            const node = nodesById.get(sel.id) ?? sel;
+            const rect = getAbsoluteRect(node, nodes);
+            if (rect.x < minX) minX = rect.x;
+            if (rect.y < minY) minY = rect.y;
+            if (rect.x + rect.width > maxX) maxX = rect.x + rect.width;
+            if (rect.y + rect.height > maxY) maxY = rect.y + rect.height;
+        }
+        if (!Number.isFinite(minX)) return null;
+
+        return {
+            absMinX: minX,
+            absMinY: minY,
+            absMaxX: maxX,
+            absMaxY: maxY,
+            topLevelIds: topLevel.map((n) => n.id),
+            parentId: commonParent,
+        };
+    }, [isMarqueeing, selectedNodes, nodes]);
+
+    const groupSelectedNodes = useCallback(() => {
+        if (!selectionBounds) return;
+        const { absMinX, absMinY, absMaxX, absMaxY, topLevelIds, parentId: commonParentId } = selectionBounds;
+        const PADDING = 40;
+        const TITLE_GAP = 32; // space above for the floating group title input
+
+        const groupAbsX = absMinX - PADDING;
+        const groupAbsY = absMinY - TITLE_GAP - PADDING;
+        const groupWidth = (absMaxX - absMinX) + PADDING * 2;
+        const groupHeight = (absMaxY - absMinY) + TITLE_GAP + PADDING * 2;
+
+        // Convert the group's absolute position into the common parent's local space.
+        let groupX = groupAbsX;
+        let groupY = groupAbsY;
+        if (commonParentId) {
+            const parent = nodes.find((n) => n.id === commonParentId);
+            if (parent) {
+                const parentAbs = getAbsolutePosition(parent, nodes);
+                groupX = groupAbsX - parentAbs.x;
+                groupY = groupAbsY - parentAbs.y;
+            }
+        }
+
+        // z-index: mirror the addNode('group', ...) branch so collision/depth
+        // assumptions elsewhere keep holding.
+        let zIndex: number | undefined;
+        if (commonParentId) {
+            const parent = nodes.find((n) => n.id === commonParentId);
+            const parentZIndex = Number(parent?.style?.zIndex ?? 0);
+            zIndex = parentZIndex + 1;
+        } else {
+            const groupNodes = nodes.filter((n) => n.type === 'group');
+            const minZIndex = groupNodes.reduce((min, n) => Math.min(min, Number(n.style?.zIndex ?? 0)), 0);
+            zIndex = minZIndex - 1;
+        }
+
+        const groupId = `group-${Date.now()}`;
+        const newGroup: Node = {
+            id: groupId,
+            type: 'group',
+            position: { x: groupX, y: groupY },
+            data: { label: 'Group' },
+            parentId: commonParentId,
+            width: groupWidth,
+            height: groupHeight,
+            style: { width: groupWidth, height: groupHeight, zIndex },
+            className: 'group-node',
+            extent: undefined,
+        };
+
+        const selectedSet = new Set(topLevelIds);
+        const childUpdates: Array<{ id: string; parentId: string; position: { x: number; y: number } }> = [];
+
+        setNodes((nds) => {
+            const absPos = new Map<string, { x: number; y: number }>();
+            for (const id of selectedSet) {
+                const n = nds.find((node) => node.id === id);
+                if (n) absPos.set(id, getAbsolutePosition(n, nds));
+            }
+
+            let updated = [...nds, newGroup];
+            updated = updated.map((n) => {
+                if (!selectedSet.has(n.id)) return n;
+                const abs = absPos.get(n.id);
+                if (!abs) return n;
+                const nextPos = { x: abs.x - groupAbsX, y: abs.y - groupAbsY };
+                childUpdates.push({ id: n.id, parentId: groupId, position: nextPos });
+                return {
+                    ...n,
+                    parentId: groupId,
+                    position: nextPos,
+                    extent: undefined,
+                    selected: false,
+                };
+            });
+            updated = applyAutoZIndex(updated);
+            return updated;
+        });
+
+        loroSync.addNode(groupId, newGroup);
+        for (const upd of childUpdates) {
+            loroSync.updateNode(upd.id, { parentId: upd.parentId, position: upd.position });
+        }
+
+        // Clear local selection so the pill disappears after grouping.
+        setSelectedNodes([]);
+        awareness.setLocalSelection([]);
+    }, [selectionBounds, nodes, setNodes, loroSync, applyAutoZIndex, awareness]);
+
     // Auto-save logic removed: Loro is the single source of truth.
+
+    // Suppress browser-level zoom (Cmd/Ctrl + wheel, trackpad pinch, Safari
+    // gesture events) for events that fire OUTSIDE the React Flow pane. RF
+    // owns wheel/pinch inside the canvas — we don't touch those — but elsewhere
+    // accidental zoom rescales the whole page and the canvas content "vanishes"
+    // off-screen. preventDefault on the bubble phase suppresses the browser
+    // gesture without interfering with RF's own zoom handler.
+    useEffect(() => {
+        const isInsideCanvas = (target: EventTarget | null): boolean => {
+            return target instanceof Element && !!target.closest('.react-flow');
+        };
+        const onWheel = (e: WheelEvent) => {
+            if (!(e.ctrlKey || e.metaKey)) return;
+            if (isInsideCanvas(e.target)) return;
+            e.preventDefault();
+        };
+        const onGesture = (e: Event) => {
+            if (isInsideCanvas(e.target)) return;
+            e.preventDefault();
+        };
+        const onKeyZoom = (e: KeyboardEvent) => {
+            if (!(e.ctrlKey || e.metaKey)) return;
+            if (e.key === '+' || e.key === '-' || e.key === '=') {
+                e.preventDefault();
+            }
+        };
+        window.addEventListener('wheel', onWheel, { passive: false });
+        window.addEventListener('gesturestart', onGesture as EventListener, { passive: false });
+        window.addEventListener('gesturechange', onGesture as EventListener, { passive: false });
+        window.addEventListener('gestureend', onGesture as EventListener, { passive: false });
+        window.addEventListener('keydown', onKeyZoom);
+        return () => {
+            window.removeEventListener('wheel', onWheel);
+            window.removeEventListener('gesturestart', onGesture as EventListener);
+            window.removeEventListener('gesturechange', onGesture as EventListener);
+            window.removeEventListener('gestureend', onGesture as EventListener);
+            window.removeEventListener('keydown', onKeyZoom);
+        };
+    }, []);
 
 
     // Custom handleEdgesChange to sync edge deletions to Loro
@@ -1969,6 +2195,42 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
         relayoutParent(undefined);
     }, [relayoutParent]);
 
+    // Inverse of groupSelectedNodes: promote each direct child of the group to
+    // the group's own parent (preserving absolute position), then delete the
+    // group. Nested groups bubble up one level — they stay groups.
+    const ungroup = useCallback((groupId: string) => {
+        const group = nodes.find((n) => n.id === groupId);
+        if (!group || group.type !== 'group') return;
+
+        const newParentId = group.parentId;
+        const directChildren = nodes.filter((n) => n.parentId === groupId);
+
+        const childUpdates = directChildren.map((c) => ({
+            id: c.id,
+            parentId: newParentId,
+            position: {
+                x: group.position.x + c.position.x,
+                y: group.position.y + c.position.y,
+            },
+        }));
+
+        setNodes((nds) => {
+            let updated = nds.map((n) => {
+                const upd = childUpdates.find((u) => u.id === n.id);
+                if (!upd) return n;
+                return { ...n, parentId: newParentId, position: upd.position, extent: undefined };
+            });
+            updated = updated.filter((n) => n.id !== groupId);
+            updated = applyAutoZIndex(updated);
+            return updated;
+        });
+
+        for (const upd of childUpdates) {
+            loroSync.updateNode(upd.id, { parentId: upd.parentId, position: upd.position });
+        }
+        loroSync.removeNode(groupId);
+    }, [nodes, setNodes, loroSync, applyAutoZIndex]);
+
 
     const findNodeIdByName = useCallback((name: string): string | undefined => {
         const node = nodes.find(n => n.data?.label === name);
@@ -1993,7 +2255,7 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
                 >
                     <ProjectSurfaceBehindEditor>
                     <MediaViewerProvider>
-                        <LayoutActionsProvider value={{ relayoutParent }}>
+                        <LayoutActionsProvider value={{ relayoutParent, ungroup }}>
                         <div className="flex h-screen w-full flex-col bg-warm-page overflow-hidden">
                         {/* Hidden File Input */}
                         <input
@@ -2074,6 +2336,8 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
                                     onNodeDragStop={onNodeDragStop}
                                     onConnect={onConnect}
                                     onSelectionChange={onSelectionChange}
+                                    onSelectionStart={() => setIsMarqueeing(true)}
+                                    onSelectionEnd={() => setIsMarqueeing(false)}
 
                                     nodeTypes={nodeTypes}
                                     fitView
@@ -2104,6 +2368,9 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
 
                                     {/* Debug: show node IDs as selectable labels */}
                                     {showDebugIds && <DebugNodeIds nodes={nodes} />}
+
+                                    {/* Floating "Group" pill — appears above marquee/shift selection of 2+ siblings */}
+                                    <SelectionGroupButton bounds={selectionBounds} onGroup={groupSelectedNodes} />
 
                                     {/* Live cursor + selection awareness from other peers.
                                         Must be inside ReactFlow so it can read viewport

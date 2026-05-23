@@ -29,13 +29,16 @@ export class MessageErrorBoundary extends Component<Props, State> {
   render() {
     if (this.state.error) {
       return (
-        <div className="px-4 py-3 rounded-matrix border border-red-200 bg-red-50/60 text-sm text-red-700">
+        <div
+          role="alert"
+          className="px-4 py-3 rounded-matrix border border-red-200 bg-red-50/60 text-sm text-red-800 dark:border-red-900/50 dark:bg-red-950/30 dark:text-red-200"
+        >
           <div className="font-medium mb-1">Failed to render this message</div>
           <div className="font-mono text-xs opacity-80 break-all">
             {this.state.error.message}
           </div>
           {this.props.messageId && (
-            <div className="font-mono text-[10px] opacity-50 mt-1">id: {this.props.messageId}</div>
+            <div className="font-mono text-[11px] opacity-60 mt-1">id: {this.props.messageId}</div>
           )}
         </div>
       );

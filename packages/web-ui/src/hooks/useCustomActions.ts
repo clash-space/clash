@@ -38,6 +38,13 @@ export function useCustomActions(doc: LoroDoc | null): CustomActionDefinition[] 
             promptModalities: Array.isArray(entry.promptModalities) && entry.promptModalities.length > 0
               ? entry.promptModalities
               : ['text'],
+            // Option C: server stamps the registering runtime id onto each local
+            // action. UI uses this + the runtime list to grey out the picker
+            // chip when the owning runtime is offline. `undefined` means
+            // "legacy data, no runtime link" — treated as offline by the gate.
+            registeredByRuntime: typeof entry.registeredByRuntime === 'string'
+              ? entry.registeredByRuntime
+              : undefined,
           });
         }
       }

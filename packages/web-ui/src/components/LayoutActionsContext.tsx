@@ -3,6 +3,7 @@ import { createContext, useContext } from 'react';
 
 export type LayoutActions = {
     relayoutParent: (parentId: string | undefined) => void;
+    ungroup: (groupId: string) => void;
 };
 
 const LayoutActionsContext = createContext<LayoutActions | null>(null);

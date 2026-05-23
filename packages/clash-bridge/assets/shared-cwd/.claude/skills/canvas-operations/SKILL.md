@@ -40,13 +40,61 @@ its full state back to them. Cite what's relevant to the question.
 
 ## Adding a node
 
+### Text / group nodes
+
 ```bash
-clash canvas add --content "<text>" --json
-clash canvas add --content "<text>" --parent <group-id> --json
+clash canvas add --type text  --label "<short label>" --content "<text>" --json
+clash canvas add --type group --label "<group label>"                    --json
 ```
 
-Without `--parent`, the node lands at the root. Defaults pick a sensible
-node type from the content. Returns the new id.
+Without `--parent`, the node lands at the root. Returns the new id.
+
+### Generation action-badge nodes (image_gen / video_gen / audio_gen / text_gen)
+
+All four kinds share **one** input shape — `prompt`, `model`,
+`modelParams`, and `references`. The CLI flattens this into the data
+your model card already expects. You never pick `img2img` vs
+`text2img` explicitly; just attach the references you want the model
+to consume and the system partitions them by asset kind.
+
+```bash
+clash canvas add --type image_gen \
+  --label "<short label>" \
+  --prompt "<prompt text — may contain @[Label](node:<id>) mentions>" \
+  --model gemini-flash-image \
+  --ref <canvas-node-or-asset-id> \
+  --param aspectRatio=16:9 --param seed=42 \
+  --json
+```
+
+Flags:
+
+- `--prompt` is the text given to the model. Inline mentions of canvas
+  asset nodes use `@[Label](node:<id>)` — the exact syntax the chat
+  composer emits when a user `@`s an asset. The CLI extracts these
+  mentions, resolves each `<id>` to its underlying asset, and slots it
+  into the right `referenceXAssetIds[]` based on asset kind.
+- `--ref` is the same idea without polluting prompt text. Accepts a
+  canvas node id (resolved via `node.data.assetId`) or a bare asset id.
+  Repeatable.
+- `--model` picks the provider model id (`gemini-flash-image`,
+  `imagen-4-fast`, `veo3-fast-text-to-video`, …). Has a sensible default
+  per node type so you can omit it for quick experiments.
+- `--param` populates `data.modelParams`. The model card decides which
+  keys it accepts; `aspectRatio`, `duration`, `seed` are common. Booleans
+  and integers are coerced; the rest stays a string.
+
+Returns the new node id and (for `*_gen` nodes) the asset id of the
+pending output.
+
+Notes:
+
+- Edges from each reference node to the generation node appear
+  automatically as a side-effect of `referenceXAssetIds` — don't draw
+  them manually.
+- Model-specific knobs go through `--param k=v` so they land under
+  `data.modelParams` where the model card validator looks. Don't try
+  to pass them through `--data`.
 
 ## Editing
 
@@ -57,6 +105,12 @@ clash canvas update <node-id> --content "<new content>" --json
 
 Update only the fields you want to change. Re-`get` after if you need to
 verify the result.
+
+**Editing the inside of a VideoEditorNode** (its timeline tracks /
+items / fps / composition size) does NOT go through `update` —
+the timeline DSL is too nested for key=value editing. Switch to the
+**timeline-editing** skill, which uses `clash canvas timeline pull/push`
+to round-trip the timeline through a JSON file.
 
 ## Executing an action node
 

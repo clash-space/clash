@@ -53,13 +53,13 @@ const BuildPlanDialog = ({ open, targetLabel, plan, onConfirm, onCancel }: Build
                         animate={{ opacity: 1, scale: 1, y: 0 }}
                         exit={{ opacity: 0, scale: 0.95, y: 12 }}
                         transition={{ type: 'spring', damping: 28, stiffness: 340 }}
-                        className="relative z-10 w-full max-w-lg max-h-[calc(100dvh-1.5rem)] sm:max-h-[calc(100dvh-3rem)] bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden flex flex-col motion-reduce:transition-none"
+                        className="relative z-10 w-full max-w-lg max-h-[calc(100dvh-1.5rem)] sm:max-h-[calc(100dvh-3rem)] bg-warm-surface rounded-2xl shadow-2xl border border-warm-border overflow-hidden flex flex-col motion-reduce:transition-none"
                         onClick={(e) => e.stopPropagation()}
                     >
                         {/* Header */}
-                        <div className="px-4 sm:px-6 pt-5 sm:pt-6 pb-3 sm:pb-4 flex items-start justify-between gap-3 sm:gap-4 border-b border-slate-100 shrink-0">
+                        <div className="px-4 sm:px-6 pt-5 sm:pt-6 pb-3 sm:pb-4 flex items-start justify-between gap-3 sm:gap-4 border-b border-warm-border shrink-0">
                             <div className="min-w-0">
-                                <div className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Build plan</div>
+                                <div className="text-[10px] font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300">Build plan</div>
                                 <h2 id={headerId} className="text-base sm:text-lg font-bold text-slate-900 truncate" title={targetLabel}>
                                     {targetLabel}
                                 </h2>
@@ -68,7 +68,7 @@ const BuildPlanDialog = ({ open, targetLabel, plan, onConfirm, onCancel }: Build
                                 type="button"
                                 onClick={onCancel}
                                 aria-label="Close build plan dialog"
-                                className="shrink-0 p-2.5 text-slate-500 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-900"
+                                className="shrink-0 p-2.5 text-slate-700 dark:text-slate-300 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-900"
                             >
                                 <X className="w-4 h-4" weight="bold" aria-hidden="true" />
                             </button>
@@ -107,19 +107,19 @@ const BuildPlanDialog = ({ open, targetLabel, plan, onConfirm, onCancel }: Build
                             {/* Model breakdown */}
                             {modelRows.length > 0 && (
                                 <section aria-labelledby={`${headerId}-models`}>
-                                    <h3 id={`${headerId}-models`} className="text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-2">
+                                    <h3 id={`${headerId}-models`} className="text-[10px] font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300 mb-2">
                                         Models to invoke · {totalCalls} total
                                     </h3>
-                                    <div className="rounded-xl border border-slate-200 overflow-hidden">
+                                    <div className="rounded-xl border border-warm-border overflow-hidden">
                                         {modelRows.map((row, i) => (
                                             <div
                                                 key={row.modelId}
                                                 className={`flex items-center justify-between px-3.5 py-2 text-sm ${
-                                                    i > 0 ? 'border-t border-slate-100' : ''
+                                                    i > 0 ? 'border-t border-warm-border' : ''
                                                 }`}
                                             >
                                                 <span className="font-medium text-slate-800 truncate">{row.modelName}</span>
-                                                <span className="shrink-0 px-2 py-0.5 rounded-md bg-slate-100 text-slate-700 text-xs font-semibold">
+                                                <span className="shrink-0 px-2 py-0.5 rounded-md bg-warm-muted text-slate-800 dark:text-slate-200 text-xs font-semibold">
                                                     <span aria-hidden="true">×</span>
                                                     <span className="sr-only">{' '}invocations: </span>
                                                     {row.count}
@@ -133,22 +133,22 @@ const BuildPlanDialog = ({ open, targetLabel, plan, onConfirm, onCancel }: Build
                             {/* Affected nodes */}
                             {plan.entries.length > 0 && (
                                 <section aria-labelledby={`${headerId}-drafts`}>
-                                    <h3 id={`${headerId}-drafts`} className="text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-2">
+                                    <h3 id={`${headerId}-drafts`} className="text-[10px] font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300 mb-2">
                                         Affected drafts · {plan.entries.length}
                                     </h3>
-                                    <div className="rounded-xl border border-slate-200 overflow-hidden">
+                                    <div className="rounded-xl border border-warm-border overflow-hidden">
                                         {plan.entries.map((entry, i) => (
                                             <div
                                                 key={entry.draftId}
                                                 className={`flex items-center justify-between gap-3 px-3.5 py-2 text-xs ${
-                                                    i > 0 ? 'border-t border-slate-100' : ''
+                                                    i > 0 ? 'border-t border-warm-border' : ''
                                                 } ${!entry.hasPrompt || !entry.modelId ? 'bg-red-50' : ''}`}
                                             >
                                                 <div className="min-w-0 flex items-center gap-2">
                                                     <span className="inline-block w-1.5 h-1.5 rounded-full bg-slate-400" />
-                                                    <span className="truncate text-slate-700" title={entry.label}>{entry.label}</span>
+                                                    <span className="truncate text-slate-800 dark:text-slate-200" title={entry.label}>{entry.label}</span>
                                                 </div>
-                                                <span className="shrink-0 text-[10px] text-slate-500 uppercase tracking-wide">
+                                                <span className="shrink-0 text-[10px] text-slate-700 dark:text-slate-300 uppercase tracking-wide">
                                                     {entry.modality}{i === plan.entries.length - 1 ? ' · target' : ''}
                                                 </span>
                                             </div>
@@ -159,11 +159,11 @@ const BuildPlanDialog = ({ open, targetLabel, plan, onConfirm, onCancel }: Build
                         </div>
 
                         {/* Footer */}
-                        <div className="px-4 sm:px-6 py-3 sm:py-4 flex flex-col-reverse sm:flex-row sm:items-center sm:justify-end gap-2 border-t border-slate-100 bg-slate-50 shrink-0">
+                        <div className="px-4 sm:px-6 py-3 sm:py-4 flex flex-col-reverse sm:flex-row sm:items-center sm:justify-end gap-2 border-t border-warm-border bg-warm-muted shrink-0">
                             <button
                                 type="button"
                                 onClick={onCancel}
-                                className="w-full sm:w-auto min-h-11 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-200 rounded-lg transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-900"
+                                className="w-full sm:w-auto min-h-11 px-4 py-2 text-sm font-medium text-slate-800 dark:text-slate-200 hover:bg-slate-200 rounded-lg transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-900"
                             >
                                 Cancel
                             </button>

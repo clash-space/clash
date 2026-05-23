@@ -32,7 +32,7 @@ export default function HowItWorks() {
       <div className="mx-auto max-w-7xl px-6 lg:px-8">
         <div className="mx-auto max-w-2xl text-center">
           <h2 className="text-base font-semibold leading-7 text-brand font-display">How it works</h2>
-          <p className="mt-2 text-3xl font-bold tracking-tight text-gray-900 sm:text-4xl font-display">
+          <p className="mt-2 text-3xl font-bold tracking-tight text-slate-900 dark:text-slate-50 sm:text-4xl font-display">
             From idea to video in three steps
           </p>
         </div>
@@ -57,13 +57,13 @@ export default function HowItWorks() {
                   <div className={`flex h-16 w-16 items-center justify-center rounded-2xl ${step.color} mb-6`}>
                     <step.icon className="h-7 w-7" weight="duotone" />
                   </div>
-                  <span className="text-xs font-mono font-bold text-gray-400 tracking-widest mb-2">
+                  <span className="text-xs font-mono font-bold text-gray-700 dark:text-gray-300 tracking-widest mb-2">
                     STEP {step.number}
                   </span>
-                  <h3 className="text-xl font-bold text-gray-900 font-display mb-3">
+                  <h3 className="text-xl font-bold text-slate-900 dark:text-slate-50 font-display mb-3">
                     {step.title}
                   </h3>
-                  <p className="text-base text-gray-600 leading-relaxed">
+                  <p className="text-base text-gray-700 dark:text-gray-300 leading-relaxed">
                     {step.description}
                   </p>
                 </div>

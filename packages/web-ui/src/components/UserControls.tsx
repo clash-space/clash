@@ -7,12 +7,14 @@ import { GoogleLogo, Gear, SignOut, CreditCard, Lightning } from '@phosphor-icon
 import { Link } from 'react-router';
 import betterAuthClient from '@clash/web-ui/lib/betterAuthClient';
 import { useBillingBalance } from '@clash/web-ui/hooks/useBillingBalance';
+import { SettingsDialog } from './SettingsDialog';
 
 export default function UserControls() {
   const sessionQuery = betterAuthClient.useSession();
   const session = sessionQuery.data;
   const user = session?.user;
   const [open, setOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   const balance = useBillingBalance(!!user);
 
@@ -64,7 +66,7 @@ export default function UserControls() {
           {(balance.status === 'ready' || balance.status === 'loading') && (
             <Link
               to="/billing"
-              className="flex items-center gap-1.5 rounded-full bg-warm-surface border border-warm-border px-3 py-1.5 shadow-sm hover:shadow-md hover:border-brand/40 transition-all text-sm font-display font-medium text-stone-700"
+              className="flex items-center gap-1.5 rounded-full bg-warm-surface border border-warm-border px-3 py-1.5 shadow-sm hover:shadow-md hover:border-brand/40 transition-all text-sm font-display font-medium text-stone-800 dark:text-stone-200"
               aria-label="Credits balance — click to manage billing"
               title="Credits balance"
             >
@@ -76,27 +78,29 @@ export default function UserControls() {
               )}
             </Link>
           )}
-          <motion.div
-            className="flex items-center gap-3 rounded-full bg-warm-surface border border-warm-border pl-1.5 pr-4 py-1.5 shadow-sm cursor-pointer hover:shadow-md transition-all"
-            whileHover={{ scale: 1.02 }}
-            whileTap={{ scale: 0.98 }}
+          <button
+            type="button"
             onClick={() => setOpen(prev => !prev)}
+            aria-haspopup="menu"
+            aria-expanded={open}
+            aria-label={`Account menu — ${user.name}`}
+            className="flex items-center gap-3 rounded-full bg-warm-surface border border-warm-border pl-1.5 pr-4 py-1.5 shadow-sm cursor-pointer hover:shadow-md transition-shadow focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-warm-page"
           >
             {user.image ? (
               <img
                 src={user.image}
-                alt="Avatar"
+                alt=""
                 className="h-10 w-10 rounded-full object-cover"
               />
             ) : (
-              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-br from-brand to-red-500 text-sm font-bold text-white">
+              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-br from-brand to-red-500 text-sm font-bold text-white" aria-hidden="true">
                 {getInitials(user.name)}
               </div>
             )}
-            <span className="text-base font-display font-medium text-stone-700 max-w-[120px] truncate">
+            <span className="text-base font-display font-medium text-stone-800 dark:text-stone-200 max-w-[120px] truncate">
               {user.name}
             </span>
-          </motion.div>
+          </button>
 
           <AnimatePresence>
             {open && (
@@ -105,28 +109,35 @@ export default function UserControls() {
                 animate={{ opacity: 1, y: 0, scale: 1 }}
                 exit={{ opacity: 0, y: 4, scale: 0.95 }}
                 transition={{ duration: 0.15 }}
-                className="absolute right-0 mt-2 w-48 rounded-xl bg-warm-surface border border-warm-border shadow-lg py-1.5 z-50"
+                /* top-full anchors the dropdown's top edge to the
+                   parent's bottom edge — `mt-2` alone on an absolute
+                   child collapses to top:0 + margin, which made the
+                   menu overlap the avatar pill. */
+                className="absolute right-0 top-full mt-2 w-48 rounded-xl bg-warm-surface border border-warm-border shadow-lg py-1.5 z-50"
               >
-                <Link
-                  to="/settings"
-                  onClick={() => setOpen(false)}
-                  className="flex items-center gap-2.5 px-4 py-2.5 text-sm font-medium text-stone-700 hover:bg-warm-muted transition-colors"
+                <button
+                  type="button"
+                  onClick={() => {
+                    setOpen(false);
+                    setSettingsOpen(true);
+                  }}
+                  className="flex w-full items-center gap-2.5 px-4 py-2.5 text-sm font-medium text-stone-800 dark:text-stone-200 hover:bg-warm-muted transition-colors text-left"
                 >
                   <Gear className="h-4 w-4" />
                   Settings
-                </Link>
+                </button>
                 {balance.status !== 'unavailable' && (
                   <Link
                     to="/billing"
                     onClick={() => setOpen(false)}
-                    className="flex items-center justify-between px-4 py-2.5 text-sm font-medium text-stone-700 hover:bg-warm-muted transition-colors"
+                    className="flex items-center justify-between px-4 py-2.5 text-sm font-medium text-stone-800 dark:text-stone-200 hover:bg-warm-muted transition-colors"
                   >
                     <span className="flex items-center gap-2.5">
                       <CreditCard className="h-4 w-4" />
                       Billing
                     </span>
                     {balance.status === 'ready' && (
-                      <span className="text-xs tabular-nums text-stone-500">
+                      <span className="text-xs tabular-nums text-stone-700 dark:text-stone-300">
                         {balance.balance.available.toLocaleString()}
                       </span>
                     )}
@@ -134,7 +145,7 @@ export default function UserControls() {
                 )}
                 <button
                   onClick={handleSignOut}
-                  className="flex w-full items-center gap-2.5 px-4 py-2.5 text-sm font-medium text-stone-700 hover:bg-warm-muted transition-colors"
+                  className="flex w-full items-center gap-2.5 px-4 py-2.5 text-sm font-medium text-stone-800 dark:text-stone-200 hover:bg-warm-muted transition-colors"
                 >
                   <SignOut className="h-4 w-4" />
                   Sign out
@@ -145,15 +156,20 @@ export default function UserControls() {
         </div>
       ) : (
         <motion.button
+          type="button"
           onClick={handleSignIn}
-          className="flex items-center gap-2 rounded-full bg-slate-950 px-6 py-3 text-base font-display font-medium text-white transition-all hover:bg-slate-800 shadow-lg shadow-slate-950/20"
+          className="flex items-center gap-2 rounded-full bg-slate-950 px-6 py-3 min-h-[44px] text-base font-display font-medium text-white transition-all hover:bg-slate-800 shadow-lg shadow-slate-950/20 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-warm-page"
           whileHover={{ scale: 1.05 }}
           whileTap={{ scale: 0.95 }}
         >
-          <GoogleLogo weight="bold" className="h-5 w-5" />
+          <GoogleLogo weight="bold" className="h-5 w-5" aria-hidden="true" />
           Sign in with Google
         </motion.button>
       )}
+      {/* Same modal as the project page's avatar uses — Settings opens
+          as a centered overlay instead of a route nav, so the user
+          doesn't lose the current page (Home, Projects list, etc.). */}
+      <SettingsDialog open={settingsOpen} onClose={() => setSettingsOpen(false)} />
     </div>
   );
 }

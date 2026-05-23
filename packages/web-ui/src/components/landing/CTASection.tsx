@@ -30,7 +30,7 @@ export default function CTASection() {
             <h2 className="text-3xl sm:text-5xl font-bold tracking-tight text-white font-display mb-6">
               Ready to make some <span className="text-brand">Clash</span>?
             </h2>
-            <p className="mx-auto max-w-xl text-lg text-gray-400 mb-10">
+            <p className="mx-auto max-w-xl text-lg text-gray-700 dark:text-gray-300 mb-10">
               Join creators who are using AI as a creative partner, not a content factory. Start building your first video in minutes.
             </p>
             <div className="flex items-center justify-center gap-4">

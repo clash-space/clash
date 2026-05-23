@@ -37,14 +37,23 @@ export class NodeSpawner implements Spawner {
     const stdout = (Readable as unknown as {
       toWeb(s: NodeJS.ReadableStream): ReadableStream<Uint8Array>;
     }).toWeb(child.stdout);
-    const stderr = (Readable as unknown as {
-      toWeb(s: NodeJS.ReadableStream): ReadableStream<Uint8Array>;
-    }).toWeb(child.stderr);
 
     // Drain agent stderr to our own stderr with a [acp.child] prefix.
     // Without this, the OS pipe buffer fills (~64KB) and the agent
     // process blocks on its next stderr write — looks like the agent
     // "hung" with zero progress, no events, no responses.
+    //
+    // CRITICAL: stderr is consumed via the Node `data` event, NOT wrapped
+    // via `Readable.toWeb` like stdout/stdin. We tried wrapping it once
+    // and ALSO setting an encoding + data listener: under load Node's
+    // webstreams adapter received string chunks (because setEncoding),
+    // called `chunk.byteLength` (only valid on Buffers/Uint8Arrays), got
+    // NaN, and threw `ERR_INVALID_ARG_VALUE` from inside the adapter —
+    // crashing the daemon as soon as the child wrote anything to stderr.
+    // Keeping stderr as a plain Node-stream consumer side-steps that.
+    // We still expose a `stderr` ReadableStream<Uint8Array> on the
+    // ChildHandle for callers that want the raw bytes; it's a stub that
+    // never emits (nothing in the bridge reads it today).
     child.stderr.setEncoding("utf8");
     child.stderr.on("data", (chunk: string) => {
       for (const line of chunk.split(/\r?\n/)) {
@@ -52,6 +61,7 @@ export class NodeSpawner implements Spawner {
       }
     });
     child.stderr.on("error", () => { /* ignore — child died */ });
+    const stderr = new ReadableStream<Uint8Array>({ start(controller) { controller.close(); } });
 
     // Single resolution of `exited` — first of (exit, close) wins.
     const exited = new Promise<{ code: number | null; signal: string | null }>((resolve) => {

@@ -45,7 +45,7 @@ export function SessionStartPicker({
   return (
     <div className="space-y-4">
       <div>
-        <div className="text-xs uppercase tracking-wider text-stone-400 mb-2">Crew</div>
+        <div className="text-xs uppercase tracking-wider text-stone-700 dark:text-stone-300 mb-2">Crew</div>
         {crew.length === 0 ? (
           <div className="text-sm text-amber-700">
             No crew members reported by this runtime — upgrade the daemon
@@ -58,21 +58,21 @@ export function SessionStartPicker({
                 key={m.id}
                 className={`flex items-start gap-2.5 px-3 py-2 rounded-lg cursor-pointer border transition-colors ${
                   crewId === m.id
-                    ? 'border-emerald-300 bg-emerald-50/40'
-                    : 'border-stone-200 hover:bg-warm-muted'
+                    ? 'border-brand bg-brand/10 dark:bg-brand/15'
+                    : 'border-warm-border hover:bg-warm-muted'
                 }`}
               >
                 <input
                   type="radio"
                   name="picker-crew"
-                  className="accent-emerald-600 mt-0.5"
+                  className="accent-[var(--brand)] mt-0.5"
                   checked={crewId === m.id}
                   onChange={() => setCrewId(m.id)}
                 />
                 <div className="min-w-0 flex-1">
-                  <div className="text-sm font-medium text-slate-700">{m.label}</div>
+                  <div className="text-sm font-medium text-slate-800 dark:text-slate-200">{m.label}</div>
                   {m.summary && (
-                    <div className="text-[11px] text-stone-400">{m.summary}</div>
+                    <div className="text-[11px] text-stone-700 dark:text-stone-300">{m.summary}</div>
                   )}
                 </div>
               </label>
@@ -84,52 +84,52 @@ export function SessionStartPicker({
       {/* Always render Resume even when empty — picker shape stays
           consistent regardless of state. */}
       <div>
-        <div className="text-xs uppercase tracking-wider text-stone-400 mb-2">Resume a session</div>
+        <div className="text-xs uppercase tracking-wider text-stone-700 dark:text-stone-300 mb-2">Resume a session</div>
         <div className="grid grid-cols-1 gap-1.5 max-h-56 overflow-y-auto">
           <label
             className={`flex items-center gap-2.5 px-3 py-2 rounded-lg cursor-pointer border transition-colors ${
               resumeId === null
-                ? 'border-emerald-300 bg-emerald-50/40'
-                : 'border-stone-200 hover:bg-warm-muted'
+                ? 'border-brand bg-brand/10 dark:bg-brand/15'
+                : 'border-warm-border hover:bg-warm-muted'
             }`}
           >
             <input
               type="radio"
               name="picker-session"
-              className="accent-emerald-600"
+              className="accent-[var(--brand)]"
               checked={resumeId === null}
               onChange={() => setResumeId(null)}
             />
-            <span className="text-sm text-slate-700">Start fresh</span>
+            <span className="text-sm text-slate-800 dark:text-slate-200">Start fresh</span>
           </label>
           {sessions.map((s) => (
             <label
               key={s.id}
               className={`flex items-start gap-2.5 px-3 py-2 rounded-lg cursor-pointer border transition-colors ${
                 resumeId === s.id
-                  ? 'border-emerald-300 bg-emerald-50/40'
-                  : 'border-stone-200 hover:bg-warm-muted'
+                  ? 'border-brand bg-brand/10 dark:bg-brand/15'
+                  : 'border-warm-border hover:bg-warm-muted'
               }`}
             >
               <input
                 type="radio"
                 name="picker-session"
-                className="accent-emerald-600 mt-0.5"
+                className="accent-[var(--brand)] mt-0.5"
                 checked={resumeId === s.id}
                 onChange={() => setResumeId(s.id)}
               />
               <div className="min-w-0 flex-1">
-                <div className="text-sm text-slate-700 truncate">
-                  {s.title || <span className="text-stone-400 italic">untitled</span>}
+                <div className="text-sm text-slate-800 dark:text-slate-200 truncate">
+                  {s.title || <span className="text-stone-700 dark:text-stone-300 italic">untitled</span>}
                 </div>
-                <div className="text-[11px] text-stone-400 truncate">
+                <div className="text-[11px] text-stone-700 dark:text-stone-300 truncate">
                   {s.cwd} · {new Date(s.modifiedAt * 1000).toLocaleString()}
                 </div>
               </div>
             </label>
           ))}
           {sessions.length === 0 && (
-            <div className="text-[11px] text-stone-400 italic px-3 py-1">
+            <div className="text-[11px] text-stone-700 dark:text-stone-300 italic px-3 py-1">
               No previous sessions on this machine yet — start fresh.
             </div>
           )}
@@ -140,7 +140,7 @@ export function SessionStartPicker({
         type="button"
         onClick={() => onStart(crewId, resumeId ?? undefined)}
         disabled={!crewId || busy}
-        className="w-full rounded-full bg-gray-900 text-white py-2.5 text-sm font-medium hover:bg-gray-800 disabled:opacity-40 disabled:cursor-not-allowed"
+        className="w-full rounded-full bg-gray-900 text-white py-2.5 min-h-[44px] text-sm font-medium hover:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-warm-surface"
       >
         {busy ? 'Starting…' : startLabel}
       </button>

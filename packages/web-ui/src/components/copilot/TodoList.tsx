@@ -28,20 +28,20 @@ export const TodoList: React.FC<TodoListProps> = ({ items, title = "Plan" }) => 
             className="absolute left-6 bottom-[88px] z-10"
         >
             <div
-                className="bg-white border border-gray-200 shadow-sm rounded-xl overflow-hidden cursor-pointer transition-all hover:shadow-md w-64"
+                className="bg-warm-surface border border-gray-200 shadow-sm rounded-xl overflow-hidden cursor-pointer transition-all hover:shadow-md w-64"
                 onClick={() => setIsExpanded(!isExpanded)}
             >
-                <div className="px-3 py-2 flex items-center justify-between bg-gray-50">
+                <div className="px-3 py-2 flex items-center justify-between bg-warm-muted">
                     <div className="flex items-center gap-2">
-                        <ListChecks className="w-4 h-4 text-gray-500" />
-                        <span className="text-xs font-semibold text-gray-600 uppercase tracking-wider">{title}</span>
+                        <ListChecks className="w-4 h-4 text-gray-700 dark:text-gray-300" />
+                        <span className="text-xs font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wider">{title}</span>
                     </div>
                     <div className="flex items-center gap-2">
-                        <span className="text-xs text-gray-500 font-medium">{completedCount}/{totalCount}</span>
+                        <span className="text-xs text-gray-700 dark:text-gray-300 font-medium">{completedCount}/{totalCount}</span>
                         {isExpanded ? (
-                            <CaretDown className="w-3 h-3 text-gray-400" />
+                            <CaretDown className="w-3 h-3 text-gray-700 dark:text-gray-300" />
                         ) : (
-                            <CaretUp className="w-3 h-3 text-gray-400" />
+                            <CaretUp className="w-3 h-3 text-gray-700 dark:text-gray-300" />
                         )}
                     </div>
                 </div>
@@ -54,7 +54,7 @@ export const TodoList: React.FC<TodoListProps> = ({ items, title = "Plan" }) => 
                             exit={{ height: 0, opacity: 0 }}
                             className="border-t border-gray-100"
                         >
-                            <div className="p-2 max-h-64 overflow-y-auto bg-white">
+                            <div className="p-2 max-h-64 overflow-y-auto bg-warm-surface">
                                 {items.map((item) => (
                                     <div
                                         key={item.id}
@@ -69,7 +69,7 @@ export const TodoList: React.FC<TodoListProps> = ({ items, title = "Plan" }) => 
                                                 <div className="w-3.5 h-3.5 rounded-full border border-gray-300" />
                                             )}
                                         </div>
-                                        <span className={`text-sm leading-tight ${item.status === 'completed' ? 'text-gray-400 line-through' : 'text-gray-700'
+                                        <span className={`text-sm leading-tight ${item.status === 'completed' ? 'text-gray-700 dark:text-gray-300 line-through' : 'text-gray-800 dark:text-gray-200'
                                             }`}>
                                             {item.text}
                                         </span>

@@ -88,7 +88,7 @@ const TextNode = ({ data, selected, id }: NodeProps<Node<Record<string, any>>>) 
                         animate={{ opacity: 1, scale: 1, y: 0 }}
                         exit={{ opacity: 0, scale: 0.95, y: 20 }}
                         transition={{ type: 'spring', damping: 25, stiffness: 300 }}
-                        className="relative z-10 w-full max-w-5xl h-[85vh] bg-white rounded-xl shadow-lg overflow-hidden flex flex-col border border-slate-200"
+                        className="relative z-10 w-full max-w-5xl h-[85vh] bg-warm-surface rounded-xl shadow-lg overflow-hidden flex flex-col border border-warm-border"
                         onClick={(e) => e.stopPropagation()}
                     >
                         {/* Header with Title Input */}
@@ -98,7 +98,7 @@ const TextNode = ({ data, selected, id }: NodeProps<Node<Record<string, any>>>) 
                                 value={label}
                                 onChange={handleLabelChange}
                                 placeholder="Untitled"
-                                className="w-full text-4xl font-bold font-display tracking-tight text-gray-900 placeholder:text-gray-300 bg-transparent border-none outline-none focus:outline-none"
+                                className="w-full text-4xl font-bold font-display tracking-tight text-slate-900 dark:text-slate-50 placeholder:text-gray-300 bg-transparent border-none outline-none focus:outline-none"
                             />
                             <div className="flex gap-2">
                                 <button
@@ -109,7 +109,7 @@ const TextNode = ({ data, selected, id }: NodeProps<Node<Record<string, any>>>) 
                                 </button>
                                 <button
                                     onClick={handleCancel}
-                                    className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+                                    className="p-2 text-gray-700 dark:text-gray-300 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
                                 >
                                     <X className="w-5 h-5" weight="bold" />
                                 </button>
@@ -117,7 +117,7 @@ const TextNode = ({ data, selected, id }: NodeProps<Node<Record<string, any>>>) 
                         </div>
 
                         {/* Editor Content */}
-                        <div className="flex-1 overflow-y-auto bg-white">
+                        <div className="flex-1 overflow-y-auto bg-warm-surface">
                             <MilkdownEditor value={content} onChange={setContent} />
                         </div>
                     </motion.div>
@@ -138,7 +138,7 @@ const TextNode = ({ data, selected, id }: NodeProps<Node<Record<string, any>>>) 
                     onDoubleClick={(e) => e.stopPropagation()}
                 >
                     <input
-                        className="bg-transparent text-lg font-bold font-display text-slate-500 focus:text-slate-900 focus:outline-none"
+                        className="bg-transparent text-lg font-bold font-display text-slate-700 dark:text-slate-300 focus:text-slate-900 focus:outline-none"
                         value={label}
                         onChange={handleLabelChange}
                         placeholder="Text Node"
@@ -146,13 +146,13 @@ const TextNode = ({ data, selected, id }: NodeProps<Node<Record<string, any>>>) 
                 </div>
 
                 {/* Main Card */}
-                <div className={`w-full h-full bg-slate-50 rounded-matrix flex flex-col overflow-hidden transition-all duration-300 hover:shadow-lg ${
+                <div className={`w-full h-full bg-warm-muted rounded-matrix flex flex-col overflow-hidden transition-all duration-300 hover:shadow-lg ${
                     selected ? 'ring-4 ring-blue-500 ring-offset-2' : 'ring-1 ring-slate-200'
                 }`}>
                     {normalizedStatus === 'draft' ? (
                         <DraftPlaceholder nodeId={id} modality="text" />
                     ) : normalizedStatus === 'generating' ? (
-                        <div className="flex-1 p-8 flex items-center justify-center text-slate-500">
+                        <div className="flex-1 p-8 flex items-center justify-center text-slate-700 dark:text-slate-300">
                             <div className="flex items-center gap-2 text-sm font-medium">
                                 <Spinner size={18} className="animate-spin" />
                                 Generating text...

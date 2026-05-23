@@ -11,11 +11,40 @@ You don't kick them off with `clash tasks`; you trigger them by
 `clash canvas execute`). The `tasks` subcommand exists to *track* them
 afterwards.
 
+## The shape of a generation node
+
+A generation action-badge node carries four inputs — regardless of
+whether it produces an image, video, audio, or text:
+
+| field         | what it holds                                                  |
+|---------------|----------------------------------------------------------------|
+| `prompt`      | the text instructions                                          |
+| `model`       | the provider model id (`gemini-flash-image`, `veo3-fast`, …)   |
+| `modelParams` | model-specific knobs (`aspectRatio`, `duration`, `seed`, …)    |
+| `references`  | a list of canvas asset ids the model should consume as input   |
+
+You don't tell the system what *mode* you're in (img2img vs text2img,
+v2v vs t2v, etc.). You just attach the references you want and the
+system partitions them into `referenceImageAssetIds`,
+`referenceVideoAssetIds`, `referenceAudioAssetIds` by each asset's kind.
+The model card decides which subset it can actually use (text-only
+models will reject image refs at validation time, etc.).
+
+References can be supplied two ways, and they compose:
+
+- **Inline in the prompt** — `"make a poster of @[Penguin](node:abc) on the moon"` —
+  the CLI extracts the `@`-mentions, resolves each `<id>` to its asset.
+  This is the natural way when the reference is contextually part of the
+  prompt text.
+- **Via `--ref`** — `--ref <node-or-asset-id>`, repeatable — when you
+  want the reference in but don't want it in the prompt text.
+
 ## Typical sequence
 
 1. User: "generate a 5-second clip of a sunrise"
 2. You: ensure the right action node exists on the canvas (or create one
-   via canvas-operations), get its id, then:
+   via canvas-operations using `--prompt … --model … --ref … --param k=v`),
+   get its id, then:
    ```bash
    clash canvas execute <action-node-id> --json
    ```

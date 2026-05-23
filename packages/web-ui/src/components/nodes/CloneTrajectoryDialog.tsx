@@ -66,7 +66,7 @@ function wrapPreviewNode<T extends Record<string, unknown>>(Inner: ComponentType
                             type="button"
                             onClick={(e) => { e.stopPropagation(); onDelete(props.id); }}
                             aria-label="Drop this action and everything upstream that only feeds it"
-                            className="flex items-center gap-1 min-h-9 h-9 px-3 rounded-full bg-white border border-slate-300 text-[11px] font-semibold text-slate-700 hover:bg-red-50 hover:border-red-300 hover:text-red-700 shadow-sm transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-red-500"
+                            className="flex items-center gap-1 min-h-9 h-9 px-3 rounded-full bg-warm-surface border border-slate-300 text-[11px] font-semibold text-slate-800 dark:text-slate-200 hover:bg-red-50 hover:border-red-300 hover:text-red-700 shadow-sm transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-red-500"
                             title="Drop this action and everything upstream that only feeds it — its output becomes a reused head"
                         >
                             <X size={11} weight="bold" aria-hidden="true" />
@@ -450,18 +450,18 @@ const CloneTrajectoryDialog = ({
                         animate={{ opacity: 1, scale: 1, y: 0 }}
                         exit={{ opacity: 0, scale: 0.96, y: 12 }}
                         transition={{ type: 'spring', damping: 28, stiffness: 320 }}
-                        className="relative z-10 w-full sm:w-[92vw] max-w-6xl h-[calc(100dvh-1rem)] sm:h-[86vh] md:h-[80vh] bg-white rounded-xl sm:rounded-2xl shadow-2xl border border-slate-200 overflow-hidden flex flex-col motion-reduce:transition-none"
+                        className="relative z-10 w-full sm:w-[92vw] max-w-6xl h-[calc(100dvh-1rem)] sm:h-[86vh] md:h-[80vh] bg-warm-surface rounded-xl sm:rounded-2xl shadow-2xl border border-warm-border overflow-hidden flex flex-col motion-reduce:transition-none"
                         onClick={(e) => e.stopPropagation()}
                     >
                         {/* Header */}
-                        <div className="px-4 sm:px-6 pt-4 sm:pt-5 pb-3 flex items-start justify-between gap-3 sm:gap-4 border-b border-slate-100 shrink-0">
+                        <div className="px-4 sm:px-6 pt-4 sm:pt-5 pb-3 flex items-start justify-between gap-3 sm:gap-4 border-b border-warm-border shrink-0">
                             <div className="min-w-0">
-                                <div className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Clone trajectory</div>
+                                <div className="text-[10px] font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300">Clone trajectory</div>
                                 <h2 id={headerId} className="text-sm sm:text-base font-bold text-slate-900">Drop upstream stages</h2>
-                                <div className="hidden sm:block text-xs text-slate-600 mt-0.5">
+                                <div className="hidden sm:block text-xs text-slate-700 dark:text-slate-300 mt-0.5">
                                     The clone forks into its own independent trajectory — even heads are fresh nodes. Click <strong>drop stage</strong> on an action to remove it plus any upstream that only fed it; its output then becomes a head copy of the completed asset. Drops that would promote a draft to head are blocked.
                                 </div>
-                                <div className="sm:hidden text-xs text-slate-600 mt-0.5">
+                                <div className="sm:hidden text-xs text-slate-700 dark:text-slate-300 mt-0.5">
                                     Tap <strong>drop stage</strong> to trim front stages. Drops that would leave a draft as head are blocked.
                                 </div>
                             </div>
@@ -469,7 +469,7 @@ const CloneTrajectoryDialog = ({
                                 type="button"
                                 onClick={onCancel}
                                 aria-label="Close clone trajectory dialog"
-                                className="shrink-0 p-2.5 text-slate-500 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-900"
+                                className="shrink-0 p-2.5 text-slate-700 dark:text-slate-300 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-900"
                             >
                                 <X className="w-4 h-4" weight="bold" aria-hidden="true" />
                             </button>
@@ -488,8 +488,8 @@ const CloneTrajectoryDialog = ({
                         </div>
 
                         {/* Footer */}
-                        <div className="px-4 sm:px-6 py-3 sm:py-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-3 border-t border-slate-100 bg-slate-50 shrink-0">
-                            <div className="text-xs text-slate-600 text-center sm:text-left order-2 sm:order-1" aria-live="polite" aria-atomic="true">
+                        <div className="px-4 sm:px-6 py-3 sm:py-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-3 border-t border-warm-border bg-warm-muted shrink-0">
+                            <div className="text-xs text-slate-700 dark:text-slate-300 text-center sm:text-left order-2 sm:order-1" aria-live="polite" aria-atomic="true">
                                 <strong className="text-emerald-700">{stats.reused}</strong> head cop{stats.reused === 1 ? 'y' : 'ies'} ·{' '}
                                 <strong className="text-slate-900">{stats.clones}</strong> draft{stats.clones === 1 ? '' : 's'}
                             </div>
@@ -498,7 +498,7 @@ const CloneTrajectoryDialog = ({
                                     type="button"
                                     onClick={onCancel}
                                     disabled={applying}
-                                    className="w-full sm:w-auto min-h-11 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-200 rounded-lg transition-colors disabled:opacity-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-900"
+                                    className="w-full sm:w-auto min-h-11 px-4 py-2 text-sm font-medium text-slate-800 dark:text-slate-200 hover:bg-slate-200 rounded-lg transition-colors disabled:opacity-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-900"
                                 >
                                     Cancel
                                 </button>

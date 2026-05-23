@@ -53,8 +53,19 @@ async function main() {
     const dstTpl = join(dst, "template");
     await mkdir(dstTpl, { recursive: true });
 
-    await cp(join(src, "CLAUDE.md"), join(dstTpl, "CLAUDE.md"));
+    // Compose AGENTS.md = shared prelude (universal crew rules) + this
+    // role's body. The prelude pins behaviors that have to hold across
+    // every crew member (must `clash room say` when @-mentioned, etc.)
+    // — putting them in the shared SKILL is unreliable because Claude
+    // Code only loads skills on demand, but AGENTS.md is always read at
+    // session start. Keep role-specific guidance in
+    // assets/crew/<role>/AGENTS.md; cross-cutting rules go in the
+    // prelude so a fix lands for every crew at once.
+    const prelude = await readFile(join(ASSETS, "shared-cwd", "AGENTS-prelude.md"), "utf-8");
+    const roleBody = await readFile(join(src, "AGENTS.md"), "utf-8");
+    await writeFile(join(dstTpl, "AGENTS.md"), prelude.trimEnd() + "\n\n" + roleBody);
     await cp(join(src, "runtime.json"), join(dst, "runtime.json"));
+    // Copy `.claude/` but EXCLUDE the prelude file we already inlined.
     await cp(join(ASSETS, "shared-cwd", ".claude"), join(dstTpl, ".claude"), { recursive: true });
 
     const runtime = JSON.parse(await readFile(join(dst, "runtime.json"), "utf-8"));

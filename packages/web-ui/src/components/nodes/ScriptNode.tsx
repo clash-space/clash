@@ -44,7 +44,7 @@ const ScriptNode = ({ id, data, selected }: NodeProps<Node<Record<string, any>>>
 
     return (
         <div
-            className={`group relative min-w-[300px] overflow-hidden rounded-matrix bg-white shadow-lg transition-all duration-300 hover:shadow-xl ${selected ? 'ring-4 ring-purple-500 ring-offset-2' : 'ring-1 ring-slate-100'
+            className={`group relative min-w-[300px] overflow-hidden rounded-matrix bg-warm-surface shadow-lg transition-all duration-300 hover:shadow-xl ${selected ? 'ring-4 ring-purple-500 ring-offset-2' : 'ring-1 ring-slate-100'
                 }`}
         >
             {/* Header */}
@@ -60,14 +60,14 @@ const ScriptNode = ({ id, data, selected }: NodeProps<Node<Record<string, any>>>
             </div>
 
             {/* Content: Shot List */}
-            <div className="max-h-[300px] overflow-y-auto p-2 bg-slate-50">
+            <div className="max-h-[300px] overflow-y-auto p-2 bg-warm-muted">
                 <div className="space-y-2">
                     {shots.map((shot, index) => (
-                        <div key={shot.id} className="relative rounded-lg border border-slate-200 bg-white p-3 shadow-sm transition-colors hover:border-amber-300">
+                        <div key={shot.id} className="relative rounded-lg border border-warm-border bg-warm-surface p-3 shadow-sm transition-colors hover:border-amber-300">
                             <div className="mb-1 flex items-center justify-between">
                                 <span className="text-[10px] font-bold uppercase text-amber-600">Scene {index + 1}</span>
                             </div>
-                            <p className="text-xs text-slate-700 font-medium leading-relaxed">{shot.content}</p>
+                            <p className="text-xs text-slate-800 dark:text-slate-200 font-medium leading-relaxed">{shot.content}</p>
 
                             {/* Handle for EACH shot? Or just one main handle? 
                                 For this design, we'll keep one main handle, but in the future, 
@@ -79,7 +79,7 @@ const ScriptNode = ({ id, data, selected }: NodeProps<Node<Record<string, any>>>
 
                 <button
                     onClick={addShot}
-                    className="mt-3 flex w-full items-center justify-center gap-1 rounded-lg border border-dashed border-slate-300 py-2 text-xs font-medium text-slate-500 hover:bg-slate-100 hover:text-slate-700"
+                    className="mt-3 flex w-full items-center justify-center gap-1 rounded-lg border border-dashed border-slate-300 py-2 text-xs font-medium text-slate-700 dark:text-slate-300 hover:bg-slate-100 hover:text-slate-700"
                 >
                     <Plus size={14} />
                     Add Scene

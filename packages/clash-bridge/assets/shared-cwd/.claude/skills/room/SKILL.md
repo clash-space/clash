@@ -5,21 +5,24 @@ description: Talk to humans + other crew members in the project's group-chat roo
 
 # Room — group chat with humans + other crew
 
+> **The "must broadcast on `[room from …]`" rule lives in the project's
+> AGENTS.md prelude, not here.** That rule is always loaded; this skill
+> is the reference for *how* the room works — semantics, identity,
+> when to volunteer messages unprompted.
+
 The project has a shared **room** where humans and other crew members
 chat. By default, your own work (tool calls, internal reasoning,
 streaming text) lives in your private session — humans only see it if
 they specifically open your tab. To say something **everyone in the
 room sees**, broadcast via the `clash room say` tool.
 
-## When to broadcast
+## When to broadcast unprompted
 
 Broadcast when you have a finished thought worth surfacing to the whole
-room. This is your equivalent of "talking out loud" in a meeting.
+room — your equivalent of "talking out loud" in a meeting.
 
 **Do** broadcast when:
 
-- You're directly addressed (`@you`) and have an answer or status to
-  share — humans expect to see your reply in the same place they typed.
 - You finished a unit of work humans should know about ("Added 3 nodes
   to the canvas" / "Generated the storyboard").
 - You need to ask the room a question — a clarification, a permission

@@ -96,8 +96,9 @@ export default function ProjectCard({ project }: ProjectCardProps) {
         )}
 
         {/* Delete Button (Hover) */}
-        <div className="absolute right-3 top-3 opacity-0 transition-opacity group-hover:opacity-100 z-10">
+        <div className="absolute right-3 top-3 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100 z-10">
             <button
+                type="button"
                 onClick={async (e) => {
                     e.preventDefault();
                     e.stopPropagation();
@@ -105,19 +106,20 @@ export default function ProjectCard({ project }: ProjectCardProps) {
                         await deleteProject(project.id);
                     }
                 }}
-                className="rounded-full bg-white/90 p-2 text-slate-400 shadow-sm backdrop-blur-sm transition-colors hover:bg-red-50 hover:text-red-500"
+                aria-label={`Delete project ${project.name || 'Untitled'}`}
+                className="rounded-full bg-warm-surface/90 p-2 min-h-[36px] min-w-[36px] text-slate-600 shadow-sm backdrop-blur-sm transition-colors hover:bg-red-50 hover:text-red-600 dark:text-slate-300 dark:hover:bg-red-950/40 dark:hover:text-red-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500 focus-visible:ring-offset-2 focus-visible:ring-offset-warm-page"
             >
-                <Trash className="h-4 w-4" weight="bold" />
+                <Trash className="h-4 w-4" weight="bold" aria-hidden="true" />
             </button>
         </div>
       </motion.div>
 
       {/* Text Content Below Card */}
       <div className="px-1">
-        <h3 className="text-base font-semibold text-slate-950 group-hover:text-brand transition-colors truncate">
+        <h3 className="text-base font-semibold text-slate-950 group-hover:text-brand transition-colors truncate dark:text-slate-50">
           {project.name || 'Untitled'}
         </h3>
-        <p className="mt-1 text-xs text-stone-500">
+        <p className="mt-1 text-xs text-stone-700 dark:text-stone-400">
           {formattedDate}
         </p>
       </div>

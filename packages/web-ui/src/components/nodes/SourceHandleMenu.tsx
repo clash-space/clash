@@ -202,9 +202,9 @@ const SourceHandleMenu = ({ nodeId }: SourceHandleMenuProps) => {
                         role="menu"
                         aria-label="Add next or clone"
                     >
-                        <div className="flex flex-col gap-1.5 rounded-2xl border border-slate-200 bg-white/95 p-2.5 shadow-xl backdrop-blur-xl min-w-[180px]">
+                        <div className="flex flex-col gap-1.5 rounded-2xl border border-warm-border bg-white/95 p-2.5 shadow-xl backdrop-blur-xl min-w-[180px]">
                             {/* Header */}
-                            <div className="px-2 py-1 text-xs font-bold text-slate-500 uppercase tracking-wider" aria-hidden="true">
+                            <div className="px-2 py-1 text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider" aria-hidden="true">
                                 Add next
                             </div>
 
@@ -218,7 +218,7 @@ const SourceHandleMenu = ({ nodeId }: SourceHandleMenuProps) => {
                                         initial={{ opacity: 0, x: -8 }}
                                         animate={{ opacity: 1, x: 0 }}
                                         transition={{ delay: index * 0.03 }}
-                                        className="flex items-center gap-3 rounded-xl min-h-11 px-3 py-2.5 text-sm text-slate-700 hover:bg-slate-100 hover:text-slate-900 transition-colors motion-reduce:transition-none text-left cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-900 focus-visible:ring-offset-1"
+                                        className="flex items-center gap-3 rounded-xl min-h-11 px-3 py-2.5 text-sm text-slate-800 dark:text-slate-200 hover:bg-slate-100 hover:text-slate-900 transition-colors motion-reduce:transition-none text-left cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-900 focus-visible:ring-offset-1"
                                         whileHover={{ x: 2 }}
                                         whileTap={{ scale: 0.97 }}
                                         onClick={(e) => handleOptionClick(option, e)}
@@ -234,7 +234,7 @@ const SourceHandleMenu = ({ nodeId }: SourceHandleMenuProps) => {
                                 an upstream action chain (nothing to clone on fresh uploads). */}
                             {hasUpstreamTrajectory && (
                                 <>
-                                    <div className="flex items-center gap-2 px-2 pt-1 pb-0.5 text-[10px] font-semibold text-slate-500 uppercase tracking-wider" role="separator">
+                                    <div className="flex items-center gap-2 px-2 pt-1 pb-0.5 text-[10px] font-semibold text-slate-700 dark:text-slate-300 uppercase tracking-wider" role="separator">
                                         <div className="h-px flex-1 bg-slate-200" aria-hidden="true" />
                                         or clone upstream
                                         <div className="h-px flex-1 bg-slate-200" aria-hidden="true" />
@@ -244,7 +244,7 @@ const SourceHandleMenu = ({ nodeId }: SourceHandleMenuProps) => {
                                         initial={{ opacity: 0, x: -8 }}
                                         animate={{ opacity: 1, x: 0 }}
                                         transition={{ delay: (visibleOptions.length + 1) * 0.03 }}
-                                        className="flex items-center gap-3 rounded-xl min-h-11 px-3 py-2.5 text-sm text-slate-700 hover:bg-slate-100 hover:text-slate-900 transition-colors motion-reduce:transition-none text-left cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-900 focus-visible:ring-offset-1"
+                                        className="flex items-center gap-3 rounded-xl min-h-11 px-3 py-2.5 text-sm text-slate-800 dark:text-slate-200 hover:bg-slate-100 hover:text-slate-900 transition-colors motion-reduce:transition-none text-left cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-900 focus-visible:ring-offset-1"
                                         whileHover={{ x: 2 }}
                                         whileTap={{ scale: 0.97 }}
                                         onClick={handleCloneClick}

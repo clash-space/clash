@@ -2,8 +2,11 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ArrowUp, Plus, Microphone, X, Check, StopCircle, CircleNotch } from '@phosphor-icons/react';
-import { lazy, Suspense } from 'react';
+import { lazy } from 'react';
+import { useTranslation } from 'react-i18next';
 import { getSignedUrl } from '@clash/web-ui/lib/hooks/useSignedUrl';
+import { resolveSpeechRecognitionLocale } from '@clash/web-ui/lib/utils/speechRecognitionLocale';
+import { IconButton } from '../ui/icon-button';
 import type { MilkdownEditorHandle, MentionableNode } from '../MilkdownEditor';
 
 // Lazy load MilkdownEditor to avoid SSR issues
@@ -108,6 +111,71 @@ async function probeMediaMetadata(
     }
 }
 
+/** Capture a JPEG poster from a video file by seeking to a tiny offset
+ *  (so we land past the black first frame), drawing to a canvas, and
+ *  returning a `data:image/jpeg` URI sized at most 512px wide. Returns
+ *  `null` on any failure (corrupt video, decode error, blank frame).
+ *
+ *  Lifted from `VideoNode.tsx:captureThumbnail` — same trick as the
+ *  legacy ChatbotCopilot's `<video src='url#t=0.1'>` preview, but
+ *  rasterized so the chat editor (which only knows `image` nodes) can
+ *  display it inline as a normal image chip. */
+async function captureVideoCover(file: File): Promise<string | null> {
+    const objectUrl = URL.createObjectURL(file);
+    try {
+        return await new Promise<string | null>((resolve) => {
+            const video = document.createElement('video');
+            video.preload = 'auto';
+            video.muted = true;
+            video.playsInline = true;
+            video.crossOrigin = 'anonymous';
+            const cleanup = () => {
+                video.removeAttribute('src');
+                video.load();
+            };
+            let resolved = false;
+            const finish = (out: string | null) => {
+                if (resolved) return;
+                resolved = true;
+                cleanup();
+                resolve(out);
+            };
+            video.onerror = () => finish(null);
+            video.onloadeddata = () => {
+                try {
+                    // Seek a hair past zero — first frame is often black on
+                    // many codecs / muxers.
+                    video.currentTime = Math.min(0.1, (video.duration || 0) * 0.05);
+                } catch {
+                    finish(null);
+                }
+            };
+            video.onseeked = () => {
+                try {
+                    if (!video.videoWidth || !video.videoHeight) { finish(null); return; }
+                    const canvas = document.createElement('canvas');
+                    const maxW = 512;
+                    const ratio = video.videoWidth / video.videoHeight;
+                    canvas.width = Math.min(maxW, video.videoWidth);
+                    canvas.height = Math.max(1, Math.round(canvas.width / ratio));
+                    const ctx = canvas.getContext('2d');
+                    if (!ctx) { finish(null); return; }
+                    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+                    finish(canvas.toDataURL('image/jpeg', 0.7));
+                } catch {
+                    finish(null);
+                }
+            };
+            video.src = objectUrl;
+            // Fail-safe timeout: don't hang the upload toast forever if
+            // the decoder never fires `seeked`.
+            setTimeout(() => finish(null), 4000);
+        });
+    } finally {
+        URL.revokeObjectURL(objectUrl);
+    }
+}
+
 /** Register the uploaded file as an asset row. Silently no-ops if no project context. */
 async function registerAsset(
     projectId: string | undefined,
@@ -183,39 +251,45 @@ export function ChatInput({
     onMentionAdded,
     projectId,
 }: ChatInputProps) {
+    const { t, i18n } = useTranslation();
     const fileInputRef = useRef<HTMLInputElement>(null);
     const editorRef = useRef<MilkdownEditorHandle>(null);
     const [uploading, setUploading] = useState(0);
 
     // ─── File upload → insert into editor on complete ──────────
     const handleFiles = useCallback((files: FileList | File[]) => {
-        console.log('[ChatInput] handleFiles', files.length, 'files, editorRef:', !!editorRef.current);
         Array.from(files).forEach(async (file) => {
             const type = classifyFile(file);
             const name = file.name;
 
             setUploading(n => n + 1);
             try {
-                console.log('[ChatInput] uploading:', name);
                 const { storageKey } = await uploadFile(file);
-                console.log('[ChatInput] uploaded:', storageKey);
-                // Register in assets table (best-effort; doesn't block the chat attachment).
                 void registerAsset(projectId, storageKey, file, type);
                 const signedUrl = await getSignedUrl(storageKey);
-                console.log('[ChatInput] signed:', signedUrl.slice(0, 60));
-                const md = type === 'image'
-                    ? `![${name}](${signedUrl})`
-                    : `[${name}](${signedUrl})`;
+
+                let md: string;
+                if (type === 'image') {
+                    md = `![${name}](${signedUrl})`;
+                } else if (type === 'video') {
+                    const cover = await captureVideoCover(file);
+                    md = cover
+                        ? `![video:${storageKey}:${name}](${cover})`
+                        : `[🎬 ${name}](${signedUrl})`;
+                } else if (type === 'audio') {
+                    md = `[🔊 ${name}](${signedUrl})`;
+                } else {
+                    md = `[📄 ${name}](${signedUrl})`;
+                }
                 editorRef.current?.insertAtCursor(md + ' ');
-                console.log('[ChatInput] inserted into editor, ref:', !!editorRef.current);
             } catch (err) {
                 console.error('[ChatInput] upload failed:', err);
-                editorRef.current?.insertAtCursor(`⚠️ Failed to upload ${name} `);
+                editorRef.current?.insertAtCursor(t('copilot.chatInput.uploadFailed', { name }));
             } finally {
                 setUploading(n => n - 1);
             }
         });
-    }, [projectId]);
+    }, [projectId, t]);
 
     // ─── Submit ──────────────────────────────────────────────
     const handleFormSubmit = useCallback(() => {
@@ -254,7 +328,7 @@ export function ChatInput({
         if (!SR) return;
         transcriptRef.current = '';
         const recognition = new SR();
-        recognition.lang = 'zh-CN';
+        recognition.lang = resolveSpeechRecognitionLocale(i18n.language);
         recognition.interimResults = true;
         recognition.continuous = true;
         recognition.onresult = (e: any) => {
@@ -265,6 +339,7 @@ export function ChatInput({
         recognition.start();
         setIsListening(true);
 
+        if (!navigator.mediaDevices?.getUserMedia) return;
         navigator.mediaDevices.getUserMedia({ audio: true }).then(stream => {
             streamRef.current = stream;
             const ctx = new AudioContext();
@@ -303,15 +378,20 @@ export function ChatInput({
     const isBusy = isProcessing || isCreatingSession || disabled;
     const canSend = input.trim() && !isBusy && uploading === 0;
     const isHero = variant === 'hero';
+    // placeholder prop is currently unused by MilkdownEditor; reference it
+    // so TS/lint doesn't flag it as unused while keeping the public API.
+    void placeholder;
 
     return (
-        <div className={isHero ? '' : 'px-4 py-3'}>
+        <div className={isHero ? '' : 'px-4 pb-3'}>
             <input
                 ref={fileInputRef}
                 type="file"
                 multiple
                 accept={ACCEPT}
                 className="hidden"
+                aria-hidden="true"
+                tabIndex={-1}
                 onChange={(e) => { if (e.target.files?.length) handleFiles(e.target.files); e.target.value = ''; }}
             />
 
@@ -320,10 +400,11 @@ export function ChatInput({
                 <AnimatePresence>
                     {error && (
                         <motion.div
+                            role="alert"
                             initial={{ opacity: 0, y: 4 }}
                             animate={{ opacity: 1, y: 0 }}
                             exit={{ opacity: 0, y: 4 }}
-                            className="mb-2 px-3 py-1.5 text-xs text-red-600 bg-red-50 border border-red-100 rounded-lg text-center cursor-pointer hover:bg-red-100 transition-colors"
+                            className="mb-2 px-3 py-1.5 text-xs text-red-700 bg-red-50 border border-red-200 rounded-lg text-center cursor-pointer hover:bg-red-100 transition-colors dark:text-red-300 dark:bg-red-950/30 dark:border-red-900/50 dark:hover:bg-red-950/50"
                             onClick={onDismissError}
                         >
                             {error}
@@ -340,29 +421,39 @@ export function ChatInput({
             >
                 {isListening ? (
                     /* ─── Voice recording ─── */
-                    <div className="px-4 py-3">
-                        <div className="flex items-center justify-center gap-[2px] h-10 my-1">
+                    <div className="px-4 py-3" role="region" aria-label={t('copilot.chatInput.voice')}>
+                        <div
+                            className="flex items-center justify-center gap-[2px] h-10 my-1"
+                            role="status"
+                            aria-live="polite"
+                            aria-label={t('copilot.chatInput.voice')}
+                        >
                             {audioLevels.map((level, i) => (
                                 <div
                                     key={i}
-                                    className="w-[3px] rounded-full bg-slate-800 transition-all duration-75"
+                                    aria-hidden="true"
+                                    className="w-[3px] rounded-full bg-slate-800 dark:bg-slate-200 transition-all duration-75 motion-reduce:transition-none"
                                     style={{ height: `${Math.max(3, level * 32)}px` }}
                                 />
                             ))}
                         </div>
                         <div className="clash-chat-input-actions flex items-center justify-end gap-2 pt-2">
-                            <button onClick={cleanup} className="clash-chat-input-icon-button w-8 h-8 rounded-full flex items-center justify-center text-slate-400 hover:text-slate-700 transition-colors">
-                                <X className="w-4 h-4" weight="bold" />
-                            </button>
-                            <button onClick={confirmVoice} className="clash-chat-input-icon-button w-8 h-8 rounded-full flex items-center justify-center text-slate-700 hover:text-slate-950 transition-colors">
-                                <Check className="w-4 h-4" weight="bold" />
-                            </button>
+                            <IconButton
+                                onClick={cleanup}
+                                label={t('copilot.chatInput.cancelVoice')}
+                                icon={<X className="w-4 h-4" weight="bold" />}
+                            />
+                            <IconButton
+                                onClick={confirmVoice}
+                                label={t('copilot.chatInput.confirmVoice')}
+                                icon={<Check className="w-4 h-4" weight="bold" />}
+                            />
                         </div>
                     </div>
                 ) : (
                     /* ─── Rich text input ─── */
                     <div className={isHero ? 'flex min-h-[142px] flex-col' : ''}>
-                        <div className={`clash-chat-input-editor milkdown-chat-input w-full text-left ${isHero ? 'min-h-[100px] flex-1 px-5 pt-4' : 'min-h-[40px] max-h-[200px]'} overflow-y-auto`}>
+                        <div className={`clash-chat-input-editor milkdown-chat-input w-full text-left chat-scroll-hidden ${isHero ? 'min-h-[100px] flex-1 px-5 pt-4' : 'min-h-[40px] max-h-[200px]'} overflow-y-auto`}>
                             <MilkdownEditor
                                 ref={editorRef}
                                 value={input}
@@ -377,65 +468,76 @@ export function ChatInput({
 
                         {/* Uploading indicator */}
                         {uploading > 0 && (
-                            <div className="flex items-center gap-1.5 px-4 pb-1 text-xs text-slate-400">
-                                <CircleNotch className="w-3 h-3 animate-spin" />
-                                <span>Uploading {uploading} file{uploading > 1 ? 's' : ''}...</span>
+                            <div
+                                role="status"
+                                aria-live="polite"
+                                className="flex items-center gap-1.5 px-4 pb-1 text-xs text-slate-700 dark:text-slate-300"
+                            >
+                                <CircleNotch className="w-3 h-3 animate-spin motion-reduce:animate-none" aria-hidden="true" />
+                                <span>{t('copilot.chatInput.uploading', { count: uploading })}</span>
                             </div>
                         )}
 
                         {/* Bottom toolbar */}
                         <div className={`clash-chat-input-actions flex items-center justify-between pb-2.5 pt-1.5 ${isHero ? 'px-5' : 'px-4'}`}>
                             <div className="flex items-center gap-1">
-                                <button
-                                    type="button"
+                                <IconButton
                                     onClick={() => fileInputRef.current?.click()}
                                     disabled={isBusy}
-                                    className="clash-chat-input-icon-button -ml-1.5 w-7 h-7 rounded-lg flex items-center justify-center text-slate-400 hover:text-slate-700 transition-colors disabled:opacity-30"
-                                    title="Attach files"
-                                >
-                                    <Plus className="w-4 h-4" weight="bold" />
-                                </button>
+                                    label={t('copilot.chatInput.attach')}
+                                    shape="rounded"
+                                    icon={<Plus className="w-4 h-4" weight="bold" />}
+                                    className="-ml-1.5"
+                                />
                             </div>
                             <div className="flex items-center gap-1.5 -mr-1.5">
                                 {!isHero && (
                                     <div
-                                        className={`w-2 h-2 rounded-full transition-colors ${connected ? 'bg-emerald-500' : 'bg-red-400'}`}
-                                        title={connected ? 'Connected' : 'Disconnected'}
-                                    />
+                                        role="status"
+                                        aria-live="polite"
+                                        aria-label={connected ? t('copilot.status.connected') : t('copilot.status.disconnected')}
+                                        className="flex items-center"
+                                    >
+                                        <span
+                                            aria-hidden="true"
+                                            className={`block w-2.5 h-2.5 rounded-full transition-colors ${connected ? 'bg-emerald-500 dark:bg-emerald-400' : 'bg-red-500 dark:bg-red-400'}`}
+                                        />
+                                    </div>
                                 )}
-                                <button
-                                    type="button"
+                                <IconButton
                                     onClick={startListening}
                                     disabled={isBusy}
-                                    className="clash-chat-input-icon-button w-7 h-7 rounded-lg flex items-center justify-center text-slate-400 hover:text-slate-700 transition-colors disabled:opacity-30"
-                                    title="Voice input"
-                                >
-                                    <Microphone className="w-4 h-4" weight="bold" />
-                                </button>
+                                    label={t('copilot.chatInput.voice')}
+                                    shape="rounded"
+                                    icon={<Microphone className="w-4 h-4" weight="bold" />}
+                                />
                                 {isProcessing && onStop ? (
                                     <button
                                         type="button"
                                         onClick={onStop}
-                                        className="w-7 h-7 rounded-full flex items-center justify-center bg-slate-800 text-white hover:bg-red-600 transition-colors"
+                                        aria-label={t('copilot.chatInput.stop')}
+                                        className="w-9 h-9 min-h-[36px] min-w-[36px] rounded-full flex items-center justify-center bg-slate-800 text-white hover:bg-red-600 transition-colors dark:bg-slate-200 dark:text-slate-900 dark:hover:bg-red-500 dark:hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500 focus-visible:ring-offset-2 focus-visible:ring-offset-warm-surface"
                                     >
-                                        <StopCircle className="w-4 h-4" weight="fill" />
+                                        <StopCircle className="w-4 h-4" weight="fill" aria-hidden="true" />
                                     </button>
                                 ) : (
                                     <button
                                         type="button"
                                         onClick={handleFormSubmit}
                                         disabled={!canSend && !isCreatingSession}
-                                        className={`w-7 h-7 rounded-full flex items-center justify-center transition-colors ${isCreatingSession || uploading > 0
-                                            ? 'bg-slate-800 text-white'
+                                        aria-label={t('copilot.chatInput.send')}
+                                        aria-busy={isCreatingSession || uploading > 0}
+                                        className={`w-9 h-9 min-h-[36px] min-w-[36px] rounded-full flex items-center justify-center transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-warm-surface ${isCreatingSession || uploading > 0
+                                            ? 'bg-slate-800 text-white dark:bg-slate-200 dark:text-slate-900 focus-visible:ring-slate-500'
                                             : canSend
-                                                ? 'bg-slate-900 text-white hover:bg-slate-800'
-                                                : 'bg-slate-100 text-slate-400'
+                                                ? 'bg-slate-900 text-white hover:bg-slate-800 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-white focus-visible:ring-slate-500'
+                                                : 'bg-warm-muted text-slate-500 dark:text-slate-500 cursor-not-allowed focus-visible:ring-slate-400'
                                             }`}
                                     >
                                         {isCreatingSession || uploading > 0 ? (
-                                            <CircleNotch className="w-3.5 h-3.5 animate-spin" />
+                                            <CircleNotch className="w-3.5 h-3.5 animate-spin motion-reduce:animate-none" aria-hidden="true" />
                                         ) : (
-                                            <ArrowUp className="w-3.5 h-3.5" weight="bold" />
+                                            <ArrowUp className="w-3.5 h-3.5" weight="bold" aria-hidden="true" />
                                         )}
                                     </button>
                                 )}

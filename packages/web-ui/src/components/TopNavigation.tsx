@@ -19,53 +19,45 @@ export default function TopNavigation() {
   const pathname = useLocation().pathname;
 
   return (
-    <header className="fixed top-0 left-0 right-0 z-50 py-6 pointer-events-none">
-      <div className="relative flex items-center justify-between w-full px-8 md:px-12">
+    <header className="fixed top-0 left-0 right-0 z-50 pt-[max(1.5rem,env(safe-area-inset-top))] pb-6 pointer-events-none">
+      <div className="relative flex items-center justify-between w-full pl-[max(2rem,env(safe-area-inset-left))] pr-[max(2rem,env(safe-area-inset-right))] md:px-12">
         {/* Logo Area */}
         <div className="pointer-events-auto z-10">
-          <Link to="/" className="group">
-            <motion.div
-              className="flex items-center gap-1"
-              whileHover={{ scale: 1.05 }}
-              whileTap={{ scale: 0.95 }}
-            >
-               <span className="font-display text-4xl font-bold tracking-tighter text-gray-900 leading-none">
-                C
-              </span>
-              <div className="h-8 w-[6px] bg-brand -skew-x-[20deg] transform origin-center" />
-            </motion.div>
+          <Link to="/" className="group flex items-center gap-1">
+            <span className="font-display text-4xl font-bold tracking-tighter text-gray-900 leading-none dark:text-slate-50">
+              C
+            </span>
+            <div className="h-8 w-[6px] bg-brand -skew-x-[20deg] transform origin-center" />
           </Link>
         </div>
 
         {/* Floating Center Nav */}
-        <nav className="pointer-events-auto absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 shadow-md border border-slate-200 bg-white/80 backdrop-blur-xl rounded-full px-3 py-2 flex items-center gap-1">
+        <nav aria-label="Primary" className="pointer-events-auto absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 shadow-md border border-warm-border bg-warm-surface rounded-full px-3 py-2 flex items-center gap-1">
           {navItems.map((item) => {
             const isActive = pathname === item.href;
             const Icon = item.icon;
             return (
-              <Link key={item.name} to={item.href}>
-                <motion.div
-                  className={`relative flex items-center gap-2.5 rounded-full px-5 py-2.5 text-base font-display font-medium transition-all ${
+              <Link key={item.name} to={item.href} aria-current={isActive ? 'page' : undefined}>
+                <div
+                  className={`relative flex items-center gap-2.5 rounded-full px-5 py-2.5 text-base font-display font-medium transition-colors ${
                     isActive
-                      ? 'text-gray-900'
-                      : 'text-gray-500 hover:text-gray-900 hover:bg-gray-100/50'
+                      ? 'text-slate-900 dark:text-slate-50'
+                      : 'text-slate-700 hover:text-slate-900 hover:bg-warm-muted dark:text-slate-300 dark:hover:text-slate-100'
                   }`}
-                  whileHover={{ scale: 1.02 }}
-                  whileTap={{ scale: 0.98 }}
                 >
                   {isActive && (
                     <motion.div
                       layoutId="nav-pill"
-                      className="absolute inset-0 bg-gray-100 rounded-full"
+                      className="absolute inset-0 bg-warm-muted rounded-full"
                       style={{ borderRadius: 9999 }}
-                      transition={{ type: "spring", bounce: 0.2, duration: 0.6 }}
+                      transition={{ type: 'spring', bounce: 0.15, duration: 0.4 }}
                     />
                   )}
                   <span className="relative z-10 flex items-center gap-2.5">
-                    <Icon className={`h-5 w-5 ${isActive ? 'text-brand' : ''}`} weight={isActive ? "fill" : "regular"} />
+                    <Icon className={`h-5 w-5 ${isActive ? 'text-brand' : ''}`} weight={isActive ? 'fill' : 'regular'} />
                     {item.name}
                   </span>
-                </motion.div>
+                </div>
               </Link>
             );
           })}

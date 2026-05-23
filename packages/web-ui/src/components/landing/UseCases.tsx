@@ -54,10 +54,10 @@ export default function UseCases() {
       <div className="mx-auto max-w-7xl px-6 lg:px-8">
         <div className="mx-auto max-w-2xl text-center mb-16 sm:mb-20">
           <h2 className="text-base font-semibold leading-7 text-brand font-display">Use Cases</h2>
-          <p className="mt-2 text-3xl font-bold tracking-tight text-gray-900 sm:text-4xl font-display">
+          <p className="mt-2 text-3xl font-bold tracking-tight text-slate-900 dark:text-slate-50 sm:text-4xl font-display">
             Built for every kind of creator
           </p>
-          <p className="mt-6 text-lg leading-8 text-gray-600">
+          <p className="mt-6 text-lg leading-8 text-gray-700 dark:text-gray-300">
             Whether you're a solo creator or a production team, Clash adapts to your workflow.
           </p>
         </div>
@@ -70,20 +70,20 @@ export default function UseCases() {
               whileInView={{ opacity: 1, y: 0 }}
               viewport={{ once: true }}
               transition={{ duration: 0.4, delay: index * 0.08 }}
-              className="group relative overflow-hidden rounded-2xl bg-white p-8 shadow-sm ring-1 ring-black/5 transition-all hover:shadow-lg hover:ring-brand/20"
+              className="group relative overflow-hidden rounded-2xl bg-warm-surface p-8 shadow-sm ring-1 ring-black/5 transition-all hover:shadow-lg hover:ring-brand/20"
             >
               <div className="flex items-start justify-between mb-5">
                 <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-brand/10">
                   <item.icon className="h-6 w-6 text-brand" weight="duotone" />
                 </div>
-                <span className="inline-flex items-center rounded-full bg-gray-100 px-2.5 py-0.5 text-xs font-medium text-gray-600">
+                <span className="inline-flex items-center rounded-full bg-warm-muted px-2.5 py-0.5 text-xs font-medium text-gray-700 dark:text-gray-300">
                   {item.badge}
                 </span>
               </div>
-              <h3 className="text-lg font-bold text-gray-900 font-display mb-2">
+              <h3 className="text-lg font-bold text-slate-900 dark:text-slate-50 font-display mb-2">
                 {item.title}
               </h3>
-              <p className="text-sm text-gray-600 leading-relaxed">
+              <p className="text-sm text-gray-700 dark:text-gray-300 leading-relaxed">
                 {item.description}
               </p>
             </motion.div>

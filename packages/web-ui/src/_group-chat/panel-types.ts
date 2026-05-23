@@ -24,7 +24,18 @@ export function crewHandle(displayName: string): string {
   return displayName.toLowerCase().replace(/\s+/g, '-');
 }
 
-/** Two-letter avatar fallback. */
+/**
+ * Up-to-two letter avatar fallback, word-first-letter style.
+ * "Canvas Editor" → "CE", "director" → "D", "x" → "X".
+ * Matches the rule used by UserControls so the same person/crew shows the
+ * same monogram across the app.
+ */
 export function crewInitials(displayName: string): string {
-  return displayName.slice(0, 2).toUpperCase();
+  const words = displayName
+    .split(/\s+/)
+    .map((w) => w.trim())
+    .filter(Boolean);
+  if (words.length === 0) return '?';
+  if (words.length === 1) return words[0].slice(0, 2).toUpperCase();
+  return (words[0][0] + words[words.length - 1][0]).toUpperCase();
 }

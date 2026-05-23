@@ -268,6 +268,22 @@ export class SessionManager {
         // events.
         const t = (ev as { type?: string } | null | undefined)?.type;
         if (t === "promptComplete" || t === "promptError") continue;
+        // DEV-ONLY raw event tap. Writes every ACP notification to a
+        // JSONL file so we can ground-truth the wire shape without
+        // round-tripping through the UI. Drop the import + this block
+        // before publishing the bridge; kept here while we polish the
+        // parser. Guarded by CLASH_ACP_TAP env var to avoid disk
+        // churn for users not debugging.
+        if (process.env.CLASH_ACP_TAP) {
+          try {
+            const { appendFileSync } = await import("node:fs");
+            appendFileSync(
+              process.env.CLASH_ACP_TAP,
+              JSON.stringify({ ts: Date.now(), session_id: p.session_id, turn_id: p.turn_id, event: ev }) + "\n",
+              "utf-8",
+            );
+          } catch { /* tap is best-effort */ }
+        }
         this.#send({
           type: "session.event",
           session_id: p.session_id,

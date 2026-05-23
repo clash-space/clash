@@ -1,9 +1,9 @@
 
 import { memo, useEffect, useMemo, useRef, useState } from 'react';
-import { Node, NodeProps, NodeResizeControl, useNodes, useReactFlow } from '@xyflow/react';
+import { Node, NodeProps, NodeResizeControl, useNodes, useReactFlow, useViewport } from '@xyflow/react';
 import { useOptionalLoroSyncContext } from '../LoroSyncContext';
 import { useLayoutActions } from '../LayoutActionsContext';
-import { MagicWand } from '@phosphor-icons/react';
+import { MagicWand, FrameCorners } from '@phosphor-icons/react';
 
 const controlStyle = {
     background: '#FF9900',
@@ -17,8 +17,11 @@ const GroupNode = ({ selected, data, id }: NodeProps<Node<Record<string, any>>>)
     const [label, setLabel] = useState(data.label || 'Group');
     const nodes = useNodes();
     const { setNodes } = useReactFlow();
+    // Counter-scale the action cluster so the buttons stay at constant screen
+    // size — matches the floating "Group" pill, which lives in screen-space.
+    const { zoom } = useViewport();
     const loroSync = useOptionalLoroSyncContext();
-    const { relayoutParent } = useLayoutActions();
+    const { relayoutParent, ungroup } = useLayoutActions();
     const syncTimeoutRef = useRef<number | null>(null);
 
     // Calculate nesting depth
@@ -92,7 +95,7 @@ const GroupNode = ({ selected, data, id }: NodeProps<Node<Record<string, any>>>)
                     onDoubleClick={(e) => e.stopPropagation()}
                 >
                     <input
-                        className="bg-transparent text-lg font-bold font-display text-slate-500 focus:text-slate-900 focus:outline-none"
+                        className="bg-transparent text-lg font-bold font-display text-slate-700 dark:text-slate-300 focus:text-slate-900 focus:outline-none"
                         value={label}
                         onChange={(evt) => {
                             const nextLabel = evt.target.value;
@@ -115,11 +118,38 @@ const GroupNode = ({ selected, data, id }: NodeProps<Node<Record<string, any>>>)
                     />
                 </div>
 
-                {/* Relayout button (only affects first layer inside this group) */}
-                <div className="absolute -top-8 right-4 z-10">
+                {/* Top-right action cluster — only visible when the group is
+                    selected (mirrors the floating "Group" pill, which also
+                    only appears for an active selection). Same pill style as
+                    that pill so group/ungroup read as a matched pair, and
+                    counter-scaled so size + gap stay constant in screen px. */}
+                {selected && (
+                <div
+                    className="absolute z-10 flex items-center gap-1.5"
+                    style={{
+                        right: 0,
+                        bottom: '100%',
+                        marginBottom: 8 / zoom,
+                        transform: `scale(${1 / zoom})`,
+                        transformOrigin: '100% 100%',
+                    }}
+                >
                     <button
                         type="button"
-                        className="flex h-7 w-7 items-center justify-center rounded-md border border-slate-200 bg-white/80 text-slate-600 shadow-sm backdrop-blur hover:bg-white hover:text-slate-900"
+                        className="flex h-7 items-center gap-1.5 rounded-md border border-warm-border bg-white/90 px-2.5 text-xs font-medium text-slate-700 dark:text-slate-300 shadow-sm backdrop-blur hover:bg-white hover:text-slate-900"
+                        onMouseDown={(e) => e.stopPropagation()}
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            ungroup(id);
+                        }}
+                        title="Ungroup (release children to parent)"
+                    >
+                        <FrameCorners className="h-3.5 w-3.5" weight="regular" />
+                        Ungroup
+                    </button>
+                    <button
+                        type="button"
+                        className="flex h-7 items-center gap-1.5 rounded-md border border-warm-border bg-white/90 px-2.5 text-xs font-medium text-slate-700 dark:text-slate-300 shadow-sm backdrop-blur hover:bg-white hover:text-slate-900"
                         onMouseDown={(e) => e.stopPropagation()}
                         onClick={(e) => {
                             e.stopPropagation();
@@ -127,9 +157,11 @@ const GroupNode = ({ selected, data, id }: NodeProps<Node<Record<string, any>>>)
                         }}
                         title="Relayout inside group"
                     >
-                        <MagicWand className="h-4 w-4" weight="regular" />
+                        <MagicWand className="h-3.5 w-3.5" weight="regular" />
+                        Layout
                     </button>
                 </div>
+                )}
             </div>
         </>
     );

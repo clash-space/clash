@@ -86,23 +86,44 @@ sessionsRuntimeRoutes.delete("/:sid", async (c) => {
 });
 
 // GET /:sid/messages — chat history for a local-runtime session.
-// Returns one row per logical message (user prompt or assembled crew
-// turn). Browser uses the same lib/acpEvents parser to render
-// events_json that it uses for live stream events.
+//
+// Returns the union of every chat_message row for the (crew_member_id,
+// project_id) pair backing this session — NOT just rows tied to this
+// session_id. Why: each `addCrew` POST creates a fresh
+// runtime_session; querying `chat_message WHERE session_id = ?` only
+// surfaces messages from the latest session, so a re-invite would look
+// like the crew has no history. Joining via crew_member_id + cwd (=
+// project_id, an existing schema overload — see runtimes.ts:267) gives
+// the user a stable transcript across re-invites.
+//
+// Falls back to plain session-scoped query if either field is null on
+// the row (older sessions written before crew_member_id existed).
 sessionsRuntimeRoutes.get("/:sid/messages", async (c) => {
   const userId = c.req.header("x-user-id");
   if (!userId) return c.json({ error: "unauthorized" }, 401);
 
   const sid = c.req.param("sid");
-  const owns = await c.env.DB.prepare(
-    "SELECT id FROM runtime_session WHERE id = ? AND user_id = ?",
-  ).bind(sid, userId).first<{ id: string }>();
-  if (!owns) return c.json({ error: "not found" }, 404);
+  const session = await c.env.DB.prepare(
+    "SELECT id, crew_member_id, cwd FROM runtime_session WHERE id = ? AND user_id = ?",
+  ).bind(sid, userId).first<{ id: string; crew_member_id: string | null; cwd: string | null }>();
+  if (!session) return c.json({ error: "not found" }, 404);
 
-  const { results } = await c.env.DB.prepare(
-    `SELECT id, sender_kind, sender_id, turn_id, events_json, created_at
-     FROM chat_message WHERE session_id = ? ORDER BY created_at ASC LIMIT 500`,
-  ).bind(sid).all<{
+  const useCrossSession = session.crew_member_id && session.cwd;
+  const sql = useCrossSession
+    ? // Cross-session: every message authored by this crew member in
+      // this project, regardless of which session it came from.
+      `SELECT cm.id, cm.sender_kind, cm.sender_id, cm.turn_id, cm.events_json, cm.created_at
+       FROM chat_message cm
+       JOIN runtime_session rs ON rs.id = cm.session_id
+       WHERE rs.user_id = ? AND rs.crew_member_id = ? AND rs.cwd = ?
+       ORDER BY cm.created_at ASC LIMIT 500`
+    : `SELECT id, sender_kind, sender_id, turn_id, events_json, created_at
+       FROM chat_message WHERE session_id = ? ORDER BY created_at ASC LIMIT 500`;
+  const stmt = useCrossSession
+    ? c.env.DB.prepare(sql).bind(userId, session.crew_member_id, session.cwd)
+    : c.env.DB.prepare(sql).bind(sid);
+
+  const { results } = await stmt.all<{
     id: string;
     sender_kind: string;
     sender_id: string;

@@ -32,7 +32,7 @@ export default function LandingHero() {
           transition={{ duration: 0.6 }}
           className="text-center"
         >
-          <h1 className="mb-10 text-6xl md:text-7xl font-bold tracking-tighter text-gray-900 text-center w-full font-display">
+          <h1 className="mb-10 text-6xl md:text-7xl font-bold tracking-tighter text-slate-900 dark:text-slate-50 text-center w-full font-display">
             Hey! <br />
             Let&apos;s make some <span className="text-brand">CLASH</span>?
           </h1>

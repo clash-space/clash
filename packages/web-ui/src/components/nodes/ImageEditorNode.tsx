@@ -82,32 +82,32 @@ const ImageEditorNode = ({ id, data }: NodeProps<Node<Record<string, any>>>) => 
 
     return (
         <div className="group relative w-[400px]" onDoubleClick={handleOpen}>
-            <div className="w-full bg-white shadow-md rounded-matrix overflow-hidden ring-1 ring-slate-200 transition-all duration-300 hover:shadow-lg">
+            <div className="w-full bg-warm-surface shadow-md rounded-matrix overflow-hidden ring-1 ring-slate-200 transition-all duration-300 hover:shadow-lg">
                 {/* Header */}
                 <div className="absolute top-3 left-3 z-10">
                     <div className="flex items-center gap-1.5 px-2.5 py-1 bg-white/90 backdrop-blur-sm rounded-full shadow-sm border border-slate-200/50">
                         <PencilSimple className="w-3.5 h-3.5 text-emerald-500" weight="fill" />
-                        <span className="text-[10px] font-bold font-display text-slate-700 uppercase tracking-wide">Image Editor</span>
+                        <span className="text-[10px] font-bold font-display text-slate-800 dark:text-slate-200 uppercase tracking-wide">Image Editor</span>
                     </div>
                 </div>
 
                 {/* Preview */}
-                <div className="relative w-full aspect-video bg-stone-100 flex items-center justify-center overflow-hidden border-b border-slate-100">
+                <div className="relative w-full aspect-video bg-stone-100 flex items-center justify-center overflow-hidden border-b border-warm-border">
                     {previewR2Key ? (
                         <SignedImg src={previewR2Key} alt="Source preview" className="w-full h-full object-cover pointer-events-none" />
                     ) : (
                         <div className="flex flex-col items-center gap-2 p-6 text-center">
-                            <div className="rounded-full w-14 h-14 flex items-center justify-center bg-white shadow-sm">
-                                <ImageSquare className="w-7 h-7 text-stone-400" weight="duotone" />
+                            <div className="rounded-full w-14 h-14 flex items-center justify-center bg-warm-surface shadow-sm">
+                                <ImageSquare className="w-7 h-7 text-stone-700 dark:text-stone-300" weight="duotone" />
                             </div>
-                            <div className="text-xs text-slate-500">Connect an image to start editing</div>
+                            <div className="text-xs text-slate-700 dark:text-slate-300">Connect an image to start editing</div>
                         </div>
                     )}
                 </div>
 
                 {/* Footer */}
-                <div className="bg-slate-50 px-3 py-2 border-t border-slate-100 flex items-center justify-between gap-2 h-10">
-                    <span className="text-[11px] text-slate-500 truncate">{paramSummary}</span>
+                <div className="bg-warm-muted px-3 py-2 border-t border-warm-border flex items-center justify-between gap-2 h-10">
+                    <span className="text-[11px] text-slate-700 dark:text-slate-300 truncate">{paramSummary}</span>
                     <button
                         onClick={handleOpen}
                         disabled={!ready}

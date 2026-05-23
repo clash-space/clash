@@ -41,10 +41,10 @@ export default function FeatureGrid() {
       <div className="mx-auto max-w-7xl px-6 lg:px-8">
         <div className="mx-auto max-w-2xl text-center">
           <h2 className="text-base font-semibold leading-7 text-brand font-display">Features</h2>
-          <p className="mt-2 text-3xl font-bold tracking-tight text-gray-900 sm:text-4xl font-display">
+          <p className="mt-2 text-3xl font-bold tracking-tight text-slate-900 dark:text-slate-50 sm:text-4xl font-display">
             Everything you need to create amazing videos
           </p>
-          <p className="mt-6 text-lg leading-8 text-gray-600">
+          <p className="mt-6 text-lg leading-8 text-gray-700 dark:text-gray-300">
             Powerful tools that help you tell your story, without the technical complexity.
           </p>
         </div>
@@ -59,13 +59,13 @@ export default function FeatureGrid() {
                 transition={{ duration: 0.5, delay: index * 0.1 }}
                 className="flex flex-col rounded-[1.5rem] bg-white/60 backdrop-blur-md p-8 shadow-sm ring-1 ring-black/5 hover:shadow-lg transition-all hover:bg-white/80"
               >
-                <dt className="flex items-center gap-x-3 text-base font-semibold leading-7 text-gray-900 font-display">
+                <dt className="flex items-center gap-x-3 text-base font-semibold leading-7 text-slate-900 dark:text-slate-50 font-display">
                   <div className="h-10 w-10 flex items-center justify-center rounded-lg bg-brand/10">
                     <feature.icon className="h-6 w-6 text-brand" aria-hidden="true" weight="duotone" />
                   </div>
                   {feature.name}
                 </dt>
-                <dd className="mt-4 flex flex-auto flex-col text-base leading-7 text-gray-600">
+                <dd className="mt-4 flex flex-auto flex-col text-base leading-7 text-gray-700 dark:text-gray-300">
                   <p className="flex-auto">{feature.description}</p>
                 </dd>
               </motion.div>

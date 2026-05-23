@@ -1,5 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { appendAcpEvent, type ByoMessage, type AvailableCommand } from '@clash/web-ui/lib/acpEvents';
+import {
+  loadCachedCrewMessages,
+  saveCachedCrewMessages,
+  clearCachedCrewMessages,
+} from '../_group-chat/crewMsgCache';
 
 /**
  * useGroupChat — multi-crew chat panel state.
@@ -25,6 +30,72 @@ import { appendAcpEvent, type ByoMessage, type AvailableCommand } from '@clash/w
 const RUNTIMES_PATH = '/api/v1/runtimes';
 const SESSIONS_BASE = '/api/v1/local-sessions';
 
+/**
+ * Pull persisted chat history for one local-runtime session and
+ * replay it through the same `appendAcpEvent` parser the live WS
+ * stream uses. Returns ready-to-render ByoMessage bubbles. The
+ * server stores one row per turn (user prompt or assistant turn);
+ * crew rows carry the raw daemon `event` objects, user rows carry
+ * one-element parts already in ByoMessage shape.
+ *
+ * Returns null on transport error (caller falls back to cache) and
+ * ByoMessage[] on success (including [] for an empty session) — the
+ * empty case is meaningful: it means "server has no history for this
+ * session", so we should NOT prefer a possibly-stale localStorage
+ * cache (which can contain text from an earlier buggy merge that's
+ * been frozen into JSON and survives indefinitely).
+ */
+async function fetchSessionHistory(sessionId: string, crewMemberId: string): Promise<ByoMessage[] | null> {
+  let res: Response;
+  try {
+    res = await fetch(`${SESSIONS_BASE}/${encodeURIComponent(sessionId)}/messages`, {
+      credentials: 'same-origin',
+    });
+  } catch {
+    return null;
+  }
+  if (!res.ok) return null;
+  let json: {
+    messages?: Array<{
+      id: string;
+      sender_kind: 'user' | 'crew';
+      sender_id: string;
+      turn_id: string | null;
+      events: unknown[];
+      created_at: number;
+    }>;
+  };
+  try {
+    json = await res.json();
+  } catch {
+    return null;
+  }
+  const rows = json.messages ?? [];
+  const bubbles: ByoMessage[] = [];
+  for (const row of rows) {
+    if (row.sender_kind === 'user') {
+      // events is already [{type:'text',text:'...'}]; coerce defensively.
+      const parts = (row.events ?? [])
+        .map((p) => p as { type?: string; text?: string })
+        .filter((p) => p?.type === 'text' && typeof p.text === 'string')
+        .map((p) => ({ type: 'text' as const, text: p.text! }));
+      bubbles.push({ id: row.id, role: 'user', parts });
+      continue;
+    }
+    // Crew turn: replay raw events through the parser into a single
+    // assistant bubble keyed by the turn id, mirroring how live events
+    // populate the same bubble during streaming.
+    const turnId = row.turn_id ?? row.id;
+    let knownIdx: number | undefined;
+    for (const ev of row.events ?? []) {
+      const result = appendAcpEvent(bubbles, turnId, knownIdx, ev);
+      if (knownIdx === undefined && result.idx >= 0) knownIdx = result.idx;
+    }
+  }
+  void crewMemberId; // reserved for future per-crew filtering if needed
+  return bubbles;
+}
+
 /** Caller passes this — usually fetched from /api/v1/crew. */
 export interface ClaimedCrew {
   id: string;             // crew_member.id — the identity we use everywhere
@@ -38,6 +109,13 @@ export type GroupChatStatus =
   | 'connected'
   | 'sending'
   | 'streaming'
+  /** WS dropped — auto-recovery in progress (exp-backoff or slow-poll
+   *  session re-create). UI surfaces this as a pulsing dot so the user
+   *  knows the system is working on it and doesn't trigger a manual
+   *  uninvite/reinvite (which loses chat history). */
+  | 'reconnecting'
+  /** Recovery has hit a wall that needs human attention (no sessionId
+   *  to retry against, etc). Surfaces the explicit Retry button. */
   | 'disconnected'
   | 'error';
 
@@ -118,6 +196,33 @@ export function useGroupChat(projectId?: string): UseGroupChatReturn {
   const crewRef = useRef<InternalCrewState[]>([]);
   crewRef.current = crew;
   const turnSeq = useRef(0);
+
+  // Mirror each crew's message transcript to localStorage so it survives
+  // page reload. Server-side persistence of session events is the proper
+  // fix; this is the local-only stop-gap so users don't see "No messages
+  // yet" after every refresh. We compare against last-saved arrays so a
+  // re-render that doesn't touch messages (status flip, unread bump,
+  // etc.) doesn't churn the storage. See _group-chat/crewMsgCache.ts.
+  const lastPersistedRef = useRef<Map<string, ByoMessage[]>>(new Map());
+  useEffect(() => {
+    if (!projectId) return;
+    for (const c of crew) {
+      const prev = lastPersistedRef.current.get(c.crewId);
+      if (prev === c.messages) continue;
+      // Don't persist an empty messages array — that's the initial /
+      // post-replace state, NOT a user action. Writing [] would clobber
+      // a populated cache we built up across previous sessions. Only
+      // explicit removeCrew() clears the cache (via
+      // clearCachedCrewMessages). This keeps cross-session continuity
+      // even when a fresh server-side history fetch returns nothing.
+      if (c.messages.length === 0) {
+        lastPersistedRef.current.set(c.crewId, c.messages);
+        continue;
+      }
+      saveCachedCrewMessages(projectId, c.crewId, c.messages);
+      lastPersistedRef.current.set(c.crewId, c.messages);
+    }
+  }, [crew, projectId]);
   // Tracks crew ids the user has explicitly removed, so the onclose
   // reconnect path can distinguish "user wants this gone" from a
   // transport drop. Mutated synchronously inside removeCrew (refs, not
@@ -127,6 +232,11 @@ export function useGroupChat(projectId?: string): UseGroupChatReturn {
   const reconnectAttemptsRef = useRef<Map<string, number>>(new Map());
   /** crewId → pending setTimeout id, so retryCrew / removeCrew can cancel. */
   const reconnectTimersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
+  /** Forward ref to `recoverCrewSession` — broken out so `openCrewWs`
+   *  can call it from inside its `onclose` handler. `recoverCrewSession`
+   *  itself calls `openCrewWs`, so we'd otherwise have a circular
+   *  declaration. Set during render below. */
+  const recoverCrewSessionRef = useRef<(crewId: string) => void>(() => {});
 
   // Tear down all WS on unmount or runtime change.
   useEffect(() => {
@@ -278,7 +388,30 @@ export function useGroupChat(projectId?: string): UseGroupChatReturn {
       return;
     }
     if (msg.type === 'daemon_offline') {
-      patchCrew(crewId, { status: 'disconnected', errorMessage: 'runtime offline' });
+      // Daemon dropped — the *client* WS is still open against the DO,
+      // so `ws.onclose` won't fire and the normal reconnect ladder
+      // doesn't engage. Flip to 'reconnecting' (pulsing amber) so the
+      // user sees something is being worked on, and arm the
+      // slow-recovery loop so we're ready to grab a fresh session the
+      // instant daemon_online comes back. The old session_id is dead
+      // (ACP subprocess vanished with the daemon) — POSTing /sessions
+      // is the only path to a working session, which is exactly what
+      // recoverCrewSession does.
+      patchCrew(crewId, {
+        status: 'reconnecting',
+        errorMessage: 'Runtime offline — waiting for daemon to come back',
+      });
+      recoverCrewSessionRef.current(crewId);
+      return;
+    }
+    if (msg.type === 'daemon_online') {
+      // Daemon came back. The current session_id is stale (it was
+      // bound to the previous daemon instance which spawned an ACP
+      // subprocess that's now gone). Trigger session recovery — the
+      // 20s slow-poll loop already POSTs /sessions when daemon is up,
+      // so a single nudge is enough. Don't preempt with a status set
+      // here; recoverCrewSession owns the status transition.
+      recoverCrewSessionRef.current(crewId);
       return;
     }
     if (msg.type === 'room.mention' && typeof msg.text === 'string') {
@@ -333,19 +466,22 @@ export function useGroupChat(projectId?: string): UseGroupChatReturn {
       reconnectAttemptsRef.current.set(crewId, attempts);
 
       if (attempts > MAX_RECONNECT_ATTEMPTS) {
-        // Give up; surface to the user via the Retry button in CrewView.
-        setCrew((prev) => prev.map((c) =>
-          c.crewId === crewId
-            ? { ...c, ws: null, status: c.status === 'error' ? c.status : 'disconnected' as const, errorMessage: `Lost connection after ${MAX_RECONNECT_ATTEMPTS} attempts. Click Retry.` }
-            : c,
-        ));
+        // Fast retries exhausted. Don't give up — switch to the
+        // slow-recovery path: re-POST /sessions for a fresh session id
+        // (the original may be dead on the daemon side if the runtime
+        // restarted). recoverCrewSession is self-rescheduling: it polls
+        // every ~20s until the runtime is back and the create succeeds,
+        // at which point it re-opens a WS and resets the counter.
+        // pendingPrompts queued during downtime drain automatically on
+        // session.complete after recovery — user's @-mention catches up.
+        recoverCrewSessionRef.current(crewId);
         return;
       }
 
       const delay = reconnectDelay(attempts);
       setCrew((prev) => prev.map((c) =>
         c.crewId === crewId
-          ? { ...c, ws: null, status: 'disconnected' as const, errorMessage: `Reconnecting (${attempts}/${MAX_RECONNECT_ATTEMPTS})…` }
+          ? { ...c, ws: null, status: 'reconnecting' as const, errorMessage: `Reconnecting (${attempts}/${MAX_RECONNECT_ATTEMPTS})…` }
           : c,
       ));
       const t = setTimeout(() => {
@@ -369,7 +505,13 @@ export function useGroupChat(projectId?: string): UseGroupChatReturn {
     }
 
     // Optimistic insert with connecting status; UI shows the avatar
-    // immediately so the user sees their click registered.
+    // immediately so the user sees their click registered. Restore any
+    // cached message transcript from a previous tab/session so the panel
+    // doesn't read as empty after reload (the WS event stream itself is
+    // not server-persisted today; cache is the only continuity).
+    const cachedMessages = projectId
+      ? loadCachedCrewMessages(projectId, crewId)
+      : [];
     setCrew((prev) => [
       ...prev,
       {
@@ -381,7 +523,7 @@ export function useGroupChat(projectId?: string): UseGroupChatReturn {
         ws: null,
         status: 'connecting',
         errorMessage: null,
-        messages: [],
+        messages: cachedMessages,
         availableCommands: [],
         unread: false,
         lastActiveAt: Date.now(),
@@ -413,6 +555,32 @@ export function useGroupChat(projectId?: string): UseGroupChatReturn {
       // new connection's onclose path doesn't get short-circuited.
       removingRef.current.delete(crewId);
       reconnectAttemptsRef.current.set(crewId, 0);
+
+      // Replay persisted history BEFORE opening the WS. The server
+      // stores every completed turn's event stream in
+      // chat_message.events_json (see runtime-room.flushTurnToHistory).
+      // Without this fetch, a freshly-opened crew tab only ever sees
+      // events that arrive after the WS subscribes.
+      //
+      // Two persistence layers + one important asymmetry:
+      //   • server history is keyed by session_id (one session = one
+      //     POST /sessions = new id every invite). Fresh invites have
+      //     no history at all.
+      //   • localStorage cache (crewMsgCache) is keyed by
+      //     (project_id, crew_member_id) and survives across
+      //     session_ids. It's the only thing that carries forward
+      //     work done in a previous tab/session.
+      //
+      // Resolution: history WINS when it has content (it's the
+      // authoritative record for the live session, including any
+      // turns we missed). When history is empty, KEEP the cache —
+      // wiping it would erase cross-session memory and the user
+      // would see "No messages" every time they re-invite a crew.
+      const historyMessages = await fetchSessionHistory(json.session_id, claim.id);
+      if (historyMessages !== null && historyMessages.length > 0) {
+        patchCrew(crewId, { messages: historyMessages });
+      }
+
       openCrewWs(crewId, json.session_id);
     } catch (e) {
       patchCrew(crewId, {
@@ -432,6 +600,11 @@ export function useGroupChat(projectId?: string): UseGroupChatReturn {
       reconnectTimersRef.current.delete(crewId);
     }
     reconnectAttemptsRef.current.delete(crewId);
+    // User explicitly removed this crew → drop the cached transcript so
+    // reinviting later starts fresh. Project-change tear-down keeps the
+    // cache (you might come back to the project and want history).
+    if (projectId) clearCachedCrewMessages(projectId, crewId);
+    lastPersistedRef.current.delete(crewId);
     setCrew((prev) => {
       const target = prev.find((c) => c.crewId === crewId);
       if (target?.ws && target.ws.readyState === WebSocket.OPEN) {
@@ -446,7 +619,7 @@ export function useGroupChat(projectId?: string): UseGroupChatReturn {
       const next = crewRef.current.find((c) => c.crewId !== crewId);
       return next?.crewId ?? null;
     });
-  }, []);
+  }, [projectId]);
 
   /** User-triggered reconnect for an errored / disconnected crew. Cancels
    *  any pending backoff timer and immediately opens a fresh WS to the
@@ -465,6 +638,86 @@ export function useGroupChat(projectId?: string): UseGroupChatReturn {
     patchCrew(crewId, { status: 'connecting', errorMessage: null });
     openCrewWs(crewId, target.sessionId);
   }, [openCrewWs, patchCrew]);
+
+  /**
+   * Slow-recovery loop. Triggered after the WS reconnect ladder is
+   * exhausted (5 quick attempts) — at that point the original session
+   * id is almost certainly dead on the daemon side (it restarted, lost
+   * in-memory ACP state). Rather than make the user uninvite + reinvite
+   * (which would wipe localStorage history for this crew), we just
+   * keep re-creating the session in the background until the runtime
+   * answers.
+   *
+   * Cadence: try immediately on entry, then every 20s on failure. No
+   * upper bound — the daemon may come back after a meeting, a laptop
+   * lid open, a deploy, whatever. The status stays `'reconnecting'`
+   * (pulsing amber dot) the whole time so the user knows recovery is
+   * armed and doesn't tear the tab down. Any prompts queued via
+   * `pendingPrompts` during the outage drain automatically once the
+   * new session's `session.complete` fires.
+   *
+   * Cancellation: removeCrew sets removingRef, which the in-flight and
+   * scheduled retries both check before doing anything.
+   */
+  const recoverCrewSession = useCallback((crewId: string) => {
+    if (removingRef.current.has(crewId)) return;
+    const target = crewRef.current.find((c) => c.crewId === crewId);
+    if (!target) return;
+
+    // Cancel any pending fast-retry timer; we own the schedule now.
+    const pending = reconnectTimersRef.current.get(crewId);
+    if (pending) {
+      clearTimeout(pending);
+      reconnectTimersRef.current.delete(crewId);
+    }
+
+    const tryOnce = async () => {
+      if (removingRef.current.has(crewId)) return;
+      if (!crewRef.current.some((c) => c.crewId === crewId)) return;
+      patchCrew(crewId, {
+        status: 'reconnecting',
+        errorMessage: 'Restoring session — waiting for runtime…',
+        ws: null,
+      });
+      try {
+        const res = await fetch(`${RUNTIMES_PATH}/${target.runtimeId}/sessions`, {
+          method: 'POST',
+          credentials: 'same-origin',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({
+            crew_member_id: crewId,
+            ...(projectId ? { project_id: projectId } : {}),
+          }),
+        });
+        if (!res.ok) {
+          // Likely 409 runtime offline (daemon still gone) or a transient
+          // 5xx. Either way: just wait + retry. Don't surface as an
+          // error — the whole point of this loop is to be invisible
+          // until the runtime is back.
+          throw new Error(`HTTP ${res.status}`);
+        }
+        const json = (await res.json()) as { session_id: string };
+        patchCrew(crewId, { sessionId: json.session_id });
+        reconnectAttemptsRef.current.set(crewId, 0);
+        openCrewWs(crewId, json.session_id);
+        // Successful — don't schedule another attempt. If this WS
+        // drops again, the normal onclose ladder will run from scratch.
+      } catch {
+        if (removingRef.current.has(crewId)) return;
+        const t = setTimeout(() => {
+          reconnectTimersRef.current.delete(crewId);
+          void tryOnce();
+        }, 20_000);
+        reconnectTimersRef.current.set(crewId, t);
+      }
+    };
+
+    void tryOnce();
+  }, [projectId, openCrewWs, patchCrew]);
+
+  // Keep the forward-declared ref in sync with the live function so
+  // openCrewWs's onclose handler can reach it without a circular dep.
+  recoverCrewSessionRef.current = recoverCrewSession;
 
   const sendToFocused = useCallback((text: string) => {
     if (!focusedCrewId) return;

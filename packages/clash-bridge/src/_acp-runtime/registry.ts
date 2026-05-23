@@ -28,10 +28,21 @@ export interface KnownAgentEntry {
 
 export const KNOWN_ACP_AGENTS: KnownAgentEntry[] = [
   {
+    // Current official build — published by the @agentclientprotocol
+    // team, built on Anthropic's Claude Agent SDK. Supersedes the
+    // older @zed-industries/claude-code-acp wrapper (which we keep
+    // below for back-compat with machines that haven't migrated).
+    id: "claude-agent-acp",
+    label: "Claude Agent",
+    spec: { command: "claude-agent-acp" },
+    installHint: "npm install -g @agentclientprotocol/claude-agent-acp",
+    homepage: "https://github.com/agentclientprotocol/claude-agent-acp",
+  },
+  {
     id: "claude-code-acp",
-    label: "Claude Code",
+    label: "Claude Code (legacy)",
     spec: { command: "claude-code-acp" },
-    installHint: "npm install -g @zed-industries/claude-code-acp",
+    installHint: "npm install -g @zed-industries/claude-code-acp  # (legacy; prefer claude-agent-acp)",
     homepage: "https://github.com/zed-industries/claude-code-acp",
   },
   {

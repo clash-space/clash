@@ -1,7 +1,8 @@
 
-import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Wrench, Check, X, CaretDown, CaretRight, CircleNotch } from '@phosphor-icons/react';
+import { useTranslation } from 'react-i18next';
+import { useDisclosure } from '@clash/web-ui/lib/hooks/useDisclosure';
 
 export interface ToolCallProps {
     toolName: string;
@@ -13,62 +14,69 @@ export interface ToolCallProps {
 }
 
 export function ToolCall({ toolName, args, result, status, isExpanded: initialExpanded = false, indent = false }: ToolCallProps) {
-    const [isExpanded, setIsExpanded] = useState(initialExpanded);
+    const { t } = useTranslation();
+    const { isOpen, triggerProps, panelProps } = useDisclosure(initialExpanded);
 
     const statusConfig = {
-        pending: { icon: CircleNotch, color: 'text-blue-500', animate: true },
-        success: { icon: Check, color: 'text-green-500', animate: false },
-        error: { icon: X, color: 'text-red-500', animate: false },
-        failed: { icon: X, color: 'text-red-500', animate: false },
+        pending: { icon: CircleNotch, color: 'text-blue-600 dark:text-blue-400', animate: true, label: 'pending' },
+        success: { icon: Check, color: 'text-green-600 dark:text-green-400', animate: false, label: 'success' },
+        error: { icon: X, color: 'text-red-600 dark:text-red-400', animate: false, label: 'error' },
+        failed: { icon: X, color: 'text-red-600 dark:text-red-400', animate: false, label: 'failed' },
     };
 
     const config = statusConfig[status as keyof typeof statusConfig] ?? statusConfig.pending;
     const StatusIcon = config.icon;
 
     return (
-        <div className={`w-full rounded-xl border border-slate-100 bg-slate-50/50 overflow-hidden text-sm ${indent ? 'ml-6 w-[calc(100%-1.5rem)]' : ''}`}>
-            <div
-                className="flex items-center justify-between px-3 py-2 cursor-pointer hover:bg-slate-100 transition-colors"
-                onClick={() => setIsExpanded(!isExpanded)}
+        <div className={`w-full rounded-xl border border-slate-200 bg-slate-50/50 overflow-hidden text-sm dark:border-warm-border dark:bg-warm-muted ${indent ? 'ml-6 w-[calc(100%-1.5rem)]' : ''}`}>
+            <button
+                {...triggerProps}
+                aria-label={isOpen
+                    ? `${t('copilot.toolCall.collapse')}: ${toolName} (${config.label})`
+                    : `${t('copilot.toolCall.expand')}: ${toolName} (${config.label})`}
+                className="w-full flex items-center justify-between px-3 py-2 cursor-pointer hover:bg-slate-100 transition-colors dark:hover:bg-warm-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-400"
             >
-                <div className="flex items-center gap-2">
-                    <Wrench className="w-3.5 h-3.5 text-slate-500" weight="fill" />
-                    <span className="font-medium text-slate-700 font-mono text-xs">{toolName}</span>
-                </div>
+                <span className="flex items-center gap-2">
+                    <Wrench className="w-3.5 h-3.5 text-slate-700 dark:text-slate-300" weight="fill" aria-hidden="true" />
+                    <span className="font-medium text-slate-700 font-mono text-xs dark:text-slate-200">{toolName}</span>
+                </span>
 
-                <div className="flex items-center gap-2">
+                <span className="flex items-center gap-2">
                     <StatusIcon
-                        className={`w-3.5 h-3.5 ${config.color} ${config.animate ? 'animate-spin' : ''}`}
+                        className={`w-3.5 h-3.5 ${config.color} ${config.animate ? 'animate-spin motion-reduce:animate-none' : ''}`}
                         weight="bold"
+                        aria-hidden="true"
                     />
-                    {isExpanded ? (
-                        <CaretDown className="w-3 h-3 text-slate-400" />
+                    {isOpen ? (
+                        <CaretDown className="w-3 h-3 text-slate-500 dark:text-slate-400" aria-hidden="true" />
                     ) : (
-                        <CaretRight className="w-3 h-3 text-slate-400" />
+                        <CaretRight className="w-3 h-3 text-slate-500 dark:text-slate-400" aria-hidden="true" />
                     )}
-                </div>
-            </div>
+                </span>
+            </button>
 
             <AnimatePresence>
-                {isExpanded && (
+                {isOpen && (
                     <motion.div
+                        {...panelProps}
+                        aria-label={`${toolName} details`}
                         initial={{ height: 0, opacity: 0 }}
                         animate={{ height: 'auto', opacity: 1 }}
                         exit={{ height: 0, opacity: 0 }}
                         transition={{ duration: 0.2 }}
                     >
-                        <div className="px-3 pb-3 pt-0 border-t border-slate-100">
+                        <div className="px-3 pb-3 pt-0 border-t border-slate-200 dark:border-warm-border">
                             <div className="pt-2 space-y-2">
                                 <div>
-                                    <div className="text-[10px] uppercase tracking-wider text-slate-400 font-semibold mb-1">Input</div>
-                                    <pre className="bg-white p-2 rounded border border-slate-200 overflow-x-auto text-xs text-slate-600 font-mono">
+                                    <div className="text-[11px] uppercase tracking-wider text-slate-600 font-semibold mb-1 dark:text-slate-400">{t('copilot.toolCall.input')}</div>
+                                    <pre className="bg-white p-2 rounded border border-slate-200 overflow-x-auto text-xs text-slate-700 font-mono dark:bg-warm-page dark:border-warm-border dark:text-slate-300">
                                         {JSON.stringify(args, null, 2)}
                                     </pre>
                                 </div>
                                 {result && (
                                     <div>
-                                        <div className="text-[10px] uppercase tracking-wider text-slate-400 font-semibold mb-1">Output</div>
-                                        <pre className="bg-white p-2 rounded border border-slate-200 overflow-x-auto text-xs text-slate-600 font-mono">
+                                        <div className="text-[11px] uppercase tracking-wider text-slate-600 font-semibold mb-1 dark:text-slate-400">{t('copilot.toolCall.output')}</div>
+                                        <pre className="bg-white p-2 rounded border border-slate-200 overflow-x-auto text-xs text-slate-700 font-mono dark:bg-warm-page dark:border-warm-border dark:text-slate-300">
                                             {typeof result === 'string' ? result : JSON.stringify(result, null, 2)}
                                         </pre>
                                     </div>

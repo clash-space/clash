@@ -1,8 +1,8 @@
 
-import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { memo, useState, useRef, useEffect, useCallback, useMemo, useId } from 'react';
+import { motion, AnimatePresence, MotionConfig } from 'framer-motion';
 import { CaretLeft, CaretRight, Plus, ClockCounterClockwise, Trash, Plug } from '@phosphor-icons/react';
-import { useNavigate } from 'react-router';
+import { useTranslation } from 'react-i18next';
 import { Command } from '@clash/web-ui/lib/clientActions';
 import { UserMessage } from './copilot/UserMessage';
 import { AgentCard, type AgentLog } from './copilot/AgentCard';
@@ -15,12 +15,16 @@ import { ThinkingIndicator } from './copilot/ThinkingIndicator';
 import { MessageErrorBoundary } from './copilot/MessageErrorBoundary';
 import { ByoAgentDialog } from './copilot/ByoAgentDialog';
 import { RuntimePickerDialog } from './copilot/RuntimePickerDialog';
+import { Dialog } from './ui/dialog';
+import { IconButton } from './ui/icon-button';
 import { useAgentByoBridge } from '@clash/web-ui/hooks/useAgentByoBridge';
 import { useClashRuntime, type Runtime } from '@clash/web-ui/hooks/useClashRuntime';
 import type { Node as RFNode, Edge as RFEdge, Connection as RFConnection } from '@xyflow/react';
 import ReactMarkdown from 'react-markdown';
 import { useSignedUrl } from '@clash/web-ui/lib/hooks/useSignedUrl';
 import { useAsset, getAsset } from '@clash/web-ui/lib/hooks/useAsset';
+import { useIsBelowLg } from '@clash/web-ui/lib/hooks/useMediaQuery';
+import { useFocusTrap } from '@clash/web-ui/lib/hooks/useFocusTrap';
 import { useAgentCopilot, type CustomEvent } from '@clash/web-ui/hooks/useAgentCopilot';
 
 
@@ -66,25 +70,29 @@ const markdownComponents = {
     ul: ({ children }: any) => <ul className="list-disc pl-4 mb-4 space-y-1">{children}</ul>,
     ol: ({ children }: any) => <ol className="list-decimal pl-4 mb-4 space-y-1">{children}</ol>,
     li: ({ children }: any) => <li className="mb-1">{children}</li>,
-    h1: ({ children }: any) => <h1 className="font-display text-2xl font-bold mb-4 mt-6">{children}</h1>,
-    h2: ({ children }: any) => <h2 className="font-display text-xl font-bold mb-3 mt-5">{children}</h2>,
-    h3: ({ children }: any) => <h3 className="font-display text-lg font-bold mb-2 mt-4">{children}</h3>,
+    // Demote heading levels: assistant messages live deep inside the page,
+    // so their `#` headings shouldn't compete with the page's real h1/h2.
+    // Visual sizes preserved.
+    h1: ({ children }: any) => <h2 className="font-display text-2xl font-bold mb-4 mt-6">{children}</h2>,
+    h2: ({ children }: any) => <h3 className="font-display text-xl font-bold mb-3 mt-5">{children}</h3>,
+    h3: ({ children }: any) => <h4 className="font-display text-lg font-bold mb-2 mt-4">{children}</h4>,
+    h4: ({ children }: any) => <h5 className="font-display text-base font-bold mb-2 mt-3">{children}</h5>,
     code: ({ className, children, ...props }: any) => {
         const match = /language-(\w+)/.exec(className || '');
         const isInline = !match && !String(children).includes('\n');
         return isInline ? (
-            <code className="bg-warm-muted px-1.5 py-0.5 rounded text-sm font-mono text-[#d94f38] border border-warm-border" {...props}>
+            <code className="bg-warm-muted px-1.5 py-0.5 rounded text-sm font-mono text-brand border border-warm-border dark:text-brand-light" {...props}>
                 {children}
             </code>
         ) : (
-            <code className="block bg-slate-900 text-slate-50 p-4 rounded-lg mb-4 overflow-x-auto text-sm font-mono" {...props}>
+            <code className="block bg-slate-900 text-slate-50 p-4 rounded-lg mb-4 overflow-x-auto text-sm font-mono dark:bg-warm-page dark:text-slate-100 dark:border dark:border-warm-border" {...props}>
                 {children}
             </code>
         );
     },
     pre: ({ children }: any) => <pre className="not-prose mb-4">{children}</pre>,
-    blockquote: ({ children }: any) => <blockquote className="border-l-4 border-warm-border pl-4 italic text-stone-500 mb-4">{children}</blockquote>,
-    a: ({ href, children }: any) => <a href={href} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">{children}</a>,
+    blockquote: ({ children }: any) => <blockquote className="border-l-4 border-warm-border pl-4 italic text-stone-600 mb-4 dark:text-stone-300">{children}</blockquote>,
+    a: ({ href, children }: any) => <a href={href} target="_blank" rel="noopener noreferrer" className="text-blue-700 hover:underline dark:text-blue-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 focus-visible:ring-offset-warm-surface rounded-sm">{children}</a>,
 };
 
 /** Thumbnail for a selected node — resolves media via the asset row.
@@ -97,24 +105,176 @@ function SelectedNodeThumbnail({ node }: { node: RFNode }) {
     const isVideo = node.type === 'video' || data.actionType === 'video-gen';
     const r2Key = isVideo ? (asset?.coverR2Key ?? asset?.srcR2Key) : asset?.srcR2Key;
     const signedUrl = useSignedUrl(r2Key ?? undefined);
+    const label = typeof data.label === 'string' && data.label
+        ? data.label
+        : node.type ?? 'media';
     return (
-        <div className="w-6 h-6 rounded-md ring-2 ring-white overflow-hidden bg-slate-100 flex items-center justify-center">
+        <div className="w-6 h-6 rounded-md ring-2 ring-warm-surface overflow-hidden bg-warm-muted flex items-center justify-center">
             {isVideo && asset?.srcR2Key && !asset?.coverR2Key && signedUrl ? (
-                // video without a cover yet — show the video element, first frame
                 <video
                     src={`${signedUrl}#t=0.1`}
                     className="w-full h-full object-cover"
                     preload="metadata"
                     muted
                     playsInline
+                    aria-label={label}
                 />
             ) : signedUrl ? (
                 /* eslint-disable-next-line @next/next/no-img-element */
-                <img src={signedUrl} alt="" className="w-full h-full object-cover" />
+                <img src={signedUrl} alt={label} className="w-full h-full object-cover" />
             ) : null}
         </div>
     );
 }
+
+type MentionNodeRef = { id: string; type: string; label: string; thumbnail?: string };
+
+const PERSONA_MAP: Record<string, string> = {
+    ScriptWriter: 'scriptwriter',
+    ConceptArtist: 'conceptartist',
+    StoryboardDesigner: 'storyboardartist',
+    Editor: 'videoproducer',
+};
+
+/**
+ * Memoized single part of an assistant message (text / reasoning / tool-call
+ * / step-divider). Lifted out so React.memo's shallow equality can skip
+ * re-renders of unchanged parts within the currently-streaming message —
+ * useAgentCopilot's streaming pattern gives a new reference only to the
+ * actively-updating part, so every other part in the same message skips
+ * ReactMarkdown parse and AgentCard logs rebuild on every token tick.
+ */
+const MessagePart = memo(function MessagePart({ part }: { part: any }) {
+    if (part.type === 'text' && part.text) {
+        return (
+            <div className="text-base text-slate-800 leading-relaxed px-1 font-medium dark:text-slate-100">
+                <ReactMarkdown components={markdownComponents}>{part.text}</ReactMarkdown>
+            </div>
+        );
+    }
+    if (part.type === 'reasoning') {
+        return <ThinkingProcess content={part.text} />;
+    }
+    if (part.type === 'step-start') {
+        return <div className="border-t border-warm-border my-2" />;
+    }
+    if (part.type?.startsWith('tool-') || part.type === 'dynamic-tool') {
+        const toolName = part.type === 'dynamic-tool'
+            ? part.toolName
+            : part.type.replace('tool-', '');
+
+        if (toolName === 'task_delegation' && part.preliminary && part.output) {
+            const progress = part.output as any;
+            const agentName = progress.agent || 'Agent';
+            const agentLogs: AgentLog[] = [];
+
+            if (progress.toolCalls?.length) {
+                progress.toolCalls.forEach((tc: any) => {
+                    if (typeof tc === 'string') {
+                        agentLogs.push({ id: `tc-${tc}`, type: 'text', content: `→ ${tc}` });
+                    } else {
+                        agentLogs.push({
+                            id: tc.id || `tc-${tc.toolName}`,
+                            type: 'tool_call',
+                            toolProps: {
+                                toolName: tc.toolName,
+                                args: tc.args,
+                                result: tc.output,
+                                status: tc.status === 'completed' ? 'success'
+                                    : tc.status === 'error' ? 'error'
+                                    : 'pending',
+                                indent: false,
+                            },
+                        });
+                    }
+                });
+            }
+            if (progress.text) {
+                agentLogs.push({ id: 'text', type: 'text', content: progress.text });
+            }
+            if (progress.message) {
+                agentLogs.push({ id: 'msg', type: 'text', content: progress.message });
+            }
+
+            return (
+                <AgentCard
+                    agentName={agentName}
+                    status={progress.status === 'completed' ? 'done' : progress.status === 'failed' ? 'failed' : 'working'}
+                    logs={agentLogs}
+                    persona={(PERSONA_MAP[agentName] || 'default') as any}
+                />
+            );
+        }
+
+        const toolStatus = part.state === 'output-available' ? 'success'
+            : part.state === 'output-error' ? 'error'
+            : part.state === 'approval-requested' ? 'pending'
+            : 'pending' as const;
+        return (
+            <ToolCall
+                toolName={toolName}
+                args={part.input}
+                result={part.output}
+                status={toolStatus}
+            />
+        );
+    }
+    return null;
+});
+
+/**
+ * Memoized message row. Lifted out of the main component so React.memo can
+ * skip re-renders of unchanged messages during streaming — without this,
+ * every token tick re-runs ReactMarkdown for every prior message in the
+ * thread (O(n) work per chunk).
+ *
+ * Only re-renders when its `msg` reference or `mentionableNodes` ref changes.
+ * useAgentCopilot mutates only the streaming message, so completed messages
+ * stay referentially stable and are skipped entirely.
+ */
+const MessageRow = memo(function MessageRow({
+    msg,
+    mentionableNodes,
+}: {
+    msg: any;
+    mentionableNodes: MentionNodeRef[];
+}) {
+    return (
+        // content-visibility: auto lets the browser skip paint + layout for
+        // off-screen rows — native render-skipping that scales to long threads
+        // without virtualization's architectural cost. contain-intrinsic-size
+        // gives a height hint so the scrollbar doesn't jitter as rows enter
+        // the viewport and self-measure. 200px is a reasonable average for
+        // mixed text + tool-call messages; under-/over-estimates self-correct
+        // after first measurement.
+        <motion.div
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.25, ease: [0.25, 1, 0.5, 1] }}
+            style={{ contentVisibility: 'auto', containIntrinsicSize: 'auto 200px' }}
+        >
+            <MessageErrorBoundary messageId={msg.id}>
+                {msg.role === 'user' ? (
+                    <UserMessage
+                        content={
+                            msg.parts
+                                ?.filter((p: any) => p.type === 'text')
+                                .map((p: any) => p.text)
+                                .join('') || ''
+                        }
+                        mentionNodes={mentionableNodes}
+                    />
+                ) : (
+                    <div className="space-y-3">
+                        {msg.parts?.map((part: any, i: number) => (
+                            <MessagePart key={part.toolCallId ?? part.id ?? i} part={part} />
+                        ))}
+                    </div>
+                )}
+            </MessageErrorBoundary>
+        </motion.div>
+    );
+});
 
 export default function ChatbotCopilot({
     projectId,
@@ -140,6 +300,12 @@ export default function ChatbotCopilot({
     onCreateSession,
     onUploadFiles,
 }: ChatbotCopilotProps) {
+    const { t } = useTranslation();
+    const historyMenuId = useId();
+    const runtimeMenuId = useId();
+    // Below Tailwind's `lg` (1024px), the panel switches to a full-screen
+    // sheet over the canvas. Desktop keeps the resizable side panel.
+    const isMobile = useIsBelowLg();
     // ─── UI State ──────────────────────────────────────────────
     const [input, setInput] = useState('');
     const [isResizing, setIsResizing] = useState(false);
@@ -167,6 +333,12 @@ export default function ChatbotCopilot({
     const [shouldStickToBottom, setShouldStickToBottom] = useState(true);
     const historyDropdownRef = useRef<HTMLDivElement | null>(null);
     const historyButtonRef = useRef<HTMLButtonElement | null>(null);
+    const panelRef = useRef<HTMLElement | null>(null);
+
+    // Focus trap on mobile: when the sheet covers the viewport it should
+    // behave like a true dialog — keep keyboard focus inside until close.
+    const closeMobileSheet = useCallback(() => onCollapseChange(true), [onCollapseChange]);
+    useFocusTrap(panelRef, isMobile && !isCollapsed, closeMobileSheet);
 
     // ─── Agent Chat Hook ─────────────────────────────────────
     const {
@@ -287,7 +459,11 @@ export default function ChatbotCopilot({
             setShowHistory(false);
         };
         const onKeyDown = (event: KeyboardEvent) => {
-            if (event.key === 'Escape') setShowHistory(false);
+            if (event.key === 'Escape') {
+                setShowHistory(false);
+                // Return focus to the trigger so keyboard users keep their place.
+                historyButtonRef.current?.focus();
+            }
         };
         document.addEventListener('pointerdown', onPointerDown, true);
         document.addEventListener('keydown', onKeyDown);
@@ -297,18 +473,50 @@ export default function ChatbotCopilot({
         };
     }, [showHistory]);
 
+    // Close runtime menu on Escape too.
+    useEffect(() => {
+        if (!runtimeMenuOpen) return;
+        const onKeyDown = (event: KeyboardEvent) => {
+            if (event.key === 'Escape') setRuntimeMenuOpen(false);
+        };
+        document.addEventListener('keydown', onKeyDown);
+        return () => document.removeEventListener('keydown', onKeyDown);
+    }, [runtimeMenuOpen]);
+
+    // On mobile, the panel covers the canvas — lock body scroll while open.
+    // (Escape-to-close + focus trap are handled by useFocusTrap above.)
+    useEffect(() => {
+        if (!isMobile || isCollapsed) return;
+        const previous = document.body.style.overflow;
+        document.body.style.overflow = 'hidden';
+        return () => { document.body.style.overflow = previous; };
+    }, [isMobile, isCollapsed]);
+
     // ─── Scroll ──────────────────────────────────────────────
     const scrollToBottom = useCallback(() => {
         if (!shouldStickToBottom) return;
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
     }, [shouldStickToBottom]);
 
-    const handleScroll = () => {
+    // Stick-to-bottom is driven by IntersectionObserver instead of an
+    // onScroll handler so we don't force a layout read (scrollHeight) on
+    // every wheel tick. The observer fires only when the intersection
+    // state of the bottom sentinel actually changes.
+    //
+    // rootMargin bottom: 120px → the sentinel is treated as "visible" as
+    // long as the user is within 120px of the bottom. Matches the prior
+    // `distanceToBottom < 120` heuristic.
+    useEffect(() => {
+        const sentinel = messagesEndRef.current;
         const container = scrollContainerRef.current;
-        if (!container) return;
-        const distanceToBottom = container.scrollHeight - container.scrollTop - container.clientHeight;
-        setShouldStickToBottom(distanceToBottom < 120);
-    };
+        if (!sentinel || !container) return;
+        const observer = new IntersectionObserver(
+            ([entry]) => setShouldStickToBottom(entry.isIntersecting),
+            { root: container, rootMargin: '0px 0px 120px 0px', threshold: 0 },
+        );
+        observer.observe(sentinel);
+        return () => observer.disconnect();
+    }, [isCollapsed]);
 
     useEffect(() => {
         scrollToBottom();
@@ -446,11 +654,23 @@ export default function ChatbotCopilot({
     const startResizing = () => setIsResizing(true);
 
     useEffect(() => {
+        // rAF-coalesce: native mousemove fires far faster than 60fps; we only
+        // need one width update per frame. Without this, every move triggers
+        // a state update + reflow that competes with streaming-message renders.
+        let rafId: number | null = null;
+        let pendingX: number | null = null;
+        const flush = () => {
+            rafId = null;
+            if (pendingX == null) return;
+            const newWidth = window.innerWidth - pendingX;
+            pendingX = null;
+            onWidthChange(Math.max(300, Math.min(700, newWidth)));
+        };
         const handleMouseMove = (e: MouseEvent) => {
             if (!isResizing) return;
             e.preventDefault();
-            const newWidth = window.innerWidth - e.clientX;
-            onWidthChange(Math.max(300, Math.min(700, newWidth)));
+            pendingX = e.clientX;
+            if (rafId == null) rafId = requestAnimationFrame(flush);
         };
         const handleMouseUp = () => {
             setIsResizing(false);
@@ -462,6 +682,7 @@ export default function ChatbotCopilot({
             document.addEventListener('mouseup', handleMouseUp);
         }
         return () => {
+            if (rafId != null) cancelAnimationFrame(rafId);
             document.removeEventListener('mousemove', handleMouseMove);
             document.removeEventListener('mouseup', handleMouseUp);
         };
@@ -469,109 +690,149 @@ export default function ChatbotCopilot({
 
     // ─── Render ──────────────────────────────────────────────
     return (
-        <>
+        <MotionConfig reducedMotion="user">
             <AnimatePresence>
                 {isCollapsed && (
                     <motion.button
+                        type="button"
                         initial={{ opacity: 0 }}
                         animate={{ opacity: 1 }}
                         exit={{ opacity: 0 }}
                         onClick={() => onCollapseChange(false)}
-                        className="absolute right-4 top-4 z-50 flex h-14 w-14 items-center justify-center rounded-full border border-warm-border bg-warm-surface/85 shadow-sm backdrop-blur-xl transition-all hover:shadow-md hover:bg-white"
-                        whileHover={{ scale: 1.05 }}
-                        whileTap={{ scale: 0.95 }}
+                        aria-label={t('copilot.panel.expand')}
+                        aria-expanded={false}
+                        aria-controls="clash-copilot-panel"
+                        // Mobile: clear the iPhone home-indicator gesture zone with safe-area-inset-bottom (falls back to 1rem on devices without notch). Desktop: positions at top-right of the panel parent.
+                        className="fixed bottom-[max(1rem,env(safe-area-inset-bottom))] right-[max(1rem,env(safe-area-inset-right))] z-50 flex h-14 w-14 items-center justify-center rounded-full border border-warm-border bg-warm-surface shadow-lg transition-shadow hover:shadow-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-warm-page lg:absolute lg:bottom-auto lg:top-4 lg:right-4 lg:shadow-sm"
                     >
-                        <CaretLeft className="w-5 h-5 text-slate-600" weight="bold" />
+                        <CaretLeft className="w-5 h-5 text-slate-700 dark:text-slate-300" weight="bold" aria-hidden="true" />
                     </motion.button>
                 )}
             </AnimatePresence>
 
-            <motion.div
-                className={`h-full bg-warm-surface/85 backdrop-blur-xl flex flex-col relative ${isCollapsed ? '' : 'border-l border-warm-border shadow-xl'}`}
-                style={{ width: isCollapsed ? 0 : `${width}px` }}
-                animate={{ width: isCollapsed ? 0 : width }}
-                transition={isResizing ? { duration: 0 } : { type: "spring", stiffness: 300, damping: 30 }}
+            {/* Mobile backdrop — only visible below lg when panel is open. */}
+            <AnimatePresence>
+                {isMobile && !isCollapsed && (
+                    <motion.div
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        transition={{ duration: 0.15 }}
+                        className="fixed inset-0 z-40 bg-black/40 backdrop-blur-sm lg:hidden"
+                        onClick={() => onCollapseChange(true)}
+                        aria-hidden="true"
+                    />
+                )}
+            </AnimatePresence>
+
+            <motion.aside
+                ref={panelRef as React.RefObject<HTMLElement>}
+                id="clash-copilot-panel"
+                aria-label={t('copilot.panel.label')}
+                aria-hidden={isCollapsed}
+                aria-modal={isMobile && !isCollapsed ? 'true' : undefined}
+                role={isMobile && !isCollapsed ? 'dialog' : undefined}
+                tabIndex={isMobile && !isCollapsed ? -1 : undefined}
+                className={
+                    isMobile
+                        // Mobile: bg-warm-page extends to the unsafe areas so the system bars blend with the panel; padding shrinks the positioning context so absolute children land inside the safe zone. All four insets cover portrait (notch top, home indicator bottom) and landscape (notch on left or right).
+                        ? `fixed inset-0 z-50 flex flex-col bg-warm-page h-[100dvh] pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)] ${isCollapsed ? 'pointer-events-none' : ''}`
+                        : `h-full bg-warm-surface flex flex-col relative ${isCollapsed ? '' : 'border-l border-warm-border shadow-xl'}`
+                }
+                style={isMobile ? undefined : { width: isCollapsed ? 0 : `${width}px` }}
+                animate={
+                    isMobile
+                        ? { x: isCollapsed ? '100%' : 0 }
+                        : { width: isCollapsed ? 0 : width }
+                }
+                initial={false}
+                transition={isResizing ? { duration: 0 } : { duration: 0.22, ease: [0.25, 1, 0.5, 1] }}
             >
-                {!isCollapsed && (
+                {/* Screen-reader-only heading: gives heading-nav rotor users
+                    a landmark to jump to. Hidden visually because the panel
+                    already shows its purpose via design + the floating
+                    toggle button. */}
+                <h2 className="sr-only">{t('copilot.panel.label')}</h2>
+                {!isCollapsed && !isMobile && (
                     <div
                         onMouseDown={startResizing}
+                        role="separator"
+                        aria-orientation="vertical"
+                        aria-label="Resize panel"
                         className={`absolute left-0 top-0 bottom-0 w-0.5 cursor-ew-resize transition-colors z-10 ${isResizing ? 'bg-red-500' : 'hover:bg-red-500 bg-red-500/0'}`}
                     />
                 )}
 
                 {!isCollapsed && (
                     <>
-                        <motion.button
+                        <IconButton
                             onClick={() => onCollapseChange(true)}
-                            className="absolute left-2 top-4 z-20 p-2 flex items-center justify-center hover:bg-warm-muted rounded-full transition-all"
-                            whileHover={{ scale: 1.1 }}
-                            whileTap={{ scale: 0.9 }}
-                        >
-                            <CaretRight className="w-5 h-5 text-stone-600" weight="bold" />
-                        </motion.button>
+                            label={t('copilot.panel.collapse')}
+                            aria-expanded={true}
+                            aria-controls="clash-copilot-panel"
+                            icon={<CaretRight className="w-5 h-5" weight="bold" />}
+                            className="absolute left-2 top-4 z-20 text-stone-700 dark:text-stone-300"
+                        />
 
                         {/* Session Controls */}
-                        <div className="absolute right-4 top-4 z-20 flex items-center gap-1">
-                            <motion.button
+                        <div className="absolute right-4 top-4 z-20 flex items-center gap-1" role="toolbar" aria-label={t('copilot.panel.label')}>
+                            <IconButton
                                 onClick={handleNewSession}
-                                className="p-2 rounded-full hover:bg-warm-muted text-slate-700 transition-colors"
-                                whileHover={{ scale: 1.1 }}
-                                whileTap={{ scale: 0.9 }}
-                                title="New Session"
-                            >
-                                <Plus className="w-5 h-5" weight="bold" />
-                            </motion.button>
-                            <motion.button
-                                onClick={handleHistoryClick}
+                                label={t('copilot.header.newSession')}
+                                icon={<Plus className="w-5 h-5" weight="bold" />}
+                            />
+                            <IconButton
                                 ref={historyButtonRef}
-                                className="p-2 rounded-full hover:bg-warm-muted text-slate-700 transition-colors relative"
-                                whileHover={{ scale: 1.1 }}
-                                whileTap={{ scale: 0.9 }}
-                                title="History"
-                            >
-                                <ClockCounterClockwise className="w-5 h-5" weight="bold" />
-                                {sessionHistory.length > 0 && (
-                                    <div className="absolute top-1.5 right-1.5 w-2 h-2 bg-red-500 rounded-full border border-white" />
-                                )}
-                            </motion.button>
-                            {/* "Run on:" picker.
-                                Click → menu with Cloud + each registered runtime + ad-hoc options.
-                                Plug is filled green when something other than Cloud is active. */}
+                                onClick={handleHistoryClick}
+                                label={t('copilot.header.history')}
+                                aria-expanded={showHistory}
+                                aria-controls={historyMenuId}
+                                aria-haspopup="dialog"
+                                className="relative"
+                                icon={
+                                    <>
+                                        <ClockCounterClockwise className="w-5 h-5" weight="bold" />
+                                        {sessionHistory.length > 0 && (
+                                            <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-red-500 dark:bg-red-400 rounded-full border border-warm-surface" />
+                                        )}
+                                    </>
+                                }
+                            />
+                            {/* "Run on:" picker. Click opens menu; brand-tinted when something other than Cloud is the active runtime. */}
                             <div className="relative">
-                                <motion.button
+                                <IconButton
                                     onClick={() => {
-                                        // Refresh the runtime list each time the menu opens
-                                        // so users don't see a stale offline marker right
-                                        // after starting their daemon.
+                                        // Refresh the runtime list each time the menu opens so
+                                        // users don't see a stale offline marker right after
+                                        // starting their daemon.
                                         if (!runtimeMenuOpen) void clashRt.refresh();
                                         setRuntimeMenuOpen((v) => !v);
                                     }}
-                                    className={`p-2 rounded-full transition-colors ${
-                                        chatMode !== 'cloud'
-                                            ? 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200'
-                                            : 'hover:bg-warm-muted text-slate-700'
-                                    }`}
-                                    whileHover={{ scale: 1.1 }}
-                                    whileTap={{ scale: 0.9 }}
-                                    title="Run on (Cloud / local runtime)"
-                                >
-                                    <Plug className="w-5 h-5" weight="bold" />
-                                </motion.button>
+                                    label={t('copilot.header.runOn')}
+                                    aria-expanded={runtimeMenuOpen}
+                                    aria-controls={runtimeMenuId}
+                                    aria-haspopup="menu"
+                                    variant={chatMode !== 'cloud' ? 'active' : 'default'}
+                                    icon={<Plug className="w-5 h-5" weight="bold" />}
+                                />
                                 <AnimatePresence>
                                     {runtimeMenuOpen && (
                                         <motion.div
+                                            id={runtimeMenuId}
+                                            role="menu"
+                                            aria-label={t('copilot.runtime.menuTitle')}
                                             initial={{ opacity: 0, y: -6, scale: 0.96 }}
                                             animate={{ opacity: 1, y: 0, scale: 1 }}
                                             exit={{ opacity: 0, y: -6, scale: 0.96 }}
                                             className="absolute top-11 right-0 z-30 w-72 bg-warm-surface rounded-xl shadow-xl border border-warm-border overflow-hidden"
                                         >
                                             <div className="px-3 py-2 border-b border-warm-border bg-warm-muted">
-                                                <div className="font-display text-[10px] font-semibold text-stone-500 uppercase tracking-wider">Run on</div>
+                                                <div className="font-display text-xs font-semibold text-stone-700 uppercase tracking-wider dark:text-stone-300">{t('copilot.runtime.menuTitle')}</div>
                                             </div>
                                             <div className="py-1">
                                                 <RuntimeMenuRow
-                                                    label="Cloud"
-                                                    sub="Default — clash.video LLMs"
+                                                    label={t('copilot.runtime.cloud.label')}
+                                                    sub={t('copilot.runtime.cloud.sub')}
                                                     active={chatMode === 'cloud'}
                                                     onClick={() => {
                                                         if (chatMode === 'byo') byo.shutdown();
@@ -581,15 +842,18 @@ export default function ChatbotCopilot({
                                                     }}
                                                 />
                                                 {clashRt.runtimes.length > 0 && (
-                                                    <div className="px-3 pt-1 pb-0.5 text-[10px] text-stone-400 uppercase tracking-wider">My machines</div>
+                                                    <div role="presentation" className="px-3 pt-1 pb-0.5 text-[11px] text-stone-600 uppercase tracking-wider dark:text-stone-400">{t('copilot.runtime.machinesHeader')}</div>
                                                 )}
                                                 {clashRt.runtimes.map((rt) => {
                                                     const online = rt.status === 'online';
+                                                    const sub = online
+                                                        ? t('copilot.runtime.machineSub_online', { count: rt.agents.length })
+                                                        : t('copilot.runtime.machineSub_offline');
                                                     return (
                                                         <RuntimeMenuRow
                                                             key={rt.id}
                                                             label={rt.hostname || rt.machine_id.slice(0, 10)}
-                                                            sub={online ? `online · ${rt.agents.length} agent${rt.agents.length === 1 ? '' : 's'}` : 'offline'}
+                                                            sub={sub}
                                                             active={chatMode === 'runtime' && clashRt.selectedRuntimeId === rt.id}
                                                             disabled={!online || rt.agents.length === 0}
                                                             onClick={() => {
@@ -602,18 +866,18 @@ export default function ChatbotCopilot({
                                                         />
                                                     );
                                                 })}
-                                                <div className="border-t border-warm-border/70 my-1" />
+                                                <div role="separator" className="border-t border-warm-border/70 my-1" />
                                                 <RuntimeMenuRow
-                                                    label="Quick connect…"
-                                                    sub="One-shot npx pairing (no install)"
+                                                    label={t('copilot.runtime.quickConnect.label')}
+                                                    sub={t('copilot.runtime.quickConnect.sub')}
                                                     onClick={() => {
                                                         setRuntimeMenuOpen(false);
                                                         setByoDialogOpen(true);
                                                     }}
                                                 />
                                                 <RuntimeMenuRow
-                                                    label="Add machine…"
-                                                    sub="Register a persistent local runtime"
+                                                    label={t('copilot.runtime.addMachine.label')}
+                                                    sub={t('copilot.runtime.addMachine.sub')}
                                                     onClick={() => {
                                                         setRuntimeMenuOpen(false);
                                                         setAddMachineOpen(true);
@@ -630,6 +894,9 @@ export default function ChatbotCopilot({
                         <AnimatePresence>
                             {showHistory && (
                                 <motion.div
+                                    id={historyMenuId}
+                                    role="dialog"
+                                    aria-label={t('copilot.history.title')}
                                     initial={{ opacity: 0, y: -10, scale: 0.95 }}
                                     animate={{ opacity: 1, y: 0, scale: 1 }}
                                     exit={{ opacity: 0, y: -10, scale: 0.95 }}
@@ -637,43 +904,48 @@ export default function ChatbotCopilot({
                                     className="absolute top-14 right-4 z-30 w-64 bg-warm-surface rounded-xl shadow-xl border border-warm-border overflow-hidden"
                                 >
                                     <div className="p-3 border-b border-warm-border bg-warm-muted">
-                                        <h3 className="font-display text-xs font-semibold text-stone-500 uppercase tracking-wider">Session History</h3>
+                                        <h3 className="font-display text-xs font-semibold text-stone-700 uppercase tracking-wider dark:text-stone-300">{t('copilot.history.title')}</h3>
                                     </div>
-                                    <div className="max-h-60 overflow-y-auto">
+                                    <ul className="max-h-60 overflow-y-auto" role="list">
                                         {sessionHistory.length === 0 ? (
-                                            <div className="p-4 text-center text-sm text-slate-400">No history yet</div>
+                                            <li className="p-4 text-center text-sm text-slate-700 dark:text-slate-300">{t('copilot.history.empty')}</li>
                                         ) : (
                                             sessionHistory.map((item, index) => (
-                                                <div
+                                                <li
                                                     key={item.threadId}
-                                                    className="px-4 py-3 hover:bg-warm-muted cursor-pointer border-b border-warm-border/70 last:border-0 flex items-center justify-between group"
-                                                    onClick={() => {
-                                                        onSwitchSession?.(item.threadId);
-                                                        setShowHistory(false);
-                                                    }}
+                                                    className="border-b border-warm-border/70 last:border-0 group"
                                                 >
-                                                    <div className="flex flex-col">
-                                                        <span className="text-sm font-medium text-slate-700 truncate max-w-[180px]">
-                                                            {item.title || `Session ${index + 1}`}
-                                                        </span>
-                                                        <span className="text-[10px] text-slate-400 font-mono">{item.threadId.slice(-6)}</span>
-                                                    </div>
-                                                    <div className="flex items-center gap-2">
-                                                        <motion.button
-                                                            onClick={(e) => deleteSession(item.threadId, e)}
-                                                            className="p-1.5 rounded-full hover:bg-red-50 text-slate-300 hover:text-red-500 transition-all opacity-0 group-hover:opacity-100"
-                                                            whileHover={{ scale: 1.1 }}
-                                                            whileTap={{ scale: 0.9 }}
-                                                            title="Delete Session"
+                                                    <div className="flex items-stretch">
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => {
+                                                                onSwitchSession?.(item.threadId);
+                                                                setShowHistory(false);
+                                                                historyButtonRef.current?.focus();
+                                                            }}
+                                                            className="flex-1 text-left px-4 py-3 hover:bg-warm-muted transition-colors flex items-center justify-between gap-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand"
                                                         >
-                                                            <Trash className="w-3.5 h-3.5" />
-                                                        </motion.button>
-                                                        <CaretRight className="w-3 h-3 text-slate-300 group-hover:text-slate-500" />
+                                                            <span className="flex flex-col min-w-0">
+                                                                <span className="text-sm font-medium text-slate-800 truncate max-w-[180px] dark:text-slate-100">
+                                                                    {item.title || t('copilot.history.fallbackTitle', { index: index + 1 })}
+                                                                </span>
+                                                                <span className="text-[11px] text-slate-600 font-mono dark:text-slate-400">{item.threadId.slice(-6)}</span>
+                                                            </span>
+                                                            <CaretRight className="w-3 h-3 text-slate-500 dark:text-slate-400 flex-shrink-0" aria-hidden="true" />
+                                                        </button>
+                                                        <IconButton
+                                                            onClick={(e) => deleteSession(item.threadId, e)}
+                                                            label={t('copilot.history.delete')}
+                                                            variant="destructive"
+                                                            size="sm"
+                                                            icon={<Trash className="w-3.5 h-3.5" />}
+                                                            className="mr-1 my-1 opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
+                                                        />
                                                     </div>
-                                                </div>
+                                                </li>
                                             ))
                                         )}
-                                    </div>
+                                    </ul>
                                 </motion.div>
                             )}
                         </AnimatePresence>
@@ -690,7 +962,6 @@ export default function ChatbotCopilot({
                         >
                             <div
                                 ref={scrollContainerRef}
-                                onScroll={handleScroll}
                                 className="absolute inset-0 top-16 overflow-y-auto px-6 pt-4 pb-32"
                             >
                                 <div className="space-y-6">
@@ -702,155 +973,50 @@ export default function ChatbotCopilot({
                                     {chatMode === 'runtime' && (
                                         <>
                                             {clashRt.status === 'connecting' && (
-                                                <div className="text-xs text-stone-400 italic">Connecting to runtime…</div>
+                                                <div role="status" aria-live="polite" className="text-xs text-stone-600 italic dark:text-stone-300">{t('copilot.status.connecting')}</div>
                                             )}
                                             {clashRt.errorMessage && (
-                                                <div className="text-sm text-red-600">⚠ {clashRt.errorMessage}</div>
+                                                <div role="alert" className="text-sm text-red-700 dark:text-red-300">{t('copilot.errors.warningPrefix')} {clashRt.errorMessage}</div>
                                             )}
                                             <ByoMessageList messages={clashRt.messages} />
                                         </>
                                     )}
                                     {chatMode === 'cloud' && (
-                                    <>
-                                    {/* Render messages from useAgentChat */}
-                                    {messages.map((msg: any) => (
-                                        <motion.div
-                                            key={msg.id}
-                                            initial={{ opacity: 0, y: 20, scale: 0.95 }}
-                                            animate={{ opacity: 1, y: 0, scale: 1 }}
-                                            transition={{ type: "spring", stiffness: 500, damping: 30 }}
-                                        >
-                                            <MessageErrorBoundary messageId={msg.id}>
-                                            {msg.role === 'user' ? (
-                                                <UserMessage
-                                                    content={
-                                                        msg.parts
-                                                            ?.filter((p: any) => p.type === 'text')
-                                                            .map((p: any) => p.text)
-                                                            .join('') || ''
-                                                    }
-                                                    mentionNodes={mentionableNodes}
+                                        <>
+                                            {messages.map((msg: any) => (
+                                                <MessageRow
+                                                    key={msg.id}
+                                                    msg={msg}
+                                                    mentionableNodes={mentionableNodes}
                                                 />
-                                            ) : (
-                                                <div className="space-y-3">
-                                                    {msg.parts?.map((part: any, i: number) => {
-                                                        if (part.type === 'text' && part.text) {
-                                                            return (
-                                                                <div key={i} className="text-base text-slate-800 leading-relaxed px-1 font-medium">
-                                                                    <ReactMarkdown components={markdownComponents}>
-                                                                        {part.text}
-                                                                    </ReactMarkdown>
-                                                                </div>
-                                                            );
-                                                        }
-                                                        if (part.type === 'reasoning') {
-                                                            return <ThinkingProcess key={i} content={part.text} />;
-                                                        }
-                                                        if (part.type === 'step-start') {
-                                                            return <div key={i} className="border-t border-slate-100 my-2" />;
-                                                        }
-                                                        // Tool calls (both static and dynamic)
-                                                        if (part.type?.startsWith('tool-') || part.type === 'dynamic-tool') {
-                                                            const toolName = part.type === 'dynamic-tool'
-                                                                ? part.toolName
-                                                                : part.type.replace('tool-', '');
-
-                                                            // Sub-agent delegation: show AgentCard for preliminary outputs
-                                                            if (toolName === 'task_delegation' && part.preliminary && part.output) {
-                                                                const progress = part.output as any;
-                                                                const agentName = progress.agent || 'Agent';
-                                                                const agentLogs: AgentLog[] = [];
-
-                                                                if (progress.toolCalls?.length) {
-                                                                    progress.toolCalls.forEach((tc: any) => {
-                                                                        // Support both old format (string) and new format (SubAgentToolCall)
-                                                                        if (typeof tc === 'string') {
-                                                                            agentLogs.push({ id: `tc-${tc}`, type: 'text', content: `→ ${tc}` });
-                                                                        } else {
-                                                                            agentLogs.push({
-                                                                                id: tc.id || `tc-${tc.toolName}`,
-                                                                                type: 'tool_call',
-                                                                                toolProps: {
-                                                                                    toolName: tc.toolName,
-                                                                                    args: tc.args,
-                                                                                    result: tc.output,
-                                                                                    status: tc.status === 'completed' ? 'success'
-                                                                                        : tc.status === 'error' ? 'error'
-                                                                                        : 'pending',
-                                                                                    indent: false,
-                                                                                },
-                                                                            });
-                                                                        }
-                                                                    });
-                                                                }
-                                                                if (progress.text) {
-                                                                    agentLogs.push({ id: 'text', type: 'text', content: progress.text });
-                                                                }
-                                                                if (progress.message) {
-                                                                    agentLogs.push({ id: 'msg', type: 'text', content: progress.message });
-                                                                }
-
-                                                                const personaMap: Record<string, string> = {
-                                                                    ScriptWriter: 'scriptwriter',
-                                                                    ConceptArtist: 'conceptartist',
-                                                                    StoryboardDesigner: 'storyboardartist',
-                                                                    Editor: 'videoproducer',
-                                                                };
-
-                                                                return (
-                                                                    <AgentCard
-                                                                        key={part.toolCallId || i}
-                                                                        agentName={agentName}
-                                                                        status={progress.status === 'completed' ? 'done' : progress.status === 'failed' ? 'failed' : 'working'}
-                                                                        logs={agentLogs}
-                                                                        persona={(personaMap[agentName] || 'default') as any}
-                                                                    />
-                                                                );
-                                                            }
-
-                                                            const toolStatus = part.state === 'output-available' ? 'success'
-                                                                : part.state === 'output-error' ? 'error'
-                                                                : part.state === 'approval-requested' ? 'pending'
-                                                                : 'pending' as const;
-                                                            return (
-                                                                <ToolCall
-                                                                    key={part.toolCallId || i}
-                                                                    toolName={toolName}
-                                                                    args={part.input}
-                                                                    result={part.output}
-                                                                    status={toolStatus}
-                                                                />
-                                                            );
-                                                        }
-                                                        return null;
-                                                    })}
-                                                </div>
-                                            )}
-                                            </MessageErrorBoundary>
-                                        </motion.div>
-                                    ))}
-                                    </>
+                                            ))}
+                                        </>
                                     )}
 
                                     {isProcessing && (
-                                        <ThinkingIndicator message={status === 'submitted' ? 'Thinking' : 'Streaming'} />
+                                        <div role="status" aria-live="polite">
+                                            <ThinkingIndicator message={status === 'submitted' ? t('copilot.status.thinking') : t('copilot.status.streaming')} />
+                                        </div>
                                     )}
 
                                     {/* Suggestion chips (e.g. "Continue" after step limit) */}
                                     {suggestions.length > 0 && !isProcessing && (
                                         <motion.div
+                                            role="group"
+                                            aria-label="Suggestions"
                                             initial={{ opacity: 0, y: 10 }}
                                             animate={{ opacity: 1, y: 0 }}
                                             className="flex flex-wrap gap-2 px-1"
                                         >
                                             {suggestions.map((s, i) => (
                                                 <motion.button
+                                                    type="button"
                                                     key={i}
                                                     onClick={() => handleSubmit(s.message)}
-                                                    className="px-4 py-2 text-sm font-medium text-slate-800 bg-warm-surface border border-warm-border rounded-full shadow-sm hover:bg-white hover:border-brand/30 transition-all"
-                                                    whileHover={{ scale: 1.03, y: -1 }}
+                                                    className="px-4 py-2 min-h-[36px] text-sm font-medium text-slate-800 bg-warm-surface border border-warm-border rounded-full shadow-sm hover:bg-warm-muted hover:border-brand/30 transition-all dark:text-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-warm-page"
+                                                    whileHover={{ scale: 1.03 }}
                                                     whileTap={{ scale: 0.97 }}
-                                                    transition={{ type: "spring", stiffness: 400, damping: 25 }}
+                                                    transition={{ duration: 0.15, ease: [0.25, 1, 0.5, 1] }}
                                                 >
                                                     {s.label}
                                                 </motion.button>
@@ -871,15 +1037,19 @@ export default function ChatbotCopilot({
                                         exit={{ opacity: 0, y: 10, scale: 0.9 }}
                                         className="absolute bottom-[80px] right-6 z-20 pointer-events-auto"
                                     >
-                                        <div className="bg-warm-surface/90 backdrop-blur-md text-slate-700 text-xs font-medium px-3 py-1.5 rounded-full border border-warm-border shadow-sm flex items-center gap-2">
-                                            <div className="flex -space-x-2">
+                                        <div
+                                            role="status"
+                                            aria-live="polite"
+                                            className="bg-warm-surface text-slate-800 text-xs font-medium px-3 py-1.5 rounded-full border border-warm-border shadow-md flex items-center gap-2 dark:text-slate-100"
+                                        >
+                                            <div className="flex -space-x-2" aria-hidden="true">
                                                 {selectedNodes.filter(n => !!n.data?.assetId).slice(0, 3).map((node) => (
                                                     <SelectedNodeThumbnail key={node.id} node={node} />
                                                 ))}
                                             </div>
-                                            <span>{selectedNodes.length} Selected</span>
+                                            <span>{t('copilot.selectedContext.count', { count: selectedNodes.length })}</span>
                                             {selectedNodes.length === 1 && (
-                                                <span className="text-stone-400 border-l border-warm-border pl-2 max-w-[100px] truncate">
+                                                <span className="text-stone-600 border-l border-warm-border pl-2 max-w-[100px] truncate dark:text-stone-300">
                                                     {(typeof selectedNodes[0].data?.label === 'string' ? selectedNodes[0].data.label : undefined) || selectedNodes[0].type}
                                                 </span>
                                             )}
@@ -929,7 +1099,7 @@ export default function ChatbotCopilot({
                         </motion.div>
                     )}
                 </AnimatePresence>
-            </motion.div>
+            </motion.aside>
 
             {/* BYO pairing dialog. Lives at the panel level rather than inside
                 the chat scroll area so it overlays correctly. */}
@@ -963,7 +1133,7 @@ export default function ChatbotCopilot({
                 onClose={() => setRuntimePicker(null)}
                 busy={clashRt.status === 'connecting'}
             />
-        </>
+        </MotionConfig>
     );
 }
 
@@ -975,8 +1145,10 @@ export default function ChatbotCopilot({
  * useless; this dialog is the right entry point).
  */
 function AddMachineDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
+    const { t } = useTranslation();
     const cmd = 'npx @clash-space/bridge@beta setup';
     const [copied, setCopied] = useState(false);
+
     const onCopy = async () => {
         try {
             await navigator.clipboard.writeText(cmd);
@@ -984,68 +1156,39 @@ function AddMachineDialog({ open, onClose }: { open: boolean; onClose: () => voi
             setTimeout(() => setCopied(false), 1500);
         } catch { /* no clipboard access; user can select-all */ }
     };
+
     return (
-        <AnimatePresence>
-            {open && (
-                <motion.div
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    exit={{ opacity: 0 }}
-                    className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm"
-                    onClick={onClose}
+        <Dialog
+            open={open}
+            onClose={onClose}
+            title={t('copilot.addMachine.title')}
+            description={t('copilot.addMachine.intro')}
+            size="lg"
+        >
+            <div className="text-xs uppercase tracking-wider text-stone-600 mb-2 dark:text-stone-400">
+                {t('copilot.addMachine.runInTerminal')}
+            </div>
+            <div className="flex items-stretch gap-2 mb-3">
+                <code className="flex-1 font-mono text-sm bg-slate-900 text-slate-50 px-3 py-2.5 rounded-lg break-all select-all dark:bg-warm-page dark:text-slate-100 dark:border dark:border-warm-border">
+                    {cmd}
+                </code>
+                <button
+                    type="button"
+                    onClick={onCopy}
+                    aria-label={t('copilot.addMachine.copy')}
+                    className="px-3 min-h-[44px] rounded-lg bg-warm-muted hover:bg-warm-hover text-slate-800 transition-colors text-sm font-medium dark:text-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-warm-surface"
                 >
-                    <motion.div
-                        initial={{ scale: 0.95, opacity: 0 }}
-                        animate={{ scale: 1, opacity: 1 }}
-                        exit={{ scale: 0.95, opacity: 0 }}
-                        className="relative w-[560px] max-w-[92vw] rounded-2xl bg-warm-surface border border-warm-border shadow-xl p-6"
-                        onClick={(e) => e.stopPropagation()}
-                    >
-                        <h2 className="font-display text-lg font-bold text-slate-800 mb-1">
-                            Register a machine
-                        </h2>
-                        <p className="text-sm text-stone-500 mb-5">
-                            On the computer you want to use, run this in a terminal. It opens
-                            your browser, asks you to allow the connection, then installs a
-                            background daemon. After that, the machine appears in the "Run on"
-                            menu — automatically and persistently.
-                        </p>
-                        <div className="text-xs uppercase tracking-wider text-stone-400 mb-2">
-                            Run this in your terminal
-                        </div>
-                        <div className="flex items-stretch gap-2 mb-3">
-                            <code className="flex-1 font-mono text-sm bg-slate-900 text-slate-50 px-3 py-2.5 rounded-lg break-all select-all">
-                                {cmd}
-                            </code>
-                            <button
-                                type="button"
-                                onClick={onCopy}
-                                className="px-3 rounded-lg bg-warm-muted hover:bg-warm-border text-slate-700 transition-colors text-sm font-medium"
-                            >
-                                {copied ? 'Copied' : 'Copy'}
-                            </button>
-                        </div>
-                        <p className="text-xs text-stone-400 leading-relaxed">
-                            Requires Node 18+. The daemon installs as a launchd / systemd user
-                            service (auto-starts on boot). Remove anytime with{' '}
-                            <code className="font-mono text-[11px] bg-warm-muted px-1.5 py-0.5 rounded">
-                                npx @clash-space/bridge@beta uninstall
-                            </code>
-                            .
-                        </p>
-                        <div className="mt-5 text-right">
-                            <button
-                                type="button"
-                                onClick={onClose}
-                                className="text-sm text-stone-500 hover:text-stone-700"
-                            >
-                                Close
-                            </button>
-                        </div>
-                    </motion.div>
-                </motion.div>
-            )}
-        </AnimatePresence>
+                    {copied ? t('copilot.addMachine.copied') : t('copilot.addMachine.copy')}
+                </button>
+            </div>
+            <p className="text-xs text-stone-600 leading-relaxed dark:text-stone-400">
+                {t('copilot.addMachine.footnote')}{' '}
+                <code className="font-mono text-[11px] bg-warm-muted px-1.5 py-0.5 rounded">
+                    npx @clash-space/bridge@beta uninstall
+                </code>
+                .
+            </p>
+        </Dialog>
     );
 }
 
@@ -1065,22 +1208,24 @@ function SlashCommandBar({
     commands: import('@clash/web-ui/lib/acpEvents').AvailableCommand[];
     onPick: (name: string) => void;
 }) {
+    const { t } = useTranslation();
     const visible = commands.slice(0, 12);
     return (
-        <div className="px-4 pb-1 -mb-1 overflow-x-auto whitespace-nowrap text-xs">
+        <div role="group" aria-label="Slash commands" className="px-4 pb-1 -mb-1 overflow-x-auto whitespace-nowrap text-xs">
             {visible.map((c) => (
                 <button
                     key={c.name}
                     type="button"
                     onClick={() => onPick(c.name)}
                     title={c.description ?? c.name}
-                    className="inline-flex items-center mr-1.5 px-2 py-0.5 rounded-full bg-warm-muted text-stone-600 hover:bg-warm-border transition-colors font-mono"
+                    aria-label={c.description ? `/${c.name} — ${c.description}` : `/${c.name}`}
+                    className="inline-flex items-center mr-1.5 px-2 py-1 min-h-[28px] rounded-full bg-warm-muted text-stone-700 hover:bg-warm-hover transition-colors font-mono dark:text-stone-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-1 focus-visible:ring-offset-warm-page"
                 >
                     /{c.name}
                 </button>
             ))}
             {commands.length > visible.length && (
-                <span className="text-stone-400 ml-1">+{commands.length - visible.length} more</span>
+                <span className="text-stone-600 ml-1 dark:text-stone-400">{t('copilot.status.slashCommandsMore', { count: commands.length - visible.length })}</span>
             )}
         </div>
     );
@@ -1107,20 +1252,25 @@ function RuntimeMenuRow({
     return (
         <button
             type="button"
+            role="menuitem"
+            aria-checked={active}
             disabled={disabled}
             onClick={onClick}
-            className={`w-full text-left px-3 py-2 flex items-center gap-3 transition-colors ${
+            className={`w-full text-left px-3 py-2 min-h-[44px] flex items-center gap-3 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand ${
                 disabled
-                    ? 'opacity-50 cursor-not-allowed'
+                    ? 'opacity-60 cursor-not-allowed'
                     : 'hover:bg-warm-muted cursor-pointer'
-            } ${active ? 'bg-emerald-50/50' : ''}`}
+            } ${active ? 'bg-brand/10 dark:bg-brand/15' : ''}`}
         >
-            <span className={`inline-block w-1.5 h-1.5 rounded-full flex-shrink-0 ${
-                active ? 'bg-emerald-500' : 'bg-stone-300'
-            }`} />
+            <span
+                aria-hidden="true"
+                className={`inline-block w-1.5 h-1.5 rounded-full flex-shrink-0 ${
+                    active ? 'bg-brand' : 'bg-stone-400 dark:bg-stone-500'
+                }`}
+            />
             <div className="flex-1 min-w-0">
-                <div className="text-sm font-medium text-slate-700 truncate">{label}</div>
-                {sub && <div className="text-[11px] text-stone-400 truncate">{sub}</div>}
+                <div className="text-sm font-medium text-slate-800 truncate dark:text-slate-100">{label}</div>
+                {sub && <div className="text-[11px] text-stone-600 truncate dark:text-stone-400">{sub}</div>}
             </div>
         </button>
     );
@@ -1138,10 +1288,11 @@ function ByoMessageList({
 }: {
     messages: import('@clash/web-ui/hooks/useAgentByoBridge').ByoMessage[];
 }) {
+    const { t } = useTranslation();
     if (messages.length === 0) {
         return (
-            <div className="text-center text-sm text-stone-400 py-12">
-                Local agent connected. Send a message to start.
+            <div className="text-center text-sm text-stone-600 py-12 dark:text-stone-300">
+                {t('copilot.status.localAgentReady')}
             </div>
         );
     }
@@ -1150,34 +1301,34 @@ function ByoMessageList({
             {messages.map((m) => (
                 <motion.div
                     key={m.id}
-                    initial={{ opacity: 0, y: 10 }}
+                    initial={{ opacity: 0, y: 12 }}
                     animate={{ opacity: 1, y: 0 }}
-                    transition={{ type: 'spring', stiffness: 500, damping: 30 }}
+                    transition={{ duration: 0.25, ease: [0.25, 1, 0.5, 1] }}
                     className={m.role === 'user' ? 'flex justify-end' : ''}
                 >
                     {m.role === 'user' ? (
-                        <div className="max-w-[82%] px-4 py-3 rounded-matrix shadow-sm border bg-gradient-to-br from-red-50/90 to-pink-50/90 border-red-100/50 text-gray-900">
+                        <div className="max-w-[82%] px-4 py-3 rounded-matrix shadow-sm border bg-brand-light border-warm-border text-slate-900 dark:bg-warm-muted dark:text-slate-100 dark:border-warm-border">
                             {m.parts.map((p, i) => (p.type === 'text' ? <p key={i} className="text-sm leading-relaxed mb-1 last:mb-0">{p.text}</p> : null))}
                         </div>
                     ) : (
                         <div className="space-y-2">
                             {m.parts.map((p, i) => {
                                 if (p.type === 'text') {
-                                    return <div key={i} className="text-base text-slate-800 leading-relaxed px-1 whitespace-pre-wrap">{p.text}</div>;
+                                    return <div key={i} className="text-base text-slate-800 leading-relaxed px-1 whitespace-pre-wrap dark:text-slate-100">{p.text}</div>;
                                 }
                                 if (p.type === 'tool_call') {
                                     return (
-                                        <div key={i} className="text-xs font-mono bg-warm-muted border border-warm-border rounded px-2.5 py-1.5 text-slate-600">
+                                        <div key={i} className="text-xs font-mono bg-warm-muted border border-warm-border rounded px-2.5 py-1.5 text-slate-700 dark:text-slate-300">
                                             <span className="font-semibold">{p.name}</span>
-                                            {p.input !== undefined ? <span className="opacity-70"> {JSON.stringify(p.input)}</span> : null}
+                                            {p.input !== undefined ? <span className="opacity-80"> {JSON.stringify(p.input)}</span> : null}
                                         </div>
                                     );
                                 }
                                 // raw_event fallback — show JSON in collapsed form so we can debug
                                 // unrecognized ACP events without losing them.
                                 return (
-                                    <details key={i} className="text-[11px] font-mono text-stone-400">
-                                        <summary className="cursor-pointer">event</summary>
+                                    <details key={i} className="text-[11px] font-mono text-stone-700 dark:text-stone-300">
+                                        <summary className="cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand rounded-sm">event</summary>
                                         <pre className="mt-1 bg-warm-muted/60 p-2 rounded overflow-x-auto">{JSON.stringify(p.event, null, 2)}</pre>
                                     </details>
                                 );

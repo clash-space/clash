@@ -16,7 +16,7 @@
  * — DOM and React state are aligned.
  */
 
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useId, useMemo, useState } from 'react';
 import { crewHandle, type CrewRow } from '../_group-chat/panel-types';
 
 export interface UseMentionAutocompleteResult<R extends CrewRow> {
@@ -35,6 +35,13 @@ export interface UseMentionAutocompleteResult<R extends CrewRow> {
   onKeyDown: (e: React.KeyboardEvent<HTMLTextAreaElement>) => boolean;
   /** Commit a selection — typically called from the popover's onMouseDown. */
   insertMention: (row: R) => void;
+  /** Stable id for the popover's <ul role="listbox">. Use for textarea's
+   *  `aria-controls` when `open` is true. */
+  listboxId: string;
+  /** Build the id for an option row at `idx`. Use the entry at
+   *  `activeIndex` for textarea's `aria-activedescendant` (AT then
+   *  announces the focused row as the user arrows through). */
+  optionId: (idx: number) => string;
 }
 
 export function useMentionAutocomplete<R extends CrewRow>(
@@ -46,6 +53,8 @@ export function useMentionAutocomplete<R extends CrewRow>(
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
   const [activeIndex, setActiveIndex] = useState(0);
+  const listboxId = useId();
+  const optionId = useCallback((idx: number) => `${listboxId}-opt-${idx}`, [listboxId]);
 
   const matches = useMemo(() => {
     if (!open) return [];
@@ -149,5 +158,16 @@ export function useMentionAutocomplete<R extends CrewRow>(
     [open, matches, activeIndex, insertMention],
   );
 
-  return { open, matches, activeIndex, setActiveIndex, close, onDraftChange, onKeyDown, insertMention };
+  return {
+    open,
+    matches,
+    activeIndex,
+    setActiveIndex,
+    close,
+    onDraftChange,
+    onKeyDown,
+    insertMention,
+    listboxId,
+    optionId,
+  };
 }

@@ -57,7 +57,7 @@ function Overlay({ children, onClose }: { children: ReactNode; onClose: () => vo
             className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/30 px-5 py-4"
             onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
         >
-            <div className="relative h-[min(880px,calc(100vh-48px))] w-[min(1200px,calc(100vw-48px))] overflow-hidden rounded-2xl bg-white shadow-2xl ring-1 ring-slate-950/10 flex flex-col">
+            <div className="relative h-[min(880px,calc(100vh-48px))] w-[min(1200px,calc(100vw-48px))] overflow-hidden rounded-2xl bg-warm-surface shadow-2xl ring-1 ring-slate-950/10 flex flex-col">
                 {children}
             </div>
         </div>
@@ -205,16 +205,16 @@ function ImageEditorPanel({
 
     return (
         <>
-            <div className="flex items-center justify-between px-5 py-3 border-b border-slate-200 bg-white">
+            <div className="flex items-center justify-between px-5 py-3 border-b border-warm-border bg-warm-surface">
                 <h2 className="text-base font-semibold text-slate-800">Image Editor</h2>
                 <button onClick={onClose} disabled={busy}
-                    className="px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-100 rounded-md">
+                    className="px-3 py-1.5 text-sm text-slate-800 dark:text-slate-200 dark:text-slate-300 hover:bg-slate-100 rounded-md">
                     Cancel
                 </button>
             </div>
 
             <div className="flex-1 flex overflow-hidden">
-                <div className="flex-1 bg-slate-100 flex items-center justify-center p-6 overflow-auto">
+                <div className="flex-1 bg-warm-muted flex items-center justify-center p-6 overflow-auto">
                     {signedUrl ? (
                         <CropEditor
                             src={signedUrl}
@@ -226,13 +226,13 @@ function ImageEditorPanel({
                             aspectRatio={ASPECT_RATIOS[aspect]}
                         />
                     ) : (
-                        <div className="text-slate-400">Loading…</div>
+                        <div className="text-slate-700 dark:text-slate-300 dark:text-slate-400">Loading…</div>
                     )}
                 </div>
 
-                <div className="w-72 border-l border-slate-200 bg-white p-4 flex flex-col gap-5 overflow-y-auto">
+                <div className="w-72 border-l border-warm-border bg-warm-surface p-4 flex flex-col gap-5 overflow-y-auto">
                     <section>
-                        <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Aspect</h3>
+                        <h3 className="text-xs font-bold text-slate-800 dark:text-slate-200 dark:text-slate-300 uppercase tracking-wider mb-2">Aspect</h3>
                         <div className="grid grid-cols-3 gap-1.5">
                             {ASPECT_OPTIONS.map((id) => (
                                 <button
@@ -241,7 +241,7 @@ function ImageEditorPanel({
                                     className={`py-1.5 text-xs rounded-md border ${
                                         aspect === id
                                             ? 'bg-slate-900 text-white border-slate-900'
-                                            : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-50'
+                                            : 'bg-warm-surface text-slate-800 dark:text-slate-200 border-slate-300 hover:bg-slate-50'
                                     }`}
                                 >{id}</button>
                             ))}
@@ -249,10 +249,10 @@ function ImageEditorPanel({
                     </section>
 
                     <section>
-                        <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Crop (px)</h3>
+                        <h3 className="text-xs font-bold text-slate-800 dark:text-slate-200 dark:text-slate-300 uppercase tracking-wider mb-2">Crop (px)</h3>
                         <div className="grid grid-cols-2 gap-2">
                             {(['x', 'y', 'width', 'height'] as const).map((k) => (
-                                <label key={k} className="text-xs text-slate-600 flex flex-col gap-1">
+                                <label key={k} className="text-xs text-slate-800 dark:text-slate-200 dark:text-slate-300 flex flex-col gap-1">
                                     <span className="capitalize">{k}</span>
                                     <input
                                         type="number"
@@ -268,12 +268,12 @@ function ImageEditorPanel({
                         </div>
                         <button
                             onClick={resetCrop}
-                            className="mt-2 text-xs text-slate-500 hover:text-slate-800 underline"
+                            className="mt-2 text-xs text-slate-800 dark:text-slate-200 dark:text-slate-300 hover:text-slate-800 underline"
                         >Reset crop</button>
                     </section>
 
                     <section>
-                        <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Rotation</h3>
+                        <h3 className="text-xs font-bold text-slate-800 dark:text-slate-200 dark:text-slate-300 uppercase tracking-wider mb-2">Rotation</h3>
                         <div className="flex gap-1">
                             {([0, 90, 180, 270] as const).map((d) => (
                                 <button
@@ -282,7 +282,7 @@ function ImageEditorPanel({
                                     className={`flex-1 py-1.5 text-xs rounded-md border ${
                                         rotation === d
                                             ? 'bg-slate-900 text-white border-slate-900'
-                                            : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-50'
+                                            : 'bg-warm-surface text-slate-800 dark:text-slate-200 border-slate-300 hover:bg-slate-50'
                                     }`}
                                 >{d}°</button>
                             ))}
@@ -479,7 +479,7 @@ function CornerHandle({ pos, onMouseDown }: { pos: 'nw' | 'ne' | 'sw' | 'se'; on
     return (
         <div
             onMouseDown={onMouseDown}
-            className={`absolute w-3 h-3 bg-white border-2 border-emerald-500 rounded-full ${cursor}`}
+            className={`absolute w-3 h-3 bg-warm-surface border-2 border-emerald-500 rounded-full ${cursor}`}
             style={positionStyle}
         />
     );
@@ -504,7 +504,7 @@ function EdgeHandle({ pos, onMouseDown }: { pos: 'n' | 's' | 'e' | 'w'; onMouseD
     return (
         <div
             onMouseDown={onMouseDown}
-            className={`absolute bg-white border-2 border-emerald-500 rounded-sm ${cursor}`}
+            className={`absolute bg-warm-surface border-2 border-emerald-500 rounded-sm ${cursor}`}
             style={style}
         />
     );

@@ -23,7 +23,7 @@ export default function LandingNav() {
             whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.95 }}
           >
-            <span className="font-display text-3xl font-bold tracking-tighter text-slate-950 leading-none">
+            <span className="font-display text-3xl font-bold tracking-tighter text-slate-950 dark:text-slate-50 leading-none">
               Clash
             </span>
             <div className="h-6 w-[5px] bg-brand -skew-x-[20deg] transform origin-center" />
@@ -36,7 +36,7 @@ export default function LandingNav() {
             <a
               key={link.name}
               href={link.href}
-              className="rounded-full px-3 py-2 text-sm font-medium text-stone-500 transition-colors hover:bg-white/55 hover:text-slate-950"
+              className="rounded-full px-3 py-2 text-sm font-medium text-stone-700 dark:text-stone-300 transition-colors hover:bg-white/55 hover:text-slate-950"
             >
               {link.name}
             </a>
@@ -61,7 +61,7 @@ export default function LandingNav() {
                 <motion.button
                   whileHover={{ scale: 1.02 }}
                   whileTap={{ scale: 0.98 }}
-                  className="rounded-full px-4 py-2 text-sm font-medium text-stone-500 transition-colors hover:bg-white/55 hover:text-slate-950"
+                  className="rounded-full px-4 py-2 text-sm font-medium text-stone-700 dark:text-stone-300 transition-colors hover:bg-white/55 hover:text-slate-950"
                 >
                   Sign In
                 </motion.button>

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
-import { X, Copy, Check, CircleNotch } from '@phosphor-icons/react';
+import { Copy, Check, CircleNotch } from '@phosphor-icons/react';
 import type { ByoStatus, BridgeCrewMember, BridgeSession } from '@clash/web-ui/hooks/useAgentByoBridge';
+import { Dialog } from '../ui/dialog';
 import { SessionStartPicker } from './SessionStartPicker';
 
 /**
@@ -85,65 +85,35 @@ export function ByoAgentDialog({
   };
 
   return (
-    <AnimatePresence>
-      {open && (
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm"
-          onClick={onClose}
-        >
-          <motion.div
-            initial={{ scale: 0.95, opacity: 0 }}
-            animate={{ scale: 1, opacity: 1 }}
-            exit={{ scale: 0.95, opacity: 0 }}
-            className="relative w-[520px] max-w-[92vw] rounded-2xl bg-warm-surface border border-warm-border shadow-xl p-6"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <button
-              type="button"
-              aria-label="Close"
-              onClick={onClose}
-              className="absolute top-3 right-3 p-1 text-stone-400 hover:text-stone-700 transition-colors"
-            >
-              <X className="w-4 h-4" weight="bold" />
-            </button>
-
-            <h2 className="font-display text-lg font-bold text-slate-800 mb-1">
-              Connect your local agent
-            </h2>
-            <p className="text-sm text-stone-500 mb-5">
-              Run a Claude Code agent on your machine and pair it with this chat.
-              Conversations stay on your computer and use your own API key.
-            </p>
-
-            {status === 'awaiting_choice' ? (
-              <SessionStartPicker
-                crew={crew}
-                sessions={sessions}
-                onStart={onStartWith}
-              />
-            ) : (
-              <PairingBlock
-                command={command}
-                status={status}
-                copied={copied}
-                onCopy={onCopy}
-                errorMessage={errorMessage}
-              />
-            )}
-
-            <p className="mt-4 text-xs text-stone-400 leading-relaxed">
-              First time? Install once with{' '}
-              <code className="font-mono text-[11px] bg-warm-muted px-1.5 py-0.5 rounded">
-                npm i -g @zed-industries/claude-code-acp
-              </code>
-            </p>
-          </motion.div>
-        </motion.div>
+    <Dialog
+      open={open}
+      onClose={onClose}
+      title="Connect your local agent"
+      description="Run a Claude Code agent on your machine and pair it with this chat. Conversations stay on your computer and use your own API key."
+    >
+      {status === 'awaiting_choice' ? (
+        <SessionStartPicker
+          crew={crew}
+          sessions={sessions}
+          onStart={onStartWith}
+        />
+      ) : (
+        <PairingBlock
+          command={command}
+          status={status}
+          copied={copied}
+          onCopy={onCopy}
+          errorMessage={errorMessage}
+        />
       )}
-    </AnimatePresence>
+
+      <p className="mt-4 text-xs text-stone-600 leading-relaxed dark:text-stone-400">
+        First time? Install once with{' '}
+        <code className="font-mono text-[11px] bg-warm-muted px-1.5 py-0.5 rounded">
+          npm i -g @zed-industries/claude-code-acp
+        </code>
+      </p>
+    </Dialog>
   );
 }
 
@@ -162,7 +132,7 @@ function PairingBlock({
 }) {
   if (status === 'error') {
     return (
-      <div className="rounded-lg border border-red-200 bg-red-50/60 p-3 text-sm text-red-700">
+      <div role="alert" className="rounded-lg border border-red-200 bg-red-50/60 p-3 text-sm text-red-800 dark:bg-red-950/30 dark:border-red-900/50 dark:text-red-200">
         <div className="font-medium mb-1">Pairing failed</div>
         <div className="font-mono text-xs">{errorMessage ?? 'unknown error'}</div>
       </div>
@@ -171,35 +141,35 @@ function PairingBlock({
 
   if (status === 'idle' || status === 'pairing') {
     return (
-      <div className="flex items-center gap-2 text-sm text-stone-500 py-6 justify-center">
-        <CircleNotch className="w-4 h-4 animate-spin" />
+      <div role="status" aria-live="polite" className="flex items-center gap-2 text-sm text-stone-700 py-6 justify-center dark:text-stone-300">
+        <CircleNotch className="w-4 h-4 animate-spin motion-reduce:animate-none" aria-hidden="true" />
         Generating pairing code…
       </div>
     );
   }
 
-  // From here on we have a token to display.
   return (
     <>
-      <div className="text-xs uppercase tracking-wider text-stone-400 mb-2">
+      <div className="text-xs uppercase tracking-wider text-stone-600 mb-2 dark:text-stone-400">
         Run this in your terminal
       </div>
       <div className="flex items-stretch gap-2 mb-4">
-        <code className="flex-1 font-mono text-sm bg-slate-900 text-slate-50 px-3 py-2.5 rounded-lg break-all select-all">
+        <code className="flex-1 font-mono text-sm bg-slate-900 text-slate-50 px-3 py-2.5 rounded-lg break-all select-all dark:bg-warm-page dark:text-slate-100 dark:border dark:border-warm-border">
           {command}
         </code>
         <button
           type="button"
           onClick={onCopy}
-          className="px-3 rounded-lg bg-warm-muted hover:bg-warm-border text-slate-700 transition-colors flex items-center gap-1.5 text-sm font-medium"
+          aria-label={copied ? 'Copied' : 'Copy command'}
+          className="px-3 min-h-[44px] rounded-lg bg-warm-muted hover:bg-warm-hover text-slate-800 transition-colors flex items-center gap-1.5 text-sm font-medium dark:text-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-warm-surface"
         >
           {copied ? (
             <>
-              <Check className="w-3.5 h-3.5" weight="bold" /> Copied
+              <Check className="w-3.5 h-3.5" weight="bold" aria-hidden="true" /> Copied
             </>
           ) : (
             <>
-              <Copy className="w-3.5 h-3.5" weight="regular" /> Copy
+              <Copy className="w-3.5 h-3.5" weight="regular" aria-hidden="true" /> Copy
             </>
           )}
         </button>
@@ -213,31 +183,31 @@ function PairingBlock({
 function PairingStatus({ status }: { status: ByoStatus }) {
   if (status === 'awaiting_bridge') {
     return (
-      <div className="flex items-center gap-2 text-sm text-stone-500">
-        <CircleNotch className="w-3.5 h-3.5 animate-spin" />
+      <div role="status" aria-live="polite" className="flex items-center gap-2 text-sm text-stone-700 dark:text-stone-300">
+        <CircleNotch className="w-3.5 h-3.5 animate-spin motion-reduce:animate-none" aria-hidden="true" />
         Waiting for bridge to connect…
       </div>
     );
   }
   if (status === 'starting') {
     return (
-      <div className="flex items-center gap-2 text-sm text-stone-500">
-        <CircleNotch className="w-3.5 h-3.5 animate-spin" />
+      <div role="status" aria-live="polite" className="flex items-center gap-2 text-sm text-stone-700 dark:text-stone-300">
+        <CircleNotch className="w-3.5 h-3.5 animate-spin motion-reduce:animate-none" aria-hidden="true" />
         Starting agent…
       </div>
     );
   }
   if (status === 'connected' || status === 'streaming' || status === 'sending') {
     return (
-      <div className="flex items-center gap-2 text-sm text-emerald-600">
-        <Check className="w-4 h-4" weight="bold" />
+      <div role="status" aria-live="polite" className="flex items-center gap-2 text-sm text-emerald-700 dark:text-emerald-300">
+        <Check className="w-4 h-4" weight="bold" aria-hidden="true" />
         Connected — closing dialog…
       </div>
     );
   }
   if (status === 'disconnected') {
     return (
-      <div className="text-sm text-amber-700">
+      <div role="status" aria-live="polite" className="text-sm text-amber-800 dark:text-amber-300">
         Bridge disconnected — auto-reconnecting…
       </div>
     );

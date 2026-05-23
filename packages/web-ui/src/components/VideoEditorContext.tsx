@@ -45,7 +45,7 @@ function VideoEditorOverlay({ children }: { children: ReactNode }) {
             />
             <div
                 data-testid="video-editor-panel"
-                className="relative h-[min(920px,calc(100vh-48px))] w-[min(1480px,calc(100vw-48px))] overflow-hidden rounded-2xl border border-white/70 bg-white shadow-[0_24px_80px_rgba(15,23,42,0.28)] ring-1 ring-slate-950/10"
+                className="relative h-[min(920px,calc(100vh-48px))] w-[min(1480px,calc(100vw-48px))] overflow-hidden rounded-2xl border border-white/70 bg-warm-surface shadow-[0_24px_80px_rgba(15,23,42,0.28)] ring-1 ring-slate-950/10"
             >
                 {children}
             </div>
@@ -346,7 +346,7 @@ export function VideoEditorProvider({
                 <VideoEditorOverlay>
                     <Suspense
                         fallback={
-                            <div className="flex h-full w-full items-center justify-center bg-[#fffdfb] text-sm font-medium text-slate-500">
+                            <div className="flex h-full w-full items-center justify-center bg-[#fffdfb] text-sm font-medium text-slate-700 dark:text-slate-300">
                                 Loading Editor...
                             </div>
                         }

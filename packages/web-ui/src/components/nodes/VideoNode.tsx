@@ -238,7 +238,7 @@ const VideoNode = ({ data, selected, id }: NodeProps<Node<Record<string, any>>>)
                 onDoubleClick={(e) => e.stopPropagation()}
             >
                 <input
-                    className="bg-transparent text-lg font-bold font-display text-slate-500 focus:text-slate-900 focus:outline-none"
+                    className="bg-transparent text-lg font-bold font-display text-slate-700 dark:text-slate-300 focus:text-slate-900 focus:outline-none"
                     value={label}
                     onChange={(evt) => {
                         const newLabel = evt.target.value;
@@ -263,7 +263,7 @@ const VideoNode = ({ data, selected, id }: NodeProps<Node<Record<string, any>>>)
 
             {/* Main Card */}
             <div
-                className={`relative bg-white shadow-md rounded-matrix overflow-hidden transition-all duration-300 hover:shadow-lg ${selected ? 'ring-4 ring-red-500 ring-offset-2' : 'ring-1 ring-slate-200'
+                className={`relative bg-warm-surface shadow-md rounded-matrix overflow-hidden transition-all duration-300 hover:shadow-lg ${selected ? 'ring-4 ring-red-500 ring-offset-2' : 'ring-1 ring-slate-200'
                     }`}
                 style={{
                     width: nodeWidth,
@@ -467,13 +467,13 @@ const VideoNode = ({ data, selected, id }: NodeProps<Node<Record<string, any>>>)
                         </div>
                     </div>
                 ) : isActiveStatus(status) ? (
-                    <div className="relative flex items-center justify-center bg-slate-50 text-slate-400" style={{ width: '100%', height: '100%' }}>
+                    <div className="relative flex items-center justify-center bg-warm-muted text-slate-700 dark:text-slate-300" style={{ width: '100%', height: '100%' }}>
                         {posterUrl && (
                             <img src={posterUrl} alt="" className="absolute inset-0 h-full w-full object-cover opacity-50" />
                         )}
                         <div className="relative z-10 flex flex-col items-center gap-3">
-                            <div className="h-8 w-8 animate-spin rounded-full border-4 border-slate-200 border-t-blue-500" />
-                            <span className="text-xs font-medium animate-pulse text-slate-600 bg-white/50 px-2 py-0.5 rounded-full backdrop-blur-sm">Generating Video...</span>
+                            <div className="h-8 w-8 animate-spin rounded-full border-4 border-warm-border border-t-blue-500" />
+                            <span className="text-xs font-medium animate-pulse text-slate-700 dark:text-slate-300 bg-white/50 px-2 py-0.5 rounded-full backdrop-blur-sm">Generating Video...</span>
                         </div>
                     </div>
                 ) : status === 'failed' ? (
@@ -484,7 +484,7 @@ const VideoNode = ({ data, selected, id }: NodeProps<Node<Record<string, any>>>)
                         </div>
                     </div>
                 ) : (
-                    <div className="flex items-center justify-center bg-slate-100 text-slate-400" style={{ width: '100%', height: '100%' }}>
+                    <div className="flex items-center justify-center bg-warm-muted text-slate-700 dark:text-slate-300" style={{ width: '100%', height: '100%' }}>
                         <div className="flex flex-col items-center gap-2">
                             <FilmSlate size={32} />
                             <span className="text-xs">No Video</span>
@@ -495,11 +495,11 @@ const VideoNode = ({ data, selected, id }: NodeProps<Node<Record<string, any>>>)
                 {/* Description Box */}
                 {showDescription && (
                     <div
-                        className="absolute left-0 right-0 bottom-0 z-20 border-t border-slate-100 bg-slate-50/95 p-3 backdrop-blur"
+                        className="absolute left-0 right-0 bottom-0 z-20 border-t border-warm-border bg-slate-50/95 p-3 backdrop-blur"
                         onDoubleClick={(e) => e.stopPropagation()}
                     >
                         <textarea
-                            className="w-full h-24 resize-none bg-transparent text-xs text-slate-600 focus:outline-none"
+                            className="w-full h-24 resize-none bg-transparent text-xs text-slate-700 dark:text-slate-300 focus:outline-none"
                             value={description || ((status === 'completed') ? 'Generating description...' : 'No description available.')}
                             readOnly
                         />

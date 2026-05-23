@@ -22,7 +22,7 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
-    "@agentclientprotocol/sdk": "^0.20.0",
+    "@agentclientprotocol/sdk": "^0.21.1",
     "ws": "^8.18.0"
   },
   "devDependencies": {

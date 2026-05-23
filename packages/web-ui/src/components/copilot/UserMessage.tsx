@@ -1,14 +1,28 @@
 
-import { motion } from 'framer-motion';
 import ReactMarkdown from 'react-markdown';
-import { SignedImg } from '../SignedMedia';
 import { useMediaViewer } from '../MediaViewerContext';
+import { useCanvasFocus } from '../CanvasFocusContext';
 import { useSignedUrl } from '@clash/web-ui/lib/hooks/useSignedUrl';
 import type { MentionableNode } from '../MilkdownEditor';
 
-/** Inline thumbnail that opens MediaViewer on double-click */
-function InlineThumbnail({ src, alt, title }: { src?: string; alt: string; title: string }) {
+/** Inline thumbnail for a `@[label](node:<id>)` mention. Single click
+ *  flies the canvas camera to the referenced asset node (via the
+ *  `useCanvasFocus` abstraction); double-click opens the full-screen
+ *  MediaViewer. `nodeId` is the canvas node id extracted upstream
+ *  from the `mention:<id>:<label>` alt encoding. */
+function InlineThumbnail({
+    src,
+    alt,
+    title,
+    nodeId,
+}: {
+    src?: string;
+    alt: string;
+    title: string;
+    nodeId?: string;
+}) {
     const { openViewer } = useMediaViewer();
+    const { focusNode } = useCanvasFocus();
     const signedUrl = useSignedUrl(src);
 
     return (
@@ -16,10 +30,23 @@ function InlineThumbnail({ src, alt, title }: { src?: string; alt: string; title
         signedUrl ? <img
             src={signedUrl}
             alt={alt}
-            title={title}
-            className="inline-block rounded object-cover align-text-bottom mx-0.5 cursor-pointer hover:ring-2 hover:ring-slate-400"
+            title={nodeId ? `${title} — click to focus, double-click to preview` : title}
+            className="inline-block rounded object-cover align-text-bottom mx-0.5 cursor-pointer hover:ring-2 hover:ring-slate-400 dark:hover:ring-slate-500"
             style={{ height: '1.2em', width: '1.2em' }}
-            onDoubleClick={() => openViewer('image', signedUrl, title)}
+            onClick={(e) => {
+                // Single click → pan the canvas to this node. Skipped
+                // when no nodeId (the chip came from a non-canvas
+                // reference) or outside a CanvasFocusProvider (hook
+                // returns a no-op). stopPropagation so the click
+                // doesn't bubble to the message bubble's own handlers.
+                if (!nodeId) return;
+                e.stopPropagation();
+                focusNode(nodeId);
+            }}
+            onDoubleClick={(e) => {
+                e.stopPropagation();
+                openViewer('image', signedUrl, title);
+            }}
         /> : null
     );
 }
@@ -28,11 +55,12 @@ export function UserMessage({ content, mentionNodes }: { content: string; mentio
     // Strip <!-- asset-keys: ... --> comments (legacy format)
     let cleaned = content.replace(/<!--\s*asset-keys:.+?-->/g, '').replace(/📎\s*\S+/g, '').trim();
 
-    // Convert @[label](node:id) → ![mention:id:label](r2Key) for image / video mentions,
-    // or keep as a text chip when no thumbnail is resolved yet (asset still loading,
-    // or mention points at a non-media node like text).
     if (mentionNodes?.length) {
-        cleaned = cleaned.replace(/@\[([^\]]*)\]\(node:([^)]+)\)/g, (_match, label, nodeId) => {
+        // Capture nodeId up to first whitespace OR `)` — robust to
+        // markdown link `title` attributes that some serializers emit
+        // (`[label](node:<id> "title")`), which would otherwise pollute
+        // the captured nodeId and break the mentionNodes lookup.
+        cleaned = cleaned.replace(/@\[([^\]]*)\]\(node:([^\s)]+)(?:\s+"[^"]*")?\)/g, (_match, label, nodeId) => {
             const node = mentionNodes.find(n => n.id === nodeId);
             if (node?.thumbnail) {
                 return `![mention:${nodeId}:${label}](${node.thumbnail})`;
@@ -44,28 +72,25 @@ export function UserMessage({ content, mentionNodes }: { content: string; mentio
     return (
         <div className="flex justify-end">
             <div className="max-w-[82%] items-end">
-                <motion.div
-                    className="px-4 py-3 rounded-matrix shadow-sm border bg-gradient-to-br from-red-50/90 to-pink-50/90 border-red-100/50 text-gray-900"
-                    whileHover={{ scale: 1.02, boxShadow: "0 4px 12px rgba(0,0,0,0.08)" }}
-                    transition={{ type: "spring", stiffness: 400, damping: 25 }}
-                >
+                <div className="px-4 py-3 rounded-matrix shadow-sm border bg-brand-light text-slate-900 border-warm-border dark:bg-warm-muted dark:text-slate-100 dark:border-warm-border">
                     <ReactMarkdown
                         components={{
                             p: ({ children }) => <p className="text-sm leading-relaxed mb-1 last:mb-0">{children}</p>,
                             img: ({ src, alt }) => {
                                 const mentionMatch = alt?.match(/^mention:([^:]+):(.+)$/);
+                                const nodeId = mentionMatch ? mentionMatch[1] : undefined;
                                 const label = mentionMatch ? mentionMatch[2] : (alt || '');
                                 const imgSrc = typeof src === 'string' ? src : undefined;
-                                return <InlineThumbnail src={imgSrc} alt={label} title={label} />;
+                                return <InlineThumbnail src={imgSrc} alt={label} title={label} nodeId={nodeId} />;
                             },
                             a: ({ href, children }) => (
-                                <a href={href} className="text-blue-600 underline text-sm" target="_blank" rel="noreferrer">{children}</a>
+                                <a href={href} className="text-brand underline text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-warm-surface rounded-sm" target="_blank" rel="noreferrer">{children}</a>
                             ),
                         }}
                     >
                         {cleaned}
                     </ReactMarkdown>
-                </motion.div>
+                </div>
             </div>
         </div>
     );

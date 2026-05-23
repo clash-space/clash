@@ -120,12 +120,12 @@ function ConfirmDialog({
                             {pending.opts.title && (
                                 <h2
                                     id="confirm-title"
-                                    className="text-sm font-bold text-slate-950 tracking-tight mb-1.5"
+                                    className="text-sm font-bold text-slate-950 tracking-tight mb-1.5 dark:text-slate-50"
                                 >
                                     {pending.opts.title}
                                 </h2>
                             )}
-                            <p id="confirm-message" className="text-sm text-stone-600 leading-relaxed">
+                            <p id="confirm-message" className="text-sm text-stone-700 leading-relaxed dark:text-stone-300">
                                 {pending.opts.message}
                             </p>
                         </div>
@@ -133,7 +133,7 @@ function ConfirmDialog({
                             <button
                                 type="button"
                                 onClick={() => onClose(false)}
-                                className="px-3 py-1.5 rounded-lg text-xs font-medium text-stone-600 hover:bg-warm-hover transition-colors"
+                                className="px-3 py-2 min-h-[36px] rounded-lg text-xs font-medium text-stone-700 hover:bg-warm-hover transition-colors dark:text-stone-300 dark:hover:bg-warm-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-warm-surface"
                             >
                                 {pending.opts.cancelText ?? 'Cancel'}
                             </button>
@@ -141,10 +141,10 @@ function ConfirmDialog({
                                 type="button"
                                 ref={confirmBtnRef}
                                 onClick={() => onClose(true)}
-                                className={`px-3 py-1.5 rounded-lg text-xs font-semibold text-white shadow-sm transition-colors ${
+                                className={`px-3 py-2 min-h-[36px] rounded-lg text-xs font-semibold text-white shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-warm-surface ${
                                     pending.opts.destructive
-                                        ? 'bg-red-500 hover:bg-red-600'
-                                        : 'bg-slate-950 hover:bg-slate-800'
+                                        ? 'bg-red-600 hover:bg-red-700 dark:bg-red-500 dark:hover:bg-red-400 focus-visible:ring-red-500'
+                                        : 'bg-slate-950 hover:bg-slate-800 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-white focus-visible:ring-slate-500'
                                 }`}
                             >
                                 {pending.opts.confirmText ?? 'Confirm'}

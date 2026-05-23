@@ -16,7 +16,8 @@
     "build": "tsup",
     "dev": "tsup --watch",
     "typecheck": "tsc --noEmit",
-    "clean": "rm -rf dist"
+    "clean": "rm -rf dist",
+    "test:e2e": "node --test e2e/canvas-add-refs.test.mjs"
   },
   "dependencies": {
     "commander": "^13.0.0",

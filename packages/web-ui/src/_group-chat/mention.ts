@@ -8,9 +8,12 @@
  *   "  @canvas-editor add node" →  { crewId: "canvas-editor", body: "add node" }
  *   "hi"                        →  { crewId: null, body: "hi" }
  *
- * Convention split (per user direction): `@` always means "address a
- * crew member", `#` means "attach a canvas node". The attachment
- * picker (MilkdownEditor) uses `#`, so the two never collide.
+ * The MilkdownEditor's `@` picker emits the canonical
+ * `@[label](node:<id>)` markdown form for *every* selection (crew or
+ * canvas). The submit handler in GroupChatPanel partitions those by
+ * checking each id against `invitedCrewIdSet`. This regex is the
+ * fallback path for plain-text `@<id>` that a user types manually
+ * (no picker), which the rest of the room dispatcher still honors.
  *
  * Crew ids only allow lowercase letters, digits, hyphens (matches the
  * bundled crew slugs and any future user-defined ids that go through

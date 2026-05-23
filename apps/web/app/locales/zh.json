@@ -1,0 +1,102 @@
+{
+  "copilot": {
+    "panel": {
+      "label": "AI 副驾驶",
+      "expand": "展开 AI 副驾驶",
+      "collapse": "收起 AI 副驾驶"
+    },
+    "header": {
+      "newSession": "新建会话",
+      "history": "历史会话",
+      "runOn": "运行环境（云端 / 本地）"
+    },
+    "history": {
+      "title": "历史会话",
+      "empty": "暂无历史记录",
+      "fallbackTitle": "会话 {{index}}",
+      "delete": "删除会话"
+    },
+    "runtime": {
+      "menuTitle": "运行环境",
+      "cloud": {
+        "label": "云端",
+        "sub": "默认 — clash.video 大模型"
+      },
+      "machinesHeader": "我的机器",
+      "machineSub_online_one": "在线 · {{count}} 个 Agent",
+      "machineSub_online_other": "在线 · {{count}} 个 Agent",
+      "machineSub_offline": "离线",
+      "quickConnect": {
+        "label": "快速连接…",
+        "sub": "一次性 npx 配对（无需安装）"
+      },
+      "addMachine": {
+        "label": "添加机器…",
+        "sub": "注册一个常驻的本地运行时"
+      }
+    },
+    "addMachine": {
+      "title": "注册一台机器",
+      "intro": "在你想使用的电脑上打开终端，运行下面这条命令。它会打开浏览器请求授权，然后在后台安装守护进程。完成后，这台机器会自动出现在「运行环境」菜单里，并持续可用。",
+      "runInTerminal": "在终端运行",
+      "copy": "复制",
+      "copied": "已复制",
+      "footnote": "需要 Node 18+。守护进程以 launchd / systemd 用户服务方式安装（开机自启）。卸载请运行"
+    },
+    "selectedContext": {
+      "count_one": "已选 {{count}} 项",
+      "count_other": "已选 {{count}} 项"
+    },
+    "status": {
+      "connecting": "正在连接运行时…",
+      "connected": "已连接",
+      "disconnected": "未连接",
+      "thinking": "思考中",
+      "streaming": "生成中",
+      "localAgentReady": "本地 Agent 已连接，发送消息以开始。",
+      "slashCommandsMore": "+{{count}} 个"
+    },
+    "errors": {
+      "createSession": "创建会话失败，请重试。",
+      "warningPrefix": "⚠"
+    },
+    "chatInput": {
+      "placeholderDefault": "问任何问题…",
+      "placeholderWithSelection": "针对所选文件提问…",
+      "attach": "上传附件",
+      "voice": "语音输入",
+      "cancelVoice": "取消语音输入",
+      "confirmVoice": "使用语音文本",
+      "send": "发送",
+      "stop": "停止生成",
+      "uploading_one": "正在上传 {{count}} 个文件…",
+      "uploading_other": "正在上传 {{count}} 个文件…",
+      "uploadFailed": "⚠️ {{name}} 上传失败 "
+    },
+    "approvalCard": {
+      "approve": "同意",
+      "reject": "拒绝"
+    },
+    "agentCard": {
+      "status": {
+        "working": "工作中",
+        "done": "完成",
+        "waiting": "等待",
+        "failed": "失败"
+      }
+    },
+    "thinking": {
+      "label": "思考过程"
+    },
+    "toolCall": {
+      "input": "输入",
+      "output": "输出",
+      "expand": "展开工具调用详情",
+      "collapse": "收起工具调用详情"
+    }
+  },
+  "common": {
+    "close": "关闭",
+    "untitled": "未命名"
+  }
+}
