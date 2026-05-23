@@ -1,7 +1,7 @@
 import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { getDb } from "../db";
 import { DEV_USER_ID } from "./session";
-import type { D1Database } from "@cloudflare/workers-types";
+import type { D1Database, DurableObjectNamespace } from "@cloudflare/workers-types";
 import { projects, assets } from "../db/app.schema";
 import type { ProjectWithAssets } from "@clash/web-ui/lib/types";
 import { signAssetPath } from "./asset-signing";
@@ -9,6 +9,10 @@ import { signAssetPath } from "./asset-signing";
 type ApiFetcher = { fetch: (request: Request | string) => Promise<Response> };
 interface Env {
   DB: D1Database;
+  // ROOM is the ProjectRoom DO binding. When the same Worker that hosts the
+  // DO is serving /api/projects (e.g. api-cf-hosted), call the DO directly —
+  // no service binding or public URL needed.
+  ROOM?: DurableObjectNamespace;
   API_CF?: ApiFetcher;
   API_CF_URL?: string;
   NODE_ENV?: string;
@@ -23,17 +27,38 @@ async function ensureDevUser(db: ReturnType<typeof getDb>, env: Env) {
 }
 
 async function fetchNodes(env: Env, projectId: string): Promise<unknown[]> {
-  try {
-    const path = `/sync/${projectId}/nodes`;
-    if (env.API_CF) {
+  const path = `/sync/${projectId}/nodes`;
+  // Prefer the in-process DO binding when available — works on the hosted
+  // Worker which has no API_CF service binding or API_CF_URL set, and avoids
+  // a hairpin over the public internet when it does. Surface errors instead
+  // of silently returning [] so a broken thumbnail pipeline is visible in
+  // wrangler tail rather than masquerading as "project has no assets".
+  if (env.ROOM) {
+    try {
+      const id = env.ROOM.idFromName(projectId);
+      const res = await env.ROOM.get(id).fetch(`https://room${path}`);
+      if (res.ok) return (await res.json()) as unknown[];
+      console.warn(`[projects-d1] ROOM /nodes ${projectId} -> ${res.status}`);
+    } catch (err) {
+      console.warn(`[projects-d1] ROOM /nodes ${projectId} threw`, err);
+    }
+  }
+  if (env.API_CF) {
+    try {
       const res = await env.API_CF.fetch(`https://api-cf${path}`);
       if (res.ok) return (await res.json()) as unknown[];
-    } else if (env.API_CF_URL) {
+      console.warn(`[projects-d1] API_CF /nodes ${projectId} -> ${res.status}`);
+    } catch (err) {
+      console.warn(`[projects-d1] API_CF /nodes ${projectId} threw`, err);
+    }
+  } else if (env.API_CF_URL) {
+    try {
       const res = await fetch(`${env.API_CF_URL}${path}`);
       if (res.ok) return (await res.json()) as unknown[];
+      console.warn(`[projects-d1] API_CF_URL /nodes ${projectId} -> ${res.status}`);
+    } catch (err) {
+      console.warn(`[projects-d1] API_CF_URL /nodes ${projectId} threw`, err);
     }
-  } catch {
-    // Ignore — api-cf may be warming up
   }
   return [];
 }
