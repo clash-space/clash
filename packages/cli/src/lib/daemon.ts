@@ -10,7 +10,7 @@ import { join } from "node:path";
 import { tmpdir, homedir } from "node:os";
 import WebSocket from "ws";
 import { LoroSyncClient, Canvas } from "@clash/shared-types";
-import { CliActionsHost, readBridgeRuntimeId } from "./actions-host";
+import { CliActionsHost, readBridgeRuntimeId, type ActionsHostEnv } from "./actions-host";
 
 const IDLE_TIMEOUT_MS = 10 * 60 * 1000; // 10 minutes
 const HEARTBEAT_INTERVAL_MS = 30 * 1000; // 30 seconds
@@ -85,6 +85,20 @@ export function sendCommand(projectId: string, cmd: object): Promise<object> {
   });
 }
 
+export function buildActionsHostEnv(
+  projectId: string,
+  serverUrl: string,
+  token: string,
+  creds: { runtimeId: string; apiKey: string; serverUrl: string },
+): ActionsHostEnv {
+  return {
+    serverUrl,
+    apiKey: token || creds.apiKey,
+    runtimeId: creds.runtimeId,
+    projectId,
+  };
+}
+
 /**
  * Start the daemon process. Blocks until shutdown.
  */
@@ -118,11 +132,7 @@ export async function startDaemon(
   const creds = readBridgeRuntimeId();
   let actionsHost: CliActionsHost | null = null;
   if (creds) {
-    actionsHost = new CliActionsHost({
-      serverUrl: creds.serverUrl,
-      apiKey: creds.apiKey,
-      runtimeId: creds.runtimeId,
-    });
+    actionsHost = new CliActionsHost(buildActionsHostEnv(projectId, serverUrl, token, creds));
     try {
       const result = await actionsHost.start();
       if (result.spawned.length > 0) {

@@ -24,6 +24,7 @@
  *   - bridge stop   → SIGTERM all, await exit (5s deadline) then SIGKILL
  *   - subprocess exits unexpectedly → restart with exponential backoff
  *     (1s → 2s → 4s → … capped at 60s; reset after 60s of healthy uptime)
+ *   - subprocess exits immediately → disable until the bridge restarts
  *
  * Design notes:
  *   - We deliberately do NOT speak to the WS server directly. Each action
@@ -39,9 +40,9 @@
  *     log spawn/exit lines at the bridge level for visibility.
  */
 
-import { spawn, type ChildProcess } from "node:child_process";
+import { spawn, spawnSync, type ChildProcess } from "node:child_process";
 import { readdir, readFile, stat } from "node:fs/promises";
-import { existsSync, watch, type FSWatcher, mkdirSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, statSync, watch, type FSWatcher, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { homedir } from "node:os";
 
@@ -49,7 +50,9 @@ const ACTIONS_DIR = join(homedir(), ".clash", "actions");
 const RESTART_BACKOFF_MIN_MS = 1000;
 const RESTART_BACKOFF_MAX_MS = 60_000;
 const HEALTHY_UPTIME_MS = 60_000;
+const FAST_EXIT_DISABLE_MS = 2_000;
 const SHUTDOWN_GRACE_MS = 5_000;
+const PYTHON_DEPS_STAMP = ".clash-python-deps.json";
 /**
  * Debounce window for fs.watch events. node's watcher fires
  * multiple times for a single semantic change (atomic rename →
@@ -106,6 +109,11 @@ interface SupervisedAction {
   stopping: boolean;
   /** Pending restart timer (so stop() can clear it). */
   restartTimer: NodeJS.Timeout | null;
+}
+
+interface PythonDepsStamp {
+  sdk?: string;
+  requirements?: Record<string, string>;
 }
 
 export class ActionsHost {
@@ -516,7 +524,8 @@ export class ActionsHost {
 
     // Pick interpreter by entrypoint file extension.
     //
-    // - `.py`              → python (CLASH_ACTIONS_PYTHON env or `python3`)
+    // - `.py`              → prepared Python runtime (managed venv by default,
+    //                        or CLASH_ACTIONS_PYTHON as an explicit interpreter)
     // - `.js` / `.mjs`     → node from current process (process.execPath)
     // - `.ts`              → not supported in production; reject so action
     //                        authors compile to .js (the marketplace install
@@ -530,7 +539,23 @@ export class ActionsHost {
     let bin: string;
     let args: string[];
     if (ext === ".py") {
-      bin = process.env.CLASH_ACTIONS_PYTHON || "python3";
+      const explicitPython = process.env.CLASH_ACTIONS_PYTHON;
+      const pythonBin = explicitPython
+        ? prepareExplicitPythonRuntime({
+          pythonBin: explicitPython,
+          actionId: manifest.id,
+          actionDir: dir,
+          sdkPythonDir,
+          logPrefix: "",
+        })
+        : prepareManagedPythonRuntime({
+          actionId: manifest.id,
+          actionDir: dir,
+          sdkPythonDir,
+          logPrefix: "",
+        });
+      if (!pythonBin) return;
+      bin = pythonBin;
       args = [entrypointPath];
     } else if (ext === ".js" || ext === ".mjs") {
       bin = process.execPath; // same node that's running this bridge
@@ -581,6 +606,14 @@ export class ActionsHost {
       }
 
       if (this.stopping || sup.stopping) return;
+
+      if (uptime < FAST_EXIT_DISABLE_MS) {
+        sup.stopping = true;
+        process.stderr.write(
+          `actions: disabled id=${manifest.id} reason=fast-exit code=${code ?? "-"} signal=${signal ?? "-"}; fix the action and restart the bridge\n`,
+        );
+        return;
+      }
 
       const delay = sup.backoffMs;
       sup.backoffMs = Math.min(sup.backoffMs * 2, RESTART_BACKOFF_MAX_MS);
@@ -641,4 +674,163 @@ function resolveSdkPythonDir(): string | null {
     }
   } catch { /* fall through */ }
   return null;
+}
+
+function managedPythonVenvDir(): string {
+  return process.env.CLASH_ACTIONS_VENV || join(ACTIONS_DIR, ".venv");
+}
+
+function managedPythonBin(venvDir: string): string {
+  return process.platform === "win32"
+    ? join(venvDir, "Scripts", "python.exe")
+    : join(venvDir, "bin", "python");
+}
+
+function explicitPythonStampDir(pythonBin: string): string {
+  const key = Buffer.from(pythonBin).toString("base64url").slice(0, 80);
+  return join(ACTIONS_DIR, ".python-deps", key);
+}
+
+function prepareExplicitPythonRuntime(opts: {
+  pythonBin: string;
+  actionId: string;
+  actionDir: string;
+  sdkPythonDir: string | null;
+  logPrefix: string;
+}): string | null {
+  return preparePythonRuntimeDeps({
+    pythonBin: opts.pythonBin,
+    stampDir: explicitPythonStampDir(opts.pythonBin),
+    actionId: opts.actionId,
+    actionDir: opts.actionDir,
+    sdkPythonDir: opts.sdkPythonDir,
+    logPrefix: opts.logPrefix,
+  });
+}
+
+function prepareManagedPythonRuntime(opts: {
+  actionId: string;
+  actionDir: string;
+  sdkPythonDir: string | null;
+  logPrefix: string;
+}): string | null {
+  const venvDir = managedPythonVenvDir();
+  const pythonBin = managedPythonBin(venvDir);
+
+  if (!existsSync(pythonBin)) {
+    mkdirSync(venvDir, { recursive: true });
+    process.stderr.write(`${opts.logPrefix}actions: python venv create path=${venvDir}\n`);
+    if (!runPythonSetup("python3", ["-m", "venv", venvDir], opts.logPrefix, opts.actionId)) {
+      return null;
+    }
+  }
+
+  return preparePythonRuntimeDeps({
+    pythonBin,
+    stampDir: venvDir,
+    actionId: opts.actionId,
+    actionDir: opts.actionDir,
+    sdkPythonDir: opts.sdkPythonDir,
+    logPrefix: opts.logPrefix,
+  });
+}
+
+function preparePythonRuntimeDeps(opts: {
+  pythonBin: string;
+  stampDir: string;
+  actionId: string;
+  actionDir: string;
+  sdkPythonDir: string | null;
+  logPrefix: string;
+}): string | null {
+  const { pythonBin } = opts;
+  const stamp = readPythonDepsStamp(opts.stampDir);
+  let changed = false;
+  if (opts.sdkPythonDir && existsSync(join(opts.sdkPythonDir, "pyproject.toml"))) {
+    const sdkKey = `${opts.sdkPythonDir}:${fileVersionKey(join(opts.sdkPythonDir, "pyproject.toml"))}`;
+    const sdkStampMatches = stamp.sdk === sdkKey;
+    const sdkImportsOk = sdkStampMatches
+      ? canImportPythonSdkRuntimeDeps(pythonBin, opts.logPrefix, opts.actionId, false)
+      : false;
+    if (!sdkStampMatches || !sdkImportsOk) {
+      process.stderr.write(`${opts.logPrefix}actions: python deps install id=${opts.actionId} package=clash-sdk\n`);
+      if (!runPythonSetup(pythonBin, ["-m", "pip", "install", "-e", opts.sdkPythonDir], opts.logPrefix, opts.actionId)) {
+        return null;
+      }
+      stamp.sdk = sdkKey;
+      changed = true;
+    }
+    if (!canImportPythonSdkRuntimeDeps(pythonBin, opts.logPrefix, opts.actionId, true)) {
+      return null;
+    }
+  }
+
+  const requirementsPath = join(opts.actionDir, "requirements.txt");
+  if (existsSync(requirementsPath)) {
+    const requirements = stamp.requirements ?? {};
+    const requirementsKey = fileVersionKey(requirementsPath);
+    if (requirements[opts.actionDir] !== requirementsKey) {
+      process.stderr.write(`${opts.logPrefix}actions: python deps install id=${opts.actionId} requirements=${requirementsPath}\n`);
+      if (!runPythonSetup(pythonBin, ["-m", "pip", "install", "-r", requirementsPath], opts.logPrefix, opts.actionId)) {
+        return null;
+      }
+      requirements[opts.actionDir] = requirementsKey;
+      stamp.requirements = requirements;
+      changed = true;
+    }
+  }
+
+  if (changed) writePythonDepsStamp(opts.stampDir, stamp);
+  return pythonBin;
+}
+
+function canImportPythonSdkRuntimeDeps(
+  pythonBin: string,
+  logPrefix: string,
+  actionId: string,
+  verbose: boolean,
+): boolean {
+  const result = spawnSync(pythonBin, ["-c", "import clash_sdk; import aiohttp"], {
+    env: process.env,
+    stdio: verbose ? "inherit" : "ignore",
+  });
+  if (result.status === 0) return true;
+  if (verbose) {
+    const detail = result.error instanceof Error ? result.error.message : `exit=${result.status}`;
+    process.stderr.write(
+      `${logPrefix}actions: python deps import failed id=${actionId} modules=clash_sdk,aiohttp ${detail}\n`,
+    );
+  }
+  return false;
+}
+
+function runPythonSetup(bin: string, args: string[], logPrefix: string, actionId: string): boolean {
+  const result = spawnSync(bin, args, {
+    env: process.env,
+    stdio: "inherit",
+  });
+  if (result.status === 0) return true;
+  const detail = result.error instanceof Error ? result.error.message : `exit=${result.status}`;
+  process.stderr.write(`${logPrefix}actions: python deps failed id=${actionId} command=${bin} ${args.join(" ")} ${detail}\n`);
+  return false;
+}
+
+function readPythonDepsStamp(venvDir: string): PythonDepsStamp {
+  const path = join(venvDir, PYTHON_DEPS_STAMP);
+  if (!existsSync(path)) return {};
+  try {
+    return JSON.parse(readFileSync(path, "utf-8")) as PythonDepsStamp;
+  } catch {
+    return {};
+  }
+}
+
+function writePythonDepsStamp(venvDir: string, stamp: PythonDepsStamp): void {
+  mkdirSync(venvDir, { recursive: true });
+  writeFileSync(join(venvDir, PYTHON_DEPS_STAMP), JSON.stringify(stamp, null, 2) + "\n");
+}
+
+function fileVersionKey(path: string): string {
+  const s = statSync(path);
+  return `${s.size}:${Math.round(s.mtimeMs)}`;
 }

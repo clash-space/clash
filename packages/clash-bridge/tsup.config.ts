@@ -1,7 +1,13 @@
 import { defineConfig } from "tsup";
 
 export default defineConfig({
-  entry: ["src/cli.ts"],
+  entry: {
+    cli: "src/cli.ts",
+    "acp-runtime": "src/_acp-runtime/index.ts",
+    "cc-sessions": "src/lib/cc-sessions.ts",
+    platform: "src/lib/platform.ts",
+    "session-manager": "src/lib/session-manager.ts",
+  },
   format: ["esm"],
   outDir: "dist",
   clean: true,

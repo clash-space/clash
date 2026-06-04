@@ -41,7 +41,7 @@ except ImportError as e:
     name="Grid Split",
     description="Slice the reference image into NxN tiles. Each tile becomes its own image node on the canvas.",
     output_type="image",
-    prompt_modalities=["text", "image"],
+    prompt_modalities=["image"],
     parameters=[
         {
             "id": "grid_size",

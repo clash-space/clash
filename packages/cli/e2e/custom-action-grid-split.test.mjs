@@ -24,8 +24,8 @@
  *     image asset on the canvas (preferably a recognisable grid)
  *   - CLASH_TEST_GRID_NODE_ID — the canvas node id of the grid image
  *     to slice. If unset we pick the first available image asset.
- *   - Python venv with clash-sdk + pillow + aiohttp installed at
- *     `.venv/` (one dir up from the repo root, i.e. `<repo>/.venv`).
+ *   - Python 3 available. The test bootstraps `<repo>/.venv` with
+ *     clash-sdk + pillow; aiohttp comes from the SDK dependency set.
  *
  * Run:
  *   pnpm --filter @clash-space/cli build
@@ -42,7 +42,9 @@ import { setTimeout as sleep } from "node:timers/promises";
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(__dirname, "..", "..", "..");
 const CLI = join(__dirname, "..", "dist", "index.js");
+const VENV_DIR = join(REPO_ROOT, ".venv");
 const PY = join(REPO_ROOT, ".venv", "bin", "python");
+const SDK_PYTHON_DIR = join(REPO_ROOT, "packages", "clash-sdk", "python");
 const GRID_SPLIT_PY = join(REPO_ROOT, "packages", "clash-sdk", "python", "examples", "grid_split.py");
 
 const PROJECT_ID = process.env.CLASH_TEST_PROJECT_ID;
@@ -74,6 +76,40 @@ function clash(args) {
     : trimmed;
 }
 
+function ensureGridSplitPython() {
+  const check = spawnSync(PY, ["-c", "import clash_sdk; import aiohttp; import PIL"], {
+    encoding: "utf-8",
+  });
+  if (check.status === 0) return;
+
+  const create = spawnSync("python3", ["-m", "venv", VENV_DIR], {
+    encoding: "utf-8",
+  });
+  if (create.status !== 0) {
+    throw new Error(
+      `failed to create Python venv at ${VENV_DIR}\nstdout:${create.stdout}\nstderr:${create.stderr}`,
+    );
+  }
+
+  const install = spawnSync(PY, ["-m", "pip", "install", "-e", SDK_PYTHON_DIR, "pillow"], {
+    encoding: "utf-8",
+  });
+  if (install.status !== 0) {
+    throw new Error(
+      `failed to install grid-split Python deps\nstdout:${install.stdout}\nstderr:${install.stderr}`,
+    );
+  }
+
+  const verify = spawnSync(PY, ["-c", "import clash_sdk; import aiohttp; import PIL"], {
+    encoding: "utf-8",
+  });
+  if (verify.status !== 0) {
+    throw new Error(
+      `grid-split Python deps still unavailable after install\nstdout:${verify.stdout}\nstderr:${verify.stderr}`,
+    );
+  }
+}
+
 function pickGridImageNode() {
   if (process.env.CLASH_TEST_GRID_NODE_ID) {
     return { nodeId: process.env.CLASH_TEST_GRID_NODE_ID };
@@ -95,6 +131,7 @@ function pickGridImageNode() {
  *  can SIGTERM it during teardown. The agent registers `grid-split`
  *  with the project and starts watching for `custom_task_assigned`. */
 function spawnGridSplitAgent() {
+  ensureGridSplitPython();
   const env = {
     ...process.env,
     CLASH_SERVER_URL: SYNC_URL,

@@ -8,6 +8,29 @@
     "clash-bridge": "./dist/cli.js"
   },
   "main": "./dist/cli.js",
+  "exports": {
+    ".": "./dist/cli.js",
+    "./acp-runtime": {
+      "types": "./src/_acp-runtime/index.ts",
+      "import": "./dist/acp-runtime.js",
+      "default": "./dist/acp-runtime.js"
+    },
+    "./cc-sessions": {
+      "types": "./src/lib/cc-sessions.ts",
+      "import": "./dist/cc-sessions.js",
+      "default": "./dist/cc-sessions.js"
+    },
+    "./platform": {
+      "types": "./src/lib/platform.ts",
+      "import": "./dist/platform.js",
+      "default": "./dist/platform.js"
+    },
+    "./session-manager": {
+      "types": "./src/lib/session-manager.ts",
+      "import": "./dist/session-manager.js",
+      "default": "./dist/session-manager.js"
+    }
+  },
   "files": [
     "dist"
   ],
