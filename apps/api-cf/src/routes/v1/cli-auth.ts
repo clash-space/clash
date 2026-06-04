@@ -25,8 +25,10 @@ cliAuthRoutes.post("/", async (c) => {
   const userId = c.req.header("x-user-id");
   if (!userId) return c.json({ error: "Unauthorized" }, 401);
 
-  const body = await c.req.json<{ tokenName?: string }>().catch(() => ({}));
-  const tokenName = body.tokenName || "CLI Login";
+  const body = await c.req.json().catch((): unknown => ({}));
+  const tokenName = body && typeof body === "object" && "tokenName" in body && typeof body.tokenName === "string"
+    ? body.tokenName
+    : "CLI Login";
 
   const plaintext = generateToken();
   const hash = await sha256(plaintext);

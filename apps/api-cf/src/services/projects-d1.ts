@@ -1,23 +1,27 @@
 import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { getDb } from "../db";
 import { DEV_USER_ID } from "./session";
-import type { D1Database, DurableObjectNamespace } from "@cloudflare/workers-types";
-import { projects, assets } from "../db/app.schema";
-import type { ProjectWithAssets } from "@clash/web-ui/lib/types";
+import { projects, assets, assetRefs } from "../db/app.schema";
 import { signAssetPath } from "./asset-signing";
+import type { Env as AppEnv } from "../config";
 
 type ApiFetcher = { fetch: (request: Request | string) => Promise<Response> };
-interface Env {
-  DB: D1Database;
-  // ROOM is the ProjectRoom DO binding. When the same Worker that hosts the
-  // DO is serving /api/projects (e.g. api-cf-hosted), call the DO directly —
-  // no service binding or public URL needed.
-  ROOM?: DurableObjectNamespace;
+type Env = Pick<AppEnv, "DB" | "JWT_SECRET"> & {
+  ROOM?: AppEnv["ROOM"];
   API_CF?: ApiFetcher;
   API_CF_URL?: string;
   NODE_ENV?: string;
-  JWT_SECRET?: string;
-}
+};
+
+type ProjectWithAssets = typeof projects.$inferSelect & {
+  assets: Array<{
+    id: string;
+    url: string;
+    type: "image" | "video";
+    storageKey: string;
+    createdAt: Date | null;
+  }>;
+};
 
 async function ensureDevUser(db: ReturnType<typeof getDb>, env: Env) {
   if (env.NODE_ENV !== "development") return;
@@ -108,7 +112,7 @@ export async function listProjectsWithAssets(
           const r2Key = node.type === "video" ? row.coverR2Key! : row.srcR2Key;
           return {
             id: node.id,
-            url: await signAssetPath(env, r2Key),
+            url: await signAssetPath(env as AppEnv, r2Key),
             type: node.type as "image" | "video",
             storageKey: row.srcR2Key,
             createdAt: (() => {
@@ -120,7 +124,61 @@ export async function listProjectsWithAssets(
         }),
       ).then((arr) => arr.filter((a): a is NonNullable<typeof a> => a !== null));
 
-      return { ...project, assets: projectAssets };
+      const seenAssetIds = new Set(
+        mediaNodes
+          .map((node: any) => node.data?.assetId)
+          .filter((assetId: unknown): assetId is string => typeof assetId === "string"),
+      );
+      const seenPreviewKeys = new Set(
+        mediaNodes
+          .map((node: any) => {
+            const row = assetById.get(node.data?.assetId);
+            if (!row) return undefined;
+            return node.type === "video" ? row.coverR2Key : row.srcR2Key;
+          })
+          .filter((r2Key: unknown): r2Key is string => typeof r2Key === "string"),
+      );
+      let mergedAssets = projectAssets;
+
+      if (mergedAssets.length < 4) {
+        const fallbackRows = await db
+          .select({
+            id: assets.id,
+            srcR2Key: assets.srcR2Key,
+            coverR2Key: assets.coverR2Key,
+            kind: assets.kind,
+            createdAt: assets.createdAt,
+            importedAt: assetRefs.importedAt,
+          })
+          .from(assets)
+          .innerJoin(assetRefs, eq(assetRefs.assetId, assets.id))
+          .where(and(eq(assetRefs.projectId, project.id), eq(assets.userId, userId)))
+          .orderBy(desc(assetRefs.importedAt), desc(assets.createdAt))
+          .limit(12);
+
+        const fallbackAssets = await Promise.all(
+          fallbackRows.map(async (row) => {
+            if (seenAssetIds.has(row.id)) return null;
+            if (row.kind !== "image" && row.kind !== "video") return null;
+            if (row.kind === "video" && !row.coverR2Key) return null;
+            const r2Key = row.kind === "video" ? row.coverR2Key! : row.srcR2Key;
+            if (seenPreviewKeys.has(r2Key)) return null;
+            seenAssetIds.add(row.id);
+            seenPreviewKeys.add(r2Key);
+            return {
+              id: row.id,
+              url: await signAssetPath(env as AppEnv, r2Key),
+              type: row.kind as "image" | "video",
+              storageKey: row.srcR2Key,
+              createdAt: row.createdAt || row.importedAt || project.updatedAt || project.createdAt,
+            };
+          }),
+        ).then((arr) => arr.filter((a): a is NonNullable<typeof a> => a !== null));
+
+        mergedAssets = [...projectAssets, ...fallbackAssets];
+      }
+
+      return { ...project, assets: mergedAssets };
     }),
   );
 }

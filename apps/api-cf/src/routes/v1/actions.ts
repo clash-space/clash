@@ -66,12 +66,15 @@ const REGISTRY: Record<string, RegistryEntry> = {
       ],
       runtime: "local",
       entrypoint: "handler.py",
-      version: "0.1.0",
+      version: "0.1.1",
       attachedProjects: ["*"],
     },
     files: {
       "handler.py": {
         contents: GRID_SPLIT_HANDLER_PY(),
+      },
+      "requirements.txt": {
+        contents: "Pillow>=10\n",
       },
     },
   },

@@ -99,10 +99,9 @@ export function capability(card: ModelCard): Capability {
  * mirrors what marketplace actions actually express today:
  *
  *   - `outputKind` from `customDef.outputType` (image / video / audio / text)
- *   - `requiresPrompt` is always true (no schema field; custom actions
- *      that don't need a prompt should still get a placeholder one —
- *      most language models / SDXL pipelines expect at least an
- *      empty string)
+ *   - `requiresPrompt` follows the declared text modality. Image-only
+ *      / video-only actions can run from canvas refs and parameters
+ *      without fabricating a text prompt.
  *   - `ref.X.accepts` from `customDef.promptModalities` (a custom
  *      action declares which asset kinds its prompt editor allows;
  *      same idea as the model card's `inputMode` switches)
@@ -122,7 +121,7 @@ export function capabilityFromCustom(def: CustomActionDefinition): Capability {
 
   return {
     outputKind: def.outputType,
-    requiresPrompt: true,
+    requiresPrompt: def.promptModalities.includes("text"),
     ref: {
       text: unboundedIf(accepts("text")),
       image: unboundedIf(accepts("image")),

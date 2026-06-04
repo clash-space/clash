@@ -1,13 +1,16 @@
 import { describe, it, expect } from "vitest";
+import { LoroDoc } from "loro-crdt";
 import {
   buildPendingAssetNode,
   CustomActionDefinitionSchema,
   CustomActionParameterSchema,
   NodeDataSchema,
   ACTION_TYPE,
+  RF_NODE_TYPE,
   isCustomActionType,
   getCustomActionId,
 } from "./canvas";
+import { Canvas } from "./canvas-ops";
 
 describe("ACTION_TYPE", () => {
   it("has Custom type", () => {
@@ -103,6 +106,109 @@ describe("buildPendingAssetNode", () => {
       prompt: "Write a tagline",
       model: "gpt-5.4",
       modelId: "gpt-5.4",
+    });
+  });
+});
+
+describe("Canvas.execute", () => {
+  it("allows image-only custom actions to execute without a text prompt", () => {
+    const doc = new LoroDoc();
+    const canvas = new Canvas(doc, () => {});
+
+    doc.getMap("customActions").set("grid-split", {
+      id: "grid-split",
+      name: "Grid Split",
+      outputType: "image",
+      promptModalities: ["image"],
+      runtime: "local",
+      parameters: [
+        { id: "rows", label: "Rows", type: "number" },
+        { id: "cols", label: "Columns", type: "number" },
+      ],
+    });
+
+    canvas.insertNode(
+      "source-image",
+      RF_NODE_TYPE.Image,
+      { assetId: "asset-grid", label: "Grid" },
+      null,
+      { x: 0, y: 0 },
+    );
+    canvas.insertNode(
+      "split-action",
+      RF_NODE_TYPE.ActionBadge,
+      {
+        actionType: "custom:grid-split",
+        customActionId: "grid-split",
+        customActionParams: { rows: 2, cols: 2 },
+        referenceImageOrder: ["source-image"],
+      },
+      null,
+      { x: 160, y: 0 },
+    );
+    canvas.insertEdge("source-image-split-action", "source-image", "split-action");
+
+    const result = canvas.execute("split-action", () => "pending-split");
+
+    expect(result.error).toBeNull();
+    expect(result.kind).toBe("generation");
+    expect(result.childNodeId).toBe("pending-split");
+
+    const pending = canvas.readNode("pending-split");
+    expect(pending?.type).toBe(RF_NODE_TYPE.Image);
+    expect(pending?.data).toMatchObject({
+      actionType: "custom:grid-split",
+      customActionId: "grid-split",
+      customActionParams: { rows: 2, cols: 2 },
+      outputType: "image",
+      prompt: "",
+      referenceImageAssetIds: ["asset-grid"],
+      status: "pending",
+    });
+  });
+
+  it("carries actor attribution from action-badges into generated children", () => {
+    const doc = new LoroDoc();
+    const canvas = new Canvas(doc, () => {});
+
+    doc.getMap("customActions").set("grid-split", {
+      id: "grid-split",
+      name: "Grid Split",
+      outputType: "image",
+      promptModalities: ["image"],
+      runtime: "local",
+      parameters: [],
+    });
+
+    canvas.insertNode(
+      "source-image",
+      RF_NODE_TYPE.Image,
+      { assetId: "asset-grid", label: "Grid" },
+      null,
+      { x: 0, y: 0 },
+    );
+    canvas.insertNode(
+      "split-action",
+      RF_NODE_TYPE.ActionBadge,
+      {
+        actionType: "custom:grid-split",
+        customActionId: "grid-split",
+        actorType: "agent",
+        actorUserId: "user-1",
+        actorAgentId: "crew-1",
+      },
+      null,
+      { x: 160, y: 0 },
+    );
+    canvas.insertEdge("source-image-split-action", "source-image", "split-action");
+
+    const result = canvas.execute("split-action", () => "pending-split");
+
+    expect(result.error).toBeNull();
+    expect(canvas.readNode("pending-split")?.data).toMatchObject({
+      actorType: "agent",
+      actorUserId: "user-1",
+      actorAgentId: "crew-1",
     });
   });
 });

@@ -25,6 +25,7 @@ import { pollNodeTasks } from "../loro/TaskPolling";
 import { updateNodeData, appendNodeLog } from "../loro/NodeUpdater";
 import { authenticateRequest } from "../loro/auth";
 import { deriveRuntimeStatus } from "../lib/runtime-status";
+import { markRuntimeOnline } from "../lib/runtime-heartbeat";
 import type {
   ClientInfo,
   ClientType,
@@ -189,6 +190,7 @@ export class ProjectRoom extends DurableObject<Env> {
             return new Response("Forbidden — runtime owned by another user", { status: 403 });
           }
           runtimeId = runtimeRow.id;
+          await this.markRuntimeOnline(runtimeId, "connect");
         }
       } catch (error) {
         log.error("Auth failed:", error);
@@ -347,6 +349,30 @@ export class ProjectRoom extends DurableObject<Env> {
       if (!liveSet.has(ws)) {
         this.clients.delete(ws);
       }
+    }
+  }
+
+  private getClientInfo(ws: WebSocket): ClientInfoWithRuntime | undefined {
+    const known = this.clients.get(ws);
+    if (known) return known;
+
+    const attachment = ws.deserializeAttachment() as ClientInfoWithRuntime | null;
+    if (attachment) {
+      this.clients.set(ws, attachment);
+      return attachment;
+    }
+    return undefined;
+  }
+
+  private async markRuntimeOnline(runtimeId: string, source: "connect" | "message"): Promise<void> {
+    try {
+      await markRuntimeOnline(this.env.DB, runtimeId);
+    } catch (error) {
+      log.warn("Failed to refresh runtime heartbeat from ProjectRoom", {
+        runtimeId,
+        source,
+        error: error instanceof Error ? error.message : String(error),
+      });
     }
   }
 
@@ -518,6 +544,11 @@ export class ProjectRoom extends DurableObject<Env> {
         this.initPromise = this.initRoom(storedId);
       }
       if (this.initPromise) await this.initPromise;
+    }
+
+    const senderRuntimeId = this.getClientInfo(ws)?.runtimeId;
+    if (senderRuntimeId) {
+      await this.markRuntimeOnline(senderRuntimeId, "message");
     }
 
     // Handle binary messages (Loro CRDT updates)

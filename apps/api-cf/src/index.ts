@@ -14,14 +14,16 @@ import { RuntimeRoom } from "./agents/runtime-room";
 // libs). This last-resort handler at least prints the reason + stack so we
 // stop chasing ghosts. preventDefault() suppresses the runtime's exception
 // outcome so a microtask leak doesn't take the DO with it.
-addEventListener("unhandledrejection", (e: PromiseRejectionEvent) => {
-  const reason = e.reason;
-  console.error(
-    "[unhandledrejection]",
-    reason instanceof Error ? `${reason.name}: ${reason.message}\n${reason.stack}` : String(reason),
-  );
-  e.preventDefault();
-});
+if (typeof addEventListener === "function") {
+  addEventListener("unhandledrejection", (e: PromiseRejectionEvent) => {
+    const reason = e.reason;
+    console.error(
+      "[unhandledrejection]",
+      reason instanceof Error ? `${reason.name}: ${reason.message}\n${reason.stack}` : String(reason),
+    );
+    e.preventDefault();
+  });
+}
 
 // OSS entry: no plugins. Downstream / hosted entry points
 // (e.g. apps/api-cf-hosted) call createApp({ plugins: [...] })

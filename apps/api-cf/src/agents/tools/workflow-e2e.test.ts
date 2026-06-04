@@ -13,7 +13,7 @@
  * Run: pnpm --filter api-cf test -- --run workflow-e2e
  */
 import { describe, it, expect } from "vitest";
-import WebSocket from "ws";
+import { chatWithSupervisor as sendSupervisorChat } from "./e2e-chat";
 
 // api-cf dev server. Makefile binds :8789 but the existing e2e in this
 // directory targets :8787 — keep them aligned by environment override.
@@ -29,119 +29,17 @@ async function isServerRunning(): Promise<boolean> {
   }
 }
 
-interface CapturedToolCall {
-  toolName: string;
-  /** Raw JSON-stringified input (streamed in parts; joined on tool-call event). */
-  input: Record<string, unknown> | string | null;
-}
-
-interface ChatResult {
-  text: string;
-  toolCalls: CapturedToolCall[];
-}
-
 /**
  * Send a chat message and collect the full response including any tool calls
  * the agent makes along the way. Returns once the stream signals done.
  */
-async function chatWithSupervisor(userMessage: string, timeoutMs = 90_000): Promise<ChatResult> {
-  const threadId = `wf-e2e-${Date.now()}`;
-  const room = `${PROJECT_ID}:${threadId}`;
-  const wsUrl = `${API_URL.replace("http", "ws")}/agents/supervisor/${room}`;
-
-  return new Promise((resolve, reject) => {
-    const ws = new WebSocket(wsUrl);
-    const timer = setTimeout(() => {
-      ws.close();
-      reject(new Error(`Timeout after ${timeoutMs}ms`));
-    }, timeoutMs);
-
-    let text = "";
-    const toolCalls: CapturedToolCall[] = [];
-    const pendingInputs = new Map<string, { toolName: string; chunks: string[] }>();
-
-    ws.on("open", () => {
-      ws.send(
-        JSON.stringify({
-          type: "cf_agent_use_chat_request",
-          id: `msg-${Date.now()}`,
-          init: {
-            method: "POST",
-            body: JSON.stringify({
-              messages: [
-                {
-                  id: `user-${Date.now()}`,
-                  role: "user",
-                  parts: [{ type: "text", text: userMessage }],
-                },
-              ],
-            }),
-          },
-        }),
-      );
-    });
-
-    ws.on("message", (raw: WebSocket.Data) => {
-      const data = raw.toString();
-      for (const line of data.split("\n").filter(Boolean)) {
-        let msg: any;
-        try { msg = JSON.parse(line); } catch { continue; }
-        if (msg?.type !== "cf_agent_use_chat_response" || !msg.body) {
-          if (msg?.done) {
-            clearTimeout(timer);
-            setTimeout(() => { ws.close(); resolve({ text, toolCalls }); }, 500);
-          }
-          continue;
-        }
-
-        let part: any;
-        try { part = JSON.parse(msg.body); } catch { continue; }
-
-        // AI SDK UI stream parts:
-        //   tool-input-start  { toolCallId, toolName }
-        //   tool-input-delta  { toolCallId, inputTextDelta }
-        //   tool-input-available or tool-call { toolCallId, toolName, input }
-        //   text-delta        { delta }
-        switch (part.type) {
-          case "text-delta":
-            if (typeof part.delta === "string") text += part.delta;
-            break;
-          case "tool-input-start":
-            if (part.toolCallId && part.toolName) {
-              pendingInputs.set(part.toolCallId, { toolName: part.toolName, chunks: [] });
-            }
-            break;
-          case "tool-input-delta":
-            if (part.toolCallId && typeof part.inputTextDelta === "string") {
-              const p = pendingInputs.get(part.toolCallId);
-              if (p) p.chunks.push(part.inputTextDelta);
-            }
-            break;
-          case "tool-input-available":
-          case "tool-call": {
-            const p = part.toolCallId ? pendingInputs.get(part.toolCallId) : undefined;
-            const name = part.toolName ?? p?.toolName ?? "unknown";
-            let input: Record<string, unknown> | string | null = null;
-            if (part.input && typeof part.input === "object") input = part.input;
-            else if (p && p.chunks.length) {
-              const joined = p.chunks.join("");
-              try { input = JSON.parse(joined); } catch { input = joined; }
-            }
-            toolCalls.push({ toolName: name, input });
-            if (part.toolCallId) pendingInputs.delete(part.toolCallId);
-            break;
-          }
-        }
-
-        if (msg.done) {
-          clearTimeout(timer);
-          setTimeout(() => { ws.close(); resolve({ text, toolCalls }); }, 500);
-        }
-      }
-    });
-
-    ws.on("error", (err) => { clearTimeout(timer); reject(err); });
-    ws.on("close", () => { clearTimeout(timer); resolve({ text, toolCalls }); });
+async function chatWithSupervisor(userMessage: string, timeoutMs = 90_000) {
+  return sendSupervisorChat({
+    apiUrl: API_URL,
+    projectId: PROJECT_ID,
+    userMessage,
+    threadId: `wf-e2e-${Date.now()}`,
+    timeoutMs,
   });
 }
 

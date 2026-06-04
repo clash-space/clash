@@ -17,7 +17,6 @@
  * already-running render-server even in a wrangler config that also has
  * the Container binding declared.
  */
-import { getContainer } from "@cloudflare/containers";
 import type { Env } from "../config";
 import { signAssetPath } from "./asset-signing";
 
@@ -64,6 +63,7 @@ export async function renderServerFetch(
     // Singleton instance — thumbnail jobs are stateless and short, so a
     // single container handles all of them. If throughput becomes an issue,
     // swap in `getRandom(binding, N)` for a small pool.
+    const { getContainer } = await import("@cloudflare/containers");
     const stub = getContainer(env.RENDER_CONTAINER, "render");
     return stub.fetch(`http://container${path}`, init);
   }

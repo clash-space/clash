@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { LoroDoc } from "loro-crdt";
-import { Canvas } from "@clash/shared-types";
+import { Canvas, MODEL_CARDS, capability } from "@clash/shared-types";
 import { NodeType, RF_NODE_TYPE, ProposalType, Status } from "../../domain/canvas";
 
 function makeCanvas(): Canvas {
@@ -29,7 +29,7 @@ describe("Canvas class", () => {
     it("filters by nodeType", () => {
       const canvas = makeCanvas();
       canvas.insertNode("n1", "text", { label: "A" }, null, { x: 0, y: 0 });
-      canvas.insertNode("n2", "text", { label: "B" }, null, { x: 0, y: 0 });
+      canvas.insertNode("n2", "image", { label: "B" }, null, { x: 0, y: 0 });
 
       const textOnly = canvas.listNodes("text");
       expect(textOnly).toHaveLength(1);
@@ -227,7 +227,7 @@ describe("Canvas class", () => {
     it("filters by nodeTypes", () => {
       const canvas = makeCanvas();
       canvas.insertNode("n1", "text", { label: "match" }, null, { x: 0, y: 0 });
-      canvas.insertNode("n2", "text", { label: "match" }, null, { x: 0, y: 0 });
+      canvas.insertNode("n2", "image", { label: "match" }, null, { x: 0, y: 0 });
 
       const results = canvas.searchNodes("match", ["text"]);
       expect(results).toHaveLength(1);
@@ -407,9 +407,13 @@ describe("Canvas class", () => {
     });
 
     it("returns validation error when model requires reference image", () => {
-      const canvas = makeCanvasWithBadge("nano-banana-2-edit", "Edit this image");
+      const startEndModel = MODEL_CARDS.find(
+        (card) => card.kind === "video" && capability(card).ref.image.isStartEnd,
+      );
+      expect(startEndModel).toBeDefined();
+      const canvas = makeCanvasWithBadge(startEndModel!.id, "Animate this image");
       const result = canvas.executeGeneration("badge1", generateId);
-      expect(result.error).toContain("reference image");
+      expect(result.error).toMatch(/start frame|reference image/i);
     });
 
     it("succeeds when model requires reference and images are provided", () => {

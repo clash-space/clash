@@ -49,6 +49,7 @@ function makeEnv(overrides: { db?: D1Database } = {}): Env {
       get: vi.fn().mockResolvedValue(null),
     } as any,
     R2_PUBLIC_URL: "",
+    JWT_SECRET: "test-secret",
     ENVIRONMENT: "test",
     GOOGLE_API_KEY: "",
     CF_AIG_TOKEN: "",

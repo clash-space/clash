@@ -14,6 +14,10 @@ vi.mock("cloudflare:workers", () => ({
   DurableObject: class MockDurableObject {},
 }));
 
+vi.mock("../containers/render", () => ({
+  RenderContainer: class MockRenderContainer {},
+}));
+
 // Mock describe service
 vi.mock("../services/describe", () => ({
   generateDescription: vi.fn().mockResolvedValue("A description"),
@@ -37,6 +41,8 @@ vi.mock("../agents/supervisor", () => ({
 // We need to import the app after mocks are set up
 import app from "../index";
 
+const USER_HEADERS = { "x-user-id": "user-1" };
+
 function makeEnv(overrides: Partial<Env> = {}): Env {
   return {
     GOOGLE_API_KEY: "test-key",
@@ -46,6 +52,7 @@ function makeEnv(overrides: Partial<Env> = {}): Env {
     KLING_SECRET_KEY: "",
     R2_BUCKET: {
       get: vi.fn(),
+      head: vi.fn().mockResolvedValue({ size: 3 }),
       put: vi.fn().mockResolvedValue(undefined),
     } as any,
     R2_PUBLIC_URL: "https://r2.example.com",
@@ -240,7 +247,7 @@ describe("Hono routes", () => {
         "/api/generate-ids",
         {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: { ...USER_HEADERS, "Content-Type": "application/json" },
           body: JSON.stringify({ project_id: "proj-1", count: 3 }),
         },
         env
@@ -261,7 +268,7 @@ describe("Hono routes", () => {
         "/api/tasks/submit",
         {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: { ...USER_HEADERS, "Content-Type": "application/json" },
           body: JSON.stringify({
             task_type: "image_gen",
             project_id: "proj-1",
@@ -285,7 +292,7 @@ describe("Hono routes", () => {
         "/api/tasks/submit",
         {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: { ...USER_HEADERS, "Content-Type": "application/json" },
           body: JSON.stringify({
             task_type: "video_gen",
             project_id: "proj-1",
@@ -304,7 +311,7 @@ describe("Hono routes", () => {
         "/api/tasks/submit",
         {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: { ...USER_HEADERS, "Content-Type": "application/json" },
           body: JSON.stringify({
             task_type: "video_thumbnail",
             project_id: "proj-1",
@@ -325,7 +332,7 @@ describe("Hono routes", () => {
         "/api/tasks/submit",
         {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: { ...USER_HEADERS, "Content-Type": "application/json" },
           body: JSON.stringify({
             task_type: "audio_gen",
             project_id: "proj-1",
@@ -365,7 +372,7 @@ describe("Hono routes", () => {
         "/api/tasks/submit",
         {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: { ...USER_HEADERS, "Content-Type": "application/json" },
           body: JSON.stringify({
             task_type: "video_render",
             project_id: "proj-1",
@@ -459,7 +466,7 @@ describe("Hono routes", () => {
         "/api/tasks/submit",
         {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: { ...USER_HEADERS, "Content-Type": "application/json" },
           body: JSON.stringify({
             task_type: "image_gen",
             project_id: "proj-1",
@@ -526,6 +533,7 @@ describe("Hono routes", () => {
       form.append("taskId", "task-img");
       form.append("nodeId", "node-1");
       form.append("outputType", "image");
+      form.append("actorUserId", "user-1");
       form.append("file", new File([new Uint8Array([1, 2, 3])], "x.png", { type: "image/png" }));
 
       const res = await app.request("/api/custom-action/upload", { method: "POST", body: form }, env);
@@ -550,7 +558,7 @@ describe("Hono routes", () => {
       const executionCtx = { waitUntil: vi.fn(), passThroughOnException: vi.fn() };
       const req = new Request("http://localhost/api/describe", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { ...USER_HEADERS, "Content-Type": "application/json" },
         body: JSON.stringify({ url: "https://example.com/img.png", task_id: "task-desc" }),
       });
 

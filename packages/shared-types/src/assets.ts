@@ -31,6 +31,13 @@ export const AssetMetadataSchema = z.object({
   durationMs: z.number().int().optional(),
   bytes: z.number().int().optional(),
   waveform: z.array(z.number()).optional(),
+  contentType: z.string().optional(),
+  mockText: z.string().optional(),
+  transcript: z.string().optional(),
+  provider: z.string().optional(),
+  requestId: z.string().optional(),
+  modelEndpoint: z.string().optional(),
+  remoteUrl: z.string().optional(),
 });
 export type AssetMetadata = z.infer<typeof AssetMetadataSchema>;
 

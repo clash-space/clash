@@ -16,6 +16,13 @@ import { SELF, env } from "cloudflare:test";
 
 const USER_ID = "user-int-1";
 const PROJECT_ID = "proj-int-1";
+const PNG_HEADER = new Uint8Array([
+  0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
+  0x00, 0x00, 0x00, 0x0d,
+  0x49, 0x48, 0x44, 0x52,
+  0x00, 0x00, 0x04, 0x00,
+  0x00, 0x00, 0x03, 0x00,
+]);
 
 async function seedProject() {
   // Insert a project owned by USER_ID so assertProjectOwner passes.
@@ -45,6 +52,10 @@ describe("assets integration (real D1 + Worker)", () => {
   });
 
   it("full CRUD lifecycle: create → read → patch cover → drop ref", async () => {
+    await env.R2_BUCKET.put("uploads/integration-test.png", PNG_HEADER, {
+      httpMetadata: { contentType: "image/png" },
+    });
+
     // 1. POST — create asset
     const createRes = await SELF.fetch("https://api/api/v1/assets", authed({
       method: "POST",
@@ -52,9 +63,6 @@ describe("assets integration (real D1 + Worker)", () => {
         projectId: PROJECT_ID,
         kind: "image",
         srcR2Key: "uploads/integration-test.png",
-        bytes: 4096,
-        width: 1024,
-        height: 768,
         sourceModel: "nano-banana-2",
         sourcePrompt: "an integration test cat",
       }),
@@ -65,14 +73,18 @@ describe("assets integration (real D1 + Worker)", () => {
 
     // Verify row landed in D1
     const row = await env.DB
-      .prepare(`SELECT user_id as userId, kind, src_r2_key as srcR2Key, bytes, width, height FROM assets WHERE id = ?`)
+      .prepare(`SELECT user_id as userId, kind, src_r2_key as srcR2Key, metadata FROM assets WHERE id = ?`)
       .bind(assetId)
-      .first<{ userId: string; kind: string; srcR2Key: string; bytes: number; width: number; height: number }>();
+      .first<{ userId: string; kind: string; srcR2Key: string; metadata: string | null }>();
     expect(row).not.toBeNull();
     expect(row?.userId).toBe(USER_ID);
     expect(row?.kind).toBe("image");
     expect(row?.srcR2Key).toBe("uploads/integration-test.png");
-    expect(row?.bytes).toBe(4096);
+    expect(JSON.parse(row?.metadata ?? "{}")).toEqual({
+      width: 1024,
+      height: 768,
+      bytes: PNG_HEADER.byteLength,
+    });
 
     // Verify junction row landed
     const ref = await env.DB
@@ -210,7 +222,7 @@ describe("assets integration (real D1 + Worker)", () => {
       .prepare(`SELECT project_id FROM asset_refs WHERE asset_id = ? ORDER BY project_id`)
       .bind(assetId)
       .all<{ project_id: string }>();
-    expect(refRows.results.map(r => r.project_id).sort()).toEqual([PROJECT_ID, PROJECT_2].sort());
+    expect(refRows.results.map((r: { project_id: string }) => r.project_id).sort()).toEqual([PROJECT_ID, PROJECT_2].sort());
 
     // Drop ref from project 1; project 2 still has it
     await SELF.fetch(`https://api/api/v1/assets/${assetId}/ref?projectId=${PROJECT_ID}`, authed({ method: "DELETE" }));

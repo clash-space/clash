@@ -1,4 +1,12 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+
+vi.mock("@cloudflare/containers", () => ({
+  getContainer: (binding: {
+    idFromName: (name: string) => unknown;
+    get: (id: unknown) => { fetch: typeof fetch };
+  }, name: string) => binding.get(binding.idFromName(name)),
+}));
+
 import { extractVideoThumbnail } from "./thumbnail";
 
 const JPG_BYTES = new Uint8Array([0xff, 0xd8, 0xff]).buffer;

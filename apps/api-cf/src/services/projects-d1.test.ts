@@ -1,0 +1,80 @@
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { getDb } from "../db";
+import { listProjectsWithAssets } from "./projects-d1";
+
+vi.mock("../db", () => ({
+  getDb: vi.fn(),
+}));
+
+vi.mock("./asset-signing", () => ({
+  signAssetPath: vi.fn(async (_env: unknown, key: string) => `/assets/${key}?signed=1`),
+}));
+
+function project(overrides: Record<string, unknown> = {}) {
+  return {
+    id: "project-1",
+    ownerId: "user-1",
+    name: "create some dog images",
+    description: null,
+    createdAt: new Date("2026-06-03T00:00:00.000Z"),
+    updatedAt: new Date("2026-06-03T00:00:00.000Z"),
+    ...overrides,
+  };
+}
+
+function asset(id: string, srcR2Key: string, createdAt: string) {
+  return {
+    id,
+    srcR2Key,
+    coverR2Key: null,
+    kind: "image",
+    createdAt: new Date(createdAt),
+    importedAt: new Date(createdAt),
+  };
+}
+
+describe("listProjectsWithAssets", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("falls back to project asset refs when room nodes are unavailable", async () => {
+    const fallbackAssets = [
+      asset("asset-4", "projects/project-1/assets/dog-4.png", "2026-06-03T00:04:00.000Z"),
+      asset("asset-3", "projects/project-1/assets/dog-3.png", "2026-06-03T00:03:00.000Z"),
+      asset("asset-2", "projects/project-1/assets/dog-2.png", "2026-06-03T00:02:00.000Z"),
+      asset("asset-1", "projects/project-1/assets/dog-1.png", "2026-06-03T00:01:00.000Z"),
+    ];
+
+    const db = {
+      query: {
+        projects: {
+          findMany: vi.fn().mockResolvedValue([project()]),
+        },
+      },
+      select: vi.fn().mockReturnValue({
+        from: vi.fn().mockReturnValue({
+          innerJoin: vi.fn().mockReturnValue({
+            where: vi.fn().mockReturnValue({
+              orderBy: vi.fn().mockReturnValue({
+                limit: vi.fn().mockResolvedValue(fallbackAssets),
+              }),
+            }),
+          }),
+          where: vi.fn().mockResolvedValue([]),
+        }),
+      }),
+    };
+    vi.mocked(getDb).mockReturnValue(db as unknown as ReturnType<typeof getDb>);
+
+    const [result] = await listProjectsWithAssets({ DB: {} as D1Database }, "user-1", 1);
+
+    expect(result.assets).toHaveLength(4);
+    expect(result.assets.map((a: { url: string }) => a.url)).toEqual([
+      "/assets/projects/project-1/assets/dog-4.png?signed=1",
+      "/assets/projects/project-1/assets/dog-3.png?signed=1",
+      "/assets/projects/project-1/assets/dog-2.png?signed=1",
+      "/assets/projects/project-1/assets/dog-1.png?signed=1",
+    ]);
+  });
+});

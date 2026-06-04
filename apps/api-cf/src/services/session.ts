@@ -54,10 +54,13 @@ export async function getUserIdFromRequest(
   if (env.SKIP_LOGIN === "true") return DEV_USER_ID;
   const auth = createAuth(env, cf);
   try {
-    const session = await auth.api.getSession({
+    const session: unknown = await auth.api.getSession({
       headers: new Headers(request.headers),
     });
-    return session?.user?.id ?? null;
+    const user = session && typeof session === "object" && "user" in session ? session.user : null;
+    return user && typeof user === "object" && "id" in user && typeof user.id === "string"
+      ? user.id
+      : null;
   } catch {
     return null;
   }

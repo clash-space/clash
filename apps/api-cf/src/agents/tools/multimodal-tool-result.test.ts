@@ -10,7 +10,7 @@
  * Requires GOOGLE_API_KEY in .dev.vars or env.
  */
 import { describe, it, expect } from "vitest";
-import { tool, generateText, convertToModelMessages, stepCountIs } from "ai";
+import { tool, generateText, convertToModelMessages, stepCountIs, type Tool } from "ai";
 import { createOpenAI } from "@ai-sdk/openai";
 import { z } from "zod";
 import * as fs from "node:fs";
@@ -44,12 +44,14 @@ function getTestImage(): { data: string; mediaType: string; description: string 
 
 const CF_AIG_TOKEN = process.env.CF_AIG_TOKEN;
 const CF_AIG_OPENAI_URL = process.env.CF_AIG_OPENAI_URL;
+type ImageDataOutput = { text: string; imageData: string; imageMediaType: string };
+type ImageUrlOutput = { text: string; url: string; mediaType: string };
 
 describe.skipIf(!CF_AIG_TOKEN || !CF_AIG_OPENAI_URL)("Multimodal tool result E2E", () => {
   it("LLM can see image data returned from tool via toModelOutput", async () => {
     const testImage = getTestImage();
 
-    const readImageTool = tool({
+    const readImageTool: Tool<{ id: string }, ImageDataOutput> = tool<{ id: string }, ImageDataOutput>({
       description: "Read an image and return it for the model to see",
       inputSchema: z.object({
         id: z.string().describe("Image ID"),
@@ -61,7 +63,7 @@ describe.skipIf(!CF_AIG_TOKEN || !CF_AIG_OPENAI_URL)("Multimodal tool result E2E
           imageMediaType: testImage.mediaType,
         };
       },
-      toModelOutput({ output }) {
+      toModelOutput({ output }: { output: ImageDataOutput }) {
         if (output.imageData) {
           return {
             type: "content" as const,
@@ -71,7 +73,7 @@ describe.skipIf(!CF_AIG_TOKEN || !CF_AIG_OPENAI_URL)("Multimodal tool result E2E
             ],
           };
         }
-        return output.text;
+        return { type: "text" as const, value: output.text };
       },
     });
 
@@ -98,7 +100,7 @@ describe.skipIf(!CF_AIG_TOKEN || !CF_AIG_OPENAI_URL)("Multimodal tool result E2E
     for (const [i, step] of result.steps.entries()) {
       console.log(`Step ${i}: finishReason=${step.finishReason}, text="${step.text?.slice(0,100)}"`);
       for (const tc of step.toolCalls || []) {
-        console.log(`  Tool call: ${tc.toolName}(${JSON.stringify(tc.args)}) id=${tc.toolCallId}`);
+        console.log(`  Tool call: ${tc.toolName}(${JSON.stringify(tc.input)}) id=${tc.toolCallId}`);
       }
       for (const tr of step.toolResults || []) {
         const out = tr.output as any;
@@ -127,7 +129,7 @@ describe.skipIf(!CF_AIG_TOKEN || !CF_AIG_OPENAI_URL)("Multimodal tool result E2E
     // Use a publicly accessible image URL
     const PUBLIC_IMAGE_URL = "https://upload.wikimedia.org/wikipedia/commons/thumb/4/47/PNG_transparency_demonstration_1.png/280px-PNG_transparency_demonstration_1.png";
 
-    const readImageUrlTool = tool({
+    const readImageUrlTool: Tool<{ id: string }, ImageUrlOutput> = tool<{ id: string }, ImageUrlOutput>({
       description: "Read an image node and return a URL for the model to see",
       inputSchema: z.object({ id: z.string() }),
       execute: async ({ id }) => ({
@@ -135,17 +137,17 @@ describe.skipIf(!CF_AIG_TOKEN || !CF_AIG_OPENAI_URL)("Multimodal tool result E2E
         url: PUBLIC_IMAGE_URL,
         mediaType: "image/png",
       }),
-      toModelOutput({ output }) {
+      toModelOutput({ output }: { output: ImageUrlOutput }) {
         if (output.url) {
           return {
             type: "content" as const,
             value: [
               { type: "text" as const, text: output.text },
-              { type: "file" as const, url: output.url, mediaType: output.mediaType },
+              { type: "image-url" as const, url: output.url },
             ],
           };
         }
-        return output.text;
+        return { type: "text" as const, value: output.text };
       },
     });
 
@@ -179,7 +181,7 @@ describe.skipIf(!CF_AIG_TOKEN || !CF_AIG_OPENAI_URL)("Multimodal tool result E2E
   it("convertToModelMessages correctly transforms tool result with toModelOutput", async () => {
     const testImage = getTestImage();
 
-    const readImageTool = tool({
+    const readImageTool: Tool<{ id: string }, ImageDataOutput> = tool<{ id: string }, ImageDataOutput>({
       description: "Read image",
       inputSchema: z.object({ id: z.string() }),
       execute: async ({ id }) => ({
@@ -187,7 +189,7 @@ describe.skipIf(!CF_AIG_TOKEN || !CF_AIG_OPENAI_URL)("Multimodal tool result E2E
         imageData: testImage.data,
         imageMediaType: testImage.mediaType,
       }),
-      toModelOutput({ output }) {
+      toModelOutput({ output }: { output: ImageDataOutput }) {
         return {
           type: "content" as const,
           value: [

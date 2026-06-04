@@ -28,16 +28,16 @@ function makeDocWithNodes(
 describe("Canvas tools", () => {
   let doc: LoroDoc;
   let broadcast: BroadcastFn;
-  let sendMessage: ReturnType<typeof vi.fn>;
-  let generateId: ReturnType<typeof vi.fn>;
-  let getWorkspaceGroupId: ReturnType<typeof vi.fn>;
+  let sendMessage: (msg: Record<string, unknown>) => void;
+  let generateId: ReturnType<typeof vi.fn<() => string>>;
+  let getWorkspaceGroupId: ReturnType<typeof vi.fn<() => string | undefined>>;
   let tools: ReturnType<typeof createCanvasTools>;
 
   beforeEach(() => {
     broadcast = vi.fn();
-    sendMessage = vi.fn();
-    generateId = vi.fn().mockReturnValueOnce("gen-id-1").mockReturnValueOnce("gen-id-2").mockReturnValue("gen-id-3");
-    getWorkspaceGroupId = vi.fn().mockReturnValue(undefined);
+    sendMessage = vi.fn((_: Record<string, unknown>) => undefined);
+    generateId = vi.fn<() => string>().mockReturnValueOnce("gen-id-1").mockReturnValueOnce("gen-id-2").mockReturnValue("gen-id-3");
+    getWorkspaceGroupId = vi.fn<() => string | undefined>().mockReturnValue(undefined);
 
     doc = makeDocWithNodes([
       { id: "g1", type: "group", data: { label: "Workspace" } },

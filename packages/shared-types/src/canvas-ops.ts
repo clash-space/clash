@@ -439,7 +439,7 @@ export class Canvas {
 
     // Extract prompt
     const prompt = (nodeData.content as string) || (nodeData.prompt as string) || "";
-    if (!prompt.trim()) {
+    if (isBuiltInGen && !prompt.trim()) {
       return { assetNodeId: "", assetNodeType: "", position: { x: 0, y: 0 }, error: "No prompt provided" };
     }
 
@@ -530,12 +530,22 @@ export class Canvas {
     // Build pending asset node
     const assetNodeId = generateId();
     const pendingNode = buildPendingAssetNode({ ...pendingInput, nodeId: assetNodeId });
+    const pendingData: Record<string, unknown> = { ...pendingNode.data };
+    if (nodeData.actorType === "user" || nodeData.actorType === "agent") {
+      pendingData.actorType = nodeData.actorType;
+    }
+    if (typeof nodeData.actorUserId === "string") {
+      pendingData.actorUserId = nodeData.actorUserId;
+    }
+    if (typeof nodeData.actorAgentId === "string") {
+      pendingData.actorAgentId = nodeData.actorAgentId;
+    }
 
     // Create linked node with edge + auto-layout
     const linked = this.createLinkedNode({
       nodeId: pendingNode.id,
       nodeType: pendingNode.type,
-      data: pendingNode.data,
+      data: pendingData,
       parentId: node.parent_id,
       sourceNodeId: nodeId,
     });
