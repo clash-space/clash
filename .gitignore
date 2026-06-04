@@ -16,6 +16,7 @@ ENV/
 .env.local
 .env.*.local
 .env.production
+.tmp-*.env
 
 # Build outputs
 .next/
