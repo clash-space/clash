@@ -159,6 +159,16 @@ async function click(cdp, selectorExpression, label) {
   );
 }
 
+function clickableByText(label) {
+  return `([...document.querySelectorAll("a, button, [role='button'], [role='tab']")].find((el) => {
+    const text = (el.innerText || el.textContent || el.getAttribute("aria-label") || "").trim();
+    if (text !== ${JSON.stringify(label)}) return false;
+    const rect = el.getBoundingClientRect();
+    const style = getComputedStyle(el);
+    return rect.width > 0 && rect.height > 0 && style.display !== "none" && style.visibility !== "hidden";
+  }))`;
+}
+
 function assertReadableTheme(state) {
   if (state.bodyColor === "rgb(255, 255, 255)" && state.bodyBg !== "rgb(0, 0, 0)") {
     throw new Error(`Body text is white on a non-black background: ${JSON.stringify(state)}`);
@@ -242,10 +252,10 @@ async function main() {
     assertReadableTheme(homeState);
     console.log("[desktop-smoke] home", JSON.stringify(homeState));
 
-    await click(cdp, `[...document.querySelectorAll("a")].find((a) => a.textContent.trim() === "Projects")`, "Projects");
+    await click(cdp, clickableByText("Projects"), "Projects");
     await waitFor(cdp, `location.pathname === "/projects"`, "projects page");
 
-    await click(cdp, `[...document.querySelectorAll("button")].find((b) => b.innerText.trim() === "New Project")`, "New Project");
+    await click(cdp, clickableByText("New Project"), "New Project");
     await waitFor(
       cdp,
       `location.pathname.startsWith("/projects/") && location.pathname !== "/projects" && !!document.querySelector("#editor-header")`,
@@ -266,10 +276,10 @@ async function main() {
     );
     await waitFor(cdp, `location.pathname === "/" && document.body.innerText.includes("Projects")`, "home from editor");
 
-    await click(cdp, `[...document.querySelectorAll("a")].find((a) => a.textContent.trim() === "Projects")`, "Projects again");
+    await click(cdp, clickableByText("Projects"), "Projects again");
     await waitFor(cdp, `location.pathname === "/projects"`, "projects page again");
 
-    await click(cdp, `[...document.querySelectorAll("a")].find((a) => a.textContent.trim() === "Store")`, "Store");
+    await click(cdp, clickableByText("Store"), "Store");
     await waitFor(cdp, `location.pathname === "/marketplace"`, "store page");
 
     const finalState = await evaluate(cdp, `({

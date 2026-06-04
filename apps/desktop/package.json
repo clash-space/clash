@@ -10,6 +10,7 @@
     "build": "tsup",
     "dev": "pnpm --filter @master-clash/local-api build && pnpm build && CLASH_WEB_URL=http://127.0.0.1:3001 electron .",
     "pack:dir": "pnpm prepare:pack && electron-builder --dir --config electron-builder.yml",
+    "pack:dmg": "pnpm prepare:pack && electron-builder --mac dmg --config electron-builder.yml --publish never",
     "prepare:pack": "pnpm --filter @master-clash/web build && pnpm --filter @master-clash/local-api build && pnpm build",
     "start": "pnpm --filter @master-clash/local-api build && pnpm build && electron .",
     "type-check": "tsc --noEmit",
