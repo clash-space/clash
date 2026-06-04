@@ -1,9 +1,10 @@
 import type { LoaderFunctionArgs } from "react-router";
 import { redirect, useLoaderData } from "react-router";
 import SettingsClient from "@clash/web-ui/components/SettingsClient";
+import { runtimeApiUrl } from "@clash/web-ui/lib/runtimeConfig";
 
 async function fetchJsonOrRedirect(url: string): Promise<unknown[]> {
-  const res = await fetch(url, { credentials: "include" });
+  const res = await fetch(runtimeApiUrl(url), { credentials: "include" });
   if (res.status === 401) throw redirect("/login");
   if (!res.ok) return [];
   return res.json() as Promise<unknown[]>;

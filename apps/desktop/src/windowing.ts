@@ -1,0 +1,71 @@
+import type { BrowserWindowConstructorOptions } from "electron";
+import { desktopTrafficLightPosition } from "@clash/shared-runtime";
+
+export interface TrackableWindow {
+  id: number;
+  on(event: "closed", listener: () => void): unknown;
+}
+
+export interface NativeWindowControls {
+  setWindowButtonVisibility(visible: boolean): unknown;
+}
+
+export interface WindowRegistry<TWindow extends TrackableWindow> {
+  register(window: TWindow): void;
+  count(): number;
+  all(): TWindow[];
+}
+
+const windowOffset = 28;
+const initialWindowPosition = { x: 96, y: 48 };
+
+export function resolveDesktopWindowOptions(windowIndex: number): BrowserWindowConstructorOptions {
+  const offset = windowIndex * windowOffset;
+
+  return {
+    width: 1440,
+    height: 980,
+    minWidth: 960,
+    minHeight: 720,
+    x: initialWindowPosition.x + offset,
+    y: initialWindowPosition.y + offset,
+    title: "Clash",
+    frame: true,
+    titleBarStyle: "hiddenInset",
+    trafficLightPosition: desktopTrafficLightPosition,
+    backgroundColor: "#fbfbf9",
+    show: false,
+  };
+}
+
+export function createWindowRegistry<TWindow extends TrackableWindow>(): WindowRegistry<TWindow> {
+  const windows = new Set<TWindow>();
+
+  return {
+    register(window) {
+      windows.add(window);
+      window.on("closed", () => {
+        windows.delete(window);
+      });
+    },
+    count() {
+      return windows.size;
+    },
+    all() {
+      return [...windows];
+    },
+  };
+}
+
+export function shouldCreateWindowOnActivate(openWindowCount: number): boolean {
+  return openWindowCount === 0;
+}
+
+export function ensureNativeWindowControlsVisible(
+  window: NativeWindowControls,
+  platform = process.platform,
+): void {
+  if (platform === "darwin") {
+    window.setWindowButtonVisibility(true);
+  }
+}

@@ -20,12 +20,13 @@ const repoRoot = resolve(__dirname, "../..");
 // plugin's wrangler.json redirect. The deploy step (`wrangler deploy` with
 // the project's own wrangler.toml — or the wrapper wrangler.toml in
 // clash-hosted/apps/web-hosted) bundles workers/app.ts itself.
-export default defineConfig(({ command }) => ({
+export default defineConfig(({ command, isPreview }) => ({
   plugins: [
-    // command is 'serve' for `vite dev`, 'build' for `vite build`/`vite preview`.
+    // command is 'serve' for `vite dev` and `vite preview`; `isPreview`
+    // distinguishes static preview from the development server.
     // Skip plugin in build so deploys (which read wrangler.toml directly) get
     // a plain SPA bundle without the plugin's wrangler.json redirect.
-    ...(command === "serve"
+    ...(command === "serve" && !isPreview
       ? [
           cloudflare({
             remoteBindings: false,

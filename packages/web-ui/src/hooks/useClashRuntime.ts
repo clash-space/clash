@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { appendAcpEvent, type ByoMessage, type AvailableCommand } from '@clash/web-ui/lib/acpEvents';
 import type { BridgeSession } from '@clash/web-ui/hooks/useAgentByoBridge';
+import { runtimeApiUrl, runtimeWebSocketUrl } from '../lib/runtimeConfig';
 
 /**
  * useClashRuntime — chat through a registered local-runtime daemon.
@@ -106,7 +107,7 @@ export function useClashRuntime(): UseClashRuntimeReturn {
 
   const refresh = useCallback(async () => {
     try {
-      const res = await fetch(RUNTIMES_PATH, { credentials: 'same-origin' });
+      const res = await fetch(runtimeApiUrl(RUNTIMES_PATH), { credentials: 'include' });
       if (!res.ok) {
         // Don't error-state the whole hook just because the list call
         // failed — chat panel still works in cloud mode.
@@ -199,9 +200,9 @@ export function useClashRuntime(): UseClashRuntimeReturn {
     setStatus('connecting');
     try {
       const finalCrewId = crewId ?? 'director';
-      const res = await fetch(`${RUNTIMES_PATH}/${runtimeId}/sessions`, {
+      const res = await fetch(runtimeApiUrl(`${RUNTIMES_PATH}/${runtimeId}/sessions`), {
         method: 'POST',
-        credentials: 'same-origin',
+        credentials: 'include',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
           crew_id: finalCrewId,
@@ -218,9 +219,8 @@ export function useClashRuntime(): UseClashRuntimeReturn {
       const json = (await res.json()) as CreateSessionResponse;
       setSessionId(json.session_id);
 
-      const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
       const ws = new WebSocket(
-        `${proto}//${window.location.host}${SESSIONS_BASE}/${encodeURIComponent(json.session_id)}/_stream`,
+        runtimeWebSocketUrl(`${SESSIONS_BASE}/${encodeURIComponent(json.session_id)}/_stream`),
       );
       wsRef.current = ws;
       ws.onmessage = (ev) => onWsMessage(ev.data);
@@ -275,8 +275,8 @@ export function useClashRuntime(): UseClashRuntimeReturn {
 
   const loadResumeOptions = useCallback(async (runtimeId: string): Promise<BridgeSession[]> => {
     try {
-      const res = await fetch(`${RUNTIMES_PATH}/${runtimeId}/local-sessions/scan`, {
-        credentials: 'same-origin',
+      const res = await fetch(runtimeApiUrl(`${RUNTIMES_PATH}/${runtimeId}/local-sessions/scan`), {
+        credentials: 'include',
       });
       if (!res.ok) return [];
       const json = (await res.json()) as { sessions: BridgeSession[] };

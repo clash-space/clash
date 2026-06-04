@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Copy, Check, CircleNotch } from '@phosphor-icons/react';
 import type { ByoStatus, BridgeCrewMember, BridgeSession } from '@clash/web-ui/hooks/useAgentByoBridge';
+import { getRuntimeConfig } from '@clash/web-ui/lib/runtimeConfig';
 import { Dialog } from '../ui/dialog';
 import { SessionStartPicker } from './SessionStartPicker';
 
@@ -66,9 +67,10 @@ export function ByoAgentDialog({
     // breaks for staging / self-hosted deploys. `@beta` pins to the
     // working tarball — npm `latest` may point at a broken release.
     const origin =
-      typeof window !== 'undefined'
+      getRuntimeConfig().wsBaseUrl ||
+      (typeof window !== 'undefined'
         ? `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}`
-        : 'wss://clash.video';
+        : 'wss://clash.video');
     return `npx @clash-space/bridge@beta --token=${pairTokenDisplay} --server=${origin}`;
   }, [pairTokenDisplay]);
 
@@ -214,4 +216,3 @@ function PairingStatus({ status }: { status: ByoStatus }) {
   }
   return null;
 }
-

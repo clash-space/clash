@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { CustomActionDefinition } from '@clash/shared-types';
 import type { Runtime } from './useClashRuntime';
+import { runtimeApiUrl } from '../lib/runtimeConfig';
 
 /**
  * useRuntimes — read-only list of the user's registered runtimes.
@@ -35,7 +36,7 @@ export function useRuntimes(): UseRuntimesReturn {
 
   const refresh = useCallback(async () => {
     try {
-      const res = await fetch(RUNTIMES_PATH, { credentials: 'same-origin' });
+      const res = await fetch(runtimeApiUrl(RUNTIMES_PATH), { credentials: 'include' });
       if (!res.ok) {
         setLoading(false);
         return;

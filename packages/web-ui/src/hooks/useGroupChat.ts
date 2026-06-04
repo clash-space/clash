@@ -5,6 +5,7 @@ import {
   saveCachedCrewMessages,
   clearCachedCrewMessages,
 } from '../_group-chat/crewMsgCache';
+import { runtimeApiUrl, runtimeWebSocketUrl } from '../lib/runtimeConfig';
 
 /**
  * useGroupChat — multi-crew chat panel state.
@@ -48,8 +49,8 @@ const SESSIONS_BASE = '/api/v1/local-sessions';
 async function fetchSessionHistory(sessionId: string, crewMemberId: string): Promise<ByoMessage[] | null> {
   let res: Response;
   try {
-    res = await fetch(`${SESSIONS_BASE}/${encodeURIComponent(sessionId)}/messages`, {
-      credentials: 'same-origin',
+    res = await fetch(runtimeApiUrl(`${SESSIONS_BASE}/${encodeURIComponent(sessionId)}/messages`), {
+      credentials: 'include',
     });
   } catch {
     return null;
@@ -448,9 +449,8 @@ export function useGroupChat(projectId?: string): UseGroupChatReturn {
    * the CrewView header.
    */
   const openCrewWs = useCallback((crewId: string, sessionId: string) => {
-    const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     const ws = new WebSocket(
-      `${proto}//${window.location.host}${SESSIONS_BASE}/${encodeURIComponent(sessionId)}/_stream`,
+      runtimeWebSocketUrl(`${SESSIONS_BASE}/${encodeURIComponent(sessionId)}/_stream`),
     );
     ws.onmessage = (ev) => handleCrewMessage(crewId, ev.data);
     ws.onopen = () => {
@@ -534,9 +534,9 @@ export function useGroupChat(projectId?: string): UseGroupChatReturn {
     setFocusedCrewId(crewId);
 
     try {
-      const res = await fetch(`${RUNTIMES_PATH}/${claim.runtime_id}/sessions`, {
+      const res = await fetch(runtimeApiUrl(`${RUNTIMES_PATH}/${claim.runtime_id}/sessions`), {
         method: 'POST',
-        credentials: 'same-origin',
+        credentials: 'include',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
           crew_member_id: claim.id,
@@ -680,9 +680,9 @@ export function useGroupChat(projectId?: string): UseGroupChatReturn {
         ws: null,
       });
       try {
-        const res = await fetch(`${RUNTIMES_PATH}/${target.runtimeId}/sessions`, {
+        const res = await fetch(runtimeApiUrl(`${RUNTIMES_PATH}/${target.runtimeId}/sessions`), {
           method: 'POST',
-          credentials: 'same-origin',
+          credentials: 'include',
           headers: { 'content-type': 'application/json' },
           body: JSON.stringify({
             crew_member_id: crewId,

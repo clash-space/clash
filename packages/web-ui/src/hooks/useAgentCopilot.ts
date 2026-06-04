@@ -2,12 +2,20 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { useAgent } from 'agents/react';
 import { useAgentChat } from '@cloudflare/ai-chat/react';
+import { getRuntimeConfig } from '../lib/runtimeConfig';
 
 // Agent WebSocket goes through Next.js rewrite proxy (same origin).
 // No external URL needed — the /agents/* path is proxied to api-cf.
-const API_HOST = typeof window !== 'undefined'
-  ? window.location.host
-  : 'localhost:3000';
+const API_HOST = (() => {
+  if (typeof window === 'undefined') return 'localhost:3000';
+  const { wsBaseUrl } = getRuntimeConfig();
+  if (!wsBaseUrl) return window.location.host;
+  try {
+    return new URL(wsBaseUrl).host;
+  } catch {
+    return window.location.host;
+  }
+})();
 
 const MAX_RECONNECT_ATTEMPTS = 5;
 

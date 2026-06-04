@@ -3,6 +3,10 @@ import { renderHook, waitFor, act } from "@testing-library/react";
 import { useAsset, invalidateAsset, getAsset } from "./useAsset";
 import type { Asset } from "@clash/shared-types";
 
+declare global {
+  var __CLASH_RUNTIME_CONFIG__: { apiBaseUrl?: string; wsBaseUrl?: string } | undefined;
+}
+
 function makeAsset(over: Partial<Asset> = {}): Asset {
   return {
     id: "asset-1",
@@ -24,6 +28,7 @@ function jsonResponse(body: unknown, status = 200): Response {
 describe("useAsset", () => {
   beforeEach(() => {
     vi.restoreAllMocks();
+    globalThis.__CLASH_RUNTIME_CONFIG__ = undefined;
     // Wipe module-level cache between tests by invalidating known IDs we touch.
     invalidateAsset("asset-1");
     invalidateAsset("asset-2");
@@ -53,6 +58,16 @@ describe("useAsset", () => {
     renderHook(() => useAsset("weird/id:1"));
     await waitFor(() => expect(fetchSpy).toHaveBeenCalled());
     expect(fetchSpy.mock.calls[0][0]).toBe("/api/v1/assets/weird%2Fid%3A1");
+  });
+
+  it("uses the injected runtime API base URL", async () => {
+    globalThis.__CLASH_RUNTIME_CONFIG__ = { apiBaseUrl: "http://127.0.0.1:49152" };
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(jsonResponse(makeAsset({ id: "asset-runtime" })));
+
+    renderHook(() => useAsset("asset-runtime"));
+
+    await waitFor(() => expect(fetchSpy).toHaveBeenCalled());
+    expect(fetchSpy.mock.calls[0][0]).toBe("http://127.0.0.1:49152/api/v1/assets/asset-runtime");
   });
 
   it("dedupes concurrent requests for the same id (one network call)", async () => {

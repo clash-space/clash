@@ -9,6 +9,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import type { CrewRow } from '../_group-chat/panel-types';
+import { runtimeApiUrl } from '../lib/runtimeConfig';
 
 interface UseClaimedCrewResult {
   crew: CrewRow[];
@@ -22,7 +23,7 @@ export function useClaimedCrew(): UseClaimedCrewResult {
 
   const refetch = useCallback(async () => {
     try {
-      const res = await fetch('/api/v1/crew', { credentials: 'same-origin' });
+      const res = await fetch(runtimeApiUrl('/api/v1/crew'), { credentials: 'include' });
       if (!res.ok) return;
       const json = (await res.json()) as { crew: CrewRow[] };
       setCrew(json.crew ?? []);

@@ -6,6 +6,7 @@ import { lazy } from 'react';
 import { useTranslation } from 'react-i18next';
 import { getSignedUrl } from '@clash/web-ui/lib/hooks/useSignedUrl';
 import { resolveSpeechRecognitionLocale } from '@clash/web-ui/lib/utils/speechRecognitionLocale';
+import { runtimeApiUrl } from '@clash/web-ui/lib/runtimeConfig';
 import { IconButton } from '../ui/icon-button';
 import type { MilkdownEditorHandle, MentionableNode } from '../MilkdownEditor';
 
@@ -62,7 +63,7 @@ function classifyFile(file: File): UploadedAttachment['type'] {
 async function uploadFile(file: File): Promise<{ storageKey: string; url: string }> {
     const form = new FormData();
     form.append('file', file);
-    const res = await fetch('/upload', { method: 'POST', body: form });
+    const res = await fetch(runtimeApiUrl('/upload'), { method: 'POST', body: form });
     if (!res.ok) throw new Error('Upload failed');
     return res.json();
 }
@@ -187,7 +188,7 @@ async function registerAsset(
     if (kind === 'document') return; // documents aren't media assets
     try {
         const meta = await probeMediaMetadata(file, kind);
-        await fetch('/api/v1/assets', {
+        await fetch(runtimeApiUrl('/api/v1/assets'), {
             method: 'POST',
             headers: { 'content-type': 'application/json' },
             body: JSON.stringify({

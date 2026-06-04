@@ -31,10 +31,7 @@ export default function ProjectsClient({ projects }: ProjectsClientProps) {
                         aria-label="Create a new project"
                         className="group flex aspect-video flex-col items-center justify-center gap-4 rounded-[2rem] border-2 border-dashed border-warm-border bg-warm-surface/70 transition-colors hover:border-brand/40 hover:bg-warm-surface focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-warm-page"
                         onClick={async () => {
-                            const prompt = window.prompt('Enter a name or description for your new video project:');
-                            if (prompt) {
-                                await createProject(prompt);
-                            }
+                            await createProject('Untitled project', { startFromPrompt: false });
                         }}
                     >
                         <div className="flex h-16 w-16 items-center justify-center rounded-full bg-warm-surface shadow-sm ring-1 ring-warm-border">

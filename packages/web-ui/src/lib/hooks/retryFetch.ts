@@ -19,6 +19,7 @@
  * a typed `RetriableError` to let callers distinguish "really gone" from
  * "we gave up retrying".
  */
+import { runtimeApiUrl } from "../runtimeConfig";
 
 export interface RetryOptions {
   /** Max total attempts including the first one. Default 2 (= 1 retry). */
@@ -88,7 +89,7 @@ export async function fetchWithRetry(
     if (signal?.aborted) throw new DOMException('aborted', 'AbortError');
 
     try {
-      const res = await fetch(url, { ...init, signal: init.signal ?? signal });
+      const res = await fetch(runtimeApiUrl(url), { ...init, signal: init.signal ?? signal });
       if (res.ok) return res;
       lastStatus = res.status;
       // Non-retriable 4xx: hand the response to the caller so it can branch on status.

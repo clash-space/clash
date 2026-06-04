@@ -26,6 +26,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { RoomMessageEvent, RoomMention } from '@clash/shared-types';
+import { runtimeApiUrl } from '../lib/runtimeConfig';
 
 const ROOM_BASE = '/api/v1/projects';
 
@@ -68,7 +69,7 @@ export function useProjectRoom(projectId: string | null): UseProjectRoomReturn {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(`${ROOM_BASE}/${projectId}/room/messages`, {
+      const res = await fetch(runtimeApiUrl(`${ROOM_BASE}/${projectId}/room/messages`), {
         credentials: 'same-origin',
       });
       if (!res.ok) {
@@ -99,7 +100,7 @@ export function useProjectRoom(projectId: string | null): UseProjectRoomReturn {
     if (!projectId) return;
     const body = JSON.stringify({ text, mentions: mentions ?? [] });
     try {
-      const res = await fetch(`${ROOM_BASE}/${projectId}/room/messages`, {
+      const res = await fetch(runtimeApiUrl(`${ROOM_BASE}/${projectId}/room/messages`), {
         method: 'POST',
         credentials: 'same-origin',
         headers: { 'content-type': 'application/json' },

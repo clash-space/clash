@@ -8,6 +8,7 @@
  * Keeping this module in @clash/web-ui means the same code can be used by a
  * future Electron app (which will hit the same HTTP endpoints).
  */
+import { runtimeApiUrl } from "./runtimeConfig";
 
 // ───────── Types (mirror server-side shapes) ─────────
 
@@ -87,7 +88,7 @@ async function jsonFetch<T>(
   input: string,
   init: RequestInit = {},
 ): Promise<T> {
-  const res = await fetch(input, {
+  const res = await fetch(runtimeApiUrl(input), {
     credentials: "include",
     headers: { "content-type": "application/json", ...(init.headers ?? {}) },
     ...init,
@@ -102,14 +103,20 @@ async function jsonFetch<T>(
 
 // ───────── Projects ─────────
 
-export async function createProject(prompt: string): Promise<void> {
+export interface CreateProjectOptions {
+  startFromPrompt?: boolean;
+}
+
+export async function createProject(prompt: string, options: CreateProjectOptions = {}): Promise<void> {
   const { id } = await jsonFetch<{ id: string }>("/api/projects", {
     method: "POST",
     body: JSON.stringify({ prompt }),
   });
   // Match legacy server-action behavior: navigate to the new project.
   if (typeof window !== "undefined") {
-    window.location.assign(`/projects/${id}?prompt=${encodeURIComponent(prompt)}`);
+    const shouldStartFromPrompt = options.startFromPrompt ?? true;
+    const suffix = shouldStartFromPrompt ? `?prompt=${encodeURIComponent(prompt)}` : "";
+    window.location.assign(`/projects/${id}${suffix}`);
   }
 }
 

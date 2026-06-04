@@ -10,6 +10,7 @@ import {
     uninstallAction, type InstalledActionInfo,
     uninstallSkill, type InstalledSkillInfo,
 } from '@clash/web-ui/lib/clientActions';
+import { runtimeApiUrl } from '@clash/web-ui/lib/runtimeConfig';
 
 /** Stable identifiers for each section pane — shared between the legacy
  *  single-page layout (`/settings` route) and the modal layout
@@ -497,9 +498,9 @@ function RuntimesSection() {
         if (!confirm("Remove this runtime? The daemon on that machine will stop being authorized.")) return;
         setRemovingId(id);
         try {
-            const res = await fetch(`/api/v1/runtimes/${id}`, {
+            const res = await fetch(runtimeApiUrl(`/api/v1/runtimes/${id}`), {
                 method: "DELETE",
-                credentials: "same-origin",
+                credentials: "include",
             });
             if (!res.ok) throw new Error(`HTTP ${res.status}`);
             await rt.refresh();
@@ -635,7 +636,7 @@ function CrewSection() {
 
     const refresh = useCallback(async () => {
         try {
-            const res = await fetch('/api/v1/crew', { credentials: 'same-origin' });
+            const res = await fetch(runtimeApiUrl('/api/v1/crew'), { credentials: 'include' });
             if (!res.ok) return;
             const json = (await res.json()) as { crew: CrewMemberRow[] };
             setCrew(json.crew ?? []);
@@ -650,9 +651,9 @@ function CrewSection() {
         if (!claimingTpl || !claimingRid || !claimingAgent) return;
         setClaimBusy(true);
         try {
-            const res = await fetch('/api/v1/crew', {
+            const res = await fetch(runtimeApiUrl('/api/v1/crew'), {
                 method: 'POST',
-                credentials: 'same-origin',
+                credentials: 'include',
                 headers: { 'content-type': 'application/json' },
                 body: JSON.stringify({
                     template_id: claimingTpl,
@@ -681,9 +682,9 @@ function CrewSection() {
         if (!confirm('Unclaim this crew member? Existing chat sessions keep working.')) return;
         setRemovingId(id);
         try {
-            const res = await fetch(`/api/v1/crew/${id}`, {
+            const res = await fetch(runtimeApiUrl(`/api/v1/crew/${id}`), {
                 method: 'DELETE',
-                credentials: 'same-origin',
+                credentials: 'include',
             });
             if (!res.ok) throw new Error(`HTTP ${res.status}`);
             await refresh();
@@ -915,9 +916,9 @@ function AgentBudgetEditor({ crew, onSaved }: AgentBudgetEditorProps) {
                 setError('Credits must be a non-negative number, or empty for unlimited.');
                 return;
             }
-            const res = await fetch(`/api/v1/crew/${crew.id}/budget`, {
+            const res = await fetch(runtimeApiUrl(`/api/v1/crew/${crew.id}/budget`), {
                 method: 'PUT',
-                credentials: 'same-origin',
+                credentials: 'include',
                 headers: { 'content-type': 'application/json' },
                 body: JSON.stringify({ budget_credits: credits_value, budget_period: period }),
             });

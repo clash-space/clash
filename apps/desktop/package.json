@@ -1,0 +1,32 @@
+{
+  "name": "@master-clash/desktop",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Clash desktop app",
+  "author": "hrhrng <hrhrng@foxmail.com>",
+  "type": "module",
+  "main": "dist/main.js",
+  "scripts": {
+    "build": "tsup",
+    "dev": "pnpm --filter @master-clash/local-api build && pnpm build && CLASH_WEB_URL=http://127.0.0.1:3001 electron .",
+    "pack:dir": "pnpm prepare:pack && electron-builder --dir --config electron-builder.yml",
+    "prepare:pack": "pnpm --filter @master-clash/web build && pnpm --filter @master-clash/local-api build && pnpm build",
+    "start": "pnpm --filter @master-clash/local-api build && pnpm build && electron .",
+    "type-check": "tsc --noEmit",
+    "test": "vitest run",
+    "test:e2e": "node e2e/smoke.mjs",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "@clash/shared-runtime": "workspace:*",
+    "@master-clash/local-api": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^22.13.0",
+    "electron": "^42.3.2",
+    "electron-builder": "^26.8.1",
+    "tsup": "^8.5.0",
+    "typescript": "^5.9.0",
+    "vitest": "^4.1.4"
+  }
+}

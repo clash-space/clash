@@ -1,5 +1,7 @@
 @import "tailwindcss";
 
+@custom-variant dark (&:where(.dark, .dark *));
+
 @source "../../../packages/web-ui/src";
 @source "../../../packages/remotion-ui/src";
 @source "../../../packages/remotion-components/src";
@@ -51,13 +53,11 @@
   --radius-matrix: 16px;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-    --canvas-bg: #0f172a;
-    --canvas-dot: #334155;
-  }
+.dark {
+  --background: #0a0a0a;
+  --foreground: #ededed;
+  --canvas-bg: #0f172a;
+  --canvas-dot: #334155;
 }
 
 body {
@@ -66,6 +66,19 @@ body {
   font-family: var(--font-inter);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+}
+
+.desktop-drag-region {
+  -webkit-app-region: drag;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.desktop-no-drag,
+.desktop-no-drag * {
+  -webkit-app-region: no-drag;
+  -webkit-user-select: none;
+  user-select: none;
 }
 
 h1, h2, h3, h4, h5, h6 {
@@ -80,13 +93,47 @@ code, kbd, pre {
 
 html { overflow-y: scroll; }
 
+html.clash-desktop-route,
+html.clash-desktop-route body {
+  height: 100%;
+  overflow: hidden;
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: transparent transparent;
+}
+
+html.clash-is-scrolling,
+html.clash-is-scrolling * {
+  scrollbar-color: rgba(0,0,0,0.2) transparent;
+}
+
 ::-webkit-scrollbar { width: 8px; height: 8px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.2); border-radius: 4px; }
-::-webkit-scrollbar-thumb:hover { background: rgba(0,0,0,0.3); }
-@media (prefers-color-scheme: dark) {
-  ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.2); }
-  ::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.3); }
+::-webkit-scrollbar-thumb {
+  background: transparent;
+  border-radius: 4px;
+}
+html.clash-is-scrolling::-webkit-scrollbar-thumb,
+html.clash-is-scrolling ::-webkit-scrollbar-thumb {
+  background: rgba(0,0,0,0.2);
+}
+html.clash-is-scrolling::-webkit-scrollbar-thumb:hover,
+html.clash-is-scrolling ::-webkit-scrollbar-thumb:hover {
+  background: rgba(0,0,0,0.3);
+}
+html.dark.clash-is-scrolling,
+html.dark.clash-is-scrolling * {
+  scrollbar-color: rgba(255,255,255,0.2) transparent;
+}
+html.dark.clash-is-scrolling::-webkit-scrollbar-thumb,
+html.dark.clash-is-scrolling ::-webkit-scrollbar-thumb {
+  background: rgba(255,255,255,0.2);
+}
+html.dark.clash-is-scrolling::-webkit-scrollbar-thumb:hover,
+html.dark.clash-is-scrolling ::-webkit-scrollbar-thumb:hover {
+  background: rgba(255,255,255,0.3);
 }
 
 ::selection {

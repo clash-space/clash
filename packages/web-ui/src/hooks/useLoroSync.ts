@@ -1,6 +1,7 @@
 import { useEffect, useRef, useCallback, useState } from 'react';
 import { LoroDoc, UndoManager } from 'loro-crdt';
 import { Node, Edge } from '@xyflow/react';
+import { runtimeSyncWebSocketUrl } from '../lib/runtimeConfig';
 import type {
   PresenceClient,
   ActivityMessage,
@@ -31,7 +32,7 @@ function sortNodesParentFirst(nodes: Node[]): Node[] {
 
 interface LoroSyncOptions {
   projectId: string;
-  syncServerUrl: string;
+  syncServerUrl?: string;
   onNodesChange?: (nodes: Node[]) => void;
   onEdgesChange?: (edges: Edge[]) => void;
   onTaskUpdate?: (taskId: string, taskData: any) => void;
@@ -444,7 +445,9 @@ export function useLoroSync(options: LoroSyncOptions): UseLoroSyncReturn {
       }
     }
 
-    const wsUrl = `${syncServerUrl}/sync/${projectId}`;
+    const wsUrl = syncServerUrl
+      ? `${syncServerUrl.replace(/\/+$/, '')}/sync/${encodeURIComponent(projectId)}`
+      : runtimeSyncWebSocketUrl(projectId);
     console.log('[useLoroSync] connecting WebSocket', wsUrl);
 
     const ws = new WebSocket(wsUrl);

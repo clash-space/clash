@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { appendAcpEvent, type ByoMessage as SharedByoMessage, type AvailableCommand } from '@clash/web-ui/lib/acpEvents';
+import { runtimeApiUrl, runtimeWebSocketUrl } from '../lib/runtimeConfig';
 
 /**
  * Hook for "Bring Your Own (local) Agent" mode.
@@ -135,7 +136,7 @@ export function useAgentByoBridge() {
     reconnectBackoffMs.current = 1000;
     updateStatus('pairing');
     try {
-      const res = await fetch(PAIR_PATH, { method: 'POST', credentials: 'same-origin' });
+      const res = await fetch(runtimeApiUrl(PAIR_PATH), { method: 'POST', credentials: 'include' });
       if (!res.ok) {
         updateStatus('error', `pair failed: HTTP ${res.status}`);
         return null;
@@ -167,8 +168,7 @@ export function useAgentByoBridge() {
     if (wsRef.current) {
       try { wsRef.current.close(); } catch { /* already closing */ }
     }
-    const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const url = `${proto}//${window.location.host}${WS_PATH}?token=${encodeURIComponent(token)}`;
+    const url = runtimeWebSocketUrl(`${WS_PATH}?token=${encodeURIComponent(token)}`);
     const ws = new WebSocket(url);
     wsRef.current = ws;
 
@@ -285,10 +285,13 @@ export function useAgentByoBridge() {
       // env has CLASH_API_KEY without prompting the user to log in.
       // (api_url tracks the origin so self-hosted deploys work too.)
       ...(agentApiKey.current ? { api_key: agentApiKey.current } : {}),
-      api_url:
-        typeof window !== 'undefined'
+      api_url: (() => {
+        const url = runtimeApiUrl('/');
+        if (/^https?:/.test(url)) return url.replace(/\/$/, '');
+        return typeof window !== 'undefined'
           ? `${window.location.protocol}//${window.location.host}`
-          : undefined,
+          : undefined;
+      })(),
     }));
   }, [updateStatus]);
 

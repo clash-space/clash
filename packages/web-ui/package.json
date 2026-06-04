@@ -18,6 +18,7 @@
   "dependencies": {
     "@ai-sdk/react": "^3.0.140",
     "@clash/shared-layout": "workspace:^",
+    "@clash/shared-runtime": "workspace:*",
     "@clash/shared-types": "workspace:*",
     "@cloudflare/ai-chat": "^0.2.5",
     "@dnd-kit/core": "^6.3.1",

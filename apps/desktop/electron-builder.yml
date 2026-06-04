@@ -1,0 +1,24 @@
+appId: app.clash.video
+productName: Clash
+asar: true
+npmRebuild: false
+
+directories:
+  output: release
+
+files:
+  - dist/**/*
+  - package.json
+  - '!src/**/*'
+  - '!e2e/**/*'
+  - '!*.test.*'
+
+extraResources:
+  - from: ../web/dist/client
+    to: web-dist
+
+mac:
+  category: public.app-category.video
+  identity: null
+  target:
+    - dir

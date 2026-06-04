@@ -37,8 +37,7 @@ import {
     CursorClick,
     HandGrabbing,
 } from '@phosphor-icons/react';
-import { Link } from 'react-router';
-import { useNavigate } from 'react-router';
+import { Link, useLocation, useNavigate } from 'react-router';
 import type { Project } from '@clash/web-ui/lib/types';
 // Old single-agent panel kept in the repo at './ChatbotCopilot' — reimport
 // to revert. New chat UX is GroupChatPanel.
@@ -99,6 +98,8 @@ import { applyLayoutPatchesToLoro, collectLayoutNodePatches } from '@clash/web-u
 import { calculateScaledDimensions } from './nodes/assetNodeSizing';
 import { getAsset } from '@clash/web-ui/lib/hooks/useAsset';
 import { getSignedUrl } from '@clash/web-ui/lib/hooks/useSignedUrl';
+import { runtimeApiUrl } from '@clash/web-ui/lib/runtimeConfig';
+import { DESKTOP_TAB_TITLE_EVENT, type DesktopTabTitleEventDetail } from '@clash/web-ui/lib/desktopTabs';
 import { shouldDismissToolbarMenu, shouldDismissToolbarMenuOnKey } from './toolbarDismiss';
 
 const CHILD_NODE_Z_INDEX_BASE = 1000;
@@ -327,8 +328,17 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
     const toolbarFlyoutRef = useRef<HTMLDivElement>(null);
     const [activeMenuPosition, setActiveMenuPosition] = useState({ top: 0, left: 0 });
     const [projectName, setProjectName] = useState(project.name);
+    const location = useLocation();
     const [showDebugIds, setShowDebugIds] = useState(false);
     const [canvasMode, setCanvasMode] = useState<'select' | 'hand'>('select');
+
+    useEffect(() => {
+        const detail: DesktopTabTitleEventDetail = {
+            path: location.pathname,
+            title: projectName || project.name || 'Untitled',
+        };
+        window.dispatchEvent(new CustomEvent(DESKTOP_TAB_TITLE_EVENT, { detail }));
+    }, [location.pathname, project.name, projectName]);
 
     useEffect(() => {
         if (!activeMenu) return;
@@ -389,9 +399,6 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
     // Loro CRDT sync
     const loroSync = useLoroSync({
         projectId: project.id,
-        syncServerUrl: typeof window !== 'undefined'
-                ? `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}`
-                : 'ws://localhost:3000',
         onPresenceChange: setPresenceClients,
         onActivity: (activity) => {
             addToast(activity);
@@ -601,13 +608,13 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
             const title = initialMessage
                 ? initialMessage.slice(0, 40).trim() + (initialMessage.length > 40 ? '...' : '')
                 : `Session`;
-            const res = await fetch('/api/v1/sessions', {
+            const res = await fetch(runtimeApiUrl('/api/v1/sessions'), {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ projectId: project.id, title }),
             });
             if (!res.ok) throw new Error('Failed to create session');
-            const data = await res.json();
+            const data = (await res.json()) as { threadId: string };
             // Don't update any state here — caller batches all state updates together
             return { threadId: data.threadId as string, title };
         } catch (err) {
@@ -894,7 +901,7 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
                 .filter((v): v is string => !!v && !survivingAssetIds.has(v)),
         );
         orphanedAssetIds.forEach(assetId => {
-            void fetch(`/api/v1/assets/${encodeURIComponent(assetId)}/ref?projectId=${encodeURIComponent(project.id)}`, {
+            void fetch(runtimeApiUrl(`/api/v1/assets/${encodeURIComponent(assetId)}/ref?projectId=${encodeURIComponent(project.id)}`), {
                 method: 'DELETE',
             }).catch(e => console.warn('[onNodesDelete] removeAssetRef failed', assetId, e));
         });
@@ -1914,7 +1921,7 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
                 formData.append('projectId', project.id);
                 formData.append('type', assetType);
 
-                const res = await fetch('/upload', {
+                const res = await fetch(runtimeApiUrl('/upload'), {
                     method: 'POST',
                     body: formData,
                 });
@@ -1924,14 +1931,14 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
                     throw new Error(errorText || 'Failed to upload to R2');
                 }
 
-                const { storageKey } = await res.json();
+                const { storageKey } = (await res.json()) as { storageKey: string };
 
                 // Register the asset in D1. Server probes width/height/
                 // durationMs/waveform/bytes itself from the R2 object — we
                 // only hand it the reference + kind.
                 let assetId: string | undefined;
                 try {
-                    const regRes = await fetch('/api/v1/assets', {
+                    const regRes = await fetch(runtimeApiUrl('/api/v1/assets'), {
                         method: 'POST',
                         headers: { 'content-type': 'application/json' },
                         body: JSON.stringify({
@@ -1941,7 +1948,7 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
                         }),
                     });
                     if (regRes.ok) {
-                        ({ id: assetId } = await regRes.json());
+                        ({ id: assetId } = (await regRes.json()) as { id: string });
                     } else {
                         console.warn('[Upload] asset registration failed', regRes.status, await regRes.text());
                     }
@@ -2256,7 +2263,10 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
                     <ProjectSurfaceBehindEditor>
                     <MediaViewerProvider>
                         <LayoutActionsProvider value={{ relayoutParent, ungroup }}>
-                        <div className="flex h-screen w-full flex-col bg-warm-page overflow-hidden">
+                        <div
+                            className="flex w-full flex-col bg-warm-page overflow-hidden"
+                            style={{ height: 'var(--clash-project-editor-height, 100vh)' }}
+                        >
                         {/* Hidden File Input */}
                         <input
                             type="file"
@@ -2551,7 +2561,11 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
                                   )}
                              </div>
 
-                            <div id="copilot-container" className="fixed right-3 top-3 bottom-3 z-40 pointer-events-none">
+                            <div
+                                id="copilot-container"
+                                className="fixed bottom-3 right-3 z-40 pointer-events-none"
+                                style={{ top: 'calc(var(--clash-desktop-chrome-height, 0px) + 0.75rem)' }}
+                            >
                                 <div className="pointer-events-auto h-full">
                                     <GroupChatPanel
                                         projectId={project.id}

@@ -5,6 +5,7 @@
  * return 404 — callers should treat that as "billing not enabled" and
  * render a graceful empty state.
  */
+import { runtimeApiUrl } from "./runtimeConfig";
 
 export interface PlanFeatures {
   storage_mb: number;
@@ -68,7 +69,7 @@ export class BillingNotEnabledError extends Error {
 }
 
 async function billingFetch<T>(path: string, init: RequestInit = {}): Promise<T> {
-  const res = await fetch(`/api/v1/billing${path}`, {
+  const res = await fetch(runtimeApiUrl(`/api/v1/billing${path}`), {
     credentials: "include",
     headers: { "content-type": "application/json", ...(init.headers ?? {}) },
     ...init,

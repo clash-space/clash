@@ -9,7 +9,11 @@ import betterAuthClient from '@clash/web-ui/lib/betterAuthClient';
 import { useBillingBalance } from '@clash/web-ui/hooks/useBillingBalance';
 import { SettingsDialog } from './SettingsDialog';
 
-export default function UserControls() {
+interface UserControlsProps {
+  compact?: boolean;
+}
+
+export default function UserControls({ compact = false }: UserControlsProps = {}) {
   const sessionQuery = betterAuthClient.useSession();
   const session = sessionQuery.data;
   const user = session?.user;
@@ -60,21 +64,31 @@ export default function UserControls() {
   };
 
   return (
-    <div className="flex items-center gap-3">
+    <div className={`flex items-center ${compact ? 'gap-1.5' : 'gap-3'}`}>
       {user ? (
         <div className="relative flex items-center gap-2" ref={menuRef}>
           {(balance.status === 'ready' || balance.status === 'loading') && (
             <Link
               to="/billing"
-              className="flex items-center gap-1.5 rounded-full bg-warm-surface border border-warm-border px-3 py-1.5 shadow-sm hover:shadow-md hover:border-brand/40 transition-all text-sm font-display font-medium text-stone-800 dark:text-stone-200"
+              className={
+                compact
+                  ? 'flex h-8 w-8 items-center justify-center rounded-md text-stone-600 transition-colors hover:bg-stone-200/70 hover:text-stone-950 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand'
+                  : 'flex items-center gap-1.5 rounded-full bg-warm-surface border border-warm-border px-3 py-1.5 shadow-sm hover:shadow-md hover:border-brand/40 transition-all text-sm font-display font-medium text-stone-800 dark:text-stone-200'
+              }
               aria-label="Credits balance — click to manage billing"
-              title="Credits balance"
+              title={
+                balance.status === 'ready'
+                  ? `${balance.balance.available.toLocaleString()} credits`
+                  : 'Credits balance'
+              }
             >
               <Lightning weight="fill" className="h-3.5 w-3.5 text-brand" />
-              {balance.status === 'ready' ? (
-                <span className="tabular-nums">{balance.balance.available.toLocaleString()}</span>
-              ) : (
-                <span className="inline-block h-3 w-8 rounded bg-warm-muted animate-pulse" />
+              {!compact && (
+                balance.status === 'ready' ? (
+                  <span className="tabular-nums">{balance.balance.available.toLocaleString()}</span>
+                ) : (
+                  <span className="inline-block h-3 w-8 rounded bg-warm-muted animate-pulse" />
+                )
               )}
             </Link>
           )}
@@ -84,22 +98,28 @@ export default function UserControls() {
             aria-haspopup="menu"
             aria-expanded={open}
             aria-label={`Account menu — ${user.name}`}
-            className="flex items-center gap-3 rounded-full bg-warm-surface border border-warm-border pl-1.5 pr-4 py-1.5 shadow-sm cursor-pointer hover:shadow-md transition-shadow focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-warm-page"
+            className={
+              compact
+                ? 'flex h-8 items-center rounded-md px-1 text-stone-700 transition-colors hover:bg-stone-200/70 hover:text-stone-950 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand'
+                : 'flex items-center gap-3 rounded-full bg-warm-surface border border-warm-border pl-1.5 pr-4 py-1.5 shadow-sm cursor-pointer hover:shadow-md transition-shadow focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-warm-page'
+            }
           >
             {user.image ? (
               <img
                 src={user.image}
                 alt=""
-                className="h-10 w-10 rounded-full object-cover"
+                className={`${compact ? 'h-7 w-7' : 'h-10 w-10'} rounded-full object-cover`}
               />
             ) : (
-              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-br from-brand to-red-500 text-sm font-bold text-white" aria-hidden="true">
+              <div className={`flex ${compact ? 'h-7 w-7 text-[11px]' : 'h-10 w-10 text-sm'} items-center justify-center rounded-full bg-gradient-to-br from-brand to-red-500 font-bold text-white`} aria-hidden="true">
                 {getInitials(user.name)}
               </div>
             )}
-            <span className="text-base font-display font-medium text-stone-800 dark:text-stone-200 max-w-[120px] truncate">
-              {user.name}
-            </span>
+            {!compact && (
+              <span className="text-base font-display font-medium text-stone-800 dark:text-stone-200 max-w-[120px] truncate">
+                {user.name}
+              </span>
+            )}
           </button>
 
           <AnimatePresence>
@@ -158,12 +178,16 @@ export default function UserControls() {
         <motion.button
           type="button"
           onClick={handleSignIn}
-          className="flex items-center gap-2 rounded-full bg-slate-950 px-6 py-3 min-h-[44px] text-base font-display font-medium text-white transition-all hover:bg-slate-800 shadow-lg shadow-slate-950/20 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-warm-page"
+          className={
+            compact
+              ? 'flex h-8 items-center gap-1.5 rounded-md bg-stone-900 px-2.5 text-[13px] font-medium text-white transition-colors hover:bg-stone-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand'
+              : 'flex items-center gap-2 rounded-full bg-slate-950 px-6 py-3 min-h-[44px] text-base font-display font-medium text-white transition-all hover:bg-slate-800 shadow-lg shadow-slate-950/20 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-warm-page'
+          }
           whileHover={{ scale: 1.05 }}
           whileTap={{ scale: 0.95 }}
         >
-          <GoogleLogo weight="bold" className="h-5 w-5" aria-hidden="true" />
-          Sign in with Google
+          <GoogleLogo weight="bold" className={compact ? 'h-4 w-4' : 'h-5 w-5'} aria-hidden="true" />
+          {compact ? 'Sign in' : 'Sign in with Google'}
         </motion.button>
       )}
       {/* Same modal as the project page's avatar uses — Settings opens

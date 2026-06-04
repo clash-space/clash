@@ -22,6 +22,7 @@ import {
   type EditKind,
 } from '@clash/shared-types';
 import { getSignedUrl } from './hooks/useSignedUrl';
+import { runtimeApiUrl } from './runtimeConfig';
 
 export interface EditApplyResult {
   assetId: string;
@@ -206,7 +207,7 @@ async function postEdit(input: {
   form.append('outputKind', input.outputKind);
   form.append('editParams', JSON.stringify(input.params));
 
-  const res = await fetch('/api/v1/edits', { method: 'POST', body: form });
+  const res = await fetch(runtimeApiUrl('/api/v1/edits'), { method: 'POST', body: form });
   if (!res.ok) {
     const text = await res.text().catch(() => '');
     throw new Error(`Edit upload failed (${res.status}): ${text}`);

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router";
 import betterAuthClient from "@clash/web-ui/lib/betterAuthClient";
 import Background from "@clash/web-ui/components/Background";
+import { runtimeApiUrl } from "@clash/web-ui/lib/runtimeConfig";
 
 /**
  * /connect-daemon — browser side of the `clash-bridge setup` OAuth flow.
@@ -66,7 +67,7 @@ export default function ConnectDaemonRoute() {
   const onAllow = async () => {
     setStatus("authorizing");
     try {
-      const res = await fetch("/api/v1/runtimes/connect-daemon", {
+      const res = await fetch(runtimeApiUrl("/api/v1/runtimes/connect-daemon"), {
         method: "POST",
         credentials: "same-origin",
         headers: { "content-type": "application/json" },

@@ -1,6 +1,7 @@
 import { createAuthClient } from "better-auth/react";
 import { cloudflareClient } from "better-auth-cloudflare/client";
 import { emailOTPClient } from "better-auth/client/plugins";
+import { runtimeApiUrl } from "./runtimeConfig";
 
 type AuthClient = ReturnType<
   typeof createAuthClient<{
@@ -13,13 +14,19 @@ type AuthClient = ReturnType<
 
 let _client: AuthClient | null = null;
 
+function authBaseUrl(): string {
+  const url = runtimeApiUrl("/api/better-auth");
+  if (/^https?:/.test(url)) return url;
+  return `${window.location.origin}${url}`;
+}
+
 function getClient(): AuthClient {
   if (_client) return _client;
   if (typeof window === "undefined") {
     return SSR_STUB as unknown as AuthClient;
   }
   _client = createAuthClient({
-    baseURL: `${window.location.origin}/api/better-auth`,
+    baseURL: authBaseUrl(),
     plugins: [cloudflareClient(), emailOTPClient()],
   }) as AuthClient;
   return _client;

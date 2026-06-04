@@ -1,4 +1,5 @@
 import { useId, useRef, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X } from '@phosphor-icons/react';
 import { useFocusTrap } from '@clash/web-ui/lib/hooks/useFocusTrap';
@@ -65,7 +66,7 @@ export function Dialog({
         console.warn('<Dialog> needs either `title` or `ariaLabel` for an accessible name.');
     }
 
-    return (
+    const dialog = (
         <AnimatePresence>
             {open && (
                 <motion.div
@@ -121,4 +122,6 @@ export function Dialog({
             )}
         </AnimatePresence>
     );
+
+    return typeof document !== 'undefined' ? createPortal(dialog, document.body) : dialog;
 }

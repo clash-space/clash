@@ -19,6 +19,7 @@
 import { useEffect, useState } from 'react';
 import { useAllPeers } from '../PresenceAwarenessContext';
 import betterAuthClient from '@clash/web-ui/lib/betterAuthClient';
+import { runtimeApiUrl } from '@clash/web-ui/lib/runtimeConfig';
 
 interface CrewLite {
     id: string;
@@ -34,7 +35,7 @@ interface CrewLite {
 let crewCachePromise: Promise<CrewLite[]> | null = null;
 function loadCrewOnce(): Promise<CrewLite[]> {
     if (!crewCachePromise) {
-        crewCachePromise = fetch('/api/v1/crew', { credentials: 'same-origin' })
+        crewCachePromise = fetch(runtimeApiUrl('/api/v1/crew'), { credentials: 'include' })
             .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
             .then((j) => (j as { crew?: CrewLite[] }).crew ?? [])
             .catch(() => []);

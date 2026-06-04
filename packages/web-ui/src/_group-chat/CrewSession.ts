@@ -12,6 +12,7 @@
  */
 
 import { appendAcpEvent } from '../lib/acpEvents';
+import { runtimeWebSocketUrl } from '../lib/runtimeConfig';
 import type { CrewView, CrewStatus, QueuedPrompt, Subscriber } from './types';
 
 const SESSIONS_BASE = '/api/v1/local-sessions';
@@ -46,8 +47,7 @@ export class CrewSession {
    *  returns a session_id. */
   attach(sessionId: string): void {
     this.sessionId = sessionId;
-    const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const url = `${proto}//${window.location.host}${SESSIONS_BASE}/${encodeURIComponent(sessionId)}/_stream`;
+    const url = runtimeWebSocketUrl(`${SESSIONS_BASE}/${encodeURIComponent(sessionId)}/_stream`);
     const ws = new WebSocket(url);
     this.ws = ws;
     ws.onmessage = (ev) => this.handleMessage(ev.data);

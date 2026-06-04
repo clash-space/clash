@@ -1,12 +1,13 @@
 import type { LoaderFunctionArgs } from "react-router";
 import { redirect, useLoaderData, useSearchParams } from "react-router";
 import ProjectEditor from "@clash/web-ui/components/ProjectEditor";
+import { runtimeApiUrl } from "@clash/web-ui/lib/runtimeConfig";
 
 export async function loader({ params }: LoaderFunctionArgs) {
   const id = params.id!;
   const [projRes, actionsRes] = await Promise.all([
-    fetch(`/api/projects/${encodeURIComponent(id)}`, { credentials: "include" }),
-    fetch("/api/settings/actions", { credentials: "include" }),
+    fetch(runtimeApiUrl(`/api/projects/${encodeURIComponent(id)}`), { credentials: "include" }),
+    fetch(runtimeApiUrl("/api/settings/actions"), { credentials: "include" }),
   ]);
 
   if (projRes.status === 401) throw redirect("/login");

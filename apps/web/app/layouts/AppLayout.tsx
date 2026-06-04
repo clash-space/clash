@@ -8,10 +8,11 @@ import {
   getEffectiveChromeAuth,
   shouldProbeSessionForChrome,
 } from "./authChrome";
+import { runtimeApiUrl } from "@clash/web-ui/lib/runtimeConfig";
 
 export async function loader(_: LoaderFunctionArgs) {
   try {
-    const res = await fetch("/api/better-auth/get-session", {
+    const res = await fetch(runtimeApiUrl("/api/better-auth/get-session"), {
       credentials: "include",
     });
     if (!res.ok) return { isAuthenticated: false };
@@ -39,7 +40,7 @@ export default function AppLayout() {
 
     async function probeSession() {
       try {
-        const res = await fetch("/api/better-auth/get-session", {
+        const res = await fetch(runtimeApiUrl("/api/better-auth/get-session"), {
           credentials: "include",
         });
         if (!res.ok) return;

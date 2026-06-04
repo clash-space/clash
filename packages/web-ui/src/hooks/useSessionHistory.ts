@@ -1,5 +1,6 @@
 
 import { useState, useCallback, useEffect, useRef } from 'react';
+import { runtimeApiUrl } from '../lib/runtimeConfig';
 
 export interface SessionInfo {
   threadId: string;
@@ -14,14 +15,16 @@ export function useSessionHistory(projectId: string) {
   // Load once per projectId
   useEffect(() => {
     loadedRef.current = false;
-    fetch(`/api/v1/sessions?projectId=${encodeURIComponent(projectId)}`)
+    fetch(runtimeApiUrl(`/api/v1/sessions?projectId=${encodeURIComponent(projectId)}`), {
+      credentials: 'include',
+    })
       .then(res => res.ok ? res.json() : { sessions: [] })
       .then(data => {
         setSessions(
           (data.sessions || []).map((s: any) => ({
-            threadId: s.thread_id,
+            threadId: s.thread_id ?? s.threadId ?? s.id,
             title: s.title,
-            updatedAt: s.updated_at,
+            updatedAt: s.updated_at ?? s.updatedAt,
           }))
         );
         loadedRef.current = true;
@@ -42,8 +45,9 @@ export function useSessionHistory(projectId: string) {
       return [{ threadId, title }, ...prev];
     });
 
-    fetch('/api/v1/sessions', {
+    fetch(runtimeApiUrl('/api/v1/sessions'), {
       method: 'POST',
+      credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ projectId, threadId, title }),
     }).catch(() => {});
@@ -54,8 +58,9 @@ export function useSessionHistory(projectId: string) {
     const backup = [...sessions];
     setSessions(prev => prev.filter(s => s.threadId !== threadId));
 
-    fetch(`/api/v1/sessions?threadId=${encodeURIComponent(threadId)}`, {
+    fetch(runtimeApiUrl(`/api/v1/sessions?threadId=${encodeURIComponent(threadId)}`), {
       method: 'DELETE',
+      credentials: 'include',
     }).catch(() => {
       setSessions(backup);
     });

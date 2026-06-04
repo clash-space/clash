@@ -10,6 +10,7 @@ import { normalizeStatus, isActiveStatus, type AssetStatus } from '@clash/web-ui
 import { useSignedUrl } from '@clash/web-ui/lib/hooks/useSignedUrl';
 import { useAsset, invalidateAsset } from '@clash/web-ui/lib/hooks/useAsset';
 import { thumbnailCache } from '@clash/web-ui/lib/utils/thumbnailCache';
+import { runtimeApiUrl } from '@clash/web-ui/lib/runtimeConfig';
 import {
     calculateDimensionsFromAspectRatio,
     calculateScaledDimensions,
@@ -166,10 +167,10 @@ const VideoNode = ({ data, selected, id }: NodeProps<Node<Record<string, any>>>)
         const form = new FormData();
         form.append('file', file);
         form.append('type', 'cover');
-        const upRes = await fetch('/upload', { method: 'POST', body: form });
+        const upRes = await fetch(runtimeApiUrl('/upload'), { method: 'POST', body: form });
         if (!upRes.ok) throw new Error(`cover upload ${upRes.status}`);
         const { storageKey } = (await upRes.json()) as { storageKey: string };
-        const patchRes = await fetch(`/api/v1/assets/${encodeURIComponent(assetId)}/cover`, {
+        const patchRes = await fetch(runtimeApiUrl(`/api/v1/assets/${encodeURIComponent(assetId)}/cover`), {
             method: 'PATCH',
             headers: { 'content-type': 'application/json' },
             body: JSON.stringify({ coverR2Key: storageKey }),

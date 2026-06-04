@@ -1,6 +1,7 @@
 
 import { useState, useEffect } from 'react';
 import { fetchWithRetry } from './retryFetch';
+import { runtimeAssetFallbackUrl } from '../runtimeConfig';
 
 /**
  * In-memory signed URL cache shared across all hook instances.
@@ -156,7 +157,7 @@ export function useSignedUrl(src: string | undefined): string {
         }, msUntilRefresh);
       }).catch(() => {
         // Fallback: try unsigned (will 403 in prod but useful for debugging)
-        if (!cancelled) setUrl(`/assets/${src}`);
+        if (!cancelled) setUrl(runtimeAssetFallbackUrl(src));
       });
     };
 
