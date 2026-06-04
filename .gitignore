@@ -23,6 +23,7 @@ ENV/
 out/
 dist/
 build/
+apps/desktop/release/
 *.egg-info/
 
 # Database
