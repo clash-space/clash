@@ -1,0 +1,30 @@
+{
+  "name": "@clash/shared-runtime",
+  "version": "0.1.0",
+  "description": "Runtime endpoint helpers for hosted, local, and desktop Clash clients",
+  "type": "module",
+  "main": "dist/index.js",
+  "module": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "clean": "rm -rf dist",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "devDependencies": {
+    "typescript": "^5.0.0",
+    "vitest": "^4.1.2"
+  },
+  "files": [
+    "dist",
+    "src"
+  ]
+}

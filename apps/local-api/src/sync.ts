@@ -1,0 +1,496 @@
+import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { dirname, join } from "node:path";
+import { LoroDoc } from "loro-crdt";
+import { Canvas } from "@clash/shared-types";
+import { WebSocketServer, type WebSocket } from "ws";
+import { createLocalWorkflowProcessor, type LocalWorkflowProcessor } from "./local-processor.js";
+
+type UpgradeCapableServer = {
+  on(event: "upgrade", listener: (request: any, socket: any, head: any) => void): void;
+};
+
+export interface LocalSyncOptions {
+  dataDir: string;
+  projectId: string;
+  remotePersistence?: RemoteLoroPersistence;
+  workflowProcessor?: LocalWorkflowProcessor | null;
+}
+
+export interface RemoteLoroPersistence {
+  loadSnapshot?(projectId: string): Promise<Uint8Array | null>;
+  appendUpdate(projectId: string, update: Uint8Array): Promise<void>;
+}
+
+type PeerId = symbol;
+type SendPeerUpdate = (data: Uint8Array) => void;
+type SendPeerJson = (msg: Record<string, unknown>) => void;
+type FetchLike = (input: string, init?: RequestInit) => Promise<Response>;
+
+interface LocalPeer {
+  sendUpdate: SendPeerUpdate;
+  sendJson?: SendPeerJson;
+  runtimeId?: string;
+}
+
+export interface HttpRemoteLoroPersistenceOptions {
+  baseUrl: string;
+  token?: string;
+  fetch?: FetchLike;
+}
+
+export interface RemoteLoroPersistenceEnv {
+  CLASH_REMOTE_LORO_URL?: string;
+  CLASH_REMOTE_LORO_TOKEN?: string;
+}
+
+function exactBytes(view: Uint8Array): Uint8Array {
+  return view.byteOffset === 0 && view.byteLength === view.buffer.byteLength
+    ? view
+    : view.slice();
+}
+
+function exactArrayBuffer(view: Uint8Array): ArrayBuffer {
+  const bytes = exactBytes(view);
+  return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
+}
+
+function snapshotPath(dataDir: string, projectId: string): string {
+  return join(dataDir, "loro", `${encodeURIComponent(projectId)}.bin`);
+}
+
+function remoteProjectUrl(baseUrl: string, projectId: string, suffix: string): string {
+  return `${baseUrl.replace(/\/+$/, "")}/loro/${encodeURIComponent(projectId)}/${suffix}`;
+}
+
+function remoteHeaders(token: string | undefined, extra?: Record<string, string>) {
+  return {
+    ...(token ? { authorization: `Bearer ${token}` } : {}),
+    ...extra,
+  };
+}
+
+async function assertRemoteOk(response: Response, operation: string): Promise<void> {
+  if (response.ok) return;
+  throw new Error(`Remote Loro ${operation} failed with HTTP ${response.status}`);
+}
+
+export function createHttpRemoteLoroPersistence(
+  options: HttpRemoteLoroPersistenceOptions,
+): RemoteLoroPersistence {
+  const fetchImpl = options.fetch ?? fetch;
+  return {
+    async loadSnapshot(projectId) {
+      const response = await fetchImpl(remoteProjectUrl(options.baseUrl, projectId, "snapshot"), {
+        method: "GET",
+        headers: remoteHeaders(options.token),
+      });
+      if (response.status === 404 || response.status === 204) return null;
+      await assertRemoteOk(response, "snapshot load");
+      return new Uint8Array(await response.arrayBuffer());
+    },
+    async appendUpdate(projectId, update) {
+      const response = await fetchImpl(remoteProjectUrl(options.baseUrl, projectId, "updates"), {
+        method: "POST",
+        headers: remoteHeaders(options.token, {
+          "content-type": "application/octet-stream",
+        }),
+        body: exactArrayBuffer(update),
+      });
+      await assertRemoteOk(response, "update append");
+    },
+  };
+}
+
+export function createRemoteLoroPersistenceFromEnv(
+  env: RemoteLoroPersistenceEnv,
+  fetchImpl?: FetchLike,
+): RemoteLoroPersistence | undefined {
+  const baseUrl = env.CLASH_REMOTE_LORO_URL?.trim();
+  if (!baseUrl) return undefined;
+  return createHttpRemoteLoroPersistence({
+    baseUrl,
+    token: env.CLASH_REMOTE_LORO_TOKEN?.trim() || undefined,
+    fetch: fetchImpl,
+  });
+}
+
+async function loadDoc(options: LocalSyncOptions): Promise<{
+  doc: LoroDoc;
+  importedRemoteSnapshot: boolean;
+}> {
+  const doc = new LoroDoc();
+  try {
+    doc.import(await readFile(snapshotPath(options.dataDir, options.projectId)));
+  } catch {
+    // Missing or corrupt local snapshots should not stop the desktop app from opening.
+  }
+
+  let importedRemoteSnapshot = false;
+  if (options.remotePersistence?.loadSnapshot) {
+    try {
+      const remoteSnapshot = await options.remotePersistence.loadSnapshot(options.projectId);
+      if (remoteSnapshot?.byteLength) {
+        doc.import(remoteSnapshot);
+        importedRemoteSnapshot = true;
+      }
+    } catch (error) {
+      console.error("[local-sync] failed to import remote snapshot", error);
+    }
+  }
+
+  return { doc, importedRemoteSnapshot };
+}
+
+export class LocalLoroRoom {
+  private peers = new Map<PeerId, LocalPeer>();
+
+  private constructor(
+    private readonly dataDir: string,
+    private readonly projectId: string,
+    private readonly doc: LoroDoc,
+    private readonly remotePersistence?: RemoteLoroPersistence,
+    private readonly workflowProcessor?: LocalWorkflowProcessor,
+  ) {}
+
+  static async open(options: LocalSyncOptions): Promise<LocalLoroRoom> {
+    const loaded = await loadDoc(options);
+    const workflowProcessor = options.workflowProcessor === undefined
+      ? createLocalWorkflowProcessor({ dataDir: options.dataDir })
+      : options.workflowProcessor ?? undefined;
+    const room = new LocalLoroRoom(
+      options.dataDir,
+      options.projectId,
+      loaded.doc,
+      options.remotePersistence,
+      workflowProcessor,
+    );
+    if (loaded.importedRemoteSnapshot) await room.persist();
+    await room.processPendingWork();
+    return room;
+  }
+
+  snapshot(): Uint8Array {
+    return this.doc.export({ mode: "snapshot" });
+  }
+
+  addPeer(send: SendPeerUpdate, options?: { sendJson?: SendPeerJson; runtimeId?: string }): PeerId {
+    const id = Symbol("peer");
+    this.peers.set(id, {
+      sendUpdate: send,
+      sendJson: options?.sendJson,
+      runtimeId: options?.runtimeId,
+    });
+    send(this.snapshot());
+    return id;
+  }
+
+  removePeer(id: PeerId): void {
+    this.peers.delete(id);
+  }
+
+  async receive(sender: PeerId, update: Uint8Array): Promise<void> {
+    const updateBytes = exactBytes(update);
+    this.doc.import(updateBytes);
+    await this.persist();
+    for (const [peerId, peer] of this.peers.entries()) {
+      if (peerId !== sender) peer.sendUpdate(updateBytes);
+    }
+    this.mirrorRemoteUpdate(updateBytes);
+    await this.processPendingWork();
+  }
+
+  async receiveJson(sender: PeerId, msg: Record<string, any>): Promise<void> {
+    if (msg.type === "register_custom_actions") {
+      const peer = this.peers.get(sender);
+      const runtimeId = peer?.runtimeId;
+      if (!runtimeId) {
+        peer?.sendJson?.({
+          type: "register_custom_actions.rejected",
+          error: "missing_runtime_id",
+        });
+        return;
+      }
+      const actions = Array.isArray(msg.actions) ? msg.actions as Array<Record<string, any>> : [];
+      const versionBefore = this.doc.version();
+      const actionsMap = this.doc.getMap("customActions");
+      for (const action of actions) {
+        if (!action.id || !action.name) continue;
+        actionsMap.set(action.id, {
+          id: action.id,
+          name: action.name,
+          description: action.description || "",
+          parameters: action.parameters || [],
+          outputType: action.outputType || "image",
+          icon: action.icon || "",
+          color: action.color || "",
+          runtime: action.runtime || "local",
+          promptModalities: Array.isArray(action.promptModalities) && action.promptModalities.length > 0
+            ? action.promptModalities
+            : ["text"],
+          registeredByRuntime: runtimeId,
+        });
+      }
+      await this.publishUpdate(versionBefore);
+
+      const registeredIds = new Set(actions.map((action) => action.id).filter(Boolean));
+      const tasksMap = this.doc.getMap("tasks");
+      for (const [, raw] of tasksMap.entries()) {
+        const task = raw as Record<string, any>;
+        if (task?.status !== "waiting_for_agent") continue;
+        if (!registeredIds.has(task.customActionId)) continue;
+        if (task.registeredByRuntime && task.registeredByRuntime !== runtimeId) continue;
+        peer?.sendJson?.({ type: "custom_task_assigned", task });
+      }
+      return;
+    }
+
+    if (msg.type === "unregister_custom_actions") {
+      const actionIds = Array.isArray(msg.actionIds)
+        ? msg.actionIds.filter((id: unknown): id is string => typeof id === "string" && id.length > 0)
+        : [];
+      if (!actionIds.length) return;
+      const versionBefore = this.doc.version();
+      const actionsMap = this.doc.getMap("customActions");
+      for (const id of actionIds) actionsMap.delete(id);
+      await this.publishUpdate(versionBefore);
+      return;
+    }
+
+    if (msg.type === "complete_custom_task") {
+      await this.completeCustomTask(msg);
+    }
+  }
+
+  private async persist(): Promise<void> {
+    const path = snapshotPath(this.dataDir, this.projectId);
+    await mkdir(dirname(path), { recursive: true });
+    await writeFile(path, exactBytes(this.snapshot()));
+  }
+
+  private async processPendingWork(): Promise<void> {
+    if (!this.workflowProcessor) return;
+    const versionBefore = this.doc.version();
+    const sideband: Record<string, unknown>[] = [];
+    const changed = await this.workflowProcessor.process({
+      doc: this.doc,
+      projectId: this.projectId,
+      broadcastJson: (msg) => sideband.push(msg),
+    });
+    if (!changed) return;
+    const update = exactBytes(this.doc.export({ mode: "update", from: versionBefore }));
+    await this.persist();
+    for (const peer of this.peers.values()) {
+      peer.sendUpdate(update);
+    }
+    this.mirrorRemoteUpdate(update);
+    for (const msg of sideband) this.broadcastJson(msg);
+  }
+
+  private async publishUpdate(versionBefore: unknown): Promise<void> {
+    const update = exactBytes(this.doc.export({ mode: "update", from: versionBefore as never }));
+    await this.persist();
+    for (const peer of this.peers.values()) {
+      peer.sendUpdate(update);
+    }
+    this.mirrorRemoteUpdate(update);
+  }
+
+  private broadcastJson(msg: Record<string, unknown>): void {
+    for (const peer of this.peers.values()) {
+      peer.sendJson?.(msg);
+    }
+  }
+
+  private async completeCustomTask(msg: Record<string, any>): Promise<void> {
+    const taskId = typeof msg.taskId === "string" ? msg.taskId : "";
+    const nodeId = typeof msg.nodeId === "string" ? msg.nodeId : "";
+    if (!taskId || !nodeId) return;
+    const tasksMap = this.doc.getMap("tasks");
+    if (!tasksMap.get(taskId)) return;
+
+    const versionBefore = this.doc.version();
+    const nodesMap = this.doc.getMap("nodes");
+    const node = nodesMap.get(nodeId) as Record<string, any> | undefined;
+    const data = node?.data && typeof node.data === "object" ? node.data : {};
+    const result = msg.result && typeof msg.result === "object" ? msg.result : {};
+    const assets = Array.isArray(result.assets) ? result.assets as Array<Record<string, any>> : [];
+    const isFailure = msg.status === "failed";
+
+    if (!node) {
+      tasksMap.delete(taskId);
+      await this.publishUpdate(versionBefore);
+      return;
+    }
+
+    if (isFailure || assets.length === 0) {
+      nodesMap.set(nodeId, {
+        ...node,
+        data: {
+          ...data,
+          pendingTask: undefined,
+          status: isFailure ? "failed" : "completed",
+          ...(result.description ? { description: result.description } : {}),
+          ...(result.error ? { error: result.error } : {}),
+        },
+      });
+    } else {
+      const primary = assets[0];
+      const primaryData: Record<string, unknown> = {
+        ...data,
+        pendingTask: undefined,
+        status: "completed",
+      };
+      if (primary.type === "text") primaryData.content = primary.content ?? "";
+      else if (primary.storageKey) primaryData.assetId = taskId;
+      if (primary.label) primaryData.label = primary.label;
+      if (result.description) primaryData.description = result.description;
+      nodesMap.set(nodeId, { ...node, data: primaryData });
+
+      if (assets.length > 1) {
+        const canvas = new Canvas(this.doc, () => {});
+        const incoming = canvas.listEdges().filter((edge) => edge.target === nodeId);
+        for (let i = 1; i < assets.length; i++) {
+          const asset = assets[i];
+          const siblingNodeId = crypto.randomUUID().slice(0, 8);
+          const siblingType = asset.type === "video" ? "video" : asset.type === "audio" ? "audio" : asset.type === "text" ? "text" : "image";
+          const siblingData: Record<string, unknown> = {
+            status: "completed",
+            label: asset.label || `Output ${i + 1}`,
+          };
+          if (asset.type === "text") siblingData.content = asset.content ?? "";
+          else siblingData.assetId = `${taskId}-${i}`;
+          if (incoming.length === 0) {
+            canvas.createNode(siblingNodeId, siblingType, siblingData);
+          } else {
+            canvas.createLinkedNode({
+              nodeId: siblingNodeId,
+              nodeType: siblingType,
+              data: siblingData,
+              parentId: null,
+              sourceNodeId: incoming[0].source,
+            });
+            for (let k = 1; k < incoming.length; k++) {
+              const extra = incoming[k];
+              canvas.insertEdge(`${extra.source}-${siblingNodeId}`, extra.source, siblingNodeId, "default");
+            }
+          }
+        }
+      }
+    }
+
+    tasksMap.delete(taskId);
+    await this.publishUpdate(versionBefore);
+  }
+
+  private mirrorRemoteUpdate(update: Uint8Array): void {
+    if (!this.remotePersistence) return;
+    void this.remotePersistence.appendUpdate(this.projectId, update).catch((error) => {
+      console.error("[local-sync] failed to mirror update to remote persistence", error);
+    });
+  }
+}
+
+export class LocalLoroRoomHub {
+  private rooms = new Map<string, Promise<LocalLoroRoom>>();
+
+  constructor(
+    private readonly dataDir: string,
+    private readonly remotePersistence?: RemoteLoroPersistence,
+    private readonly workflowProcessor?: LocalWorkflowProcessor | null,
+  ) {}
+
+  room(projectId: string): Promise<LocalLoroRoom> {
+    let room = this.rooms.get(projectId);
+    if (!room) {
+      room = LocalLoroRoom.open({
+        dataDir: this.dataDir,
+        projectId,
+        remotePersistence: this.remotePersistence,
+        workflowProcessor: this.workflowProcessor,
+      });
+      this.rooms.set(projectId, room);
+    }
+    return room;
+  }
+}
+
+export function attachLocalSync(
+  server: UpgradeCapableServer,
+  options: {
+    dataDir: string;
+    remotePersistence?: RemoteLoroPersistence;
+    workflowProcessor?: LocalWorkflowProcessor | null;
+  },
+): void {
+  const hub = new LocalLoroRoomHub(
+    options.dataDir,
+    options.remotePersistence,
+    options.workflowProcessor,
+  );
+  const wss = new WebSocketServer({ noServer: true });
+
+  server.on("upgrade", (request, socket, head) => {
+    const url = new URL(request.url ?? "/", "http://127.0.0.1");
+    const match = /^\/sync\/(.+)$/.exec(url.pathname);
+    if (!match) return;
+
+    const projectId = decodeURIComponent(match[1]);
+    const runtimeHeader = request.headers?.["x-runtime-id"];
+    const runtimeId = Array.isArray(runtimeHeader) ? runtimeHeader[0] : runtimeHeader;
+    wss.handleUpgrade(request, socket, head, (ws) => {
+      void bindSocket(hub, projectId, ws, typeof runtimeId === "string" ? runtimeId : undefined);
+    });
+  });
+}
+
+async function bindSocket(
+  hub: LocalLoroRoomHub,
+  projectId: string,
+  ws: WebSocket,
+  runtimeId?: string,
+): Promise<void> {
+  const room = await hub.room(projectId);
+  const peerId = room.addPeer((update) => {
+    if (ws.readyState === ws.OPEN) ws.send(update);
+  }, {
+    runtimeId,
+    sendJson: (msg) => {
+      if (ws.readyState === ws.OPEN) ws.send(JSON.stringify(msg));
+    },
+  });
+
+  ws.send(JSON.stringify({ type: "presence", clients: [] }));
+
+  ws.on("message", (data, isBinary) => {
+    if (!isBinary) {
+      try {
+        const text = typeof data === "string"
+          ? data
+          : data instanceof Buffer
+            ? data.toString("utf8")
+            : Array.isArray(data)
+              ? Buffer.concat(data).toString("utf8")
+              : Buffer.from(data as ArrayBuffer).toString("utf8");
+        const msg = JSON.parse(text) as Record<string, any>;
+        void room.receiveJson(peerId, msg).catch((error) => {
+          console.error("[local-sync] failed to handle sideband message", error);
+        });
+      } catch {
+        // Ignore non-JSON sideband chatter.
+      }
+      return;
+    }
+    const bytes = data instanceof Buffer
+      ? new Uint8Array(data)
+      : Array.isArray(data)
+        ? new Uint8Array(Buffer.concat(data))
+        : new Uint8Array(data as ArrayBuffer);
+    void room.receive(peerId, bytes).catch((error) => {
+      console.error("[local-sync] failed to import update", error);
+    });
+  });
+
+  ws.on("close", () => {
+    room.removePeer(peerId);
+  });
+}

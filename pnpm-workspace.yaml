@@ -1,5 +1,7 @@
 packages:
   - 'apps/api-cf'
+  - 'apps/desktop'
+  - 'apps/local-api'
   - 'apps/render-server'
   - 'apps/web'
   - 'packages/remotion-*'

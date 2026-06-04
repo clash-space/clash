@@ -1,0 +1,44 @@
+{
+  "name": "@master-clash/local-api",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "dist/server.js",
+  "types": "src/server.ts",
+  "exports": {
+    ".": {
+      "types": "./src/server.ts",
+      "import": "./dist/server.js",
+      "default": "./dist/server.js"
+    },
+    "./app": {
+      "types": "./src/app.ts",
+      "import": "./dist/app.js",
+      "default": "./dist/app.js"
+    }
+  },
+  "scripts": {
+    "dev": "tsx watch src/server.ts",
+    "start": "tsx src/server.ts",
+    "build": "pnpm --filter @clash-space/bridge build && tsc",
+    "type-check": "tsc --noEmit",
+    "test": "pnpm --filter @clash-space/bridge build && vitest run src",
+    "test:watch": "vitest src"
+  },
+  "dependencies": {
+    "@clash-space/bridge": "workspace:*",
+    "@clash/shared-runtime": "workspace:*",
+    "@clash/shared-types": "workspace:*",
+    "@hono/node-server": "^1.13.0",
+    "hono": "^4.7.10",
+    "loro-crdt": "^1.10.3",
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.13.0",
+    "@types/ws": "^8.5.0",
+    "tsx": "^4.20.6",
+    "typescript": "^5.9.0",
+    "vitest": "^4.1.4"
+  }
+}
