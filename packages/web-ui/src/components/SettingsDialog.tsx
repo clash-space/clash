@@ -36,6 +36,7 @@ import {
   Terminal,
   SignOut,
   CircleNotch,
+  CloudArrowUp,
 } from '@phosphor-icons/react';
 import betterAuthClient from '@clash/web-ui/lib/betterAuthClient';
 import { Dialog } from './ui/dialog';
@@ -59,6 +60,7 @@ interface NavItem {
 
 const NAV_ITEMS: NavItem[] = [
   { id: 'runtimes', label: 'Runtimes', icon: Plug },
+  { id: 'sync', label: 'Sync', icon: CloudArrowUp },
   { id: 'crew', label: 'Crew', icon: Users },
   { id: 'tokens', label: 'API Tokens', icon: Key },
   { id: 'variables', label: 'Variables', icon: Lock },

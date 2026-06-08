@@ -12,7 +12,7 @@ import { generateSemanticId } from '@clash/web-ui/lib/utils/semanticId';
 import { SignedImg } from '../SignedMedia';
 import { getSignedUrl } from '@clash/web-ui/lib/hooks/useSignedUrl';
 import { getAsset } from '@clash/web-ui/lib/hooks/useAsset';
-import { MODEL_CARDS, snapAspectRatio, parsePromptParts, extractPromptText, composePromptWithTextRefs, buildMention, capability, type ModelCard, type ModelParameter, type CustomActionDefinition, type Modality } from '@clash/shared-types';
+import { ACTION_PROVIDER_PRESETS, MODEL_CARDS, snapAspectRatio, parsePromptParts, extractPromptText, composePromptWithTextRefs, buildMention, capability, type ModelCard, type ModelParameter, type CustomActionDefinition, type Modality } from '@clash/shared-types';
 import { applyLayoutPatchesToLoro, collectLayoutNodePatches } from '@clash/web-ui/lib/loroNodeSync';
 import { useCustomActions } from '@clash/web-ui/hooks/useCustomActions';
 import {
@@ -241,7 +241,9 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
     const modelDisplay = isCustom
         ? (customDef?.name ?? customActionId ?? 'Custom action')
         : (selectedModel?.name || modelId);
-    const providerDisplay = isCustom ? 'Custom' : (selectedModel?.provider || '');
+    const providerDisplay = isCustom
+        ? (customDef?.model?.provider ? ACTION_PROVIDER_PRESETS[customDef.model.provider]?.label ?? customDef.model.provider : 'Custom')
+        : (selectedModel?.provider || '');
     const countValue = Number(modelParams.count ?? 1);
 
     // Single derivation — all per-modality questions read fields off `cap`.

@@ -30,10 +30,22 @@ import { runtimeApiUrl } from '../lib/runtimeConfig';
 
 const ROOM_BASE = '/api/v1/projects';
 
+export type RoomSyncStatus = 'disabled' | 'imported' | 'mirrored' | 'failed';
+
+export interface RoomSyncMeta {
+  mode: 'local-only' | 'cloud-sync';
+  remote_room: {
+    enabled: boolean;
+    status: RoomSyncStatus;
+    error?: string;
+  };
+}
+
 export interface UseProjectRoomReturn {
   messages: RoomMessageEvent[];
   loading: boolean;
   error: string | null;
+  sync: RoomSyncMeta | null;
   /** POST a user-typed message. mentions encodes @-targets. */
   send: (text: string, mentions?: RoomMention[]) => Promise<void>;
   /** Forward a server-pushed room.message into the local log. */
@@ -46,6 +58,7 @@ export function useProjectRoom(projectId: string | null): UseProjectRoomReturn {
   const [messages, setMessages] = useState<RoomMessageEvent[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [sync, setSync] = useState<RoomSyncMeta | null>(null);
   const seenIds = useRef<Set<string>>(new Set());
 
   const append = useCallback((batch: RoomMessageEvent[]) => {
@@ -76,7 +89,8 @@ export function useProjectRoom(projectId: string | null): UseProjectRoomReturn {
         setError(`fetch failed: ${res.status}`);
         return;
       }
-      const json = (await res.json()) as { messages: RoomMessageEvent[] };
+      const json = (await res.json()) as { messages: RoomMessageEvent[]; sync?: RoomSyncMeta };
+      setSync(json.sync ?? null);
       // Normalize: API returns plain objects; tag them with the
       // discriminator so isSidebandMessage-style consumers don't trip.
       const tagged = (json.messages ?? []).map((m) => ({ ...m, type: 'room.message' as const }));
@@ -93,6 +107,7 @@ export function useProjectRoom(projectId: string | null): UseProjectRoomReturn {
   useEffect(() => {
     seenIds.current = new Set();
     setMessages([]);
+    setSync(null);
     if (projectId) void refetch();
   }, [projectId, refetch]);
 
@@ -110,17 +125,29 @@ export function useProjectRoom(projectId: string | null): UseProjectRoomReturn {
         setError(`send failed: ${res.status}`);
         return;
       }
-      // Server broadcasts via ProjectRoom DO; we'll receive our own
-      // message back through onRoomMessage. Don't optimistically insert
-      // — keeps a single source of truth and avoids dedupe headaches.
+      const json = (await res.json().catch(() => null)) as
+        | (Partial<RoomMessageEvent> & { type?: string; sync?: RoomSyncMeta })
+        | null;
+      if (json?.sync) setSync(json.sync);
+      if (
+        json?.type === 'room.message' &&
+        typeof json.id === 'string' &&
+        typeof json.text === 'string' &&
+        typeof json.at === 'number'
+      ) {
+        append([{ ...(json as RoomMessageEvent), type: 'room.message' }]);
+      }
+      // Cloud rooms usually echo through ProjectRoom; local daemon rooms
+      // return the authoritative message directly. Append it here and let
+      // seenIds dedupe any later live echo.
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     }
-  }, [projectId]);
+  }, [projectId, append]);
 
   const setLiveMessage = useCallback((msg: RoomMessageEvent) => {
     append([msg]);
   }, [append]);
 
-  return { messages, loading, error, send, setLiveMessage, refetch };
+  return { messages, loading, error, sync, send, setLiveMessage, refetch };
 }

@@ -34,6 +34,11 @@ const PYTHON_DEPS_STAMP = ".clash-python-deps.json";
 interface ActionManifest {
   id: string;
   name: string;
+  outputType?: string;
+  promptModalities?: string[];
+  parameters?: unknown[];
+  model?: Record<string, unknown>;
+  secrets?: Array<Record<string, unknown>>;
   runtime?: string;
   entrypoint?: string;
 }

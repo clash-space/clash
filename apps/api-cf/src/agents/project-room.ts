@@ -26,6 +26,7 @@ import { updateNodeData, appendNodeLog } from "../loro/NodeUpdater";
 import { authenticateRequest } from "../loro/auth";
 import { deriveRuntimeStatus } from "../lib/runtime-status";
 import { markRuntimeOnline } from "../lib/runtime-heartbeat";
+import { loadSecrets } from "../services/user-variables";
 import type {
   ClientInfo,
   ClientType,
@@ -35,7 +36,7 @@ import type {
   AwarenessBroadcastMessage,
   AwarenessPeer,
 } from "@clash/shared-types";
-import { Canvas } from "@clash/shared-types";
+import { Canvas, CustomActionDefinitionSchema } from "@clash/shared-types";
 
 /**
  * Extended client identity persisted on the WebSocket via serializeAttachment.
@@ -64,11 +65,19 @@ const UPDATES_HARD_COMPACT_THRESHOLD = 500;
 const AWARENESS_BROADCAST_MIN_INTERVAL_MS = 80;
 const AWARENESS_STALE_MS = 8_000;
 
+type LoroImportQueueItem = {
+  sender?: WebSocket;
+  data: Uint8Array;
+  runRealtimeEffects: boolean;
+  resolve?: () => void;
+  reject?: (error: unknown) => void;
+};
+
 export class ProjectRoom extends DurableObject<Env> {
   private doc: LoroDoc = new LoroDoc();
   private projectId = "";
   private initPromise: Promise<void> | null = null;
-  private messageQueue: Array<{ sender: WebSocket; data: Uint8Array }> = [];
+  private messageQueue: LoroImportQueueItem[] = [];
   private isProcessingQueue = false;
   private isProcessingNodes = false;
 
@@ -248,7 +257,11 @@ export class ProjectRoom extends DurableObject<Env> {
 
   // ─── Room Initialization ─────────────────────────────────────
 
-  private async initRoom(projectId: string): Promise<void> {
+  private async initRoom(
+    projectId: string,
+    options: { enableTaskPolling?: boolean } = {},
+  ): Promise<void> {
+    const enableTaskPolling = options.enableTaskPolling ?? true;
     this.projectId = projectId;
 
     // Persist projectId so alarm() can recover after hibernation.
@@ -269,12 +282,14 @@ export class ProjectRoom extends DurableObject<Env> {
       void this.persistAndMaybeCompact(update);
     });
 
-    // Schedule first alarm for task polling. Persistence is event-driven now,
-    // not alarm-driven — the alarm is only for polling external task state.
-    await this.ctx.storage.setAlarm(Date.now() + TASK_POLL_INTERVAL_MS);
+    if (enableTaskPolling) {
+      // Schedule first alarm for task polling. Persistence is event-driven now,
+      // not alarm-driven — the alarm is only for polling external task state.
+      await this.ctx.storage.setAlarm(Date.now() + TASK_POLL_INTERVAL_MS);
 
-    // Process any pending nodes and trigger polling.
-    await this.taskPoll();
+      // Process any pending nodes and trigger polling.
+      await this.taskPoll();
+    }
   }
 
   /**
@@ -373,6 +388,28 @@ export class ProjectRoom extends DurableObject<Env> {
         source,
         error: error instanceof Error ? error.message : String(error),
       });
+    }
+  }
+
+  private async withTaskSecretsForRuntime(
+    task: Record<string, any>,
+    userId: string,
+  ): Promise<Record<string, any>> {
+    const secretIds = Array.isArray(task.secretIds)
+      ? task.secretIds.filter((id: unknown): id is string => typeof id === "string" && id.length > 0)
+      : [];
+    if (secretIds.length === 0 || !this.env.ACTION_SECRET_KEY) return task;
+
+    try {
+      const secrets = await loadSecrets(this.env.DB, userId, [...new Set(secretIds)], this.env.ACTION_SECRET_KEY);
+      return { ...task, secrets };
+    } catch (error) {
+      log.warn("Failed to inject custom action task secrets for runtime replay", {
+        taskId: task.taskId,
+        actionId: task.customActionId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return task;
     }
   }
 
@@ -554,15 +591,13 @@ export class ProjectRoom extends DurableObject<Env> {
     // Handle binary messages (Loro CRDT updates)
     if (message instanceof ArrayBuffer) {
       const updates = new Uint8Array(message);
-      this.messageQueue.push({ sender: ws, data: updates });
-      if (!this.isProcessingQueue) {
-        // Fire-and-forget — but ALWAYS catch so an unhandled rejection can't
-        // leave isProcessingQueue stuck (which would silently grow the queue forever).
-        this.processMessageQueue().catch((err) => {
-          log.error("processMessageQueue rejected:", err);
-          this.isProcessingQueue = false;
-        });
-      }
+      void this.enqueueLoroImport({
+        sender: ws,
+        data: updates,
+        runRealtimeEffects: true,
+      }).catch((err) => {
+        log.error("processMessageQueue rejected:", err);
+      });
       return;
     }
 
@@ -623,7 +658,10 @@ export class ProjectRoom extends DurableObject<Env> {
       // a one-liner for SDK authors.
       const senderInfo = this.clients.get(sender);
       const senderRuntimeId = senderInfo?.runtimeId;
-      if (!senderRuntimeId) {
+      const actions = msg.actions as Array<Record<string, any>>;
+      if (!Array.isArray(actions)) return;
+      const wantsLocalRuntime = actions.some((action) => (action?.runtime || "local") !== "worker");
+      if (wantsLocalRuntime && !senderRuntimeId) {
         log.warn("Rejecting register_custom_actions — no runtime_id on WS", {
           clientType: senderInfo?.clientType,
           userId: senderInfo?.userId,
@@ -640,34 +678,43 @@ export class ProjectRoom extends DurableObject<Env> {
         return;
       }
 
-      const actions = msg.actions as Array<Record<string, any>>;
-      if (!Array.isArray(actions)) return;
-
       const versionBefore = this.doc.version();
       const actionsMap = this.doc.getMap("customActions");
       for (const action of actions) {
-        if (!action.id || !action.name) continue;
-        actionsMap.set(action.id, {
-          id: action.id,
-          name: action.name,
-          description: action.description || "",
-          parameters: action.parameters || [],
-          outputType: action.outputType || "image",
-          icon: action.icon || "",
-          color: action.color || "",
-          runtime: action.runtime || "local",
-          promptModalities: Array.isArray(action.promptModalities) && action.promptModalities.length > 0
-            ? action.promptModalities
-            : ["text"],
-          // Stamp the registering runtime so NodeProcessor can gate
-          // dispatch on the runtime being online (deriveRuntimeStatus).
-          // Multiple concurrent registrations on the same id "last write
-          // wins" — fine because we already 403'd cross-user attempts at
-          // WS attach time. A user racing themselves (bridge + canvas
-          // connect on the same machine) ends up with the same runtimeId
-          // either way since both read it from ~/.clash/credentials.json.
-          registeredByRuntime: senderRuntimeId,
-        });
+        const parsed = CustomActionDefinitionSchema.safeParse(action);
+        if (!parsed.success) {
+          log.warn("Skipping invalid custom action registration", {
+            actionId: action?.id,
+            error: parsed.error.message,
+          });
+          continue;
+        }
+        const def = parsed.data;
+        const storedDef: Record<string, unknown> = {
+          id: def.id,
+          name: def.name,
+          description: def.description || "",
+          parameters: def.parameters || [],
+          outputType: def.outputType || "image",
+          icon: def.icon || "",
+          color: def.color || "",
+          runtime: def.runtime || "local",
+          version: def.version || "",
+          author: def.author || "",
+          repository: def.repository || "",
+          workerUrl: def.workerUrl || "",
+          secrets: def.secrets || [],
+          tags: def.tags || [],
+          promptModalities: def.promptModalities,
+        };
+        if (def.model) storedDef.model = def.model;
+        // Stamp the registering runtime so NodeProcessor can gate local
+        // dispatch on runtime liveness. Worker actions are hosted remotely
+        // and do not need a local runtime row.
+        if (def.runtime === "local" && senderRuntimeId) {
+          storedDef.registeredByRuntime = senderRuntimeId;
+        }
+        actionsMap.set(def.id, storedDef);
       }
       const update = this.doc.export({ mode: "update", from: versionBefore });
       this.broadcastBinary(update);
@@ -702,7 +749,8 @@ export class ProjectRoom extends DurableObject<Env> {
         // taskRecord.registeredByRuntime there).
         if (t.registeredByRuntime && t.registeredByRuntime !== senderRuntimeId) continue;
         try {
-          sender.send(JSON.stringify({ type: "custom_task_assigned", task: t }));
+          const task = await this.withTaskSecretsForRuntime(t, senderInfo?.userId ?? "");
+          sender.send(JSON.stringify({ type: "custom_task_assigned", task }));
           replayCount++;
         } catch (e) {
           log.error("Failed to replay task to agent:", e);
@@ -965,6 +1013,20 @@ export class ProjectRoom extends DurableObject<Env> {
 
   // ─── Message Queue Processing ────────────────────────────────
 
+  private enqueueLoroImport(
+    entry: Omit<LoroImportQueueItem, "resolve" | "reject">,
+  ): Promise<void> {
+    return new Promise((resolve, reject) => {
+      this.messageQueue.push({ ...entry, resolve, reject });
+      if (!this.isProcessingQueue) {
+        this.processMessageQueue().catch((err) => {
+          log.error("processMessageQueue rejected:", err);
+          this.isProcessingQueue = false;
+        });
+      }
+    });
+  }
+
   /**
    * Process Loro update queue serially.
    * CRITICAL: doc.import() must be serialized to prevent state corruption.
@@ -981,23 +1043,34 @@ export class ProjectRoom extends DurableObject<Env> {
         if (this.initPromise) await this.initPromise;
 
         try {
-          // Snapshot node keys before import for activity diff
-          const nodesBefore = new Map<string, Record<string, any>>();
           const nodesMap = this.doc.getMap("nodes");
-          for (const [id, raw] of nodesMap.entries()) {
-            nodesBefore.set(id, raw as Record<string, any>);
+          const shouldRunRealtimeEffects = msg.runRealtimeEffects && !!msg.sender;
+          let nodesBefore: Map<string, Record<string, any>> | null = null;
+
+          if (shouldRunRealtimeEffects) {
+            // Snapshot node keys before import for activity diff
+            nodesBefore = new Map<string, Record<string, any>>();
+            for (const [id, raw] of nodesMap.entries()) {
+              nodesBefore.set(id, raw as Record<string, any>);
+            }
           }
 
           this.doc.import(msg.data);
 
           // Persist this remote update — subscribeLocalUpdates does NOT fire
           // for imports, so this is the only persistence hook for client-
-          // originated changes. Append-only, so it's safe to do unconditionally.
-          void this.persistAndMaybeCompact(msg.data);
+          // or remote-persistence-originated changes. Append-only, so it's
+          // safe to do unconditionally.
+          await this.persistAndMaybeCompact(msg.data);
 
           // Broadcast to all other clients FIRST so they have the base state
           // before receiving any derived updates from processPendingNodes.
           this.broadcastBinary(msg.data, msg.sender);
+
+          if (!shouldRunRealtimeEffects || !msg.sender || !nodesBefore) {
+            msg.resolve?.();
+            continue;
+          }
 
           // Detect activity: diff nodes before/after
           const nodesAfter = nodesMap.entries();
@@ -1026,9 +1099,10 @@ export class ProjectRoom extends DurableObject<Env> {
 
           // Check for pending nodes (may emit additional broadcasts)
           await this.guardedProcessPendingNodes();
-
-            } catch (error) {
+          msg.resolve?.();
+        } catch (error) {
           log.error("Failed to process Loro update:", error);
+          msg.reject?.(error);
         }
       }
     } finally {
@@ -1059,7 +1133,7 @@ export class ProjectRoom extends DurableObject<Env> {
    * which can't parse Loro CRDT binary updates. Used by NodeProcessor
    * to announce newly-assigned custom-action tasks.
    */
-  private broadcastJsonToCli(payload: unknown): void {
+  private broadcastJsonToCli(payload: unknown, targetRuntimeId?: string): void {
     // Rebuild this.clients from live sockets — DO hibernation drops
     // the in-memory map but WebSockets survive via serializeAttachment,
     // so without this we'd never resolve any ws to clientType='cli' and
@@ -1070,6 +1144,7 @@ export class ProjectRoom extends DurableObject<Env> {
     for (const ws of this.ctx.getWebSockets()) {
       const info = this.clients.get(ws);
       if (info?.clientType !== "cli") continue;
+      if (targetRuntimeId && info.runtimeId !== targetRuntimeId) continue;
       try {
         ws.send(text);
       } catch (error) {
@@ -1094,7 +1169,7 @@ export class ProjectRoom extends DurableObject<Env> {
         this.projectId,
         (data: Uint8Array) => this.broadcastBinary(data),
         async () => this.triggerTaskPolling(),
-        (json: unknown) => this.broadcastJsonToCli(json),
+        (json: unknown, options?: { runtimeId?: string }) => this.broadcastJsonToCli(json, options?.runtimeId),
       );
     } finally {
       this.isProcessingNodes = false;
@@ -1205,8 +1280,97 @@ export class ProjectRoom extends DurableObject<Env> {
 
   // ─── HTTP Endpoints (replaces onRequest) ─────────────────────
 
+  private extractLoroProjectId(request: Request, url: URL): string {
+    const headerProjectId = request.headers.get("x-loro-project-id");
+    if (headerProjectId) return headerProjectId;
+
+    const pathParts = url.pathname.split("/").filter(Boolean);
+    if (pathParts[0] !== "loro" || pathParts.length < 3) return "";
+    const encodedProjectId = pathParts.slice(1, -1).join("/");
+    try {
+      return decodeURIComponent(encodedProjectId);
+    } catch {
+      return encodedProjectId;
+    }
+  }
+
+  private async ensureRoomInitialized(
+    projectId: string,
+    options: { enableTaskPolling?: boolean } = {},
+  ): Promise<Response | null> {
+    if (!projectId) return new Response("Missing project ID", { status: 400 });
+
+    if (!this.initPromise) {
+      this.initPromise = this.initRoom(projectId, options);
+    }
+    await this.initPromise;
+
+    if (this.projectId !== projectId) {
+      log.error(`Project ID mismatch: expected ${this.projectId}, got ${projectId}`);
+      return new Response("Project ID mismatch", { status: 400 });
+    }
+
+    return null;
+  }
+
+  private async handleLoroRemotePersistenceRequest(
+    request: Request,
+    url: URL,
+  ): Promise<Response | null> {
+    const pathParts = url.pathname.split("/").filter(Boolean);
+    if (pathParts[0] !== "loro" || pathParts.length < 3) return null;
+
+    if (request.headers.get("x-internal-loro") !== "true") {
+      return new Response("forbidden", { status: 403 });
+    }
+
+    const operation = pathParts[pathParts.length - 1];
+    const projectId = this.extractLoroProjectId(request, url);
+    const initError = await this.ensureRoomInitialized(projectId, {
+      enableTaskPolling: false,
+    });
+    if (initError) return initError;
+
+    if (operation === "snapshot" && request.method === "GET") {
+      try {
+        const snapshot = this.doc.export({ mode: "snapshot" });
+        return new Response(snapshot, {
+          headers: {
+            "content-type": "application/octet-stream",
+            "cache-control": "no-store",
+          },
+        });
+      } catch (error) {
+        log.error("Remote Loro snapshot error:", error);
+        return Response.json({ error: "Failed to export snapshot" }, { status: 500 });
+      }
+    }
+
+    if (operation === "updates" && request.method === "POST") {
+      try {
+        const update = new Uint8Array(await request.arrayBuffer());
+        if (update.byteLength === 0) {
+          return new Response("empty update", { status: 400 });
+        }
+        await this.enqueueLoroImport({
+          data: update,
+          runRealtimeEffects: false,
+        });
+        return new Response(null, { status: 204 });
+      } catch (error) {
+        log.error("Remote Loro update error:", error);
+        return Response.json({ error: "Failed to import update" }, { status: 500 });
+      }
+    }
+
+    return new Response("not found", { status: 404 });
+  }
+
   private async handleHttpRequest(request: Request): Promise<Response> {
     const url = new URL(request.url);
+
+    const loroRemoteResponse = await this.handleLoroRemotePersistenceRequest(request, url);
+    if (loroRemoteResponse) return loroRemoteResponse;
 
     // Handle /update-node internal request
     if (url.pathname.endsWith("/update-node") && request.method === "POST") {

@@ -9,6 +9,7 @@ import type {
   LocalAcpAdapter,
   LocalAcpCreateSessionParams,
   LocalAcpResumeSession,
+  LocalAcpSessionMessage,
 } from "./app.js";
 
 export const DESKTOP_LOCAL_RUNTIME_ID = "desktop-local";
@@ -67,7 +68,10 @@ interface LocalAcpSession {
   id: string;
   manager: SessionManagerLike;
   clients: Set<WebSocket>;
-  backlog: SessionManagerOut[];
+  backlog: unknown[];
+  messages: LocalAcpSessionMessage[];
+  projectId?: string;
+  crewMemberId?: string;
 }
 
 type UpgradeCapableServer = {
@@ -75,6 +79,10 @@ type UpgradeCapableServer = {
 };
 
 const MAX_BACKLOG_MESSAGES = 200;
+
+function sessionIndexKey(projectId: string, crewMemberId: string): string {
+  return `${projectId}\0${crewMemberId}`;
+}
 
 function defaultDetectAgents(): Promise<DetectedAcpAgent[]> {
   return detectAll() as Promise<KnownAgentEntry[]>;
@@ -86,6 +94,17 @@ function createDefaultSessionManager(send: SessionSender): SessionManagerLike {
 
 function sendJson(ws: WebSocket, msg: unknown): void {
   if (ws.readyState === ws.OPEN) ws.send(JSON.stringify(msg));
+}
+
+function isSessionEventMessage(msg: unknown): msg is {
+  type: "session.event";
+  turn_id: string;
+  event: unknown;
+} {
+  return !!msg &&
+    typeof msg === "object" &&
+    (msg as { type?: unknown }).type === "session.event" &&
+    typeof (msg as { turn_id?: unknown }).turn_id === "string";
 }
 
 function parseBrowserMessage(raw: WebSocket.RawData): BrowserMessage | null {
@@ -112,6 +131,7 @@ export class LocalAcpRuntimeAdapter implements LocalAcpAdapter {
   private readonly osTag: () => string;
   private readonly nowSeconds: () => number;
   private readonly sessions = new Map<string, LocalAcpSession>();
+  private readonly sessionIndex = new Map<string, string>();
 
   constructor(options: LocalAcpAdapterOptions = {}) {
     this.detectAgents = options.detectAgents ?? defaultDetectAgents;
@@ -152,12 +172,17 @@ export class LocalAcpRuntimeAdapter implements LocalAcpAdapter {
     }
 
     const agents = await this.detectAgents();
-    const agent = agents[0];
+    const agent = params.agentId
+      ? agents.find((candidate) => candidate.id === params.agentId)
+      : agents[0];
     if (!agent) throw new Error("No local ACP agent found on PATH");
 
     const sessionId = this.createSessionId();
     let entry: LocalAcpSession;
     const send: SessionSender = (msg) => {
+      if (isSessionEventMessage(msg)) {
+        this.appendCrewEvent(entry, msg.turn_id, msg.event);
+      }
       entry.backlog.push(msg);
       if (entry.backlog.length > MAX_BACKLOG_MESSAGES) {
         entry.backlog.splice(0, entry.backlog.length - MAX_BACKLOG_MESSAGES);
@@ -169,8 +194,14 @@ export class LocalAcpRuntimeAdapter implements LocalAcpAdapter {
       manager: this.createSessionManager(send),
       clients: new Set(),
       backlog: [],
+      messages: [],
+      ...(params.projectId ? { projectId: params.projectId } : {}),
+      ...(params.crewMemberId ? { crewMemberId: params.crewMemberId } : {}),
     };
     this.sessions.set(sessionId, entry);
+    if (params.projectId && params.crewMemberId) {
+      this.sessionIndex.set(sessionIndexKey(params.projectId, params.crewMemberId), sessionId);
+    }
 
     const startParams: SessionStartParamsLike = {
       session_id: sessionId,
@@ -190,6 +221,76 @@ export class LocalAcpRuntimeAdapter implements LocalAcpAdapter {
     });
 
     return { session_id: sessionId };
+  }
+
+  async pushRoomMention(
+    projectId: string,
+    crewMemberId: string,
+    mention: Record<string, unknown>,
+  ): Promise<boolean> {
+    const sessionId = this.sessionIndex.get(sessionIndexKey(projectId, crewMemberId));
+    if (!sessionId) return false;
+    const entry = this.sessions.get(sessionId);
+    if (!entry) return false;
+    this.sendToSession(entry, { type: "room.mention", ...mention });
+    return true;
+  }
+
+  async listSessionMessages(sessionId: string): Promise<{ messages: LocalAcpSessionMessage[] } | null> {
+    const entry = this.sessions.get(sessionId);
+    if (!entry) return null;
+    return {
+      messages: entry.messages.map((message) => ({
+        ...message,
+        events: structuredClone(message.events),
+      })),
+    };
+  }
+
+  private appendUserPrompt(entry: LocalAcpSession, turnId: string, text: string): void {
+    if (entry.messages.some((message) => message.id === `${turnId}-user`)) return;
+    entry.messages.push({
+      id: `${turnId}-user`,
+      sender_kind: "user",
+      sender_id: "local-user",
+      turn_id: turnId,
+      events: [{ type: "text", text }],
+      created_at: this.nowSeconds(),
+    });
+  }
+
+  private appendCrewEvent(entry: LocalAcpSession, turnId: string, event: unknown): void {
+    const id = `${turnId}-crew`;
+    let message = entry.messages.find((candidate) => candidate.id === id);
+    if (!message) {
+      message = {
+        id,
+        sender_kind: "crew",
+        sender_id: entry.crewMemberId ?? "local-crew",
+        turn_id: turnId,
+        events: [],
+        created_at: this.nowSeconds(),
+      };
+      entry.messages.push(message);
+    }
+    message.events.push(event);
+  }
+
+  private sendToSession(entry: LocalAcpSession, msg: unknown): void {
+    entry.backlog.push(msg);
+    if (entry.backlog.length > MAX_BACKLOG_MESSAGES) {
+      entry.backlog.splice(0, entry.backlog.length - MAX_BACKLOG_MESSAGES);
+    }
+    for (const client of entry.clients) sendJson(client, msg);
+  }
+
+  private removeSession(sessionId: string): void {
+    const entry = this.sessions.get(sessionId);
+    if (entry?.projectId && entry.crewMemberId) {
+      const key = sessionIndexKey(entry.projectId, entry.crewMemberId);
+      if (this.sessionIndex.get(key) === sessionId) this.sessionIndex.delete(key);
+    }
+    this.sessions.delete(sessionId);
   }
 
   async listResumeSessions(runtimeId: string) {
@@ -219,6 +320,7 @@ export class LocalAcpRuntimeAdapter implements LocalAcpAdapter {
       switch (msg.type) {
         case "prompt":
           if (msg.turn_id && typeof msg.text === "string") {
+            this.appendUserPrompt(entry, msg.turn_id, msg.text);
             void Promise.resolve(entry.manager.prompt({
               session_id: sessionId,
               turn_id: msg.turn_id,
@@ -238,7 +340,7 @@ export class LocalAcpRuntimeAdapter implements LocalAcpAdapter {
           return;
         case "dispose":
           void Promise.resolve(entry.manager.dispose(sessionId)).finally(() => {
-            this.sessions.delete(sessionId);
+            this.removeSession(sessionId);
           });
           return;
       }

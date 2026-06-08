@@ -85,6 +85,21 @@ export interface GenerationParams {
   /** custom_action */
   customActionId?: string;
   customActionParams?: Record<string, unknown>;
+  customActionModel?: {
+    id: string;
+    provider: string;
+    name?: string;
+    secretId?: string;
+    baseUrl?: string;
+    endpoint?: string;
+    [key: string]: unknown;
+  };
+  customActionSecrets?: Array<{
+    id: string;
+    label?: string;
+    description?: string;
+    required?: boolean;
+  }>;
   workerUrl?: string;
 
   /**

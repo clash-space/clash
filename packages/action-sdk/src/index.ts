@@ -31,6 +31,27 @@ export interface ActionInputNode {
   label?: string;
 }
 
+export type ActionProvider =
+  | "fal"
+  | "replicate"
+  | "kie"
+  | "official"
+  | "openai"
+  | "google"
+  | "anthropic"
+  | "elevenlabs"
+  | string;
+
+export interface ActionModel {
+  id: string;
+  provider: ActionProvider;
+  name?: string;
+  secretId?: string;
+  baseUrl?: string;
+  endpoint?: string;
+  [key: string]: unknown;
+}
+
 export interface ActionRequest {
   /** Unique task ID for this execution */
   taskId: string;
@@ -44,8 +65,16 @@ export interface ActionRequest {
   prompt: string;
   /** User-configured parameters (defined in action.json `parameters`) */
   params: Record<string, unknown>;
+  /** Optional MaaS / official model binding from action.json `model`. */
+  model?: ActionModel;
   /** Platform-injected secrets (decrypted user variables matching action.json `secrets`) */
   secrets: Record<string, string>;
+  /** R2 storage keys for upstream refs, grouped by modality. */
+  refs?: {
+    image?: string[];
+    video?: string[];
+    audio?: string[];
+  };
   /** Connected upstream nodes (images, text, etc.) */
   inputNodes?: ActionInputNode[];
 }
@@ -97,6 +126,8 @@ export interface ActionManifest {
   repository?: string;
   outputType: "image" | "video" | "audio" | "text";
   parameters?: ActionManifestParameter[];
+  /** Optional MaaS / official model binding. Provider presets auto-declare the matching key. */
+  model?: ActionModel;
   secrets?: ActionManifestSecret[];
   runtime: "local" | "worker";
   workerUrl?: string;

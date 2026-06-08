@@ -78,6 +78,8 @@ export interface ActionManifest {
   outputType?: string;
   promptModalities?: string[];
   parameters?: unknown[];
+  model?: Record<string, unknown>;
+  secrets?: Array<Record<string, unknown>>;
   /** Must be "local" — worker-runtime actions don't get supervised here. */
   runtime?: string;
   /** Path relative to the action dir, e.g. "handler.py". */

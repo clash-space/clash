@@ -192,7 +192,10 @@ html.dark.clash-is-scrolling ::-webkit-scrollbar-thumb:hover {
   min-height: 24px;
   text-align: left;
 }
-.clash-chat-input-editor .milkdown-editor-wrapper {
+.clash-chat-input-editor--default .milkdown-editor-wrapper {
+  padding: 16px 18px 6px !important;
+}
+.clash-chat-input-editor--hero .milkdown-editor-wrapper {
   padding-left: 0 !important;
   padding-right: 0 !important;
 }

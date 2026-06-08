@@ -259,6 +259,8 @@ class ClashAgent:
                 action_id=action_id,
                 prompt=task.get("prompt", ""),
                 params=task.get("params", {}),
+                model=task.get("model"),
+                secrets=task.get("secrets") or {},
                 output_type=task.get("outputType", action_def.output_type),
                 reference_image_r2_keys=list(refs.get("image") or []),
                 reference_video_r2_keys=list(refs.get("video") or []),

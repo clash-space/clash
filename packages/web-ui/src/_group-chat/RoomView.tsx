@@ -15,6 +15,7 @@ import { motion } from 'framer-motion';
 import { ArrowDown } from '@phosphor-icons/react';
 import type { RoomMessageEvent } from '@clash/shared-types';
 import { useChatScroll } from '@clash/web-ui/hooks/useChatScroll';
+import type { RoomSyncMeta } from '@clash/web-ui/hooks/useProjectRoom';
 import { EmptyState } from './EmptyState';
 import { UserMessage } from '../components/copilot/UserMessage';
 import type { MentionableNode } from '../components/MilkdownEditor';
@@ -30,9 +31,11 @@ interface RoomViewProps {
   /** Canvas-side + crew mention list — drives UserMessage's inline
    *  asset-thumbnail substitution for `@[label](node:id)` mentions. */
   mentionableNodes?: MentionableNode[];
+  sync?: RoomSyncMeta | null;
 }
 
-export function RoomView({ messages, userId, labelFor, empty, hasInvited, mentionableNodes }: RoomViewProps) {
+export function RoomView({ messages, userId, labelFor, empty, hasInvited, mentionableNodes, sync }: RoomViewProps) {
+  void sync;
   // Always render the scrollable container so useChatScroll's effect
   // sees a real DOM node on first mount and attaches its scroll listener.
   // Switching to a different JSX tree for the empty state (the previous

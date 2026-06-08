@@ -178,6 +178,70 @@ describe("NodeProcessor - processPendingNodes", () => {
     expect(triggerPolling).toHaveBeenCalled();
   });
 
+  it("submits installed worker custom actions with model and secret metadata", async () => {
+    const doc = makeDoc([
+      {
+        id: "custom-worker-node",
+        type: "image",
+        data: {
+          status: "pending",
+          actionType: "custom:fal-render",
+          customActionId: "fal-render",
+          customActionParams: { size: "1024x1024" },
+          prompt: "city at night",
+          actorType: "user",
+          actorUserId: "u-test",
+        },
+      },
+    ]);
+    const first = vi.fn().mockResolvedValue({
+      manifest: JSON.stringify({
+        id: "fal-render",
+        name: "Fal Render",
+        runtime: "worker",
+        workerUrl: "https://action.example.com",
+        outputType: "image",
+        model: {
+          provider: "fal",
+          id: "fal-ai/flux-pro",
+        },
+      }),
+    });
+    const env = makeEnv({
+      DB: {
+        prepare: vi.fn().mockReturnValue({
+          bind: vi.fn().mockReturnValue({ first }),
+        }),
+      } as any,
+    });
+
+    await processPendingNodes(doc, env, "proj-1", broadcast, triggerPolling);
+
+    expect(env.GENERATION_WORKFLOW.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+        params: expect.objectContaining({
+          type: "custom_action",
+          nodeId: "custom-worker-node",
+          customActionId: "fal-render",
+          customActionParams: { size: "1024x1024" },
+          workerUrl: "https://action.example.com",
+          customActionModel: {
+            provider: "fal",
+            id: "fal-ai/flux-pro",
+          },
+          customActionSecrets: [
+            expect.objectContaining({
+              id: "FAL_API_KEY",
+              required: true,
+            }),
+          ],
+        }),
+      }),
+    );
+    expect(triggerPolling).toHaveBeenCalled();
+  });
+
   it("submits description task for completed asset without description", async () => {
     const doc = makeDoc([
       {

@@ -134,6 +134,8 @@ actionsRoutes.get("/", async (c) => {
     version: e.manifest.version,
     runtime: e.manifest.runtime,
     outputType: e.manifest.outputType,
+    model: e.manifest.model,
+    secrets: e.manifest.secrets,
   }));
   return c.json({ actions });
 });

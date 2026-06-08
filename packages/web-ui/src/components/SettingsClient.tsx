@@ -1,9 +1,10 @@
 
 import { useState, useCallback, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Key, Plus, Trash, Copy, Check, ArrowLeft, Lock, Eye, EyeSlash, PuzzlePiece, BookOpen, Terminal, Plug, Users, Lightning } from '@phosphor-icons/react';
+import { Key, Plus, Trash, Copy, Check, ArrowLeft, Lock, Eye, EyeSlash, PuzzlePiece, BookOpen, Terminal, Plug, Users, Lightning, CloudArrowUp } from '@phosphor-icons/react';
 import { useClashRuntime } from '@clash/web-ui/hooks/useClashRuntime';
 import { Link } from 'react-router';
+import { ACTION_PROVIDER_PRESETS, CustomActionDefinitionSchema } from '@clash/shared-types';
 import {
     createApiToken, revokeApiToken, type ApiTokenInfo,
     setVariable, deleteVariable, type VariableInfo,
@@ -17,6 +18,7 @@ import { runtimeApiUrl } from '@clash/web-ui/lib/runtimeConfig';
  *  (SettingsDialog). The dialog uses these as its sidebar nav keys. */
 export type SettingsSection =
     | 'runtimes'
+    | 'sync'
     | 'crew'
     | 'tokens'
     | 'variables'
@@ -63,6 +65,7 @@ export default function SettingsClient({
     const [skills, setSkills] = useState<InstalledSkillInfo[]>(initialSkills);
 
     const variableKeys = new Set(variables.map((v) => v.key));
+    const providerPresets = Object.values(ACTION_PROVIDER_PRESETS);
 
     const handleCreate = useCallback(async () => {
         if (!newTokenName.trim()) return;
@@ -157,6 +160,11 @@ export default function SettingsClient({
 
                 {/* ── Runtimes ── */}
                 {showSection('runtimes') && <RuntimesSection />}
+
+                {/* ── Sync ── */}
+                {showSection('sync') && <SyncSection />}
+
+                {showAll && <hr className="border-warm-border" />}
 
                 {/* ── Crew ── */}
                 {showSection('crew') && <CrewSection />}
@@ -266,6 +274,36 @@ export default function SettingsClient({
                         </div>
                     </div>
 
+                    <div className="mb-5 divide-y divide-warm-border border-y border-warm-border">
+                        {providerPresets.map((preset) => {
+                            const configured = variableKeys.has(preset.defaultSecretId);
+                            return (
+                                <button
+                                    key={preset.id}
+                                    type="button"
+                                    aria-label={`${preset.label} · ${preset.defaultSecretId}`}
+                                    onClick={() => setNewVarKey(preset.defaultSecretId)}
+                                    className="flex w-full items-center justify-between gap-3 py-2.5 text-left transition-colors hover:bg-warm-muted"
+                                    title={preset.secretDescription}
+                                >
+                                    <span className="min-w-0">
+                                        <span className="block text-sm font-medium text-slate-900 dark:text-slate-50">{preset.label}</span>
+                                        <code className="block truncate text-xs text-gray-700 dark:text-gray-300">{preset.defaultSecretId}</code>
+                                    </span>
+                                    <span
+                                        className={
+                                            configured
+                                                ? "rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-medium text-emerald-700"
+                                                : "rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-medium text-amber-700"
+                                        }
+                                    >
+                                        {configured ? 'Configured' : 'Missing'}
+                                    </span>
+                                </button>
+                            );
+                        })}
+                    </div>
+
                     <div className="flex gap-2 mb-4">
                         <input
                             type="text"
@@ -359,10 +397,22 @@ export default function SettingsClient({
                     ) : (
                         <div className="space-y-1">
                             {actions.map((action) => {
-                                const secrets: Array<{ id: string }> = (() => {
-                                    try { return JSON.parse(action.manifest)?.secrets || []; } catch { return []; }
+                                const manifest = (() => {
+                                    try {
+                                        const parsed = CustomActionDefinitionSchema.safeParse(JSON.parse(action.manifest));
+                                        return parsed.success ? parsed.data : null;
+                                    } catch {
+                                        return null;
+                                    }
                                 })();
+                                const secrets = manifest?.secrets ?? [];
                                 const missingSecrets = secrets.filter((s) => !variableKeys.has(s.id));
+                                const modelProvider = manifest?.model?.provider
+                                    ? ACTION_PROVIDER_PRESETS[manifest.model.provider]?.label ?? manifest.model.provider
+                                    : null;
+                                const modelLabel = manifest?.model
+                                    ? `${modelProvider ?? manifest.model.provider} · ${manifest.model.name ?? manifest.model.id}`
+                                    : null;
                                 return (
                                     <div key={action.id} className="group rounded-xl px-4 py-3 hover:bg-warm-muted transition-colors">
                                         <div className="flex items-start justify-between">
@@ -373,10 +423,17 @@ export default function SettingsClient({
                                                     {action.author && <span className="text-xs text-gray-700 dark:text-gray-300">@{action.author}</span>}
                                                 </div>
                                                 {action.description && <p className="text-xs text-gray-700 dark:text-gray-300 mt-0.5 line-clamp-1">{action.description}</p>}
+                                                {modelLabel && (
+                                                    <div className="mt-1.5">
+                                                        <span className="text-[10px] text-slate-700 dark:text-slate-300 bg-warm-surface border border-warm-border rounded-full px-2 py-0.5 font-medium">
+                                                            {modelLabel}
+                                                        </span>
+                                                    </div>
+                                                )}
                                                 {missingSecrets.length > 0 && (
                                                     <div className="flex items-center gap-1.5 mt-1.5">
                                                         <span className="text-[10px] text-amber-600 bg-amber-50 rounded-full px-2 py-0.5 font-medium">
-                                                            {missingSecrets.length} missing {missingSecrets.length === 1 ? 'key' : 'keys'}
+                                                            Missing {missingSecrets.map((s) => s.id).join(', ')}
                                                         </span>
                                                     </div>
                                                 )}
@@ -480,6 +537,201 @@ export default function SettingsClient({
             </header>
             {content}
         </div>
+    );
+}
+
+/**
+ * Sync — local daemon cloud sync mode.
+ */
+interface LocalSyncConfig {
+    mode: 'local-only' | 'cloud-sync';
+    remote_loro: {
+        enabled: boolean;
+        url: string | null;
+        has_token: boolean;
+        source: 'none' | 'env' | 'config';
+    };
+}
+
+function SyncSection() {
+    const [loading, setLoading] = useState(true);
+    const [saving, setSaving] = useState(false);
+    const [error, setError] = useState<string | null>(null);
+    const [saved, setSaved] = useState(false);
+    const [mode, setMode] = useState<'local-only' | 'cloud-sync'>('local-only');
+    const [remoteUrl, setRemoteUrl] = useState('');
+    const [remoteToken, setRemoteToken] = useState('');
+    const [hasToken, setHasToken] = useState(false);
+    const [source, setSource] = useState<'none' | 'env' | 'config'>('none');
+
+    const applyConfig = useCallback((config: LocalSyncConfig) => {
+        setMode(config.mode);
+        setRemoteUrl(config.remote_loro.url ?? '');
+        setRemoteToken('');
+        setHasToken(config.remote_loro.has_token);
+        setSource(config.remote_loro.source);
+    }, []);
+
+    useEffect(() => {
+        let cancelled = false;
+        setLoading(true);
+        fetch(runtimeApiUrl('/api/v1/local/sync'), { credentials: 'include' })
+            .then(async (res) => {
+                if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                return (await res.json()) as LocalSyncConfig;
+            })
+            .then((config) => {
+                if (cancelled) return;
+                applyConfig(config);
+                setError(null);
+            })
+            .catch((err) => {
+                if (cancelled) return;
+                setError(err instanceof Error ? err.message : String(err));
+            })
+            .finally(() => {
+                if (!cancelled) setLoading(false);
+            });
+        return () => {
+            cancelled = true;
+        };
+    }, [applyConfig]);
+
+    const onSave = async () => {
+        setSaving(true);
+        setSaved(false);
+        setError(null);
+        try {
+            const body: Record<string, unknown> = {
+                mode,
+                remote_loro_url: mode === 'cloud-sync' ? remoteUrl.trim() : null,
+            };
+            if (remoteToken.trim()) body.remote_loro_token = remoteToken.trim();
+            const res = await fetch(runtimeApiUrl('/api/v1/local/sync'), {
+                method: 'PATCH',
+                credentials: 'include',
+                headers: { 'content-type': 'application/json' },
+                body: JSON.stringify(body),
+            });
+            if (!res.ok) {
+                const json = await res.json().catch(() => null) as { error?: string } | null;
+                throw new Error(json?.error ?? `HTTP ${res.status}`);
+            }
+            applyConfig((await res.json()) as LocalSyncConfig);
+            setSaved(true);
+        } catch (err) {
+            setError(err instanceof Error ? err.message : String(err));
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    return (
+        <section>
+            <div className="flex items-center gap-3 mb-5">
+                <CloudArrowUp className="h-5 w-5 text-gray-700 dark:text-gray-300" weight="bold" />
+                <div className="flex-1">
+                    <h2 className="font-display text-base font-bold text-slate-900 dark:text-slate-50">Sync</h2>
+                    <p className="text-sm text-gray-700 dark:text-gray-300">
+                        Local canvas state with optional cloud persistence.
+                    </p>
+                </div>
+                <span className="rounded-full border border-warm-border bg-warm-muted px-3 py-1 text-xs font-medium text-stone-700 dark:text-stone-200">
+                    {mode === 'cloud-sync' ? 'Cloud sync' : 'Local only'}
+                </span>
+            </div>
+
+            {loading ? (
+                <div className="rounded-xl border border-warm-border bg-warm-surface p-4 text-sm text-gray-700 dark:text-gray-300">
+                    Loading sync settings…
+                </div>
+            ) : (
+                <div className="space-y-4">
+                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                        <label className={`rounded-xl border p-4 transition-colors ${mode === 'local-only' ? 'border-gray-900 bg-warm-muted' : 'border-warm-border bg-warm-surface hover:border-slate-400'}`}>
+                            <input
+                                type="radio"
+                                name="sync-mode"
+                                value="local-only"
+                                checked={mode === 'local-only'}
+                                onChange={() => setMode('local-only')}
+                                className="sr-only"
+                            />
+                            <span className="block text-sm font-semibold text-slate-900 dark:text-slate-50">Local only</span>
+                            <span className="mt-1 block text-xs text-gray-700 dark:text-gray-300">
+                                Stores projects on this machine.
+                            </span>
+                        </label>
+                        <label className={`rounded-xl border p-4 transition-colors ${mode === 'cloud-sync' ? 'border-gray-900 bg-warm-muted' : 'border-warm-border bg-warm-surface hover:border-slate-400'}`}>
+                            <input
+                                type="radio"
+                                name="sync-mode"
+                                value="cloud-sync"
+                                checked={mode === 'cloud-sync'}
+                                onChange={() => setMode('cloud-sync')}
+                                className="sr-only"
+                            />
+                            <span className="block text-sm font-semibold text-slate-900 dark:text-slate-50">Cloud sync</span>
+                            <span className="mt-1 block text-xs text-gray-700 dark:text-gray-300">
+                                Mirrors Loro snapshots and updates.
+                            </span>
+                        </label>
+                    </div>
+
+                    <div className="space-y-3 rounded-xl border border-warm-border bg-warm-surface p-4">
+                        <label className="block">
+                            <span className="mb-1.5 block text-xs font-medium text-gray-700 dark:text-gray-300">Remote Loro URL</span>
+                            <input
+                                aria-label="Remote Loro URL"
+                                type="url"
+                                value={remoteUrl}
+                                onChange={(e) => setRemoteUrl(e.target.value)}
+                                placeholder="https://api.example.com"
+                                disabled={mode !== 'cloud-sync'}
+                                className="w-full rounded-lg border border-warm-border bg-warm-surface px-3 py-2 text-sm text-slate-900 placeholder:text-slate-500 focus:border-brand focus:outline-none disabled:opacity-50 dark:text-slate-50"
+                            />
+                        </label>
+                        <label className="block">
+                            <span className="mb-1.5 block text-xs font-medium text-gray-700 dark:text-gray-300">Remote Loro token</span>
+                            <input
+                                aria-label="Remote Loro token"
+                                type="password"
+                                value={remoteToken}
+                                onChange={(e) => setRemoteToken(e.target.value)}
+                                placeholder={hasToken ? 'Token saved' : 'Bearer token'}
+                                disabled={mode !== 'cloud-sync'}
+                                className="w-full rounded-lg border border-warm-border bg-warm-surface px-3 py-2 text-sm text-slate-900 placeholder:text-slate-500 focus:border-brand focus:outline-none disabled:opacity-50 dark:text-slate-50"
+                            />
+                        </label>
+                        <div className="flex flex-wrap items-center gap-2 text-xs text-gray-700 dark:text-gray-300">
+                            <span>{hasToken ? 'Token saved' : 'No token saved'}</span>
+                            <span>·</span>
+                            <span>Source: {source}</span>
+                        </div>
+                    </div>
+
+                    {error && (
+                        <div role="alert" className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+                            {error}
+                        </div>
+                    )}
+                    {saved && !error && (
+                        <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">
+                            Sync settings saved.
+                        </div>
+                    )}
+
+                    <button
+                        type="button"
+                        onClick={onSave}
+                        disabled={saving || (mode === 'cloud-sync' && !remoteUrl.trim())}
+                        className="inline-flex items-center justify-center rounded-full bg-slate-900 px-5 py-2 text-sm font-medium text-white transition-colors hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-40 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-white"
+                    >
+                        {saving ? 'Saving…' : 'Save sync settings'}
+                    </button>
+                </div>
+            )}
+        </section>
     );
 }
 

@@ -45,9 +45,15 @@ export {
   TaskStatus,
   AssetStatus,
   // Custom actions
+  ACTION_PROVIDER_PRESETS,
+  ACTION_PROVIDER_IDS,
+  ActionProviderIdSchema,
+  CustomActionModelSchema,
   CustomActionParameterSchema,
   CustomActionSecretSchema,
   CustomActionDefinitionSchema,
+  normalizeActionProviderId,
+  mergeActionProviderSecrets,
   isCustomActionType,
   getCustomActionId,
   // Validation & Builders
@@ -77,6 +83,9 @@ export {
   type CustomActionDefinition,
   type CustomActionParameter,
   type CustomActionSecret,
+  type CustomActionModel,
+  type ActionProviderId,
+  type ActionProviderPreset,
 } from './canvas';
 
 // Task types (atomic tasks + DO state)

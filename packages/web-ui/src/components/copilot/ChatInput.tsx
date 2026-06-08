@@ -454,7 +454,7 @@ export function ChatInput({
                 ) : (
                     /* ─── Rich text input ─── */
                     <div className={isHero ? 'flex min-h-[142px] flex-col' : ''}>
-                        <div className={`clash-chat-input-editor milkdown-chat-input w-full text-left chat-scroll-hidden ${isHero ? 'min-h-[100px] flex-1 px-5 pt-4' : 'min-h-[40px] max-h-[200px]'} overflow-y-auto`}>
+                        <div className={`clash-chat-input-editor ${isHero ? 'clash-chat-input-editor--hero' : 'clash-chat-input-editor--default'} milkdown-chat-input w-full text-left chat-scroll-hidden ${isHero ? 'min-h-[100px] flex-1 px-5 pt-4' : 'min-h-[52px] max-h-[200px]'} overflow-y-auto`}>
                             <MilkdownEditor
                                 ref={editorRef}
                                 value={input}

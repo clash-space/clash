@@ -17,6 +17,8 @@ class ActionDefinition:
         description: str = "",
         output_type: str = "image",
         parameters: list[dict[str, Any]] | None = None,
+        model: dict[str, Any] | None = None,
+        secrets: list[dict[str, Any]] | None = None,
         icon: str = "",
         color: str = "",
         prompt_modalities: list[str] | None = None,
@@ -27,6 +29,8 @@ class ActionDefinition:
         self.description = description
         self.output_type = output_type
         self.parameters = parameters or []
+        self.model = model
+        self.secrets = secrets or []
         self.icon = icon
         self.color = color
         # Defaults to ["text"] (prompt-only) to match the canvas schema
@@ -37,7 +41,7 @@ class ActionDefinition:
 
     def to_manifest(self) -> dict[str, Any]:
         """Convert to the manifest format expected by ProjectRoom."""
-        return {
+        manifest = {
             "id": self.id,
             "name": self.name,
             "description": self.description,
@@ -48,6 +52,11 @@ class ActionDefinition:
             "promptModalities": self.prompt_modalities,
             "runtime": "local",
         }
+        if self.model is not None:
+            manifest["model"] = self.model
+        if self.secrets:
+            manifest["secrets"] = self.secrets
+        return manifest
 
 
 def action(
@@ -56,6 +65,8 @@ def action(
     output_type: str = "image",
     description: str = "",
     parameters: list[dict[str, Any]] | None = None,
+    model: dict[str, Any] | None = None,
+    secrets: list[dict[str, Any]] | None = None,
     icon: str = "",
     color: str = "",
     prompt_modalities: list[str] | None = None,
@@ -79,6 +90,8 @@ def action(
             description=description,
             output_type=output_type,
             parameters=parameters,
+            model=model,
+            secrets=secrets,
             icon=icon,
             color=color,
             prompt_modalities=prompt_modalities,

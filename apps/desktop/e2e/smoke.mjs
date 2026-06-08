@@ -1,5 +1,6 @@
 import { spawn, spawnSync } from "node:child_process";
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, rm, writeFile } from "node:fs/promises";
+import { createServer } from "node:http";
 import net from "node:net";
 import os from "node:os";
 import path from "node:path";
@@ -19,6 +20,7 @@ const dataDir =
   process.env.CLASH_DESKTOP_SMOKE_DATA_DIR ??
   path.join(repoRoot, ".tmp", "electron-smoke-data");
 const latestScreenshot = path.join(captureDir, "latest-cdp-smoke.png");
+const agentCanvasScreenshot = path.join(captureDir, "agent-canvas-ui.png");
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -48,6 +50,90 @@ async function findFreePort(start) {
     if (ok) return port;
   }
   throw new Error(`No free port found from ${start}`);
+}
+
+async function readRequestBody(req) {
+  const chunks = [];
+  for await (const chunk of req) chunks.push(chunk);
+  return Buffer.concat(chunks);
+}
+
+function writeJson(res, status, body) {
+  res.writeHead(status, { "content-type": "application/json" });
+  res.end(JSON.stringify(body));
+}
+
+async function startMockCloudRoomServer() {
+  const port = await findFreePort(49450);
+  const requests = [];
+  const server = createServer(async (req, res) => {
+    const url = new URL(req.url ?? "/", `http://127.0.0.1:${port}`);
+    const roomMatch = /^\/api\/v1\/projects\/([^/]+)\/room\/messages$/.exec(url.pathname);
+    if (roomMatch) {
+      const projectId = decodeURIComponent(roomMatch[1]);
+      if (req.method === "GET") {
+        requests.push({
+          kind: "room",
+          method: "GET",
+          projectId,
+          authorization: req.headers.authorization ?? "",
+        });
+        return writeJson(res, 200, { messages: [] });
+      }
+      if (req.method === "POST") {
+        const raw = await readRequestBody(req);
+        const body = raw.byteLength ? JSON.parse(raw.toString("utf8")) : {};
+        requests.push({
+          kind: "room",
+          method: "POST",
+          projectId,
+          authorization: req.headers.authorization ?? "",
+          body,
+        });
+        return writeJson(res, 201, {
+          id: body.id ?? "mock-cloud-room-message",
+          project_id: projectId,
+          sender_kind: body.sender_kind ?? "user",
+          sender_id: body.sender_id ?? "local-user",
+          sender_user_id: "local-user",
+          mentions: body.mentions ?? [],
+          text: body.text ?? "",
+          at: Math.floor(Date.now() / 1000),
+        });
+      }
+    }
+
+    if (/^\/loro\/.+\/snapshot$/.test(url.pathname) && req.method === "GET") {
+      requests.push({ kind: "loro", method: "GET", path: url.pathname });
+      res.writeHead(404);
+      res.end();
+      return;
+    }
+    if (/^\/loro\/.+\/updates$/.test(url.pathname) && req.method === "POST") {
+      const raw = await readRequestBody(req);
+      requests.push({
+        kind: "loro",
+        method: "POST",
+        path: url.pathname,
+        bytes: raw.byteLength,
+        authorization: req.headers.authorization ?? "",
+      });
+      res.writeHead(204);
+      res.end();
+      return;
+    }
+
+    writeJson(res, 404, { error: "not found" });
+  });
+  await new Promise((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(port, "127.0.0.1", resolve);
+  });
+  return {
+    url: `http://127.0.0.1:${port}`,
+    requests,
+    close: () => new Promise((resolve) => server.close(resolve)),
+  };
 }
 
 function run(cmd, args) {
@@ -141,6 +227,16 @@ async function waitFor(cdp, expression, label, timeoutMs = 12000) {
   throw new Error(`Timed out waiting for ${label}`);
 }
 
+async function waitForValue(fn, label, timeoutMs = 12000) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const value = fn();
+    if (value) return value;
+    await sleep(200);
+  }
+  throw new Error(`Timed out waiting for ${label}`);
+}
+
 async function click(cdp, selectorExpression, label) {
   return waitFor(
     cdp,
@@ -175,13 +271,237 @@ function assertReadableTheme(state) {
   }
 }
 
-async function capture(cdp) {
+async function capture(cdp, targetPath = latestScreenshot) {
   await mkdir(captureDir, { recursive: true });
   const shot = await cdp.send("Page.captureScreenshot", {
     format: "png",
     captureBeyondViewport: false,
   });
-  await writeFile(latestScreenshot, Buffer.from(shot.data, "base64"));
+  await writeFile(targetPath, Buffer.from(shot.data, "base64"));
+}
+
+async function typeRoomMessage(cdp, text) {
+  const inserted = await evaluate(cdp, `(() => {
+    const editor = document.querySelector(".milkdown-chat-input [contenteditable='true']");
+    if (!editor) return false;
+    editor.focus();
+    document.execCommand("selectAll", false, null);
+    document.execCommand("insertText", false, ${JSON.stringify(text)});
+    editor.dispatchEvent(new InputEvent("input", {
+      bubbles: true,
+      inputType: "insertText",
+      data: ${JSON.stringify(text)}
+    }));
+    return (editor.innerText || editor.textContent || "").includes(${JSON.stringify(text)});
+  })()`);
+  if (!inserted) throw new Error("Could not type into room chat editor");
+}
+
+async function sendSyntheticLoroUpdate(apiPort, projectId) {
+  const { LoroDoc } = await import("loro-crdt");
+  const ws = new WebSocket(`ws://127.0.0.1:${apiPort}/sync/${encodeURIComponent(projectId)}`);
+  await new Promise((resolve, reject) => {
+    ws.addEventListener("open", resolve, { once: true });
+    ws.addEventListener("error", reject, { once: true });
+  });
+  const doc = new LoroDoc();
+  doc.getMap("nodes").set("desktop-e2e-node", {
+    type: "text",
+    position: { x: 120, y: 120 },
+    data: { label: "Desktop E2E Loro" },
+  });
+  ws.send(doc.export({ mode: "snapshot" }));
+  await sleep(250);
+  ws.close();
+}
+
+async function exerciseLocalAcpSessionHistory(cdp) {
+  const state = await evaluate(cdp, `(async () => {
+    const runtime = window.__CLASH_RUNTIME_CONFIG__;
+    const runtimes = await (await fetch(runtime.apiBaseUrl + "/api/v1/runtimes")).json();
+    const createdRes = await fetch(runtime.apiBaseUrl + "/api/v1/runtimes/desktop-local/sessions", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        crew_id: "director",
+        project_id: "desktop-smoke-agent"
+      })
+    });
+    const created = await createdRes.json();
+    if (!createdRes.ok) {
+      return { ok: false, stage: "create", status: createdRes.status, runtimes, created };
+    }
+
+    const turnId = "desktop-smoke-turn";
+    const promptText = "hello desktop local agent";
+    const events = [];
+    await new Promise((resolve, reject) => {
+      const ws = new WebSocket(runtime.wsBaseUrl + "/api/v1/local-sessions/" + encodeURIComponent(created.session_id) + "/_stream");
+      const timeout = setTimeout(() => {
+        ws.close();
+        reject(new Error("Timed out waiting for mock ACP completion"));
+      }, 10000);
+      ws.addEventListener("open", () => {
+        ws.send(JSON.stringify({ type: "prompt", turn_id: turnId, text: promptText }));
+      });
+      ws.addEventListener("message", (event) => {
+        const msg = JSON.parse(String(event.data));
+        events.push(msg);
+        if (msg.type === "session.complete" && msg.turn_id === turnId) {
+          clearTimeout(timeout);
+          ws.close();
+          resolve(true);
+        }
+      });
+      ws.addEventListener("error", () => {
+        clearTimeout(timeout);
+        reject(new Error("Mock ACP websocket failed"));
+      });
+    });
+
+    const historyRes = await fetch(runtime.apiBaseUrl + "/api/v1/local-sessions/" + encodeURIComponent(created.session_id) + "/messages");
+    const history = await historyRes.json();
+    return {
+      ok: historyRes.ok,
+      stage: "history",
+      status: historyRes.status,
+      runtimes,
+      created,
+      events,
+      history
+    };
+  })()`);
+
+  const agents = state.runtimes?.runtimes?.flatMap((runtime) => runtime.agents ?? []) ?? [];
+  const userMessage = state.history?.messages?.find((message) =>
+    message.sender_kind === "user" &&
+    message.events?.some((event) => event.type === "text" && event.text === "hello desktop local agent")
+  );
+  const crewMessage = state.history?.messages?.find((message) =>
+    message.sender_kind === "crew" &&
+    message.events?.some((event) => event.type === "text" && event.text === "Mock ACP reply: hello desktop local agent")
+  );
+  if (!state.ok || !agents.some((agent) => agent.id === "mock-acp") || !userMessage || !crewMessage) {
+    throw new Error(`Local ACP session history smoke failed: ${JSON.stringify(state)}`);
+  }
+  console.log("[desktop-smoke] local acp history", JSON.stringify({
+    session_id: state.created.session_id,
+    events: state.events.map((event) => event.type),
+    messages: state.history.messages.map((message) => ({
+      sender_kind: message.sender_kind,
+      sender_id: message.sender_id,
+      turn_id: message.turn_id,
+    })),
+  }));
+}
+
+async function exerciseAgentCanvasUi(cdp) {
+  await click(
+    cdp,
+    `document.querySelector("button[aria-label='Invite crew member']")`,
+    "Invite crew member",
+  );
+  await click(
+    cdp,
+    `document.querySelector("button[aria-label='Invite Director']")`,
+    "Invite Director",
+  );
+  await waitFor(
+    cdp,
+    `!!document.querySelector("button[role='tab'][title='Director']")`,
+    "Director crew tab",
+    10000,
+  );
+  await waitFor(
+    cdp,
+    `(() => {
+      const dot = document.querySelector("button[role='tab'][title='Director'] [role='status']");
+      return !!dot && (dot.getAttribute("title") || "").includes("Linked");
+    })()`,
+    "Director local ACP session linked",
+    15000,
+  );
+  await click(
+    cdp,
+    `document.querySelector("button[role='tab'][title='Room']")`,
+    "Room tab",
+  );
+
+  const prompt = "@director choreograph the canvas with an agent stage";
+  await typeRoomMessage(cdp, prompt);
+  await click(
+    cdp,
+    `([...document.querySelectorAll("button")].find((button) => {
+      const label = (button.getAttribute("aria-label") || "").toLowerCase();
+      const rect = button.getBoundingClientRect();
+      return label.includes("send") && !button.disabled && rect.width > 0 && rect.height > 0;
+    }))`,
+    "Send agent canvas prompt",
+  );
+
+  try {
+    await waitFor(
+      cdp,
+      `(() => {
+        const nodes = [...document.querySelectorAll(".react-flow__node")].map((node) => ({
+          id: node.getAttribute("data-id") || "",
+          text: (node.querySelector("input")?.value || "") + " " + (node.innerText || node.textContent || ""),
+        }));
+        return nodes.some((node) => node.id.includes("mock-agent-stage-")) &&
+          nodes.some((node) => node.text.includes("Agent Brief")) &&
+          nodes.some((node) => node.text.includes("Agent Image Pass"));
+      })()`,
+      "agent-created canvas nodes",
+      20000,
+    );
+  } catch (error) {
+    const diagnostics = await evaluate(cdp, `(() => ({
+      bodyText: document.body.innerText.slice(0, 2000),
+      tabs: [...document.querySelectorAll("button[role='tab']")].map((tab) => ({
+        title: tab.getAttribute("title"),
+        selected: tab.getAttribute("aria-selected"),
+        text: tab.textContent,
+        status: tab.querySelector("[role='status']")?.getAttribute("title") || null,
+      })),
+      nodes: [...document.querySelectorAll(".react-flow__node")].map((node) => ({
+        id: node.getAttribute("data-id"),
+        text: ((node.querySelector("input")?.value || "") + " " + (node.innerText || node.textContent || "")).trim().slice(0, 240),
+        className: node.className,
+      })),
+      localStorage: Object.keys(localStorage)
+        .filter((key) => key.toLowerCase().includes("crew") || key.toLowerCase().includes("group"))
+        .map((key) => ({ key, value: localStorage.getItem(key)?.slice(0, 1000) })),
+    }))()`);
+    console.error("[desktop-smoke] agent canvas diagnostics", JSON.stringify(diagnostics, null, 2));
+    throw error;
+  }
+
+  const state = await evaluate(cdp, `(() => {
+    const nodes = [...document.querySelectorAll(".react-flow__node")].map((node) => ({
+      id: node.getAttribute("data-id"),
+      text: ((node.querySelector("input")?.value || "") + " " + (node.innerText || node.textContent || "")).trim().slice(0, 180),
+      className: node.className,
+      rect: (() => {
+        const r = node.getBoundingClientRect();
+        return { x: Math.round(r.x), y: Math.round(r.y), width: Math.round(r.width), height: Math.round(r.height) };
+      })()
+    }));
+    return {
+      text: document.body.innerText.slice(0, 800),
+      nodes: nodes.filter((node) =>
+        (node.id || "").includes("mock-agent-stage-") ||
+        node.text.includes("Agent Stage") ||
+        node.text.includes("Agent Brief") ||
+        node.text.includes("Agent Image Pass")
+      )
+    };
+  })()`);
+  if (state.nodes.length < 3) {
+    throw new Error(`Agent canvas UI smoke found too few nodes: ${JSON.stringify(state)}`);
+  }
+  await capture(cdp, agentCanvasScreenshot);
+  console.log("[desktop-smoke] agent canvas ui", JSON.stringify(state));
+  console.log(`[desktop-smoke] agent canvas screenshot ${agentCanvasScreenshot}`);
 }
 
 async function stopProcess(child) {
@@ -203,6 +523,8 @@ async function main() {
 
   const cdpPort = await findFreePort(49355);
   const apiPort = await findFreePort(49356);
+  await rm(dataDir, { recursive: true, force: true });
+  const mockCloud = await startMockCloudRoomServer();
   const electronBin = path.join(repoRoot, "node_modules", ".bin", "electron");
   const launchCommand = appBinary ?? electronBin;
   const launchArgs = usePackagedApp
@@ -217,6 +539,7 @@ async function main() {
       ...(usePackagedApp ? { CLASH_DESKTOP_REMOTE_DEBUGGING_PORT: String(cdpPort) } : {}),
       CLASH_LOCAL_DATA_DIR: dataDir,
       CLASH_LOCAL_API_PORT: String(apiPort),
+      CLASH_LOCAL_ACP_MOCK: "1",
       CLASH_DESKTOP_CAPTURE_DIR: captureDir,
     },
     stdio: ["ignore", "pipe", "pipe"],
@@ -252,6 +575,25 @@ async function main() {
     assertReadableTheme(homeState);
     console.log("[desktop-smoke] home", JSON.stringify(homeState));
 
+    const syncState = await evaluate(cdp, `(async () => {
+      const runtime = window.__CLASH_RUNTIME_CONFIG__;
+      const res = await fetch(runtime.apiBaseUrl + "/api/v1/local/sync", {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          mode: "cloud-sync",
+          remote_loro_url: ${JSON.stringify(mockCloud.url)},
+          remote_loro_token: "clsh_smoke_token"
+        })
+      });
+      return await res.json();
+    })()`);
+    if (syncState.mode !== "cloud-sync") {
+      throw new Error(`Failed to enable cloud sync: ${JSON.stringify(syncState)}`);
+    }
+    console.log("[desktop-smoke] sync", JSON.stringify(syncState));
+    await exerciseLocalAcpSessionHistory(cdp);
+
     await click(cdp, clickableByText("Projects"), "Projects");
     await waitFor(cdp, `location.pathname === "/projects"`, "projects page");
 
@@ -268,6 +610,70 @@ async function main() {
       hasEditorHeader: !!document.querySelector("#editor-header")
     })`);
     console.log("[desktop-smoke] project", JSON.stringify(projectState));
+
+    await waitFor(
+      cdp,
+      `(() => {
+        const indicator = document.querySelector('[aria-label="Cloud room sync is up to date"]');
+        return indicator && indicator.textContent.trim() === "Synced";
+      })()`,
+      "cloud room sync status",
+      15000,
+    );
+    const projectId = await evaluate(cdp, `location.pathname.split("/").filter(Boolean).at(-1)`);
+    const loroSnapshot = await waitForValue(
+      () => mockCloud.requests.find((req) =>
+        req.kind === "loro" &&
+        req.method === "GET" &&
+        req.path.includes(encodeURIComponent(projectId))
+      ),
+      "mock cloud Loro snapshot fetch",
+      15000,
+    );
+    console.log("[desktop-smoke] loro cloud snapshot", JSON.stringify(loroSnapshot));
+    const cloudGet = await waitForValue(
+      () => mockCloud.requests.find((req) => req.kind === "room" && req.method === "GET" && req.projectId === projectId),
+      "mock cloud room history fetch",
+      15000,
+    );
+    console.log("[desktop-smoke] room cloud get", JSON.stringify(cloudGet));
+
+    const roomText = "hello smoke cloud room";
+    await typeRoomMessage(cdp, roomText);
+    await click(
+      cdp,
+      `([...document.querySelectorAll("button")].find((button) => {
+        const label = (button.getAttribute("aria-label") || "").toLowerCase();
+        const rect = button.getBoundingClientRect();
+        return label.includes("send") && !button.disabled && rect.width > 0 && rect.height > 0;
+      }))`,
+      "Send room message",
+    );
+    await waitFor(cdp, `document.body.innerText.includes(${JSON.stringify(roomText)})`, "local room echo", 10000);
+    const cloudPost = await waitForValue(
+      () => mockCloud.requests.find((req) =>
+        req.kind === "room" &&
+        req.method === "POST" &&
+        req.projectId === projectId &&
+        req.body?.text === roomText
+      ),
+      "mock cloud room message post",
+      15000,
+    );
+    console.log("[desktop-smoke] room cloud post", JSON.stringify(cloudPost));
+    await exerciseAgentCanvasUi(cdp);
+    await sendSyntheticLoroUpdate(apiPort, projectId);
+    const loroUpdate = await waitForValue(
+      () => mockCloud.requests.find((req) =>
+        req.kind === "loro" &&
+        req.method === "POST" &&
+        req.path.includes(encodeURIComponent(projectId)) &&
+        req.bytes > 0
+      ),
+      "mock cloud Loro update append",
+      15000,
+    );
+    console.log("[desktop-smoke] loro cloud update", JSON.stringify(loroUpdate));
 
     await click(
       cdp,
@@ -307,6 +713,7 @@ async function main() {
   } finally {
     if (cdp) cdp.close();
     await stopProcess(child);
+    await mockCloud.close();
   }
 }
 

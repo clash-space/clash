@@ -116,6 +116,117 @@ describe("Hono routes", () => {
     });
   });
 
+  // ─── Loro Remote Persistence ───
+
+  describe("Loro remote persistence", () => {
+    it("authenticates and forwards snapshot reads to the project room", async () => {
+      const idFromName = vi.fn().mockReturnValue("room-id");
+      const roomFetch = vi.fn().mockResolvedValue(
+        new Response(new Uint8Array([7, 8, 9]), {
+          headers: { "content-type": "application/octet-stream" },
+        }),
+      );
+      env = makeEnv({
+        ENVIRONMENT: "development",
+        ROOM: {
+          idFromName,
+          get: vi.fn().mockReturnValue({ fetch: roomFetch }),
+        } as any,
+      });
+
+      const res = await app.request("/loro/project%2Fone/snapshot", {}, env);
+
+      expect(res.status).toBe(200);
+      expect(Array.from(new Uint8Array(await res.arrayBuffer()))).toEqual([7, 8, 9]);
+      expect(idFromName).toHaveBeenCalledWith("project/one");
+      const forwarded = roomFetch.mock.calls[0]?.[0] as Request;
+      expect(forwarded.method).toBe("GET");
+      expect(forwarded.headers.get("x-internal-loro")).toBe("true");
+      expect(forwarded.headers.get("x-loro-project-id")).toBe("project/one");
+      expect(new URL(forwarded.url).pathname).toBe("/loro/project%2Fone/snapshot");
+    });
+
+    it("authenticates and forwards exact update bytes to the project room", async () => {
+      const idFromName = vi.fn().mockReturnValue("room-id");
+      const roomFetch = vi.fn().mockResolvedValue(new Response(null, { status: 204 }));
+      env = makeEnv({
+        ENVIRONMENT: "development",
+        ROOM: {
+          idFromName,
+          get: vi.fn().mockReturnValue({ fetch: roomFetch }),
+        } as any,
+      });
+
+      const arena = new Uint8Array([0, 4, 5, 6, 0]);
+      const update = arena.subarray(1, 4);
+      const res = await app.request("/loro/project%2Fone/updates", {
+        method: "POST",
+        headers: { "content-type": "application/octet-stream" },
+        body: update.slice().buffer,
+      }, env);
+
+      expect(res.status).toBe(204);
+      expect(idFromName).toHaveBeenCalledWith("project/one");
+      const forwarded = roomFetch.mock.calls[0]?.[0] as Request;
+      expect(forwarded.method).toBe("POST");
+      expect(forwarded.headers.get("x-internal-loro")).toBe("true");
+      expect(forwarded.headers.get("x-loro-project-id")).toBe("project/one");
+      expect(Array.from(new Uint8Array(await forwarded.arrayBuffer()))).toEqual([4, 5, 6]);
+    });
+  });
+
+  describe("Project room messages", () => {
+    it("accepts a client-provided room message id for local daemon mirroring", async () => {
+      let insertedArgs: unknown[] = [];
+      const prepare = vi.fn((sql: string) => ({
+        bind: vi.fn((...args: unknown[]) => ({
+          first: vi.fn(async () => {
+            if (sql.includes("SELECT 1 FROM project")) return { ok: 1 };
+            return null;
+          }),
+          run: vi.fn(async () => {
+            if (sql.includes("room_message") && sql.includes("INSERT")) insertedArgs = args;
+            return {};
+          }),
+          all: vi.fn(async () => ({ results: [] })),
+        })),
+      }));
+      const broadcastRoomMessage = vi.fn(async () => undefined);
+      env = makeEnv({
+        DB: { prepare } as any,
+        ROOM: {
+          idFromName: vi.fn().mockReturnValue("room-id"),
+          get: vi.fn().mockReturnValue({ broadcastRoomMessage }),
+        } as any,
+      });
+
+      const res = await app.request("/api/v1/projects/project-1/room/messages", {
+        method: "POST",
+        headers: { ...USER_HEADERS, "content-type": "application/json" },
+        body: JSON.stringify({
+          id: "local-message-1",
+          text: "mirrored from desktop",
+          mentions: [],
+        }),
+      }, env);
+
+      expect(res.status).toBe(201);
+      expect(await res.json()).toMatchObject({
+        id: "local-message-1",
+        project_id: "project-1",
+        sender_kind: "user",
+        sender_id: "user-1",
+        sender_user_id: "user-1",
+        text: "mirrored from desktop",
+      });
+      expect(insertedArgs[0]).toBe("local-message-1");
+      expect(broadcastRoomMessage).toHaveBeenCalledWith(expect.objectContaining({
+        id: "local-message-1",
+        text: "mirrored from desktop",
+      }));
+    });
+  });
+
   // ─── Assets ───
 
   describe("GET /assets/*", () => {

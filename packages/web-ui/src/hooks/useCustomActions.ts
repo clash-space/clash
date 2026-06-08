@@ -1,7 +1,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import type { LoroDoc } from 'loro-crdt';
-import type { CustomActionDefinition } from '@clash/shared-types';
+import { CustomActionDefinitionSchema, type CustomActionDefinition } from '@clash/shared-types';
 
 /**
  * React hook that reads registered custom action definitions from Loro doc.
@@ -21,32 +21,18 @@ export function useCustomActions(doc: LoroDoc | null): CustomActionDefinition[] 
       const result: CustomActionDefinition[] = [];
       for (const [, raw] of actionsMap.entries()) {
         const entry = raw as Record<string, any>;
-        if (entry?.id && entry?.name) {
-          result.push({
-            id: entry.id,
-            name: entry.name,
-            description: entry.description || undefined,
-            parameters: Array.isArray(entry.parameters)
-              ? entry.parameters
-              : typeof entry.parameters === 'string'
-                ? JSON.parse(entry.parameters)
-                : [],
-            outputType: entry.outputType || 'image',
-            icon: entry.icon || undefined,
-            color: entry.color || undefined,
-            runtime: entry.runtime === 'worker' ? 'worker' : 'local',
-            promptModalities: Array.isArray(entry.promptModalities) && entry.promptModalities.length > 0
-              ? entry.promptModalities
-              : ['text'],
-            // Option C: server stamps the registering runtime id onto each local
-            // action. UI uses this + the runtime list to grey out the picker
-            // chip when the owning runtime is offline. `undefined` means
-            // "legacy data, no runtime link" — treated as offline by the gate.
-            registeredByRuntime: typeof entry.registeredByRuntime === 'string'
-              ? entry.registeredByRuntime
-              : undefined,
-          });
-        }
+        if (!entry?.id || !entry?.name) continue;
+        const parsed = CustomActionDefinitionSchema.safeParse({
+          ...entry,
+          parameters: Array.isArray(entry.parameters)
+            ? entry.parameters
+            : typeof entry.parameters === 'string'
+              ? JSON.parse(entry.parameters)
+              : [],
+          runtime: entry.runtime === 'worker' ? 'worker' : 'local',
+        });
+        if (!parsed.success) continue;
+        result.push(parsed.data);
       }
       setActions(result);
     } catch {

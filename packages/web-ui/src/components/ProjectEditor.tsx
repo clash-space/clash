@@ -42,6 +42,8 @@ import type { Project } from '@clash/web-ui/lib/types';
 // Old single-agent panel kept in the repo at './ChatbotCopilot' — reimport
 // to revert. New chat UX is GroupChatPanel.
 import { GroupChatPanel } from './GroupChatPanel';
+import type { GroupChatSessionEvent } from '@clash/web-ui/hooks/useGroupChat';
+import { parseAgentCanvasPatch } from '@clash/web-ui/lib/agentCanvasPatch';
 import type { RoomMessageEvent } from '@clash/shared-types';
 import { useSessionHistory } from '@clash/web-ui/hooks/useSessionHistory';
 import { updateProjectName } from '@clash/web-ui/lib/clientActions';
@@ -92,7 +94,7 @@ import { PresenceAwarenessProvider } from './PresenceAwarenessContext';
 import { usePresenceAwareness } from '@clash/web-ui/hooks/usePresenceAwareness';
 import type { AwarenessBroadcastMessage } from '@clash/shared-types';
 import { CascadeRunnerMount } from '@clash/web-ui/hooks/useCascadeRunner';
-import { MODEL_CARDS } from '@clash/shared-types';
+import { CustomActionDefinitionSchema, MODEL_CARDS } from '@clash/shared-types';
 import { useCustomActions } from '@clash/web-ui/hooks/useCustomActions';
 import { applyLayoutPatchesToLoro, collectLayoutNodePatches } from '@clash/web-ui/lib/loroNodeSync';
 import { calculateScaledDimensions } from './nodes/assetNodeSizing';
@@ -733,16 +735,58 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
 	    // Normalize z-index so that child nodes are always clickable above their groups:
 	    // - groups: zIndex = depth
 	    // - non-groups: zIndex = 1000 + depth
-	    useEffect(() => {
-	        const next = applyAutoZIndex(nodes);
-	        if (next === nodes) return;
+		    useEffect(() => {
+		        const next = applyAutoZIndex(nodes);
+		        if (next === nodes) return;
 
-	        setNodes(next);
-	        applyLayoutPatchesToLoro(loroSync, collectLayoutNodePatches(nodes, next));
-	    }, [nodes, setNodes, loroSync, applyAutoZIndex]);
+		        setNodes(next);
+		        applyLayoutPatchesToLoro(loroSync, collectLayoutNodePatches(nodes, next));
+		    }, [nodes, setNodes, loroSync, applyAutoZIndex]);
 
-	    // Custom onNodesChange to handle recursive resizing
-	    const handleNodesChange = useCallback((changes: NodeChange[]) => {
+		    const handleAgentSessionEvent = useCallback((sessionEvent: GroupChatSessionEvent) => {
+		        const operations = parseAgentCanvasPatch(sessionEvent.event);
+		        if (operations.length === 0) return;
+
+		        setNodes((currentNodes) => {
+		            let nextNodes = currentNodes;
+		            for (const operation of operations) {
+		                if (operation.op !== 'add_node') continue;
+		                if (nextNodes.some((node) => node.id === operation.node.id)) continue;
+
+		                const width = operation.node.width;
+		                const height = operation.node.height;
+		                const style: Record<string, unknown> = { ...(operation.node.style ?? {}) };
+		                if (width !== undefined) style.width = width;
+		                if (height !== undefined) style.height = height;
+
+		                const newNode: Node = {
+		                    id: operation.node.id,
+		                    type: operation.node.type,
+		                    data: {
+		                        label: `Agent ${operation.node.type}`,
+		                        ...(operation.node.data ?? {}),
+		                        actorType: 'agent',
+		                        actorAgentId: sessionEvent.crewId,
+		                        actorUserId: project.ownerId,
+		                    },
+		                    position: operation.node.position ?? { x: 100, y: 100 },
+		                    ...(operation.node.parentId ? { parentId: operation.node.parentId } : {}),
+		                    ...(width !== undefined ? { width } : {}),
+		                    ...(height !== undefined ? { height } : {}),
+		                    style,
+		                    extent: undefined,
+		                    className: operation.node.type === 'group' ? 'group-node' : '',
+		                };
+
+		                nextNodes = applyAutoZIndex([...nextNodes, newNode]);
+		                loroSync.addNode(newNode.id, newNode);
+		            }
+		            return nextNodes;
+		        });
+		    }, [applyAutoZIndex, loroSync, project.ownerId, setNodes]);
+
+		    // Custom onNodesChange to handle recursive resizing
+		    const handleNodesChange = useCallback((changes: NodeChange[]) => {
 	        setNodes((currentNodes) => {
 	            let updatedNodes = applyNodeChanges(changes as NodeChange<AppNode>[], currentNodes);
 
@@ -1309,21 +1353,19 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
         // Global actions first (from D1)
         for (const ga of globalActions) {
             try {
-                const manifest = JSON.parse(ga.manifest);
-                merged.set(ga.actionId, {
+                const parsed = CustomActionDefinitionSchema.safeParse({
+                    ...JSON.parse(ga.manifest),
                     id: ga.actionId,
                     name: ga.name,
                     description: ga.description || undefined,
-                    parameters: manifest.parameters || [],
-                    outputType: manifest.outputType || 'image',
-                    icon: ga.icon || undefined,
-                    color: ga.color || undefined,
                     runtime: (ga.runtime as 'local' | 'worker') || 'worker',
                     version: ga.version || undefined,
                     author: ga.author || undefined,
                     workerUrl: ga.workerUrl || undefined,
-                    promptModalities: manifest.promptModalities || ['text'],
+                    icon: ga.icon || undefined,
+                    color: ga.color || undefined,
                 });
+                if (parsed.success) merged.set(ga.actionId, parsed.data);
             } catch { /* skip invalid manifest */ }
         }
         // Loro actions override (local registrations take precedence)
@@ -2576,6 +2618,7 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
                                         isCollapsed={isSidebarCollapsed}
                                         onCollapseChange={setIsSidebarCollapsed}
                                         registerRoomSink={registerRoomSink}
+                                        onSessionEvent={handleAgentSessionEvent}
                                     />
                                 </div>
                             </div>

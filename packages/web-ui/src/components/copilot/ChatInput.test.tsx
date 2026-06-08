@@ -38,6 +38,24 @@ describe("ChatInput", () => {
     expect(container.querySelector(".clash-input-surface")).toBeNull();
   });
 
+  it("keeps the default composer caret inset from the rounded edge", async () => {
+    const { container } = render(
+      <Suspense fallback={<div>Loading</div>}>
+        <ChatInput
+          input=""
+          onInputChange={() => undefined}
+          onSubmit={() => undefined}
+        />
+      </Suspense>,
+    );
+
+    await screen.findByTestId("milkdown-editor");
+
+    const editorArea = container.querySelector(".clash-chat-input-editor");
+    expect(editorArea?.className).toContain("clash-chat-input-editor--default");
+    expect(globalCss).toMatch(/\.clash-chat-input-editor--default \.milkdown-editor-wrapper\s*\{[\s\S]*padding:\s*16px 18px 6px !important;/);
+  });
+
   it("left-aligns the hero editor instead of centering the caret", async () => {
     const { container } = render(
       <Suspense fallback={<div>Loading</div>}>
@@ -56,7 +74,8 @@ describe("ChatInput", () => {
     expect(editorArea).toBeTruthy();
     expect(editorArea?.className).toContain("text-left");
     expect(editorArea?.className).toContain("w-full");
+    expect(editorArea?.className).toContain("clash-chat-input-editor--hero");
     expect(globalCss).toMatch(/\.milkdown-chat-input \.ProseMirror\s*\{[\s\S]*text-align:\s*left;/);
-    expect(globalCss).toMatch(/\.clash-chat-input-editor \.milkdown-editor-wrapper\s*\{[\s\S]*padding-left:\s*0 !important;/);
+    expect(globalCss).toMatch(/\.clash-chat-input-editor--hero \.milkdown-editor-wrapper\s*\{[\s\S]*padding-left:\s*0 !important;/);
   });
 });

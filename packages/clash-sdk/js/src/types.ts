@@ -8,6 +8,36 @@
 
 export type Modality = 'image' | 'video' | 'audio' | 'text';
 
+export type ActionProvider =
+  | 'fal'
+  | 'replicate'
+  | 'kie'
+  | 'official'
+  | 'openai'
+  | 'google'
+  | 'anthropic'
+  | 'elevenlabs';
+
+export interface ActionModel {
+  /** Provider-facing model id, e.g. `fal-ai/flux-pro` or `gpt-image-1`. */
+  id: string;
+  /** Common MaaS / official provider preset. */
+  provider: ActionProvider | string;
+  name?: string;
+  /** Override the provider preset key name. */
+  secretId?: string;
+  baseUrl?: string;
+  endpoint?: string;
+  [key: string]: unknown;
+}
+
+export interface ActionSecret {
+  id: string;
+  label: string;
+  description?: string;
+  required?: boolean;
+}
+
 export interface ActionContext {
   taskId: string;
   nodeId: string;
@@ -15,6 +45,11 @@ export interface ActionContext {
   actionId: string;
   prompt: string;
   params: Record<string, string | number | boolean>;
+  model?: ActionModel;
+  /** Decrypted variables for worker-runtime actions. Local-runtime tasks
+   *  receive an empty object; local handlers should read provider keys
+   *  from their process env. */
+  secrets: Record<string, string>;
   outputType: Modality;
   /** R2 storage keys for assets wired upstream of the action-badge by
    *  the user (canvas edges → executor partitions by modality). Empty
@@ -65,6 +100,13 @@ export interface ActionDefinition {
   description?: string;
   outputType: Modality;
   parameters?: Array<Record<string, unknown>>;
+  /** Optional MaaS / official model binding. The platform uses this to
+   *  surface the right API key in Settings and to pass model metadata
+   *  into worker/local task contexts. */
+  model?: ActionModel;
+  /** Extra required variables. Provider model bindings auto-add the
+   *  provider key on the server, so most actions do not need this. */
+  secrets?: ActionSecret[];
   icon?: string;
   color?: string;
   /** Modalities the action accepts inline in the prompt editor — drives

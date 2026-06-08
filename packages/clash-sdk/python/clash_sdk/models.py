@@ -30,6 +30,11 @@ class ActionContext:
     action_id: str
     prompt: str
     params: dict[str, Any] = field(default_factory=dict)
+    model: dict[str, Any] | None = None
+    # Decrypted variables for worker-runtime actions. Local-runtime tasks
+    # currently receive an empty dict; local handlers should read provider
+    # keys from their process environment.
+    secrets: dict[str, str] = field(default_factory=dict)
     output_type: str = "image"
     # Reference asset R2 keys forwarded from NodeProcessor when the
     # action-badge had incoming asset edges. Empty if none attached.

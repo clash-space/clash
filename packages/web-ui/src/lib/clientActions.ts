@@ -72,6 +72,15 @@ export interface RegistryItem {
   repository?: string;
   runtime?: string;
   outputType?: string;
+  model?: {
+    id: string;
+    provider: string;
+    name?: string;
+    secretId?: string;
+    baseUrl?: string;
+    endpoint?: string;
+    [key: string]: unknown;
+  };
   workerUrl?: string;
   version?: string;
   author?: string;
@@ -232,6 +241,7 @@ export async function marketplaceInstallAction(item: RegistryItem): Promise<void
     runtime: item.runtime || "worker",
     outputType: item.outputType || "image",
     workerUrl: item.workerUrl,
+    model: item.model,
     version: item.version,
     author: item.author,
     repository: item.repository,

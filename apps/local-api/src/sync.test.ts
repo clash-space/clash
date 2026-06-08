@@ -283,6 +283,32 @@ describe("LocalLoroRoom", () => {
     expect(Array.from(appendUpdate.mock.calls[0][1])).toEqual(Array.from(update));
   });
 
+  it("resolves remote persistence dynamically for later mirrored updates", async () => {
+    const appendUpdate = vi.fn(async (_projectId: string, _update: Uint8Array) => {});
+    let remotePersistence: { appendUpdate(projectId: string, update: Uint8Array): Promise<void> } | undefined;
+    const room = await LocalLoroRoom.open({
+      dataDir,
+      projectId: "project/dynamic-remote",
+      remotePersistence: () => remotePersistence,
+      workflowProcessor: null,
+    });
+    const peer = room.addPeer(() => {});
+
+    const firstDoc = new LoroDoc();
+    firstDoc.getMap("nodes").set("node-local-only", { type: "text", data: { label: "Local only" } });
+    await room.receive(peer, firstDoc.export({ mode: "snapshot" }));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(appendUpdate).not.toHaveBeenCalled();
+
+    remotePersistence = { appendUpdate };
+    const secondDoc = new LoroDoc();
+    secondDoc.getMap("nodes").set("node-cloud-sync", { type: "text", data: { label: "Cloud sync" } });
+    const secondUpdate = secondDoc.export({ mode: "snapshot" });
+    await room.receive(peer, secondUpdate);
+    await vi.waitFor(() => expect(appendUpdate).toHaveBeenCalledTimes(1));
+    expect(appendUpdate).toHaveBeenCalledWith("project/dynamic-remote", expect.any(Uint8Array));
+  });
+
   it("keeps local persistence and peer broadcast when remote persistence fails", async () => {
     const appendUpdate = vi.fn(async (_projectId: string, _update: Uint8Array) => {
       throw new Error("remote unavailable");

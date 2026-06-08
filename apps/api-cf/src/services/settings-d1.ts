@@ -1,5 +1,6 @@
 import { and, desc, eq } from "drizzle-orm";
 import type { D1Database } from "@cloudflare/workers-types";
+import { CustomActionDefinitionSchema } from "@clash/shared-types";
 import {
   apiTokens,
   userVariables,
@@ -194,31 +195,36 @@ export async function installAction(
   userId: string,
   manifest: Record<string, any>,
 ) {
+  const parsed = CustomActionDefinitionSchema.safeParse(manifest);
+  if (!parsed.success) {
+    throw new Response(`Invalid action manifest: ${parsed.error.message}`, { status: 400 });
+  }
+  const normalizedManifest = parsed.data;
   const db = getDb(env.DB);
   await db
     .delete(installedActions)
     .where(
       and(
         eq(installedActions.userId, userId),
-        eq(installedActions.actionId, manifest.id),
+        eq(installedActions.actionId, normalizedManifest.id),
       ),
     );
   const [row] = await db
     .insert(installedActions)
     .values({
       userId,
-      actionId: manifest.id,
-      name: manifest.name,
-      description: manifest.description || null,
-      manifest: JSON.stringify(manifest),
-      runtime: manifest.runtime || "worker",
-      version: manifest.version || null,
-      author: manifest.author || null,
-      repository: manifest.repository || null,
-      workerUrl: manifest.workerUrl || null,
-      icon: manifest.icon || null,
-      color: manifest.color || null,
-      tags: manifest.tags ? JSON.stringify(manifest.tags) : null,
+      actionId: normalizedManifest.id,
+      name: normalizedManifest.name,
+      description: normalizedManifest.description || null,
+      manifest: JSON.stringify(normalizedManifest),
+      runtime: normalizedManifest.runtime || "worker",
+      version: normalizedManifest.version || null,
+      author: normalizedManifest.author || null,
+      repository: normalizedManifest.repository || null,
+      workerUrl: normalizedManifest.workerUrl || null,
+      icon: normalizedManifest.icon || null,
+      color: normalizedManifest.color || null,
+      tags: normalizedManifest.tags ? JSON.stringify(normalizedManifest.tags) : null,
     })
     .returning();
   return row;

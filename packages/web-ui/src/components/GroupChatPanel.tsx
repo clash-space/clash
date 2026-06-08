@@ -44,8 +44,8 @@ import { useBillingBalance } from '@clash/web-ui/hooks/useBillingBalance';
 import { SettingsDialog } from './SettingsDialog';
 import { ChatInput, type UploadedAttachment } from './copilot/ChatInput';
 import type { MentionableNode } from './MilkdownEditor';
-import { useGroupChat } from '@clash/web-ui/hooks/useGroupChat';
-import { useProjectRoom } from '@clash/web-ui/hooks/useProjectRoom';
+import { useGroupChat, type GroupChatSessionEvent } from '@clash/web-ui/hooks/useGroupChat';
+import { useProjectRoom, type RoomSyncMeta } from '@clash/web-ui/hooks/useProjectRoom';
 import { useClaimedCrew } from '@clash/web-ui/hooks/useClaimedCrew';
 import { useMentionAutocomplete } from '@clash/web-ui/hooks/useMentionAutocomplete';
 import PresenceBar from '@clash/web-ui/components/PresenceBar';
@@ -73,6 +73,44 @@ export const CHAT_PANEL_RAIL_WIDTH = 56; // 48px column + 8px gap
 const PANEL_MIN_WIDTH = 320;
 const PANEL_MAX_WIDTH = 720;
 
+function roomSyncIndicator(sync: RoomSyncMeta | null | undefined): {
+  label: string;
+  title: string;
+  dotClass: string;
+  textClass: string;
+} {
+  if (sync?.remote_room.status === 'failed') {
+    return {
+      label: 'Sync issue',
+      title: 'Cloud room sync failed',
+      dotClass: 'bg-red-500',
+      textClass: 'text-red-700 dark:text-red-300',
+    };
+  }
+  if (!sync?.remote_room.enabled) {
+    return {
+      label: 'Local',
+      title: 'Room messages are local to this desktop',
+      dotClass: 'bg-stone-300 dark:bg-stone-500',
+      textClass: 'text-stone-500 dark:text-stone-400',
+    };
+  }
+  if (sync.remote_room.status === 'mirrored' || sync.remote_room.status === 'imported') {
+    return {
+      label: 'Synced',
+      title: 'Cloud room sync is up to date',
+      dotClass: 'bg-emerald-500 dark:bg-emerald-400',
+      textClass: 'text-emerald-700 dark:text-emerald-300',
+    };
+  }
+  return {
+    label: 'Cloud',
+    title: 'Cloud room sync is enabled',
+    dotClass: 'bg-emerald-500 dark:bg-emerald-400',
+    textClass: 'text-stone-500 dark:text-stone-400',
+  };
+}
+
 export interface GroupChatPanelProps {
   projectId: string;
   /** Current user id — used to label your own messages and stamp mentions. */
@@ -92,6 +130,7 @@ export interface GroupChatPanelProps {
    * caller wires this in to keep useLoroSync as the single live channel.
    */
   registerRoomSink?: (sink: (msg: RoomMessageEvent) => void) => void;
+  onSessionEvent?: (event: GroupChatSessionEvent) => void;
   /**
    * Canvas-side context for ChatInput's @-mention picker. Both come
    * straight from ProjectEditor — `mentionableNodes` is the asset /
@@ -111,10 +150,11 @@ export function GroupChatPanel({
   isCollapsed,
   onCollapseChange,
   registerRoomSink,
+  onSessionEvent,
   mentionableNodes: canvasMentionableNodes,
 }: GroupChatPanelProps) {
   const room = useProjectRoom(projectId);
-  const group = useGroupChat(projectId);
+  const group = useGroupChat(projectId, { onSessionEvent });
   const { crew: claimedCrew, loading: crewLoading } = useClaimedCrew();
   const [invitedIds, setInvitedIds] = useState<string[]>(() => loadInvited(projectId));
   const [activeTab, setActiveTab] = useState<string>(ROOM_TAB);
@@ -399,6 +439,7 @@ export function GroupChatPanel({
   const activeTabLabel = activeTab === ROOM_TAB ? 'Room' : focusedCrew?.crewId
     ? invitedCrew.find((c) => c.id === activeTab)?.display_name ?? 'Crew'
     : 'Room';
+  const syncIndicator = roomSyncIndicator(room.sync);
 
   return (
     <div className="h-full flex items-stretch gap-2">
@@ -607,6 +648,19 @@ export function GroupChatPanel({
           <div className="h-full w-full opacity-0 group-hover/resize:opacity-100 group-active/resize:opacity-100 bg-brand/40 transition-opacity" />
         </div>
 
+        {activeTab === ROOM_TAB && (
+          <div className="shrink-0 flex justify-end px-5 pb-1 pt-4">
+            <div
+              className={`inline-flex h-5 items-center gap-1.5 text-[11px] font-medium ${syncIndicator.textClass}`}
+              title={syncIndicator.title}
+              aria-label={syncIndicator.title}
+            >
+              <span className={`h-1.5 w-1.5 rounded-full ${syncIndicator.dotClass}`} aria-hidden="true" />
+              <span>{syncIndicator.label}</span>
+            </div>
+          </div>
+        )}
+
         {/* Body */}
         <div
           id={panelId}
@@ -623,6 +677,7 @@ export function GroupChatPanel({
               empty={!room.loading && room.messages.length === 0}
               hasInvited={invitedCrew.length > 0}
               mentionableNodes={mentionableNodes}
+              sync={room.sync}
             />
           ) : (
             <CrewView

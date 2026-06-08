@@ -15,8 +15,16 @@ import { Status } from '../domain/canvas';
 import type { GenerationParams } from '../agents/generation';
 import { getAssetById, getAssetsByIds } from '../services/assets';
 import { signAssetPath } from '../services/asset-signing';
+import { loadSecrets } from '../services/user-variables';
 
-import { MODEL_CARDS, parsePromptParts, extractPromptText } from '@clash/shared-types';
+import {
+  CustomActionDefinitionSchema,
+  MODEL_CARDS,
+  parsePromptParts,
+  extractPromptText,
+  type CustomActionDefinition,
+  type CustomActionSecret,
+} from '@clash/shared-types';
 import { deriveRuntimeStatus } from '../lib/runtime-status';
 
 const defaultImageModel = MODEL_CARDS.find((card) => card.kind === 'image')?.id ?? 'nano-banana-2';
@@ -25,6 +33,69 @@ const defaultAudioModel = MODEL_CARDS.find((card) => card.kind === 'audio')?.id 
 const defaultTextModel = MODEL_CARDS.find((card) => card.kind === 'text')?.id ?? 'gpt-5.4';
 
 const getModelCard = (modelId?: string) => MODEL_CARDS.find((card) => card.id === modelId);
+
+async function loadInstalledCustomAction(
+  env: Env,
+  userId: string,
+  actionId: string,
+): Promise<CustomActionDefinition | undefined> {
+  const row = await env.DB
+    .prepare('SELECT manifest FROM installed_action WHERE user_id = ? AND action_id = ? LIMIT 1')
+    .bind(userId, actionId)
+    .first<{ manifest: string }>();
+  if (!row?.manifest) return undefined;
+  try {
+    const parsed = CustomActionDefinitionSchema.safeParse(JSON.parse(row.manifest));
+    if (!parsed.success) {
+      log.warn('custom.dispatch.invalid_installed_manifest', {
+        userId,
+        actionId,
+        error: parsed.error.message,
+      });
+      return undefined;
+    }
+    return parsed.data;
+  } catch (e) {
+    log.warn('custom.dispatch.unreadable_installed_manifest', {
+      userId,
+      actionId,
+      error: e instanceof Error ? e.message : String(e),
+    });
+    return undefined;
+  }
+}
+
+function parseRegisteredCustomAction(raw: unknown): CustomActionDefinition | undefined {
+  const parsed = CustomActionDefinitionSchema.safeParse(raw);
+  return parsed.success ? parsed.data : undefined;
+}
+
+async function loadActionSecretValues(
+  env: Env,
+  userId: string,
+  declaredSecrets: CustomActionSecret[] | undefined,
+): Promise<Record<string, string>> {
+  const secrets = Array.isArray(declaredSecrets)
+    ? declaredSecrets.filter((secret) => secret && typeof secret.id === 'string' && secret.id.length > 0)
+    : [];
+  const secretIds = [...new Set(secrets.map((secret) => secret.id))];
+  if (secretIds.length === 0) return {};
+
+  const requiredSecretIds = secrets
+    .filter((secret) => secret.required !== false)
+    .map((secret) => secret.id);
+  if (!env.ACTION_SECRET_KEY) {
+    if (requiredSecretIds.length === 0) return {};
+    throw new Error('Server not configured for action secret decryption');
+  }
+
+  const loaded = await loadSecrets(env.DB, userId, secretIds, env.ACTION_SECRET_KEY);
+  const missingRequired = requiredSecretIds.filter((id) => !loaded[id]);
+  if (missingRequired.length > 0) {
+    throw new Error(`Missing required action secret: ${missingRequired.join(', ')}`);
+  }
+  return loaded;
+}
 
 type NodeType = 'image' | 'video' | 'audio' | 'text' | 'video_render';
 
@@ -394,7 +465,7 @@ export async function processPendingNodes(
   // over `x-client-type: cli` WS) when a new custom-action task is
   // assigned. The SDK doesn't speak Loro, so binary CRDT updates pass
   // it by; this sideband is the only way it learns there's work to do.
-  broadcastJson?: (json: unknown) => void,
+  broadcastJson?: (json: unknown, options?: { runtimeId?: string }) => void,
 ): Promise<void> {
   try {
     const nodesMap = doc.getMap('nodes');
@@ -527,7 +598,8 @@ export async function processPendingNodes(
 
         // Check runtime from Loro customActions map
         const actionsMap = doc.getMap('customActions');
-        const actionDef = actionsMap.get(actionId) as Record<string, any> | undefined;
+        const registeredActionDef = parseRegisteredCustomAction(actionsMap.get(actionId));
+        const actionDef = registeredActionDef ?? await loadInstalledCustomAction(env, nodeActorUserId, actionId);
         const runtime = actionDef?.runtime || 'local';
         const workerUrl = actionDef?.workerUrl;
         const registeredByRuntime: string | undefined =
@@ -578,6 +650,17 @@ export async function processPendingNodes(
             }, broadcast);
             continue;
           }
+        }
+        if (runtime === 'worker' && !workerUrl) {
+          const error = 'Worker action missing workerUrl';
+          log.warn('custom.dispatch.no_worker_url', { nodeId, actionId });
+          appendNodeLog(doc, nodeId, `FAILED: ${error}`, broadcast);
+          updateNodeData(doc, nodeId, {
+            pendingTask: undefined,
+            status: Status.Failed,
+            error,
+          }, broadcast);
+          continue;
         }
 
         // Past the gate: now allocate the taskId and lock the node.
@@ -639,6 +722,8 @@ export async function processPendingNodes(
             prompt: innerData.prompt || innerData.content || '',
             customActionId: actionId,
             customActionParams: innerData.customActionParams || {},
+            customActionModel: actionDef?.model,
+            customActionSecrets: actionDef?.secrets,
             workerUrl,
             referenceImageR2Keys: customRefImageR2Keys.length > 0 ? customRefImageR2Keys : undefined,
             referenceVideoR2Keys: customRefVideoR2Keys.length > 0 ? customRefVideoR2Keys : undefined,
@@ -670,6 +755,15 @@ export async function processPendingNodes(
           if (customRefImageR2Keys.length > 0) refs.image = customRefImageR2Keys;
           if (customRefVideoR2Keys.length > 0) refs.video = customRefVideoR2Keys;
           if (customRefAudioR2Keys.length > 0) refs.audio = customRefAudioR2Keys;
+          let localSecrets: Record<string, string>;
+          try {
+            localSecrets = await loadActionSecretValues(env, nodeActorUserId, actionDef?.secrets);
+          } catch (e) {
+            const error = e instanceof Error ? e.message : String(e);
+            appendNodeLog(doc, nodeId, `FAILED: ${error}`, broadcast);
+            updateNodeData(doc, nodeId, { pendingTask: undefined, status: Status.Failed, error }, broadcast);
+            continue;
+          }
           const taskRecord: Record<string, any> = {
             taskId,
             nodeId,
@@ -677,8 +771,10 @@ export async function processPendingNodes(
             actionType: innerData.actionType,
             customActionId: actionId,
             params: innerData.customActionParams || {},
+            model: actionDef?.model,
+            secretIds: actionDef?.secrets?.map((secret) => secret.id) ?? [],
             prompt: innerData.prompt || innerData.content || '',
-            outputType: innerData.outputType || 'image',
+            outputType: actionDef?.outputType || innerData.outputType || 'image',
             refs,
             referenceImageR2Keys: customRefImageR2Keys.length > 0 ? customRefImageR2Keys : undefined,
             referenceVideoR2Keys: customRefVideoR2Keys.length > 0 ? customRefVideoR2Keys : undefined,
@@ -707,8 +803,8 @@ export async function processPendingNodes(
           if (broadcastJson) {
             broadcastJson({
               type: 'custom_task_assigned',
-              task: taskRecord,
-            });
+              task: { ...taskRecord, secrets: localSecrets },
+            }, { runtimeId: registeredByRuntime });
           }
         }
 

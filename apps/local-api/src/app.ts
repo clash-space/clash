@@ -9,12 +9,22 @@ import {
   handleFalMockHttpRequest,
   type FalMockQueueService,
 } from "./fal-mock.js";
+import {
+  createLocalSyncConfigStore,
+  LocalSyncConfigError,
+  type PublicLocalSyncConfig,
+  type LocalSyncConfigStore,
+} from "./sync-config.js";
+import type { RemoteRoomMessage } from "./room-sync.js";
+import type { RemoteLoroPersistenceEnv } from "./sync.js";
 
 export interface LocalApiOptions {
   dataDir: string;
   userId?: string;
   localAcp?: LocalAcpAdapter;
   falMock?: FalMockQueueService;
+  syncConfig?: LocalSyncConfigStore;
+  syncEnv?: RemoteLoroPersistenceEnv;
 }
 
 export type LocalAcpRuntimeStatus = "online" | "offline";
@@ -44,10 +54,20 @@ export interface LocalAcpResumeSession {
   modifiedAt: number;
 }
 
+export interface LocalAcpSessionMessage {
+  id: string;
+  sender_kind: "user" | "crew";
+  sender_id: string;
+  turn_id: string | null;
+  events: unknown[];
+  created_at: number;
+}
+
 export interface LocalAcpCreateSessionParams {
   runtimeId: string;
   crewId: string;
   crewMemberId?: string;
+  agentId?: string;
   projectId?: string;
   resumeAcpSessionId?: string;
 }
@@ -56,6 +76,12 @@ export interface LocalAcpAdapter {
   listRuntimes(): Promise<{ runtimes: LocalAcpRuntime[] }>;
   createSession(params: LocalAcpCreateSessionParams): Promise<{ session_id: string }>;
   listResumeSessions(runtimeId: string): Promise<{ sessions: LocalAcpResumeSession[] }>;
+  listSessionMessages?(sessionId: string): Promise<{ messages: LocalAcpSessionMessage[] } | null>;
+  pushRoomMention?(
+    projectId: string,
+    crewMemberId: string,
+    mention: Record<string, unknown>,
+  ): Promise<boolean>;
 }
 
 interface LocalProjectAsset {
@@ -84,11 +110,51 @@ interface LocalSession {
   updatedAt: string;
 }
 
+interface LocalCrewMember {
+  id: string;
+  user_id: string;
+  template_id: string;
+  runtime_id: string;
+  agent_id: string | null;
+  display_name: string;
+  created_at: number;
+}
+
+interface LocalRoomMention {
+  user_id: string;
+  crew_member_id?: string;
+  crew_id?: string;
+}
+
+interface LocalRoomMessage {
+  id: string;
+  project_id: string;
+  sender_kind: "user" | "crew";
+  sender_id: string;
+  sender_user_id: string;
+  mentions: LocalRoomMention[];
+  text: string;
+  at: number;
+}
+
+type RemoteRoomStatus = "disabled" | "imported" | "mirrored" | "failed";
+
+interface RoomSyncMeta {
+  mode: "local-only" | "cloud-sync";
+  remote_room: {
+    enabled: boolean;
+    status: RemoteRoomStatus;
+    error?: string;
+  };
+}
+
 interface LocalDb {
   projects: LocalProject[];
   assets: Array<Asset & { projectId?: string }>;
   assetRefs: AssetRefRow[];
   sessions: LocalSession[];
+  crewMembers: LocalCrewMember[];
+  roomMessages: LocalRoomMessage[];
 }
 
 const DEFAULT_DB: LocalDb = {
@@ -96,7 +162,19 @@ const DEFAULT_DB: LocalDb = {
   assets: [],
   assetRefs: [],
   sessions: [],
+  crewMembers: [],
+  roomMessages: [],
 };
+
+const LOCAL_RUNTIME_ID = "desktop-local";
+
+const BUILTIN_CREW_TEMPLATES: Array<{ id: string; label: string }> = [
+  { id: "director", label: "Director" },
+  { id: "canvas-editor", label: "Canvas Editor" },
+  { id: "generator", label: "Generator" },
+  { id: "storyboard", label: "Storyboard Artist" },
+  { id: "project-manager", label: "Project Manager" },
+];
 
 function truncateProjectName(prompt: string): string {
   return prompt.length > 20 ? `${prompt.slice(0, 20)}...` : prompt;
@@ -152,6 +230,8 @@ function createDb(dataDir: string) {
       assets: db.assets ?? [],
       assetRefs: db.assetRefs ?? [],
       sessions: db.sessions ?? [],
+      crewMembers: db.crewMembers ?? [],
+      roomMessages: db.roomMessages ?? [],
     };
   }
 
@@ -263,10 +343,93 @@ function withProjectAssets(project: LocalProject, state: LocalDb): LocalProject 
   return { ...project, assets: previewAssets };
 }
 
+function roomSyncMeta(
+  config: PublicLocalSyncConfig,
+  status: RemoteRoomStatus,
+  error?: unknown,
+): RoomSyncMeta {
+  return {
+    mode: config.mode,
+    remote_room: {
+      enabled: config.remote_loro.enabled,
+      status: config.remote_loro.enabled ? status : "disabled",
+      ...(error ? { error: error instanceof Error ? error.message : String(error) } : {}),
+    },
+  };
+}
+
+function normalizeLocalRoomMention(mention: RemoteRoomMessage["mentions"][number]): LocalRoomMention {
+  return {
+    user_id: mention.user_id,
+    ...(mention.crew_member_id ? { crew_member_id: mention.crew_member_id } : {}),
+    ...(mention.crew_id ? { crew_id: mention.crew_id } : {}),
+  };
+}
+
+function toLocalRoomMessage(message: RemoteRoomMessage): LocalRoomMessage {
+  return {
+    id: message.id,
+    project_id: message.project_id,
+    sender_kind: message.sender_kind,
+    sender_id: message.sender_id,
+    sender_user_id: message.sender_user_id,
+    mentions: message.mentions.map(normalizeLocalRoomMention),
+    text: message.text,
+    at: message.at,
+  };
+}
+
+function upsertRoomMessages(state: LocalDb, incoming: LocalRoomMessage[]): void {
+  if (incoming.length === 0) return;
+  const byId = new Map(state.roomMessages.map((message) => [message.id, message]));
+  for (const message of incoming) byId.set(message.id, message);
+  state.roomMessages = [...byId.values()];
+}
+
+function seedLocalCrewMembers(state: LocalDb, userId: string): LocalCrewMember[] {
+  if (state.crewMembers.length > 0) return state.crewMembers;
+  const createdAt = Math.floor(Date.now() / 1000);
+  state.crewMembers = BUILTIN_CREW_TEMPLATES.map((template) => ({
+    id: `local-${template.id}`,
+    user_id: userId,
+    template_id: template.id,
+    runtime_id: LOCAL_RUNTIME_ID,
+    agent_id: null,
+    display_name: template.label,
+    created_at: createdAt,
+  }));
+  return state.crewMembers;
+}
+
+async function localRuntimeSummary(options: LocalApiOptions): Promise<{
+  label: string;
+  status: LocalAcpRuntimeStatus;
+  agents: LocalAcpRuntimeAgent[];
+}> {
+  if (!options.localAcp) {
+    return { label: "Local Desktop", status: "online", agents: [] };
+  }
+  try {
+    const { runtimes } = await options.localAcp.listRuntimes();
+    const runtime = runtimes.find((row) => row.id === LOCAL_RUNTIME_ID) ?? runtimes[0];
+    return {
+      label: runtime?.hostname ?? "Local Desktop",
+      status: runtime?.status ?? "offline",
+      agents: runtime?.agents ?? [],
+    };
+  } catch {
+    return { label: "Local Desktop", status: "offline", agents: [] };
+  }
+}
+
 export function createLocalApiApp(options: LocalApiOptions): Hono {
   const userId = options.userId ?? "local-user";
   const db = createDb(options.dataDir);
   const falMock = options.falMock ?? createMockFalQueueService();
+  const syncConfig = options.syncConfig ?? createLocalSyncConfigStore({
+    dataDir: options.dataDir,
+    env: options.syncEnv ?? process.env,
+  });
   const app = new Hono();
 
   app.use(
@@ -302,7 +465,44 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
   app.get("/api/settings/tokens", (c) => c.json([]));
   app.get("/api/settings/variables", (c) => c.json([]));
   app.get("/api/marketplace/registry", (c) => c.json({ version: 1, actions: [], skills: [] }));
-  app.get("/api/v1/crew", (c) => c.json({ crew: [] }));
+  app.get("/api/v1/local/sync", async (c) => c.json(await syncConfig.getPublicConfig()));
+  app.patch("/api/v1/local/sync", async (c) => {
+    const body = (await c.req.json().catch(() => ({}))) as Record<string, unknown>;
+    try {
+      return c.json(await syncConfig.updateFromRequest(body));
+    } catch (error) {
+      if (error instanceof LocalSyncConfigError) {
+        return c.json({ error: error.message }, error.status as 400);
+      }
+      throw error;
+    }
+  });
+  app.get("/api/v1/crew", async (c) => {
+    const state = await db.load();
+    const hadCrew = state.crewMembers.length > 0;
+    const crewMembers = seedLocalCrewMembers(state, userId);
+    if (!hadCrew) await db.save(state);
+
+    const runtime = await localRuntimeSummary(options);
+    return c.json({
+      crew: crewMembers.map((member) => ({
+        id: member.id,
+        user_id: member.user_id,
+        template_id: member.template_id,
+        runtime_id: member.runtime_id,
+        agent_id: member.agent_id,
+        display_name: member.display_name,
+        created_at: member.created_at,
+        runtime_label: runtime.label,
+        runtime_status: runtime.status,
+        runtime_agents: runtime.agents,
+        budget_credits: null,
+        budget_period: "unlimited",
+        budget_used: 0,
+        budget_reset_at: null,
+      })),
+    });
+  });
   app.all("/fal/*", (c) => handleFalMockHttpRequest(falMock, c.req.raw));
   app.get("/api/v1/runtimes", async (c) => {
     if (!options.localAcp) return c.json({ runtimes: [] });
@@ -317,13 +517,27 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
       project_id?: string;
       resume_session_id?: string;
     };
-    const crewId = body.crew_id?.trim() || body.crew_member_id?.trim();
+    let crewId = body.crew_id?.trim() || "";
+    let crewMemberId = body.crew_member_id?.trim() || undefined;
+    let agentId: string | undefined;
+    if (crewMemberId) {
+      const state = await db.load();
+      const crewMembers = seedLocalCrewMembers(state, userId);
+      const member = crewMembers.find((row) => row.id === crewMemberId);
+      if (!member) return c.json({ error: "crew member not found" }, 404);
+      if (member.runtime_id !== c.req.param("runtimeId")) {
+        return c.json({ error: "crew member belongs to a different runtime" }, 400);
+      }
+      crewId = member.template_id;
+      agentId = member.agent_id ?? undefined;
+    }
     if (!crewId) return c.json({ error: "Missing crew_id" }, 400);
 
     return c.json(await options.localAcp.createSession({
       runtimeId: c.req.param("runtimeId"),
       crewId,
-      crewMemberId: body.crew_member_id?.trim() || undefined,
+      crewMemberId,
+      agentId,
       projectId: body.project_id,
       resumeAcpSessionId: body.resume_session_id,
     }));
@@ -332,6 +546,14 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
   app.get("/api/v1/runtimes/:runtimeId/local-sessions/scan", async (c) => {
     if (!options.localAcp) return c.json({ sessions: [] });
     return c.json(await options.localAcp.listResumeSessions(c.req.param("runtimeId")));
+  });
+
+  app.get("/api/v1/local-sessions/:sessionId/messages", async (c) => {
+    if (!options.localAcp?.listSessionMessages) {
+      return c.json({ error: "local session history unavailable" }, 404);
+    }
+    const history = await options.localAcp.listSessionMessages(c.req.param("sessionId"));
+    return history ? c.json(history) : c.json({ error: "not found" }, 404);
   });
 
   app.get("/api/projects", async (c) => {
@@ -388,6 +610,7 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
     state.projects = state.projects.filter((p) => p.id !== c.req.param("id"));
     if (state.projects.length === before) return c.json({ error: "Not found" }, 404);
     state.assetRefs = state.assetRefs.filter((ref) => ref.projectId !== c.req.param("id"));
+    state.roomMessages = state.roomMessages.filter((message) => message.project_id !== c.req.param("id"));
     await db.save(state);
     return new Response(null, { status: 204 });
   });
@@ -618,20 +841,103 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
     return c.json({ ok: true });
   });
 
-  app.get("/api/v1/projects/:pid/room/messages", (c) => c.json({ messages: [] }));
+  app.get("/api/v1/projects/:pid/room/messages", async (c) => {
+    const state = await db.load();
+    const projectId = c.req.param("pid");
+    const publicSyncConfig = await syncConfig.getPublicConfig();
+    let sync = roomSyncMeta(publicSyncConfig, "disabled");
+    const remoteRoom = await syncConfig.resolveRemoteRoomSync();
+    if (remoteRoom) {
+      try {
+        const remoteMessages = await remoteRoom.listMessages(projectId);
+        upsertRoomMessages(state, remoteMessages.map(toLocalRoomMessage));
+        await db.save(state);
+        sync = roomSyncMeta(publicSyncConfig, "imported");
+      } catch (error) {
+        sync = roomSyncMeta(publicSyncConfig, "failed", error);
+      }
+    }
+    const messages = state.roomMessages
+      .filter((message) => message.project_id === projectId)
+      .sort((a, b) => b.at - a.at);
+    return c.json({ messages, sync });
+  });
   app.post("/api/v1/projects/:pid/room/messages", async (c) => {
-    const body = (await c.req.json().catch(() => ({}))) as { text?: string; mentions?: unknown[] };
-    return c.json({
+    const body = (await c.req.json().catch(() => ({}))) as {
+      text?: string;
+      mentions?: unknown[];
+      sender_kind?: "user" | "crew";
+      sender_id?: string;
+    };
+    const text = body.text?.trim();
+    if (!text) return c.json({ error: "text required" }, 400);
+    const senderKind = body.sender_kind === "crew" ? "crew" : "user";
+    const senderId = senderKind === "crew" ? body.sender_id?.trim() ?? "" : userId;
+    if (senderKind === "crew" && !senderId) {
+      return c.json({ error: "sender_id required for crew sender" }, 400);
+    }
+    const mentions: LocalRoomMention[] = Array.isArray(body.mentions)
+      ? body.mentions
+          .filter((mention): mention is Record<string, unknown> => !!mention && typeof mention === "object")
+          .map((mention) => ({
+            user_id: typeof mention.user_id === "string" ? mention.user_id : userId,
+            ...(typeof mention.crew_member_id === "string" ? { crew_member_id: mention.crew_member_id } : {}),
+            ...(typeof mention.crew_id === "string" ? { crew_id: mention.crew_id } : {}),
+          }))
+      : [];
+    const message: LocalRoomMessage = {
       id: crypto.randomUUID(),
-      type: "room.message",
       project_id: c.req.param("pid"),
-      sender_kind: "user",
-      sender_id: userId,
+      sender_kind: senderKind,
+      sender_id: senderId,
       sender_user_id: userId,
-      mentions: body.mentions ?? [],
-      text: body.text ?? "",
+      mentions,
+      text,
       at: Math.floor(Date.now() / 1000),
-    });
+    };
+    const state = await db.load();
+    state.roomMessages.unshift(message);
+    await db.save(state);
+    const publicSyncConfig = await syncConfig.getPublicConfig();
+    let sync = roomSyncMeta(publicSyncConfig, "disabled");
+    const remoteRoom = await syncConfig.resolveRemoteRoomSync();
+    if (remoteRoom) {
+      try {
+        await remoteRoom.postMessage(message.project_id, {
+          id: message.id,
+          text: message.text,
+          mentions: message.mentions,
+          sender_kind: message.sender_kind,
+          sender_id: message.sender_id,
+        });
+        sync = roomSyncMeta(publicSyncConfig, "mirrored");
+      } catch (error) {
+        sync = roomSyncMeta(publicSyncConfig, "failed", error);
+      }
+    }
+    if (options.localAcp?.pushRoomMention) {
+      const mentionPayload = {
+        message_id: message.id,
+        from_kind: message.sender_kind,
+        from_id: message.sender_id,
+        from_user_id: message.sender_user_id,
+        text: message.text,
+      };
+      await Promise.all(
+        mentions
+          .filter((mention): mention is LocalRoomMention & { crew_member_id: string } =>
+            typeof mention.crew_member_id === "string" && mention.crew_member_id.length > 0
+          )
+          .map((mention) =>
+            options.localAcp!.pushRoomMention!(
+              message.project_id,
+              mention.crew_member_id,
+              mentionPayload,
+            ).catch(() => false)
+          ),
+      );
+    }
+    return c.json({ type: "room.message", ...message, sync }, 201);
   });
 
   return app;

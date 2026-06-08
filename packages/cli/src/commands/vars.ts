@@ -1,4 +1,5 @@
 import { Command } from "commander";
+import { ACTION_PROVIDER_PRESETS } from "@clash/shared-types";
 import { apiJson, apiFetch } from "../lib/api";
 import { isJsonMode, printJson } from "../lib/output";
 import * as readline from "readline";
@@ -65,6 +66,32 @@ varsCommand
       }
       console.log(`\n${data.variables.length} variable(s)`);
     }
+  });
+
+// ─── providers ─────────────────────────────────────────
+
+varsCommand
+  .command("providers")
+  .description("List built-in action provider variable keys")
+  .option("--json", "Output as JSON")
+  .action(async (options) => {
+    const providers = Object.values(ACTION_PROVIDER_PRESETS).map((preset) => ({
+      id: preset.id,
+      label: preset.label,
+      key: preset.defaultSecretId,
+      description: preset.secretDescription,
+      docsUrl: preset.docsUrl,
+    }));
+
+    if (isJsonMode(options)) {
+      printJson(providers);
+      return;
+    }
+
+    for (const provider of providers) {
+      console.log(`  ${provider.label.padEnd(14)} ${provider.key}`);
+    }
+    console.log("\nSet one with: clash vars set <KEY>");
   });
 
 // ─── delete ───────────────────────────────────────────

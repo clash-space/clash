@@ -3,7 +3,7 @@ import WebSocket from "ws";
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync, readdirSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { LoroSyncClient } from "@clash/shared-types";
+import { CustomActionDefinitionSchema, LoroSyncClient } from "@clash/shared-types";
 import { requireApiKey, getServerUrl } from "../lib/config";
 import { isJsonMode, printJson } from "../lib/output";
 
@@ -133,10 +133,12 @@ actionsCommand
     }
 
     // Validate required fields
-    if (!manifest.id || !manifest.name) {
-      console.error("Invalid action manifest: missing 'id' or 'name'");
+    const parsedManifest = CustomActionDefinitionSchema.safeParse(manifest);
+    if (!parsedManifest.success) {
+      console.error(`Invalid action manifest: ${parsedManifest.error.message}`);
       process.exit(1);
     }
+    manifest = parsedManifest.data;
 
     // Register in project's Loro customActions map via WebSocket
     const client = await connectToProject(options.project);
@@ -162,6 +164,7 @@ actionsCommand
                 repository: manifest.repository || options.repo || "",
                 workerUrl: manifest.workerUrl || options.url || "",
                 secrets: manifest.secrets || [],
+                model: manifest.model,
                 tags: manifest.tags || [],
               },
             ],

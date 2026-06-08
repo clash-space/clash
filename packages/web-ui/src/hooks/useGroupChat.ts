@@ -165,6 +165,17 @@ export interface UseGroupChatReturn {
   shutdown: () => void;
 }
 
+export interface GroupChatSessionEvent {
+  crewId: string;
+  sessionId: string;
+  turnId: string;
+  event: unknown;
+}
+
+export interface UseGroupChatOptions {
+  onSessionEvent?: (event: GroupChatSessionEvent) => void;
+}
+
 interface InternalCrewState extends CrewSession {
   /** WS to this crew's session stream. */
   ws: WebSocket | null;
@@ -189,13 +200,15 @@ function reconnectDelay(attempt: number): number {
   return Math.min(1000 * 2 ** Math.max(0, attempt - 1), 30_000);
 }
 
-export function useGroupChat(projectId?: string): UseGroupChatReturn {
+export function useGroupChat(projectId?: string, options: UseGroupChatOptions = {}): UseGroupChatReturn {
   const [crew, setCrew] = useState<InternalCrewState[]>([]);
   const [focusedCrewId, setFocusedCrewId] = useState<string | null>(null);
   // Mirror state into a ref so stable callbacks can read the latest
   // without re-binding on every state change.
   const crewRef = useRef<InternalCrewState[]>([]);
   crewRef.current = crew;
+  const onSessionEventRef = useRef(options.onSessionEvent);
+  onSessionEventRef.current = options.onSessionEvent;
   const turnSeq = useRef(0);
 
   // Mirror each crew's message transcript to localStorage so it survives
@@ -342,6 +355,15 @@ export function useGroupChat(projectId?: string): UseGroupChatReturn {
       return;
     }
     if (msg.type === 'session.event' && msg.turn_id) {
+      const target = crewRef.current.find((c) => c.crewId === crewId);
+      if (target) {
+        onSessionEventRef.current?.({
+          crewId,
+          sessionId: target.sessionId,
+          turnId: msg.turn_id,
+          event: msg.event,
+        });
+      }
       setCrew((prev) => prev.map((c) => {
         if (c.crewId !== crewId) return c;
         const messages = c.messages.slice();
@@ -422,6 +444,11 @@ export function useGroupChat(projectId?: string): UseGroupChatReturn {
       // otherwise it goes out on the next session.complete.
       const sender = msg.from_kind === 'user' ? `[room from human] ` : `[room from ${msg.from_id ?? 'crew'}] `;
       const body = `${sender}${msg.text}`;
+      const target = crewRef.current.find((c) => c.crewId === crewId);
+      if (target?.ws && target.ws.readyState === WebSocket.OPEN && target.turnToMsgIdx.size === 0) {
+        dispatchPrompt(crewId, body, true);
+        return;
+      }
       setCrew((prev) => prev.map((c) =>
         c.crewId === crewId
           ? { ...c, pendingPrompts: [...c.pendingPrompts, body], lastActiveAt: now }
@@ -438,7 +465,7 @@ export function useGroupChat(projectId?: string): UseGroupChatReturn {
       setTimeout(() => drainPending(crewId), 0);
       return;
     }
-  }, [focusedCrewId, patchCrew, drainPending]);
+  }, [focusedCrewId, patchCrew, drainPending, dispatchPrompt]);
 
   /**
    * Open (or re-open) the WS stream for an existing crew + session id.

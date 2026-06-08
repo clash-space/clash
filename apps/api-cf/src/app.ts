@@ -11,6 +11,7 @@
  * to GenerationWorkflow.run, ProjectRoom, etc.
  */
 import { Hono } from "hono";
+import type { Context } from "hono";
 import { cors } from "hono/cors";
 
 import type { Env } from "./config";
@@ -29,9 +30,29 @@ import { authenticateRuntimeToken } from "./routes/v1/runtimes";
 import { setPlugins, getPlugins } from "./plugins/registry";
 import type { Plugin } from "./plugins/types";
 import { getUserIdFromApiToken, getUserIdFromRequest } from "./services/session";
+import { authenticateRequest } from "./loro/auth";
 
 export interface CreateAppOptions {
   plugins?: Plugin[];
+}
+
+function decodeProjectIdParam(raw: string): string {
+  try {
+    return decodeURIComponent(raw);
+  } catch {
+    return raw;
+  }
+}
+
+async function forwardLoroPersistenceRequest(
+  c: Context<{ Bindings: Env }>,
+  projectId: string,
+): Promise<Response> {
+  const id = c.env.ROOM.idFromName(projectId);
+  const req = new Request(c.req.raw);
+  req.headers.set("x-internal-loro", "true");
+  req.headers.set("x-loro-project-id", projectId);
+  return c.env.ROOM.get(id).fetch(req);
 }
 
 export function createApp(opts: CreateAppOptions = {}): Hono<{ Bindings: Env }> {
@@ -68,6 +89,27 @@ export function createApp(opts: CreateAppOptions = {}): Hono<{ Bindings: Env }> 
     const projectId = rawProjectId.split("/")[0];
     const id = c.env.ROOM.idFromName(projectId);
     return c.env.ROOM.get(id).fetch(c.req.raw);
+  });
+
+  // ─── Local-first Loro remote persistence ───────────────────
+  app.get("/loro/:projectId/snapshot", async (c) => {
+    const projectId = decodeProjectIdParam(c.req.param("projectId"));
+    try {
+      await authenticateRequest(c.req.raw, c.env as any, projectId);
+    } catch (error) {
+      return c.text("Unauthorized", 401);
+    }
+    return forwardLoroPersistenceRequest(c, projectId);
+  });
+
+  app.post("/loro/:projectId/updates", async (c) => {
+    const projectId = decodeProjectIdParam(c.req.param("projectId"));
+    try {
+      await authenticateRequest(c.req.raw, c.env as any, projectId);
+    } catch (error) {
+      return c.text("Unauthorized", 401);
+    }
+    return forwardLoroPersistenceRequest(c, projectId);
   });
 
   // ─── AI Chat: /agents/supervisor/:room → SupervisorAgent DO ──

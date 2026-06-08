@@ -1,8 +1,9 @@
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createLocalApiApp } from "./app";
+import { createLocalSyncConfigStore } from "./sync-config";
 
 let dataDir = "";
 
@@ -45,6 +46,68 @@ describe("local API app", () => {
     expect(await me.json()).toEqual({ id: "local-user" });
   });
 
+  it("persists local cloud sync configuration without exposing the token", async () => {
+    const app = createLocalApiApp({ dataDir, userId: "local-user", syncEnv: {} });
+
+    const initial = await app.request("/api/v1/local/sync");
+    expect(await initial.json()).toEqual({
+      mode: "local-only",
+      remote_loro: {
+        enabled: false,
+        url: null,
+        has_token: false,
+        source: "none",
+      },
+    });
+
+    const updated = await app.request("/api/v1/local/sync", {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        mode: "cloud-sync",
+        remote_loro_url: " https://cloud.example/ ",
+        remote_loro_token: "secret-token",
+      }),
+    });
+    expect(updated.status).toBe(200);
+    expect(await updated.json()).toEqual({
+      mode: "cloud-sync",
+      remote_loro: {
+        enabled: true,
+        url: "https://cloud.example",
+        has_token: true,
+        source: "config",
+      },
+    });
+
+    const reopened = createLocalApiApp({ dataDir, userId: "local-user", syncEnv: {} });
+    const persisted = await reopened.request("/api/v1/local/sync");
+    expect(await persisted.json()).toEqual({
+      mode: "cloud-sync",
+      remote_loro: {
+        enabled: true,
+        url: "https://cloud.example",
+        has_token: true,
+        source: "config",
+      },
+    });
+  });
+
+  it("rejects cloud sync configuration without a remote Loro URL", async () => {
+    const app = createLocalApiApp({ dataDir, userId: "local-user", syncEnv: {} });
+
+    const res = await app.request("/api/v1/local/sync", {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ mode: "cloud-sync" }),
+    });
+
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({
+      error: "remote_loro_url is required for cloud-sync mode",
+    });
+  });
+
   it("allows browser requests from the local web runtime", async () => {
     const app = createLocalApiApp({ dataDir, userId: "local-user" });
 
@@ -59,7 +122,22 @@ describe("local API app", () => {
     expect(preflight.headers.get("access-control-allow-credentials")).toBe("true");
 
     const crew = await app.request("/api/v1/crew");
-    expect(await crew.json()).toEqual({ crew: [] });
+    const crewJson = (await crew.json()) as { crew: Array<Record<string, unknown>> };
+    expect(crewJson.crew).toHaveLength(5);
+    expect(crewJson.crew).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "local-director",
+          user_id: "local-user",
+          template_id: "director",
+          runtime_id: "desktop-local",
+          agent_id: null,
+          display_name: "Director",
+          runtime_label: "Local Desktop",
+          runtime_status: "online",
+        }),
+      ]),
+    );
   });
 
   it("surfaces and starts the desktop local ACP runtime", async () => {
@@ -136,6 +214,134 @@ describe("local API app", () => {
     expect(await sessions.json()).toEqual({ sessions: [] });
   });
 
+  it("resolves local crew_member_id when starting a desktop ACP session", async () => {
+    const starts: unknown[] = [];
+    const app = createLocalApiApp({
+      dataDir,
+      userId: "local-user",
+      localAcp: {
+        async listRuntimes() {
+          return {
+            runtimes: [
+              {
+                id: "desktop-local",
+                machine_id: "desktop-local",
+                hostname: "This Mac",
+                os: "darwin/arm64",
+                agents: [{ id: "codex-cli", binary: "codex" }],
+                version: "desktop",
+                status: "online",
+                last_heartbeat: 1_700_000_000,
+                created_at: 1_700_000_000,
+              },
+            ],
+          };
+        },
+        async createSession(params) {
+          starts.push(params);
+          return { session_id: "local-session-crew" };
+        },
+        async listResumeSessions() {
+          return { sessions: [] };
+        },
+      },
+    });
+
+    const crew = await app.request("/api/v1/crew");
+    const { crew: rows } = (await crew.json()) as {
+      crew: Array<{ id: string; template_id: string; runtime_id: string }>;
+    };
+    const director = rows.find((row) => row.template_id === "director");
+    expect(director).toBeTruthy();
+
+    const created = await app.request(`/api/v1/runtimes/${director!.runtime_id}/sessions`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        crew_member_id: director!.id,
+        project_id: "project-crew",
+      }),
+    });
+
+    expect(created.status).toBe(200);
+    expect(await created.json()).toEqual({ session_id: "local-session-crew" });
+    expect(starts).toEqual([
+      {
+        runtimeId: "desktop-local",
+        crewId: "director",
+        crewMemberId: director!.id,
+        projectId: "project-crew",
+      },
+    ]);
+  });
+
+  it("returns local ACP session history with the cloud-compatible message shape", async () => {
+    const app = createLocalApiApp({
+      dataDir,
+      userId: "local-user",
+      localAcp: {
+        async listRuntimes() {
+          return { runtimes: [] };
+        },
+        async createSession() {
+          return { session_id: "unused" };
+        },
+        async listResumeSessions() {
+          return { sessions: [] };
+        },
+        async listSessionMessages(sessionId) {
+          if (sessionId !== "local-session-history") return null;
+          return {
+            messages: [
+              {
+                id: "turn-1-user",
+                sender_kind: "user",
+                sender_id: "local-user",
+                turn_id: "turn-1",
+                events: [{ type: "text", text: "hello agent" }],
+                created_at: 1_700_000_000,
+              },
+              {
+                id: "turn-1-crew",
+                sender_kind: "crew",
+                sender_id: "local-director",
+                turn_id: "turn-1",
+                events: [{ type: "text", text: "agent reply" }],
+                created_at: 1_700_000_001,
+              },
+            ],
+          };
+        },
+      },
+    });
+
+    const res = await app.request("/api/v1/local-sessions/local-session-history/messages");
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({
+      messages: [
+        {
+          id: "turn-1-user",
+          sender_kind: "user",
+          sender_id: "local-user",
+          turn_id: "turn-1",
+          events: [{ type: "text", text: "hello agent" }],
+          created_at: 1_700_000_000,
+        },
+        {
+          id: "turn-1-crew",
+          sender_kind: "crew",
+          sender_id: "local-director",
+          turn_id: "turn-1",
+          events: [{ type: "text", text: "agent reply" }],
+          created_at: 1_700_000_001,
+        },
+      ],
+    });
+
+    const missing = await app.request("/api/v1/local-sessions/missing/messages");
+    expect(missing.status).toBe(404);
+  });
+
   it("creates, lists, renames, and deletes local projects", async () => {
     const app = createLocalApiApp({ dataDir, userId: "local-user" });
 
@@ -171,6 +377,226 @@ describe("local API app", () => {
     const deleted = await app.request(`/api/projects/${id}`, { method: "DELETE" });
     expect(deleted.status).toBe(204);
     expect(await (await app.request("/api/projects")).json()).toEqual([]);
+  });
+
+  it("persists local project room messages", async () => {
+    const app = createLocalApiApp({ dataDir, userId: "local-user" });
+
+    const first = await app.request("/api/v1/projects/project-room/room/messages", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        text: "hello local room",
+        mentions: [{ user_id: "local-user", crew_member_id: "local-director" }],
+      }),
+    });
+    expect(first.status).toBe(201);
+    const firstJson = (await first.json()) as { id: string; type: string };
+    expect(firstJson).toMatchObject({
+      type: "room.message",
+      project_id: "project-room",
+      sender_kind: "user",
+      sender_id: "local-user",
+      sender_user_id: "local-user",
+      mentions: [{ user_id: "local-user", crew_member_id: "local-director" }],
+      text: "hello local room",
+    });
+
+    const listed = await app.request("/api/v1/projects/project-room/room/messages");
+    expect(await listed.json()).toMatchObject({
+      messages: [
+        {
+          id: firstJson.id,
+          project_id: "project-room",
+          sender_kind: "user",
+          sender_id: "local-user",
+          sender_user_id: "local-user",
+          mentions: [{ user_id: "local-user", crew_member_id: "local-director" }],
+          text: "hello local room",
+        },
+      ],
+    });
+
+    const reopened = createLocalApiApp({ dataDir, userId: "local-user" });
+    const persisted = await reopened.request("/api/v1/projects/project-room/room/messages");
+    expect(await persisted.json()).toMatchObject({
+      messages: [{ id: firstJson.id, text: "hello local room" }],
+    });
+  });
+
+  it("mirrors local project room messages to the configured cloud room API", async () => {
+    const fetchImpl = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+      const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+      if (url === "https://cloud.example/api/v1/projects/project-room/room/messages" && init?.method === "POST") {
+        return new Response(JSON.stringify({ id: "remote-message-1" }), {
+          status: 201,
+          headers: { "content-type": "application/json" },
+        });
+      }
+      return new Response("not found", { status: 404 });
+    });
+    const app = createLocalApiApp({
+      dataDir,
+      userId: "local-user",
+      syncConfig: createLocalSyncConfigStore({
+        dataDir,
+        env: {
+          CLASH_REMOTE_LORO_URL: "https://cloud.example/",
+          CLASH_REMOTE_LORO_TOKEN: "clsh_room_secret",
+        },
+        fetch: fetchImpl,
+      }),
+    });
+
+    const res = await app.request("/api/v1/projects/project-room/room/messages", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        text: "hello synced room",
+        mentions: [{ user_id: "local-user", crew_member_id: "local-director" }],
+      }),
+    });
+
+    expect(res.status).toBe(201);
+    expect(await res.json()).toMatchObject({
+      type: "room.message",
+      text: "hello synced room",
+      sync: {
+        mode: "cloud-sync",
+        remote_room: { enabled: true, status: "mirrored" },
+      },
+    });
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+    const [input, init] = fetchImpl.mock.calls[0];
+    expect(String(input)).toBe("https://cloud.example/api/v1/projects/project-room/room/messages");
+    expect(init?.method).toBe("POST");
+    expect(new Headers(init?.headers).get("authorization")).toBe("Bearer clsh_room_secret");
+    expect(JSON.parse(String(init?.body))).toMatchObject({
+      id: expect.any(String),
+      text: "hello synced room",
+      mentions: [{ user_id: "local-user", crew_member_id: "local-director" }],
+      sender_kind: "user",
+      sender_id: "local-user",
+    });
+  });
+
+  it("imports cloud room messages into the local room list when cloud sync is enabled", async () => {
+    const fetchImpl = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+      const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+      if (url === "https://cloud.example/api/v1/projects/project-room/room/messages" && (!init || init.method === "GET")) {
+        return new Response(JSON.stringify({
+          messages: [
+            {
+              id: "remote-web-message",
+              project_id: "project-room",
+              sender_kind: "user",
+              sender_id: "web-user",
+              sender_user_id: "web-user",
+              mentions: [{ user_id: "local-user", crew_member_id: "local-director" }],
+              text: "hello from web",
+              at: 1_700_000_100,
+            },
+          ],
+        }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      }
+      return new Response("not found", { status: 404 });
+    });
+    const app = createLocalApiApp({
+      dataDir,
+      userId: "local-user",
+      syncConfig: createLocalSyncConfigStore({
+        dataDir,
+        env: {
+          CLASH_REMOTE_LORO_URL: "https://cloud.example/",
+          CLASH_REMOTE_LORO_TOKEN: "clsh_room_secret",
+        },
+        fetch: fetchImpl,
+      }),
+    });
+
+    const listed = await app.request("/api/v1/projects/project-room/room/messages");
+
+    expect(listed.status).toBe(200);
+    expect(await listed.json()).toMatchObject({
+      sync: {
+        mode: "cloud-sync",
+        remote_room: { enabled: true, status: "imported" },
+      },
+      messages: [
+        {
+          id: "remote-web-message",
+          project_id: "project-room",
+          sender_kind: "user",
+          sender_id: "web-user",
+          sender_user_id: "web-user",
+          mentions: [{ user_id: "local-user", crew_member_id: "local-director" }],
+          text: "hello from web",
+          at: 1_700_000_100,
+        },
+      ],
+    });
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+    const [input, init] = fetchImpl.mock.calls[0];
+    expect(String(input)).toBe("https://cloud.example/api/v1/projects/project-room/room/messages");
+    expect(init?.method).toBe("GET");
+    expect(new Headers(init?.headers).get("authorization")).toBe("Bearer clsh_room_secret");
+
+    const offlineApp = createLocalApiApp({ dataDir, userId: "local-user", syncEnv: {} });
+    const persisted = await offlineApp.request("/api/v1/projects/project-room/room/messages");
+    expect(await persisted.json()).toMatchObject({
+      messages: [{ id: "remote-web-message", text: "hello from web" }],
+    });
+  });
+
+  it("dispatches local project room mentions to the local ACP adapter", async () => {
+    const pushed: unknown[] = [];
+    const app = createLocalApiApp({
+      dataDir,
+      userId: "local-user",
+      localAcp: {
+        async listRuntimes() {
+          return { runtimes: [] };
+        },
+        async createSession() {
+          return { session_id: "unused" };
+        },
+        async listResumeSessions() {
+          return { sessions: [] };
+        },
+        async pushRoomMention(projectId, crewMemberId, mention) {
+          pushed.push({ projectId, crewMemberId, mention });
+          return true;
+        },
+      },
+    });
+
+    const res = await app.request("/api/v1/projects/project-room/room/messages", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        text: "hello local director",
+        mentions: [{ user_id: "local-user", crew_member_id: "local-director" }],
+      }),
+    });
+    expect(res.status).toBe(201);
+    const message = (await res.json()) as { id: string };
+
+    expect(pushed).toEqual([
+      {
+        projectId: "project-room",
+        crewMemberId: "local-director",
+        mention: {
+          message_id: message.id,
+          from_kind: "user",
+          from_id: "local-user",
+          from_user_id: "local-user",
+          text: "hello local director",
+        },
+      },
+    ]);
   });
 
   it("returns local project preview assets for the desktop project grid", async () => {

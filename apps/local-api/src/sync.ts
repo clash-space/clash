@@ -1,7 +1,7 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { LoroDoc } from "loro-crdt";
-import { Canvas } from "@clash/shared-types";
+import { Canvas, CustomActionDefinitionSchema } from "@clash/shared-types";
 import { WebSocketServer, type WebSocket } from "ws";
 import { createLocalWorkflowProcessor, type LocalWorkflowProcessor } from "./local-processor.js";
 
@@ -12,7 +12,7 @@ type UpgradeCapableServer = {
 export interface LocalSyncOptions {
   dataDir: string;
   projectId: string;
-  remotePersistence?: RemoteLoroPersistence;
+  remotePersistence?: RemoteLoroPersistenceSource;
   workflowProcessor?: LocalWorkflowProcessor | null;
 }
 
@@ -20,6 +20,10 @@ export interface RemoteLoroPersistence {
   loadSnapshot?(projectId: string): Promise<Uint8Array | null>;
   appendUpdate(projectId: string, update: Uint8Array): Promise<void>;
 }
+
+export type RemoteLoroPersistenceSource =
+  | RemoteLoroPersistence
+  | (() => RemoteLoroPersistence | undefined | Promise<RemoteLoroPersistence | undefined>);
 
 type PeerId = symbol;
 type SendPeerUpdate = (data: Uint8Array) => void;
@@ -74,6 +78,14 @@ async function assertRemoteOk(response: Response, operation: string): Promise<vo
   throw new Error(`Remote Loro ${operation} failed with HTTP ${response.status}`);
 }
 
+async function resolveRemotePersistence(
+  source: RemoteLoroPersistenceSource | undefined,
+): Promise<RemoteLoroPersistence | undefined> {
+  if (!source) return undefined;
+  if (typeof source === "function") return source();
+  return source;
+}
+
 export function createHttpRemoteLoroPersistence(
   options: HttpRemoteLoroPersistenceOptions,
 ): RemoteLoroPersistence {
@@ -126,9 +138,10 @@ async function loadDoc(options: LocalSyncOptions): Promise<{
   }
 
   let importedRemoteSnapshot = false;
-  if (options.remotePersistence?.loadSnapshot) {
+  const remotePersistence = await resolveRemotePersistence(options.remotePersistence);
+  if (remotePersistence?.loadSnapshot) {
     try {
-      const remoteSnapshot = await options.remotePersistence.loadSnapshot(options.projectId);
+      const remoteSnapshot = await remotePersistence.loadSnapshot(options.projectId);
       if (remoteSnapshot?.byteLength) {
         doc.import(remoteSnapshot);
         importedRemoteSnapshot = true;
@@ -148,7 +161,7 @@ export class LocalLoroRoom {
     private readonly dataDir: string,
     private readonly projectId: string,
     private readonly doc: LoroDoc,
-    private readonly remotePersistence?: RemoteLoroPersistence,
+    private readonly remotePersistence?: RemoteLoroPersistenceSource,
     private readonly workflowProcessor?: LocalWorkflowProcessor,
   ) {}
 
@@ -203,32 +216,42 @@ export class LocalLoroRoom {
     if (msg.type === "register_custom_actions") {
       const peer = this.peers.get(sender);
       const runtimeId = peer?.runtimeId;
-      if (!runtimeId) {
+      const actions = Array.isArray(msg.actions) ? msg.actions as Array<Record<string, any>> : [];
+      const wantsLocalRuntime = actions.some((action) => (action?.runtime || "local") !== "worker");
+      if (wantsLocalRuntime && !runtimeId) {
         peer?.sendJson?.({
           type: "register_custom_actions.rejected",
           error: "missing_runtime_id",
         });
         return;
       }
-      const actions = Array.isArray(msg.actions) ? msg.actions as Array<Record<string, any>> : [];
       const versionBefore = this.doc.version();
       const actionsMap = this.doc.getMap("customActions");
       for (const action of actions) {
-        if (!action.id || !action.name) continue;
-        actionsMap.set(action.id, {
-          id: action.id,
-          name: action.name,
-          description: action.description || "",
-          parameters: action.parameters || [],
-          outputType: action.outputType || "image",
-          icon: action.icon || "",
-          color: action.color || "",
-          runtime: action.runtime || "local",
-          promptModalities: Array.isArray(action.promptModalities) && action.promptModalities.length > 0
-            ? action.promptModalities
-            : ["text"],
-          registeredByRuntime: runtimeId,
-        });
+        const parsed = CustomActionDefinitionSchema.safeParse(action);
+        if (!parsed.success) continue;
+        const def = parsed.data;
+        const storedDef: Record<string, unknown> = {
+          id: def.id,
+          name: def.name,
+          description: def.description || "",
+          parameters: def.parameters || [],
+          outputType: def.outputType || "image",
+          icon: def.icon || "",
+          color: def.color || "",
+          runtime: def.runtime || "local",
+          version: def.version || "",
+          author: def.author || "",
+          repository: def.repository || "",
+          workerUrl: def.workerUrl || "",
+          secrets: def.secrets || [],
+          tags: def.tags || [],
+          promptModalities: def.promptModalities,
+        };
+        const model = (def as typeof def & { model?: unknown }).model;
+        if (model) storedDef.model = model;
+        if (def.runtime === "local" && runtimeId) storedDef.registeredByRuntime = runtimeId;
+        actionsMap.set(def.id, storedDef);
       }
       await this.publishUpdate(versionBefore);
 
@@ -384,9 +407,11 @@ export class LocalLoroRoom {
 
   private mirrorRemoteUpdate(update: Uint8Array): void {
     if (!this.remotePersistence) return;
-    void this.remotePersistence.appendUpdate(this.projectId, update).catch((error) => {
-      console.error("[local-sync] failed to mirror update to remote persistence", error);
-    });
+    void resolveRemotePersistence(this.remotePersistence)
+      .then((remotePersistence) => remotePersistence?.appendUpdate(this.projectId, update))
+      .catch((error) => {
+        console.error("[local-sync] failed to mirror update to remote persistence", error);
+      });
   }
 }
 
@@ -395,7 +420,7 @@ export class LocalLoroRoomHub {
 
   constructor(
     private readonly dataDir: string,
-    private readonly remotePersistence?: RemoteLoroPersistence,
+    private readonly remotePersistence?: RemoteLoroPersistenceSource,
     private readonly workflowProcessor?: LocalWorkflowProcessor | null,
   ) {}
 
@@ -418,7 +443,7 @@ export function attachLocalSync(
   server: UpgradeCapableServer,
   options: {
     dataDir: string;
-    remotePersistence?: RemoteLoroPersistence;
+    remotePersistence?: RemoteLoroPersistenceSource;
     workflowProcessor?: LocalWorkflowProcessor | null;
   },
 ): void {

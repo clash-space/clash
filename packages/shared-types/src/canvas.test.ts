@@ -1,9 +1,11 @@
 import { describe, it, expect } from "vitest";
 import { LoroDoc } from "loro-crdt";
 import {
+  ACTION_PROVIDER_PRESETS,
   buildPendingAssetNode,
   CustomActionDefinitionSchema,
   CustomActionParameterSchema,
+  normalizeActionProviderId,
   NodeDataSchema,
   ACTION_TYPE,
   RF_NODE_TYPE,
@@ -289,5 +291,54 @@ describe("CustomActionDefinitionSchema", () => {
       outputType: "image",
     });
     expect(def.promptModalities).toEqual(["text"]);
+  });
+
+  it("normalizes common MaaS provider aliases and adds the provider key", () => {
+    const def = CustomActionDefinitionSchema.parse({
+      id: "replicate-upscale",
+      name: "Replicate Upscale",
+      outputType: "image",
+      model: {
+        provider: "replica",
+        id: "nightmareai/real-esrgan",
+      },
+    });
+
+    expect(def.model?.provider).toBe("replicate");
+    expect(def.model?.id).toBe("nightmareai/real-esrgan");
+    expect(def.secrets).toContainEqual({
+      id: "REPLICATE_API_TOKEN",
+      label: "Replicate API token",
+      description: "API key used to call the Replicate model provider.",
+      required: true,
+    });
+  });
+
+  it("uses explicit model secret ids and de-duplicates existing secrets", () => {
+    const def = CustomActionDefinitionSchema.parse({
+      id: "official-openai-image",
+      name: "Official OpenAI Image",
+      outputType: "image",
+      model: {
+        provider: "official",
+        id: "gpt-image-1",
+        secretId: "OPENAI_API_KEY",
+      },
+      secrets: [
+        { id: "OPENAI_API_KEY", label: "OpenAI key from manifest" },
+      ],
+    });
+
+    expect(def.secrets).toEqual([
+      { id: "OPENAI_API_KEY", label: "OpenAI key from manifest", required: true },
+    ]);
+  });
+
+  it("exposes built-in provider presets for key configuration UI", () => {
+    expect(normalizeActionProviderId("fal.ai")).toBe("fal");
+    expect(ACTION_PROVIDER_PRESETS.fal.defaultSecretId).toBe("FAL_API_KEY");
+    expect(ACTION_PROVIDER_PRESETS.replicate.defaultSecretId).toBe("REPLICATE_API_TOKEN");
+    expect(ACTION_PROVIDER_PRESETS.kie.defaultSecretId).toBe("KIE_API_KEY");
+    expect(ACTION_PROVIDER_PRESETS.official.defaultSecretId).toBe("OFFICIAL_API_KEY");
   });
 });

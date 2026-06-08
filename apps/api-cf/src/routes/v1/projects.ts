@@ -184,6 +184,7 @@ projectRoutes.post("/:pid/room/messages", async (c) => {
   }
 
   const body = (await c.req.json().catch(() => ({}))) as {
+    id?: string;
     text?: string;
     mentions?: RoomMention[];
     /** Required when sender is a crew (called by say_to_room tool). */
@@ -220,12 +221,13 @@ projectRoutes.post("/:pid/room/messages", async (c) => {
     ? body.mentions.filter((m) => m && typeof m.user_id === "string")
     : [];
 
-  const id = crypto.randomUUID();
+  const clientId = typeof body.id === "string" ? body.id.trim() : "";
+  const id = clientId || crypto.randomUUID();
   const at = Math.floor(Date.now() / 1000);
   const mentionsJson = JSON.stringify(mentions);
 
   await c.env.DB.prepare(
-    `INSERT INTO room_message
+    `INSERT OR IGNORE INTO room_message
      (id, project_id, sender_kind, sender_id, sender_user_id, mentions_json, text, created_at)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
   ).bind(id, projectId, senderKind, senderId, userId, mentionsJson, text, at).run();

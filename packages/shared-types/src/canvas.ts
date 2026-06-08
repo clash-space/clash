@@ -711,7 +711,163 @@ export const CustomActionSecretSchema = z.object({
 });
 export type CustomActionSecret = z.infer<typeof CustomActionSecretSchema>;
 
-export const CustomActionDefinitionSchema = z.object({
+export const ACTION_PROVIDER_IDS = [
+  'fal',
+  'replicate',
+  'kie',
+  'official',
+  'openai',
+  'google',
+  'anthropic',
+  'elevenlabs',
+] as const;
+export type ActionProviderId = (typeof ACTION_PROVIDER_IDS)[number];
+
+const ACTION_PROVIDER_ALIASES: Record<string, ActionProviderId> = {
+  fal: 'fal',
+  'fal.ai': 'fal',
+  falai: 'fal',
+  replicate: 'replicate',
+  replica: 'replicate',
+  'replicate.com': 'replicate',
+  kie: 'kie',
+  'kie.ai': 'kie',
+  official: 'official',
+  native: 'official',
+  openai: 'openai',
+  'openai.com': 'openai',
+  google: 'google',
+  gemini: 'google',
+  'ai.google.dev': 'google',
+  anthropic: 'anthropic',
+  claude: 'anthropic',
+  elevenlabs: 'elevenlabs',
+  'eleven-labs': 'elevenlabs',
+  'elevenlabs.io': 'elevenlabs',
+};
+
+export interface ActionProviderPreset {
+  id: ActionProviderId;
+  label: string;
+  defaultSecretId: string;
+  secretLabel: string;
+  secretDescription: string;
+  docsUrl?: string;
+}
+
+export const ACTION_PROVIDER_PRESETS: Record<ActionProviderId, ActionProviderPreset> = {
+  fal: {
+    id: 'fal',
+    label: 'fal.ai',
+    defaultSecretId: 'FAL_API_KEY',
+    secretLabel: 'fal.ai API key',
+    secretDescription: 'API key used to call the fal.ai model provider.',
+    docsUrl: 'https://fal.ai/dashboard/keys',
+  },
+  replicate: {
+    id: 'replicate',
+    label: 'Replicate',
+    defaultSecretId: 'REPLICATE_API_TOKEN',
+    secretLabel: 'Replicate API token',
+    secretDescription: 'API key used to call the Replicate model provider.',
+    docsUrl: 'https://replicate.com/account/api-tokens',
+  },
+  kie: {
+    id: 'kie',
+    label: 'Kie.ai',
+    defaultSecretId: 'KIE_API_KEY',
+    secretLabel: 'Kie.ai API key',
+    secretDescription: 'API key used to call the Kie.ai model provider.',
+  },
+  official: {
+    id: 'official',
+    label: 'Official API',
+    defaultSecretId: 'OFFICIAL_API_KEY',
+    secretLabel: 'Official provider API key',
+    secretDescription: 'API key used to call the official model provider.',
+  },
+  openai: {
+    id: 'openai',
+    label: 'OpenAI',
+    defaultSecretId: 'OPENAI_API_KEY',
+    secretLabel: 'OpenAI API key',
+    secretDescription: 'API key used to call the official OpenAI API.',
+    docsUrl: 'https://platform.openai.com/api-keys',
+  },
+  google: {
+    id: 'google',
+    label: 'Google AI',
+    defaultSecretId: 'GOOGLE_API_KEY',
+    secretLabel: 'Google API key',
+    secretDescription: 'API key used to call the official Google AI API.',
+    docsUrl: 'https://aistudio.google.com/apikey',
+  },
+  anthropic: {
+    id: 'anthropic',
+    label: 'Anthropic',
+    defaultSecretId: 'ANTHROPIC_API_KEY',
+    secretLabel: 'Anthropic API key',
+    secretDescription: 'API key used to call the official Anthropic API.',
+    docsUrl: 'https://console.anthropic.com/settings/keys',
+  },
+  elevenlabs: {
+    id: 'elevenlabs',
+    label: 'ElevenLabs',
+    defaultSecretId: 'ELEVENLABS_API_KEY',
+    secretLabel: 'ElevenLabs API key',
+    secretDescription: 'API key used to call the official ElevenLabs API.',
+    docsUrl: 'https://elevenlabs.io/app/settings/api-keys',
+  },
+};
+
+export function normalizeActionProviderId(value: unknown): ActionProviderId | null {
+  if (typeof value !== 'string') return null;
+  const key = value.trim().toLowerCase().replace(/^@/, '');
+  return ACTION_PROVIDER_ALIASES[key] ?? null;
+}
+
+export const ActionProviderIdSchema = z.preprocess(
+  (value) => normalizeActionProviderId(value) ?? value,
+  z.enum(ACTION_PROVIDER_IDS),
+);
+
+export const CustomActionModelSchema = z.object({
+  /** Provider-facing model id, e.g. `fal-ai/flux-pro` or `gpt-image-1`. */
+  id: z.string(),
+  /** Common MaaS / official provider preset. Aliases like `replica` normalize to `replicate`. */
+  provider: ActionProviderIdSchema,
+  /** Optional display name when the provider id is too terse. */
+  name: z.string().optional(),
+  /** Override the provider preset key name, e.g. `OPENAI_API_KEY` for provider=`official`. */
+  secretId: z.string().optional(),
+  /** Optional provider base URL for action handlers that support configurable endpoints. */
+  baseUrl: z.string().optional(),
+  /** Optional provider endpoint/path for action handlers that route multiple models. */
+  endpoint: z.string().optional(),
+}).passthrough();
+export type CustomActionModel = z.infer<typeof CustomActionModelSchema>;
+
+export function mergeActionProviderSecrets<T extends { model?: CustomActionModel; secrets?: CustomActionSecret[] }>(
+  def: T,
+): T & { secrets: CustomActionSecret[] } {
+  const secrets = [...(def.secrets ?? [])];
+  const provider = def.model?.provider;
+  if (provider) {
+    const preset = ACTION_PROVIDER_PRESETS[provider];
+    const id = def.model?.secretId || preset.defaultSecretId;
+    if (!secrets.some((secret) => secret.id === id)) {
+      secrets.push({
+        id,
+        label: preset.secretLabel,
+        description: preset.secretDescription,
+        required: true,
+      });
+    }
+  }
+  return { ...def, secrets };
+}
+
+const CustomActionDefinitionBaseSchema = z.object({
   id: z.string(),
   name: z.string(),
   description: z.string().optional(),
@@ -730,7 +886,9 @@ export const CustomActionDefinitionSchema = z.object({
   /** CF Worker URL for runtime='worker' actions */
   workerUrl: z.string().optional(),
   /** User variables this action needs (e.g. API keys). Platform injects at runtime. */
-  secrets: z.array(CustomActionSecretSchema).optional(),
+  secrets: z.array(CustomActionSecretSchema).default([]),
+  /** Provider/model binding used by MaaS-compatible actions. */
+  model: CustomActionModelSchema.optional(),
   /** Discovery tags */
   tags: z.array(z.string()).optional(),
   /** Modalities that can be @-mentioned inline in the prompt editor */
@@ -760,7 +918,10 @@ export const CustomActionDefinitionSchema = z.object({
    */
   attachedProjects: z.array(z.string()).default(["*"]),
 });
-export type CustomActionDefinition = z.infer<typeof CustomActionDefinitionSchema>;
+export const CustomActionDefinitionSchema = CustomActionDefinitionBaseSchema.transform((def) =>
+  mergeActionProviderSecrets(def),
+);
+export type CustomActionDefinition = z.output<typeof CustomActionDefinitionSchema>;
 
 /** Check if an actionType string represents a custom (local) action */
 export function isCustomActionType(actionType: string): boolean {
