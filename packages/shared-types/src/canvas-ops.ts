@@ -80,6 +80,14 @@ export interface TaskStatusResult {
 
 // ─── Internal Helpers ────────────────────────────────────
 
+function randomIdPart(): string {
+  const randomUUID = (globalThis as unknown as {
+    crypto?: { randomUUID?: () => string };
+  }).crypto?.randomUUID;
+  if (randomUUID) return randomUUID().slice(0, 8);
+  return Math.random().toString(36).slice(2, 10);
+}
+
 function parseLoroNode(nodeId: string, raw: Record<string, any>): NodeInfo {
   const data = raw.data ?? {};
   return {
@@ -262,7 +270,7 @@ export class Canvas {
       nodeType === NodeType.TextGen
     ) {
       proposalType = ProposalType.Generative;
-      resolvedAssetId = resolvedAssetId ?? crypto.randomUUID().slice(0, 8);
+      resolvedAssetId = resolvedAssetId ?? randomIdPart();
     } else if (nodeType === NodeType.Group) {
       proposalType = ProposalType.Group;
     }
@@ -307,7 +315,7 @@ export class Canvas {
     const upstreamNodeIds = (data.upstreamNodeIds ?? data.upstreamIds) as string[] | undefined;
     const proposalNodeData: Record<string, unknown> = { id: nodeId, ...data };
     const proposal: Record<string, unknown> = {
-      id: `proposal-${crypto.randomUUID().slice(0, 8)}`,
+      id: `proposal-${randomIdPart()}`,
       type: proposalType,
       nodeType: rfType,
       nodeData: proposalNodeData,
