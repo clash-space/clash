@@ -84,6 +84,14 @@ export interface LocalAcpAdapter {
   ): Promise<boolean>;
 }
 
+function formatLocalAcpSessionError(error: unknown): string {
+  const message = error instanceof Error ? error.message : String(error);
+  if (message === "No local ACP agent found on PATH") {
+    return "No local ACP agent found on PATH. Install or expose an ACP CLI such as codex, claude-agent-acp, or gemini, then retry.";
+  }
+  return message || "Failed to create local ACP session";
+}
+
 interface LocalProjectAsset {
   id: string;
   url: string;
@@ -533,14 +541,20 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
     }
     if (!crewId) return c.json({ error: "Missing crew_id" }, 400);
 
-    return c.json(await options.localAcp.createSession({
-      runtimeId: c.req.param("runtimeId"),
-      crewId,
-      crewMemberId,
-      agentId,
-      projectId: body.project_id,
-      resumeAcpSessionId: body.resume_session_id,
-    }));
+    try {
+      return c.json(await options.localAcp.createSession({
+        runtimeId: c.req.param("runtimeId"),
+        crewId,
+        crewMemberId,
+        agentId,
+        projectId: body.project_id,
+        resumeAcpSessionId: body.resume_session_id,
+      }));
+    } catch (error) {
+      const message = formatLocalAcpSessionError(error);
+      console.error("[local-api] local ACP session create failed:", message);
+      return c.text(message, 503);
+    }
   });
 
   app.get("/api/v1/runtimes/:runtimeId/local-sessions/scan", async (c) => {

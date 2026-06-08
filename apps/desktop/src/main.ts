@@ -6,6 +6,7 @@ import type { MenuItemConstructorOptions } from "electron";
 import { startLocalApiServer } from "@master-clash/local-api";
 import { resolveWebDistDir } from "./paths";
 import { resolveDesktopRuntime } from "./runtime";
+import { hydrateMacGuiPath } from "./shell-path";
 import {
   createWindowRegistry,
   ensureNativeWindowControlsVisible,
@@ -19,6 +20,7 @@ const remoteDebuggingPort = process.env.CLASH_DESKTOP_REMOTE_DEBUGGING_PORT;
 if (remoteDebuggingPort) {
   app.commandLine.appendSwitch("remote-debugging-port", remoteDebuggingPort);
 }
+hydrateMacGuiPath();
 
 protocol.registerSchemesAsPrivileged([
   {

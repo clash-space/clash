@@ -275,6 +275,49 @@ describe("local API app", () => {
     ]);
   });
 
+  it("returns a readable local ACP session creation error", async () => {
+    const app = createLocalApiApp({
+      dataDir,
+      userId: "local-user",
+      localAcp: {
+        async listRuntimes() {
+          return {
+            runtimes: [
+              {
+                id: "desktop-local",
+                machine_id: "desktop-local",
+                hostname: "This Mac",
+                os: "darwin/arm64",
+                agents: [],
+                version: "desktop",
+                status: "online",
+                last_heartbeat: 1_700_000_000,
+                created_at: 1_700_000_000,
+              },
+            ],
+          };
+        },
+        async createSession() {
+          throw new Error("No local ACP agent found on PATH");
+        },
+        async listResumeSessions() {
+          return { sessions: [] };
+        },
+      },
+    });
+
+    const created = await app.request("/api/v1/runtimes/desktop-local/sessions", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ crew_id: "director", project_id: "project-1" }),
+    });
+
+    expect(created.status).toBe(503);
+    expect(await created.text()).toBe(
+      "No local ACP agent found on PATH. Install or expose an ACP CLI such as codex, claude-agent-acp, or gemini, then retry.",
+    );
+  });
+
   it("returns local ACP session history with the cloud-compatible message shape", async () => {
     const app = createLocalApiApp({
       dataDir,
