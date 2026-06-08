@@ -361,8 +361,17 @@ function stableJsonForHash(value: unknown): string {
  */
 export async function timelineDslHash(dsl: ResolvedTimelineDsl): Promise<string> {
   const stable = stableJsonForHash(dsl);
-  const bytes = new TextEncoder().encode(stable);
-  const digest = await crypto.subtle.digest("SHA-256", bytes);
+  const Encoder = (globalThis as unknown as {
+    TextEncoder?: new () => { encode(input?: string): Uint8Array };
+  }).TextEncoder;
+  const webCrypto = (globalThis as unknown as {
+    crypto?: { subtle?: { digest(algorithm: string, data: Uint8Array): Promise<ArrayBuffer> } };
+  }).crypto;
+  if (!Encoder || !webCrypto?.subtle) {
+    throw new Error("timelineDslHash requires Web Crypto and TextEncoder support");
+  }
+  const bytes = new Encoder().encode(stable);
+  const digest = await webCrypto.subtle.digest("SHA-256", bytes);
   return Array.from(new Uint8Array(digest))
     .slice(0, 8)
     .map((b) => b.toString(16).padStart(2, "0"))
