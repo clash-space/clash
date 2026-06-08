@@ -269,8 +269,8 @@ export default function SettingsClient({
                     <div className="flex items-center gap-3 mb-5">
                         <Lock className="h-5 w-5 text-gray-700 dark:text-gray-300" weight="bold" />
                         <div>
-                            <h2 className="font-display text-base font-bold text-slate-900 dark:text-slate-50">Variables</h2>
-                            <p className="text-sm text-gray-700 dark:text-gray-300">Encrypted secrets for canvas actions</p>
+                            <h2 className="font-display text-base font-bold text-slate-900 dark:text-slate-50">API Keys</h2>
+                            <p className="text-sm text-gray-700 dark:text-gray-300">OpenAI image generation and canvas action keys</p>
                         </div>
                     </div>
 
@@ -353,7 +353,7 @@ export default function SettingsClient({
                                     <div className="flex-1 min-w-0">
                                         <div className="flex items-center gap-2">
                                             <code className="text-sm font-mono font-medium text-slate-900 dark:text-slate-50">{v.key}</code>
-                                            <span className="text-[10px] text-gray-700 dark:text-gray-300 dark:text-gray-400 bg-warm-muted rounded-full px-2 py-0.5">encrypted</span>
+                                            <span className="text-[10px] text-gray-700 dark:text-gray-300 dark:text-gray-400 bg-warm-muted rounded-full px-2 py-0.5">saved</span>
                                         </div>
                                         <p className="text-xs text-gray-700 dark:text-gray-300 dark:text-gray-400 mt-0.5">Updated {formatDate(v.updatedAt || v.createdAt)}</p>
                                     </div>

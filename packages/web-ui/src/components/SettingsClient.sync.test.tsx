@@ -130,6 +130,7 @@ describe("SettingsClient provider keys", () => {
 
     expect((screen.getByPlaceholderText("KEY_NAME") as HTMLInputElement).value).toBe("FAL_API_KEY");
     expect(screen.getByRole("button", { name: "Replicate · REPLICATE_API_TOKEN" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "OpenAI · OPENAI_API_KEY" })).toBeTruthy();
   });
 
   it("does not show provider key presets in API Tokens", () => {

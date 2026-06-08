@@ -63,7 +63,7 @@ const NAV_ITEMS: NavItem[] = [
   { id: 'sync', label: 'Sync', icon: CloudArrowUp },
   { id: 'crew', label: 'Crew', icon: Users },
   { id: 'tokens', label: 'API Tokens', icon: Key },
-  { id: 'variables', label: 'Variables', icon: Lock },
+  { id: 'variables', label: 'API Keys', icon: Lock },
   { id: 'actions', label: 'Actions', icon: PuzzlePiece },
   { id: 'skills', label: 'Skills', icon: BookOpen },
   { id: 'cli', label: 'CLI', icon: Terminal },

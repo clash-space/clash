@@ -108,6 +108,33 @@ describe("local API app", () => {
     });
   });
 
+  it("stores local settings variables without exposing secret values", async () => {
+    const app = createLocalApiApp({ dataDir, userId: "local-user" });
+
+    const created = await app.request("/api/settings/variables", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ key: "OPENAI_API_KEY", value: "sk-local" }),
+    });
+    expect(created.status).toBe(200);
+    const createdJson = (await created.json()) as { id: string; key: string; value?: string };
+    expect(createdJson).toMatchObject({ key: "OPENAI_API_KEY" });
+    expect(createdJson.value).toBeUndefined();
+
+    const listed = await app.request("/api/settings/variables");
+    expect(await listed.json()).toEqual([
+      expect.objectContaining({
+        id: createdJson.id,
+        key: "OPENAI_API_KEY",
+      }),
+    ]);
+
+    const removed = await app.request(`/api/settings/variables/${createdJson.id}`, { method: "DELETE" });
+    expect(removed.status).toBe(204);
+    const afterDelete = await app.request("/api/settings/variables");
+    expect(await afterDelete.json()).toEqual([]);
+  });
+
   it("allows browser requests from the local web runtime", async () => {
     const app = createLocalApiApp({ dataDir, userId: "local-user" });
 

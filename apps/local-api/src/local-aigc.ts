@@ -1,3 +1,5 @@
+import { resolveModelUpstreamRoute, type ModelKind } from "@clash/shared-types";
+
 import {
   createMockFalQueueService,
   type FalAudioResult,
@@ -40,37 +42,14 @@ export interface MockFalExternalAigcServiceOptions {
   origin?: string;
 }
 
-const FAL_IMAGE_MODEL_IDS: Record<string, string> = {
-  "flux-schnell": "fal-ai/flux/schnell",
-  "flux-dev": "fal-ai/flux/dev",
-  "nano-banana-2": "fal-ai/nano-banana-2",
-  "nano-banana-2-edit": "fal-ai/nano-banana-2/edit",
-  "recraft-v4": "fal-ai/recraft/v4/pro/text-to-image",
-  "flux-2-pro": "fal-ai/flux-2-pro",
-  "flux-2-pro-edit": "fal-ai/flux-2-pro/edit",
-  "gemini-flash-image-2": "fal-ai/nano-banana-2",
-};
-
-const FAL_VIDEO_MODEL_IDS: Record<string, string> = {
-  "sora-2": "fal-ai/sora-2/text-to-video",
-  "kling-2.1": "fal-ai/kling-video/v2.1/standard/text-to-video",
-  "kling-3": "fal-ai/kling-video/v3/pro/image-to-video",
-  "veo3": "fal-ai/veo3",
-  "veo3-fast-text-to-video": "fal-ai/veo3/fast",
-  "seedance-2-text": "bytedance/seedance-2.0/text-to-video",
-  "seedance-2-startend": "bytedance/seedance-2.0/image-to-video",
-  "seedance-2-ref": "bytedance/seedance-2.0/reference-to-video",
-};
-
-const FAL_AUDIO_MODEL_IDS: Record<string, string> = {
-  "gemini-3.1-flash-tts": "fal-ai/minimax/speech-02-hd",
-  "gemini-3.1-pro-tts": "fal-ai/minimax/speech-02-hd",
-  "minimax-speech-02-hd": "fal-ai/minimax/speech-02-hd",
-};
-
-function resolveFalModelId(model: string, table: Record<string, string>, fallback: string): string {
-  if (model.startsWith("fal-ai/") || model.startsWith("bytedance/")) return model;
-  return table[model] ?? fallback;
+function resolveMockFalModelId(model: string, kind: ModelKind, fallback: string): string {
+  const route = resolveModelUpstreamRoute({
+    modelCode: model,
+    kind,
+    allowMock: true,
+    configuredUpstreams: [{ upstreamId: "mock", enabled: true }],
+  });
+  return route?.upstreamModel ?? fallback;
 }
 
 function aspectRatioToFalImageSize(aspectRatio: string | undefined): string {
@@ -128,7 +107,7 @@ export function createMockExternalAigcService(
 
   return {
     async generateImage(input) {
-      const modelEndpoint = resolveFalModelId(input.model, FAL_IMAGE_MODEL_IDS, "fal-ai/nano-banana-2");
+      const modelEndpoint = resolveMockFalModelId(input.model, "image", "fal-ai/nano-banana-2");
       const submitted = await fal.submit(modelEndpoint, {
         prompt: input.prompt || "Mock fal image",
         image_size: aspectRatioToFalImageSize(input.aspectRatio),
@@ -151,7 +130,7 @@ export function createMockExternalAigcService(
     },
 
     async generateVideo(input) {
-      const modelEndpoint = resolveFalModelId(input.model, FAL_VIDEO_MODEL_IDS, "fal-ai/sora-2/text-to-video");
+      const modelEndpoint = resolveMockFalModelId(input.model, "video", "fal-ai/sora-2/text-to-video");
       const submitted = await fal.submit(modelEndpoint, {
         prompt: input.prompt || "Mock fal video",
         aspect_ratio: input.aspectRatio || "16:9",
@@ -176,7 +155,7 @@ export function createMockExternalAigcService(
     },
 
     async generateAudio(input) {
-      const modelEndpoint = resolveFalModelId(input.model, FAL_AUDIO_MODEL_IDS, "fal-ai/minimax/speech-02-hd");
+      const modelEndpoint = resolveMockFalModelId(input.model, "audio", "fal-ai/minimax/speech-02-hd");
       const submitted = await fal.submit(modelEndpoint, {
         prompt: input.prompt || "Mock fal audio",
         duration: input.duration ?? 5,

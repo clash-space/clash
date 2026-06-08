@@ -12,6 +12,10 @@ export interface Env {
   CF_AIG_TOKEN: string;
   /** AI Gateway base URL for OpenAI, e.g. https://gateway.ai.cloudflare.com/v1/{account}/{gw}/openai */
   CF_AIG_OPENAI_URL: string;
+  /** User/provider OpenAI API key. Falls back to CF_AIG_TOKEN until BYOK settings are wired. */
+  OPENAI_API_KEY?: string;
+  /** OpenAI-compatible Images API base URL, defaults to CF_AIG_OPENAI_URL or https://api.openai.com/v1. */
+  OPENAI_BASE_URL?: string;
   /** AI provider: "openai" (default) or "anthropic" */
   AI_PROVIDER?: string;
   /** Model override, e.g. "claude-sonnet-4-20250514" or "gpt-5" */

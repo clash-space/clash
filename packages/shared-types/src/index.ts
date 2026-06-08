@@ -143,6 +143,30 @@ export {
   type ModelCard,
 } from './models';
 
+// Model routing: model-code-first upstream adapter selection.
+export {
+  ModelUpstreamIdSchema,
+  ModelUpstreamApiShapeSchema,
+  MODEL_UPSTREAM_ROUTES,
+  listModelUpstreamRoutes,
+  resolveModelUpstreamRoute,
+  ModelProviderIdSchema,
+  ModelProviderApiShapeSchema,
+  MODEL_PROVIDER_ROUTES,
+  listModelProviderRoutes,
+  resolveModelProviderRoute,
+  type ModelUpstreamId,
+  type ModelUpstreamApiShape,
+  type ModelUpstreamRoute,
+  type UpstreamAvailability,
+  type ModelUpstreamRouteQuery,
+  type ModelProviderId,
+  type ModelProviderApiShape,
+  type ModelProviderRoute,
+  type ProviderAvailability,
+  type ModelProviderRouteQuery,
+} from './model-routing';
+
 // Canvas operations class
 export { Canvas } from './canvas-ops';
 export type {

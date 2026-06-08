@@ -100,6 +100,13 @@ export const FLUX2_ASPECT_RATIOS = [
   { label: '9:16', value: 'portrait_16_9' },
 ] as const;
 
+export const GPT_IMAGE_SIZES = [
+  { label: 'Auto', value: 'auto' },
+  { label: '1:1', value: '1024x1024' },
+  { label: '2:3', value: '1024x1536' },
+  { label: '3:2', value: '1536x1024' },
+] as const;
+
 /**
  * Seedance 2.0 aspect ratios — passed directly (no mapping needed).
  */
@@ -385,6 +392,89 @@ export const MODEL_CARDS: ModelCard[] = [
       count: 1,
     },
     input: { requiresPrompt: true, inputMode: { images: { max: 8 } }, promptModalities: ['text', 'image'] },
+  },
+
+  // ─── Image: GPT Image 2 (OpenAI) ────────────────────────────
+  {
+    id: 'gpt-image-2',
+    name: 'GPT Image 2',
+    provider: 'OpenAI',
+    kind: 'image',
+    defaultAspectRatio: '1:1',
+    aspectRatioParam: 'size',
+    description: 'OpenAI GPT Image 2 — high-quality image generation and editing.',
+    parameters: [
+      {
+        id: 'size',
+        label: 'Size',
+        type: 'select',
+        options: GPT_IMAGE_SIZES.map(s => ({ label: s.label, value: s.value })),
+        defaultValue: 'auto',
+      },
+      {
+        id: 'quality',
+        label: 'Quality',
+        type: 'select',
+        options: [
+          { label: 'Auto', value: 'auto' },
+          { label: 'Low', value: 'low' },
+          { label: 'Medium', value: 'medium' },
+          { label: 'High', value: 'high' },
+        ],
+        defaultValue: 'auto',
+      },
+      {
+        id: 'output_format',
+        label: 'Format',
+        type: 'select',
+        options: [
+          { label: 'PNG', value: 'png' },
+          { label: 'JPEG', value: 'jpeg' },
+          { label: 'WebP', value: 'webp' },
+        ],
+        defaultValue: 'png',
+      },
+      {
+        id: 'background',
+        label: 'Background',
+        type: 'select',
+        options: [
+          { label: 'Auto', value: 'auto' },
+          { label: 'Opaque', value: 'opaque' },
+          { label: 'Transparent', value: 'transparent' },
+        ],
+        defaultValue: 'auto',
+      },
+      {
+        id: 'moderation',
+        label: 'Moderation',
+        type: 'select',
+        options: [
+          { label: 'Auto', value: 'auto' },
+          { label: 'Low', value: 'low' },
+        ],
+        defaultValue: 'auto',
+      },
+      {
+        id: 'count',
+        label: 'Count',
+        type: 'number',
+        min: 1,
+        max: 4,
+        step: 1,
+        defaultValue: 1,
+      },
+    ],
+    defaultParams: {
+      size: 'auto',
+      quality: 'auto',
+      output_format: 'png',
+      background: 'auto',
+      moderation: 'auto',
+      count: 1,
+    },
+    input: { requiresPrompt: true, inputMode: { images: { max: 16 } }, promptModalities: ['text', 'image'] },
+    maxRuntimeMs: 3 * 60 * 1000,
   },
 
   // ─── Image: FLUX Schnell (fal.ai) ────────────────────────────

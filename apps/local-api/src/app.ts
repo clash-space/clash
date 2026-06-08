@@ -145,6 +145,15 @@ interface LocalRoomMessage {
   at: number;
 }
 
+interface LocalUserVariable {
+  id: string;
+  userId: string;
+  key: string;
+  value: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
 type RemoteRoomStatus = "disabled" | "imported" | "mirrored" | "failed";
 
 interface RoomSyncMeta {
@@ -163,6 +172,7 @@ interface LocalDb {
   sessions: LocalSession[];
   crewMembers: LocalCrewMember[];
   roomMessages: LocalRoomMessage[];
+  variables: LocalUserVariable[];
 }
 
 const DEFAULT_DB: LocalDb = {
@@ -172,6 +182,7 @@ const DEFAULT_DB: LocalDb = {
   sessions: [],
   crewMembers: [],
   roomMessages: [],
+  variables: [],
 };
 
 const LOCAL_RUNTIME_ID = "desktop-local";
@@ -240,6 +251,7 @@ function createDb(dataDir: string) {
       sessions: db.sessions ?? [],
       crewMembers: db.crewMembers ?? [],
       roomMessages: db.roomMessages ?? [],
+      variables: db.variables ?? [],
     };
   }
 
@@ -366,6 +378,22 @@ function roomSyncMeta(
   };
 }
 
+function normalizeVariableKey(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const key = value.trim().toUpperCase();
+  if (!/^[A-Z0-9_]+$/.test(key)) return null;
+  return key;
+}
+
+function publicVariable(variable: LocalUserVariable) {
+  return {
+    id: variable.id,
+    key: variable.key,
+    createdAt: variable.createdAt,
+    updatedAt: variable.updatedAt,
+  };
+}
+
 function normalizeLocalRoomMention(mention: RemoteRoomMessage["mentions"][number]): LocalRoomMention {
   return {
     user_id: mention.user_id,
@@ -471,7 +499,51 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
   app.get("/api/settings/actions", (c) => c.json([]));
   app.get("/api/settings/skills", (c) => c.json([]));
   app.get("/api/settings/tokens", (c) => c.json([]));
-  app.get("/api/settings/variables", (c) => c.json([]));
+  app.get("/api/settings/variables", async (c) => {
+    const state = await db.load();
+    return c.json(
+      state.variables
+        .filter((variable) => variable.userId === userId)
+        .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
+        .map(publicVariable),
+    );
+  });
+  app.post("/api/settings/variables", async (c) => {
+    const body = (await c.req.json().catch(() => ({}))) as { key?: unknown; value?: unknown };
+    const key = normalizeVariableKey(body.key);
+    if (!key || typeof body.value !== "string") {
+      return c.json({ error: "Missing key/value" }, 400);
+    }
+    const state = await db.load();
+    const now = nowIso();
+    const existing = state.variables.find((variable) => variable.userId === userId && variable.key === key);
+    if (existing) {
+      existing.value = body.value;
+      existing.updatedAt = now;
+      await db.save(state);
+      return c.json(publicVariable(existing));
+    }
+    const variable: LocalUserVariable = {
+      id: crypto.randomUUID(),
+      userId,
+      key,
+      value: body.value,
+      createdAt: now,
+      updatedAt: now,
+    };
+    state.variables.unshift(variable);
+    await db.save(state);
+    return c.json(publicVariable(variable));
+  });
+  app.delete("/api/settings/variables/:id", async (c) => {
+    const state = await db.load();
+    const id = c.req.param("id");
+    const before = state.variables.length;
+    state.variables = state.variables.filter((variable) => !(variable.userId === userId && variable.id === id));
+    if (state.variables.length === before) return c.json({ error: "Not found" }, 404);
+    await db.save(state);
+    return new Response(null, { status: 204 });
+  });
   app.get("/api/marketplace/registry", (c) => c.json({ version: 1, actions: [], skills: [] }));
   app.get("/api/v1/local/sync", async (c) => c.json(await syncConfig.getPublicConfig()));
   app.patch("/api/v1/local/sync", async (c) => {
