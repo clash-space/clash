@@ -32,6 +32,7 @@ interface InviteCrewMenuProps {
   totalClaimed: number;
   loading: boolean;
   onInvite: (row: CrewRow) => void;
+  onOpenSettings: () => void;
 }
 
 interface PopupRect {
@@ -52,6 +53,7 @@ export function InviteCrewMenu({
   totalClaimed,
   loading,
   onInvite,
+  onOpenSettings,
 }: InviteCrewMenuProps) {
   const buttonRef = useRef<HTMLButtonElement | null>(null);
   const [rect, setRect] = useState<PopupRect | null>(null);
@@ -129,12 +131,16 @@ export function InviteCrewMenu({
               ) : totalClaimed === 0 ? (
                 <EmptyState size="sm">
                   No crew claimed yet.{' '}
-                  <a
-                    href="/settings"
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onOpenSettings();
+                      onToggle();
+                    }}
                     className="text-brand hover:text-brand/80 underline inline-flex items-center gap-0.5"
                   >
                     Open Settings <Gear className="w-3 h-3" aria-hidden="true" />
-                  </a>
+                  </button>
                 </EmptyState>
               ) : uninvitedClaimed.length === 0 ? (
                 <EmptyState tone="muted" size="sm">

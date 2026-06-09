@@ -3,9 +3,8 @@
  *
  * Renders a centered card with a left sidebar (category nav) and a
  * right content pane that hosts one `SettingsClient` section at a
- * time. Replaces the standalone `/settings` page as the primary
- * entry; the route still works for direct links and falls back to
- * the legacy single-page layout.
+ * time. This is the only product settings surface; settings are no
+ * longer exposed as a standalone web route.
  *
  * Data lifecycle:
  *   - Open → fetch all four lists (tokens, variables, actions,

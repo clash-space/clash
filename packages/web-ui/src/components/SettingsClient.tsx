@@ -14,8 +14,7 @@ import {
 import { runtimeApiUrl } from '@clash/web-ui/lib/runtimeConfig';
 
 /** Stable identifiers for each section pane — shared between the legacy
- *  single-page layout (`/settings` route) and the modal layout
- *  (SettingsDialog). The dialog uses these as its sidebar nav keys. */
+ *  SettingsDialog. The dialog uses these as its sidebar nav keys. */
 export type SettingsSection =
     | 'runtimes'
     | 'sync'

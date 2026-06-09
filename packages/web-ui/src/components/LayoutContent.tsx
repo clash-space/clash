@@ -20,10 +20,9 @@ export default function LayoutContent({
   const isDesktopProjectDetailPage = isDesktop && isProjectDetailPage;
   const isLoginPage = pathname === '/login';
   const isLandingPage = pathname === '/landing';
-  const isSettingsPage = pathname === '/settings';
   const isAuthPage = pathname?.startsWith('/auth/');
   const showsDesktopChrome =
-    isDesktop && isAuthenticated && !isLoginPage && !isLandingPage && !isSettingsPage && !isAuthPage;
+    isDesktop && isAuthenticated && !isLoginPage && !isLandingPage && !isAuthPage;
 
   useEffect(() => {
     const root = document.documentElement;
@@ -71,7 +70,7 @@ export default function LayoutContent({
 
   // If unauthenticated, or on login page, or on fullscreen project page, or explicit landing page
   // Don't show dashboard navigation and background
-  if (!isAuthenticated || isLoginPage || (isProjectDetailPage && !isDesktop) || isLandingPage || isSettingsPage || isAuthPage) {
+  if (!isAuthenticated || isLoginPage || (isProjectDetailPage && !isDesktop) || isLandingPage || isAuthPage) {
     return <ConfirmDialogProvider>{children}</ConfirmDialogProvider>;
   }
 

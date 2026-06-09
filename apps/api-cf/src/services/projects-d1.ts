@@ -13,9 +13,21 @@ type Env = Pick<AppEnv, "DB" | "JWT_SECRET"> & {
   NODE_ENV?: string;
 };
 
-type ProjectWithAssets = typeof projects.$inferSelect & {
+type ProjectRow = typeof projects.$inferSelect;
+
+type ProjectAssetPreview = {
+  id: string;
+  assetId: string;
+  url: string;
+  type: "image" | "video";
+  storageKey: string;
+  createdAt: Date | null;
+};
+
+type ProjectWithAssets = ProjectRow & {
   assets: Array<{
     id: string;
+    assetId: string;
     url: string;
     type: "image" | "video";
     storageKey: string;
@@ -67,6 +79,113 @@ async function fetchNodes(env: Env, projectId: string): Promise<unknown[]> {
   return [];
 }
 
+async function resolveProjectAssets(
+  env: Env,
+  db: ReturnType<typeof getDb>,
+  userId: string,
+  project: ProjectRow,
+): Promise<ProjectAssetPreview[]> {
+  const nodes = await fetchNodes(env, project.id);
+  const mediaNodes = (nodes as any[]).filter(
+    (node) =>
+      (node.type === "image" || node.type === "video") &&
+      typeof node.data?.assetId === "string",
+  );
+  const assetIds = Array.from(
+    new Set(mediaNodes.map((n: any) => n.data.assetId as string)),
+  );
+  const assetRows = assetIds.length
+    ? await db
+        .select({
+          id: assets.id,
+          srcR2Key: assets.srcR2Key,
+          coverR2Key: assets.coverR2Key,
+        })
+        .from(assets)
+        .where(inArray(assets.id, assetIds))
+    : [];
+  const assetById = new Map(assetRows.map((r) => [r.id, r]));
+
+  const projectAssets = await Promise.all(
+    mediaNodes.map(async (node: any) => {
+      const assetId = node.data.assetId as string;
+      const row = assetById.get(assetId);
+      if (!row) return null;
+      if (node.type === "video" && !row.coverR2Key) return null;
+      const r2Key = node.type === "video" ? row.coverR2Key! : row.srcR2Key;
+      return {
+        id: node.id,
+        assetId,
+        url: await signAssetPath(env as AppEnv, r2Key),
+        type: node.type as "image" | "video",
+        storageKey: row.srcR2Key,
+        createdAt: (() => {
+          if (node.data?.createdAt) return new Date(node.data.createdAt);
+          if (node.createdAt) return new Date(node.createdAt);
+          return project.updatedAt || project.createdAt;
+        })(),
+      };
+    }),
+  ).then((arr) => arr.filter((a): a is NonNullable<typeof a> => a !== null));
+
+  const seenAssetIds = new Set(
+    mediaNodes
+      .map((node: any) => node.data?.assetId)
+      .filter((assetId: unknown): assetId is string => typeof assetId === "string"),
+  );
+  const seenPreviewKeys = new Set(
+    mediaNodes
+      .map((node: any) => {
+        const row = assetById.get(node.data?.assetId);
+        if (!row) return undefined;
+        return node.type === "video" ? row.coverR2Key : row.srcR2Key;
+      })
+      .filter((r2Key: unknown): r2Key is string => typeof r2Key === "string"),
+  );
+  let mergedAssets = projectAssets;
+
+  if (mergedAssets.length < 4) {
+    const fallbackRows = await db
+      .select({
+        id: assets.id,
+        srcR2Key: assets.srcR2Key,
+        coverR2Key: assets.coverR2Key,
+        kind: assets.kind,
+        createdAt: assets.createdAt,
+        importedAt: assetRefs.importedAt,
+      })
+      .from(assets)
+      .innerJoin(assetRefs, eq(assetRefs.assetId, assets.id))
+      .where(and(eq(assetRefs.projectId, project.id), eq(assets.userId, userId)))
+      .orderBy(desc(assetRefs.importedAt), desc(assets.createdAt))
+      .limit(12);
+
+    const fallbackAssets = await Promise.all(
+      fallbackRows.map(async (row) => {
+        if (seenAssetIds.has(row.id)) return null;
+        if (row.kind !== "image" && row.kind !== "video") return null;
+        if (row.kind === "video" && !row.coverR2Key) return null;
+        const r2Key = row.kind === "video" ? row.coverR2Key! : row.srcR2Key;
+        if (seenPreviewKeys.has(r2Key)) return null;
+        seenAssetIds.add(row.id);
+        seenPreviewKeys.add(r2Key);
+        return {
+          id: row.id,
+          assetId: row.id,
+          url: await signAssetPath(env as AppEnv, r2Key),
+          type: row.kind as "image" | "video",
+          storageKey: row.srcR2Key,
+          createdAt: row.createdAt || row.importedAt || project.updatedAt || project.createdAt,
+        };
+      }),
+    ).then((arr) => arr.filter((a): a is NonNullable<typeof a> => a !== null));
+
+    mergedAssets = [...projectAssets, ...fallbackAssets];
+  }
+
+  return mergedAssets;
+}
+
 export async function listProjectsWithAssets(
   env: Env,
   userId: string,
@@ -83,102 +202,7 @@ export async function listProjectsWithAssets(
 
   return Promise.all(
     projectsData.map(async (project) => {
-      const nodes = await fetchNodes(env, project.id);
-      const mediaNodes = (nodes as any[]).filter(
-        (node) =>
-          (node.type === "image" || node.type === "video") &&
-          typeof node.data?.assetId === "string",
-      );
-      const assetIds = Array.from(
-        new Set(mediaNodes.map((n: any) => n.data.assetId as string)),
-      );
-      const assetRows = assetIds.length
-        ? await db
-            .select({
-              id: assets.id,
-              srcR2Key: assets.srcR2Key,
-              coverR2Key: assets.coverR2Key,
-            })
-            .from(assets)
-            .where(inArray(assets.id, assetIds))
-        : [];
-      const assetById = new Map(assetRows.map((r) => [r.id, r]));
-
-      const projectAssets = await Promise.all(
-        mediaNodes.map(async (node: any) => {
-          const row = assetById.get(node.data.assetId);
-          if (!row) return null;
-          if (node.type === "video" && !row.coverR2Key) return null;
-          const r2Key = node.type === "video" ? row.coverR2Key! : row.srcR2Key;
-          return {
-            id: node.id,
-            url: await signAssetPath(env as AppEnv, r2Key),
-            type: node.type as "image" | "video",
-            storageKey: row.srcR2Key,
-            createdAt: (() => {
-              if (node.data?.createdAt) return new Date(node.data.createdAt);
-              if (node.createdAt) return new Date(node.createdAt);
-              return project.updatedAt || project.createdAt;
-            })(),
-          };
-        }),
-      ).then((arr) => arr.filter((a): a is NonNullable<typeof a> => a !== null));
-
-      const seenAssetIds = new Set(
-        mediaNodes
-          .map((node: any) => node.data?.assetId)
-          .filter((assetId: unknown): assetId is string => typeof assetId === "string"),
-      );
-      const seenPreviewKeys = new Set(
-        mediaNodes
-          .map((node: any) => {
-            const row = assetById.get(node.data?.assetId);
-            if (!row) return undefined;
-            return node.type === "video" ? row.coverR2Key : row.srcR2Key;
-          })
-          .filter((r2Key: unknown): r2Key is string => typeof r2Key === "string"),
-      );
-      let mergedAssets = projectAssets;
-
-      if (mergedAssets.length < 4) {
-        const fallbackRows = await db
-          .select({
-            id: assets.id,
-            srcR2Key: assets.srcR2Key,
-            coverR2Key: assets.coverR2Key,
-            kind: assets.kind,
-            createdAt: assets.createdAt,
-            importedAt: assetRefs.importedAt,
-          })
-          .from(assets)
-          .innerJoin(assetRefs, eq(assetRefs.assetId, assets.id))
-          .where(and(eq(assetRefs.projectId, project.id), eq(assets.userId, userId)))
-          .orderBy(desc(assetRefs.importedAt), desc(assets.createdAt))
-          .limit(12);
-
-        const fallbackAssets = await Promise.all(
-          fallbackRows.map(async (row) => {
-            if (seenAssetIds.has(row.id)) return null;
-            if (row.kind !== "image" && row.kind !== "video") return null;
-            if (row.kind === "video" && !row.coverR2Key) return null;
-            const r2Key = row.kind === "video" ? row.coverR2Key! : row.srcR2Key;
-            if (seenPreviewKeys.has(r2Key)) return null;
-            seenAssetIds.add(row.id);
-            seenPreviewKeys.add(r2Key);
-            return {
-              id: row.id,
-              url: await signAssetPath(env as AppEnv, r2Key),
-              type: row.kind as "image" | "video",
-              storageKey: row.srcR2Key,
-              createdAt: row.createdAt || row.importedAt || project.updatedAt || project.createdAt,
-            };
-          }),
-        ).then((arr) => arr.filter((a): a is NonNullable<typeof a> => a !== null));
-
-        mergedAssets = [...projectAssets, ...fallbackAssets];
-      }
-
-      return { ...project, assets: mergedAssets };
+      return { ...project, assets: await resolveProjectAssets(env, db, userId, project) };
     }),
   );
 }
@@ -190,9 +214,11 @@ export async function getProjectById(
 ) {
   const db = getDb(env.DB);
   if (userId === DEV_USER_ID) await ensureDevUser(db, env);
-  return db.query.projects.findFirst({
+  const project = await db.query.projects.findFirst({
     where: and(eq(projects.id, id), eq(projects.ownerId, userId)),
   });
+  if (!project) return project;
+  return { ...project, assets: await resolveProjectAssets(env, db, userId, project) };
 }
 
 export async function createNewProject(

@@ -102,6 +102,7 @@ import { getAsset } from '@clash/web-ui/lib/hooks/useAsset';
 import { getSignedUrl } from '@clash/web-ui/lib/hooks/useSignedUrl';
 import { runtimeApiUrl } from '@clash/web-ui/lib/runtimeConfig';
 import { DESKTOP_TAB_TITLE_EVENT, type DesktopTabTitleEventDetail } from '@clash/web-ui/lib/desktopTabs';
+import { buildFallbackCanvasFromAssets } from '@clash/web-ui/lib/projectFallbackCanvas';
 import { shouldDismissToolbarMenu, shouldDismissToolbarMenuOnKey } from './toolbarDismiss';
 
 const CHILD_NODE_Z_INDEX_BASE = 1000;
@@ -308,11 +309,27 @@ function DebugNodeIds({ nodes }: { nodes: AppNode[] }) {
 }
 
 export default function ProjectEditor({ project, initialPrompt, initialThreadId, globalActions = [] }: ProjectEditorProps) {
-    // IMPORTANT: Start with empty canvas - Loro sync will populate from server
-    // This ensures Loro is the single source of truth for nodes/edges
-    // Legacy: project.nodes/edges from DB are now ignored
-    const initialNodes: AppNode[] = [];
-    const initialEdges: Edge[] = [];
+    const fallbackCanvas = useMemo(
+        () => buildFallbackCanvasFromAssets(project.assets),
+        [project.assets],
+    );
+    const fallbackNodeIds = useMemo(
+        () => new Set(fallbackCanvas.nodes.map((node) => node.id)),
+        [fallbackCanvas.nodes],
+    );
+    const fallbackSeededRef = useRef(false);
+    const sawCanonicalCanvasRef = useRef(false);
+
+    useEffect(() => {
+        fallbackSeededRef.current = false;
+        sawCanonicalCanvasRef.current = false;
+    }, [project.id]);
+
+    // Loro remains the single source of truth. These asset-ref nodes are only
+    // a recovery bootstrap for old projects whose Loro document is empty while
+    // the project still owns media assets.
+    const initialNodes = fallbackCanvas.nodes as AppNode[];
+    const initialEdges: Edge[] = fallbackCanvas.edges;
 
     const [nodes, setNodesInternal] = useNodesState<AppNode>(initialNodes);
     const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
@@ -413,6 +430,22 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
             awarenessSinkRef.current?.(msg);
         },
         onNodesChange: (syncedNodes) => {
+            if (syncedNodes.length > 0) {
+                sawCanonicalCanvasRef.current = true;
+            }
+
+            if (
+                syncedNodes.length === 0 &&
+                fallbackCanvas.nodes.length > 0 &&
+                !sawCanonicalCanvasRef.current &&
+                !fallbackSeededRef.current
+            ) {
+                setNodes((currentNodes) => (
+                    currentNodes.length === 0 ? fallbackCanvas.nodes as AppNode[] : currentNodes
+                ));
+                return;
+            }
+
             // Loro is the SINGLE SOURCE OF TRUTH - use its state directly
             // Only preserve spatial state during active interaction (drag/resize).
             // Selection is UI-only and should NOT block remote/local layout updates.
@@ -562,6 +595,47 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
     useEffect(() => {
         loroSyncRef.current = loroSync;
     }, [loroSync]);
+
+    useEffect(() => {
+        if (!loroSync.isInitialized || !loroSync.connected) return;
+        if (fallbackCanvas.nodes.length === 0) return;
+        if (fallbackSeededRef.current || sawCanonicalCanvasRef.current) return;
+
+        const seedTimer = window.setTimeout(() => {
+            if (fallbackSeededRef.current || sawCanonicalCanvasRef.current) return;
+
+            let shouldSeed = false;
+            setNodes((currentNodes) => {
+                const hasCanonicalNodes = currentNodes.some((node) => !fallbackNodeIds.has(node.id));
+                if (hasCanonicalNodes) {
+                    sawCanonicalCanvasRef.current = true;
+                    return currentNodes;
+                }
+                shouldSeed = true;
+                return currentNodes.length === 0 ? fallbackCanvas.nodes as AppNode[] : currentNodes;
+            });
+
+            if (!shouldSeed) return;
+            fallbackSeededRef.current = true;
+            for (const node of fallbackCanvas.nodes) {
+                loroSync.addNode(node.id, node);
+            }
+            for (const edge of fallbackCanvas.edges) {
+                loroSync.addEdge(edge.id, edge);
+            }
+        }, 1000);
+
+        return () => window.clearTimeout(seedTimer);
+    }, [
+        fallbackCanvas.edges,
+        fallbackCanvas.nodes,
+        fallbackNodeIds,
+        loroSync.addEdge,
+        loroSync.addNode,
+        loroSync.connected,
+        loroSync.isInitialized,
+        setNodes,
+    ]);
 
     // Awareness: cursor + selection. Rides on loroSync's WS via sendSideband.
     // sendSideband doesn't change identity once loroSync is created, so we

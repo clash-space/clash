@@ -12,7 +12,7 @@ import { generateSemanticId } from '@clash/web-ui/lib/utils/semanticId';
 import { SignedImg } from '../SignedMedia';
 import { getSignedUrl } from '@clash/web-ui/lib/hooks/useSignedUrl';
 import { getAsset } from '@clash/web-ui/lib/hooks/useAsset';
-import { ACTION_PROVIDER_PRESETS, MODEL_CARDS, snapAspectRatio, parsePromptParts, extractPromptText, composePromptWithTextRefs, buildMention, capability, type ModelCard, type ModelParameter, type CustomActionDefinition, type Modality } from '@clash/shared-types';
+import { MODEL_CARDS, snapAspectRatio, parsePromptParts, extractPromptText, composePromptWithTextRefs, buildMention, capability, type ModelCard, type ModelParameter, type CustomActionDefinition, type Modality } from '@clash/shared-types';
 import { applyLayoutPatchesToLoro, collectLayoutNodePatches } from '@clash/web-ui/lib/loroNodeSync';
 import { useCustomActions } from '@clash/web-ui/hooks/useCustomActions';
 import {
@@ -26,6 +26,7 @@ import { useConfirm } from '../ConfirmDialog';
 import { useSpawnPendingAsset } from './useSpawnPendingAsset';
 import ActionBadgePipelineMenu from './ActionBadgePipelineMenu';
 import AttributionLine from './AttributionLine';
+import { getModelDropdownSecondaryText } from './modelDisplay';
 
 type ModelParams = Record<string, string | number | boolean>;
 type BuiltInActionKind = 'image' | 'video' | 'audio' | 'text';
@@ -241,9 +242,6 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
     const modelDisplay = isCustom
         ? (customDef?.name ?? customActionId ?? 'Custom action')
         : (selectedModel?.name || modelId);
-    const providerDisplay = isCustom
-        ? (customDef?.model?.provider ? ACTION_PROVIDER_PRESETS[customDef.model.provider]?.label ?? customDef.model.provider : 'Custom')
-        : (selectedModel?.provider || '');
     const countValue = Number(modelParams.count ?? 1);
 
     // Single derivation — all per-modality questions read fields off `cap`.
@@ -1752,6 +1750,7 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
                                         })
                                         .map((card) => {
                                         const compat = refNodeIds.length === 0 || isModelCompatibleWithRefs(card);
+                                        const secondaryText = getModelDropdownSecondaryText(compat);
                                         const selected = card.id === modelId;
                                         return (
                                             <div
@@ -1769,9 +1768,11 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
                                                 }}
                                             >
                                                 <div className="font-bold leading-tight">{card.name}</div>
-                                                <div className={`text-[10px] ${selected ? 'text-gray-300' : compat ? 'text-gray-700 dark:text-gray-300' : 'text-amber-600'}`}>
-                                                    {compat ? card.provider : 'clears current refs'}
-                                                </div>
+                                                {secondaryText && (
+                                                    <div className={`text-[10px] ${selected ? 'text-gray-300' : 'text-amber-600'}`}>
+                                                        {secondaryText}
+                                                    </div>
+                                                )}
                                             </div>
                                         );
                                     })}

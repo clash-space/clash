@@ -424,7 +424,7 @@ export function GroupChatPanel({
   // User session + billing — drives the rail-bottom avatar + balance
   // pill. `balance.status === 'unavailable'` means self-hosted with
   // billing disabled, in which case the balance pill stays hidden
-  // (the avatar still renders so users can reach /settings).
+  // (the avatar still renders so users can reach Settings).
   const session = betterAuthClient.useSession();
   const sessionUser = session.data?.user;
   const balance = useBillingBalance(!!sessionUser);
@@ -527,6 +527,7 @@ export function GroupChatPanel({
             totalClaimed={claimedCrew.length}
             loading={crewLoading}
             onInvite={invite}
+            onOpenSettings={() => setSettingsOpen(true)}
           />
 
           {/* Refresh sits immediately under the + button — same
@@ -544,7 +545,7 @@ export function GroupChatPanel({
           </motion.button>
         </div>
 
-        {/* Rail footer: avatar (→ /settings) + balance pill (hosted
+        {/* Rail footer: avatar (opens Settings) + balance pill (hosted
             version only — hidden when billing is unavailable on a
             self-hosted deploy). Multi-user presence stacks above. */}
         {otherClients.length > 0 && (

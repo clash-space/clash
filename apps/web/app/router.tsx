@@ -33,7 +33,6 @@ export const router = createBrowserRouter([
         path: "projects/:id",
         lazy: lazyRoute(() => import("./routes/project.$id")),
       },
-      { path: "settings", lazy: lazyRoute(() => import("./routes/settings")) },
       { path: "billing", lazy: lazyRoute(() => import("./routes/billing")) },
       {
         path: "marketplace",

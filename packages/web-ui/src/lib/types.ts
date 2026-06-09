@@ -5,21 +5,23 @@
  * so components don't need to depend on server-only schema files.
  */
 
+export interface ProjectAsset {
+  id: string;
+  assetId?: string;
+  url: string;
+  type: "image" | "video";
+  storageKey: string | null;
+  createdAt: Date | string | number | null;
+}
+
 export interface Project {
   id: string;
   ownerId: string;
   name: string;
   description: string | null;
-  createdAt: Date | null;
-  updatedAt: Date | null;
-}
-
-export interface ProjectAsset {
-  id: string;
-  url: string;
-  type: "image" | "video";
-  storageKey: string | null;
-  createdAt: Date | null;
+  createdAt: Date | string | number | null;
+  updatedAt: Date | string | number | null;
+  assets?: ProjectAsset[];
 }
 
 export interface ProjectWithAssets extends Project {

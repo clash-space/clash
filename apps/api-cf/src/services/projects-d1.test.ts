@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { getDb } from "../db";
-import { listProjectsWithAssets } from "./projects-d1";
+import { getProjectById, listProjectsWithAssets } from "./projects-d1";
 
 vi.mock("../db", () => ({
   getDb: vi.fn(),
@@ -75,6 +75,50 @@ describe("listProjectsWithAssets", () => {
       "/assets/projects/project-1/assets/dog-3.png?signed=1",
       "/assets/projects/project-1/assets/dog-2.png?signed=1",
       "/assets/projects/project-1/assets/dog-1.png?signed=1",
+    ]);
+  });
+});
+
+describe("getProjectById", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("includes fallback project asset refs for detail pages", async () => {
+    const fallbackAssets = [
+      asset("asset-1", "projects/project-1/assets/dog-1.png", "2026-06-03T00:01:00.000Z"),
+    ];
+
+    const db = {
+      query: {
+        projects: {
+          findFirst: vi.fn().mockResolvedValue(project()),
+        },
+      },
+      select: vi.fn().mockReturnValue({
+        from: vi.fn().mockReturnValue({
+          innerJoin: vi.fn().mockReturnValue({
+            where: vi.fn().mockReturnValue({
+              orderBy: vi.fn().mockReturnValue({
+                limit: vi.fn().mockResolvedValue(fallbackAssets),
+              }),
+            }),
+          }),
+          where: vi.fn().mockResolvedValue([]),
+        }),
+      }),
+    };
+    vi.mocked(getDb).mockReturnValue(db as unknown as ReturnType<typeof getDb>);
+
+    const result = await getProjectById({ DB: {} as D1Database }, "user-1", "project-1");
+
+    expect(result?.assets).toEqual([
+      expect.objectContaining({
+        id: "asset-1",
+        url: "/assets/projects/project-1/assets/dog-1.png?signed=1",
+        type: "image",
+        storageKey: "projects/project-1/assets/dog-1.png",
+      }),
     ]);
   });
 });
