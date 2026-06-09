@@ -8,6 +8,17 @@ export interface SessionInfo {
   updatedAt?: string;
 }
 
+type SessionsResponse = {
+  sessions?: Array<{
+    thread_id?: string;
+    threadId?: string;
+    id?: string;
+    title?: string;
+    updated_at?: string;
+    updatedAt?: string;
+  }>;
+};
+
 export function useSessionHistory(projectId: string) {
   const [sessions, setSessions] = useState<SessionInfo[]>([]);
   const loadedRef = useRef(false);
@@ -18,15 +29,18 @@ export function useSessionHistory(projectId: string) {
     fetch(runtimeApiUrl(`/api/v1/sessions?projectId=${encodeURIComponent(projectId)}`), {
       credentials: 'include',
     })
-      .then(res => res.ok ? res.json() : { sessions: [] })
-      .then(data => {
-        setSessions(
-          (data.sessions || []).map((s: any) => ({
-            threadId: s.thread_id ?? s.threadId ?? s.id,
+      .then(async (res): Promise<SessionsResponse> => res.ok ? await res.json() as SessionsResponse : { sessions: [] })
+      .then((data) => {
+        const nextSessions = (data.sessions || []).flatMap((s): SessionInfo[] => {
+          const threadId = s.thread_id ?? s.threadId ?? s.id;
+          if (!threadId) return [];
+          return [{
+            threadId,
             title: s.title,
             updatedAt: s.updated_at ?? s.updatedAt,
-          }))
-        );
+          }];
+        });
+        setSessions(nextSessions);
         loadedRef.current = true;
       })
       .catch(() => {

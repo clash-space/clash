@@ -1,5 +1,5 @@
 type ToolbarRoot = {
-  contains: (target: EventTarget) => boolean;
+  contains: (target: Node) => boolean;
 };
 
 export function shouldDismissToolbarMenu({
@@ -14,7 +14,8 @@ export function shouldDismissToolbarMenu({
   target: EventTarget | null;
 }) {
   if (!activeMenu || !toolbarRoot || !target) return false;
-  return !toolbarRoot.contains(target) && !flyoutRoot?.contains(target);
+  const targetNode = target as Node;
+  return !toolbarRoot.contains(targetNode) && !flyoutRoot?.contains(targetNode);
 }
 
 export function shouldDismissToolbarMenuOnKey(activeMenu: string | null, key: string) {

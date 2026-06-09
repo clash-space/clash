@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { afterEach, describe, it, expect, vi } from "vitest";
 import { LoroDoc } from "loro-crdt";
 import {
   ACTION_PROVIDER_PRESETS,
@@ -113,6 +113,30 @@ describe("buildPendingAssetNode", () => {
 });
 
 describe("Canvas.execute", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("calls crypto.randomUUID with the crypto receiver", () => {
+    const doc = new LoroDoc();
+    const canvas = new Canvas(doc, () => {});
+    const fakeCrypto = {
+      randomUUID() {
+        if (this !== fakeCrypto) {
+          throw new TypeError("randomUUID receiver lost");
+        }
+        return "12345678-1234-4234-8234-123456789abc";
+      },
+    };
+
+    vi.stubGlobal("crypto", fakeCrypto);
+
+    const result = canvas.createNode("img1", "image_gen", { label: "Img" });
+
+    expect(result.error).toBeNull();
+    expect(result.asset_id).toBe("12345678");
+  });
+
   it("allows image-only custom actions to execute without a text prompt", () => {
     const doc = new LoroDoc();
     const canvas = new Canvas(doc, () => {});

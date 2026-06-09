@@ -3,6 +3,12 @@ import { createAuth, type AuthBindings } from "./better-auth.server";
 
 export const DEV_USER_ID = "dev-user";
 
+type AuthSession = {
+  user?: {
+    id?: string | null;
+  } | null;
+} | null;
+
 export interface SessionEnv extends AuthBindings {
   NODE_ENV?: string;
   SKIP_LOGIN?: string;
@@ -16,9 +22,9 @@ export async function getUserIdFromRequest(
   if (env.SKIP_LOGIN === "true") return DEV_USER_ID;
   const auth = createAuth(env, cf);
   try {
-    const session = await auth.api.getSession({
+    const session = (await auth.api.getSession({
       headers: new Headers(request.headers),
-    });
+    })) as AuthSession;
     return session?.user?.id ?? null;
   } catch {
     return null;

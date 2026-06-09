@@ -1,8 +1,4 @@
-import type {
-  D1Database,
-  IncomingRequestCfProperties,
-  KVNamespace,
-} from "@cloudflare/workers-types";
+import type { IncomingRequestCfProperties } from "@cloudflare/workers-types";
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { emailOTP } from "better-auth/plugins";
@@ -85,7 +81,7 @@ export function createAuth(env: AuthBindings, cf?: IncomingRequestCfProperties) 
             debugLogs: false,
           },
         },
-        kv: env.KV,
+        kv: env.KV as any,
       },
       {
         basePath,

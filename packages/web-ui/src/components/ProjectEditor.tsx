@@ -1886,6 +1886,7 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
             width?: number;
             height?: number;
             duration?: number;
+            createdAt: number;
         } | null> => {
             const placeholderId = `upload-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
             const localPreviewUrl = URL.createObjectURL(file);
@@ -2053,6 +2054,7 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
                     width,
                     height,
                     duration,
+                    createdAt: Date.now(),
                 };
             } catch (err) {
                 console.error('Failed to upload file to R2', err);

@@ -3,14 +3,38 @@ import { cloudflareClient } from "better-auth-cloudflare/client";
 import { emailOTPClient } from "better-auth/client/plugins";
 import { runtimeApiUrl } from "./runtimeConfig";
 
-type AuthClient = ReturnType<
-  typeof createAuthClient<{
-    plugins: [
-      ReturnType<typeof cloudflareClient>,
-      ReturnType<typeof emailOTPClient>,
-    ];
-  }>
->;
+type SessionQuery = {
+  data: {
+    user?: {
+      id?: string | null;
+      name?: string | null;
+      email?: string | null;
+      image?: string | null;
+    } | null;
+  } | null;
+  isPending: boolean;
+  error: unknown;
+  refetch: () => Promise<unknown>;
+};
+
+type AuthResult = {
+  data?: unknown;
+  error?: {
+    message?: string;
+  } | null;
+};
+
+type AuthClient = {
+  useSession: () => SessionQuery;
+  signIn: {
+    email: (input: unknown) => Promise<AuthResult>;
+    social: (input: unknown) => Promise<AuthResult>;
+  };
+  signUp: {
+    email: (input: unknown) => Promise<AuthResult>;
+  };
+  signOut: (input?: unknown) => Promise<AuthResult>;
+};
 
 let _client: AuthClient | null = null;
 
@@ -28,7 +52,7 @@ function getClient(): AuthClient {
   _client = createAuthClient({
     baseURL: authBaseUrl(),
     plugins: [cloudflareClient(), emailOTPClient()],
-  }) as AuthClient;
+  } as any) as unknown as AuthClient;
   return _client;
 }
 
@@ -45,6 +69,14 @@ const SSR_STUB = {
     error: null,
     refetch: () => Promise.resolve(),
   }),
+  signIn: {
+    email: () => Promise.reject(new Error("Auth client is unavailable during SSR")),
+    social: () => Promise.reject(new Error("Auth client is unavailable during SSR")),
+  },
+  signUp: {
+    email: () => Promise.reject(new Error("Auth client is unavailable during SSR")),
+  },
+  signOut: () => Promise.reject(new Error("Auth client is unavailable during SSR")),
 };
 
 const betterAuthClient = new Proxy(

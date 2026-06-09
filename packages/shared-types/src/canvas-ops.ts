@@ -81,10 +81,10 @@ export interface TaskStatusResult {
 // ─── Internal Helpers ────────────────────────────────────
 
 function randomIdPart(): string {
-  const randomUUID = (globalThis as unknown as {
+  const cryptoObject = (globalThis as unknown as {
     crypto?: { randomUUID?: () => string };
-  }).crypto?.randomUUID;
-  if (randomUUID) return randomUUID().slice(0, 8);
+  }).crypto;
+  if (cryptoObject?.randomUUID) return cryptoObject.randomUUID().slice(0, 8);
   return Math.random().toString(36).slice(2, 10);
 }
 

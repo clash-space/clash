@@ -1,8 +1,8 @@
 
 import React, { createContext, useContext, useState, useCallback, ReactNode, useRef } from 'react';
 import { lazy, Suspense } from 'react';
-import { getEditorAssetKey } from '@master-clash/remotion-core';
-import type { Asset, EditorState, TimelineDsl, Track } from '@master-clash/remotion-core';
+import { getEditorAssetKey, normalizeEditorAsset } from '@master-clash/remotion-core';
+import type { Asset, EditorAssetInput, EditorState, TimelineDsl, Track } from '@master-clash/remotion-core';
 import type { Node, Edge } from '@xyflow/react';
 import { useOptionalLoroSyncContext } from './LoroSyncContext';
 import { autoInsertNode } from '@clash/web-ui/lib/layout';
@@ -62,10 +62,10 @@ type TimelineDslType = Pick<
 interface VideoEditorContextType {
     isOpen: boolean;
     openEditor: (
-        assets: Asset[],
+        assets: EditorAssetInput[],
         nodeId: string,
         timelineDsl?: TimelineDslType | null,
-        availableAssets?: Asset[]
+        availableAssets?: EditorAssetInput[]
     ) => void;
     closeEditor: () => void;
     exportVideo: () => Promise<void>;
@@ -85,15 +85,15 @@ export function VideoEditorProvider({
         file: File,
         type: 'video' | 'image' | 'audio',
         editorNodeId: string
-    ) => Promise<Asset | null> | Asset | null;
-    onCanvasAssetLinked?: (asset: Asset, editorNodeId: string) => void;
+    ) => Promise<EditorAssetInput | null> | EditorAssetInput | null;
+    onCanvasAssetLinked?: (asset: EditorAssetInput, editorNodeId: string) => void;
     nodes?: Node[];
     edges?: Edge[];
 }) {
     const loroSync = useOptionalLoroSyncContext();
     const [isOpen, setIsOpen] = useState(false);
     const [assets, setAssets] = useState<Asset[]>([]);
-    const [availableAssets, setAvailableAssets] = useState<Asset[]>([]);
+    const [availableAssets, setAvailableAssets] = useState<EditorAssetInput[]>([]);
     const [timelineDsl, setTimelineDsl] = useState<TimelineDsl | null>(null);
     const [editorNodeId, setEditorNodeId] = useState<string | null>(null);
 
@@ -101,15 +101,15 @@ export function VideoEditorProvider({
     const editorStateRef = useRef<EditorState | null>(null);
 
     const openEditor = useCallback((
-        newAssets: Asset[],
+        newAssets: EditorAssetInput[],
         nodeId: string,
         nextTimelineDsl?: TimelineDslType | null,
-        nextAvailableAssets: Asset[] = []
+        nextAvailableAssets: EditorAssetInput[] = []
     ): void => {
 
         // Deduplicate assets before setting
         const seenKeys = new Set<string>();
-        const deduplicatedAssets = newAssets.filter(asset => {
+        const deduplicatedAssets = newAssets.map(normalizeEditorAsset).filter(asset => {
             const key = getEditorAssetKey(asset);
             if (seenKeys.has(key)) {
                 return false;
@@ -307,28 +307,30 @@ export function VideoEditorProvider({
             if (!editorNodeId || !onAssetAddedToCanvas) return;
             const result = await onAssetAddedToCanvas(file, type, editorNodeId);
             if (!result) return;
+            const normalizedResult = normalizeEditorAsset(result);
             setAssets((current) => {
                 const exists = current.some((asset) =>
-                    asset.id === result.id ||
-                    asset.src === result.src ||
-                    (result.sourceNodeId && asset.sourceNodeId === result.sourceNodeId)
+                    asset.id === normalizedResult.id ||
+                    asset.src === normalizedResult.src ||
+                    (normalizedResult.sourceNodeId && asset.sourceNodeId === normalizedResult.sourceNodeId)
                 );
-                return exists ? current : [...current, result];
+                return exists ? current : [...current, normalizedResult];
             });
         },
         [editorNodeId, onAssetAddedToCanvas]
     );
 
     const handleAssetPicked = useCallback(
-        (asset: Asset) => {
+        (asset: EditorAssetInput) => {
             if (!editorNodeId || !onCanvasAssetLinked) return;
-            onCanvasAssetLinked(asset, editorNodeId);
+            const normalizedAsset = normalizeEditorAsset(asset);
+            onCanvasAssetLinked(normalizedAsset, editorNodeId);
             const assetKey = getEditorAssetKey(asset);
 
             // Add to local assets state so it appears in the editor immediately
             setAssets((current) => {
                 const exists = current.some((a) => getEditorAssetKey(a) === assetKey);
-                return exists ? current : [...current, asset];
+                return exists ? current : [...current, normalizedAsset];
             });
 
             // Remove from available assets since it's now picked

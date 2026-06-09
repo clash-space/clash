@@ -15,6 +15,12 @@
  */
 import { createAuth } from "../app/lib/auth/better-auth.server";
 
+type AuthSession = {
+  user?: {
+    id?: string | null;
+  } | null;
+} | null;
+
 type CloudflareFetcher = {
   fetch: (request: Request) => Promise<Response>;
 };
@@ -99,9 +105,9 @@ async function getUserIdFromBetterAuth(
   if (!cookie && !authorization) return null;
   try {
     const auth = createAuth(env);
-    const session = await auth.api.getSession({
+    const session = (await auth.api.getSession({
       headers: new Headers(request.headers),
-    });
+    })) as AuthSession;
     return session?.user?.id ?? null;
   } catch {
     return null;
