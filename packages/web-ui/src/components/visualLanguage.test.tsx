@@ -55,6 +55,8 @@ const oldEditorModalShellTokens =
   /bg-slate-950(?:\/30|\/10|\/\[0\.28\])|shadow-2xl|shadow-\[0_24px_80px_rgba\(15,23,42,0\.28\)\]|ring-slate-950\/10|border-white\/70/;
 const oldMediaViewerTokens =
   /bg-black\/80|bg-white\/10|hover:bg-white\/20|text-white|ring-white\/10|shadow-2xl|focus-visible:ring-white|focus-visible:ring-offset-black/;
+const oldConfirmDialogTokens =
+  /bg-slate-950\/35|shadow-lg border border-warm-border|transition=\{\{ type: 'spring'|bg-warm-muted\/70/;
 
 describe("visual language surfaces", () => {
   afterEach(() => {
@@ -178,8 +180,8 @@ describe("visual language surfaces", () => {
   it("keeps the homepage depth mask transparent enough for the canvas grid to read", () => {
     const source = readFileSync(join(process.cwd(), "packages/web-ui/src/components/Background.tsx"), "utf8");
 
-    expect(source).not.toMatch(/to-warm-page\/\[(0\.025|0\.012)\]/);
-    expect(source).toMatch(/to-warm-page\/\[0\.006\]/);
+    expect(source).not.toMatch(/to-warm-page\/\[(0\.025|0\.012|0\.006)\]/);
+    expect(source).toMatch(/to-warm-page\/\[0\.003\]/);
   });
 
   it("keeps identity and mention surfaces out of legacy gradient and default gray chrome", () => {
@@ -242,6 +244,20 @@ describe("visual language surfaces", () => {
     expect(source).toMatch(/clash-media-viewer-backdrop/);
     expect(source).toMatch(/clash-media-viewer-frame/);
     expect(source).toMatch(/clash-media-viewer-chrome/);
+  });
+
+  it("keeps confirm dialogs in Clash dialog surfaces instead of generic slate overlays", () => {
+    const source = [
+      "packages/web-ui/src/components/ConfirmDialog.tsx",
+      "apps/web/app/globals.css",
+    ]
+      .map((path) => readFileSync(join(process.cwd(), path), "utf8"))
+      .join("\n");
+
+    expect(source).not.toMatch(oldConfirmDialogTokens);
+    expect(source).toMatch(/clash-confirm-dialog-backdrop/);
+    expect(source).toMatch(/clash-confirm-dialog-surface/);
+    expect(source).toMatch(/clash-confirm-dialog-footer/);
   });
 
   it.each([

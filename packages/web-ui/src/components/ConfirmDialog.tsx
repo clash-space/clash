@@ -101,7 +101,7 @@ function ConfirmDialog({
                     transition={{ duration: 0.12 }}
                 >
                     <div
-                        className="absolute inset-0 bg-slate-950/35 backdrop-blur-sm"
+                        className="clash-confirm-dialog-backdrop absolute inset-0"
                         onClick={() => onClose(false)}
                         aria-hidden
                     />
@@ -110,11 +110,11 @@ function ConfirmDialog({
                         aria-modal="true"
                         aria-labelledby={pending.opts.title ? 'confirm-title' : undefined}
                         aria-describedby="confirm-message"
-                        className="relative w-full max-w-sm rounded-2xl bg-warm-surface shadow-lg border border-warm-border overflow-hidden"
+                        className="clash-confirm-dialog-surface relative w-full max-w-sm overflow-hidden rounded-2xl"
                         initial={{ y: 8, opacity: 0, scale: 0.98 }}
                         animate={{ y: 0, opacity: 1, scale: 1 }}
                         exit={{ y: 8, opacity: 0, scale: 0.98 }}
-                        transition={{ type: 'spring', damping: 26, stiffness: 420 }}
+                        transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
                     >
                         <div className="px-5 pt-5 pb-4">
                             {pending.opts.title && (
@@ -129,7 +129,7 @@ function ConfirmDialog({
                                 {pending.opts.message}
                             </p>
                         </div>
-                        <div className="flex justify-end gap-2 px-4 py-3 bg-warm-muted/70 border-t border-warm-border">
+                        <div className="clash-confirm-dialog-footer flex justify-end gap-2 border-t border-warm-border/70 px-4 py-3">
                             <button
                                 type="button"
                                 onClick={() => onClose(false)}
