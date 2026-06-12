@@ -87,7 +87,7 @@ export interface LocalAcpAdapter {
 function formatLocalAcpSessionError(error: unknown): string {
   const message = error instanceof Error ? error.message : String(error);
   if (message === "No local ACP agent found on PATH") {
-    return "No local ACP agent found on PATH. Install or expose an ACP CLI such as codex, claude-agent-acp, or gemini, then retry.";
+    return "No local ACP agent found. Configure CLASH_ACP_BIN_DIR or expose a native ACP CLI such as claude-agent-acp or gemini, then retry.";
   }
   return message || "Failed to create local ACP session";
 }
@@ -594,12 +594,14 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
     const body = (await c.req.json().catch(() => ({}))) as {
       crew_id?: string;
       crew_member_id?: string;
+      agent_id?: string;
       project_id?: string;
       resume_session_id?: string;
     };
     let crewId = body.crew_id?.trim() || "";
     let crewMemberId = body.crew_member_id?.trim() || undefined;
-    let agentId: string | undefined;
+    const requestedAgentId = body.agent_id?.trim() || undefined;
+    let agentId: string | undefined = requestedAgentId;
     if (crewMemberId) {
       const state = await db.load();
       const crewMembers = seedLocalCrewMembers(state, userId);
@@ -609,7 +611,7 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
         return c.json({ error: "crew member belongs to a different runtime" }, 400);
       }
       crewId = member.template_id;
-      agentId = member.agent_id ?? undefined;
+      agentId = requestedAgentId ?? member.agent_id ?? undefined;
     }
     if (!crewId) return c.json({ error: "Missing crew_id" }, 400);
 
@@ -617,10 +619,10 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
       return c.json(await options.localAcp.createSession({
         runtimeId: c.req.param("runtimeId"),
         crewId,
-        crewMemberId,
-        agentId,
-        projectId: body.project_id,
-        resumeAcpSessionId: body.resume_session_id,
+        ...(crewMemberId ? { crewMemberId } : {}),
+        ...(agentId ? { agentId } : {}),
+        ...(body.project_id ? { projectId: body.project_id } : {}),
+        ...(body.resume_session_id ? { resumeAcpSessionId: body.resume_session_id } : {}),
       }));
     } catch (error) {
       const message = formatLocalAcpSessionError(error);

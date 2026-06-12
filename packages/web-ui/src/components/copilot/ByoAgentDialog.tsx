@@ -6,7 +6,7 @@ import { Dialog } from '../ui/dialog';
 import { SessionStartPicker } from './SessionStartPicker';
 
 /**
- * ByoAgentDialog — pairing flow for "Bring your own local agent".
+ * ByoAgentDialog — pairing flow for "Bring your own local helper".
  *
  * v1 flow: open → POST /pair → display `npx @clash-space/bridge --token=…`
  * → wait for bridge to attach → close on connected.
@@ -90,14 +90,15 @@ export function ByoAgentDialog({
     <Dialog
       open={open}
       onClose={onClose}
-      title="Connect your local agent"
-      description="Run a Claude Code agent on your machine and pair it with this chat. Conversations stay on your computer and use your own API key."
+      title="Connect your local helper"
+      description="Run a coding agent on your machine and pair it with this chat. Conversations stay on your computer and use your own budget."
     >
       {status === 'awaiting_choice' ? (
         <SessionStartPicker
           crew={crew}
           sessions={sessions}
           onStart={onStartWith}
+          startLabel="Start helper"
         />
       ) : (
         <PairingBlock
@@ -195,7 +196,7 @@ function PairingStatus({ status }: { status: ByoStatus }) {
     return (
       <div role="status" aria-live="polite" className="flex items-center gap-2 text-sm text-stone-700 dark:text-stone-300">
         <CircleNotch className="w-3.5 h-3.5 animate-spin motion-reduce:animate-none" aria-hidden="true" />
-        Starting agent…
+        Starting helper…
       </div>
     );
   }

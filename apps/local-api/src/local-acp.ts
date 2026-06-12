@@ -33,6 +33,7 @@ export interface SessionPromptParamsLike {
 }
 
 export interface SessionManagerLike {
+  setSpawnEnv?(env: Record<string, string | undefined>): void;
   start(params: SessionStartParamsLike): Promise<void> | void;
   prompt(params: SessionPromptParamsLike): Promise<void> | void;
   cancel(sessionId: string, turnId: string): void;
@@ -53,6 +54,7 @@ export interface LocalAcpAdapterOptions {
   listResumeSessions?: () => Promise<LocalAcpResumeSession[]>;
   createSessionId?: () => string;
   createSessionManager?: (send: SessionSender) => SessionManagerLike;
+  spawnEnv?: Record<string, string | undefined>;
   hostname?: () => string;
   osTag?: () => string;
   nowSeconds?: () => number;
@@ -79,6 +81,13 @@ type UpgradeCapableServer = {
 };
 
 const MAX_BACKLOG_MESSAGES = 200;
+const DEFAULT_AGENT_PREFERENCE = [
+  "codex-app-server",
+  "codex-cli",
+  "gemini-cli",
+  "claude-code-acp",
+  "claude-agent-acp",
+];
 
 function sessionIndexKey(projectId: string, crewMemberId: string): string {
   return `${projectId}\0${crewMemberId}`;
@@ -90,6 +99,14 @@ function defaultDetectAgents(): Promise<DetectedAcpAgent[]> {
 
 function createDefaultSessionManager(send: SessionSender): SessionManagerLike {
   return new SessionManager(send);
+}
+
+function chooseDefaultAgent(agents: DetectedAcpAgent[]): DetectedAcpAgent | undefined {
+  for (const id of DEFAULT_AGENT_PREFERENCE) {
+    const match = agents.find((agent) => agent.id === id);
+    if (match) return match;
+  }
+  return agents[0];
 }
 
 function sendJson(ws: WebSocket, msg: unknown): void {
@@ -127,6 +144,7 @@ export class LocalAcpRuntimeAdapter implements LocalAcpAdapter {
   private readonly listLocalSessions: () => Promise<LocalAcpResumeSession[]>;
   private readonly createSessionId: () => string;
   private readonly createSessionManager: (send: SessionSender) => SessionManagerLike;
+  private readonly spawnEnv: Record<string, string | undefined>;
   private readonly hostname: () => string;
   private readonly osTag: () => string;
   private readonly nowSeconds: () => number;
@@ -138,6 +156,7 @@ export class LocalAcpRuntimeAdapter implements LocalAcpAdapter {
     this.listLocalSessions = options.listResumeSessions ?? (() => listLocalCcSessions(20));
     this.createSessionId = options.createSessionId ?? randomUUID;
     this.createSessionManager = options.createSessionManager ?? createDefaultSessionManager;
+    this.spawnEnv = options.spawnEnv ?? {};
     this.hostname = options.hostname ?? machineName;
     this.osTag = options.osTag ?? defaultOsTag;
     this.nowSeconds = options.nowSeconds ?? (() => Math.floor(Date.now() / 1000));
@@ -174,7 +193,7 @@ export class LocalAcpRuntimeAdapter implements LocalAcpAdapter {
     const agents = await this.detectAgents();
     const agent = params.agentId
       ? agents.find((candidate) => candidate.id === params.agentId)
-      : agents[0];
+      : chooseDefaultAgent(agents);
     if (!agent) throw new Error("No local ACP agent found on PATH");
 
     const sessionId = this.createSessionId();
@@ -198,6 +217,7 @@ export class LocalAcpRuntimeAdapter implements LocalAcpAdapter {
       ...(params.projectId ? { projectId: params.projectId } : {}),
       ...(params.crewMemberId ? { crewMemberId: params.crewMemberId } : {}),
     };
+    entry.manager.setSpawnEnv?.(this.spawnEnv);
     this.sessions.set(sessionId, entry);
     if (params.projectId && params.crewMemberId) {
       this.sessionIndex.set(sessionIndexKey(params.projectId, params.crewMemberId), sessionId);

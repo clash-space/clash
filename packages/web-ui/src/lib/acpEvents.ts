@@ -149,7 +149,15 @@ export function parseAcpEvent(event: unknown): ParsedEvent {
   const inner = (ev?.update ?? ev) as Record<string, unknown>;
   const update = (inner.sessionUpdate as string | undefined) ?? ev?.sessionUpdate;
 
-  if (!update) return { kind: 'raw', event };
+  if (!update) {
+    if (inner.type === 'text' && typeof inner.text === 'string' && inner.text.length > 0) {
+      return { kind: 'text', text: inner.text, event };
+    }
+    if (inner.type === 'thought' && typeof inner.text === 'string' && inner.text.length > 0) {
+      return { kind: 'thought', text: inner.text, event };
+    }
+    return { kind: 'raw', event };
+  }
 
   // ─── text / thought (ContentChunk) ──────────────────────────────
   if (update === 'agent_message_chunk' || update === 'agent_thought_chunk') {
@@ -234,7 +242,20 @@ export function appendAcpEvent(
   }
 
   const ensure = (): number => {
-    if (knownIdx !== undefined) return knownIdx;
+    if (
+      knownIdx !== undefined &&
+      messages[knownIdx]?.role === 'assistant' &&
+      Array.isArray(messages[knownIdx].parts)
+    ) {
+      return knownIdx;
+    }
+    const existingIdx = messages.findIndex(
+      (message) =>
+        message.id === `asst-${turnId}` &&
+        message.role === 'assistant' &&
+        Array.isArray(message.parts),
+    );
+    if (existingIdx >= 0) return existingIdx;
     const newIdx = messages.length;
     messages.push({ id: `asst-${turnId}`, role: 'assistant', parts: [] });
     return newIdx;

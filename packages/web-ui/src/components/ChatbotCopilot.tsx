@@ -19,6 +19,7 @@ import { Dialog } from './ui/dialog';
 import { IconButton } from './ui/icon-button';
 import { useAgentByoBridge } from '@clash/web-ui/hooks/useAgentByoBridge';
 import { useClashRuntime, type Runtime } from '@clash/web-ui/hooks/useClashRuntime';
+import { parseAgentCanvasPatch } from '@clash/web-ui/lib/agentCanvasPatch';
 import type { Node as RFNode, Edge as RFEdge, Connection as RFConnection } from '@xyflow/react';
 import ReactMarkdown from 'react-markdown';
 import { useSignedUrl } from '@clash/web-ui/lib/hooks/useSignedUrl';
@@ -286,7 +287,7 @@ export default function ChatbotCopilot({
     isCollapsed,
     onCollapseChange,
     selectedNodes = [],
-    onAddNode: _onAddNode,
+    onAddNode,
     onAddEdge: _onAddEdge,
     onUpdateNode,
     findNodeIdByName: _findNodeIdByName,
@@ -334,6 +335,7 @@ export default function ChatbotCopilot({
     const historyDropdownRef = useRef<HTMLDivElement | null>(null);
     const historyButtonRef = useRef<HTMLButtonElement | null>(null);
     const panelRef = useRef<HTMLElement | null>(null);
+    const appliedRuntimeCanvasNodesRef = useRef<Set<string>>(new Set());
 
     // Focus trap on mobile: when the sheet covers the viewport it should
     // behave like a true dialog — keep keyboard focus inside until close.
@@ -387,6 +389,33 @@ export default function ChatbotCopilot({
         chatMode === 'byo' ? byoIsProcessing :
         chatMode === 'runtime' ? runtimeIsProcessing :
         cloudIsProcessing;
+
+    useEffect(() => {
+        if (chatMode !== 'runtime' || !onAddNode) return;
+
+        for (const message of clashRt.messages) {
+            for (const part of message.parts) {
+                if (part.type !== 'raw_event') continue;
+                const operations = parseAgentCanvasPatch(part.event);
+                for (const operation of operations) {
+                    if (operation.op !== 'add_node') continue;
+                    const patchNode = operation.node;
+                    if (appliedRuntimeCanvasNodesRef.current.has(patchNode.id)) continue;
+                    appliedRuntimeCanvasNodesRef.current.add(patchNode.id);
+
+                    onAddNode(patchNode.type, {
+                        id: patchNode.id,
+                        ...(patchNode.data ?? {}),
+                        ...(patchNode.position ? { position: patchNode.position } : {}),
+                        ...(patchNode.parentId ? { parentId: patchNode.parentId } : {}),
+                        ...(patchNode.width !== undefined ? { width: patchNode.width } : {}),
+                        ...(patchNode.height !== undefined ? { height: patchNode.height } : {}),
+                        ...(patchNode.style ? { style: patchNode.style } : {}),
+                    });
+                }
+            }
+        }
+    }, [chatMode, clashRt.messages, onAddNode]);
 
     // Mount-time send of the pending first message. Parent gives us a fresh
     // `key={threadId}` whenever the session changes, so this component remounts
@@ -1119,7 +1148,7 @@ export default function ChatbotCopilot({
                 open={!!runtimePicker}
                 runtime={runtimePicker}
                 loadResumeOptions={clashRt.loadResumeOptions}
-                onPick={async (crewId, resumeId) => {
+                onPick={async (crewId, resumeId, agentId) => {
                     const rt = runtimePicker;
                     setRuntimePicker(null);
                     if (!rt) return;
@@ -1128,6 +1157,7 @@ export default function ChatbotCopilot({
                     await clashRt.select(rt.id, crewId ?? undefined, {
                         projectId,
                         resumeAcpSessionId: resumeId,
+                        agentId,
                     });
                 }}
                 onClose={() => setRuntimePicker(null)}
@@ -1316,13 +1346,25 @@ function ByoMessageList({
                                 if (p.type === 'text') {
                                     return <div key={i} className="text-base text-slate-800 leading-relaxed px-1 whitespace-pre-wrap dark:text-slate-100">{p.text}</div>;
                                 }
+                                if (p.type === 'thought') {
+                                    return <div key={i} className="text-sm text-stone-600 leading-relaxed px-1 whitespace-pre-wrap italic dark:text-stone-300">{p.text}</div>;
+                                }
+                                if (p.type === 'plan') {
+                                    return null;
+                                }
                                 if (p.type === 'tool_call') {
                                     return (
                                         <div key={i} className="text-xs font-mono bg-warm-muted border border-warm-border rounded px-2.5 py-1.5 text-slate-700 dark:text-slate-300">
-                                            <span className="font-semibold">{p.name}</span>
-                                            {p.input !== undefined ? <span className="opacity-80"> {JSON.stringify(p.input)}</span> : null}
+                                            <span className="font-semibold">{p.toolName || p.title || 'tool'}</span>
+                                            {p.rawInput !== undefined ? <span className="opacity-80"> {JSON.stringify(p.rawInput)}</span> : null}
                                         </div>
                                     );
+                                }
+                                if (p.type !== 'raw_event') {
+                                    return null;
+                                }
+                                if (parseAgentCanvasPatch(p.event).length > 0) {
+                                    return null;
                                 }
                                 // raw_event fallback — show JSON in collapsed form so we can debug
                                 // unrecognized ACP events without losing them.

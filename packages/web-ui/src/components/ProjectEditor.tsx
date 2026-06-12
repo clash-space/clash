@@ -39,12 +39,7 @@ import {
 } from '@phosphor-icons/react';
 import { Link, useLocation, useNavigate } from 'react-router';
 import type { Project } from '@clash/web-ui/lib/types';
-// Old single-agent panel kept in the repo at './ChatbotCopilot' — reimport
-// to revert. New chat UX is GroupChatPanel.
-import { GroupChatPanel } from './GroupChatPanel';
-import type { GroupChatSessionEvent } from '@clash/web-ui/hooks/useGroupChat';
-import { parseAgentCanvasPatch } from '@clash/web-ui/lib/agentCanvasPatch';
-import type { RoomMessageEvent } from '@clash/shared-types';
+import ChatbotCopilot from './ChatbotCopilot';
 import { useSessionHistory } from '@clash/web-ui/hooks/useSessionHistory';
 import { updateProjectName } from '@clash/web-ui/lib/clientActions';
 import VideoNode from './nodes/VideoNode';
@@ -396,14 +391,6 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
     const { toasts, addToast, dismiss: dismissToast } = useActivityToasts();
     const { highlights, addHighlight } = useNodeHighlights();
 
-    // GroupChatPanel registers a sink for room.message frames so the
-    // single useLoroSync WS can fan room IM out to the new chat UI
-    // without opening a second connection.
-    const roomSinkRef = useRef<((msg: RoomMessageEvent) => void) | null>(null);
-    const registerRoomSink = useCallback((sink: (msg: RoomMessageEvent) => void) => {
-        roomSinkRef.current = sink;
-    }, []);
-
     // Awareness: live cursor + selection over the same WS.
     // The handler ref is set by usePresenceAwareness below; useLoroSync
     // forwards every `awareness.broadcast` frame into it.
@@ -422,9 +409,6 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
         onActivity: (activity) => {
             addToast(activity);
             addHighlight(activity);
-        },
-        onRoomMessage: (msg) => {
-            roomSinkRef.current?.(msg);
         },
         onAwareness: (msg) => {
             awarenessSinkRef.current?.(msg);
@@ -715,6 +699,15 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
         if (id === threadId) setThreadId('');
     }, [removeSession, threadId]);
 
+    const handleCopilotCreateSession = useCallback(async (initialMessage: string) => {
+        const result = await handleCreateSession(initialMessage);
+        if (!result) throw new Error('Failed to create session');
+        upsertSession(result.threadId, result.title);
+        setChatInitialPrompt(initialMessage);
+        setThreadId(result.threadId);
+        setSessionKey(k => k + 1);
+    }, [handleCreateSession, upsertSession]);
+
     // Auto-create session for initialPrompt from HomePage. The initial prompt
     // rides along on chatInitialPrompt → ChatbotCopilot's mount-time
     // queueMessageOnOpen. The threadId-keyed remount makes the new mount
@@ -816,48 +809,6 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
 		        setNodes(next);
 		        applyLayoutPatchesToLoro(loroSync, collectLayoutNodePatches(nodes, next));
 		    }, [nodes, setNodes, loroSync, applyAutoZIndex]);
-
-		    const handleAgentSessionEvent = useCallback((sessionEvent: GroupChatSessionEvent) => {
-		        const operations = parseAgentCanvasPatch(sessionEvent.event);
-		        if (operations.length === 0) return;
-
-		        setNodes((currentNodes) => {
-		            let nextNodes = currentNodes;
-		            for (const operation of operations) {
-		                if (operation.op !== 'add_node') continue;
-		                if (nextNodes.some((node) => node.id === operation.node.id)) continue;
-
-		                const width = operation.node.width;
-		                const height = operation.node.height;
-		                const style: Record<string, unknown> = { ...(operation.node.style ?? {}) };
-		                if (width !== undefined) style.width = width;
-		                if (height !== undefined) style.height = height;
-
-		                const newNode: Node = {
-		                    id: operation.node.id,
-		                    type: operation.node.type,
-		                    data: {
-		                        label: `Agent ${operation.node.type}`,
-		                        ...(operation.node.data ?? {}),
-		                        actorType: 'agent',
-		                        actorAgentId: sessionEvent.crewId,
-		                        actorUserId: project.ownerId,
-		                    },
-		                    position: operation.node.position ?? { x: 100, y: 100 },
-		                    ...(operation.node.parentId ? { parentId: operation.node.parentId } : {}),
-		                    ...(width !== undefined ? { width } : {}),
-		                    ...(height !== undefined ? { height } : {}),
-		                    style,
-		                    extent: undefined,
-		                    className: operation.node.type === 'group' ? 'group-node' : '',
-		                };
-
-		                nextNodes = applyAutoZIndex([...nextNodes, newNode]);
-		                loroSync.addNode(newNode.id, newNode);
-		            }
-		            return nextNodes;
-		        });
-		    }, [applyAutoZIndex, loroSync, project.ownerId, setNodes]);
 
 		    // Custom onNodesChange to handle recursive resizing
 		    const handleNodesChange = useCallback((changes: NodeChange[]) => {
@@ -1661,6 +1612,14 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
                 layoutWidth = scaled.width;
                 layoutHeight = scaled.height;
             }
+            if (Number.isFinite(extraData.width)) {
+                defaultWidth = extraData.width;
+                layoutWidth = extraData.width;
+            }
+            if (Number.isFinite(extraData.height)) {
+                defaultHeight = extraData.height;
+                layoutHeight = extraData.height;
+            }
 
             // 2. Determine Position with Collision Detection
             let parentId = extraData.parentId;
@@ -1674,10 +1633,16 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
                 }
             }
 
-            let targetPos = { x: 100, y: 100 };
+            const explicitPosition =
+                extraData.position &&
+                Number.isFinite(extraData.position.x) &&
+                Number.isFinite(extraData.position.y)
+                    ? { x: extraData.position.x, y: extraData.position.y }
+                    : null;
+            let targetPos = explicitPosition ?? { x: 100, y: 100 };
 
             // If no parentId, place below all existing root nodes
-            if (!parentId && nds.length > 0) {
+            if (!explicitPosition && !parentId && nds.length > 0) {
                 let maxBottom = 0;
                 let leftmostX = Infinity;
 
@@ -1700,7 +1665,7 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
 
             const upstreamList = Array.isArray(extraData.upstreamNodeIds) ? extraData.upstreamNodeIds : [];
 
-            if (parentId) {
+            if (parentId && !explicitPosition) {
                 // Start at top-left of group
                 targetPos = { x: 50, y: 50 };
 
@@ -1774,7 +1739,7 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
                         }
                     }
                 }
-            } else {
+            } else if (!explicitPosition) {
                 // Root level placement (e.g. new groups)
                 if (nodeType === 'group') {
                     // Place new group below existing groups
@@ -1801,7 +1766,7 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
             let position = targetPos;
             const mesh = createMesh({ cellWidth: 50, cellHeight: 50, maxColumns: 10 });
 
-            if (parentId) {
+            if (parentId && !explicitPosition) {
                 // Inside a group: use mesh for collision-free placement
                 const siblingRects = nds
                     .filter(n => n.parentId === parentId && n.type !== 'group')
@@ -1811,7 +1776,7 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
                     { width: layoutWidth, height: layoutHeight },
                     siblingRects
                 );
-            } else {
+            } else if (!explicitPosition) {
                 // Root level: use the rightmost position directly
                 // Only adjust if there's a direct overlap at the exact position
                 const directRect = { x: targetPos.x, y: targetPos.y, width: layoutWidth, height: layoutHeight };
@@ -1827,7 +1792,14 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
                 }
             }
 
-            const baseStyle: Record<string, string | number | undefined> = nodeType === 'group' ? { width: layoutWidth, height: layoutHeight, zIndex } : {};
+            const explicitStyle =
+                extraData.style && typeof extraData.style === 'object' && !Array.isArray(extraData.style)
+                    ? extraData.style
+                    : {};
+            const baseStyle: Record<string, string | number | undefined> = {
+                ...(explicitStyle as Record<string, string | number | undefined>),
+                ...(nodeType === 'group' ? { width: layoutWidth, height: layoutHeight, zIndex } : {}),
+            };
             if (defaultWidth && defaultHeight) {
                 baseStyle.width = defaultWidth;
                 baseStyle.height = defaultHeight;
@@ -2685,16 +2657,33 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
                                 style={{ top: 'calc(var(--clash-desktop-chrome-height, 0px) + 0.75rem)' }}
                             >
                                 <div className="pointer-events-auto h-full">
-                                    <GroupChatPanel
+                                    <ChatbotCopilot
+                                        key={`${threadId || 'draft'}-${sessionKey}`}
                                         projectId={project.id}
-                                        userId={project.ownerId}
-                                        presenceClients={presenceClients}
+                                        threadId={threadId}
+                                        initialMessages={[]}
+                                        onCommand={handleCommand}
                                         width={sidebarWidth}
                                         onWidthChange={setSidebarWidth}
                                         isCollapsed={isSidebarCollapsed}
                                         onCollapseChange={setIsSidebarCollapsed}
-                                        registerRoomSink={registerRoomSink}
-                                        onSessionEvent={handleAgentSessionEvent}
+                                        selectedNodes={selectedNodes}
+                                        onAddNode={addNode}
+                                        onAddEdge={(edge) => {
+                                            if ('source' in edge && edge.source && edge.target) {
+                                                setEdges((eds) => addEdge(edge as any, eds));
+                                            }
+                                        }}
+                                        onUpdateNode={updateNode}
+                                        findNodeIdByName={findNodeIdByName}
+                                        nodes={nodes}
+                                        edges={edges}
+                                        initialPrompt={chatInitialPrompt}
+                                        sessionHistory={sessionHistory}
+                                        onNewSession={handleNewSession}
+                                        onSwitchSession={handleSwitchSession}
+                                        onDeleteSession={handleDeleteSession}
+                                        onCreateSession={handleCopilotCreateSession}
                                     />
                                 </div>
                             </div>

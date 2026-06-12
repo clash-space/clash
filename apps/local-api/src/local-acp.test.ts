@@ -63,6 +63,36 @@ describe("local ACP adapter", () => {
     });
   });
 
+  it("prefers Codex over API-key-only ACP agents by default", async () => {
+    const start = vi.fn<SessionManagerLike["start"]>(async () => undefined);
+    const adapter = createLocalAcpAdapter({
+      detectAgents: async () => [
+        {
+          id: "claude-agent-acp",
+          label: "Claude Agent ACP",
+          spec: { command: "claude-agent-acp" },
+        },
+        {
+          id: "codex-cli",
+          label: "Codex CLI",
+          spec: { command: "codex", args: ["--acp"] },
+        },
+      ],
+      createSessionManager: () => ({ start, prompt: vi.fn(), cancel: vi.fn(), dispose: vi.fn() }),
+      createSessionId: () => "local-acp-session-preferred",
+    });
+
+    await adapter.createSession({
+      runtimeId: "desktop-local",
+      crewId: "director",
+      projectId: "project-1",
+    });
+
+    expect(start).toHaveBeenCalledWith(expect.objectContaining({
+      agent_id: "codex-cli",
+    }));
+  });
+
   it("starts ACP sessions with the requested local agent override", async () => {
     const start = vi.fn<SessionManagerLike["start"]>(async () => undefined);
     const adapter = createLocalAcpAdapter({
@@ -97,6 +127,49 @@ describe("local ACP adapter", () => {
       crew_member_id: "local-generator",
       project_id: "project-1",
     });
+  });
+
+  it("injects desktop local API env into spawned agent sessions", async () => {
+    const setSpawnEnv = vi.fn<NonNullable<SessionManagerLike["setSpawnEnv"]>>();
+    const start = vi.fn<SessionManagerLike["start"]>(async () => undefined);
+    const adapter = createLocalAcpAdapter({
+      detectAgents: async () => [
+        {
+          id: "codex-app-server",
+          label: "Codex",
+          spec: { command: "node", args: ["codex-app-server-acp.js"] },
+        },
+      ],
+      spawnEnv: {
+        CLASH_API_URL: "http://127.0.0.1:49396",
+        CLASH_API_KEY: "clsh_local_desktop",
+      },
+      createSessionManager: () => ({
+        setSpawnEnv,
+        start,
+        prompt: vi.fn(),
+        cancel: vi.fn(),
+        dispose: vi.fn(),
+      }),
+      createSessionId: () => "local-acp-session-env",
+    });
+
+    await adapter.createSession({
+      runtimeId: "desktop-local",
+      crewId: "director",
+      crewMemberId: "local-director",
+      projectId: "project-env",
+    });
+
+    expect(setSpawnEnv).toHaveBeenCalledWith({
+      CLASH_API_URL: "http://127.0.0.1:49396",
+      CLASH_API_KEY: "clsh_local_desktop",
+    });
+    expect(start).toHaveBeenCalledWith(expect.objectContaining({
+      agent_id: "codex-app-server",
+      crew_member_id: "local-director",
+      project_id: "project-env",
+    }));
   });
 
   it("pushes room mentions to the matching project crew session", async () => {

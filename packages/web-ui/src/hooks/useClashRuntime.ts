@@ -53,6 +53,12 @@ export type ClashRuntimeStatus =
   | 'disconnected'      // WS dropped or daemon went offline
   | 'error';
 
+export interface ClashRuntimeSelectOptions {
+  projectId?: string;
+  resumeAcpSessionId?: string;
+  agentId?: string;
+}
+
 export interface UseClashRuntimeReturn {
   /** All runtimes the user has registered (any status). */
   runtimes: Runtime[];
@@ -73,7 +79,7 @@ export interface UseClashRuntimeReturn {
   /** Pick a runtime + crew member + (optional) project + resume target.
    *  Disposes any existing session and starts a fresh one. crewId
    *  defaults to "director" when not supplied. */
-  select: (runtimeId: string | null, crewId?: string, opts?: { projectId?: string; resumeAcpSessionId?: string }) => Promise<void>;
+  select: (runtimeId: string | null, crewId?: string, opts?: ClashRuntimeSelectOptions) => Promise<void>;
   /** RPC the daemon for resumeable local CC sessions. Returns [] if the
    *  runtime is offline or the daemon doesn't respond. Used by the
    *  picker dialog so the user can pick "Resume X" instead of fresh. */
@@ -184,7 +190,7 @@ export function useClashRuntime(): UseClashRuntimeReturn {
   const select = useCallback(async (
     runtimeId: string | null,
     crewId?: string,
-    opts?: { projectId?: string; resumeAcpSessionId?: string },
+    opts?: ClashRuntimeSelectOptions,
   ) => {
     // Tear down anything already open.
     try { wsRef.current?.close(); } catch { /* */ }
@@ -206,6 +212,7 @@ export function useClashRuntime(): UseClashRuntimeReturn {
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
           crew_id: finalCrewId,
+          ...(opts?.agentId ? { agent_id: opts.agentId } : {}),
           ...(opts?.projectId ? { project_id: opts.projectId } : {}),
           ...(opts?.resumeAcpSessionId ? { resume_session_id: opts.resumeAcpSessionId } : {}),
         }),

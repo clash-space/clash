@@ -241,6 +241,64 @@ describe("local API app", () => {
     expect(await sessions.json()).toEqual({ sessions: [] });
   });
 
+  it("passes an explicit local ACP agent override when starting a runtime session", async () => {
+    const starts: unknown[] = [];
+    const app = createLocalApiApp({
+      dataDir,
+      userId: "local-user",
+      localAcp: {
+        async listRuntimes() {
+          return {
+            runtimes: [
+              {
+                id: "desktop-local",
+                machine_id: "desktop-local",
+                hostname: "This Mac",
+                os: "darwin/arm64",
+                agents: [
+                  { id: "claude-agent-acp", binary: "claude-agent-acp" },
+                  { id: "gemini-cli", binary: "gemini" },
+                ],
+                version: "desktop",
+                status: "online",
+                last_heartbeat: 1_700_000_000,
+                created_at: 1_700_000_000,
+              },
+            ],
+          };
+        },
+        async createSession(params) {
+          starts.push(params);
+          return { session_id: "local-session-agent" };
+        },
+        async listResumeSessions() {
+          return { sessions: [] };
+        },
+      },
+    });
+
+    const created = await app.request("/api/v1/runtimes/desktop-local/sessions", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        crew_id: "director",
+        agent_id: "gemini-cli",
+        project_id: "project-agent",
+      }),
+    });
+
+    expect(created.status).toBe(200);
+    expect(await created.json()).toEqual({ session_id: "local-session-agent" });
+    expect(starts).toEqual([
+      {
+        runtimeId: "desktop-local",
+        crewId: "director",
+        agentId: "gemini-cli",
+        projectId: "project-agent",
+      },
+    ]);
+  });
+
   it("resolves local crew_member_id when starting a desktop ACP session", async () => {
     const starts: unknown[] = [];
     const app = createLocalApiApp({
@@ -341,7 +399,7 @@ describe("local API app", () => {
 
     expect(created.status).toBe(503);
     expect(await created.text()).toBe(
-      "No local ACP agent found on PATH. Install or expose an ACP CLI such as codex, claude-agent-acp, or gemini, then retry.",
+      "No local ACP agent found. Configure CLASH_ACP_BIN_DIR or expose a native ACP CLI such as claude-agent-acp or gemini, then retry.",
     );
   });
 

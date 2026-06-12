@@ -9,6 +9,7 @@
     "logs": "./scripts/logs.sh",
     "build": "turbo run build",
     "test": "turbo run test",
+    "test:e2e": "pnpm --filter @master-clash/local-api test:e2e && pnpm --filter @master-clash/web test:e2e && pnpm --filter @master-clash/desktop test:e2e",
     "lint": "turbo run lint",
     "format": "prettier --write \"**/*.{ts,tsx,json,md}\"",
     "clean": "turbo run clean && rm -rf node_modules .turbo"

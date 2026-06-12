@@ -27,7 +27,6 @@ import { useCallback, useEffect, useState } from 'react';
 import {
   X,
   Plug,
-  Users,
   Key,
   Lock,
   PuzzlePiece,
@@ -60,7 +59,6 @@ interface NavItem {
 const NAV_ITEMS: NavItem[] = [
   { id: 'runtimes', label: 'Runtimes', icon: Plug },
   { id: 'sync', label: 'Sync', icon: CloudArrowUp },
-  { id: 'crew', label: 'Crew', icon: Users },
   { id: 'tokens', label: 'API Tokens', icon: Key },
   { id: 'variables', label: 'API Keys', icon: Lock },
   { id: 'actions', label: 'Actions', icon: PuzzlePiece },

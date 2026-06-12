@@ -3,6 +3,7 @@ import { defineConfig } from "tsup";
 export default defineConfig({
   entry: {
     cli: "src/cli.ts",
+    "codex-app-server-acp": "src/codex-app-server-acp.ts",
     "acp-runtime": "src/_acp-runtime/index.ts",
     "cc-sessions": "src/lib/cc-sessions.ts",
     platform: "src/lib/platform.ts",

@@ -24,7 +24,7 @@
 
 import { AcpRuntimeImpl } from "../_acp-runtime/index.js";
 import { NodeSpawner } from "../_acp-runtime/spawners/node.js";
-import { KNOWN_ACP_AGENTS } from "../_acp-runtime/registry.js";
+import { detect } from "../_acp-runtime/registry.js";
 import type { AcpSession } from "../_acp-runtime/types.js";
 import { ensureCrewCwd, readCrewRuntime } from "./session-cwd.js";
 
@@ -88,7 +88,7 @@ interface ActiveSession {
   turns: Map<string, AbortController>;
 }
 
-export interface SessionManagerEnv {
+export interface SessionManagerEnv extends Record<string, string | undefined> {
   /** Bridge passes its identity / configuration here so spawned agents
    *  can call back to clash. Currently just the API key + server URL. */
   CLASH_API_KEY?: string;
@@ -181,12 +181,12 @@ export class SessionManager {
       return;
     }
     const resolvedAgentId = p.agent_id ?? tpl.agent_id;
-    const agent = KNOWN_ACP_AGENTS.find((a) => a.id === resolvedAgentId);
+    const agent = await detect(resolvedAgentId);
     if (!agent) {
       this.#send({
         type: "session.error",
         session_id: p.session_id,
-        message: `agent '${resolvedAgentId}' (for crew '${p.crew_id}') not in the registry`,
+        message: `agent '${resolvedAgentId}' (for crew '${p.crew_id}') was not found. Configure CLASH_ACP_BIN_DIR or install it in your user environment.`,
       });
       return;
     }
@@ -203,8 +203,9 @@ export class SessionManager {
       // (`clash auth status`) prompts the user to log in, even though
       // the daemon itself is already authenticated.
       const spawnEnv: Record<string, string> = { ...(agent.spec.env ?? {}) };
-      if (this.#env.CLASH_API_KEY) spawnEnv.CLASH_API_KEY = this.#env.CLASH_API_KEY;
-      if (this.#env.CLASH_API_URL) spawnEnv.CLASH_API_URL = this.#env.CLASH_API_URL;
+      for (const [key, value] of Object.entries(this.#env)) {
+        if (value) spawnEnv[key] = value;
+      }
       // Identity for room tools (`clash room say` / `clash room read`)
       // — without these the agent has no way to know which crew_member
       // it is, or which project's room to target.

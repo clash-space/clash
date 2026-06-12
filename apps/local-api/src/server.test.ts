@@ -1,7 +1,50 @@
+import { mkdtemp, readFile, stat } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
-import { createConfiguredLocalAcpAdapter } from "./server";
+import { createConfiguredLocalAcpAdapter, createLocalAgentToolEnv } from "./server";
 
 describe("local API server configuration", () => {
+  it("creates a local Clash CLI shim and injects it into agent spawn env", async () => {
+    const dataDir = await mkdtemp(join(tmpdir(), "clash-local-agent-tools-"));
+    const env = createLocalAgentToolEnv({
+      dataDir,
+      apiBaseUrl: "http://127.0.0.1:49397",
+      env: {
+        PATH: "/usr/bin:/bin",
+      },
+    });
+
+    expect(env.CLASH_API_URL).toBe("http://127.0.0.1:49397");
+    expect(env.CLASH_API_KEY).toBe("clsh_local_desktop");
+    expect(env.PATH?.split(":")[0]).toBe(join(dataDir, "agent-bin"));
+
+    const shim = join(dataDir, "agent-bin", "clash");
+    await expect(stat(shim)).resolves.toMatchObject({ mode: expect.any(Number) });
+    const shimText = await readFile(shim, "utf8");
+    expect(shimText).toContain("CLASH_API_URL");
+    expect(shimText).toContain("command -v node");
+    expect(shimText).toContain("ELECTRON_RUN_AS_NODE=1");
+  });
+
+  it("passes an explicit Node runtime through to the local Clash CLI shim", async () => {
+    const dataDir = await mkdtemp(join(tmpdir(), "clash-local-agent-tools-"));
+    const env = createLocalAgentToolEnv({
+      dataDir,
+      apiBaseUrl: "http://127.0.0.1:49397",
+      env: {
+        PATH: "/usr/bin:/bin",
+        CLASH_NODE_EXEC_PATH: "/custom/node",
+      },
+    });
+
+    expect(env.CLASH_NODE_EXEC_PATH).toBe("/custom/node");
+
+    const shim = join(dataDir, "agent-bin", "clash");
+    const shimText = await readFile(shim, "utf8");
+    expect(shimText).toContain('exec "$CLASH_NODE_EXEC_PATH"');
+  });
+
   it("can expose a deterministic mock ACP agent for desktop smoke tests", async () => {
     const adapter = createConfiguredLocalAcpAdapter({ CLASH_LOCAL_ACP_MOCK: "1" });
 

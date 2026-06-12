@@ -12,7 +12,7 @@ const repoRoot = path.resolve(desktopDir, "..", "..");
 
 const appBinary = process.env.CLASH_DESKTOP_APP_BINARY;
 const usePackagedApp = Boolean(appBinary);
-const webUrl = process.env.CLASH_WEB_URL ?? "http://127.0.0.1:3001";
+let webUrl = process.env.CLASH_WEB_URL;
 const captureDir =
   process.env.CLASH_DESKTOP_CAPTURE_DIR ??
   path.join(repoRoot, ".tmp", "electron-smoke-captures");
@@ -20,22 +20,29 @@ const dataDir =
   process.env.CLASH_DESKTOP_SMOKE_DATA_DIR ??
   path.join(repoRoot, ".tmp", "electron-smoke-data");
 const latestScreenshot = path.join(captureDir, "latest-cdp-smoke.png");
-const agentCanvasScreenshot = path.join(captureDir, "agent-canvas-ui.png");
+const runtimeCopilotScreenshot = path.join(captureDir, "runtime-copilot-ui.png");
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 async function assertWebServer() {
-  try {
-    const res = await fetch(webUrl, { signal: AbortSignal.timeout(2500) });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  } catch (error) {
-    throw new Error(
-      `Web app is not reachable at ${webUrl}. Start it first: pnpm --filter @master-clash/web dev\n` +
-        `Reason: ${error instanceof Error ? error.message : String(error)}`,
-    );
+  const deadline = Date.now() + 25000;
+  let lastError;
+  while (Date.now() < deadline) {
+    try {
+      const res = await fetch(webUrl, { signal: AbortSignal.timeout(2500) });
+      if (res.ok) return;
+      lastError = new Error(`HTTP ${res.status}`);
+    } catch (error) {
+      lastError = error;
+    }
+    await sleep(250);
   }
+  throw new Error(
+    `Web app is not reachable at ${webUrl}. Start it first: pnpm --filter @master-clash/web dev\n` +
+      `Reason: ${lastError instanceof Error ? lastError.message : String(lastError)}`,
+  );
 }
 
 async function findFreePort(start) {
@@ -168,6 +175,42 @@ async function waitForTarget(cdpPort) {
     await sleep(250);
   }
   throw new Error("Timed out waiting for Electron CDP page target");
+}
+
+async function startWebServerIfNeeded() {
+  if (usePackagedApp) return null;
+  if (webUrl) {
+    await assertWebServer();
+    return null;
+  }
+
+  const port = await findFreePort(3001);
+  webUrl = `http://127.0.0.1:${port}`;
+  const webDir = path.join(repoRoot, "apps", "web");
+  const logs = [];
+  const child = spawn("pnpm", ["--dir", webDir, "exec", "vite", "--host", "127.0.0.1", "--port", String(port)], {
+    cwd: webDir,
+    env: process.env,
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  child.stdout.on("data", (buf) => {
+    const text = String(buf);
+    logs.push(text);
+    process.stdout.write(text);
+  });
+  child.stderr.on("data", (buf) => {
+    const text = String(buf);
+    logs.push(text);
+    process.stderr.write(text);
+  });
+  try {
+    await assertWebServer();
+  } catch (error) {
+    console.error("[desktop-smoke] web server logs\n" + tail(logs));
+    await stopProcess(child);
+    throw error;
+  }
+  return child;
 }
 
 class CdpClient {
@@ -395,39 +438,43 @@ async function exerciseLocalAcpSessionHistory(cdp) {
   }));
 }
 
-async function exerciseAgentCanvasUi(cdp) {
-  await click(
-    cdp,
-    `document.querySelector("button[aria-label='Invite crew member']")`,
-    "Invite crew member",
-  );
-  await click(
-    cdp,
-    `document.querySelector("button[aria-label='Invite Director']")`,
-    "Invite Director",
-  );
+async function exerciseRuntimeCopilotUi(cdp) {
   await waitFor(
     cdp,
-    `!!document.querySelector("button[role='tab'][title='Director']")`,
-    "Director crew tab",
-    10000,
+    `!!document.querySelector('[aria-label="AI Copilot"], [aria-label="AI 副驾驶"]')`,
+    "AI Copilot panel",
   );
+  await click(
+    cdp,
+    `document.querySelector("button[aria-label='Run on (Cloud / local runtime)']") ||
+      document.querySelector("button[aria-label='运行环境（云端 / 本地）']")`,
+    "Run on runtime picker",
+  );
+  await click(
+    cdp,
+    `([...document.querySelectorAll("[role='menuitem'], button")].find((el) => {
+      const text = (el.innerText || el.textContent || "").trim();
+      const rect = el.getBoundingClientRect();
+      const style = getComputedStyle(el);
+      return text.includes("Mock Desktop") &&
+        rect.width > 0 &&
+        rect.height > 0 &&
+        style.display !== "none" &&
+        style.visibility !== "hidden";
+    }))`,
+    "Mock Desktop runtime",
+  );
+  await waitFor(cdp, `document.body.innerText.includes("Start local helper on Mock Desktop")`, "runtime picker dialog");
+  await click(cdp, clickableByText("Start helper"), "Start helper");
   await waitFor(
     cdp,
-    `(() => {
-      const dot = document.querySelector("button[role='tab'][title='Director'] [role='status']");
-      return !!dot && (dot.getAttribute("title") || "").includes("Linked");
-    })()`,
-    "Director local ACP session linked",
+    `document.body.innerText.includes("Local agent connected") ||
+      document.body.innerText.includes("本地 Agent 已连接")`,
+    "local runtime connected",
     15000,
   );
-  await click(
-    cdp,
-    `document.querySelector("button[role='tab'][title='Room']")`,
-    "Room tab",
-  );
 
-  const prompt = "@director choreograph the canvas with an agent stage";
+  const prompt = "hello desktop runtime helper";
   await typeRoomMessage(cdp, prompt);
   await click(
     cdp,
@@ -435,11 +482,18 @@ async function exerciseAgentCanvasUi(cdp) {
       const label = (button.getAttribute("aria-label") || "").toLowerCase();
       const rect = button.getBoundingClientRect();
       return label.includes("send") && !button.disabled && rect.width > 0 && rect.height > 0;
-    }))`,
-    "Send agent canvas prompt",
+      }))`,
+    "Send runtime prompt",
   );
 
   try {
+    await waitFor(
+      cdp,
+      `document.body.innerText.includes(${JSON.stringify(prompt)}) &&
+        document.body.innerText.includes(${JSON.stringify(`Mock ACP reply: ${prompt}`)})`,
+      "runtime mock ACP reply",
+      15000,
+    );
     await waitFor(
       cdp,
       `(() => {
@@ -451,28 +505,19 @@ async function exerciseAgentCanvasUi(cdp) {
           nodes.some((node) => node.text.includes("Agent Brief")) &&
           nodes.some((node) => node.text.includes("Agent Image Pass"));
       })()`,
-      "agent-created canvas nodes",
-      20000,
+      "runtime-created canvas nodes",
+      15000,
     );
   } catch (error) {
     const diagnostics = await evaluate(cdp, `(() => ({
       bodyText: document.body.innerText.slice(0, 2000),
-      tabs: [...document.querySelectorAll("button[role='tab']")].map((tab) => ({
-        title: tab.getAttribute("title"),
-        selected: tab.getAttribute("aria-selected"),
-        text: tab.textContent,
-        status: tab.querySelector("[role='status']")?.getAttribute("title") || null,
+      runtimeMenuButtons: [...document.querySelectorAll("button, [role='menuitem']")].map((button) => ({
+        text: (button.innerText || button.textContent || "").trim(),
+        ariaLabel: button.getAttribute("aria-label"),
+        disabled: button.disabled || button.getAttribute("aria-disabled"),
       })),
-      nodes: [...document.querySelectorAll(".react-flow__node")].map((node) => ({
-        id: node.getAttribute("data-id"),
-        text: ((node.querySelector("input")?.value || "") + " " + (node.innerText || node.textContent || "")).trim().slice(0, 240),
-        className: node.className,
-      })),
-      localStorage: Object.keys(localStorage)
-        .filter((key) => key.toLowerCase().includes("crew") || key.toLowerCase().includes("group"))
-        .map((key) => ({ key, value: localStorage.getItem(key)?.slice(0, 1000) })),
     }))()`);
-    console.error("[desktop-smoke] agent canvas diagnostics", JSON.stringify(diagnostics, null, 2));
+    console.error("[desktop-smoke] runtime copilot diagnostics", JSON.stringify(diagnostics, null, 2));
     throw error;
   }
 
@@ -480,7 +525,6 @@ async function exerciseAgentCanvasUi(cdp) {
     const nodes = [...document.querySelectorAll(".react-flow__node")].map((node) => ({
       id: node.getAttribute("data-id"),
       text: ((node.querySelector("input")?.value || "") + " " + (node.innerText || node.textContent || "")).trim().slice(0, 180),
-      className: node.className,
       rect: (() => {
         const r = node.getBoundingClientRect();
         return { x: Math.round(r.x), y: Math.round(r.y), width: Math.round(r.width), height: Math.round(r.height) };
@@ -488,23 +532,21 @@ async function exerciseAgentCanvasUi(cdp) {
     }));
     return {
       text: document.body.innerText.slice(0, 800),
+      url: location.href,
       nodes: nodes.filter((node) =>
         (node.id || "").includes("mock-agent-stage-") ||
-        node.text.includes("Agent Stage") ||
         node.text.includes("Agent Brief") ||
         node.text.includes("Agent Image Pass")
-      )
+      ),
     };
   })()`);
-  if (state.nodes.length < 3) {
-    throw new Error(`Agent canvas UI smoke found too few nodes: ${JSON.stringify(state)}`);
-  }
-  await capture(cdp, agentCanvasScreenshot);
-  console.log("[desktop-smoke] agent canvas ui", JSON.stringify(state));
-  console.log(`[desktop-smoke] agent canvas screenshot ${agentCanvasScreenshot}`);
+  await capture(cdp, runtimeCopilotScreenshot);
+  console.log("[desktop-smoke] runtime copilot ui", JSON.stringify(state));
+  console.log(`[desktop-smoke] runtime copilot screenshot ${runtimeCopilotScreenshot}`);
 }
 
 async function stopProcess(child) {
+  if (!child) return;
   if (child.exitCode !== null || child.signalCode !== null) return;
   child.kill("SIGTERM");
   const exited = await Promise.race([
@@ -515,10 +557,11 @@ async function stopProcess(child) {
 }
 
 async function main() {
+  let webChild = null;
   if (!usePackagedApp) {
-    await assertWebServer();
     run("pnpm", ["--filter", "@master-clash/local-api", "build"]);
     run("pnpm", ["--filter", "@master-clash/desktop", "build"]);
+    webChild = await startWebServerIfNeeded();
   }
 
   const cdpPort = await findFreePort(49355);
@@ -611,15 +654,6 @@ async function main() {
     })`);
     console.log("[desktop-smoke] project", JSON.stringify(projectState));
 
-    await waitFor(
-      cdp,
-      `(() => {
-        const indicator = document.querySelector('[aria-label="Cloud room sync is up to date"]');
-        return indicator && indicator.textContent.trim() === "Synced";
-      })()`,
-      "cloud room sync status",
-      15000,
-    );
     const projectId = await evaluate(cdp, `location.pathname.split("/").filter(Boolean).at(-1)`);
     const loroSnapshot = await waitForValue(
       () => mockCloud.requests.find((req) =>
@@ -631,37 +665,7 @@ async function main() {
       15000,
     );
     console.log("[desktop-smoke] loro cloud snapshot", JSON.stringify(loroSnapshot));
-    const cloudGet = await waitForValue(
-      () => mockCloud.requests.find((req) => req.kind === "room" && req.method === "GET" && req.projectId === projectId),
-      "mock cloud room history fetch",
-      15000,
-    );
-    console.log("[desktop-smoke] room cloud get", JSON.stringify(cloudGet));
-
-    const roomText = "hello smoke cloud room";
-    await typeRoomMessage(cdp, roomText);
-    await click(
-      cdp,
-      `([...document.querySelectorAll("button")].find((button) => {
-        const label = (button.getAttribute("aria-label") || "").toLowerCase();
-        const rect = button.getBoundingClientRect();
-        return label.includes("send") && !button.disabled && rect.width > 0 && rect.height > 0;
-      }))`,
-      "Send room message",
-    );
-    await waitFor(cdp, `document.body.innerText.includes(${JSON.stringify(roomText)})`, "local room echo", 10000);
-    const cloudPost = await waitForValue(
-      () => mockCloud.requests.find((req) =>
-        req.kind === "room" &&
-        req.method === "POST" &&
-        req.projectId === projectId &&
-        req.body?.text === roomText
-      ),
-      "mock cloud room message post",
-      15000,
-    );
-    console.log("[desktop-smoke] room cloud post", JSON.stringify(cloudPost));
-    await exerciseAgentCanvasUi(cdp);
+    await exerciseRuntimeCopilotUi(cdp);
     await sendSyntheticLoroUpdate(apiPort, projectId);
     const loroUpdate = await waitForValue(
       () => mockCloud.requests.find((req) =>
@@ -713,6 +717,7 @@ async function main() {
   } finally {
     if (cdp) cdp.close();
     await stopProcess(child);
+    await stopProcess(webChild);
     await mockCloud.close();
   }
 }

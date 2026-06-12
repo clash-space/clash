@@ -153,13 +153,16 @@ importers:
         version: 5.9.3
       vitest:
         specifier: 4.1.0
-        version: 4.1.0(@types/node@22.19.17)(jsdom@29.0.2)(vite@7.3.2)
+        version: 4.1.0(@types/node@22.19.17)(vite@7.3.2)
 
   apps/local-api:
     dependencies:
       '@clash-space/bridge':
         specifier: workspace:*
         version: link:../../packages/clash-bridge
+      '@clash-space/cli':
+        specifier: workspace:*
+        version: link:../../packages/cli
       '@clash/shared-runtime':
         specifier: workspace:*
         version: link:../../packages/shared-runtime
@@ -193,7 +196,7 @@ importers:
         version: 5.9.3
       vitest:
         specifier: 4.1.0
-        version: 4.1.0(@types/node@22.19.17)(jsdom@29.0.2)(vite@7.3.2)
+        version: 4.1.0(@types/node@22.19.17)(vite@7.3.2)
 
   apps/render-server:
     dependencies:
@@ -476,8 +479,8 @@ importers:
   packages/clash-bridge:
     dependencies:
       '@agentclientprotocol/sdk':
-        specifier: ^0.21.1
-        version: 0.21.1(zod@4.3.6)
+        specifier: ^0.25.0
+        version: 0.25.0(zod@4.3.6)
       ws:
         specifier: ^8.18.0
         version: 8.18.0
@@ -738,7 +741,7 @@ importers:
         version: 5.9.3
       vitest:
         specifier: 4.1.0
-        version: 4.1.0(@types/node@22.19.17)(jsdom@29.0.2)(vite@7.3.2)
+        version: 4.1.0(@types/node@22.19.17)(vite@7.3.2)
       zod-to-json-schema:
         specifier: ^3.23.0
         version: 3.25.1(zod@3.25.76)
@@ -919,8 +922,8 @@ packages:
     resolution: {integrity: sha512-Elp+iwUx5rN5+Y8xLt5/GRoG20WGoDCQ/1Fb+1LiGtvwbDavuSk0jhD/eZdckHAuzcDzccnkv+rEjyWfRx18gg==}
     dev: true
 
-  /@agentclientprotocol/sdk@0.21.1(zod@4.3.6):
-    resolution: {integrity: sha512-ZTLH+o9QxcZDLX/9ww+W7C2iExnXFM+vD/uGFVSlR61Kzj9FaxUqBC6Rv/kwgA7qVWYUEI9c5ZNqCuO9PM4rKg==}
+  /@agentclientprotocol/sdk@0.25.0(zod@4.3.6):
+    resolution: {integrity: sha512-wU1VgXNtMvdVotX49txc3WJUDV+/QbLpsgjMvFhlRmp37osdLbI7L7y+iwAlQATwfjLxcv1r1p3ZxZBcXlGhcQ==}
     peerDependencies:
       zod: ^3.25.0 || ^4.0.0
     dependencies:
@@ -17872,6 +17875,66 @@ packages:
       why-is-node-running: 2.3.0
     transitivePeerDependencies:
       - msw
+
+  /vitest@4.1.0(@types/node@22.19.17)(vite@7.3.2):
+    resolution: {integrity: sha512-YbDrMF9jM2Lqc++2530UourxZHmkKLxrs4+mYhEwqWS97WJ7wOYEkcr+QfRgJ3PW9wz3odRijLZjHEaRLTNbqw==}
+    engines: {node: ^20.0.0 || ^22.0.0 || >=24.0.0}
+    hasBin: true
+    peerDependencies:
+      '@edge-runtime/vm': '*'
+      '@opentelemetry/api': ^1.9.0
+      '@types/node': ^20.0.0 || ^22.0.0 || >=24.0.0
+      '@vitest/browser-playwright': 4.1.0
+      '@vitest/browser-preview': 4.1.0
+      '@vitest/browser-webdriverio': 4.1.0
+      '@vitest/ui': 4.1.0
+      happy-dom: '*'
+      jsdom: '*'
+      vite: ^6.0.0 || ^7.0.0 || ^8.0.0-0
+    peerDependenciesMeta:
+      '@edge-runtime/vm':
+        optional: true
+      '@opentelemetry/api':
+        optional: true
+      '@types/node':
+        optional: true
+      '@vitest/browser-playwright':
+        optional: true
+      '@vitest/browser-preview':
+        optional: true
+      '@vitest/browser-webdriverio':
+        optional: true
+      '@vitest/ui':
+        optional: true
+      happy-dom:
+        optional: true
+      jsdom:
+        optional: true
+    dependencies:
+      '@types/node': 22.19.17
+      '@vitest/expect': 4.1.0
+      '@vitest/mocker': 4.1.0(vite@7.3.2)
+      '@vitest/pretty-format': 4.1.0
+      '@vitest/runner': 4.1.0
+      '@vitest/snapshot': 4.1.0
+      '@vitest/spy': 4.1.0
+      '@vitest/utils': 4.1.0
+      es-module-lexer: 2.0.0
+      expect-type: 1.3.0
+      magic-string: 0.30.21
+      obug: 2.1.1
+      pathe: 2.0.3
+      picomatch: 4.0.4
+      std-env: 4.0.0
+      tinybench: 2.9.0
+      tinyexec: 1.0.4
+      tinyglobby: 0.2.16
+      tinyrainbow: 3.1.0
+      vite: 7.3.2(@types/node@22.19.17)(yaml@2.8.3)
+      why-is-node-running: 2.3.0
+    transitivePeerDependencies:
+      - msw
+    dev: true
 
   /vitest@4.1.0(@vitest/ui@1.6.1)(jsdom@29.0.2)(vite@7.3.2):
     resolution: {integrity: sha512-YbDrMF9jM2Lqc++2530UourxZHmkKLxrs4+mYhEwqWS97WJ7wOYEkcr+QfRgJ3PW9wz3odRijLZjHEaRLTNbqw==}
