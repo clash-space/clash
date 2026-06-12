@@ -168,10 +168,10 @@ export default function SettingsClient({
                 {showSection('tokens') && (
                 <section>
                     <div className="flex items-center gap-3 mb-5">
-                        <Key className="h-5 w-5 text-gray-700 dark:text-gray-300" weight="bold" />
+                        <Key className="h-5 w-5 text-stone-600 dark:text-stone-300" weight="bold" />
                         <div>
                             <h2 className="font-display text-base font-bold text-slate-900 dark:text-slate-50">API Tokens</h2>
-                            <p className="text-sm text-gray-700 dark:text-gray-300">For CLI and agent access</p>
+                            <p className="text-sm text-stone-600 dark:text-stone-300">For CLI and agent access</p>
                         </div>
                     </div>
 
@@ -182,12 +182,12 @@ export default function SettingsClient({
                             onChange={(e) => setNewTokenName(e.target.value)}
                             onKeyDown={(e) => e.key === 'Enter' && handleCreate()}
                             placeholder="Token name"
-                            className="flex-1 rounded-full border border-warm-border bg-warm-surface px-4 py-2 text-sm text-slate-900 placeholder:text-slate-500 focus:border-brand focus:outline-none transition-colors dark:text-slate-50 dark:placeholder:text-slate-400"
+                            className="flex-1 rounded-xl border border-warm-border bg-warm-surface px-4 py-2 text-sm text-slate-900 placeholder:text-stone-400 focus:border-brand focus:outline-none transition-colors dark:text-slate-50 dark:placeholder:text-stone-500"
                         />
                         <motion.button
                             onClick={handleCreate}
                             disabled={isCreating || !newTokenName.trim()}
-                            className="rounded-full bg-slate-900 px-5 py-2 text-sm font-medium text-white hover:bg-slate-800 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-white disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                            className="rounded-xl bg-slate-950 px-5 py-2 text-sm font-medium text-white hover:bg-slate-800 dark:bg-slate-100 dark:text-slate-950 dark:hover:bg-white disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
                             whileTap={{ scale: 0.97 }}
                         >
                             Create
@@ -203,7 +203,7 @@ export default function SettingsClient({
                                 className="overflow-hidden mb-4"
                             >
                                 <div className="rounded-xl bg-warm-muted border border-warm-border p-4">
-                                    <p className="text-sm font-medium text-gray-800 dark:text-gray-200 mb-2">
+                                    <p className="text-sm font-medium text-stone-700 dark:text-stone-200 mb-2">
                                         Copy this token now — it won&apos;t be shown again.
                                     </p>
                                     <div className="flex items-center gap-2">
@@ -228,7 +228,7 @@ export default function SettingsClient({
                     {tokens.length === 0 ? (
                         <div className="rounded-xl border border-dashed border-warm-border py-10 text-center">
                             <Key className="h-8 w-8 text-stone-500 mx-auto mb-2 dark:text-stone-500" weight="duotone" />
-                            <p className="text-sm text-gray-700 dark:text-gray-300">No tokens yet</p>
+                            <p className="text-sm text-stone-600 dark:text-stone-300">No tokens yet</p>
                         </div>
                     ) : (
                         <div className="space-y-1">
@@ -237,15 +237,15 @@ export default function SettingsClient({
                                     <div className="flex-1 min-w-0">
                                         <div className="flex items-center gap-2">
                                             <span className="text-sm font-medium text-slate-900 dark:text-slate-50">{token.name}</span>
-                                            <code className="text-xs text-gray-700 dark:text-gray-300 dark:text-gray-400 font-mono">{token.tokenPrefix}</code>
+                                            <code className="text-xs text-stone-500 dark:text-stone-400 font-mono">{token.tokenPrefix}</code>
                                         </div>
-                                        <p className="text-xs text-gray-700 dark:text-gray-300 dark:text-gray-400 mt-0.5">
+                                        <p className="text-xs text-stone-500 dark:text-stone-400 mt-0.5">
                                             Created {formatDate(token.createdAt)} · Last used {formatDate(token.lastUsedAt)}
                                         </p>
                                     </div>
                                     <button
                                         onClick={() => handleRevoke(token.id)}
-                                        className="opacity-0 group-hover:opacity-100 rounded-lg p-1.5 text-gray-700 dark:text-gray-300 dark:text-gray-400 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-50 transition-all"
+                                        className="opacity-0 group-hover:opacity-100 rounded-lg p-1.5 text-stone-500 dark:text-stone-400 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-50 transition-all"
                                     >
                                         <Trash className="h-4 w-4" />
                                     </button>
@@ -262,10 +262,10 @@ export default function SettingsClient({
                 {showSection('variables') && (
                 <section>
                     <div className="flex items-center gap-3 mb-5">
-                        <Lock className="h-5 w-5 text-gray-700 dark:text-gray-300" weight="bold" />
+                        <Lock className="h-5 w-5 text-stone-600 dark:text-stone-300" weight="bold" />
                         <div>
                             <h2 className="font-display text-base font-bold text-slate-900 dark:text-slate-50">API Keys</h2>
-                            <p className="text-sm text-gray-700 dark:text-gray-300">OpenAI image generation and canvas action keys</p>
+                            <p className="text-sm text-stone-600 dark:text-stone-300">OpenAI image generation and canvas action keys</p>
                         </div>
                     </div>
 
@@ -283,7 +283,7 @@ export default function SettingsClient({
                                 >
                                     <span className="min-w-0">
                                         <span className="block text-sm font-medium text-slate-900 dark:text-slate-50">{preset.label}</span>
-                                        <code className="block truncate text-xs text-gray-700 dark:text-gray-300">{preset.defaultSecretId}</code>
+                                        <code className="block truncate text-xs text-stone-500 dark:text-stone-400">{preset.defaultSecretId}</code>
                                     </span>
                                     <span
                                         className={
@@ -306,7 +306,7 @@ export default function SettingsClient({
                             onChange={(e) => setNewVarKey(e.target.value.toUpperCase().replace(/[^A-Z0-9_]/g, ''))}
                             placeholder="KEY_NAME"
                             autoComplete="off"
-                            className="w-36 rounded-full border border-warm-border bg-warm-surface px-4 py-2 text-sm font-mono text-slate-900 dark:text-slate-50 placeholder:text-gray-400 focus:border-gray-400 focus:outline-none transition-colors"
+                            className="w-36 rounded-xl border border-warm-border bg-warm-surface px-4 py-2 text-sm font-mono text-slate-900 dark:text-slate-50 placeholder:text-stone-400 focus:border-brand focus:outline-none transition-colors"
                         />
                         <div className="flex-1 relative">
                             <input
@@ -316,7 +316,7 @@ export default function SettingsClient({
                                 onKeyDown={(e) => e.key === 'Enter' && handleAddVariable()}
                                 placeholder="Value"
                                 autoComplete="new-password"
-                                className="w-full rounded-full border border-warm-border bg-warm-surface px-4 py-2 pr-9 text-sm text-slate-900 placeholder:text-slate-500 focus:border-brand focus:outline-none transition-colors dark:text-slate-50 dark:placeholder:text-slate-400"
+                                className="w-full rounded-xl border border-warm-border bg-warm-surface px-4 py-2 pr-9 text-sm text-slate-900 placeholder:text-stone-400 focus:border-brand focus:outline-none transition-colors dark:text-slate-50 dark:placeholder:text-stone-500"
                             />
                             <button
                                 type="button"
@@ -329,7 +329,7 @@ export default function SettingsClient({
                         <motion.button
                             onClick={handleAddVariable}
                             disabled={isAddingVar || !newVarKey.trim() || !newVarValue.trim()}
-                            className="rounded-full bg-slate-900 px-5 py-2 text-sm font-medium text-white hover:bg-slate-800 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-white disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                            className="rounded-xl bg-slate-950 px-5 py-2 text-sm font-medium text-white hover:bg-slate-800 dark:bg-slate-100 dark:text-slate-950 dark:hover:bg-white disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
                             whileTap={{ scale: 0.97 }}
                         >
                             Set
@@ -339,7 +339,7 @@ export default function SettingsClient({
                     {variables.length === 0 ? (
                         <div className="rounded-xl border border-dashed border-warm-border py-10 text-center">
                             <Lock className="h-8 w-8 text-stone-500 mx-auto mb-2 dark:text-stone-500" weight="duotone" />
-                            <p className="text-sm text-gray-700 dark:text-gray-300">No variables yet</p>
+                            <p className="text-sm text-stone-600 dark:text-stone-300">No variables yet</p>
                         </div>
                     ) : (
                         <div className="space-y-1">
@@ -348,13 +348,13 @@ export default function SettingsClient({
                                     <div className="flex-1 min-w-0">
                                         <div className="flex items-center gap-2">
                                             <code className="text-sm font-mono font-medium text-slate-900 dark:text-slate-50">{v.key}</code>
-                                            <span className="text-[10px] text-gray-700 dark:text-gray-300 dark:text-gray-400 bg-warm-muted rounded-full px-2 py-0.5">saved</span>
+                                            <span className="text-[10px] text-stone-600 dark:text-stone-400 bg-warm-muted rounded-lg px-2 py-0.5">saved</span>
                                         </div>
-                                        <p className="text-xs text-gray-700 dark:text-gray-300 dark:text-gray-400 mt-0.5">Updated {formatDate(v.updatedAt || v.createdAt)}</p>
+                                        <p className="text-xs text-stone-500 dark:text-stone-400 mt-0.5">Updated {formatDate(v.updatedAt || v.createdAt)}</p>
                                     </div>
                                     <button
                                         onClick={() => handleDeleteVariable(v.id)}
-                                        className="opacity-0 group-hover:opacity-100 rounded-lg p-1.5 text-gray-700 dark:text-gray-300 dark:text-gray-400 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-50 transition-all"
+                                        className="opacity-0 group-hover:opacity-100 rounded-lg p-1.5 text-stone-500 dark:text-stone-400 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-50 transition-all"
                                     >
                                         <Trash className="h-4 w-4" />
                                     </button>
@@ -371,12 +371,12 @@ export default function SettingsClient({
                 {showSection('actions') && (
                 <section>
                     <div className="flex items-center gap-3 mb-5">
-                        <PuzzlePiece className="h-5 w-5 text-gray-700 dark:text-gray-300" weight="bold" />
+                        <PuzzlePiece className="h-5 w-5 text-stone-600 dark:text-stone-300" weight="bold" />
                         <div className="flex-1">
                             <h2 className="font-display text-base font-bold text-slate-900 dark:text-slate-50">Installed Actions</h2>
-                            <p className="text-sm text-gray-700 dark:text-gray-300">Canvas actions available in all projects</p>
+                            <p className="text-sm text-stone-600 dark:text-stone-300">Canvas actions available in all projects</p>
                         </div>
-                        <Link to="/marketplace" className="text-sm font-medium text-gray-700 dark:text-gray-300 hover:text-gray-900 transition-colors">
+                        <Link to="/marketplace" className="text-sm font-medium text-stone-600 transition-colors hover:text-brand dark:text-stone-300 dark:hover:text-brand">
                             Browse
                         </Link>
                     </div>
@@ -384,8 +384,8 @@ export default function SettingsClient({
                     {actions.length === 0 ? (
                         <div className="rounded-xl border border-dashed border-warm-border py-10 text-center">
                             <PuzzlePiece className="h-8 w-8 text-stone-500 mx-auto mb-2 dark:text-stone-500" weight="duotone" />
-                            <p className="text-sm text-gray-700 dark:text-gray-300 dark:text-gray-400 mb-2">No actions installed</p>
-                            <Link to="/marketplace" className="text-sm font-medium text-slate-900 dark:text-slate-50 hover:text-gray-600 transition-colors">
+                            <p className="text-sm text-stone-600 dark:text-stone-300 mb-2">No actions installed</p>
+                            <Link to="/marketplace" className="text-sm font-medium text-slate-950 transition-colors hover:text-brand dark:text-slate-50 dark:hover:text-brand">
                                 Explore Marketplace
                             </Link>
                         </div>
@@ -414,13 +414,13 @@ export default function SettingsClient({
                                             <div className="flex-1 min-w-0">
                                                 <div className="flex items-center gap-2 flex-wrap">
                                                     <span className="text-sm font-medium text-slate-900 dark:text-slate-50">{action.name}</span>
-                                                    {action.version && <span className="text-xs text-gray-700 dark:text-gray-300 dark:text-gray-400 font-mono">v{action.version}</span>}
-                                                    {action.author && <span className="text-xs text-gray-700 dark:text-gray-300">@{action.author}</span>}
+                                                    {action.version && <span className="text-xs text-stone-500 dark:text-stone-400 font-mono">v{action.version}</span>}
+                                                    {action.author && <span className="text-xs text-stone-500 dark:text-stone-400">@{action.author}</span>}
                                                 </div>
-                                                {action.description && <p className="text-xs text-gray-700 dark:text-gray-300 mt-0.5 line-clamp-1">{action.description}</p>}
+                                                {action.description && <p className="text-xs text-stone-600 dark:text-stone-300 mt-0.5 line-clamp-1">{action.description}</p>}
                                                 {modelLabel && (
                                                     <div className="mt-1.5">
-                                                        <span className="text-[10px] text-slate-700 dark:text-slate-300 bg-warm-surface border border-warm-border rounded-full px-2 py-0.5 font-medium">
+                                                        <span className="text-[10px] text-stone-600 dark:text-stone-300 bg-warm-surface border border-warm-border rounded-lg px-2 py-0.5 font-medium">
                                                             {modelLabel}
                                                         </span>
                                                     </div>
@@ -435,7 +435,7 @@ export default function SettingsClient({
                                             </div>
                                             <button
                                                 onClick={() => handleUninstallAction(action.actionId)}
-                                                className="opacity-0 group-hover:opacity-100 rounded-lg p-1.5 text-gray-700 dark:text-gray-300 dark:text-gray-400 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-50 transition-all flex-shrink-0"
+                                                className="opacity-0 group-hover:opacity-100 rounded-lg p-1.5 text-stone-500 dark:text-stone-400 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-50 transition-all flex-shrink-0"
                                             >
                                                 <Trash className="h-4 w-4" />
                                             </button>
@@ -454,12 +454,12 @@ export default function SettingsClient({
                 {showSection('skills') && (
                 <section>
                     <div className="flex items-center gap-3 mb-5">
-                        <BookOpen className="h-5 w-5 text-gray-700 dark:text-gray-300" weight="bold" />
+                        <BookOpen className="h-5 w-5 text-stone-600 dark:text-stone-300" weight="bold" />
                         <div className="flex-1">
                             <h2 className="font-display text-base font-bold text-slate-900 dark:text-slate-50">Installed Skills</h2>
-                            <p className="text-sm text-gray-700 dark:text-gray-300">AI agent skills for Claude Code</p>
+                            <p className="text-sm text-stone-600 dark:text-stone-300">AI agent skills for Claude Code</p>
                         </div>
-                        <Link to="/marketplace" className="text-sm font-medium text-gray-700 dark:text-gray-300 hover:text-gray-900 transition-colors">
+                        <Link to="/marketplace" className="text-sm font-medium text-stone-600 transition-colors hover:text-brand dark:text-stone-300 dark:hover:text-brand">
                             Browse
                         </Link>
                     </div>
@@ -467,8 +467,8 @@ export default function SettingsClient({
                     {skills.length === 0 ? (
                         <div className="rounded-xl border border-dashed border-warm-border py-10 text-center">
                             <BookOpen className="h-8 w-8 text-stone-500 mx-auto mb-2 dark:text-stone-500" weight="duotone" />
-                            <p className="text-sm text-gray-700 dark:text-gray-300 dark:text-gray-400 mb-2">No skills installed</p>
-                            <Link to="/marketplace" className="text-sm font-medium text-slate-900 dark:text-slate-50 hover:text-gray-600 transition-colors">
+                            <p className="text-sm text-stone-600 dark:text-stone-300 mb-2">No skills installed</p>
+                            <Link to="/marketplace" className="text-sm font-medium text-slate-950 transition-colors hover:text-brand dark:text-slate-50 dark:hover:text-brand">
                                 Explore Marketplace
                             </Link>
                         </div>
@@ -479,14 +479,14 @@ export default function SettingsClient({
                                     <div className="flex-1 min-w-0">
                                         <div className="flex items-center gap-2 flex-wrap">
                                             <span className="text-sm font-medium text-slate-900 dark:text-slate-50">{skill.name}</span>
-                                            {skill.version && <span className="text-xs text-gray-700 dark:text-gray-300 dark:text-gray-400 font-mono">v{skill.version}</span>}
-                                            {skill.author && <span className="text-xs text-gray-700 dark:text-gray-300">@{skill.author}</span>}
+                                            {skill.version && <span className="text-xs text-stone-500 dark:text-stone-400 font-mono">v{skill.version}</span>}
+                                            {skill.author && <span className="text-xs text-stone-500 dark:text-stone-400">@{skill.author}</span>}
                                         </div>
-                                        {skill.description && <p className="text-xs text-gray-700 dark:text-gray-300 mt-0.5 line-clamp-1">{skill.description}</p>}
+                                        {skill.description && <p className="text-xs text-stone-600 dark:text-stone-300 mt-0.5 line-clamp-1">{skill.description}</p>}
                                     </div>
                                     <button
                                         onClick={() => handleUninstallSkill(skill.skillId)}
-                                        className="opacity-0 group-hover:opacity-100 rounded-lg p-1.5 text-gray-700 dark:text-gray-300 dark:text-gray-400 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-50 transition-all"
+                                        className="opacity-0 group-hover:opacity-100 rounded-lg p-1.5 text-stone-500 dark:text-stone-400 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-50 transition-all"
                                     >
                                         <Trash className="h-4 w-4" />
                                     </button>
@@ -503,10 +503,10 @@ export default function SettingsClient({
                 {showSection('cli') && (
                 <section className="pb-4">
                     <div className="flex items-center gap-3 mb-4">
-                        <Terminal className="h-5 w-5 text-gray-700 dark:text-gray-300" weight="bold" />
+                        <Terminal className="h-5 w-5 text-stone-600 dark:text-stone-300" weight="bold" />
                         <h2 className="font-display text-base font-bold text-slate-900 dark:text-slate-50">CLI</h2>
                     </div>
-                    <code className="block rounded-xl bg-warm-muted border border-warm-border px-4 py-3 text-sm font-mono text-gray-800 dark:text-gray-200">
+                    <code className="block rounded-xl bg-warm-muted border border-warm-border px-4 py-3 text-sm font-mono text-stone-700 dark:text-stone-200">
                         npm install -g @clash-space/cli
                     </code>
                 </section>
@@ -523,7 +523,7 @@ export default function SettingsClient({
                 <div className="mx-auto max-w-3xl px-6 py-4 flex items-center gap-4">
                     <Link
                         to="/"
-                        className="flex items-center justify-center h-9 w-9 rounded-full border border-warm-border text-gray-700 dark:text-gray-300 hover:text-gray-900 hover:border-slate-300 transition-all"
+                        className="flex items-center justify-center h-9 w-9 rounded-xl border border-warm-border text-stone-600 transition-all hover:text-slate-950 hover:border-brand/35 dark:text-stone-300 dark:hover:text-slate-50"
                     >
                         <ArrowLeft className="h-4 w-4" />
                     </Link>
@@ -624,26 +624,26 @@ function SyncSection() {
     return (
         <section>
             <div className="flex items-center gap-3 mb-5">
-                <CloudArrowUp className="h-5 w-5 text-gray-700 dark:text-gray-300" weight="bold" />
+                <CloudArrowUp className="h-5 w-5 text-stone-600 dark:text-stone-300" weight="bold" />
                 <div className="flex-1">
                     <h2 className="font-display text-base font-bold text-slate-900 dark:text-slate-50">Sync</h2>
-                    <p className="text-sm text-gray-700 dark:text-gray-300">
+                    <p className="text-sm text-stone-600 dark:text-stone-300">
                         Local canvas state with optional cloud persistence.
                     </p>
                 </div>
-                <span className="rounded-full border border-warm-border bg-warm-muted px-3 py-1 text-xs font-medium text-stone-700 dark:text-stone-200">
+                <span className="rounded-lg border border-warm-border bg-warm-muted px-3 py-1 text-xs font-medium text-stone-700 dark:text-stone-200">
                     {mode === 'cloud-sync' ? 'Cloud sync' : 'Local only'}
                 </span>
             </div>
 
             {loading ? (
-                <div className="rounded-xl border border-warm-border bg-warm-surface p-4 text-sm text-gray-700 dark:text-gray-300">
+                <div className="rounded-xl border border-warm-border bg-warm-surface p-4 text-sm text-stone-600 dark:text-stone-300">
                     Loading sync settings…
                 </div>
             ) : (
                 <div className="space-y-4">
                     <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                        <label className={`rounded-xl border p-4 transition-colors ${mode === 'local-only' ? 'border-gray-900 bg-warm-muted' : 'border-warm-border bg-warm-surface hover:border-slate-400'}`}>
+                        <label className={`rounded-xl border p-4 transition-colors ${mode === 'local-only' ? 'border-brand/55 bg-brand-light/45' : 'border-warm-border bg-warm-surface hover:border-brand/35'}`}>
                             <input
                                 type="radio"
                                 name="sync-mode"
@@ -653,11 +653,11 @@ function SyncSection() {
                                 className="sr-only"
                             />
                             <span className="block text-sm font-semibold text-slate-900 dark:text-slate-50">Local only</span>
-                            <span className="mt-1 block text-xs text-gray-700 dark:text-gray-300">
+                            <span className="mt-1 block text-xs text-stone-600 dark:text-stone-300">
                                 Stores projects on this machine.
                             </span>
                         </label>
-                        <label className={`rounded-xl border p-4 transition-colors ${mode === 'cloud-sync' ? 'border-gray-900 bg-warm-muted' : 'border-warm-border bg-warm-surface hover:border-slate-400'}`}>
+                        <label className={`rounded-xl border p-4 transition-colors ${mode === 'cloud-sync' ? 'border-brand/55 bg-brand-light/45' : 'border-warm-border bg-warm-surface hover:border-brand/35'}`}>
                             <input
                                 type="radio"
                                 name="sync-mode"
@@ -667,7 +667,7 @@ function SyncSection() {
                                 className="sr-only"
                             />
                             <span className="block text-sm font-semibold text-slate-900 dark:text-slate-50">Cloud sync</span>
-                            <span className="mt-1 block text-xs text-gray-700 dark:text-gray-300">
+                            <span className="mt-1 block text-xs text-stone-600 dark:text-stone-300">
                                 Mirrors Loro snapshots and updates.
                             </span>
                         </label>
@@ -675,7 +675,7 @@ function SyncSection() {
 
                     <div className="space-y-3 rounded-xl border border-warm-border bg-warm-surface p-4">
                         <label className="block">
-                            <span className="mb-1.5 block text-xs font-medium text-gray-700 dark:text-gray-300">Remote Loro URL</span>
+                            <span className="mb-1.5 block text-xs font-medium text-stone-600 dark:text-stone-300">Remote Loro URL</span>
                             <input
                                 aria-label="Remote Loro URL"
                                 type="url"
@@ -683,11 +683,11 @@ function SyncSection() {
                                 onChange={(e) => setRemoteUrl(e.target.value)}
                                 placeholder="https://api.example.com"
                                 disabled={mode !== 'cloud-sync'}
-                                className="w-full rounded-lg border border-warm-border bg-warm-surface px-3 py-2 text-sm text-slate-900 placeholder:text-slate-500 focus:border-brand focus:outline-none disabled:opacity-50 dark:text-slate-50"
+                                className="w-full rounded-lg border border-warm-border bg-warm-surface px-3 py-2 text-sm text-slate-900 placeholder:text-stone-400 focus:border-brand focus:outline-none disabled:opacity-50 dark:text-slate-50 dark:placeholder:text-stone-500"
                             />
                         </label>
                         <label className="block">
-                            <span className="mb-1.5 block text-xs font-medium text-gray-700 dark:text-gray-300">Remote Loro token</span>
+                            <span className="mb-1.5 block text-xs font-medium text-stone-600 dark:text-stone-300">Remote Loro token</span>
                             <input
                                 aria-label="Remote Loro token"
                                 type="password"
@@ -695,10 +695,10 @@ function SyncSection() {
                                 onChange={(e) => setRemoteToken(e.target.value)}
                                 placeholder={hasToken ? 'Token saved' : 'Bearer token'}
                                 disabled={mode !== 'cloud-sync'}
-                                className="w-full rounded-lg border border-warm-border bg-warm-surface px-3 py-2 text-sm text-slate-900 placeholder:text-slate-500 focus:border-brand focus:outline-none disabled:opacity-50 dark:text-slate-50"
+                                className="w-full rounded-lg border border-warm-border bg-warm-surface px-3 py-2 text-sm text-slate-900 placeholder:text-stone-400 focus:border-brand focus:outline-none disabled:opacity-50 dark:text-slate-50 dark:placeholder:text-stone-500"
                             />
                         </label>
-                        <div className="flex flex-wrap items-center gap-2 text-xs text-gray-700 dark:text-gray-300">
+                        <div className="flex flex-wrap items-center gap-2 text-xs text-stone-500 dark:text-stone-400">
                             <span>{hasToken ? 'Token saved' : 'No token saved'}</span>
                             <span>·</span>
                             <span>Source: {source}</span>
@@ -720,7 +720,7 @@ function SyncSection() {
                         type="button"
                         onClick={onSave}
                         disabled={saving || (mode === 'cloud-sync' && !remoteUrl.trim())}
-                        className="inline-flex items-center justify-center rounded-full bg-slate-900 px-5 py-2 text-sm font-medium text-white transition-colors hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-40 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-white"
+                        className="inline-flex items-center justify-center rounded-xl bg-slate-950 px-5 py-2 text-sm font-medium text-white transition-colors hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-40 dark:bg-slate-100 dark:text-slate-950 dark:hover:bg-white"
                     >
                         {saving ? 'Saving…' : 'Save sync settings'}
                     </button>
@@ -761,15 +761,15 @@ function RuntimesSection() {
     return (
         <section>
             <div className="flex items-center gap-3 mb-5">
-                <Plug className="h-5 w-5 text-gray-700 dark:text-gray-300" weight="bold" />
+                <Plug className="h-5 w-5 text-stone-600 dark:text-stone-300" weight="bold" />
                 <div className="flex-1">
                     <h2 className="font-display text-base font-bold text-slate-900 dark:text-slate-50">Runtimes</h2>
-                    <p className="text-sm text-gray-700 dark:text-gray-300">Local machines registered with <code>clash-bridge setup</code></p>
+                    <p className="text-sm text-stone-600 dark:text-stone-300">Local machines registered with <code>clash-bridge setup</code></p>
                 </div>
                 <button
                     type="button"
                     onClick={() => setSetupOpen((v) => !v)}
-                    className="inline-flex items-center gap-1.5 rounded-full bg-gray-900 text-white px-3.5 py-1.5 text-sm hover:bg-gray-800"
+                    className="inline-flex items-center gap-1.5 rounded-xl bg-slate-950 text-white px-3.5 py-1.5 text-sm transition-colors hover:bg-slate-800"
                 >
                     <Plus className="h-3.5 w-3.5" /> Add machine
                 </button>
@@ -777,11 +777,11 @@ function RuntimesSection() {
 
             {setupOpen && (
                 <div className="mb-4 rounded-xl border border-warm-border bg-warm-muted p-4">
-                    <p className="text-xs text-gray-700 dark:text-gray-300 mb-2">Run on the machine you want to register:</p>
-                    <code className="block rounded-lg bg-slate-900 text-slate-50 px-3 py-2.5 font-mono text-sm dark:bg-warm-page dark:text-slate-100 dark:border dark:border-warm-border">
+                    <p className="text-xs text-stone-600 dark:text-stone-300 mb-2">Run on the machine you want to register:</p>
+                    <code className="block rounded-lg bg-slate-950 text-slate-50 px-3 py-2.5 font-mono text-sm dark:bg-warm-page dark:text-slate-100 dark:border dark:border-warm-border">
                         npx @clash-space/bridge@beta setup
                     </code>
-                    <p className="mt-2 text-xs text-gray-700 dark:text-gray-300">
+                    <p className="mt-2 text-xs text-stone-600 dark:text-stone-300">
                         It opens this site in your browser to authorize the connection,
                         then installs a background daemon (launchd / systemd).
                         The machine appears below within a few seconds.
@@ -791,7 +791,7 @@ function RuntimesSection() {
 
             {rt.runtimes.length === 0 ? (
                 <div className="rounded-xl border border-dashed border-warm-border p-6 text-center">
-                    <p className="text-sm text-gray-700 dark:text-gray-300">No machines registered yet</p>
+                    <p className="text-sm text-stone-600 dark:text-stone-300">No machines registered yet</p>
                 </div>
             ) : (
                 <div className="space-y-2">
@@ -809,12 +809,12 @@ function RuntimesSection() {
                                     <div className="flex items-center gap-2 mb-1">
                                         <span className={`inline-block w-2 h-2 rounded-full ${online ? "bg-emerald-500" : "bg-stone-300"}`} />
                                         <span className="font-medium text-slate-900 dark:text-slate-50">{r.hostname || r.machine_id.slice(0, 12)}</span>
-                                        <span className="text-xs text-gray-700 dark:text-gray-300">{r.os} · v{r.version}</span>
+                                        <span className="text-xs text-stone-500 dark:text-stone-400">{r.os} · v{r.version}</span>
                                     </div>
-                                    <div className="text-xs text-gray-700 dark:text-gray-300">
+                                    <div className="text-xs text-stone-600 dark:text-stone-300">
                                         Agents: {r.agents.length === 0 ? "—" : r.agents.map((a) => a.id).join(", ")}
                                     </div>
-                                    <div className="text-xs text-gray-700 dark:text-gray-300 dark:text-gray-400 mt-0.5">
+                                    <div className="text-xs text-stone-500 dark:text-stone-400 mt-0.5">
                                         Last seen: {lastBeat}
                                     </div>
                                 </div>
@@ -822,7 +822,7 @@ function RuntimesSection() {
                                     type="button"
                                     onClick={() => onRemove(r.id)}
                                     disabled={removingId === r.id}
-                                    className="text-xs text-gray-700 dark:text-gray-300 dark:text-gray-400 hover:text-red-600 dark:hover:text-red-400 disabled:opacity-50"
+                                    className="text-xs text-stone-500 transition-colors hover:text-red-600 disabled:opacity-50 dark:text-stone-400 dark:hover:text-red-400"
                                 >
                                     {removingId === r.id ? "Removing…" : "Remove"}
                                 </button>

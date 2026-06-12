@@ -1,14 +1,32 @@
 // @vitest-environment jsdom
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import BillingClient from "./BillingClient";
 import MarketplaceClient from "./MarketplaceClient";
+import SettingsClient from "./SettingsClient";
+
+vi.mock("@clash/web-ui/hooks/useClashRuntime", () => ({
+  useClashRuntime: () => ({
+    runtimes: [],
+    refresh: vi.fn(),
+  }),
+}));
+
+vi.mock("@clash/web-ui/lib/clientActions", () => ({
+  createApiToken: vi.fn(),
+  revokeApiToken: vi.fn(),
+  setVariable: vi.fn(),
+  deleteVariable: vi.fn(),
+  uninstallAction: vi.fn(),
+  uninstallSkill: vi.fn(),
+}));
 
 vi.mock("framer-motion", async () => {
   const React = await import("react");
   return {
+    AnimatePresence: ({ children }: { children?: React.ReactNode }) => <>{children}</>,
     motion: new Proxy(
       {},
       {
@@ -25,6 +43,7 @@ const oldVisualTokens = /indigo|purple|violet|blue-50|blue-500|bg-gradient-to-br
 describe("visual language surfaces", () => {
   afterEach(() => {
     cleanup();
+    vi.unstubAllGlobals();
     vi.restoreAllMocks();
   });
 
@@ -117,5 +136,68 @@ describe("visual language surfaces", () => {
     expect(container.innerHTML).not.toMatch(oldVisualTokens);
     expect(container.querySelector('[class*="bg-warm-surface/95"]')).toBeTruthy();
     expect(container.querySelector('[class*="ring-brand/15"]')).toBeTruthy();
+  });
+
+  it.each([
+    ["tokens", "API Tokens"],
+    ["variables", "API Keys"],
+    ["actions", "Installed Actions"],
+    ["skills", "Installed Skills"],
+    ["cli", "CLI"],
+    ["runtimes", "Runtimes"],
+  ] as const)("renders %s settings with warm controls instead of default gray chrome", (section, heading) => {
+    const { container } = render(
+      <MemoryRouter>
+        <SettingsClient
+          initialTokens={[]}
+          initialVariables={[]}
+          initialActions={[]}
+          initialSkills={[]}
+          activeSection={section}
+          embedded
+        />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByRole("heading", { name: heading })).toBeTruthy();
+    expect(container.innerHTML).not.toMatch(oldVisualTokens);
+  });
+
+  it("renders sync settings with warm selected states after loading local config", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        new Response(
+          JSON.stringify({
+            mode: "local-only",
+            remote_loro: {
+              enabled: false,
+              url: null,
+              has_token: false,
+              source: "none",
+            },
+          }),
+          { headers: { "content-type": "application/json" } },
+        ),
+      ),
+    );
+
+    const { container } = render(
+      <MemoryRouter>
+        <SettingsClient
+          initialTokens={[]}
+          initialVariables={[]}
+          initialActions={[]}
+          initialSkills={[]}
+          activeSection="sync"
+          embedded
+        />
+      </MemoryRouter>,
+    );
+
+    await waitFor(() => expect(screen.getByLabelText("Remote Loro URL")).toBeTruthy());
+    expect(screen.getByRole("heading", { name: "Sync" })).toBeTruthy();
+    expect(container.innerHTML).not.toMatch(oldVisualTokens);
+    expect(container.querySelector('[class*="border-brand/55"][class*="bg-brand-light/45"]')).toBeTruthy();
   });
 });
