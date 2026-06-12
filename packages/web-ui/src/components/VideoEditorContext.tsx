@@ -36,16 +36,11 @@ function VideoEditorOverlay({ children }: { children: ReactNode }) {
             role="dialog"
             aria-modal="true"
             aria-label="Video editor"
-            className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/[0.28] px-5 py-4 sm:px-8 sm:py-7"
+            className="clash-editor-modal-backdrop fixed inset-0 z-[100] flex items-center justify-center px-5 py-4 sm:px-8 sm:py-7"
         >
             <div
-                data-testid="video-editor-backdrop"
-                className="absolute inset-0 bg-slate-950/10"
-                aria-hidden="true"
-            />
-            <div
                 data-testid="video-editor-panel"
-                className="relative h-[min(920px,calc(100vh-48px))] w-[min(1480px,calc(100vw-48px))] overflow-hidden rounded-2xl border border-white/70 bg-warm-surface shadow-[0_24px_80px_rgba(15,23,42,0.28)] ring-1 ring-slate-950/10"
+                className="clash-editor-modal-surface relative h-[min(920px,calc(100vh-48px))] w-[min(1480px,calc(100vw-48px))] overflow-hidden rounded-2xl"
             >
                 {children}
             </div>

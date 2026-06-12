@@ -52,7 +52,7 @@ const oldAwarenessPaletteTokens =
 const oldVideoClipperTokens =
   /border-purple-500|color="purple"|color="blue"|color:\s*'blue'|color:\s*'purple'|bg-blue-500|ring-blue-300|bg-purple-500|ring-purple-300/;
 const oldEditorModalShellTokens =
-  /bg-slate-950\/30|shadow-2xl|ring-slate-950\/10/;
+  /bg-slate-950(?:\/30|\/10|\/\[0\.28\])|shadow-2xl|shadow-\[0_24px_80px_rgba\(15,23,42,0\.28\)\]|ring-slate-950\/10|border-white\/70/;
 
 describe("visual language surfaces", () => {
   afterEach(() => {
@@ -217,6 +217,7 @@ describe("visual language surfaces", () => {
     const source = [
       "packages/web-ui/src/components/ImageEditorContext.tsx",
       "packages/web-ui/src/components/VideoClipperContext.tsx",
+      "packages/web-ui/src/components/VideoEditorContext.tsx",
       "apps/web/app/globals.css",
     ]
       .map((path) => readFileSync(join(process.cwd(), path), "utf8"))
