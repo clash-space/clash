@@ -30,11 +30,16 @@ export default function LandingFooter() {
         <div className="xl:grid xl:grid-cols-3 xl:gap-8">
           <div className="space-y-8">
              <Link to="/" className="group">
-              <div className="flex items-center gap-1">
+              <div className="flex items-center gap-2">
+                <img
+                  src="/brand/logo-mark.svg"
+                  alt=""
+                  className="h-10 w-10 -m-1.5 object-contain"
+                  draggable={false}
+                />
                 <span className="font-display text-2xl font-bold tracking-tighter text-slate-900 dark:text-slate-50 leading-none">
                   Clash
                 </span>
-                <div className="h-5 w-[4px] bg-brand -skew-x-[20deg] transform origin-center" />
               </div>
             </Link>
             <p className="text-sm leading-6 text-gray-700 dark:text-gray-300">

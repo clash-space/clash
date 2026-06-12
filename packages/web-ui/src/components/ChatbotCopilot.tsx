@@ -803,6 +803,19 @@ export default function ChatbotCopilot({
                             className="absolute left-2 top-4 z-20 text-stone-700 dark:text-stone-300"
                         />
 
+                        <div className="pointer-events-none absolute left-12 top-4 z-20 flex h-10 items-center gap-2">
+                            <img
+                                src="/brand/logo-mark-animated.svg"
+                                alt=""
+                                aria-hidden="true"
+                                className="h-11 w-11 -m-1.5 object-contain"
+                                draggable={false}
+                            />
+                            <span className="font-display text-sm font-semibold text-slate-900 dark:text-slate-100">
+                                {t('copilot.panel.label')}
+                            </span>
+                        </div>
+
                         {/* Session Controls */}
                         <div className="absolute right-4 top-4 z-20 flex items-center gap-1" role="toolbar" aria-label={t('copilot.panel.label')}>
                             <IconButton

@@ -141,14 +141,19 @@ export default function LoginRoute() {
         <div className="mb-8 text-center">
           <Link to="/" className="inline-block group mb-6">
             <motion.div
-              className="flex items-center justify-center gap-1"
+              className="flex items-center justify-center gap-3"
               whileHover={{ scale: 1.05 }}
               whileTap={{ scale: 0.95 }}
             >
+              <img
+                src="/brand/logo-mark.svg"
+                alt=""
+                className="h-16 w-16 -m-2 object-contain"
+                draggable={false}
+              />
               <span className="font-display text-5xl font-bold tracking-tighter text-slate-950 leading-none">
                 Clash
               </span>
-              <div className="h-10 w-[7px] bg-brand -skew-x-[20deg] transform origin-center" />
             </motion.div>
           </Link>
           <h1 className="font-display text-2xl font-bold text-slate-950 mb-2">

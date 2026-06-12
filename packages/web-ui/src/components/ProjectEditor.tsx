@@ -2391,16 +2391,18 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
                                 z-10 — same stacking band as toolbar / chatbot panel
                                 so modal dialogs cover it cleanly without backdrop tricks. */}
                             <div id="editor-header" className="absolute top-6 left-[36px] z-10 flex items-center pointer-events-auto">
-                                <Link to="/" className="group">
+                                <Link to="/" className="group" aria-label="Clash home">
                                     <motion.div
-                                        className="flex items-center gap-1"
+                                        className="flex items-center"
                                         whileHover={{ scale: 1.05 }}
                                         whileTap={{ scale: 0.95 }}
                                     >
-                                        <span className="font-display text-4xl font-bold tracking-tighter text-slate-950 leading-none">
-                                            C
-                                        </span>
-                                        <div className="h-8 w-[6px] bg-brand -skew-x-[20deg] transform origin-center" />
+                                        <img
+                                            src="/brand/logo-mark.svg"
+                                            alt=""
+                                            className="h-16 w-16 -m-3 object-contain"
+                                            draggable={false}
+                                        />
                                     </motion.div>
                                 </Link>
 

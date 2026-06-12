@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 220" width="760" height="220" role="img" aria-label="Clash logo">
+  <rect width="760" height="220" rx="0" fill="none"/>
+  <g transform="translate(12 10) scale(0.16)">
+    <path d="M 966 590 L 966 350 A 98 101 0 0 0 868 249 L 388 249 A 101 101 0 0 0 287 350 L 287 848 A 100 99 0 0 0 388 947 L 760 947" fill="none" stroke="#171412" stroke-width="52" stroke-linecap="round" stroke-linejoin="round"/>
+    <ellipse cx="532" cy="577" rx="47" ry="82" fill="#171412"/>
+    <ellipse cx="717" cy="577" rx="47" ry="82" fill="#171412"/>
+    <rect x="862" y="622" width="88" height="372" rx="44" ry="44" fill="#FF6B50" transform="rotate(26.06 906 808)"/>
+  </g>
+  <text x="230" y="102" fill="#171412" font-family="Space Grotesk, Inter, ui-sans-serif, system-ui, sans-serif" font-weight="700" font-size="72" letter-spacing="-1.5">Clash</text>
+  <text x="234" y="145" fill="#625B56" font-family="Inter, ui-sans-serif, system-ui, sans-serif" font-weight="500" font-size="24">Multi-agent canvas for creative video work</text>
+</svg>

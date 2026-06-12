@@ -252,11 +252,13 @@ export default function TopNavigation() {
       >
         {/* Logo Area */}
         <div className="desktop-no-drag pointer-events-auto z-10">
-          <Link to="/" className="group flex items-center gap-1">
-            <span className="font-display text-3xl font-bold tracking-tighter text-gray-900 leading-none dark:text-slate-50">
-              C
-            </span>
-            <div className="h-7 w-[6px] bg-brand -skew-x-[20deg] transform origin-center" />
+          <Link to="/" className="group flex items-center" aria-label="Clash home">
+            <img
+              src="/brand/logo-mark.svg"
+              alt=""
+              className="h-14 w-14 -m-2 object-contain transition-transform duration-150 group-hover:scale-105"
+              draggable={false}
+            />
           </Link>
         </div>
 

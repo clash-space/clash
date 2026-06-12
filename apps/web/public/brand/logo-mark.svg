@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1254 1254" width="1254" height="1254" role="img" aria-label="Clash agent mark">
+  <path
+    d="M 966 590
+       L 966 350
+       A 98 101 0 0 0 868 249
+       L 388 249
+       A 101 101 0 0 0 287 350
+       L 287 848
+       A 100 99 0 0 0 388 947
+       L 760 947"
+    fill="none"
+    stroke="#171412"
+    stroke-width="40"
+    stroke-linecap="round"
+    stroke-linejoin="round"/>
+  <ellipse cx="532" cy="577" rx="41.5" ry="75.5" fill="#171412"/>
+  <ellipse cx="717" cy="577" rx="41.5" ry="75.5" fill="#171412"/>
+  <rect x="866" y="629" width="72" height="351" rx="36" ry="36" fill="#FF6B50" transform="rotate(26.06 902 805)"/>
+</svg>

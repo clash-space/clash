@@ -1,1 +1,7 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><rect width="32" height="32" rx="8" fill="#FF6B50"/><text x="16" y="22" text-anchor="middle" fill="white" font-family="sans-serif" font-weight="bold" font-size="18">C</text></svg>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32" role="img" aria-label="Clash">
+  <rect width="32" height="32" rx="8" fill="#FBFAF7"/>
+  <path d="M24.5 15.2V8.8A3.8 3.8 0 0 0 20.7 5H10.2A3.8 3.8 0 0 0 6.4 8.8v14.4A3.8 3.8 0 0 0 10.2 27h9.1" fill="none" stroke="#171412" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+  <ellipse cx="13.3" cy="15.4" rx="1.05" ry="1.9" fill="#171412"/>
+  <ellipse cx="18" cy="15.4" rx="1.05" ry="1.9" fill="#171412"/>
+  <rect x="21.05" y="16.25" width="2.35" height="9.4" rx="1.18" fill="#FF6B50" transform="rotate(26 22.2 20.95)"/>
+</svg>

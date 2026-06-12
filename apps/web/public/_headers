@@ -16,3 +16,24 @@
 # Same for fingerprintless static-served assets we never rotate.
 /favicon.svg
   Cache-Control: public, max-age=86400
+
+/apple-touch-icon.png
+  Cache-Control: public, max-age=86400
+
+/icon-192.png
+  Cache-Control: public, max-age=86400
+
+/icon-512.png
+  Cache-Control: public, max-age=86400
+
+/maskable-icon-512.png
+  Cache-Control: public, max-age=86400
+
+/og-image.png
+  Cache-Control: public, max-age=86400
+
+/site.webmanifest
+  Cache-Control: public, max-age=86400
+
+/brand/*
+  Cache-Control: public, max-age=86400
