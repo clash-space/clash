@@ -20,23 +20,19 @@
       "menuTitle": "Run on",
       "cloud": {
         "label": "Cloud",
-        "sub": "Default — clash.video LLMs"
+        "sub": "Hosted Clash agent"
       },
       "machinesHeader": "My machines",
       "machineSub_online_one": "online · {{count}} agent",
       "machineSub_online_other": "online · {{count}} agents",
       "machineSub_offline": "offline",
-      "quickConnect": {
-        "label": "Quick connect…",
-        "sub": "One-shot npx pairing (no install)"
-      },
       "addMachine": {
-        "label": "Add machine…",
-        "sub": "Register a persistent local runtime"
+        "label": "Connect daemon…",
+        "sub": "Install or reconnect a persistent local runtime"
       }
     },
     "addMachine": {
-      "title": "Register a machine",
+      "title": "Connect a local daemon",
       "intro": "On the computer you want to use, run this in a terminal. It opens your browser, asks you to allow the connection, then installs a background daemon. After that, the machine appears in the \"Run on\" menu — automatically and persistently.",
       "runInTerminal": "Run this in your terminal",
       "copy": "Copy",

@@ -8,6 +8,16 @@ import { drizzle } from "drizzle-orm/d1";
 import * as betterAuthSchema from "../db/better-auth.schema";
 
 const basePath = "/api/better-auth";
+const devTrustedOrigins = [
+  "http://localhost:3000",
+  "http://localhost:3001",
+  "http://127.0.0.1:3000",
+  "http://127.0.0.1:3001",
+];
+
+function isLocalAuthBaseUrl(baseURL?: string) {
+  return /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(baseURL ?? "");
+}
 
 export type AuthBindings = {
   DB: D1Database;
@@ -87,6 +97,12 @@ export function createAuth(env: AuthBindings, cf?: IncomingRequestCfProperties) 
         basePath,
         baseURL,
         trustedProxyHeaders: true,
+        trustedOrigins: [
+          "https://clash.video",
+          "https://www.clash.video",
+          "https://next.clash.video",
+          ...(isLocalAuthBaseUrl(baseURL) ? devTrustedOrigins : []),
+        ],
         secret,
         // Keep email/password for Settings → API tokens flows that may rely on
         // password-style accounts; it's harmless if unused by the main login UI.

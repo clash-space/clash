@@ -13,12 +13,20 @@ interface UserControlsProps {
   compact?: boolean;
 }
 
+function localLoginUrl(): string | null {
+  if (typeof window === 'undefined') return null;
+  if (window.location.protocol !== 'http:') return null;
+  if (window.location.hostname !== '127.0.0.1' && window.location.hostname !== '::1') return null;
+  return `http://localhost:${window.location.port || '80'}/login`;
+}
+
 export default function UserControls({ compact = false }: UserControlsProps = {}) {
   const sessionQuery = betterAuthClient.useSession();
   const session = sessionQuery.data;
   const user = session?.user;
   const [open, setOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [avatarFailed, setAvatarFailed] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   const balance = useBillingBalance(!!user);
 
@@ -49,6 +57,11 @@ export default function UserControls({ compact = false }: UserControlsProps = {}
 
   const handleSignIn = async () => {
     try {
+      const canonical = localLoginUrl();
+      if (canonical) {
+        window.location.href = canonical;
+        return;
+      }
       await betterAuthClient.signIn.social({
         provider: 'google',
         callbackURL: '/',
@@ -104,11 +117,12 @@ export default function UserControls({ compact = false }: UserControlsProps = {}
                 : 'flex items-center gap-3 rounded-full bg-warm-surface border border-warm-border pl-1.5 pr-4 py-1.5 shadow-sm cursor-pointer hover:shadow-md transition-shadow focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-warm-page'
             }
           >
-            {user.image ? (
+            {user.image && !avatarFailed ? (
               <img
                 src={user.image}
                 alt=""
                 className={`${compact ? 'h-7 w-7' : 'h-10 w-10'} rounded-full object-cover`}
+                onError={() => setAvatarFailed(true)}
               />
             ) : (
               <div className={`flex ${compact ? 'h-7 w-7 text-[11px]' : 'h-10 w-10 text-sm'} items-center justify-center rounded-full bg-gradient-to-br from-brand to-red-500 font-bold text-white`} aria-hidden="true">

@@ -13,12 +13,11 @@ import { ChatInput } from './copilot/ChatInput';
 import { TodoList, TodoItem } from './copilot/TodoList';
 import { ThinkingIndicator } from './copilot/ThinkingIndicator';
 import { MessageErrorBoundary } from './copilot/MessageErrorBoundary';
-import { ByoAgentDialog } from './copilot/ByoAgentDialog';
 import { RuntimePickerDialog } from './copilot/RuntimePickerDialog';
 import { Dialog } from './ui/dialog';
 import { IconButton } from './ui/icon-button';
-import { useAgentByoBridge } from '@clash/web-ui/hooks/useAgentByoBridge';
 import { useClashRuntime, type Runtime } from '@clash/web-ui/hooks/useClashRuntime';
+import type { ByoMessage as RuntimeMessage } from '@clash/web-ui/lib/acpEvents';
 import { parseAgentCanvasPatch } from '@clash/web-ui/lib/agentCanvasPatch';
 import type { Node as RFNode, Edge as RFEdge, Connection as RFConnection } from '@xyflow/react';
 import ReactMarkdown from 'react-markdown';
@@ -314,19 +313,14 @@ export default function ChatbotCopilot({
     const [todoItems, setTodoItems] = useState<TodoItem[]>([]);
     const [suggestions, setSuggestions] = useState<Array<{ label: string; message: string }>>([]);
 
-    // Three transports coexist:
-    //   - 'cloud'   : useAgentCopilot (cloud LLM, default)
-    //   - 'byo'     : useAgentByoBridge (one-shot pair token, ad-hoc local)
-    //   - 'runtime' : useClashRuntime  (persistent daemon registered via setup)
-    // The picker (Plug button → menu) sets `chatMode`; the picked hook drives
-    // input + message render. Switching transports doesn't touch the others.
-    const [chatMode, setChatMode] = useState<'cloud' | 'byo' | 'runtime'>('cloud');
-    const [byoDialogOpen, setByoDialogOpen] = useState(false);
+    // Two transports:
+    //   - 'cloud'   : useAgentCopilot (hosted Clash agent)
+    //   - 'runtime' : useClashRuntime (registered local daemon / clashd)
+    const [chatMode, setChatMode] = useState<'cloud' | 'runtime'>('cloud');
     const [runtimeMenuOpen, setRuntimeMenuOpen] = useState(false);
     const [addMachineOpen, setAddMachineOpen] = useState(false);
     /** When set, the runtime picker dialog is open for this runtime. */
     const [runtimePicker, setRuntimePicker] = useState<Runtime | null>(null);
-    const byo = useAgentByoBridge();
     const clashRt = useClashRuntime();
 
     const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -367,14 +361,7 @@ export default function ChatbotCopilot({
     });
 
     const cloudIsProcessing = status === 'submitted' || status === 'streaming';
-    // Auto-switch into BYO mode the first time a bridge connects, and back
-    // to cloud when it drops. Explicit shutdown via the header button also
-    // resets here. Keeps the modes from drifting out of sync silently.
-    useEffect(() => {
-        if (chatMode === 'cloud' && byo.status === 'connected') setChatMode('byo');
-        if (chatMode === 'byo' && byo.status === 'disconnected') setChatMode('cloud');
-    }, [byo.status, chatMode]);
-    // Same idea for runtime mode: drop back to cloud if the WS dies.
+    // Drop back to cloud if the daemon session dies.
     useEffect(() => {
         if (chatMode === 'runtime' && (clashRt.status === 'disconnected' || clashRt.status === 'idle')) {
             // Don't reset on 'idle' if it's the *initial* idle (no select yet);
@@ -383,10 +370,8 @@ export default function ChatbotCopilot({
         }
     }, [clashRt.status, chatMode]);
 
-    const byoIsProcessing = byo.status === 'sending' || byo.status === 'streaming';
     const runtimeIsProcessing = clashRt.status === 'connecting' || clashRt.status === 'sending' || clashRt.status === 'streaming';
     const isProcessing =
-        chatMode === 'byo' ? byoIsProcessing :
         chatMode === 'runtime' ? runtimeIsProcessing :
         cloudIsProcessing;
 
@@ -464,10 +449,6 @@ export default function ChatbotCopilot({
     const handleStop = async () => {
         if (chatMode === 'runtime') {
             clashRt.cancel();
-            return;
-        }
-        if (chatMode === 'byo') {
-            byo.cancel();
             return;
         }
         await stop();
@@ -630,13 +611,7 @@ export default function ChatbotCopilot({
         clearConnectionError();
         setShouldStickToBottom(true);
 
-        // BYO mode: skip session/upload plumbing — local agents don't have
-        // a clash thread or asset upload pipeline. Just route the prompt.
-        if (chatMode === 'byo') {
-            byo.sendMessage(value);
-            return;
-        }
-        // Persistent-runtime mode: same shape (raw prompt, daemon handles it).
+        // Persistent-runtime mode: raw prompt, daemon handles the local ACP session.
         if (chatMode === 'runtime') {
             clashRt.sendMessage(value);
             return;
@@ -808,7 +783,7 @@ export default function ChatbotCopilot({
                                 src="/brand/logo-mark-animated.svg"
                                 alt=""
                                 aria-hidden="true"
-                                className="h-11 w-11 -m-1.5 object-contain"
+                                className="h-8 w-8 object-contain"
                                 draggable={false}
                             />
                             <span className="font-display text-sm font-semibold text-slate-900 dark:text-slate-100">
@@ -877,7 +852,6 @@ export default function ChatbotCopilot({
                                                     sub={t('copilot.runtime.cloud.sub')}
                                                     active={chatMode === 'cloud'}
                                                     onClick={() => {
-                                                        if (chatMode === 'byo') byo.shutdown();
                                                         if (chatMode === 'runtime') clashRt.shutdown();
                                                         setChatMode('cloud');
                                                         setRuntimeMenuOpen(false);
@@ -899,9 +873,8 @@ export default function ChatbotCopilot({
                                                             active={chatMode === 'runtime' && clashRt.selectedRuntimeId === rt.id}
                                                             disabled={!online || rt.agents.length === 0}
                                                             onClick={() => {
-                                                                // Open the picker dialog (same SessionStartPicker
-                                                                // as Quick connect) so the daemon flow has the
-                                                                // matching agent + resume-session UX.
+                                                                // Open the daemon picker so runtime sessions keep
+                                                                // the same agent + resume-session UX.
                                                                 setRuntimeMenuOpen(false);
                                                                 setRuntimePicker(rt);
                                                             }}
@@ -909,14 +882,6 @@ export default function ChatbotCopilot({
                                                     );
                                                 })}
                                                 <div role="separator" className="border-t border-warm-border/70 my-1" />
-                                                <RuntimeMenuRow
-                                                    label={t('copilot.runtime.quickConnect.label')}
-                                                    sub={t('copilot.runtime.quickConnect.sub')}
-                                                    onClick={() => {
-                                                        setRuntimeMenuOpen(false);
-                                                        setByoDialogOpen(true);
-                                                    }}
-                                                />
                                                 <RuntimeMenuRow
                                                     label={t('copilot.runtime.addMachine.label')}
                                                     sub={t('copilot.runtime.addMachine.sub')}
@@ -1007,11 +972,8 @@ export default function ChatbotCopilot({
                                 className="absolute inset-0 top-16 overflow-y-auto px-6 pt-4 pb-32"
                             >
                                 <div className="space-y-6">
-                                    {/* BYO + runtime modes both produce ByoMessage[]; same renderer.
+                                    {/* Runtime mode produces the local ACP message shape.
                                         Cloud renders the heavier UIMessage path. */}
-                                    {chatMode === 'byo' && (
-                                        <ByoMessageList messages={byo.messages} />
-                                    )}
                                     {chatMode === 'runtime' && (
                                         <>
                                             {clashRt.status === 'connecting' && (
@@ -1020,7 +982,7 @@ export default function ChatbotCopilot({
                                             {clashRt.errorMessage && (
                                                 <div role="alert" className="text-sm text-red-700 dark:text-red-300">{t('copilot.errors.warningPrefix')} {clashRt.errorMessage}</div>
                                             )}
-                                            <ByoMessageList messages={clashRt.messages} />
+                                            <RuntimeMessageList messages={clashRt.messages} />
                                         </>
                                     )}
                                     {chatMode === 'cloud' && (
@@ -1111,10 +1073,10 @@ export default function ChatbotCopilot({
 
                             <div className="absolute bottom-0 left-0 right-0">
                                 {/* Slash commands the spawned ACP agent advertises (only present
-                                    in BYO / runtime modes). Click → prepends `/<name> ` into the
+                                    in runtime mode). Click → prepends `/<name> ` into the
                                     input so the user can finish typing args before sending. */}
                                 {chatMode !== 'cloud' && (() => {
-                                    const cmds = chatMode === 'byo' ? byo.availableCommands : clashRt.availableCommands;
+                                    const cmds = clashRt.availableCommands;
                                     if (!cmds || cmds.length === 0) return null;
                                     return (
                                         <SlashCommandBar
@@ -1143,19 +1105,6 @@ export default function ChatbotCopilot({
                 </AnimatePresence>
             </motion.aside>
 
-            {/* BYO pairing dialog. Lives at the panel level rather than inside
-                the chat scroll area so it overlays correctly. */}
-            <ByoAgentDialog
-                open={byoDialogOpen}
-                status={byo.status}
-                pairTokenDisplay={byo.pairTokenDisplay}
-                errorMessage={byo.errorMessage}
-                crew={byo.crew}
-                sessions={byo.sessions}
-                onStartPairing={byo.startPairing}
-                onStartWith={byo.startWith}
-                onClose={() => setByoDialogOpen(false)}
-            />
             <AddMachineDialog open={addMachineOpen} onClose={() => setAddMachineOpen(false)} />
             <RuntimePickerDialog
                 open={!!runtimePicker}
@@ -1165,7 +1114,6 @@ export default function ChatbotCopilot({
                     const rt = runtimePicker;
                     setRuntimePicker(null);
                     if (!rt) return;
-                    if (chatMode === 'byo') byo.shutdown();
                     setChatMode('runtime');
                     await clashRt.select(rt.id, crewId ?? undefined, {
                         projectId,
@@ -1320,16 +1268,15 @@ function RuntimeMenuRow({
 }
 
 /**
- * Stripped-down message list for BYO mode. The cloud render path is heavy
+ * Stripped-down message list for local runtime mode. The cloud render path is heavy
  * (tool cards, agent personas, thinking process, mentions, …) and assumes
- * UIMessage shape from useAgentChat. BYO messages from useAgentByoBridge
- * have a much simpler shape and don't have analogues for most of that
- * UI — render them simply and add structure later as needed.
+ * UIMessage shape from useAgentChat. Runtime messages are already normalized
+ * to parts.
  */
-function ByoMessageList({
+function RuntimeMessageList({
     messages,
 }: {
-    messages: import('@clash/web-ui/hooks/useAgentByoBridge').ByoMessage[];
+    messages: RuntimeMessage[];
 }) {
     const { t } = useTranslation();
     if (messages.length === 0) {

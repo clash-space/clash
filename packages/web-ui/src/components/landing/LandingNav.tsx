@@ -19,17 +19,17 @@ export default function LandingNav() {
         {/* Logo */}
         <Link to="/" className="group">
           <motion.div
-            className="flex items-center gap-2"
+            className="flex items-center gap-1.5"
             whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.95 }}
           >
             <img
               src="/brand/logo-mark.svg"
               alt=""
-              className="h-12 w-12 -m-2 object-contain"
+              className="h-8 w-8 object-contain"
               draggable={false}
             />
-            <span className="font-display text-3xl font-bold tracking-tighter text-slate-950 dark:text-slate-50 leading-none">
+            <span className="font-display text-xl font-semibold leading-none text-slate-950 dark:text-slate-50">
               Clash
             </span>
           </motion.div>

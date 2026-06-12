@@ -8,6 +8,13 @@ import Background from "@clash/web-ui/components/Background";
 type Stage = "email" | "otp" | "password";
 type PwAction = "signin" | "signup";
 
+function canonicalLocalAuthUrl(path: string): string | null {
+  if (typeof window === "undefined") return null;
+  if (window.location.protocol !== "http:") return null;
+  if (window.location.hostname !== "127.0.0.1" && window.location.hostname !== "::1") return null;
+  return `http://localhost:${window.location.port || "80"}${path}`;
+}
+
 export default function LoginRoute() {
   const [stage, setStage] = useState<Stage>("email");
   const [pwAction, setPwAction] = useState<PwAction>("signin");
@@ -23,6 +30,12 @@ export default function LoginRoute() {
   const navigate = useNavigate();
   const session = betterAuthClient.useSession();
   const otpInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    const currentPath = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+    const canonical = canonicalLocalAuthUrl(currentPath);
+    if (canonical) window.location.replace(canonical);
+  }, []);
 
   useEffect(() => {
     if (session.data?.user) navigate("/", { replace: true });
@@ -119,6 +132,11 @@ export default function LoginRoute() {
     setError(null);
     setIsLoading(true);
     try {
+      const canonical = canonicalLocalAuthUrl("/login");
+      if (canonical) {
+        window.location.href = canonical;
+        return;
+      }
       await betterAuthClient.signIn.social({
         provider: "google",
         callbackURL: "/",
@@ -141,17 +159,17 @@ export default function LoginRoute() {
         <div className="mb-8 text-center">
           <Link to="/" className="inline-block group mb-6">
             <motion.div
-              className="flex items-center justify-center gap-3"
+              className="flex items-center justify-center gap-2"
               whileHover={{ scale: 1.05 }}
               whileTap={{ scale: 0.95 }}
             >
               <img
                 src="/brand/logo-mark.svg"
                 alt=""
-                className="h-16 w-16 -m-2 object-contain"
+                className="h-11 w-11 object-contain"
                 draggable={false}
               />
-              <span className="font-display text-5xl font-bold tracking-tighter text-slate-950 leading-none">
+              <span className="font-display text-3xl font-semibold leading-none text-slate-950">
                 Clash
               </span>
             </motion.div>

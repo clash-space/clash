@@ -2400,7 +2400,7 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
                                         <img
                                             src="/brand/logo-mark.svg"
                                             alt=""
-                                            className="h-16 w-16 -m-3 object-contain"
+                                            className="h-10 w-10 object-contain"
                                             draggable={false}
                                         />
                                     </motion.div>

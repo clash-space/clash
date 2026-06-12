@@ -20,23 +20,19 @@
       "menuTitle": "运行环境",
       "cloud": {
         "label": "云端",
-        "sub": "默认 — clash.video 大模型"
+        "sub": "托管的 Clash Agent"
       },
       "machinesHeader": "我的机器",
       "machineSub_online_one": "在线 · {{count}} 个 Agent",
       "machineSub_online_other": "在线 · {{count}} 个 Agent",
       "machineSub_offline": "离线",
-      "quickConnect": {
-        "label": "快速连接…",
-        "sub": "一次性 npx 配对（无需安装）"
-      },
       "addMachine": {
-        "label": "添加机器…",
-        "sub": "注册一个常驻的本地运行时"
+        "label": "连接 daemon…",
+        "sub": "安装或重连常驻的本地运行时"
       }
     },
     "addMachine": {
-      "title": "注册一台机器",
+      "title": "连接本地 daemon",
       "intro": "在你想使用的电脑上打开终端，运行下面这条命令。它会打开浏览器请求授权，然后在后台安装守护进程。完成后，这台机器会自动出现在「运行环境」菜单里，并持续可用。",
       "runInTerminal": "在终端运行",
       "copy": "复制",

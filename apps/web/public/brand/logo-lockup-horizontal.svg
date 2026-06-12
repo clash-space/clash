@@ -1,11 +1,38 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 220" width="760" height="220" role="img" aria-label="Clash logo">
-  <rect width="760" height="220" rx="0" fill="none"/>
-  <g transform="translate(12 10) scale(0.16)">
-    <path d="M 966 590 L 966 350 A 98 101 0 0 0 868 249 L 388 249 A 101 101 0 0 0 287 350 L 287 848 A 100 99 0 0 0 388 947 L 760 947" fill="none" stroke="#171412" stroke-width="52" stroke-linecap="round" stroke-linejoin="round"/>
-    <ellipse cx="532" cy="577" rx="47" ry="82" fill="#171412"/>
-    <ellipse cx="717" cy="577" rx="47" ry="82" fill="#171412"/>
-    <rect x="862" y="622" width="88" height="372" rx="44" ry="44" fill="#FF6B50" transform="rotate(26.06 906 808)"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 96" role="img" aria-label="Clash logo">
+  <g>
+    <path
+      d="M 77 47
+         L 77 31
+         C 77 22.7 70.3 16 62 16
+         L 35 16
+         C 26.7 16 20 22.7 20 31
+         L 20 65
+         C 20 73.3 26.7 80 35 80
+         L 55 80"
+      fill="none"
+      stroke="#070B1F"
+      stroke-width="6.75"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+    />
+    <rect x="39" y="38" width="6" height="16" rx="3" fill="#070B1F" />
+    <rect x="55" y="38" width="6" height="16" rx="3" fill="#070B1F" />
+    <rect
+      x="72"
+      y="58"
+      width="7.5"
+      height="27"
+      rx="3.75"
+      fill="#FF6B50"
+      transform="rotate(24 75.75 71.5)"
+    />
   </g>
-  <text x="230" y="102" fill="#171412" font-family="Space Grotesk, Inter, ui-sans-serif, system-ui, sans-serif" font-weight="700" font-size="72" letter-spacing="-1.5">Clash</text>
-  <text x="234" y="145" fill="#625B56" font-family="Inter, ui-sans-serif, system-ui, sans-serif" font-weight="500" font-size="24">Multi-agent canvas for creative video work</text>
+  <text
+    x="102"
+    y="63"
+    fill="#070B1F"
+    font-family="Space Grotesk, Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, sans-serif"
+    font-size="44"
+    font-weight="650"
+  >Clash</text>
 </svg>
