@@ -166,7 +166,7 @@ export default function LoginRoute() {
               <img
                 src="/brand/logo-mark.svg"
                 alt=""
-                className="h-11 w-11 object-contain"
+                className="h-12 w-12 object-contain"
                 draggable={false}
               />
               <span className="font-display text-3xl font-semibold leading-none text-slate-950">

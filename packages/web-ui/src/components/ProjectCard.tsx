@@ -64,7 +64,7 @@ export default function ProjectCard({ project }: ProjectCardProps) {
     <article className="group relative">
       <Link to={`/projects/${project.id}`} className="block">
         <motion.div
-          className="relative aspect-video overflow-hidden rounded-[1.5rem] bg-warm-muted mb-4 transition-all hover:shadow-lg ring-1 ring-black/5"
+          className="relative aspect-video overflow-hidden rounded-2xl bg-warm-muted mb-4 transition-all hover:shadow-lg ring-1 ring-black/5"
           whileHover={{ y: -2 }}
           whileTap={{ scale: 0.98 }}
         >

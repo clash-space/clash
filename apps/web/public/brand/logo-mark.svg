@@ -1,7 +1,5 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512" role="img" aria-label="Clash app icon">
-  <rect width="512" height="512" rx="112" fill="#FBFAF7"/>
-  <circle cx="416" cy="104" r="28" fill="#FF6B50" opacity="0.18"/>
-  <g transform="translate(256 256) scale(0.44) translate(-627 -627)">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512" role="img" aria-label="Clash logo">
+  <g transform="translate(256 256) scale(0.58) translate(-627 -627)">
     <path
       d="M 966 590
          L 966 350

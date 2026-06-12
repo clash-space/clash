@@ -117,7 +117,7 @@ export default function TopNavigation() {
         <header
           data-desktop-chrome="true"
           style={desktopChromeStyle}
-          className="desktop-drag-region fixed left-0 right-0 top-0 z-50 h-[var(--clash-desktop-chrome-height)] border-b border-[#d8d0c7] bg-[#eeeae4]/95 text-stone-900 shadow-[0_1px_0_rgba(255,255,255,0.9)_inset,0_10px_28px_rgba(35,30,24,0.08)] backdrop-blur-xl"
+          className="desktop-drag-region fixed left-0 right-0 top-0 z-50 h-[var(--clash-desktop-chrome-height)] border-b border-[#e1ddd5] bg-[#f0eee9]/95 text-slate-900 shadow-[0_1px_0_rgba(255,255,255,0.9)_inset,0_10px_28px_rgba(35,31,25,0.065)] backdrop-blur-xl"
         >
           <div
             data-desktop-toolbar="true"
@@ -139,8 +139,8 @@ export default function TopNavigation() {
                     data-desktop-tab="true"
                     className={`desktop-no-drag group relative flex h-8 min-w-36 max-w-60 items-center gap-1 rounded-lg border px-2.5 text-[13px] font-medium transition-colors ${
                       active
-                        ? 'border-[#d8d0c7] bg-[#f7f4ef] text-stone-950 shadow-sm'
-                        : 'border-transparent bg-transparent text-stone-600 hover:bg-white/45 hover:text-stone-950'
+                        ? 'border-[#e1ddd5] bg-[#fffefd] text-slate-950 shadow-sm'
+                        : 'border-transparent bg-transparent text-stone-600 hover:bg-white/55 hover:text-stone-950'
                     }`}
                   >
                     <button
@@ -169,7 +169,7 @@ export default function TopNavigation() {
                       <span
                         aria-hidden="true"
                         data-desktop-tab-separator="true"
-                        className="pointer-events-none absolute right-0 top-1/2 h-5 w-px -translate-y-1/2 bg-[#d8d0c7]/90"
+                        className="pointer-events-none absolute right-0 top-1/2 h-5 w-px -translate-y-1/2 bg-[#d8d1c7]/90"
                       />
                     )}
                   </div>
@@ -190,16 +190,18 @@ export default function TopNavigation() {
                   type="button"
                   onClick={() => openPathInDesktopTab('/')}
                   aria-label="Clash home"
-                  className="group flex items-center gap-1"
+                  className="group flex h-12 w-12 items-center justify-center"
                 >
-                  <span className="font-display text-3xl font-bold tracking-tighter text-gray-900 leading-none dark:text-slate-50">
-                    C
-                  </span>
-                  <span className="h-7 w-[6px] -skew-x-[20deg] bg-brand" />
+                  <img
+                    src="/brand/logo-mark.svg"
+                    alt=""
+                    className="h-11 w-11 object-contain transition-transform duration-150 group-hover:scale-105"
+                    draggable={false}
+                  />
                 </button>
               </div>
 
-              <nav aria-label="Primary" className="desktop-no-drag pointer-events-auto absolute left-1/2 top-1/2 flex -translate-x-1/2 -translate-y-1/2 items-center gap-1 rounded-full border border-warm-border bg-warm-surface px-3 py-2 shadow-md">
+              <nav aria-label="Primary" className="desktop-no-drag pointer-events-auto absolute left-1/2 top-1/2 flex -translate-x-1/2 -translate-y-1/2 items-center gap-1 rounded-2xl border border-warm-border bg-warm-surface px-2 py-2 shadow-md">
                 {navItems.map((item) => {
                   const isActive = pathname === item.href;
                   const Icon = item.icon;
@@ -210,7 +212,7 @@ export default function TopNavigation() {
                       onClick={() => openPathInDesktopTab(item.href)}
                       aria-label={item.name}
                       aria-current={isActive ? 'page' : undefined}
-                      className={`relative flex items-center gap-2.5 rounded-full px-5 py-2.5 text-base font-display font-medium transition-colors ${
+                      className={`relative flex items-center gap-2.5 rounded-xl px-5 py-2.5 text-base font-display font-medium transition-colors ${
                         isActive
                           ? 'text-slate-900 dark:text-slate-50'
                           : 'text-slate-700 hover:bg-warm-muted hover:text-slate-900 dark:text-slate-300 dark:hover:text-slate-100'
@@ -219,8 +221,7 @@ export default function TopNavigation() {
                       {isActive && (
                         <motion.div
                           layoutId="desktop-nav-pill"
-                          className="absolute inset-0 rounded-full bg-warm-muted"
-                          style={{ borderRadius: 9999 }}
+                          className="absolute inset-0 rounded-xl bg-warm-muted"
                           transition={{ type: 'spring', bounce: 0.15, duration: 0.4 }}
                         />
                       )}
@@ -252,25 +253,25 @@ export default function TopNavigation() {
       >
         {/* Logo Area */}
         <div className="desktop-no-drag pointer-events-auto z-10">
-          <Link to="/" className="group flex h-11 w-11 items-center justify-center" aria-label="Clash home">
+          <Link to="/" className="group flex h-12 w-12 items-center justify-center" aria-label="Clash home">
             <img
               src="/brand/logo-mark.svg"
               alt=""
-              className="h-9 w-9 object-contain transition-transform duration-150 group-hover:scale-105"
+              className="h-11 w-11 object-contain transition-transform duration-150 group-hover:scale-105"
               draggable={false}
             />
           </Link>
         </div>
 
         {/* Floating Center Nav */}
-        <nav aria-label="Primary" className="desktop-no-drag pointer-events-auto absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 shadow-md border border-warm-border bg-warm-surface rounded-full px-3 py-2 flex items-center gap-1">
+        <nav aria-label="Primary" className="desktop-no-drag pointer-events-auto absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 shadow-md border border-warm-border bg-warm-surface rounded-2xl px-2 py-2 flex items-center gap-1">
           {navItems.map((item) => {
             const isActive = pathname === item.href;
             const Icon = item.icon;
             return (
               <Link key={item.name} to={item.href} aria-current={isActive ? 'page' : undefined}>
                 <div
-                  className={`relative flex items-center gap-2.5 rounded-full px-5 py-2.5 text-base font-display font-medium transition-colors ${
+                  className={`relative flex items-center gap-2.5 rounded-xl px-5 py-2.5 text-base font-display font-medium transition-colors ${
                     isActive
                       ? 'text-slate-900 dark:text-slate-50'
                       : 'text-slate-700 hover:text-slate-900 hover:bg-warm-muted dark:text-slate-300 dark:hover:text-slate-100'
@@ -279,8 +280,7 @@ export default function TopNavigation() {
                   {isActive && (
                     <motion.div
                       layoutId="nav-pill"
-                      className="absolute inset-0 bg-warm-muted rounded-full"
-                      style={{ borderRadius: 9999 }}
+                      className="absolute inset-0 bg-warm-muted rounded-xl"
                       transition={{ type: 'spring', bounce: 0.15, duration: 0.4 }}
                     />
                   )}

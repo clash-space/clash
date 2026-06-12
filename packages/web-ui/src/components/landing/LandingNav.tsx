@@ -15,7 +15,7 @@ export default function LandingNav() {
 
   return (
     <header className="pointer-events-none fixed left-0 right-0 top-0 z-50 px-4 py-4">
-      <div className="clash-landing-header clash-control-surface pointer-events-auto mx-auto flex h-16 max-w-6xl items-center justify-between rounded-full px-4 pl-5 pr-3 sm:px-5 lg:px-6">
+      <div className="clash-landing-header clash-control-surface pointer-events-auto mx-auto flex h-16 max-w-6xl items-center justify-between rounded-2xl px-4 pl-5 pr-3 sm:px-5 lg:px-6">
         {/* Logo */}
         <Link to="/" className="group">
           <motion.div
@@ -26,7 +26,7 @@ export default function LandingNav() {
             <img
               src="/brand/logo-mark.svg"
               alt=""
-              className="h-8 w-8 object-contain"
+              className="h-10 w-10 object-contain"
               draggable={false}
             />
             <span className="font-display text-xl font-semibold leading-none text-slate-950 dark:text-slate-50">
@@ -41,7 +41,7 @@ export default function LandingNav() {
             <a
               key={link.name}
               href={link.href}
-              className="rounded-full px-3 py-2 text-sm font-medium text-stone-700 dark:text-stone-300 transition-colors hover:bg-white/55 hover:text-slate-950"
+              className="rounded-lg px-3 py-2 text-sm font-medium text-stone-700 dark:text-stone-300 transition-colors hover:bg-white/55 hover:text-slate-950"
             >
               {link.name}
             </a>
@@ -55,7 +55,7 @@ export default function LandingNav() {
               <motion.button
                 whileHover={{ scale: 1.05 }}
                 whileTap={{ scale: 0.95 }}
-                className="rounded-full bg-brand px-5 py-2.5 text-sm font-bold text-white shadow-sm shadow-brand/15 transition-all hover:bg-red-600"
+                className="rounded-xl bg-brand px-5 py-2.5 text-sm font-bold text-white shadow-sm shadow-brand/15 transition-all hover:bg-red-600"
               >
                 Go to Dashboard
               </motion.button>
@@ -66,7 +66,7 @@ export default function LandingNav() {
                 <motion.button
                   whileHover={{ scale: 1.02 }}
                   whileTap={{ scale: 0.98 }}
-                  className="rounded-full px-4 py-2 text-sm font-medium text-stone-700 dark:text-stone-300 transition-colors hover:bg-white/55 hover:text-slate-950"
+                  className="rounded-lg px-4 py-2 text-sm font-medium text-stone-700 dark:text-stone-300 transition-colors hover:bg-white/55 hover:text-slate-950"
                 >
                   Sign In
                 </motion.button>
@@ -75,7 +75,7 @@ export default function LandingNav() {
                 <motion.button
                   whileHover={{ scale: 1.05 }}
                   whileTap={{ scale: 0.95 }}
-                  className="rounded-full bg-brand px-5 py-2.5 text-sm font-bold text-white shadow-sm shadow-brand/15 transition-all hover:bg-red-600"
+                  className="rounded-xl bg-brand px-5 py-2.5 text-sm font-bold text-white shadow-sm shadow-brand/15 transition-all hover:bg-red-600"
                 >
                   Get Started
                 </motion.button>

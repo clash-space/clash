@@ -8,10 +8,10 @@
 @source "../../../packages/remotion-core/src";
 
 :root {
-  --background: #fbfbf9;
+  --background: #f7f6f2;
   --foreground: #171717;
-  --canvas-bg: #fbfbf9;
-  --canvas-dot: #d7d2cc;
+  --canvas-bg: #f7f6f2;
+  --canvas-dot: #d8d5cf;
 
   --font-inter: "Inter Variable", -apple-system, BlinkMacSystemFont, "Segoe UI",
     Roboto, sans-serif;
@@ -25,11 +25,11 @@
   --color-canvas-bg: var(--canvas-bg);
   --color-canvas-dot: var(--canvas-dot);
 
-  --color-warm-page: #fbfbf9;
+  --color-warm-page: #f7f6f2;
   --color-warm-surface: #fffefd;
-  --color-warm-muted: #faf7f3;
-  --color-warm-hover: #f4ede6;
-  --color-warm-border: #eee3d9;
+  --color-warm-muted: #f1efea;
+  --color-warm-hover: #e9e6df;
+  --color-warm-border: #e1ddd5;
 
   --color-brand: #ff6b50;
   --color-brand-light: #fff0ed;
@@ -50,7 +50,7 @@
   --font-sans: var(--font-inter);
   --font-display: var(--font-space-grotesk);
   --font-mono: var(--font-jetbrains-mono);
-  --radius-matrix: 16px;
+  --radius-matrix: 12px;
 }
 
 .dark {
@@ -164,13 +164,13 @@ html.dark.clash-is-scrolling ::-webkit-scrollbar-thumb:hover {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  background: #fbf8f4;
-  border: 1px solid #eee3d9;
+  background: #f4f2ee;
+  border: 1px solid #e1ddd5;
   border-radius: 6px;
   padding: 1px 6px;
   font-size: 12px;
   font-weight: 500;
-  color: #4b423a;
+  color: #3f3d3a;
   vertical-align: baseline;
   cursor: default;
 }
@@ -222,14 +222,14 @@ html.dark.clash-is-scrolling ::-webkit-scrollbar-thumb:hover {
 .clash-input-surface {
   position: relative;
   isolation: isolate;
-  border: 1px solid rgba(238, 227, 217, 0.72);
+  border: 1px solid rgba(225, 221, 213, 0.86);
   background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.82) 0%, rgba(255, 254, 250, 0.76) 58%, rgba(251, 248, 244, 0.68) 100%);
+    linear-gradient(180deg, rgba(255, 255, 255, 0.9) 0%, rgba(247, 246, 242, 0.82) 100%);
   box-shadow:
-    0 12px 28px rgba(37, 30, 24, 0.06),
-    0 2px 8px rgba(37, 30, 24, 0.04),
+    0 12px 28px rgba(35, 31, 25, 0.052),
+    0 2px 8px rgba(35, 31, 25, 0.034),
     inset 0 1px 0 rgba(255, 255, 255, 0.86),
-    inset 0 -1px 0 rgba(216, 202, 190, 0.28);
+    inset 0 -1px 0 rgba(210, 204, 194, 0.24);
 }
 
 .clash-control-surface > *,
@@ -247,7 +247,7 @@ html.dark.clash-is-scrolling ::-webkit-scrollbar-thumb:hover {
   pointer-events: none;
   z-index: 0;
   background:
-    linear-gradient(90deg, rgba(255, 255, 255, 0.32), transparent 30%, transparent 76%, rgba(214, 194, 178, 0.1)),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.28), transparent 30%, transparent 76%, rgba(168, 156, 141, 0.08)),
     linear-gradient(180deg, rgba(255, 255, 255, 0.32), transparent 46%);
 }
 
@@ -263,12 +263,12 @@ html.dark.clash-is-scrolling ::-webkit-scrollbar-thumb:hover {
 .clash-canvas-menu-surface {
   isolation: isolate;
   overflow: visible;
-  border: 1px solid rgba(231, 220, 209, 0.7);
+  border: 1px solid rgba(225, 221, 213, 0.82);
   background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.9), rgba(255, 254, 251, 0.82) 56%, rgba(250, 247, 242, 0.74));
+    linear-gradient(180deg, rgba(255, 255, 255, 0.92), rgba(247, 246, 242, 0.84));
   box-shadow:
-    0 10px 24px rgba(37, 30, 24, 0.055),
-    0 1px 4px rgba(37, 30, 24, 0.035),
+    0 10px 24px rgba(35, 31, 25, 0.05),
+    0 1px 4px rgba(35, 31, 25, 0.035),
     inset 0 1px 0 rgba(255, 255, 255, 0.86);
   backdrop-filter: blur(12px);
 }
@@ -295,7 +295,7 @@ html.dark.clash-is-scrolling ::-webkit-scrollbar-thumb:hover {
   pointer-events: none;
   z-index: 0;
   background:
-    linear-gradient(90deg, rgba(255, 255, 255, 0.28), transparent 38%, rgba(218, 202, 187, 0.08)),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.26), transparent 38%, rgba(168, 156, 141, 0.08)),
     linear-gradient(180deg, rgba(255, 255, 255, 0.32), transparent 44%);
 }
 
@@ -312,38 +312,38 @@ html.dark.clash-is-scrolling ::-webkit-scrollbar-thumb:hover {
 }
 
 .clash-input-surface:hover {
-  border-color: rgba(224, 207, 192, 0.78);
+  border-color: rgba(210, 204, 194, 0.92);
   box-shadow:
-    0 14px 32px rgba(37, 30, 24, 0.07),
-    0 3px 10px rgba(37, 30, 24, 0.05),
+    0 14px 32px rgba(35, 31, 25, 0.064),
+    0 3px 10px rgba(35, 31, 25, 0.044),
     inset 0 1px 0 rgba(255, 255, 255, 0.88),
-    inset 0 -1px 0 rgba(216, 202, 190, 0.3);
+    inset 0 -1px 0 rgba(210, 204, 194, 0.26);
 }
 
 .clash-input-surface:focus-within {
   border-color: rgba(255, 107, 80, 0.42);
   box-shadow:
-    0 16px 36px rgba(37, 30, 24, 0.08),
+    0 16px 36px rgba(35, 31, 25, 0.074),
     0 0 0 3px rgba(255, 107, 80, 0.08),
     inset 0 1px 0 rgba(255, 255, 255, 0.9),
-    inset 0 -1px 0 rgba(216, 202, 190, 0.3);
+    inset 0 -1px 0 rgba(210, 204, 194, 0.26);
 }
 
 .clash-toolbar-button,
 .clash-input-icon-button {
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.68),
-    inset 0 -1px 0 rgba(216, 202, 190, 0.18);
+    inset 0 -1px 0 rgba(210, 204, 194, 0.18);
 }
 
 .clash-toolbar-button:hover,
 .clash-input-icon-button:hover {
   background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.86), rgba(248, 243, 238, 0.94));
+    linear-gradient(180deg, rgba(255, 255, 255, 0.88), rgba(241, 239, 234, 0.96));
   box-shadow:
-    0 2px 6px rgba(37, 30, 24, 0.05),
+    0 2px 6px rgba(35, 31, 25, 0.044),
     inset 0 1px 0 rgba(255, 255, 255, 0.92),
-    inset 0 -1px 0 rgba(216, 202, 190, 0.26);
+    inset 0 -1px 0 rgba(210, 204, 194, 0.24);
 }
 
 .clash-toolbar-button-active,
@@ -365,17 +365,17 @@ html.dark.clash-is-scrolling ::-webkit-scrollbar-thumb:hover {
   background: transparent;
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.68),
-    inset 0 -1px 0 rgba(216, 202, 190, 0.18);
+    inset 0 -1px 0 rgba(210, 204, 194, 0.18);
 }
 
 .clash-control-divider {
-  background: linear-gradient(90deg, transparent, rgba(197, 179, 162, 0.72), transparent);
+  background: linear-gradient(90deg, transparent, rgba(210, 204, 194, 0.84), transparent);
 }
 
 .clash-input-toolbar {
-  border-top: 1px solid rgba(238, 227, 217, 0.6);
+  border-top: 1px solid rgba(225, 221, 213, 0.7);
   background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.34), rgba(251, 248, 244, 0.48));
+    linear-gradient(180deg, rgba(255, 255, 255, 0.38), rgba(247, 246, 242, 0.58));
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.54);
 }
 

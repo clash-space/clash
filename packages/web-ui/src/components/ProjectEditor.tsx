@@ -2400,7 +2400,7 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
                                         <img
                                             src="/brand/logo-mark.svg"
                                             alt=""
-                                            className="h-10 w-10 object-contain"
+                                            className="h-12 w-12 object-contain"
                                             draggable={false}
                                         />
                                     </motion.div>
@@ -2495,11 +2495,11 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
                                 ChatbotCopilot panel, which has no explicit z-index
                                 (relies on natural document flow above the canvas). */}
                             <div ref={toolbarRef} className="absolute left-6 top-1/2 -translate-y-1/2 z-10 flex flex-col items-start gap-2 pointer-events-none">
-                                 <div className="clash-canvas-toolbar-surface pointer-events-auto flex w-16 flex-none flex-col items-center gap-3 rounded-full py-6 px-3 transition-all">
+                                 <div className="clash-canvas-toolbar-surface pointer-events-auto flex w-16 flex-none flex-col items-center gap-3 rounded-2xl py-6 px-3 transition-all">
                                     {/* Canvas Mode Toggle: single button switches between select/hand */}
                                     <motion.button
                                         onClick={() => setCanvasMode(prev => prev === 'select' ? 'hand' : 'select')}
-                                        className="clash-toolbar-button flex h-10 w-10 items-center justify-center rounded-full bg-transparent text-stone-500 hover:text-slate-950 transition-all"
+                                        className="clash-toolbar-button flex h-10 w-10 items-center justify-center rounded-xl bg-transparent text-stone-500 hover:text-slate-950 transition-all"
                                         whileHover={{ scale: 1.05 }}
                                         whileTap={{ scale: 0.95 }}
                                         aria-label={canvasMode === 'select' ? 'Switch to hand mode' : 'Switch to select mode'}
@@ -2536,7 +2536,7 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
                                                             setActiveMenu(null);
                                                         }
                                                     }}
-                                                    className={`clash-toolbar-button flex h-10 w-10 items-center justify-center rounded-full transition-all ${
+                                                    className={`clash-toolbar-button flex h-10 w-10 items-center justify-center rounded-xl transition-all ${
                                                         isActive
                                                         ? "clash-toolbar-button-active text-white"
                                                         : "bg-transparent text-stone-500 hover:text-slate-950"
@@ -2559,7 +2559,7 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
                                     {/* Helper Tools (Undo/Redo/Layout) */}
                                     <motion.button
                                          onClick={onLayout}
-                                         className="clash-toolbar-button flex h-10 w-10 items-center justify-center rounded-full bg-transparent text-stone-500 transition-all hover:text-slate-950"
+                                         className="clash-toolbar-button flex h-10 w-10 items-center justify-center rounded-xl bg-transparent text-stone-500 transition-all hover:text-slate-950"
                                          whileHover={{ scale: 1.05 }}
                                          whileTap={{ scale: 0.95 }}
                                          aria-label="Auto Layout"
@@ -2571,7 +2571,7 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
                                      <motion.button
                                          onClick={() => loroSync.undo()}
                                          disabled={!loroSync.canUndo}
-                                         className={`flex h-10 w-10 items-center justify-center rounded-full transition-all ${
+                                         className={`flex h-10 w-10 items-center justify-center rounded-xl transition-all ${
                                              loroSync.canUndo
                                              ? "clash-toolbar-button text-stone-500 hover:text-slate-950"
                                              : "text-slate-300 cursor-not-allowed"
@@ -2586,7 +2586,7 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
                                      <motion.button
                                          onClick={() => loroSync.redo()}
                                          disabled={!loroSync.canRedo}
-                                         className={`flex h-10 w-10 items-center justify-center rounded-full transition-all ${
+                                         className={`flex h-10 w-10 items-center justify-center rounded-xl transition-all ${
                                              loroSync.canRedo
                                              ? "clash-toolbar-button text-stone-500 hover:text-slate-950"
                                              : "text-slate-300 cursor-not-allowed"
@@ -2605,7 +2605,7 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
                                          <div className="clash-control-divider w-8 h-px" />
                                          <motion.button
                                              onClick={() => setShowDebugIds(v => !v)}
-                                             className={`flex h-10 w-10 items-center justify-center rounded-full transition-all ${
+                                             className={`flex h-10 w-10 items-center justify-center rounded-xl transition-all ${
                                                  showDebugIds
                                                  ? "bg-green-600 text-white shadow-md"
                                                  : "clash-toolbar-button bg-transparent text-stone-400 hover:text-slate-950"

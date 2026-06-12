@@ -30,13 +30,13 @@ export default function RecentProjects({ projects }: RecentProjectsProps) {
                 <button
                     type="button"
                     aria-label="Start a new project"
-                    className="group flex aspect-video flex-col items-center justify-center gap-4 rounded-[2rem] border-2 border-dashed border-warm-border bg-warm-muted/60 transition-colors hover:border-brand/40 hover:bg-warm-surface focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-warm-page"
+                    className="group flex aspect-video flex-col items-center justify-center gap-4 rounded-2xl border-2 border-dashed border-warm-border bg-warm-muted/60 transition-colors hover:border-brand/40 hover:bg-warm-surface focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-warm-page"
                     onClick={() => {
                         document.querySelector('textarea')?.focus();
                         window.scrollTo({ top: 0, behavior: 'smooth' });
                     }}
                 >
-                    <div className="flex h-16 w-16 items-center justify-center rounded-full bg-warm-surface shadow-sm ring-1 ring-warm-border">
+                    <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-warm-surface shadow-sm ring-1 ring-warm-border">
                         <Plus
                             className="h-8 w-8 text-stone-600 transition-colors group-hover:text-brand dark:text-stone-300"
                             weight="bold"

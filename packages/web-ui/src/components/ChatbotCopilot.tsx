@@ -783,7 +783,7 @@ export default function ChatbotCopilot({
                                 src="/brand/logo-mark-animated.svg"
                                 alt=""
                                 aria-hidden="true"
-                                className="h-8 w-8 object-contain"
+                                className="h-10 w-10 object-contain"
                                 draggable={false}
                             />
                             <span className="font-display text-sm font-semibold text-slate-900 dark:text-slate-100">

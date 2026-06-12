@@ -33,7 +33,7 @@ export function resolveDesktopWindowOptions(windowIndex: number): BrowserWindowC
     frame: true,
     titleBarStyle: "hiddenInset",
     trafficLightPosition: desktopTrafficLightPosition,
-    backgroundColor: "#fbfbf9",
+    backgroundColor: "#f7f6f2",
     show: false,
   };
 }

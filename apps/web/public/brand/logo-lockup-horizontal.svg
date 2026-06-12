@@ -1,8 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 96" role="img" aria-label="Clash logo">
   <g transform="scale(0.1875)">
-    <rect width="512" height="512" rx="112" fill="#FBFAF7"/>
-    <circle cx="416" cy="104" r="28" fill="#FF6B50" opacity="0.18"/>
-    <g transform="translate(256 256) scale(0.44) translate(-627 -627)">
+    <g transform="translate(256 256) scale(0.58) translate(-627 -627)">
       <path
         d="M 966 590
            L 966 350
@@ -23,7 +21,7 @@
     </g>
   </g>
   <text
-    x="114"
+    x="104"
     y="62"
     fill="#070B1F"
     font-family="Space Grotesk, Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, sans-serif"

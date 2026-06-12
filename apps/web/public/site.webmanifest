@@ -4,7 +4,7 @@
   "description": "Multi-agent canvas for creative video work",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#FBFAF7",
+  "background_color": "#F7F6F2",
   "theme_color": "#FF6B50",
   "icons": [
     {

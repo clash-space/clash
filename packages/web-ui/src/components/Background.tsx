@@ -3,8 +3,7 @@ export default function Background() {
   return (
     <div className="fixed inset-0 z-[-1] pointer-events-none overflow-hidden bg-warm-page">
       {/* Infinite Canvas Dot Grid. Uses the --canvas-dot token so the
-          dot tint flips with light/dark mode (light: warm beige,
-          dark: slate). */}
+          dot tint flips with light/dark mode (light: warm gray, dark: slate). */}
       <div
         className="absolute inset-0"
         style={{
@@ -17,7 +16,7 @@ export default function Background() {
       {/* Artistic node connections. `color: var(--brand)` + currentColor
           on the strokes/fills means the SVG inherits brand color from
           CSS variables — no hard-coded hex needed. */}
-      <div className="absolute inset-0 opacity-[0.05] text-brand">
+      <div className="absolute inset-0 opacity-[0.025] text-brand">
         <svg className="w-full h-full" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
           <defs>
             <pattern id="grid-connections" x="0" y="0" width="400" height="400" patternUnits="userSpaceOnUse">
@@ -33,7 +32,7 @@ export default function Background() {
       </div>
 
       {/* Gradient Mask for Depth */}
-      <div className="absolute inset-0 bg-gradient-to-b from-transparent via-transparent to-warm-page/45" />
+      <div className="absolute inset-0 bg-gradient-to-b from-transparent via-transparent to-warm-page/22" />
     </div>
   );
 }
