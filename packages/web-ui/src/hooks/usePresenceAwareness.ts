@@ -27,23 +27,23 @@ const SEND_THROTTLE_MS = 50;
 const PEER_STALE_MS = 8_000;
 
 /**
- * 10-colour palette — picked for decent contrast in light + dark canvas
- * backgrounds and clear distinguishability between adjacent cursors.
+ * 10-colour canvas palette — muted enough to sit inside the warm Clash
+ * surface language, but dark enough for white cursor labels to stay legible.
  * Keep it small so two random users have a real chance of colliding;
  * stable hash ensures the SAME user always gets the SAME colour across
- * reconnects (so others' mental model "Alice is purple" survives).
+ * reconnects (so others' mental model "Alice is ember" survives).
  */
 const PEER_COLORS = [
-  '#ef4444', // red-500
-  '#f97316', // orange-500
-  '#eab308', // yellow-500
-  '#22c55e', // green-500
-  '#06b6d4', // cyan-500
-  '#3b82f6', // blue-500
-  '#8b5cf6', // violet-500
-  '#ec4899', // pink-500
-  '#14b8a6', // teal-500
-  '#f43f5e', // rose-500
+  '#b63d2f', // coral
+  '#c2410c', // ember
+  '#9a3412', // rust
+  '#854d0e', // umber
+  '#4d7c0f', // moss
+  '#166534', // pine
+  '#0f766e', // jade
+  '#be123c', // rose
+  '#7f1d1d', // clay
+  '#475569', // slate
 ] as const;
 
 function hashString(s: string): number {

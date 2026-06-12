@@ -47,6 +47,8 @@ const oldActivityPresenceTokens =
   /blue-100|blue-300|blue-700|blue-950|bg-gradient-to-br|from-brand to-red-500/;
 const oldIdentityMentionTokens =
   /from-brand to-red-500|hover:bg-gray-50|text-gray-700|text-gray-800|dark:text-gray-200|dark:text-gray-300/;
+const oldAwarenessPaletteTokens =
+  /cyan|blue-500|violet|#06b6d4|#3b82f6|#8b5cf6/;
 
 describe("visual language surfaces", () => {
   afterEach(() => {
@@ -185,6 +187,16 @@ describe("visual language surfaces", () => {
 
     expect(source).not.toMatch(oldIdentityMentionTokens);
     expect(source).toMatch(/brand|warm|stone|slate/);
+  });
+
+  it("keeps collaborative cursor colours out of AI-blue/purple palette drift", () => {
+    const source = readFileSync(
+      join(process.cwd(), "packages/web-ui/src/hooks/usePresenceAwareness.ts"),
+      "utf8",
+    );
+
+    expect(source).not.toMatch(oldAwarenessPaletteTokens);
+    expect(source).toMatch(/coral|ember|moss|slate/);
   });
 
   it.each([
