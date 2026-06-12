@@ -94,15 +94,15 @@ export default function ConnectDaemonRoute() {
   };
 
   return (
-    <div className="min-h-screen bg-white relative">
+    <div className="min-h-screen bg-warm-page relative">
       <Background />
       <div className="relative z-10 flex min-h-screen items-center justify-center p-8">
-        <div className="max-w-md w-full bg-white/90 rounded-2xl border border-stone-200 shadow-sm p-8 text-center">
-          <h1 className="text-xl font-semibold text-stone-800 mb-2">
+        <div className="max-w-md w-full bg-warm-surface/95 rounded-2xl border border-warm-border shadow-sm p-8 text-center backdrop-blur">
+          <h1 className="font-display text-xl font-semibold tracking-tight text-slate-950 mb-2">
             Connect this machine
           </h1>
           <p className="text-sm text-stone-500 mb-6">
-            Authorize <code className="px-1 bg-stone-100 rounded">{cbHost || "—"}</code> to
+            Authorize <code className="px-1.5 py-0.5 bg-warm-muted rounded-md text-slate-700">{cbHost || "—"}</code> to
             register this computer as a Clash runtime. Your local agent will appear in the chat panel.
           </p>
 
@@ -111,17 +111,17 @@ export default function ConnectDaemonRoute() {
           {status === "instructions" && (
             <div className="text-left space-y-3">
               <p className="text-sm text-stone-600">
-                This page is the browser side of the <code className="text-xs">clash-bridge setup</code> flow.
+                This page is the browser side of the <code className="rounded bg-warm-muted px-1 text-xs text-slate-700">clash-bridge setup</code> flow.
                 To register a machine, run this command on it:
               </p>
               <div className="flex items-stretch gap-2">
-                <code className="flex-1 font-mono text-sm bg-slate-900 text-slate-50 px-3 py-2.5 rounded-lg break-all select-all">
+                <code className="flex-1 font-mono text-sm bg-slate-950 text-slate-50 px-3 py-2.5 rounded-lg break-all select-all shadow-sm">
                   {setupCmd}
                 </code>
                 <button
                   type="button"
                   onClick={onCopySetup}
-                  className="px-3 rounded-lg bg-stone-100 hover:bg-stone-200 text-slate-700 transition-colors text-sm font-medium"
+                  className="px-3 rounded-lg bg-warm-muted hover:bg-warm-hover text-slate-800 transition-colors text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-warm-surface"
                 >
                   {copied ? "Copied" : "Copy"}
                 </button>
@@ -134,7 +134,7 @@ export default function ConnectDaemonRoute() {
 
           {status === "signin" && (
             <button
-              className="rounded-full bg-gray-900 text-white px-6 py-3 text-sm font-medium hover:bg-gray-800"
+              className="rounded-lg bg-slate-950 text-white px-6 py-3 text-sm font-medium hover:bg-slate-800 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-warm-surface"
               onClick={() =>
                 betterAuthClient.signIn.social({
                   provider: "google",
@@ -152,7 +152,7 @@ export default function ConnectDaemonRoute() {
                 Signed in as {session.data?.user?.email ?? "?"}
               </p>
               <button
-                className="rounded-full bg-gray-900 text-white px-6 py-3 text-sm font-medium hover:bg-gray-800"
+                className="rounded-lg bg-slate-950 text-white px-6 py-3 text-sm font-medium hover:bg-slate-800 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-warm-surface"
                 onClick={onAllow}
               >
                 Allow this machine

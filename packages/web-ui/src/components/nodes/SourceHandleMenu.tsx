@@ -180,10 +180,10 @@ const SourceHandleMenu = ({ nodeId }: SourceHandleMenuProps) => {
                 type="source"
                 position={Position.Right}
                 style={{ position: 'relative', top: 0, right: 0, transform: 'none' }}
-                className={`!h-4 !w-4 !border-4 !border-white transition-all duration-200 shadow-sm ${
+                className={`!h-4 !w-4 !border-4 !border-warm-surface transition-all duration-200 shadow-sm ${
                     isOpen
-                        ? '!bg-slate-900 scale-[1.3]'
-                        : '!bg-slate-400 hover:!bg-slate-700 hover:scale-125'
+                        ? '!bg-brand scale-[1.3]'
+                        : '!bg-stone-400 hover:!bg-brand hover:scale-125'
                 }`}
             />
 
@@ -202,7 +202,7 @@ const SourceHandleMenu = ({ nodeId }: SourceHandleMenuProps) => {
                         role="menu"
                         aria-label="Add next or clone"
                     >
-                        <div className="flex flex-col gap-1.5 rounded-2xl border border-warm-border bg-white/95 p-2.5 shadow-xl backdrop-blur-xl min-w-[180px]">
+                        <div className="flex flex-col gap-1.5 rounded-2xl border border-warm-border bg-warm-surface/95 p-2.5 shadow-lg backdrop-blur-xl min-w-[180px]">
                             {/* Header */}
                             <div className="px-2 py-1 text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider" aria-hidden="true">
                                 Add next
@@ -218,7 +218,7 @@ const SourceHandleMenu = ({ nodeId }: SourceHandleMenuProps) => {
                                         initial={{ opacity: 0, x: -8 }}
                                         animate={{ opacity: 1, x: 0 }}
                                         transition={{ delay: index * 0.03 }}
-                                        className="flex items-center gap-3 rounded-xl min-h-11 px-3 py-2.5 text-sm text-slate-800 dark:text-slate-200 hover:bg-slate-100 hover:text-slate-900 transition-colors motion-reduce:transition-none text-left cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-900 focus-visible:ring-offset-1"
+                                        className="flex items-center gap-3 rounded-xl min-h-11 px-3 py-2.5 text-sm text-slate-800 dark:text-slate-200 hover:bg-warm-hover hover:text-slate-950 transition-colors motion-reduce:transition-none text-left cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-1 focus-visible:ring-offset-warm-surface"
                                         whileHover={{ x: 2 }}
                                         whileTap={{ scale: 0.97 }}
                                         onClick={(e) => handleOptionClick(option, e)}
@@ -235,16 +235,16 @@ const SourceHandleMenu = ({ nodeId }: SourceHandleMenuProps) => {
                             {hasUpstreamTrajectory && (
                                 <>
                                     <div className="flex items-center gap-2 px-2 pt-1 pb-0.5 text-[10px] font-semibold text-slate-700 dark:text-slate-300 uppercase tracking-wider" role="separator">
-                                        <div className="h-px flex-1 bg-slate-200" aria-hidden="true" />
+                                        <div className="h-px flex-1 bg-warm-border" aria-hidden="true" />
                                         or clone upstream
-                                        <div className="h-px flex-1 bg-slate-200" aria-hidden="true" />
+                                        <div className="h-px flex-1 bg-warm-border" aria-hidden="true" />
                                     </div>
                                     <motion.button
                                         role="menuitem"
                                         initial={{ opacity: 0, x: -8 }}
                                         animate={{ opacity: 1, x: 0 }}
                                         transition={{ delay: (visibleOptions.length + 1) * 0.03 }}
-                                        className="flex items-center gap-3 rounded-xl min-h-11 px-3 py-2.5 text-sm text-slate-800 dark:text-slate-200 hover:bg-slate-100 hover:text-slate-900 transition-colors motion-reduce:transition-none text-left cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-900 focus-visible:ring-offset-1"
+                                        className="flex items-center gap-3 rounded-xl min-h-11 px-3 py-2.5 text-sm text-slate-800 dark:text-slate-200 hover:bg-warm-hover hover:text-slate-950 transition-colors motion-reduce:transition-none text-left cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-1 focus-visible:ring-offset-warm-surface"
                                         whileHover={{ x: 2 }}
                                         whileTap={{ scale: 0.97 }}
                                         onClick={handleCloneClick}

@@ -74,7 +74,7 @@ export function Dialog({
                     animate={{ opacity: 1 }}
                     exit={{ opacity: 0 }}
                     transition={{ duration: 0.15 }}
-                    className="fixed inset-0 z-[70] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4"
+                    className="fixed inset-0 z-[70] flex items-center justify-center bg-warm-page/75 backdrop-blur-sm p-4"
                     onClick={disableBackdropClose ? undefined : onClose}
                 >
                     <motion.div
@@ -92,7 +92,7 @@ export function Dialog({
                         className={
                             unstyled
                                 ? `relative ${sizeClasses[size]} max-w-[92vw] focus:outline-none`
-                                : `relative ${sizeClasses[size]} max-w-[92vw] max-h-[85vh] overflow-y-auto rounded-2xl bg-warm-surface border border-warm-border shadow-xl p-6 focus:outline-none`
+                                : `relative ${sizeClasses[size]} max-w-[92vw] max-h-[85vh] overflow-y-auto rounded-2xl bg-warm-surface border border-warm-border shadow-lg p-6 focus:outline-none`
                         }
                         onClick={(e) => e.stopPropagation()}
                     >

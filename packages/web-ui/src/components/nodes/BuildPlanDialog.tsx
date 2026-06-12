@@ -40,7 +40,7 @@ const BuildPlanDialog = ({ open, targetLabel, plan, onConfirm, onCancel }: Build
                         initial={{ opacity: 0 }}
                         animate={{ opacity: 1 }}
                         exit={{ opacity: 0 }}
-                        className="absolute inset-0 bg-slate-900/30 backdrop-blur-sm"
+                        className="absolute inset-0 bg-warm-page/75 backdrop-blur-sm"
                         onClick={onCancel}
                         aria-hidden="true"
                     />
@@ -53,7 +53,7 @@ const BuildPlanDialog = ({ open, targetLabel, plan, onConfirm, onCancel }: Build
                         animate={{ opacity: 1, scale: 1, y: 0 }}
                         exit={{ opacity: 0, scale: 0.95, y: 12 }}
                         transition={{ type: 'spring', damping: 28, stiffness: 340 }}
-                        className="relative z-10 w-full max-w-lg max-h-[calc(100dvh-1.5rem)] sm:max-h-[calc(100dvh-3rem)] bg-warm-surface rounded-2xl shadow-2xl border border-warm-border overflow-hidden flex flex-col motion-reduce:transition-none"
+                        className="relative z-10 w-full max-w-lg max-h-[calc(100dvh-1.5rem)] sm:max-h-[calc(100dvh-3rem)] bg-warm-surface rounded-2xl shadow-lg border border-warm-border overflow-hidden flex flex-col motion-reduce:transition-none"
                         onClick={(e) => e.stopPropagation()}
                     >
                         {/* Header */}
@@ -68,7 +68,7 @@ const BuildPlanDialog = ({ open, targetLabel, plan, onConfirm, onCancel }: Build
                                 type="button"
                                 onClick={onCancel}
                                 aria-label="Close build plan dialog"
-                                className="shrink-0 p-2.5 text-slate-700 dark:text-slate-300 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-900"
+                                className="shrink-0 p-2.5 text-slate-700 dark:text-slate-300 hover:text-slate-950 hover:bg-warm-hover rounded-lg transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-brand"
                             >
                                 <X className="w-4 h-4" weight="bold" aria-hidden="true" />
                             </button>
@@ -145,7 +145,7 @@ const BuildPlanDialog = ({ open, targetLabel, plan, onConfirm, onCancel }: Build
                                                 } ${!entry.hasPrompt || !entry.modelId ? 'bg-red-50' : ''}`}
                                             >
                                                 <div className="min-w-0 flex items-center gap-2">
-                                                    <span className="inline-block w-1.5 h-1.5 rounded-full bg-slate-400" />
+                                                    <span className="inline-block w-1.5 h-1.5 rounded-full bg-brand" />
                                                     <span className="truncate text-slate-800 dark:text-slate-200" title={entry.label}>{entry.label}</span>
                                                 </div>
                                                 <span className="shrink-0 text-[10px] text-slate-700 dark:text-slate-300 uppercase tracking-wide">
@@ -163,7 +163,7 @@ const BuildPlanDialog = ({ open, targetLabel, plan, onConfirm, onCancel }: Build
                             <button
                                 type="button"
                                 onClick={onCancel}
-                                className="w-full sm:w-auto min-h-11 px-4 py-2 text-sm font-medium text-slate-800 dark:text-slate-200 hover:bg-slate-200 rounded-lg transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-900"
+                                className="w-full sm:w-auto min-h-11 px-4 py-2 text-sm font-medium text-slate-800 dark:text-slate-200 hover:bg-warm-hover rounded-lg transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-brand"
                             >
                                 Cancel
                             </button>
@@ -171,7 +171,7 @@ const BuildPlanDialog = ({ open, targetLabel, plan, onConfirm, onCancel }: Build
                                 type="button"
                                 onClick={onConfirm}
                                 disabled={!canBuild}
-                                className="flex items-center justify-center gap-1.5 w-full sm:w-auto min-h-11 px-4 py-2 text-sm font-semibold text-white bg-slate-900 hover:bg-black rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-900 focus-visible:ring-offset-2"
+                                className="flex items-center justify-center gap-1.5 w-full sm:w-auto min-h-11 px-4 py-2 text-sm font-semibold text-white bg-slate-950 hover:bg-slate-800 rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed focus:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-warm-surface"
                                 aria-describedby={!canBuild ? `${headerId}-disabled-reason` : undefined}
                                 title={
                                     !canBuild

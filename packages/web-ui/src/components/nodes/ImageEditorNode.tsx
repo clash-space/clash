@@ -85,7 +85,7 @@ const ImageEditorNode = ({ id, data }: NodeProps<Node<Record<string, any>>>) => 
             <div className="w-full bg-warm-surface shadow-md rounded-matrix overflow-hidden ring-1 ring-warm-border transition-all duration-300 hover:shadow-lg">
                 {/* Header */}
                 <div className="absolute top-3 left-3 z-10">
-                    <div className="flex items-center gap-1.5 px-2.5 py-1 bg-warm-surface/92 rounded-lg shadow-sm border border-warm-border">
+                    <div className="flex items-center gap-1.5 px-2.5 py-1 bg-warm-surface/95 rounded-lg shadow-sm border border-warm-border">
                         <PencilSimple className="w-3.5 h-3.5 text-image" weight="fill" />
                         <span className="text-[10px] font-bold font-display text-slate-800 dark:text-slate-200 uppercase tracking-wide">Image Editor</span>
                     </div>

@@ -103,7 +103,7 @@ const DraftPlaceholder = ({ nodeId, modality, width, height }: DraftPlaceholderP
     return (
         <>
             <div
-                className="relative rounded-matrix bg-slate-50/60 border-2 border-dashed border-slate-300 flex flex-col items-center justify-center gap-3 p-4"
+                className="relative rounded-matrix bg-warm-muted/60 border-2 border-dashed border-warm-border flex flex-col items-center justify-center gap-3 p-4"
                 style={{ width: width ?? '100%', height: height ?? '100%' }}
                 role="group"
                 aria-label={`Draft ${MODALITY_LABEL[modality]} placeholder`}
@@ -119,7 +119,7 @@ const DraftPlaceholder = ({ nodeId, modality, width, height }: DraftPlaceholderP
                         disabled={buttonDisabled}
                         whileHover={buttonDisabled ? undefined : { x: 1 }}
                         whileTap={buttonDisabled ? undefined : { scale: 0.97 }}
-                        className="flex items-center justify-center gap-1.5 min-h-11 rounded-full bg-slate-900 hover:bg-black disabled:opacity-40 disabled:cursor-not-allowed text-white text-sm font-semibold px-4 py-2.5 transition-colors cursor-pointer motion-reduce:transition-none focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-900 focus-visible:ring-offset-2"
+                        className="flex items-center justify-center gap-1.5 min-h-11 rounded-lg bg-slate-950 hover:bg-slate-800 disabled:opacity-40 disabled:cursor-not-allowed text-white text-sm font-semibold px-4 py-2.5 transition-colors cursor-pointer motion-reduce:transition-none focus:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-warm-muted"
                         title={buttonTitle}
                         aria-label={
                             buttonDisabled

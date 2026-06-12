@@ -66,7 +66,7 @@ function wrapPreviewNode<T extends Record<string, unknown>>(Inner: ComponentType
                             type="button"
                             onClick={(e) => { e.stopPropagation(); onDelete(props.id); }}
                             aria-label="Drop this action and everything upstream that only feeds it"
-                            className="flex items-center gap-1 min-h-9 h-9 px-3 rounded-full bg-warm-surface border border-slate-300 text-[11px] font-semibold text-slate-800 dark:text-slate-200 hover:bg-red-50 hover:border-red-300 hover:text-red-700 shadow-sm transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-red-500"
+                            className="flex items-center gap-1 min-h-9 h-9 px-3 rounded-lg bg-warm-surface border border-warm-border text-[11px] font-semibold text-slate-800 dark:text-slate-200 hover:bg-red-50 hover:border-red-300 hover:text-red-700 shadow-sm transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-red-500"
                             title="Drop this action and everything upstream that only feeds it — its output becomes a reused head"
                         >
                             <X size={11} weight="bold" aria-hidden="true" />
@@ -77,7 +77,7 @@ function wrapPreviewNode<T extends Record<string, unknown>>(Inner: ComponentType
                 <NodeToolbar isVisible position={Position.Bottom} offset={6}>
                     {isRoot ? (
                         <span
-                            className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-50 border border-emerald-200 text-[10px] uppercase tracking-wider font-bold text-emerald-800"
+                            className="flex items-center gap-1 px-2 py-0.5 rounded-lg bg-emerald-50 border border-emerald-200 text-[10px] uppercase tracking-wider font-bold text-emerald-800"
                             title="Copied into the new trajectory with completed content preserved"
                         >
                             <CheckCircle size={10} weight="fill" aria-hidden="true" />
@@ -85,7 +85,7 @@ function wrapPreviewNode<T extends Record<string, unknown>>(Inner: ComponentType
                         </span>
                     ) : (
                         <span
-                            className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-slate-900 text-[10px] uppercase tracking-wider font-bold text-white"
+                            className="flex items-center gap-1 px-2 py-0.5 rounded-lg bg-slate-950 text-[10px] uppercase tracking-wider font-bold text-white"
                             title="Cloned as an empty draft placeholder — Build to fill"
                         >
                             <FilePlus size={10} weight="bold" aria-hidden="true" />
@@ -437,7 +437,7 @@ const CloneTrajectoryDialog = ({
                         initial={{ opacity: 0 }}
                         animate={{ opacity: 1 }}
                         exit={{ opacity: 0 }}
-                        className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm"
+                        className="absolute inset-0 bg-warm-page/75 backdrop-blur-sm"
                         onClick={onCancel}
                         aria-hidden="true"
                     />
@@ -450,7 +450,7 @@ const CloneTrajectoryDialog = ({
                         animate={{ opacity: 1, scale: 1, y: 0 }}
                         exit={{ opacity: 0, scale: 0.96, y: 12 }}
                         transition={{ type: 'spring', damping: 28, stiffness: 320 }}
-                        className="relative z-10 w-full sm:w-[92vw] max-w-6xl h-[calc(100dvh-1rem)] sm:h-[86vh] md:h-[80vh] bg-warm-surface rounded-xl sm:rounded-2xl shadow-2xl border border-warm-border overflow-hidden flex flex-col motion-reduce:transition-none"
+                        className="relative z-10 w-full sm:w-[92vw] max-w-6xl h-[calc(100dvh-1rem)] sm:h-[86vh] md:h-[80vh] bg-warm-surface rounded-xl sm:rounded-2xl shadow-lg border border-warm-border overflow-hidden flex flex-col motion-reduce:transition-none"
                         onClick={(e) => e.stopPropagation()}
                     >
                         {/* Header */}
@@ -469,7 +469,7 @@ const CloneTrajectoryDialog = ({
                                 type="button"
                                 onClick={onCancel}
                                 aria-label="Close clone trajectory dialog"
-                                className="shrink-0 p-2.5 text-slate-700 dark:text-slate-300 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-900"
+                                className="shrink-0 p-2.5 text-slate-700 dark:text-slate-300 hover:text-slate-950 hover:bg-warm-hover rounded-lg transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-brand"
                             >
                                 <X className="w-4 h-4" weight="bold" aria-hidden="true" />
                             </button>
@@ -498,7 +498,7 @@ const CloneTrajectoryDialog = ({
                                     type="button"
                                     onClick={onCancel}
                                     disabled={applying}
-                                    className="w-full sm:w-auto min-h-11 px-4 py-2 text-sm font-medium text-slate-800 dark:text-slate-200 hover:bg-slate-200 rounded-lg transition-colors disabled:opacity-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-900"
+                                    className="w-full sm:w-auto min-h-11 px-4 py-2 text-sm font-medium text-slate-800 dark:text-slate-200 hover:bg-warm-hover rounded-lg transition-colors disabled:opacity-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand"
                                 >
                                     Cancel
                                 </button>
@@ -506,7 +506,7 @@ const CloneTrajectoryDialog = ({
                                     type="button"
                                     onClick={handleApply}
                                     disabled={stats.clones === 0 || applying}
-                                    className="flex items-center justify-center gap-1.5 w-full sm:w-auto min-h-11 px-4 py-2 text-sm font-semibold text-white bg-slate-900 hover:bg-black rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-900 focus-visible:ring-offset-2"
+                                    className="flex items-center justify-center gap-1.5 w-full sm:w-auto min-h-11 px-4 py-2 text-sm font-semibold text-white bg-slate-950 hover:bg-slate-800 rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed focus:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-warm-surface"
                                     title={stats.clones === 0 ? 'Nothing to clone' : 'Apply to canvas'}
                                     aria-busy={applying || undefined}
                                 >
