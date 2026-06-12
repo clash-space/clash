@@ -182,8 +182,8 @@ const ActionBadgePipelineMenu = ({ spawnDraft, canSpawn, disabledReason, outputK
                 style={{ position: 'relative', top: 0, right: 0, transform: 'none' }}
                 className={`!h-4 !w-4 !border-4 !border-white transition-all duration-200 shadow-sm ${
                     isOpen
-                        ? '!bg-slate-900 scale-[1.3]'
-                        : '!bg-slate-400 hover:!bg-slate-700 hover:scale-125'
+                        ? '!bg-slate-950 scale-[1.3]'
+                        : '!bg-stone-400 hover:!bg-slate-700 hover:scale-125'
                 }`}
             />
 
@@ -201,7 +201,7 @@ const ActionBadgePipelineMenu = ({ spawnDraft, canSpawn, disabledReason, outputK
                         role="menu"
                         aria-label="Extend pipeline"
                     >
-                        <div className="flex flex-col gap-1.5 rounded-2xl border border-warm-border bg-white/95 p-2.5 shadow-xl backdrop-blur-xl min-w-[220px]">
+                        <div className="flex flex-col gap-1.5 rounded-2xl border border-warm-border bg-warm-surface/95 p-2.5 shadow-[0_18px_48px_rgba(35,31,25,0.12)] min-w-[220px]">
                             <div className="px-2 py-1 text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider" aria-hidden="true">
                                 Extend pipeline
                             </div>
@@ -219,10 +219,10 @@ const ActionBadgePipelineMenu = ({ spawnDraft, canSpawn, disabledReason, outputK
                                 aria-label={primaryTitle}
                                 whileHover={disabled ? undefined : { x: 2 }}
                                 whileTap={disabled ? undefined : { scale: 0.97 }}
-                                className={`flex items-center gap-3 rounded-xl min-h-11 px-3 py-2.5 text-sm font-semibold text-left transition-colors motion-reduce:transition-none focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-900 focus-visible:ring-offset-1 ${
+                                className={`flex items-center gap-3 rounded-xl min-h-11 px-3 py-2.5 text-sm font-semibold text-left transition-colors motion-reduce:transition-none focus:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-1 ${
                                     disabled
                                         ? 'bg-warm-muted text-slate-700 dark:text-slate-300 cursor-not-allowed'
-                                        : 'bg-slate-900 text-white hover:bg-black cursor-pointer'
+                                        : 'bg-slate-950 text-white hover:bg-slate-800 cursor-pointer'
                                 }`}
                             >
                                 <Plus className="h-4 w-4 shrink-0" weight="bold" aria-hidden="true" />
@@ -232,9 +232,9 @@ const ActionBadgePipelineMenu = ({ spawnDraft, canSpawn, disabledReason, outputK
 
                             {/* Divider */}
                             <div className="flex items-center gap-2 px-2 pt-1 pb-0.5 text-[10px] font-semibold text-slate-700 dark:text-slate-300 uppercase tracking-wider" role="separator">
-                                <div className="h-px flex-1 bg-slate-200" aria-hidden="true" />
+                                <div className="h-px flex-1 bg-warm-border" aria-hidden="true" />
                                 then chain
-                                <div className="h-px flex-1 bg-slate-200" aria-hidden="true" />
+                                <div className="h-px flex-1 bg-warm-border" aria-hidden="true" />
                             </div>
 
                             {/* B-rows — spawn draft + downstream action */}
@@ -258,10 +258,10 @@ const ActionBadgePipelineMenu = ({ spawnDraft, canSpawn, disabledReason, outputK
                                         aria-label={rowTitle}
                                         whileHover={rowDisabled ? undefined : { x: 2 }}
                                         whileTap={rowDisabled ? undefined : { scale: 0.97 }}
-                                        className={`flex items-center gap-2.5 rounded-xl min-h-11 px-3 py-2.5 text-sm text-left transition-colors motion-reduce:transition-none focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-900 focus-visible:ring-offset-1 ${
+                                        className={`flex items-center gap-2.5 rounded-xl min-h-11 px-3 py-2.5 text-sm text-left transition-colors motion-reduce:transition-none focus:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-1 ${
                                             rowDisabled
                                                 ? 'text-slate-700 dark:text-slate-300 opacity-60 cursor-not-allowed'
-                                                : 'text-slate-800 dark:text-slate-200 hover:bg-slate-100 hover:text-slate-900 cursor-pointer'
+                                                : 'text-slate-800 dark:text-slate-200 hover:bg-warm-muted hover:text-slate-900 cursor-pointer'
                                         }`}
                                     >
                                         <Plus className="h-3.5 w-3.5 shrink-0 text-slate-700 dark:text-slate-300" weight="bold" aria-hidden="true" />

@@ -82,11 +82,11 @@ const ImageEditorNode = ({ id, data }: NodeProps<Node<Record<string, any>>>) => 
 
     return (
         <div className="group relative w-[400px]" onDoubleClick={handleOpen}>
-            <div className="w-full bg-warm-surface shadow-md rounded-matrix overflow-hidden ring-1 ring-slate-200 transition-all duration-300 hover:shadow-lg">
+            <div className="w-full bg-warm-surface shadow-md rounded-matrix overflow-hidden ring-1 ring-warm-border transition-all duration-300 hover:shadow-lg">
                 {/* Header */}
                 <div className="absolute top-3 left-3 z-10">
-                    <div className="flex items-center gap-1.5 px-2.5 py-1 bg-white/90 backdrop-blur-sm rounded-full shadow-sm border border-slate-200/50">
-                        <PencilSimple className="w-3.5 h-3.5 text-emerald-500" weight="fill" />
+                    <div className="flex items-center gap-1.5 px-2.5 py-1 bg-warm-surface/92 rounded-lg shadow-sm border border-warm-border">
+                        <PencilSimple className="w-3.5 h-3.5 text-image" weight="fill" />
                         <span className="text-[10px] font-bold font-display text-slate-800 dark:text-slate-200 uppercase tracking-wide">Image Editor</span>
                     </div>
                 </div>
@@ -97,7 +97,7 @@ const ImageEditorNode = ({ id, data }: NodeProps<Node<Record<string, any>>>) => 
                         <SignedImg src={previewR2Key} alt="Source preview" className="w-full h-full object-cover pointer-events-none" />
                     ) : (
                         <div className="flex flex-col items-center gap-2 p-6 text-center">
-                            <div className="rounded-full w-14 h-14 flex items-center justify-center bg-warm-surface shadow-sm">
+                            <div className="rounded-2xl w-14 h-14 flex items-center justify-center bg-warm-surface shadow-sm border border-warm-border">
                                 <ImageSquare className="w-7 h-7 text-stone-700 dark:text-stone-300" weight="duotone" />
                             </div>
                             <div className="text-xs text-slate-700 dark:text-slate-300">Connect an image to start editing</div>
@@ -111,7 +111,7 @@ const ImageEditorNode = ({ id, data }: NodeProps<Node<Record<string, any>>>) => 
                     <button
                         onClick={handleOpen}
                         disabled={!ready}
-                        className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-white bg-slate-900 hover:bg-slate-700 rounded-full disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-sm active:scale-95"
+                        className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-white bg-slate-950 hover:bg-slate-800 rounded-xl disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-sm active:scale-95"
                     >
                         <PencilSimple className="w-3.5 h-3.5" weight="fill" />
                         Edit
@@ -123,13 +123,13 @@ const ImageEditorNode = ({ id, data }: NodeProps<Node<Record<string, any>>>) => 
                 type="target"
                 position={Position.Left}
                 id="source"
-                className="!h-4 !w-4 !-translate-x-2 !border-4 !border-white !bg-slate-400 transition-all hover:!bg-emerald-500 hover:scale-125 shadow-sm"
+                className="!h-4 !w-4 !-translate-x-2 !border-4 !border-white !bg-stone-400 transition-all hover:!bg-image hover:scale-125 shadow-sm"
             />
             <Handle
                 type="source"
                 position={Position.Right}
                 id="output"
-                className="!h-4 !w-4 !translate-x-2 !border-4 !border-white !bg-slate-400 transition-all hover:!bg-emerald-500 hover:scale-125 shadow-sm"
+                className="!h-4 !w-4 !translate-x-2 !border-4 !border-white !bg-stone-400 transition-all hover:!bg-image hover:scale-125 shadow-sm"
             />
         </div>
     );

@@ -92,7 +92,7 @@ const markdownComponents = {
     },
     pre: ({ children }: any) => <pre className="not-prose mb-4">{children}</pre>,
     blockquote: ({ children }: any) => <blockquote className="border-l-4 border-warm-border pl-4 italic text-stone-600 mb-4 dark:text-stone-300">{children}</blockquote>,
-    a: ({ href, children }: any) => <a href={href} target="_blank" rel="noopener noreferrer" className="text-blue-700 hover:underline dark:text-blue-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 focus-visible:ring-offset-warm-surface rounded-sm">{children}</a>,
+    a: ({ href, children }: any) => <a href={href} target="_blank" rel="noopener noreferrer" className="text-brand hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-warm-surface rounded-sm">{children}</a>,
 };
 
 /** Thumbnail for a selected node — resolves media via the asset row.
@@ -707,7 +707,7 @@ export default function ChatbotCopilot({
                         aria-expanded={false}
                         aria-controls="clash-copilot-panel"
                         // Mobile: clear the iPhone home-indicator gesture zone with safe-area-inset-bottom (falls back to 1rem on devices without notch). Desktop: positions at top-right of the panel parent.
-                        className="fixed bottom-[max(1rem,env(safe-area-inset-bottom))] right-[max(1rem,env(safe-area-inset-right))] z-50 flex h-14 w-14 items-center justify-center rounded-full border border-warm-border bg-warm-surface shadow-lg transition-shadow hover:shadow-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-warm-page lg:absolute lg:bottom-auto lg:top-4 lg:right-4 lg:shadow-sm"
+                        className="fixed bottom-[max(1rem,env(safe-area-inset-bottom))] right-[max(1rem,env(safe-area-inset-right))] z-50 flex h-14 w-14 items-center justify-center rounded-2xl border border-warm-border bg-warm-surface shadow-lg transition-shadow hover:shadow-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-warm-page lg:absolute lg:bottom-auto lg:top-4 lg:right-4 lg:shadow-sm"
                     >
                         <CaretLeft className="w-5 h-5 text-slate-700 dark:text-slate-300" weight="bold" aria-hidden="true" />
                     </motion.button>
@@ -722,7 +722,7 @@ export default function ChatbotCopilot({
                         animate={{ opacity: 1 }}
                         exit={{ opacity: 0 }}
                         transition={{ duration: 0.15 }}
-                        className="fixed inset-0 z-40 bg-black/40 backdrop-blur-sm lg:hidden"
+                        className="fixed inset-0 z-40 bg-slate-950/35 backdrop-blur-sm lg:hidden"
                         onClick={() => onCollapseChange(true)}
                         aria-hidden="true"
                     />
@@ -741,7 +741,7 @@ export default function ChatbotCopilot({
                     isMobile
                         // Mobile: bg-warm-page extends to the unsafe areas so the system bars blend with the panel; padding shrinks the positioning context so absolute children land inside the safe zone. All four insets cover portrait (notch top, home indicator bottom) and landscape (notch on left or right).
                         ? `fixed inset-0 z-50 flex flex-col bg-warm-page h-[100dvh] pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)] ${isCollapsed ? 'pointer-events-none' : ''}`
-                        : `h-full bg-warm-surface flex flex-col relative ${isCollapsed ? '' : 'border-l border-warm-border shadow-xl'}`
+                        : `h-full bg-warm-surface flex flex-col relative ${isCollapsed ? '' : 'border-l border-warm-border shadow-[0_18px_50px_rgba(35,31,25,0.1)]'}`
                 }
                 style={isMobile ? undefined : { width: isCollapsed ? 0 : `${width}px` }}
                 animate={
@@ -763,7 +763,7 @@ export default function ChatbotCopilot({
                         role="separator"
                         aria-orientation="vertical"
                         aria-label="Resize panel"
-                        className={`absolute left-0 top-0 bottom-0 w-0.5 cursor-ew-resize transition-colors z-10 ${isResizing ? 'bg-red-500' : 'hover:bg-red-500 bg-red-500/0'}`}
+	                        className={`absolute left-0 top-0 bottom-0 w-0.5 cursor-ew-resize transition-colors z-10 ${isResizing ? 'bg-brand' : 'hover:bg-brand bg-brand/0'}`}
                     />
                 )}
 
@@ -810,7 +810,7 @@ export default function ChatbotCopilot({
                                     <>
                                         <ClockCounterClockwise className="w-5 h-5" weight="bold" />
                                         {sessionHistory.length > 0 && (
-                                            <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-red-500 dark:bg-red-400 rounded-full border border-warm-surface" />
+                                            <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-brand rounded-full border border-warm-surface" />
                                         )}
                                     </>
                                 }
@@ -841,7 +841,7 @@ export default function ChatbotCopilot({
                                             initial={{ opacity: 0, y: -6, scale: 0.96 }}
                                             animate={{ opacity: 1, y: 0, scale: 1 }}
                                             exit={{ opacity: 0, y: -6, scale: 0.96 }}
-                                            className="absolute top-11 right-0 z-30 w-72 bg-warm-surface rounded-xl shadow-xl border border-warm-border overflow-hidden"
+	                                            className="absolute top-11 right-0 z-30 w-72 bg-warm-surface rounded-2xl shadow-[0_18px_48px_rgba(35,31,25,0.12)] border border-warm-border overflow-hidden"
                                         >
                                             <div className="px-3 py-2 border-b border-warm-border bg-warm-muted">
                                                 <div className="font-display text-xs font-semibold text-stone-700 uppercase tracking-wider dark:text-stone-300">{t('copilot.runtime.menuTitle')}</div>
@@ -908,7 +908,7 @@ export default function ChatbotCopilot({
                                     animate={{ opacity: 1, y: 0, scale: 1 }}
                                     exit={{ opacity: 0, y: -10, scale: 0.95 }}
                                     ref={historyDropdownRef}
-                                    className="absolute top-14 right-4 z-30 w-64 bg-warm-surface rounded-xl shadow-xl border border-warm-border overflow-hidden"
+	                                    className="absolute top-14 right-4 z-30 w-64 bg-warm-surface rounded-2xl shadow-[0_18px_48px_rgba(35,31,25,0.12)] border border-warm-border overflow-hidden"
                                 >
                                     <div className="p-3 border-b border-warm-border bg-warm-muted">
                                         <h3 className="font-display text-xs font-semibold text-stone-700 uppercase tracking-wider dark:text-stone-300">{t('copilot.history.title')}</h3>
@@ -1017,7 +1017,7 @@ export default function ChatbotCopilot({
                                                     type="button"
                                                     key={i}
                                                     onClick={() => handleSubmit(s.message)}
-                                                    className="px-4 py-2 min-h-[36px] text-sm font-medium text-slate-800 bg-warm-surface border border-warm-border rounded-full shadow-sm hover:bg-warm-muted hover:border-brand/30 transition-all dark:text-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-warm-page"
+	                                                    className="px-4 py-2 min-h-[36px] text-sm font-medium text-slate-800 bg-warm-surface border border-warm-border rounded-xl shadow-sm hover:bg-warm-muted hover:border-brand/30 transition-all dark:text-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-warm-page"
                                                     whileHover={{ scale: 1.03 }}
                                                     whileTap={{ scale: 0.97 }}
                                                     transition={{ duration: 0.15, ease: [0.25, 1, 0.5, 1] }}
@@ -1044,7 +1044,7 @@ export default function ChatbotCopilot({
                                         <div
                                             role="status"
                                             aria-live="polite"
-                                            className="bg-warm-surface text-slate-800 text-xs font-medium px-3 py-1.5 rounded-full border border-warm-border shadow-md flex items-center gap-2 dark:text-slate-100"
+	                                            className="bg-warm-surface text-slate-800 text-xs font-medium px-3 py-1.5 rounded-xl border border-warm-border shadow-md flex items-center gap-2 dark:text-slate-100"
                                         >
                                             <div className="flex -space-x-2" aria-hidden="true">
                                                 {selectedNodes.filter(n => !!n.data?.assetId).slice(0, 3).map((node) => (
@@ -1210,7 +1210,7 @@ function SlashCommandBar({
                     onClick={() => onPick(c.name)}
                     title={c.description ?? c.name}
                     aria-label={c.description ? `/${c.name} — ${c.description}` : `/${c.name}`}
-                    className="inline-flex items-center mr-1.5 px-2 py-1 min-h-[28px] rounded-full bg-warm-muted text-stone-700 hover:bg-warm-hover transition-colors font-mono dark:text-stone-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-1 focus-visible:ring-offset-warm-page"
+	                    className="inline-flex items-center mr-1.5 px-2 py-1 min-h-[28px] rounded-lg bg-warm-muted text-stone-700 hover:bg-warm-hover transition-colors font-mono dark:text-stone-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-1 focus-visible:ring-offset-warm-page"
                 >
                     /{c.name}
                 </button>

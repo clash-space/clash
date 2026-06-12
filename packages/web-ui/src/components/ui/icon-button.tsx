@@ -10,13 +10,13 @@ import { cn } from '../ai-elements/utils';
  * touch targets meet AA at sm/md and AAA at lg.
  *
  * Variants:
- *   default     — ghost style, hover surface tint. The 95% case.
+   *   default     — ghost style, hover surface tint. The 95% case.
  *   active      — for "X is currently selected" pills (run-on plug etc.).
  *                 Brand-tinted bg/text.
  *   destructive — red hover. For delete / remove / trash actions.
  *
  * Sizes (square, hit target ≥ visual):
- *   sm — 32 px (only for secondary inline actions like in-row delete)
+   *   sm — 32 px (only for secondary inline actions like in-row delete)
  *   md — 36 px (toolbar default; meets AA 2.5.8)
  *   lg — 44 px (meets AAA 2.5.5; use for primary mobile-touch CTAs)
  */
@@ -38,14 +38,14 @@ export const iconButtonVariants = cva(
                 lg: 'h-11 w-11 min-h-[44px] min-w-[44px]',
             },
             shape: {
-                circle: 'rounded-full',
                 rounded: 'rounded-lg',
+                circle: 'rounded-full',
             },
         },
         defaultVariants: {
             variant: 'default',
             size: 'md',
-            shape: 'circle',
+            shape: 'rounded',
         },
     },
 );
@@ -60,13 +60,13 @@ export interface IconButtonProps
 }
 
 export const IconButton = forwardRef<HTMLButtonElement, IconButtonProps>(
-    ({ icon, label, variant, size, className, type = 'button', ...rest }, ref) => {
+    ({ icon, label, variant, size, shape, className, type = 'button', ...rest }, ref) => {
         return (
             <button
                 ref={ref}
                 type={type}
                 aria-label={label}
-                className={cn(iconButtonVariants({ variant, size }), className)}
+                className={cn(iconButtonVariants({ variant, size, shape }), className)}
                 {...rest}
             >
                 <span aria-hidden="true" className="flex">
