@@ -125,7 +125,7 @@ export default function UserControls({ compact = false }: UserControlsProps = {}
                 onError={() => setAvatarFailed(true)}
               />
             ) : (
-              <div className={`flex ${compact ? 'h-7 w-7 text-[11px]' : 'h-10 w-10 text-sm'} items-center justify-center rounded-xl bg-gradient-to-br from-brand to-red-500 font-bold text-white`} aria-hidden="true">
+              <div className={`flex ${compact ? 'h-7 w-7 text-[11px]' : 'h-10 w-10 text-sm'} items-center justify-center rounded-xl bg-brand-light font-bold text-slate-950 ring-1 ring-brand/20 dark:bg-brand/20 dark:text-slate-50`} aria-hidden="true">
                 {getInitials(user.name)}
               </div>
             )}

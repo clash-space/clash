@@ -45,6 +45,8 @@ const oldCanvasControlTokens =
   /text-gray|bg-gray|border-gray|hover:bg-gray|focus:border-gray|placeholder:text-gray|accent-gray|prose-headings:text-gray|prose-p:text-gray|prose-code:text-gray/;
 const oldActivityPresenceTokens =
   /blue-100|blue-300|blue-700|blue-950|bg-gradient-to-br|from-brand to-red-500/;
+const oldIdentityMentionTokens =
+  /from-brand to-red-500|hover:bg-gray-50|text-gray-700|text-gray-800|dark:text-gray-200|dark:text-gray-300/;
 
 describe("visual language surfaces", () => {
   afterEach(() => {
@@ -170,6 +172,19 @@ describe("visual language surfaces", () => {
 
     expect(source).not.toMatch(/to-warm-page\/\[0\.025\]/);
     expect(source).toMatch(/to-warm-page\/\[0\.012\]/);
+  });
+
+  it("keeps identity and mention surfaces out of legacy gradient and default gray chrome", () => {
+    const source = [
+      "packages/web-ui/src/components/UserControls.tsx",
+      "packages/web-ui/src/components/GroupChatPanel.tsx",
+      "packages/web-ui/src/components/MilkdownEditor.tsx",
+    ]
+      .map((path) => readFileSync(join(process.cwd(), path), "utf8"))
+      .join("\n");
+
+    expect(source).not.toMatch(oldIdentityMentionTokens);
+    expect(source).toMatch(/brand|warm|stone|slate/);
   });
 
   it.each([

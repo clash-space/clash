@@ -245,14 +245,14 @@ function AssetMentionMenu({
         <button
             key={node.id}
             className={`w-full flex items-center gap-2.5 px-3 py-2 text-left transition-colors ${
-                i === selectedIndex ? 'bg-warm-muted' : 'hover:bg-gray-50'
+                i === selectedIndex ? 'bg-warm-muted' : 'hover:bg-warm-muted/70'
             }`}
             onMouseDown={(e) => { e.preventDefault(); onSelect(node); }}
             onMouseEnter={() => setSelectedIndex(i)}
         >
             {node.type === 'crew' ? (
                 <span
-                    className="w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold text-white bg-gradient-to-br from-brand to-red-500 flex-shrink-0"
+                    className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-lg bg-brand-light text-[10px] font-bold text-slate-950 ring-1 ring-brand/20 dark:bg-brand/20 dark:text-slate-50"
                     aria-hidden="true"
                 >
                     {initialsOf(node.label)}
@@ -268,7 +268,7 @@ function AssetMentionMenu({
                     {typeIcon(node.type)}
                 </span>
             )}
-            <span className="text-sm text-gray-800 dark:text-gray-200 truncate flex-1">{node.label}</span>
+            <span className="text-sm text-slate-800 dark:text-slate-100 truncate flex-1">{node.label}</span>
             {node.type === 'crew' && (
                 <span className="text-[9px] uppercase tracking-wider text-stone-700 dark:text-stone-300 font-medium">
                     Crew
@@ -283,13 +283,13 @@ function AssetMentionMenu({
             style={{ left: coords.left, bottom: window.innerHeight - coords.top + 4 }}
         >
             {crewEntries.length > 0 && (
-                <div className="px-3 py-1 text-[10px] font-medium text-gray-700 dark:text-gray-300 uppercase tracking-wider bg-warm-muted border-b border-warm-border">
+                <div className="px-3 py-1 text-[10px] font-medium text-stone-600 dark:text-stone-300 uppercase tracking-wider bg-warm-muted border-b border-warm-border">
                     Crew
                 </div>
             )}
             {crewEntries.map((node, j) => renderRow(node, j))}
             {sortedAssets.length > 0 && (
-                <div className={`px-3 py-1 text-[10px] font-medium text-gray-700 dark:text-gray-300 uppercase tracking-wider bg-warm-muted ${crewEntries.length > 0 ? 'border-t border-warm-border' : ''}`}>
+                <div className={`px-3 py-1 text-[10px] font-medium text-stone-600 dark:text-stone-300 uppercase tracking-wider bg-warm-muted ${crewEntries.length > 0 ? 'border-t border-warm-border' : ''}`}>
                     Canvas
                 </div>
             )}

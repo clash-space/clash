@@ -556,7 +556,7 @@ export function GroupChatPanel({
         <button
           type="button"
           onClick={() => setSettingsOpen(true)}
-          className="block focus:outline-none focus-visible:ring-2 focus-visible:ring-brand/60 focus-visible:ring-offset-1 focus-visible:ring-offset-warm-surface rounded-full"
+          className="block rounded-xl focus:outline-none focus-visible:ring-2 focus-visible:ring-brand/60 focus-visible:ring-offset-1 focus-visible:ring-offset-warm-surface"
           aria-label={`Settings — signed in as ${sessionUser?.name ?? 'guest'}`}
           title={sessionUser?.name ?? 'Settings'}
         >
@@ -565,10 +565,10 @@ export function GroupChatPanel({
             <img
               src={sessionUser.image}
               alt="Your avatar"
-              className="h-9 w-9 rounded-full object-cover ring-1 ring-warm-border hover:ring-brand/60 transition-all"
+              className="h-9 w-9 rounded-xl object-cover ring-1 ring-warm-border hover:ring-brand/60 transition-all"
             />
           ) : (
-            <div className="h-9 w-9 rounded-full bg-gradient-to-br from-brand to-red-500 text-white text-xs font-bold flex items-center justify-center ring-1 ring-warm-border hover:ring-brand/60 transition-all">
+            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-brand-light text-xs font-bold text-slate-950 ring-1 ring-brand/20 transition-all hover:ring-brand/60 dark:bg-brand/20 dark:text-slate-50">
               {userInitials}
             </div>
           )}
