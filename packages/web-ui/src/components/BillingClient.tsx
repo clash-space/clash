@@ -32,7 +32,7 @@ export default function BillingClient({ balance, plans, packs, ledger, notEnable
   }
 
   return (
-    <div className="min-h-screen bg-neutral-50 dark:bg-neutral-950 text-neutral-900 dark:text-neutral-50">
+    <div className="min-h-screen bg-warm-page text-slate-950 dark:text-slate-50">
       <Header />
       <div className="max-w-5xl mx-auto px-6 py-8 space-y-10">
         <BalanceCard balance={balance} />
@@ -48,16 +48,16 @@ export default function BillingClient({ balance, plans, packs, ledger, notEnable
 
 function Header() {
   return (
-    <div className="border-b border-neutral-200 dark:border-neutral-800 bg-white/70 dark:bg-neutral-900/70 backdrop-blur sticky top-0 z-10">
+    <div className="sticky top-0 z-10 border-b border-warm-border bg-warm-surface/85 backdrop-blur">
       <div className="max-w-5xl mx-auto px-6 py-4 flex items-center gap-3">
         <Link
           to="/"
-          className="text-neutral-500 hover:text-neutral-900 dark:hover:text-neutral-50 transition-colors"
+          className="text-stone-500 transition-colors hover:text-slate-950 dark:text-stone-400 dark:hover:text-slate-50"
           aria-label="Back to home"
         >
           <ArrowLeft size={20} />
         </Link>
-        <h1 className="text-xl font-semibold">Billing</h1>
+        <h1 className="font-display text-xl font-semibold tracking-tight">Billing</h1>
       </div>
     </div>
   );
@@ -72,12 +72,12 @@ function BalanceCard({ balance }: { balance: Balance | null }) {
   const hold = balance?.hold ?? 0;
 
   return (
-    <section className="rounded-2xl bg-gradient-to-br from-indigo-500 to-purple-600 p-8 text-white shadow-lg">
+    <section className="rounded-2xl border border-warm-border bg-warm-surface/95 p-8 shadow-sm">
       <div className="flex items-baseline gap-3">
-        <span className="text-5xl font-bold tabular-nums">{available.toLocaleString()}</span>
-        <span className="text-lg opacity-80">credits available</span>
+        <span className="font-display text-5xl font-bold tabular-nums tracking-tight text-slate-950 dark:text-slate-50">{available.toLocaleString()}</span>
+        <span className="text-lg text-stone-600 dark:text-stone-300">credits available</span>
       </div>
-      <div className="mt-4 grid grid-cols-3 gap-4 text-sm opacity-90">
+      <div className="mt-6 grid grid-cols-1 gap-4 text-sm sm:grid-cols-3">
         <Stat label="Monthly grant" value={grant} hint={balance?.grant_expires_at ? `resets ${formatDate(balance.grant_expires_at)}` : undefined} />
         <Stat label="Top-up balance" value={topup} hint="never expires" />
         <Stat label="In-flight" value={hold} hint="reserved by tasks" />
@@ -89,9 +89,9 @@ function BalanceCard({ balance }: { balance: Balance | null }) {
 function Stat({ label, value, hint }: { label: string; value: number; hint?: string }) {
   return (
     <div>
-      <div className="opacity-70 text-xs uppercase tracking-wider">{label}</div>
-      <div className="text-2xl font-semibold tabular-nums">{value.toLocaleString()}</div>
-      {hint && <div className="text-xs opacity-60 mt-0.5">{hint}</div>}
+      <div className="text-xs uppercase tracking-wider text-stone-500 dark:text-stone-400">{label}</div>
+      <div className="mt-1 text-2xl font-semibold tabular-nums text-slate-900 dark:text-slate-100">{value.toLocaleString()}</div>
+      {hint && <div className="mt-0.5 text-xs text-stone-500 dark:text-stone-400">{hint}</div>}
     </div>
   );
 }
@@ -137,28 +137,28 @@ function PackCard({ pack }: { pack: TopupPack }) {
     <button
       onClick={handle}
       disabled={disabled || busy}
-      className={`text-left rounded-xl border p-5 transition-all ${
+      className={`text-left rounded-xl border bg-warm-surface/80 p-5 transition-all ${
         disabled
-          ? "border-neutral-200 dark:border-neutral-800 opacity-50 cursor-not-allowed"
-          : "border-neutral-200 dark:border-neutral-800 hover:border-indigo-500 hover:shadow-md cursor-pointer"
+          ? "border-warm-border opacity-50 cursor-not-allowed"
+          : "border-warm-border hover:border-brand/45 hover:bg-warm-surface hover:shadow-sm cursor-pointer"
       }`}
     >
       <div className="text-3xl font-bold tabular-nums">${dollars}</div>
-      <div className="mt-1 text-sm text-neutral-600 dark:text-neutral-400">
+      <div className="mt-1 text-sm text-stone-600 dark:text-stone-300">
         {pack.credits.toLocaleString()} credits
       </div>
       {pack.label.includes("bonus") && (
-        <div className="mt-2 inline-block rounded-full bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300 text-xs px-2 py-0.5 font-medium">
+        <div className="mt-2 inline-block rounded-full bg-brand-light text-brand text-xs px-2 py-0.5 font-medium">
           {pack.label.match(/\(([^)]+)\)/)?.[1] ?? "bonus"}
         </div>
       )}
       {disabled && (
-        <div className="mt-3 text-xs text-neutral-500 flex items-center gap-1">
+        <div className="mt-3 text-xs text-stone-500 flex items-center gap-1">
           <Lock size={12} />
           Setup pending
         </div>
       )}
-      {busy && <div className="mt-3 text-xs text-neutral-500">Redirecting…</div>}
+      {busy && <div className="mt-3 text-xs text-stone-500">Redirecting…</div>}
       {err && <div className="mt-3 text-xs text-red-500">{err}</div>}
     </button>
   );
@@ -205,21 +205,21 @@ function PlanCard({ plan }: { plan: Plan }) {
 
   return (
     <div
-      className={`rounded-xl border p-5 flex flex-col ${
+      className={`rounded-xl border p-5 flex flex-col bg-warm-surface/80 ${
         isStudio
-          ? "border-indigo-500 ring-2 ring-indigo-500/20 bg-indigo-50/30 dark:bg-indigo-950/20"
-          : "border-neutral-200 dark:border-neutral-800"
+          ? "border-brand/55 ring-2 ring-brand/15 bg-brand-light/50"
+          : "border-warm-border"
       }`}
     >
       <div className="flex items-center justify-between">
         <div className="font-semibold text-lg">{plan.name}</div>
-        {isStudio && <Sparkle size={16} weight="fill" className="text-indigo-500" />}
+        {isStudio && <Sparkle size={16} weight="fill" className="text-brand" />}
       </div>
       <div className="mt-2 flex items-baseline gap-1">
         <span className="text-3xl font-bold tabular-nums">${dollars}</span>
-        {!free && <span className="text-sm text-neutral-500">/mo</span>}
+        {!free && <span className="text-sm text-stone-500">/mo</span>}
       </div>
-      <div className="mt-1 text-xs text-neutral-600 dark:text-neutral-400">
+      <div className="mt-1 text-xs text-stone-600 dark:text-stone-300">
         {plan.monthly_credits.toLocaleString()} credits / month
       </div>
       <ul className="mt-4 space-y-1.5 text-sm flex-1">
@@ -234,8 +234,8 @@ function PlanCard({ plan }: { plan: Plan }) {
         disabled={disabled || busy}
         className={`mt-5 w-full rounded-lg py-2.5 text-sm font-medium transition-colors ${
           disabled
-            ? "bg-neutral-100 dark:bg-neutral-800 text-neutral-500 cursor-not-allowed"
-            : "bg-neutral-900 text-white hover:bg-neutral-700 dark:bg-neutral-50 dark:text-neutral-900 dark:hover:bg-neutral-200"
+            ? "bg-warm-muted text-stone-500 cursor-not-allowed"
+            : "bg-slate-950 text-white hover:bg-slate-800 dark:bg-slate-100 dark:text-slate-950 dark:hover:bg-white"
         }`}
       >
         {free ? "Default plan" : busy ? "Redirecting…" : "Choose"}
@@ -247,8 +247,8 @@ function PlanCard({ plan }: { plan: Plan }) {
 
 function Feature({ value }: { value: string }) {
   return (
-    <li className="flex items-center gap-2 text-neutral-700 dark:text-neutral-300">
-      <span className="text-emerald-500">✓</span>
+    <li className="flex items-center gap-2 text-stone-700 dark:text-stone-300">
+      <span className="text-brand">✓</span>
       {value}
     </li>
   );
@@ -264,8 +264,8 @@ function LedgerSection({ entries }: { entries: LedgerEntry[] }) {
         title="Recent activity"
         subtitle="Last 20 credit movements."
       />
-      <div className="rounded-xl border border-neutral-200 dark:border-neutral-800 overflow-hidden">
-        <div className="divide-y divide-neutral-200 dark:divide-neutral-800">
+      <div className="rounded-xl border border-warm-border bg-warm-surface/80 overflow-hidden">
+        <div className="divide-y divide-warm-border">
           {entries.map((e) => <LedgerRow key={e.id} entry={e} />)}
         </div>
       </div>
@@ -280,12 +280,12 @@ function LedgerRow({ entry }: { entry: LedgerEntry }) {
       ? "text-emerald-600 dark:text-emerald-400"
       : entry.kind === "hold"
         ? "text-amber-600 dark:text-amber-400"
-        : "text-neutral-700 dark:text-neutral-300";
+        : "text-stone-700 dark:text-stone-300";
   return (
     <div className="px-4 py-3 flex items-center justify-between text-sm">
       <div>
         <div className="font-medium capitalize">{entry.kind}</div>
-        <div className="text-xs text-neutral-500">
+        <div className="text-xs text-stone-500">
           {formatDateTime(entry.created_at)}
           {entry.model_id && ` · ${entry.model_id}`}
         </div>
@@ -311,11 +311,11 @@ function SectionHeader({
 }) {
   return (
     <div className="mb-4">
-      <div className="flex items-center gap-2 text-neutral-900 dark:text-neutral-50">
+      <div className="flex items-center gap-2 text-slate-950 dark:text-slate-50">
         {icon}
         <h2 className="text-lg font-semibold">{title}</h2>
       </div>
-      <p className="text-sm text-neutral-500 mt-0.5">{subtitle}</p>
+      <p className="text-sm text-stone-500 mt-0.5">{subtitle}</p>
     </div>
   );
 }
@@ -324,18 +324,18 @@ function NotEnabledState() {
   const [settingsOpen, setSettingsOpen] = useState(false);
 
   return (
-    <div className="min-h-screen bg-neutral-50 dark:bg-neutral-950 text-neutral-900 dark:text-neutral-50 flex items-center justify-center px-6">
+    <div className="min-h-screen bg-warm-page text-slate-950 dark:text-slate-50 flex items-center justify-center px-6">
       <div className="max-w-md text-center">
-        <Lock size={48} className="mx-auto text-neutral-400" />
-        <h1 className="text-2xl font-semibold mt-4">Billing not enabled</h1>
-        <p className="mt-2 text-neutral-600 dark:text-neutral-400 text-sm">
+        <Lock size={48} className="mx-auto text-stone-400" />
+        <h1 className="mt-4 font-display text-2xl font-semibold tracking-tight">Billing not enabled</h1>
+        <p className="mt-2 text-stone-600 dark:text-stone-300 text-sm">
           This is a self-hosted deployment without the managed billing plugin.
           Use BYOK API keys directly — no credits required.
         </p>
         <button
           type="button"
           onClick={() => setSettingsOpen(true)}
-          className="mt-6 inline-flex items-center gap-2 rounded-lg bg-neutral-900 dark:bg-neutral-50 dark:text-neutral-900 text-white px-5 py-2.5 text-sm font-medium hover:opacity-90"
+          className="mt-6 inline-flex items-center gap-2 rounded-lg bg-slate-950 text-white px-5 py-2.5 text-sm font-medium transition-colors hover:bg-slate-800 dark:bg-slate-100 dark:text-slate-950 dark:hover:bg-white"
         >
           Configure API keys
         </button>
