@@ -1133,7 +1133,7 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
             const numericValue = typeof currentValue === 'number' ? currentValue : Number(currentValue ?? 0);
             return (
                 <div key={param.id} className="space-y-1">
-                    <div className="flex justify-between text-[10px] font-medium text-gray-700 dark:text-gray-300">
+                    <div className="flex justify-between text-[10px] font-medium text-stone-700 dark:text-stone-300">
                         <span>{param.label}</span>
                         <span>{numericValue}</span>
                     </div>
@@ -1144,10 +1144,10 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
                         step={param.step ?? 1}
                         value={numericValue}
                         onChange={(e) => updateModelParam(param.id, Number(e.target.value))}
-                        className="w-full h-1 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-gray-900"
+                        className="w-full h-1 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-brand"
                     />
                     {param.description && (
-                        <p className="text-[10px] text-gray-700 dark:text-gray-300 leading-snug">{param.description}</p>
+                        <p className="text-[10px] text-stone-700 dark:text-stone-300 leading-snug">{param.description}</p>
                     )}
                 </div>
             );
@@ -1158,11 +1158,11 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
             const selected = options.find((opt) => String(opt.value) === String(currentValue))?.value ?? options[0]?.value ?? '';
             return (
                 <div key={param.id} className="space-y-1">
-                    <div className="flex justify-between text-[10px] font-medium text-gray-700 dark:text-gray-300">
+                    <div className="flex justify-between text-[10px] font-medium text-stone-700 dark:text-stone-300">
                         <span>{param.label}</span>
                     </div>
                     <select
-                        className="w-full rounded-xl border border-warm-border bg-warm-surface px-3 py-2 text-xs font-medium text-slate-900 dark:text-slate-50 focus:outline-none focus:border-gray-400 transition-colors"
+                        className="w-full rounded-xl border border-warm-border bg-warm-surface px-3 py-2 text-xs font-medium text-slate-900 dark:text-slate-50 focus:outline-none focus:border-brand/70 transition-colors"
                         value={String(selected)}
                         onChange={(e) => {
                             const next = options.find((opt) => String(opt.value) === e.target.value);
@@ -1177,7 +1177,7 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
                         ))}
                     </select>
                     {param.description && (
-                        <p className="text-[10px] text-gray-700 dark:text-gray-300 leading-snug">{param.description}</p>
+                        <p className="text-[10px] text-stone-700 dark:text-stone-300 leading-snug">{param.description}</p>
                     )}
                 </div>
             );
@@ -1186,7 +1186,7 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
         if (param.type === 'number') {
             return (
                 <div key={param.id} className="space-y-1">
-                    <div className="flex justify-between text-[10px] font-medium text-gray-700 dark:text-gray-300">
+                    <div className="flex justify-between text-[10px] font-medium text-stone-700 dark:text-stone-300">
                         <span>{param.label}</span>
                     </div>
                     <input
@@ -1196,11 +1196,11 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
                         step={param.step}
                         value={currentValue as number | string}
                         onChange={(e) => updateModelParam(param.id, Number(e.target.value))}
-                        className="w-full rounded-xl border border-warm-border bg-warm-surface px-3 py-2 text-xs font-medium text-slate-900 dark:text-slate-50 focus:outline-none focus:border-gray-400 transition-colors"
+                        className="w-full rounded-xl border border-warm-border bg-warm-surface px-3 py-2 text-xs font-medium text-slate-900 dark:text-slate-50 focus:outline-none focus:border-brand/70 transition-colors"
                         onMouseDown={(e) => e.stopPropagation()}
                     />
                     {param.description && (
-                        <p className="text-[10px] text-gray-700 dark:text-gray-300 leading-snug">{param.description}</p>
+                        <p className="text-[10px] text-stone-700 dark:text-stone-300 leading-snug">{param.description}</p>
                     )}
                 </div>
             );
@@ -1209,7 +1209,7 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
         if (param.type === 'text') {
             return (
                 <div key={param.id} className="space-y-1">
-                    <div className="flex justify-between text-[10px] font-medium text-gray-700 dark:text-gray-300">
+                    <div className="flex justify-between text-[10px] font-medium text-stone-700 dark:text-stone-300">
                         <span>{param.label}</span>
                     </div>
                     <textarea
@@ -1217,11 +1217,11 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
                         value={String(currentValue)}
                         onChange={(e) => updateModelParam(param.id, e.target.value)}
                         placeholder={param.placeholder}
-                        className="w-full rounded-xl border border-warm-border bg-warm-surface px-3 py-2 text-xs font-medium text-slate-900 dark:text-slate-50 focus:outline-none focus:border-gray-400 resize-none transition-colors"
+                        className="w-full rounded-xl border border-warm-border bg-warm-surface px-3 py-2 text-xs font-medium text-slate-900 dark:text-slate-50 focus:outline-none focus:border-brand/70 resize-none transition-colors"
                         onMouseDown={(e) => e.stopPropagation()}
                     />
                     {param.description && (
-                        <p className="text-[10px] text-gray-700 dark:text-gray-300 leading-snug">{param.description}</p>
+                        <p className="text-[10px] text-stone-700 dark:text-stone-300 leading-snug">{param.description}</p>
                     )}
                 </div>
             );
@@ -1233,7 +1233,7 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
                     <div className="flex flex-col">
                         <span className="text-xs font-medium text-slate-900 dark:text-slate-50">{param.label}</span>
                         {param.description && (
-                            <span className="text-[10px] text-gray-700 dark:text-gray-300">{param.description}</span>
+                            <span className="text-[10px] text-stone-700 dark:text-stone-300">{param.description}</span>
                         )}
                     </div>
                     <input
@@ -1241,7 +1241,7 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
                         checked={Boolean(currentValue)}
                         onChange={(e) => updateModelParam(param.id, e.target.checked)}
                         onMouseDown={(e) => e.stopPropagation()}
-                        className="h-4 w-4 accent-gray-900"
+                        className="h-4 w-4 accent-brand"
                     />
                 </label>
             );
@@ -1280,7 +1280,7 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
                             onChange={handleLabelChange}
                             disabled={isFrozen}
                             placeholder="Untitled Prompt"
-                            className="w-full text-4xl font-bold text-slate-900 dark:text-slate-50 placeholder:text-gray-300 bg-transparent border-none outline-none focus:outline-none disabled:opacity-60"
+                            className="w-full text-4xl font-bold text-slate-900 dark:text-slate-50 placeholder:text-stone-300 bg-transparent border-none outline-none focus:outline-none disabled:opacity-60"
                             style={{
                                 fontFamily: 'var(--font-space-grotesk), var(--font-inter), sans-serif',
                                 letterSpacing: '-0.02em'
@@ -1311,7 +1311,7 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
                             )}
                             <button
                                 onClick={handleCancel}
-                                className="p-2 text-gray-700 dark:text-gray-300 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+                                className="p-2 text-stone-700 dark:text-stone-300 hover:text-stone-600 hover:bg-warm-muted rounded-lg transition-colors"
                             >
                                 <X className="w-5 h-5" weight="bold" />
                             </button>
@@ -1656,8 +1656,8 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
                             ref={editorRef}
                             contentEditable={!isFrozen}
                             suppressContentEditableWarning
-                            className={`w-full max-h-[40vh] overflow-y-auto text-sm focus:outline-none leading-relaxed empty:before:content-[attr(data-placeholder)] empty:before:text-gray-400 ${
-                                isFrozen ? 'text-gray-700 dark:text-gray-300 cursor-default select-text' : 'text-slate-900 dark:text-slate-50'
+                            className={`w-full max-h-[40vh] overflow-y-auto text-sm focus:outline-none leading-relaxed empty:before:content-[attr(data-placeholder)] empty:before:text-stone-400 ${
+                                isFrozen ? 'text-stone-700 dark:text-stone-300 cursor-default select-text' : 'text-slate-900 dark:text-slate-50'
                             }`}
                             style={{ minHeight: '3em' }}
                             data-placeholder="Describe anything you want to generate... (@ to ref assets)"
@@ -1683,7 +1683,7 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
                                     <div
                                         key={node.id}
                                         className={`px-3 py-2 text-xs cursor-pointer flex items-center gap-2.5 transition-colors ${
-                                            idx === mentionIndex ? 'bg-warm-muted' : 'hover:bg-gray-50'
+                                            idx === mentionIndex ? 'bg-warm-muted' : 'hover:bg-warm-muted'
                                         }`}
                                         onMouseDown={(e) => { e.preventDefault(); insertMention(node); }}
                                     >
@@ -1695,7 +1695,7 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
                                             />
                                         ) : (
                                             <div className="h-8 w-8 rounded bg-warm-muted flex-shrink-0 flex items-center justify-center border border-warm-border">
-                                                <span className="text-[9px] uppercase text-gray-700 dark:text-gray-300">{node.type}</span>
+                                                <span className="text-[9px] uppercase text-stone-700 dark:text-stone-300">{node.type}</span>
                                             </div>
                                         )}
                                         <span className="font-medium text-slate-900 dark:text-slate-50 truncate">{node.label}</span>
@@ -1717,8 +1717,8 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
                             style={customActionOffline ? { opacity: 0.5 } : undefined}
                         >
                             <button
-                                className={`flex items-center gap-1 px-2.5 py-1 rounded-full bg-warm-muted text-xs font-medium text-gray-800 dark:text-gray-200 transition-colors ${
-                                    customActionOffline ? 'cursor-not-allowed' : 'hover:bg-gray-200'
+                                className={`flex items-center gap-1 px-2.5 py-1 rounded-full bg-warm-muted text-xs font-medium text-stone-800 dark:text-stone-200 transition-colors ${
+                                    customActionOffline ? 'cursor-not-allowed' : 'hover:bg-warm-hover'
                                 }`}
                                 onClick={(e) => {
                                     e.stopPropagation();
@@ -1731,7 +1731,7 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
                             >
                                 <Icon size={12} weight="bold" className={colorClass} />
                                 {modelDisplay}
-                                <CaretDown size={10} weight="bold" className="text-gray-700 dark:text-gray-300" />
+                                <CaretDown size={10} weight="bold" className="text-stone-700 dark:text-stone-300" />
                             </button>
                             {customActionOffline && (
                                 <span className="ml-2 text-[10px] text-slate-700 dark:text-slate-300 align-middle">
@@ -1757,10 +1757,10 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
                                                 key={card.id}
                                                 className={`px-3 py-2 text-xs cursor-pointer transition-colors ${
                                                     selected
-                                                        ? 'bg-gray-900 text-white'
+                                                        ? 'bg-slate-950 text-white'
                                                         : compat
-                                                            ? 'text-gray-800 dark:text-gray-200 hover:bg-gray-50'
-                                                            : 'text-gray-700 dark:text-gray-300 hover:bg-amber-50'
+                                                            ? 'text-stone-800 dark:text-stone-200 hover:bg-warm-muted'
+                                                            : 'text-stone-700 dark:text-stone-300 hover:bg-amber-50'
                                                 }`}
                                                 onClick={() => {
                                                     handleModelChange(card.id);
@@ -1769,7 +1769,7 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
                                             >
                                                 <div className="font-bold leading-tight">{card.name}</div>
                                                 {secondaryText && (
-                                                    <div className={`text-[10px] ${selected ? 'text-gray-300' : 'text-amber-600'}`}>
+                                                    <div className={`text-[10px] ${selected ? 'text-stone-300' : 'text-amber-600'}`}>
                                                         {secondaryText}
                                                     </div>
                                                 )}
@@ -1785,14 +1785,14 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
                             <div className="relative flex-shrink-0">
                                 <button
                                     className={`flex items-center gap-1 px-2.5 py-1 rounded-full text-xs transition-colors ${
-                                        activeParamDropdown === '_params' ? 'bg-gray-200 text-slate-900 dark:text-slate-50' : 'bg-warm-muted hover:bg-gray-200 text-gray-700 dark:text-gray-300'
+                                        activeParamDropdown === '_params' ? 'bg-warm-hover text-slate-900 dark:text-slate-50' : 'bg-warm-muted hover:bg-warm-hover text-stone-700 dark:text-stone-300'
                                     }`}
                                     onClick={(e) => { e.stopPropagation(); setActiveParamDropdown(activeParamDropdown === '_params' ? null : '_params'); setShowModelDropdown(false); }}
                                 >
-                                    <span className="font-medium text-gray-800">
+                                    <span className="font-medium text-stone-800">
                                         {paramChips.map((c) => c.value).join(' · ')}
                                     </span>
-                                    <CaretDown size={10} weight="bold" className="text-gray-700 dark:text-gray-300" />
+                                    <CaretDown size={10} weight="bold" className="text-stone-700 dark:text-stone-300" />
                                 </button>
                                 {activeParamDropdown === '_params' && (
                                     <div className="absolute left-0 bottom-full mb-2 bg-warm-surface border border-warm-border rounded-2xl shadow-xl z-50 min-w-[240px] overflow-hidden">
@@ -1806,13 +1806,13 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
                                             return (
                                                 <div key={p.id} className={idx > 0 ? 'border-t border-warm-border' : ''}>
                                                     <button
-                                                        className="w-full flex items-center justify-between px-4 py-2.5 hover:bg-gray-50 transition-colors"
+                                                        className="w-full flex items-center justify-between px-4 py-2.5 hover:bg-warm-muted transition-colors"
                                                         onClick={(e) => { e.stopPropagation(); setExpandedParam(isExpanded ? null : p.id); }}
                                                     >
-                                                        <span className="text-xs text-gray-700 dark:text-gray-300">{p.label}</span>
+                                                        <span className="text-xs text-stone-700 dark:text-stone-300">{p.label}</span>
                                                         <span className="flex items-center gap-1 text-xs font-semibold text-slate-900 dark:text-slate-50">
                                                             {currentLabel}
-                                                            <CaretDown size={10} weight="bold" className={`text-gray-700 dark:text-gray-300 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
+                                                            <CaretDown size={10} weight="bold" className={`text-stone-700 dark:text-stone-300 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
                                                         </span>
                                                     </button>
                                                     {isExpanded && (
@@ -1821,7 +1821,7 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
                                                                 <div className="flex flex-wrap gap-1.5">
                                                                     {p.options?.map((opt) => (
                                                                         <button key={String(opt.value)}
-                                                                            className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${String(currentVal) === String(opt.value) ? 'bg-gray-900 text-white' : 'bg-warm-muted text-gray-800 dark:text-gray-200 hover:bg-gray-200'}`}
+                                                                            className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${String(currentVal) === String(opt.value) ? 'bg-slate-950 text-white' : 'bg-warm-muted text-stone-800 dark:text-stone-200 hover:bg-warm-hover'}`}
                                                                             onClick={(e) => { e.stopPropagation(); updateModelParam(p.id, opt.value); setExpandedParam(null); }}
                                                                         >{opt.label}</button>
                                                                     ))}
@@ -1831,7 +1831,7 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
                                                                 <div className="flex gap-1.5">
                                                                     {[{ l: 'On', v: true }, { l: 'Off', v: false }].map((o) => (
                                                                         <button key={o.l}
-                                                                            className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${Boolean(currentVal) === o.v ? 'bg-gray-900 text-white' : 'bg-warm-muted text-gray-800 dark:text-gray-200 hover:bg-gray-200'}`}
+                                                                            className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${Boolean(currentVal) === o.v ? 'bg-slate-950 text-white' : 'bg-warm-muted text-stone-800 dark:text-stone-200 hover:bg-warm-hover'}`}
                                                                             onClick={(e) => { e.stopPropagation(); updateModelParam(p.id, o.v); setExpandedParam(null); }}
                                                                         >{o.l}</button>
                                                                     ))}
@@ -1841,19 +1841,19 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
                                                                 <input type="number" min={p.min} max={p.max} step={p.step}
                                                                     value={currentVal as number}
                                                                     onChange={(e) => updateModelParam(p.id, Number(e.target.value))}
-                                                                    className="w-full text-xs border border-warm-border rounded-lg px-3 py-2 focus:outline-none focus:border-gray-400"
+                                                                    className="w-full text-xs border border-warm-border rounded-lg px-3 py-2 focus:outline-none focus:border-brand/70"
                                                                     onClick={(e) => e.stopPropagation()} onMouseDown={(e) => e.stopPropagation()}
                                                                 />
                                                             )}
                                                             {p.type === 'slider' && (
                                                                 <div className="space-y-1.5" onClick={(e) => e.stopPropagation()}>
-                                                                    <div className="flex justify-between text-[10px] text-gray-700 dark:text-gray-300">
+                                                                    <div className="flex justify-between text-[10px] text-stone-700 dark:text-stone-300">
                                                                         <span>{p.min}</span><span className="font-semibold text-slate-900 dark:text-slate-50">{currentVal}</span><span>{p.max}</span>
                                                                     </div>
                                                                     <input type="range" min={p.min} max={p.max} step={p.step}
                                                                         value={currentVal as number}
                                                                         onChange={(e) => updateModelParam(p.id, Number(e.target.value))}
-                                                                        className="w-full h-1.5 bg-gray-200 rounded-full appearance-none cursor-pointer accent-gray-900"
+                                                                        className="w-full h-1.5 bg-warm-hover rounded-full appearance-none cursor-pointer accent-brand"
                                                                         onMouseDown={(e) => e.stopPropagation()}
                                                                     />
                                                                 </div>
@@ -1875,11 +1875,11 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
                             user can bump the count and then Run to spawn more siblings. */}
                         <div className="relative flex-shrink-0">
                             <button
-                                className="flex items-center gap-1 px-2.5 py-1 rounded-full bg-warm-muted hover:bg-gray-200 text-xs font-medium text-gray-800 dark:text-gray-200 transition-colors"
+                                className="flex items-center gap-1 px-2.5 py-1 rounded-full bg-warm-muted hover:bg-warm-hover text-xs font-medium text-stone-800 dark:text-stone-200 transition-colors"
                                 onClick={(e) => { e.stopPropagation(); setActiveParamDropdown(activeParamDropdown === '_count' ? null : '_count'); setShowModelDropdown(false); }}
                             >
                                 x{countValue}
-                                <CaretDown size={10} weight="bold" className="text-gray-700 dark:text-gray-300" />
+                                <CaretDown size={10} weight="bold" className="text-stone-700 dark:text-stone-300" />
                             </button>
                             {activeParamDropdown === '_count' && (
                                 <div className="absolute right-0 bottom-full mb-1 min-w-[80px] bg-warm-surface border border-warm-border rounded-xl shadow-lg overflow-hidden z-50">
@@ -1887,7 +1887,7 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
                                         <div
                                             key={n}
                                             className={`px-3 py-2 text-xs cursor-pointer text-center transition-colors ${
-                                                countValue === n ? 'bg-gray-900 text-white' : 'text-gray-800 dark:text-gray-200 hover:bg-gray-50'
+                                                countValue === n ? 'bg-slate-950 text-white' : 'text-stone-800 dark:text-stone-200 hover:bg-warm-muted'
                                             }`}
                                             onClick={() => {
                                                 updateModelParam('count', n);
@@ -1908,7 +1908,7 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
                                     type="button"
                                     onClick={(e) => { e.stopPropagation(); handleCopy(); }}
                                     disabled={isExecuting}
-                                    className="flex items-center gap-1 h-7 px-2.5 rounded-full bg-warm-muted hover:bg-gray-200 text-gray-800 dark:text-gray-200 text-xs font-medium transition-colors flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
+                                    className="flex items-center gap-1 h-7 px-2.5 rounded-full bg-warm-muted hover:bg-warm-hover text-stone-800 dark:text-stone-200 text-xs font-medium transition-colors flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
                                     title="Duplicate this panel and open the copy"
                                 >
                                     <Copy size={12} weight="bold" />
@@ -1918,7 +1918,7 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
                                     type="button"
                                     onClick={(e) => { e.stopPropagation(); if (customActionOffline) return; handleExecute(); }}
                                     disabled={isExecuting || customActionOffline}
-                                    className="flex items-center gap-1 px-3 h-7 rounded-full bg-gray-900 hover:bg-black text-white text-xs font-semibold transition-colors flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
+                                    className="flex items-center gap-1 px-3 h-7 rounded-full bg-slate-950 hover:bg-black text-white text-xs font-semibold transition-colors flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
                                     title={customActionOffline ? RUNTIME_OFFLINE_TOOLTIP : 'Run again with current parameters'}
                                     aria-disabled={customActionOffline || undefined}
                                 >
@@ -2025,7 +2025,7 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
 const MarkdownPreview = ({ content }: { content: string }) => {
     return (
         <div
-            className="prose prose-sm max-w-none prose-slate prose-headings:font-bold prose-headings:text-gray-900 prose-p:text-gray-700 prose-a:text-gray-900 prose-a:underline prose-code:text-gray-700 prose-code:bg-gray-100 prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded"
+            className="prose prose-sm max-w-none prose-slate prose-headings:font-bold prose-headings:text-slate-950 prose-p:text-stone-700 prose-a:text-slate-950 prose-a:underline prose-code:text-stone-700 prose-code:bg-warm-muted prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded"
             dangerouslySetInnerHTML={{
                 __html: content
                     .replace(/^### (.*$)/gim, '<h3>$1</h3>')

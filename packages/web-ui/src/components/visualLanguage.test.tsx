@@ -1,4 +1,6 @@
 // @vitest-environment jsdom
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -39,6 +41,8 @@ vi.mock("framer-motion", async () => {
 });
 
 const oldVisualTokens = /indigo|purple|violet|blue-50|blue-500|bg-gradient-to-br|text-gray|bg-gray|border-gray/;
+const oldCanvasControlTokens =
+  /text-gray|bg-gray|border-gray|hover:bg-gray|focus:border-gray|placeholder:text-gray|accent-gray|prose-headings:text-gray|prose-p:text-gray|prose-code:text-gray/;
 
 describe("visual language surfaces", () => {
   afterEach(() => {
@@ -136,6 +140,14 @@ describe("visual language surfaces", () => {
     expect(container.innerHTML).not.toMatch(oldVisualTokens);
     expect(container.querySelector('[class*="bg-warm-surface/95"]')).toBeTruthy();
     expect(container.querySelector('[class*="ring-brand/15"]')).toBeTruthy();
+  });
+
+  it("keeps ActionBadge canvas controls on warm and brand tokens", () => {
+    const sourcePath = join(process.cwd(), "packages/web-ui/src/components/nodes/ActionBadge.tsx");
+    const source = readFileSync(sourcePath, "utf8");
+
+    expect(source).not.toMatch(oldCanvasControlTokens);
+    expect(source).toMatch(/brand|warm|stone|slate/);
   });
 
   it.each([
