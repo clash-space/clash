@@ -28,10 +28,12 @@ export function AgentCard({ agentName, status, children, isExpanded: initialExpa
     const { t } = useTranslation();
     const { isOpen, triggerProps, panelProps } = useDisclosure(initialExpanded);
 
-    // Pill colors meet WCAG AA against the surface in both themes.
+    // Working is the agent "alive" state, so it uses brand coral. Other
+    // states stay semantic and subdued so the panel does not turn into a
+    // status rainbow.
     const statusConfig = {
-        working: { icon: CircleNotch, color: 'text-blue-700 dark:text-blue-300', bg: 'bg-blue-100 dark:bg-blue-950/50', animate: true },
-        done: { icon: CheckCircle, color: 'text-green-700 dark:text-green-300', bg: 'bg-green-100 dark:bg-green-950/50', animate: false },
+        working: { icon: CircleNotch, color: 'text-white', bg: 'bg-brand shadow-sm shadow-brand/20', animate: true },
+        done: { icon: CheckCircle, color: 'text-emerald-700 dark:text-emerald-300', bg: 'bg-emerald-50 dark:bg-emerald-950/50', animate: false },
         waiting: { icon: PauseCircle, color: 'text-amber-700 dark:text-amber-300', bg: 'bg-amber-100 dark:bg-amber-950/50', animate: false },
         failed: { icon: Robot, color: 'text-red-700 dark:text-red-300', bg: 'bg-red-100 dark:bg-red-950/50', animate: false },
     };
@@ -65,7 +67,7 @@ export function AgentCard({ agentName, status, children, isExpanded: initialExpa
                         <PersonaIcon className="w-4 h-4 text-slate-700 dark:text-slate-300" weight="duotone" />
                         {config.animate && (
                             <span className="absolute -bottom-1 -right-1 bg-warm-surface rounded-full p-0.5 shadow-sm">
-                                <StatusIcon className="w-3 h-3 text-blue-700 dark:text-blue-300 animate-spin motion-reduce:animate-none" weight="bold" />
+                                <StatusIcon className="w-3 h-3 text-brand animate-spin motion-reduce:animate-none" weight="bold" />
                             </span>
                         )}
                     </span>

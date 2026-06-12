@@ -1,14 +1,26 @@
-import { describe, it, expect, vi } from "vitest";
-import { render, screen, fireEvent } from "@testing-library/react";
+// @vitest-environment jsdom
+import "@testing-library/jest-dom/vitest";
+import { afterEach, describe, it, expect, vi } from "vitest";
+import { cleanup, render, screen, fireEvent } from "@testing-library/react";
 import { AgentCard, AgentLog } from "./AgentCard";
+import { ApprovalCard } from "./ApprovalCard";
+import { NodeProposalCard } from "./NodeProposalCard";
+import { ThinkingIndicator } from "./ThinkingIndicator";
 
 // Mock framer-motion to avoid animation complexity in tests
 vi.mock("framer-motion", () => ({
   motion: {
-    div: ({ children, ...props }: any) => <div {...props}>{children}</div>,
-    button: ({ children, ...props }: any) => <button {...props}>{children}</button>,
+    div: ({ children, initial, animate, exit, transition, ...props }: any) => <div {...props}>{children}</div>,
+    button: ({ children, whileHover, whileTap, initial, animate, exit, transition, ...props }: any) => <button {...props}>{children}</button>,
+    span: ({ children, initial, animate, exit, transition, ...props }: any) => <span {...props}>{children}</span>,
   },
   AnimatePresence: ({ children }: any) => <>{children}</>,
+}));
+
+vi.mock("react-i18next", () => ({
+  useTranslation: () => ({
+    t: (key: string) => key.split(".").at(-1) ?? key,
+  }),
 }));
 
 // Mock phosphor icons
@@ -25,6 +37,9 @@ vi.mock("@phosphor-icons/react", () => {
     FilmStrip: Icon,
     Scroll: Icon,
     MagicWand: Icon,
+    Play: Icon,
+    Cube: Icon,
+    Sparkle: Icon,
     VideoCamera: Icon,
     Wrench: Icon,
     Check: Icon,
@@ -38,6 +53,10 @@ vi.mock("react-markdown", () => ({
 }));
 
 describe("AgentCard", () => {
+  afterEach(() => {
+    cleanup();
+  });
+
   it("renders agent name and status", () => {
     render(<AgentCard agentName="ScriptWriter" status="working" />);
 
@@ -143,18 +162,66 @@ describe("AgentCard", () => {
     // The state should have toggled (testing the click handler)
   });
 
-  it("renders with correct persona icons", () => {
+  it("renders persona variants without renaming the agent", () => {
     const { rerender } = render(
       <AgentCard agentName="Director" status="working" persona="director" />
     );
-    expect(screen.getByText("Orchestrator")).toBeInTheDocument();
+    expect(screen.getByText("Director")).toBeInTheDocument();
 
     rerender(<AgentCard agentName="ScriptWriter" status="working" persona="scriptwriter" />);
-    expect(screen.queryByText("Orchestrator")).not.toBeInTheDocument();
+    expect(screen.getByText("ScriptWriter")).toBeInTheDocument();
+    expect(screen.queryByText("Director")).not.toBeInTheDocument();
   });
 
   it("handles empty logs gracefully", () => {
     render(<AgentCard agentName="Agent" status="working" logs={[]} />);
     expect(screen.getByText("Agent")).toBeInTheDocument();
+  });
+
+  it("keeps the copilot stack on the warm Clash visual language", () => {
+    const logs: AgentLog[] = [
+      { id: "thinking", type: "thinking", content: "Checking the canvas before editing." },
+      {
+        id: "tool",
+        type: "tool_call",
+        toolProps: {
+          toolName: "create_canvas_node",
+          args: { type: "image", label: "Reference frame" },
+          status: "pending",
+          isExpanded: true,
+        },
+      },
+    ];
+
+    const proposal = {
+      id: "proposal-1",
+      type: "generative" as const,
+      nodeType: "image",
+      nodeData: { label: "Reference frame", prompt: "warm studio test" },
+      message: "Create a reference frame from the current beat.",
+    };
+
+    const { container } = render(
+      <div>
+        <AgentCard agentName="Director" status="working" logs={logs} />
+        <NodeProposalCard
+          proposal={proposal}
+          onAccept={vi.fn()}
+          onReject={vi.fn()}
+          onAcceptAndRun={vi.fn()}
+        />
+        <ApprovalCard message="Apply the proposed canvas edit?" onApprove={vi.fn()} onReject={vi.fn()} />
+        <ThinkingIndicator />
+      </div>
+    );
+
+    const classes = Array.from(container.querySelectorAll("[class]"))
+      .map((node) => node.getAttribute("class"))
+      .join(" ");
+
+    expect(classes).not.toMatch(
+      /indigo|blue-100|blue-300|blue-400|blue-600|blue-700|blue-950|ring-blue|bg-slate-50|border-slate-200/,
+    );
+    expect(classes).toMatch(/brand|warm|stone|slate/);
   });
 });

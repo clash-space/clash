@@ -14,7 +14,7 @@ export function ThinkingIndicator({ message = 'Thinking' }: ThinkingIndicatorPro
             transition={{ duration: 0.3 }}
             className="flex items-center gap-2 px-1 py-2"
         >
-            <span className="p-1 rounded-md bg-indigo-50 text-indigo-600 dark:bg-indigo-950/40 dark:text-indigo-300" aria-hidden="true">
+            <span className="p-1 rounded-md bg-brand-light text-brand dark:bg-brand/15 dark:text-brand" aria-hidden="true">
                 <motion.span
                     className="block motion-reduce:hidden"
                     animate={{ rotate: 360 }}
