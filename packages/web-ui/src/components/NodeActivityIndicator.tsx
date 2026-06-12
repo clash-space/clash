@@ -105,7 +105,7 @@ export default function NodeActivityIndicator({
             >
               {/* Indicator pill */}
               <div className={`flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium shadow-sm ${
-                isAgent ? 'bg-brand text-white' : isCli ? 'bg-warm-surface text-blue-700 ring-1 ring-warm-border dark:text-blue-300' : 'bg-brand text-white'
+                isAgent ? 'bg-brand text-white' : isCli ? 'bg-warm-surface text-slate-700 ring-1 ring-warm-border dark:text-slate-300' : 'bg-brand text-white'
               }`}>
                 {isAgent ? (
                   <Sparkle className="h-2.5 w-2.5" weight="fill" aria-hidden="true" />

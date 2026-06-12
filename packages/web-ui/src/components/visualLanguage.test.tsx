@@ -43,6 +43,8 @@ vi.mock("framer-motion", async () => {
 const oldVisualTokens = /indigo|purple|violet|blue-50|blue-500|bg-gradient-to-br|text-gray|bg-gray|border-gray/;
 const oldCanvasControlTokens =
   /text-gray|bg-gray|border-gray|hover:bg-gray|focus:border-gray|placeholder:text-gray|accent-gray|prose-headings:text-gray|prose-p:text-gray|prose-code:text-gray/;
+const oldActivityPresenceTokens =
+  /blue-100|blue-300|blue-700|blue-950|bg-gradient-to-br|from-brand to-red-500/;
 
 describe("visual language surfaces", () => {
   afterEach(() => {
@@ -148,6 +150,26 @@ describe("visual language surfaces", () => {
 
     expect(source).not.toMatch(oldCanvasControlTokens);
     expect(source).toMatch(/brand|warm|stone|slate/);
+  });
+
+  it("keeps activity and presence feedback out of legacy blue or gradient states", () => {
+    const source = [
+      "packages/web-ui/src/components/ActivityToast.tsx",
+      "packages/web-ui/src/components/NodeActivityIndicator.tsx",
+      "packages/web-ui/src/components/PresenceBar.tsx",
+    ]
+      .map((path) => readFileSync(join(process.cwd(), path), "utf8"))
+      .join("\n");
+
+    expect(source).not.toMatch(oldActivityPresenceTokens);
+    expect(source).toMatch(/brand|warm|stone|slate/);
+  });
+
+  it("keeps the homepage depth mask transparent enough for the canvas grid to read", () => {
+    const source = readFileSync(join(process.cwd(), "packages/web-ui/src/components/Background.tsx"), "utf8");
+
+    expect(source).not.toMatch(/to-warm-page\/\[0\.025\]/);
+    expect(source).toMatch(/to-warm-page\/\[0\.012\]/);
   });
 
   it.each([

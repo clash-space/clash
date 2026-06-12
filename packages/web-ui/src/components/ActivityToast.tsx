@@ -1,7 +1,7 @@
 
 import { useState, useCallback, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Sparkle, ArrowRight, User } from '@phosphor-icons/react';
+import { Sparkle, ArrowRight, User, Terminal } from '@phosphor-icons/react';
 import type { ActivityMessage } from '@clash/shared-types';
 
 interface ToastItem {
@@ -83,12 +83,12 @@ export default function ActivityToast({
               className="pointer-events-auto flex items-center gap-2 rounded-full bg-warm-surface pl-1.5 pr-3 py-1.5 shadow-md border border-warm-border"
             >
               <span className={`flex h-6 w-6 items-center justify-center rounded-full ${
-                isAgent ? 'bg-brand' : isCli ? 'bg-blue-100 dark:bg-blue-950/50' : 'bg-brand/10'
+                isAgent ? 'bg-brand' : isCli ? 'bg-warm-muted ring-1 ring-warm-border' : 'bg-brand-light'
               }`} aria-hidden="true">
                 {isAgent ? (
                   <Sparkle className="h-3 w-3 text-white" weight="fill" />
                 ) : isCli ? (
-                  <Sparkle className="h-3 w-3 text-blue-700 dark:text-blue-300" weight="fill" />
+                  <Terminal className="h-3 w-3 text-slate-700 dark:text-slate-300" weight="bold" />
                 ) : (
                   <User className="h-3 w-3 text-brand" weight="fill" />
                 )}

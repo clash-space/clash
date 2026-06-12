@@ -41,13 +41,13 @@ export default function PresenceBar({ clients }: PresenceBarProps) {
                   ? 'bg-brand'
                   : client.clientType === 'cli'
                     ? 'bg-warm-surface ring-1 ring-warm-border'
-                    : 'bg-gradient-to-br from-brand to-red-500'
+                    : 'bg-brand-light text-brand ring-1 ring-brand/20'
               }`}
             >
               {client.clientType === 'agent' ? (
                 <Sparkle className="h-4 w-4 text-white" weight="fill" aria-hidden="true" />
               ) : client.clientType === 'cli' ? (
-                <Terminal className="h-4 w-4 text-blue-700 dark:text-blue-300" weight="bold" aria-hidden="true" />
+                <Terminal className="h-4 w-4 text-slate-700 dark:text-slate-300" weight="bold" aria-hidden="true" />
               ) : client.avatar ? (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img
@@ -56,7 +56,7 @@ export default function PresenceBar({ clients }: PresenceBarProps) {
                   className="h-full w-full rounded-full object-cover"
                 />
               ) : (
-                <span className="text-xs font-bold text-white">
+                <span className="text-xs font-bold text-brand">
                   {getInitials(client.name)}
                 </span>
               )}
