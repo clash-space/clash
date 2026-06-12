@@ -57,6 +57,7 @@ const oldMediaViewerTokens =
   /bg-black\/80|bg-white\/10|hover:bg-white\/20|text-white|ring-white\/10|shadow-2xl|focus-visible:ring-white|focus-visible:ring-offset-black/;
 const oldConfirmDialogTokens =
   /bg-slate-950\/35|shadow-lg border border-warm-border|transition=\{\{ type: 'spring'|bg-warm-muted\/70/;
+const oldRouteErrorTokens = /Something went wrong|Unknown error/;
 
 describe("visual language surfaces", () => {
   afterEach(() => {
@@ -258,6 +259,16 @@ describe("visual language surfaces", () => {
     expect(source).toMatch(/clash-confirm-dialog-backdrop/);
     expect(source).toMatch(/clash-confirm-dialog-surface/);
     expect(source).toMatch(/clash-confirm-dialog-footer/);
+  });
+
+  it("keeps the root error boundary transparent and recoverable instead of generic copy", () => {
+    const source = readFileSync(join(process.cwd(), "apps/web/app/root.tsx"), "utf8");
+
+    expect(source).not.toMatch(oldRouteErrorTokens);
+    expect(source).toMatch(/Clash could not finish this view/);
+    expect(source).toMatch(/error\.code/);
+    expect(source).toMatch(/Reload/);
+    expect(source).toMatch(/Go home/);
   });
 
   it.each([
