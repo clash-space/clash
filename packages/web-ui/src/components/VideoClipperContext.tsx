@@ -476,13 +476,13 @@ function Timeline({
                         />
                         {/* Selection box outline */}
                         <div
-                            className="absolute top-0 bottom-0 border-y-2 border-purple-500 pointer-events-none"
+                            className="absolute top-0 bottom-0 border-y-2 border-brand pointer-events-none"
                             style={{ left: `${pctOf(startSec)}%`, right: `${100 - pctOf(endSec)}%` }}
                         />
                         {/* Start handle */}
                         <Handle
                             position={pctOf(startSec)}
-                            color="purple"
+                            variant="range"
                             data-handle="start"
                             onMouseDown={(e) => {
                                 e.stopPropagation();
@@ -492,7 +492,7 @@ function Timeline({
                         {/* End handle */}
                         <Handle
                             position={pctOf(endSec)}
-                            color="purple"
+                            variant="range"
                             data-handle="end"
                             onMouseDown={(e) => {
                                 e.stopPropagation();
@@ -506,7 +506,7 @@ function Timeline({
                 {mode === 'screenshot' && (
                     <Handle
                         position={pctOf(frameTimeSec)}
-                        color="blue"
+                        variant="playhead"
                         data-handle="playhead"
                         onMouseDown={(e) => {
                             e.stopPropagation();
@@ -530,24 +530,30 @@ function Timeline({
 
 interface HandleProps {
     position: number;
-    color: 'blue' | 'purple';
+    variant: 'playhead' | 'range';
     'data-handle': string;
     onMouseDown: (e: React.MouseEvent) => void;
 }
 
-function Handle({ position, color, onMouseDown, ...rest }: HandleProps) {
-    const colorClass = color === 'blue'
-        ? 'bg-blue-500 ring-blue-300'
-        : 'bg-purple-500 ring-purple-300';
+function Handle({ position, variant, onMouseDown, ...rest }: HandleProps) {
+    const classes = variant === 'playhead'
+        ? {
+            line: 'bg-slate-800 dark:bg-slate-200',
+            ring: 'ring-warm-border dark:ring-slate-500',
+        }
+        : {
+            line: 'bg-brand',
+            ring: 'ring-brand/30',
+        };
     return (
         <div
             {...rest}
             onMouseDown={onMouseDown}
-            className={`absolute top-0 bottom-0 w-[3px] cursor-col-resize ${colorClass.split(' ')[0]} hover:scale-x-[2] transition-transform`}
+            className={`absolute top-0 bottom-0 w-[3px] cursor-col-resize ${classes.line} hover:scale-x-[2] transition-transform`}
             style={{ left: `${position}%`, transform: `translateX(-50%)` }}
         >
             {/* Bigger hit-target circle on top */}
-            <div className={`absolute -top-1 left-1/2 -translate-x-1/2 w-3 h-3 rounded-full ${colorClass.split(' ')[0]} ring-2 ${colorClass.split(' ')[1]} ring-opacity-50`} />
+            <div className={`absolute -top-1 left-1/2 -translate-x-1/2 w-3 h-3 rounded-full ${classes.line} ring-2 ${classes.ring}`} />
         </div>
     );
 }

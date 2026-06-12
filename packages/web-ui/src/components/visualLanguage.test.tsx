@@ -49,6 +49,8 @@ const oldIdentityMentionTokens =
   /from-brand to-red-500|hover:bg-gray-50|text-gray-700|text-gray-800|dark:text-gray-200|dark:text-gray-300/;
 const oldAwarenessPaletteTokens =
   /cyan|blue-500|violet|#06b6d4|#3b82f6|#8b5cf6/;
+const oldVideoClipperTokens =
+  /border-purple-500|color="purple"|color="blue"|color:\s*'blue'|color:\s*'purple'|bg-blue-500|ring-blue-300|bg-purple-500|ring-purple-300/;
 
 describe("visual language surfaces", () => {
   afterEach(() => {
@@ -197,6 +199,16 @@ describe("visual language surfaces", () => {
 
     expect(source).not.toMatch(oldAwarenessPaletteTokens);
     expect(source).toMatch(/coral|ember|moss|slate/);
+  });
+
+  it("keeps the video clipper timeline controls out of blue/purple editor chrome", () => {
+    const source = readFileSync(
+      join(process.cwd(), "packages/web-ui/src/components/VideoClipperContext.tsx"),
+      "utf8",
+    );
+
+    expect(source).not.toMatch(oldVideoClipperTokens);
+    expect(source).toMatch(/brand|warm|slate/);
   });
 
   it.each([
