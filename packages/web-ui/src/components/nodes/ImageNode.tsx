@@ -163,7 +163,7 @@ const ImageNode = ({ data, selected, id }: NodeProps<Node<Record<string, any>>>)
 
             {/* Main Card */}
             <div
-                className={`relative bg-warm-surface shadow-md rounded-matrix overflow-hidden transition-all duration-300 hover:shadow-lg ${selected ? 'ring-4 ring-blue-500 ring-offset-2' : 'ring-1 ring-slate-200'
+                className={`relative bg-warm-surface shadow-md rounded-matrix overflow-hidden transition-all duration-300 hover:shadow-lg ${selected ? 'ring-4 ring-brand ring-offset-2' : 'ring-1 ring-warm-border'
                     }`}
                 style={{
                     width: nodeWidth,
@@ -248,7 +248,7 @@ const ImageNode = ({ data, selected, id }: NodeProps<Node<Record<string, any>>>)
                 ) : isActiveStatus(status) ? (
                     <div className="flex items-center justify-center bg-warm-muted text-slate-700 dark:text-slate-300" style={{ width: '100%', height: '100%' }}>
                         <div className="flex flex-col items-center gap-3">
-                            <div className="h-8 w-8 animate-spin rounded-full border-4 border-warm-border border-t-blue-500" />
+                            <div className="h-8 w-8 animate-spin rounded-full border-4 border-warm-border border-t-image" />
                             <span className="text-xs font-medium animate-pulse">Generating Image...</span>
                         </div>
                     </div>
@@ -271,7 +271,7 @@ const ImageNode = ({ data, selected, id }: NodeProps<Node<Record<string, any>>>)
                 {/* Description Box */}
                 {showDescription && (
                     <div
-                        className="absolute left-0 right-0 bottom-0 z-20 border-t border-warm-border bg-slate-50/95 p-3 backdrop-blur"
+                        className="absolute left-0 right-0 bottom-0 z-20 border-t border-warm-border bg-warm-surface/95 p-3 backdrop-blur"
                         onDoubleClick={(e) => e.stopPropagation()}
                     >
                         <textarea
@@ -289,7 +289,7 @@ const ImageNode = ({ data, selected, id }: NodeProps<Node<Record<string, any>>>)
                 position={Position.Left}
                 isConnectable={false}
                 style={{ top: '50%', left: '-8px' }}
-                className="!h-4 !w-4 !border-4 !border-white !bg-slate-400 transition-all hover:!bg-blue-500 hover:scale-125 shadow-sm !opacity-0 !pointer-events-none"
+                className="!h-4 !w-4 !border-4 !border-warm-surface !bg-stone-400 transition-all hover:!bg-brand hover:scale-125 shadow-sm !opacity-0 !pointer-events-none"
             />
             <SourceHandleMenu nodeId={id} />
         </div>

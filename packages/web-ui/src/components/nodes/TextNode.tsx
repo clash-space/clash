@@ -78,7 +78,7 @@ const TextNode = ({ data, selected, id }: NodeProps<Node<Record<string, any>>>) 
                         initial={{ opacity: 0 }}
                         animate={{ opacity: 1 }}
                         exit={{ opacity: 0 }}
-                        className="absolute inset-0 bg-white/80 backdrop-blur-sm"
+                        className="absolute inset-0 bg-warm-page/80 backdrop-blur-sm"
                         onClick={handleCancel}
                     />
 
@@ -98,18 +98,18 @@ const TextNode = ({ data, selected, id }: NodeProps<Node<Record<string, any>>>) 
                                 value={label}
                                 onChange={handleLabelChange}
                                 placeholder="Untitled"
-                                className="w-full text-4xl font-bold font-display tracking-tight text-slate-900 dark:text-slate-50 placeholder:text-gray-300 bg-transparent border-none outline-none focus:outline-none"
+                                className="w-full text-4xl font-bold font-display tracking-tight text-slate-900 dark:text-slate-50 placeholder:text-stone-300 bg-transparent border-none outline-none focus:outline-none"
                             />
                             <div className="flex gap-2">
                                 <button
                                     onClick={handleSave}
-                                    className="px-4 py-2 text-sm font-medium text-white bg-slate-900 rounded-lg hover:bg-slate-800 transition-colors"
+                                    className="px-4 py-2 text-sm font-medium text-white bg-slate-950 rounded-lg hover:bg-slate-800 transition-colors"
                                 >
                                     Save
                                 </button>
                                 <button
                                     onClick={handleCancel}
-                                    className="p-2 text-gray-700 dark:text-gray-300 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+                                    className="p-2 text-slate-700 dark:text-slate-300 hover:text-slate-950 hover:bg-warm-hover rounded-lg transition-colors"
                                 >
                                     <X className="w-5 h-5" weight="bold" />
                                 </button>
@@ -147,7 +147,7 @@ const TextNode = ({ data, selected, id }: NodeProps<Node<Record<string, any>>>) 
 
                 {/* Main Card */}
                 <div className={`w-full h-full bg-warm-muted rounded-matrix flex flex-col overflow-hidden transition-all duration-300 hover:shadow-lg ${
-                    selected ? 'ring-4 ring-blue-500 ring-offset-2' : 'ring-1 ring-slate-200'
+                    selected ? 'ring-4 ring-brand ring-offset-2' : 'ring-1 ring-warm-border'
                 }`}>
                     {normalizedStatus === 'draft' ? (
                         <DraftPlaceholder nodeId={id} modality="text" />
@@ -166,13 +166,13 @@ const TextNode = ({ data, selected, id }: NodeProps<Node<Record<string, any>>>) 
                                     className="absolute inset-0"
                                     style={{ maskImage: 'linear-gradient(to bottom, black 60%, transparent 100%)' }}
                                 >
-                                    <div className="prose prose-slate prose-p:text-gray-600 prose-headings:text-gray-800">
+                                    <div className="prose prose-slate prose-p:text-slate-700 prose-headings:text-slate-900">
                                         <MarkdownPreview content={content} />
                                     </div>
                                 </div>
 
                                 {/* Fade out gradient overlay */}
-                                <div className="absolute bottom-0 left-0 right-0 h-32 bg-gradient-to-t from-slate-50 to-transparent pointer-events-none" />
+                                <div className="absolute bottom-0 left-0 right-0 h-32 bg-gradient-to-t from-warm-muted to-transparent pointer-events-none" />
                             </div>
                         </div>
                     )}
@@ -183,7 +183,7 @@ const TextNode = ({ data, selected, id }: NodeProps<Node<Record<string, any>>>) 
                     type="target"
                     position={Position.Left}
                     style={{ left: -8, top: '50%', transform: 'translateY(-50%)', zIndex: 100 }}
-                    className="!h-4 !w-4 !border-4 !border-white !bg-slate-400 transition-all hover:scale-125 shadow-sm hover:!bg-blue-500"
+                    className="!h-4 !w-4 !border-4 !border-warm-surface !bg-stone-400 transition-all hover:scale-125 shadow-sm hover:!bg-brand"
                 />
                 <SourceHandleMenu nodeId={id} />
             </div>
@@ -197,7 +197,7 @@ const TextNode = ({ data, selected, id }: NodeProps<Node<Record<string, any>>>) 
 // Simple markdown preview component
 const MarkdownPreview = ({ content }: { content: string }) => {
     return (
-        <div className="prose prose-lg max-w-none prose-slate prose-headings:font-bold prose-headings:text-gray-900 prose-p:text-gray-700 prose-a:text-gray-900 prose-a:underline prose-code:text-gray-700 prose-code:bg-gray-100 prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded">
+        <div className="prose prose-lg max-w-none prose-slate prose-headings:font-bold prose-headings:text-slate-900 prose-p:text-slate-700 prose-a:text-slate-900 prose-a:underline prose-code:text-slate-700 prose-code:bg-warm-muted prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded">
             <ReactMarkdown>{content}</ReactMarkdown>
         </div>
     );

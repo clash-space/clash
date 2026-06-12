@@ -44,17 +44,16 @@ const ScriptNode = ({ id, data, selected }: NodeProps<Node<Record<string, any>>>
 
     return (
         <div
-            className={`group relative min-w-[300px] overflow-hidden rounded-matrix bg-warm-surface shadow-lg transition-all duration-300 hover:shadow-xl ${selected ? 'ring-4 ring-purple-500 ring-offset-2' : 'ring-1 ring-slate-100'
+            className={`group relative min-w-[300px] overflow-hidden rounded-matrix bg-warm-surface shadow-md transition-all duration-300 hover:shadow-lg ${selected ? 'ring-4 ring-brand ring-offset-2' : 'ring-1 ring-warm-border'
                 }`}
         >
             {/* Header */}
-            <div className="relative flex h-16 items-center justify-between bg-gradient-to-r from-amber-400 to-orange-500 px-4">
-                <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-20"></div>
-                <div className="relative z-10 flex items-center gap-2 text-white">
+            <div className="relative flex h-16 items-center justify-between border-b border-warm-border bg-warm-surface px-4">
+                <div className="relative z-10 flex items-center gap-2 text-slate-900 dark:text-slate-50">
                     <Scroll size={20} weight="fill" />
                     <span className="font-bold text-sm">Script / Screenplay</span>
                 </div>
-                <div className="relative z-10 rounded-full bg-black/20 px-2 py-1 text-[10px] font-medium text-white backdrop-blur-md">
+                <div className="relative z-10 rounded-lg bg-brand-light px-2 py-1 text-[10px] font-semibold text-brand">
                     {shots.length} Shots
                 </div>
             </div>
@@ -63,9 +62,9 @@ const ScriptNode = ({ id, data, selected }: NodeProps<Node<Record<string, any>>>
             <div className="max-h-[300px] overflow-y-auto p-2 bg-warm-muted">
                 <div className="space-y-2">
                     {shots.map((shot, index) => (
-                        <div key={shot.id} className="relative rounded-lg border border-warm-border bg-warm-surface p-3 shadow-sm transition-colors hover:border-amber-300">
+                        <div key={shot.id} className="relative rounded-lg border border-warm-border bg-warm-surface p-3 shadow-sm transition-colors hover:border-brand/40">
                             <div className="mb-1 flex items-center justify-between">
-                                <span className="text-[10px] font-bold uppercase text-amber-600">Scene {index + 1}</span>
+                                <span className="text-[10px] font-bold uppercase text-brand">Scene {index + 1}</span>
                             </div>
                             <p className="text-xs text-slate-800 dark:text-slate-200 font-medium leading-relaxed">{shot.content}</p>
 
@@ -79,7 +78,7 @@ const ScriptNode = ({ id, data, selected }: NodeProps<Node<Record<string, any>>>
 
                 <button
                     onClick={addShot}
-                    className="mt-3 flex w-full items-center justify-center gap-1 rounded-lg border border-dashed border-slate-300 py-2 text-xs font-medium text-slate-700 dark:text-slate-300 hover:bg-slate-100 hover:text-slate-700"
+                    className="mt-3 flex w-full items-center justify-center gap-1 rounded-lg border border-dashed border-warm-border py-2 text-xs font-medium text-slate-700 dark:text-slate-300 hover:border-brand/45 hover:bg-brand-light/60 hover:text-slate-900"
                 >
                     <Plus size={14} />
                     Add Scene
@@ -87,17 +86,17 @@ const ScriptNode = ({ id, data, selected }: NodeProps<Node<Record<string, any>>>
             </div>
 
             {/* Handles */}
-            <div className={`absolute inset-0 -z-10 h-full w-full rounded-matrix border-2 border-dashed bg-slate-50/50 transition-all ${selected ? 'border-amber-400 bg-amber-50/30' : 'border-slate-300'
+            <div className={`absolute inset-0 -z-10 h-full w-full rounded-matrix border-2 border-dashed bg-warm-muted/60 transition-all ${selected ? 'border-brand bg-brand-light/35' : 'border-warm-border'
                 }`}></div>
             <Handle
                 type="target"
                 position={Position.Left}
-                className="!h-4 !w-4 !-translate-x-2 !border-4 !border-white !bg-slate-400 transition-all hover:!bg-amber-500 hover:scale-125 shadow-sm"
+                className="!h-4 !w-4 !-translate-x-2 !border-4 !border-warm-surface !bg-stone-400 transition-all hover:!bg-brand hover:scale-125 shadow-sm"
             />
             <Handle
                 type="source"
                 position={Position.Right}
-                className="!h-4 !w-4 !translate-x-2 !border-4 !border-white !bg-slate-400 transition-all hover:!bg-amber-500 hover:scale-125 shadow-sm"
+                className="!h-4 !w-4 !translate-x-2 !border-4 !border-warm-surface !bg-stone-400 transition-all hover:!bg-brand hover:scale-125 shadow-sm"
             />
         </div>
     );

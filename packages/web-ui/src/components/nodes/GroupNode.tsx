@@ -6,12 +6,20 @@ import { useLayoutActions } from '../LayoutActionsContext';
 import { MagicWand, FrameCorners } from '@phosphor-icons/react';
 
 const controlStyle = {
-    background: '#FF9900',
+    background: 'var(--brand)',
     border: 'none',
     borderRadius: '50%',
     width: 10,
     height: 10,
 };
+
+const groupBackgroundByDepth = [
+    'bg-warm-muted/45',
+    'bg-warm-muted/55',
+    'bg-warm-muted/65',
+    'bg-warm-muted/75',
+    'bg-warm-muted/85',
+];
 
 const GroupNode = ({ selected, data, id }: NodeProps<Node<Record<string, any>>>) => {
     const [label, setLabel] = useState(data.label || 'Group');
@@ -47,12 +55,9 @@ const GroupNode = ({ selected, data, id }: NodeProps<Node<Record<string, any>>>)
 
     // Generate background color based on depth
     const backgroundColor = useMemo(() => {
-        if (selected) return 'bg-[#FFF8F0]';
+        if (selected) return 'bg-brand-light/35';
 
-        // Each level adds more opacity to the slate background
-        const opacities = [40, 50, 60, 70, 80]; // 40%, 50%, 60%, etc.
-        const opacity = opacities[Math.min(depth, opacities.length - 1)];
-        return `bg-slate-100/${opacity}`;
+        return groupBackgroundByDepth[Math.min(depth, groupBackgroundByDepth.length - 1)];
     }, [depth, selected]);
 
     const scheduleLoroSync = (nextLabel: string) => {
@@ -87,7 +92,7 @@ const GroupNode = ({ selected, data, id }: NodeProps<Node<Record<string, any>>>)
             )}
 
             <div
-                className={`h-full w-full border-2 transition-all duration-300 ${selected ? 'border-[#FF9900]' : 'border-slate-300'} ${backgroundColor}`}
+                className={`h-full w-full border-2 transition-all duration-300 ${selected ? 'border-brand' : 'border-warm-border'} ${backgroundColor}`}
             >
                 {/* Floating Title Input */}
                 <div
@@ -124,43 +129,43 @@ const GroupNode = ({ selected, data, id }: NodeProps<Node<Record<string, any>>>)
                     that pill so group/ungroup read as a matched pair, and
                     counter-scaled so size + gap stay constant in screen px. */}
                 {selected && (
-                <div
-                    className="absolute z-10 flex items-center gap-1.5"
-                    style={{
-                        right: 0,
-                        bottom: '100%',
-                        marginBottom: 8 / zoom,
-                        transform: `scale(${1 / zoom})`,
-                        transformOrigin: '100% 100%',
-                    }}
-                >
-                    <button
-                        type="button"
-                        className="flex h-7 items-center gap-1.5 rounded-md border border-warm-border bg-white/90 px-2.5 text-xs font-medium text-slate-700 dark:text-slate-300 shadow-sm backdrop-blur hover:bg-white hover:text-slate-900"
-                        onMouseDown={(e) => e.stopPropagation()}
-                        onClick={(e) => {
-                            e.stopPropagation();
-                            ungroup(id);
+                    <div
+                        className="absolute z-10 flex items-center gap-1.5"
+                        style={{
+                            right: 0,
+                            bottom: '100%',
+                            marginBottom: 8 / zoom,
+                            transform: `scale(${1 / zoom})`,
+                            transformOrigin: '100% 100%',
                         }}
-                        title="Ungroup (release children to parent)"
                     >
-                        <FrameCorners className="h-3.5 w-3.5" weight="regular" />
-                        Ungroup
-                    </button>
-                    <button
-                        type="button"
-                        className="flex h-7 items-center gap-1.5 rounded-md border border-warm-border bg-white/90 px-2.5 text-xs font-medium text-slate-700 dark:text-slate-300 shadow-sm backdrop-blur hover:bg-white hover:text-slate-900"
-                        onMouseDown={(e) => e.stopPropagation()}
-                        onClick={(e) => {
-                            e.stopPropagation();
-                            relayoutParent(id);
-                        }}
-                        title="Relayout inside group"
-                    >
-                        <MagicWand className="h-3.5 w-3.5" weight="regular" />
-                        Layout
-                    </button>
-                </div>
+                        <button
+                            type="button"
+                            className="flex h-7 items-center gap-1.5 rounded-md border border-warm-border bg-warm-surface/90 px-2.5 text-xs font-medium text-slate-700 dark:text-slate-300 shadow-sm backdrop-blur hover:bg-warm-surface hover:text-slate-900"
+                            onMouseDown={(e) => e.stopPropagation()}
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                ungroup(id);
+                            }}
+                            title="Ungroup (release children to parent)"
+                        >
+                            <FrameCorners className="h-3.5 w-3.5" weight="regular" />
+                            Ungroup
+                        </button>
+                        <button
+                            type="button"
+                            className="flex h-7 items-center gap-1.5 rounded-md border border-warm-border bg-warm-surface/90 px-2.5 text-xs font-medium text-slate-700 dark:text-slate-300 shadow-sm backdrop-blur hover:bg-warm-surface hover:text-slate-900"
+                            onMouseDown={(e) => e.stopPropagation()}
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                relayoutParent(id);
+                            }}
+                            title="Relayout inside group"
+                        >
+                            <MagicWand className="h-3.5 w-3.5" weight="regular" />
+                            Layout
+                        </button>
+                    </div>
                 )}
             </div>
         </>

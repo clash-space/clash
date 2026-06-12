@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 import { describe, expect, it, vi } from "vitest";
 import { render, within } from "@testing-library/react";
 
@@ -79,8 +80,8 @@ describe("node handle wiring", () => {
     );
 
     const view = within(container);
-    expect(view.getByTestId("handle-target-left")).toBeInTheDocument();
-    expect(view.getByTestId("source-handle-menu")).toBeInTheDocument();
+    expect(view.getByTestId("handle-target-left")).not.toBeNull();
+    expect(view.getByTestId("source-handle-menu")).not.toBeNull();
   });
 
   it("renders an inbound target handle for audio nodes", () => {
@@ -105,7 +106,7 @@ describe("node handle wiring", () => {
     );
 
     const view = within(container);
-    expect(view.getByTestId("handle-target-left")).toBeInTheDocument();
-    expect(view.getByTestId("source-handle-menu")).toBeInTheDocument();
+    expect(view.getByTestId("handle-target-left")).not.toBeNull();
+    expect(view.getByTestId("source-handle-menu")).not.toBeNull();
   });
 });

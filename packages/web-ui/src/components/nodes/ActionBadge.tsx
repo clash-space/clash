@@ -1595,11 +1595,11 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
                                                         <TextT size={16} weight="bold" />
                                                     </div>
                                                 ) : isAudio ? (
-                                                    <div className="h-10 w-10 rounded-lg bg-violet-100 border border-warm-border shadow-sm flex items-center justify-center text-violet-600 text-lg pointer-events-none">
+                                                    <div className="h-10 w-10 rounded-lg bg-audio/15 border border-warm-border shadow-sm flex items-center justify-center text-audio text-lg pointer-events-none">
                                                         ♪
                                                     </div>
                                                 ) : isVideo && !thumb ? (
-                                                    <div className="h-10 w-10 rounded-lg bg-blue-50 border border-warm-border shadow-sm flex items-center justify-center text-blue-600 pointer-events-none">
+                                                    <div className="h-10 w-10 rounded-lg bg-video/15 border border-warm-border shadow-sm flex items-center justify-center text-video pointer-events-none">
                                                         <VideoCamera size={14} weight="bold" />
                                                     </div>
                                                 ) : (
@@ -2003,7 +2003,7 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
                     type="target"
                     position={Position.Left}
                     style={{ left: -8, top: '50%', transform: 'translateY(-50%)', zIndex: 100 }}
-                    className="!h-4 !w-4 !border-4 !border-white !bg-slate-400 transition-all hover:scale-125 shadow-sm hover:!bg-blue-500"
+                    className="!h-4 !w-4 !border-4 !border-warm-surface !bg-stone-400 transition-all hover:scale-125 shadow-sm hover:!bg-brand"
                 />
                 <ActionBadgePipelineMenu
                     nodeId={id}
@@ -2112,7 +2112,7 @@ const RefPickerPopover = ({
                                         <TextT size={22} weight="bold" />
                                     </div>
                                 ) : n.type === 'audio' || !thumb ? (
-                                    <div className="h-16 w-full bg-violet-50 flex items-center justify-center text-violet-500 text-xl">
+                                    <div className={`h-16 w-full flex items-center justify-center text-xl ${n.type === 'audio' ? 'bg-audio/15 text-audio' : 'bg-warm-muted text-slate-500'}`}>
                                         {n.type === 'audio' ? '♪' : '?'}
                                     </div>
                                 ) : (

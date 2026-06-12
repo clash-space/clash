@@ -31,8 +31,8 @@ export default function Background() {
         </svg>
       </div>
 
-      {/* Gradient Mask for Depth */}
-      <div className="absolute inset-0 bg-gradient-to-b from-transparent via-transparent to-warm-page/10" />
+      {/* Subtle depth mask. Keep it faint so the canvas grid remains visible. */}
+      <div className="absolute inset-0 bg-gradient-to-b from-transparent via-transparent to-warm-page/5" />
     </div>
   );
 }

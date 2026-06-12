@@ -264,7 +264,7 @@ const VideoNode = ({ data, selected, id }: NodeProps<Node<Record<string, any>>>)
 
             {/* Main Card */}
             <div
-                className={`relative bg-warm-surface shadow-md rounded-matrix overflow-hidden transition-all duration-300 hover:shadow-lg ${selected ? 'ring-4 ring-red-500 ring-offset-2' : 'ring-1 ring-slate-200'
+                className={`relative bg-warm-surface shadow-md rounded-matrix overflow-hidden transition-all duration-300 hover:shadow-lg ${selected ? 'ring-4 ring-brand ring-offset-2' : 'ring-1 ring-warm-border'
                     }`}
                 style={{
                     width: nodeWidth,
@@ -473,8 +473,8 @@ const VideoNode = ({ data, selected, id }: NodeProps<Node<Record<string, any>>>)
                             <img src={posterUrl} alt="" className="absolute inset-0 h-full w-full object-cover opacity-50" />
                         )}
                         <div className="relative z-10 flex flex-col items-center gap-3">
-                            <div className="h-8 w-8 animate-spin rounded-full border-4 border-warm-border border-t-blue-500" />
-                            <span className="text-xs font-medium animate-pulse text-slate-700 dark:text-slate-300 bg-white/50 px-2 py-0.5 rounded-full backdrop-blur-sm">Generating Video...</span>
+                            <div className="h-8 w-8 animate-spin rounded-full border-4 border-warm-border border-t-video" />
+                            <span className="text-xs font-medium animate-pulse text-slate-700 dark:text-slate-300 bg-warm-surface/70 px-2 py-0.5 rounded-lg backdrop-blur-sm">Generating Video...</span>
                         </div>
                     </div>
                 ) : status === 'failed' ? (
@@ -496,7 +496,7 @@ const VideoNode = ({ data, selected, id }: NodeProps<Node<Record<string, any>>>)
                 {/* Description Box */}
                 {showDescription && (
                     <div
-                        className="absolute left-0 right-0 bottom-0 z-20 border-t border-warm-border bg-slate-50/95 p-3 backdrop-blur"
+                        className="absolute left-0 right-0 bottom-0 z-20 border-t border-warm-border bg-warm-surface/95 p-3 backdrop-blur"
                         onDoubleClick={(e) => e.stopPropagation()}
                     >
                         <textarea
@@ -514,7 +514,7 @@ const VideoNode = ({ data, selected, id }: NodeProps<Node<Record<string, any>>>)
                 position={Position.Left}
                 isConnectable={false}
                 style={{ top: '50%', left: '-8px' }}
-                className="!h-4 !w-4 !border-4 !border-white !bg-slate-400 transition-all hover:!bg-red-500 hover:scale-125 shadow-sm !opacity-0 !pointer-events-none"
+                className="!h-4 !w-4 !border-4 !border-warm-surface !bg-stone-400 transition-all hover:!bg-brand hover:scale-125 shadow-sm !opacity-0 !pointer-events-none"
             />
             <SourceHandleMenu nodeId={id} />
         </div>

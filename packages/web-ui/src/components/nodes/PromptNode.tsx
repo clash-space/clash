@@ -90,7 +90,7 @@ const PromptNode = ({ data, selected, id }: NodeProps<Node<Record<string, any>>>
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
                     exit={{ opacity: 0 }}
-                    className="absolute inset-0 bg-white/80 backdrop-blur-sm"
+                    className="absolute inset-0 bg-warm-page/80 backdrop-blur-sm"
                     onClick={handleCancel}
                 />
 
@@ -100,7 +100,7 @@ const PromptNode = ({ data, selected, id }: NodeProps<Node<Record<string, any>>>
                     animate={{ opacity: 1, scale: 1, y: 0 }}
                     exit={{ opacity: 0, scale: 0.95, y: 20 }}
                     transition={{ type: 'spring', damping: 25, stiffness: 300 }}
-                    className="relative z-10 w-full max-w-5xl h-[85vh] bg-warm-surface rounded-xl shadow-2xl overflow-hidden flex flex-col border border-gray-200"
+                    className="relative z-10 w-full max-w-5xl h-[85vh] bg-warm-surface rounded-xl shadow-lg overflow-hidden flex flex-col border border-warm-border"
                     onClick={(e) => e.stopPropagation()}
                 >
                     {/* Header with Title Input */}
@@ -110,7 +110,7 @@ const PromptNode = ({ data, selected, id }: NodeProps<Node<Record<string, any>>>
                             value={label}
                             onChange={handleLabelChange}
                             placeholder="Untitled Prompt"
-                            className="w-full text-4xl font-bold text-slate-900 dark:text-slate-50 placeholder:text-gray-300 bg-transparent border-none outline-none focus:outline-none"
+                            className="w-full text-4xl font-bold text-slate-900 dark:text-slate-50 placeholder:text-stone-300 bg-transparent border-none outline-none focus:outline-none"
                             style={{
                                 fontFamily: 'var(--font-space-grotesk), var(--font-inter), sans-serif',
                                 letterSpacing: '-0.02em'
@@ -119,13 +119,13 @@ const PromptNode = ({ data, selected, id }: NodeProps<Node<Record<string, any>>>
                         <div className="flex gap-2">
                             <button
                                 onClick={handleSave}
-                                className="px-4 py-2 text-sm font-medium text-white bg-black rounded-lg hover:bg-gray-800 transition-colors"
+                                className="px-4 py-2 text-sm font-medium text-white bg-slate-950 rounded-lg hover:bg-slate-800 transition-colors"
                             >
                                 Save
                             </button>
                             <button
                                 onClick={handleCancel}
-                                className="p-2 text-gray-700 dark:text-gray-300 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+                                className="p-2 text-slate-700 dark:text-slate-300 hover:text-slate-950 hover:bg-warm-hover rounded-lg transition-colors"
                             >
                                 <X className="w-5 h-5" weight="bold" />
                             </button>
@@ -153,7 +153,7 @@ const PromptNode = ({ data, selected, id }: NodeProps<Node<Record<string, any>>>
                     onDoubleClick={(e) => e.stopPropagation()}
                 >
                     <input
-                        className="bg-transparent text-lg font-bold text-blue-600 focus:text-blue-700 focus:outline-none"
+                        className="bg-transparent text-lg font-bold font-display text-slate-700 dark:text-slate-300 focus:text-slate-950 focus:outline-none"
                         value={label}
                         onChange={handleLabelChange}
                         placeholder="Prompt"
@@ -161,20 +161,20 @@ const PromptNode = ({ data, selected, id }: NodeProps<Node<Record<string, any>>>
                 </div>
 
                 {/* Main Card - Smaller height and different styling */}
-                <div className={`w-full h-full bg-blue-50 rounded-matrix flex flex-col overflow-hidden transition-all duration-300 hover:shadow-xl ${selected ? 'ring-4 ring-blue-500 ring-offset-2' : 'ring-1 ring-blue-200'
+                <div className={`w-full h-full bg-warm-muted rounded-matrix flex flex-col overflow-hidden transition-all duration-300 hover:shadow-lg ${selected ? 'ring-4 ring-brand ring-offset-2' : 'ring-1 ring-warm-border'
                     }`}>
                     {/* Card Content */}
                     <div className="flex-1 p-6 flex flex-col relative">
                         {/* Content Preview with Fade Out */}
                         <div className="flex-1 relative overflow-hidden">
                             <div className="absolute inset-0">
-                                <div className="prose prose-sm prose-slate prose-p:text-gray-600 prose-headings:text-gray-800 prose-p:leading-tight">
+                                <div className="prose prose-sm prose-slate prose-p:text-slate-700 prose-headings:text-slate-900 prose-p:leading-tight">
                                     <MarkdownPreview content={content} />
                                 </div>
                             </div>
 
                             {/* Fade out gradient overlay */}
-                            <div className="absolute bottom-0 left-0 right-0 h-16 bg-gradient-to-t from-blue-50 to-transparent pointer-events-none" />
+                            <div className="absolute bottom-0 left-0 right-0 h-16 bg-gradient-to-t from-warm-muted to-transparent pointer-events-none" />
                         </div>
                     </div>
                 </div>
@@ -183,7 +183,7 @@ const PromptNode = ({ data, selected, id }: NodeProps<Node<Record<string, any>>>
                 <Handle
                     type="source"
                     position={Position.Right}
-                    className="!h-4 !w-4 !translate-x-2 !border-4 !border-white !bg-blue-500 transition-all hover:scale-125 shadow-sm"
+                    className="!h-4 !w-4 !translate-x-2 !border-4 !border-warm-surface !bg-brand transition-all hover:scale-125 shadow-sm"
                 />
             </div>
 
@@ -197,7 +197,7 @@ const PromptNode = ({ data, selected, id }: NodeProps<Node<Record<string, any>>>
 const MarkdownPreview = ({ content }: { content: string }) => {
     return (
         <div
-            className="prose prose-sm max-w-none prose-slate prose-headings:font-bold prose-headings:text-slate-900 prose-p:text-slate-700 prose-a:text-blue-600 prose-code:text-blue-600 prose-code:bg-blue-50 prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded"
+            className="prose prose-sm max-w-none prose-slate prose-headings:font-bold prose-headings:text-slate-900 prose-p:text-slate-700 prose-a:text-brand prose-code:text-brand prose-code:bg-brand-light prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded"
             dangerouslySetInnerHTML={{
                 __html: content
                     .replace(/^### (.*$)/gim, '<h3>$1</h3>')
