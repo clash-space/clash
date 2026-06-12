@@ -303,6 +303,42 @@ html.dark.clash-is-scrolling ::-webkit-scrollbar-thumb:hover {
   min-width: 140px;
 }
 
+.clash-editor-modal-backdrop {
+  background:
+    radial-gradient(circle at 50% 20%, rgba(255, 107, 80, 0.07), transparent 34%),
+    rgba(35, 31, 25, 0.22);
+  backdrop-filter: blur(10px);
+}
+
+.clash-editor-modal-surface {
+  position: relative;
+  isolation: isolate;
+  border: 1px solid rgba(255, 255, 255, 0.72);
+  background:
+    linear-gradient(180deg, rgba(255, 254, 253, 0.98), rgba(247, 246, 242, 0.94));
+  box-shadow:
+    0 24px 72px rgba(35, 31, 25, 0.16),
+    0 8px 24px rgba(35, 31, 25, 0.075),
+    inset 0 1px 0 rgba(255, 255, 255, 0.86);
+}
+
+.clash-editor-modal-surface > * {
+  position: relative;
+  z-index: 1;
+}
+
+.clash-editor-modal-surface::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  z-index: 0;
+  background:
+    linear-gradient(90deg, rgba(255, 255, 255, 0.22), transparent 36%, rgba(168, 156, 141, 0.08)),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.38), transparent 48%);
+}
+
 .clash-input-surface {
   overflow: hidden;
   transition:

@@ -61,10 +61,10 @@ function Overlay({ children, onClose }: { children: ReactNode; onClose: () => vo
             role="dialog"
             aria-modal="true"
             aria-label="Video clipper"
-            className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/30 px-5 py-4"
+            className="clash-editor-modal-backdrop fixed inset-0 z-[100] flex items-center justify-center px-5 py-4"
             onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
         >
-            <div className="relative h-[min(820px,calc(100vh-48px))] w-[min(1200px,calc(100vw-48px))] overflow-hidden rounded-2xl bg-warm-surface shadow-2xl ring-1 ring-slate-950/10 flex flex-col">
+            <div className="clash-editor-modal-surface relative h-[min(820px,calc(100vh-48px))] w-[min(1200px,calc(100vw-48px))] overflow-hidden rounded-2xl flex flex-col">
                 {children}
             </div>
         </div>

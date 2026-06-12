@@ -51,6 +51,8 @@ const oldAwarenessPaletteTokens =
   /cyan|blue-500|violet|#06b6d4|#3b82f6|#8b5cf6/;
 const oldVideoClipperTokens =
   /border-purple-500|color="purple"|color="blue"|color:\s*'blue'|color:\s*'purple'|bg-blue-500|ring-blue-300|bg-purple-500|ring-purple-300/;
+const oldEditorModalShellTokens =
+  /bg-slate-950\/30|shadow-2xl|ring-slate-950\/10/;
 
 describe("visual language surfaces", () => {
   afterEach(() => {
@@ -174,8 +176,8 @@ describe("visual language surfaces", () => {
   it("keeps the homepage depth mask transparent enough for the canvas grid to read", () => {
     const source = readFileSync(join(process.cwd(), "packages/web-ui/src/components/Background.tsx"), "utf8");
 
-    expect(source).not.toMatch(/to-warm-page\/\[0\.025\]/);
-    expect(source).toMatch(/to-warm-page\/\[0\.012\]/);
+    expect(source).not.toMatch(/to-warm-page\/\[(0\.025|0\.012)\]/);
+    expect(source).toMatch(/to-warm-page\/\[0\.006\]/);
   });
 
   it("keeps identity and mention surfaces out of legacy gradient and default gray chrome", () => {
@@ -209,6 +211,20 @@ describe("visual language surfaces", () => {
 
     expect(source).not.toMatch(oldVideoClipperTokens);
     expect(source).toMatch(/brand|warm|slate/);
+  });
+
+  it("keeps editor modal shells on Clash surface classes instead of generic dark overlays", () => {
+    const source = [
+      "packages/web-ui/src/components/ImageEditorContext.tsx",
+      "packages/web-ui/src/components/VideoClipperContext.tsx",
+      "apps/web/app/globals.css",
+    ]
+      .map((path) => readFileSync(join(process.cwd(), path), "utf8"))
+      .join("\n");
+
+    expect(source).not.toMatch(oldEditorModalShellTokens);
+    expect(source).toMatch(/clash-editor-modal-backdrop/);
+    expect(source).toMatch(/clash-editor-modal-surface/);
   });
 
   it.each([

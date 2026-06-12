@@ -32,7 +32,7 @@ export default function Background() {
       </div>
 
       {/* Subtle depth mask. Keep it barely present so the canvas language stays visible. */}
-      <div className="absolute inset-0 bg-gradient-to-b from-transparent via-transparent to-warm-page/[0.012]" />
+      <div className="absolute inset-0 bg-gradient-to-b from-transparent via-transparent to-warm-page/[0.006]" />
     </div>
   );
 }
