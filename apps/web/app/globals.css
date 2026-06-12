@@ -339,6 +339,34 @@ html.dark.clash-is-scrolling ::-webkit-scrollbar-thumb:hover {
     linear-gradient(180deg, rgba(255, 255, 255, 0.38), transparent 48%);
 }
 
+.clash-media-viewer-backdrop {
+  background:
+    radial-gradient(circle at 50% 18%, rgba(255, 107, 80, 0.12), transparent 38%),
+    linear-gradient(180deg, rgba(55, 48, 39, 0.72), rgba(35, 31, 25, 0.76));
+  backdrop-filter: blur(12px);
+}
+
+.clash-media-viewer-frame {
+  border: 1px solid rgba(255, 255, 255, 0.36);
+  background:
+    linear-gradient(180deg, rgba(255, 254, 253, 0.2), rgba(247, 246, 242, 0.12));
+  box-shadow:
+    0 24px 70px rgba(35, 31, 25, 0.34),
+    0 8px 22px rgba(35, 31, 25, 0.18),
+    inset 0 1px 0 rgba(255, 255, 255, 0.28);
+}
+
+.clash-media-viewer-chrome {
+  border: 1px solid rgba(255, 255, 255, 0.58);
+  background:
+    linear-gradient(180deg, rgba(255, 254, 253, 0.96), rgba(247, 246, 242, 0.88));
+  box-shadow:
+    0 10px 26px rgba(35, 31, 25, 0.16),
+    0 2px 8px rgba(35, 31, 25, 0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 0.78);
+  backdrop-filter: blur(12px);
+}
+
 .clash-input-surface {
   overflow: hidden;
   transition:

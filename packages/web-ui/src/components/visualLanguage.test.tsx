@@ -53,6 +53,8 @@ const oldVideoClipperTokens =
   /border-purple-500|color="purple"|color="blue"|color:\s*'blue'|color:\s*'purple'|bg-blue-500|ring-blue-300|bg-purple-500|ring-purple-300/;
 const oldEditorModalShellTokens =
   /bg-slate-950(?:\/30|\/10|\/\[0\.28\])|shadow-2xl|shadow-\[0_24px_80px_rgba\(15,23,42,0\.28\)\]|ring-slate-950\/10|border-white\/70/;
+const oldMediaViewerTokens =
+  /bg-black\/80|bg-white\/10|hover:bg-white\/20|text-white|ring-white\/10|shadow-2xl|focus-visible:ring-white|focus-visible:ring-offset-black/;
 
 describe("visual language surfaces", () => {
   afterEach(() => {
@@ -226,6 +228,20 @@ describe("visual language surfaces", () => {
     expect(source).not.toMatch(oldEditorModalShellTokens);
     expect(source).toMatch(/clash-editor-modal-backdrop/);
     expect(source).toMatch(/clash-editor-modal-surface/);
+  });
+
+  it("keeps the media viewer in Clash media surfaces instead of generic black lightbox chrome", () => {
+    const source = [
+      "packages/web-ui/src/components/MediaViewer.tsx",
+      "apps/web/app/globals.css",
+    ]
+      .map((path) => readFileSync(join(process.cwd(), path), "utf8"))
+      .join("\n");
+
+    expect(source).not.toMatch(oldMediaViewerTokens);
+    expect(source).toMatch(/clash-media-viewer-backdrop/);
+    expect(source).toMatch(/clash-media-viewer-frame/);
+    expect(source).toMatch(/clash-media-viewer-chrome/);
   });
 
   it.each([
