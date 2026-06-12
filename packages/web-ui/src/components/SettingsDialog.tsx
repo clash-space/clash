@@ -1,5 +1,5 @@
 /**
- * SettingsDialog — ChatGPT-style settings modal.
+ * SettingsDialog — Clash settings modal.
  *
  * Renders a centered card with a left sidebar (category nav) and a
  * right content pane that hosts one `SettingsClient` section at a
@@ -140,9 +140,9 @@ export function SettingsDialog({ open, onClose, initialSection = 'runtimes' }: S
       size="xl"
       unstyled
     >
-      <div className="flex h-full bg-warm-surface rounded-2xl shadow-2xl border border-warm-border overflow-hidden">
+      <div className="clash-settings-dialog-shell flex h-full overflow-hidden rounded-2xl">
         {/* ── Sidebar ── */}
-        <aside className="w-56 shrink-0 border-r border-warm-border bg-warm-muted/40 flex flex-col">
+        <aside className="clash-settings-dialog-sidebar flex w-56 shrink-0 flex-col border-r border-warm-border/75">
           <div className="flex items-center justify-between px-4 py-4">
             <button
               type="button"
@@ -189,7 +189,7 @@ export function SettingsDialog({ open, onClose, initialSection = 'runtimes' }: S
         </aside>
 
         {/* ── Content ── */}
-        <main className="flex-1 min-w-0 overflow-y-auto bg-warm-surface">
+        <main className="clash-settings-dialog-content min-w-0 flex-1 overflow-y-auto">
           <div className="px-8 py-6">
             <h2 className="font-display text-xl font-bold text-stone-900 dark:text-stone-100 mb-6">
               {NAV_ITEMS.find((n) => n.id === active)?.label ?? 'Settings'}

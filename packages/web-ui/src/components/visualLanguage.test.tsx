@@ -58,6 +58,8 @@ const oldMediaViewerTokens =
 const oldConfirmDialogTokens =
   /bg-slate-950\/35|shadow-lg border border-warm-border|transition=\{\{ type: 'spring'|bg-warm-muted\/70/;
 const oldRouteErrorTokens = /Something went wrong|Unknown error/;
+const oldSettingsDialogTokens =
+  /ChatGPT-style|shadow-2xl border border-warm-border|bg-warm-muted\/40 flex flex-col/;
 
 describe("visual language surfaces", () => {
   afterEach(() => {
@@ -181,8 +183,8 @@ describe("visual language surfaces", () => {
   it("keeps the homepage depth mask transparent enough for the canvas grid to read", () => {
     const source = readFileSync(join(process.cwd(), "packages/web-ui/src/components/Background.tsx"), "utf8");
 
-    expect(source).not.toMatch(/to-warm-page\/\[(0\.025|0\.012|0\.006)\]/);
-    expect(source).toMatch(/to-warm-page\/\[0\.003\]/);
+    expect(source).not.toMatch(/to-warm-page\/\[(0\.025|0\.012|0\.006|0\.003)\]/);
+    expect(source).toMatch(/to-warm-page\/\[0\.0015\]/);
   });
 
   it("keeps identity and mention surfaces out of legacy gradient and default gray chrome", () => {
@@ -269,6 +271,20 @@ describe("visual language surfaces", () => {
     expect(source).toMatch(/error\.code/);
     expect(source).toMatch(/Reload/);
     expect(source).toMatch(/Go home/);
+  });
+
+  it("keeps settings modal chrome in Clash surfaces instead of inherited generic modal styling", () => {
+    const source = [
+      "packages/web-ui/src/components/SettingsDialog.tsx",
+      "apps/web/app/globals.css",
+    ]
+      .map((path) => readFileSync(join(process.cwd(), path), "utf8"))
+      .join("\n");
+
+    expect(source).not.toMatch(oldSettingsDialogTokens);
+    expect(source).toMatch(/clash-settings-dialog-shell/);
+    expect(source).toMatch(/clash-settings-dialog-sidebar/);
+    expect(source).toMatch(/clash-settings-dialog-content/);
   });
 
   it.each([
