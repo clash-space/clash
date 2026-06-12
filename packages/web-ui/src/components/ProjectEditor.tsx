@@ -2500,6 +2500,7 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
                                         className="clash-toolbar-button flex h-10 w-10 items-center justify-center rounded-full bg-transparent text-stone-500 hover:text-slate-950 transition-all"
                                         whileHover={{ scale: 1.05 }}
                                         whileTap={{ scale: 0.95 }}
+                                        aria-label={canvasMode === 'select' ? 'Switch to hand mode' : 'Switch to select mode'}
                                         title={canvasMode === 'select' ? 'Select mode (V)' : 'Hand mode (H)'}
                                     >
                                         {canvasMode === 'select'
@@ -2540,6 +2541,7 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
                                                     }`}
                                                     whileHover={{ scale: 1.05 }}
                                                     whileTap={{ scale: 0.95 }}
+                                                    aria-label={item.label}
                                                     title={item.label}
                                                 >
                                                     <Icon className="h-5 w-5" weight={isActive ? "fill" : "regular"} />
@@ -2558,6 +2560,7 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
                                          className="clash-toolbar-button flex h-10 w-10 items-center justify-center rounded-full bg-transparent text-stone-500 transition-all hover:text-slate-950"
                                          whileHover={{ scale: 1.05 }}
                                          whileTap={{ scale: 0.95 }}
+                                         aria-label="Auto Layout"
                                          title="Auto Layout"
                                      >
                                          <MagicWand className="h-5 w-5" weight="regular" />
@@ -2573,6 +2576,7 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
                                          }`}
                                          whileHover={loroSync.canUndo ? { scale: 1.05 } : {}}
                                          whileTap={loroSync.canUndo ? { scale: 0.95 } : {}}
+                                         aria-label="Undo"
                                          title="Undo"
                                      >
                                          <ArrowCounterClockwise className="h-5 w-5" weight="bold" />
@@ -2587,6 +2591,7 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
                                          }`}
                                          whileHover={loroSync.canRedo ? { scale: 1.05 } : {}}
                                          whileTap={loroSync.canRedo ? { scale: 0.95 } : {}}
+                                         aria-label="Redo"
                                          title="Redo"
                                      >
                                          <ArrowClockwise className="h-5 w-5" weight="bold" />
@@ -2605,6 +2610,7 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
                                              }`}
                                              whileHover={{ scale: 1.05 }}
                                              whileTap={{ scale: 0.95 }}
+                                             aria-label="Toggle Node IDs"
                                              title="Toggle Node IDs"
                                          >
                                               <span className="font-mono text-xs font-bold">ID</span>

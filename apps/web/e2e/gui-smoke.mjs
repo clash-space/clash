@@ -1,0 +1,313 @@
+import { spawn } from "node:child_process";
+import { mkdir, rm } from "node:fs/promises";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import {
+  CdpClient,
+  assert,
+  capture,
+  chromeBinary,
+  click,
+  clickByText,
+  evaluate,
+  findFreePort,
+  stopProcess,
+  tail,
+  typeText,
+  waitFor,
+  waitForHttp,
+  waitForTarget,
+} from "../../../scripts/e2e/harness.mjs";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const webDir = path.resolve(__dirname, "..");
+const repoRoot = path.resolve(webDir, "..", "..");
+
+const dataDir = process.env.CLASH_WEB_GUI_E2E_DATA_DIR ?? path.join(repoRoot, ".tmp", "web-gui-e2e-local-api-data");
+const chromeDataDir = process.env.CLASH_WEB_GUI_E2E_CHROME_DATA_DIR ?? path.join(repoRoot, ".tmp", "web-gui-e2e-chrome");
+const captureDir = process.env.CLASH_WEB_GUI_E2E_CAPTURE_DIR ?? path.join(repoRoot, ".tmp", "web-gui-e2e-captures");
+const latestScreenshot = path.join(captureDir, "latest-web-gui.png");
+
+async function startWeb({ webPort, apiOrigin }) {
+  const logs = [];
+  const child = spawn("pnpm", ["--dir", webDir, "exec", "vite", "--host", "127.0.0.1", "--port", String(webPort)], {
+    cwd: webDir,
+    env: {
+      ...process.env,
+      VITE_CLASH_API_BASE_URL: apiOrigin,
+      VITE_CLASH_WS_BASE_URL: apiOrigin.replace("http:", "ws:"),
+    },
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  child.stdout.on("data", (buf) => {
+    const text = String(buf);
+    logs.push(text);
+    process.stdout.write(text);
+  });
+  child.stderr.on("data", (buf) => {
+    const text = String(buf);
+    logs.push(text);
+    process.stderr.write(text);
+  });
+  return { child, logs };
+}
+
+async function assertNoCriticalA11yRegressions(cdp) {
+  const state = await evaluate(cdp, `(() => {
+    const visibleControls = [...document.querySelectorAll("button, a, input, textarea, [role='button'], [role='menuitem']")]
+      .filter((el) => {
+        const rect = el.getBoundingClientRect();
+        const style = getComputedStyle(el);
+        return rect.width > 0 &&
+          rect.height > 0 &&
+          style.visibility !== "hidden" &&
+          style.display !== "none";
+      })
+      .map((el) => ({
+        tag: el.tagName,
+        role: el.getAttribute("role"),
+        aria: el.getAttribute("aria-label"),
+        text: (el.innerText || el.textContent || el.getAttribute("placeholder") || "").trim(),
+        id: el.id,
+      }));
+    const unlabeled = visibleControls.filter((el) =>
+      (el.tag === "BUTTON" || el.role === "button" || el.role === "menuitem") &&
+      !el.aria &&
+      !el.text &&
+      !el.id
+    );
+    const body = getComputedStyle(document.body);
+    return {
+      bodyColor: body.color,
+      bodyBackground: body.backgroundColor,
+      unlabeled: unlabeled.slice(0, 8),
+    };
+  })()`);
+  assert(
+    !(state.bodyColor === "rgb(255, 255, 255)" && state.bodyBackground !== "rgb(0, 0, 0)"),
+    "body text must stay readable on the page background",
+    state,
+  );
+  assert(state.unlabeled.length === 0, "visible clickable controls need text or aria labels", state);
+}
+
+async function openSettingsFromHome(cdp) {
+  await waitFor(cdp, `document.body.innerText.includes("Home")`, "home content");
+  await click(
+    cdp,
+    `([...document.querySelectorAll("button")].find((button) => {
+      const label = button.getAttribute("aria-label") || "";
+      const text = (button.innerText || button.textContent || "").trim();
+      const rect = button.getBoundingClientRect();
+      return rect.width > 0 && rect.height > 0 && (label.includes("Account menu") || text.includes("Local User") || text === "?");
+    }))`,
+    "account menu",
+  );
+  await clickByText(cdp, "Settings", "Settings menu item");
+  await waitFor(cdp, `document.querySelector('[role="dialog"]')?.innerText.includes("Runtimes")`, "settings dialog");
+}
+
+async function exerciseSettingsDialog(cdp) {
+  await openSettingsFromHome(cdp);
+  await clickByText(cdp, "API Keys", "API Keys settings section");
+  await waitFor(cdp, `document.querySelector('[role="dialog"]')?.innerText.includes("OpenAI image generation")`, "API Keys section");
+  await click(
+    cdp,
+    `document.querySelector("button[aria-label='OpenAI · OPENAI_API_KEY']")`,
+    "OpenAI provider preset",
+  );
+  const keyValue = await evaluate(cdp, `(() => {
+    const input = [...document.querySelectorAll("input")].find((el) => el.placeholder === "KEY_NAME");
+    return input?.value ?? "";
+  })()`);
+  assert(keyValue === "OPENAI_API_KEY", "provider preset fills the variable key input", { keyValue });
+  await click(cdp, `document.querySelector("button[aria-label='Close settings']")`, "Close settings");
+  await waitFor(cdp, `!document.querySelector('[role="dialog"]')`, "settings dialog closes");
+}
+
+async function createProject(cdp) {
+  await clickByText(cdp, "Projects", "Projects nav");
+  await waitFor(cdp, `location.pathname === "/projects"`, "projects route");
+  await waitFor(cdp, `document.body.innerText.includes("New Project")`, "new project card");
+  await clickByText(cdp, "New Project", "New Project");
+  await waitFor(
+    cdp,
+    `location.pathname.startsWith("/projects/") && location.pathname !== "/projects" && !!document.querySelector("#editor-header")`,
+    "project editor route",
+    15000,
+  );
+}
+
+async function exerciseRuntimeGui(cdp) {
+  await createProject(cdp);
+  await assertNoCriticalA11yRegressions(cdp);
+  await click(
+    cdp,
+    `document.querySelector("button[aria-label='Run on (Cloud / local runtime)']") ||
+      document.querySelector("button[aria-label='运行环境（云端 / 本地）']")`,
+    "Run on runtime picker",
+  );
+  await waitFor(cdp, `document.body.innerText.includes("Mock Desktop")`, "runtime menu lists mock desktop");
+  await click(
+    cdp,
+    `([...document.querySelectorAll("[role='menuitem'], button")].find((el) => {
+      const text = (el.innerText || el.textContent || "").trim();
+      const rect = el.getBoundingClientRect();
+      const style = getComputedStyle(el);
+      return text.includes("Mock Desktop") &&
+        rect.width > 0 &&
+        rect.height > 0 &&
+        style.display !== "none" &&
+        style.visibility !== "hidden";
+    }))`,
+    "Mock Desktop runtime option",
+  );
+  await waitFor(cdp, `document.querySelector('[role="dialog"]')?.innerText.includes("Start local helper on Mock Desktop")`, "runtime dialog");
+  await waitFor(
+    cdp,
+    `(document.querySelector('[role="dialog"]')?.innerText || "").toLowerCase().includes("resume a session")`,
+    "resume picker",
+  );
+  await waitFor(cdp, `document.querySelector('[role="dialog"]')?.innerText.includes("Start fresh")`, "fresh session option");
+  await clickByText(cdp, "Start helper", "Start helper");
+  await waitFor(
+    cdp,
+    `document.body.innerText.includes("Local agent connected") ||
+      document.body.innerText.includes("本地 Agent 已连接")`,
+    "local agent connected",
+    15000,
+  );
+
+  const prompt = "gui e2e choreograph a small canvas";
+  await typeText(cdp, `.milkdown-chat-input [contenteditable='true']`, prompt);
+  await click(
+    cdp,
+    `([...document.querySelectorAll("button")].find((button) => {
+      const label = (button.getAttribute("aria-label") || "").toLowerCase();
+      const rect = button.getBoundingClientRect();
+      return (label.includes("send") || label.includes("发送")) &&
+        !button.disabled &&
+        rect.width > 0 &&
+        rect.height > 0;
+    }))`,
+    "Send prompt",
+  );
+  await waitFor(
+    cdp,
+    `document.body.innerText.includes(${JSON.stringify(prompt)}) &&
+      document.body.innerText.includes(${JSON.stringify(`Mock ACP reply: ${prompt}`)})`,
+    "mock helper reply",
+    15000,
+  );
+  await waitFor(
+    cdp,
+    `(() => {
+      const nodes = [...document.querySelectorAll(".react-flow__node")].map((node) => ({
+        id: node.getAttribute("data-id") || "",
+        text: (node.querySelector("input")?.value || "") + " " + (node.innerText || node.textContent || ""),
+        rect: (() => {
+          const rect = node.getBoundingClientRect();
+          return { width: rect.width, height: rect.height };
+        })(),
+      }));
+      return nodes.some((node) => node.id.includes("mock-agent-stage-") && node.rect.width > 300 && node.rect.height > 160) &&
+        nodes.some((node) => node.text.includes("Agent Brief")) &&
+        nodes.some((node) => node.text.includes("Agent Image Pass"));
+    })()`,
+    "agent-created visible canvas nodes",
+    15000,
+  );
+
+  return evaluate(cdp, `(() => ({
+    href: location.href,
+    title: document.title,
+    text: document.body.innerText.slice(0, 1000),
+    nodes: [...document.querySelectorAll(".react-flow__node")].map((node) => ({
+      id: node.getAttribute("data-id"),
+      text: ((node.querySelector("input")?.value || "") + " " + (node.innerText || node.textContent || "")).trim().slice(0, 200),
+      rect: (() => {
+        const rect = node.getBoundingClientRect();
+        return { x: Math.round(rect.x), y: Math.round(rect.y), width: Math.round(rect.width), height: Math.round(rect.height) };
+      })(),
+    })).filter((node) =>
+      (node.id || "").includes("mock-agent-stage-") ||
+      node.text.includes("Agent Brief") ||
+      node.text.includes("Agent Image Pass")
+    ),
+  }))()`);
+}
+
+async function main() {
+  process.env.CLASH_LOCAL_ACP_MOCK = "1";
+  await rm(dataDir, { recursive: true, force: true });
+  await rm(chromeDataDir, { recursive: true, force: true });
+  await mkdir(captureDir, { recursive: true });
+
+  const apiPort = await findFreePort(49800);
+  const webPort = await findFreePort(49850);
+  const cdpPort = await findFreePort(49900);
+  const apiOrigin = `http://127.0.0.1:${apiPort}`;
+  const webOrigin = `http://127.0.0.1:${webPort}`;
+
+  const { startLocalApiServer } = await import("../../local-api/dist/server.js");
+  const apiServer = await startLocalApiServer({ port: apiPort, dataDir });
+  const { child: web, logs: webLogs } = await startWeb({ webPort, apiOrigin });
+  const chromeLogs = [];
+  let chrome;
+  let cdp;
+
+  try {
+    await waitForHttp(webOrigin, "Vite web server");
+    chrome = spawn(chromeBinary(), [
+      `--remote-debugging-port=${cdpPort}`,
+      `--user-data-dir=${chromeDataDir}`,
+      "--headless=new",
+      "--no-first-run",
+      "--no-default-browser-check",
+      "--disable-background-networking",
+      "--disable-renderer-backgrounding",
+      "--window-size=1440,1000",
+      "about:blank",
+    ], {
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    chrome.stdout.on("data", (buf) => chromeLogs.push(String(buf)));
+    chrome.stderr.on("data", (buf) => chromeLogs.push(String(buf)));
+
+    cdp = new CdpClient(await waitForTarget(cdpPort));
+    await cdp.ready();
+    await cdp.send("Runtime.enable");
+    await cdp.send("Page.enable");
+    await cdp.send("Page.navigate", { url: webOrigin });
+
+    await exerciseSettingsDialog(cdp);
+    const state = await exerciseRuntimeGui(cdp);
+    await capture(cdp, latestScreenshot);
+    console.log("[web-gui] state", JSON.stringify(state));
+    console.log(`[web-gui] screenshot ${latestScreenshot}`);
+  } catch (error) {
+    process.exitCode = 1;
+    console.error("[web-gui] caught", error instanceof Error ? error.stack ?? error.message : error);
+    if (cdp) {
+      try {
+        await capture(cdp, latestScreenshot);
+        console.error(`[web-gui] failure screenshot ${latestScreenshot}`);
+      } catch {
+        // Ignore capture failure while unwinding.
+      }
+    }
+    console.error("[web-gui] web logs\n" + tail(webLogs));
+    console.error("[web-gui] chrome logs\n" + tail(chromeLogs));
+    throw error;
+  } finally {
+    if (cdp) cdp.close();
+    await stopProcess(chrome);
+    await stopProcess(web);
+    await new Promise((resolve) => apiServer.close(resolve));
+  }
+}
+
+main().catch((error) => {
+  console.error(error instanceof Error ? error.stack ?? error.message : error);
+  process.exit(1);
+});
