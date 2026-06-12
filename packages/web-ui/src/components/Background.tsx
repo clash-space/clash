@@ -32,7 +32,7 @@ export default function Background() {
       </div>
 
       {/* Gradient Mask for Depth */}
-      <div className="absolute inset-0 bg-gradient-to-b from-transparent via-transparent to-warm-page/22" />
+      <div className="absolute inset-0 bg-gradient-to-b from-transparent via-transparent to-warm-page/10" />
     </div>
   );
 }

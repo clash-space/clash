@@ -148,7 +148,7 @@ export default function LoginRoute() {
   };
 
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center bg-warm-page relative overflow-hidden">
+    <div className="flex min-h-screen flex-col items-center justify-center relative overflow-hidden">
       <Background />
       <motion.div
         initial={{ opacity: 0, y: 20 }}
@@ -195,12 +195,12 @@ export default function LoginRoute() {
         </div>
 
         {error && (
-          <div className="mb-4 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700">
+          <div className="mb-4 rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700">
             {error}
           </div>
         )}
         {info && !error && (
-          <div className="mb-4 rounded-lg bg-green-50 px-4 py-3 text-sm text-green-700">
+          <div className="mb-4 rounded-xl bg-green-50 px-4 py-3 text-sm text-green-700">
             {info}
           </div>
         )}
@@ -214,12 +214,12 @@ export default function LoginRoute() {
               onChange={(e) => setEmail(e.target.value)}
               autoComplete="email"
               required
-              className="w-full rounded-full border border-warm-border bg-warm-surface px-5 py-3 text-base focus:border-brand/70 focus:outline-none"
+              className="w-full rounded-2xl border border-warm-border bg-warm-surface px-5 py-3 text-base shadow-sm shadow-stone-950/[0.02] focus:border-brand/70 focus:outline-none focus:ring-4 focus:ring-brand/10"
             />
             <motion.button
               type="submit"
               disabled={isLoading || !email}
-              className="flex w-full items-center justify-center gap-3 rounded-full bg-slate-950 px-6 py-4 text-base font-medium text-white shadow-sm shadow-slate-950/10 transition-all hover:bg-slate-800 disabled:opacity-70 disabled:cursor-not-allowed"
+              className="flex w-full items-center justify-center gap-3 rounded-2xl bg-slate-950 px-6 py-4 text-base font-medium text-white shadow-sm shadow-slate-950/10 transition-all hover:bg-slate-800 disabled:opacity-70 disabled:cursor-not-allowed"
               whileHover={!isLoading ? { scale: 1.02 } : {}}
               whileTap={!isLoading ? { scale: 0.98 } : {}}
             >
@@ -249,7 +249,7 @@ export default function LoginRoute() {
               onChange={(e) => setEmail(e.target.value)}
               autoComplete="email"
               required
-              className="w-full rounded-full border border-warm-border bg-warm-surface px-5 py-3 text-base focus:border-brand/70 focus:outline-none"
+              className="w-full rounded-2xl border border-warm-border bg-warm-surface px-5 py-3 text-base shadow-sm shadow-stone-950/[0.02] focus:border-brand/70 focus:outline-none focus:ring-4 focus:ring-brand/10"
             />
             {pwAction === "signup" && (
               <input
@@ -258,7 +258,7 @@ export default function LoginRoute() {
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 autoComplete="name"
-                className="w-full rounded-full border border-warm-border bg-warm-surface px-5 py-3 text-base focus:border-brand/70 focus:outline-none"
+                className="w-full rounded-2xl border border-warm-border bg-warm-surface px-5 py-3 text-base shadow-sm shadow-stone-950/[0.02] focus:border-brand/70 focus:outline-none focus:ring-4 focus:ring-brand/10"
               />
             )}
             <input
@@ -269,12 +269,12 @@ export default function LoginRoute() {
               autoComplete={pwAction === "signin" ? "current-password" : "new-password"}
               minLength={8}
               required
-              className="w-full rounded-full border border-warm-border bg-warm-surface px-5 py-3 text-base focus:border-brand/70 focus:outline-none"
+              className="w-full rounded-2xl border border-warm-border bg-warm-surface px-5 py-3 text-base shadow-sm shadow-stone-950/[0.02] focus:border-brand/70 focus:outline-none focus:ring-4 focus:ring-brand/10"
             />
             <motion.button
               type="submit"
               disabled={isLoading || !email || password.length < 8}
-              className="flex w-full items-center justify-center gap-3 rounded-full bg-slate-950 px-6 py-4 text-base font-medium text-white shadow-sm shadow-slate-950/10 transition-all hover:bg-slate-800 disabled:opacity-70 disabled:cursor-not-allowed"
+              className="flex w-full items-center justify-center gap-3 rounded-2xl bg-slate-950 px-6 py-4 text-base font-medium text-white shadow-sm shadow-slate-950/10 transition-all hover:bg-slate-800 disabled:opacity-70 disabled:cursor-not-allowed"
               whileHover={!isLoading ? { scale: 1.02 } : {}}
               whileTap={!isLoading ? { scale: 0.98 } : {}}
             >
@@ -326,12 +326,12 @@ export default function LoginRoute() {
               onChange={(e) => setOtp(e.target.value.replace(/\D/g, ""))}
               autoComplete="one-time-code"
               required
-              className="w-full rounded-full border border-warm-border bg-warm-surface px-5 py-3 text-center text-xl tracking-[0.4em] font-mono focus:border-brand/70 focus:outline-none"
+              className="w-full rounded-2xl border border-warm-border bg-warm-surface px-5 py-3 text-center text-xl tracking-[0.4em] font-mono shadow-sm shadow-stone-950/[0.02] focus:border-brand/70 focus:outline-none focus:ring-4 focus:ring-brand/10"
             />
             <motion.button
               type="submit"
               disabled={isLoading || otp.length !== 6}
-              className="flex w-full items-center justify-center gap-3 rounded-full bg-slate-950 px-6 py-4 text-base font-medium text-white shadow-sm shadow-slate-950/10 transition-all hover:bg-slate-800 disabled:opacity-70 disabled:cursor-not-allowed"
+              className="flex w-full items-center justify-center gap-3 rounded-2xl bg-slate-950 px-6 py-4 text-base font-medium text-white shadow-sm shadow-slate-950/10 transition-all hover:bg-slate-800 disabled:opacity-70 disabled:cursor-not-allowed"
               whileHover={!isLoading && otp.length === 6 ? { scale: 1.02 } : {}}
               whileTap={!isLoading && otp.length === 6 ? { scale: 0.98 } : {}}
             >
@@ -380,7 +380,7 @@ export default function LoginRoute() {
           type="button"
           onClick={handleGoogleSignIn}
           disabled={isLoading}
-          className="flex w-full items-center justify-center gap-3 rounded-full border border-warm-border bg-warm-surface px-6 py-4 text-base font-medium text-slate-950 transition-all hover:bg-white disabled:opacity-70 disabled:cursor-not-allowed"
+          className="flex w-full items-center justify-center gap-3 rounded-2xl border border-warm-border bg-warm-surface px-6 py-4 text-base font-medium text-slate-950 shadow-sm shadow-stone-950/[0.02] transition-all hover:bg-white disabled:opacity-70 disabled:cursor-not-allowed"
           whileHover={!isLoading ? { scale: 1.02 } : {}}
           whileTap={!isLoading ? { scale: 0.98 } : {}}
         >

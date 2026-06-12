@@ -25,14 +25,14 @@ export default function LandingHero() {
 
   return (
     <section className="relative flex min-h-[calc(100vh-5rem)] items-center justify-center overflow-hidden px-6 lg:px-8">
-      <div className="mx-auto w-full max-w-4xl">
+      <div className="mx-auto w-full max-w-5xl">
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.6 }}
-          className="text-center"
+          className="text-left"
         >
-          <h1 className="mb-10 text-6xl md:text-7xl font-bold tracking-tighter text-slate-900 dark:text-slate-50 text-center w-full font-display">
+          <h1 className="mb-10 max-w-4xl text-5xl font-bold tracking-tight text-slate-950 dark:text-slate-50 sm:text-6xl md:text-7xl font-display">
             Hey! <br />
             Let&apos;s make some <span className="text-brand">CLASH</span>?
           </h1>
@@ -41,7 +41,7 @@ export default function LandingHero() {
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.6, delay: 0.2 }}
-            className="mx-auto w-full"
+            className="w-full max-w-4xl"
           >
             <ChatInput
               input={inputValue}

@@ -64,7 +64,7 @@ export default function ProjectCard({ project }: ProjectCardProps) {
     <article className="group relative">
       <Link to={`/projects/${project.id}`} className="block">
         <motion.div
-          className="relative aspect-video overflow-hidden rounded-2xl bg-warm-muted mb-4 transition-all hover:shadow-lg ring-1 ring-black/5"
+          className="relative aspect-video overflow-hidden rounded-2xl bg-warm-muted mb-4 transition-all hover:shadow-lg ring-1 ring-warm-border/80"
           whileHover={{ y: -2 }}
           whileTap={{ scale: 0.98 }}
         >
@@ -119,7 +119,7 @@ export default function ProjectCard({ project }: ProjectCardProps) {
             }
           }}
           aria-label={`Delete project ${project.name || 'Untitled'}`}
-          className="rounded-full bg-warm-surface/90 p-2 min-h-[36px] min-w-[36px] text-slate-600 shadow-sm backdrop-blur-sm transition-colors hover:bg-red-50 hover:text-red-600 dark:text-slate-300 dark:hover:bg-red-950/40 dark:hover:text-red-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500 focus-visible:ring-offset-2 focus-visible:ring-offset-warm-page"
+          className="rounded-xl bg-warm-surface/90 p-2 min-h-[36px] min-w-[36px] text-slate-600 shadow-sm backdrop-blur-sm transition-colors hover:bg-red-50 hover:text-red-600 dark:text-slate-300 dark:hover:bg-red-950/40 dark:hover:text-red-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500 focus-visible:ring-offset-2 focus-visible:ring-offset-warm-page"
         >
           <Trash className="h-4 w-4" weight="bold" aria-hidden="true" />
         </button>

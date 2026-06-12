@@ -9,7 +9,7 @@ const posts = [
     category: 'Vision',
     readTime: '5 min',
     date: 'Mar 28, 2026',
-    gradient: 'from-brand/20 to-orange-100',
+    gradient: 'from-brand/16 to-warm-muted',
   },
   {
     title: 'Sleep-Time Production: Let AI Work While You Rest',
@@ -17,7 +17,7 @@ const posts = [
     category: 'Product',
     readTime: '4 min',
     date: 'Mar 25, 2026',
-    gradient: 'from-indigo-100 to-violet-100',
+    gradient: 'from-warm-muted to-warm-surface',
   },
   {
     title: 'CRDT-Powered Collaboration for Creative Tools',
@@ -25,13 +25,13 @@ const posts = [
     category: 'Engineering',
     readTime: '8 min',
     date: 'Mar 20, 2026',
-    gradient: 'from-emerald-100 to-teal-100',
+    gradient: 'from-warm-hover to-brand-light',
   },
 ];
 
 export default function BlogPreview() {
   return (
-    <section id="blog" className="py-24 sm:py-32 relative z-10 bg-gray-50/80 scroll-mt-20">
+    <section id="blog" className="py-24 sm:py-32 relative z-10 bg-warm-muted/45 scroll-mt-20">
       <div className="mx-auto max-w-7xl px-6 lg:px-8">
         <div className="flex items-end justify-between mb-12">
           <div>
@@ -42,7 +42,7 @@ export default function BlogPreview() {
           </div>
           <motion.a
             href="#"
-            className="hidden sm:flex items-center gap-1.5 text-sm font-medium text-gray-700 dark:text-gray-300 hover:text-brand transition-colors"
+            className="hidden sm:flex items-center gap-1.5 text-sm font-medium text-stone-700 dark:text-stone-300 hover:text-brand transition-colors"
             whileHover={{ x: 2 }}
           >
             View all posts
@@ -59,11 +59,11 @@ export default function BlogPreview() {
               whileInView={{ opacity: 1, y: 0 }}
               viewport={{ once: true }}
               transition={{ duration: 0.4, delay: index * 0.1 }}
-              className="group flex flex-col overflow-hidden rounded-2xl bg-warm-surface shadow-sm ring-1 ring-black/5 transition-all hover:shadow-lg"
+              className="group flex flex-col overflow-hidden rounded-2xl border border-warm-border/80 bg-warm-surface/88 shadow-[0_10px_28px_rgba(35,31,25,0.04)] transition-all hover:-translate-y-0.5 hover:border-brand/25 hover:bg-warm-surface"
             >
               {/* Gradient header */}
               <div className={`h-40 bg-gradient-to-br ${post.gradient} flex items-end p-6`}>
-                <span className="inline-flex items-center rounded-full bg-white/80 backdrop-blur-sm px-2.5 py-0.5 text-xs font-medium text-gray-800 dark:text-gray-200">
+                <span className="inline-flex items-center rounded-lg bg-warm-surface/85 px-2.5 py-0.5 text-xs font-medium text-stone-800 dark:text-stone-200">
                   {post.category}
                 </span>
               </div>
@@ -72,10 +72,10 @@ export default function BlogPreview() {
                 <h3 className="text-lg font-bold text-slate-900 dark:text-slate-50 font-display mb-2 group-hover:text-brand transition-colors">
                   {post.title}
                 </h3>
-                <p className="text-sm text-gray-700 dark:text-gray-300 leading-relaxed flex-1 mb-4">
+                <p className="text-sm text-stone-700 dark:text-stone-300 leading-relaxed flex-1 mb-4">
                   {post.excerpt}
                 </p>
-                <div className="flex items-center gap-3 text-xs text-gray-700 dark:text-gray-300">
+                <div className="flex items-center gap-3 text-xs text-stone-600 dark:text-stone-300">
                   <span>{post.date}</span>
                   <span className="flex items-center gap-1">
                     <Clock className="h-3 w-3" weight="bold" />

@@ -85,8 +85,8 @@ export default function UserControls({ compact = false }: UserControlsProps = {}
               to="/billing"
               className={
                 compact
-                  ? 'flex h-8 w-8 items-center justify-center rounded-md text-stone-600 transition-colors hover:bg-stone-200/70 hover:text-stone-950 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand'
-                  : 'flex items-center gap-1.5 rounded-full bg-warm-surface border border-warm-border px-3 py-1.5 shadow-sm hover:shadow-md hover:border-brand/40 transition-all text-sm font-display font-medium text-stone-800 dark:text-stone-200'
+                  ? 'flex h-8 w-8 items-center justify-center rounded-lg text-stone-600 transition-colors hover:bg-stone-200/70 hover:text-stone-950 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand'
+                  : 'flex items-center gap-1.5 rounded-xl bg-warm-surface border border-warm-border px-3 py-1.5 shadow-sm hover:shadow-md hover:border-brand/40 transition-all text-sm font-display font-medium text-stone-800 dark:text-stone-200'
               }
               aria-label="Credits balance — click to manage billing"
               title={
@@ -113,19 +113,19 @@ export default function UserControls({ compact = false }: UserControlsProps = {}
             aria-label={`Account menu — ${user.name}`}
             className={
               compact
-                ? 'flex h-8 items-center rounded-md px-1 text-stone-700 transition-colors hover:bg-stone-200/70 hover:text-stone-950 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand'
-                : 'flex items-center gap-3 rounded-full bg-warm-surface border border-warm-border pl-1.5 pr-4 py-1.5 shadow-sm cursor-pointer hover:shadow-md transition-shadow focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-warm-page'
+                ? 'flex h-8 items-center rounded-lg px-1 text-stone-700 transition-colors hover:bg-stone-200/70 hover:text-stone-950 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand'
+                : 'flex items-center gap-3 rounded-2xl bg-warm-surface border border-warm-border pl-1.5 pr-4 py-1.5 shadow-sm cursor-pointer hover:shadow-md transition-shadow focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-warm-page'
             }
           >
             {user.image && !avatarFailed ? (
               <img
                 src={user.image}
                 alt=""
-                className={`${compact ? 'h-7 w-7' : 'h-10 w-10'} rounded-full object-cover`}
+                className={`${compact ? 'h-7 w-7' : 'h-10 w-10'} rounded-xl object-cover`}
                 onError={() => setAvatarFailed(true)}
               />
             ) : (
-              <div className={`flex ${compact ? 'h-7 w-7 text-[11px]' : 'h-10 w-10 text-sm'} items-center justify-center rounded-full bg-gradient-to-br from-brand to-red-500 font-bold text-white`} aria-hidden="true">
+              <div className={`flex ${compact ? 'h-7 w-7 text-[11px]' : 'h-10 w-10 text-sm'} items-center justify-center rounded-xl bg-gradient-to-br from-brand to-red-500 font-bold text-white`} aria-hidden="true">
                 {getInitials(user.name)}
               </div>
             )}
@@ -194,8 +194,8 @@ export default function UserControls({ compact = false }: UserControlsProps = {}
           onClick={handleSignIn}
           className={
             compact
-              ? 'flex h-8 items-center gap-1.5 rounded-md bg-stone-900 px-2.5 text-[13px] font-medium text-white transition-colors hover:bg-stone-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand'
-              : 'flex items-center gap-2 rounded-full bg-slate-950 px-6 py-3 min-h-[44px] text-base font-display font-medium text-white transition-all hover:bg-slate-800 shadow-lg shadow-slate-950/20 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-warm-page'
+              ? 'flex h-8 items-center gap-1.5 rounded-lg bg-stone-900 px-2.5 text-[13px] font-medium text-white transition-colors hover:bg-stone-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand'
+              : 'flex items-center gap-2 rounded-xl bg-slate-950 px-6 py-3 min-h-[44px] text-base font-display font-medium text-white transition-all hover:bg-slate-800 shadow-lg shadow-slate-950/20 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-warm-page'
           }
           whileHover={{ scale: 1.05 }}
           whileTap={{ scale: 0.95 }}

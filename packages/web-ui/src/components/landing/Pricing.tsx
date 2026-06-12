@@ -67,7 +67,7 @@ export default function Pricing() {
           <p className="mt-2 text-3xl font-bold tracking-tight text-slate-900 dark:text-slate-50 sm:text-4xl font-display">
             Simple, transparent pricing
           </p>
-          <p className="mt-6 text-lg leading-8 text-gray-700 dark:text-gray-300">
+          <p className="mt-6 text-lg leading-8 text-stone-700 dark:text-stone-300">
             Start free. Upgrade when you're ready. No surprises.
           </p>
         </div>
@@ -80,14 +80,14 @@ export default function Pricing() {
               whileInView={{ opacity: 1, y: 0 }}
               viewport={{ once: true }}
               transition={{ duration: 0.4, delay: index * 0.1 }}
-              className={`relative flex flex-col rounded-2xl p-8 ${
-                tier.highlight
-                  ? 'bg-gray-900 text-white ring-2 ring-brand shadow-xl scale-[1.02]'
-                  : 'bg-warm-surface ring-1 ring-black/5 shadow-sm'
+                className={`relative flex flex-col rounded-2xl p-8 ${
+                  tier.highlight
+                  ? 'bg-slate-950 text-white ring-2 ring-brand shadow-xl shadow-slate-950/10 scale-[1.02]'
+                  : 'border border-warm-border/80 bg-warm-surface/88 shadow-[0_10px_28px_rgba(35,31,25,0.04)]'
               }`}
             >
               {tier.highlight && (
-                <span className="absolute -top-3 left-1/2 -translate-x-1/2 inline-flex items-center rounded-full bg-brand px-3 py-1 text-xs font-bold text-white">
+                <span className="absolute -top-3 left-1/2 -translate-x-1/2 inline-flex items-center rounded-lg bg-brand px-3 py-1 text-xs font-bold text-white shadow-sm shadow-brand/20">
                   Most Popular
                 </span>
               )}
@@ -100,11 +100,11 @@ export default function Pricing() {
                   <span className={`text-4xl font-display font-bold tracking-tight ${tier.highlight ? 'text-white' : 'text-slate-900 dark:text-slate-50'}`}>
                     {tier.price}
                   </span>
-                  <span className={`text-sm ${tier.highlight ? 'text-gray-700 dark:text-gray-300' : 'text-gray-700 dark:text-gray-300'}`}>
+                  <span className={`text-sm ${tier.highlight ? 'text-stone-300' : 'text-stone-700 dark:text-stone-300'}`}>
                     {tier.period}
                   </span>
                 </div>
-                <p className={`mt-3 text-sm ${tier.highlight ? 'text-gray-700 dark:text-gray-300' : 'text-gray-700 dark:text-gray-300'}`}>
+                <p className={`mt-3 text-sm ${tier.highlight ? 'text-stone-300' : 'text-stone-700 dark:text-stone-300'}`}>
                   {tier.description}
                 </p>
               </div>
@@ -116,7 +116,7 @@ export default function Pricing() {
                       className={`h-4 w-4 mt-0.5 flex-shrink-0 ${tier.highlight ? 'text-brand' : 'text-brand'}`}
                       weight="bold"
                     />
-                    <span className={`text-sm ${tier.highlight ? 'text-gray-300' : 'text-gray-700 dark:text-gray-300'}`}>
+                    <span className={`text-sm ${tier.highlight ? 'text-stone-300' : 'text-stone-700 dark:text-stone-300'}`}>
                       {feature}
                     </span>
                   </li>
@@ -130,7 +130,7 @@ export default function Pricing() {
                   className={`w-full rounded-xl py-3 text-sm font-bold transition-all ${
                     tier.highlight
                       ? 'bg-brand text-white hover:bg-red-600 shadow-lg'
-                      : 'bg-gray-900 text-white hover:bg-gray-800'
+                      : 'bg-slate-950 text-white hover:bg-slate-800'
                   }`}
                 >
                   {tier.cta}

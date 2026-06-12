@@ -15,14 +15,14 @@ const steps = [
     title: 'Co-Create with AI',
     description: 'Your AI agent proposes storyboards, generates assets, and refines the edit. You stay in control — approve, tweak, or redirect at any point.',
     icon: UsersThree,
-    color: 'bg-indigo-50 text-indigo-600',
+    color: 'bg-warm-muted text-slate-800',
   },
   {
     number: '03',
     title: 'Export & Share',
     description: 'Render in minutes. Export optimized for YouTube, TikTok, Instagram, or any platform. One click, every format.',
     icon: Export,
-    color: 'bg-emerald-50 text-emerald-600',
+    color: 'bg-warm-muted text-slate-800',
   },
 ];
 
@@ -50,20 +50,20 @@ export default function HowItWorks() {
               >
                 {/* Connector line */}
                 {index < steps.length - 1 && (
-                  <div className="hidden lg:block absolute top-14 left-full w-8 h-px border-t-2 border-dashed border-gray-200 -translate-x-4" />
+                  <div className="hidden lg:block absolute top-14 left-full w-8 h-px border-t border-dashed border-warm-border -translate-x-4" />
                 )}
 
                 <div className="flex flex-col items-center text-center">
-                  <div className={`flex h-16 w-16 items-center justify-center rounded-2xl ${step.color} mb-6`}>
+                  <div className={`flex h-16 w-16 items-center justify-center rounded-2xl border border-warm-border/70 ${step.color} mb-6 shadow-[0_8px_20px_rgba(35,31,25,0.04)]`}>
                     <step.icon className="h-7 w-7" weight="duotone" />
                   </div>
-                  <span className="text-xs font-mono font-bold text-gray-700 dark:text-gray-300 tracking-widest mb-2">
+                  <span className="text-xs font-mono font-bold text-stone-600 dark:text-stone-300 tracking-widest mb-2">
                     STEP {step.number}
                   </span>
                   <h3 className="text-xl font-bold text-slate-900 dark:text-slate-50 font-display mb-3">
                     {step.title}
                   </h3>
-                  <p className="text-base text-gray-700 dark:text-gray-300 leading-relaxed">
+                  <p className="text-base text-stone-700 dark:text-stone-300 leading-relaxed">
                     {step.description}
                   </p>
                 </div>

@@ -41,7 +41,7 @@ export default function LandingNav() {
             <a
               key={link.name}
               href={link.href}
-              className="rounded-lg px-3 py-2 text-sm font-medium text-stone-700 dark:text-stone-300 transition-colors hover:bg-white/55 hover:text-slate-950"
+              className="rounded-lg px-3 py-2 text-sm font-medium text-stone-700 dark:text-stone-300 transition-colors hover:bg-warm-muted/70 hover:text-slate-950"
             >
               {link.name}
             </a>
@@ -66,7 +66,7 @@ export default function LandingNav() {
                 <motion.button
                   whileHover={{ scale: 1.02 }}
                   whileTap={{ scale: 0.98 }}
-                  className="rounded-lg px-4 py-2 text-sm font-medium text-stone-700 dark:text-stone-300 transition-colors hover:bg-white/55 hover:text-slate-950"
+                  className="rounded-lg px-4 py-2 text-sm font-medium text-stone-700 dark:text-stone-300 transition-colors hover:bg-warm-muted/70 hover:text-slate-950"
                 >
                   Sign In
                 </motion.button>

@@ -22,7 +22,7 @@ const navigation = {
 
 export default function LandingFooter() {
   return (
-    <footer className="bg-white/50 backdrop-blur-md border-t border-gray-200 relative z-10" aria-labelledby="footer-heading">
+    <footer className="bg-warm-muted/55 border-t border-warm-border relative z-10" aria-labelledby="footer-heading">
       <h2 id="footer-heading" className="sr-only">
         Footer
       </h2>
@@ -42,7 +42,7 @@ export default function LandingFooter() {
                 </span>
               </div>
             </Link>
-            <p className="text-sm leading-6 text-gray-700 dark:text-gray-300">
+            <p className="text-sm leading-6 text-stone-700 dark:text-stone-300">
               Making video creation accessible to everyone through the power of AI.
             </p>
             <div className="flex space-x-6">
@@ -56,7 +56,7 @@ export default function LandingFooter() {
                 <ul role="list" className="mt-6 space-y-4">
                   {navigation.product.map((item) => (
                     <li key={item.name}>
-                      <a href={item.href} className="text-sm leading-6 text-gray-700 dark:text-gray-300 hover:text-gray-900">
+                      <a href={item.href} className="text-sm leading-6 text-stone-700 dark:text-stone-300 hover:text-slate-950">
                         {item.name}
                       </a>
                     </li>
@@ -68,7 +68,7 @@ export default function LandingFooter() {
                 <ul role="list" className="mt-6 space-y-4">
                   {navigation.company.map((item) => (
                     <li key={item.name}>
-                      <a href={item.href} className="text-sm leading-6 text-gray-700 dark:text-gray-300 hover:text-gray-900">
+                      <a href={item.href} className="text-sm leading-6 text-stone-700 dark:text-stone-300 hover:text-slate-950">
                         {item.name}
                       </a>
                     </li>
@@ -82,7 +82,7 @@ export default function LandingFooter() {
                 <ul role="list" className="mt-6 space-y-4">
                   {navigation.legal.map((item) => (
                     <li key={item.name}>
-                      <a href={item.href} className="text-sm leading-6 text-gray-700 dark:text-gray-300 hover:text-gray-900">
+                      <a href={item.href} className="text-sm leading-6 text-stone-700 dark:text-stone-300 hover:text-slate-950">
                         {item.name}
                       </a>
                     </li>
@@ -92,8 +92,8 @@ export default function LandingFooter() {
             </div>
           </div>
         </div>
-        <div className="mt-16 border-t border-gray-900/10 pt-8 sm:mt-20 lg:mt-24">
-          <p className="text-xs leading-5 text-gray-700 dark:text-gray-300">
+        <div className="mt-16 border-t border-warm-border pt-8 sm:mt-20 lg:mt-24">
+          <p className="text-xs leading-5 text-stone-600 dark:text-stone-300">
             &copy; {new Date().getFullYear()} Clash, Inc. All rights reserved.
           </p>
         </div>
