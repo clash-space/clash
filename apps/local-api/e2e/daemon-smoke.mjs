@@ -41,6 +41,10 @@ async function readRequestBody(req) {
   return Buffer.concat(chunks);
 }
 
+function exactArrayBuffer(view) {
+  return view.buffer.slice(view.byteOffset, view.byteOffset + view.byteLength);
+}
+
 async function startMockRemoteLoro() {
   const port = await findFreePort(49520);
   const requests = [];
@@ -79,10 +83,45 @@ async function startMockRemoteLoro() {
   };
 }
 
+async function startMockOpenAiImages() {
+  const port = await findFreePort(49540);
+  const requests = [];
+  const server = createServer(async (req, res) => {
+    const url = new URL(req.url ?? "/", `http://127.0.0.1:${port}`);
+    if (url.pathname === "/v1/images/generations" && req.method === "POST") {
+      const raw = await readRequestBody(req);
+      const body = raw.byteLength ? JSON.parse(raw.toString("utf8")) : {};
+      requests.push({
+        method: "POST",
+        path: url.pathname,
+        authorization: req.headers.authorization ?? "",
+        body,
+      });
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(JSON.stringify({
+        id: "img-daemon-smoke",
+        data: [{ b64_json: Buffer.from("daemon-openai-image").toString("base64") }],
+      }));
+      return;
+    }
+    res.writeHead(404, { "content-type": "application/json" });
+    res.end(JSON.stringify({ error: "not found" }));
+  });
+  await new Promise((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(port, "127.0.0.1", resolve);
+  });
+  return {
+    url: `http://127.0.0.1:${port}`,
+    requests,
+    close: () => new Promise((resolve) => server.close(resolve)),
+  };
+}
+
 async function waitForValue(fn, label, timeoutMs = 12000) {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
-    const value = fn();
+    const value = await fn();
     if (value) return value;
     await sleep(150);
   }
@@ -192,7 +231,7 @@ async function exerciseLoroSync(origin, mockRemote) {
     position: { x: 80, y: 120 },
     data: { label: "Daemon E2E Loro" },
   });
-  ws.send(doc.export({ mode: "snapshot" }));
+  ws.send(exactArrayBuffer(doc.export({ mode: "snapshot" })));
   const update = await waitForValue(
     () => mockRemote.requests.find((req) =>
       req.method === "POST" &&
@@ -374,6 +413,133 @@ async function exerciseAgentCliShim(origin, createLocalAgentToolEnv) {
     };
   } finally {
     observer.close();
+  }
+}
+
+async function exerciseCliVariables(origin, createLocalAgentToolEnv) {
+  const env = createLocalAgentToolEnv({
+    dataDir,
+    apiBaseUrl: origin,
+    env: process.env,
+  });
+
+  const set = JSON.parse(await runClashCli([
+    "vars",
+    "set",
+    "FAL_API_KEY",
+    "--value",
+    "fal-daemon-smoke-key",
+    "--json",
+  ], env));
+  assert(set.ok === true && set.key === "FAL_API_KEY", "agent CLI vars set returns the key", set);
+
+  const listed = JSON.parse(await runClashCli([
+    "vars",
+    "list",
+    "--json",
+  ], env));
+  assert(
+    listed.some((variable) => variable.key === "FAL_API_KEY"),
+    "agent CLI vars list sees the key in the local variable store",
+    listed,
+  );
+
+  const deleted = JSON.parse(await runClashCli([
+    "vars",
+    "delete",
+    "FAL_API_KEY",
+    "--json",
+  ], env));
+  assert(deleted.deleted === true && deleted.key === "FAL_API_KEY", "agent CLI vars delete returns the key", deleted);
+
+  const afterDelete = JSON.parse(await runClashCli([
+    "vars",
+    "list",
+    "--json",
+  ], env));
+  assert(
+    !afterDelete.some((variable) => variable.key === "FAL_API_KEY"),
+    "agent CLI vars delete removes the key from the local variable store",
+    afterDelete,
+  );
+
+  return { key: "FAL_API_KEY", listed: listed.length, remaining: afterDelete.length };
+}
+
+async function exerciseOpenAiProviderGeneration(origin, mockOpenAi) {
+  const configured = await jsonFetch(`${origin}/api/v1/vars/OPENAI_API_KEY`, {
+    method: "PUT",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ value: "sk-daemon-openai" }),
+  });
+  assert(configured.ok === true && configured.key === "OPENAI_API_KEY", "local vars API stores OPENAI_API_KEY", configured);
+
+  const created = await jsonFetch(`${origin}/api/projects`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ prompt: "daemon provider e2e project" }),
+  });
+  const projectId = created.id;
+  assert(projectId, "provider e2e project created", created);
+
+  const ws = new WebSocket(`${origin.replace("http:", "ws:")}/sync/${encodeURIComponent(projectId)}`);
+  await new Promise((resolve, reject) => {
+    ws.addEventListener("open", resolve, { once: true });
+    ws.addEventListener("error", reject, { once: true });
+  });
+  await new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => reject(new Error("Timed out waiting for sync room handshake")), 5000);
+    ws.addEventListener("message", () => {
+      clearTimeout(timeout);
+      resolve(true);
+    }, { once: true });
+    ws.addEventListener("error", reject, { once: true });
+  });
+
+  try {
+    const { LoroDoc } = await import("loro-crdt");
+    const nodeId = "openai-provider-e2e-node";
+    const doc = new LoroDoc();
+    doc.getMap("nodes").set(nodeId, {
+      type: "image",
+      position: { x: 80, y: 120 },
+      data: {
+        label: "OpenAI Provider E2E",
+        prompt: "daemon openai provider image",
+        actionType: "image-gen",
+        modelId: "gpt-image-2",
+        model: "gpt-image-2",
+        modelParams: { size: "1024x1024", output_format: "png", count: 1 },
+        status: "pending",
+      },
+    });
+    ws.send(exactArrayBuffer(doc.export({ mode: "snapshot" })));
+
+    const assetId = "local-asset-local-gen-openai-provider-e2e-node";
+    const asset = await waitForValue(async () => {
+      const res = await fetch(`${origin}/api/v1/assets/${encodeURIComponent(assetId)}`);
+      if (!res.ok) return null;
+      return res.json();
+    }, "OpenAI provider generated asset", 15000);
+
+    assert(asset.metadata?.provider === "openai", "generated asset records the OpenAI provider", asset);
+    assert(asset.metadata?.modelEndpoint === "gpt-image-2", "generated asset records the OpenAI model endpoint", asset);
+    assert(asset.sourceModel === "gpt-image-2", "generated asset keeps the selected model", asset);
+
+    const request = mockOpenAi.requests.find((item) => item.path === "/v1/images/generations");
+    assert(request, "local OpenAI endpoint receives the generation request", mockOpenAi.requests);
+    assert(request.authorization === "Bearer sk-daemon-openai", "OpenAI request uses the locally stored key", request);
+    assert(request.body?.model === "gpt-image-2", "OpenAI request uses the routed provider model", request);
+    assert(request.body?.prompt === "daemon openai provider image", "OpenAI request keeps the node prompt", request);
+
+    return {
+      projectId,
+      assetId,
+      provider: asset.metadata.provider,
+      modelEndpoint: asset.metadata.modelEndpoint,
+    };
+  } finally {
+    ws.close();
   }
 }
 
@@ -610,22 +776,32 @@ async function closeServer(server) {
 }
 
 async function main() {
+  const envSnapshot = {
+    CLASH_LOCAL_ACP_MOCK: process.env.CLASH_LOCAL_ACP_MOCK,
+    OPENAI_BASE_URL: process.env.OPENAI_BASE_URL,
+  };
   process.env.CLASH_LOCAL_ACP_MOCK = "1";
   await rm(dataDir, { recursive: true, force: true });
 
   const port = await findFreePort(49500);
   const origin = `http://127.0.0.1:${port}`;
   const mockRemote = await startMockRemoteLoro();
+  const mockOpenAi = await startMockOpenAiImages();
+  process.env.OPENAI_BASE_URL = `${mockOpenAi.url}/v1`;
   const { createLocalAgentToolEnv, startLocalApiServer } = await import("../dist/server.js");
   const server = await startLocalApiServer({ port, dataDir });
 
   try {
     const runtime = await exerciseLocalSession(origin);
+    const variables = await exerciseCliVariables(origin, createLocalAgentToolEnv);
+    const openai = await exerciseOpenAiProviderGeneration(origin, mockOpenAi);
     const cli = await exerciseAgentCliShim(origin, createLocalAgentToolEnv);
     const realAcp = await exerciseRealAcpChildSession(startLocalApiServer, createLocalAgentToolEnv);
     const loro = await exerciseLoroSync(origin, mockRemote);
     const fal = await exerciseFalMock(origin);
     console.log("[daemon-smoke] runtime", JSON.stringify(runtime));
+    console.log("[daemon-smoke] vars", JSON.stringify(variables));
+    console.log("[daemon-smoke] openai", JSON.stringify(openai));
     console.log("[daemon-smoke] agent-cli", JSON.stringify(cli));
     console.log("[daemon-smoke] real-acp", JSON.stringify(realAcp));
     console.log("[daemon-smoke] loro", JSON.stringify(loro));
@@ -633,6 +809,8 @@ async function main() {
   } finally {
     await closeServer(server);
     await mockRemote.close();
+    await mockOpenAi.close();
+    restoreEnv(envSnapshot);
   }
 }
 

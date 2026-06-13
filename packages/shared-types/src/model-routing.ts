@@ -234,6 +234,7 @@ export const MODEL_UPSTREAM_ROUTES: ModelUpstreamRoute[] = [
   ]),
   ...GOOGLE_AUDIO_ROUTES.flatMap(([modelCode, upstreamModel]) => [
     googleAiStudio(modelCode, "audio", upstreamModel),
+    fal(modelCode, "audio", "fal-ai/minimax/speech-02-hd", 30),
     falMock(modelCode, "audio", "fal-ai/minimax/speech-02-hd"),
   ]),
   ...GOOGLE_TEXT_ROUTES.map(([modelCode, upstreamModel]) =>
@@ -242,6 +243,7 @@ export const MODEL_UPSTREAM_ROUTES: ModelUpstreamRoute[] = [
   openAiImages("gpt-image-2", "gpt-image-2"),
   falMock("gpt-image-2", "image", "fal-ai/nano-banana-2"),
   openAiCompatible("gpt-5.4", "gpt-5.4"),
+  fal("minimax-tts", "audio", "fal-ai/minimax/speech-02-hd"),
   falMock("minimax-tts", "audio", "fal-ai/minimax/speech-02-hd"),
   falMock("elevenlabs-tts", "audio", "fal-ai/minimax/speech-02-hd"),
 ];

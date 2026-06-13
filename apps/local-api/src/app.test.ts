@@ -135,6 +135,39 @@ describe("local API app", () => {
     expect(await afterDelete.json()).toEqual([]);
   });
 
+  it("serves CLI-compatible v1 variable endpoints from the local variable store", async () => {
+    const app = createLocalApiApp({ dataDir, userId: "local-user" });
+
+    const set = await app.request("/api/v1/vars/FAL_API_KEY", {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ value: "fal-local-key" }),
+    });
+    expect(set.status).toBe(200);
+    expect(await set.json()).toEqual({ ok: true, key: "FAL_API_KEY" });
+
+    const listed = await app.request("/api/v1/vars");
+    const listedJson = (await listed.json()) as { variables: Array<{ key: string; createdAt: number | null }> };
+    expect(listedJson.variables).toEqual([
+      expect.objectContaining({
+        key: "FAL_API_KEY",
+        createdAt: expect.any(Number),
+      }),
+    ]);
+
+    const settingsListed = await app.request("/api/settings/variables");
+    expect(await settingsListed.json()).toEqual([
+      expect.objectContaining({ key: "FAL_API_KEY" }),
+    ]);
+
+    const deleted = await app.request("/api/v1/vars/FAL_API_KEY", { method: "DELETE" });
+    expect(deleted.status).toBe(200);
+    expect(await deleted.json()).toEqual({ ok: true, key: "FAL_API_KEY" });
+
+    const afterDelete = await app.request("/api/v1/vars");
+    expect(await afterDelete.json()).toEqual({ variables: [] });
+  });
+
   it("allows browser requests from the local web runtime", async () => {
     const app = createLocalApiApp({ dataDir, userId: "local-user" });
 

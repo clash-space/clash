@@ -35,13 +35,13 @@ varsCommand
       process.exit(1);
     }
 
-    await apiFetch(`/api/v1/vars/${encodeURIComponent(key)}`, {
+    const data = await apiJson<{ ok: boolean; key: string }>(`/api/v1/vars/${encodeURIComponent(key)}`, {
       method: "PUT",
       body: JSON.stringify({ value }),
     });
 
     if (isJsonMode(options)) {
-      printJson({ ok: true, key });
+      printJson(data);
     } else {
       console.log(`Variable set: ${key}`);
     }
@@ -103,6 +103,7 @@ varsCommand
   .option("--json", "Output as JSON")
   .action(async (key: string, options) => {
     const resp = await apiFetch(`/api/v1/vars/${encodeURIComponent(key)}`, { method: "DELETE" });
+    await resp.text().catch(() => "");
 
     if (!resp.ok) {
       console.error(`Variable not found: ${key}`);

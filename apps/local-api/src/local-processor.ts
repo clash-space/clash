@@ -344,7 +344,7 @@ export function createLocalWorkflowProcessor(
         try {
           const prompt = promptFromData(data, `Mock ${kind}`);
           const model = modelFromData(data, `mock-${kind}`);
-          const common = { taskId, prompt, model };
+          const common = { taskId, prompt, model, modelParams: modelParams(data) };
           const generated = kind === "image"
             ? await aigc.generateImage({
                 ...common,

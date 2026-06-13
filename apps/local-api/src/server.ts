@@ -3,6 +3,7 @@ import { homedir } from "node:os";
 import { delimiter, join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { chmodSync, mkdirSync, writeFileSync } from "node:fs";
+import { readFile } from "node:fs/promises";
 import { serve } from "@hono/node-server";
 import { createLocalApiApp } from "./app.js";
 import { createMockExternalAigcService } from "./local-aigc.js";
@@ -193,6 +194,43 @@ export function createConfiguredLocalAcpAdapter(
   });
 }
 
+const LOCAL_PROVIDER_VARIABLE_KEYS = [
+  "FAL_API_KEY",
+  "OPENAI_API_KEY",
+  "GOOGLE_API_KEY",
+  "GOOGLE_VERTEX",
+  "REPLICATE_API_TOKEN",
+  "KIE_API_KEY",
+  "OFFICIAL_API_KEY",
+  "ANTHROPIC_API_KEY",
+  "ELEVENLABS_API_KEY",
+];
+
+async function loadLocalVariables(
+  dataDir: string,
+  userId = "local-user",
+  env: Record<string, string | undefined> = process.env,
+): Promise<Record<string, string>> {
+  const variables: Record<string, string> = {};
+  for (const key of LOCAL_PROVIDER_VARIABLE_KEYS) {
+    const value = env[key]?.trim();
+    if (value) variables[key] = value;
+  }
+  try {
+    const db = JSON.parse(await readFile(join(dataDir, "db.json"), "utf8")) as {
+      variables?: Array<{ userId?: string; key?: string; value?: string }>;
+    };
+    for (const variable of db.variables ?? []) {
+      if (variable.userId !== userId) continue;
+      if (typeof variable.key !== "string" || typeof variable.value !== "string") continue;
+      if (variable.value.trim()) variables[variable.key] = variable.value;
+    }
+    return variables;
+  } catch {
+    return variables;
+  }
+}
+
 export function startLocalApiServer(options: LocalApiServerOptions) {
   const localAcp = createConfiguredLocalAcpAdapter(process.env, {
     apiBaseUrl: `http://127.0.0.1:${options.port}`,
@@ -213,6 +251,9 @@ export function startLocalApiServer(options: LocalApiServerOptions) {
     aigc: createMockExternalAigcService({
       fal: falMock,
       origin: `http://127.0.0.1:${options.port}`,
+      variables: () => loadLocalVariables(options.dataDir),
+      openAiBaseUrl: process.env.OPENAI_BASE_URL,
+      falQueueBaseUrl: process.env.CLASH_FAL_QUEUE_URL,
     }),
   });
   const remotePersistence = options.remotePersistence === undefined

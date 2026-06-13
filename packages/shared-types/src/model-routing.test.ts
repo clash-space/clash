@@ -82,4 +82,38 @@ describe("model upstream routing", () => {
     });
     expect(route).not.toHaveProperty("requiredSecretIds");
   });
+
+  it("routes Minimax TTS to fal when the fal key is configured", () => {
+    const route = resolveModelUpstreamRoute({
+      modelCode: "minimax-tts",
+      kind: "audio",
+      configuredUpstreams: [
+        { upstreamId: "fal", enabled: true, availableVariables: ["FAL_API_KEY"] },
+      ],
+    });
+
+    expect(route).toMatchObject({
+      modelCode: "minimax-tts",
+      upstreamId: "fal",
+      upstreamModel: "fal-ai/minimax/speech-02-hd",
+      apiShape: "fal",
+      requiredVariables: ["FAL_API_KEY"],
+    });
+  });
+
+  it("falls back Gemini TTS model codes to fal when only the fal key is configured", () => {
+    const route = resolveModelUpstreamRoute({
+      modelCode: "gemini-3.1-flash-tts",
+      kind: "audio",
+      configuredUpstreams: [
+        { upstreamId: "fal", enabled: true, availableVariables: ["FAL_API_KEY"] },
+      ],
+    });
+
+    expect(route).toMatchObject({
+      upstreamId: "fal",
+      upstreamModel: "fal-ai/minimax/speech-02-hd",
+      apiShape: "fal",
+    });
+  });
 });

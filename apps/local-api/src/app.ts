@@ -409,6 +409,38 @@ function publicVariable(variable: LocalUserVariable) {
   };
 }
 
+function publicV1Variable(variable: LocalUserVariable) {
+  return {
+    key: variable.key,
+    createdAt: isoToEpochSeconds(variable.createdAt) || null,
+  };
+}
+
+function upsertVariable(
+  state: LocalDb,
+  userId: string,
+  key: string,
+  value: string,
+): LocalUserVariable {
+  const now = nowIso();
+  const existing = state.variables.find((variable) => variable.userId === userId && variable.key === key);
+  if (existing) {
+    existing.value = value;
+    existing.updatedAt = now;
+    return existing;
+  }
+  const variable: LocalUserVariable = {
+    id: crypto.randomUUID(),
+    userId,
+    key,
+    value,
+    createdAt: now,
+    updatedAt: now,
+  };
+  state.variables.unshift(variable);
+  return variable;
+}
+
 function normalizeLocalRoomMention(mention: RemoteRoomMessage["mentions"][number]): LocalRoomMention {
   return {
     user_id: mention.user_id,
@@ -530,23 +562,7 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
       return c.json({ error: "Missing key/value" }, 400);
     }
     const state = await db.load();
-    const now = nowIso();
-    const existing = state.variables.find((variable) => variable.userId === userId && variable.key === key);
-    if (existing) {
-      existing.value = body.value;
-      existing.updatedAt = now;
-      await db.save(state);
-      return c.json(publicVariable(existing));
-    }
-    const variable: LocalUserVariable = {
-      id: crypto.randomUUID(),
-      userId,
-      key,
-      value: body.value,
-      createdAt: now,
-      updatedAt: now,
-    };
-    state.variables.unshift(variable);
+    const variable = upsertVariable(state, userId, key, body.value);
     await db.save(state);
     return c.json(publicVariable(variable));
   });
@@ -558,6 +574,36 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
     if (state.variables.length === before) return c.json({ error: "Not found" }, 404);
     await db.save(state);
     return new Response(null, { status: 204 });
+  });
+  app.get("/api/v1/vars", async (c) => {
+    const state = await db.load();
+    return c.json({
+      variables: state.variables
+        .filter((variable) => variable.userId === userId)
+        .sort((a, b) => a.key.localeCompare(b.key))
+        .map(publicV1Variable),
+    });
+  });
+  app.put("/api/v1/vars/:key", async (c) => {
+    const key = normalizeVariableKey(c.req.param("key"));
+    const body = (await c.req.json().catch(() => ({}))) as { value?: unknown };
+    if (!key || typeof body.value !== "string" || !body.value) {
+      return c.json({ error: "Missing value" }, 400);
+    }
+    const state = await db.load();
+    upsertVariable(state, userId, key, body.value);
+    await db.save(state);
+    return c.json({ ok: true, key });
+  });
+  app.delete("/api/v1/vars/:key", async (c) => {
+    const key = normalizeVariableKey(c.req.param("key"));
+    if (!key) return c.json({ error: "Variable not found" }, 404);
+    const state = await db.load();
+    const before = state.variables.length;
+    state.variables = state.variables.filter((variable) => !(variable.userId === userId && variable.key === key));
+    if (state.variables.length === before) return c.json({ error: "Variable not found" }, 404);
+    await db.save(state);
+    return c.json({ ok: true, key });
   });
   app.get("/api/marketplace/registry", (c) => c.json({ version: 1, actions: [], skills: [] }));
   app.get("/api/v1/local/sync", async (c) => c.json(await syncConfig.getPublicConfig()));
