@@ -1,7 +1,7 @@
 import { spawn } from "node:child_process";
 import { createServer } from "node:http";
 import net from "node:net";
-import { rm } from "node:fs/promises";
+import { mkdir, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -377,6 +377,234 @@ async function exerciseAgentCliShim(origin, createLocalAgentToolEnv) {
   }
 }
 
+async function writeFakeCodexAcp(binDir) {
+  await mkdir(binDir, { recursive: true });
+  const wrapper = path.join(binDir, "codex");
+  const agent = path.join(binDir, "fake-codex-acp.mjs");
+  await writeFile(
+    wrapper,
+    [
+      "#!/bin/sh",
+      "DIR=$(CDPATH= cd -- \"$(dirname -- \"$0\")\" && pwd)",
+      "exec node \"$DIR/fake-codex-acp.mjs\" \"$@\"",
+      "",
+    ].join("\n"),
+    { mode: 0o755 },
+  );
+  await writeFile(
+    agent,
+    [
+      "#!/usr/bin/env node",
+      "import { spawn } from 'node:child_process';",
+      "import { randomUUID } from 'node:crypto';",
+      "import { Readable, Writable } from 'node:stream';",
+      "import { AgentSideConnection, ndJsonStream, PROTOCOL_VERSION } from '@agentclientprotocol/sdk';",
+      "",
+      "const argv = process.argv.slice(2);",
+      "if (argv.includes('--help')) {",
+      "  console.log('Usage: codex [OPTIONS] [PROMPT]\\n  --acp');",
+      "  process.exit(0);",
+      "}",
+      "if (!argv.includes('--acp')) {",
+      "  console.error('fake codex only supports --acp in this smoke test');",
+      "  process.exit(2);",
+      "}",
+      "",
+      "function runClash(args) {",
+      "  return new Promise((resolve, reject) => {",
+      "    const child = spawn('clash', args, { env: process.env, stdio: ['ignore', 'pipe', 'pipe'] });",
+      "    let stdout = '';",
+      "    let stderr = '';",
+      "    child.stdout.setEncoding('utf8');",
+      "    child.stderr.setEncoding('utf8');",
+      "    child.stdout.on('data', (chunk) => { stdout += chunk; });",
+      "    child.stderr.on('data', (chunk) => { stderr += chunk; });",
+      "    child.once('error', reject);",
+      "    child.once('exit', (code, signal) => {",
+      "      if (code === 0) resolve(stdout.trim());",
+      "      else reject(new Error('clash ' + args.join(' ') + ' exited ' + (signal || code) + '\\nstdout:\\n' + stdout + '\\nstderr:\\n' + stderr));",
+      "    });",
+      "  });",
+      "}",
+      "",
+      "class FakeCodexAcpAgent {",
+      "  constructor(connection) {",
+      "    this.connection = connection;",
+      "    this.sessions = new Map();",
+      "  }",
+      "  async initialize() {",
+      "    return { protocolVersion: PROTOCOL_VERSION, agentCapabilities: { loadSession: false, promptCapabilities: {} } };",
+      "  }",
+      "  async newSession(params) {",
+      "    const sessionId = randomUUID();",
+      "    this.sessions.set(sessionId, { cwd: params.cwd || process.cwd() });",
+      "    return { sessionId };",
+      "  }",
+      "  async authenticate() { return {}; }",
+      "  async prompt(params) {",
+      "    if (!this.sessions.has(params.sessionId)) throw new Error('unknown session ' + params.sessionId);",
+      "    const projectId = process.env.CLASH_PROJECT_ID;",
+      "    if (!projectId) throw new Error('CLASH_PROJECT_ID missing');",
+      "    const created = JSON.parse(await runClash([",
+      "      'canvas', 'add',",
+      "      '--project', projectId,",
+      "      '--type', 'text',",
+      "      '--label', 'Real ACP CLI Note',",
+      "      '--content', 'created by fake ACP child through clash CLI',",
+      "      '--json',",
+      "    ]));",
+      "    await this.connection.sessionUpdate({",
+      "      sessionId: params.sessionId,",
+      "      update: {",
+      "        sessionUpdate: 'agent_message_chunk',",
+      "        content: { type: 'text', text: 'Fake ACP wrote node ' + created.node_id },",
+      "      },",
+      "    });",
+      "    return { stopReason: 'end_turn' };",
+      "  }",
+      "  async cancel() {}",
+      "}",
+      "",
+      "const input = Writable.toWeb(process.stdout);",
+      "const output = Readable.toWeb(process.stdin);",
+      "new AgentSideConnection((connection) => new FakeCodexAcpAgent(connection), ndJsonStream(input, output));",
+      "",
+    ].join("\n"),
+    { mode: 0o755 },
+  );
+  return wrapper;
+}
+
+function restoreEnv(snapshot) {
+  for (const [key, value] of Object.entries(snapshot)) {
+    if (value === undefined) delete process.env[key];
+    else process.env[key] = value;
+  }
+}
+
+async function exerciseRealAcpChildSession(startLocalApiServer, createLocalAgentToolEnv) {
+  const realDataDir = path.join(repoRoot, ".tmp", "local-api-real-acp-e2e-data");
+  const realHome = path.join(repoRoot, ".tmp", "local-api-real-acp-home");
+  const fakeBinDir = path.join(repoRoot, ".tmp", "local-api-real-acp-bin");
+  await rm(realDataDir, { recursive: true, force: true });
+  await rm(realHome, { recursive: true, force: true });
+  await rm(fakeBinDir, { recursive: true, force: true });
+  await mkdir(realHome, { recursive: true });
+  await writeFakeCodexAcp(fakeBinDir);
+
+  const envSnapshot = {
+    CLASH_ACP_BIN_DIR: process.env.CLASH_ACP_BIN_DIR,
+    CLASH_LOCAL_ACP_MOCK: process.env.CLASH_LOCAL_ACP_MOCK,
+    CLASH_LOCAL_DATA_DIR: process.env.CLASH_LOCAL_DATA_DIR,
+    CLASH_NODE_EXEC_PATH: process.env.CLASH_NODE_EXEC_PATH,
+    HOME: process.env.HOME,
+  };
+  const port = await findFreePort(49620);
+  const origin = `http://127.0.0.1:${port}`;
+
+  process.env.CLASH_ACP_BIN_DIR = fakeBinDir;
+  delete process.env.CLASH_LOCAL_ACP_MOCK;
+  process.env.CLASH_LOCAL_DATA_DIR = realDataDir;
+  process.env.CLASH_NODE_EXEC_PATH = process.execPath;
+  process.env.HOME = realHome;
+
+  let server;
+  try {
+    server = await startLocalApiServer({ port, dataDir: realDataDir });
+    const env = createLocalAgentToolEnv({
+      dataDir: realDataDir,
+      apiBaseUrl: origin,
+      env: process.env,
+    });
+    const project = JSON.parse(await runClashCli([
+      "projects",
+      "create",
+      "--name",
+      "real acp agent project",
+      "--json",
+    ], env));
+    assert(project.id, "real ACP project create returns an id", project);
+
+    const runtimes = await jsonFetch(`${origin}/api/v1/runtimes`);
+    assert(
+      runtimes.runtimes?.[0]?.agents?.some((agent) => agent.id === "codex-cli"),
+      "fake codex ACP child is discovered as codex-cli",
+      runtimes,
+    );
+
+    const session = await jsonFetch(`${origin}/api/v1/runtimes/desktop-local/sessions`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        crew_member_id: "local-director",
+        project_id: project.id,
+        agent_id: "codex-cli",
+      }),
+    });
+    assert(session.session_id, "real ACP session is created", session);
+
+    const ws = new WebSocket(`${origin.replace("http:", "ws:")}/api/v1/local-sessions/${encodeURIComponent(session.session_id)}/_stream`);
+    const events = [];
+    await new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        ws.close();
+        reject(new Error("Timed out waiting for real ACP session disposal"));
+      }, 20000);
+      ws.addEventListener("open", () => {
+        ws.send(JSON.stringify({ type: "prompt", turn_id: "real-acp-turn", text: "use clash cli on the canvas" }));
+      });
+      ws.addEventListener("message", (event) => {
+        const msg = JSON.parse(String(event.data));
+        events.push(msg);
+        if (msg.type === "session.complete" && msg.turn_id === "real-acp-turn") {
+          ws.send(JSON.stringify({ type: "dispose" }));
+          return;
+        }
+        if (msg.type === "session.disposed" && msg.session_id === session.session_id) {
+          clearTimeout(timeout);
+          ws.close();
+          resolve(true);
+        }
+      });
+      ws.addEventListener("error", reject);
+    });
+
+    assert(
+      events.some((event) =>
+        event.type === "session.event" &&
+        event.event?.update?.content?.text?.startsWith("Fake ACP wrote node ")
+      ),
+      "real ACP child emits a text event after invoking clash CLI",
+      events,
+    );
+
+    const nodes = JSON.parse(await runClashCli([
+      "canvas",
+      "list",
+      "--project",
+      project.id,
+      "--json",
+    ], env));
+    const node = nodes.find((candidate) => candidate.data?.label === "Real ACP CLI Note");
+    assert(node, "real ACP child created a canvas node through clash CLI", nodes);
+    assert(node.data?.actorType === "agent", "real ACP CLI node is attributed to an agent", node);
+    assert(node.data?.actorUserId === "local-user", "real ACP CLI node is attributed to the local user", node);
+    assert(node.data?.actorAgentId === "local-director", "real ACP CLI node keeps the crew member id", node);
+
+    return {
+      sessionId: session.session_id,
+      projectId: project.id,
+      nodeId: node.id,
+      actorType: node.data.actorType,
+      actorUserId: node.data.actorUserId,
+      actorAgentId: node.data.actorAgentId,
+    };
+  } finally {
+    if (server) await closeServer(server);
+    restoreEnv(envSnapshot);
+  }
+}
+
 async function closeServer(server) {
   await new Promise((resolve) => server.close(resolve));
 }
@@ -394,10 +622,12 @@ async function main() {
   try {
     const runtime = await exerciseLocalSession(origin);
     const cli = await exerciseAgentCliShim(origin, createLocalAgentToolEnv);
+    const realAcp = await exerciseRealAcpChildSession(startLocalApiServer, createLocalAgentToolEnv);
     const loro = await exerciseLoroSync(origin, mockRemote);
     const fal = await exerciseFalMock(origin);
     console.log("[daemon-smoke] runtime", JSON.stringify(runtime));
     console.log("[daemon-smoke] agent-cli", JSON.stringify(cli));
+    console.log("[daemon-smoke] real-acp", JSON.stringify(realAcp));
     console.log("[daemon-smoke] loro", JSON.stringify(loro));
     console.log("[daemon-smoke] fal", JSON.stringify(fal));
   } finally {
