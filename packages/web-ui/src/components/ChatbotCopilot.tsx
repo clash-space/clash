@@ -16,7 +16,7 @@ import { MessageErrorBoundary } from './copilot/MessageErrorBoundary';
 import { RuntimePickerDialog } from './copilot/RuntimePickerDialog';
 import { Dialog } from './ui/dialog';
 import { IconButton } from './ui/icon-button';
-import { useClashRuntime, type Runtime } from '@clash/web-ui/hooks/useClashRuntime';
+import { useClashRuntime, type ClashRuntimeStatus, type Runtime } from '@clash/web-ui/hooks/useClashRuntime';
 import type { ByoMessage as RuntimeMessage } from '@clash/web-ui/lib/acpEvents';
 import { applyAgentAttribution, parseAgentCanvasPatch } from '@clash/web-ui/lib/agentCanvasPatch';
 import type { Node as RFNode, Edge as RFEdge, Connection as RFConnection } from '@xyflow/react';
@@ -411,6 +411,16 @@ export default function ChatbotCopilot({
     const isProcessing =
         chatMode === 'runtime' ? runtimeIsProcessing :
         cloudIsProcessing;
+    const showRuntimeConnectingStatus =
+        chatMode === 'runtime' && clashRt.status === 'connecting' && !isDesktopLocalMode;
+    const showProcessingIndicator =
+        chatMode === 'runtime'
+            ? clashRt.messages.length > 0 && (clashRt.status === 'sending' || clashRt.status === 'streaming')
+            : isProcessing;
+    const processingIndicatorMessage =
+        chatMode === 'runtime'
+            ? t(clashRt.status === 'sending' ? 'copilot.status.thinking' : 'copilot.status.streaming')
+            : t(status === 'submitted' ? 'copilot.status.thinking' : 'copilot.status.streaming');
     const runtimeAlertMessage = chatMode === 'runtime' && !isDesktopLocalMode ? clashRt.errorMessage : null;
     const desktopLocalSetupIssue = chatMode === 'runtime' && isDesktopLocalMode ? clashRt.errorMessage : null;
 
@@ -1057,7 +1067,7 @@ export default function ChatbotCopilot({
                                         Cloud renders the heavier UIMessage path. */}
                                     {chatMode === 'runtime' && (
                                         <>
-                                            {clashRt.status === 'connecting' && (
+                                            {showRuntimeConnectingStatus && (
                                                 <div role="status" aria-live="polite" className="text-xs text-stone-600 italic dark:text-stone-300">{t('copilot.status.connecting')}</div>
                                             )}
                                             {runtimeAlertMessage && (
@@ -1069,6 +1079,7 @@ export default function ChatbotCopilot({
                                                 desktopLocalMode={isDesktopLocalMode}
                                                 localRuntime={desktopLocalRuntime}
                                                 setupIssue={desktopLocalSetupIssue}
+                                                status={clashRt.status}
                                             />
                                         </>
                                     )}
@@ -1084,9 +1095,9 @@ export default function ChatbotCopilot({
                                         </>
                                     )}
 
-                                    {isProcessing && (
+                                    {showProcessingIndicator && (
                                         <div role="status" aria-live="polite">
-                                            <ThinkingIndicator message={status === 'submitted' ? t('copilot.status.thinking') : t('copilot.status.streaming')} />
+                                            <ThinkingIndicator message={processingIndicatorMessage} />
                                         </div>
                                     )}
 
@@ -1367,16 +1378,21 @@ function RuntimeMessageList({
     desktopLocalMode,
     localRuntime,
     setupIssue,
+    status,
 }: {
     messages: RuntimeMessage[];
     ready: boolean;
     desktopLocalMode?: boolean;
     localRuntime?: Runtime | null;
     setupIssue?: string | null;
+    status: ClashRuntimeStatus;
 }) {
     const { t } = useTranslation();
     if (messages.length === 0) {
         const hasLocalAgent = !!localRuntime && localRuntime.status === 'online' && localRuntime.agents.length > 0;
+        if (desktopLocalMode && !setupIssue && !ready && hasLocalAgent && (status === 'idle' || status === 'connecting')) {
+            return <RuntimeLoadingStatus label={t('copilot.status.desktopLocalStarting')} />;
+        }
         const emptyText = setupIssue
             ? t('copilot.status.desktopLocalSetupRequired')
             : ready
@@ -1444,5 +1460,16 @@ function RuntimeMessageList({
                 </motion.div>
             ))}
         </>
+    );
+}
+
+function RuntimeLoadingStatus({ label }: { label: string }) {
+    return (
+        <div role="status" aria-label={label} aria-live="polite" className="flex justify-center py-12">
+            <span
+                aria-hidden="true"
+                className="h-4 w-4 rounded-full border-2 border-warm-border border-t-brand animate-spin"
+            />
+        </div>
     );
 }

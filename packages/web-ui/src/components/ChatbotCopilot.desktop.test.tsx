@@ -35,6 +35,10 @@ vi.mock("react-i18next", () => ({
       if (key === "copilot.runtime.addMachine.label") return "Connect daemon...";
       if (key === "copilot.runtime.addMachine.sub") return "Install or reconnect a persistent local runtime";
       if (key === "copilot.status.connecting") return "Connecting to runtime...";
+      if (key === "copilot.status.streaming") return "Streaming";
+      if (key === "copilot.status.thinking") return "Thinking";
+      if (key === "copilot.status.desktopLocalStarting") return "Connecting to the local agent on this Mac...";
+      if (key === "copilot.status.desktopLocalRequired") return "Start the local agent on this Mac.";
       if (key === "copilot.status.localAgentReady") return "Local agent connected. Send a message to start.";
       if (key === "copilot.status.localRuntimeRequired") return "Select or connect a local runtime to chat. Cloud Agent is coming soon.";
       if (key === "copilot.status.desktopLocalSetupRequired") return "Local agent needs setup on this Mac.";
@@ -220,5 +224,33 @@ describe("ChatbotCopilot desktop local mode", () => {
     expect(screen.queryByText(/Authentication required/)).toBeNull();
     expect(screen.queryByRole("alert")).toBeNull();
     expect(screen.getByText("Local agent needs setup on this Mac.")).toBeTruthy();
+  });
+
+  it("keeps desktop local startup to one icon-only loading state", () => {
+    globalThis.__CLASH_RUNTIME_CONFIG__ = { mode: "desktop" };
+    vi.stubGlobal(
+      "IntersectionObserver",
+      vi.fn(function IntersectionObserver() {
+        return {
+          observe: vi.fn(),
+          disconnect: vi.fn(),
+        };
+      }),
+    );
+    Element.prototype.scrollIntoView = vi.fn();
+    mocks.useClashRuntime.mockReturnValue(runtimeState({
+      selectedRuntimeId: "desktop-local",
+      selectedAgentId: "codex-cli",
+      status: "connecting",
+      ready: false,
+    }));
+    mocks.useAgentCopilot.mockReturnValue(cloudState({ status: "streaming" }));
+
+    const { container } = renderDesktopCopilot();
+
+    expect(screen.getByRole("status", { name: "Connecting to the local agent on this Mac..." })).toBeTruthy();
+    expect(container.textContent).not.toContain("Connecting to runtime...");
+    expect(container.textContent).not.toContain("Connecting to the local agent on this Mac...");
+    expect(container.textContent).not.toContain("Streaming");
   });
 });
