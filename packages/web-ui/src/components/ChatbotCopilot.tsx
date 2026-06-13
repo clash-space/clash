@@ -304,7 +304,7 @@ export default function ChatbotCopilot({
     const historyMenuId = useId();
     const runtimeMenuId = useId();
     // Below Tailwind's `lg` (1024px), the panel switches to a full-screen
-    // sheet over the canvas. Desktop keeps the resizable side panel.
+    // sheet over the canvas. Desktop keeps a resizable bottom-right popover.
     const isMobile = useIsBelowLg();
     // ─── UI State ──────────────────────────────────────────────
     const [input, setInput] = useState('');
@@ -750,16 +750,25 @@ export default function ChatbotCopilot({
                     isMobile
                         // Mobile: bg-warm-page extends to the unsafe areas so the system bars blend with the panel; padding shrinks the positioning context so absolute children land inside the safe zone. All four insets cover portrait (notch top, home indicator bottom) and landscape (notch on left or right).
                         ? `fixed inset-0 z-50 flex flex-col bg-warm-page h-[100dvh] pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)] ${isCollapsed ? 'pointer-events-none' : ''}`
-                        : `h-full bg-warm-surface flex flex-col relative ${isCollapsed ? '' : 'border-l border-warm-border shadow-[0_18px_50px_rgba(35,31,25,0.1)]'}`
+                        : `clash-copilot-panel-shell fixed bottom-3 right-3 z-50 flex flex-col overflow-hidden rounded-matrix bg-warm-surface ${isCollapsed ? 'pointer-events-none' : 'pointer-events-auto'}`
                 }
-                style={isMobile ? undefined : { width: isCollapsed ? 0 : `${width}px` }}
+                style={isMobile ? undefined : {
+                    width: `${width}px`,
+                    height: 'min(760px, calc(100dvh - var(--clash-desktop-chrome-height, 0px) - 1.5rem))',
+                    transformOrigin: 'right bottom',
+                }}
                 animate={
                     isMobile
                         ? { x: isCollapsed ? '100%' : 0 }
-                        : { width: isCollapsed ? 0 : width }
+                        : {
+                            opacity: isCollapsed ? 0 : 1,
+                            scale: isCollapsed ? 0.94 : 1,
+                            x: isCollapsed ? 28 : 0,
+                            y: isCollapsed ? 24 : 0,
+                        }
                 }
                 initial={false}
-                transition={isResizing ? { duration: 0 } : { duration: 0.22, ease: [0.25, 1, 0.5, 1] }}
+                transition={isResizing ? { duration: 0 } : { duration: isCollapsed ? 0.18 : 0.26, ease: [0.16, 1, 0.3, 1] }}
             >
                 {/* Screen-reader-only heading: gives heading-nav rotor users
                     a landmark to jump to. Hidden visually because the panel
@@ -772,7 +781,7 @@ export default function ChatbotCopilot({
                         role="separator"
                         aria-orientation="vertical"
                         aria-label="Resize panel"
-	                        className={`absolute left-0 top-0 bottom-0 w-0.5 cursor-ew-resize transition-colors z-10 ${isResizing ? 'bg-brand' : 'hover:bg-brand bg-brand/0'}`}
+                        className={`clash-copilot-resize-handle absolute -left-1 top-8 bottom-8 z-10 w-2 cursor-ew-resize rounded-full ${isResizing ? 'is-resizing' : ''}`}
                     />
                 )}
 
@@ -1078,7 +1087,7 @@ export default function ChatbotCopilot({
                                 )}
                             </AnimatePresence>
 
-                            <div className="absolute bottom-0 left-0 right-0 h-28 bg-gradient-to-t from-warm-page via-warm-page/85 to-transparent pointer-events-none" />
+                            <div className="absolute bottom-0 left-0 right-0 h-28 bg-gradient-to-t from-warm-surface via-warm-surface/85 to-transparent pointer-events-none" />
 
                             <div className="absolute bottom-0 left-0 right-0">
                                 {/* Slash commands the spawned ACP agent advertises (only present

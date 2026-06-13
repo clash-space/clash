@@ -515,6 +515,36 @@ html.dark.clash-is-scrolling ::-webkit-scrollbar-thumb:hover {
     drop-shadow(0 3px 9px rgba(255, 107, 80, 0.12));
 }
 
+.clash-copilot-panel-shell {
+  border: 1px solid rgba(225, 221, 213, 0.82);
+  background:
+    linear-gradient(180deg, rgba(255, 254, 253, 0.97), rgba(249, 248, 244, 0.94));
+  box-shadow:
+    0 26px 70px rgba(35, 31, 25, 0.13),
+    0 8px 26px rgba(35, 31, 25, 0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 0.82);
+  contain: layout paint;
+  will-change: transform, opacity;
+}
+
+.clash-copilot-resize-handle::before {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 3px;
+  width: 2px;
+  border-radius: 999px;
+  background: rgba(255, 107, 80, 0.7);
+  opacity: 0;
+  transition:
+    opacity 160ms ease,
+    background 160ms ease;
+}
+
+.clash-copilot-resize-handle:hover::before,
+.clash-copilot-resize-handle.is-resizing::before {
+  opacity: 1;
+}
+
 .clash-project-return-button,
 .clash-project-name-input {
   border: 0;
@@ -828,8 +858,25 @@ html.dark.clash-is-scrolling ::-webkit-scrollbar-thumb:hover {
     radial-gradient(circle at 14% 74%, rgba(35, 31, 25, 0.035), transparent 24%);
 }
 
+.clash-projects-empty-workbench {
+  position: relative;
+  display: grid;
+  min-height: clamp(390px, 48vh, 560px);
+  grid-template-columns: minmax(280px, 380px) minmax(0, 1fr);
+  align-items: center;
+  gap: clamp(1.5rem, 5vw, 5rem);
+}
+
+.clash-project-create-tile--empty {
+  width: min(100%, 380px);
+  align-self: center;
+}
+
 .clash-projects-empty-canvas {
   position: relative;
+  min-height: clamp(320px, 42vh, 460px);
+  overflow: hidden;
+  border-radius: 30px;
   isolation: isolate;
 }
 
@@ -841,7 +888,10 @@ html.dark.clash-is-scrolling ::-webkit-scrollbar-thumb:hover {
   pointer-events: none;
   background-image: radial-gradient(var(--canvas-dot) 1px, transparent 1px);
   background-size: 18px 18px;
-  opacity: 0.34;
+  mask-image:
+    linear-gradient(90deg, transparent, #000 8%, #000 92%, transparent),
+    linear-gradient(180deg, transparent, #000 6%, #000 94%, transparent);
+  opacity: 0.48;
 }
 
 .clash-projects-empty-canvas::after {
@@ -850,7 +900,23 @@ html.dark.clash-is-scrolling ::-webkit-scrollbar-thumb:hover {
   inset: 0;
   z-index: 0;
   pointer-events: none;
-  background: linear-gradient(90deg, rgba(255, 254, 253, 0.7), transparent 60%);
+  background:
+    radial-gradient(circle at 72% 22%, rgba(255, 107, 80, 0.12), transparent 24%),
+    linear-gradient(90deg, rgba(255, 254, 253, 0.58), rgba(255, 254, 253, 0.1) 58%, rgba(255, 254, 253, 0.48));
+}
+
+.clash-projects-empty-edge {
+  stroke: #ff6b50;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-dasharray: 7 11;
+  opacity: 0.42;
+  animation: clash-home-preview-edge-flow 5.2s linear infinite;
+}
+
+.clash-projects-empty-edge--slow {
+  opacity: 0.26;
+  animation-duration: 6.8s;
 }
 
 .clash-projects-empty-node {
@@ -861,32 +927,87 @@ html.dark.clash-is-scrolling ::-webkit-scrollbar-thumb:hover {
   background:
     linear-gradient(180deg, rgba(255, 254, 253, 0.84), rgba(247, 246, 242, 0.7));
   box-shadow:
-    0 10px 24px rgba(35, 31, 25, 0.05),
+    0 16px 34px rgba(35, 31, 25, 0.06),
+    0 4px 14px rgba(255, 107, 80, 0.045),
     inset 0 1px 0 rgba(255, 255, 255, 0.78);
 }
 
-.clash-projects-empty-node--wide {
-  left: 8%;
-  top: 28px;
-  width: 46%;
-  height: 58px;
+.clash-projects-empty-node span {
+  display: inline-flex;
+  width: fit-content;
+  border: 1px solid rgba(225, 221, 213, 0.72);
+  border-radius: 999px;
+  background: rgba(255, 254, 253, 0.72);
+  padding: 2px 8px;
+  color: #7b6f64;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.2;
 }
 
-.clash-projects-empty-node--small {
-  right: 11%;
-  top: 22px;
-  width: 24%;
-  height: 44px;
+.clash-projects-empty-node strong {
+  display: block;
+  color: #12192b;
+  font-family: var(--font-space-grotesk), var(--font-inter), system-ui, sans-serif;
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 1.18;
 }
 
-.clash-projects-empty-node--accent {
-  right: 20%;
-  bottom: 24px;
-  width: 36%;
-  height: 42px;
+.clash-projects-empty-node--brief {
+  left: 4%;
+  top: 18%;
+  width: min(30%, 230px);
+  min-height: 124px;
+  padding: 18px;
+}
+
+.clash-projects-empty-node--brief strong {
+  margin-top: 18px;
+}
+
+.clash-projects-empty-node--agent {
+  left: 42%;
+  top: 34%;
+  display: flex;
+  width: 160px;
+  min-height: 112px;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: space-between;
+  padding: 18px;
   border-color: rgba(255, 107, 80, 0.28);
   background:
     linear-gradient(180deg, rgba(255, 240, 237, 0.82), rgba(255, 254, 253, 0.7));
+}
+
+.clash-projects-empty-node--agent img {
+  height: 34px;
+  width: 34px;
+  object-fit: contain;
+}
+
+.clash-projects-empty-node--shot {
+  right: 3%;
+  top: 16%;
+  width: min(34%, 260px);
+  min-height: 184px;
+  padding: 16px;
+}
+
+.clash-projects-empty-node--shot div {
+  height: 112px;
+  border: 1px solid rgba(225, 221, 213, 0.72);
+  border-radius: 14px;
+  background:
+    linear-gradient(135deg, rgba(255, 107, 80, 0.2), transparent 36%),
+    radial-gradient(circle at 68% 42%, rgba(18, 25, 43, 0.18), transparent 18%),
+    radial-gradient(circle at 35% 58%, rgba(255, 107, 80, 0.25), transparent 17%),
+    rgba(247, 246, 242, 0.72);
+}
+
+.clash-projects-empty-node--shot strong {
+  margin-top: 14px;
 }
 
 @keyframes clash-home-preview-edge-flow {
@@ -899,13 +1020,49 @@ html.dark.clash-is-scrolling ::-webkit-scrollbar-thumb:hover {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .clash-home-preview-edge {
+  .clash-home-preview-edge,
+  .clash-projects-empty-edge {
     animation: none;
   }
 }
 
 @media (max-width: 1023px) {
   .clash-home-canvas-preview {
+    display: none;
+  }
+
+  .clash-projects-empty-workbench {
+    min-height: auto;
+    grid-template-columns: 1fr;
+    gap: 1.5rem;
+  }
+
+  .clash-project-create-tile--empty {
+    width: 100%;
+  }
+
+  .clash-projects-empty-canvas {
+    min-height: 300px;
+  }
+
+  .clash-projects-empty-node--brief {
+    left: 6%;
+    width: 40%;
+  }
+
+  .clash-projects-empty-node--agent {
+    left: 38%;
+    top: 42%;
+  }
+
+  .clash-projects-empty-node--shot {
+    right: 5%;
+    width: 42%;
+  }
+}
+
+@media (max-width: 640px) {
+  .clash-projects-empty-canvas {
     display: none;
   }
 }

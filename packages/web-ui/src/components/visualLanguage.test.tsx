@@ -327,7 +327,10 @@ describe("visual language surfaces", () => {
 
     expect(projectSource).not.toMatch(/aria-label="Clash home"|<Link to="\/"/);
     expect(projectSource).toMatch(/id="editor-header"/);
+    expect(projectSource).toMatch(/absolute left-9 top-4/);
     expect(projectSource).toMatch(/clash-project-return-button/);
+    expect(projectSource).toMatch(/projectTitleInputWidthCh/);
+    expect(projectSource).toMatch(/width: `\$\{projectTitleInputWidthCh\}ch`/);
     expect(projectSource).toMatch(/id="project-top-actions"/);
     expect(projectSource).toMatch(/<PresenceBar clients=\{otherClients\} \/>/);
     expect(projectSource).toMatch(/<UserControls projectChrome \/>/);
@@ -335,7 +338,15 @@ describe("visual language surfaces", () => {
     expect(copilotSource).toMatch(/clash-copilot-launcher/);
     expect(copilotSource).toMatch(/bottom-\[max\(1rem,env\(safe-area-inset-bottom\)\)\]/);
     expect(copilotSource).toMatch(/\/brand\/logo-mark-animated\.svg/);
+    expect(copilotSource).toMatch(/clash-copilot-panel-shell fixed bottom-3 right-3/);
+    expect(copilotSource).toMatch(/rounded-matrix/);
+    expect(copilotSource).toMatch(/transformOrigin: 'right bottom'/);
+    expect(copilotSource).toMatch(/scale: isCollapsed \? 0\.94 : 1/);
+    expect(copilotSource).toMatch(/from-warm-surface via-warm-surface\/85/);
+    expect(copilotSource).not.toMatch(/border-l border-warm-border shadow-\[0_18px_50px/);
     expect(cssSource).toMatch(/\.clash-copilot-launcher/);
+    expect(cssSource).toMatch(/\.clash-copilot-panel-shell/);
+    expect(cssSource).toMatch(/\.clash-copilot-resize-handle::before/);
     expect(cssSource).toMatch(/\.clash-project-top-action/);
     expect(cssSource).toMatch(/\.clash-project-return-button,\s*\n\.clash-project-name-input\s*\{[\s\S]*?border:\s*0;[\s\S]*?background:\s*transparent;[\s\S]*?box-shadow:\s*none;/);
     expect(cssSource).toMatch(/\.clash-project-name-input:focus\s*\{[\s\S]*?inset 0 -2px 0 rgba\(255, 107, 80, 0\.34\)/);
@@ -382,8 +393,12 @@ describe("visual language surfaces", () => {
     expect(source).toMatch(/clash-home-preview-node/);
     expect(source).toMatch(/\/brand\/logo-mark-animated\.svg/);
     expect(source).toMatch(/clash-dashboard-shell/);
+    expect(source).toMatch(/clash-projects-empty-workbench/);
     expect(source).toMatch(/clash-projects-empty-canvas/);
+    expect(source).toMatch(/clash-projects-empty-edge/);
+    expect(source).toMatch(/clash-projects-empty-node--agent/);
     expect(source).toMatch(/clash-home-preview-edge-flow/);
+    expect(source).not.toMatch(/clash-projects-empty-node--wide|clash-projects-empty-node--small|clash-projects-empty-node--accent/);
   });
 
   it("keeps identity and mention surfaces out of legacy gradient and default gray chrome", () => {

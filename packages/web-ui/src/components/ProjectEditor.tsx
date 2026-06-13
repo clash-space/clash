@@ -349,6 +349,7 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
     const [showDebugIds, setShowDebugIds] = useState(false);
     const [canvasMode, setCanvasMode] = useState<'select' | 'hand'>('select');
     const [shareCopied, setShareCopied] = useState(false);
+    const projectTitleInputWidthCh = Math.min(Math.max(Array.from(projectName || 'Untitled').length + 1, 5), 30);
 
     useEffect(() => {
         const detail: DesktopTabTitleEventDetail = {
@@ -2401,7 +2402,7 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
                             {/* Project Name - No Background.
                                 z-10 — same stacking band as toolbar / chatbot panel
                                 so modal dialogs cover it cleanly without backdrop tricks. */}
-                            <div id="editor-header" className="absolute left-6 top-4 z-20 flex items-center gap-2 pointer-events-auto">
+                            <div id="editor-header" className="absolute left-9 top-4 z-20 flex items-center gap-2 pointer-events-auto">
                                 <motion.button
                                     type="button"
                                     onClick={handleReturnToProjects}
@@ -2415,7 +2416,11 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
                                 </motion.button>
                                 {/* Project Name Input */}
                                 <input
-                                    className="clash-project-name-input h-10 min-w-[80px] max-w-[360px] bg-transparent px-1 text-xl font-display font-semibold text-slate-950 placeholder-stone-400 focus:outline-none focus:ring-0"
+                                    className="clash-project-name-input h-10 min-w-[5ch] bg-transparent px-1 text-xl font-display font-semibold text-slate-950 placeholder-stone-400 focus:outline-none focus:ring-0"
+                                    style={{
+                                        width: `${projectTitleInputWidthCh}ch`,
+                                        maxWidth: 'min(46vw, 360px)',
+                                    }}
                                     value={projectName}
                                     onChange={(e) => setProjectName(e.target.value)}
                                     onBlur={() => {
@@ -2517,9 +2522,8 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
 
                             {/* Left Toolbar - Vertical Palette.
                                 z-10 keeps it above the canvas (z-0) but well below
-                                any modal Dialog (z-[70]) — same stacking band as the
-                                ChatbotCopilot panel, which has no explicit z-index
-                                (relies on natural document flow above the canvas). */}
+                                the bottom-right ChatbotCopilot popover and any modal
+                                Dialog (z-[70]). */}
                             <motion.div
                                 ref={toolbarRef}
                                 className="absolute left-6 top-1/2 -translate-y-1/2 z-10 flex flex-col items-start gap-2 pointer-events-none"
