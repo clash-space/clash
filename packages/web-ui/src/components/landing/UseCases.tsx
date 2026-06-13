@@ -50,44 +50,46 @@ const useCases = [
 
 export default function UseCases() {
   return (
-    <section id="use-cases" className="py-24 sm:py-32 relative z-10 bg-warm-muted/45 scroll-mt-20">
-      <div className="mx-auto max-w-7xl px-6 lg:px-8">
-        <div className="mx-auto max-w-2xl text-center mb-16 sm:mb-20">
-          <h2 className="text-base font-semibold leading-7 text-brand font-display">Use Cases</h2>
-          <p className="mt-2 text-3xl font-bold tracking-tight text-slate-900 dark:text-slate-50 sm:text-4xl font-display">
-            Built around how creative work actually moves
-          </p>
-          <p className="mt-6 text-lg leading-8 text-stone-700 dark:text-stone-300">
-            Clash starts light for one person, then grows into local agents, model routes, and shared rooms when the project asks for it.
-          </p>
-        </div>
+    <section id="use-cases" className="relative z-10 scroll-mt-20 py-20 sm:py-28">
+      <div className="mx-auto max-w-[1120px] px-5 sm:px-8 lg:px-10">
+        <div className="grid gap-12 lg:grid-cols-[0.62fr_1fr] lg:gap-20">
+          <div className="max-w-xl">
+            <h2 className="font-display text-sm font-semibold leading-7 text-brand">Use Cases</h2>
+            <p className="mt-2 font-display text-3xl font-bold tracking-tight text-slate-950 dark:text-slate-50 sm:text-4xl">
+              Built around how creative work actually moves
+            </p>
+            <p className="mt-6 text-lg leading-8 text-stone-700 dark:text-stone-300">
+              Clash starts light for one person, then grows into local agents, model routes, and shared rooms when the project asks for it.
+            </p>
+          </div>
 
-        <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
+          <ul className="clash-landing-usecase-matrix" aria-label="Creative workflows">
           {useCases.map((item, index) => (
-            <motion.div
+            <motion.li
               key={item.title}
-              initial={{ opacity: 0, y: 20 }}
+              initial={{ opacity: 0, y: 16 }}
               whileInView={{ opacity: 1, y: 0 }}
               viewport={{ once: true }}
-              transition={{ duration: 0.4, delay: index * 0.08 }}
-              className="group relative overflow-hidden rounded-2xl border border-warm-border/80 bg-warm-surface/88 p-8 shadow-[0_10px_28px_rgba(35,31,25,0.04)] transition-all hover:-translate-y-0.5 hover:border-brand/25 hover:bg-warm-surface"
+              transition={{ duration: 0.42, ease: [0.16, 1, 0.3, 1], delay: index * 0.06 }}
+              className={`clash-landing-usecase-row ${index === 0 ? 'clash-landing-usecase-row--lead' : ''}`}
             >
-              <div className="flex items-start justify-between mb-5">
-                <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-brand/10">
-                  <item.icon className="h-6 w-6 text-brand" weight="duotone" />
-                </div>
-                <span className="inline-flex items-center rounded-lg bg-warm-muted px-2.5 py-0.5 text-xs font-medium text-stone-700 dark:text-stone-300">
+              <div className="clash-landing-usecase-meta">
+                <item.icon className="h-5 w-5 text-brand" weight="duotone" aria-hidden="true" />
+                <span className="font-mono text-[11px] font-semibold uppercase tracking-[0.16em] text-stone-600 dark:text-stone-300">
                   {item.badge}
                 </span>
               </div>
-              <h3 className="text-lg font-bold text-slate-900 dark:text-slate-50 font-display mb-2">
-                {item.title}
-              </h3>
-              <p className="text-sm text-stone-700 dark:text-stone-300 leading-relaxed">
-                {item.description}
-              </p>
-            </motion.div>
+              <div className="min-w-0">
+                <h3 className="font-display text-lg font-bold text-slate-950 dark:text-slate-50">
+                  {item.title}
+                </h3>
+                <p className="mt-2 text-sm leading-6 text-stone-700 dark:text-stone-300">
+                  {item.description}
+                </p>
+              </div>
+            </motion.li>
           ))}
+          </ul>
         </div>
       </div>
     </section>

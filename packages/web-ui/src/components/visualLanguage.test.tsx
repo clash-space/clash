@@ -426,6 +426,17 @@ describe("visual language surfaces", () => {
     expect(source).not.toMatch(/rounded-2xl border border-warm-border\/80 bg-warm-surface\/80 p-7/);
   });
 
+  it("keeps the landing use cases as a matrix instead of same-sized cards", () => {
+    const source = readFileSync(join(process.cwd(), "packages/web-ui/src/components/landing/UseCases.tsx"), "utf8");
+    const cssSource = readFileSync(join(process.cwd(), "apps/web/app/globals.css"), "utf8");
+
+    expect(source).toMatch(/clash-landing-usecase-matrix/);
+    expect(source).toMatch(/clash-landing-usecase-row--lead/);
+    expect(cssSource).toMatch(/\.clash-landing-usecase-matrix/);
+    expect(source).not.toMatch(/lg:grid-cols-3/);
+    expect(source).not.toMatch(/rounded-2xl border border-warm-border\/80 bg-warm-surface\/88 p-8/);
+  });
+
   it("keeps the public landing page aligned with canvas and local-runtime product language", () => {
     const source = [
       "packages/web-ui/src/components/landing/LandingHero.tsx",

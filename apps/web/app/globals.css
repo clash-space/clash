@@ -1534,6 +1534,45 @@ html.dark.clash-is-scrolling ::-webkit-scrollbar-thumb:hover {
   }
 }
 
+.clash-landing-usecase-matrix {
+  display: grid;
+  border-block: 1px solid rgba(225, 221, 213, 0.82);
+}
+
+.clash-landing-usecase-row {
+  display: grid;
+  grid-template-columns: minmax(8.5rem, 0.32fr) minmax(0, 1fr);
+  gap: 1.25rem;
+  padding: 1.5rem 0;
+  border-top: 1px solid rgba(225, 221, 213, 0.62);
+}
+
+.clash-landing-usecase-row:first-child {
+  border-top: 0;
+}
+
+.clash-landing-usecase-row--lead {
+  grid-template-columns: minmax(9rem, 0.3fr) minmax(0, 1fr);
+}
+
+.clash-landing-usecase-meta {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  min-width: 0;
+  color: #ff6b50;
+}
+
+@media (max-width: 767px) {
+  .clash-landing-usecase-row,
+  .clash-landing-usecase-row--lead {
+    grid-template-columns: 1fr;
+    gap: 0.75rem;
+    padding: 1.35rem 0;
+    border-left: 0;
+  }
+}
+
 .clash-chat-input-surface {
   position: relative;
   isolation: isolate;
