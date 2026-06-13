@@ -437,6 +437,17 @@ describe("visual language surfaces", () => {
     expect(source).not.toMatch(/rounded-2xl border border-warm-border\/80 bg-warm-surface\/88 p-8/);
   });
 
+  it("keeps landing modes as a ledger instead of pricing cards", () => {
+    const source = readFileSync(join(process.cwd(), "packages/web-ui/src/components/landing/Pricing.tsx"), "utf8");
+    const cssSource = readFileSync(join(process.cwd(), "apps/web/app/globals.css"), "utf8");
+
+    expect(source).toMatch(/clash-landing-mode-ledger/);
+    expect(source).toMatch(/clash-landing-mode-row--emphasis/);
+    expect(cssSource).toMatch(/\.clash-landing-mode-ledger/);
+    expect(source).not.toMatch(/lg:grid-cols-3/);
+    expect(source).not.toMatch(/rounded-2xl p-8|scale-\[1\.02\]|shadow-\[0_18px_42px/);
+  });
+
   it("keeps the public landing page aligned with canvas and local-runtime product language", () => {
     const source = [
       "packages/web-ui/src/components/landing/LandingHero.tsx",
@@ -450,7 +461,7 @@ describe("visual language surfaces", () => {
       .map((path) => readFileSync(join(process.cwd(), path), "utf8"))
       .join("\n");
 
-    expect(source).not.toMatch(/HeroCanvasPreview|Agent drafting|Neon rain/);
+    expect(source).not.toMatch(/HeroCanvasPreview|Agent drafting|Scene rhythm|Shot pass|Neon rain/);
     expect(source).toMatch(/variant="hero"/);
     expect(source).toMatch(/Canvas-first planning/);
     expect(source).toMatch(/Local runtime ready/);
