@@ -448,6 +448,18 @@ describe("visual language surfaces", () => {
     expect(source).not.toMatch(/rounded-2xl p-8|scale-\[1\.02\]|shadow-\[0_18px_42px/);
   });
 
+  it("keeps landing field notes as an editorial ledger instead of blog cards", () => {
+    const source = readFileSync(join(process.cwd(), "packages/web-ui/src/components/landing/BlogPreview.tsx"), "utf8");
+    const cssSource = readFileSync(join(process.cwd(), "apps/web/app/globals.css"), "utf8");
+
+    expect(source).toMatch(/clash-landing-note-ledger/);
+    expect(source).toMatch(/clash-landing-note-path/);
+    expect(cssSource).toMatch(/\.clash-landing-note-ledger/);
+    expect(source).not.toMatch(/clash-blog-preview-canvas/);
+    expect(source).not.toMatch(/lg:grid-cols-3|md:grid-cols-2/);
+    expect(source).not.toMatch(/rounded-2xl border border-warm-border\/80 bg-warm-surface\/88/);
+  });
+
   it("keeps the public landing page aligned with canvas and local-runtime product language", () => {
     const source = [
       "packages/web-ui/src/components/landing/LandingHero.tsx",
@@ -470,7 +482,7 @@ describe("visual language surfaces", () => {
     expect(source).toMatch(/Solo creator studio/);
     expect(source).toMatch(/Local by default, cloud when it helps/);
     expect(source).toMatch(/Start local\. Add cloud only when the project needs it\./);
-    expect(source).toMatch(/clash-blog-preview-canvas/);
+    expect(source).toMatch(/clash-landing-note-ledger/);
     expect(source).toMatch(/Field notes/);
     expect(source).toMatch(/The canvas is the contract/);
     expect(source).toMatch(/Local-first agents, cloud when useful/);
