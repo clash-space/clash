@@ -507,6 +507,50 @@ describe("local API app", () => {
     expect(await (await app.request("/api/projects")).json()).toEqual([]);
   });
 
+  it("supports the v1 project contract used by the local agent CLI", async () => {
+    const app = createLocalApiApp({ dataDir, userId: "local-user" });
+
+    const created = await app.request("/api/v1/projects", {
+      method: "POST",
+      body: JSON.stringify({
+        name: "Agent CLI Project",
+        description: "Created through the local CLI shim",
+      }),
+      headers: { "content-type": "application/json" },
+    });
+    expect(created.status).toBe(201);
+    const createdJson = (await created.json()) as { id: string; name: string; description: string };
+    expect(createdJson).toMatchObject({
+      name: "Agent CLI Project",
+      description: "Created through the local CLI shim",
+    });
+
+    const listed = await app.request("/api/v1/projects");
+    expect(await listed.json()).toEqual({
+      projects: [
+        expect.objectContaining({
+          id: createdJson.id,
+          name: "Agent CLI Project",
+          description: "Created through the local CLI shim",
+          created_at: expect.any(Number),
+          updated_at: expect.any(Number),
+        }),
+      ],
+    });
+
+    const loaded = await app.request(`/api/v1/projects/${createdJson.id}`);
+    expect(await loaded.json()).toEqual(
+      expect.objectContaining({
+        id: createdJson.id,
+        name: "Agent CLI Project",
+      }),
+    );
+
+    const deleted = await app.request(`/api/v1/projects/${createdJson.id}`, { method: "DELETE" });
+    expect(deleted.status).toBe(200);
+    expect(await deleted.json()).toEqual({ deleted: true });
+  });
+
   it("persists local project room messages", async () => {
     const app = createLocalApiApp({ dataDir, userId: "local-user" });
 

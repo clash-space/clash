@@ -1,3 +1,4 @@
+import { spawn } from "node:child_process";
 import { createServer } from "node:http";
 import net from "node:net";
 import { rm } from "node:fs/promises";
@@ -254,6 +255,128 @@ async function exerciseFalMock(origin) {
   };
 }
 
+async function runClashCli(args, env) {
+  const child = spawn("clash", args, {
+    cwd: repoRoot,
+    env: {
+      ...process.env,
+      ...env,
+      CLASH_NODE_EXEC_PATH: process.execPath,
+    },
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+
+  let stdout = "";
+  let stderr = "";
+  child.stdout.setEncoding("utf8");
+  child.stderr.setEncoding("utf8");
+  child.stdout.on("data", (chunk) => { stdout += chunk; });
+  child.stderr.on("data", (chunk) => { stderr += chunk; });
+
+  const code = await new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      child.kill("SIGKILL");
+      reject(new Error(`clash ${args.join(" ")} timed out\nstdout:\n${stdout}\nstderr:\n${stderr}`));
+    }, 15000);
+    child.once("error", (error) => {
+      clearTimeout(timer);
+      reject(error);
+    });
+    child.once("exit", (exitCode, signal) => {
+      clearTimeout(timer);
+      if (signal) reject(new Error(`clash ${args.join(" ")} terminated by ${signal}\nstdout:\n${stdout}\nstderr:\n${stderr}`));
+      else resolve(exitCode ?? 1);
+    });
+  });
+  if (code !== 0) {
+    throw new Error(`clash ${args.join(" ")} exited ${code}\nstdout:\n${stdout}\nstderr:\n${stderr}`);
+  }
+  return stdout.trim();
+}
+
+async function exerciseAgentCliShim(origin, createLocalAgentToolEnv) {
+  const env = createLocalAgentToolEnv({
+    dataDir,
+    apiBaseUrl: origin,
+    env: process.env,
+  });
+  const created = JSON.parse(await runClashCli([
+    "projects",
+    "create",
+    "--name",
+    "daemon agent cli project",
+    "--json",
+  ], env));
+  assert(created.id, "agent CLI project create returns an id", created);
+
+  const observer = new WebSocket(`${origin.replace("http:", "ws:")}/sync/${encodeURIComponent(created.id)}`);
+  const presenceMessages = [];
+  observer.addEventListener("message", (event) => {
+    if (typeof event.data !== "string") return;
+    const msg = JSON.parse(String(event.data));
+    if (msg.type === "presence") presenceMessages.push(msg);
+  });
+  await new Promise((resolve, reject) => {
+    observer.addEventListener("open", resolve, { once: true });
+    observer.addEventListener("error", reject, { once: true });
+  });
+
+  const agentEnv = {
+    ...env,
+    CLASH_CREW_MEMBER_ID: "local-director",
+    CLASH_PROJECT_ID: created.id,
+  };
+
+  try {
+    const added = JSON.parse(await runClashCli([
+      "canvas",
+      "add",
+      "--project",
+      created.id,
+      "--type",
+      "text",
+      "--label",
+      "Agent CLI Note",
+      "--content",
+      "created through the local agent CLI shim",
+      "--json",
+    ], agentEnv));
+    assert(added.node_id, "agent CLI canvas add returns a node id", added);
+    await waitForValue(
+      () => presenceMessages.some((msg) =>
+        msg.clients?.some((client) =>
+          client.clientType === "agent" &&
+          client.userId === "local-user" &&
+          client.name === "local-director"
+        )
+      ),
+      "agent CLI presence as local user surrogate",
+    );
+
+    const listed = JSON.parse(await runClashCli([
+      "canvas",
+      "list",
+      "--project",
+      created.id,
+      "--json",
+    ], env));
+    const node = listed.find((candidate) => candidate.id === added.node_id);
+    assert(node, "agent CLI canvas list can read the node it created", { added, listed });
+    assert(node.data?.actorType === "agent", "agent CLI-created node is attributed to an agent", node);
+    assert(node.data?.actorUserId === "local-user", "CLI-created node resolves the local user id", node);
+    assert(node.data?.actorAgentId === "local-director", "agent CLI-created node keeps the crew member id", node);
+    return {
+      projectId: created.id,
+      nodeId: added.node_id,
+      actorType: node.data.actorType,
+      actorUserId: node.data.actorUserId,
+      actorAgentId: node.data.actorAgentId,
+    };
+  } finally {
+    observer.close();
+  }
+}
+
 async function closeServer(server) {
   await new Promise((resolve) => server.close(resolve));
 }
@@ -265,14 +388,16 @@ async function main() {
   const port = await findFreePort(49500);
   const origin = `http://127.0.0.1:${port}`;
   const mockRemote = await startMockRemoteLoro();
-  const { startLocalApiServer } = await import("../dist/server.js");
+  const { createLocalAgentToolEnv, startLocalApiServer } = await import("../dist/server.js");
   const server = await startLocalApiServer({ port, dataDir });
 
   try {
     const runtime = await exerciseLocalSession(origin);
+    const cli = await exerciseAgentCliShim(origin, createLocalAgentToolEnv);
     const loro = await exerciseLoroSync(origin, mockRemote);
     const fal = await exerciseFalMock(origin);
     console.log("[daemon-smoke] runtime", JSON.stringify(runtime));
+    console.log("[daemon-smoke] agent-cli", JSON.stringify(cli));
     console.log("[daemon-smoke] loro", JSON.stringify(loro));
     console.log("[daemon-smoke] fal", JSON.stringify(fal));
   } finally {

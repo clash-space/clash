@@ -221,6 +221,11 @@ function nowIso(): string {
   return new Date().toISOString();
 }
 
+function isoToEpochSeconds(value: string): number {
+  const parsed = Date.parse(value);
+  return Number.isFinite(parsed) ? Math.floor(parsed / 1000) : 0;
+}
+
 function epochSecondsToIso(value: number | null | undefined): string | null {
   if (!value) return null;
   return new Date(value * 1000).toISOString();
@@ -361,6 +366,16 @@ function withProjectAssets(project: LocalProject, state: LocalDb): LocalProject 
   }
 
   return { ...project, assets: previewAssets };
+}
+
+function toV1Project(project: LocalProject) {
+  return {
+    id: project.id,
+    name: project.name,
+    description: project.description,
+    created_at: isoToEpochSeconds(project.createdAt),
+    updated_at: isoToEpochSeconds(project.updatedAt),
+  };
 }
 
 function roomSyncMeta(
@@ -642,6 +657,59 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
     }
     const history = await options.localAcp.listSessionMessages(c.req.param("sessionId"));
     return history ? c.json(history) : c.json({ error: "not found" }, 404);
+  });
+
+  app.get("/api/v1/projects", async (c) => {
+    const state = await db.load();
+    return c.json({
+      projects: state.projects.map(toV1Project),
+    });
+  });
+
+  app.post("/api/v1/projects", async (c) => {
+    const body = (await c.req.json().catch(() => ({}))) as {
+      name?: string;
+      description?: string;
+    };
+    const name = body.name?.trim();
+    if (!name) return c.json({ error: "name is required" }, 400);
+
+    const state = await db.load();
+    const createdAt = nowIso();
+    const project: LocalProject = {
+      id: crypto.randomUUID(),
+      ownerId: userId,
+      name,
+      description: body.description?.trim() || null,
+      createdAt,
+      updatedAt: createdAt,
+      assets: [],
+    };
+    state.projects.unshift(project);
+    await db.save(state);
+    return c.json({
+      id: project.id,
+      name: project.name,
+      description: project.description,
+    }, 201);
+  });
+
+  app.get("/api/v1/projects/:id", async (c) => {
+    const state = await db.load();
+    const project = state.projects.find((p) => p.id === c.req.param("id"));
+    return project ? c.json(toV1Project(project)) : c.json({ error: "Project not found" }, 404);
+  });
+
+  app.delete("/api/v1/projects/:id", async (c) => {
+    const state = await db.load();
+    const before = state.projects.length;
+    const projectId = c.req.param("id");
+    state.projects = state.projects.filter((p) => p.id !== projectId);
+    if (state.projects.length === before) return c.json({ error: "Project not found" }, 404);
+    state.assetRefs = state.assetRefs.filter((ref) => ref.projectId !== projectId);
+    state.roomMessages = state.roomMessages.filter((message) => message.project_id !== projectId);
+    await db.save(state);
+    return c.json({ deleted: true });
   });
 
   app.get("/api/projects", async (c) => {

@@ -14,6 +14,34 @@ import { isJsonMode, printJson } from "../lib/output";
 import { isDaemonRunning, sendCommand, startDaemon, getSocketPath } from "../lib/daemon";
 import { apiFetch, apiJson } from "../lib/api";
 
+export interface CanvasPresenceOptions {
+  clientType: "cli" | "agent";
+  userId?: string;
+  userName?: string;
+  agentName?: string;
+}
+
+export function resolveCanvasPresenceOptions(
+  env: Record<string, string | undefined> = process.env,
+): CanvasPresenceOptions {
+  const userId = env.CLASH_USER_ID?.trim();
+  const userName = env.CLASH_USER_NAME?.trim();
+  const crewMemberId = env.CLASH_CREW_MEMBER_ID?.trim();
+  const agentName = env.CLASH_AGENT_NAME?.trim() || crewMemberId;
+  const base = {
+    ...(userId ? { userId } : {}),
+    ...(userName ? { userName } : {}),
+  };
+  if (crewMemberId) {
+    return {
+      ...base,
+      clientType: "agent",
+      ...(agentName ? { agentName } : {}),
+    };
+  }
+  return { ...base, clientType: "cli" };
+}
+
 /**
  * Resolve the actor that's running this CLI invocation for Phase 0
  * attribution. There are two shapes:
@@ -75,7 +103,7 @@ async function connectToProject(projectId: string): Promise<LoroSyncClient> {
     serverUrl: wsUrl,
     projectId,
     token: apiKey,
-    clientType: "cli",
+    ...resolveCanvasPresenceOptions(),
     WebSocket: WebSocket as any,
   });
 

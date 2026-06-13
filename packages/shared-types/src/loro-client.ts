@@ -37,7 +37,7 @@ interface WSConstructor {
 const WS_OPEN = 1;
 const WS_CLOSED = 3;
 
-export type ClientType = "browser" | "cli";
+export type ClientType = "browser" | "cli" | "agent";
 
 export interface LoroSyncClientOptions {
   serverUrl: string;
@@ -45,6 +45,12 @@ export interface LoroSyncClientOptions {
   token: string;
   /** Client type for presence tracking. Default: "browser" */
   clientType?: ClientType;
+  /** Human user represented by this connection. */
+  userId?: string;
+  /** Display name for browser/CLI presence. */
+  userName?: string;
+  /** Display name for agent presence. */
+  agentName?: string;
   /** WebSocket constructor override (e.g., `ws` package for Node.js) */
   WebSocket?: WSConstructor;
 }
@@ -60,6 +66,9 @@ export class LoroSyncClient {
   private readonly projectId: string;
   private readonly token: string;
   private readonly clientType: ClientType;
+  private readonly userId?: string;
+  private readonly userName?: string;
+  private readonly agentName?: string;
   private readonly WS: WSConstructor;
 
   constructor(options: LoroSyncClientOptions) {
@@ -67,6 +76,9 @@ export class LoroSyncClient {
     this.projectId = options.projectId;
     this.token = options.token;
     this.clientType = options.clientType ?? "browser";
+    this.userId = options.userId;
+    this.userName = options.userName;
+    this.agentName = options.agentName;
     this.WS = (options.WebSocket ?? globalThis.WebSocket) as unknown as WSConstructor;
     // No-op broadcast: local updates are sent via subscribeLocalUpdates in connect().
     this.canvas = new Canvas(this.doc, () => {});
@@ -78,7 +90,7 @@ export class LoroSyncClient {
     return new Promise<void>((resolve, reject) => {
       const url = `${this.serverUrl}/sync/${this.projectId}?token=${encodeURIComponent(this.token)}`;
       const ws = new this.WS(url, undefined, {
-        headers: { "x-client-type": this.clientType },
+        headers: this.presenceHeaders(),
       });
       ws.binaryType = "arraybuffer";
       let snapshotReceived = false;
@@ -131,6 +143,15 @@ export class LoroSyncClient {
 
       this.ws = ws;
     });
+  }
+
+  private presenceHeaders(): Record<string, string> {
+    return {
+      "x-client-type": this.clientType,
+      ...(this.userId ? { "x-user-id": this.userId } : {}),
+      ...(this.userName ? { "x-user-name": this.userName } : {}),
+      ...(this.agentName ? { "x-agent-name": this.agentName } : {}),
+    };
   }
 
   async flush(): Promise<void> {
