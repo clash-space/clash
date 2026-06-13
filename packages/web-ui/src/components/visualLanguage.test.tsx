@@ -71,6 +71,8 @@ const oldDaemonConnectTokens =
   /bg-slate-950|hover:bg-slate-800|bg-slate-950 text-slate-50|text-white px-6 py-3|text-red-600|clash-auth-code[^"]*break-all/;
 const oldLocalAgentSetupTokens =
   /bg-slate-950 text-white py-2\.5|min-h-\[44px\] text-sm font-medium hover:bg-slate-800|bg-slate-900 text-slate-50 px-3 py-2\.5|border-red-200 bg-red-50/;
+const oldMarketplaceActionTokens =
+  /bg-slate-950 text-white|hover:bg-slate-800|hover:bg-red-50 hover:text-red-600|dark:hover:bg-red-950/;
 
 describe("visual language surfaces", () => {
   afterEach(() => {
@@ -114,6 +116,20 @@ describe("visual language surfaces", () => {
     expect(container.querySelector('[class*="bg-brand-light"][class*="text-brand"]')).toBeTruthy();
     expect(container.querySelector('[class*="bg-warm-muted"][class*="text-stone-700"]')).toBeTruthy();
     expect(container.querySelector('input[class*="rounded-xl"]')).toBeTruthy();
+  });
+
+  it("keeps marketplace filters and install actions out of generic black and hard-red chrome", () => {
+    const source = [
+      "packages/web-ui/src/components/MarketplaceClient.tsx",
+      "apps/web/app/globals.css",
+    ]
+      .map((path) => readFileSync(join(process.cwd(), path), "utf8"))
+      .join("\n");
+
+    expect(source).not.toMatch(oldMarketplaceActionTokens);
+    expect(source).toMatch(/clash-marketplace-filter-active/);
+    expect(source).toMatch(/clash-marketplace-primary/);
+    expect(source).toMatch(/clash-marketplace-installed/);
   });
 
   it("renders billing cards with warm surfaces instead of a purple gradient hero", () => {

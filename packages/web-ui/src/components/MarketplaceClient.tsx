@@ -116,11 +116,12 @@ export default function MarketplaceClient({ items, installedActionIds, installed
                     <div className="flex flex-wrap gap-1">
                         {filterButtons.map((btn) => (
                             <button
+                                type="button"
                                 key={btn.value}
                                 onClick={() => setFilter(btn.value)}
                                 className={`rounded-xl px-4 py-2 text-sm font-medium transition-all ${
                                     filter === btn.value
-                                        ? 'bg-slate-950 text-white shadow-sm dark:bg-slate-100 dark:text-slate-950'
+                                        ? 'clash-marketplace-filter-active'
                                         : 'text-stone-600 hover:text-slate-950 hover:bg-warm-muted dark:text-stone-300 dark:hover:text-slate-50 dark:hover:bg-warm-hover'
                                 }`}
                             >
@@ -192,11 +193,11 @@ export default function MarketplaceClient({ items, installedActionIds, installed
                                     <motion.button
                                         onClick={() => handleToggleInstall(item)}
                                         disabled={loading}
-                                        className={`mt-auto flex items-center justify-center gap-2 rounded-xl px-4 py-2 text-sm font-medium transition-all ${
+                                        className={`mt-auto flex items-center justify-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold transition-all ${
                                             installed
-                                                ? 'bg-brand-light text-brand hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950/40 dark:hover:text-red-300'
-                                                : 'bg-slate-950 text-white hover:bg-slate-800 dark:bg-slate-100 dark:text-slate-950 dark:hover:bg-white'
-                                        } disabled:opacity-50`}
+                                                ? 'clash-marketplace-installed'
+                                                : 'clash-marketplace-primary'
+                                        } disabled:cursor-not-allowed disabled:opacity-50`}
                                         whileTap={{ scale: 0.97 }}
                                     >
                                         {loading ? (
