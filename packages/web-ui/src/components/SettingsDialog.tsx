@@ -7,8 +7,7 @@
  * longer exposed as a standalone web route.
  *
  * Data lifecycle:
- *   - Open → fetch all four lists (tokens, variables, actions,
- *     skills) via clientActions. Until they resolve, the content
+ *   - Open → fetch settings lists via clientActions. Until they resolve, the content
  *     pane shows a small skeleton.
  *   - Close → state is dropped; next open re-fetches. Keeps the
  *     view in sync with anything created elsewhere (the marketplace
@@ -44,10 +43,14 @@ import {
   listVariables,
   listInstalledActions,
   listInstalledSkills,
+  listModelProviders,
+  listModelCatalog,
   type ApiTokenInfo,
   type VariableInfo,
   type InstalledActionInfo,
   type InstalledSkillInfo,
+  type ModelProviderAccountInfo,
+  type ModelCatalogEntryInfo,
 } from '@clash/web-ui/lib/clientActions';
 
 interface NavItem {
@@ -61,6 +64,7 @@ const NAV_ITEMS: NavItem[] = [
   { id: 'sync', label: 'Sync', icon: CloudArrowUp },
   { id: 'tokens', label: 'API Tokens', icon: Key },
   { id: 'variables', label: 'API Keys', icon: Lock },
+  { id: 'models', label: 'Models', icon: Plug },
   { id: 'actions', label: 'Actions', icon: PuzzlePiece },
   { id: 'skills', label: 'Skills', icon: BookOpen },
   { id: 'cli', label: 'CLI', icon: Terminal },
@@ -76,6 +80,8 @@ type LoadState =
       variables: VariableInfo[];
       actions: InstalledActionInfo[];
       skills: InstalledSkillInfo[];
+      modelProviders: ModelProviderAccountInfo[];
+      modelCatalog: ModelCatalogEntryInfo[];
     };
 
 export interface SettingsDialogProps {
@@ -101,10 +107,12 @@ export function SettingsDialog({ open, onClose, initialSection = 'runtimes' }: S
       listVariables().catch(() => [] as VariableInfo[]),
       listInstalledActions().catch(() => [] as InstalledActionInfo[]),
       listInstalledSkills().catch(() => [] as InstalledSkillInfo[]),
+      listModelProviders().catch(() => [] as ModelProviderAccountInfo[]),
+      listModelCatalog().catch(() => [] as ModelCatalogEntryInfo[]),
     ])
-      .then(([tokens, variables, actions, skills]) => {
+      .then(([tokens, variables, actions, skills, modelProviders, modelCatalog]) => {
         if (cancelled) return;
-        setLoad({ status: 'ready', tokens, variables, actions, skills });
+        setLoad({ status: 'ready', tokens, variables, actions, skills, modelProviders, modelCatalog });
       })
       .catch((err) => {
         if (cancelled) return;
@@ -210,6 +218,8 @@ export function SettingsDialog({ open, onClose, initialSection = 'runtimes' }: S
                 initialVariables={load.variables}
                 initialActions={load.actions}
                 initialSkills={load.skills}
+                initialModelProviders={load.modelProviders}
+                initialModelCatalog={load.modelCatalog}
                 activeSection={active}
                 embedded
               />

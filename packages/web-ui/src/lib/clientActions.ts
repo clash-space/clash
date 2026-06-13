@@ -9,6 +9,10 @@
  * future Electron app (which will hit the same HTTP endpoints).
  */
 import { runtimeApiUrl } from "./runtimeConfig";
+import type {
+  ModelCatalogEntry,
+  ProviderAccountAvailability,
+} from "@clash/shared-types";
 
 // ───────── Types (mirror server-side shapes) ─────────
 
@@ -63,6 +67,9 @@ export interface InstalledSkillInfo {
   linkedActionId: string | null;
   createdAt: Date | null;
 }
+
+export type ModelProviderAccountInfo = ProviderAccountAvailability;
+export type ModelCatalogEntryInfo = ModelCatalogEntry;
 
 export interface RegistryItem {
   id: string;
@@ -177,6 +184,28 @@ export async function listVariables(): Promise<VariableInfo[]> {
 
 export async function deleteVariable(id: string): Promise<void> {
   await jsonFetch(`/api/settings/variables/${id}`, { method: "DELETE" });
+}
+
+// ───────── Settings: Model providers ─────────
+
+export async function listModelProviders(): Promise<ModelProviderAccountInfo[]> {
+  const data = await jsonFetch<{ providers: ModelProviderAccountInfo[] }>("/api/v1/model-providers");
+  return data.providers;
+}
+
+export async function updateModelProviders(
+  providers: ModelProviderAccountInfo[],
+): Promise<ModelProviderAccountInfo[]> {
+  const data = await jsonFetch<{ providers: ModelProviderAccountInfo[] }>("/api/v1/model-providers", {
+    method: "PATCH",
+    body: JSON.stringify({ providers }),
+  });
+  return data.providers;
+}
+
+export async function listModelCatalog(): Promise<ModelCatalogEntryInfo[]> {
+  const data = await jsonFetch<{ models: ModelCatalogEntryInfo[] }>("/api/v1/models/catalog");
+  return data.models;
 }
 
 // ───────── Settings: Installed actions ─────────

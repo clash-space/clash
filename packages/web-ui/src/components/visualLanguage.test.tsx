@@ -23,6 +23,8 @@ vi.mock("@clash/web-ui/lib/clientActions", () => ({
   deleteVariable: vi.fn(),
   uninstallAction: vi.fn(),
   uninstallSkill: vi.fn(),
+  listModelCatalog: vi.fn(),
+  updateModelProviders: vi.fn(),
 }));
 
 vi.mock("framer-motion", async () => {

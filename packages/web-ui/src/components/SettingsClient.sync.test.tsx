@@ -20,6 +20,8 @@ vi.mock("@clash/web-ui/lib/clientActions", () => ({
   deleteVariable: vi.fn(),
   uninstallAction: vi.fn(),
   uninstallSkill: vi.fn(),
+  listModelCatalog: vi.fn(),
+  updateModelProviders: vi.fn(),
 }));
 
 vi.mock("framer-motion", async () => {
@@ -148,5 +150,105 @@ describe("SettingsClient provider keys", () => {
     );
 
     expect(screen.queryByText("fal.ai · FAL_API_KEY")).toBeNull();
+  });
+});
+
+describe("SettingsClient model routing", () => {
+  afterEach(() => {
+    cleanup();
+    vi.restoreAllMocks();
+  });
+
+  it("shows provider routing and saves account weights", async () => {
+    const actions = await import("@clash/web-ui/lib/clientActions");
+    vi.mocked(actions.updateModelProviders).mockImplementation(async (providers) => providers);
+    vi.mocked(actions.listModelCatalog).mockResolvedValue([
+      {
+        model: {
+          id: "nano-banana-2",
+          name: "Nano Banana 2",
+          kind: "image",
+        },
+        tier: "available",
+        selectedRoute: {
+          modelCode: "nano-banana-2",
+          kind: "image",
+          providerId: "fal",
+          upstreamId: "fal",
+          upstreamModel: "fal-ai/nano-banana-2",
+          apiShape: "fal",
+          priority: 20,
+        },
+        routes: [],
+        candidateProviders: ["fal"],
+        missingVariables: [],
+      },
+    ]);
+
+    render(
+      <MemoryRouter>
+        <SettingsClient
+          initialTokens={[]}
+          initialVariables={[]}
+          initialActions={[]}
+          initialSkills={[]}
+          activeSection="models"
+          embedded
+          initialModelProviders={[
+            {
+              providerId: "fal",
+              upstreamId: "fal",
+              enabled: true,
+              availableVariables: ["FAL_API_KEY"],
+              weight: 75,
+            },
+          ]}
+          initialModelCatalog={[
+            {
+              model: {
+                id: "nano-banana-2",
+                name: "Nano Banana 2",
+                kind: "image",
+              },
+              tier: "available",
+              selectedRoute: {
+                modelCode: "nano-banana-2",
+                kind: "image",
+                providerId: "fal",
+                upstreamId: "fal",
+                upstreamModel: "fal-ai/nano-banana-2",
+                apiShape: "fal",
+                priority: 20,
+              },
+              routes: [],
+              candidateProviders: ["fal"],
+              missingVariables: [],
+            },
+          ]}
+        />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByText("Provider routing")).toBeTruthy();
+    expect(screen.getAllByText("fal/fal").length).toBeGreaterThan(0);
+    expect(screen.getByText("Nano Banana 2")).toBeTruthy();
+
+    fireEvent.change(screen.getByLabelText("Weight for fal/fal"), {
+      target: { value: "90" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save routing" }));
+
+    await waitFor(() => {
+      expect(actions.updateModelProviders).toHaveBeenCalledWith(
+        expect.arrayContaining([
+          expect.objectContaining({
+            providerId: "fal",
+            upstreamId: "fal",
+            enabled: true,
+            weight: 90,
+          }),
+        ]),
+      );
+    });
   });
 });

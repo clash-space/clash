@@ -1,5 +1,5 @@
 
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Key, Plus, Trash, Copy, Check, ArrowLeft, Lock, Eye, EyeSlash, PuzzlePiece, BookOpen, Terminal, Plug, CloudArrowUp } from '@phosphor-icons/react';
 import { useClashRuntime } from '@clash/web-ui/hooks/useClashRuntime';
@@ -10,6 +10,7 @@ import {
     setVariable, deleteVariable, type VariableInfo,
     uninstallAction, type InstalledActionInfo,
     uninstallSkill, type InstalledSkillInfo,
+    updateModelProviders, listModelCatalog, type ModelProviderAccountInfo, type ModelCatalogEntryInfo,
 } from '@clash/web-ui/lib/clientActions';
 import { runtimeApiUrl } from '@clash/web-ui/lib/runtimeConfig';
 
@@ -20,6 +21,7 @@ export type SettingsSection =
     | 'sync'
     | 'tokens'
     | 'variables'
+    | 'models'
     | 'actions'
     | 'skills'
     | 'cli';
@@ -29,6 +31,8 @@ interface Props {
     initialVariables: VariableInfo[];
     initialActions: InstalledActionInfo[];
     initialSkills: InstalledSkillInfo[];
+    initialModelProviders?: ModelProviderAccountInfo[];
+    initialModelCatalog?: ModelCatalogEntryInfo[];
     /** When provided, only that section's body renders — used by
      *  SettingsDialog's content pane. */
     activeSection?: SettingsSection;
@@ -53,6 +57,8 @@ export default function SettingsClient({
     initialVariables,
     initialActions,
     initialSkills,
+    initialModelProviders = [],
+    initialModelCatalog = [],
     activeSection,
     embedded = false,
 }: Props) {
@@ -72,9 +78,16 @@ export default function SettingsClient({
 
     const [actions, setActions] = useState<InstalledActionInfo[]>(initialActions);
     const [skills, setSkills] = useState<InstalledSkillInfo[]>(initialSkills);
+    const [modelProviders, setModelProviders] = useState<ModelProviderAccountInfo[]>(initialModelProviders);
+    const [modelCatalog, setModelCatalog] = useState<ModelCatalogEntryInfo[]>(initialModelCatalog);
+    const [isSavingModelProviders, setIsSavingModelProviders] = useState(false);
+    const [modelProviderError, setModelProviderError] = useState<string | null>(null);
+    const [modelProviderSaved, setModelProviderSaved] = useState(false);
 
     const variableKeys = new Set(variables.map((v) => v.key));
     const providerPresets = Object.values(ACTION_PROVIDER_PRESETS);
+    const modelProviderRows = useMemo(() => buildModelProviderRows(modelProviders, variableKeys), [modelProviders, variables]);
+    const modelTierCounts = useMemo(() => countModelCatalogTiers(modelCatalog), [modelCatalog]);
 
     const handleCreate = useCallback(async () => {
         if (!newTokenName.trim()) return;
@@ -146,6 +159,33 @@ export default function SettingsClient({
             console.error('Failed to uninstall skill:', err);
         }
     }, []);
+
+    const handlePatchModelProvider = useCallback((key: string, patch: Partial<ModelProviderAccountInfo>) => {
+        setModelProviders((prev) => {
+            const row = buildModelProviderRows(prev).find((provider) => modelProviderKey(provider) === key);
+            if (!row) return prev;
+            return upsertModelProvider(prev, { ...row, ...patch });
+        });
+        setModelProviderSaved(false);
+        setModelProviderError(null);
+    }, []);
+
+    const handleSaveModelProviders = useCallback(async () => {
+        if (modelProviders.length === 0) return;
+        setIsSavingModelProviders(true);
+        setModelProviderSaved(false);
+        setModelProviderError(null);
+        try {
+            const savedProviders = await updateModelProviders(modelProviders);
+            setModelProviders(savedProviders);
+            setModelCatalog(await listModelCatalog());
+            setModelProviderSaved(true);
+        } catch (err) {
+            setModelProviderError(err instanceof Error ? err.message : String(err));
+        } finally {
+            setIsSavingModelProviders(false);
+        }
+    }, [modelProviders]);
 
     const handleCopy = useCallback(async (text: string, id: string) => {
         await navigator.clipboard.writeText(text);
@@ -378,6 +418,23 @@ export default function SettingsClient({
 
                 {showAll && <hr className="border-warm-border" />}
 
+                {/* ── Models ── */}
+                {showSection('models') && (
+                <ModelRoutingSection
+                    providers={modelProviderRows}
+                    catalog={modelCatalog}
+                    tierCounts={modelTierCounts}
+                    onPatchProvider={handlePatchModelProvider}
+                    onSave={handleSaveModelProviders}
+                    saving={isSavingModelProviders}
+                    saveDisabled={modelProviders.length === 0}
+                    saved={modelProviderSaved}
+                    error={modelProviderError}
+                />
+                )}
+
+                {showAll && <hr className="border-warm-border" />}
+
                 {/* ── Installed Actions ── */}
                 {showSection('actions') && (
                 <section>
@@ -546,6 +603,260 @@ export default function SettingsClient({
             </header>
             {content}
         </div>
+    );
+}
+
+const MODEL_PROVIDER_PRESETS: ModelProviderAccountInfo[] = [
+    { providerId: 'official', upstreamId: 'openai', region: 'global', enabled: false, priority: 10 },
+    { providerId: 'official', upstreamId: 'google', region: 'global', enabled: false, priority: 20 },
+    { providerId: 'fal', upstreamId: 'fal', enabled: false, priority: 30 },
+    { providerId: 'kie', upstreamId: 'kie', enabled: false, priority: 40 },
+    { providerId: 'replicate', upstreamId: 'replicate', enabled: false, priority: 50 },
+];
+
+function modelProviderKey(provider: Pick<ModelProviderAccountInfo, 'providerId' | 'upstreamId' | 'region'>): string {
+    return [provider.providerId, provider.upstreamId ?? '', provider.region ?? ''].join(':');
+}
+
+function modelProviderLabel(provider: Pick<ModelProviderAccountInfo, 'providerId' | 'upstreamId' | 'region'>): string {
+    return [
+        provider.providerId,
+        provider.upstreamId,
+        provider.region,
+    ].filter(Boolean).join('/');
+}
+
+function requiredModelProviderVariables(provider: Pick<ModelProviderAccountInfo, 'providerId' | 'upstreamId'>): string[] {
+    if (provider.providerId === 'fal') return ['FAL_API_KEY'];
+    if (provider.providerId === 'kie') return ['KIE_API_KEY'];
+    if (provider.providerId === 'replicate') return ['REPLICATE_API_TOKEN'];
+    if (provider.providerId === 'official' && provider.upstreamId === 'openai') return ['OPENAI_API_KEY'];
+    if (provider.providerId === 'official' && provider.upstreamId === 'google') return ['GOOGLE_API_KEY', 'GOOGLE_VERTEX'];
+    return [];
+}
+
+function withVariableAvailability(
+    provider: ModelProviderAccountInfo,
+    variableKeys?: Set<string>,
+): ModelProviderAccountInfo {
+    const required = requiredModelProviderVariables(provider);
+    const discovered = variableKeys ? required.filter((key) => variableKeys.has(key)) : [];
+    const availableVariables = provider.availableVariables?.length ? provider.availableVariables : discovered;
+    return {
+        ...provider,
+        ...(availableVariables.length ? { availableVariables } : { availableVariables: [] }),
+    };
+}
+
+function buildModelProviderRows(
+    configured: ModelProviderAccountInfo[],
+    variableKeys?: Set<string>,
+): ModelProviderAccountInfo[] {
+    const rows = new Map<string, ModelProviderAccountInfo>();
+    for (const preset of MODEL_PROVIDER_PRESETS) {
+        rows.set(modelProviderKey(preset), withVariableAvailability(preset, variableKeys));
+    }
+    for (const provider of configured) {
+        rows.set(modelProviderKey(provider), withVariableAvailability(provider, variableKeys));
+    }
+    return [...rows.values()];
+}
+
+function upsertModelProvider(
+    providers: ModelProviderAccountInfo[],
+    next: ModelProviderAccountInfo,
+): ModelProviderAccountInfo[] {
+    const key = modelProviderKey(next);
+    const filtered = providers.filter((provider) => modelProviderKey(provider) !== key);
+    return [...filtered, next];
+}
+
+function countModelCatalogTiers(catalog: ModelCatalogEntryInfo[]) {
+    return catalog.reduce(
+        (acc, entry) => {
+            acc[entry.tier] += 1;
+            return acc;
+        },
+        { available: 0, 'configured-provider': 0, all: 0 },
+    );
+}
+
+interface ModelRoutingSectionProps {
+    providers: ModelProviderAccountInfo[];
+    catalog: ModelCatalogEntryInfo[];
+    tierCounts: ReturnType<typeof countModelCatalogTiers>;
+    onPatchProvider: (key: string, patch: Partial<ModelProviderAccountInfo>) => void;
+    onSave: () => void;
+    saving: boolean;
+    saveDisabled: boolean;
+    saved: boolean;
+    error: string | null;
+}
+
+function ModelRoutingSection({
+    providers,
+    catalog,
+    tierCounts,
+    onPatchProvider,
+    onSave,
+    saving,
+    saveDisabled,
+    saved,
+    error,
+}: ModelRoutingSectionProps) {
+    const visibleCatalog = catalog.slice(0, 18);
+
+    return (
+        <section>
+            <div className="flex items-center gap-3 mb-5">
+                <Plug className="h-5 w-5 text-stone-600 dark:text-stone-300" weight="bold" />
+                <div className="flex-1">
+                    <h2 className="font-display text-base font-bold text-slate-900 dark:text-slate-50">Models</h2>
+                    <p className="text-sm text-stone-600 dark:text-stone-300">Provider accounts and model cards</p>
+                </div>
+                <button
+                    type="button"
+                    onClick={onSave}
+                    disabled={saving || saveDisabled}
+                    className={settingsSmallPrimaryButtonClass}
+                >
+                    {saving ? 'Saving…' : 'Save routing'}
+                </button>
+            </div>
+
+            <div className="mb-6 grid grid-cols-3 gap-2">
+                <div className="rounded-xl border border-warm-border bg-warm-surface px-3 py-2">
+                    <div className="text-[10px] font-medium uppercase tracking-wide text-stone-500 dark:text-stone-400">Available</div>
+                    <div className="mt-1 text-lg font-semibold text-slate-900 dark:text-slate-50">{tierCounts.available}</div>
+                </div>
+                <div className="rounded-xl border border-warm-border bg-warm-surface px-3 py-2">
+                    <div className="text-[10px] font-medium uppercase tracking-wide text-stone-500 dark:text-stone-400">Needs key</div>
+                    <div className="mt-1 text-lg font-semibold text-slate-900 dark:text-slate-50">{tierCounts['configured-provider']}</div>
+                </div>
+                <div className="rounded-xl border border-warm-border bg-warm-surface px-3 py-2">
+                    <div className="text-[10px] font-medium uppercase tracking-wide text-stone-500 dark:text-stone-400">All</div>
+                    <div className="mt-1 text-lg font-semibold text-slate-900 dark:text-slate-50">{tierCounts.all}</div>
+                </div>
+            </div>
+
+            <div className="space-y-8">
+                <div>
+                    <h3 className="mb-3 text-sm font-semibold text-slate-900 dark:text-slate-50">Provider routing</h3>
+                    <div className="divide-y divide-warm-border border-y border-warm-border">
+                        {providers.map((provider) => {
+                            const key = modelProviderKey(provider);
+                            const label = modelProviderLabel(provider);
+                            const configuredKeys = provider.availableVariables ?? [];
+                            const requiredKeys = requiredModelProviderVariables(provider);
+                            const enabled = provider.enabled !== false;
+                            return (
+                                <div key={key} className="grid gap-3 py-3 sm:grid-cols-[minmax(0,1fr)_88px_88px] sm:items-center">
+                                    <label className="flex min-w-0 items-start gap-3">
+                                        <input
+                                            type="checkbox"
+                                            aria-label={`Enable ${label}`}
+                                            checked={enabled}
+                                            onChange={(e) => onPatchProvider(key, { enabled: e.target.checked })}
+                                            className="mt-1 h-4 w-4 rounded border-warm-border text-brand focus:ring-brand/40"
+                                        />
+                                        <span className="min-w-0">
+                                            <span className="flex flex-wrap items-center gap-2">
+                                                <span className="text-sm font-medium text-slate-900 dark:text-slate-50">{label}</span>
+                                                <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${enabled ? 'bg-emerald-50 text-emerald-700' : 'bg-stone-100 text-stone-600 dark:bg-stone-800 dark:text-stone-300'}`}>
+                                                    {enabled ? 'Enabled' : 'Disabled'}
+                                                </span>
+                                            </span>
+                                            <span className="mt-1 block truncate text-xs text-stone-500 dark:text-stone-400">
+                                                {configuredKeys.length > 0
+                                                    ? configuredKeys.join(', ')
+                                                    : requiredKeys.length > 0
+                                                        ? `Missing ${requiredKeys.join(' or ')}`
+                                                        : 'Custom key'}
+                                            </span>
+                                        </span>
+                                    </label>
+                                    <label className="block">
+                                        <span className="mb-1 block text-[10px] font-medium uppercase tracking-wide text-stone-500 dark:text-stone-400">Weight</span>
+                                        <input
+                                            aria-label={`Weight for ${label}`}
+                                            type="number"
+                                            min={0}
+                                            value={provider.weight ?? ''}
+                                            onChange={(e) => onPatchProvider(key, {
+                                                weight: e.target.value === '' ? undefined : Number(e.target.value),
+                                            })}
+                                            className="w-full rounded-lg border border-warm-border bg-warm-surface px-2 py-1.5 text-sm text-slate-900 focus:border-brand focus:outline-none dark:text-slate-50"
+                                        />
+                                    </label>
+                                    <label className="block">
+                                        <span className="mb-1 block text-[10px] font-medium uppercase tracking-wide text-stone-500 dark:text-stone-400">Priority</span>
+                                        <input
+                                            aria-label={`Priority for ${label}`}
+                                            type="number"
+                                            min={0}
+                                            value={provider.priority ?? ''}
+                                            onChange={(e) => onPatchProvider(key, {
+                                                priority: e.target.value === '' ? undefined : Number(e.target.value),
+                                            })}
+                                            className="w-full rounded-lg border border-warm-border bg-warm-surface px-2 py-1.5 text-sm text-slate-900 focus:border-brand focus:outline-none dark:text-slate-50"
+                                        />
+                                    </label>
+                                </div>
+                            );
+                        })}
+                    </div>
+                    {error && <div role="alert" className={`${settingsErrorAlertClass} mt-3`}>{error}</div>}
+                    {saved && !error && (
+                        <div className="mt-3 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">
+                            Routing saved.
+                        </div>
+                    )}
+                </div>
+
+                <div>
+                    <h3 className="mb-3 text-sm font-semibold text-slate-900 dark:text-slate-50">Model cards</h3>
+                    {visibleCatalog.length === 0 ? (
+                        <div className="rounded-xl border border-dashed border-warm-border py-8 text-center text-sm text-stone-600 dark:text-stone-300">
+                            No model cards loaded
+                        </div>
+                    ) : (
+                        <div className="divide-y divide-warm-border border-y border-warm-border">
+                            {visibleCatalog.map((entry) => {
+                                const route = entry.selectedRoute;
+                                const routeLabel = route
+                                    ? `${route.providerId ?? route.upstreamId}/${route.upstreamId}`
+                                    : entry.candidateProviders.join(', ');
+                                return (
+                                    <div key={entry.model.id} className="flex items-center justify-between gap-3 py-3">
+                                        <div className="min-w-0">
+                                            <div className="flex flex-wrap items-center gap-2">
+                                                <span className="text-sm font-medium text-slate-900 dark:text-slate-50">{entry.model.name}</span>
+                                                <span className="rounded-full bg-warm-muted px-2 py-0.5 text-[10px] font-medium text-stone-600 dark:text-stone-300">
+                                                    {entry.model.kind}
+                                                </span>
+                                            </div>
+                                            <div className="mt-1 truncate text-xs text-stone-500 dark:text-stone-400">
+                                                {routeLabel || 'No route'}
+                                                {entry.missingVariables.length > 0 ? ` · Missing ${entry.missingVariables.join(', ')}` : ''}
+                                            </div>
+                                        </div>
+                                        <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-medium ${
+                                            entry.tier === 'available'
+                                                ? 'bg-emerald-50 text-emerald-700'
+                                                : entry.tier === 'configured-provider'
+                                                    ? 'bg-amber-50 text-amber-700'
+                                                    : 'bg-stone-100 text-stone-600 dark:bg-stone-800 dark:text-stone-300'
+                                        }`}>
+                                            {entry.tier === 'configured-provider' ? 'Needs key' : entry.tier}
+                                        </span>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    )}
+                </div>
+            </div>
+        </section>
     );
 }
 
