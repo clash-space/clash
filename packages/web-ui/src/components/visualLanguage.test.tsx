@@ -81,6 +81,8 @@ const oldChatInputActionTokens =
   /bg-slate-950 text-white|hover:bg-slate-800|hover:bg-red-600|focus-visible:ring-red-500|bg-red-50(?:\s|")|hover:bg-red-100(?:\s|")|text-red-700(?:\s|")|dark:bg-red-950(?:\/|\s|")/;
 const oldNodeBuildActionTokens =
   /bg-slate-950(?:\s|")|bg-slate-950 text|hover:bg-slate-800|bg-red-50(?:\s|")|hover:bg-red-50|border-red-200|border-red-300|text-red-700|text-red-800|focus-visible:ring-red-500/;
+const oldInlineNodePrimaryActionTokens =
+  /text-white bg-slate-950|bg-slate-950 hover:bg-slate-800|bg-slate-950 rounded-lg hover:bg-slate-800/;
 
 describe("visual language surfaces", () => {
   afterEach(() => {
@@ -256,6 +258,21 @@ describe("visual language surfaces", () => {
 
     expect(favicon).toBe(mark);
     expect(favicon).not.toMatch(/<rect\s+width="512"\s+height="512"|fill="#F7F6F2"|fill="#FBFAF7"/);
+  });
+
+  it("keeps inline canvas node primary actions on Clash node surfaces instead of generic black buttons", () => {
+    const source = [
+      "packages/web-ui/src/components/nodes/TextNode.tsx",
+      "packages/web-ui/src/components/nodes/PromptNode.tsx",
+      "packages/web-ui/src/components/nodes/ImageEditorNode.tsx",
+      "packages/web-ui/src/components/nodes/VideoClipperNode.tsx",
+      "packages/web-ui/src/components/nodes/VideoEditorNode.tsx",
+    ]
+      .map((path) => readFileSync(join(process.cwd(), path), "utf8"))
+      .join("\n");
+
+    expect(source).not.toMatch(oldInlineNodePrimaryActionTokens);
+    expect(source.match(/clash-node-primary/g)?.length).toBeGreaterThanOrEqual(5);
   });
 
   it("keeps ActionBadge canvas controls on warm and brand tokens", () => {

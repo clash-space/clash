@@ -109,9 +109,10 @@ const ImageEditorNode = ({ id, data }: NodeProps<Node<Record<string, any>>>) => 
                 <div className="bg-warm-muted px-3 py-2 border-t border-warm-border flex items-center justify-between gap-2 h-10">
                     <span className="text-[11px] text-slate-700 dark:text-slate-300 truncate">{paramSummary}</span>
                     <button
+                        type="button"
                         onClick={handleOpen}
                         disabled={!ready}
-                        className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-white bg-slate-950 hover:bg-slate-800 rounded-xl disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-sm active:scale-95"
+                        className="clash-node-primary flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-xl disabled:opacity-50 disabled:cursor-not-allowed shadow-sm active:scale-95"
                     >
                         <PencilSimple className="w-3.5 h-3.5" weight="fill" />
                         Edit

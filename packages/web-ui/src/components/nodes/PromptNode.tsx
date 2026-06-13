@@ -118,8 +118,9 @@ const PromptNode = ({ data, selected, id }: NodeProps<Node<Record<string, any>>>
                         />
                         <div className="flex gap-2">
                             <button
+                                type="button"
                                 onClick={handleSave}
-                                className="px-4 py-2 text-sm font-medium text-white bg-slate-950 rounded-lg hover:bg-slate-800 transition-colors"
+                                className="clash-node-primary px-4 py-2 text-sm font-medium rounded-lg"
                             >
                                 Save
                             </button>

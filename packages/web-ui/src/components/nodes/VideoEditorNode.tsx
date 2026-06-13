@@ -546,9 +546,10 @@ const VideoEditorNode = ({ data, id }: NodeProps<Node<Record<string, any>>>) => 
                 {/* Footer Actions */}
                 <div className="bg-warm-muted px-3 py-2 border-t border-warm-border flex items-center justify-end h-10">
                     <button
+                        type="button"
                         onClick={handleRender}
                         disabled={rendering}
-                        className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-white bg-slate-950 hover:bg-slate-800 rounded-xl disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-sm active:scale-95"
+                        className="clash-node-primary flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-xl disabled:opacity-50 disabled:cursor-not-allowed shadow-sm active:scale-95"
                     >
                         <VideoCamera className="w-3.5 h-3.5" weight="fill" />
                         {rendering ? 'Rendering...' : 'Render'}
