@@ -9,9 +9,11 @@ allowed-tools:
   - Bash
 metadata:
   author: clash
-  version: 1.0.1
+  version: 1.0.2
   category: video-production
   tags: [video, canvas, generation, storyboard, cli]
+  cliPackage: "@clash-space/cli"
+  cliVersion: ">=0.1.0-beta.3 <0.2.0"
 ---
 
 # Clash — AI Video Production
@@ -22,13 +24,34 @@ Run `clash -h` or `clash <command> -h` for full option details on any command.
 
 ## Install / Update This Skill
 
-Install through the `skill` npm package:
+Install through the `skills` npm package:
 
 ```bash
-SKILL_BASE_URL=https://github.com/clash-space/clash/tree/master npx skill skills/clash
+npx skills add clash-space/clash --skill clash
 ```
 
-Pin `SKILL_BASE_URL` to a release tag or branch when reproducibility matters.
+For non-interactive Codex installs:
+
+```bash
+npx skills add clash-space/clash --skill clash -a codex -y
+```
+
+Pin the GitHub source to a release tag when reproducibility matters.
+
+## CLI Compatibility
+
+This skill expects `@clash-space/cli >=0.1.0-beta.3 <0.2.0`.
+
+```bash
+clash --version
+npm view @clash-space/cli version
+```
+
+If the local CLI is too old, upgrade it before using canvas commands:
+
+```bash
+npm install -g @clash-space/cli@latest
+```
 
 ## Quick Start
 
