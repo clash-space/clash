@@ -329,12 +329,17 @@ describe("visual language surfaces", () => {
     expect(projectSource).toMatch(/id="editor-header"/);
     expect(projectSource).toMatch(/clash-project-return-button/);
     expect(projectSource).toMatch(/id="project-top-actions"/);
+    expect(projectSource).toMatch(/<PresenceBar clients=\{otherClients\} \/>/);
     expect(projectSource).toMatch(/<UserControls projectChrome \/>/);
+    expect(projectSource).not.toMatch(/MonitorPlay|isPresentationMode|Present canvas|Presenting/);
     expect(copilotSource).toMatch(/clash-copilot-launcher/);
     expect(copilotSource).toMatch(/bottom-\[max\(1rem,env\(safe-area-inset-bottom\)\)\]/);
     expect(copilotSource).toMatch(/\/brand\/logo-mark-animated\.svg/);
     expect(cssSource).toMatch(/\.clash-copilot-launcher/);
     expect(cssSource).toMatch(/\.clash-project-top-action/);
+    expect(cssSource).toMatch(/\.clash-project-return-button,\s*\n\.clash-project-name-input\s*\{[\s\S]*?border:\s*0;[\s\S]*?background:\s*transparent;[\s\S]*?box-shadow:\s*none;/);
+    expect(cssSource).toMatch(/\.clash-project-name-input:focus\s*\{[\s\S]*?inset 0 -2px 0 rgba\(255, 107, 80, 0\.34\)/);
+    expect(cssSource).not.toMatch(/\.clash-project-top-action-active/);
     expect(launcherRule).toMatch(/border:\s*0/);
     expect(launcherRule).toMatch(/background:\s*transparent/);
     expect(launcherRule).toMatch(/box-shadow:\s*none/);
@@ -362,6 +367,23 @@ describe("visual language surfaces", () => {
     expect(backgroundSource).toMatch(/opacity: 0\.38/);
     expect(cssSource).not.toMatch(/#f7f6f2|#d8d5cf|#f1efea/);
     expect(cssSource).toMatch(/--color-warm-page: #fbfaf7/);
+  });
+
+  it("gives dashboard entry screens visible canvas language instead of empty white space", () => {
+    const source = [
+      "packages/web-ui/src/components/HeroSection.tsx",
+      "packages/web-ui/src/components/ProjectsClient.tsx",
+      "apps/web/app/globals.css",
+    ]
+      .map((path) => readFileSync(join(process.cwd(), path), "utf8"))
+      .join("\n");
+
+    expect(source).toMatch(/clash-home-canvas-preview/);
+    expect(source).toMatch(/clash-home-preview-node/);
+    expect(source).toMatch(/\/brand\/logo-mark-animated\.svg/);
+    expect(source).toMatch(/clash-dashboard-shell/);
+    expect(source).toMatch(/clash-projects-empty-canvas/);
+    expect(source).toMatch(/clash-home-preview-edge-flow/);
   });
 
   it("keeps identity and mention surfaces out of legacy gradient and default gray chrome", () => {

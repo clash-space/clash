@@ -8,11 +8,13 @@ interface ProjectsClientProps {
 }
 
 export default function ProjectsClient({ projects }: ProjectsClientProps) {
+    const projectList = projects || [];
+
     return (
-        <div className="min-h-screen">
-            <div className="mx-auto max-w-[1600px] px-6 py-24 mt-12">
+        <div className="clash-dashboard-shell min-h-screen">
+            <div className="mx-auto max-w-[1600px] px-6 pb-24 pt-20">
                 {/* Header */}
-                <header className="mb-12 flex items-center justify-between">
+                <header className="mb-10 grid items-end gap-8 lg:grid-cols-[minmax(0,0.72fr)_minmax(360px,0.48fr)]">
                     <div>
                         <h1 className="text-3xl font-bold tracking-tight text-slate-950 dark:text-slate-50">
                             Video Projects
@@ -21,6 +23,13 @@ export default function ProjectsClient({ projects }: ProjectsClientProps) {
                             Manage and track all your video creation projects
                         </p>
                     </div>
+                    {projectList.length === 0 && (
+                        <div className="clash-projects-empty-canvas hidden min-h-36 overflow-hidden rounded-[28px] lg:block" aria-hidden="true">
+                            <div className="clash-projects-empty-node clash-projects-empty-node--wide" />
+                            <div className="clash-projects-empty-node clash-projects-empty-node--small" />
+                            <div className="clash-projects-empty-node clash-projects-empty-node--accent" />
+                        </div>
+                    )}
                 </header>
 
                 {/* Projects Grid */}
@@ -44,7 +53,7 @@ export default function ProjectsClient({ projects }: ProjectsClientProps) {
                         <span className="text-base font-semibold text-stone-700 transition-colors group-hover:text-slate-950 dark:text-stone-300 dark:group-hover:text-slate-50">New Project</span>
                     </button>
 
-                    {projects.map((project) => (
+                    {projectList.map((project) => (
                         <ProjectCard key={project.id} project={project} />
                     ))}
                 </div>
