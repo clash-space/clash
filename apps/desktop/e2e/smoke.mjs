@@ -3,15 +3,18 @@ import { mkdir, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import net from "node:net";
 import os from "node:os";
+import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const require = createRequire(import.meta.url);
 const desktopDir = path.resolve(__dirname, "..");
 const repoRoot = path.resolve(desktopDir, "..", "..");
 
 const appBinary = process.env.CLASH_DESKTOP_APP_BINARY;
 const usePackagedApp = Boolean(appBinary);
+const realAcpSmoke = process.env.CLASH_DESKTOP_REAL_ACP_SMOKE === "1";
 let webUrl = process.env.CLASH_WEB_URL;
 const captureDir =
   process.env.CLASH_DESKTOP_CAPTURE_DIR ??
@@ -19,6 +22,8 @@ const captureDir =
 const dataDir =
   process.env.CLASH_DESKTOP_SMOKE_DATA_DIR ??
   path.join(repoRoot, ".tmp", "electron-smoke-data");
+const realAcpBinDir = path.join(repoRoot, ".tmp", "electron-real-acp-bin");
+const realAcpHome = path.join(repoRoot, ".tmp", "electron-real-acp-home");
 const latestScreenshot = path.join(captureDir, "latest-cdp-smoke.png");
 const runtimeCopilotScreenshot = path.join(captureDir, "runtime-copilot-ui.png");
 
@@ -154,8 +159,147 @@ function run(cmd, args) {
   }
 }
 
+async function runClashCli(args, env) {
+  const child = spawn("clash", args, {
+    cwd: repoRoot,
+    env: {
+      ...process.env,
+      ...env,
+      CLASH_NODE_EXEC_PATH: process.execPath,
+    },
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+
+  let stdout = "";
+  let stderr = "";
+  child.stdout.setEncoding("utf8");
+  child.stderr.setEncoding("utf8");
+  child.stdout.on("data", (chunk) => { stdout += chunk; });
+  child.stderr.on("data", (chunk) => { stderr += chunk; });
+
+  const code = await new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      child.kill("SIGKILL");
+      reject(new Error(`clash ${args.join(" ")} timed out\nstdout:\n${stdout}\nstderr:\n${stderr}`));
+    }, 15000);
+    child.once("error", (error) => {
+      clearTimeout(timer);
+      reject(error);
+    });
+    child.once("exit", (exitCode, signal) => {
+      clearTimeout(timer);
+      if (signal) reject(new Error(`clash ${args.join(" ")} terminated by ${signal}\nstdout:\n${stdout}\nstderr:\n${stderr}`));
+      else resolve(exitCode ?? 1);
+    });
+  });
+  if (code !== 0) {
+    throw new Error(`clash ${args.join(" ")} exited ${code}\nstdout:\n${stdout}\nstderr:\n${stderr}`);
+  }
+  return stdout.trim();
+}
+
 function tail(lines, max = 80) {
   return lines.slice(Math.max(0, lines.length - max)).join("");
+}
+
+async function writeFakeCodexAcp(binDir) {
+  await mkdir(binDir, { recursive: true });
+  const wrapper = path.join(binDir, "codex");
+  const agent = path.join(binDir, "fake-codex-acp.mjs");
+  await writeFile(
+    wrapper,
+    [
+      "#!/bin/sh",
+      "DIR=$(CDPATH= cd -- \"$(dirname -- \"$0\")\" && pwd)",
+      "if [ -n \"$CLASH_NODE_EXEC_PATH\" ]; then",
+      "  exec \"$CLASH_NODE_EXEC_PATH\" \"$DIR/fake-codex-acp.mjs\" \"$@\"",
+      "fi",
+      "exec node \"$DIR/fake-codex-acp.mjs\" \"$@\"",
+      "",
+    ].join("\n"),
+    { mode: 0o755 },
+  );
+  await writeFile(
+    agent,
+    [
+      "#!/usr/bin/env node",
+      "import { spawn } from 'node:child_process';",
+      "import { randomUUID } from 'node:crypto';",
+      "import { Readable, Writable } from 'node:stream';",
+      "import { AgentSideConnection, ndJsonStream, PROTOCOL_VERSION } from '@agentclientprotocol/sdk';",
+      "",
+      "const argv = process.argv.slice(2);",
+      "if (argv.includes('--help')) {",
+      "  console.log('Usage: codex [OPTIONS] [PROMPT]\\n  --acp');",
+      "  process.exit(0);",
+      "}",
+      "if (!argv.includes('--acp')) {",
+      "  console.error('fake codex only supports --acp in this smoke test');",
+      "  process.exit(2);",
+      "}",
+      "",
+      "function runClash(args) {",
+      "  return new Promise((resolve, reject) => {",
+      "    const child = spawn('clash', args, { env: process.env, stdio: ['ignore', 'pipe', 'pipe'] });",
+      "    let stdout = '';",
+      "    let stderr = '';",
+      "    child.stdout.setEncoding('utf8');",
+      "    child.stderr.setEncoding('utf8');",
+      "    child.stdout.on('data', (chunk) => { stdout += chunk; });",
+      "    child.stderr.on('data', (chunk) => { stderr += chunk; });",
+      "    child.once('error', reject);",
+      "    child.once('exit', (code, signal) => {",
+      "      if (code === 0) resolve(stdout.trim());",
+      "      else reject(new Error('clash ' + args.join(' ') + ' exited ' + (signal || code) + '\\nstdout:\\n' + stdout + '\\nstderr:\\n' + stderr));",
+      "    });",
+      "  });",
+      "}",
+      "",
+      "class FakeCodexAcpAgent {",
+      "  constructor(connection) {",
+      "    this.connection = connection;",
+      "    this.sessions = new Map();",
+      "  }",
+      "  async initialize() {",
+      "    return { protocolVersion: PROTOCOL_VERSION, agentCapabilities: { loadSession: false, promptCapabilities: {} } };",
+      "  }",
+      "  async newSession(params) {",
+      "    const sessionId = randomUUID();",
+      "    this.sessions.set(sessionId, { cwd: params.cwd || process.cwd() });",
+      "    return { sessionId };",
+      "  }",
+      "  async authenticate() { return {}; }",
+      "  async prompt(params) {",
+      "    if (!this.sessions.has(params.sessionId)) throw new Error('unknown session ' + params.sessionId);",
+      "    const projectId = process.env.CLASH_PROJECT_ID;",
+      "    if (!projectId) throw new Error('CLASH_PROJECT_ID missing');",
+      "    const created = JSON.parse(await runClash([",
+      "      'canvas', 'add',",
+      "      '--project', projectId,",
+      "      '--type', 'text',",
+      "      '--label', 'Desktop Real ACP CLI Note',",
+      "      '--content', 'created by desktop fake ACP child through clash CLI',",
+      "      '--json',",
+      "    ]));",
+      "    await this.connection.sessionUpdate({",
+      "      sessionId: params.sessionId,",
+      "      update: {",
+      "        sessionUpdate: 'agent_message_chunk',",
+      "        content: { type: 'text', text: 'Desktop fake ACP wrote node ' + created.node_id },",
+      "      },",
+      "    });",
+      "    return { stopReason: 'end_turn' };",
+      "  }",
+      "  async cancel() {}",
+      "}",
+      "",
+      "const input = Writable.toWeb(process.stdout);",
+      "const output = Readable.toWeb(process.stdin);",
+      "new AgentSideConnection((connection) => new FakeCodexAcpAgent(connection), ndJsonStream(input, output));",
+      "",
+    ].join("\n"),
+    { mode: 0o755 },
+  );
 }
 
 async function waitForTarget(cdpPort) {
@@ -438,6 +582,123 @@ async function exerciseLocalAcpSessionHistory(cdp) {
   }));
 }
 
+async function exerciseRealAcpSessionThroughDesktopRuntime(cdp, apiPort) {
+  const state = await evaluate(cdp, `(async () => {
+    const runtime = window.__CLASH_RUNTIME_CONFIG__;
+    const projectRes = await fetch(runtime.apiBaseUrl + "/api/v1/projects", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ name: "desktop real acp project" })
+    });
+    const project = await projectRes.json();
+    if (!projectRes.ok) {
+      return { ok: false, stage: "project", status: projectRes.status, project };
+    }
+
+    const runtimes = await (await fetch(runtime.apiBaseUrl + "/api/v1/runtimes")).json();
+    if (!runtimes.runtimes?.[0]?.agents?.some((agent) => agent.id === "codex-cli")) {
+      return { ok: false, stage: "runtimes", runtimes };
+    }
+
+    const createdRes = await fetch(runtime.apiBaseUrl + "/api/v1/runtimes/desktop-local/sessions", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        crew_member_id: "local-director",
+        project_id: project.id,
+        agent_id: "codex-cli"
+      })
+    });
+    const created = await createdRes.json();
+    if (!createdRes.ok) {
+      return { ok: false, stage: "create", status: createdRes.status, runtimes, created, project };
+    }
+
+    const turnId = "desktop-real-acp-turn";
+    const events = [];
+    await new Promise((resolve, reject) => {
+      const ws = new WebSocket(runtime.wsBaseUrl + "/api/v1/local-sessions/" + encodeURIComponent(created.session_id) + "/_stream");
+      const timeout = setTimeout(() => {
+        ws.close();
+        reject(new Error("Timed out waiting for desktop real ACP disposal"));
+      }, 20000);
+      ws.addEventListener("open", () => {
+        ws.send(JSON.stringify({ type: "prompt", turn_id: turnId, text: "use clash cli on the desktop canvas" }));
+      });
+      ws.addEventListener("message", (event) => {
+        const msg = JSON.parse(String(event.data));
+        events.push(msg);
+        if (msg.type === "session.complete" && msg.turn_id === turnId) {
+          ws.send(JSON.stringify({ type: "dispose" }));
+          return;
+        }
+        if (msg.type === "session.disposed" && msg.session_id === created.session_id) {
+          clearTimeout(timeout);
+          ws.close();
+          resolve(true);
+        }
+      });
+      ws.addEventListener("error", () => {
+        clearTimeout(timeout);
+        reject(new Error("Desktop real ACP websocket failed"));
+      });
+    });
+
+    const textEvent = events.find((event) =>
+      event.type === "session.event" &&
+      event.event?.update?.content?.text?.startsWith("Desktop fake ACP wrote node ")
+    );
+    return {
+      ok: !!textEvent,
+      stage: "events",
+      runtimes,
+      project,
+      created,
+      events,
+      text: textEvent?.event?.update?.content?.text ?? null
+    };
+  })()`);
+
+  if (!state.ok) {
+    throw new Error(`Desktop real ACP smoke failed: ${JSON.stringify(state)}`);
+  }
+
+  const { createLocalAgentToolEnv } = await import("../../local-api/dist/server.js");
+  const env = createLocalAgentToolEnv({
+    dataDir,
+    apiBaseUrl: `http://127.0.0.1:${apiPort}`,
+    env: { ...process.env, CLASH_NODE_EXEC_PATH: process.execPath },
+  });
+  const nodes = JSON.parse(await runClashCli([
+    "canvas",
+    "list",
+    "--project",
+    state.project.id,
+    "--json",
+  ], env));
+  const node = nodes.find((candidate) => candidate.data?.label === "Desktop Real ACP CLI Note");
+  if (!node) {
+    throw new Error(`Desktop real ACP CLI node missing: ${JSON.stringify({ state, nodes })}`);
+  }
+  if (
+    node.data?.actorType !== "agent" ||
+    node.data?.actorUserId !== "local-user" ||
+    node.data?.actorAgentId !== "local-director"
+  ) {
+    throw new Error(`Desktop real ACP CLI node attribution mismatch: ${JSON.stringify(node)}`);
+  }
+
+  console.log("[desktop-smoke] real acp cli", JSON.stringify({
+    session_id: state.created.session_id,
+    project_id: state.project.id,
+    node_id: node.id,
+    actorType: node.data.actorType,
+    actorUserId: node.data.actorUserId,
+    actorAgentId: node.data.actorAgentId,
+    events: state.events.map((event) => event.type),
+  }));
+}
+
 async function exerciseRuntimeCopilotUi(cdp) {
   await waitFor(
     cdp,
@@ -545,15 +806,21 @@ async function exerciseRuntimeCopilotUi(cdp) {
   console.log(`[desktop-smoke] runtime copilot screenshot ${runtimeCopilotScreenshot}`);
 }
 
+async function waitForProcessExit(child, timeoutMs) {
+  if (child.exitCode !== null || child.signalCode !== null) return true;
+  return Promise.race([
+    new Promise((resolve) => child.once("exit", () => resolve(true))),
+    sleep(timeoutMs).then(() => false),
+  ]);
+}
+
 async function stopProcess(child) {
   if (!child) return;
   if (child.exitCode !== null || child.signalCode !== null) return;
   child.kill("SIGTERM");
-  const exited = await Promise.race([
-    new Promise((resolve) => child.once("exit", () => resolve(true))),
-    sleep(3000).then(() => false),
-  ]);
-  if (!exited) child.kill("SIGKILL");
+  if (await waitForProcessExit(child, 3000)) return;
+  child.kill("SIGKILL");
+  await waitForProcessExit(child, 3000);
 }
 
 async function main() {
@@ -567,8 +834,14 @@ async function main() {
   const cdpPort = await findFreePort(49355);
   const apiPort = await findFreePort(49356);
   await rm(dataDir, { recursive: true, force: true });
+  if (realAcpSmoke) {
+    await rm(realAcpBinDir, { recursive: true, force: true });
+    await rm(realAcpHome, { recursive: true, force: true });
+    await mkdir(realAcpHome, { recursive: true });
+    await writeFakeCodexAcp(realAcpBinDir);
+  }
   const mockCloud = await startMockCloudRoomServer();
-  const electronBin = path.join(repoRoot, "node_modules", ".bin", "electron");
+  const electronBin = require("electron");
   const launchCommand = appBinary ?? electronBin;
   const launchArgs = usePackagedApp
     ? []
@@ -582,8 +855,14 @@ async function main() {
       ...(usePackagedApp ? { CLASH_DESKTOP_REMOTE_DEBUGGING_PORT: String(cdpPort) } : {}),
       CLASH_LOCAL_DATA_DIR: dataDir,
       CLASH_LOCAL_API_PORT: String(apiPort),
-      CLASH_LOCAL_ACP_MOCK: "1",
       CLASH_DESKTOP_CAPTURE_DIR: captureDir,
+      ...(realAcpSmoke
+        ? {
+            CLASH_ACP_BIN_DIR: realAcpBinDir,
+            CLASH_NODE_EXEC_PATH: process.execPath,
+            HOME: realAcpHome,
+          }
+        : { CLASH_LOCAL_ACP_MOCK: "1" }),
     },
     stdio: ["ignore", "pipe", "pipe"],
   });
@@ -635,7 +914,11 @@ async function main() {
       throw new Error(`Failed to enable cloud sync: ${JSON.stringify(syncState)}`);
     }
     console.log("[desktop-smoke] sync", JSON.stringify(syncState));
-    await exerciseLocalAcpSessionHistory(cdp);
+    if (realAcpSmoke) {
+      await exerciseRealAcpSessionThroughDesktopRuntime(cdp, apiPort);
+    } else {
+      await exerciseLocalAcpSessionHistory(cdp);
+    }
 
     await click(cdp, clickableByText("Projects"), "Projects");
     await waitFor(cdp, `location.pathname === "/projects"`, "projects page");
@@ -665,7 +948,9 @@ async function main() {
       15000,
     );
     console.log("[desktop-smoke] loro cloud snapshot", JSON.stringify(loroSnapshot));
-    await exerciseRuntimeCopilotUi(cdp);
+    if (!realAcpSmoke) {
+      await exerciseRuntimeCopilotUi(cdp);
+    }
     await sendSyntheticLoroUpdate(apiPort, projectId);
     const loroUpdate = await waitForValue(
       () => mockCloud.requests.find((req) =>
