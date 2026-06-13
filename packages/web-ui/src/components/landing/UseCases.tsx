@@ -1,50 +1,50 @@
 
 import { motion } from 'framer-motion';
 import {
-  Storefront,
-  GraduationCap,
-  TrendUp,
-  FilmStrip,
-  Headset,
-  Globe,
+  Aperture,
+  BookOpenText,
+  Code,
+  FilmSlate,
+  HardDrives,
+  UsersThree,
 } from '@phosphor-icons/react';
 
 const useCases = [
   {
-    title: 'Product Demos',
-    description: 'Turn feature lists into polished product walkthroughs. AI generates b-roll, screen recordings with zoom effects, and voiceover narration.',
-    icon: Storefront,
-    badge: 'Marketing',
+    title: 'Solo creator studio',
+    description: 'Keep ideas, generated shots, references, and agent notes in one canvas while you move from prompt to rough direction.',
+    icon: Aperture,
+    badge: 'Solo',
   },
   {
-    title: 'Educational Content',
-    description: 'Transform lesson plans into engaging explainer videos with auto-generated diagrams, animations, and chapter markers.',
-    icon: GraduationCap,
-    badge: 'Education',
+    title: 'Story-first writing',
+    description: 'Start with beats and scene intent, then let the canvas carry structure, references, and generation tasks downstream.',
+    icon: BookOpenText,
+    badge: 'Writing',
   },
   {
-    title: 'Social Media Clips',
-    description: 'Create scroll-stopping short-form content. AI optimizes aspect ratios, pacing, and hooks for each platform automatically.',
-    icon: TrendUp,
-    badge: 'Social',
+    title: 'Agent-assisted production',
+    description: 'Ask a local or cloud helper to arrange, inspect, and generate on the canvas while every move stays visible.',
+    icon: Code,
+    badge: 'Agent',
   },
   {
-    title: 'Short Films & Stories',
-    description: 'Storyboard entire narratives on the canvas. AI generates scenes, transitions, and soundtrack suggestions to bring your story to life.',
-    icon: FilmStrip,
+    title: 'Previs and shot boards',
+    description: 'Map scenes, references, image passes, and video drafts as linked nodes instead of losing lineage in a file pile.',
+    icon: FilmSlate,
     badge: 'Creative',
   },
   {
-    title: 'Podcasts to Video',
-    description: 'Turn audio content into visual podcasts with dynamic waveforms, key-point highlights, and AI-generated imagery for each topic.',
-    icon: Headset,
-    badge: 'Audio',
+    title: 'Local-first work',
+    description: 'Use desktop with local storage, local runtime, and BYOK model routes before deciding whether a project needs cloud.',
+    icon: HardDrives,
+    badge: 'Desktop',
   },
   {
-    title: 'Localization',
-    description: 'Produce multilingual versions of any video. AI handles translation, lip-sync adjustments, and culturally-aware visual swaps.',
-    icon: Globe,
-    badge: 'Enterprise',
+    title: 'Shared review rooms',
+    description: 'Turn on sync or multiplayer when collaborators need presence, comments, and the same project graph.',
+    icon: UsersThree,
+    badge: 'Shared',
   },
 ];
 
@@ -55,10 +55,10 @@ export default function UseCases() {
         <div className="mx-auto max-w-2xl text-center mb-16 sm:mb-20">
           <h2 className="text-base font-semibold leading-7 text-brand font-display">Use Cases</h2>
           <p className="mt-2 text-3xl font-bold tracking-tight text-slate-900 dark:text-slate-50 sm:text-4xl font-display">
-            Built for every kind of creator
+            Built around how creative work actually moves
           </p>
           <p className="mt-6 text-lg leading-8 text-stone-700 dark:text-stone-300">
-            Whether you're a solo creator or a production team, Clash adapts to your workflow.
+            Clash starts light for one person, then grows into local agents, model routes, and shared rooms when the project asks for it.
           </p>
         </div>
 

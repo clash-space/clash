@@ -406,6 +406,9 @@ describe("visual language surfaces", () => {
       "packages/web-ui/src/components/landing/LandingHero.tsx",
       "packages/web-ui/src/components/landing/FeatureGrid.tsx",
       "packages/web-ui/src/components/landing/HowItWorks.tsx",
+      "packages/web-ui/src/components/landing/UseCases.tsx",
+      "packages/web-ui/src/components/landing/Pricing.tsx",
+      "packages/web-ui/src/components/landing/CTASection.tsx",
     ]
       .map((path) => readFileSync(join(process.cwd(), path), "utf8"))
       .join("\n");
@@ -415,7 +418,10 @@ describe("visual language surfaces", () => {
     expect(source).toMatch(/Local runtime ready/);
     expect(source).toMatch(/Cloud when invited/);
     expect(source).toMatch(/From idea to canvas to runtime/);
-    expect(source).not.toMatch(/stock footage|Digital Avatars|Brand Customization|Export optimized|technical complexity/);
+    expect(source).toMatch(/Solo creator studio/);
+    expect(source).toMatch(/Local by default, cloud when it helps/);
+    expect(source).toMatch(/Start local\. Add cloud only when the project needs it\./);
+    expect(source).not.toMatch(/stock footage|Digital Avatars|Brand Customization|Export optimized|technical complexity|b-roll|lip-sync|720p export|Watermark on exports|bg-slate-950/);
   });
 
   it("keeps identity and mention surfaces out of legacy gradient and default gray chrome", () => {
