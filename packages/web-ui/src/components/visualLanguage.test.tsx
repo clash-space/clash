@@ -347,6 +347,7 @@ describe("visual language surfaces", () => {
     expect(projectSource).toMatch(/width: `\$\{projectTitleInputWidthCh\}ch`/);
     expect(projectSource).toMatch(/id="project-top-actions"/);
     expect(projectSource).toMatch(/absolute top-10 z-20/);
+    expect(projectSource).toMatch(/right: isSidebarCollapsed \? 24 : sidebarWidth \+ 72/);
     expect(projectSource).toMatch(/<PresenceBar clients=\{otherClients\} \/>/);
     expect(projectSource).toMatch(/<UserControls projectChrome \/>/);
     expect(projectSource).not.toMatch(/MonitorPlay|isPresentationMode|Present canvas|Presenting/);

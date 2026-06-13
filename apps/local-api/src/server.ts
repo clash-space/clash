@@ -294,10 +294,14 @@ export function startLocalApiServer(options: LocalApiServerOptions) {
     ? () => syncConfig.resolveRemotePersistence()
     : options.remotePersistence ?? undefined;
   let resolveListening!: (server: ReturnType<typeof serve>) => void;
-  const listening = new Promise<ReturnType<typeof serve>>((resolve) => {
+  let rejectListening!: (error: unknown) => void;
+  let settled = false;
+  const listening = new Promise<ReturnType<typeof serve>>((resolve, reject) => {
     resolveListening = resolve;
+    rejectListening = reject;
   });
-  const server = serve({ fetch: app.fetch, port: options.port }, (info) => {
+  const server = serve({ fetch: app.fetch, hostname: "127.0.0.1", port: options.port }, (info) => {
+    settled = true;
     console.log(`[local-api] listening on http://127.0.0.1:${info.port}`);
     console.log(`[local-api] data dir: ${options.dataDir}`);
     void syncConfig.getPublicConfig().then((config) => {
@@ -306,6 +310,13 @@ export function startLocalApiServer(options: LocalApiServerOptions) {
       }
     });
     resolveListening(server);
+  });
+  server.once("error", (error) => {
+    if (settled) {
+      console.error("[local-api] server error", error);
+      return;
+    }
+    rejectListening(error);
   });
   attachLocalSync(server, { dataDir: options.dataDir, remotePersistence, workflowProcessor });
   attachLocalAcpSessions(server, localAcp);

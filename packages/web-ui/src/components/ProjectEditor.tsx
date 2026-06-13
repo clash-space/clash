@@ -2442,7 +2442,7 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
                             <motion.div
                                 id="project-top-actions"
                                 className="absolute top-10 z-20 flex items-center gap-2 pointer-events-auto"
-                                animate={{ right: isSidebarCollapsed ? 24 : sidebarWidth + 24 }}
+                                animate={{ right: isSidebarCollapsed ? 24 : sidebarWidth + 72 }}
                                 transition={{ type: 'spring', stiffness: 400, damping: 30 }}
                             >
                                 <PresenceBar clients={otherClients} />

@@ -29,10 +29,11 @@ export interface CustomEvent {
 interface UseAgentCopilotOptions {
   projectId: string;
   threadId: string;
+  enabled?: boolean;
   onCustomEvent?: (data: Record<string, unknown>) => void;
 }
 
-export function useAgentCopilot({ projectId, threadId, onCustomEvent }: UseAgentCopilotOptions) {
+export function useAgentCopilot({ projectId, threadId, enabled = true, onCustomEvent }: UseAgentCopilotOptions) {
   const [connected, setConnected] = useState(false);
   const [customEvents, setCustomEvents] = useState<CustomEvent[]>([]);
   const [connectionError, setConnectionError] = useState<string | null>(null);
@@ -65,13 +66,16 @@ export function useAgentCopilot({ projectId, threadId, onCustomEvent }: UseAgent
     agent: 'supervisor',
     name: `${projectId}:${threadId}`,
     host: API_HOST,
+    enabled,
     onOpen: () => {
+      if (!enabled) return;
       // console.log('[useAgentCopilot] WS opened');
       setConnected(true);
       setConnectionError(null);
       reconnectAttemptsRef.current = 0;
     },
     onClose: () => {
+      if (!enabled) return;
       // console.log('[useAgentCopilot] WS closed');
       setConnected(false);
       reconnectAttemptsRef.current += 1;
@@ -80,6 +84,7 @@ export function useAgentCopilot({ projectId, threadId, onCustomEvent }: UseAgent
       }
     },
     onMessage: (event: MessageEvent) => {
+      if (!enabled) return;
       // useAgent passes through messages that don't match cf_agent_* protocol.
       // These are our custom events (node_proposal, rerun_generation, timeline_edit).
       try {
@@ -96,6 +101,7 @@ export function useAgentCopilot({ projectId, threadId, onCustomEvent }: UseAgent
   const chat = useAgentChat({
     agent,
     onError: (error) => {
+      if (!enabled) return;
       console.error('[useAgentCopilot] Chat error:', error);
       setConnectionError(error.message || 'Failed to send message. Please try again.');
     },
@@ -127,6 +133,7 @@ export function useAgentCopilot({ projectId, threadId, onCustomEvent }: UseAgent
   useEffect(() => { chatRef.current = chat; }, [chat]);
 
   const queueMessageOnOpen = useCallback((text: string) => {
+    if (!enabled) return;
     pendingOnOpenRef.current = text;
     // Safety: if the WS never opens (server dead, auth rejected, etc.),
     // drop the pending after 10s so it doesn't silently send much later
@@ -139,10 +146,10 @@ export function useAgentCopilot({ projectId, threadId, onCustomEvent }: UseAgent
       }
       pendingTimeoutRef.current = null;
     }, 10000);
-  }, []);
+  }, [enabled]);
 
   useEffect(() => {
-    if (!connected) return;
+    if (!enabled || !connected) return;
     const pending = pendingOnOpenRef.current;
     if (!pending) return;
     pendingOnOpenRef.current = null;
@@ -151,7 +158,7 @@ export function useAgentCopilot({ projectId, threadId, onCustomEvent }: UseAgent
       pendingTimeoutRef.current = null;
     }
     chatRef.current.sendMessage({ text: pending });
-  }, [connected]);
+  }, [connected, enabled]);
 
   // Cleanup on unmount so we don't leak the timeout.
   useEffect(() => () => {
@@ -161,8 +168,8 @@ export function useAgentCopilot({ projectId, threadId, onCustomEvent }: UseAgent
   return {
     ...chat,
     agent,
-    connected,
-    connectionError,
+    connected: enabled ? connected : false,
+    connectionError: enabled ? connectionError : null,
     lastFailedMessage,
     clearConnectionError,
     customEvents,

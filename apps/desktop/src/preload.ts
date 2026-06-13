@@ -6,8 +6,10 @@ const runtimeConfig: DesktopRuntime = JSON.parse(
 ) as DesktopRuntime;
 
 contextBridge.exposeInMainWorld("__CLASH_RUNTIME_CONFIG__", {
+  mode: runtimeConfig.mode,
   apiBaseUrl: runtimeConfig.apiBaseUrl,
   wsBaseUrl: runtimeConfig.wsBaseUrl,
+  capabilities: runtimeConfig.capabilities,
 });
 
 contextBridge.exposeInMainWorld("__CLASH_DESKTOP__", {

@@ -4,8 +4,13 @@ import { fileURLToPath } from "node:url";
 import { app, BrowserWindow, ipcMain, Menu, protocol } from "electron";
 import type { MenuItemConstructorOptions } from "electron";
 import { startLocalApiServer } from "@master-clash/local-api";
+import {
+  DEFAULT_DESKTOP_API_PORT,
+  isAddressInUse,
+  resolveAvailableDesktopApiPort,
+} from "./api-port";
 import { resolveWebDistDir } from "./paths";
-import { resolveDesktopRuntime } from "./runtime";
+import { resolveDesktopRuntime, type DesktopRuntime } from "./runtime";
 import { hydrateMacGuiPath } from "./shell-path";
 import {
   createWindowRegistry,
@@ -15,7 +20,6 @@ import {
 } from "./windowing";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const apiPort = Number(process.env.CLASH_LOCAL_API_PORT ?? 49321);
 const remoteDebuggingPort = process.env.CLASH_DESKTOP_REMOTE_DEBUGGING_PORT;
 if (remoteDebuggingPort) {
   app.commandLine.appendSwitch("remote-debugging-port", remoteDebuggingPort);
@@ -34,15 +38,14 @@ protocol.registerSchemesAsPrivileged([
   },
 ]);
 
-const runtime = resolveDesktopRuntime({
-  apiPort,
-  apiBaseUrl: process.env.CLASH_API_BASE_URL,
-  wsBaseUrl: process.env.CLASH_WS_BASE_URL,
-  webUrl: process.env.CLASH_WEB_URL,
-});
-
 const windowRegistry = createWindowRegistry<BrowserWindow>();
 let captureCount = 0;
+let runtime: DesktopRuntime | null = null;
+
+function currentRuntime(): DesktopRuntime {
+  if (!runtime) throw new Error("Desktop runtime is not initialized");
+  return runtime;
+}
 
 async function captureRenderer(label: string, window: BrowserWindow): Promise<void> {
   const captureDir = process.env.CLASH_DESKTOP_CAPTURE_DIR;
@@ -122,9 +125,40 @@ function registerWebProtocol(): void {
   });
 }
 
-async function startLocalApi(): Promise<void> {
-  if (process.env.CLASH_API_BASE_URL) return;
-  await startLocalApiServer({ dataDir: resolveDataDir(), port: apiPort });
+async function startLocalApiOnPort(port: number): Promise<void> {
+  await startLocalApiServer({ dataDir: resolveDataDir(), port });
+}
+
+async function initializeRuntime(): Promise<void> {
+  let apiPort = DEFAULT_DESKTOP_API_PORT;
+
+  if (!process.env.CLASH_API_BASE_URL) {
+    const resolved = await resolveAvailableDesktopApiPort({
+      envPort: process.env.CLASH_LOCAL_API_PORT,
+    });
+    apiPort = resolved.port;
+    if (resolved.source === "ephemeral") {
+      console.warn(`[desktop] local API port ${resolved.preferredPort} is unavailable; using ${resolved.port}`);
+    }
+
+    try {
+      await startLocalApiOnPort(apiPort);
+    } catch (error) {
+      if (process.env.CLASH_LOCAL_API_PORT || !isAddressInUse(error)) throw error;
+      const fallback = await resolveAvailableDesktopApiPort({ envPort: "0" });
+      apiPort = fallback.port;
+      console.warn(`[desktop] local API port changed during startup; retrying on ${apiPort}`);
+      await startLocalApiOnPort(apiPort);
+    }
+  }
+
+  runtime = resolveDesktopRuntime({
+    apiPort,
+    apiBaseUrl: process.env.CLASH_API_BASE_URL,
+    wsBaseUrl: process.env.CLASH_WS_BASE_URL,
+    webUrl: process.env.CLASH_WEB_URL,
+  });
+  process.env.CLASH_DESKTOP_RUNTIME = JSON.stringify(runtime);
 }
 
 function installApplicationMenu(): void {
@@ -208,7 +242,7 @@ async function createWindow(): Promise<BrowserWindow> {
     if (!window.isDestroyed()) window.show();
   });
 
-  await window.loadURL(runtime.webUrl);
+  await window.loadURL(currentRuntime().webUrl);
   if (!window.isDestroyed() && !window.isVisible()) window.show();
 
   return window;
@@ -221,13 +255,11 @@ function registerWindowIpc(): void {
   });
 }
 
-process.env.CLASH_DESKTOP_RUNTIME = JSON.stringify(runtime);
-
 app.whenReady().then(async () => {
   registerWebProtocol();
   installApplicationMenu();
   registerWindowIpc();
-  await startLocalApi();
+  await initializeRuntime();
   await createWindow();
 
   app.on("activate", () => {

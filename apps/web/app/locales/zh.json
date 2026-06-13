@@ -50,6 +50,8 @@
       "thinking": "思考中",
       "streaming": "生成中",
       "localAgentReady": "本地 Agent 已连接，发送消息以开始。",
+      "desktopLocalStarting": "正在连接这台 Mac 上的本地 Agent…",
+      "desktopLocalRequired": "这台 Mac 上还没有可用的本地 Agent。",
       "localRuntimeRequired": "请选择或连接本地运行时后再聊天。Cloud Agent 即将推出。",
       "slashCommandsMore": "+{{count}} 个"
     },

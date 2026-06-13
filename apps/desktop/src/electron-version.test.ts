@@ -54,4 +54,11 @@ describe("desktop Electron runtime", () => {
     expect(iconSvg).toContain('rx="216"');
     expect(iconSvg).toContain('translate(512 512) scale(0.86) translate(-636 -601)');
   });
+
+  it("injects the desktop runtime mode into the renderer", () => {
+    const preload = readFileSync(new URL("./preload.ts", import.meta.url), "utf8");
+
+    expect(preload).toMatch(/mode:\s*runtimeConfig\.mode/);
+    expect(preload).toMatch(/capabilities:\s*runtimeConfig\.capabilities/);
+  });
 });

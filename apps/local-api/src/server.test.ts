@@ -1,10 +1,30 @@
+import { createServer } from "node:net";
 import { mkdtemp, readFile, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
-import { createConfiguredLocalAcpAdapter, createLocalAgentToolEnv } from "./server";
+import { createConfiguredLocalAcpAdapter, createLocalAgentToolEnv, startLocalApiServer } from "./server";
 
 describe("local API server configuration", () => {
+  it("rejects when the requested listen port is occupied", async () => {
+    const blocker = createServer();
+    await new Promise<void>((resolve) => blocker.listen(0, "127.0.0.1", resolve));
+    const address = blocker.address();
+    if (!address || typeof address !== "object") throw new Error("failed to reserve port");
+
+    const dataDir = await mkdtemp(join(tmpdir(), "clash-local-api-port-"));
+
+    try {
+      await expect(startLocalApiServer({
+        dataDir,
+        port: address.port,
+        remotePersistence: null,
+      })).rejects.toMatchObject({ code: "EADDRINUSE" });
+    } finally {
+      await new Promise<void>((resolve) => blocker.close(() => resolve()));
+    }
+  });
+
   it("creates a local Clash CLI shim and injects it into agent spawn env", async () => {
     const dataDir = await mkdtemp(join(tmpdir(), "clash-local-agent-tools-"));
     const env = createLocalAgentToolEnv({

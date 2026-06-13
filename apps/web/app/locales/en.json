@@ -50,6 +50,8 @@
       "thinking": "Thinking",
       "streaming": "Streaming",
       "localAgentReady": "Local agent connected. Send a message to start.",
+      "desktopLocalStarting": "Connecting to the local agent on this Mac…",
+      "desktopLocalRequired": "No local agent is available on this Mac.",
       "localRuntimeRequired": "Select or connect a local runtime to chat. Cloud Agent is coming soon.",
       "slashCommandsMore": "+{{count}} more"
     },

@@ -26,6 +26,7 @@ import { useAsset, getAsset } from '@clash/web-ui/lib/hooks/useAsset';
 import { useIsBelowLg } from '@clash/web-ui/lib/hooks/useMediaQuery';
 import { useFocusTrap } from '@clash/web-ui/lib/hooks/useFocusTrap';
 import { useAgentCopilot, type CustomEvent } from '@clash/web-ui/hooks/useAgentCopilot';
+import { getRuntimeConfig } from '@clash/web-ui/lib/runtimeConfig';
 
 
 interface Message {
@@ -130,6 +131,22 @@ function SelectedNodeThumbnail({ node }: { node: RFNode }) {
 }
 
 type MentionNodeRef = { id: string; type: string; label: string; thumbnail?: string };
+
+const DESKTOP_LOCAL_RUNTIME_ID = 'desktop-local';
+const LOCAL_AGENT_PREFERENCE = [
+    'codex-app-server',
+    'codex-cli',
+    'gemini-cli',
+    'claude-code-acp',
+    'claude-agent-acp',
+];
+
+function preferredLocalAgentId(agents: Runtime['agents']): string | undefined {
+    for (const id of LOCAL_AGENT_PREFERENCE) {
+        if (agents.some((agent) => agent.id === id)) return id;
+    }
+    return agents[0]?.id;
+}
 
 const PERSONA_MAP: Record<string, string> = {
     ScriptWriter: 'scriptwriter',
@@ -325,6 +342,11 @@ export default function ChatbotCopilot({
     /** When set, the runtime picker dialog is open for this runtime. */
     const [runtimePicker, setRuntimePicker] = useState<Runtime | null>(null);
     const clashRt = useClashRuntime();
+    const isDesktopLocalMode = useMemo(() => getRuntimeConfig().mode === 'desktop', []);
+    const desktopLocalRuntime = useMemo(
+        () => clashRt.runtimes.find((rt) => rt.id === DESKTOP_LOCAL_RUNTIME_ID) ?? null,
+        [clashRt.runtimes],
+    );
 
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const scrollContainerRef = useRef<HTMLDivElement>(null);
@@ -356,12 +378,33 @@ export default function ChatbotCopilot({
     } = useAgentCopilot({
         projectId,
         threadId,
+        enabled: chatMode === 'cloud',
         onCustomEvent: useCallback((data: Record<string, unknown>) => {
             if (data.type === 'suggestions' && Array.isArray(data.suggestions)) {
                 setSuggestions(data.suggestions as Array<{ label: string; message: string }>);
             }
         }, []),
     });
+
+    useEffect(() => {
+        if (!isDesktopLocalMode || chatMode !== 'runtime') return;
+        if (clashRt.selectedRuntimeId || clashRt.ready || clashRt.status === 'connecting') return;
+        const runtime = desktopLocalRuntime;
+        if (!runtime || runtime.status !== 'online' || runtime.agents.length === 0) return;
+        void clashRt.select(runtime.id, 'director', {
+            projectId,
+            agentId: preferredLocalAgentId(runtime.agents),
+        });
+    }, [
+        chatMode,
+        clashRt.ready,
+        clashRt.select,
+        clashRt.selectedRuntimeId,
+        clashRt.status,
+        desktopLocalRuntime,
+        isDesktopLocalMode,
+        projectId,
+    ]);
 
     const cloudIsProcessing = status === 'submitted' || status === 'streaming';
     const runtimeIsProcessing = clashRt.status === 'connecting' || clashRt.status === 'sending' || clashRt.status === 'streaming';
@@ -613,7 +656,11 @@ export default function ChatbotCopilot({
         if (chatMode === 'runtime') {
             if (!clashRt.ready) {
                 setInput(value);
-                setSessionError(t('copilot.status.localRuntimeRequired'));
+                if (isDesktopLocalMode) {
+                    void clashRt.refresh();
+                } else {
+                    setSessionError(t('copilot.status.localRuntimeRequired'));
+                }
                 return;
             }
             setInput('');
@@ -839,83 +886,85 @@ export default function ChatbotCopilot({
                                     </>
                                 }
                             />
-                            {/* "Run on:" picker. Click opens menu; brand-tinted when something other than Cloud is the active runtime. */}
-                            <div className="relative">
-                                <IconButton
-                                    onClick={() => {
-                                        // Refresh the runtime list each time the menu opens so
-                                        // users don't see a stale offline marker right after
-                                        // starting their daemon.
-                                        if (!runtimeMenuOpen) void clashRt.refresh();
-                                        setRuntimeMenuOpen((v) => !v);
-                                    }}
-                                    label={t('copilot.header.runOn')}
-                                    aria-expanded={runtimeMenuOpen}
-                                    aria-controls={runtimeMenuId}
-                                    aria-haspopup="menu"
-                                    variant={chatMode !== 'cloud' ? 'active' : 'default'}
-                                    icon={<Plug className="w-5 h-5" weight="bold" />}
-                                />
-                                <AnimatePresence>
-                                    {runtimeMenuOpen && (
-                                        <motion.div
-                                            id={runtimeMenuId}
-                                            role="menu"
-                                            aria-label={t('copilot.runtime.menuTitle')}
-                                            initial={{ opacity: 0, y: -6, scale: 0.96 }}
-                                            animate={{ opacity: 1, y: 0, scale: 1 }}
-                                            exit={{ opacity: 0, y: -6, scale: 0.96 }}
-	                                            className="absolute top-11 right-0 z-30 w-72 bg-warm-surface rounded-2xl shadow-[0_18px_48px_rgba(35,31,25,0.12)] border border-warm-border overflow-hidden"
-                                        >
-                                            <div className="px-3 py-2 border-b border-warm-border bg-warm-muted">
-                                                <div className="font-display text-xs font-semibold text-stone-700 uppercase tracking-wider dark:text-stone-300">{t('copilot.runtime.menuTitle')}</div>
-                                            </div>
-                                            <div className="py-1">
-                                                <RuntimeMenuRow
-                                                    label={t('copilot.runtime.cloud.label')}
-                                                    sub={t('copilot.runtime.cloud.sub')}
-                                                    active={chatMode === 'cloud'}
-                                                    disabled
-                                                    onClick={() => setRuntimeMenuOpen(false)}
-                                                />
-                                                {clashRt.runtimes.length > 0 && (
-                                                    <div role="presentation" className="px-3 pt-1 pb-0.5 text-[11px] text-stone-600 uppercase tracking-wider dark:text-stone-400">{t('copilot.runtime.machinesHeader')}</div>
-                                                )}
-                                                {clashRt.runtimes.map((rt) => {
-                                                    const online = rt.status === 'online';
-                                                    const sub = online
-                                                        ? t('copilot.runtime.machineSub_online', { count: rt.agents.length })
-                                                        : t('copilot.runtime.machineSub_offline');
-                                                    return (
-                                                        <RuntimeMenuRow
-                                                            key={rt.id}
-                                                            label={rt.hostname || rt.machine_id.slice(0, 10)}
-                                                            sub={sub}
-                                                            active={chatMode === 'runtime' && clashRt.selectedRuntimeId === rt.id}
-                                                            disabled={!online || rt.agents.length === 0}
-                                                            onClick={() => {
-                                                                // Open the daemon picker so runtime sessions keep
-                                                                // the same agent + resume-session UX.
-                                                                setRuntimeMenuOpen(false);
-                                                                setRuntimePicker(rt);
-                                                            }}
-                                                        />
-                                                    );
-                                                })}
-                                                <div role="separator" className="border-t border-warm-border/70 my-1" />
-                                                <RuntimeMenuRow
-                                                    label={t('copilot.runtime.addMachine.label')}
-                                                    sub={t('copilot.runtime.addMachine.sub')}
-                                                    onClick={() => {
-                                                        setRuntimeMenuOpen(false);
-                                                        setAddMachineOpen(true);
-                                                    }}
-                                                />
-                                            </div>
-                                        </motion.div>
-                                    )}
-                                </AnimatePresence>
-                            </div>
+                            {!isDesktopLocalMode && (
+                                /* "Run on:" picker. Click opens menu; brand-tinted when something other than Cloud is the active runtime. */
+                                <div className="relative">
+                                    <IconButton
+                                        onClick={() => {
+                                            // Refresh the runtime list each time the menu opens so
+                                            // users don't see a stale offline marker right after
+                                            // starting their daemon.
+                                            if (!runtimeMenuOpen) void clashRt.refresh();
+                                            setRuntimeMenuOpen((v) => !v);
+                                        }}
+                                        label={t('copilot.header.runOn')}
+                                        aria-expanded={runtimeMenuOpen}
+                                        aria-controls={runtimeMenuId}
+                                        aria-haspopup="menu"
+                                        variant={chatMode !== 'cloud' ? 'active' : 'default'}
+                                        icon={<Plug className="w-5 h-5" weight="bold" />}
+                                    />
+                                    <AnimatePresence>
+                                        {runtimeMenuOpen && (
+                                            <motion.div
+                                                id={runtimeMenuId}
+                                                role="menu"
+                                                aria-label={t('copilot.runtime.menuTitle')}
+                                                initial={{ opacity: 0, y: -6, scale: 0.96 }}
+                                                animate={{ opacity: 1, y: 0, scale: 1 }}
+                                                exit={{ opacity: 0, y: -6, scale: 0.96 }}
+	                                                className="absolute top-11 right-0 z-30 w-72 bg-warm-surface rounded-2xl shadow-[0_18px_48px_rgba(35,31,25,0.12)] border border-warm-border overflow-hidden"
+                                            >
+                                                <div className="px-3 py-2 border-b border-warm-border bg-warm-muted">
+                                                    <div className="font-display text-xs font-semibold text-stone-700 uppercase tracking-wider dark:text-stone-300">{t('copilot.runtime.menuTitle')}</div>
+                                                </div>
+                                                <div className="py-1">
+                                                    <RuntimeMenuRow
+                                                        label={t('copilot.runtime.cloud.label')}
+                                                        sub={t('copilot.runtime.cloud.sub')}
+                                                        active={chatMode === 'cloud'}
+                                                        disabled
+                                                        onClick={() => setRuntimeMenuOpen(false)}
+                                                    />
+                                                    {clashRt.runtimes.length > 0 && (
+                                                        <div role="presentation" className="px-3 pt-1 pb-0.5 text-[11px] text-stone-600 uppercase tracking-wider dark:text-stone-400">{t('copilot.runtime.machinesHeader')}</div>
+                                                    )}
+                                                    {clashRt.runtimes.map((rt) => {
+                                                        const online = rt.status === 'online';
+                                                        const sub = online
+                                                            ? t('copilot.runtime.machineSub_online', { count: rt.agents.length })
+                                                            : t('copilot.runtime.machineSub_offline');
+                                                        return (
+                                                            <RuntimeMenuRow
+                                                                key={rt.id}
+                                                                label={rt.hostname || rt.machine_id.slice(0, 10)}
+                                                                sub={sub}
+                                                                active={chatMode === 'runtime' && clashRt.selectedRuntimeId === rt.id}
+                                                                disabled={!online || rt.agents.length === 0}
+                                                                onClick={() => {
+                                                                    // Open the daemon picker so runtime sessions keep
+                                                                    // the same agent + resume-session UX.
+                                                                    setRuntimeMenuOpen(false);
+                                                                    setRuntimePicker(rt);
+                                                                }}
+                                                            />
+                                                        );
+                                                    })}
+                                                    <div role="separator" className="border-t border-warm-border/70 my-1" />
+                                                    <RuntimeMenuRow
+                                                        label={t('copilot.runtime.addMachine.label')}
+                                                        sub={t('copilot.runtime.addMachine.sub')}
+                                                        onClick={() => {
+                                                            setRuntimeMenuOpen(false);
+                                                            setAddMachineOpen(true);
+                                                        }}
+                                                    />
+                                                </div>
+                                            </motion.div>
+                                        )}
+                                    </AnimatePresence>
+                                </div>
+                            )}
                         </div>
 
                         {/* History Dropdown */}
@@ -1004,7 +1053,12 @@ export default function ChatbotCopilot({
                                             {clashRt.errorMessage && (
                                                 <div role="alert" className="text-sm text-red-700 dark:text-red-300">{t('copilot.errors.warningPrefix')} {clashRt.errorMessage}</div>
                                             )}
-                                            <RuntimeMessageList messages={clashRt.messages} ready={clashRt.ready} />
+                                            <RuntimeMessageList
+                                                messages={clashRt.messages}
+                                                ready={clashRt.ready}
+                                                desktopLocalMode={isDesktopLocalMode}
+                                                localRuntime={desktopLocalRuntime}
+                                            />
                                         </>
                                     )}
                                     {chatMode === 'cloud' && (
@@ -1115,7 +1169,7 @@ export default function ChatbotCopilot({
                                     isProcessing={isProcessing}
                                     isCreatingSession={isCreatingSession || (chatMode === 'cloud' && waitingFirstSend)}
                                     connected={chatMode === 'runtime' ? clashRt.ready : connected}
-                                    error={sessionError || connectionError}
+                                    error={chatMode === 'cloud' ? (sessionError || connectionError) : (isDesktopLocalMode ? null : sessionError)}
                                     onDismissError={() => { setSessionError(null); clearConnectionError(); }}
                                     disabled={chatMode === 'runtime' && !clashRt.ready}
                                     placeholder={selectedNodes.length > 0 ? 'Ask anything about selected files...' : 'Ask anything...'}
@@ -1299,15 +1353,25 @@ function RuntimeMenuRow({
 function RuntimeMessageList({
     messages,
     ready,
+    desktopLocalMode,
+    localRuntime,
 }: {
     messages: RuntimeMessage[];
     ready: boolean;
+    desktopLocalMode?: boolean;
+    localRuntime?: Runtime | null;
 }) {
     const { t } = useTranslation();
     if (messages.length === 0) {
+        const hasLocalAgent = !!localRuntime && localRuntime.status === 'online' && localRuntime.agents.length > 0;
+        const emptyText = ready
+            ? t('copilot.status.localAgentReady')
+            : desktopLocalMode
+                ? t(hasLocalAgent ? 'copilot.status.desktopLocalStarting' : 'copilot.status.desktopLocalRequired')
+                : t('copilot.status.localRuntimeRequired');
         return (
             <div className="text-center text-sm text-stone-600 py-12 dark:text-stone-300">
-                {ready ? t('copilot.status.localAgentReady') : t('copilot.status.localRuntimeRequired')}
+                {emptyText}
             </div>
         );
     }
