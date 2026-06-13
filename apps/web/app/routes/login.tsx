@@ -15,6 +15,17 @@ function canonicalLocalAuthUrl(path: string): string | null {
   return `http://localhost:${window.location.port || "80"}${path}`;
 }
 
+const authInputClass =
+  "clash-auth-input w-full rounded-2xl px-5 py-3 text-base text-slate-950 placeholder:text-stone-400 focus:outline-none";
+const authPrimaryClass =
+  "clash-auth-primary flex w-full items-center justify-center gap-3 rounded-2xl px-6 py-4 text-base font-semibold disabled:cursor-not-allowed";
+const authSecondaryClass =
+  "clash-auth-secondary flex w-full items-center justify-center gap-3 rounded-2xl px-6 py-4 text-base font-medium disabled:cursor-not-allowed";
+const authTextButtonClass =
+  "text-stone-600 transition-colors hover:text-brand focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-warm-page";
+const authInlineLinkClass =
+  "font-medium text-slate-950 transition-colors hover:text-brand focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-warm-page";
+
 export default function LoginRoute() {
   const [stage, setStage] = useState<Stage>("email");
   const [pwAction, setPwAction] = useState<PwAction>("signin");
@@ -148,33 +159,33 @@ export default function LoginRoute() {
   };
 
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center relative overflow-hidden">
+    <div className="relative flex min-h-screen flex-col items-center justify-center overflow-hidden px-5 py-12">
       <Background />
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.5 }}
-        className="w-full max-w-md px-8 relative z-10"
+        className="clash-auth-panel relative z-10 w-full max-w-[440px] rounded-[28px] px-6 py-7 sm:px-8 sm:py-8"
       >
         <div className="mb-8 text-center">
-          <Link to="/" className="inline-block group mb-6">
+          <Link to="/" className="group mb-6 inline-block">
             <motion.div
-              className="flex items-center justify-center gap-2"
+              className="flex items-center justify-center gap-2.5"
               whileHover={{ scale: 1.05 }}
               whileTap={{ scale: 0.95 }}
             >
               <img
                 src="/brand/logo-mark.svg"
                 alt=""
-                className="h-12 w-12 object-contain"
+                className="h-10 w-10 object-contain"
                 draggable={false}
               />
-              <span className="font-display text-3xl font-semibold leading-none text-slate-950">
+              <span className="font-display text-2xl font-semibold leading-none text-slate-950">
                 Clash
               </span>
             </motion.div>
           </Link>
-          <h1 className="font-display text-2xl font-bold text-slate-950 mb-2">
+          <h1 className="mb-2 font-display text-2xl font-bold text-slate-950">
             {stage === "otp"
               ? "Check your email"
               : stage === "password"
@@ -195,12 +206,12 @@ export default function LoginRoute() {
         </div>
 
         {error && (
-          <div className="mb-4 rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700">
+          <div className="clash-auth-alert clash-auth-alert-error mb-4 rounded-2xl px-4 py-3 text-sm">
             {error}
           </div>
         )}
         {info && !error && (
-          <div className="mb-4 rounded-xl bg-green-50 px-4 py-3 text-sm text-green-700">
+          <div className="clash-auth-alert clash-auth-alert-info mb-4 rounded-2xl px-4 py-3 text-sm">
             {info}
           </div>
         )}
@@ -214,12 +225,12 @@ export default function LoginRoute() {
               onChange={(e) => setEmail(e.target.value)}
               autoComplete="email"
               required
-              className="w-full rounded-2xl border border-warm-border bg-warm-surface px-5 py-3 text-base shadow-sm shadow-stone-950/[0.02] focus:border-brand/70 focus:outline-none focus:ring-4 focus:ring-brand/10"
+              className={authInputClass}
             />
             <motion.button
               type="submit"
               disabled={isLoading || !email}
-              className="flex w-full items-center justify-center gap-3 rounded-2xl bg-slate-950 px-6 py-4 text-base font-medium text-white shadow-sm shadow-slate-950/10 transition-all hover:bg-slate-800 disabled:opacity-70 disabled:cursor-not-allowed"
+              className={authPrimaryClass}
               whileHover={!isLoading ? { scale: 1.02 } : {}}
               whileTap={!isLoading ? { scale: 0.98 } : {}}
             >
@@ -235,7 +246,7 @@ export default function LoginRoute() {
                 setError(null);
                 setInfo(null);
               }}
-              className="block w-full pt-2 text-center text-sm text-stone-500 hover:text-slate-950"
+              className={`${authTextButtonClass} block w-full pt-2 text-center text-sm`}
             >
               Use password instead →
             </button>
@@ -249,7 +260,7 @@ export default function LoginRoute() {
               onChange={(e) => setEmail(e.target.value)}
               autoComplete="email"
               required
-              className="w-full rounded-2xl border border-warm-border bg-warm-surface px-5 py-3 text-base shadow-sm shadow-stone-950/[0.02] focus:border-brand/70 focus:outline-none focus:ring-4 focus:ring-brand/10"
+              className={authInputClass}
             />
             {pwAction === "signup" && (
               <input
@@ -258,7 +269,7 @@ export default function LoginRoute() {
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 autoComplete="name"
-                className="w-full rounded-2xl border border-warm-border bg-warm-surface px-5 py-3 text-base shadow-sm shadow-stone-950/[0.02] focus:border-brand/70 focus:outline-none focus:ring-4 focus:ring-brand/10"
+                className={authInputClass}
               />
             )}
             <input
@@ -269,12 +280,12 @@ export default function LoginRoute() {
               autoComplete={pwAction === "signin" ? "current-password" : "new-password"}
               minLength={8}
               required
-              className="w-full rounded-2xl border border-warm-border bg-warm-surface px-5 py-3 text-base shadow-sm shadow-stone-950/[0.02] focus:border-brand/70 focus:outline-none focus:ring-4 focus:ring-brand/10"
+              className={authInputClass}
             />
             <motion.button
               type="submit"
               disabled={isLoading || !email || password.length < 8}
-              className="flex w-full items-center justify-center gap-3 rounded-2xl bg-slate-950 px-6 py-4 text-base font-medium text-white shadow-sm shadow-slate-950/10 transition-all hover:bg-slate-800 disabled:opacity-70 disabled:cursor-not-allowed"
+              className={authPrimaryClass}
               whileHover={!isLoading ? { scale: 1.02 } : {}}
               whileTap={!isLoading ? { scale: 0.98 } : {}}
             >
@@ -298,7 +309,7 @@ export default function LoginRoute() {
                   setError(null);
                   setInfo(null);
                 }}
-                className="text-stone-500 hover:text-slate-950"
+                className={authTextButtonClass}
               >
                 ← Use email code
               </button>
@@ -308,7 +319,7 @@ export default function LoginRoute() {
                   setPwAction((a) => (a === "signin" ? "signup" : "signin"));
                   setError(null);
                 }}
-                className="text-slate-950 hover:underline"
+                className={authInlineLinkClass}
               >
                 {pwAction === "signin" ? "Create account" : "Have an account?"}
               </button>
@@ -326,12 +337,12 @@ export default function LoginRoute() {
               onChange={(e) => setOtp(e.target.value.replace(/\D/g, ""))}
               autoComplete="one-time-code"
               required
-              className="w-full rounded-2xl border border-warm-border bg-warm-surface px-5 py-3 text-center text-xl tracking-[0.4em] font-mono shadow-sm shadow-stone-950/[0.02] focus:border-brand/70 focus:outline-none focus:ring-4 focus:ring-brand/10"
+              className={`${authInputClass} text-center font-mono text-xl tracking-[0.4em]`}
             />
             <motion.button
               type="submit"
               disabled={isLoading || otp.length !== 6}
-              className="flex w-full items-center justify-center gap-3 rounded-2xl bg-slate-950 px-6 py-4 text-base font-medium text-white shadow-sm shadow-slate-950/10 transition-all hover:bg-slate-800 disabled:opacity-70 disabled:cursor-not-allowed"
+              className={authPrimaryClass}
               whileHover={!isLoading && otp.length === 6 ? { scale: 1.02 } : {}}
               whileTap={!isLoading && otp.length === 6 ? { scale: 0.98 } : {}}
             >
@@ -350,7 +361,7 @@ export default function LoginRoute() {
                   setError(null);
                   setInfo(null);
                 }}
-                className="text-stone-500 hover:text-slate-950"
+                className={authTextButtonClass}
               >
                 ← Change email
               </button>
@@ -358,7 +369,7 @@ export default function LoginRoute() {
                 type="button"
                 disabled={isLoading || secondsUntilResend > 0}
                 onClick={() => sendCode(true)}
-                className="text-slate-950 hover:underline disabled:text-stone-400 disabled:no-underline disabled:cursor-not-allowed"
+                className={`${authInlineLinkClass} disabled:cursor-not-allowed disabled:text-stone-400`}
               >
                 {secondsUntilResend > 0
                   ? `Resend in ${secondsUntilResend}s`
@@ -380,7 +391,7 @@ export default function LoginRoute() {
           type="button"
           onClick={handleGoogleSignIn}
           disabled={isLoading}
-          className="flex w-full items-center justify-center gap-3 rounded-2xl border border-warm-border bg-warm-surface px-6 py-4 text-base font-medium text-slate-950 shadow-sm shadow-stone-950/[0.02] transition-all hover:bg-white disabled:opacity-70 disabled:cursor-not-allowed"
+          className={authSecondaryClass}
           whileHover={!isLoading ? { scale: 1.02 } : {}}
           whileTap={!isLoading ? { scale: 0.98 } : {}}
         >
@@ -390,11 +401,11 @@ export default function LoginRoute() {
 
         <p className="mt-6 text-center text-xs text-stone-500">
           By continuing, you agree to our{" "}
-          <Link to="/terms" className="font-medium text-slate-950 hover:underline">
+          <Link to="/terms" className={authInlineLinkClass}>
             Terms of Service
           </Link>{" "}
           and{" "}
-          <Link to="/privacy" className="font-medium text-slate-950 hover:underline">
+          <Link to="/privacy" className={authInlineLinkClass}>
             Privacy Policy
           </Link>
           .

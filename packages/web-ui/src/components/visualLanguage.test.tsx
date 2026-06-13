@@ -62,6 +62,8 @@ const oldSettingsDialogTokens =
   /ChatGPT-style|shadow-2xl border border-warm-border|bg-warm-muted\/40 flex flex-col/;
 const oldProjectTileTokens =
   /border-2 border-dashed|hover:shadow-lg|bg-warm-muted\/60|bg-warm-surface\/70/;
+const oldAuthRouteTokens =
+  /bg-slate-950 px-6 py-4|hover:bg-slate-800|bg-red-50|bg-green-50|shadow-slate-950\/10/;
 
 describe("visual language surfaces", () => {
   afterEach(() => {
@@ -303,6 +305,21 @@ describe("visual language surfaces", () => {
     expect(source).toMatch(/clash-project-create-tile/);
     expect(source).toMatch(/clash-project-card-frame/);
     expect(source).toMatch(/clash-project-card-empty/);
+  });
+
+  it("keeps the login route in Clash auth surfaces instead of generic black auth buttons", () => {
+    const source = [
+      "apps/web/app/routes/login.tsx",
+      "apps/web/app/globals.css",
+    ]
+      .map((path) => readFileSync(join(process.cwd(), path), "utf8"))
+      .join("\n");
+
+    expect(source).not.toMatch(oldAuthRouteTokens);
+    expect(source).toMatch(/clash-auth-panel/);
+    expect(source).toMatch(/clash-auth-input/);
+    expect(source).toMatch(/clash-auth-primary/);
+    expect(source).toMatch(/clash-auth-alert/);
   });
 
   it.each([
