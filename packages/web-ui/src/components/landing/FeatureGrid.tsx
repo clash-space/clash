@@ -37,36 +37,37 @@ const features = [
 
 export default function FeatureGrid() {
   return (
-    <section className="py-24 sm:py-32 relative z-10">
-      <div className="mx-auto max-w-7xl px-6 lg:px-8">
-        <div className="max-w-2xl">
-          <h2 className="text-base font-semibold leading-7 text-brand font-display">Workspace</h2>
-          <p className="mt-2 text-3xl font-bold tracking-tight text-slate-900 dark:text-slate-50 sm:text-4xl font-display">
-            A studio canvas for human intent and agent work
-          </p>
-          <p className="mt-6 text-lg leading-8 text-stone-700 dark:text-stone-300">
-            Clash keeps the visible work, local runtime, model routing, and cloud collaboration in one product shape.
-          </p>
-        </div>
-        <div className="mx-auto mt-16 max-w-2xl sm:mt-20 lg:mt-24 lg:max-w-none">
-          <dl className="grid max-w-xl grid-cols-1 gap-5 lg:max-w-none lg:grid-cols-3">
+    <section className="relative z-10 py-20 sm:py-28">
+      <div className="mx-auto max-w-[1120px] px-5 sm:px-8 lg:px-10">
+        <div className="grid gap-12 lg:grid-cols-[0.72fr_1fr] lg:gap-20">
+          <div className="max-w-xl">
+            <h2 className="font-display text-sm font-semibold leading-7 text-brand">Workspace</h2>
+            <p className="mt-2 font-display text-3xl font-bold tracking-tight text-slate-950 dark:text-slate-50 sm:text-4xl">
+              A studio canvas for human intent and agent work
+            </p>
+            <p className="mt-6 text-lg leading-8 text-stone-700 dark:text-stone-300">
+              Clash keeps the visible work, local runtime, model routing, and cloud collaboration in one product shape.
+            </p>
+          </div>
+
+          <dl className="clash-landing-capability-rail">
             {features.map((feature, index) => (
               <motion.div
                 key={feature.name}
-                initial={{ opacity: 0, y: 20 }}
+                initial={{ opacity: 0, y: 16 }}
                 whileInView={{ opacity: 1, y: 0 }}
                 viewport={{ once: true }}
-                transition={{ duration: 0.5, delay: index * 0.1 }}
-                className={`flex flex-col rounded-2xl border border-warm-border/80 bg-warm-surface/80 p-7 shadow-[0_10px_28px_rgba(35,31,25,0.04)] transition-all hover:-translate-y-0.5 hover:border-brand/25 hover:bg-warm-surface ${index === 0 ? 'lg:col-span-2' : ''}`}
+                transition={{ duration: 0.42, ease: [0.16, 1, 0.3, 1], delay: index * 0.06 }}
+                className="clash-landing-capability-row"
               >
-                <dt className="flex items-center gap-x-3 text-base font-semibold leading-7 text-slate-900 dark:text-slate-50 font-display">
-                  <div className="h-10 w-10 flex items-center justify-center rounded-lg bg-brand/10">
-                    <feature.icon className="h-6 w-6 text-brand" aria-hidden="true" weight="duotone" />
-                  </div>
-                  {feature.name}
+                <dt className="flex min-w-0 items-center gap-3 font-display text-base font-semibold leading-7 text-slate-950 dark:text-slate-50">
+                  <span className="clash-landing-capability-icon" aria-hidden="true">
+                    <feature.icon className="h-5 w-5" weight="duotone" />
+                  </span>
+                  <span>{feature.name}</span>
                 </dt>
-                <dd className="mt-4 flex flex-auto flex-col text-base leading-7 text-stone-700 dark:text-stone-300">
-                  <p className="flex-auto">{feature.description}</p>
+                <dd className="text-sm leading-6 text-stone-700 dark:text-stone-300">
+                  {feature.description}
                 </dd>
               </motion.div>
             ))}

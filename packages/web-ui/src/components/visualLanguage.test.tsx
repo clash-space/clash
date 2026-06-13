@@ -415,6 +415,17 @@ describe("visual language surfaces", () => {
     expect(source).not.toMatch(/clash-projects-empty-node--wide|clash-projects-empty-node--small|clash-projects-empty-node--accent/);
   });
 
+  it("keeps the landing capability section out of generic icon-card grid patterns", () => {
+    const source = readFileSync(join(process.cwd(), "packages/web-ui/src/components/landing/FeatureGrid.tsx"), "utf8");
+    const cssSource = readFileSync(join(process.cwd(), "apps/web/app/globals.css"), "utf8");
+
+    expect(source).toMatch(/clash-landing-capability-rail/);
+    expect(source).toMatch(/clash-landing-capability-row/);
+    expect(cssSource).toMatch(/\.clash-landing-capability-rail/);
+    expect(source).not.toMatch(/lg:grid-cols-3/);
+    expect(source).not.toMatch(/rounded-2xl border border-warm-border\/80 bg-warm-surface\/80 p-7/);
+  });
+
   it("keeps the public landing page aligned with canvas and local-runtime product language", () => {
     const source = [
       "packages/web-ui/src/components/landing/LandingHero.tsx",
