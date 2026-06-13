@@ -24,15 +24,15 @@ export default function LandingHero() {
   };
 
   return (
-    <section className="relative flex min-h-[calc(100vh-5rem)] items-center overflow-hidden px-6 pb-16 pt-28 lg:px-8">
-      <div className="mx-auto w-full max-w-[1600px]">
+    <section className="relative flex min-h-[calc(100vh-5rem)] items-center overflow-hidden px-5 pb-16 pt-28 sm:px-8 lg:px-10">
+      <div className="clash-hero-stage mx-auto w-full max-w-[1120px]">
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.42, ease: [0.16, 1, 0.3, 1] }}
-          className="mx-auto w-full max-w-4xl text-left lg:mx-0 lg:pl-12 xl:pl-16"
+          className="w-full max-w-[980px] text-left"
         >
-          <h1 className="mb-10 max-w-4xl font-display text-5xl font-bold tracking-tighter text-slate-950 dark:text-slate-50 sm:text-6xl md:text-7xl">
+          <h1 className="clash-hero-heading mb-10 max-w-[980px] font-display text-5xl font-bold tracking-tighter text-slate-950 dark:text-slate-50 sm:text-6xl md:text-7xl">
             Hey! <br />
             Let&apos;s make some <span className="text-brand">CLASH</span>?
           </h1>
@@ -41,7 +41,7 @@ export default function LandingHero() {
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.42, ease: [0.16, 1, 0.3, 1], delay: 0.12 }}
-            className="w-full max-w-4xl"
+            className="clash-hero-prompt w-full"
           >
             <ChatInput
               input={inputValue}

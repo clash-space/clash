@@ -402,6 +402,9 @@ describe("visual language surfaces", () => {
 
     expect(source).not.toMatch(/HeroCanvasPreview|clash-home-canvas-preview|clash-home-preview-node|Agent drafting|Neon rain/);
     expect(source).toMatch(/variant="hero"/);
+    expect(source).toMatch(/clash-hero-stage/);
+    expect(source).toMatch(/clash-hero-prompt/);
+    expect(source).not.toMatch(/lg:pl-(12|16)|xl:pl-(12|16)/);
     expect(source).toMatch(/\/brand\/logo-mark-animated\.svg/);
     expect(source).toMatch(/clash-dashboard-shell/);
     expect(source).toMatch(/clash-projects-empty-workbench/);

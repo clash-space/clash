@@ -1436,6 +1436,31 @@ html.dark.clash-is-scrolling ::-webkit-scrollbar-thumb:hover {
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.54);
 }
 
+.clash-hero-stage {
+  position: relative;
+  isolation: isolate;
+}
+
+.clash-hero-stage::before {
+  content: "";
+  position: absolute;
+  inset: -10vh -8vw -8vh;
+  z-index: -1;
+  pointer-events: none;
+  background:
+    radial-gradient(closest-side at 18% 28%, rgba(255, 107, 80, 0.055), transparent 72%),
+    radial-gradient(closest-side at 88% 38%, rgba(35, 31, 25, 0.036), transparent 68%);
+  opacity: 0.72;
+}
+
+.clash-hero-heading {
+  text-wrap: balance;
+}
+
+.clash-hero-prompt {
+  max-width: 980px;
+}
+
 .clash-chat-input-surface {
   position: relative;
   isolation: isolate;
