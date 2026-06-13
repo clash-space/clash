@@ -553,6 +553,43 @@ html.dark.clash-is-scrolling ::-webkit-scrollbar-thumb:hover {
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.6);
 }
 
+.clash-node-choice-active {
+  background:
+    linear-gradient(180deg, rgba(255, 240, 237, 0.9), rgba(255, 254, 253, 0.74));
+  color: #8e2f20;
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 107, 80, 0.2),
+    inset 0 1px 0 rgba(255, 255, 255, 0.64);
+}
+
+.clash-node-ref-index {
+  border: 1px solid rgba(255, 107, 80, 0.26);
+  background: rgba(255, 240, 237, 0.96);
+  color: #8e2f20;
+  box-shadow:
+    0 2px 6px rgba(35, 31, 25, 0.05),
+    inset 0 1px 0 rgba(255, 255, 255, 0.6);
+}
+
+.clash-node-ref-remove {
+  border: 1px solid rgba(255, 107, 80, 0.34);
+  background: rgba(255, 240, 237, 0.96);
+  color: #8e2f20;
+  box-shadow:
+    0 2px 8px rgba(35, 31, 25, 0.055),
+    inset 0 1px 0 rgba(255, 255, 255, 0.62);
+  transition:
+    background 160ms ease,
+    border-color 160ms ease,
+    color 160ms ease;
+}
+
+.clash-node-ref-remove:hover {
+  border-color: rgba(255, 107, 80, 0.5);
+  background: rgba(255, 224, 218, 0.98);
+  color: #702417;
+}
+
 .clash-marketplace-filter-active {
   border: 1px solid rgba(255, 107, 80, 0.24);
   background:

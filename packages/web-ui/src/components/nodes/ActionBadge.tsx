@@ -221,7 +221,7 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
             : actionKind === 'audio'
                 ? 'bg-audio hover:opacity-90'
                 : actionKind === 'text'
-                    ? 'bg-slate-700 hover:bg-slate-900'
+                    ? 'clash-node-primary'
                     : 'bg-image hover:opacity-90';
 
     const availableModels = useMemo(
@@ -1294,8 +1294,9 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
                                         Frozen
                                     </div>
                                     <button
+                                        type="button"
                                         onClick={handleCopy}
-                                        className="flex items-center gap-1.5 px-4 py-2 text-sm font-medium text-white bg-slate-900 rounded-xl hover:bg-slate-800 transition-colors"
+                                        className="clash-node-primary flex items-center gap-1.5 px-4 py-2 text-sm font-medium rounded-xl"
                                     >
                                         <Copy size={14} weight="bold" />
                                         Copy to Edit
@@ -1303,8 +1304,9 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
                                 </>
                             ) : (
                                 <button
+                                    type="button"
                                     onClick={handleSave}
-                                    className="px-4 py-2 text-sm font-medium text-white bg-slate-900 rounded-xl hover:bg-slate-800 transition-colors"
+                                    className="clash-node-primary px-4 py-2 text-sm font-medium rounded-xl"
                                 >
                                     Save
                                 </button>
@@ -1352,12 +1354,12 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
                                                     <ImageIcon size={16} className="text-slate-700 dark:text-slate-300" />
                                                 )}
                                             </div>
-                                            <span className="absolute -top-1 -left-1 bg-slate-700 text-white text-[9px] font-bold rounded px-1 min-w-[14px] text-center leading-[14px] pointer-events-none">
+                                            <span className="clash-node-ref-index absolute -top-1 -left-1 text-[9px] font-bold rounded px-1 min-w-[14px] text-center leading-[14px] pointer-events-none">
                                                 {i + 1}
                                             </span>
                                             {!isFrozen && (
                                                 <button
-                                                    className="absolute -top-1 -right-1 bg-red-400 text-white rounded-full w-4 h-4 hidden group-hover/thumb:flex items-center justify-center text-[11px] leading-none"
+                                                    className="clash-node-ref-remove absolute -top-1 -right-1 rounded-full w-4 h-4 hidden group-hover/thumb:flex items-center justify-center text-[11px] leading-none"
                                                     onPointerDown={e => e.stopPropagation()}
                                                     onClick={() => removeRefNode(nodeId)}
                                                 >×</button>
@@ -1518,7 +1520,7 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
                                                         />
                                                         {!isFrozen && (
                                                             <button
-                                                                className="absolute -top-1 -right-1 bg-red-400 text-white rounded-full w-4 h-4 hidden group-hover/thumb:flex items-center justify-center text-[11px] leading-none"
+                                                                className="clash-node-ref-remove absolute -top-1 -right-1 rounded-full w-4 h-4 hidden group-hover/thumb:flex items-center justify-center text-[11px] leading-none"
                                                                 onPointerDown={e => e.stopPropagation()}
                                                                 onClick={() => removeRefNode(nodeId!)}
                                                                 aria-label={`Clear ${fullLabel} frame`}
@@ -1536,7 +1538,7 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
                                                         <Plus size={14} weight="bold" />
                                                     </button>
                                                 )}
-                                                <span className="absolute -top-1 -left-1 bg-slate-700 text-white text-[9px] font-bold rounded px-1 min-w-[14px] text-center leading-[14px] pointer-events-none">
+                                                <span className="clash-node-ref-index absolute -top-1 -left-1 text-[9px] font-bold rounded px-1 min-w-[14px] text-center leading-[14px] pointer-events-none">
                                                     {badge}
                                                 </span>
                                             </div>
@@ -1609,12 +1611,12 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
                                                         className="h-10 w-10 rounded-lg object-cover border border-warm-border shadow-sm pointer-events-none"
                                                     />
                                                 )}
-                                                <span className="absolute -top-1 -left-1 bg-slate-700 text-white text-[9px] font-bold rounded px-1 min-w-[14px] text-center leading-[14px] pointer-events-none">
+                                                <span className="clash-node-ref-index absolute -top-1 -left-1 text-[9px] font-bold rounded px-1 min-w-[14px] text-center leading-[14px] pointer-events-none">
                                                     {badge}
                                                 </span>
                                                 {!isFrozen && (
                                                     <button
-                                                        className="absolute -top-1 -right-1 bg-red-400 text-white rounded-full w-4 h-4 hidden group-hover/thumb:flex items-center justify-center text-[11px] leading-none"
+                                                        className="clash-node-ref-remove absolute -top-1 -right-1 rounded-full w-4 h-4 hidden group-hover/thumb:flex items-center justify-center text-[11px] leading-none"
                                                         onPointerDown={e => e.stopPropagation()}
                                                         onClick={() => removeRefNode(nodeId)}
                                                     >×</button>
@@ -1757,7 +1759,7 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
                                                 key={card.id}
                                                 className={`px-3 py-2 text-xs cursor-pointer transition-colors ${
                                                     selected
-                                                        ? 'bg-slate-950 text-white'
+                                                        ? 'clash-node-choice-active'
                                                         : compat
                                                             ? 'text-stone-800 dark:text-stone-200 hover:bg-warm-muted'
                                                             : 'text-stone-700 dark:text-stone-300 hover:bg-amber-50'
@@ -1769,7 +1771,7 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
                                             >
                                                 <div className="font-bold leading-tight">{card.name}</div>
                                                 {secondaryText && (
-                                                    <div className={`text-[10px] ${selected ? 'text-stone-300' : 'text-amber-600'}`}>
+                                                    <div className={`text-[10px] ${selected ? 'text-brand' : 'text-amber-600'}`}>
                                                         {secondaryText}
                                                     </div>
                                                 )}
@@ -1821,7 +1823,7 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
                                                                 <div className="flex flex-wrap gap-1.5">
                                                                     {p.options?.map((opt) => (
                                                                         <button key={String(opt.value)}
-                                                                            className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${String(currentVal) === String(opt.value) ? 'bg-slate-950 text-white' : 'bg-warm-muted text-stone-800 dark:text-stone-200 hover:bg-warm-hover'}`}
+                                                                            className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${String(currentVal) === String(opt.value) ? 'clash-node-choice-active' : 'bg-warm-muted text-stone-800 dark:text-stone-200 hover:bg-warm-hover'}`}
                                                                             onClick={(e) => { e.stopPropagation(); updateModelParam(p.id, opt.value); setExpandedParam(null); }}
                                                                         >{opt.label}</button>
                                                                     ))}
@@ -1831,7 +1833,7 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
                                                                 <div className="flex gap-1.5">
                                                                     {[{ l: 'On', v: true }, { l: 'Off', v: false }].map((o) => (
                                                                         <button key={o.l}
-                                                                            className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${Boolean(currentVal) === o.v ? 'bg-slate-950 text-white' : 'bg-warm-muted text-stone-800 dark:text-stone-200 hover:bg-warm-hover'}`}
+                                                                            className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${Boolean(currentVal) === o.v ? 'clash-node-choice-active' : 'bg-warm-muted text-stone-800 dark:text-stone-200 hover:bg-warm-hover'}`}
                                                                             onClick={(e) => { e.stopPropagation(); updateModelParam(p.id, o.v); setExpandedParam(null); }}
                                                                         >{o.l}</button>
                                                                     ))}
@@ -1887,7 +1889,7 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
                                         <div
                                             key={n}
                                             className={`px-3 py-2 text-xs cursor-pointer text-center transition-colors ${
-                                                countValue === n ? 'bg-slate-950 text-white' : 'text-stone-800 dark:text-stone-200 hover:bg-warm-muted'
+                                                countValue === n ? 'clash-node-choice-active' : 'text-stone-800 dark:text-stone-200 hover:bg-warm-muted'
                                             }`}
                                             onClick={() => {
                                                 updateModelParam('count', n);
@@ -1918,7 +1920,7 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
                                     type="button"
                                     onClick={(e) => { e.stopPropagation(); if (customActionOffline) return; handleExecute(); }}
                                     disabled={isExecuting || customActionOffline}
-                                    className="flex items-center gap-1 px-3 h-7 rounded-full bg-slate-950 hover:bg-black text-white text-xs font-semibold transition-colors flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
+                                    className="clash-node-primary flex items-center gap-1 px-3 h-7 rounded-full text-xs font-semibold flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
                                     title={customActionOffline ? RUNTIME_OFFLINE_TOOLTIP : 'Run again with current parameters'}
                                     aria-disabled={customActionOffline || undefined}
                                 >

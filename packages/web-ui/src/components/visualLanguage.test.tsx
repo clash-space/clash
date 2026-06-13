@@ -83,6 +83,8 @@ const oldNodeBuildActionTokens =
   /bg-slate-950(?:\s|")|bg-slate-950 text|hover:bg-slate-800|bg-red-50(?:\s|")|hover:bg-red-50|border-red-200|border-red-300|text-red-700|text-red-800|focus-visible:ring-red-500/;
 const oldInlineNodePrimaryActionTokens =
   /text-white bg-slate-950|bg-slate-950 hover:bg-slate-800|bg-slate-950 rounded-lg hover:bg-slate-800/;
+const oldActionBadgeMenuActionTokens =
+  /!bg-slate-950|bg-slate-950 text-white|bg-slate-950 hover:bg-slate-800|bg-slate-950 hover:bg-black|bg-slate-900 rounded-xl|bg-slate-900 text-white|bg-slate-700 hover:bg-slate-900|bg-slate-700 text-white|bg-red-400 text-white/;
 
 describe("visual language surfaces", () => {
   afterEach(() => {
@@ -281,6 +283,23 @@ describe("visual language surfaces", () => {
 
     expect(source).not.toMatch(oldCanvasControlTokens);
     expect(source).toMatch(/brand|warm|stone|slate/);
+  });
+
+  it("keeps ActionBadge menus and selected controls out of generic black chrome", () => {
+    const source = [
+      "packages/web-ui/src/components/nodes/ActionBadge.tsx",
+      "packages/web-ui/src/components/nodes/ActionBadgePipelineMenu.tsx",
+      "apps/web/app/globals.css",
+    ]
+      .map((path) => readFileSync(join(process.cwd(), path), "utf8"))
+      .join("\n");
+
+    expect(source).not.toMatch(oldActionBadgeMenuActionTokens);
+    expect(source).toMatch(/clash-node-choice-active/);
+    expect(source).toMatch(/clash-node-ref-index/);
+    expect(source).toMatch(/clash-node-ref-remove/);
+    expect(source).toMatch(/clash-node-primary/);
+    expect(source).toMatch(/!bg-brand/);
   });
 
   it("keeps activity and presence feedback out of legacy blue or gradient states", () => {

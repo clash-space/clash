@@ -182,8 +182,8 @@ const ActionBadgePipelineMenu = ({ spawnDraft, canSpawn, disabledReason, outputK
                 style={{ position: 'relative', top: 0, right: 0, transform: 'none' }}
                 className={`!h-4 !w-4 !border-4 !border-white transition-all duration-200 shadow-sm ${
                     isOpen
-                        ? '!bg-slate-950 scale-[1.3]'
-                        : '!bg-stone-400 hover:!bg-slate-700 hover:scale-125'
+                        ? '!bg-brand scale-[1.3]'
+                        : '!bg-stone-400 hover:!bg-brand hover:scale-125'
                 }`}
             />
 
@@ -222,7 +222,7 @@ const ActionBadgePipelineMenu = ({ spawnDraft, canSpawn, disabledReason, outputK
                                 className={`flex items-center gap-3 rounded-xl min-h-11 px-3 py-2.5 text-sm font-semibold text-left transition-colors motion-reduce:transition-none focus:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-1 ${
                                     disabled
                                         ? 'bg-warm-muted text-slate-700 dark:text-slate-300 cursor-not-allowed'
-                                        : 'bg-slate-950 text-white hover:bg-slate-800 cursor-pointer'
+                                        : 'clash-node-primary cursor-pointer'
                                 }`}
                             >
                                 <Plus className="h-4 w-4 shrink-0" weight="bold" aria-hidden="true" />
