@@ -394,6 +394,47 @@ html.dark.clash-is-scrolling ::-webkit-scrollbar-thumb:hover {
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.54);
 }
 
+.clash-confirm-secondary {
+  border: 1px solid rgba(225, 221, 213, 0.76);
+  background:
+    linear-gradient(180deg, rgba(255, 254, 253, 0.72), rgba(247, 246, 242, 0.56));
+  color: #574f45;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.62);
+  transition:
+    background 180ms ease,
+    border-color 180ms ease,
+    color 180ms ease;
+}
+
+.clash-confirm-secondary:hover {
+  border-color: rgba(255, 107, 80, 0.22);
+  background:
+    linear-gradient(180deg, rgba(255, 254, 253, 0.86), rgba(255, 240, 237, 0.5));
+  color: #202839;
+}
+
+.clash-confirm-danger {
+  background:
+    linear-gradient(180deg, rgba(255, 118, 91, 0.98), rgba(214, 73, 54, 0.96));
+  color: #fffefd;
+  box-shadow:
+    0 10px 20px rgba(255, 107, 80, 0.18),
+    0 2px 8px rgba(108, 53, 42, 0.1),
+    inset 0 1px 0 rgba(255, 255, 255, 0.34);
+  transition:
+    filter 180ms ease,
+    box-shadow 180ms ease,
+    transform 180ms ease;
+}
+
+.clash-confirm-danger:hover {
+  filter: saturate(1.05) brightness(1.01);
+  box-shadow:
+    0 12px 24px rgba(255, 107, 80, 0.22),
+    0 3px 10px rgba(108, 53, 42, 0.12),
+    inset 0 1px 0 rgba(255, 255, 255, 0.38);
+}
+
 .clash-settings-dialog-shell {
   position: relative;
   isolation: isolate;
@@ -440,6 +481,7 @@ html.dark.clash-is-scrolling ::-webkit-scrollbar-thumb:hover {
 .clash-billing-primary,
 .clash-chat-input-primary,
 .clash-chat-input-stop,
+.clash-confirm-primary,
 .clash-copilot-primary,
 .clash-marketplace-primary,
 .clash-node-primary,
@@ -461,6 +503,7 @@ html.dark.clash-is-scrolling ::-webkit-scrollbar-thumb:hover {
 .clash-billing-primary:hover,
 .clash-chat-input-primary:hover,
 .clash-chat-input-stop:hover,
+.clash-confirm-primary:hover,
 .clash-copilot-primary:hover,
 .clash-marketplace-primary:hover,
 .clash-node-primary:hover,
@@ -476,6 +519,7 @@ html.dark.clash-is-scrolling ::-webkit-scrollbar-thumb:hover {
 .clash-billing-primary:disabled,
 .clash-chat-input-primary:disabled,
 .clash-chat-input-stop:disabled,
+.clash-confirm-primary:disabled,
 .clash-copilot-primary:disabled,
 .clash-marketplace-primary:disabled,
 .clash-node-primary:disabled,
@@ -743,50 +787,6 @@ html.dark.clash-is-scrolling ::-webkit-scrollbar-thumb:hover {
   color: #8e2f20;
 }
 
-.clash-home-canvas-preview {
-  color: #ff6b50;
-  contain: layout paint;
-}
-
-.clash-home-canvas-preview::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  background-image: radial-gradient(var(--canvas-dot) 1px, transparent 1px);
-  background-size: 20px 20px;
-  mask-image:
-    linear-gradient(90deg, transparent, #000 12%, #000 86%, transparent),
-    linear-gradient(180deg, transparent, #000 10%, #000 88%, transparent);
-  opacity: 0.52;
-}
-
-.clash-home-canvas-preview::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  background:
-    radial-gradient(circle at 76% 28%, rgba(255, 107, 80, 0.13), transparent 26%),
-    linear-gradient(90deg, rgba(255, 254, 253, 0.02), rgba(255, 254, 253, 0.46) 92%);
-}
-
-.clash-home-preview-edge {
-  stroke: currentColor;
-  stroke-width: 2;
-  stroke-linecap: round;
-  stroke-dasharray: 7 11;
-  opacity: 0.44;
-  animation: clash-home-preview-edge-flow 4.8s linear infinite;
-}
-
-.clash-home-preview-edge--slow {
-  opacity: 0.28;
-  animation-duration: 6.4s;
-}
-
-.clash-home-preview-node,
-.clash-home-preview-agent,
 .clash-projects-empty-canvas {
   border: 1px solid rgba(225, 221, 213, 0.82);
   background:
@@ -796,57 +796,6 @@ html.dark.clash-is-scrolling ::-webkit-scrollbar-thumb:hover {
     0 4px 14px rgba(35, 31, 25, 0.038),
     inset 0 1px 0 rgba(255, 255, 255, 0.82);
   backdrop-filter: blur(14px) saturate(1.03);
-}
-
-.clash-home-preview-node {
-  z-index: 1;
-}
-
-.clash-home-preview-node--shot {
-  background:
-    linear-gradient(180deg, rgba(255, 254, 253, 0.92), rgba(255, 240, 237, 0.64));
-}
-
-.clash-home-preview-node--timeline {
-  background:
-    linear-gradient(180deg, rgba(255, 254, 253, 0.88), rgba(241, 239, 234, 0.74));
-}
-
-.clash-home-preview-chip {
-  display: inline-flex;
-  align-items: center;
-  border: 1px solid rgba(225, 221, 213, 0.74);
-  border-radius: 999px;
-  background: rgba(255, 254, 253, 0.72);
-  padding: 2px 8px;
-  color: #7b6f64;
-  font-size: 11px;
-  font-weight: 700;
-  line-height: 1.2;
-}
-
-.clash-home-preview-frame {
-  position: relative;
-  overflow: hidden;
-  border: 1px solid rgba(225, 221, 213, 0.7);
-  background:
-    linear-gradient(135deg, rgba(255, 107, 80, 0.28), transparent 36%),
-    linear-gradient(180deg, rgba(18, 25, 43, 0.08), rgba(18, 25, 43, 0.02)),
-    radial-gradient(circle at 68% 42%, rgba(18, 25, 43, 0.22), transparent 18%),
-    radial-gradient(circle at 35% 58%, rgba(255, 107, 80, 0.32), transparent 17%);
-}
-
-.clash-home-preview-frame::after {
-  content: "";
-  position: absolute;
-  inset: auto 12px 12px 12px;
-  height: 18px;
-  border-radius: 999px;
-  background: rgba(255, 254, 253, 0.72);
-}
-
-.clash-home-preview-agent {
-  z-index: 2;
 }
 
 .clash-dashboard-shell {
@@ -1026,17 +975,12 @@ html.dark.clash-is-scrolling ::-webkit-scrollbar-thumb:hover {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .clash-home-preview-edge,
   .clash-projects-empty-edge {
     animation: none;
   }
 }
 
 @media (max-width: 1023px) {
-  .clash-home-canvas-preview {
-    display: none;
-  }
-
   .clash-projects-empty-workbench {
     min-height: auto;
     grid-template-columns: 1fr;
@@ -1166,6 +1110,32 @@ html.dark.clash-is-scrolling ::-webkit-scrollbar-thumb:hover {
   background:
     linear-gradient(180deg, rgba(255, 254, 253, 0.7), rgba(247, 246, 242, 0.58));
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.68);
+}
+
+.clash-project-card-delete {
+  border: 1px solid rgba(225, 221, 213, 0.72);
+  background:
+    linear-gradient(180deg, rgba(255, 254, 253, 0.9), rgba(247, 246, 242, 0.74));
+  color: #6a6258;
+  box-shadow:
+    0 8px 18px rgba(35, 31, 25, 0.052),
+    inset 0 1px 0 rgba(255, 255, 255, 0.76);
+  transition:
+    border-color 180ms ease,
+    background 180ms ease,
+    color 180ms ease,
+    box-shadow 180ms ease;
+}
+
+.clash-project-card-delete:hover {
+  border-color: rgba(255, 107, 80, 0.32);
+  background:
+    linear-gradient(180deg, rgba(255, 254, 253, 0.94), rgba(255, 240, 237, 0.62));
+  color: #d64936;
+  box-shadow:
+    0 10px 22px rgba(35, 31, 25, 0.064),
+    0 2px 8px rgba(255, 107, 80, 0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 0.82);
 }
 
 .clash-auth-panel {

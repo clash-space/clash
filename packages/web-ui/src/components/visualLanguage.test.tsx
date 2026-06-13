@@ -56,7 +56,7 @@ const oldEditorModalShellTokens =
 const oldMediaViewerTokens =
   /bg-black\/80|bg-white\/10|hover:bg-white\/20|text-white|ring-white\/10|shadow-2xl|focus-visible:ring-white|focus-visible:ring-offset-black/;
 const oldConfirmDialogTokens =
-  /bg-slate-950\/35|shadow-lg border border-warm-border|transition=\{\{ type: 'spring'|bg-warm-muted\/70/;
+  /bg-slate-950\/35|bg-slate-950|hover:bg-slate-800|bg-red-600|hover:bg-red-700|focus-visible:ring-red-500|shadow-lg border border-warm-border|transition=\{\{ type: 'spring'|bg-warm-muted\/70/;
 const oldRouteErrorTokens =
   /Something went wrong|Unknown error|bg-slate-950|hover:bg-slate-800|text-white transition-colors|border-t-slate-950|shadow-\[0_18px_48px_rgba\(35,31,25,0\.08\)/;
 const oldSettingsDialogTokens =
@@ -64,7 +64,7 @@ const oldSettingsDialogTokens =
 const oldSettingsActionTokens =
   /bg-slate-950|hover:bg-slate-800|bg-slate-950 text-slate-50|bg-red-50|hover:bg-red-50|text-red-700/;
 const oldProjectTileTokens =
-  /border-2 border-dashed|hover:shadow-lg|bg-warm-muted\/60|bg-warm-surface\/70/;
+  /border-2 border-dashed|hover:shadow-lg|bg-warm-muted\/60|bg-warm-surface\/70|window\.confirm|if \(confirm\(|confirm\('[^']|hover:bg-red-50|dark:hover:bg-red-950|focus-visible:ring-red-500/;
 const oldAuthRouteTokens =
   /bg-slate-950 px-6 py-4|hover:bg-slate-800|bg-red-50|bg-green-50|shadow-slate-950\/10/;
 const oldDaemonConnectTokens =
@@ -332,6 +332,7 @@ describe("visual language surfaces", () => {
     expect(projectSource).toMatch(/projectTitleInputWidthCh/);
     expect(projectSource).toMatch(/width: `\$\{projectTitleInputWidthCh\}ch`/);
     expect(projectSource).toMatch(/id="project-top-actions"/);
+    expect(projectSource).toMatch(/absolute top-10 z-20/);
     expect(projectSource).toMatch(/<PresenceBar clients=\{otherClients\} \/>/);
     expect(projectSource).toMatch(/<UserControls projectChrome \/>/);
     expect(projectSource).not.toMatch(/MonitorPlay|isPresentationMode|Present canvas|Presenting/);
@@ -339,8 +340,12 @@ describe("visual language surfaces", () => {
     expect(copilotSource).toMatch(/bottom-\[max\(1rem,env\(safe-area-inset-bottom\)\)\]/);
     expect(copilotSource).toMatch(/\/brand\/logo-mark-animated\.svg/);
     expect(copilotSource).toMatch(/clash-copilot-panel-shell fixed bottom-3 right-3/);
+    expect(copilotSource).toMatch(/height: 'calc\(100dvh - var\(--clash-desktop-chrome-height, 0px\) - 1\.5rem\)'/);
     expect(copilotSource).toMatch(/rounded-matrix/);
     expect(copilotSource).toMatch(/transformOrigin: 'right bottom'/);
+    expect(copilotSource).toMatch(/absolute left-12 top-6/);
+    expect(copilotSource).toMatch(/absolute right-4 top-6/);
+    expect(copilotSource).toMatch(/top-20 overflow-y-auto/);
     expect(copilotSource).toMatch(/scale: isCollapsed \? 0\.82 : 1/);
     expect(copilotSource).toMatch(/x: isCollapsed \? 48 : 0/);
     expect(copilotSource).toMatch(/y: isCollapsed \? 48 : 0/);
@@ -385,17 +390,18 @@ describe("visual language surfaces", () => {
     expect(cssSource).toMatch(/--color-warm-page: #fbfaf7/);
   });
 
-  it("gives dashboard entry screens visible canvas language instead of empty white space", () => {
+  it("keeps dashboard entry screens canvas-first without a detached hero preview", () => {
     const source = [
       "packages/web-ui/src/components/HeroSection.tsx",
+      "packages/web-ui/src/components/landing/LandingHero.tsx",
       "packages/web-ui/src/components/ProjectsClient.tsx",
       "apps/web/app/globals.css",
     ]
       .map((path) => readFileSync(join(process.cwd(), path), "utf8"))
       .join("\n");
 
-    expect(source).toMatch(/clash-home-canvas-preview/);
-    expect(source).toMatch(/clash-home-preview-node/);
+    expect(source).not.toMatch(/HeroCanvasPreview|clash-home-canvas-preview|clash-home-preview-node|Agent drafting|Neon rain/);
+    expect(source).toMatch(/variant="hero"/);
     expect(source).toMatch(/\/brand\/logo-mark-animated\.svg/);
     expect(source).toMatch(/clash-dashboard-shell/);
     expect(source).toMatch(/clash-projects-empty-workbench/);
@@ -419,7 +425,8 @@ describe("visual language surfaces", () => {
       .map((path) => readFileSync(join(process.cwd(), path), "utf8"))
       .join("\n");
 
-    expect(source).toMatch(/HeroCanvasPreview/);
+    expect(source).not.toMatch(/HeroCanvasPreview|Agent drafting|Neon rain/);
+    expect(source).toMatch(/variant="hero"/);
     expect(source).toMatch(/Canvas-first planning/);
     expect(source).toMatch(/Local runtime ready/);
     expect(source).toMatch(/Cloud when invited/);
@@ -509,6 +516,9 @@ describe("visual language surfaces", () => {
     expect(source).toMatch(/clash-confirm-dialog-backdrop/);
     expect(source).toMatch(/clash-confirm-dialog-surface/);
     expect(source).toMatch(/clash-confirm-dialog-footer/);
+    expect(source).toMatch(/clash-confirm-primary/);
+    expect(source).toMatch(/clash-confirm-secondary/);
+    expect(source).toMatch(/clash-confirm-danger/);
   });
 
   it("keeps the root error boundary transparent and recoverable instead of generic copy", () => {
@@ -568,6 +578,8 @@ describe("visual language surfaces", () => {
     expect(source).toMatch(/clash-project-create-tile/);
     expect(source).toMatch(/clash-project-card-frame/);
     expect(source).toMatch(/clash-project-card-empty/);
+    expect(source).toMatch(/useConfirm/);
+    expect(source).toMatch(/clash-project-card-delete/);
   });
 
   it("keeps the login route in Clash auth surfaces instead of generic black auth buttons", () => {

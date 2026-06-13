@@ -5,7 +5,6 @@ import { useState, useTransition } from 'react';
 import { useNavigate } from 'react-router';
 import betterAuthClient from '@clash/web-ui/lib/betterAuthClient';
 import { ChatInput } from '../copilot/ChatInput';
-import { HeroCanvasPreview } from '../HeroSection';
 
 export default function LandingHero() {
   const [inputValue, setInputValue] = useState('');
@@ -26,7 +25,7 @@ export default function LandingHero() {
 
   return (
     <section className="relative flex min-h-[calc(100vh-5rem)] items-center overflow-hidden px-6 pb-16 pt-28 lg:px-8">
-      <div className="mx-auto grid w-full max-w-[1600px] items-center gap-10 lg:grid-cols-[minmax(0,0.98fr)_minmax(380px,0.72fr)]">
+      <div className="mx-auto w-full max-w-[1600px]">
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
@@ -55,8 +54,6 @@ export default function LandingHero() {
             />
           </motion.div>
         </motion.div>
-
-        <HeroCanvasPreview />
       </div>
     </section>
   );

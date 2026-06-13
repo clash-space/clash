@@ -754,7 +754,7 @@ export default function ChatbotCopilot({
                 }
                 style={isMobile ? undefined : {
                     width: `${width}px`,
-                    height: 'min(720px, calc(100dvh - var(--clash-desktop-chrome-height, 0px) - 1.5rem))',
+                    height: 'calc(100dvh - var(--clash-desktop-chrome-height, 0px) - 1.5rem)',
                     transformOrigin: 'right bottom',
                 }}
                 animate={
@@ -793,10 +793,10 @@ export default function ChatbotCopilot({
                             aria-expanded={true}
                             aria-controls="clash-copilot-panel"
                             icon={<CaretRight className="w-5 h-5" weight="bold" />}
-                            className="absolute left-2 top-4 z-20 text-stone-700 dark:text-stone-300"
+                            className="absolute left-2 top-6 z-20 text-stone-700 dark:text-stone-300"
                         />
 
-                        <div className="pointer-events-none absolute left-12 top-4 z-20 flex h-10 items-center gap-2">
+                        <div className="pointer-events-none absolute left-12 top-6 z-20 flex h-10 items-center gap-2">
                             <img
                                 src="/brand/logo-mark-animated.svg"
                                 alt=""
@@ -810,7 +810,7 @@ export default function ChatbotCopilot({
                         </div>
 
                         {/* Session Controls */}
-                        <div className="absolute right-4 top-4 z-20 flex items-center gap-1" role="toolbar" aria-label={t('copilot.panel.label')}>
+                        <div className="absolute right-4 top-6 z-20 flex items-center gap-1" role="toolbar" aria-label={t('copilot.panel.label')}>
                             <IconButton
                                 onClick={handleNewSession}
                                 label={t('copilot.header.newSession')}
@@ -926,7 +926,7 @@ export default function ChatbotCopilot({
                                     animate={{ opacity: 1, y: 0, scale: 1 }}
                                     exit={{ opacity: 0, y: -10, scale: 0.95 }}
                                     ref={historyDropdownRef}
-	                                    className="absolute top-14 right-4 z-30 w-64 bg-warm-surface rounded-2xl shadow-[0_18px_48px_rgba(35,31,25,0.12)] border border-warm-border overflow-hidden"
+	                                    className="absolute top-[4.75rem] right-4 z-30 w-64 bg-warm-surface rounded-2xl shadow-[0_18px_48px_rgba(35,31,25,0.12)] border border-warm-border overflow-hidden"
                                 >
                                     <div className="p-3 border-b border-warm-border bg-warm-muted">
                                         <h3 className="font-display text-xs font-semibold text-stone-700 uppercase tracking-wider dark:text-stone-300">{t('copilot.history.title')}</h3>
@@ -984,11 +984,11 @@ export default function ChatbotCopilot({
                             animate={{ opacity: 1, y: 0, scale: 1 }}
                             exit={{ opacity: 0, y: 8, scale: 0.99 }}
                             transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
-                            className="h-full flex flex-col pt-16 relative"
+                            className="h-full flex flex-col pt-20 relative"
                         >
                             <div
                                 ref={scrollContainerRef}
-                                className="absolute inset-0 top-16 overflow-y-auto px-6 pt-4 pb-32"
+                                className="absolute inset-0 top-20 overflow-y-auto px-6 pt-4 pb-32"
                             >
                                 <div className="space-y-6">
                                     {/* Runtime mode produces the local ACP message shape.

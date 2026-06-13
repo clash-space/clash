@@ -5,6 +5,7 @@ import { motion } from 'framer-motion';
 import { Link } from 'react-router';
 import { Trash } from '@phosphor-icons/react';
 import { deleteProject } from '@clash/web-ui/lib/clientActions';
+import { useConfirm } from './ConfirmDialog';
 
 interface Asset {
   id: string;
@@ -27,6 +28,8 @@ interface ProjectCardProps {
 }
 
 export default function ProjectCard({ project }: ProjectCardProps) {
+  const confirm = useConfirm();
+
   // Format Date
   const date = new Date(project.updatedAt || project.createdAt || new Date());
   const formattedDate = new Intl.DateTimeFormat('en-US', {
@@ -112,12 +115,19 @@ export default function ProjectCard({ project }: ProjectCardProps) {
           type="button"
           onClick={async (e) => {
             e.stopPropagation();
-            if (confirm('Are you sure you want to delete this project?')) {
+            const ok = await confirm({
+              title: 'Delete project?',
+              message: `${project.name || 'Untitled'} will be removed from this workspace. Its canvas preview and generated assets will no longer show here.`,
+              confirmText: 'Delete',
+              destructive: true,
+            });
+
+            if (ok) {
               await deleteProject(project.id);
             }
           }}
           aria-label={`Delete project ${project.name || 'Untitled'}`}
-          className="rounded-xl bg-warm-surface/90 p-2 min-h-[36px] min-w-[36px] text-slate-600 shadow-sm backdrop-blur-sm transition-colors hover:bg-red-50 hover:text-red-600 dark:text-slate-300 dark:hover:bg-red-950/40 dark:hover:text-red-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500 focus-visible:ring-offset-2 focus-visible:ring-offset-warm-page"
+          className="clash-project-card-delete rounded-xl p-2 min-h-[36px] min-w-[36px] backdrop-blur-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-warm-page"
         >
           <Trash className="h-4 w-4" weight="bold" aria-hidden="true" />
         </button>
