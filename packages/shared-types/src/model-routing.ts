@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import type { ModelKind } from "./models";
+import { MODEL_CARDS, type ModelCard, type ModelKind } from "./models";
 
 export const ModelUpstreamIdSchema = z.enum([
   "mock",
@@ -24,10 +24,24 @@ export const ModelUpstreamApiShapeSchema = z.enum([
 ]);
 export type ModelUpstreamApiShape = z.infer<typeof ModelUpstreamApiShapeSchema>;
 
+export const ProviderAccountIdSchema = z.enum([
+  "official",
+  "fal",
+  "kie",
+  "replicate",
+  "mock",
+  "custom",
+]);
+export type ProviderAccountId = z.infer<typeof ProviderAccountIdSchema>;
+
 export interface ModelUpstreamRoute {
   /** Public model code stored by the app, e.g. "seedance-2-ref". */
   modelCode: string;
   kind: ModelKind;
+  /** User-facing account bucket. `official` can still route to OpenAI/Google/etc. adapters. */
+  providerId?: ProviderAccountId;
+  /** Optional account region/channel, e.g. official global vs domestic. */
+  region?: "global" | "cn" | string;
   upstreamId: ModelUpstreamId;
   /** Upstream-native model/endpoint string. */
   upstreamModel: string;
@@ -35,6 +49,8 @@ export interface ModelUpstreamRoute {
   apiShape: ModelUpstreamApiShape;
   /** Lower numbers win unless user provider order overrides them. */
   priority: number;
+  /** Higher numbers win when user/provider route weighting is configured. */
+  weight?: number;
   requiredVariables?: string[];
 }
 
@@ -48,12 +64,31 @@ export interface UpstreamAvailability {
   availableVariables?: string[];
   /** Lower numbers win within this upstream. */
   priority?: number;
+  /** Higher numbers win before provider order when set. */
+  weight?: number;
+}
+
+export interface ProviderAccountAvailability {
+  providerId: ProviderAccountId;
+  upstreamId?: ModelUpstreamId;
+  region?: string;
+  enabled?: boolean;
+  /**
+   * Omit when key availability is unknown and should be checked by the adapter.
+   * Pass [] to explicitly indicate BYOK is missing.
+   */
+  availableVariables?: string[];
+  /** Lower numbers win within equal weights. */
+  priority?: number;
+  /** Higher numbers win before declaration order. */
+  weight?: number;
 }
 
 export interface ModelUpstreamRouteQuery {
   modelCode: string;
   kind?: ModelKind;
   configuredUpstreams?: UpstreamAvailability[];
+  configuredProviders?: ProviderAccountAvailability[];
   allowMock?: boolean;
 }
 
@@ -64,6 +99,16 @@ export type ModelProviderApiShape = ModelUpstreamApiShape;
 export type ModelProviderRoute = ModelUpstreamRoute;
 export type ProviderAvailability = UpstreamAvailability;
 export type ModelProviderRouteQuery = ModelUpstreamRouteQuery;
+export type ModelCatalogTier = "available" | "configured-provider" | "all";
+
+export interface ModelCatalogEntry {
+  model: ModelCard;
+  tier: ModelCatalogTier;
+  routes: ModelUpstreamRoute[];
+  selectedRoute: ModelUpstreamRoute | null;
+  candidateProviders: ProviderAccountId[];
+  missingVariables: string[];
+}
 
 const FAL_SECRET = "FAL_API_KEY";
 const GOOGLE_VERTEX_SECRET = "GOOGLE_VERTEX";
@@ -79,6 +124,7 @@ function fal(
   return {
     modelCode,
     kind,
+    providerId: "fal",
     upstreamId: "fal",
     upstreamModel,
     apiShape: "fal",
@@ -95,6 +141,7 @@ function falMock(
   return {
     modelCode,
     kind,
+    providerId: "mock",
     upstreamId: "mock",
     upstreamModel,
     apiShape: "fal",
@@ -111,6 +158,8 @@ function googleVertex(
   return {
     modelCode,
     kind,
+    providerId: "official",
+    region: "global",
     upstreamId: "google",
     upstreamModel,
     apiShape: "google-vertex",
@@ -128,6 +177,8 @@ function googleAiStudio(
   return {
     modelCode,
     kind,
+    providerId: "official",
+    region: "global",
     upstreamId: "google",
     upstreamModel,
     apiShape: "google-ai-studio",
@@ -144,6 +195,8 @@ function openAiCompatible(
   return {
     modelCode,
     kind: "text",
+    providerId: "official",
+    region: "global",
     upstreamId: "openai",
     upstreamModel,
     apiShape: "openai-compatible",
@@ -160,6 +213,8 @@ function openAiImages(
   return {
     modelCode,
     kind: "image",
+    providerId: "official",
+    region: "global",
     upstreamId: "openai",
     upstreamModel,
     apiShape: "openai-images",
@@ -257,12 +312,22 @@ function directFalRoute(query: ModelUpstreamRouteQuery): ModelUpstreamRoute | nu
   return {
     modelCode: query.modelCode,
     kind: query.kind ?? "image",
+    providerId: query.allowMock ? "mock" : "fal",
     upstreamId: query.allowMock ? "mock" : "fal",
     upstreamModel: query.modelCode,
     apiShape: "fal",
     priority: 50,
     requiredVariables: query.allowMock ? undefined : [FAL_SECRET],
   };
+}
+
+function providerIdForRoute(route: ModelUpstreamRoute): ProviderAccountId {
+  if (route.providerId) return route.providerId;
+  if (route.upstreamId === "openai" || route.upstreamId === "google") return "official";
+  if (route.upstreamId === "fal" || route.upstreamId === "kie" || route.upstreamId === "replicate" || route.upstreamId === "mock") {
+    return route.upstreamId;
+  }
+  return "custom";
 }
 
 function upstreamIndex(configuredUpstreams: UpstreamAvailability[] | undefined, upstreamId: ModelUpstreamId): number {
@@ -278,37 +343,88 @@ function upstreamConfig(
   return configuredUpstreams?.find((upstream) => upstream.upstreamId === upstreamId);
 }
 
-function hasRequiredVariables(route: ModelUpstreamRoute, config: UpstreamAvailability | undefined): boolean {
+function providerIndex(configuredProviders: ProviderAccountAvailability[] | undefined, route: ModelUpstreamRoute): number {
+  if (!configuredProviders) return Number.POSITIVE_INFINITY;
+  const index = configuredProviders.findIndex((provider) => matchesProviderAccount(route, provider));
+  return index >= 0 ? index : Number.POSITIVE_INFINITY;
+}
+
+function matchesProviderAccount(route: ModelUpstreamRoute, provider: ProviderAccountAvailability): boolean {
+  if (provider.providerId !== providerIdForRoute(route)) return false;
+  if (provider.upstreamId && provider.upstreamId !== route.upstreamId) return false;
+  if (provider.region && route.region && provider.region !== route.region) return false;
+  return true;
+}
+
+function providerConfig(
+  configuredProviders: ProviderAccountAvailability[] | undefined,
+  route: ModelUpstreamRoute,
+): ProviderAccountAvailability | undefined {
+  return configuredProviders?.find((provider) => matchesProviderAccount(route, provider));
+}
+
+function configForRoute(
+  query: Pick<ModelUpstreamRouteQuery, "configuredProviders" | "configuredUpstreams">,
+  route: ModelUpstreamRoute,
+): ProviderAccountAvailability | UpstreamAvailability | undefined {
+  if (query.configuredProviders) return providerConfig(query.configuredProviders, route);
+  return upstreamConfig(query.configuredUpstreams, route.upstreamId);
+}
+
+function missingRequiredVariables(
+  route: ModelUpstreamRoute,
+  config: ProviderAccountAvailability | UpstreamAvailability | undefined,
+): string[] {
+  if (!route.requiredVariables?.length) return [];
+  if (!config || config.availableVariables === undefined) return [];
+  return route.requiredVariables.filter((variable) => !config.availableVariables?.includes(variable));
+}
+
+function hasRequiredVariables(
+  route: ModelUpstreamRoute,
+  config: ProviderAccountAvailability | UpstreamAvailability | undefined,
+): boolean {
   if (!route.requiredVariables?.length) return true;
   if (!config || config.availableVariables === undefined) return true;
-  return route.requiredVariables.every((variable) => config.availableVariables?.includes(variable));
+  return missingRequiredVariables(route, config).length === 0;
 }
 
 function isEnabled(route: ModelUpstreamRoute, query: ModelUpstreamRouteQuery): boolean {
   if (route.upstreamId === "mock" && !query.allowMock) return false;
-  if (!query.configuredUpstreams) return true;
-  const config = upstreamConfig(query.configuredUpstreams, route.upstreamId);
+  if (!query.configuredUpstreams && !query.configuredProviders) return true;
+  const config = configForRoute(query, route);
   if (!config || config.enabled === false) return false;
   return hasRequiredVariables(route, config);
 }
 
-export function listModelUpstreamRoutes(query: ModelUpstreamRouteQuery): ModelUpstreamRoute[] {
+function candidateRoutes(query: ModelUpstreamRouteQuery): ModelUpstreamRoute[] {
   const direct = directFalRoute(query);
-  const candidates = direct
+  return direct
     ? [direct]
     : MODEL_UPSTREAM_ROUTES.filter(
         (route) =>
           route.modelCode === query.modelCode &&
           (!query.kind || route.kind === query.kind),
       );
+}
+
+export function listModelUpstreamRoutes(query: ModelUpstreamRouteQuery): ModelUpstreamRoute[] {
+  const candidates = candidateRoutes(query);
 
   return candidates
     .filter((route) => isEnabled(route, query))
     .sort((a, b) => {
-      const aConfig = upstreamConfig(query.configuredUpstreams, a.upstreamId);
-      const bConfig = upstreamConfig(query.configuredUpstreams, b.upstreamId);
-      const aIndex = upstreamIndex(query.configuredUpstreams, a.upstreamId);
-      const bIndex = upstreamIndex(query.configuredUpstreams, b.upstreamId);
+      const aConfig = configForRoute(query, a);
+      const bConfig = configForRoute(query, b);
+      const aWeight = (aConfig?.weight ?? 0) + (a.weight ?? 0);
+      const bWeight = (bConfig?.weight ?? 0) + (b.weight ?? 0);
+      if (aWeight !== bWeight) return bWeight - aWeight;
+      const aIndex = query.configuredProviders
+        ? providerIndex(query.configuredProviders, a)
+        : upstreamIndex(query.configuredUpstreams, a.upstreamId);
+      const bIndex = query.configuredProviders
+        ? providerIndex(query.configuredProviders, b)
+        : upstreamIndex(query.configuredUpstreams, b.upstreamId);
       if (aIndex !== bIndex) return aIndex - bIndex;
       const aUpstreamPriority = aConfig?.priority ?? 0;
       const bUpstreamPriority = bConfig?.priority ?? 0;
@@ -319,6 +435,51 @@ export function listModelUpstreamRoutes(query: ModelUpstreamRouteQuery): ModelUp
 
 export function resolveModelUpstreamRoute(query: ModelUpstreamRouteQuery): ModelUpstreamRoute | null {
   return listModelUpstreamRoutes(query)[0] ?? null;
+}
+
+function uniqueProviderIds(routes: ModelUpstreamRoute[]): ProviderAccountId[] {
+  return [...new Set(routes.map(providerIdForRoute))];
+}
+
+export function listModelCatalogEntries(options: {
+  models?: readonly ModelCard[];
+  configuredProviders?: ProviderAccountAvailability[];
+  configuredUpstreams?: UpstreamAvailability[];
+  allowMock?: boolean;
+} = {}): ModelCatalogEntry[] {
+  const models = options.models ?? MODEL_CARDS;
+  return models.map((model) => {
+    const query: ModelUpstreamRouteQuery = {
+      modelCode: model.id,
+      kind: model.kind,
+      configuredProviders: options.configuredProviders,
+      configuredUpstreams: options.configuredUpstreams,
+      allowMock: options.allowMock,
+    };
+    const allRoutes = candidateRoutes({ modelCode: model.id, kind: model.kind, allowMock: options.allowMock });
+    const routes = listModelUpstreamRoutes(query);
+    const selectedRoute = routes[0] ?? null;
+    const configuredCandidates = allRoutes.filter((route) => {
+      const config = configForRoute(query, route);
+      return !!config && config.enabled !== false;
+    });
+    const missingVariables = [
+      ...new Set(configuredCandidates.flatMap((route) => missingRequiredVariables(route, configForRoute(query, route)))),
+    ];
+    const tier: ModelCatalogTier = selectedRoute
+      ? "available"
+      : configuredCandidates.length > 0
+        ? "configured-provider"
+        : "all";
+    return {
+      model,
+      tier,
+      routes,
+      selectedRoute,
+      candidateProviders: uniqueProviderIds(configuredCandidates.length ? configuredCandidates : allRoutes),
+      missingVariables,
+    };
+  });
 }
 
 export const listModelProviderRoutes = listModelUpstreamRoutes;

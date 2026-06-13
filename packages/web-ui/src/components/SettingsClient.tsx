@@ -4,7 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Key, Plus, Trash, Copy, Check, ArrowLeft, Lock, Eye, EyeSlash, PuzzlePiece, BookOpen, Terminal, Plug, CloudArrowUp } from '@phosphor-icons/react';
 import { useClashRuntime } from '@clash/web-ui/hooks/useClashRuntime';
 import { Link } from 'react-router';
-import { ACTION_PROVIDER_PRESETS, CustomActionDefinitionSchema } from '@clash/shared-types';
+import { ACTION_PROVIDER_PRESETS, CustomActionDefinitionSchema, normalizeActionProviderId } from '@clash/shared-types';
 import {
     createApiToken, revokeApiToken, type ApiTokenInfo,
     setVariable, deleteVariable, type VariableInfo,
@@ -413,9 +413,12 @@ export default function SettingsClient({
                                 })();
                                 const secrets = manifest?.secrets ?? [];
                                 const missingSecrets = secrets.filter((s) => !variableKeys.has(s.id));
-                                const modelProvider = manifest?.model?.provider
-                                    ? ACTION_PROVIDER_PRESETS[manifest.model.provider]?.label ?? manifest.model.provider
-                                    : null;
+                                const modelProvider = (() => {
+                                    const provider = manifest?.model?.provider;
+                                    if (!provider) return null;
+                                    const presetId = normalizeActionProviderId(provider);
+                                    return presetId ? ACTION_PROVIDER_PRESETS[presetId].label : provider;
+                                })();
                                 const modelLabel = manifest?.model
                                     ? `${modelProvider ?? manifest.model.provider} · ${manifest.model.name ?? manifest.model.id}`
                                     : null;

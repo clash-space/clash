@@ -159,7 +159,7 @@ export type ModelParameterType = z.infer<typeof ModelParameterTypeSchema>;
 /**
  * Provider configuration for models
  */
-export const ProviderSchema = z.enum(['official', 'kie']);
+export const ProviderSchema = z.enum(['official', 'kie', 'fal', 'replicate']);
 export type Provider = z.infer<typeof ProviderSchema>;
 
 export const ModelProviderConfigSchema = z.object({

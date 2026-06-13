@@ -24,14 +24,36 @@ Usage:
 """
 
 from .decorators import action
-from .models import ActionContext, ActionResult, AssetOutput
+from .models import (
+    ActionContext,
+    ActionResult,
+    ActionSecret,
+    AssetOutput,
+    ProviderDefinition,
+    ProviderModelDefinition,
+    ServerlessProviderDefinition,
+    ServerlessProviderRequest,
+    ServerlessProviderResponse,
+    define_model,
+    define_provider,
+    define_serverless_provider,
+)
 from .agent import ClashAgent, run
 
 __all__ = [
     "action",
     "ActionContext",
     "ActionResult",
+    "ActionSecret",
     "AssetOutput",
+    "ProviderDefinition",
+    "ProviderModelDefinition",
+    "ServerlessProviderDefinition",
+    "ServerlessProviderRequest",
+    "ServerlessProviderResponse",
+    "define_model",
+    "define_provider",
+    "define_serverless_provider",
     "ClashAgent",
     "run",
 ]

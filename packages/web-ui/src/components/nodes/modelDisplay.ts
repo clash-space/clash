@@ -1,4 +1,9 @@
-import { ACTION_PROVIDER_PRESETS, type CustomActionDefinition, type ModelCard } from "@clash/shared-types";
+import {
+  ACTION_PROVIDER_PRESETS,
+  normalizeActionProviderId,
+  type CustomActionDefinition,
+  type ModelCard,
+} from "@clash/shared-types";
 
 export function getModelProviderDisplay({
   isCustom,
@@ -12,7 +17,8 @@ export function getModelProviderDisplay({
 
   const provider = customDef?.model?.provider;
   if (!provider) return "Custom";
-  return ACTION_PROVIDER_PRESETS[provider]?.label ?? provider;
+  const presetId = normalizeActionProviderId(provider);
+  return presetId ? ACTION_PROVIDER_PRESETS[presetId].label : provider;
 }
 
 export function getModelDropdownSecondaryText(compatible: boolean): string | null {

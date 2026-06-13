@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  listModelCatalogEntries,
   listModelUpstreamRoutes,
   resolveModelUpstreamRoute,
+  type ProviderAccountAvailability,
   type UpstreamAvailability,
 } from "./model-routing";
 
@@ -114,6 +116,83 @@ describe("model upstream routing", () => {
       upstreamId: "fal",
       upstreamModel: "fal-ai/minimax/speech-02-hd",
       apiShape: "fal",
+    });
+  });
+
+  it("resolves weighted provider accounts before static route priority", () => {
+    const route = resolveModelUpstreamRoute({
+      modelCode: "gemini-flash-image-2",
+      kind: "image",
+      configuredProviders: [
+        {
+          providerId: "official",
+          upstreamId: "google",
+          region: "global",
+          enabled: true,
+          availableVariables: ["GOOGLE_VERTEX"],
+          weight: 10,
+        },
+        {
+          providerId: "fal",
+          enabled: true,
+          availableVariables: ["FAL_API_KEY"],
+          weight: 90,
+        },
+      ],
+    });
+
+    expect(route).toMatchObject({
+      providerId: "fal",
+      upstreamId: "fal",
+      upstreamModel: "fal-ai/nano-banana-2",
+      apiShape: "fal",
+    });
+  });
+
+  it("keeps official provider accounts separate from internal upstream adapters and regions", () => {
+    const route = resolveModelUpstreamRoute({
+      modelCode: "gpt-image-2",
+      kind: "image",
+      configuredProviders: [
+        {
+          providerId: "official",
+          upstreamId: "openai",
+          region: "global",
+          enabled: true,
+          availableVariables: ["OPENAI_API_KEY"],
+        },
+      ],
+    });
+
+    expect(route).toMatchObject({
+      providerId: "official",
+      upstreamId: "openai",
+      region: "global",
+      upstreamModel: "gpt-image-2",
+    });
+  });
+
+  it("classifies model catalog entries by runnable and configured-provider tiers", () => {
+    const configuredProviders: ProviderAccountAvailability[] = [
+      { providerId: "fal", enabled: true, availableVariables: ["FAL_API_KEY"] },
+      { providerId: "official", upstreamId: "openai", enabled: true, availableVariables: [] },
+    ];
+
+    const entries = listModelCatalogEntries({ configuredProviders });
+    const nanoBanana = entries.find((entry) => entry.model.id === "nano-banana-2");
+    const gptImage = entries.find((entry) => entry.model.id === "gpt-image-2");
+
+    expect(nanoBanana).toMatchObject({
+      tier: "available",
+      selectedRoute: {
+        providerId: "fal",
+        upstreamId: "fal",
+      },
+    });
+    expect(gptImage).toMatchObject({
+      tier: "configured-provider",
+      missingVariables: ["OPENAI_API_KEY"],
+      candidateProviders: ["official"],
     });
   });
 });

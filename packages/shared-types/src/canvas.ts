@@ -826,16 +826,39 @@ export function normalizeActionProviderId(value: unknown): ActionProviderId | nu
   return ACTION_PROVIDER_ALIASES[key] ?? null;
 }
 
+function normalizeActionProviderRef(value: unknown): string | null {
+  if (typeof value !== 'string') return null;
+  const raw = value.trim();
+  if (!raw) return null;
+  return normalizeActionProviderId(raw) ??
+    raw.toLowerCase().replace(/^@/, '').replace(/[^a-z0-9._-]+/g, '-').replace(/^-+|-+$/g, '');
+}
+
+function providerLabel(provider: string): string {
+  const preset = ACTION_PROVIDER_PRESETS[provider as ActionProviderId];
+  if (preset) return preset.label;
+  return provider
+    .split(/[-_\s.]+/)
+    .filter(Boolean)
+    .map((part) => part.length <= 4 ? part.toUpperCase() : part[0].toUpperCase() + part.slice(1))
+    .join(' ');
+}
+
 export const ActionProviderIdSchema = z.preprocess(
   (value) => normalizeActionProviderId(value) ?? value,
   z.enum(ACTION_PROVIDER_IDS),
 );
 
+export const ActionProviderRefSchema = z.preprocess(
+  (value) => normalizeActionProviderRef(value) ?? value,
+  z.string().min(1),
+);
+
 export const CustomActionModelSchema = z.object({
   /** Provider-facing model id, e.g. `fal-ai/flux-pro` or `gpt-image-1`. */
   id: z.string(),
-  /** Common MaaS / official provider preset. Aliases like `replica` normalize to `replicate`. */
-  provider: ActionProviderIdSchema,
+  /** Common MaaS / official provider preset, or a user-defined provider id. */
+  provider: ActionProviderRefSchema,
   /** Optional display name when the provider id is too terse. */
   name: z.string().optional(),
   /** Override the provider preset key name, e.g. `OPENAI_API_KEY` for provider=`official`. */
@@ -853,13 +876,14 @@ export function mergeActionProviderSecrets<T extends { model?: CustomActionModel
   const secrets = [...(def.secrets ?? [])];
   const provider = def.model?.provider;
   if (provider) {
-    const preset = ACTION_PROVIDER_PRESETS[provider];
-    const id = def.model?.secretId || preset.defaultSecretId;
-    if (!secrets.some((secret) => secret.id === id)) {
+    const preset = ACTION_PROVIDER_PRESETS[provider as ActionProviderId];
+    const id = def.model?.secretId || preset?.defaultSecretId;
+    if (id && !secrets.some((secret) => secret.id === id)) {
+      const label = providerLabel(provider);
       secrets.push({
         id,
-        label: preset.secretLabel,
-        description: preset.secretDescription,
+        label: preset?.secretLabel ?? `${label} API key`,
+        description: preset?.secretDescription ?? `API key used to call the ${label} model provider.`,
         required: true,
       });
     }

@@ -1,6 +1,9 @@
 export {
   actionResult,
   defineAction,
+  defineModel,
+  defineProvider,
+  defineServerlessProvider,
   type ActionContext,
   type ActionDefinition,
   type ActionModel,
@@ -9,6 +12,13 @@ export {
   type ActionSecret,
   type AssetOutput,
   type Modality,
+  type ProviderApiShape,
+  type ProviderDefinition,
+  type ProviderModelDefinition,
   type RunOptions,
+  type ServerlessProviderDefinition,
+  type ServerlessProviderHandler,
+  type ServerlessProviderRequest,
+  type ServerlessProviderResponse,
 } from './types.js';
 export { ClashAgent, run } from './agent.js';

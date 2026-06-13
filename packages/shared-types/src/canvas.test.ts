@@ -358,6 +358,37 @@ describe("CustomActionDefinitionSchema", () => {
     ]);
   });
 
+  it("allows custom provider model bindings for serverless function hosts", () => {
+    const def = CustomActionDefinitionSchema.parse({
+      id: "acme-render",
+      name: "ACME Render",
+      outputType: "video",
+      runtime: "worker",
+      workerUrl: "https://acme-render.example.com/generate",
+      model: {
+        provider: "acme-cloud",
+        id: "acme/video-v1",
+        name: "ACME Video v1",
+        secretId: "ACME_API_KEY",
+        apiShape: "serverless-function",
+        endpoint: "/generate",
+      },
+    });
+
+    expect(def.model).toMatchObject({
+      provider: "acme-cloud",
+      id: "acme/video-v1",
+      apiShape: "serverless-function",
+      endpoint: "/generate",
+    });
+    expect(def.secrets).toContainEqual({
+      id: "ACME_API_KEY",
+      label: "ACME Cloud API key",
+      description: "API key used to call the ACME Cloud model provider.",
+      required: true,
+    });
+  });
+
   it("exposes built-in provider presets for key configuration UI", () => {
     expect(normalizeActionProviderId("fal.ai")).toBe("fal");
     expect(ACTION_PROVIDER_PRESETS.fal.defaultSecretId).toBe("FAL_API_KEY");

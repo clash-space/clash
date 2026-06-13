@@ -19,6 +19,105 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Awaitable, Callable, Literal, Optional
 
+Modality = Literal["image", "video", "audio", "text"]
+ProviderApiShape = Literal[
+    "fal",
+    "openai-compatible",
+    "openai-images",
+    "google-vertex",
+    "google-ai-studio",
+    "replicate",
+    "kie",
+    "serverless-function",
+    "http",
+]
+
+
+@dataclass
+class ActionSecret:
+    id: str
+    label: str
+    description: Optional[str] = None
+    required: bool = True
+
+
+@dataclass
+class ProviderModelDefinition:
+    """Model exposed by a custom/provider host.
+
+    `id` is the Clash-facing model code. `upstream_model` is the
+    provider-native endpoint/model id and defaults to `id` when omitted.
+    """
+
+    id: str
+    name: str
+    kind: Modality
+    upstream_model: Optional[str] = None
+    description: Optional[str] = None
+    parameters: list[dict[str, Any]] = field(default_factory=list)
+    default_params: dict[str, str | int | float | bool] = field(default_factory=dict)
+    secret_id: Optional[str] = None
+    endpoint: Optional[str] = None
+    api_shape: Optional[ProviderApiShape] = None
+    weight: Optional[float] = None
+
+
+@dataclass
+class ProviderDefinition:
+    """Provider manifest that can back one or more model cards/routes."""
+
+    id: str
+    label: str
+    api_shape: Optional[ProviderApiShape] = None
+    base_url: Optional[str] = None
+    endpoint: Optional[str] = None
+    secrets: list[ActionSecret] = field(default_factory=list)
+    models: list[ProviderModelDefinition] = field(default_factory=list)
+    docs_url: Optional[str] = None
+
+
+@dataclass
+class ServerlessProviderDefinition(ProviderDefinition):
+    """HTTPS function host shape for user-owned provider execution."""
+
+    worker_url: str = ""
+    api_shape: ProviderApiShape = "serverless-function"
+
+
+@dataclass
+class ServerlessProviderRequest:
+    task_id: str
+    node_id: str
+    project_id: str
+    provider_id: str
+    model: dict[str, Any]
+    prompt: str
+    params: dict[str, Any] = field(default_factory=dict)
+    refs: dict[str, list[str]] = field(default_factory=dict)
+    secrets: dict[str, str] = field(default_factory=dict)
+
+
+@dataclass
+class ServerlessProviderResponse:
+    outputs: list[AssetOutput] = field(default_factory=list)  # type: ignore[name-defined]
+    type: Optional[Modality] = None
+    url: Optional[str] = None
+    mime_type: Optional[str] = None
+    content: Optional[str] = None
+    description: Optional[str] = None
+
+
+def define_model(definition: ProviderModelDefinition) -> ProviderModelDefinition:
+    return definition
+
+
+def define_provider(definition: ProviderDefinition) -> ProviderDefinition:
+    return definition
+
+
+def define_serverless_provider(definition: ServerlessProviderDefinition) -> ServerlessProviderDefinition:
+    return definition
+
 
 @dataclass
 class ActionContext:
@@ -56,7 +155,7 @@ class AssetOutput:
     siblings are tellable apart on the canvas.
     """
 
-    type: Literal["image", "video", "audio", "text"]
+    type: Modality
     data: Optional[bytes] = None
     content: Optional[str] = None
     mime_type: Optional[str] = None

@@ -8,6 +8,17 @@
 
 export type Modality = 'image' | 'video' | 'audio' | 'text';
 
+export type ProviderApiShape =
+  | 'fal'
+  | 'openai-compatible'
+  | 'openai-images'
+  | 'google-vertex'
+  | 'google-ai-studio'
+  | 'replicate'
+  | 'kie'
+  | 'serverless-function'
+  | 'http';
+
 export type ActionProvider =
   | 'fal'
   | 'replicate'
@@ -21,13 +32,14 @@ export type ActionProvider =
 export interface ActionModel {
   /** Provider-facing model id, e.g. `fal-ai/flux-pro` or `gpt-image-1`. */
   id: string;
-  /** Common MaaS / official provider preset. */
+  /** Common MaaS / official provider preset, or a user-defined provider id. */
   provider: ActionProvider | string;
   name?: string;
   /** Override the provider preset key name. */
   secretId?: string;
   baseUrl?: string;
   endpoint?: string;
+  apiShape?: ProviderApiShape;
   [key: string]: unknown;
 }
 
@@ -36,6 +48,43 @@ export interface ActionSecret {
   label: string;
   description?: string;
   required?: boolean;
+}
+
+export interface ProviderModelDefinition {
+  /** User-facing model code stored in Clash nodes. */
+  id: string;
+  name: string;
+  kind: Modality;
+  /** Provider-native model or endpoint id. Defaults to `id`. */
+  upstreamModel?: string;
+  description?: string;
+  parameters?: Array<Record<string, unknown>>;
+  defaultParams?: Record<string, string | number | boolean>;
+  secretId?: string;
+  endpoint?: string;
+  apiShape?: ProviderApiShape;
+  weight?: number;
+  [key: string]: unknown;
+}
+
+export interface ProviderDefinition {
+  /** Stable provider id, e.g. `acme-cloud`. */
+  id: string;
+  label: string;
+  apiShape?: ProviderApiShape;
+  baseUrl?: string;
+  endpoint?: string;
+  secrets?: ActionSecret[];
+  models?: ProviderModelDefinition[];
+  docsUrl?: string;
+  [key: string]: unknown;
+}
+
+export interface ServerlessProviderDefinition extends ProviderDefinition {
+  apiShape: 'serverless-function';
+  /** HTTPS endpoint Clash should call for provider execution. */
+  workerUrl: string;
+  models: ProviderModelDefinition[];
 }
 
 export interface ActionContext {
@@ -78,6 +127,37 @@ export interface AssetOutput {
    *  can tell siblings apart. */
   label?: string;
 }
+
+export interface ServerlessProviderRequest {
+  taskId: string;
+  nodeId: string;
+  projectId: string;
+  providerId: string;
+  model: ActionModel;
+  prompt: string;
+  params: Record<string, string | number | boolean>;
+  refs: {
+    image: string[];
+    video: string[];
+    audio: string[];
+  };
+  secrets: Record<string, string>;
+}
+
+export interface ServerlessProviderResponse {
+  outputs?: AssetOutput[];
+  /** Single-output shorthand for hosted functions that return a remote asset URL. */
+  type?: Modality;
+  url?: string;
+  mimeType?: string;
+  content?: string;
+  description?: string;
+  [key: string]: unknown;
+}
+
+export type ServerlessProviderHandler = (
+  request: ServerlessProviderRequest,
+) => Promise<ServerlessProviderResponse> | ServerlessProviderResponse;
 
 /**
  * 0..N outputs per task.
@@ -163,6 +243,18 @@ export const actionResult = {
  *  IDE autocomplete in handler bodies — wrap your definition in
  *  `defineAction({...})` to get type errors on misshapen manifests. */
 export function defineAction(def: ActionDefinition): ActionDefinition {
+  return def;
+}
+
+export function defineModel(def: ProviderModelDefinition): ProviderModelDefinition {
+  return def;
+}
+
+export function defineProvider(def: ProviderDefinition): ProviderDefinition {
+  return def;
+}
+
+export function defineServerlessProvider(def: ServerlessProviderDefinition): ServerlessProviderDefinition {
   return def;
 }
 
