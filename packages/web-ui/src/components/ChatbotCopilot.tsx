@@ -85,7 +85,7 @@ const markdownComponents = {
                 {children}
             </code>
         ) : (
-            <code className="block bg-slate-900 text-slate-50 p-4 rounded-lg mb-4 overflow-x-auto text-sm font-mono dark:bg-warm-page dark:text-slate-100 dark:border dark:border-warm-border" {...props}>
+            <code className="clash-copilot-code block rounded-xl p-4 mb-4 overflow-x-auto text-sm font-mono" {...props}>
                 {children}
             </code>
         );
@@ -1160,7 +1160,7 @@ function AddMachineDialog({ open, onClose }: { open: boolean; onClose: () => voi
                 {t('copilot.addMachine.runInTerminal')}
             </div>
             <div className="flex items-stretch gap-2 mb-3">
-                <code className="flex-1 font-mono text-sm bg-slate-900 text-slate-50 px-3 py-2.5 rounded-lg break-all select-all dark:bg-warm-page dark:text-slate-100 dark:border dark:border-warm-border">
+                <code className="clash-copilot-code flex-1 min-w-0 overflow-x-auto whitespace-nowrap rounded-xl px-3 py-2.5 font-mono text-sm select-all">
                     {cmd}
                 </code>
                 <button

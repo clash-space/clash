@@ -135,7 +135,7 @@ function PairingBlock({
 }) {
   if (status === 'error') {
     return (
-      <div role="alert" className="rounded-lg border border-red-200 bg-red-50/60 p-3 text-sm text-red-800 dark:bg-red-950/30 dark:border-red-900/50 dark:text-red-200">
+      <div role="alert" className="clash-copilot-alert-error rounded-xl p-3 text-sm">
         <div className="font-medium mb-1">Pairing failed</div>
         <div className="font-mono text-xs">{errorMessage ?? 'unknown error'}</div>
       </div>
@@ -157,7 +157,7 @@ function PairingBlock({
         Run this in your terminal
       </div>
       <div className="flex items-stretch gap-2 mb-4">
-        <code className="flex-1 font-mono text-sm bg-slate-900 text-slate-50 px-3 py-2.5 rounded-lg break-all select-all dark:bg-warm-page dark:text-slate-100 dark:border dark:border-warm-border">
+        <code className="clash-copilot-code flex-1 min-w-0 overflow-x-auto whitespace-nowrap rounded-xl px-3 py-2.5 font-mono text-sm select-all">
           {command}
         </code>
         <button

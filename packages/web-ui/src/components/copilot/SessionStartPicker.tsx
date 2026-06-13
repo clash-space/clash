@@ -155,7 +155,7 @@ export function SessionStartPicker({
         type="button"
         onClick={() => onStart(helperCrewId, resumeId ?? undefined, agentId ?? undefined)}
         disabled={busy}
-        className="w-full rounded-xl bg-slate-950 text-white py-2.5 min-h-[44px] text-sm font-medium hover:bg-slate-800 disabled:opacity-50 disabled:cursor-not-allowed dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-warm-surface"
+        className="clash-copilot-primary w-full rounded-xl py-2.5 min-h-[44px] text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-warm-surface"
       >
         {busy ? 'Starting…' : startLabel}
       </button>

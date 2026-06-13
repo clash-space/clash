@@ -434,7 +434,8 @@ html.dark.clash-is-scrolling ::-webkit-scrollbar-thumb:hover {
     linear-gradient(180deg, rgba(255, 254, 253, 0.9), rgba(255, 254, 253, 0.78));
 }
 
-.clash-settings-primary {
+.clash-settings-primary,
+.clash-copilot-primary {
   background:
     linear-gradient(180deg, rgba(255, 118, 91, 0.98), rgba(255, 107, 80, 0.96));
   color: #fffefd;
@@ -448,7 +449,8 @@ html.dark.clash-is-scrolling ::-webkit-scrollbar-thumb:hover {
     transform 180ms ease;
 }
 
-.clash-settings-primary:hover {
+.clash-settings-primary:hover,
+.clash-copilot-primary:hover {
   filter: saturate(1.04) brightness(1.01);
   box-shadow:
     0 12px 24px rgba(255, 107, 80, 0.19),
@@ -456,13 +458,15 @@ html.dark.clash-is-scrolling ::-webkit-scrollbar-thumb:hover {
     inset 0 1px 0 rgba(255, 255, 255, 0.38);
 }
 
-.clash-settings-primary:disabled {
+.clash-settings-primary:disabled,
+.clash-copilot-primary:disabled {
   cursor: not-allowed;
   opacity: 0.52;
   filter: none;
 }
 
-.clash-settings-code {
+.clash-settings-code,
+.clash-copilot-code {
   border: 1px solid rgba(225, 221, 213, 0.84);
   background:
     linear-gradient(180deg, rgba(255, 254, 253, 0.88), rgba(241, 239, 234, 0.74));
@@ -472,7 +476,8 @@ html.dark.clash-is-scrolling ::-webkit-scrollbar-thumb:hover {
     inset 0 1px 0 rgba(255, 255, 255, 0.74);
 }
 
-.clash-settings-alert-error {
+.clash-settings-alert-error,
+.clash-copilot-alert-error {
   border: 1px solid rgba(255, 107, 80, 0.34);
   background: rgba(255, 240, 237, 0.82);
   color: #8e2f20;

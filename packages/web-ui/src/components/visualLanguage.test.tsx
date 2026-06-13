@@ -69,6 +69,8 @@ const oldAuthRouteTokens =
   /bg-slate-950 px-6 py-4|hover:bg-slate-800|bg-red-50|bg-green-50|shadow-slate-950\/10/;
 const oldDaemonConnectTokens =
   /bg-slate-950|hover:bg-slate-800|bg-slate-950 text-slate-50|text-white px-6 py-3|text-red-600|clash-auth-code[^"]*break-all/;
+const oldLocalAgentSetupTokens =
+  /bg-slate-950 text-white py-2\.5|min-h-\[44px\] text-sm font-medium hover:bg-slate-800|bg-slate-900 text-slate-50 px-3 py-2\.5|border-red-200 bg-red-50/;
 
 describe("visual language surfaces", () => {
   afterEach(() => {
@@ -364,6 +366,22 @@ describe("visual language surfaces", () => {
     expect(source).toMatch(/clash-auth-primary/);
     expect(source).toMatch(/clash-auth-code/);
     expect(source).toMatch(/clash-auth-alert-error/);
+  });
+
+  it("keeps local agent setup surfaces aligned with daemon-era Clash chrome", () => {
+    const source = [
+      "packages/web-ui/src/components/copilot/SessionStartPicker.tsx",
+      "packages/web-ui/src/components/copilot/ByoAgentDialog.tsx",
+      "packages/web-ui/src/components/ChatbotCopilot.tsx",
+      "apps/web/app/globals.css",
+    ]
+      .map((path) => readFileSync(join(process.cwd(), path), "utf8"))
+      .join("\n");
+
+    expect(source).not.toMatch(oldLocalAgentSetupTokens);
+    expect(source).toMatch(/clash-copilot-primary/);
+    expect(source).toMatch(/clash-copilot-code/);
+    expect(source).toMatch(/clash-copilot-alert-error/);
   });
 
   it.each([
