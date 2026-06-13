@@ -705,35 +705,31 @@ async function exerciseRuntimeCopilotUi(cdp) {
     `!!document.querySelector('[aria-label="AI Copilot"], [aria-label="AI 副驾驶"]')`,
     "AI Copilot panel",
   );
-  await click(
-    cdp,
-    `document.querySelector("button[aria-label='Run on (Cloud / local runtime)']") ||
-      document.querySelector("button[aria-label='运行环境（云端 / 本地）']")`,
-    "Run on runtime picker",
-  );
-  await click(
-    cdp,
-    `([...document.querySelectorAll("[role='menuitem'], button")].find((el) => {
-      const text = (el.innerText || el.textContent || "").trim();
-      const rect = el.getBoundingClientRect();
-      const style = getComputedStyle(el);
-      return text.includes("Mock Desktop") &&
-        rect.width > 0 &&
-        rect.height > 0 &&
-        style.display !== "none" &&
-        style.visibility !== "hidden";
-    }))`,
-    "Mock Desktop runtime",
-  );
-  await waitFor(cdp, `document.body.innerText.includes("Start local helper on Mock Desktop")`, "runtime picker dialog");
-  await click(cdp, clickableByText("Start helper"), "Start helper");
   await waitFor(
     cdp,
-    `document.body.innerText.includes("Local agent connected") ||
-      document.body.innerText.includes("本地 Agent 已连接")`,
-    "local runtime connected",
+    `!!document.querySelector('[role="status"][aria-label="Connected"], [role="status"][aria-label="已连接"]')`,
+    "desktop local runtime connected",
     15000,
   );
+  const emptyState = await evaluate(cdp, `(() => ({
+    bodyText: document.body.innerText.slice(0, 500),
+    hasRunPicker: !!(
+      document.querySelector("button[aria-label='Run on (Cloud / local runtime)']") ||
+      document.querySelector("button[aria-label='运行环境（云端 / 本地）']")
+    ),
+    statusLabels: [...document.querySelectorAll('[role="status"]')]
+      .map((el) => el.getAttribute("aria-label") || (el.innerText || el.textContent || "").trim())
+      .filter(Boolean),
+  }))()`);
+  if (
+    emptyState.bodyText.includes("Local agent connected") ||
+    emptyState.bodyText.includes("本地 Agent 已连接") ||
+    emptyState.bodyText.includes("No local agent is available") ||
+    emptyState.bodyText.includes("Start the local agent")
+  ) {
+    throw new Error(`Desktop local empty state is too noisy: ${JSON.stringify(emptyState)}`);
+  }
+  console.log("[desktop-smoke] runtime copilot empty state", JSON.stringify(emptyState));
 
   const prompt = "hello desktop runtime helper";
   await typeRoomMessage(cdp, prompt);

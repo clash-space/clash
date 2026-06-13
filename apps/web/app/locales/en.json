@@ -43,6 +43,15 @@
       "count_one": "{{count}} Selected",
       "count_other": "{{count}} Selected"
     },
+    "sessionConfig": {
+      "label": "Session runtime, harness, and model",
+      "runtime": "Runtime",
+      "harness": "Harness",
+      "model": "Model",
+      "local": "Local",
+      "cloud": "Cloud",
+      "cloudSoon": "Coming soon"
+    },
     "status": {
       "connecting": "Connecting to runtime…",
       "connected": "Connected",

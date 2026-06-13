@@ -43,6 +43,15 @@
       "count_one": "已选 {{count}} 项",
       "count_other": "已选 {{count}} 项"
     },
+    "sessionConfig": {
+      "label": "会话运行时、Harness 和模型",
+      "runtime": "运行时",
+      "harness": "Harness",
+      "model": "模型",
+      "local": "本机",
+      "cloud": "云端",
+      "cloudSoon": "即将推出"
+    },
     "status": {
       "connecting": "正在连接运行时…",
       "connected": "已连接",

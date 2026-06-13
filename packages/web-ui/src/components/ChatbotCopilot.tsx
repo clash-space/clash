@@ -1,7 +1,7 @@
 
-import { memo, useState, useRef, useEffect, useCallback, useMemo, useId } from 'react';
+import { memo, useState, useRef, useEffect, useCallback, useMemo, useId, type ReactNode } from 'react';
 import { motion, AnimatePresence, MotionConfig } from 'framer-motion';
-import { CaretRight, Plus, ClockCounterClockwise, Trash, Plug } from '@phosphor-icons/react';
+import { CaretDown, CaretRight, Check, Plus, ClockCounterClockwise, Trash, Plug } from '@phosphor-icons/react';
 import { useTranslation } from 'react-i18next';
 import { Command } from '@clash/web-ui/lib/clientActions';
 import { UserMessage } from './copilot/UserMessage';
@@ -141,11 +141,93 @@ const LOCAL_AGENT_PREFERENCE = [
     'claude-agent-acp',
 ];
 
+type AcpHarnessFamily = 'codex' | 'claude' | 'gemini' | 'generic';
+
+type AcpModelProfile = {
+    id: string;
+    label: string;
+    description: string;
+    harnessFamilies?: AcpHarnessFamily[];
+};
+
+const ACP_MODEL_PROFILE_CATALOG: AcpModelProfile[] = [
+    {
+        id: 'auto',
+        label: 'Auto',
+        description: 'Use the selected harness default model',
+    },
+    {
+        id: 'codex:gpt-5.5',
+        label: 'GPT-5.5',
+        description: 'Codex conversational model profile',
+        harnessFamilies: ['codex'],
+    },
+    {
+        id: 'codex:gpt-5.4',
+        label: 'GPT-5.4',
+        description: 'Codex compatibility profile',
+        harnessFamilies: ['codex'],
+    },
+    {
+        id: 'claude:sonnet',
+        label: 'Claude Sonnet',
+        description: 'Claude Code default coding profile',
+        harnessFamilies: ['claude'],
+    },
+    {
+        id: 'claude:opus',
+        label: 'Claude Opus',
+        description: 'Claude Code high-reasoning profile',
+        harnessFamilies: ['claude'],
+    },
+    {
+        id: 'gemini:pro',
+        label: 'Gemini Pro',
+        description: 'Gemini CLI pro profile',
+        harnessFamilies: ['gemini'],
+    },
+    {
+        id: 'gemini:flash',
+        label: 'Gemini Flash',
+        description: 'Gemini CLI fast profile',
+        harnessFamilies: ['gemini'],
+    },
+];
+const DEFAULT_ACP_MODEL_PROFILE = ACP_MODEL_PROFILE_CATALOG[0]!;
+const DEFAULT_ACP_MODEL_PROFILE_ID = 'auto';
+
 function preferredLocalAgentId(agents: Runtime['agents']): string | undefined {
     for (const id of LOCAL_AGENT_PREFERENCE) {
         if (agents.some((agent) => agent.id === id)) return id;
     }
     return agents[0]?.id;
+}
+
+function agentDisplayName(agentId?: string | null): string {
+    if (!agentId) return 'Agent';
+    if (agentId === 'codex-cli' || agentId === 'codex-app-server') return 'Codex';
+    if (agentId === 'claude-code-acp' || agentId === 'claude-agent-acp') return 'Claude Code';
+    if (agentId === 'gemini-cli') return 'Gemini CLI';
+    if (agentId === 'mock-acp') return 'Mock ACP';
+    return agentId
+        .replace(/[-_]+/g, ' ')
+        .replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
+function agentHarnessFamily(agentId?: string | null): AcpHarnessFamily {
+    if (!agentId) return 'generic';
+    if (agentId.includes('codex')) return 'codex';
+    if (agentId.includes('claude')) return 'claude';
+    if (agentId.includes('gemini')) return 'gemini';
+    return 'generic';
+}
+
+function modelProfilesForHarness(agentId?: string | null): AcpModelProfile[] {
+    const family = agentHarnessFamily(agentId);
+    return ACP_MODEL_PROFILE_CATALOG.filter((profile) => {
+        if (profile.id === DEFAULT_ACP_MODEL_PROFILE_ID) return true;
+        return profile.harnessFamilies?.includes(family) ?? false;
+    });
 }
 
 const PERSONA_MAP: Record<string, string> = {
@@ -338,6 +420,9 @@ export default function ChatbotCopilot({
     //   - 'runtime' : useClashRuntime (registered local daemon / clashd)
     const [chatMode, setChatMode] = useState<'cloud' | 'runtime'>('runtime');
     const [runtimeMenuOpen, setRuntimeMenuOpen] = useState(false);
+    const [sessionConfigOpen, setSessionConfigOpen] = useState(false);
+    const [sessionHarnessId, setSessionHarnessId] = useState<string | null>(null);
+    const [sessionModelProfileId, setSessionModelProfileId] = useState(DEFAULT_ACP_MODEL_PROFILE_ID);
     const [addMachineOpen, setAddMachineOpen] = useState(false);
     /** When set, the runtime picker dialog is open for this runtime. */
     const [runtimePicker, setRuntimePicker] = useState<Runtime | null>(null);
@@ -347,6 +432,59 @@ export default function ChatbotCopilot({
         () => clashRt.runtimes.find((rt) => rt.id === DESKTOP_LOCAL_RUNTIME_ID) ?? null,
         [clashRt.runtimes],
     );
+    const selectedRuntimeForSession = useMemo(
+        () => (chatMode === 'runtime'
+            ? clashRt.runtimes.find((rt) => rt.id === clashRt.selectedRuntimeId) ?? desktopLocalRuntime
+            : null),
+        [chatMode, clashRt.runtimes, clashRt.selectedRuntimeId, desktopLocalRuntime],
+    );
+    const sessionHarnessOptions = selectedRuntimeForSession?.agents ?? [];
+    const effectiveSessionHarnessId =
+        sessionHarnessId ??
+        clashRt.selectedAgentId ??
+        preferredLocalAgentId(sessionHarnessOptions) ??
+        null;
+    const sessionModelProfiles = useMemo(
+        () => modelProfilesForHarness(effectiveSessionHarnessId),
+        [effectiveSessionHarnessId],
+    );
+    const selectedSessionModelProfile =
+        sessionModelProfiles.find((model) => model.id === sessionModelProfileId) ??
+        sessionModelProfiles[0] ??
+        DEFAULT_ACP_MODEL_PROFILE;
+
+    useEffect(() => {
+        if (sessionHarnessOptions.length === 0) return;
+        if (effectiveSessionHarnessId && sessionHarnessOptions.some((agent) => agent.id === effectiveSessionHarnessId)) return;
+        setSessionHarnessId(preferredLocalAgentId(sessionHarnessOptions) ?? null);
+    }, [effectiveSessionHarnessId, sessionHarnessOptions]);
+
+    useEffect(() => {
+        if (sessionModelProfiles.some((profile) => profile.id === sessionModelProfileId)) return;
+        setSessionModelProfileId(DEFAULT_ACP_MODEL_PROFILE_ID);
+    }, [sessionModelProfileId, sessionModelProfiles]);
+
+    const selectSessionRuntime = useCallback((runtime: Runtime) => {
+        if (runtime.status !== 'online' || runtime.agents.length === 0) return;
+        const agentId = preferredLocalAgentId(runtime.agents);
+        setChatMode('runtime');
+        setSessionHarnessId(agentId ?? null);
+        void clashRt.select(runtime.id, 'director', {
+            projectId,
+            agentId,
+        });
+    }, [clashRt, projectId]);
+
+    const selectSessionHarness = useCallback((agentId: string) => {
+        setSessionHarnessId(agentId);
+        const runtime = selectedRuntimeForSession ?? desktopLocalRuntime;
+        if (!runtime || runtime.status !== 'online') return;
+        setChatMode('runtime');
+        void clashRt.select(runtime.id, 'director', {
+            projectId,
+            agentId,
+        });
+    }, [clashRt, desktopLocalRuntime, projectId, selectedRuntimeForSession]);
 
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const scrollContainerRef = useRef<HTMLDivElement>(null);
@@ -1183,6 +1321,19 @@ export default function ChatbotCopilot({
                                         />
                                     );
                                 })()}
+                                <SessionConfigSelector
+                                    open={sessionConfigOpen}
+                                    onOpenChange={setSessionConfigOpen}
+                                    runtimes={clashRt.runtimes}
+                                    chatMode={chatMode}
+                                    selectedRuntime={selectedRuntimeForSession}
+                                    selectedHarnessId={effectiveSessionHarnessId}
+                                    selectedModelProfileId={selectedSessionModelProfile.id}
+                                    modelProfiles={sessionModelProfiles}
+                                    onSelectRuntime={selectSessionRuntime}
+                                    onSelectHarness={selectSessionHarness}
+                                    onSelectModelProfile={setSessionModelProfileId}
+                                />
                                 <ChatInput
                                     input={input}
                                     onInputChange={setInput}
@@ -1321,6 +1472,184 @@ function SlashCommandBar({
     );
 }
 
+function SessionConfigSelector({
+    open,
+    onOpenChange,
+    runtimes,
+    chatMode,
+    selectedRuntime,
+    selectedHarnessId,
+    selectedModelProfileId,
+    modelProfiles,
+    onSelectRuntime,
+    onSelectHarness,
+    onSelectModelProfile,
+}: {
+    open: boolean;
+    onOpenChange: (open: boolean) => void;
+    runtimes: Runtime[];
+    chatMode: 'cloud' | 'runtime';
+    selectedRuntime: Runtime | null;
+    selectedHarnessId: string | null;
+    selectedModelProfileId: string;
+    modelProfiles: AcpModelProfile[];
+    onSelectRuntime: (runtime: Runtime) => void;
+    onSelectHarness: (agentId: string) => void;
+    onSelectModelProfile: (profileId: string) => void;
+}) {
+    const { t } = useTranslation();
+    const selectedModelProfile =
+        modelProfiles.find((profile) => profile.id === selectedModelProfileId) ??
+        modelProfiles[0];
+    const runtimeLabel =
+        chatMode === 'cloud'
+            ? t('copilot.sessionConfig.cloud')
+            : selectedRuntime?.id === DESKTOP_LOCAL_RUNTIME_ID
+                ? t('copilot.sessionConfig.local')
+                : selectedRuntime?.hostname || t('copilot.sessionConfig.local');
+    const harnessLabel = agentDisplayName(selectedHarnessId);
+    const modelLabel = selectedModelProfile?.label ?? 'Auto';
+    const selectedRuntimeId = chatMode === 'runtime' ? selectedRuntime?.id ?? null : null;
+
+    return (
+        <div className="relative px-4 pb-2">
+            <button
+                type="button"
+                aria-label={t('copilot.sessionConfig.label')}
+                aria-expanded={open}
+                aria-haspopup="menu"
+                onClick={() => onOpenChange(!open)}
+                className="inline-flex max-w-full items-center gap-1.5 rounded-xl border border-warm-border bg-warm-surface/90 px-3 py-1.5 text-xs font-medium text-slate-800 shadow-sm transition-colors hover:bg-warm-muted dark:text-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-warm-page"
+            >
+                <span className="truncate">{runtimeLabel}</span>
+                <span className="text-stone-400" aria-hidden="true">·</span>
+                <span className="truncate">{harnessLabel}</span>
+                <span className="text-stone-400" aria-hidden="true">·</span>
+                <span className="truncate">{modelLabel}</span>
+                <CaretDown className="h-3.5 w-3.5 flex-shrink-0 text-stone-500" aria-hidden="true" />
+            </button>
+
+            <AnimatePresence>
+                {open && (
+                    <motion.div
+                        role="menu"
+                        aria-label={t('copilot.sessionConfig.label')}
+                        initial={{ opacity: 0, y: 8, scale: 0.98 }}
+                        animate={{ opacity: 1, y: 0, scale: 1 }}
+                        exit={{ opacity: 0, y: 8, scale: 0.98 }}
+                        transition={{ duration: 0.16, ease: [0.16, 1, 0.3, 1] }}
+                        className="absolute bottom-full left-4 z-40 mb-2 w-[calc(100%-2rem)] max-h-[58vh] overflow-y-auto rounded-2xl border border-warm-border bg-warm-surface shadow-[0_18px_48px_rgba(35,31,25,0.14)]"
+                    >
+                        <SessionConfigSection title={t('copilot.sessionConfig.runtime')}>
+                            <SessionConfigRow
+                                label={t('copilot.sessionConfig.local')}
+                                sub={selectedRuntime?.id === DESKTOP_LOCAL_RUNTIME_ID ? selectedRuntime.hostname : undefined}
+                                active={chatMode === 'runtime' && selectedRuntimeId === DESKTOP_LOCAL_RUNTIME_ID}
+                                disabled={!runtimes.some((runtime) => runtime.id === DESKTOP_LOCAL_RUNTIME_ID && runtime.status === 'online' && runtime.agents.length > 0)}
+                                onClick={() => {
+                                    const runtime = runtimes.find((item) => item.id === DESKTOP_LOCAL_RUNTIME_ID);
+                                    if (runtime) onSelectRuntime(runtime);
+                                }}
+                            />
+                            {runtimes
+                                .filter((runtime) => runtime.id !== DESKTOP_LOCAL_RUNTIME_ID)
+                                .map((runtime) => (
+                                    <SessionConfigRow
+                                        key={runtime.id}
+                                        label={runtime.hostname || runtime.machine_id.slice(0, 10)}
+                                        sub={runtime.status === 'online'
+                                            ? t('copilot.runtime.machineSub_online', { count: runtime.agents.length })
+                                            : t('copilot.runtime.machineSub_offline')}
+                                        active={chatMode === 'runtime' && selectedRuntimeId === runtime.id}
+                                        disabled={runtime.status !== 'online' || runtime.agents.length === 0}
+                                        onClick={() => onSelectRuntime(runtime)}
+                                    />
+                                ))}
+                            <SessionConfigRow
+                                label={t('copilot.sessionConfig.cloud')}
+                                sub={t('copilot.sessionConfig.cloudSoon')}
+                                active={chatMode === 'cloud'}
+                                disabled
+                                onClick={() => undefined}
+                            />
+                        </SessionConfigSection>
+
+                        <SessionConfigSection title={t('copilot.sessionConfig.harness')}>
+                            {(selectedRuntime?.agents ?? []).map((agent) => (
+                                <SessionConfigRow
+                                    key={agent.id}
+                                    label={agentDisplayName(agent.id)}
+                                    sub={agent.binary}
+                                    active={selectedHarnessId === agent.id}
+                                    onClick={() => onSelectHarness(agent.id)}
+                                />
+                            ))}
+                        </SessionConfigSection>
+
+                        <SessionConfigSection title={t('copilot.sessionConfig.model')}>
+                            {modelProfiles.map((profile) => (
+                                <SessionConfigRow
+                                    key={profile.id}
+                                    label={profile.label}
+                                    sub={profile.description}
+                                    active={selectedModelProfileId === profile.id}
+                                    onClick={() => onSelectModelProfile(profile.id)}
+                                />
+                            ))}
+                        </SessionConfigSection>
+                    </motion.div>
+                )}
+            </AnimatePresence>
+        </div>
+    );
+}
+
+function SessionConfigSection({ title, children }: { title: string; children: ReactNode }) {
+    return (
+        <section className="border-b border-warm-border/70 last:border-b-0 py-1.5">
+            <div className="px-3 pb-1 pt-1 text-[11px] font-semibold uppercase tracking-wider text-stone-600 dark:text-stone-400">
+                {title}
+            </div>
+            <div className="pb-1">{children}</div>
+        </section>
+    );
+}
+
+function SessionConfigRow({
+    label,
+    sub,
+    active,
+    disabled,
+    onClick,
+}: {
+    label: string;
+    sub?: string;
+    active?: boolean;
+    disabled?: boolean;
+    onClick: () => void;
+}) {
+    return (
+        <button
+            type="button"
+            role="menuitem"
+            disabled={disabled}
+            aria-checked={active}
+            onClick={onClick}
+            className={`flex min-h-[44px] w-full items-center gap-3 px-3 py-2 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand ${
+                disabled ? 'cursor-not-allowed opacity-50' : 'hover:bg-warm-muted'
+            } ${active ? 'bg-brand/10 dark:bg-brand/15' : ''}`}
+        >
+            <span className="flex h-4 w-4 flex-shrink-0 items-center justify-center" aria-hidden="true">
+                {active ? <Check className="h-4 w-4 text-brand" weight="bold" /> : null}
+            </span>
+            <span className="min-w-0 flex-1">
+                <span className="block truncate text-sm font-medium text-slate-800 dark:text-slate-100">{label}</span>
+                {sub ? <span className="block truncate text-[11px] text-stone-600 dark:text-stone-400">{sub}</span> : null}
+            </span>
+        </button>
+    );
+}
+
 /**
  * One row in the "Run on" dropdown. Active row gets a checkmark + bg.
  * Disabled rows (offline runtime, no agents detected) are unclickable
@@ -1390,8 +1719,11 @@ function RuntimeMessageList({
     const { t } = useTranslation();
     if (messages.length === 0) {
         const hasLocalAgent = !!localRuntime && localRuntime.status === 'online' && localRuntime.agents.length > 0;
-        if (desktopLocalMode && !setupIssue && !ready && hasLocalAgent && (status === 'idle' || status === 'connecting')) {
+        if (desktopLocalMode && !setupIssue && !ready && (status === 'idle' || status === 'connecting') && (!localRuntime || hasLocalAgent)) {
             return <RuntimeLoadingStatus label={t('copilot.status.desktopLocalStarting')} />;
+        }
+        if (desktopLocalMode && ready) {
+            return null;
         }
         const emptyText = setupIssue
             ? t('copilot.status.desktopLocalSetupRequired')

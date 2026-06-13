@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import type { ReactNode } from "react";
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import ChatbotCopilot from "./ChatbotCopilot";
@@ -27,6 +27,13 @@ vi.mock("react-i18next", () => ({
       if (key === "copilot.header.newSession") return "New session";
       if (key === "copilot.header.history") return "Session history";
       if (key === "copilot.header.runOn") return "Run on (Cloud / local runtime)";
+      if (key === "copilot.sessionConfig.label") return "Session runtime, harness, and model";
+      if (key === "copilot.sessionConfig.runtime") return "Runtime";
+      if (key === "copilot.sessionConfig.harness") return "Harness";
+      if (key === "copilot.sessionConfig.model") return "Model";
+      if (key === "copilot.sessionConfig.local") return "Local";
+      if (key === "copilot.sessionConfig.cloud") return "Cloud";
+      if (key === "copilot.sessionConfig.cloudSoon") return "Coming soon";
       if (key === "copilot.runtime.menuTitle") return "Run on";
       if (key === "copilot.runtime.cloud.label") return "Cloud Agent";
       if (key === "copilot.runtime.cloud.sub") return "Coming soon";
@@ -252,5 +259,98 @@ describe("ChatbotCopilot desktop local mode", () => {
     expect(container.textContent).not.toContain("Connecting to runtime...");
     expect(container.textContent).not.toContain("Connecting to the local agent on this Mac...");
     expect(container.textContent).not.toContain("Streaming");
+  });
+
+  it("does not flash a missing-agent sentence before desktop runtimes load", () => {
+    globalThis.__CLASH_RUNTIME_CONFIG__ = { mode: "desktop" };
+    vi.stubGlobal(
+      "IntersectionObserver",
+      vi.fn(function IntersectionObserver() {
+        return {
+          observe: vi.fn(),
+          disconnect: vi.fn(),
+        };
+      }),
+    );
+    Element.prototype.scrollIntoView = vi.fn();
+    mocks.useClashRuntime.mockReturnValue(runtimeState({
+      runtimes: [],
+      selectedRuntimeId: null,
+      selectedAgentId: null,
+      status: "idle",
+      ready: false,
+    }));
+    mocks.useAgentCopilot.mockReturnValue(cloudState());
+
+    const { container } = renderDesktopCopilot();
+
+    expect(screen.getByRole("status", { name: "Connecting to the local agent on this Mac..." })).toBeTruthy();
+    expect(container.textContent).not.toContain("Start the local agent on this Mac.");
+  });
+
+  it("does not show a desktop local ready empty-state sentence", () => {
+    globalThis.__CLASH_RUNTIME_CONFIG__ = { mode: "desktop" };
+    vi.stubGlobal(
+      "IntersectionObserver",
+      vi.fn(function IntersectionObserver() {
+        return {
+          observe: vi.fn(),
+          disconnect: vi.fn(),
+        };
+      }),
+    );
+    Element.prototype.scrollIntoView = vi.fn();
+    mocks.useClashRuntime.mockReturnValue(runtimeState({
+      selectedRuntimeId: "desktop-local",
+      selectedAgentId: "codex-cli",
+      status: "connected",
+      ready: true,
+    }));
+    mocks.useAgentCopilot.mockReturnValue(cloudState());
+
+    const { container } = renderDesktopCopilot();
+
+    expect(container.textContent).not.toContain("Local agent connected. Send a message to start.");
+  });
+
+  it("offers a session-level runtime, harness, and model selector", () => {
+    globalThis.__CLASH_RUNTIME_CONFIG__ = { mode: "desktop" };
+    vi.stubGlobal(
+      "IntersectionObserver",
+      vi.fn(function IntersectionObserver() {
+        return {
+          observe: vi.fn(),
+          disconnect: vi.fn(),
+        };
+      }),
+    );
+    Element.prototype.scrollIntoView = vi.fn();
+    mocks.useClashRuntime.mockReturnValue(runtimeState({
+      selectedRuntimeId: "desktop-local",
+      selectedAgentId: "codex-cli",
+      status: "connected",
+      ready: true,
+    }));
+    mocks.useAgentCopilot.mockReturnValue(cloudState());
+
+    renderDesktopCopilot();
+
+    const trigger = screen.getByRole("button", { name: "Session runtime, harness, and model" });
+    expect(trigger.textContent).toContain("Local");
+    expect(trigger.textContent).toContain("Codex");
+    expect(trigger.textContent).toContain("Auto");
+
+    fireEvent.click(trigger);
+
+    expect(screen.getByText("Runtime")).toBeTruthy();
+    expect(screen.getByText("Cloud")).toBeTruthy();
+    expect(screen.getByText("Coming soon")).toBeTruthy();
+    expect(screen.getByText("Harness")).toBeTruthy();
+    expect(screen.getAllByText("Codex").length).toBeGreaterThan(0);
+    expect(screen.getByText("Model")).toBeTruthy();
+    expect(screen.getAllByText("Auto").length).toBeGreaterThan(0);
+    expect(screen.getByText("Use the selected harness default model")).toBeTruthy();
+    expect(screen.getByText("GPT-5.5")).toBeTruthy();
+    expect(screen.getByText("Codex conversational model profile")).toBeTruthy();
   });
 });
