@@ -194,8 +194,8 @@ export default function UserControls({ compact = false }: UserControlsProps = {}
           onClick={handleSignIn}
           className={
             compact
-              ? 'flex h-8 items-center gap-1.5 rounded-lg bg-stone-900 px-2.5 text-[13px] font-medium text-white transition-colors hover:bg-stone-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand'
-              : 'flex items-center gap-2 rounded-xl bg-slate-950 px-6 py-3 min-h-[44px] text-base font-display font-medium text-white transition-all hover:bg-slate-800 shadow-lg shadow-slate-950/20 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-warm-page'
+              ? 'clash-user-primary flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-[13px] font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand'
+              : 'clash-user-primary flex items-center gap-2 rounded-xl px-6 py-3 min-h-[44px] text-base font-display font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-warm-page'
           }
           whileHover={{ scale: 1.05 }}
           whileTap={{ scale: 0.95 }}

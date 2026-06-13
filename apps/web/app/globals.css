@@ -436,7 +436,8 @@ html.dark.clash-is-scrolling ::-webkit-scrollbar-thumb:hover {
 
 .clash-settings-primary,
 .clash-copilot-primary,
-.clash-marketplace-primary {
+.clash-marketplace-primary,
+.clash-user-primary {
   background:
     linear-gradient(180deg, rgba(255, 118, 91, 0.98), rgba(255, 107, 80, 0.96));
   color: #fffefd;
@@ -452,7 +453,8 @@ html.dark.clash-is-scrolling ::-webkit-scrollbar-thumb:hover {
 
 .clash-settings-primary:hover,
 .clash-copilot-primary:hover,
-.clash-marketplace-primary:hover {
+.clash-marketplace-primary:hover,
+.clash-user-primary:hover {
   filter: saturate(1.04) brightness(1.01);
   box-shadow:
     0 12px 24px rgba(255, 107, 80, 0.19),
@@ -462,7 +464,8 @@ html.dark.clash-is-scrolling ::-webkit-scrollbar-thumb:hover {
 
 .clash-settings-primary:disabled,
 .clash-copilot-primary:disabled,
-.clash-marketplace-primary:disabled {
+.clash-marketplace-primary:disabled,
+.clash-user-primary:disabled {
   cursor: not-allowed;
   opacity: 0.52;
   filter: none;

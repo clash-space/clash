@@ -73,6 +73,8 @@ const oldLocalAgentSetupTokens =
   /bg-slate-950 text-white py-2\.5|min-h-\[44px\] text-sm font-medium hover:bg-slate-800|bg-slate-900 text-slate-50 px-3 py-2\.5|border-red-200 bg-red-50/;
 const oldMarketplaceActionTokens =
   /bg-slate-950 text-white|hover:bg-slate-800|hover:bg-red-50 hover:text-red-600|dark:hover:bg-red-950/;
+const oldUserAccountActionTokens =
+  /bg-(?:slate|stone)-9(?:00|50)|hover:bg-(?:slate|stone)-(?:7|8)00|shadow-slate-950\/20|dark:bg-slate-100|dark:hover:bg-white/;
 
 describe("visual language surfaces", () => {
   afterEach(() => {
@@ -130,6 +132,18 @@ describe("visual language surfaces", () => {
     expect(source).toMatch(/clash-marketplace-filter-active/);
     expect(source).toMatch(/clash-marketplace-primary/);
     expect(source).toMatch(/clash-marketplace-installed/);
+  });
+
+  it("keeps user account sign-in actions on Clash brand surfaces instead of generic black auth chrome", () => {
+    const source = [
+      "packages/web-ui/src/components/UserControls.tsx",
+      "apps/web/app/globals.css",
+    ]
+      .map((path) => readFileSync(join(process.cwd(), path), "utf8"))
+      .join("\n");
+
+    expect(source).not.toMatch(oldUserAccountActionTokens);
+    expect(source).toMatch(/clash-user-primary/);
   });
 
   it("renders billing cards with warm surfaces instead of a purple gradient hero", () => {
