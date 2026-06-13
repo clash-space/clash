@@ -9,7 +9,7 @@ allowed-tools:
   - Bash
 metadata:
   author: clash
-  version: 1.0.0
+  version: 1.0.1
   category: video-production
   tags: [video, canvas, generation, storyboard, cli]
 ---
@@ -19,6 +19,16 @@ metadata:
 Clash is a canvas-based platform for AI video production. You interact with it through the `clash` CLI which syncs in real-time with the web app via CRDT.
 
 Run `clash -h` or `clash <command> -h` for full option details on any command.
+
+## Install / Update This Skill
+
+Install through the `skill` npm package:
+
+```bash
+SKILL_BASE_URL=https://github.com/clash-space/clash/tree/master npx skill skills/clash
+```
+
+Pin `SKILL_BASE_URL` to a release tag or branch when reproducibility matters.
 
 ## Quick Start
 
