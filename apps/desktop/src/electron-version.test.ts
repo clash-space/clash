@@ -43,4 +43,15 @@ describe("desktop Electron runtime", () => {
     expect(statSync(iconUrl).size).toBeGreaterThan(10_000);
     expect(readFileSync(iconUrl).subarray(0, 4).toString("ascii")).toBe("icns");
   });
+
+  it("uses a full-size centered desktop icon source", () => {
+    const iconSvg = readFileSync(
+      new URL("../build/icon.svg", import.meta.url),
+      "utf8",
+    );
+
+    expect(iconSvg).toContain('viewBox="0 0 1024 1024"');
+    expect(iconSvg).toContain('rx="216"');
+    expect(iconSvg).toContain('translate(512 512) scale(0.86) translate(-636 -601)');
+  });
 });
