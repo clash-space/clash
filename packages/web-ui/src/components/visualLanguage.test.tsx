@@ -57,7 +57,8 @@ const oldMediaViewerTokens =
   /bg-black\/80|bg-white\/10|hover:bg-white\/20|text-white|ring-white\/10|shadow-2xl|focus-visible:ring-white|focus-visible:ring-offset-black/;
 const oldConfirmDialogTokens =
   /bg-slate-950\/35|shadow-lg border border-warm-border|transition=\{\{ type: 'spring'|bg-warm-muted\/70/;
-const oldRouteErrorTokens = /Something went wrong|Unknown error/;
+const oldRouteErrorTokens =
+  /Something went wrong|Unknown error|bg-slate-950|hover:bg-slate-800|text-white transition-colors|border-t-slate-950|shadow-\[0_18px_48px_rgba\(35,31,25,0\.08\)/;
 const oldSettingsDialogTokens =
   /ChatGPT-style|shadow-2xl border border-warm-border|bg-warm-muted\/40 flex flex-col/;
 const oldProjectTileTokens =
@@ -273,6 +274,10 @@ describe("visual language surfaces", () => {
     const source = readFileSync(join(process.cwd(), "apps/web/app/root.tsx"), "utf8");
 
     expect(source).not.toMatch(oldRouteErrorTokens);
+    expect(source).toMatch(/clash-route-error-surface/);
+    expect(source).toMatch(/clash-route-error-primary/);
+    expect(source).toMatch(/clash-route-error-secondary/);
+    expect(source).toMatch(/clash-route-error-detail/);
     expect(source).toMatch(/Clash could not finish this view/);
     expect(source).toMatch(/error\.code/);
     expect(source).toMatch(/Reload/);

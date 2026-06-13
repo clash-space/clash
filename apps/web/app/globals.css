@@ -665,6 +665,92 @@ html.dark.clash-is-scrolling ::-webkit-scrollbar-thumb:hover {
   color: #345b3e;
 }
 
+.clash-route-error-spinner {
+  border-color: rgba(225, 221, 213, 0.84);
+  border-top-color: rgba(255, 107, 80, 0.96);
+  box-shadow: 0 0 0 3px rgba(255, 107, 80, 0.045);
+}
+
+.clash-route-error-surface {
+  position: relative;
+  isolation: isolate;
+  border: 1px solid rgba(225, 221, 213, 0.78);
+  background:
+    linear-gradient(180deg, rgba(255, 254, 253, 0.82), rgba(247, 246, 242, 0.58));
+  box-shadow:
+    0 20px 54px rgba(35, 31, 25, 0.085),
+    0 6px 18px rgba(35, 31, 25, 0.04),
+    inset 0 1px 0 rgba(255, 255, 255, 0.78);
+}
+
+.clash-route-error-surface::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  background:
+    radial-gradient(circle at 12% 0%, rgba(255, 107, 80, 0.065), transparent 32%),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.22), transparent 36%, rgba(168, 156, 141, 0.07));
+}
+
+.clash-route-error-surface > * {
+  position: relative;
+  z-index: 1;
+}
+
+.clash-route-error-detail {
+  border: 1px solid rgba(225, 221, 213, 0.72);
+  background:
+    linear-gradient(180deg, rgba(241, 239, 234, 0.62), rgba(255, 254, 253, 0.46));
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.58),
+    0 5px 14px rgba(35, 31, 25, 0.026);
+}
+
+.clash-route-error-primary {
+  background:
+    linear-gradient(180deg, rgba(255, 118, 91, 0.98), rgba(255, 107, 80, 0.96));
+  color: #fffefd;
+  box-shadow:
+    0 12px 24px rgba(255, 107, 80, 0.18),
+    0 3px 10px rgba(108, 53, 42, 0.1),
+    inset 0 1px 0 rgba(255, 255, 255, 0.34);
+  transition:
+    filter 180ms ease,
+    box-shadow 180ms ease,
+    transform 180ms ease;
+}
+
+.clash-route-error-primary:hover {
+  filter: saturate(1.04) brightness(1.01);
+  box-shadow:
+    0 14px 28px rgba(255, 107, 80, 0.22),
+    0 4px 12px rgba(108, 53, 42, 0.12),
+    inset 0 1px 0 rgba(255, 255, 255, 0.38);
+}
+
+.clash-route-error-secondary {
+  border: 1px solid rgba(225, 221, 213, 0.88);
+  background:
+    linear-gradient(180deg, rgba(255, 254, 253, 0.9), rgba(247, 246, 242, 0.76));
+  color: #12192b;
+  box-shadow:
+    0 6px 16px rgba(35, 31, 25, 0.035),
+    inset 0 1px 0 rgba(255, 255, 255, 0.72);
+  transition:
+    border-color 180ms ease,
+    box-shadow 180ms ease,
+    background 180ms ease;
+}
+
+.clash-route-error-secondary:hover {
+  border-color: rgba(255, 107, 80, 0.32);
+  background:
+    linear-gradient(180deg, rgba(255, 254, 253, 0.96), rgba(247, 246, 242, 0.84));
+}
+
 .clash-input-surface {
   overflow: hidden;
   transition:

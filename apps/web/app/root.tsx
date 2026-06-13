@@ -45,7 +45,7 @@ function describeRouteError(error: unknown): RouteErrorDetails {
 export function HydrateFallback() {
   return (
     <div className="flex min-h-screen items-center justify-center bg-warm-page">
-      <div className="h-8 w-8 animate-spin rounded-full border-2 border-warm-border border-t-slate-950" />
+      <div className="clash-route-error-spinner h-8 w-8 animate-spin rounded-full border-2" />
     </div>
   );
 }
@@ -87,7 +87,7 @@ export function ErrorBoundary() {
           </div>
         </div>
 
-        <div className="rounded-2xl border border-warm-border/80 bg-warm-surface/88 p-5 shadow-[0_18px_48px_rgba(35,31,25,0.08),inset_0_1px_0_rgba(255,255,255,0.78)] backdrop-blur-sm">
+        <div className="clash-route-error-surface rounded-[28px] p-5 backdrop-blur-sm">
           <div className="mb-4 flex items-start gap-3">
             <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-brand-light text-brand ring-1 ring-brand/20">
               <Warning className="h-5 w-5" weight="fill" aria-hidden="true" />
@@ -100,7 +100,7 @@ export function ErrorBoundary() {
             </div>
           </div>
 
-          <dl className="grid gap-3 rounded-xl border border-warm-border/70 bg-warm-muted/55 p-4 text-left">
+          <dl className="clash-route-error-detail grid gap-3 rounded-2xl p-4 text-left">
             <div>
               <dt className="text-[11px] font-semibold uppercase tracking-[0.14em] text-stone-500">Code</dt>
               <dd className="mt-1 font-mono text-sm text-slate-950">{code}</dd>
@@ -115,14 +115,14 @@ export function ErrorBoundary() {
             <button
               type="button"
               onClick={() => window.location.reload()}
-              className="inline-flex min-h-11 flex-1 items-center justify-center gap-2 rounded-xl bg-slate-950 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-warm-surface"
+              className="clash-route-error-primary inline-flex min-h-11 flex-1 items-center justify-center gap-2 rounded-2xl px-4 py-2 text-sm font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-warm-surface"
             >
               <ArrowClockwise className="h-4 w-4" weight="bold" aria-hidden="true" />
               Reload
             </button>
             <Link
               to="/"
-              className="inline-flex min-h-11 flex-1 items-center justify-center gap-2 rounded-xl border border-warm-border bg-warm-surface px-4 py-2 text-sm font-semibold text-slate-900 transition-colors hover:border-brand/35 hover:bg-warm-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-warm-surface"
+              className="clash-route-error-secondary inline-flex min-h-11 flex-1 items-center justify-center gap-2 rounded-2xl px-4 py-2 text-sm font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-warm-surface"
             >
               <House className="h-4 w-4" weight="bold" aria-hidden="true" />
               Go home
