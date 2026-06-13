@@ -158,6 +158,18 @@ describe("visual language surfaces", () => {
     expect(source).toMatch(/clash-user-primary/);
   });
 
+  it("keeps the project chrome avatar transparent instead of sitting on a white surface", () => {
+    const cssSource = readFileSync(join(process.cwd(), "apps/web/app/globals.css"), "utf8");
+    const avatarRule = cssSource.match(/\.clash-project-top-avatar\s*\{[\s\S]*?\}/)?.[0] ?? "";
+    const avatarHoverRule = cssSource.match(/\.clash-project-top-avatar:hover\s*\{[\s\S]*?\}/)?.[0] ?? "";
+
+    expect(cssSource).not.toMatch(/\.clash-project-top-action,\s*\n\.clash-project-top-balance,\s*\n\.clash-project-top-avatar/);
+    expect(avatarRule).toMatch(/background:\s*transparent/);
+    expect(avatarRule).toMatch(/box-shadow:\s*none/);
+    expect(avatarHoverRule).toMatch(/background:\s*transparent/);
+    expect(avatarHoverRule).toMatch(/box-shadow:\s*none/);
+  });
+
   it("renders billing cards with warm surfaces instead of a purple gradient hero", () => {
     const { container } = render(
       <MemoryRouter>

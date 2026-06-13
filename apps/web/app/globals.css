@@ -622,8 +622,7 @@ html.dark.clash-is-scrolling ::-webkit-scrollbar-thumb:hover {
 }
 
 .clash-project-top-action,
-.clash-project-top-balance,
-.clash-project-top-avatar {
+.clash-project-top-balance {
   border: 1px solid rgba(225, 221, 213, 0.78);
   background:
     linear-gradient(180deg, rgba(255, 254, 253, 0.88), rgba(251, 250, 247, 0.72));
@@ -635,8 +634,7 @@ html.dark.clash-is-scrolling ::-webkit-scrollbar-thumb:hover {
 }
 
 .clash-project-top-action:hover,
-.clash-project-top-balance:hover,
-.clash-project-top-avatar:hover {
+.clash-project-top-balance:hover {
   border-color: rgba(255, 107, 80, 0.32);
   background:
     linear-gradient(180deg, rgba(255, 254, 253, 0.94), rgba(255, 240, 237, 0.58));
@@ -644,6 +642,32 @@ html.dark.clash-is-scrolling ::-webkit-scrollbar-thumb:hover {
     0 12px 28px rgba(35, 31, 25, 0.06),
     0 3px 10px rgba(255, 107, 80, 0.08),
     inset 0 1px 0 rgba(255, 255, 255, 0.82);
+}
+
+.clash-project-top-avatar {
+  border: 1px solid transparent;
+  background: transparent;
+  box-shadow: none;
+  backdrop-filter: none;
+}
+
+.clash-project-top-avatar:hover {
+  border-color: transparent;
+  background: transparent;
+  box-shadow: none;
+}
+
+.clash-project-top-avatar > * {
+  transition:
+    box-shadow 180ms ease,
+    transform 180ms ease;
+}
+
+.clash-project-top-avatar:hover > * {
+  box-shadow:
+    0 8px 18px rgba(35, 31, 25, 0.06),
+    0 2px 8px rgba(255, 107, 80, 0.08);
+  transform: translateY(-1px);
 }
 
 .clash-settings-alert-error,
