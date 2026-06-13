@@ -435,6 +435,7 @@ html.dark.clash-is-scrolling ::-webkit-scrollbar-thumb:hover {
 }
 
 .clash-settings-primary,
+.clash-billing-primary,
 .clash-copilot-primary,
 .clash-marketplace-primary,
 .clash-user-primary {
@@ -452,6 +453,7 @@ html.dark.clash-is-scrolling ::-webkit-scrollbar-thumb:hover {
 }
 
 .clash-settings-primary:hover,
+.clash-billing-primary:hover,
 .clash-copilot-primary:hover,
 .clash-marketplace-primary:hover,
 .clash-user-primary:hover {
@@ -463,6 +465,7 @@ html.dark.clash-is-scrolling ::-webkit-scrollbar-thumb:hover {
 }
 
 .clash-settings-primary:disabled,
+.clash-billing-primary:disabled,
 .clash-copilot-primary:disabled,
 .clash-marketplace-primary:disabled,
 .clash-user-primary:disabled {

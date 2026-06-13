@@ -75,6 +75,8 @@ const oldMarketplaceActionTokens =
   /bg-slate-950 text-white|hover:bg-slate-800|hover:bg-red-50 hover:text-red-600|dark:hover:bg-red-950/;
 const oldUserAccountActionTokens =
   /bg-(?:slate|stone)-9(?:00|50)|hover:bg-(?:slate|stone)-(?:7|8)00|shadow-slate-950\/20|dark:bg-slate-100|dark:hover:bg-white/;
+const oldBillingActionTokens =
+  /bg-slate-950 text-white|hover:bg-slate-800|dark:bg-slate-100|dark:hover:bg-white/;
 
 describe("visual language surfaces", () => {
   afterEach(() => {
@@ -198,6 +200,18 @@ describe("visual language surfaces", () => {
     expect(container.innerHTML).not.toMatch(oldVisualTokens);
     expect(container.querySelector('[class*="bg-warm-surface/95"]')).toBeTruthy();
     expect(container.querySelector('[class*="ring-brand/15"]')).toBeTruthy();
+  });
+
+  it("keeps billing purchase and configuration actions on Clash brand surfaces instead of generic black buttons", () => {
+    const source = [
+      "packages/web-ui/src/components/BillingClient.tsx",
+      "apps/web/app/globals.css",
+    ]
+      .map((path) => readFileSync(join(process.cwd(), path), "utf8"))
+      .join("\n");
+
+    expect(source).not.toMatch(oldBillingActionTokens);
+    expect(source).toMatch(/clash-billing-primary/);
   });
 
   it("keeps ActionBadge canvas controls on warm and brand tokens", () => {

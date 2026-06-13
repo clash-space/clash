@@ -235,7 +235,7 @@ function PlanCard({ plan }: { plan: Plan }) {
         className={`mt-5 w-full rounded-lg py-2.5 text-sm font-medium transition-colors ${
           disabled
             ? "bg-warm-muted text-stone-500 cursor-not-allowed"
-            : "bg-slate-950 text-white hover:bg-slate-800 dark:bg-slate-100 dark:text-slate-950 dark:hover:bg-white"
+            : "clash-billing-primary"
         }`}
       >
         {free ? "Default plan" : busy ? "Redirecting…" : "Choose"}
@@ -335,7 +335,7 @@ function NotEnabledState() {
         <button
           type="button"
           onClick={() => setSettingsOpen(true)}
-          className="mt-6 inline-flex items-center gap-2 rounded-lg bg-slate-950 text-white px-5 py-2.5 text-sm font-medium transition-colors hover:bg-slate-800 dark:bg-slate-100 dark:text-slate-950 dark:hover:bg-white"
+          className="clash-billing-primary mt-6 inline-flex items-center gap-2 rounded-lg px-5 py-2.5 text-sm font-medium"
         >
           Configure API keys
         </button>
