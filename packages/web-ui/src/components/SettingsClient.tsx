@@ -37,6 +37,17 @@ interface Props {
     embedded?: boolean;
 }
 
+const settingsPrimaryButtonClass =
+    'clash-settings-primary inline-flex items-center justify-center rounded-xl px-5 py-2 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-40';
+const settingsSmallPrimaryButtonClass =
+    'clash-settings-primary inline-flex items-center gap-1.5 rounded-xl px-3.5 py-1.5 text-sm font-medium';
+const settingsDangerGhostButtonClass =
+    'clash-settings-danger-ghost opacity-0 group-hover:opacity-100 rounded-lg p-1.5';
+const settingsCodeBlockClass =
+    'clash-settings-code block overflow-x-auto whitespace-nowrap rounded-xl px-4 py-3 font-mono text-sm';
+const settingsErrorAlertClass =
+    'clash-settings-alert-error rounded-xl px-3 py-2 text-sm';
+
 export default function SettingsClient({
     initialTokens,
     initialVariables,
@@ -187,7 +198,7 @@ export default function SettingsClient({
                         <motion.button
                             onClick={handleCreate}
                             disabled={isCreating || !newTokenName.trim()}
-                            className="rounded-xl bg-slate-950 px-5 py-2 text-sm font-medium text-white hover:bg-slate-800 dark:bg-slate-100 dark:text-slate-950 dark:hover:bg-white disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                            className={settingsPrimaryButtonClass}
                             whileTap={{ scale: 0.97 }}
                         >
                             Create
@@ -245,7 +256,7 @@ export default function SettingsClient({
                                     </div>
                                     <button
                                         onClick={() => handleRevoke(token.id)}
-                                        className="opacity-0 group-hover:opacity-100 rounded-lg p-1.5 text-stone-500 dark:text-stone-400 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-50 transition-all"
+                                        className={settingsDangerGhostButtonClass}
                                     >
                                         <Trash className="h-4 w-4" />
                                     </button>
@@ -329,7 +340,7 @@ export default function SettingsClient({
                         <motion.button
                             onClick={handleAddVariable}
                             disabled={isAddingVar || !newVarKey.trim() || !newVarValue.trim()}
-                            className="rounded-xl bg-slate-950 px-5 py-2 text-sm font-medium text-white hover:bg-slate-800 dark:bg-slate-100 dark:text-slate-950 dark:hover:bg-white disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                            className={settingsPrimaryButtonClass}
                             whileTap={{ scale: 0.97 }}
                         >
                             Set
@@ -354,7 +365,7 @@ export default function SettingsClient({
                                     </div>
                                     <button
                                         onClick={() => handleDeleteVariable(v.id)}
-                                        className="opacity-0 group-hover:opacity-100 rounded-lg p-1.5 text-stone-500 dark:text-stone-400 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-50 transition-all"
+                                        className={settingsDangerGhostButtonClass}
                                     >
                                         <Trash className="h-4 w-4" />
                                     </button>
@@ -435,7 +446,7 @@ export default function SettingsClient({
                                             </div>
                                             <button
                                                 onClick={() => handleUninstallAction(action.actionId)}
-                                                className="opacity-0 group-hover:opacity-100 rounded-lg p-1.5 text-stone-500 dark:text-stone-400 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-50 transition-all flex-shrink-0"
+                                                className={`${settingsDangerGhostButtonClass} flex-shrink-0`}
                                             >
                                                 <Trash className="h-4 w-4" />
                                             </button>
@@ -486,7 +497,7 @@ export default function SettingsClient({
                                     </div>
                                     <button
                                         onClick={() => handleUninstallSkill(skill.skillId)}
-                                        className="opacity-0 group-hover:opacity-100 rounded-lg p-1.5 text-stone-500 dark:text-stone-400 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-50 transition-all"
+                                        className={settingsDangerGhostButtonClass}
                                     >
                                         <Trash className="h-4 w-4" />
                                     </button>
@@ -706,7 +717,7 @@ function SyncSection() {
                     </div>
 
                     {error && (
-                        <div role="alert" className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+                        <div role="alert" className={settingsErrorAlertClass}>
                             {error}
                         </div>
                     )}
@@ -720,7 +731,7 @@ function SyncSection() {
                         type="button"
                         onClick={onSave}
                         disabled={saving || (mode === 'cloud-sync' && !remoteUrl.trim())}
-                        className="inline-flex items-center justify-center rounded-xl bg-slate-950 px-5 py-2 text-sm font-medium text-white transition-colors hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-40 dark:bg-slate-100 dark:text-slate-950 dark:hover:bg-white"
+                        className={settingsPrimaryButtonClass}
                     >
                         {saving ? 'Saving…' : 'Save sync settings'}
                     </button>
@@ -769,7 +780,7 @@ function RuntimesSection() {
                 <button
                     type="button"
                     onClick={() => setSetupOpen((v) => !v)}
-                    className="inline-flex items-center gap-1.5 rounded-xl bg-slate-950 text-white px-3.5 py-1.5 text-sm transition-colors hover:bg-slate-800"
+                    className={settingsSmallPrimaryButtonClass}
                 >
                     <Plus className="h-3.5 w-3.5" /> Add machine
                 </button>
@@ -778,7 +789,7 @@ function RuntimesSection() {
             {setupOpen && (
                 <div className="mb-4 rounded-xl border border-warm-border bg-warm-muted p-4">
                     <p className="text-xs text-stone-600 dark:text-stone-300 mb-2">Run on the machine you want to register:</p>
-                    <code className="block rounded-lg bg-slate-950 text-slate-50 px-3 py-2.5 font-mono text-sm dark:bg-warm-page dark:text-slate-100 dark:border dark:border-warm-border">
+                    <code className={settingsCodeBlockClass}>
                         npx @clash-space/bridge@beta setup
                     </code>
                     <p className="mt-2 text-xs text-stone-600 dark:text-stone-300">

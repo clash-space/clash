@@ -61,6 +61,8 @@ const oldRouteErrorTokens =
   /Something went wrong|Unknown error|bg-slate-950|hover:bg-slate-800|text-white transition-colors|border-t-slate-950|shadow-\[0_18px_48px_rgba\(35,31,25,0\.08\)/;
 const oldSettingsDialogTokens =
   /ChatGPT-style|shadow-2xl border border-warm-border|bg-warm-muted\/40 flex flex-col/;
+const oldSettingsActionTokens =
+  /bg-slate-950|hover:bg-slate-800|bg-slate-950 text-slate-50|bg-red-50|hover:bg-red-50|text-red-700/;
 const oldProjectTileTokens =
   /border-2 border-dashed|hover:shadow-lg|bg-warm-muted\/60|bg-warm-surface\/70/;
 const oldAuthRouteTokens =
@@ -296,6 +298,21 @@ describe("visual language surfaces", () => {
     expect(source).toMatch(/clash-settings-dialog-shell/);
     expect(source).toMatch(/clash-settings-dialog-sidebar/);
     expect(source).toMatch(/clash-settings-dialog-content/);
+  });
+
+  it("keeps settings actions, alerts, and setup command surfaces out of generic black and hard-red chrome", () => {
+    const source = [
+      "packages/web-ui/src/components/SettingsClient.tsx",
+      "apps/web/app/globals.css",
+    ]
+      .map((path) => readFileSync(join(process.cwd(), path), "utf8"))
+      .join("\n");
+
+    expect(source).not.toMatch(oldSettingsActionTokens);
+    expect(source).toMatch(/clash-settings-primary/);
+    expect(source).toMatch(/clash-settings-code/);
+    expect(source).toMatch(/clash-settings-alert-error/);
+    expect(source).toMatch(/clash-settings-danger-ghost/);
   });
 
   it("keeps project tiles on Clash canvas surfaces instead of generic dashed cards", () => {
