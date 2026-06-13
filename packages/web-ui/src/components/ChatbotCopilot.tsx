@@ -307,16 +307,16 @@ export default function ChatbotCopilot({
     // sheet over the canvas. Desktop keeps a resizable bottom-right popover.
     const isMobile = useIsBelowLg();
     // ─── UI State ──────────────────────────────────────────────
-    const [input, setInput] = useState('');
+    const [input, setInput] = useState(() => initialPrompt ?? '');
     const [isResizing, setIsResizing] = useState(false);
     const [showHistory, setShowHistory] = useState(false);
     const [todoItems, setTodoItems] = useState<TodoItem[]>([]);
     const [suggestions, setSuggestions] = useState<Array<{ label: string; message: string }>>([]);
 
     // Two transports:
-    //   - 'cloud'   : useAgentCopilot (hosted Clash agent)
+    //   - 'cloud'   : useAgentCopilot (hosted Clash agent, temporarily disabled)
     //   - 'runtime' : useClashRuntime (registered local daemon / clashd)
-    const [chatMode, setChatMode] = useState<'cloud' | 'runtime'>('cloud');
+    const [chatMode, setChatMode] = useState<'cloud' | 'runtime'>('runtime');
     const [runtimeMenuOpen, setRuntimeMenuOpen] = useState(false);
     const [addMachineOpen, setAddMachineOpen] = useState(false);
     /** When set, the runtime picker dialog is open for this runtime. */
@@ -361,15 +361,6 @@ export default function ChatbotCopilot({
     });
 
     const cloudIsProcessing = status === 'submitted' || status === 'streaming';
-    // Drop back to cloud if the daemon session dies.
-    useEffect(() => {
-        if (chatMode === 'runtime' && (clashRt.status === 'disconnected' || clashRt.status === 'idle')) {
-            // Don't reset on 'idle' if it's the *initial* idle (no select yet);
-            // we only want this on transition away from a working session.
-            if (clashRt.status === 'disconnected') setChatMode('cloud');
-        }
-    }, [clashRt.status, chatMode]);
-
     const runtimeIsProcessing = clashRt.status === 'connecting' || clashRt.status === 'sending' || clashRt.status === 'streaming';
     const isProcessing =
         chatMode === 'runtime' ? runtimeIsProcessing :
@@ -410,7 +401,7 @@ export default function ChatbotCopilot({
     const initialMessageRef = useRef(initialPrompt);
     useEffect(() => {
         const msg = initialMessageRef.current;
-        if (msg && threadId) queueMessageOnOpen(msg);
+        if (chatMode === 'cloud' && msg && threadId) queueMessageOnOpen(msg);
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
@@ -422,7 +413,7 @@ export default function ChatbotCopilot({
     // looks like nothing is happening. Cleared as soon as the first message
     // shows up in the array (sendMessage's optimistic insert), at which point
     // status takes over → 'submitted' → 'streaming'.
-    const [waitingFirstSend, setWaitingFirstSend] = useState(!!initialPrompt);
+    const [waitingFirstSend, setWaitingFirstSend] = useState(chatMode === 'cloud' && !!initialPrompt);
     useEffect(() => {
         if (waitingFirstSend && messages.length > 0) setWaitingFirstSend(false);
     }, [messages.length, waitingFirstSend]);
@@ -605,7 +596,6 @@ export default function ChatbotCopilot({
         const value = text.trim();
         if (!value && attachments.length === 0) return;
         if (isProcessing || isCreatingSession) return;
-        setInput('');
         setSuggestions([]);
         setSessionError(null);
         clearConnectionError();
@@ -613,9 +603,17 @@ export default function ChatbotCopilot({
 
         // Persistent-runtime mode: raw prompt, daemon handles the local ACP session.
         if (chatMode === 'runtime') {
+            if (!clashRt.ready) {
+                setInput(value);
+                setSessionError(t('copilot.status.localRuntimeRequired'));
+                return;
+            }
+            setInput('');
             clashRt.sendMessage(value);
             return;
         }
+
+        setInput('');
 
         // Create canvas nodes for uploaded attachments
         if (attachments.length > 0 && onUploadFiles) {
@@ -869,11 +867,8 @@ export default function ChatbotCopilot({
                                                     label={t('copilot.runtime.cloud.label')}
                                                     sub={t('copilot.runtime.cloud.sub')}
                                                     active={chatMode === 'cloud'}
-                                                    onClick={() => {
-                                                        if (chatMode === 'runtime') clashRt.shutdown();
-                                                        setChatMode('cloud');
-                                                        setRuntimeMenuOpen(false);
-                                                    }}
+                                                    disabled
+                                                    onClick={() => setRuntimeMenuOpen(false)}
                                                 />
                                                 {clashRt.runtimes.length > 0 && (
                                                     <div role="presentation" className="px-3 pt-1 pb-0.5 text-[11px] text-stone-600 uppercase tracking-wider dark:text-stone-400">{t('copilot.runtime.machinesHeader')}</div>
@@ -1001,7 +996,7 @@ export default function ChatbotCopilot({
                                             {clashRt.errorMessage && (
                                                 <div role="alert" className="text-sm text-red-700 dark:text-red-300">{t('copilot.errors.warningPrefix')} {clashRt.errorMessage}</div>
                                             )}
-                                            <RuntimeMessageList messages={clashRt.messages} />
+                                            <RuntimeMessageList messages={clashRt.messages} ready={clashRt.ready} />
                                         </>
                                     )}
                                     {chatMode === 'cloud' && (
@@ -1110,10 +1105,11 @@ export default function ChatbotCopilot({
                                     onSubmit={handleSubmit}
                                     onStop={handleStop}
                                     isProcessing={isProcessing}
-                                    isCreatingSession={isCreatingSession || waitingFirstSend}
-                                    connected={connected}
+                                    isCreatingSession={isCreatingSession || (chatMode === 'cloud' && waitingFirstSend)}
+                                    connected={chatMode === 'runtime' ? clashRt.ready : connected}
                                     error={sessionError || connectionError}
                                     onDismissError={() => { setSessionError(null); clearConnectionError(); }}
+                                    disabled={chatMode === 'runtime' && !clashRt.ready}
                                     placeholder={selectedNodes.length > 0 ? 'Ask anything about selected files...' : 'Ask anything...'}
                                     mentionableNodes={mentionableNodes}
                                     projectId={projectId}
@@ -1294,14 +1290,16 @@ function RuntimeMenuRow({
  */
 function RuntimeMessageList({
     messages,
+    ready,
 }: {
     messages: RuntimeMessage[];
+    ready: boolean;
 }) {
     const { t } = useTranslation();
     if (messages.length === 0) {
         return (
             <div className="text-center text-sm text-stone-600 py-12 dark:text-stone-300">
-                {t('copilot.status.localAgentReady')}
+                {ready ? t('copilot.status.localAgentReady') : t('copilot.status.localRuntimeRequired')}
             </div>
         );
     }

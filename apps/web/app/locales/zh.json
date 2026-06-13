@@ -19,8 +19,8 @@
     "runtime": {
       "menuTitle": "运行环境",
       "cloud": {
-        "label": "云端",
-        "sub": "托管的 Clash Agent"
+        "label": "Cloud Agent",
+        "sub": "Coming soon"
       },
       "machinesHeader": "我的机器",
       "machineSub_online_one": "在线 · {{count}} 个 Agent",
@@ -50,6 +50,7 @@
       "thinking": "思考中",
       "streaming": "生成中",
       "localAgentReady": "本地 Agent 已连接，发送消息以开始。",
+      "localRuntimeRequired": "请选择或连接本地运行时后再聊天。Cloud Agent 即将推出。",
       "slashCommandsMore": "+{{count}} 个"
     },
     "errors": {

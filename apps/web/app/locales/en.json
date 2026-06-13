@@ -19,8 +19,8 @@
     "runtime": {
       "menuTitle": "Run on",
       "cloud": {
-        "label": "Cloud",
-        "sub": "Hosted Clash agent"
+        "label": "Cloud Agent",
+        "sub": "Coming soon"
       },
       "machinesHeader": "My machines",
       "machineSub_online_one": "online · {{count}} agent",
@@ -50,6 +50,7 @@
       "thinking": "Thinking",
       "streaming": "Streaming",
       "localAgentReady": "Local agent connected. Send a message to start.",
+      "localRuntimeRequired": "Select or connect a local runtime to chat. Cloud Agent is coming soon.",
       "slashCommandsMore": "+{{count}} more"
     },
     "errors": {

@@ -677,6 +677,16 @@ describe("visual language surfaces", () => {
     expect(source).toMatch(/clash-copilot-alert-error/);
   });
 
+  it("keeps the cloud agent temporarily marked as coming soon", () => {
+    const copilotSource = readFileSync(join(process.cwd(), "packages/web-ui/src/components/ChatbotCopilot.tsx"), "utf8");
+    const enLocale = readFileSync(join(process.cwd(), "apps/web/app/locales/en.json"), "utf8");
+
+    expect(copilotSource).toMatch(/useState<'cloud' \| 'runtime'>\('runtime'\)/);
+    expect(copilotSource).toMatch(/label=\{t\('copilot\.runtime\.cloud\.label'\)\}[\s\S]*disabled/);
+    expect(enLocale).toMatch(/"label": "Cloud Agent"/);
+    expect(enLocale).toMatch(/"sub": "Coming soon"/);
+  });
+
   it.each([
     ["tokens", "API Tokens"],
     ["variables", "API Keys"],
