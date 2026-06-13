@@ -76,7 +76,7 @@ const BuildPlanDialog = ({ open, targetLabel, plan, onConfirm, onCancel }: Build
 
                         <div className="px-4 sm:px-6 py-4 sm:py-5 flex-1 overflow-y-auto space-y-4 sm:space-y-5">
                             {plan.cycle && (
-                                <div role="alert" className="flex items-start gap-2 rounded-lg bg-red-50 border border-red-200 px-3 py-2.5 text-xs text-red-800">
+                                <div role="alert" className="clash-node-alert-error flex items-start gap-2 rounded-lg px-3 py-2.5 text-xs">
                                     <WarningCircle size={16} weight="fill" className="shrink-0 mt-0.5" aria-hidden="true" />
                                     <div>Cycle detected in dependency graph. Resolve the cycle and try again.</div>
                                 </div>
@@ -85,7 +85,7 @@ const BuildPlanDialog = ({ open, targetLabel, plan, onConfirm, onCancel }: Build
                             {plan.blockers.length > 0 && (
                                 <div role="alert" className="space-y-1">
                                     {plan.blockers.map((msg, i) => (
-                                        <div key={i} className="flex items-start gap-2 rounded-lg bg-red-50 border border-red-200 px-3 py-2 text-xs text-red-800">
+                                        <div key={i} className="clash-node-alert-error flex items-start gap-2 rounded-lg px-3 py-2 text-xs">
                                             <WarningCircle size={14} weight="fill" className="shrink-0 mt-0.5" aria-hidden="true" />
                                             <span>{msg}</span>
                                         </div>
@@ -142,7 +142,7 @@ const BuildPlanDialog = ({ open, targetLabel, plan, onConfirm, onCancel }: Build
                                                 key={entry.draftId}
                                                 className={`flex items-center justify-between gap-3 px-3.5 py-2 text-xs ${
                                                     i > 0 ? 'border-t border-warm-border' : ''
-                                                } ${!entry.hasPrompt || !entry.modelId ? 'bg-red-50' : ''}`}
+                                                } ${!entry.hasPrompt || !entry.modelId ? 'clash-node-row-error' : ''}`}
                                             >
                                                 <div className="min-w-0 flex items-center gap-2">
                                                     <span className="inline-block w-1.5 h-1.5 rounded-full bg-brand" />
@@ -171,7 +171,7 @@ const BuildPlanDialog = ({ open, targetLabel, plan, onConfirm, onCancel }: Build
                                 type="button"
                                 onClick={onConfirm}
                                 disabled={!canBuild}
-                                className="flex items-center justify-center gap-1.5 w-full sm:w-auto min-h-11 px-4 py-2 text-sm font-semibold text-white bg-slate-950 hover:bg-slate-800 rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed focus:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-warm-surface"
+                                className="clash-node-primary flex items-center justify-center gap-1.5 w-full sm:w-auto min-h-11 px-4 py-2 text-sm font-semibold rounded-lg disabled:opacity-40 disabled:cursor-not-allowed focus:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-warm-surface"
                                 aria-describedby={!canBuild ? `${headerId}-disabled-reason` : undefined}
                                 title={
                                     !canBuild

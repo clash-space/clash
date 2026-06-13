@@ -79,6 +79,8 @@ const oldBillingActionTokens =
   /bg-slate-950 text-white|hover:bg-slate-800|dark:bg-slate-100|dark:hover:bg-white/;
 const oldChatInputActionTokens =
   /bg-slate-950 text-white|hover:bg-slate-800|hover:bg-red-600|focus-visible:ring-red-500|bg-red-50(?:\s|")|hover:bg-red-100(?:\s|")|text-red-700(?:\s|")|dark:bg-red-950(?:\/|\s|")/;
+const oldNodeBuildActionTokens =
+  /bg-slate-950(?:\s|")|bg-slate-950 text|hover:bg-slate-800|bg-red-50(?:\s|")|hover:bg-red-50|border-red-200|border-red-300|text-red-700|text-red-800|focus-visible:ring-red-500/;
 
 describe("visual language surfaces", () => {
   afterEach(() => {
@@ -228,6 +230,32 @@ describe("visual language surfaces", () => {
     expect(source).toMatch(/clash-chat-input-alert-error/);
     expect(source).toMatch(/clash-chat-input-primary/);
     expect(source).toMatch(/clash-chat-input-stop/);
+  });
+
+  it("keeps canvas build and apply controls on Clash node surfaces instead of generic black and hard-red chrome", () => {
+    const source = [
+      "packages/web-ui/src/components/nodes/DraftPlaceholder.tsx",
+      "packages/web-ui/src/components/nodes/BuildPlanDialog.tsx",
+      "packages/web-ui/src/components/nodes/CloneTrajectoryDialog.tsx",
+      "apps/web/app/globals.css",
+    ]
+      .map((path) => readFileSync(join(process.cwd(), path), "utf8"))
+      .join("\n");
+
+    expect(source).not.toMatch(oldNodeBuildActionTokens);
+    expect(source).toMatch(/clash-node-primary/);
+    expect(source).toMatch(/clash-node-alert-error/);
+    expect(source).toMatch(/clash-node-row-error/);
+    expect(source).toMatch(/clash-node-danger-ghost/);
+    expect(source).toMatch(/clash-node-badge-draft/);
+  });
+
+  it("uses the transparent Clash mark for the browser tab favicon", () => {
+    const favicon = readFileSync(join(process.cwd(), "apps/web/public/favicon.svg"), "utf8");
+    const mark = readFileSync(join(process.cwd(), "apps/web/public/brand/logo-mark.svg"), "utf8");
+
+    expect(favicon).toBe(mark);
+    expect(favicon).not.toMatch(/<rect\s+width="512"\s+height="512"|fill="#F7F6F2"|fill="#FBFAF7"/);
   });
 
   it("keeps ActionBadge canvas controls on warm and brand tokens", () => {

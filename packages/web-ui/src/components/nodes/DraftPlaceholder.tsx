@@ -119,7 +119,7 @@ const DraftPlaceholder = ({ nodeId, modality, width, height }: DraftPlaceholderP
                         disabled={buttonDisabled}
                         whileHover={buttonDisabled ? undefined : { x: 1 }}
                         whileTap={buttonDisabled ? undefined : { scale: 0.97 }}
-                        className="flex items-center justify-center gap-1.5 min-h-11 rounded-lg bg-slate-950 hover:bg-slate-800 disabled:opacity-40 disabled:cursor-not-allowed text-white text-sm font-semibold px-4 py-2.5 transition-colors cursor-pointer motion-reduce:transition-none focus:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-warm-muted"
+                        className="clash-node-primary flex items-center justify-center gap-1.5 min-h-11 rounded-lg disabled:opacity-40 disabled:cursor-not-allowed text-sm font-semibold px-4 py-2.5 cursor-pointer motion-reduce:transition-none focus:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-warm-muted"
                         title={buttonTitle}
                         aria-label={
                             buttonDisabled

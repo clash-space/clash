@@ -66,7 +66,7 @@ function wrapPreviewNode<T extends Record<string, unknown>>(Inner: ComponentType
                             type="button"
                             onClick={(e) => { e.stopPropagation(); onDelete(props.id); }}
                             aria-label="Drop this action and everything upstream that only feeds it"
-                            className="flex items-center gap-1 min-h-9 h-9 px-3 rounded-lg bg-warm-surface border border-warm-border text-[11px] font-semibold text-slate-800 dark:text-slate-200 hover:bg-red-50 hover:border-red-300 hover:text-red-700 shadow-sm transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-red-500"
+                            className="clash-node-danger-ghost flex items-center gap-1 min-h-9 h-9 px-3 rounded-lg text-[11px] font-semibold shadow-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-brand"
                             title="Drop this action and everything upstream that only feeds it — its output becomes a reused head"
                         >
                             <X size={11} weight="bold" aria-hidden="true" />
@@ -85,7 +85,7 @@ function wrapPreviewNode<T extends Record<string, unknown>>(Inner: ComponentType
                         </span>
                     ) : (
                         <span
-                            className="flex items-center gap-1 px-2 py-0.5 rounded-lg bg-slate-950 text-[10px] uppercase tracking-wider font-bold text-white"
+                            className="clash-node-badge-draft flex items-center gap-1 px-2 py-0.5 rounded-lg text-[10px] uppercase tracking-wider font-bold"
                             title="Cloned as an empty draft placeholder — Build to fill"
                         >
                             <FilePlus size={10} weight="bold" aria-hidden="true" />
@@ -506,7 +506,7 @@ const CloneTrajectoryDialog = ({
                                     type="button"
                                     onClick={handleApply}
                                     disabled={stats.clones === 0 || applying}
-                                    className="flex items-center justify-center gap-1.5 w-full sm:w-auto min-h-11 px-4 py-2 text-sm font-semibold text-white bg-slate-950 hover:bg-slate-800 rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed focus:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-warm-surface"
+                                    className="clash-node-primary flex items-center justify-center gap-1.5 w-full sm:w-auto min-h-11 px-4 py-2 text-sm font-semibold rounded-lg disabled:opacity-40 disabled:cursor-not-allowed focus:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-warm-surface"
                                     title={stats.clones === 0 ? 'Nothing to clone' : 'Apply to canvas'}
                                     aria-busy={applying || undefined}
                                 >

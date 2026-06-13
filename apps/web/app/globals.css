@@ -440,6 +440,7 @@ html.dark.clash-is-scrolling ::-webkit-scrollbar-thumb:hover {
 .clash-chat-input-stop,
 .clash-copilot-primary,
 .clash-marketplace-primary,
+.clash-node-primary,
 .clash-user-primary {
   background:
     linear-gradient(180deg, rgba(255, 118, 91, 0.98), rgba(255, 107, 80, 0.96));
@@ -460,6 +461,7 @@ html.dark.clash-is-scrolling ::-webkit-scrollbar-thumb:hover {
 .clash-chat-input-stop:hover,
 .clash-copilot-primary:hover,
 .clash-marketplace-primary:hover,
+.clash-node-primary:hover,
 .clash-user-primary:hover {
   filter: saturate(1.04) brightness(1.01);
   box-shadow:
@@ -474,6 +476,7 @@ html.dark.clash-is-scrolling ::-webkit-scrollbar-thumb:hover {
 .clash-chat-input-stop:disabled,
 .clash-copilot-primary:disabled,
 .clash-marketplace-primary:disabled,
+.clash-node-primary:disabled,
 .clash-user-primary:disabled {
   cursor: not-allowed;
   opacity: 0.52;
@@ -493,7 +496,8 @@ html.dark.clash-is-scrolling ::-webkit-scrollbar-thumb:hover {
 
 .clash-settings-alert-error,
 .clash-chat-input-alert-error,
-.clash-copilot-alert-error {
+.clash-copilot-alert-error,
+.clash-node-alert-error {
   border: 1px solid rgba(255, 107, 80, 0.34);
   background: rgba(255, 240, 237, 0.82);
   color: #8e2f20;
@@ -513,6 +517,40 @@ html.dark.clash-is-scrolling ::-webkit-scrollbar-thumb:hover {
   border-color: rgba(255, 107, 80, 0.42);
   background: rgba(255, 240, 237, 0.94);
   color: #702417;
+}
+
+.clash-node-row-error {
+  background: rgba(255, 240, 237, 0.58);
+  color: #8e2f20;
+}
+
+.clash-node-danger-ghost {
+  border: 1px solid rgba(225, 221, 213, 0.82);
+  background:
+    linear-gradient(180deg, rgba(255, 254, 253, 0.9), rgba(247, 246, 242, 0.78));
+  color: #202839;
+  box-shadow:
+    0 6px 14px rgba(35, 31, 25, 0.035),
+    inset 0 1px 0 rgba(255, 255, 255, 0.72);
+  transition:
+    border-color 180ms ease,
+    background 180ms ease,
+    color 180ms ease,
+    box-shadow 180ms ease;
+}
+
+.clash-node-danger-ghost:hover {
+  border-color: rgba(255, 107, 80, 0.34);
+  background:
+    linear-gradient(180deg, rgba(255, 240, 237, 0.84), rgba(255, 254, 253, 0.72));
+  color: #8e2f20;
+}
+
+.clash-node-badge-draft {
+  border: 1px solid rgba(255, 107, 80, 0.24);
+  background: rgba(255, 240, 237, 0.82);
+  color: #8e2f20;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.6);
 }
 
 .clash-marketplace-filter-active {
