@@ -4,30 +4,89 @@ import { ArrowRight, Clock } from '@phosphor-icons/react';
 
 const posts = [
   {
-    title: 'Why We Built Clash: The Anti-Slop Manifesto',
-    excerpt: 'AI video tools are flooding the internet with mediocre content. We believe AI should elevate human creativity, not replace it with noise.',
-    category: 'Vision',
+    title: 'The canvas is the contract',
+    excerpt: 'Why agent work needs to land as visible nodes, edges, and lineage instead of disappearing into a chat transcript.',
+    category: 'Studio notes',
+    signal: 'Intent → node → asset',
+    readTime: '6 min',
+    date: 'Apr 9, 2026',
+    nodes: ['Intent', 'Agent pass', 'Asset'],
+  },
+  {
+    title: 'Local-first agents, cloud when useful',
+    excerpt: 'How the desktop runtime, BYOK model routes, and cloud sync fit together without hiding ownership from the creator.',
+    category: 'Runtime',
+    signal: 'Desktop + daemon',
     readTime: '5 min',
-    date: 'Mar 28, 2026',
-    gradient: 'from-brand/16 to-warm-muted',
+    date: 'Apr 4, 2026',
+    nodes: ['clashd', 'Model route', 'Fallback'],
   },
   {
-    title: 'Sleep-Time Production: Let AI Work While You Rest',
-    excerpt: 'How asynchronous AI workflows let you wake up to a finished rough cut — and why that changes the economics of video creation.',
-    category: 'Product',
-    readTime: '4 min',
-    date: 'Mar 25, 2026',
-    gradient: 'from-warm-muted to-warm-surface',
-  },
-  {
-    title: 'CRDT-Powered Collaboration for Creative Tools',
-    excerpt: 'A deep-dive into how we use Loro CRDTs to enable real-time collaboration between humans and AI agents on the same canvas.',
-    category: 'Engineering',
+    title: 'Multiplayer without losing the room',
+    excerpt: 'Using Loro, presence, and a cloud sequencer to keep shared creative work legible across local and web sessions.',
+    category: 'Sync',
+    signal: 'Loro + room log',
     readTime: '8 min',
-    date: 'Mar 20, 2026',
-    gradient: 'from-warm-hover to-brand-light',
+    date: 'Mar 29, 2026',
+    nodes: ['You', 'Room', 'Remote'],
   },
 ];
+
+function BlogCanvasPreview({ post, index }: { post: (typeof posts)[number]; index: number }) {
+  const nodePositions = [
+    [
+      'left-[12%] top-[34%]',
+      'left-[42%] top-[52%]',
+      'right-[10%] top-[28%]',
+    ],
+    [
+      'left-[10%] top-[48%]',
+      'left-[40%] top-[28%]',
+      'right-[12%] top-[54%]',
+    ],
+    [
+      'left-[12%] top-[30%]',
+      'left-[42%] top-[46%]',
+      'right-[10%] top-[36%]',
+    ],
+  ][index % 3];
+
+  const path = [
+    'M58 72 C136 44 172 116 246 82 S348 56 420 92',
+    'M52 92 C124 118 162 42 238 68 S348 120 418 78',
+    'M54 66 C142 90 174 96 244 88 S342 54 420 72',
+  ][index % 3];
+
+  return (
+    <div
+      className="clash-blog-preview-canvas relative h-40 overflow-hidden border-b border-warm-border/70 bg-warm-page"
+      style={{
+        backgroundImage: 'radial-gradient(var(--canvas-dot) 1px, transparent 1px)',
+        backgroundSize: '18px 18px',
+      }}
+    >
+      <div className="absolute inset-0 bg-[linear-gradient(90deg,rgba(255,254,253,0.72),rgba(255,254,253,0.28)_54%,rgba(255,240,237,0.42))]" />
+      <svg className="absolute inset-x-8 top-9 h-20 text-brand/52" viewBox="0 0 480 140" fill="none" aria-hidden="true">
+        <path d={path} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeDasharray="7 8" />
+      </svg>
+      {post.nodes.map((label, nodeIndex) => (
+        <div
+          key={label}
+          className={`absolute ${nodePositions[nodeIndex]} min-w-[82px] rounded-xl border border-warm-border bg-warm-surface/88 px-3 py-2 shadow-[0_10px_26px_rgba(35,31,25,0.055)] backdrop-blur-sm transition-transform duration-200 group-hover:-translate-y-0.5`}
+        >
+          <div className="mb-1 h-1.5 w-8 rounded-full bg-brand/70" />
+          <div className="text-[11px] font-semibold text-slate-800">{label}</div>
+        </div>
+      ))}
+      <div className="absolute left-5 top-5 inline-flex items-center rounded-lg border border-warm-border bg-warm-surface/86 px-2.5 py-1 text-xs font-medium text-stone-800 shadow-sm">
+        {post.category}
+      </div>
+      <div className="absolute bottom-5 right-5 rounded-lg bg-brand-light/86 px-2.5 py-1 text-[11px] font-semibold text-brand">
+        {post.signal}
+      </div>
+    </div>
+  );
+}
 
 export default function BlogPreview() {
   return (
@@ -37,7 +96,7 @@ export default function BlogPreview() {
           <div>
             <h2 className="text-base font-semibold leading-7 text-brand font-display">Blog</h2>
             <p className="mt-2 text-3xl font-bold tracking-tight text-slate-900 dark:text-slate-50 sm:text-4xl font-display">
-              From the team
+              Field notes
             </p>
           </div>
           <motion.a
@@ -45,7 +104,7 @@ export default function BlogPreview() {
             className="hidden sm:flex items-center gap-1.5 text-sm font-medium text-stone-700 dark:text-stone-300 hover:text-brand transition-colors"
             whileHover={{ x: 2 }}
           >
-            View all posts
+            Read all notes
             <ArrowRight className="h-4 w-4" weight="bold" />
           </motion.a>
         </div>
@@ -61,12 +120,7 @@ export default function BlogPreview() {
               transition={{ duration: 0.4, delay: index * 0.1 }}
               className="group flex flex-col overflow-hidden rounded-2xl border border-warm-border/80 bg-warm-surface/88 shadow-[0_10px_28px_rgba(35,31,25,0.04)] transition-all hover:-translate-y-0.5 hover:border-brand/25 hover:bg-warm-surface"
             >
-              {/* Gradient header */}
-              <div className={`h-40 bg-gradient-to-br ${post.gradient} flex items-end p-6`}>
-                <span className="inline-flex items-center rounded-lg bg-warm-surface/85 px-2.5 py-0.5 text-xs font-medium text-stone-800 dark:text-stone-200">
-                  {post.category}
-                </span>
-              </div>
+              <BlogCanvasPreview post={post} index={index} />
 
               <div className="flex flex-1 flex-col p-6">
                 <h3 className="text-lg font-bold text-slate-900 dark:text-slate-50 font-display mb-2 group-hover:text-brand transition-colors">
@@ -89,7 +143,7 @@ export default function BlogPreview() {
 
         <div className="mt-8 text-center sm:hidden">
           <a href="#" className="text-sm font-medium text-brand hover:text-red-600 transition-colors">
-            View all posts &rarr;
+            Read all notes &rarr;
           </a>
         </div>
       </div>

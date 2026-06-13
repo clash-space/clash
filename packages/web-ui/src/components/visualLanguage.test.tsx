@@ -414,6 +414,7 @@ describe("visual language surfaces", () => {
       "packages/web-ui/src/components/landing/UseCases.tsx",
       "packages/web-ui/src/components/landing/Pricing.tsx",
       "packages/web-ui/src/components/landing/CTASection.tsx",
+      "packages/web-ui/src/components/landing/BlogPreview.tsx",
     ]
       .map((path) => readFileSync(join(process.cwd(), path), "utf8"))
       .join("\n");
@@ -426,7 +427,12 @@ describe("visual language surfaces", () => {
     expect(source).toMatch(/Solo creator studio/);
     expect(source).toMatch(/Local by default, cloud when it helps/);
     expect(source).toMatch(/Start local\. Add cloud only when the project needs it\./);
-    expect(source).not.toMatch(/stock footage|Digital Avatars|Brand Customization|Export optimized|technical complexity|b-roll|lip-sync|720p export|Watermark on exports|bg-slate-950/);
+    expect(source).toMatch(/clash-blog-preview-canvas/);
+    expect(source).toMatch(/Field notes/);
+    expect(source).toMatch(/The canvas is the contract/);
+    expect(source).toMatch(/Local-first agents, cloud when useful/);
+    expect(source).toMatch(/Multiplayer without losing the room/);
+    expect(source).not.toMatch(/stock footage|Digital Avatars|Brand Customization|Export optimized|technical complexity|b-roll|lip-sync|720p export|Watermark on exports|bg-slate-950|AI video tools are flooding|Sleep-Time Production|CRDT-Powered Collaboration|bg-gradient-to-br|gradient:/);
   });
 
   it("keeps identity and mention surfaces out of legacy gradient and default gray chrome", () => {
