@@ -168,6 +168,72 @@ describe("local API app", () => {
     expect(await afterDelete.json()).toEqual({ variables: [] });
   });
 
+  it("persists local model provider account settings and exposes catalog tiers", async () => {
+    const app = createLocalApiApp({ dataDir, userId: "local-user" });
+
+    await app.request("/api/v1/vars/FAL_API_KEY", {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ value: "fal-local-key" }),
+    });
+    const saved = await app.request("/api/v1/model-providers", {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        providers: [
+          { providerId: "fal", enabled: true, weight: 90 },
+          { providerId: "official", upstreamId: "openai", region: "global", enabled: true, weight: 10 },
+        ],
+      }),
+    });
+
+    expect(saved.status).toBe(200);
+    const savedJson = (await saved.json()) as { providers: Array<Record<string, unknown>> };
+    expect(savedJson.providers).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        providerId: "fal",
+        upstreamId: "fal",
+        enabled: true,
+        weight: 90,
+        availableVariables: ["FAL_API_KEY"],
+      }),
+      expect.objectContaining({
+        providerId: "official",
+        upstreamId: "openai",
+        region: "global",
+        enabled: true,
+        weight: 10,
+        availableVariables: [],
+      }),
+    ]));
+
+    const reopened = createLocalApiApp({ dataDir, userId: "local-user" });
+    const providers = await reopened.request("/api/v1/model-providers");
+    expect(await providers.json()).toEqual(savedJson);
+
+    const catalog = await reopened.request("/api/v1/models/catalog");
+    const catalogJson = (await catalog.json()) as {
+      models: Array<{
+        model: { id: string };
+        tier: string;
+        selectedRoute?: { providerId?: string; upstreamId?: string };
+        candidateProviders: string[];
+        missingVariables: string[];
+      }>;
+    };
+    const nanoBanana = catalogJson.models.find((entry) => entry.model.id === "nano-banana-2");
+    const gptImage = catalogJson.models.find((entry) => entry.model.id === "gpt-image-2");
+    expect(nanoBanana).toMatchObject({
+      tier: "available",
+      selectedRoute: { providerId: "fal", upstreamId: "fal" },
+    });
+    expect(gptImage).toMatchObject({
+      tier: "configured-provider",
+      candidateProviders: ["official"],
+      missingVariables: ["OPENAI_API_KEY"],
+    });
+  });
+
   it("allows browser requests from the local web runtime", async () => {
     const app = createLocalApiApp({ dataDir, userId: "local-user" });
 

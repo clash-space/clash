@@ -77,6 +77,131 @@ describe("local mock AIGC", () => {
     });
   });
 
+  it("uses the desktop GOOGLE_API_KEY for Google AI Studio image models", async () => {
+    const calls: Array<{ url: string; init?: RequestInit }> = [];
+    const service = createMockExternalAigcService({
+      variables: async () => ({ GOOGLE_API_KEY: "google-local-key" }),
+      providerAccounts: async () => [
+        {
+          providerId: "official",
+          upstreamId: "google",
+          region: "global",
+          enabled: true,
+          availableVariables: ["GOOGLE_API_KEY"],
+        },
+      ],
+      fetch: async (input: string | URL | Request, init?: RequestInit) => {
+        const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+        calls.push({ url, init });
+        if (url === "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-image:generateContent") {
+          return Response.json({
+            candidates: [
+              {
+                content: {
+                  parts: [
+                    {
+                      inlineData: {
+                        mimeType: "image/png",
+                        data: Buffer.from("real-google-image").toString("base64"),
+                      },
+                    },
+                  ],
+                },
+              },
+            ],
+          });
+        }
+        return new Response("not found", { status: 404 });
+      },
+    } as never);
+
+    const result = await service.generateImage({
+      taskId: "task-google-image",
+      prompt: "real google image",
+      model: "gemini-flash-image-2",
+      aspectRatio: "16:9",
+      modelParams: { resolution: "1K" },
+    });
+
+    expect(result.provider).toBe("google");
+    expect(result.modelEndpoint).toBe("gemini-3.1-flash-image");
+    expect(Buffer.from(result.bytes).toString("utf8")).toBe("real-google-image");
+    expect(result.contentType).toBe("image/png");
+    expect(calls[0].init?.headers).toMatchObject({
+      "x-goog-api-key": "google-local-key",
+      "content-type": "application/json",
+    });
+    expect(JSON.parse(String(calls[0].init?.body))).toMatchObject({
+      contents: [{ parts: [{ text: "real google image" }] }],
+      generationConfig: {
+        responseModalities: ["TEXT", "IMAGE"],
+        responseFormat: { image: { aspectRatio: "16:9", imageSize: "1K" } },
+      },
+    });
+  });
+
+  it("uses the desktop GOOGLE_API_KEY for Google AI Studio TTS models", async () => {
+    const calls: Array<{ url: string; init?: RequestInit }> = [];
+    const service = createMockExternalAigcService({
+      variables: async () => ({ GOOGLE_API_KEY: "google-local-key" }),
+      providerAccounts: async () => [
+        {
+          providerId: "official",
+          upstreamId: "google",
+          region: "global",
+          enabled: true,
+          availableVariables: ["GOOGLE_API_KEY"],
+        },
+      ],
+      fetch: async (input: string | URL | Request, init?: RequestInit) => {
+        const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+        calls.push({ url, init });
+        if (url === "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-tts-preview:generateContent") {
+          return Response.json({
+            candidates: [
+              {
+                content: {
+                  parts: [
+                    {
+                      inlineData: {
+                        mimeType: "audio/wav",
+                        data: Buffer.from("real-google-audio").toString("base64"),
+                      },
+                    },
+                  ],
+                },
+              },
+            ],
+          });
+        }
+        return new Response("not found", { status: 404 });
+      },
+    } as never);
+
+    const result = await service.generateAudio({
+      taskId: "task-google-tts",
+      prompt: "Say hello from Google",
+      model: "gemini-3.1-flash-tts",
+      modelParams: { voice_name: "Kore" },
+    });
+
+    expect(result.provider).toBe("google");
+    expect(result.modelEndpoint).toBe("gemini-3.1-flash-tts-preview");
+    expect(Buffer.from(result.bytes).toString("utf8")).toBe("real-google-audio");
+    expect(result.contentType).toBe("audio/wav");
+    expect(JSON.parse(String(calls[0].init?.body))).toMatchObject({
+      contents: [{ parts: [{ text: "Say hello from Google" }] }],
+      generationConfig: {
+        responseModalities: ["AUDIO"],
+        speechConfig: {
+          voiceConfig: {
+            prebuiltVoiceConfig: { voiceName: "Kore" },
+          },
+        },
+      },
+    });
+  });
+
   it("uses the desktop FAL_API_KEY for fal-routed video models", async () => {
     const calls: Array<{ url: string; init?: RequestInit }> = [];
     const service = createMockExternalAigcService({
@@ -135,6 +260,192 @@ describe("local mock AIGC", () => {
       duration: 6,
       resolution: "720p",
       generate_audio: true,
+    });
+  });
+
+  it("honors configured provider account availability when selecting a local route", async () => {
+    const calls: Array<{ url: string; init?: RequestInit }> = [];
+    const service = createMockExternalAigcService({
+      origin: "http://local.test",
+      variables: async () => ({ FAL_API_KEY: "fal-local-key" }),
+      providerAccounts: async () => [
+        {
+          providerId: "fal",
+          enabled: false,
+          availableVariables: ["FAL_API_KEY"],
+        },
+      ],
+      fetch: async (input: string | URL | Request, init?: RequestInit) => {
+        const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+        calls.push({ url, init });
+        if (url === "https://queue.fal.run/fal-ai/nano-banana-2") {
+          return Response.json({ request_id: "fal-weighted-image" });
+        }
+        if (url === "https://queue.fal.run/fal-ai/nano-banana-2/requests/fal-weighted-image/status") {
+          return Response.json({ status: "COMPLETED" });
+        }
+        if (url === "https://queue.fal.run/fal-ai/nano-banana-2/requests/fal-weighted-image") {
+          return Response.json({
+            images: [{ url: "https://fal-cdn.test/image.png", width: 1024, height: 1024 }],
+          });
+        }
+        if (url === "https://fal-cdn.test/image.png") {
+          return new Response("weighted-fal-image", { headers: { "content-type": "image/png" } });
+        }
+        return new Response("not found", { status: 404 });
+      },
+    } as never);
+
+    const result = await service.generateImage({
+      taskId: "task-weighted-fal-image",
+      prompt: "weighted image route",
+      model: "nano-banana-2",
+      aspectRatio: "1:1",
+    });
+
+    expect(result.provider).toBe("fal-mock");
+    expect(result.modelEndpoint).toBe("fal-ai/nano-banana-2");
+    expect(calls).toEqual([]);
+  });
+
+  it("uses the desktop KIE_API_KEY for KIE-routed image models", async () => {
+    const calls: Array<{ url: string; init?: RequestInit }> = [];
+    const service = createMockExternalAigcService({
+      variables: async () => ({ KIE_API_KEY: "kie-local-key", FAL_API_KEY: "fal-local-key" }),
+      providerAccounts: async () => [
+        {
+          providerId: "kie",
+          upstreamId: "kie",
+          enabled: true,
+          availableVariables: ["KIE_API_KEY"],
+          weight: 100,
+        },
+        {
+          providerId: "fal",
+          upstreamId: "fal",
+          enabled: true,
+          availableVariables: ["FAL_API_KEY"],
+        },
+      ],
+      fetch: async (input: string | URL | Request, init?: RequestInit) => {
+        const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+        calls.push({ url, init });
+        if (url === "https://api.kie.ai/api/v1/jobs/createTask") {
+          return Response.json({ code: 200, msg: "success", data: { taskId: "kie-image-1" } });
+        }
+        if (url === "https://api.kie.ai/api/v1/jobs/recordInfo?taskId=kie-image-1") {
+          return Response.json({
+            code: 200,
+            msg: "success",
+            data: {
+              taskId: "kie-image-1",
+              state: "success",
+              response: { resultUrls: ["https://kie-cdn.test/image.png"] },
+            },
+          });
+        }
+        if (url === "https://kie-cdn.test/image.png") {
+          return new Response("real-kie-image", { headers: { "content-type": "image/png" } });
+        }
+        return new Response("not found", { status: 404 });
+      },
+    } as never);
+
+    const result = await service.generateImage({
+      taskId: "task-kie-real",
+      prompt: "real kie image",
+      model: "nano-banana-2",
+      aspectRatio: "16:9",
+      modelParams: { resolution: "1K", count: 1 },
+    });
+
+    expect(result.provider).toBe("kie");
+    expect(result.modelEndpoint).toBe("nano-banana-2");
+    expect(result.requestId).toBe("kie-image-1");
+    expect(result.remoteUrl).toBe("https://kie-cdn.test/image.png");
+    expect(Buffer.from(result.bytes).toString("utf8")).toBe("real-kie-image");
+    expect(calls[0].init?.headers).toMatchObject({
+      authorization: "Bearer kie-local-key",
+      "content-type": "application/json",
+    });
+    expect(JSON.parse(String(calls[0].init?.body))).toMatchObject({
+      model: "nano-banana-2",
+      input: {
+        prompt: "real kie image",
+        aspect_ratio: "16:9",
+        resolution: "1K",
+        count: 1,
+      },
+    });
+  });
+
+  it("uses the desktop REPLICATE_API_TOKEN for Replicate-routed image models", async () => {
+    const calls: Array<{ url: string; init?: RequestInit }> = [];
+    const service = createMockExternalAigcService({
+      variables: async () => ({ REPLICATE_API_TOKEN: "r8-local-token", OPENAI_API_KEY: "sk-local-openai" }),
+      providerAccounts: async () => [
+        {
+          providerId: "replicate",
+          upstreamId: "replicate",
+          enabled: true,
+          availableVariables: ["REPLICATE_API_TOKEN"],
+          weight: 100,
+        },
+        {
+          providerId: "official",
+          upstreamId: "openai",
+          enabled: true,
+          availableVariables: ["OPENAI_API_KEY"],
+        },
+      ],
+      fetch: async (input: string | URL | Request, init?: RequestInit) => {
+        const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+        calls.push({ url, init });
+        if (url === "https://api.replicate.com/v1/models/openai/gpt-image-2/predictions") {
+          return Response.json({
+            id: "replicate-image-1",
+            status: "starting",
+            urls: { get: "https://api.replicate.com/v1/predictions/replicate-image-1" },
+          });
+        }
+        if (url === "https://api.replicate.com/v1/predictions/replicate-image-1") {
+          return Response.json({
+            id: "replicate-image-1",
+            status: "succeeded",
+            output: ["https://replicate-cdn.test/image.webp"],
+          });
+        }
+        if (url === "https://replicate-cdn.test/image.webp") {
+          return new Response("real-replicate-image", { headers: { "content-type": "image/webp" } });
+        }
+        return new Response("not found", { status: 404 });
+      },
+    } as never);
+
+    const result = await service.generateImage({
+      taskId: "task-replicate-real",
+      prompt: "real replicate image",
+      model: "gpt-image-2",
+      aspectRatio: "1:1",
+      modelParams: { size: "1024x1024", quality: "high" },
+    });
+
+    expect(result.provider).toBe("replicate");
+    expect(result.modelEndpoint).toBe("openai/gpt-image-2");
+    expect(result.requestId).toBe("replicate-image-1");
+    expect(result.remoteUrl).toBe("https://replicate-cdn.test/image.webp");
+    expect(Buffer.from(result.bytes).toString("utf8")).toBe("real-replicate-image");
+    expect(calls[0].init?.headers).toMatchObject({
+      authorization: "Bearer r8-local-token",
+      "content-type": "application/json",
+    });
+    expect(JSON.parse(String(calls[0].init?.body))).toMatchObject({
+      input: {
+        prompt: "real replicate image",
+        aspect_ratio: "1:1",
+        size: "1024x1024",
+        quality: "high",
+      },
     });
   });
 });

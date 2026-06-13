@@ -3,6 +3,7 @@ import { extname, join, normalize, relative } from "node:path";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { defaultRuntimeCapabilities } from "@clash/shared-runtime";
+import { listModelCatalogEntries } from "@clash/shared-types";
 import type { Asset, AssetKind, AssetRefRow } from "@clash/shared-types/assets";
 import {
   createMockFalQueueService,
@@ -17,6 +18,12 @@ import {
 } from "./sync-config.js";
 import type { RemoteRoomMessage } from "./room-sync.js";
 import type { RemoteLoroPersistenceEnv } from "./sync.js";
+import {
+  normalizeProviderAccountInput,
+  providerAccountKey,
+  publicProviderAccounts,
+  type LocalProviderAccountConfig,
+} from "./provider-accounts.js";
 
 export interface LocalApiOptions {
   dataDir: string;
@@ -173,6 +180,7 @@ interface LocalDb {
   crewMembers: LocalCrewMember[];
   roomMessages: LocalRoomMessage[];
   variables: LocalUserVariable[];
+  providerAccounts: LocalProviderAccountConfig[];
 }
 
 const DEFAULT_DB: LocalDb = {
@@ -183,6 +191,7 @@ const DEFAULT_DB: LocalDb = {
   crewMembers: [],
   roomMessages: [],
   variables: [],
+  providerAccounts: [],
 };
 
 const LOCAL_RUNTIME_ID = "desktop-local";
@@ -257,6 +266,7 @@ function createDb(dataDir: string) {
       crewMembers: db.crewMembers ?? [],
       roomMessages: db.roomMessages ?? [],
       variables: db.variables ?? [],
+      providerAccounts: db.providerAccounts ?? [],
     };
   }
 
@@ -604,6 +614,56 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
     if (state.variables.length === before) return c.json({ error: "Variable not found" }, 404);
     await db.save(state);
     return c.json({ ok: true, key });
+  });
+  app.get("/api/v1/model-providers", async (c) => {
+    const state = await db.load();
+    return c.json({
+      providers: publicProviderAccounts(state.providerAccounts, state.variables, userId),
+    });
+  });
+  app.patch("/api/v1/model-providers", async (c) => {
+    const body = (await c.req.json().catch(() => ({}))) as { providers?: unknown };
+    const incoming = Array.isArray(body.providers)
+      ? body.providers.map(normalizeProviderAccountInput)
+      : [];
+    if (incoming.length === 0 || incoming.some((provider) => !provider)) {
+      return c.json({ error: "Invalid providers" }, 400);
+    }
+    const state = await db.load();
+    const now = nowIso();
+    const existing = new Map(
+      state.providerAccounts
+        .filter((account) => account.userId === userId)
+        .map((account) => [providerAccountKey(account), account]),
+    );
+    for (const provider of incoming) {
+      if (!provider) continue;
+      const key = providerAccountKey(provider);
+      const previous = existing.get(key);
+      existing.set(key, {
+        ...previous,
+        ...provider,
+        userId,
+        createdAt: previous?.createdAt ?? now,
+        updatedAt: now,
+      });
+    }
+    state.providerAccounts = [
+      ...state.providerAccounts.filter((account) => account.userId !== userId),
+      ...existing.values(),
+    ];
+    await db.save(state);
+    return c.json({
+      providers: publicProviderAccounts(state.providerAccounts, state.variables, userId),
+    });
+  });
+  app.get("/api/v1/models/catalog", async (c) => {
+    const state = await db.load();
+    return c.json({
+      models: listModelCatalogEntries({
+        configuredProviders: publicProviderAccounts(state.providerAccounts, state.variables, userId),
+      }),
+    });
   });
   app.get("/api/marketplace/registry", (c) => c.json({ version: 1, actions: [], skills: [] }));
   app.get("/api/v1/local/sync", async (c) => c.json(await syncConfig.getPublicConfig()));

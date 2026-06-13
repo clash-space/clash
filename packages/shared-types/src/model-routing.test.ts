@@ -85,6 +85,30 @@ describe("model upstream routing", () => {
     expect(route).not.toHaveProperty("requiredSecretIds");
   });
 
+  it("routes official Google AI Studio image models when a Gemini API key is configured", () => {
+    const route = resolveModelUpstreamRoute({
+      modelCode: "gemini-flash-image-2",
+      kind: "image",
+      configuredProviders: [
+        {
+          providerId: "official",
+          upstreamId: "google",
+          region: "global",
+          enabled: true,
+          availableVariables: ["GOOGLE_API_KEY"],
+        },
+      ],
+    });
+
+    expect(route).toMatchObject({
+      providerId: "official",
+      upstreamId: "google",
+      upstreamModel: "gemini-3.1-flash-image",
+      apiShape: "google-ai-studio",
+      requiredVariables: ["GOOGLE_API_KEY"],
+    });
+  });
+
   it("routes Minimax TTS to fal when the fal key is configured", () => {
     const route = resolveModelUpstreamRoute({
       modelCode: "minimax-tts",
@@ -146,6 +170,62 @@ describe("model upstream routing", () => {
       upstreamId: "fal",
       upstreamModel: "fal-ai/nano-banana-2",
       apiShape: "fal",
+    });
+  });
+
+  it("routes KIE provider accounts through the KIE market API shape", () => {
+    const route = resolveModelUpstreamRoute({
+      modelCode: "nano-banana-2",
+      kind: "image",
+      configuredProviders: [
+        {
+          providerId: "kie",
+          upstreamId: "kie",
+          availableVariables: ["KIE_API_KEY"],
+          weight: 100,
+        },
+        {
+          providerId: "fal",
+          upstreamId: "fal",
+          availableVariables: ["FAL_API_KEY"],
+        },
+      ],
+    });
+
+    expect(route).toMatchObject({
+      providerId: "kie",
+      upstreamId: "kie",
+      upstreamModel: "nano-banana-2",
+      apiShape: "kie",
+      requiredVariables: ["KIE_API_KEY"],
+    });
+  });
+
+  it("routes Replicate provider accounts through prediction models", () => {
+    const route = resolveModelUpstreamRoute({
+      modelCode: "gpt-image-2",
+      kind: "image",
+      configuredProviders: [
+        {
+          providerId: "replicate",
+          upstreamId: "replicate",
+          availableVariables: ["REPLICATE_API_TOKEN"],
+          weight: 100,
+        },
+        {
+          providerId: "official",
+          upstreamId: "openai",
+          availableVariables: ["OPENAI_API_KEY"],
+        },
+      ],
+    });
+
+    expect(route).toMatchObject({
+      providerId: "replicate",
+      upstreamId: "replicate",
+      upstreamModel: "openai/gpt-image-2",
+      apiShape: "replicate",
+      requiredVariables: ["REPLICATE_API_TOKEN"],
     });
   });
 

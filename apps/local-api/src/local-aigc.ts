@@ -2,6 +2,7 @@ import {
   resolveModelUpstreamRoute,
   type ModelKind,
   type ModelUpstreamRoute,
+  type ProviderAccountAvailability,
   type UpstreamAvailability,
 } from "@clash/shared-types";
 
@@ -47,9 +48,13 @@ export interface MockFalExternalAigcServiceOptions {
   fal?: FalMockQueueService;
   origin?: string;
   variables?: () => Promise<Record<string, string | undefined>>;
+  providerAccounts?: () => Promise<ProviderAccountAvailability[]>;
   fetch?: typeof fetch;
   openAiBaseUrl?: string;
   falQueueBaseUrl?: string;
+  googleAiStudioBaseUrl?: string;
+  kieBaseUrl?: string;
+  replicateBaseUrl?: string;
 }
 
 const LOCAL_UPSTREAM_ORDER: UpstreamAvailability["upstreamId"][] = [
@@ -87,7 +92,19 @@ function resolveLocalRoute(
   model: string,
   kind: ModelKind,
   variables: Record<string, string | undefined>,
+  providerAccounts?: ProviderAccountAvailability[],
 ): ModelUpstreamRoute | null {
+  if (providerAccounts) {
+    return resolveModelUpstreamRoute({
+      modelCode: model,
+      kind,
+      allowMock: true,
+      configuredProviders: [
+        ...providerAccounts,
+        { providerId: "mock", enabled: true },
+      ],
+    });
+  }
   return resolveModelUpstreamRoute({
     modelCode: model,
     kind,
@@ -205,6 +222,89 @@ async function generateOpenAiImage(
     contentType: mediaTypeForFormat(format),
     requestId: typeof json.id === "string" ? json.id : input.taskId,
     provider: "openai",
+    modelEndpoint: route.upstreamModel,
+  };
+}
+
+function googleAiStudioBody(input: MockMediaGenerationInput, kind: ModelKind): Record<string, unknown> {
+  const params = input.modelParams ?? {};
+  const body: Record<string, unknown> = {
+    contents: [{ parts: [{ text: input.prompt }] }],
+  };
+  if (kind === "image") {
+    body.generationConfig = {
+      responseModalities: ["TEXT", "IMAGE"],
+      responseFormat: {
+        image: {
+          aspectRatio: input.aspectRatio || stringParam(params, "aspect_ratio") || "1:1",
+          imageSize: stringParam(params, "resolution") || stringParam(params, "image_size") || "1K",
+        },
+      },
+    };
+    return body;
+  }
+  if (kind === "audio") {
+    body.generationConfig = {
+      responseModalities: ["AUDIO"],
+      speechConfig: {
+        voiceConfig: {
+          prebuiltVoiceConfig: {
+            voiceName: stringParam(params, "voice_name") || "Kore",
+          },
+        },
+      },
+    };
+    return body;
+  }
+  return body;
+}
+
+function googleInlineData(json: any): { data: string; mimeType: string } | null {
+  const parts = json?.candidates?.flatMap((candidate: any) => candidate?.content?.parts ?? []) ?? [];
+  for (const part of parts) {
+    const inlineData = part?.inlineData ?? part?.inline_data;
+    const data = inlineData?.data;
+    if (typeof data === "string" && data) {
+      return {
+        data,
+        mimeType: inlineData?.mimeType ?? inlineData?.mime_type ?? "application/octet-stream",
+      };
+    }
+  }
+  return null;
+}
+
+async function generateGoogleAiStudioMedia(
+  input: MockMediaGenerationInput,
+  kind: ModelKind,
+  route: ModelUpstreamRoute,
+  options: Required<Pick<MockFalExternalAigcServiceOptions, "fetch">> &
+    Pick<MockFalExternalAigcServiceOptions, "googleAiStudioBaseUrl">,
+  apiKey: string,
+): Promise<MockMediaGenerationResult> {
+  if (kind !== "image" && kind !== "audio") throw missingAdapter(route);
+  const baseUrl = normalizeBaseUrl(options.googleAiStudioBaseUrl, "https://generativelanguage.googleapis.com/v1beta");
+  const response = await options.fetch(`${baseUrl}/models/${route.upstreamModel}:generateContent`, {
+    method: "POST",
+    headers: {
+      "x-goog-api-key": apiKey,
+      "content-type": "application/json",
+    },
+    body: JSON.stringify(googleAiStudioBody(input, kind)),
+  });
+  const json = await responseJson(response);
+  if (!response.ok) {
+    throw new Error(`Google AI Studio request failed: ${json?.error?.message ?? response.statusText}`);
+  }
+  const inlineData = googleInlineData(json);
+  if (!inlineData) {
+    throw new Error(`Google AI Studio response returned no inline media for ${route.upstreamModel}`);
+  }
+  return {
+    bytes: base64ToBytes(inlineData.data),
+    contentType: inlineData.mimeType,
+    requestId: input.taskId,
+    provider: "google",
     modelEndpoint: route.upstreamModel,
   };
 }
@@ -337,6 +437,218 @@ async function generateFalMedia(
   };
 }
 
+function providerInput(input: MockMediaGenerationInput, kind: ModelKind): Record<string, unknown> {
+  const params = input.modelParams ?? {};
+  const body: Record<string, unknown> = {
+    prompt: input.prompt,
+    ...params,
+  };
+  if (input.aspectRatio) body.aspect_ratio = input.aspectRatio;
+  if (kind === "video") {
+    body.duration = input.duration ?? params.duration ?? 5;
+  }
+  return body;
+}
+
+function firstResultUrl(value: unknown): string | undefined {
+  if (typeof value === "string") {
+    return /^https?:\/\//i.test(value) ? value : undefined;
+  }
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      const url = firstResultUrl(item);
+      if (url) return url;
+    }
+    return undefined;
+  }
+  if (!value || typeof value !== "object") return undefined;
+  const record = value as Record<string, unknown>;
+  for (const key of [
+    "resultUrls",
+    "fullResultUrls",
+    "originUrls",
+    "output",
+    "images",
+    "videos",
+    "audios",
+    "image",
+    "video",
+    "audio",
+    "url",
+    "uri",
+    "response",
+    "data",
+  ]) {
+    const url = firstResultUrl(record[key]);
+    if (url) return url;
+  }
+  return undefined;
+}
+
+function defaultContentType(kind: ModelKind): string {
+  if (kind === "video") return "video/mp4";
+  if (kind === "audio") return "audio/mpeg";
+  return "image/png";
+}
+
+async function downloadProviderMedia(
+  fetchImpl: typeof fetch,
+  mediaUrl: string,
+  kind: ModelKind,
+): Promise<Pick<MockMediaGenerationResult, "bytes" | "contentType" | "remoteUrl">> {
+  const mediaResponse = await fetchImpl(mediaUrl);
+  if (!mediaResponse.ok) throw new Error(`provider media download failed: ${mediaResponse.status}`);
+  return {
+    bytes: new Uint8Array(await mediaResponse.arrayBuffer()),
+    contentType: mediaResponse.headers.get("content-type") ?? defaultContentType(kind),
+    remoteUrl: mediaUrl,
+  };
+}
+
+function kieTaskState(data: any): "pending" | "success" | "failed" {
+  const task = data?.data ?? data;
+  const flag = task?.successFlag;
+  if (flag === 1 || flag === "1") return "success";
+  if (flag === 2 || flag === 3 || flag === "2" || flag === "3") return "failed";
+  const state = String(task?.state ?? task?.status ?? task?.taskStatus ?? "").toLowerCase();
+  if (state === "success" || state === "succeeded" || state === "completed") return "success";
+  if (state === "fail" || state === "failed" || state === "error" || state === "canceled") return "failed";
+  return "pending";
+}
+
+async function generateKieMedia(
+  input: MockMediaGenerationInput,
+  kind: ModelKind,
+  route: ModelUpstreamRoute,
+  options: Required<Pick<MockFalExternalAigcServiceOptions, "fetch">> &
+    Pick<MockFalExternalAigcServiceOptions, "kieBaseUrl">,
+  apiKey: string,
+): Promise<MockMediaGenerationResult> {
+  const baseUrl = normalizeBaseUrl(options.kieBaseUrl, "https://api.kie.ai");
+  const headers = {
+    authorization: `Bearer ${apiKey}`,
+    "content-type": "application/json",
+  };
+  const createResponse = await options.fetch(`${baseUrl}/api/v1/jobs/createTask`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({
+      model: route.upstreamModel,
+      input: providerInput(input, kind),
+    }),
+  });
+  const created = await responseJson(createResponse);
+  if (!createResponse.ok || created?.code >= 400) {
+    throw new Error(`KIE request failed: ${created?.msg ?? created?.error?.message ?? createResponse.statusText}`);
+  }
+  const taskId = created?.data?.taskId ?? created?.taskId ?? created?.id;
+  if (typeof taskId !== "string" || !taskId) {
+    throw new Error(`KIE response returned no taskId for ${route.upstreamModel}`);
+  }
+
+  let task: any = null;
+  let state: "pending" | "success" | "failed" = "pending";
+  for (let attempt = 0; attempt < 240 && state === "pending"; attempt += 1) {
+    const statusResponse = await options.fetch(`${baseUrl}/api/v1/jobs/recordInfo?taskId=${encodeURIComponent(taskId)}`, {
+      headers: { authorization: `Bearer ${apiKey}` },
+    });
+    task = await responseJson(statusResponse);
+    if (!statusResponse.ok || task?.code >= 400) {
+      throw new Error(`KIE status failed: ${task?.msg ?? task?.error?.message ?? statusResponse.statusText}`);
+    }
+    state = kieTaskState(task);
+    if (state === "pending") await new Promise((resolve) => setTimeout(resolve, 1000));
+  }
+  if (state === "pending") throw new Error(`KIE request timed out: ${taskId}`);
+  if (state === "failed") {
+    const detail = task?.data?.errorMessage ?? task?.data?.errorCode ?? task?.msg ?? "failed";
+    throw new Error(`KIE request failed: ${detail}`);
+  }
+
+  const mediaUrl = firstResultUrl(task);
+  if (!mediaUrl) throw new Error(`KIE response returned no media URL for ${taskId}`);
+  const media = await downloadProviderMedia(options.fetch, mediaUrl, kind);
+  return {
+    ...media,
+    requestId: taskId,
+    provider: "kie",
+    modelEndpoint: route.upstreamModel,
+  };
+}
+
+function replicatePredictionUrl(baseUrl: string, upstreamModel: string): string {
+  const [owner, model] = upstreamModel.split("/", 2);
+  if (!owner || !model) {
+    throw new Error(`Replicate model must be owner/name, received ${upstreamModel}`);
+  }
+  return `${baseUrl}/models/${encodeURIComponent(owner)}/${encodeURIComponent(model)}/predictions`;
+}
+
+function replicateState(prediction: any): "pending" | "success" | "failed" {
+  const state = String(prediction?.status ?? "").toLowerCase();
+  if (state === "succeeded") return "success";
+  if (state === "failed" || state === "canceled") return "failed";
+  return "pending";
+}
+
+async function generateReplicateMedia(
+  input: MockMediaGenerationInput,
+  kind: ModelKind,
+  route: ModelUpstreamRoute,
+  options: Required<Pick<MockFalExternalAigcServiceOptions, "fetch">> &
+    Pick<MockFalExternalAigcServiceOptions, "replicateBaseUrl">,
+  apiKey: string,
+): Promise<MockMediaGenerationResult> {
+  const baseUrl = normalizeBaseUrl(options.replicateBaseUrl, "https://api.replicate.com/v1");
+  const headers = {
+    authorization: `Bearer ${apiKey}`,
+    "content-type": "application/json",
+  };
+  const createResponse = await options.fetch(replicatePredictionUrl(baseUrl, route.upstreamModel), {
+    method: "POST",
+    headers,
+    body: JSON.stringify({
+      input: providerInput(input, kind),
+    }),
+  });
+  let prediction = await responseJson(createResponse);
+  if (!createResponse.ok) {
+    throw new Error(`Replicate request failed: ${prediction?.detail ?? prediction?.error?.message ?? createResponse.statusText}`);
+  }
+  const predictionId = prediction?.id;
+  if (typeof predictionId !== "string" || !predictionId) {
+    throw new Error(`Replicate response returned no prediction id for ${route.upstreamModel}`);
+  }
+
+  let state = replicateState(prediction);
+  const getUrl = typeof prediction?.urls?.get === "string"
+    ? prediction.urls.get
+    : `${baseUrl}/predictions/${encodeURIComponent(predictionId)}`;
+  for (let attempt = 0; attempt < 240 && state === "pending"; attempt += 1) {
+    const statusResponse = await options.fetch(getUrl, {
+      headers: { authorization: `Bearer ${apiKey}` },
+    });
+    prediction = await responseJson(statusResponse);
+    if (!statusResponse.ok) {
+      throw new Error(`Replicate status failed: ${prediction?.detail ?? prediction?.error?.message ?? statusResponse.statusText}`);
+    }
+    state = replicateState(prediction);
+    if (state === "pending") await new Promise((resolve) => setTimeout(resolve, 1000));
+  }
+  if (state === "pending") throw new Error(`Replicate request timed out: ${predictionId}`);
+  if (state === "failed") throw new Error(`Replicate request failed: ${prediction?.error ?? "failed"}`);
+
+  const mediaUrl = firstResultUrl(prediction?.output ?? prediction);
+  if (!mediaUrl) throw new Error(`Replicate response returned no media URL for ${predictionId}`);
+  const media = await downloadProviderMedia(options.fetch, mediaUrl, kind);
+  return {
+    ...media,
+    requestId: predictionId,
+    provider: "replicate",
+    modelEndpoint: route.upstreamModel,
+  };
+}
+
 function missingAdapter(route: ModelUpstreamRoute): Error {
   return new Error(
     `Local provider adapter is not implemented for ${route.upstreamId} (${route.apiShape}). ` +
@@ -376,6 +688,7 @@ export function createMockExternalAigcService(
   const fetchImpl = options.fetch ?? fetch;
   const loadVariables: () => Promise<Record<string, string | undefined>> =
     options.variables ?? (async () => ({}));
+  const loadProviderAccounts = options.providerAccounts;
 
   async function generateWithRoute(
     input: MockMediaGenerationInput,
@@ -383,7 +696,8 @@ export function createMockExternalAigcService(
     fallback: () => Promise<MockMediaGenerationResult>,
   ): Promise<MockMediaGenerationResult> {
     const variables = await loadVariables();
-    const route = resolveLocalRoute(input.model, kind, variables);
+    const providerAccounts = loadProviderAccounts ? await loadProviderAccounts() : undefined;
+    const route = resolveLocalRoute(input.model, kind, variables, providerAccounts);
     if (!route || route.upstreamId === "mock") return fallback();
 
     if (route.apiShape === "openai-images") {
@@ -395,12 +709,39 @@ export function createMockExternalAigcService(
       }, apiKey);
     }
 
+    if (route.apiShape === "google-ai-studio") {
+      const apiKey = variables.GOOGLE_API_KEY?.trim();
+      if (!apiKey) return fallback();
+      return generateGoogleAiStudioMedia(input, kind, route, {
+        fetch: fetchImpl,
+        googleAiStudioBaseUrl: options.googleAiStudioBaseUrl,
+      }, apiKey);
+    }
+
     if (route.apiShape === "fal") {
       const apiKey = variables.FAL_API_KEY?.trim();
       if (!apiKey) return fallback();
       return generateFalMedia(input, kind, route, {
         fetch: fetchImpl,
         falQueueBaseUrl: options.falQueueBaseUrl,
+      }, apiKey);
+    }
+
+    if (route.apiShape === "kie") {
+      const apiKey = variables.KIE_API_KEY?.trim();
+      if (!apiKey) return fallback();
+      return generateKieMedia(input, kind, route, {
+        fetch: fetchImpl,
+        kieBaseUrl: options.kieBaseUrl,
+      }, apiKey);
+    }
+
+    if (route.apiShape === "replicate") {
+      const apiKey = variables.REPLICATE_API_TOKEN?.trim();
+      if (!apiKey) return fallback();
+      return generateReplicateMedia(input, kind, route, {
+        fetch: fetchImpl,
+        replicateBaseUrl: options.replicateBaseUrl,
       }, apiKey);
     }
 

@@ -114,6 +114,8 @@ const FAL_SECRET = "FAL_API_KEY";
 const GOOGLE_VERTEX_SECRET = "GOOGLE_VERTEX";
 const GOOGLE_AI_STUDIO_SECRET = "GOOGLE_API_KEY";
 const OPENAI_SECRET = "OPENAI_API_KEY";
+const KIE_SECRET = "KIE_API_KEY";
+const REPLICATE_SECRET = "REPLICATE_API_TOKEN";
 
 function fal(
   modelCode: string,
@@ -223,6 +225,42 @@ function openAiImages(
   };
 }
 
+function kie(
+  modelCode: string,
+  kind: ModelKind,
+  upstreamModel: string,
+  priority = 25,
+): ModelProviderRoute {
+  return {
+    modelCode,
+    kind,
+    providerId: "kie",
+    upstreamId: "kie",
+    upstreamModel,
+    apiShape: "kie",
+    priority,
+    requiredVariables: [KIE_SECRET],
+  };
+}
+
+function replicate(
+  modelCode: string,
+  kind: ModelKind,
+  upstreamModel: string,
+  priority = 25,
+): ModelProviderRoute {
+  return {
+    modelCode,
+    kind,
+    providerId: "replicate",
+    upstreamId: "replicate",
+    upstreamModel,
+    apiShape: "replicate",
+    priority,
+    requiredVariables: [REPLICATE_SECRET],
+  };
+}
+
 const FAL_IMAGE_ROUTES: Array<[string, string]> = [
   ["flux-schnell", "fal-ai/flux/schnell"],
   ["flux-dev", "fal-ai/flux/dev"],
@@ -250,6 +288,12 @@ const GOOGLE_IMAGE_ROUTES: Array<[string, string]> = [
   ["gemini-pro-image", "gemini-3-pro-image-preview"],
 ];
 
+const GOOGLE_AI_STUDIO_IMAGE_ROUTES: Array<[string, string]> = [
+  ["gemini-flash-image", "gemini-2.5-flash-image"],
+  ["gemini-flash-image-2", "gemini-3.1-flash-image"],
+  ["gemini-pro-image", "gemini-3-pro-image"],
+];
+
 const GOOGLE_VIDEO_ROUTES: Array<[string, string]> = [
   ["veo-3.1", "veo-3.1-generate-001"],
   ["veo-3.1-startend", "veo-3.1-generate-001"],
@@ -269,16 +313,54 @@ const GOOGLE_TEXT_ROUTES: Array<[string, string]> = [
   ["gemini-3-flash", "gemini-3-flash-preview"],
 ];
 
+const KIE_IMAGE_ROUTES: Array<[string, string]> = [
+  ["nano-banana-2", "nano-banana-2"],
+  ["gpt-image-2", "gpt-image-2-text-to-image"],
+  ["flux-schnell", "flux-2/flex-text-to-image"],
+  ["flux-dev", "flux-2/flex-text-to-image"],
+  ["flux-2-pro", "flux-2/pro-text-to-image"],
+];
+
+const KIE_VIDEO_ROUTES: Array<[string, string]> = [
+  ["seedance-2-text", "bytedance/seedance-2"],
+  ["seedance-2-startend", "bytedance/seedance-2"],
+  ["seedance-2-ref", "bytedance/seedance-2"],
+  ["kling-2.1", "kling/v2-1-standard"],
+  ["kling-3", "kling-3.0/video"],
+];
+
+const REPLICATE_IMAGE_ROUTES: Array<[string, string]> = [
+  ["nano-banana-2", "google/nano-banana-2"],
+  ["gpt-image-2", "openai/gpt-image-2"],
+  ["flux-schnell", "black-forest-labs/flux-schnell"],
+];
+
+const REPLICATE_VIDEO_ROUTES: Array<[string, string]> = [
+  ["seedance-2-text", "bytedance/seedance-2.0"],
+  ["seedance-2-startend", "bytedance/seedance-2.0"],
+  ["seedance-2-ref", "bytedance/seedance-2.0"],
+];
+
 export const MODEL_UPSTREAM_ROUTES: ModelUpstreamRoute[] = [
   ...FAL_IMAGE_ROUTES.flatMap(([modelCode, upstreamModel]) => [
     fal(modelCode, "image", upstreamModel),
     falMock(modelCode, "image", upstreamModel),
   ]),
+  ...KIE_IMAGE_ROUTES.map(([modelCode, upstreamModel]) => kie(modelCode, "image", upstreamModel)),
+  ...REPLICATE_IMAGE_ROUTES.map(([modelCode, upstreamModel]) => replicate(modelCode, "image", upstreamModel)),
   ...FAL_VIDEO_ROUTES.flatMap(([modelCode, upstreamModel]) => [
     fal(modelCode, "video", upstreamModel),
     falMock(modelCode, "video", upstreamModel),
   ]),
+  ...KIE_VIDEO_ROUTES.map(([modelCode, upstreamModel]) => kie(modelCode, "video", upstreamModel)),
+  ...REPLICATE_VIDEO_ROUTES.map(([modelCode, upstreamModel]) => replicate(modelCode, "video", upstreamModel)),
   ...GOOGLE_IMAGE_ROUTES.flatMap(([modelCode, upstreamModel]) => [
+    googleAiStudio(
+      modelCode,
+      "image",
+      GOOGLE_AI_STUDIO_IMAGE_ROUTES.find(([candidate]) => candidate === modelCode)?.[1] ?? upstreamModel,
+      12,
+    ),
     googleVertex(modelCode, "image", upstreamModel),
     fal(modelCode, "image", "fal-ai/nano-banana-2", 30),
     falMock(modelCode, "image", "fal-ai/nano-banana-2"),

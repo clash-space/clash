@@ -10,6 +10,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const appDir = path.resolve(__dirname, "..");
 const repoRoot = path.resolve(appDir, "..", "..");
 const dataDir = process.env.CLASH_LOCAL_API_E2E_DATA_DIR ?? path.join(repoRoot, ".tmp", "local-api-e2e-data");
+const cliTimeoutMs = Number(process.env.CLASH_CLI_E2E_TIMEOUT_MS ?? "45000");
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -313,17 +314,22 @@ async function runClashCli(args, env) {
   child.stderr.on("data", (chunk) => { stderr += chunk; });
 
   const code = await new Promise((resolve, reject) => {
+    let timedOut = false;
     const timer = setTimeout(() => {
+      timedOut = true;
       child.kill("SIGKILL");
-      reject(new Error(`clash ${args.join(" ")} timed out\nstdout:\n${stdout}\nstderr:\n${stderr}`));
-    }, 15000);
+    }, cliTimeoutMs);
     child.once("error", (error) => {
       clearTimeout(timer);
       reject(error);
     });
     child.once("exit", (exitCode, signal) => {
       clearTimeout(timer);
-      if (signal) reject(new Error(`clash ${args.join(" ")} terminated by ${signal}\nstdout:\n${stdout}\nstderr:\n${stderr}`));
+      if (timedOut) {
+        reject(new Error(`clash ${args.join(" ")} timed out after ${cliTimeoutMs}ms\nstdout:\n${stdout}\nstderr:\n${stderr}`));
+      } else if (signal) {
+        reject(new Error(`clash ${args.join(" ")} terminated by ${signal}\nstdout:\n${stdout}\nstderr:\n${stderr}`));
+      }
       else resolve(exitCode ?? 1);
     });
   });
@@ -464,6 +470,61 @@ async function exerciseCliVariables(origin, createLocalAgentToolEnv) {
   );
 
   return { key: "FAL_API_KEY", listed: listed.length, remaining: afterDelete.length };
+}
+
+async function exerciseCliModelProviders(origin, createLocalAgentToolEnv) {
+  const env = createLocalAgentToolEnv({
+    dataDir,
+    apiBaseUrl: origin,
+    env: process.env,
+  });
+
+  await runClashCli([
+    "vars",
+    "set",
+    "FAL_API_KEY",
+    "--value",
+    "fal-model-provider-smoke-key",
+    "--json",
+  ], env);
+
+  const configured = JSON.parse(await runClashCli([
+    "models",
+    "provider",
+    "set",
+    "fal",
+    "--weight",
+    "75",
+    "--json",
+  ], env));
+  const falProvider = configured.find((provider) => provider.providerId === "fal" && provider.upstreamId === "fal");
+  assert(falProvider?.weight === 75, "agent CLI model provider set stores fal weight", configured);
+
+  const providers = JSON.parse(await runClashCli([
+    "models",
+    "providers",
+    "--json",
+  ], env));
+  assert(
+    providers.some((provider) => provider.providerId === "fal" && provider.availableVariables?.includes("FAL_API_KEY")),
+    "agent CLI model providers lists configured fal key",
+    providers,
+  );
+
+  const available = JSON.parse(await runClashCli([
+    "models",
+    "catalog",
+    "--tier",
+    "available",
+    "--json",
+  ], env));
+  assert(
+    available.some((entry) => entry.model?.id === "nano-banana-2" && entry.selectedRoute?.providerId === "fal"),
+    "agent CLI model catalog lists fal-routed available models",
+    available,
+  );
+
+  return { provider: "fal", weight: falProvider.weight, available: available.length };
 }
 
 async function exerciseOpenAiProviderGeneration(origin, mockOpenAi) {
@@ -794,6 +855,7 @@ async function main() {
   try {
     const runtime = await exerciseLocalSession(origin);
     const variables = await exerciseCliVariables(origin, createLocalAgentToolEnv);
+    const modelProviders = await exerciseCliModelProviders(origin, createLocalAgentToolEnv);
     const openai = await exerciseOpenAiProviderGeneration(origin, mockOpenAi);
     const cli = await exerciseAgentCliShim(origin, createLocalAgentToolEnv);
     const realAcp = await exerciseRealAcpChildSession(startLocalApiServer, createLocalAgentToolEnv);
@@ -801,6 +863,7 @@ async function main() {
     const fal = await exerciseFalMock(origin);
     console.log("[daemon-smoke] runtime", JSON.stringify(runtime));
     console.log("[daemon-smoke] vars", JSON.stringify(variables));
+    console.log("[daemon-smoke] model-providers", JSON.stringify(modelProviders));
     console.log("[daemon-smoke] openai", JSON.stringify(openai));
     console.log("[daemon-smoke] agent-cli", JSON.stringify(cli));
     console.log("[daemon-smoke] real-acp", JSON.stringify(realAcp));

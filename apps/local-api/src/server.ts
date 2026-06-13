@@ -16,6 +16,11 @@ import {
 import { createMockFalQueueService } from "./fal-mock.js";
 import { createLocalWorkflowProcessor } from "./local-processor.js";
 import {
+  publicProviderAccounts,
+  type LocalProviderAccountConfig,
+  type LocalVariableRecord,
+} from "./provider-accounts.js";
+import {
   attachLocalSync,
   type RemoteLoroPersistenceSource,
 } from "./sync.js";
@@ -231,6 +236,34 @@ async function loadLocalVariables(
   }
 }
 
+async function loadLocalProviderAccounts(
+  dataDir: string,
+  userId = "local-user",
+  env: Record<string, string | undefined> = process.env,
+) {
+  const variables: LocalVariableRecord[] = [];
+  for (const key of LOCAL_PROVIDER_VARIABLE_KEYS) {
+    const value = env[key]?.trim();
+    if (value) variables.push({ userId, key, value });
+  }
+  let providerAccounts: LocalProviderAccountConfig[] = [];
+  try {
+    const db = JSON.parse(await readFile(join(dataDir, "db.json"), "utf8")) as {
+      variables?: LocalVariableRecord[];
+      providerAccounts?: LocalProviderAccountConfig[];
+    };
+    for (const variable of db.variables ?? []) {
+      if (variable.userId !== userId) continue;
+      if (typeof variable.key !== "string" || typeof variable.value !== "string") continue;
+      if (variable.value.trim()) variables.push(variable);
+    }
+    providerAccounts = (db.providerAccounts ?? []).filter((account) => account.userId === userId);
+  } catch {
+    // Missing local DB should not prevent env-only provider account discovery.
+  }
+  return publicProviderAccounts(providerAccounts, variables, userId);
+}
+
 export function startLocalApiServer(options: LocalApiServerOptions) {
   const localAcp = createConfiguredLocalAcpAdapter(process.env, {
     apiBaseUrl: `http://127.0.0.1:${options.port}`,
@@ -252,6 +285,7 @@ export function startLocalApiServer(options: LocalApiServerOptions) {
       fal: falMock,
       origin: `http://127.0.0.1:${options.port}`,
       variables: () => loadLocalVariables(options.dataDir),
+      providerAccounts: () => loadLocalProviderAccounts(options.dataDir),
       openAiBaseUrl: process.env.OPENAI_BASE_URL,
       falQueueBaseUrl: process.env.CLASH_FAL_QUEUE_URL,
     }),
