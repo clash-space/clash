@@ -341,11 +341,16 @@ describe("visual language surfaces", () => {
     expect(copilotSource).toMatch(/clash-copilot-panel-shell fixed bottom-3 right-3/);
     expect(copilotSource).toMatch(/rounded-matrix/);
     expect(copilotSource).toMatch(/transformOrigin: 'right bottom'/);
-    expect(copilotSource).toMatch(/scale: isCollapsed \? 0\.94 : 1/);
+    expect(copilotSource).toMatch(/scale: isCollapsed \? 0\.82 : 1/);
+    expect(copilotSource).toMatch(/x: isCollapsed \? 48 : 0/);
+    expect(copilotSource).toMatch(/y: isCollapsed \? 48 : 0/);
     expect(copilotSource).toMatch(/from-warm-surface via-warm-surface\/85/);
     expect(copilotSource).not.toMatch(/border-l border-warm-border shadow-\[0_18px_50px/);
     expect(cssSource).toMatch(/\.clash-copilot-launcher/);
     expect(cssSource).toMatch(/\.clash-copilot-panel-shell/);
+    expect(cssSource).toMatch(/\.clash-copilot-panel-shell\s*\{[\s\S]*?border-radius:\s*28px/);
+    expect(cssSource).toMatch(/\.clash-copilot-panel-shell\s*\{[\s\S]*?radial-gradient\(rgba\(214, 209, 200, 0\.22\) 1px, transparent 1px\)/);
+    expect(cssSource).toMatch(/\.clash-copilot-panel-shell\s*\{[\s\S]*?background-size:\s*18px 18px, auto, auto, auto/);
     expect(cssSource).toMatch(/\.clash-copilot-resize-handle::before/);
     expect(cssSource).toMatch(/\.clash-project-top-action/);
     expect(cssSource).toMatch(/\.clash-project-return-button,\s*\n\.clash-project-name-input\s*\{[\s\S]*?border:\s*0;[\s\S]*?background:\s*transparent;[\s\S]*?box-shadow:\s*none;/);

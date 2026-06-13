@@ -754,7 +754,7 @@ export default function ChatbotCopilot({
                 }
                 style={isMobile ? undefined : {
                     width: `${width}px`,
-                    height: 'min(760px, calc(100dvh - var(--clash-desktop-chrome-height, 0px) - 1.5rem))',
+                    height: 'min(720px, calc(100dvh - var(--clash-desktop-chrome-height, 0px) - 1.5rem))',
                     transformOrigin: 'right bottom',
                 }}
                 animate={
@@ -762,13 +762,13 @@ export default function ChatbotCopilot({
                         ? { x: isCollapsed ? '100%' : 0 }
                         : {
                             opacity: isCollapsed ? 0 : 1,
-                            scale: isCollapsed ? 0.94 : 1,
-                            x: isCollapsed ? 28 : 0,
-                            y: isCollapsed ? 24 : 0,
+                            scale: isCollapsed ? 0.82 : 1,
+                            x: isCollapsed ? 48 : 0,
+                            y: isCollapsed ? 48 : 0,
                         }
                 }
                 initial={false}
-                transition={isResizing ? { duration: 0 } : { duration: isCollapsed ? 0.18 : 0.26, ease: [0.16, 1, 0.3, 1] }}
+                transition={isResizing ? { duration: 0 } : { duration: isCollapsed ? 0.16 : 0.32, ease: [0.16, 1, 0.3, 1] }}
             >
                 {/* Screen-reader-only heading: gives heading-nav rotor users
                     a landmark to jump to. Hidden visually because the panel
@@ -980,9 +980,10 @@ export default function ChatbotCopilot({
                 <AnimatePresence>
                     {!isCollapsed && (
                         <motion.div
-                            initial={{ opacity: 0 }}
-                            animate={{ opacity: 1 }}
-                            exit={{ opacity: 0 }}
+                            initial={{ opacity: 0, y: 10, scale: 0.985 }}
+                            animate={{ opacity: 1, y: 0, scale: 1 }}
+                            exit={{ opacity: 0, y: 8, scale: 0.99 }}
+                            transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
                             className="h-full flex flex-col pt-16 relative"
                         >
                             <div
