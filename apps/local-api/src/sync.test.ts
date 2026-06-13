@@ -368,6 +368,71 @@ describe("LocalLoroRoom", () => {
 });
 
 describe("attachLocalSync", () => {
+  it("broadcasts local agent presence as the local user's surrogate", async () => {
+    const server = createServer();
+    attachLocalSync(server, { dataDir });
+
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    const port = (server.address() as { port: number }).port;
+    const browser = new WebSocket(`ws://127.0.0.1:${port}/sync/${encodeURIComponent("project/presence")}`);
+    const agent = new WebSocket(`ws://127.0.0.1:${port}/sync/${encodeURIComponent("project/presence")}`, {
+      headers: {
+        "x-client-type": "agent",
+        "x-agent-name": "Mock ACP",
+      },
+    });
+    const browserPresence: any[] = [];
+
+    browser.on("message", (data, isBinary) => {
+      if (isBinary) return;
+      const msg = JSON.parse(String(data));
+      if (msg.type === "presence") browserPresence.push(msg);
+    });
+
+    await Promise.all([
+      new Promise<void>((resolve, reject) => {
+        browser.once("open", resolve);
+        browser.once("error", reject);
+      }),
+      new Promise<void>((resolve, reject) => {
+        agent.once("open", resolve);
+        agent.once("error", reject);
+      }),
+    ]);
+
+    await vi.waitFor(() => {
+      expect(browserPresence.at(-1)?.clients).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            clientType: "browser",
+            userId: "local-user",
+            name: "Local User",
+          }),
+          expect.objectContaining({
+            clientType: "agent",
+            userId: "local-user",
+            name: "Mock ACP",
+          }),
+        ]),
+      );
+    });
+
+    await closeWebSocket(agent);
+
+    await vi.waitFor(() => {
+      const clients = browserPresence.at(-1)?.clients ?? [];
+      expect(clients).toEqual([
+        expect.objectContaining({
+          clientType: "browser",
+          userId: "local-user",
+        }),
+      ]);
+    });
+
+    await closeWebSocket(browser);
+    await closeServer(server);
+  });
+
   it("ignores text sideband messages instead of importing them as Loro updates", async () => {
     const server = createServer();
     attachLocalSync(server, { dataDir });

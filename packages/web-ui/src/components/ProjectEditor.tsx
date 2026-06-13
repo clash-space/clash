@@ -100,6 +100,7 @@ import { getSignedUrl } from '@clash/web-ui/lib/hooks/useSignedUrl';
 import { runtimeApiUrl } from '@clash/web-ui/lib/runtimeConfig';
 import { DESKTOP_TAB_TITLE_EVENT, type DesktopTabTitleEventDetail } from '@clash/web-ui/lib/desktopTabs';
 import { buildFallbackCanvasFromAssets } from '@clash/web-ui/lib/projectFallbackCanvas';
+import { visiblePresenceClients } from '@clash/web-ui/lib/presenceVisibility';
 import { shouldDismissToolbarMenu, shouldDismissToolbarMenuOnKey } from './toolbarDismiss';
 import UserControls from './UserControls';
 
@@ -391,8 +392,9 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
 
     // Collaboration visibility: presence + activity
     const [presenceClients, setPresenceClients] = useState<PresenceClient[]>([]);
-    // Filter out the current user from presence (you don't need to see yourself)
-    const otherClients = presenceClients.filter((c) => c.userId !== project.ownerId);
+    // Filter out the current browser user, but keep local agent/CLI clients
+    // because they are user-owned surrogates doing work on this user's behalf.
+    const otherClients = visiblePresenceClients(presenceClients, project.ownerId);
     const { toasts, addToast, dismiss: dismissToast } = useActivityToasts();
     const { highlights, addHighlight } = useNodeHighlights();
 
@@ -2729,6 +2731,7 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
                                         onSwitchSession={handleSwitchSession}
                                         onDeleteSession={handleDeleteSession}
                                         onCreateSession={handleCopilotCreateSession}
+                                        actorUserId={project.ownerId}
                                     />
                                 </div>
                             </div>

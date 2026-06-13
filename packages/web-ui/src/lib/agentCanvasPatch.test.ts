@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseAgentCanvasPatch } from "./agentCanvasPatch";
+import { applyAgentAttribution, parseAgentCanvasPatch } from "./agentCanvasPatch";
 
 describe("parseAgentCanvasPatch", () => {
   it("parses agent canvas add-node operations from ACP events", () => {
@@ -63,5 +63,27 @@ describe("parseAgentCanvasPatch", () => {
         },
       },
     ]);
+  });
+
+  it("stamps local runtime patch nodes as the user's agent when attribution is missing", () => {
+    expect(applyAgentAttribution(
+      { label: "Agent node", actorType: "user" },
+      { actorUserId: "local-user", actorAgentId: "codex-cli" },
+    )).toEqual({
+      label: "Agent node",
+      actorType: "agent",
+      actorUserId: "local-user",
+      actorAgentId: "codex-cli",
+    });
+
+    expect(applyAgentAttribution(
+      { label: "Explicit agent", actorType: "agent", actorUserId: "other-user", actorAgentId: "explicit-agent" },
+      { actorUserId: "local-user", actorAgentId: "codex-cli" },
+    )).toEqual({
+      label: "Explicit agent",
+      actorType: "agent",
+      actorUserId: "other-user",
+      actorAgentId: "explicit-agent",
+    });
   });
 });

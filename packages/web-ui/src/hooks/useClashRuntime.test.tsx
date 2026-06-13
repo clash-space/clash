@@ -70,6 +70,7 @@ describe("useClashRuntime", () => {
         agent_id: "codex-cli",
         project_id: "project-agent",
       });
+      expect(result.current.selectedAgentId).toBe("codex-cli");
     });
   });
 });

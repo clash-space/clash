@@ -64,6 +64,8 @@ export interface UseClashRuntimeReturn {
   runtimes: Runtime[];
   /** id of the runtime the user picked, or null = none / cloud. */
   selectedRuntimeId: string | null;
+  /** ACP agent id selected for the current local-runtime session. */
+  selectedAgentId: string | null;
   /** id of the currently-open session (one at a time in v1). */
   sessionId: string | null;
   status: ClashRuntimeStatus;
@@ -99,6 +101,7 @@ interface CreateSessionResponse {
 export function useClashRuntime(): UseClashRuntimeReturn {
   const [runtimes, setRuntimes] = useState<Runtime[]>([]);
   const [selectedRuntimeId, setSelectedRuntimeId] = useState<string | null>(null);
+  const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [status, setStatus] = useState<ClashRuntimeStatus>('idle');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -201,6 +204,7 @@ export function useClashRuntime(): UseClashRuntimeReturn {
     setErrorMessage(null);
     setSessionId(null);
     setSelectedRuntimeId(runtimeId);
+    setSelectedAgentId(runtimeId ? opts?.agentId ?? null : null);
     if (!runtimeId) { setStatus('idle'); return; }
 
     setStatus('connecting');
@@ -274,6 +278,7 @@ export function useClashRuntime(): UseClashRuntimeReturn {
     turnToMsgIdx.current.clear();
     setSessionId(null);
     setSelectedRuntimeId(null);
+    setSelectedAgentId(null);
     setMessages([]);
     setAvailableCommands([]);
     setErrorMessage(null);
@@ -296,6 +301,7 @@ export function useClashRuntime(): UseClashRuntimeReturn {
   return {
     runtimes,
     selectedRuntimeId,
+    selectedAgentId,
     sessionId,
     status,
     errorMessage,

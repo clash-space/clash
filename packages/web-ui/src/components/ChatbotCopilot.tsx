@@ -18,7 +18,7 @@ import { Dialog } from './ui/dialog';
 import { IconButton } from './ui/icon-button';
 import { useClashRuntime, type Runtime } from '@clash/web-ui/hooks/useClashRuntime';
 import type { ByoMessage as RuntimeMessage } from '@clash/web-ui/lib/acpEvents';
-import { parseAgentCanvasPatch } from '@clash/web-ui/lib/agentCanvasPatch';
+import { applyAgentAttribution, parseAgentCanvasPatch } from '@clash/web-ui/lib/agentCanvasPatch';
 import type { Node as RFNode, Edge as RFEdge, Connection as RFConnection } from '@xyflow/react';
 import ReactMarkdown from 'react-markdown';
 import { useSignedUrl } from '@clash/web-ui/lib/hooks/useSignedUrl';
@@ -62,6 +62,8 @@ interface ChatbotCopilotProps {
     onCreateSession?: (initialMessage: string) => void;
     /** Create canvas nodes from already-uploaded attachments */
     onUploadFiles?: (attachments: import('./copilot/ChatInput').UploadedAttachment[]) => void;
+    /** Human user represented by the selected local agent. */
+    actorUserId?: string;
 }
 
 /** Markdown components for assistant text rendering */
@@ -299,6 +301,7 @@ export default function ChatbotCopilot({
     onDeleteSession,
     onCreateSession,
     onUploadFiles,
+    actorUserId,
 }: ChatbotCopilotProps) {
     const { t } = useTranslation();
     const historyMenuId = useId();
@@ -379,9 +382,14 @@ export default function ChatbotCopilot({
                     if (appliedRuntimeCanvasNodesRef.current.has(patchNode.id)) continue;
                     appliedRuntimeCanvasNodesRef.current.add(patchNode.id);
 
+                    const data = applyAgentAttribution(patchNode.data, {
+                        actorUserId,
+                        actorAgentId: clashRt.selectedAgentId ?? undefined,
+                    });
+
                     onAddNode(patchNode.type, {
                         id: patchNode.id,
-                        ...(patchNode.data ?? {}),
+                        ...data,
                         ...(patchNode.position ? { position: patchNode.position } : {}),
                         ...(patchNode.parentId ? { parentId: patchNode.parentId } : {}),
                         ...(patchNode.width !== undefined ? { width: patchNode.width } : {}),
@@ -391,7 +399,7 @@ export default function ChatbotCopilot({
                 }
             }
         }
-    }, [chatMode, clashRt.messages, onAddNode]);
+    }, [actorUserId, chatMode, clashRt.messages, clashRt.selectedAgentId, onAddNode]);
 
     // Mount-time send of the pending first message. Parent gives us a fresh
     // `key={threadId}` whenever the session changes, so this component remounts

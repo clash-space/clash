@@ -49,6 +49,7 @@ import { useProjectRoom, type RoomSyncMeta } from '@clash/web-ui/hooks/useProjec
 import { useClaimedCrew } from '@clash/web-ui/hooks/useClaimedCrew';
 import { useMentionAutocomplete } from '@clash/web-ui/hooks/useMentionAutocomplete';
 import PresenceBar from '@clash/web-ui/components/PresenceBar';
+import { visiblePresenceClients } from '@clash/web-ui/lib/presenceVisibility';
 import type { PresenceClient, RoomMessageEvent } from '@clash/shared-types';
 import { parseMention } from '../_group-chat/mention';
 import { crewHandle, crewInitials, type CrewRow } from '../_group-chat/panel-types';
@@ -418,8 +419,8 @@ export function GroupChatPanel({
   // "Other clients" — humans / cli / agents connected to this project's
   // ProjectRoom besides the local user. Mirrors the canvas presence
   // filter (ProjectEditor.tsx:315) so the same set of dots shows up
-  // here and on the canvas, never inflated by your own session.
-  const otherClients = presenceClients.filter((c) => c.userId !== userId);
+  // here and on the canvas, never inflated by your own browser session.
+  const otherClients = visiblePresenceClients(presenceClients, userId);
 
   // User session + billing — drives the rail-bottom avatar + balance
   // pill. `balance.status === 'unavailable'` means self-hosted with

@@ -681,12 +681,9 @@ async function main() {
 
     await click(
       cdp,
-      `document.querySelector("#editor-header a[href='/']") || [...document.querySelectorAll("a")].find((a) => a.getAttribute("href") === "/")`,
-      "Logo Home",
+      `document.querySelector("button[aria-label='Return to projects']")`,
+      "Return to projects",
     );
-    await waitFor(cdp, `location.pathname === "/" && document.body.innerText.includes("Projects")`, "home from editor");
-
-    await click(cdp, clickableByText("Projects"), "Projects again");
     await waitFor(cdp, `location.pathname === "/projects"`, "projects page again");
 
     await click(cdp, clickableByText("Store"), "Store");

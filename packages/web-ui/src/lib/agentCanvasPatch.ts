@@ -16,6 +16,11 @@ export interface AgentCanvasAddNodeOperation {
 
 export type AgentCanvasPatchOperation = AgentCanvasAddNodeOperation;
 
+export interface AgentAttribution {
+  actorUserId?: string;
+  actorAgentId?: string;
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === "object" && !Array.isArray(value);
 }
@@ -75,4 +80,21 @@ export function parseAgentCanvasPatch(event: unknown): AgentCanvasPatchOperation
   return rawOperations
     .map(parseAddNodeOperation)
     .filter((operation): operation is AgentCanvasPatchOperation => operation !== null);
+}
+
+export function applyAgentAttribution(
+  data: Record<string, unknown> | undefined,
+  attribution: AgentAttribution,
+): Record<string, unknown> {
+  const current = data ?? {};
+  if (current.actorType === "agent" && typeof current.actorUserId === "string") {
+    return current;
+  }
+
+  return {
+    ...current,
+    actorType: "agent",
+    ...(attribution.actorUserId ? { actorUserId: attribution.actorUserId } : {}),
+    ...(attribution.actorAgentId ? { actorAgentId: attribution.actorAgentId } : {}),
+  };
 }

@@ -1,7 +1,8 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { randomUUID } from "node:crypto";
 import { dirname, join } from "node:path";
 import { LoroDoc } from "loro-crdt";
-import { Canvas, CustomActionDefinitionSchema } from "@clash/shared-types";
+import { Canvas, CustomActionDefinitionSchema, type ClientType, type PresenceClient } from "@clash/shared-types";
 import { WebSocketServer, type WebSocket } from "ws";
 import { createLocalWorkflowProcessor, type LocalWorkflowProcessor } from "./local-processor.js";
 
@@ -34,6 +35,7 @@ interface LocalPeer {
   sendUpdate: SendPeerUpdate;
   sendJson?: SendPeerJson;
   runtimeId?: string;
+  presence?: PresenceClient;
 }
 
 export interface HttpRemoteLoroPersistenceOptions {
@@ -186,19 +188,22 @@ export class LocalLoroRoom {
     return this.doc.export({ mode: "snapshot" });
   }
 
-  addPeer(send: SendPeerUpdate, options?: { sendJson?: SendPeerJson; runtimeId?: string }): PeerId {
+  addPeer(send: SendPeerUpdate, options?: { sendJson?: SendPeerJson; runtimeId?: string; presence?: PresenceClient }): PeerId {
     const id = Symbol("peer");
     this.peers.set(id, {
       sendUpdate: send,
       sendJson: options?.sendJson,
       runtimeId: options?.runtimeId,
+      presence: options?.presence,
     });
     send(this.snapshot());
+    this.broadcastPresence();
     return id;
   }
 
   removePeer(id: PeerId): void {
     this.peers.delete(id);
+    this.broadcastPresence();
   }
 
   async receive(sender: PeerId, update: Uint8Array): Promise<void> {
@@ -413,6 +418,15 @@ export class LocalLoroRoom {
         console.error("[local-sync] failed to mirror update to remote persistence", error);
       });
   }
+
+  private broadcastPresence(): void {
+    const clients = Array.from(this.peers.values())
+      .map((peer) => peer.presence)
+      .filter((client): client is PresenceClient => !!client);
+    for (const peer of this.peers.values()) {
+      peer.sendJson?.({ type: "presence", clients });
+    }
+  }
 }
 
 export class LocalLoroRoomHub {
@@ -462,10 +476,39 @@ export function attachLocalSync(
     const projectId = decodeURIComponent(match[1]);
     const runtimeHeader = request.headers?.["x-runtime-id"];
     const runtimeId = Array.isArray(runtimeHeader) ? runtimeHeader[0] : runtimeHeader;
+    const presence = presenceFromHeaders(request.headers);
     wss.handleUpgrade(request, socket, head, (ws) => {
-      void bindSocket(hub, projectId, ws, typeof runtimeId === "string" ? runtimeId : undefined);
+      void bindSocket(hub, projectId, ws, typeof runtimeId === "string" ? runtimeId : undefined, presence);
     });
   });
+}
+
+function headerString(value: string | string[] | undefined): string | undefined {
+  const raw = Array.isArray(value) ? value[0] : value;
+  const trimmed = raw?.trim();
+  return trimmed || undefined;
+}
+
+function presenceFromHeaders(headers: Record<string, string | string[] | undefined>): PresenceClient {
+  const rawClientType = headerString(headers["x-client-type"]);
+  const clientType: ClientType =
+    rawClientType === "agent" || rawClientType === "cli" || rawClientType === "browser"
+      ? rawClientType
+      : "browser";
+  const userId = headerString(headers["x-user-id"]) ?? "local-user";
+  const userName = headerString(headers["x-user-name"]);
+  const name = clientType === "agent"
+    ? headerString(headers["x-agent-name"]) ?? userName ?? "Local Agent"
+    : clientType === "cli"
+      ? userName ?? "Local CLI"
+      : userName ?? "Local User";
+
+  return {
+    id: randomUUID(),
+    clientType,
+    userId,
+    name,
+  };
 }
 
 async function bindSocket(
@@ -473,18 +516,18 @@ async function bindSocket(
   projectId: string,
   ws: WebSocket,
   runtimeId?: string,
+  presence?: PresenceClient,
 ): Promise<void> {
   const room = await hub.room(projectId);
   const peerId = room.addPeer((update) => {
     if (ws.readyState === ws.OPEN) ws.send(update);
   }, {
     runtimeId,
+    presence,
     sendJson: (msg) => {
       if (ws.readyState === ws.OPEN) ws.send(JSON.stringify(msg));
     },
   });
-
-  ws.send(JSON.stringify({ type: "presence", clients: [] }));
 
   ws.on("message", (data, isBinary) => {
     if (!isBinary) {
