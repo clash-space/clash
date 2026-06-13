@@ -1,5 +1,79 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512" role="img" aria-label="Clash logo">
-  <g transform="translate(256 256) scale(0.58) translate(-627 -627)">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1254 1254" width="1254" height="1254" role="img" aria-label="Clash agent thinking mark">
+  <style>
+    :root {
+      --ease-out-quart: cubic-bezier(0.25, 1, 0.5, 1);
+      --ease-out-quint: cubic-bezier(0.22, 1, 0.36, 1);
+    }
+    .frame {
+      transform-origin: 626px 626px;
+      animation: settle 4200ms var(--ease-out-quart) infinite;
+    }
+    .gaze {
+      animation: gaze 4200ms var(--ease-out-quart) infinite;
+    }
+    .eye {
+      fill: #171412;
+      animation: blink 4200ms var(--ease-out-quint) infinite;
+    }
+    .eye-left { transform-origin: 532px 577px; }
+    .eye-right { transform-origin: 717px 577px; }
+    .pen {
+      transform-origin: 902px 805px;
+      animation: pen-think 4200ms var(--ease-out-quart) infinite;
+    }
+    .pen-body { fill: #FF6B50; }
+    .thought-mark {
+      fill: none;
+      stroke: #FF6B50;
+      stroke-width: 14;
+      stroke-linecap: round;
+      stroke-dasharray: 1 74;
+      stroke-dashoffset: 0;
+      opacity: 0;
+      animation: thought-ping 4200ms var(--ease-out-quint) infinite;
+    }
+    @keyframes settle {
+      0%, 100% { transform: translateY(0); }
+      42% { transform: translateY(-2px); }
+      68% { transform: translateY(1px); }
+    }
+    @keyframes gaze {
+      0%, 15% { transform: translateX(0); }
+      27%, 42% { transform: translateX(-16px); }
+      54%, 66% { transform: translateX(12px); }
+      78%, 100% { transform: translateX(0); }
+    }
+    @keyframes blink {
+      0%, 31%, 35%, 69%, 73%, 100% { transform: scaleY(1); }
+      33%, 71% { transform: scaleY(0.55); }
+    }
+    @keyframes pen-think {
+      0%, 100% { transform: translate(0, 0) rotate(0deg); }
+      18% { transform: translate(-2px, -9px) rotate(-2deg); }
+      34% { transform: translate(8px, -18px) rotate(5deg); }
+      47% { transform: translate(2px, -7px) rotate(1deg); }
+      56% { transform: translate(-6px, 9px) rotate(-4deg); }
+      64% { transform: translate(0, 0) rotate(0deg); }
+      80% { transform: translate(5px, -11px) rotate(3deg); }
+    }
+    @keyframes thought-ping {
+      0%, 38%, 100% {
+        opacity: 0;
+        stroke-dashoffset: 0;
+        transform: scale(0.92);
+      }
+      45% { opacity: 0.78; }
+      62% {
+        opacity: 0;
+        stroke-dashoffset: -74;
+        transform: scale(1.05);
+      }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .frame, .gaze, .eye, .pen, .thought-mark { animation: none; }
+    }
+  </style>
+  <g class="frame">
     <path
       d="M 966 590
          L 966 350
@@ -11,11 +85,16 @@
          L 760 947"
       fill="none"
       stroke="#171412"
-      stroke-width="52"
+      stroke-width="40"
       stroke-linecap="round"
       stroke-linejoin="round"/>
-    <ellipse cx="532" cy="577" rx="47" ry="82" fill="#171412"/>
-    <ellipse cx="717" cy="577" rx="47" ry="82" fill="#171412"/>
-    <rect x="862" y="622" width="88" height="372" rx="44" ry="44" fill="#FF6B50" transform="rotate(26.06 906 808)"/>
+    <g class="gaze">
+      <ellipse class="eye eye-left" cx="532" cy="577" rx="41.5" ry="75.5"/>
+      <ellipse class="eye eye-right" cx="717" cy="577" rx="41.5" ry="75.5"/>
+    </g>
+    <path class="thought-mark" d="M 823 905 Q 835 884 850 858"/>
+    <g class="pen">
+      <rect class="pen-body" x="866" y="629" width="72" height="351" rx="36" ry="36" transform="rotate(26.06 902 805)"/>
+    </g>
   </g>
 </svg>

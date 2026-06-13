@@ -1,7 +1,7 @@
 
 import { memo, useState, useRef, useEffect, useCallback, useMemo, useId } from 'react';
 import { motion, AnimatePresence, MotionConfig } from 'framer-motion';
-import { CaretLeft, CaretRight, Plus, ClockCounterClockwise, Trash, Plug } from '@phosphor-icons/react';
+import { CaretRight, Plus, ClockCounterClockwise, Trash, Plug } from '@phosphor-icons/react';
 import { useTranslation } from 'react-i18next';
 import { Command } from '@clash/web-ui/lib/clientActions';
 import { UserMessage } from './copilot/UserMessage';
@@ -706,10 +706,19 @@ export default function ChatbotCopilot({
                         aria-label={t('copilot.panel.expand')}
                         aria-expanded={false}
                         aria-controls="clash-copilot-panel"
-                        // Mobile: clear the iPhone home-indicator gesture zone with safe-area-inset-bottom (falls back to 1rem on devices without notch). Desktop: positions at top-right of the panel parent.
-                        className="fixed bottom-[max(1rem,env(safe-area-inset-bottom))] right-[max(1rem,env(safe-area-inset-right))] z-50 flex h-14 w-14 items-center justify-center rounded-2xl border border-warm-border bg-warm-surface shadow-lg transition-shadow hover:shadow-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-warm-page lg:absolute lg:bottom-auto lg:top-4 lg:right-4 lg:shadow-sm"
+                        // Clears the iPhone home-indicator gesture zone with safe-area-inset-bottom
+                        // while keeping the same bottom-right launcher position on desktop.
+                        className="clash-copilot-launcher fixed bottom-[max(1rem,env(safe-area-inset-bottom))] right-[max(1rem,env(safe-area-inset-right))] z-50 flex h-20 w-20 items-center justify-center rounded-[26px] transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-warm-page"
+                        whileHover={{ scale: 1.035, y: -1 }}
+                        whileTap={{ scale: 0.965 }}
                     >
-                        <CaretLeft className="w-5 h-5 text-slate-700 dark:text-slate-300" weight="bold" aria-hidden="true" />
+                        <img
+                            src="/brand/logo-mark-animated.svg"
+                            alt=""
+                            className="h-16 w-16 object-contain"
+                            draggable={false}
+                            aria-hidden="true"
+                        />
                     </motion.button>
                 )}
             </AnimatePresence>

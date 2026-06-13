@@ -319,6 +319,27 @@ describe("visual language surfaces", () => {
     expect(source).toMatch(/clash-copilot-alert-error/);
   });
 
+  it("keeps the project brand mark as the bottom-right copilot launcher instead of a canvas header logo", () => {
+    const projectSource = readFileSync(join(process.cwd(), "packages/web-ui/src/components/ProjectEditor.tsx"), "utf8");
+    const copilotSource = readFileSync(join(process.cwd(), "packages/web-ui/src/components/ChatbotCopilot.tsx"), "utf8");
+    const cssSource = readFileSync(join(process.cwd(), "apps/web/app/globals.css"), "utf8");
+    const launcherRule = cssSource.match(/\.clash-copilot-launcher\s*\{[\s\S]*?\}/)?.[0] ?? "";
+
+    expect(projectSource).not.toMatch(/aria-label="Clash home"|<Link to="\/"/);
+    expect(projectSource).toMatch(/id="editor-header"/);
+    expect(projectSource).toMatch(/clash-project-return-button/);
+    expect(projectSource).toMatch(/id="project-top-actions"/);
+    expect(projectSource).toMatch(/<UserControls projectChrome \/>/);
+    expect(copilotSource).toMatch(/clash-copilot-launcher/);
+    expect(copilotSource).toMatch(/bottom-\[max\(1rem,env\(safe-area-inset-bottom\)\)\]/);
+    expect(copilotSource).toMatch(/\/brand\/logo-mark-animated\.svg/);
+    expect(cssSource).toMatch(/\.clash-copilot-launcher/);
+    expect(cssSource).toMatch(/\.clash-project-top-action/);
+    expect(launcherRule).toMatch(/border:\s*0/);
+    expect(launcherRule).toMatch(/background:\s*transparent/);
+    expect(launcherRule).toMatch(/box-shadow:\s*none/);
+  });
+
   it("keeps activity and presence feedback out of legacy blue or gradient states", () => {
     const source = [
       "packages/web-ui/src/components/ActivityToast.tsx",

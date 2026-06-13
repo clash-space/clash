@@ -23,6 +23,14 @@ describe("ProjectEditor toolbar surface", () => {
     expect(globalCss).toMatch(/\.clash-canvas-toolbar-surface\s*\{[\s\S]*overflow:\s*visible;/);
   });
 
+  it("keeps canvas dots out of the toolbar surface texture", () => {
+    const toolbarTextureRule = globalCss.match(/\.clash-canvas-toolbar-surface::before,[\s\S]*?\.clash-canvas-menu-surface::before\s*\{[\s\S]*?\}/)?.[0] ?? "";
+    expect(toolbarTextureRule).not.toContain("var(--canvas-dot)");
+    expect(toolbarTextureRule).not.toMatch(/radial-gradient/);
+    expect(toolbarTextureRule).toMatch(/linear-gradient\(90deg/);
+    expect(toolbarTextureRule).toMatch(/linear-gradient\(180deg/);
+  });
+
   it("renders submenu flyouts outside the toolbar rail", () => {
     expect(projectEditorSource).toContain("createPortal");
     expect(projectEditorSource).toContain("clash-canvas-toolbar-flyout-layer");

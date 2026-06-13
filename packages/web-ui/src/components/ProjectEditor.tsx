@@ -29,6 +29,7 @@ import {
     SpeakerHigh,
     MagicWand,
     Sparkle,
+    ArrowLeft,
     ArrowCounterClockwise,
     ArrowClockwise,
     UploadSimple,
@@ -36,8 +37,10 @@ import {
     PuzzlePiece,
     CursorClick,
     HandGrabbing,
+    MonitorPlay,
+    ShareFat,
 } from '@phosphor-icons/react';
-import { Link, useLocation, useNavigate } from 'react-router';
+import { useLocation, useNavigate } from 'react-router';
 import type { Project } from '@clash/web-ui/lib/types';
 import ChatbotCopilot from './ChatbotCopilot';
 import { useSessionHistory } from '@clash/web-ui/hooks/useSessionHistory';
@@ -99,6 +102,7 @@ import { runtimeApiUrl } from '@clash/web-ui/lib/runtimeConfig';
 import { DESKTOP_TAB_TITLE_EVENT, type DesktopTabTitleEventDetail } from '@clash/web-ui/lib/desktopTabs';
 import { buildFallbackCanvasFromAssets } from '@clash/web-ui/lib/projectFallbackCanvas';
 import { shouldDismissToolbarMenu, shouldDismissToolbarMenuOnKey } from './toolbarDismiss';
+import UserControls from './UserControls';
 
 const CHILD_NODE_Z_INDEX_BASE = 1000;
 
@@ -345,6 +349,8 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
     const location = useLocation();
     const [showDebugIds, setShowDebugIds] = useState(false);
     const [canvasMode, setCanvasMode] = useState<'select' | 'hand'>('select');
+    const [isPresentationMode, setIsPresentationMode] = useState(false);
+    const [shareCopied, setShareCopied] = useState(false);
 
     useEffect(() => {
         const detail: DesktopTabTitleEventDetail = {
@@ -662,6 +668,27 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
     const [chatInitialPrompt, setChatInitialPrompt] = useState<string | undefined>(initialPrompt);
     const editorRouter = useNavigate();
     const { sessions: sessionHistory, upsertSession, deleteSession: removeSession } = useSessionHistory(project.id);
+
+    const handleReturnToProjects = useCallback(() => {
+        editorRouter('/projects');
+    }, [editorRouter]);
+
+    const handleTogglePresentation = useCallback(() => {
+        setActiveMenu(null);
+        setIsPresentationMode((value) => !value);
+    }, []);
+
+    const handleShareProject = useCallback(async () => {
+        if (typeof window === 'undefined') return;
+        const href = window.location.href;
+        try {
+            await navigator.clipboard?.writeText(href);
+            setShareCopied(true);
+            window.setTimeout(() => setShareCopied(false), 1600);
+        } catch {
+            setShareCopied(false);
+        }
+    }, []);
 
     const handleCreateSession = useCallback(async (initialMessage?: string): Promise<{ threadId: string; title: string } | null> => {
         try {
@@ -2370,15 +2397,6 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
 
                         {/* Main Canvas Area */}
                         <div className="flex flex-1 overflow-hidden relative">
-                            {/* Presence Bar - Top Right, shifts left to avoid overlap with sidebar / expand button */}
-                            <motion.div
-                                className="absolute top-6 z-10 pointer-events-auto"
-                                animate={{ right: isSidebarCollapsed ? 80 : sidebarWidth + 24 }}
-                                transition={{ type: 'spring', stiffness: 400, damping: 30 }}
-                            >
-                                <PresenceBar clients={otherClients} />
-                            </motion.div>
-
                             {/* Activity Toasts */}
                             <ActivityToast
                                 toasts={toasts}
@@ -2387,31 +2405,24 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
                                 isSidebarCollapsed={isSidebarCollapsed}
                             />
 
-                            {/* Logo + Project Name - No Background.
+                            {/* Project Name - No Background.
                                 z-10 — same stacking band as toolbar / chatbot panel
                                 so modal dialogs cover it cleanly without backdrop tricks. */}
-                            <div id="editor-header" className="absolute top-6 left-[36px] z-10 flex items-center pointer-events-auto">
-                                <Link to="/" className="group" aria-label="Clash home">
-                                    <motion.div
-                                        className="flex items-center"
-                                        whileHover={{ scale: 1.05 }}
-                                        whileTap={{ scale: 0.95 }}
-                                    >
-                                        <img
-                                            src="/brand/logo-mark.svg"
-                                            alt=""
-                                            className="h-12 w-12 object-contain"
-                                            draggable={false}
-                                        />
-                                    </motion.div>
-                                </Link>
-
-                                {/* Separator - Aligned with Toolbar Right Edge (88px from viewport left) */}
-                                <div className="absolute left-[52px] h-8 w-px bg-warm-border" />
-
+                            <div id="editor-header" className="absolute left-6 top-5 z-20 flex items-center gap-2 pointer-events-auto">
+                                <motion.button
+                                    type="button"
+                                    onClick={handleReturnToProjects}
+                                    aria-label="Return to projects"
+                                    title="Return to projects"
+                                    className="clash-project-return-button flex h-10 w-10 items-center justify-center rounded-xl text-slate-800 transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-warm-page"
+                                    whileHover={{ scale: 1.035, x: -1 }}
+                                    whileTap={{ scale: 0.965 }}
+                                >
+                                    <ArrowLeft className="h-5 w-5" weight="bold" aria-hidden="true" />
+                                </motion.button>
                                 {/* Project Name Input */}
                                 <input
-                                    className="absolute left-[65px] bg-transparent text-base font-display font-medium text-slate-950 focus:outline-none focus:ring-0 placeholder-stone-400 min-w-[60px]"
+                                    className="clash-project-name-input h-10 min-w-[60px] max-w-[320px] rounded-xl bg-transparent px-3 text-base font-display font-medium text-slate-950 placeholder-stone-400 focus:outline-none focus:ring-0"
                                     value={projectName}
                                     onChange={(e) => setProjectName(e.target.value)}
                                     onBlur={() => {
@@ -2427,6 +2438,42 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
                                     placeholder="Untitled"
                                 />
                             </div>
+
+                            <motion.div
+                                id="project-top-actions"
+                                className="absolute top-5 z-20 flex items-center gap-2 pointer-events-auto"
+                                animate={{ right: isSidebarCollapsed ? 24 : sidebarWidth + 24 }}
+                                transition={{ type: 'spring', stiffness: 400, damping: 30 }}
+                            >
+                                <PresenceBar clients={otherClients} />
+                                <motion.button
+                                    type="button"
+                                    onClick={handleTogglePresentation}
+                                    aria-label={isPresentationMode ? 'Exit presentation mode' : 'Present canvas'}
+                                    aria-pressed={isPresentationMode}
+                                    className={`clash-project-top-action flex h-10 items-center gap-2 rounded-xl px-3 text-sm font-display font-semibold transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-warm-page ${
+                                        isPresentationMode ? 'clash-project-top-action-active' : ''
+                                    }`}
+                                    whileHover={{ scale: 1.025, y: -1 }}
+                                    whileTap={{ scale: 0.975 }}
+                                >
+                                    <MonitorPlay className="h-4 w-4" weight={isPresentationMode ? 'fill' : 'bold'} aria-hidden="true" />
+                                    <span>{isPresentationMode ? 'Presenting' : 'Present'}</span>
+                                </motion.button>
+                                <motion.button
+                                    type="button"
+                                    onClick={handleShareProject}
+                                    aria-label="Copy project link"
+                                    className="clash-project-top-action flex h-10 items-center gap-2 rounded-xl px-3 text-sm font-display font-semibold transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-warm-page"
+                                    whileHover={{ scale: 1.025, y: -1 }}
+                                    whileTap={{ scale: 0.975 }}
+                                >
+                                    <ShareFat className="h-4 w-4" weight="bold" aria-hidden="true" />
+                                    <span>{shareCopied ? 'Copied' : 'Share'}</span>
+                                </motion.button>
+                                <UserControls projectChrome />
+                            </motion.div>
+
                             <div className={`absolute inset-0 z-0 ${canvasMode === 'hand' ? '[&_.react-flow__pane]:cursor-grab [&_.react-flow__pane:active]:cursor-grabbing' : ''}`}>
                                 <ReactFlow
                                     nodes={sanitizedNodes}
@@ -2494,7 +2541,15 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
                                 any modal Dialog (z-[70]) — same stacking band as the
                                 ChatbotCopilot panel, which has no explicit z-index
                                 (relies on natural document flow above the canvas). */}
-                            <div ref={toolbarRef} className="absolute left-6 top-1/2 -translate-y-1/2 z-10 flex flex-col items-start gap-2 pointer-events-none">
+                            {!isPresentationMode && (
+                            <motion.div
+                                ref={toolbarRef}
+                                className="absolute left-6 top-1/2 -translate-y-1/2 z-10 flex flex-col items-start gap-2 pointer-events-none"
+                                initial={{ opacity: 0, x: -8, scale: 0.98 }}
+                                animate={{ opacity: 1, x: 0, scale: 1 }}
+                                exit={{ opacity: 0, x: -8, scale: 0.98 }}
+                                transition={{ duration: 0.18, ease: [0.25, 1, 0.5, 1] }}
+                            >
                                  <div className="clash-canvas-toolbar-surface pointer-events-auto flex w-16 flex-none flex-col items-center gap-3 rounded-2xl py-6 px-3 transition-all">
                                     {/* Canvas Mode Toggle: single button switches between select/hand */}
                                     <motion.button
@@ -2657,7 +2712,8 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
                                       </AnimatePresence>,
                                       document.body
                                   )}
-                             </div>
+                             </motion.div>
+                            )}
 
                             <div
                                 id="copilot-container"
