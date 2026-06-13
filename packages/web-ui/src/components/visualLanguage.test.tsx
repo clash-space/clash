@@ -401,6 +401,23 @@ describe("visual language surfaces", () => {
     expect(source).not.toMatch(/clash-projects-empty-node--wide|clash-projects-empty-node--small|clash-projects-empty-node--accent/);
   });
 
+  it("keeps the public landing page aligned with canvas and local-runtime product language", () => {
+    const source = [
+      "packages/web-ui/src/components/landing/LandingHero.tsx",
+      "packages/web-ui/src/components/landing/FeatureGrid.tsx",
+      "packages/web-ui/src/components/landing/HowItWorks.tsx",
+    ]
+      .map((path) => readFileSync(join(process.cwd(), path), "utf8"))
+      .join("\n");
+
+    expect(source).toMatch(/HeroCanvasPreview/);
+    expect(source).toMatch(/Canvas-first planning/);
+    expect(source).toMatch(/Local runtime ready/);
+    expect(source).toMatch(/Cloud when invited/);
+    expect(source).toMatch(/From idea to canvas to runtime/);
+    expect(source).not.toMatch(/stock footage|Digital Avatars|Brand Customization|Export optimized|technical complexity/);
+  });
+
   it("keeps identity and mention surfaces out of legacy gradient and default gray chrome", () => {
     const source = [
       "packages/web-ui/src/components/UserControls.tsx",

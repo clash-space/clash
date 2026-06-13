@@ -1,27 +1,27 @@
 
 import { motion } from 'framer-motion';
-import { PencilSimple, UsersThree, Export } from '@phosphor-icons/react';
+import { CloudCheck, CursorClick, TerminalWindow } from '@phosphor-icons/react';
 
 const steps = [
   {
     number: '01',
-    title: 'Describe Your Vision',
-    description: 'Type a prompt or paste a script. Our AI breaks it down into scenes, shots, and visual directions automatically.',
-    icon: PencilSimple,
+    title: 'Start from intent',
+    description: 'Type a brief, drop references, or open an existing canvas. Clash turns the idea into editable project structure.',
+    icon: CursorClick,
     color: 'bg-brand/10 text-brand',
   },
   {
     number: '02',
-    title: 'Co-Create with AI',
-    description: 'Your AI agent proposes storyboards, generates assets, and refines the edit. You stay in control — approve, tweak, or redirect at any point.',
-    icon: UsersThree,
+    title: 'Run the right helper',
+    description: 'Use cloud agents or attach a local runtime. The agent works in the chat and on the canvas where you can inspect every move.',
+    icon: TerminalWindow,
     color: 'bg-warm-muted text-slate-800',
   },
   {
     number: '03',
-    title: 'Export & Share',
-    description: 'Render in minutes. Export optimized for YouTube, TikTok, Instagram, or any platform. One click, every format.',
-    icon: Export,
+    title: 'Sync only when useful',
+    description: 'Keep work local by default, then enable cloud sync or multiplayer when the project needs web access or collaborators.',
+    icon: CloudCheck,
     color: 'bg-warm-muted text-slate-800',
   },
 ];
@@ -33,7 +33,7 @@ export default function HowItWorks() {
         <div className="mx-auto max-w-2xl text-center">
           <h2 className="text-base font-semibold leading-7 text-brand font-display">How it works</h2>
           <p className="mt-2 text-3xl font-bold tracking-tight text-slate-900 dark:text-slate-50 sm:text-4xl font-display">
-            From idea to video in three steps
+            From idea to canvas to runtime
           </p>
         </div>
 

@@ -4,7 +4,7 @@ import { motion } from 'framer-motion';
 import { createProject } from '@clash/web-ui/lib/clientActions';
 import { ChatInput } from './copilot/ChatInput';
 
-function HeroCanvasPreview() {
+export function HeroCanvasPreview() {
     return (
         <motion.div
             className="clash-home-canvas-preview relative min-h-[390px] overflow-hidden"
