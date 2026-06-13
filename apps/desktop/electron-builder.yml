@@ -20,6 +20,7 @@ extraResources:
 
 mac:
   category: public.app-category.video
+  icon: build/icon.icns
   identity: null
   target:
     - dir

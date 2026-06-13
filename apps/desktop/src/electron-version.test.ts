@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync, statSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 interface DesktopPackage {
@@ -33,6 +33,14 @@ describe("desktop Electron runtime", () => {
     expect(dmgScript).toContain("electron-builder");
     expect(dmgScript).toContain("--publish never");
     expect(builderConfig).toMatch(/^publish:\s+null$/m);
+    expect(builderConfig).toMatch(/^\s+icon:\s+build\/icon\.icns$/m);
     expect(builderConfig).toMatch(/target:\n(?:\s+-\s+\w+\n)*\s+-\s+dmg/m);
+  });
+
+  it("ships a Clash desktop app icon instead of the Electron default", () => {
+    const iconUrl = new URL("../build/icon.icns", import.meta.url);
+    expect(existsSync(iconUrl)).toBe(true);
+    expect(statSync(iconUrl).size).toBeGreaterThan(10_000);
+    expect(readFileSync(iconUrl).subarray(0, 4).toString("ascii")).toBe("icns");
   });
 });
