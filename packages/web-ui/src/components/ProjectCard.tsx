@@ -64,16 +64,14 @@ export default function ProjectCard({ project }: ProjectCardProps) {
     <article className="group relative">
       <Link to={`/projects/${project.id}`} className="block">
         <motion.div
-          className="relative aspect-video overflow-hidden rounded-2xl bg-warm-muted mb-4 transition-all hover:shadow-lg ring-1 ring-warm-border/80"
+          className="clash-project-card-frame relative mb-4 aspect-video overflow-hidden rounded-2xl"
           whileHover={{ y: -2 }}
           whileTap={{ scale: 0.98 }}
         >
           {/* Asset Grid Logic */}
           {assetCount === 0 ? (
             /* No Assets - Empty State */
-            <div className="absolute inset-0 flex items-center justify-center bg-warm-muted text-stone-300">
-               {/* Empty state placeholder */}
-            </div>
+            <div className="clash-project-card-empty" aria-hidden="true" />
           ) : (
             /* Has Assets */
             <div className={`grid h-full w-full ${gridClass} gap-[2px] bg-warm-border`}>
@@ -83,7 +81,7 @@ export default function ProjectCard({ project }: ProjectCardProps) {
                 return (
                   <div
                     key={asset.id}
-                    className={`relative overflow-hidden bg-warm-muted ${isLastOfThree ? 'col-span-2' : ''}`}
+                    className={`relative overflow-hidden bg-warm-surface ${isLastOfThree ? 'col-span-2' : ''}`}
                   >
                     <img
                       src={asset.url}

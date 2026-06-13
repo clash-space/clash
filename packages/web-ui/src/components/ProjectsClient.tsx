@@ -29,19 +29,19 @@ export default function ProjectsClient({ projects }: ProjectsClientProps) {
                     <button
                         type="button"
                         aria-label="Create a new project"
-                        className="group flex aspect-video flex-col items-center justify-center gap-4 rounded-2xl border-2 border-dashed border-warm-border bg-warm-surface/70 transition-colors hover:border-brand/40 hover:bg-warm-surface focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-warm-page"
+                        className="clash-project-create-tile group flex aspect-video flex-col items-center justify-center gap-4 rounded-2xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-warm-page"
                         onClick={async () => {
                             await createProject('Untitled project', { startFromPrompt: false });
                         }}
                     >
-                        <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-warm-surface shadow-sm ring-1 ring-warm-border">
+                        <div className="clash-project-create-icon flex h-14 w-14 items-center justify-center rounded-xl">
                             <Plus
-                                className="h-8 w-8 text-stone-600 transition-colors group-hover:text-brand dark:text-stone-300"
+                                className="h-7 w-7 text-stone-600 transition-colors group-hover:text-brand dark:text-stone-300"
                                 weight="bold"
                                 aria-hidden="true"
                             />
                         </div>
-                        <span className="text-lg font-medium text-stone-700 group-hover:text-slate-950 dark:text-stone-300 dark:group-hover:text-slate-50">New Project</span>
+                        <span className="text-base font-semibold text-stone-700 transition-colors group-hover:text-slate-950 dark:text-stone-300 dark:group-hover:text-slate-50">New Project</span>
                     </button>
 
                     {projects.map((project) => (

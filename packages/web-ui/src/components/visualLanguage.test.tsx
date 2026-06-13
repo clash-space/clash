@@ -60,6 +60,8 @@ const oldConfirmDialogTokens =
 const oldRouteErrorTokens = /Something went wrong|Unknown error/;
 const oldSettingsDialogTokens =
   /ChatGPT-style|shadow-2xl border border-warm-border|bg-warm-muted\/40 flex flex-col/;
+const oldProjectTileTokens =
+  /border-2 border-dashed|hover:shadow-lg|bg-warm-muted\/60|bg-warm-surface\/70/;
 
 describe("visual language surfaces", () => {
   afterEach(() => {
@@ -285,6 +287,22 @@ describe("visual language surfaces", () => {
     expect(source).toMatch(/clash-settings-dialog-shell/);
     expect(source).toMatch(/clash-settings-dialog-sidebar/);
     expect(source).toMatch(/clash-settings-dialog-content/);
+  });
+
+  it("keeps project tiles on Clash canvas surfaces instead of generic dashed cards", () => {
+    const source = [
+      "packages/web-ui/src/components/RecentProjects.tsx",
+      "packages/web-ui/src/components/ProjectsClient.tsx",
+      "packages/web-ui/src/components/ProjectCard.tsx",
+      "apps/web/app/globals.css",
+    ]
+      .map((path) => readFileSync(join(process.cwd(), path), "utf8"))
+      .join("\n");
+
+    expect(source).not.toMatch(oldProjectTileTokens);
+    expect(source).toMatch(/clash-project-create-tile/);
+    expect(source).toMatch(/clash-project-card-frame/);
+    expect(source).toMatch(/clash-project-card-empty/);
   });
 
   it.each([

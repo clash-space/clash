@@ -434,6 +434,101 @@ html.dark.clash-is-scrolling ::-webkit-scrollbar-thumb:hover {
     linear-gradient(180deg, rgba(255, 254, 253, 0.9), rgba(255, 254, 253, 0.78));
 }
 
+.clash-project-create-tile,
+.clash-project-card-frame {
+  position: relative;
+  isolation: isolate;
+  border: 1px solid rgba(225, 221, 213, 0.78);
+  background:
+    linear-gradient(180deg, rgba(255, 254, 253, 0.66), rgba(247, 246, 242, 0.54));
+  box-shadow:
+    0 10px 24px rgba(35, 31, 25, 0.038),
+    0 2px 8px rgba(35, 31, 25, 0.024),
+    inset 0 1px 0 rgba(255, 255, 255, 0.72);
+  transition:
+    border-color 180ms ease,
+    box-shadow 180ms ease,
+    transform 180ms ease,
+    background 180ms ease;
+}
+
+.clash-project-create-tile {
+  overflow: hidden;
+}
+
+.clash-project-create-tile::before,
+.clash-project-card-empty::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background-image: radial-gradient(var(--canvas-dot) 1px, transparent 1px);
+  background-size: 20px 20px;
+  opacity: 0.34;
+}
+
+.clash-project-create-tile::after {
+  content: "";
+  position: absolute;
+  inset: 14px;
+  z-index: 0;
+  pointer-events: none;
+  border: 1px solid rgba(225, 221, 213, 0.46);
+  border-radius: 18px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.56);
+}
+
+.clash-project-create-tile > *,
+.clash-project-card-frame > *,
+.clash-project-card-empty > * {
+  position: relative;
+  z-index: 1;
+}
+
+.clash-project-create-tile:hover,
+.clash-project-card-frame:hover {
+  border-color: rgba(255, 107, 80, 0.36);
+  background:
+    linear-gradient(180deg, rgba(255, 254, 253, 0.78), rgba(247, 246, 242, 0.62));
+  box-shadow:
+    0 14px 32px rgba(35, 31, 25, 0.052),
+    0 4px 12px rgba(35, 31, 25, 0.032),
+    inset 0 1px 0 rgba(255, 255, 255, 0.82);
+}
+
+.clash-project-create-icon {
+  border: 1px solid rgba(225, 221, 213, 0.82);
+  background:
+    linear-gradient(180deg, rgba(255, 254, 253, 0.92), rgba(241, 239, 234, 0.86));
+  box-shadow:
+    0 8px 18px rgba(35, 31, 25, 0.05),
+    inset 0 1px 0 rgba(255, 255, 255, 0.84);
+}
+
+.clash-project-card-empty {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  background:
+    linear-gradient(180deg, rgba(255, 254, 253, 0.36), rgba(241, 239, 234, 0.48));
+}
+
+.clash-project-card-empty::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 42px;
+  height: 42px;
+  transform: translate(-50%, -50%);
+  border-radius: 14px;
+  border: 1px solid rgba(210, 204, 194, 0.64);
+  background:
+    linear-gradient(180deg, rgba(255, 254, 253, 0.7), rgba(247, 246, 242, 0.58));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.68);
+}
+
 .clash-input-surface {
   overflow: hidden;
   transition:
