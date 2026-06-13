@@ -82,7 +82,7 @@ export default function LayoutContent({
       <main
         className={
           isDesktopProjectDetailPage
-            ? 'box-border h-screen overflow-hidden pt-10 [--clash-desktop-chrome-height:2.5rem] [--clash-project-editor-height:calc(100vh-2.5rem)]'
+            ? 'box-border mt-[var(--clash-desktop-chrome-height)] h-[calc(100dvh-var(--clash-desktop-chrome-height))] overflow-hidden [--clash-desktop-chrome-height:2.5rem] [--clash-project-editor-height:calc(100dvh-var(--clash-desktop-chrome-height))]'
             : isDesktop
               ? 'clash-desktop-scroll-root box-border mt-10 h-[calc(100dvh-2.5rem)] overflow-y-auto overflow-x-hidden pt-[4.5rem]'
               : 'min-h-screen pt-24'

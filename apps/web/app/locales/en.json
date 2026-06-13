@@ -52,6 +52,7 @@
       "localAgentReady": "Local agent connected. Send a message to start.",
       "desktopLocalStarting": "Connecting to the local agent on this Mac…",
       "desktopLocalRequired": "No local agent is available on this Mac.",
+      "desktopLocalSetupRequired": "Local agent needs setup on this Mac. Sign in to the agent or add the required API keys, then try again.",
       "localRuntimeRequired": "Select or connect a local runtime to chat. Cloud Agent is coming soon.",
       "slashCommandsMore": "+{{count}} more"
     },

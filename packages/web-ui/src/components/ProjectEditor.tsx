@@ -97,7 +97,7 @@ import { applyLayoutPatchesToLoro, collectLayoutNodePatches } from '@clash/web-u
 import { calculateScaledDimensions } from './nodes/assetNodeSizing';
 import { getAsset } from '@clash/web-ui/lib/hooks/useAsset';
 import { getSignedUrl } from '@clash/web-ui/lib/hooks/useSignedUrl';
-import { runtimeApiUrl } from '@clash/web-ui/lib/runtimeConfig';
+import { getRuntimeCapabilities, runtimeApiUrl } from '@clash/web-ui/lib/runtimeConfig';
 import { DESKTOP_TAB_TITLE_EVENT, type DesktopTabTitleEventDetail } from '@clash/web-ui/lib/desktopTabs';
 import { buildFallbackCanvasFromAssets } from '@clash/web-ui/lib/projectFallbackCanvas';
 import { visiblePresenceClients } from '@clash/web-ui/lib/presenceVisibility';
@@ -139,7 +139,7 @@ function ProjectSurfaceBehindEditor({ children }: { children: React.ReactNode })
             style={{
                 pointerEvents: isOpen ? 'none' : 'auto',
             }}
-            className="h-screen w-full"
+            className="h-[var(--clash-project-editor-height,100vh)] w-full"
         >
             {children}
         </div>
@@ -350,6 +350,7 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
     const [showDebugIds, setShowDebugIds] = useState(false);
     const [canvasMode, setCanvasMode] = useState<'select' | 'hand'>('select');
     const [shareCopied, setShareCopied] = useState(false);
+    const canShareProject = getRuntimeCapabilities().loro.persistence !== 'local';
     const projectTitleInputWidthCh = Math.min(Math.max(Array.from(projectName || 'Untitled').length + 1, 5), 30);
 
     useEffect(() => {
@@ -648,6 +649,7 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
     const [sidebarWidth, setSidebarWidth] = useState(384);
     const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
     const [sidebarHydrated, setSidebarHydrated] = useState(false);
+    const topActionsRight = isSidebarCollapsed ? 24 : sidebarWidth + 32;
 
     useEffect(() => {
         const savedWidth = localStorage.getItem('copilot-sidebar-width');
@@ -675,6 +677,7 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
     }, [editorRouter]);
 
     const handleShareProject = useCallback(async () => {
+        if (!canShareProject) return;
         if (typeof window === 'undefined') return;
         const href = window.location.href;
         try {
@@ -684,7 +687,7 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
         } catch {
             setShareCopied(false);
         }
-    }, []);
+    }, [canShareProject]);
 
     const handleCreateSession = useCallback(async (initialMessage?: string): Promise<{ threadId: string; title: string } | null> => {
         try {
@@ -2441,22 +2444,25 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
 
                             <motion.div
                                 id="project-top-actions"
-                                className="absolute top-10 z-20 flex items-center gap-2 pointer-events-auto"
-                                animate={{ right: isSidebarCollapsed ? 24 : sidebarWidth + 72 }}
+                                className="absolute top-4 z-20 flex items-center gap-2 pointer-events-auto"
+                                style={{ right: topActionsRight }}
+                                animate={{ right: topActionsRight }}
                                 transition={{ type: 'spring', stiffness: 400, damping: 30 }}
                             >
                                 <PresenceBar clients={otherClients} />
-                                <motion.button
-                                    type="button"
-                                    onClick={handleShareProject}
-                                    aria-label="Copy project link"
-                                    className="clash-project-top-action flex h-10 items-center gap-2 rounded-xl px-3 text-sm font-display font-semibold transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-warm-page"
-                                    whileHover={{ scale: 1.025, y: -1 }}
-                                    whileTap={{ scale: 0.975 }}
-                                >
-                                    <ShareFat className="h-4 w-4" weight="bold" aria-hidden="true" />
-                                    <span>{shareCopied ? 'Copied' : 'Share'}</span>
-                                </motion.button>
+                                {canShareProject && (
+                                    <motion.button
+                                        type="button"
+                                        onClick={handleShareProject}
+                                        aria-label="Copy project link"
+                                        className="clash-project-top-action flex h-10 items-center gap-2 rounded-xl px-3 text-sm font-display font-semibold transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-warm-page"
+                                        whileHover={{ scale: 1.025, y: -1 }}
+                                        whileTap={{ scale: 0.975 }}
+                                    >
+                                        <ShareFat className="h-4 w-4" weight="bold" aria-hidden="true" />
+                                        <span>{shareCopied ? 'Copied' : 'Share'}</span>
+                                    </motion.button>
+                                )}
                                 <UserControls projectChrome />
                             </motion.div>
 

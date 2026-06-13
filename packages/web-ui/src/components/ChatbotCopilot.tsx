@@ -411,6 +411,8 @@ export default function ChatbotCopilot({
     const isProcessing =
         chatMode === 'runtime' ? runtimeIsProcessing :
         cloudIsProcessing;
+    const runtimeAlertMessage = chatMode === 'runtime' && !isDesktopLocalMode ? clashRt.errorMessage : null;
+    const desktopLocalSetupIssue = chatMode === 'runtime' && isDesktopLocalMode ? clashRt.errorMessage : null;
 
     useEffect(() => {
         if (chatMode !== 'runtime' || !onAddNode) return;
@@ -657,7 +659,15 @@ export default function ChatbotCopilot({
             if (!clashRt.ready) {
                 setInput(value);
                 if (isDesktopLocalMode) {
-                    void clashRt.refresh();
+                    const runtime = desktopLocalRuntime;
+                    if (runtime && runtime.status === 'online' && runtime.agents.length > 0) {
+                        void clashRt.select(runtime.id, 'director', {
+                            projectId,
+                            agentId: preferredLocalAgentId(runtime.agents),
+                        });
+                    } else {
+                        void clashRt.refresh();
+                    }
                 } else {
                     setSessionError(t('copilot.status.localRuntimeRequired'));
                 }
@@ -1050,14 +1060,15 @@ export default function ChatbotCopilot({
                                             {clashRt.status === 'connecting' && (
                                                 <div role="status" aria-live="polite" className="text-xs text-stone-600 italic dark:text-stone-300">{t('copilot.status.connecting')}</div>
                                             )}
-                                            {clashRt.errorMessage && (
-                                                <div role="alert" className="text-sm text-red-700 dark:text-red-300">{t('copilot.errors.warningPrefix')} {clashRt.errorMessage}</div>
+                                            {runtimeAlertMessage && (
+                                                <div role="alert" className="text-sm text-red-700 dark:text-red-300">{t('copilot.errors.warningPrefix')} {runtimeAlertMessage}</div>
                                             )}
                                             <RuntimeMessageList
                                                 messages={clashRt.messages}
                                                 ready={clashRt.ready}
                                                 desktopLocalMode={isDesktopLocalMode}
                                                 localRuntime={desktopLocalRuntime}
+                                                setupIssue={desktopLocalSetupIssue}
                                             />
                                         </>
                                     )}
@@ -1355,16 +1366,20 @@ function RuntimeMessageList({
     ready,
     desktopLocalMode,
     localRuntime,
+    setupIssue,
 }: {
     messages: RuntimeMessage[];
     ready: boolean;
     desktopLocalMode?: boolean;
     localRuntime?: Runtime | null;
+    setupIssue?: string | null;
 }) {
     const { t } = useTranslation();
     if (messages.length === 0) {
         const hasLocalAgent = !!localRuntime && localRuntime.status === 'online' && localRuntime.agents.length > 0;
-        const emptyText = ready
+        const emptyText = setupIssue
+            ? t('copilot.status.desktopLocalSetupRequired')
+            : ready
             ? t('copilot.status.localAgentReady')
             : desktopLocalMode
                 ? t(hasLocalAgent ? 'copilot.status.desktopLocalStarting' : 'copilot.status.desktopLocalRequired')

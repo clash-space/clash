@@ -346,8 +346,12 @@ describe("visual language surfaces", () => {
     expect(projectSource).toMatch(/projectTitleInputWidthCh/);
     expect(projectSource).toMatch(/width: `\$\{projectTitleInputWidthCh\}ch`/);
     expect(projectSource).toMatch(/id="project-top-actions"/);
-    expect(projectSource).toMatch(/absolute top-10 z-20/);
-    expect(projectSource).toMatch(/right: isSidebarCollapsed \? 24 : sidebarWidth \+ 72/);
+    expect(projectSource).toMatch(/absolute top-4 z-20/);
+    expect(projectSource).toMatch(/const topActionsRight = isSidebarCollapsed \? 24 : sidebarWidth \+ 32/);
+    expect(projectSource).toMatch(/style=\{\{ right: topActionsRight \}\}/);
+    expect(projectSource).toMatch(/animate=\{\{ right: topActionsRight \}\}/);
+    expect(projectSource).toMatch(/const canShareProject = getRuntimeCapabilities\(\)\.loro\.persistence !== 'local'/);
+    expect(projectSource).toMatch(/\{canShareProject && \(/);
     expect(projectSource).toMatch(/<PresenceBar clients=\{otherClients\} \/>/);
     expect(projectSource).toMatch(/<UserControls projectChrome \/>/);
     expect(projectSource).not.toMatch(/MonitorPlay|isPresentationMode|Present canvas|Presenting/);
@@ -371,6 +375,9 @@ describe("visual language surfaces", () => {
     expect(cssSource).toMatch(/\.clash-copilot-panel-shell\s*\{[\s\S]*?border-radius:\s*28px/);
     expect(cssSource).toMatch(/\.clash-copilot-panel-shell\s*\{[\s\S]*?radial-gradient\(rgba\(214, 209, 200, 0\.22\) 1px, transparent 1px\)/);
     expect(cssSource).toMatch(/\.clash-copilot-panel-shell\s*\{[\s\S]*?background-size:\s*18px 18px, auto, auto, auto/);
+    expect(cssSource).toMatch(/\.clash-canvas-toolbar-surface,\s*\n\.clash-canvas-menu-surface\s*\{[\s\S]*?radial-gradient\(rgba\(214, 209, 200, 0\.22\) 1px, transparent 1px\)/);
+    expect(cssSource).toMatch(/\.clash-canvas-toolbar-surface,\s*\n\.clash-canvas-menu-surface\s*\{[\s\S]*?background-size:\s*18px 18px, auto, auto, auto/);
+    expect(cssSource).toMatch(/\.clash-canvas-toolbar-surface::before,\s*\n\.clash-canvas-menu-surface::before\s*\{[\s\S]*?content:\s*none;/);
     expect(cssSource).toMatch(/\.clash-copilot-resize-handle::before/);
     expect(cssSource).toMatch(/\.clash-project-top-action/);
     expect(cssSource).toMatch(/\.clash-project-return-button,\s*\n\.clash-project-name-input\s*\{[\s\S]*?border:\s*0;[\s\S]*?background:\s*transparent;[\s\S]*?box-shadow:\s*none;/);

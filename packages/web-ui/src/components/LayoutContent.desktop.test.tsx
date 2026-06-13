@@ -64,6 +64,23 @@ describe("LayoutContent desktop chrome", () => {
     });
   });
 
+  it("starts desktop project content below the native tab strip instead of padding underneath it", () => {
+    globalThis.__CLASH_DESKTOP__ = {
+      isDesktop: true,
+      newWindow: vi.fn(),
+    };
+
+    renderAt("/projects/project-1");
+
+    const main = screen.getByRole("main");
+    expect(main.className).toContain("mt-[var(--clash-desktop-chrome-height)]");
+    expect(main.className).toContain("h-[calc(100dvh-var(--clash-desktop-chrome-height))]");
+    expect(main.className).toContain("[--clash-desktop-chrome-height:2.5rem]");
+    expect(main.className).toContain("[--clash-project-editor-height:calc(100dvh-var(--clash-desktop-chrome-height))]");
+    expect(main.className).not.toContain("h-screen");
+    expect(main.className).not.toContain("pt-10");
+  });
+
   it("uses a main scroll container below the desktop tab header", async () => {
     globalThis.__CLASH_DESKTOP__ = {
       isDesktop: true,

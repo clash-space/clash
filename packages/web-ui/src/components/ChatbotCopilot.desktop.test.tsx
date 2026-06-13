@@ -37,6 +37,7 @@ vi.mock("react-i18next", () => ({
       if (key === "copilot.status.connecting") return "Connecting to runtime...";
       if (key === "copilot.status.localAgentReady") return "Local agent connected. Send a message to start.";
       if (key === "copilot.status.localRuntimeRequired") return "Select or connect a local runtime to chat. Cloud Agent is coming soon.";
+      if (key === "copilot.status.desktopLocalSetupRequired") return "Local agent needs setup on this Mac.";
       if (key === "copilot.errors.warningPrefix") return "Warning";
       return key;
     },
@@ -192,5 +193,32 @@ describe("ChatbotCopilot desktop local mode", () => {
     expect(screen.queryByRole("button", { name: "Run on (Cloud / local runtime)" })).toBeNull();
     expect(screen.queryByText("Cloud Agent")).toBeNull();
     expect(screen.queryByText("Authentication required")).toBeNull();
+  });
+
+  it("does not render local ACP authentication failures as red Clash auth errors", () => {
+    globalThis.__CLASH_RUNTIME_CONFIG__ = { mode: "desktop" };
+    vi.stubGlobal(
+      "IntersectionObserver",
+      vi.fn(function IntersectionObserver() {
+        return {
+          observe: vi.fn(),
+          disconnect: vi.fn(),
+        };
+      }),
+    );
+    Element.prototype.scrollIntoView = vi.fn();
+    mocks.useClashRuntime.mockReturnValue(runtimeState({
+      selectedRuntimeId: "desktop-local",
+      selectedAgentId: "codex-cli",
+      status: "error",
+      errorMessage: "Authentication required",
+    }));
+    mocks.useAgentCopilot.mockReturnValue(cloudState());
+
+    renderDesktopCopilot();
+
+    expect(screen.queryByText(/Authentication required/)).toBeNull();
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(screen.getByText("Local agent needs setup on this Mac.")).toBeTruthy();
   });
 });

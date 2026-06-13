@@ -52,6 +52,7 @@
       "localAgentReady": "本地 Agent 已连接，发送消息以开始。",
       "desktopLocalStarting": "正在连接这台 Mac 上的本地 Agent…",
       "desktopLocalRequired": "这台 Mac 上还没有可用的本地 Agent。",
+      "desktopLocalSetupRequired": "这台 Mac 上的本地 Agent 需要配置。登录对应 Agent 或添加需要的 API Key 后再试。",
       "localRuntimeRequired": "请选择或连接本地运行时后再聊天。Cloud Agent 即将推出。",
       "slashCommandsMore": "+{{count}} 个"
     },

@@ -263,15 +263,18 @@ html.dark.clash-is-scrolling ::-webkit-scrollbar-thumb:hover {
 .clash-canvas-menu-surface {
   isolation: isolate;
   overflow: visible;
-  border: 1px solid rgba(225, 221, 213, 0.9);
+  border: 1px solid rgba(225, 221, 213, 0.82);
   background:
-    linear-gradient(180deg, rgba(255, 254, 253, 0.96), rgba(247, 246, 242, 0.88));
+    radial-gradient(rgba(214, 209, 200, 0.22) 1px, transparent 1px),
+    linear-gradient(90deg, transparent 0%, rgba(255, 254, 253, 0.36) 62%, rgba(255, 254, 253, 0.68) 100%),
+    radial-gradient(circle at 100% 100%, rgba(255, 107, 80, 0.11), transparent 34%),
+    linear-gradient(180deg, rgba(255, 254, 253, 0.97), rgba(249, 248, 244, 0.94));
+  background-size: 18px 18px, auto, auto, auto;
   box-shadow:
-    0 14px 34px rgba(35, 31, 25, 0.064),
-    0 2px 8px rgba(35, 31, 25, 0.034),
-    inset 0 1px 0 rgba(255, 255, 255, 0.92),
-    inset 0 -1px 0 rgba(210, 204, 194, 0.2);
-  backdrop-filter: blur(16px) saturate(1.04);
+    0 18px 44px rgba(35, 31, 25, 0.095),
+    0 5px 16px rgba(35, 31, 25, 0.052),
+    inset 0 1px 0 rgba(255, 255, 255, 0.82);
+  backdrop-filter: blur(16px) saturate(1.02);
 }
 
 .clash-canvas-toolbar-surface {
@@ -289,16 +292,7 @@ html.dark.clash-is-scrolling ::-webkit-scrollbar-thumb:hover {
 
 .clash-canvas-toolbar-surface::before,
 .clash-canvas-menu-surface::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  border-radius: inherit;
-  pointer-events: none;
-  z-index: 0;
-  background:
-    linear-gradient(90deg, rgba(255, 255, 255, 0.56), transparent 32%, transparent 72%, rgba(145, 134, 120, 0.08)),
-    linear-gradient(180deg, rgba(255, 255, 255, 0.52), transparent 46%, rgba(235, 231, 224, 0.18));
-  opacity: 0.88;
+  content: none;
 }
 
 .clash-canvas-menu-surface {
