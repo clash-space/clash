@@ -31,7 +31,7 @@ export class MessageErrorBoundary extends Component<Props, State> {
       return (
         <div
           role="alert"
-          className="px-4 py-3 rounded-matrix border border-red-200 bg-red-50/60 text-sm text-red-800 dark:border-red-900/50 dark:bg-red-950/30 dark:text-red-200"
+          className="clash-copilot-alert-error px-4 py-3 rounded-matrix text-sm"
         >
           <div className="font-medium mb-1">Failed to render this message</div>
           <div className="font-mono text-xs opacity-80 break-all">

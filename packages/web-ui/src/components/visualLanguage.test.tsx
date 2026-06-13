@@ -85,6 +85,8 @@ const oldInlineNodePrimaryActionTokens =
   /text-white bg-slate-950|bg-slate-950 hover:bg-slate-800|bg-slate-950 rounded-lg hover:bg-slate-800/;
 const oldActionBadgeMenuActionTokens =
   /!bg-slate-950|bg-slate-950 text-white|bg-slate-950 hover:bg-slate-800|bg-slate-950 hover:bg-black|bg-slate-900 rounded-xl|bg-slate-900 text-white|bg-slate-700 hover:bg-slate-900|bg-slate-700 text-white|bg-red-400 text-white/;
+const oldCopilotActionSurfaceTokens =
+  /bg-slate-950 text-white|hover:bg-slate-800|bg-brand text-white text-xs font-medium hover:bg-red-500|bg-brand text-white rounded-lg text-sm font-medium hover:bg-red-500|border-red-200 bg-red-50|text-red-800/;
 
 describe("visual language surfaces", () => {
   afterEach(() => {
@@ -300,6 +302,21 @@ describe("visual language surfaces", () => {
     expect(source).toMatch(/clash-node-ref-remove/);
     expect(source).toMatch(/clash-node-primary/);
     expect(source).toMatch(/!bg-brand/);
+  });
+
+  it("keeps copilot proposal and approval actions on shared Clash surfaces", () => {
+    const source = [
+      "packages/web-ui/src/components/copilot/NodeProposalCard.tsx",
+      "packages/web-ui/src/components/copilot/ApprovalCard.tsx",
+      "packages/web-ui/src/components/copilot/MessageErrorBoundary.tsx",
+      "apps/web/app/globals.css",
+    ]
+      .map((path) => readFileSync(join(process.cwd(), path), "utf8"))
+      .join("\n");
+
+    expect(source).not.toMatch(oldCopilotActionSurfaceTokens);
+    expect(source).toMatch(/clash-copilot-primary/);
+    expect(source).toMatch(/clash-copilot-alert-error/);
   });
 
   it("keeps activity and presence feedback out of legacy blue or gradient states", () => {

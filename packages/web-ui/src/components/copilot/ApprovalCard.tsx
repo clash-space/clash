@@ -28,7 +28,7 @@ export function ApprovalCard({ message, onApprove, onReject, isPending = false }
                     transition={{ duration: 0.15, ease: [0.25, 1, 0.5, 1] }}
                     onClick={onApprove}
                     disabled={isPending}
-                    className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 min-h-[44px] bg-brand text-white rounded-lg text-sm font-medium hover:bg-red-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-warm-surface"
+                    className="clash-copilot-primary flex-1 flex items-center justify-center gap-2 px-4 py-2.5 min-h-[44px] rounded-lg text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-warm-surface"
                 >
                     <Check weight="bold" aria-hidden="true" />
                     {t('copilot.approvalCard.approve')}

@@ -62,6 +62,7 @@ export const NodeProposalCard: React.FC<NodeProposalCardProps> = ({
 
             <div className="p-3 flex items-center gap-2">
                 <motion.button
+                    type="button"
                     onClick={onReject}
                     className="flex-1 py-2 px-3 rounded-lg border border-warm-border text-slate-700 dark:text-slate-300 text-xs font-medium hover:bg-warm-muted transition-colors flex items-center justify-center gap-1.5"
                     whileHover={{ scale: 1.02 }}
@@ -73,10 +74,11 @@ export const NodeProposalCard: React.FC<NodeProposalCardProps> = ({
                 </motion.button>
 
                 <motion.button
+                    type="button"
                     onClick={onAccept}
                     className={`flex-1 py-2 px-3 rounded-lg text-xs font-medium transition-colors flex items-center justify-center gap-1.5 ${isGenerative
                             ? 'bg-warm-surface border border-warm-border text-slate-800 dark:text-slate-200 hover:bg-warm-muted'
-                            : 'bg-slate-950 text-white hover:bg-slate-800 shadow-sm'
+                            : 'clash-copilot-primary shadow-sm'
                         }`}
                     whileHover={{ scale: 1.02 }}
                     whileTap={{ scale: 0.98 }}
@@ -88,8 +90,9 @@ export const NodeProposalCard: React.FC<NodeProposalCardProps> = ({
 
                 {isGenerative && onAcceptAndRun && (
                     <motion.button
+                        type="button"
                         onClick={onAcceptAndRun}
-                        className="flex-1 py-2 px-3 rounded-lg bg-brand text-white text-xs font-medium hover:bg-red-500 shadow-sm shadow-brand/20 transition-colors flex items-center justify-center gap-1.5"
+                        className="clash-copilot-primary flex-1 py-2 px-3 rounded-lg text-xs font-medium shadow-sm flex items-center justify-center gap-1.5"
                         whileHover={{ scale: 1.02 }}
                         whileTap={{ scale: 0.98 }}
                         transition={{ duration: 0.15, ease: [0.25, 1, 0.5, 1] }}
