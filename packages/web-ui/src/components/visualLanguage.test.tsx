@@ -77,6 +77,8 @@ const oldUserAccountActionTokens =
   /bg-(?:slate|stone)-9(?:00|50)|hover:bg-(?:slate|stone)-(?:7|8)00|shadow-slate-950\/20|dark:bg-slate-100|dark:hover:bg-white/;
 const oldBillingActionTokens =
   /bg-slate-950 text-white|hover:bg-slate-800|dark:bg-slate-100|dark:hover:bg-white/;
+const oldChatInputActionTokens =
+  /bg-slate-950 text-white|hover:bg-slate-800|hover:bg-red-600|focus-visible:ring-red-500|bg-red-50(?:\s|")|hover:bg-red-100(?:\s|")|text-red-700(?:\s|")|dark:bg-red-950(?:\/|\s|")/;
 
 describe("visual language surfaces", () => {
   afterEach(() => {
@@ -212,6 +214,20 @@ describe("visual language surfaces", () => {
 
     expect(source).not.toMatch(oldBillingActionTokens);
     expect(source).toMatch(/clash-billing-primary/);
+  });
+
+  it("keeps chat input errors and send controls on Clash surfaces instead of black and hard-red chrome", () => {
+    const source = [
+      "packages/web-ui/src/components/copilot/ChatInput.tsx",
+      "apps/web/app/globals.css",
+    ]
+      .map((path) => readFileSync(join(process.cwd(), path), "utf8"))
+      .join("\n");
+
+    expect(source).not.toMatch(oldChatInputActionTokens);
+    expect(source).toMatch(/clash-chat-input-alert-error/);
+    expect(source).toMatch(/clash-chat-input-primary/);
+    expect(source).toMatch(/clash-chat-input-stop/);
   });
 
   it("keeps ActionBadge canvas controls on warm and brand tokens", () => {

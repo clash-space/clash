@@ -436,6 +436,8 @@ html.dark.clash-is-scrolling ::-webkit-scrollbar-thumb:hover {
 
 .clash-settings-primary,
 .clash-billing-primary,
+.clash-chat-input-primary,
+.clash-chat-input-stop,
 .clash-copilot-primary,
 .clash-marketplace-primary,
 .clash-user-primary {
@@ -454,6 +456,8 @@ html.dark.clash-is-scrolling ::-webkit-scrollbar-thumb:hover {
 
 .clash-settings-primary:hover,
 .clash-billing-primary:hover,
+.clash-chat-input-primary:hover,
+.clash-chat-input-stop:hover,
 .clash-copilot-primary:hover,
 .clash-marketplace-primary:hover,
 .clash-user-primary:hover {
@@ -466,6 +470,8 @@ html.dark.clash-is-scrolling ::-webkit-scrollbar-thumb:hover {
 
 .clash-settings-primary:disabled,
 .clash-billing-primary:disabled,
+.clash-chat-input-primary:disabled,
+.clash-chat-input-stop:disabled,
 .clash-copilot-primary:disabled,
 .clash-marketplace-primary:disabled,
 .clash-user-primary:disabled {
@@ -486,6 +492,7 @@ html.dark.clash-is-scrolling ::-webkit-scrollbar-thumb:hover {
 }
 
 .clash-settings-alert-error,
+.clash-chat-input-alert-error,
 .clash-copilot-alert-error {
   border: 1px solid rgba(255, 107, 80, 0.34);
   background: rgba(255, 240, 237, 0.82);
@@ -493,6 +500,19 @@ html.dark.clash-is-scrolling ::-webkit-scrollbar-thumb:hover {
   box-shadow:
     0 8px 20px rgba(35, 31, 25, 0.032),
     inset 0 1px 0 rgba(255, 255, 255, 0.58);
+}
+
+.clash-chat-input-alert-error {
+  transition:
+    background 180ms ease,
+    border-color 180ms ease,
+    color 180ms ease;
+}
+
+.clash-chat-input-alert-error:hover {
+  border-color: rgba(255, 107, 80, 0.42);
+  background: rgba(255, 240, 237, 0.94);
+  color: #702417;
 }
 
 .clash-marketplace-filter-active {

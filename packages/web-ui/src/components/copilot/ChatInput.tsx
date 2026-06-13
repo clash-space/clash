@@ -405,7 +405,7 @@ export function ChatInput({
                             initial={{ opacity: 0, y: 4 }}
                             animate={{ opacity: 1, y: 0 }}
                             exit={{ opacity: 0, y: 4 }}
-                            className="mb-2 px-3 py-1.5 text-xs text-red-700 bg-red-50 border border-red-200 rounded-lg text-center cursor-pointer hover:bg-red-100 transition-colors dark:text-red-300 dark:bg-red-950/30 dark:border-red-900/50 dark:hover:bg-red-950/50"
+                            className="clash-chat-input-alert-error mb-2 px-3 py-1.5 text-xs rounded-lg text-center cursor-pointer"
                             onClick={onDismissError}
                         >
                             {error}
@@ -517,7 +517,7 @@ export function ChatInput({
                                         type="button"
                                         onClick={onStop}
                                         aria-label={t('copilot.chatInput.stop')}
-                                        className="w-9 h-9 min-h-[36px] min-w-[36px] rounded-xl flex items-center justify-center bg-slate-950 text-white hover:bg-red-600 transition-colors dark:bg-slate-200 dark:text-slate-900 dark:hover:bg-red-500 dark:hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500 focus-visible:ring-offset-2 focus-visible:ring-offset-warm-surface"
+                                        className="clash-chat-input-stop w-9 h-9 min-h-[36px] min-w-[36px] rounded-xl flex items-center justify-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-warm-surface"
                                     >
                                         <StopCircle className="w-4 h-4" weight="fill" aria-hidden="true" />
                                     </button>
@@ -529,9 +529,9 @@ export function ChatInput({
                                         aria-label={t('copilot.chatInput.send')}
                                         aria-busy={isCreatingSession || uploading > 0}
                                         className={`w-9 h-9 min-h-[36px] min-w-[36px] rounded-xl flex items-center justify-center transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-warm-surface ${isCreatingSession || uploading > 0
-                                            ? 'bg-slate-950 text-white dark:bg-slate-200 dark:text-slate-900 focus-visible:ring-brand'
+                                            ? 'clash-chat-input-primary focus-visible:ring-brand'
                                             : canSend
-                                                ? 'bg-slate-950 text-white hover:bg-slate-800 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-white focus-visible:ring-brand'
+                                                ? 'clash-chat-input-primary focus-visible:ring-brand'
                                                 : 'bg-warm-muted text-slate-500 dark:text-slate-500 cursor-not-allowed focus-visible:ring-brand'
                                             }`}
                                     >
