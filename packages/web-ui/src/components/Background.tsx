@@ -9,7 +9,7 @@ export default function Background() {
         style={{
           backgroundImage: 'radial-gradient(var(--canvas-dot) 1px, transparent 1px)',
           backgroundSize: '24px 24px',
-          opacity: 0.32,
+          opacity: 0.38,
         }}
       />
 
@@ -32,7 +32,7 @@ export default function Background() {
       </div>
 
       {/* Subtle depth mask. Keep it barely present so the canvas language stays visible. */}
-      <div className="absolute inset-0 bg-gradient-to-b from-transparent via-transparent to-warm-page/[0.0015]" />
+      <div className="absolute inset-0 bg-gradient-to-b from-transparent via-transparent to-warm-page/[0.0008]" />
     </div>
   );
 }

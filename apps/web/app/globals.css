@@ -8,10 +8,10 @@
 @source "../../../packages/remotion-core/src";
 
 :root {
-  --background: #f7f6f2;
+  --background: #fbfaf7;
   --foreground: #171717;
-  --canvas-bg: #f7f6f2;
-  --canvas-dot: #d8d5cf;
+  --canvas-bg: #fbfaf7;
+  --canvas-dot: #d6d1c8;
 
   --font-inter: "Inter Variable", -apple-system, BlinkMacSystemFont, "Segoe UI",
     Roboto, sans-serif;
@@ -25,9 +25,9 @@
   --color-canvas-bg: var(--canvas-bg);
   --color-canvas-dot: var(--canvas-dot);
 
-  --color-warm-page: #f7f6f2;
+  --color-warm-page: #fbfaf7;
   --color-warm-surface: #fffefd;
-  --color-warm-muted: #f1efea;
+  --color-warm-muted: #f4f1eb;
   --color-warm-hover: #e9e6df;
   --color-warm-border: #e1ddd5;
 

@@ -190,10 +190,14 @@ describe("visual language surfaces", () => {
   });
 
   it("keeps the homepage depth mask transparent enough for the canvas grid to read", () => {
-    const source = readFileSync(join(process.cwd(), "packages/web-ui/src/components/Background.tsx"), "utf8");
+    const backgroundSource = readFileSync(join(process.cwd(), "packages/web-ui/src/components/Background.tsx"), "utf8");
+    const cssSource = readFileSync(join(process.cwd(), "apps/web/app/globals.css"), "utf8");
 
-    expect(source).not.toMatch(/to-warm-page\/\[(0\.025|0\.012|0\.006|0\.003)\]/);
-    expect(source).toMatch(/to-warm-page\/\[0\.0015\]/);
+    expect(backgroundSource).not.toMatch(/to-warm-page\/\[(0\.025|0\.012|0\.006|0\.003|0\.0015)\]/);
+    expect(backgroundSource).toMatch(/to-warm-page\/\[0\.0008\]/);
+    expect(backgroundSource).toMatch(/opacity: 0\.38/);
+    expect(cssSource).not.toMatch(/#f7f6f2|#d8d5cf|#f1efea/);
+    expect(cssSource).toMatch(/--color-warm-page: #fbfaf7/);
   });
 
   it("keeps identity and mention surfaces out of legacy gradient and default gray chrome", () => {
