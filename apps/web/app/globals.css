@@ -630,6 +630,22 @@ html.dark.clash-is-scrolling ::-webkit-scrollbar-thumb:hover {
     linear-gradient(180deg, rgba(255, 254, 253, 0.96), rgba(247, 246, 242, 0.84));
 }
 
+.clash-auth-code {
+  border: 1px solid rgba(225, 221, 213, 0.84);
+  background:
+    linear-gradient(180deg, rgba(255, 254, 253, 0.88), rgba(241, 239, 234, 0.74));
+  color: #202839;
+  box-shadow:
+    0 5px 14px rgba(35, 31, 25, 0.035),
+    inset 0 1px 0 rgba(255, 255, 255, 0.74);
+}
+
+.clash-auth-code-inline {
+  border: 1px solid rgba(225, 221, 213, 0.72);
+  background: rgba(241, 239, 234, 0.72);
+  color: #202839;
+}
+
 .clash-auth-alert {
   border: 1px solid rgba(225, 221, 213, 0.72);
   box-shadow:

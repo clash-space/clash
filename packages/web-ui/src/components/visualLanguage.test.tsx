@@ -64,6 +64,8 @@ const oldProjectTileTokens =
   /border-2 border-dashed|hover:shadow-lg|bg-warm-muted\/60|bg-warm-surface\/70/;
 const oldAuthRouteTokens =
   /bg-slate-950 px-6 py-4|hover:bg-slate-800|bg-red-50|bg-green-50|shadow-slate-950\/10/;
+const oldDaemonConnectTokens =
+  /bg-slate-950|hover:bg-slate-800|bg-slate-950 text-slate-50|text-white px-6 py-3|text-red-600|clash-auth-code[^"]*break-all/;
 
 describe("visual language surfaces", () => {
   afterEach(() => {
@@ -320,6 +322,22 @@ describe("visual language surfaces", () => {
     expect(source).toMatch(/clash-auth-input/);
     expect(source).toMatch(/clash-auth-primary/);
     expect(source).toMatch(/clash-auth-alert/);
+  });
+
+  it("keeps CLI and daemon authorization routes in Clash auth surfaces instead of generic black setup chrome", () => {
+    const source = [
+      "apps/web/app/routes/auth.cli.tsx",
+      "apps/web/app/routes/connect-daemon.tsx",
+      "apps/web/app/globals.css",
+    ]
+      .map((path) => readFileSync(join(process.cwd(), path), "utf8"))
+      .join("\n");
+
+    expect(source).not.toMatch(oldDaemonConnectTokens);
+    expect(source).toMatch(/clash-auth-panel/);
+    expect(source).toMatch(/clash-auth-primary/);
+    expect(source).toMatch(/clash-auth-code/);
+    expect(source).toMatch(/clash-auth-alert-error/);
   });
 
   it.each([

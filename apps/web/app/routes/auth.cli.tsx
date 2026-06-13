@@ -4,6 +4,11 @@ import betterAuthClient from "@clash/web-ui/lib/betterAuthClient";
 import Background from "@clash/web-ui/components/Background";
 import { createApiToken } from "@clash/web-ui/lib/clientActions";
 
+const authPanelClass =
+  "clash-auth-panel w-full max-w-sm rounded-[28px] px-6 py-7 text-center sm:px-8 sm:py-8";
+const authPrimaryClass =
+  "clash-auth-primary mt-4 inline-flex min-h-11 items-center justify-center rounded-2xl px-6 py-3 text-sm font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-warm-page";
+
 export default function AuthCliRoute() {
   const [params] = useSearchParams();
   const redirectUri = params.get("redirect_uri") || "";
@@ -38,17 +43,17 @@ export default function AuthCliRoute() {
   }, [session.data, session.isPending, redirectUri]);
 
   return (
-    <div className="min-h-screen bg-warm-page relative">
+    <div className="relative min-h-screen bg-warm-page">
       <Background />
       <div className="relative z-10 flex min-h-screen items-center justify-center p-8 text-center">
-        <div className="w-full max-w-sm rounded-2xl border border-warm-border bg-warm-surface/95 p-8 shadow-sm backdrop-blur">
+        <div className={authPanelClass}>
           <h1 className="mb-2 font-display text-xl font-semibold tracking-tight text-slate-950">
             Authorize CLI
           </h1>
           {status === "loading" && <p className="text-sm text-stone-500">Loading…</p>}
           {status === "signin" && (
             <button
-              className="mt-4 rounded-lg bg-slate-950 text-white px-6 py-3 text-sm font-medium hover:bg-slate-800 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-warm-surface"
+              className={authPrimaryClass}
               onClick={() =>
                 betterAuthClient.signIn.social({
                   provider: "google",
@@ -64,7 +69,10 @@ export default function AuthCliRoute() {
             <p className="text-sm text-stone-600">Token created. You can close this window.</p>
           )}
           {status === "error" && (
-            <p className="break-words text-sm text-red-600">Failed: {error}</p>
+            <div className="clash-auth-alert clash-auth-alert-error mt-4 break-words rounded-2xl px-4 py-3 text-sm">
+              <div className="mb-1 font-medium">Could not authorize CLI</div>
+              <div className="font-mono text-xs">{error}</div>
+            </div>
           )}
         </div>
       </div>

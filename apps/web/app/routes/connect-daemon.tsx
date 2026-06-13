@@ -20,6 +20,13 @@ import { runtimeApiUrl } from "@clash/web-ui/lib/runtimeConfig";
 
 type Status = "loading" | "signin" | "ready" | "authorizing" | "redirecting" | "done" | "error" | "instructions";
 
+const authPanelClass =
+  "clash-auth-panel w-full max-w-[460px] rounded-[28px] px-6 py-7 text-center sm:px-8 sm:py-8";
+const authPrimaryClass =
+  "clash-auth-primary inline-flex min-h-11 items-center justify-center rounded-2xl px-6 py-3 text-sm font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-warm-page";
+const authSecondaryClass =
+  "clash-auth-secondary inline-flex min-h-11 items-center justify-center rounded-2xl px-4 py-3 text-sm font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-warm-page";
+
 function isLocalhostCallback(url: string): boolean {
   try {
     const u = new URL(url);
@@ -94,34 +101,34 @@ export default function ConnectDaemonRoute() {
   };
 
   return (
-    <div className="min-h-screen bg-warm-page relative">
+    <div className="relative min-h-screen bg-warm-page">
       <Background />
       <div className="relative z-10 flex min-h-screen items-center justify-center p-8">
-        <div className="max-w-md w-full bg-warm-surface/95 rounded-2xl border border-warm-border shadow-sm p-8 text-center backdrop-blur">
-          <h1 className="font-display text-xl font-semibold tracking-tight text-slate-950 mb-2">
+        <div className={authPanelClass}>
+          <h1 className="mb-2 font-display text-xl font-semibold tracking-tight text-slate-950">
             Connect this machine
           </h1>
-          <p className="text-sm text-stone-500 mb-6">
-            Authorize <code className="px-1.5 py-0.5 bg-warm-muted rounded-md text-slate-700">{cbHost || "—"}</code> to
+          <p className="mb-6 text-sm text-stone-500">
+            Authorize <code className="clash-auth-code-inline rounded-md px-1.5 py-0.5 text-xs">{cbHost || "—"}</code> to
             register this computer as a Clash runtime. Your local agent will appear in the chat panel.
           </p>
 
           {status === "loading" && <p className="text-sm text-stone-500">Loading…</p>}
 
           {status === "instructions" && (
-            <div className="text-left space-y-3">
+            <div className="space-y-3 text-left">
               <p className="text-sm text-stone-600">
-                This page is the browser side of the <code className="rounded bg-warm-muted px-1 text-xs text-slate-700">clash-bridge setup</code> flow.
+                This page is the browser side of the <code className="clash-auth-code-inline rounded-md px-1.5 py-0.5 text-xs">clash-bridge setup</code> flow.
                 To register a machine, run this command on it:
               </p>
               <div className="flex items-stretch gap-2">
-                <code className="flex-1 font-mono text-sm bg-slate-950 text-slate-50 px-3 py-2.5 rounded-lg break-all select-all shadow-sm">
+                <code className="clash-auth-code min-w-0 flex-1 select-all overflow-x-auto whitespace-nowrap rounded-2xl px-4 py-3 font-mono text-sm">
                   {setupCmd}
                 </code>
                 <button
                   type="button"
                   onClick={onCopySetup}
-                  className="px-3 rounded-lg bg-warm-muted hover:bg-warm-hover text-slate-800 transition-colors text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-warm-surface"
+                  className={authSecondaryClass}
                 >
                   {copied ? "Copied" : "Copy"}
                 </button>
@@ -134,7 +141,7 @@ export default function ConnectDaemonRoute() {
 
           {status === "signin" && (
             <button
-              className="rounded-lg bg-slate-950 text-white px-6 py-3 text-sm font-medium hover:bg-slate-800 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-warm-surface"
+              className={authPrimaryClass}
               onClick={() =>
                 betterAuthClient.signIn.social({
                   provider: "google",
@@ -152,7 +159,7 @@ export default function ConnectDaemonRoute() {
                 Signed in as {session.data?.user?.email ?? "?"}
               </p>
               <button
-                className="rounded-lg bg-slate-950 text-white px-6 py-3 text-sm font-medium hover:bg-slate-800 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-warm-surface"
+                className={authPrimaryClass}
                 onClick={onAllow}
               >
                 Allow this machine
@@ -172,8 +179,8 @@ export default function ConnectDaemonRoute() {
             </p>
           )}
           {status === "error" && (
-            <div className="text-sm text-red-600 break-words">
-              <div className="font-medium mb-1">Could not authorize</div>
+            <div className="clash-auth-alert clash-auth-alert-error break-words rounded-2xl px-4 py-3 text-sm">
+              <div className="mb-1 font-medium">Could not authorize</div>
               <div className="font-mono text-xs">{error}</div>
             </div>
           )}
