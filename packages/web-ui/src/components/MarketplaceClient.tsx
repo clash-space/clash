@@ -16,14 +16,16 @@ interface Props {
     items: RegistryItem[];
     installedActionIds: string[];
     installedSkillIds: string[];
+    mode?: 'public' | 'manage';
 }
 
-export default function MarketplaceClient({ items, installedActionIds, installedSkillIds }: Props) {
+export default function MarketplaceClient({ items, installedActionIds, installedSkillIds, mode = 'manage' }: Props) {
     const [query, setQuery] = useState('');
     const [filter, setFilter] = useState<Filter>('all');
     const [installedActions, setInstalledActions] = useState<Set<string>>(new Set(installedActionIds));
     const [installedSkills, setInstalledSkills] = useState<Set<string>>(new Set(installedSkillIds));
     const [loadingId, setLoadingId] = useState<string | null>(null);
+    const canManage = mode === 'manage';
 
     const filtered = useMemo(() => {
         let result = items;
@@ -54,6 +56,7 @@ export default function MarketplaceClient({ items, installedActionIds, installed
 
     const handleToggleInstall = useCallback(
         async (item: RegistryItem) => {
+            if (!canManage) return;
             setLoadingId(item.id);
             try {
                 if (isInstalled(item)) {
@@ -79,7 +82,7 @@ export default function MarketplaceClient({ items, installedActionIds, installed
                 setLoadingId(null);
             }
         },
-        [isInstalled]
+        [canManage, isInstalled]
     );
 
     const filterButtons: Array<{ value: Filter; label: string }> = [
@@ -97,7 +100,7 @@ export default function MarketplaceClient({ items, installedActionIds, installed
                         Marketplace
                     </h1>
                     <p className="text-stone-600 dark:text-stone-300 mt-1">
-                        Actions and skills for your canvas and AI agents
+                        {canManage ? 'Install actions and skills for your workspace' : 'Actions and skills for Clash agents'}
                     </p>
                 </div>
 
@@ -190,30 +193,36 @@ export default function MarketplaceClient({ items, installedActionIds, installed
                                         </div>
                                     )}
 
-                                    <motion.button
-                                        onClick={() => handleToggleInstall(item)}
-                                        disabled={loading}
-                                        className={`mt-auto flex items-center justify-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold transition-all ${
-                                            installed
-                                                ? 'clash-marketplace-installed'
-                                                : 'clash-marketplace-primary'
-                                        } disabled:cursor-not-allowed disabled:opacity-50`}
-                                        whileTap={{ scale: 0.97 }}
-                                    >
-                                        {loading ? (
-                                            <span className="animate-pulse">...</span>
-                                        ) : installed ? (
-                                            <>
-                                                <Check className="h-4 w-4" weight="bold" />
-                                                Installed
-                                            </>
-                                        ) : (
-                                            <>
-                                                <Download className="h-4 w-4" weight="bold" />
-                                                Install
-                                            </>
-                                        )}
-                                    </motion.button>
+                                    {canManage ? (
+                                        <motion.button
+                                            onClick={() => handleToggleInstall(item)}
+                                            disabled={loading}
+                                            className={`mt-auto flex items-center justify-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold transition-all ${
+                                                installed
+                                                    ? 'clash-marketplace-installed'
+                                                    : 'clash-marketplace-primary'
+                                            } disabled:cursor-not-allowed disabled:opacity-50`}
+                                            whileTap={{ scale: 0.97 }}
+                                        >
+                                            {loading ? (
+                                                <span className="animate-pulse">...</span>
+                                            ) : installed ? (
+                                                <>
+                                                    <Check className="h-4 w-4" weight="bold" />
+                                                    Installed
+                                                </>
+                                            ) : (
+                                                <>
+                                                    <Download className="h-4 w-4" weight="bold" />
+                                                    Install
+                                                </>
+                                            )}
+                                        </motion.button>
+                                    ) : (
+                                        <div className="mt-auto rounded-xl border border-warm-border bg-warm-muted px-4 py-2 text-center text-sm font-semibold text-stone-700 dark:text-stone-200">
+                                            Available in workspace
+                                        </div>
+                                    )}
                                 </motion.div>
                             );
                         })}

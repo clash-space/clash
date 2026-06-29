@@ -26,6 +26,9 @@ export interface BuildPlan {
 
 const isDraftStatus = (s: unknown): boolean => s === 'draft' || s === 'idle';
 
+type BuildPlanNode = Pick<RFNode, 'id' | 'type' | 'data'>;
+type BuildPlanEdge = Pick<Edge, 'source' | 'target'>;
+
 /**
  * Reverse-DAG evaluator. Given a target draft node, returns the minimum set of
  * drafts that must run to realize it — plus its own entry.
@@ -53,6 +56,18 @@ export function computeBuildPlan(targetId: string, nodes: RFNode[], edges: Edge[
         else incoming.set(e.target, [e]);
     }
 
+    return computeBuildPlanFromGraph(
+        targetId,
+        (nodeId) => nodeMap.get(nodeId),
+        (nodeId) => incoming.get(nodeId) ?? [],
+    );
+}
+
+export function computeBuildPlanFromGraph(
+    targetId: string,
+    getNode: (nodeId: string) => BuildPlanNode | undefined,
+    getIncomingEdges: (nodeId: string) => readonly BuildPlanEdge[],
+): BuildPlan {
     const visited = new Set<string>();
     const inProgress = new Set<string>();
     const orderedDraftIds: string[] = []; // post-order → ancestors appear before descendants
@@ -67,7 +82,7 @@ export function computeBuildPlan(targetId: string, nodes: RFNode[], edges: Edge[
         if (visited.has(nodeId)) return;
 
         inProgress.add(nodeId);
-        const node = nodeMap.get(nodeId);
+        const node = getNode(nodeId);
         if (!node) {
             inProgress.delete(nodeId);
             visited.add(nodeId);
@@ -79,7 +94,7 @@ export function computeBuildPlan(targetId: string, nodes: RFNode[], edges: Edge[
         const isAction = node.type === 'action-badge';
 
         if (isAction || isDraft) {
-            const ins = incoming.get(nodeId) ?? [];
+            const ins = getIncomingEdges(nodeId);
             for (const e of ins) dfs(e.source);
             if (cycle) {
                 inProgress.delete(nodeId);
@@ -111,17 +126,17 @@ export function computeBuildPlan(targetId: string, nodes: RFNode[], edges: Edge[
     const warnings: string[] = [];
 
     for (const draftId of orderedDraftIds) {
-        const draft = nodeMap.get(draftId);
+        const draft = getNode(draftId);
         if (!draft) continue;
         const draftData = (draft.data ?? {}) as Record<string, unknown>;
 
         // Upstream action is the source of the single incoming edge.
-        const draftIncoming = incoming.get(draftId) ?? [];
+        const draftIncoming = getIncomingEdges(draftId);
         const actionEdge = draftIncoming.find((e) => {
-            const src = nodeMap.get(e.source);
+            const src = getNode(e.source);
             return src?.type === 'action-badge';
         });
-        const action = actionEdge ? nodeMap.get(actionEdge.source) : undefined;
+        const action = actionEdge ? getNode(actionEdge.source) : undefined;
         const actionData = (action?.data ?? {}) as Record<string, unknown>;
 
         const modelId = (actionData.modelId as string | undefined) ?? null;

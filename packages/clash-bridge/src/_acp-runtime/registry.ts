@@ -1,20 +1,30 @@
 /**
- * Catalog of well-known ACP agents and a `which`-style detector.
+ * Catalog of ACP agents Clash can present in local settings.
  *
- * The registry is hardcoded on purpose. Users who want to spawn something
- * not on this list go through `AgentSpec` directly — the registry exists
- * to give chat UIs (clash, etc.) a sensible default dropdown without
- * making the user type a binary path.
- *
- * Entries should match what the project actually publishes. Keep the
- * `installHint` so a missing-binary error message can suggest the fix.
+ * The user-facing concept is just "agent". Clash-managed installs come from
+ * the public ACP registry; non-registry agents are detected from local commands.
  */
 
-import { access } from "node:fs/promises";
-import { spawn } from "node:child_process";
-import { dirname, join, parse } from "node:path";
-import { fileURLToPath } from "node:url";
+import { constants } from "node:fs";
+import { access, readdir } from "node:fs/promises";
+import { delimiter, isAbsolute, join } from "node:path";
 import type { AgentSpec } from "./types.js";
+
+export interface KnownAgentConfigSelectValue {
+  value: string;
+  name: string;
+  description?: string | null;
+}
+
+export interface KnownAgentConfigOption {
+  id: string;
+  name: string;
+  type: "select" | "boolean" | "string";
+  category?: string | null;
+  description?: string | null;
+  currentValue?: string;
+  options?: KnownAgentConfigSelectValue[];
+}
 
 export interface KnownAgentEntry {
   /** Canonical id used by hosts and dropdowns. Slug-only, no spaces. */
@@ -23,85 +33,185 @@ export interface KnownAgentEntry {
   label: string;
   /** Spec used when this agent is selected. */
   spec: AgentSpec;
-  /** Suggested install command, surfaced when detect() returns false. */
-  installHint?: string;
+  /** User-defined custom ACP agent server. */
+  custom?: boolean;
+  /** Native ACP CLI supplied by the user's system PATH. */
+  systemPath?: boolean;
+  /** Known macOS app bundle names that may carry the native ACP executable. */
+  macAppBundleNames?: string[];
+  /** Executable names to try inside a known macOS app bundle. */
+  macAppExecutableNames?: string[];
+  /** Public ACP registry id. Used for app-managed installs. */
+  registryId?: string;
+  /** Latest version observed from the public ACP registry. */
+  registryVersion?: string;
+  /** Install source for entries Clash can install into its managed bin dir. */
+  installSource?: "registry" | "adapter";
+  /** Clash-hosted executable URL for app-managed adapter installs. */
+  downloadUrl?: string;
+  /** Only lightweight ACP adapters/shims may be app-managed downloads. */
+  downloadKind?: "adapter";
   /** Where to learn more / file bugs. */
   homepage?: string;
+  /** Initial UI seed. Live ACP session config_options override this. */
+  configOptions?: KnownAgentConfigOption[];
   probe?: (command: string, options?: ResolveAgentCommandOptions) => Promise<boolean>;
-  resolveSpec?: (command: string) => AgentSpec;
+  resolveSpec?: (command: string, options?: ResolveAgentCommandOptions) => AgentSpec | Promise<AgentSpec>;
 }
+
+function registryShimName(id: string): string {
+  return `clash-acp-${id}`;
+}
+
+const CODEX_CONFIG_OPTIONS: KnownAgentConfigOption[] = [
+  {
+    id: "model",
+    name: "Model",
+    type: "select",
+    category: "model",
+    currentValue: "gpt-5.5",
+    options: [
+      { value: "gpt-5.5", name: "GPT-5.5", description: "Codex conversational model" },
+      { value: "gpt-5.4", name: "GPT-5.4", description: "Codex compatibility profile" },
+    ],
+  },
+  {
+    id: "thought_level",
+    name: "Thinking effort",
+    type: "select",
+    category: "thought_level",
+    currentValue: "medium",
+    options: [
+      { value: "low", name: "Low" },
+      { value: "medium", name: "Medium" },
+      { value: "high", name: "High" },
+    ],
+  },
+];
 
 export const KNOWN_ACP_AGENTS: KnownAgentEntry[] = [
   {
-    // Current official build — published by the @agentclientprotocol
-    // team, built on Anthropic's Claude Agent SDK. Supersedes the
-    // older @zed-industries/claude-code-acp wrapper (which we keep
-    // below for back-compat with machines that haven't migrated).
-    id: "claude-agent-acp",
-    label: "Claude Agent",
+    id: "codex-acp",
+    label: "Codex",
+    spec: { command: "codex-acp" },
+    registryId: "codex-acp",
+    installSource: "registry",
+    homepage: "https://github.com/zed-industries/codex-acp",
+    configOptions: CODEX_CONFIG_OPTIONS,
+  },
+  {
+    id: "claude-acp",
+    label: "Claude",
     spec: { command: "claude-agent-acp" },
-    installHint: "npm install -g @agentclientprotocol/claude-agent-acp",
+    registryId: "claude-acp",
+    installSource: "registry",
     homepage: "https://github.com/agentclientprotocol/claude-agent-acp",
   },
   {
-    id: "claude-code-acp",
-    label: "Claude Code (legacy)",
-    spec: { command: "claude-code-acp" },
-    installHint: "npm install -g @zed-industries/claude-code-acp  # (legacy; prefer claude-agent-acp)",
-    homepage: "https://github.com/zed-industries/claude-code-acp",
-  },
-  {
-    id: "codex-app-server",
-    label: "Codex",
-    spec: { command: "codex" },
-    installHint: "Install the Codex app or expose the codex CLI in your user PATH",
-    homepage: "https://developers.openai.com/codex",
-    probe: commandOutputIncludes(["app-server", "--help"], "Usage: codex app-server"),
-    resolveSpec: (command) => ({
-      command: process.execPath,
-      args: [codexAppServerAcpEntry(), "--codex", command],
-      env: { ELECTRON_RUN_AS_NODE: "1" },
-    }),
-  },
-  {
-    id: "codex-cli",
-    label: "Codex CLI",
-    spec: { command: "codex", args: ["--acp"] },
-    installHint: "npm install -g @openai/codex",
-    homepage: "https://github.com/openai/codex",
-    probe: commandHelpIncludes("--acp"),
-  },
-  {
-    id: "gemini-cli",
-    label: "Gemini CLI",
-    spec: { command: "gemini", args: ["--experimental-acp"] },
-    installHint: "npm install -g @google/gemini-cli",
+    id: "gemini",
+    label: "Gemini",
+    spec: { command: registryShimName("gemini"), args: ["--acp"] },
+    registryId: "gemini",
+    installSource: "registry",
     homepage: "https://github.com/google-gemini/gemini-cli",
   },
   {
     id: "opencode",
     label: "OpenCode",
-    spec: { command: "opencode", args: ["acp"] },
-    installHint: "https://opencode.ai/docs/ — Go binary, install via the platform package or https://opencode.ai/install.sh",
+    spec: { command: registryShimName("opencode"), args: ["acp"] },
+    registryId: "opencode",
+    installSource: "registry",
     homepage: "https://opencode.ai/",
   },
   {
+    id: "cursor",
+    label: "Cursor",
+    spec: { command: registryShimName("cursor"), args: ["acp"] },
+    registryId: "cursor",
+    installSource: "registry",
+    homepage: "https://cursor.com/docs/cli/acp",
+  },
+  {
+    id: "qwen-code",
+    label: "Qwen Code",
+    spec: { command: registryShimName("qwen-code"), args: ["--acp", "--experimental-skills"] },
+    registryId: "qwen-code",
+    installSource: "registry",
+    homepage: "https://github.com/QwenLM/qwen-code",
+  },
+  {
+    id: "github-copilot-cli",
+    label: "GitHub Copilot",
+    spec: { command: registryShimName("github-copilot-cli"), args: ["--acp"] },
+    registryId: "github-copilot-cli",
+    installSource: "registry",
+    homepage: "https://github.com/github/copilot-cli",
+  },
+  {
+    id: "kilo",
+    label: "Kilo",
+    spec: { command: registryShimName("kilo"), args: ["acp"] },
+    registryId: "kilo",
+    installSource: "registry",
+    homepage: "https://kilo.ai/",
+  },
+  {
+    id: "grok-build",
+    label: "Grok Build",
+    spec: { command: registryShimName("grok-build"), args: ["agent", "stdio"] },
+    registryId: "grok-build",
+    installSource: "registry",
+    homepage: "https://github.com/xai-org/grok-cli",
+  },
+  {
+    id: "amp-acp",
+    label: "Amp",
+    spec: { command: registryShimName("amp-acp") },
+    registryId: "amp-acp",
+    installSource: "registry",
+    homepage: "https://github.com/tao12345666333/amp-acp",
+  },
+  {
+    id: "goose",
+    label: "Goose",
+    spec: { command: registryShimName("goose"), args: ["acp"] },
+    registryId: "goose",
+    installSource: "registry",
+    homepage: "https://block.github.io/goose/",
+  },
+  {
+    id: "cline",
+    label: "Cline",
+    spec: { command: registryShimName("cline"), args: ["--acp"] },
+    registryId: "cline",
+    installSource: "registry",
+    homepage: "https://cline.bot/",
+  },
+  {
+    id: "auggie",
+    label: "Auggie CLI",
+    spec: { command: registryShimName("auggie"), args: ["--acp"] },
+    registryId: "auggie",
+    installSource: "registry",
+    homepage: "https://www.augmentcode.com/",
+  },
+  {
     id: "hermes",
-    label: "Hermes (Nous Research)",
+    label: "Hermes",
     spec: { command: "hermes", args: ["acp"] },
-    installHint: "see https://hermes-agent.nousresearch.com/docs/installation/",
+    systemPath: true,
+    macAppBundleNames: ["Hermes.app"],
+    macAppExecutableNames: ["hermes", "Hermes"],
     homepage: "https://github.com/NousResearch/hermes-agent",
   },
   {
-    // Meta-CLI from openclaw that can wrap many non-native-ACP agents
-    // (openclaw, cursor, pi, kiro, qwen). We ship one entry pointing at
-    // openclaw because that's the most-asked-for; users can always pass
-    // their own AgentSpec to wrap a different one.
     id: "openclaw",
-    label: "OpenClaw (via acpx)",
-    spec: { command: "acpx", args: ["openclaw"] },
-    installHint: "npm install -g acpx",
-    homepage: "https://github.com/openclaw/acpx",
+    label: "OpenClaw",
+    spec: { command: "openclaw", args: ["acp"] },
+    systemPath: true,
+    macAppBundleNames: ["OpenClaw.app"],
+    macAppExecutableNames: ["openclaw", "OpenClaw"],
+    homepage: "https://docs.openclaw.ai/cli/acp",
   },
 ];
 
@@ -109,108 +219,159 @@ export interface ResolveAgentCommandOptions {
   env?: NodeJS.ProcessEnv;
   cwd?: string;
   fromUrl?: string;
-}
-
-function commandOutput(
-  command: string,
-  args: string[],
-  env: NodeJS.ProcessEnv = process.env,
-): Promise<string | null> {
-  return new Promise((resolve) => {
-    const child = spawn(command, args, { env, stdio: ["ignore", "pipe", "pipe"] });
-    const chunks: Buffer[] = [];
-    const timer = setTimeout(() => {
-      child.kill("SIGKILL");
-      resolve(null);
-    }, 1500);
-    child.stdout.on("data", (chunk) => chunks.push(Buffer.from(chunk)));
-    child.stderr.on("data", (chunk) => chunks.push(Buffer.from(chunk)));
-    child.once("error", () => {
-      clearTimeout(timer);
-      resolve(null);
-    });
-    child.once("exit", () => {
-      clearTimeout(timer);
-      resolve(Buffer.concat(chunks).toString("utf8"));
-    });
-  });
-}
-
-function commandHelpIncludes(needle: string) {
-  return async (command: string, options?: ResolveAgentCommandOptions): Promise<boolean> => {
-    const output = await commandOutput(command, ["--help"], options?.env);
-    return output?.includes(needle) ?? false;
-  };
-}
-
-function commandOutputIncludes(args: string[], needle: string) {
-  return async (command: string, options?: ResolveAgentCommandOptions): Promise<boolean> => {
-    const output = await commandOutput(command, args, options?.env);
-    return output?.includes(needle) ?? false;
-  };
-}
-
-function codexAppServerAcpEntry(): string {
-  const here = dirname(fileURLToPath(import.meta.url));
-  const root = here.endsWith("_acp-runtime") ? dirname(here) : here;
-  return join(root, "codex-app-server-acp.js");
+  systemPathFallbackDirs?: string[];
+  applicationDirs?: string[];
 }
 
 async function isExecutable(path: string): Promise<boolean> {
   try {
-    await access(path);
+    await access(path, constants.X_OK);
     return true;
   } catch {
     return false;
   }
 }
 
+function splitBinPath(value: string | undefined): string[] {
+  return value?.split(delimiter).filter(Boolean) ?? [];
+}
+
 function candidateBinDirs(options: ResolveAgentCommandOptions): string[] {
   const env = options.env ?? process.env;
   const dirs: string[] = [];
-  if (env.CLASH_ACP_BIN_DIR) dirs.push(env.CLASH_ACP_BIN_DIR);
+  dirs.push(...splitBinPath(env.CLASH_ACP_BIN_DIR));
+  return [...new Set(dirs)];
+}
 
-  const roots = [
-    options.cwd ?? process.cwd(),
-    options.fromUrl ? dirname(fileURLToPath(options.fromUrl)) : dirname(fileURLToPath(import.meta.url)),
-  ];
-  for (const root of roots) {
-    let current = root;
-    while (true) {
-      dirs.push(join(current, "node_modules", ".bin"));
-      const parent = dirname(current);
-      if (parent === current || current === parse(current).root) break;
-      current = parent;
+function candidateSystemDirs(options: ResolveAgentCommandOptions): string[] {
+  const env = options.env ?? process.env;
+  const dirs = splitBinPath(env.PATH);
+  const home = env.HOME ?? env.USERPROFILE;
+
+  if (options.systemPathFallbackDirs) {
+    dirs.push(...options.systemPathFallbackDirs);
+  } else {
+    if (process.platform === "darwin") {
+      dirs.push("/opt/homebrew/bin", "/usr/local/bin", "/opt/local/bin");
     }
+    dirs.push("/usr/bin", "/bin");
+  }
+
+  if (env.PNPM_HOME) dirs.push(env.PNPM_HOME);
+  if (env.VOLTA_HOME) dirs.push(join(env.VOLTA_HOME, "bin"));
+
+  if (home) {
+    dirs.push(
+      join(home, ".volta", "bin"),
+      join(home, ".asdf", "shims"),
+      join(home, ".local", "share", "mise", "shims"),
+      join(home, ".mise", "shims"),
+      join(home, ".local", "bin"),
+      join(home, "Library", "pnpm"),
+      join(home, ".bun", "bin"),
+    );
   }
 
   return [...new Set(dirs)];
+}
+
+async function candidateNodeVersionDirs(root: string, suffix: string[]): Promise<string[]> {
+  const dirs: string[] = [];
+  try {
+    for (const entry of await readdir(root, { withFileTypes: true })) {
+      if (!entry.isDirectory()) continue;
+      dirs.push(join(root, entry.name, ...suffix));
+    }
+  } catch {
+    // Toolchain managers are optional; absence just means no extra bins.
+  }
+  return dirs;
+}
+
+async function candidateSystemBinDirs(options: ResolveAgentCommandOptions): Promise<string[]> {
+  const env = options.env ?? process.env;
+  const dirs = candidateSystemDirs(options);
+  const home = env.HOME ?? env.USERPROFILE;
+
+  const nvmDir = env.NVM_DIR ?? (home ? join(home, ".nvm") : undefined);
+  if (nvmDir) {
+    dirs.push(...(await candidateNodeVersionDirs(join(nvmDir, "versions", "node"), ["bin"])));
+  }
+
+  const fnmDir = env.FNM_DIR ?? (home ? join(home, ".fnm") : undefined);
+  if (fnmDir) {
+    dirs.push(...(await candidateNodeVersionDirs(join(fnmDir, "node-versions"), ["installation", "bin"])));
+  }
+
+  return [...new Set(dirs)];
+}
+
+function candidateApplicationDirs(options: ResolveAgentCommandOptions): string[] {
+  const env = options.env ?? process.env;
+  const home = env.HOME ?? env.USERPROFILE;
+  if (options.applicationDirs) return [...new Set(options.applicationDirs)];
+  if (process.platform !== "darwin") return [];
+  return [
+    "/Applications",
+    "/System/Applications",
+    ...(home ? [join(home, "Applications")] : []),
+  ];
+}
+
+function candidateMacAppExecutables(entry: KnownAgentEntry, options: ResolveAgentCommandOptions): string[] {
+  if (process.platform !== "darwin" && !options.applicationDirs) return [];
+  const bundleNames = entry.macAppBundleNames ?? [];
+  if (bundleNames.length === 0) return [];
+  const executableNames = entry.macAppExecutableNames ?? [entry.spec.command];
+  const candidates: string[] = [];
+  for (const appDir of candidateApplicationDirs(options)) {
+    for (const bundleName of bundleNames) {
+      for (const executableName of executableNames) {
+        candidates.push(join(appDir, bundleName, "Contents", "MacOS", executableName));
+      }
+    }
+  }
+  return [...new Set(candidates)];
+}
+
+async function resolveCommandInDirs(command: string, dirs: string[]): Promise<string | null> {
+  if (isAbsolute(command)) return await isExecutable(command) ? command : null;
+  for (const dir of dirs) {
+    const candidate = join(dir, command);
+    if (await isExecutable(candidate)) return candidate;
+  }
+  return null;
 }
 
 export async function resolveAgentCommand(
   command: string,
   options: ResolveAgentCommandOptions = {},
 ): Promise<string | null> {
-  for (const dir of candidateBinDirs(options)) {
-    const candidate = join(dir, command);
-    if (await isExecutable(candidate)) return candidate;
-  }
-  return (await isOnPath(command, options.env)) ? command : null;
+  return resolveCommandInDirs(command, candidateBinDirs(options));
 }
 
-/**
- * Returns the KnownAgentEntry whose binary is on $PATH, else `null`.
- * Intentionally Node-only — relies on `child_process.spawn`. A web-ui that
- * wants to render a list can call this server-side or in the bridge process.
- */
-export async function detect(id: string): Promise<KnownAgentEntry | null> {
-  const entry = KNOWN_ACP_AGENTS.find((e) => e.id === id);
-  if (!entry) return null;
-  const command = await resolveAgentCommand(entry.spec.command);
+async function resolveSystemCommand(
+  entry: KnownAgentEntry,
+  options: ResolveAgentCommandOptions = {},
+): Promise<string | null> {
+  const fromBins = await resolveCommandInDirs(entry.spec.command, await candidateSystemBinDirs(options));
+  if (fromBins) return fromBins;
+  for (const candidate of candidateMacAppExecutables(entry, options)) {
+    if (await isExecutable(candidate)) return candidate;
+  }
+  return null;
+}
+
+export async function detectEntry(
+  entry: KnownAgentEntry,
+  options: ResolveAgentCommandOptions = {},
+): Promise<KnownAgentEntry | null> {
+  const managedCommand = await resolveAgentCommand(entry.spec.command, options);
+  const command = managedCommand ?? (entry.systemPath ? await resolveSystemCommand(entry, options) : null);
   if (!command) return null;
-  if (entry.probe && !(await entry.probe(command))) return null;
+  if (entry.probe && !(await entry.probe(command, options))) return null;
   const spec = entry.resolveSpec
-    ? entry.resolveSpec(command)
+    ? await entry.resolveSpec(command, options)
     : {
         ...entry.spec,
         command,
@@ -221,18 +382,19 @@ export async function detect(id: string): Promise<KnownAgentEntry | null> {
   };
 }
 
-/** Run `which` (or `where` on Windows). Resolves to true iff exit code 0. */
-function isOnPath(cmd: string, env: NodeJS.ProcessEnv = process.env): Promise<boolean> {
-  return new Promise((resolve) => {
-    const probe = process.platform === "win32" ? "where" : "which";
-    const p = spawn(probe, [cmd], { stdio: "ignore", env });
-    p.once("error", () => resolve(false));
-    p.once("exit", (code) => resolve(code === 0));
-  });
+/**
+ * Returns the KnownAgentEntry whose binary is available in its allowed paths, else `null`.
+ * Intentionally Node-only. A web-ui that wants to render a list can call this
+ * server-side or in the bridge process.
+ */
+export async function detect(id: string, options: ResolveAgentCommandOptions = {}): Promise<KnownAgentEntry | null> {
+  const entry = KNOWN_ACP_AGENTS.find((e) => e.id === id);
+  if (!entry) return null;
+  return detectEntry(entry, options);
 }
 
 /** Detect every known agent. Useful for "list available agents" UI. */
-export async function detectAll(): Promise<KnownAgentEntry[]> {
-  const results = await Promise.all(KNOWN_ACP_AGENTS.map((e) => detect(e.id)));
+export async function detectAll(options: ResolveAgentCommandOptions = {}): Promise<KnownAgentEntry[]> {
+  const results = await Promise.all(KNOWN_ACP_AGENTS.map((e) => detect(e.id, options)));
   return results.filter((e): e is KnownAgentEntry => e !== null);
 }

@@ -1,9 +1,9 @@
-import { memo, useCallback, useMemo, useState } from 'react';
-import { useReactFlow, useNodes, useEdges } from '@xyflow/react';
+import { memo, useCallback, useState } from 'react';
+import { useReactFlow, useStore, type ReactFlowState } from '@xyflow/react';
 import { Play, Image as ImageIcon, VideoCamera, TextT, SpeakerHigh } from '@phosphor-icons/react';
 import { motion } from 'framer-motion';
 import { useOptionalLoroSyncContext } from '../LoroSyncContext';
-import { computeBuildPlan, type BuildPlan } from './buildPlan';
+import { computeBuildPlanFromGraph, type BuildPlan, type PlanEntry } from './buildPlan';
 import BuildPlanDialog from './BuildPlanDialog';
 
 type Modality = 'image' | 'video' | 'audio' | 'text';
@@ -29,6 +29,69 @@ const MODALITY_LABEL: Record<Modality, string> = {
     text: 'text',
 };
 
+function arraysEqual(a: readonly string[], b: readonly string[]) {
+    if (a.length !== b.length) return false;
+    for (let i = 0; i < a.length; i += 1) {
+        if (a[i] !== b[i]) return false;
+    }
+    return true;
+}
+
+function entriesEqual(a: readonly PlanEntry[], b: readonly PlanEntry[]) {
+    if (a.length !== b.length) return false;
+    for (let i = 0; i < a.length; i += 1) {
+        const left = a[i];
+        const right = b[i];
+        if (
+            left.draftId !== right.draftId ||
+            left.actionId !== right.actionId ||
+            left.modelId !== right.modelId ||
+            left.modelName !== right.modelName ||
+            left.modality !== right.modality ||
+            left.label !== right.label ||
+            left.hasPrompt !== right.hasPrompt
+        ) {
+            return false;
+        }
+    }
+    return true;
+}
+
+function modelCountsEqual(a: ReadonlyMap<string, number>, b: ReadonlyMap<string, number>) {
+    if (a.size !== b.size) return false;
+    for (const [key, value] of a) {
+        if (b.get(key) !== value) return false;
+    }
+    return true;
+}
+
+function buildPlansEqual(a: BuildPlan, b: BuildPlan) {
+    return (
+        a.cycle === b.cycle &&
+        arraysEqual(a.blockers, b.blockers) &&
+        arraysEqual(a.warnings, b.warnings) &&
+        modelCountsEqual(a.modelCounts, b.modelCounts) &&
+        entriesEqual(a.entries, b.entries)
+    );
+}
+
+function selectBuildPlan(state: ReactFlowState, nodeId: string): BuildPlan {
+    return computeBuildPlanFromGraph(
+        nodeId,
+        (lookupId) => state.nodeLookup.get(lookupId),
+        (lookupId) => {
+            const connections = state.connectionLookup.get(lookupId);
+            if (!connections) return [];
+            return Array.from(connections.values())
+                .filter((connection) => connection.target === lookupId)
+                .map((connection) => ({
+                    source: connection.source,
+                    target: connection.target,
+                }));
+        },
+    );
+}
+
 /**
  * Placeholder rendered for a node in `status: 'draft'`.
  *
@@ -44,18 +107,14 @@ const MODALITY_LABEL: Record<Modality, string> = {
  */
 const DraftPlaceholder = ({ nodeId, modality, width, height }: DraftPlaceholderProps) => {
     const { setNodes } = useReactFlow();
-    const nodes = useNodes();
-    const edges = useEdges();
     const loroSync = useOptionalLoroSyncContext();
     const [dialogOpen, setDialogOpen] = useState(false);
 
     const Icon = MODALITY_ICON[modality];
 
-    // Reverse-BFS plan. Runs on every canvas mutation; typical canvases are
-    // small enough that this is cheap.
-    const plan = useMemo<BuildPlan>(
-        () => computeBuildPlan(nodeId, nodes as Parameters<typeof computeBuildPlan>[1], edges),
-        [nodeId, nodes, edges],
+    const plan = useStore(
+        useCallback((state) => selectBuildPlan(state, nodeId), [nodeId]),
+        buildPlansEqual,
     );
 
     const ancestorCount = Math.max(0, plan.entries.length - 1);

@@ -1,10 +1,6 @@
 import type { ModelMessage } from "ai";
 import type { ProviderType } from "../providers";
 
-const ANTHROPIC_CACHE = {
-  anthropic: { cacheControl: { type: "ephemeral" as const } },
-} as const;
-
 /**
  * Add Anthropic cache_control breakpoints to messages for prompt caching.
  *
@@ -16,41 +12,9 @@ const ANTHROPIC_CACHE = {
  */
 export function withCacheControl(
   messages: ModelMessage[],
-  provider: ProviderType,
+  _provider: ProviderType,
 ): ModelMessage[] {
-  if (provider !== "anthropic") return messages;
-
-  const result = messages.map((m) => ({ ...m }));
-
-  // Find the last user message index (the new input — don't cache it)
-  let lastUserIdx = -1;
-  for (let i = result.length - 1; i >= 0; i--) {
-    if (result[i].role === "user") {
-      lastUserIdx = i;
-      break;
-    }
-  }
-
-  // Find the penultimate user message — cache everything up to here
-  let penultimateUserIdx = -1;
-  for (let i = lastUserIdx - 1; i >= 0; i--) {
-    if (result[i].role === "user") {
-      penultimateUserIdx = i;
-      break;
-    }
-  }
-
-  if (penultimateUserIdx >= 0) {
-    result[penultimateUserIdx] = {
-      ...result[penultimateUserIdx],
-      providerOptions: {
-        ...result[penultimateUserIdx].providerOptions,
-        ...ANTHROPIC_CACHE,
-      },
-    } as ModelMessage;
-  }
-
-  return result;
+  return messages;
 }
 
 /**
@@ -61,13 +25,7 @@ export function withCacheControl(
  */
 export function cachedSystemPrompt(
   prompt: string,
-  provider: ProviderType,
-): string | { role: "system"; content: string; providerOptions: typeof ANTHROPIC_CACHE } {
-  if (provider !== "anthropic") return prompt;
-
-  return {
-    role: "system" as const,
-    content: prompt,
-    providerOptions: ANTHROPIC_CACHE,
-  };
+  _provider: ProviderType,
+): string {
+  return prompt;
 }

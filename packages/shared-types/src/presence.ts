@@ -79,7 +79,7 @@ export interface ActivityMessage {
 
 export interface RoomMention {
   user_id: string;
-  crew_id?: string;
+  agent_member_id?: string;
 }
 
 /** Server → client: a new room message (matches D1 row + mentions parsed). */
@@ -87,9 +87,9 @@ export interface RoomMessageEvent {
   type: "room.message";
   id: string;
   project_id: string;
-  sender_kind: "user" | "crew";
-  sender_id: string;       // crew_id when 'crew', user_id when 'user'
-  sender_user_id: string;  // always the human (daemon owner for crew)
+  sender_kind: "user" | "agent";
+  sender_id: string;       // agent member id when 'agent', user_id when 'user'
+  sender_user_id: string;  // always the human (daemon owner for agent)
   mentions: RoomMention[];
   text: string;
   at: number;              // unix seconds

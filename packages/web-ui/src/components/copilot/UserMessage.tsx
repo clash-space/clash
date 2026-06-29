@@ -51,7 +51,13 @@ function InlineThumbnail({
     );
 }
 
-export function UserMessage({ content, mentionNodes }: { content: string; mentionNodes?: MentionableNode[] }) {
+export function UserMessage({
+    content,
+    mentionNodes,
+}: {
+    content: string;
+    mentionNodes?: MentionableNode[];
+}) {
     // Strip <!-- asset-keys: ... --> comments (legacy format)
     let cleaned = content.replace(/<!--\s*asset-keys:.+?-->/g, '').replace(/📎\s*\S+/g, '').trim();
 
@@ -70,12 +76,12 @@ export function UserMessage({ content, mentionNodes }: { content: string; mentio
     }
 
     return (
-        <div className="flex justify-end">
-            <div className="max-w-[82%] items-end">
-                <div className="px-4 py-3 rounded-matrix shadow-sm border bg-brand-light text-slate-900 border-warm-border dark:bg-warm-muted dark:text-slate-100 dark:border-warm-border">
+        <div className="flex w-full justify-end">
+            <div className="flex max-w-[min(34rem,72%)] flex-col items-end">
+                <div className="break-words rounded-[18px] border border-warm-border bg-brand-light px-4 py-2.5 text-slate-900 shadow-sm dark:border-warm-border dark:bg-warm-muted dark:text-slate-100">
                     <ReactMarkdown
                         components={{
-                            p: ({ children }) => <p className="text-sm leading-relaxed mb-1 last:mb-0">{children}</p>,
+                            p: ({ children }) => <p className="text-sm leading-[1.55] mb-1 last:mb-0">{children}</p>,
                             img: ({ src, alt }) => {
                                 const mentionMatch = alt?.match(/^mention:([^:]+):(.+)$/);
                                 const nodeId = mentionMatch ? mentionMatch[1] : undefined;

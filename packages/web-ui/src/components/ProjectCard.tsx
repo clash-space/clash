@@ -1,17 +1,25 @@
 
 /* eslint-disable @next/next/no-img-element */
 
+import { useState } from 'react';
 import { motion } from 'framer-motion';
 import { Link } from 'react-router';
 import { Trash } from '@phosphor-icons/react';
 import { deleteProject } from '@clash/web-ui/lib/clientActions';
+import { runtimeApiUrl, runtimeAssetFallbackUrl } from '@clash/web-ui/lib/runtimeConfig';
 import { useConfirm } from './ConfirmDialog';
 
 interface Asset {
   id: string;
-  url: string;
-  type: 'image' | 'video';
-  storageKey?: string;
+  url?: string | null;
+  src?: string | null;
+  signedUrl?: string | null;
+  signedCoverUrl?: string | null;
+  type?: 'image' | 'video' | string | null;
+  kind?: 'image' | 'video' | string | null;
+  storageKey?: string | null;
+  srcR2Key?: string | null;
+  coverR2Key?: string | null;
   createdAt?: Date | string | number | null;
 }
 
@@ -25,6 +33,78 @@ export interface ProjectWithAssets {
 
 interface ProjectCardProps {
   project: ProjectWithAssets;
+}
+
+function cleanAssetSource(value?: string | null) {
+  const source = value?.trim();
+  return source ? source : null;
+}
+
+function isAbsoluteAssetSource(source: string) {
+  return (
+    source.startsWith('http://') ||
+    source.startsWith('https://') ||
+    source.startsWith('data:') ||
+    source.startsWith('blob:') ||
+    source.startsWith('file:')
+  );
+}
+
+function assetPreviewSource(value?: string | null) {
+  const source = cleanAssetSource(value);
+  if (!source) return null;
+  if (isAbsoluteAssetSource(source)) return source;
+  if (source.startsWith('/')) return runtimeApiUrl(source);
+  return runtimeAssetFallbackUrl(source);
+}
+
+function firstAssetSource(...values: Array<string | null | undefined>) {
+  for (const value of values) {
+    const source = cleanAssetSource(value);
+    if (source) return source;
+  }
+  return null;
+}
+
+function assetPreviewUrl(asset: Asset) {
+  const isVideo = asset.type === 'video' || asset.kind === 'video';
+  const keyPreview = isVideo
+    ? assetPreviewSource(asset.coverR2Key) ?? assetPreviewSource(asset.storageKey) ?? assetPreviewSource(asset.srcR2Key)
+    : assetPreviewSource(asset.srcR2Key) ?? assetPreviewSource(asset.storageKey) ?? assetPreviewSource(asset.coverR2Key);
+
+  return isVideo
+    ? firstAssetSource(
+      assetPreviewSource(asset.signedCoverUrl),
+      keyPreview,
+      assetPreviewSource(asset.url),
+      assetPreviewSource(asset.signedUrl),
+      assetPreviewSource(asset.src),
+    )
+    : firstAssetSource(
+      assetPreviewSource(asset.url),
+      assetPreviewSource(asset.signedUrl),
+      assetPreviewSource(asset.src),
+      keyPreview,
+    );
+}
+
+function ProjectAssetPreview({ asset }: { asset: Asset }) {
+  const [failed, setFailed] = useState(false);
+  const src = assetPreviewUrl(asset);
+
+  if (!src || failed) {
+    return <div className="clash-project-card-asset-fallback" aria-hidden="true" />;
+  }
+
+  return (
+    <img
+      src={src}
+      alt=""
+      className="clash-project-card-preview-img h-full w-full object-cover"
+      draggable={false}
+      onError={() => setFailed(true)}
+    />
+  );
 }
 
 export default function ProjectCard({ project }: ProjectCardProps) {
@@ -44,12 +124,11 @@ export default function ProjectCard({ project }: ProjectCardProps) {
   const displayAssets = [...allAssets]
     .sort((a, b) => {
       // Sort by createdAt (descending)
-      // @ts-ignore
       const dateA = new Date(a.createdAt || 0).getTime();
-      // @ts-ignore
       const dateB = new Date(b.createdAt || 0).getTime();
       return dateB - dateA;
     })
+    .filter((asset) => assetPreviewUrl(asset))
     .slice(0, 4); // Take up to 4 assets
 
   const assetCount = displayAssets.length;
@@ -77,20 +156,16 @@ export default function ProjectCard({ project }: ProjectCardProps) {
             <div className="clash-project-card-empty" aria-hidden="true" />
           ) : (
             /* Has Assets */
-            <div className={`grid h-full w-full ${gridClass} gap-[2px] bg-warm-border`}>
+            <div className={`clash-project-card-preview-grid grid h-full w-full ${gridClass} gap-[2px]`}>
               {displayAssets.map((asset: Asset, index: number) => {
                 // Special case for 3 items: the last item (index 2) spans 2 columns
                 const isLastOfThree = assetCount === 3 && index === 2;
                 return (
                   <div
                     key={asset.id}
-                    className={`relative overflow-hidden bg-warm-surface ${isLastOfThree ? 'col-span-2' : ''}`}
+                    className={`clash-project-card-preview-cell ${isLastOfThree ? 'col-span-2' : ''}`}
                   >
-                    <img
-                      src={asset.url}
-                      alt="Asset"
-                      className="h-full w-full object-cover"
-                    />
+                    <ProjectAssetPreview asset={asset} />
                   </div>
                 );
               })}

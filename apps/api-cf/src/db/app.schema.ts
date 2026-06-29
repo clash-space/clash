@@ -72,6 +72,37 @@ export const userVariables = sqliteTable(
 )
 
 /**
+ * Provider Accounts — encrypted credentials for model provider routing.
+ * One user can store multiple accounts for the same provider; routing picks
+ * enabled rows by priority. Secrets are encrypted as one credential map, while
+ * configuredCredentials only stores non-sensitive key names for UI/catalog state.
+ */
+export const providerAccounts = sqliteTable(
+    "provider_account",
+    {
+        id: text("id")
+            .primaryKey()
+            .$defaultFn(() => crypto.randomUUID()),
+        userId: text("user_id").notNull(),
+        providerId: text("provider_id").notNull(),
+        upstreamId: text("upstream_id"),
+        region: text("region"),
+        label: text("label"),
+        enabled: integer("enabled").notNull().default(1),
+        priority: integer("priority"),
+        weight: integer("weight"),
+        encryptedCredentials: text("encrypted_credentials"),
+        configuredCredentials: text("configured_credentials"),
+        createdAt: integer("created_at", { mode: "timestamp" }).default(sql`(strftime('%s', 'now'))`),
+        updatedAt: integer("updated_at", { mode: "timestamp" }).default(sql`(strftime('%s', 'now'))`),
+    },
+    (table) => ({
+        providerAccountUserIdx: index("provider_account_user_idx").on(table.userId),
+        providerAccountProviderIdx: index("provider_account_provider_idx").on(table.userId, table.providerId, table.upstreamId),
+    })
+)
+
+/**
  * Installed Actions — globally installed canvas actions per user.
  * Actions appear in all project toolbars.
  */

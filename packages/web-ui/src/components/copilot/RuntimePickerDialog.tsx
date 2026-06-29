@@ -1,19 +1,19 @@
 import { useEffect, useState } from 'react';
 import { CircleNotch } from '@phosphor-icons/react';
-import { SessionStartPicker, type CrewMember } from './SessionStartPicker';
+import { SessionStartPicker, type AgentTemplate } from './SessionStartPicker';
 import { Dialog } from '../ui/dialog';
 import type { Runtime } from '@clash/web-ui/hooks/useClashRuntime';
 import type { BridgeSession } from '@clash/web-ui/hooks/useAgentByoBridge';
 
 /**
  * Picker shown when the user clicks a registered runtime in the
- * "Run on" dropdown. The daemon still accepts a legacy crew_id, but
- * the product surface is single-helper: pick the local coding agent and
+ * "Run on" dropdown. The product surface is single-helper: pick the
+ * local coding agent and
  * optionally resume a previous ACP session on that machine.
  */
 
-const BUILTIN_CREW: CrewMember[] = [
-  { id: 'director', label: 'Helper' },
+const BUILTIN_AGENT_TEMPLATES: AgentTemplate[] = [
+  { id: 'master-clash', label: 'Master Clash' },
 ];
 
 export function RuntimePickerDialog({
@@ -21,13 +21,15 @@ export function RuntimePickerDialog({
   runtime,
   loadResumeOptions,
   onPick,
+  onRecheckAgents,
   onClose,
   busy,
 }: {
   open: boolean;
   runtime: Runtime | null;
   loadResumeOptions: (runtimeId: string) => Promise<BridgeSession[]>;
-  onPick: (crewId: string | null, resumeSessionId?: string, agentId?: string) => void;
+  onPick: (agentTemplateId: string | null, resumeSessionId?: string, agentId?: string) => void;
+  onRecheckAgents?: () => void;
   onClose: () => void;
   busy?: boolean;
 }) {
@@ -63,10 +65,11 @@ export function RuntimePickerDialog({
       )}
 
       <SessionStartPicker
-        crew={BUILTIN_CREW}
+        agentTemplates={BUILTIN_AGENT_TEMPLATES}
         sessions={sessions}
         agents={runtime.agents}
         onStart={onPick}
+        onRecheckAuth={onRecheckAgents}
         busy={busy}
         startLabel="Start helper"
       />

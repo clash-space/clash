@@ -62,7 +62,7 @@ export function CanvasFocusProvider({ children }: { children: ReactNode }) {
   const focusNode = useCallback(
     (nodeId: string, opts: FocusNodeOptions = {}) => {
       const node = rf.getNode(nodeId);
-      if (!node) return; // unknown id (e.g., a crew mention, or a stale ref) — silent no-op
+      if (!node) return; // unknown id (e.g., a agent mention, or a stale ref) — silent no-op
 
       // measuredWidth / measuredHeight aren't always populated until a
       // node has rendered once; fall back to its declared dims, then

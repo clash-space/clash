@@ -1,52 +1,45 @@
 
 import { motion } from 'framer-motion';
-import { GitBranch, HardDrives, PlugsConnected, Sparkle, UsersThree, Waveform } from '@phosphor-icons/react';
 
 const features = [
   {
-    name: 'Canvas-first planning',
-    description: 'Shape briefs, shots, generated media, and agent work as one editable graph instead of a hidden queue.',
-    icon: GitBranch,
+    name: 'Canvas project file',
+    description: 'Script notes, shots, references, generated media, and tasks stay in the same editable workspace.',
   },
   {
-    name: 'Local runtime ready',
-    description: 'Desktop can pair the web UI with a local daemon, so projects keep moving without making cloud the source of truth.',
-    icon: HardDrives,
+    name: 'Desktop runtime',
+    description: 'The desktop app will pair the web UI with local sessions, local files, and agent processes you can inspect.',
   },
   {
     name: 'Bring your agents',
-    description: 'Connect local coding and creative agents as user-owned helpers. They work for your project, not as a hidden global crew.',
-    icon: PlugsConnected,
+    description: 'Use the agents and model providers you already trust instead of handing the whole project to a black box.',
   },
   {
-    name: 'Model routes',
-    description: 'Pick models by capability while provider keys stay configurable behind the scenes, including a mock route for development.',
-    icon: Sparkle,
+    name: 'Model routing',
+    description: 'Route planning, editing, review, and media tasks to different providers without changing the canvas.',
   },
   {
-    name: 'Cloud when invited',
-    description: 'Sync and multiplayer are explicit project modes, so users can tell when work is local-only, synced, or shared.',
-    icon: UsersThree,
+    name: 'Cloud is optional',
+    description: 'Sync and collaboration are explicit modes. Local-first work should stay local until the project needs sharing.',
   },
   {
-    name: 'Media-aware tasks',
-    description: 'Image, video, and audio processors preserve aspect, duration, prompt, and lineage instead of returning anonymous blobs.',
-    icon: Waveform,
+    name: 'Open source base',
+    description: 'The product is built in public, with the source linked from the header and room for self-hosted workflows.',
   },
 ];
 
 export default function FeatureGrid() {
   return (
-    <section className="relative z-10 py-20 sm:py-28">
-      <div className="mx-auto max-w-[1120px] px-5 sm:px-8 lg:px-10">
+    <section id="product" className="relative z-10 scroll-mt-20 py-18 sm:py-24">
+      <div className="mx-auto max-w-[1200px] px-5 sm:px-8 lg:px-10">
         <div className="grid gap-12 lg:grid-cols-[0.72fr_1fr] lg:gap-20">
           <div className="max-w-xl">
             <h2 className="font-display text-sm font-semibold leading-7 text-brand">Workspace</h2>
             <p className="mt-2 font-display text-3xl font-bold tracking-tight text-slate-950 dark:text-slate-50 sm:text-4xl">
-              A studio canvas for human intent and agent work
+              One project surface, not a prompt queue
             </p>
             <p className="mt-6 text-lg leading-8 text-stone-700 dark:text-stone-300">
-              Clash keeps the visible work, local runtime, model routing, and cloud collaboration in one product shape.
+              Clash is for directing agent work around real project material: references, cuts, generated assets, notes, and review states.
             </p>
           </div>
 
@@ -60,11 +53,8 @@ export default function FeatureGrid() {
                 transition={{ duration: 0.42, ease: [0.16, 1, 0.3, 1], delay: index * 0.06 }}
                 className="clash-landing-capability-row"
               >
-                <dt className="flex min-w-0 items-center gap-3 font-display text-base font-semibold leading-7 text-slate-950 dark:text-slate-50">
-                  <span className="clash-landing-capability-icon" aria-hidden="true">
-                    <feature.icon className="h-5 w-5" weight="duotone" />
-                  </span>
-                  <span>{feature.name}</span>
+                <dt className="min-w-0">
+                  <span className="block font-display text-base font-semibold leading-7 text-slate-950 dark:text-slate-50">{feature.name}</span>
                 </dt>
                 <dd className="text-sm leading-6 text-stone-700 dark:text-stone-300">
                   {feature.description}

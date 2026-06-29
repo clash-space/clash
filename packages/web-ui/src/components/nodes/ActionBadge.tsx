@@ -1,5 +1,5 @@
 import { memo, useState, useEffect, useCallback, useMemo, useRef, Fragment, type KeyboardEvent as ReactKeyboardEvent } from 'react';
-import { Handle, Position, type Node as RFNode, NodeProps, useReactFlow, useEdges } from '@xyflow/react';
+import { Handle, Position, type Node as RFNode, NodeProps, useReactFlow, useNodeConnections } from '@xyflow/react';
 import { VideoCamera, Image as ImageIcon, CaretDown, X, Play, Spinner, PuzzlePiece, Plus, Lock, Copy, SpeakerHigh, TextT } from '@phosphor-icons/react';
 import { motion, AnimatePresence, Reorder } from 'framer-motion';
 import { createPortal } from 'react-dom';
@@ -23,6 +23,7 @@ import {
 } from '@clash/web-ui/hooks/useRuntimes';
 import MilkdownEditor from '../MilkdownEditor';
 import { useConfirm } from '../ConfirmDialog';
+import { SelectMenu, type SelectValue } from '../ui/select';
 import { useSpawnPendingAsset } from './useSpawnPendingAsset';
 import ActionBadgePipelineMenu from './ActionBadgePipelineMenu';
 import AttributionLine from './AttributionLine';
@@ -91,9 +92,18 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
 
     // React Flow hooks
     const { projectId } = useProject();
-    const { getNodes, addEdges, setNodes, setEdges } = useReactFlow();
+    const { getNode, getNodes, getEdges, addEdges, setNodes, setEdges } = useReactFlow();
     const loroSync = useOptionalLoroSyncContext();
-    const edges = useEdges();
+    const connections = useNodeConnections({ id });
+    const connectedEdges = useMemo(
+        () =>
+            connections.map((connection) => ({
+                id: connection.edgeId,
+                source: connection.source,
+                target: connection.target,
+            })),
+        [connections],
+    );
     const confirm = useConfirm();
     const onNodesMutated = useCallback(
         (prevNodes: RFNode[], nextNodes: RFNode[]) => {
@@ -298,12 +308,12 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
     // Attached node IDs = incoming edges whose source has a compatible modality,
     // including drafts (empty src, will materialize when Build runs).
     const attachedNodeIds = useMemo(() => {
-        return edges
+        return connectedEdges
             .filter(e => e.target === id)
-            .map(e => getNodes().find(n => n.id === e.source))
+            .map(e => getNode(e.source))
             .filter((n): n is NonNullable<typeof n> => !!n && hasCompatibleModality(n))
             .map(n => n.id);
-    }, [edges, id, getNodes, hasCompatibleModality]);
+    }, [connectedEdges, id, getNode, hasCompatibleModality]);
 
     const refNodeIds = useMemo(() => {
         const order = Array.isArray(data.referenceImageOrder) ? (data.referenceImageOrder as string[]) : [];
@@ -318,12 +328,12 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
     const refKindCounts = useMemo(() => {
         const byKind: Record<Modality, number> = { text: 0, image: 0, video: 0, audio: 0 };
         for (const nid of refNodeIds) {
-            const n = getNodes().find((x) => x.id === nid);
+            const n = getNode(nid);
             const t = n?.type as Modality | undefined;
             if (t === 'text' || t === 'image' || t === 'video' || t === 'audio') byKind[t] += 1;
         }
         return byKind;
-    }, [refNodeIds, getNodes]);
+    }, [refNodeIds, getNode]);
 
     // Whether `card` can consume the currently attached refs as-is. Used to
     // mark (not hide) incompatible models in the dropdown — picking one prompts
@@ -341,24 +351,24 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
     }, [refKindCounts]);
 
     const clearAllRefs = useCallback(() => {
-        const edgeIds = edges.filter(e => e.target === id).map(e => e.id);
+        const edgeIds = connectedEdges.filter(e => e.target === id).map(e => e.id);
         if (edgeIds.length === 0) return;
         setEdges(eds => eds.filter(e => !edgeIds.includes(e.id)));
         if (loroSync?.connected) {
             edgeIds.forEach(eid => loroSync.removeEdge(eid));
         }
-    }, [id, edges, setEdges, loroSync]);
+    }, [id, connectedEdges, setEdges, loroSync]);
 
     // Read natural dims from an image/video node. Videos store width/height too.
     const getNodeNaturalDims = useCallback((nodeId?: string): { w: number; h: number } | null => {
         if (!nodeId) return null;
-        const n = getNodes().find(x => x.id === nodeId);
+        const n = getNode(nodeId);
         if (!n) return null;
         const w = Number(n.data?.naturalWidth) || 0;
         const h = Number(n.data?.naturalHeight) || 0;
         if (!w || !h) return null;
         return { w, h };
-    }, [getNodes]);
+    }, [getNode]);
 
     // Default the model's aspect_ratio from the start reference whenever it
     // changes. Kling i2v / Kling 3 / Seedance i2v all derive output ratio from
@@ -415,21 +425,21 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
         // change-set, not against current state) and Loro overwrites the
         // entry — but transient duplicates flicker through React Flow.
         const edgeId = `${sourceNodeId}-${id}`;
-        if (edges.some(e => e.id === edgeId)) return;
+        if (connectedEdges.some(e => e.id === edgeId)) return;
         addEdges({ id: edgeId, source: sourceNodeId, target: id, type: 'default' });
         if (loroSync?.connected) {
             loroSync.addEdge(edgeId, { id: edgeId, source: sourceNodeId, target: id, type: 'default' });
         }
-    }, [id, edges, addEdges, loroSync]);
+    }, [id, connectedEdges, addEdges, loroSync]);
 
     const removeRefNode = useCallback((sourceNodeId: string) => {
-        const edgeIds = edges.filter(e => e.target === id && e.source === sourceNodeId).map(e => e.id);
+        const edgeIds = connectedEdges.filter(e => e.target === id && e.source === sourceNodeId).map(e => e.id);
         if (edgeIds.length === 0) return;
         setEdges(eds => eds.filter(e => !edgeIds.includes(e.id)));
         if (loroSync?.connected) {
             edgeIds.forEach(eid => loroSync.removeEdge(eid));
         }
-    }, [id, edges, setEdges, loroSync]);
+    }, [id, connectedEdges, setEdges, loroSync]);
 
     // One-shot cleanup for pre-existing dirty data:
     //   1. referenceImageOrder may have duplicate ids (from before
@@ -451,7 +461,7 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
             if (cleaned.length !== order.length) persistRefOrder(cleaned);
         }
 
-        const incoming = edges.filter(e => e.target === id);
+        const incoming = connectedEdges.filter(e => e.target === id);
         const bySource = new Map<string, typeof incoming>();
         for (const e of incoming) {
             const list = bySource.get(e.source) ?? [];
@@ -480,13 +490,14 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
     // adopting this action). Cycle guard: exclude anything that transitively
     // depends on this action so users can't pick a descendant.
     const refPickerCandidates = useMemo(() => {
+        if (!showRefPicker) return [];
         const attached = new Set(refNodeIds);
         const downstream = new Set<string>([id]);
         {
             const queue: string[] = [id];
             while (queue.length > 0) {
                 const cur = queue.shift()!;
-                for (const e of edges) {
+                for (const e of getEdges()) {
                     if (e.source === cur && !downstream.has(e.target)) {
                         downstream.add(e.target);
                         queue.push(e.target);
@@ -505,7 +516,7 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
             if (t !== 'text' && t !== 'image' && t !== 'video' && t !== 'audio') return false;
             return true;
         });
-    }, [refNodeIds, getNodes, edges, id, acceptsTextRef, acceptsImageRef, acceptsVideoRef, acceptsAudioRef]);
+    }, [showRefPicker, refNodeIds, getNodes, getEdges, connectedEdges, id, acceptsTextRef, acceptsImageRef, acceptsVideoRef, acceptsAudioRef]);
 
     // Attach a picked canvas node into the target slot. For startEnd, pad the
     // order array so slot 0/1 are stable even when the other slot is empty.
@@ -533,9 +544,8 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
         let cancelled = false;
         (async () => {
             const next = new Map<string, string>();
-            const canvasNodes = getNodes();
             for (const nid of refNodeIds) {
-                const n = canvasNodes.find((x) => x.id === nid);
+                const n = getNode(nid);
                 const assetId = typeof n?.data?.assetId === 'string' ? n.data.assetId : undefined;
                 if (!assetId) continue;
                 try {
@@ -551,12 +561,12 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
             if (!cancelled) setRefThumbByNodeId(next);
         })();
         return () => { cancelled = true; };
-    }, [refNodeIds, getNodes]);
+    }, [refNodeIds, getNode]);
 
     // @ mention: only attached reference images, with positional labels "Image 1", "Image 2"...
     const mentionableNodes = useMemo(() => {
         return refNodeIds.map((nodeId, i) => {
-            const node = getNodes().find(n => n.id === nodeId);
+            const node = getNode(nodeId);
             const type = (node?.type as string) || 'image';
             const prefix = type === 'text'
                 ? 'Text'
@@ -572,7 +582,7 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
                 thumbnail: refThumbByNodeId.get(nodeId),
             };
         });
-    }, [refNodeIds, getNodes, refThumbByNodeId]);
+    }, [refNodeIds, getNode, refThumbByNodeId]);
 
     const filteredMentionNodes = useMemo(() => {
         if (!mentionQuery) return mentionableNodes;
@@ -933,7 +943,7 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
 
     const handleCopy = useCallback(async () => {
         const newId = await generateSemanticId(projectId);
-        const currentNode = getNodes().find(n => n.id === id);
+        const currentNode = getNode(id);
         const pos = currentNode?.position ?? { x: 0, y: 0 };
         const newNode = {
             id: newId,
@@ -958,7 +968,7 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
         });
         setShowModal(false);
         setShowPanel(false);
-    }, [id, label, content, actionType, modelId, modelParams, refNodeIds, projectId, getNodes, setNodes, addEdges, loroSync]);
+    }, [id, label, content, actionType, modelId, modelParams, refNodeIds, projectId, getNode, setNodes, addEdges, loroSync]);
 
     const handleLabelChange = (evt: React.ChangeEvent<HTMLInputElement>) => {
         const newLabel = evt.target.value;
@@ -991,9 +1001,9 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
     /** Find a downstream idle draft of matching modality — Run will adopt it
      *  in place of creating a fresh pending node. First match wins. */
     const findIdleDownstreamDraft = useCallback((): RFNode | null => {
-        const outgoing = edges.filter((e) => e.source === id);
+        const outgoing = connectedEdges.filter((e) => e.source === id);
         for (const e of outgoing) {
-            const n = getNodes().find((nn) => nn.id === e.target);
+            const n = getNode(e.target);
             if (!n) continue;
             if (n.type !== outputKind) continue;
             const d = n.data as Record<string, unknown> | undefined;
@@ -1005,7 +1015,7 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
             return n;
         }
         return null;
-    }, [edges, id, getNodes, outputKind]);
+    }, [connectedEdges, id, getNode, outputKind]);
 
     // Auto-run effect
     const handleExecute = useCallback(async () => {
@@ -1027,7 +1037,7 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
             // image-gen/video-gen honor the countValue chip.
             const rawPrompt = (content && content.trim() !== '' ? content : '') || (data.prompt as string) || '';
             const textRefs = refNodeIds
-                .map((nid) => resolveTextRef(getNodes().find((n) => n.id === nid)))
+                .map((nid) => resolveTextRef(getNode(nid)))
                 .filter((text): text is string => !!text);
             const composedPrompt = composePromptWithTextRefs(rawPrompt, textRefs);
             const parts = parsePromptParts(composedPrompt);
@@ -1086,7 +1096,7 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
         data.prompt,
         data.preAllocatedAssetId,
         refNodeIds,
-        getNodes,
+        getNode,
         resolveTextRef,
         actionType,
         isCustom,
@@ -1108,7 +1118,7 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
 
         if (data.autoRun && !isExecuting) {
             if (requiredUpstreams.length > 0) {
-                const connectedSources = edges.filter(e => e.target === id).map(e => e.source);
+                const connectedSources = connectedEdges.filter(e => e.target === id).map(e => e.source);
                 const allConnected = requiredUpstreams.every((uid: string) => connectedSources.includes(uid));
 
                 if (!allConnected) {
@@ -1124,7 +1134,7 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
                 handleExecute();
             }, 500);
         }
-    }, [data, data.autoRun, edges, data.upstreamNodeIds, id, isExecuting, handleExecute]);
+    }, [data, data.autoRun, connectedEdges, data.upstreamNodeIds, id, isExecuting, handleExecute]);
 
     const renderParamControl = (param: ModelParameter) => {
         const currentValue = modelParams[param.id] ?? param.defaultValue ?? (param.type === 'boolean' ? false : '');
@@ -1155,27 +1165,30 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
 
         if (param.type === 'select') {
             const options = param.options ?? [];
-            const selected = options.find((opt) => String(opt.value) === String(currentValue))?.value ?? options[0]?.value ?? '';
+            const selectedOption = options.find((opt) => String(opt.value) === String(currentValue)) ?? options[0];
+            const selected = (selectedOption?.value ?? '') as SelectValue;
             return (
                 <div key={param.id} className="space-y-1">
                     <div className="flex justify-between text-[10px] font-medium text-stone-700 dark:text-stone-300">
                         <span>{param.label}</span>
                     </div>
-                    <select
-                        className="w-full rounded-xl border border-warm-border bg-warm-surface px-3 py-2 text-xs font-medium text-slate-900 dark:text-slate-50 focus:outline-none focus:border-brand/70 transition-colors"
-                        value={String(selected)}
-                        onChange={(e) => {
-                            const next = options.find((opt) => String(opt.value) === e.target.value);
-                            updateModelParam(param.id, next ? next.value : e.target.value);
+                    <SelectMenu<SelectValue>
+                        value={selected}
+                        options={options.map((opt) => ({
+                            value: opt.value as SelectValue,
+                            label: opt.label,
+                        }))}
+                        onValueChange={(nextValue) => {
+                            const next = options.find((opt) => String(opt.value) === String(nextValue));
+                            updateModelParam(param.id, next ? next.value : nextValue);
                         }}
-                        onMouseDown={(e) => e.stopPropagation()}
-                    >
-                        {options.map((opt) => (
-                            <option key={`${param.id}-${opt.label}`} value={String(opt.value)}>
-                                {opt.label}
-                            </option>
-                        ))}
-                    </select>
+                        ariaLabel={param.label}
+                        triggerLabel={selectedOption?.label ?? String(selected)}
+                        variant="field"
+                        placement="bottom"
+                        menuWidth="trigger"
+                        stopPropagation
+                    />
                     {param.description && (
                         <p className="text-[10px] text-stone-700 dark:text-stone-300 leading-snug">{param.description}</p>
                     )}
@@ -1331,7 +1344,7 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
                                 as="div"
                             >
                                 {refNodeIds.map((nodeId, i) => {
-                                    const node = getNodes().find(n => n.id === nodeId);
+                                    const node = getNode(nodeId);
                                     const src = resolveRefSrc(node);
                                     const textRef = resolveTextRef(node);
                                     const isText = node?.type === 'text';
@@ -1500,7 +1513,7 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
                             <div className="flex items-center gap-1.5">
                                 {(['start', 'end'] as const).map((slot, slotIdx) => {
                                     const nodeId = refNodeIds[slotIdx];
-                                    const node = nodeId ? getNodes().find(n => n.id === nodeId) : undefined;
+                                    const node = nodeId ? getNode(nodeId) : undefined;
                                     const thumb = nodeId ? refThumbByNodeId.get(nodeId) : undefined;
                                     const badge = slot === 'start' ? 'S' : 'E';
                                     const fullLabel = slot === 'start' ? 'Start' : 'End';
@@ -1570,7 +1583,7 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
                                     as="div"
                                 >
                                     {refNodeIds.map((nodeId, i) => {
-                                        const node = getNodes().find(n => n.id === nodeId);
+                                        const node = getNode(nodeId);
                                         if (!node) return null;
                                         // Thumb source: asset row (coverR2Key for video, srcR2Key for
                                         // image) resolved in the refThumbByNodeId effect above. Video
@@ -1718,67 +1731,53 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
                             className="relative"
                             style={customActionOffline ? { opacity: 0.5 } : undefined}
                         >
-                            <button
-                                className={`flex items-center gap-1 px-2.5 py-1 rounded-full bg-warm-muted text-xs font-medium text-stone-800 dark:text-stone-200 transition-colors ${
-                                    customActionOffline ? 'cursor-not-allowed' : 'hover:bg-warm-hover'
-                                }`}
-                                onClick={(e) => {
-                                    e.stopPropagation();
-                                    if (customActionOffline) return;
-                                    setShowModelDropdown(!showModelDropdown);
+                            <SelectMenu<string>
+                                className="relative"
+                                triggerClassName="px-2.5 py-1 text-xs"
+                                value={modelId}
+                                options={[...availableModels]
+                                    .sort((a, b) => {
+                                        // Compatible first, incompatible after — keeps the "broken" options
+                                        // discoverable without pushing the good choices offscreen.
+                                        const ca = refNodeIds.length === 0 || isModelCompatibleWithRefs(a) ? 0 : 1;
+                                        const cb = refNodeIds.length === 0 || isModelCompatibleWithRefs(b) ? 0 : 1;
+                                        return ca - cb;
+                                    })
+                                    .map((card) => {
+                                        const compat = refNodeIds.length === 0 || isModelCompatibleWithRefs(card);
+                                        return {
+                                            value: card.id,
+                                            label: card.name,
+                                            description: getModelDropdownSecondaryText(compat),
+                                        };
+                                    })}
+                                onValueChange={(nextModelId) => {
+                                    handleModelChange(nextModelId);
+                                    setShowModelDropdown(false);
                                     setActiveParamDropdown(null);
                                 }}
+                                ariaLabel="Model"
+                                triggerLabel={modelDisplay}
+                                triggerPrefix={<Icon size={12} weight="bold" className={colorClass} />}
+                                variant="pill"
+                                size="sm"
+                                placement="top"
+                                menuWidth={240}
+                                maxMenuHeight={192}
+                                open={showModelDropdown}
+                                onOpenChange={(nextOpen) => {
+                                    if (customActionOffline) return;
+                                    setShowModelDropdown(nextOpen);
+                                    if (nextOpen) setActiveParamDropdown(null);
+                                }}
+                                disabled={customActionOffline}
                                 title={customActionOffline ? RUNTIME_OFFLINE_TOOLTIP : undefined}
-                                aria-disabled={customActionOffline || undefined}
-                            >
-                                <Icon size={12} weight="bold" className={colorClass} />
-                                {modelDisplay}
-                                <CaretDown size={10} weight="bold" className="text-stone-700 dark:text-stone-300" />
-                            </button>
+                                stopPropagation
+                            />
                             {customActionOffline && (
                                 <span className="ml-2 text-[10px] text-slate-700 dark:text-slate-300 align-middle">
                                     {RUNTIME_OFFLINE_LABEL}
                                 </span>
-                            )}
-                            {showModelDropdown && (
-                                <div className="absolute left-0 bottom-full mb-2 w-[240px] bg-warm-surface border border-warm-border rounded-2xl shadow-xl z-50 max-h-48 overflow-hidden [&:hover]:overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-                                    {[...availableModels]
-                                        .sort((a, b) => {
-                                            // Compatible first, incompatible after — keeps the "broken" options
-                                            // discoverable without pushing the good choices offscreen.
-                                            const ca = refNodeIds.length === 0 || isModelCompatibleWithRefs(a) ? 0 : 1;
-                                            const cb = refNodeIds.length === 0 || isModelCompatibleWithRefs(b) ? 0 : 1;
-                                            return ca - cb;
-                                        })
-                                        .map((card) => {
-                                        const compat = refNodeIds.length === 0 || isModelCompatibleWithRefs(card);
-                                        const secondaryText = getModelDropdownSecondaryText(compat);
-                                        const selected = card.id === modelId;
-                                        return (
-                                            <div
-                                                key={card.id}
-                                                className={`px-3 py-2 text-xs cursor-pointer transition-colors ${
-                                                    selected
-                                                        ? 'clash-node-choice-active'
-                                                        : compat
-                                                            ? 'text-stone-800 dark:text-stone-200 hover:bg-warm-muted'
-                                                            : 'text-stone-700 dark:text-stone-300 hover:bg-amber-50'
-                                                }`}
-                                                onClick={() => {
-                                                    handleModelChange(card.id);
-                                                    setShowModelDropdown(false);
-                                                }}
-                                            >
-                                                <div className="font-bold leading-tight">{card.name}</div>
-                                                {secondaryText && (
-                                                    <div className={`text-[10px] ${selected ? 'text-brand' : 'text-amber-600'}`}>
-                                                        {secondaryText}
-                                                    </div>
-                                                )}
-                                            </div>
-                                        );
-                                    })}
-                                </div>
                             )}
                         </div>
 

@@ -1,5 +1,5 @@
 /**
- * Crew status → status-dot Tailwind class.
+ * Agent status → status-dot Tailwind class.
  *
  * Four meaningful states, mapped to color + animation:
  *

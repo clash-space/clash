@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-export const ModelKindSchema = z.enum(['image', 'video', 'audio', 'text']);
+export const ModelKindSchema = z.enum(['image', 'video', 'audio', 'text', 'asr']);
 export type ModelKind = z.infer<typeof ModelKindSchema>;
 
 /**
@@ -799,41 +799,6 @@ export const MODEL_CARDS: ModelCard[] = [
     },
   },
 
-  // ─── Video: Kling 2.1 (fal.ai) ──────────────────────────────
-  // Single card — provider auto-routes to /text-to-video or /image-to-video.
-  {
-    id: 'kling-2.1',
-    name: 'Kling 2.1',
-    provider: 'fal.ai',
-    kind: 'video',
-    defaultAspectRatio: '16:9',
-    description: 'Kling 2.1 — fast, cinematic video generation, text or image input.',
-    parameters: [
-      {
-        id: 'duration',
-        label: 'Duration',
-        type: 'select',
-        options: [
-          { label: '5s', value: '5' },
-          { label: '10s', value: '10' },
-        ],
-        defaultValue: '5',
-      },
-      {
-        id: 'aspect_ratio',
-        label: 'Aspect Ratio',
-        type: 'select',
-        options: KLING_ASPECT_RATIOS.map(r => ({ label: r.label, value: r.value })),
-        defaultValue: '16:9',
-      },
-    ],
-    defaultParams: {
-      duration: '5',
-      aspect_ratio: '16:9',
-    },
-    input: { requiresPrompt: true, inputMode: { images: { max: 1 } } },
-  },
-
   // ─── Video: Kling 3 Pro (fal.ai) — first frame + optional end frame ────
   {
     id: 'kling-3',
@@ -929,137 +894,7 @@ export const MODEL_CARDS: ModelCard[] = [
     input: { requiresPrompt: true, inputMode: { images: { max: 8 } }, promptModalities: ['text', 'image'] },
   },
 
-  // ─── Video: Veo 3 (fal.ai) ───────────────────────────────────
-  {
-    // Single card — provider auto-routes to /text-to-video or /image-to-video.
-    // veo3-fast stays separate (different model variant, not just a different endpoint).
-    id: 'veo3',
-    name: 'Veo 3',
-    provider: 'fal.ai',
-    kind: 'video',
-    defaultAspectRatio: '16:9',
-    description: 'Google Veo 3 — text-to-video or animate a still image, with audio.',
-    parameters: [
-      {
-        id: 'duration',
-        label: 'Duration',
-        type: 'select',
-        options: [
-          { label: '4s', value: '4s' },
-          { label: '6s', value: '6s' },
-          { label: '8s', value: '8s' },
-        ],
-        defaultValue: '8s',
-      },
-      {
-        id: 'aspect_ratio',
-        label: 'Aspect Ratio',
-        type: 'select',
-        options: VEO3_ASPECT_RATIOS.map(r => ({ label: r.label, value: r.value })),
-        defaultValue: '16:9',
-      },
-      {
-        id: 'resolution',
-        label: 'Resolution',
-        type: 'select',
-        options: [
-          { label: '720p', value: '720p' },
-          { label: '1080p', value: '1080p' },
-        ],
-        defaultValue: '720p',
-      },
-      {
-        id: 'generate_audio',
-        label: 'Generate Audio',
-        type: 'boolean',
-        defaultValue: true,
-        description: 'Include synthesized audio in the video.',
-      },
-    ],
-    defaultParams: {
-      duration: '8s',
-      aspect_ratio: '16:9',
-      resolution: '720p',
-      generate_audio: true,
-    },
-    input: { requiresPrompt: true, inputMode: { images: { max: 1 } } },
-  },
-  {
-    id: 'veo3-fast-text-to-video',
-    name: 'Veo 3 Fast (Text)',
-    provider: 'fal.ai',
-    kind: 'video',
-    defaultAspectRatio: '16:9',
-    description: 'Google Veo 3 fast text-to-video — faster and more affordable.',
-    parameters: [
-      {
-        id: 'duration',
-        label: 'Duration',
-        type: 'select',
-        options: [
-          { label: '4s', value: '4s' },
-          { label: '6s', value: '6s' },
-          { label: '8s', value: '8s' },
-        ],
-        defaultValue: '8s',
-      },
-      {
-        id: 'aspect_ratio',
-        label: 'Aspect Ratio',
-        type: 'select',
-        options: VEO3_ASPECT_RATIOS.map(r => ({ label: r.label, value: r.value })),
-        defaultValue: '16:9',
-      },
-      {
-        id: 'resolution',
-        label: 'Resolution',
-        type: 'select',
-        options: [
-          { label: '720p', value: '720p' },
-          { label: '1080p', value: '1080p' },
-        ],
-        defaultValue: '720p',
-      },
-      {
-        id: 'generate_audio',
-        label: 'Generate Audio',
-        type: 'boolean',
-        defaultValue: true,
-        description: 'Include synthesized audio in the video.',
-      },
-    ],
-    defaultParams: {
-      duration: '8s',
-      aspect_ratio: '16:9',
-      resolution: '720p',
-      generate_audio: true,
-    },
-    input: { requiresPrompt: true, inputMode: {} },
-  },
-
   // ─── Image: Gemini Image (Google Vertex) ────────────────────
-
-  {
-    id: 'gemini-flash-image',
-    name: 'Gemini Flash Image',
-    provider: 'Google',
-    kind: 'image',
-    defaultAspectRatio: '16:9',
-    description: 'Gemini 2.5 Flash — fast image generation with text understanding.',
-    parameters: [
-      {
-        id: 'aspect_ratio',
-        label: 'Aspect Ratio',
-        type: 'select',
-        options: IMAGEN_ASPECT_RATIOS.map(r => ({ label: r.label, value: r.value })),
-        defaultValue: '16:9',
-      },
-    ],
-    defaultParams: {
-      aspect_ratio: '16:9',
-    },
-    input: { requiresPrompt: true, inputMode: { images: { max: 8 } }, promptModalities: ['text', 'image'] },
-  },
   {
     id: 'gemini-flash-image-2',
     name: 'Gemini Flash Image 2',
@@ -1293,6 +1128,40 @@ export const MODEL_CARDS: ModelCard[] = [
     maxRuntimeMs: 5 * 60 * 1000,
   },
   {
+    id: 'openai-compatible-text',
+    name: 'OpenAI-compatible',
+    provider: 'OpenAI-compatible',
+    kind: 'text',
+    defaultAspectRatio: '1:1',
+    description: 'Use any OpenAI-compatible chat endpoint.',
+    parameters: [
+      {
+        id: 'model_name',
+        label: 'Model',
+        type: 'text',
+        placeholder: 'gpt-5.4 or provider/model',
+        defaultValue: 'gpt-5.4',
+      },
+      {
+        id: 'system_prompt',
+        label: 'System prompt',
+        type: 'text',
+        placeholder: 'Optional instructions for tone, format, or role',
+        defaultValue: '',
+      },
+    ],
+    defaultParams: {
+      model_name: 'gpt-5.4',
+      system_prompt: '',
+    },
+    input: {
+      requiresPrompt: true,
+      inputMode: { images: { max: 10 } },
+      promptModalities: ['text', 'image'],
+    },
+    maxRuntimeMs: 5 * 60 * 1000,
+  },
+  {
     id: 'gemini-3.1-pro',
     name: 'Gemini 3.1 Pro',
     provider: 'Google',
@@ -1344,6 +1213,121 @@ export const MODEL_CARDS: ModelCard[] = [
     },
     maxRuntimeMs: 5 * 60 * 1000,
   },
+  {
+    id: 'claude-sonnet-4',
+    name: 'Claude Sonnet 4',
+    provider: 'Anthropic',
+    kind: 'text',
+    defaultAspectRatio: '1:1',
+    description: 'Anthropic Claude Sonnet 4 text generation. Accepts image context alongside the prompt.',
+    parameters: [
+      {
+        id: 'system_prompt',
+        label: 'System prompt',
+        type: 'text',
+        placeholder: 'Optional instructions for tone, format, or role',
+        defaultValue: '',
+      },
+    ],
+    defaultParams: {
+      system_prompt: '',
+    },
+    input: {
+      requiresPrompt: true,
+      inputMode: { images: { max: 20 } },
+      promptModalities: ['text', 'image'],
+    },
+    maxRuntimeMs: 5 * 60 * 1000,
+  },
+  {
+    id: 'anthropic-compatible-text',
+    name: 'Anthropic-compatible',
+    provider: 'Anthropic-compatible',
+    kind: 'text',
+    defaultAspectRatio: '1:1',
+    description: 'Use any Anthropic-compatible messages endpoint.',
+    parameters: [
+      {
+        id: 'model_name',
+        label: 'Model',
+        type: 'text',
+        placeholder: 'claude-sonnet-4-20250514',
+        defaultValue: 'claude-sonnet-4-20250514',
+      },
+      {
+        id: 'system_prompt',
+        label: 'System prompt',
+        type: 'text',
+        placeholder: 'Optional instructions for tone, format, or role',
+        defaultValue: '',
+      },
+    ],
+    defaultParams: {
+      model_name: 'claude-sonnet-4-20250514',
+      system_prompt: '',
+    },
+    input: {
+      requiresPrompt: true,
+      inputMode: { images: { max: 20 } },
+      promptModalities: ['text', 'image'],
+    },
+    maxRuntimeMs: 5 * 60 * 1000,
+  },
+  {
+    id: 'local-acp',
+    name: 'Local Agent',
+    provider: 'Local ACP',
+    kind: 'text',
+    defaultAspectRatio: '1:1',
+    description: 'Generate text through the selected local ACP agent instead of a cloud provider.',
+    parameters: [
+      {
+        id: 'acp_model',
+        label: 'ACP model',
+        type: 'text',
+        placeholder: 'Use agent default',
+        defaultValue: '',
+        description: 'Optional local agent model value passed to the ACP model config.',
+      },
+      {
+        id: 'system_prompt',
+        label: 'System prompt',
+        type: 'text',
+        placeholder: 'Optional instructions for tone, format, or role',
+        defaultValue: '',
+      },
+    ],
+    defaultParams: {
+      acp_model: '',
+      system_prompt: '',
+    },
+    input: {
+      requiresPrompt: true,
+      inputMode: { images: { max: 10 } },
+      promptModalities: ['text', 'image'],
+    },
+    maxRuntimeMs: 5 * 60 * 1000,
+  },
+
+  // ─── ASR ─────────────────────────────────────────────────────
+  {
+    id: 'sensevoice-small-asr',
+    name: 'SenseVoice Small',
+    provider: 'Local',
+    kind: 'asr',
+    defaultAspectRatio: '1:1',
+    description: 'Local microphone transcription.',
+    parameters: [],
+    defaultParams: {
+      asr_model: 'iic/SenseVoiceSmall',
+    },
+    input: {
+      requiresPrompt: false,
+      inputMode: { audios: { max: 1, min: 1 } },
+      promptModalities: ['audio'],
+    },
+    maxRuntimeMs: 2 * 60 * 1000,
+  },
 
   // ─── Audio ───────────────────────────────────────────────────
   {
@@ -1353,20 +1337,6 @@ export const MODEL_CARDS: ModelCard[] = [
     kind: 'audio',
     defaultAspectRatio: '1:1',
     description: 'Google Gemini TTS preview for low-latency controllable single-speaker audio.',
-    parameters: GEMINI_TTS_PARAMETERS,
-    defaultParams: {
-      voice_name: 'Kore',
-    },
-    input: { requiresPrompt: true, inputMode: {}, promptModalities: ['text'] },
-    maxRuntimeMs: 5 * 60 * 1000,
-  },
-  {
-    id: 'gemini-2.5-flash-tts',
-    name: 'Gemini 2.5 Flash TTS',
-    provider: 'Google',
-    kind: 'audio',
-    defaultAspectRatio: '1:1',
-    description: 'Google Gemini TTS for cost-efficient controllable speech generation.',
     parameters: GEMINI_TTS_PARAMETERS,
     defaultParams: {
       voice_name: 'Kore',

@@ -37,16 +37,14 @@ export type ByoStatus =
   | 'disconnected'      // bridge dropped or WS closed
   | 'error';
 
-/** @deprecated Replaced by CrewMember in bridge_setup payload. Kept here
- *  so existing imports compile during the rename window. */
 export interface BridgeAgent {
   id: string;
   label: string;
   command?: string;
 }
 
-/** Crew member shipped in bridge_setup. Matches dist/crew/manifest.json. */
-export interface BridgeCrewMember {
+/** Agent template shipped in bridge_setup. Matches dist/agents/manifest.json. */
+export interface BridgeAgentTemplate {
   id: string;
   label: string;
   summary?: string;
@@ -76,7 +74,7 @@ export interface ByoBridgeState {
   /** True iff status === connected/sending/streaming. UI uses this to gate input. */
   ready: boolean;
   /** Populated when the bridge sends `bridge_setup`. UI shows a picker. */
-  crew: BridgeCrewMember[];
+  agents: BridgeAgentTemplate[];
   sessions: BridgeSession[];
   /** Slash commands the agent currently supports (replaced by each
    *  available_commands_update event). UI uses this to power the `/`
@@ -99,7 +97,7 @@ export function useAgentByoBridge() {
     errorMessage: null,
     messages: [],
     ready: false,
-    crew: [],
+    agents: [],
     sessions: [],
     availableCommands: [],
   });
@@ -218,7 +216,7 @@ export function useAgentByoBridge() {
       id?: string;
       event?: unknown;
       message?: string;
-      crew?: BridgeCrewMember[];
+      agents?: BridgeAgentTemplate[];
       sessions?: BridgeSession[];
     };
     try {
@@ -241,7 +239,7 @@ export function useAgentByoBridge() {
     if (msg.type === 'bridge_setup') {
       setState((s) => ({
         ...s,
-        crew: msg.crew ?? [],
+        agents: msg.agents ?? [],
         sessions: msg.sessions ?? [],
         status: 'awaiting_choice',
         ready: false,
@@ -273,13 +271,13 @@ export function useAgentByoBridge() {
   onWsMessageRef.current = onWsMessage;
 
   /** Send the bridge a `start` message after the user picks. */
-  const startWith = useCallback((crewId: string | null, resumeSessionId?: string) => {
+  const startWith = useCallback((agentTemplateId: string | null, resumeSessionId?: string) => {
     const ws = wsRef.current;
     if (!ws || ws.readyState !== WebSocket.OPEN) return;
     updateStatus('starting');
     ws.send(JSON.stringify({
       type: 'start',
-      ...(crewId ? { crew_id: crewId } : {}),
+      ...(agentTemplateId ? { agent_template_id: agentTemplateId } : {}),
       ...(resumeSessionId ? { resume_session_id: resumeSessionId } : {}),
       // Forward the server-issued API key + URL so the spawned agent's
       // env has CLASH_API_KEY without prompting the user to log in.
@@ -359,7 +357,7 @@ export function useAgentByoBridge() {
       errorMessage: null,
       messages: [],
       ready: false,
-      crew: [],
+      agents: [],
       sessions: [],
       availableCommands: [],
     });

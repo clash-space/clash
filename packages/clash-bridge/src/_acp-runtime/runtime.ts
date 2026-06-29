@@ -12,6 +12,7 @@ import { AcpSessionImpl } from "./session.js";
 import type { AcpRuntime, AcpSession, SessionOptions, Spawner } from "./types.js";
 
 let nextId = 1;
+const DEFAULT_INIT_TIMEOUT_MS = 120_000;
 
 export class AcpRuntimeImpl implements AcpRuntime {
   #spawner: Spawner;
@@ -24,13 +25,31 @@ export class AcpRuntimeImpl implements AcpRuntime {
     const child = await this.#spawner.spawn(options.agent);
     const id = `acp-${Date.now()}-${nextId++}`;
     const session = new AcpSessionImpl({ child, options, id });
+    const initTimeoutMs = options.initTimeoutMs ?? DEFAULT_INIT_TIMEOUT_MS;
+    let initTimer: NodeJS.Timeout | undefined;
+    const init = session.init();
+    void init.catch(() => undefined);
     try {
-      await session.init();
+      if (initTimeoutMs > 0) {
+        await Promise.race([
+          init,
+          new Promise<never>((_, reject) => {
+            initTimer = setTimeout(() => {
+              reject(new Error(`ACP session init timed out after ${initTimeoutMs}ms`));
+            }, initTimeoutMs);
+            initTimer.unref?.();
+          }),
+        ]);
+      } else {
+        await init;
+      }
     } catch (e) {
       // Init failed (handshake error, missing protocol version, child crashed
       // before responding, …). Kill the child so we don't leak the process.
       await session.dispose();
       throw e;
+    } finally {
+      if (initTimer) clearTimeout(initTimer);
     }
     return session;
   }

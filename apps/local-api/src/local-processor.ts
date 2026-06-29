@@ -32,9 +32,19 @@ export interface LocalWorkflowProcessorOptions {
   dataDir: string;
   userId?: string;
   aigc?: ExternalAigcService;
+  textAgent?: {
+    generate(input: {
+      projectId: string;
+      prompt: string;
+      modelId?: string;
+      modelParams?: Record<string, unknown>;
+      actorAgentId?: string;
+    }): Promise<{ text: string; provider?: string; modelEndpoint?: string }>;
+  };
 }
 
 type ProcessableKind = Extract<AssetKind, "image" | "video" | "audio">;
+type ProcessableNodeKind = ProcessableKind | "text";
 
 async function readJson<T>(path: string, fallback: T): Promise<T> {
   try {
@@ -132,14 +142,14 @@ function pendingCustomNode(node: Record<string, any>): {
   return { actionId, outputType };
 }
 
-function pendingKindForNode(node: Record<string, any>): ProcessableKind | null {
-  if (node.type !== "image" && node.type !== "video" && node.type !== "audio") return null;
+function pendingKindForNode(node: Record<string, any>): ProcessableNodeKind | null {
+  if (node.type !== "image" && node.type !== "video" && node.type !== "audio" && node.type !== "text") return null;
   const data = node.data;
   if (!data || typeof data !== "object") return null;
   if (data.assetId) return null;
   if (data.status !== "pending" && data.status !== "generating") return null;
 
-  const kind = node.type as ProcessableKind;
+  const kind = node.type as ProcessableNodeKind;
   const expectedActionType = `${kind}-gen`;
   if (data.actionType && data.actionType !== expectedActionType) return null;
   return kind;
@@ -345,6 +355,36 @@ export function createLocalWorkflowProcessor(
           const prompt = promptFromData(data, `Mock ${kind}`);
           const model = modelFromData(data, `mock-${kind}`);
           const common = { taskId, prompt, model, modelParams: modelParams(data) };
+          if (kind === "text") {
+            let generated;
+            try {
+              generated = options.textAgent && model === "local-acp"
+                ? await options.textAgent.generate({
+                    projectId,
+                    prompt,
+                    modelId: model,
+                    modelParams: modelParams(data),
+                    actorAgentId: typeof data.actorAgentId === "string" ? data.actorAgentId : undefined,
+                  })
+                : await aigc.generateText(common);
+            } catch {
+              generated = await aigc.generateText(common);
+            }
+            const nextData = {
+              ...data,
+              status: "completed",
+              content: generated.text,
+              ...(generated.provider ? { provider: generated.provider } : {}),
+              ...(generated.modelEndpoint ? { modelEndpoint: generated.modelEndpoint } : {}),
+            };
+            delete (nextData as Record<string, unknown>).pendingTask;
+            delete (nextData as Record<string, unknown>).pendingTaskAt;
+            delete (nextData as Record<string, unknown>).error;
+            nodes.set(nodeId, { ...node, data: nextData });
+            changed = true;
+            continue;
+          }
+
           const generated = kind === "image"
             ? await aigc.generateImage({
                 ...common,

@@ -1,5 +1,5 @@
 /**
- * Room tab body — project-wide IM log: humans typing + crew broadcasts
+ * Room tab body — project-wide IM log: humans typing + agent broadcasts
  * (server's mention dispatcher echoes those into room frames).
  *
  * Auto-scrolls to bottom on new messages when the user was already at
@@ -23,12 +23,12 @@ import type { MentionableNode } from '../components/MilkdownEditor';
 interface RoomViewProps {
   messages: RoomMessageEvent[];
   userId: string;
-  /** Resolve a sender_id (crew_member.id) to the display name shown
-   *  on its tab. Falls back to id if not found in invited crew. */
+  /** Resolve a sender_id (agent_member.id) to the display name shown
+   *  on its tab. Falls back to id if not found in invited agent. */
   labelFor: (id: string) => string;
   empty: boolean;
   hasInvited: boolean;
-  /** Canvas-side + crew mention list — drives UserMessage's inline
+  /** Canvas-side + agent mention list — drives UserMessage's inline
    *  asset-thumbnail substitution for `@[label](node:id)` mentions. */
   mentionableNodes?: MentionableNode[];
   sync?: RoomSyncMeta | null;
@@ -59,11 +59,11 @@ export function RoomView({ messages, userId, labelFor, empty, hasInvited, mentio
             <>
               Nothing in the room yet. Try{' '}
               <code className="px-1.5 py-0.5 rounded bg-brand-light text-brand font-mono">@&lt;name&gt;</code> to address
-              a crew member.
+              a agent member.
             </>
           ) : (
             <>
-              Invite a crew member with the{' '}
+              Invite a agent member with the{' '}
               <span className="px-1.5 py-0.5 rounded bg-warm-muted">+</span> button to start.
             </>
           )}
@@ -73,7 +73,7 @@ export function RoomView({ messages, userId, labelFor, empty, hasInvited, mentio
           {messages.map((m) => {
             const isMe = m.sender_kind === 'user' && m.sender_user_id === userId;
             const sender =
-              m.sender_kind === 'crew' ? labelFor(m.sender_id) : isMe ? 'You' : m.sender_id.slice(0, 8);
+              m.sender_kind === 'agent' ? labelFor(m.sender_id) : isMe ? 'You' : m.sender_id.slice(0, 8);
             return (
               <motion.div
                 key={m.id}
@@ -84,7 +84,7 @@ export function RoomView({ messages, userId, labelFor, empty, hasInvited, mentio
               >
                 {/* Sender label appears above every bubble — for the
                     user's own messages it's "You" on the right, for
-                    crew it's the crew name, for other humans it's a
+                    agent it's the agent name, for other humans it's a
                     short id. */}
                 <div
                   className={`text-[11px] text-stone-500 dark:text-stone-400 mb-1 px-1 ${
@@ -100,10 +100,10 @@ export function RoomView({ messages, userId, labelFor, empty, hasInvited, mentio
                   // pink-tinted gradient bubble.
                   <UserMessage content={m.text} mentionNodes={mentionableNodes} />
                 ) : (
-                  <div className={`flex ${m.sender_kind === 'crew' ? 'justify-start' : 'justify-start'}`}>
+                  <div className={`flex ${m.sender_kind === 'agent' ? 'justify-start' : 'justify-start'}`}>
                     <div
                       className={`max-w-[82%] px-4 py-2.5 rounded-matrix text-sm whitespace-pre-wrap break-words shadow-sm select-text ${
-                        m.sender_kind === 'crew'
+                        m.sender_kind === 'agent'
                           ? 'bg-status-busy/10 text-stone-800 dark:text-stone-100 border border-status-busy/20'
                           : 'bg-warm-muted text-stone-800 dark:text-stone-100'
                       }`}

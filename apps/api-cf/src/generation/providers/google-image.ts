@@ -1,5 +1,5 @@
 /**
- * Google Gemini image generation (gemini-flash-image, gemini-pro-image, …).
+ * Google Gemini image generation (gemini-flash-image-2, gemini-pro-image, ...).
  * Reference images go through the Gemini `:generateContent` multimodal path
  * (image-in + image-out); plain text-to-image keeps the Imagen-style
  * `:predict` route for richer aspectRatio/resolution plumbing.
@@ -7,10 +7,10 @@
 import { log } from "../../logger";
 import {
   generateGoogleImage,
-  type VertexCredentials,
   type VertexInlineImage,
 } from "../../services/google-gen";
 import type { GenerationProvider } from "../provider";
+import { credentialsForProvider, vertexCredentialsFromProvider } from "./provider-credentials";
 
 async function loadInlineFromR2(
   bucket: R2Bucket,
@@ -51,12 +51,12 @@ export const googleImageProvider: GenerationProvider = {
           if (inline) referenceImages.push(inline);
         }
 
-        const creds: VertexCredentials = {
-          clientEmail: env.GOOGLE_CLIENT_EMAIL ?? "",
-          privateKey: env.GOOGLE_PRIVATE_KEY ?? "",
-          project: env.GOOGLE_CLOUD_PROJECT ?? "",
-          location: env.GOOGLE_CLOUD_LOCATION ?? "global",
-        };
+        const creds = vertexCredentialsFromProvider(
+          await credentialsForProvider(ctx, "official", ["vertexCredentials"], {
+            upstreamId: "google",
+            region: "global",
+          }),
+        );
         log.info("Google image generate started", {
           ...ctx.tag,
           model: params.modelName,

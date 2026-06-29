@@ -32,4 +32,23 @@ describe("installViteRuntimeConfig", () => {
       wsBaseUrl: "ws://127.0.0.1:49321",
     });
   });
+
+  it("keeps an existing desktop preload runtime config", () => {
+    runtimeGlobal().__CLASH_RUNTIME_CONFIG__ = {
+      mode: "desktop",
+      apiBaseUrl: "http://127.0.0.1:50000",
+      wsBaseUrl: "ws://127.0.0.1:50000",
+    };
+
+    installViteRuntimeConfig({
+      VITE_CLASH_API_BASE_URL: "http://127.0.0.1:49321/",
+      VITE_CLASH_WS_BASE_URL: "ws://127.0.0.1:49321/",
+    });
+
+    expect(runtimeGlobal().__CLASH_RUNTIME_CONFIG__).toEqual({
+      mode: "desktop",
+      apiBaseUrl: "http://127.0.0.1:50000",
+      wsBaseUrl: "ws://127.0.0.1:50000",
+    });
+  });
 });

@@ -4,6 +4,7 @@ import { useLocation } from 'react-router';
 import TopNavigation from './TopNavigation';
 import Background from './Background';
 import { ConfirmDialogProvider } from './ConfirmDialog';
+import { AppFeedbackProvider } from './AppFeedback';
 
 export default function LayoutContent({
   children,
@@ -21,6 +22,8 @@ export default function LayoutContent({
   const isLoginPage = pathname === '/login';
   const isLandingPage = pathname === '/landing';
   const isAuthPage = pathname?.startsWith('/auth/');
+  const isSettingsPage = pathname === '/settings';
+  const isDesktopSettingsPage = isDesktop && isSettingsPage;
   const showsDesktopChrome =
     isDesktop && isAuthenticated && !isLoginPage && !isLandingPage && !isAuthPage;
 
@@ -70,26 +73,30 @@ export default function LayoutContent({
 
   // If unauthenticated, or on login page, or on fullscreen project page, or explicit landing page
   // Don't show dashboard navigation and background
-  if (!isAuthenticated || isLoginPage || (isProjectDetailPage && !isDesktop) || isLandingPage || isAuthPage) {
-    return <ConfirmDialogProvider>{children}</ConfirmDialogProvider>;
+  if (!isAuthenticated || isLoginPage || (isProjectDetailPage && !isDesktop) || isLandingPage || isAuthPage || (isSettingsPage && !isDesktop)) {
+    return <ConfirmDialogProvider><AppFeedbackProvider>{children}</AppFeedbackProvider></ConfirmDialogProvider>;
   }
 
   // 其他页面 (Dashboard/App): 显示TopNavigation和背景
   return (
     <ConfirmDialogProvider>
-      <TopNavigation />
-      {!isDesktopProjectDetailPage && <Background />}
-      <main
-        className={
-          isDesktopProjectDetailPage
-            ? 'box-border mt-[var(--clash-desktop-chrome-height)] h-[calc(100dvh-var(--clash-desktop-chrome-height))] overflow-hidden [--clash-desktop-chrome-height:2.5rem] [--clash-project-editor-height:calc(100dvh-var(--clash-desktop-chrome-height))]'
-            : isDesktop
-              ? 'clash-desktop-scroll-root box-border mt-10 h-[calc(100dvh-2.5rem)] overflow-y-auto overflow-x-hidden pt-[4.5rem]'
-              : 'min-h-screen pt-24'
-        }
-      >
-        {children}
-      </main>
+      <AppFeedbackProvider>
+        <TopNavigation />
+        {!isDesktopProjectDetailPage && !isDesktopSettingsPage && <Background />}
+        <main
+          className={
+            isDesktopProjectDetailPage
+              ? 'box-border mt-[var(--clash-desktop-chrome-height)] h-[calc(100dvh-var(--clash-desktop-chrome-height))] overflow-hidden [--clash-desktop-chrome-height:2.5rem] [--clash-project-editor-height:calc(100dvh-var(--clash-desktop-chrome-height))]'
+              : isDesktopSettingsPage
+                ? 'box-border mt-[var(--clash-desktop-chrome-height)] h-[calc(100dvh-var(--clash-desktop-chrome-height))] overflow-hidden [--clash-desktop-chrome-height:2.5rem]'
+              : isDesktop
+                ? 'clash-desktop-scroll-root box-border mt-10 h-[calc(100dvh-2.5rem)] overflow-y-auto overflow-x-hidden pt-[4.5rem]'
+                : 'min-h-screen pt-24'
+          }
+        >
+          {children}
+        </main>
+      </AppFeedbackProvider>
     </ConfirmDialogProvider>
   );
 }

@@ -17,6 +17,8 @@ export interface ImageGenInput {
   aspectRatio?: string;
   modelName?: string;
   modelParams?: Record<string, unknown>;
+  credentials?: Record<string, string>;
+  vertexCredentials?: VertexCredentials;
 }
 
 export interface ImageGenOutput {
@@ -34,8 +36,10 @@ export interface ImageProvider {
 // ─── fal.ai Provider ────────────────────────────────────
 
 const falImageProvider: ImageProvider = {
-  async generate(env, params) {
-    const { url, model } = await generateFalImage(env.FAL_API_KEY ?? "", {
+  async generate(_env, params) {
+    const falKey = params.credentials?.apiKey;
+    if (!falKey) throw new Error("fal provider account is missing apiKey.");
+    const { url, model } = await generateFalImage(falKey, {
       text: params.prompt,
       systemPrompt: params.systemPrompt,
       referenceImageUrls: params.referenceImageUrls,
@@ -50,14 +54,9 @@ const falImageProvider: ImageProvider = {
 // ─── Google Vertex Provider ─────────────────────────────
 
 const googleImageProvider: ImageProvider = {
-  async generate(env, params) {
-    const creds: VertexCredentials = {
-      clientEmail: env.GOOGLE_CLIENT_EMAIL ?? "",
-      privateKey: env.GOOGLE_PRIVATE_KEY ?? "",
-      project: env.GOOGLE_CLOUD_PROJECT ?? "",
-      location: env.GOOGLE_CLOUD_LOCATION ?? "global",
-    };
-    const result = await generateGoogleImage(creds, {
+  async generate(_env, params) {
+    if (!params.vertexCredentials) throw new Error("Google provider account is missing vertexCredentials.");
+    const result = await generateGoogleImage(params.vertexCredentials, {
       prompt: params.prompt,
       aspectRatio: params.aspectRatio,
       modelName: params.modelName,

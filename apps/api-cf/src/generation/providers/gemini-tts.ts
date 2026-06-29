@@ -5,12 +5,13 @@ import { log } from "../../logger";
 import { generateGoogleAudio } from "../../services/google-gen";
 import type { GenerationContext } from "../context";
 import type { GenerationProvider } from "../provider";
+import { credentialsForProvider } from "./provider-credentials";
 
 export const geminiTtsProvider: GenerationProvider = {
   name: "gemini-tts",
 
   async execute(ctx) {
-    const { params, env } = ctx;
+    const { params } = ctx;
     const modelName = params.modelName ?? "gemini-3.1-flash-tts";
 
     const storageKey = await ctx.step(
@@ -18,12 +19,15 @@ export const geminiTtsProvider: GenerationProvider = {
       { retries: { limit: 2, delay: "5 seconds", backoff: "exponential" }, timeout: "5 minutes" },
       async () => {
         log.info("Gemini TTS started", { ...ctx.tag, model: modelName });
-        const result = await generateGoogleAudio(env.GOOGLE_API_KEY, {
+        const credentials = await credentialsForProvider(ctx, "official", ["apiKey"], {
+          upstreamId: "google",
+          region: "global",
+        });
+        const result = await generateGoogleAudio(credentials.apiKey, {
           prompt: params.prompt ?? "",
           modelName,
           modelParams: params.modelParams,
-          baseUrl: env.GOOGLE_AI_STUDIO_BASE_URL,
-          cfAigToken: env.CF_AIG_TOKEN,
+          baseUrl: credentials.baseUrl,
         });
         log.info("Gemini TTS generated", { ...ctx.tag, model: result.model, bytes: result.data.byteLength });
         return ctx.uploadBytes(result.data, result.mediaType);

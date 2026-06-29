@@ -1,13 +1,14 @@
 
 /* eslint-disable @next/next/no-img-element */
 
-import { useState, useRef, useEffect } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { useId, useRef, useState } from 'react';
+import { motion } from 'framer-motion';
 import { GoogleLogo, Gear, SignOut, CreditCard, Lightning } from '@phosphor-icons/react';
 import { Link } from 'react-router';
 import betterAuthClient from '@clash/web-ui/lib/betterAuthClient';
 import { useBillingBalance } from '@clash/web-ui/hooks/useBillingBalance';
-import { SettingsDialog } from './SettingsDialog';
+import { getRuntimeConfig } from '@clash/web-ui/lib/runtimeConfig';
+import { FloatingMenu, MenuItemButton, menuItemClassName } from './ui/select';
 
 interface UserControlsProps {
   compact?: boolean;
@@ -21,25 +22,34 @@ function localLoginUrl(): string | null {
   return `http://localhost:${window.location.port || '80'}/login`;
 }
 
-export default function UserControls({ compact = false, projectChrome = false }: UserControlsProps = {}) {
+function SettingsOnlyControl({ compact = false, projectChrome = false }: UserControlsProps) {
+  return (
+    <Link
+      to="/settings"
+      aria-label="Settings"
+      title="Settings"
+      className={
+        projectChrome
+          ? 'clash-project-top-action inline-flex h-10 w-10 items-center justify-center rounded-xl text-slate-900 transition-colors hover:bg-black/[0.055] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-warm-page'
+          : compact
+          ? 'inline-flex h-8 w-8 items-center justify-center rounded-lg text-stone-700 transition-colors hover:bg-stone-200/70 hover:text-stone-950 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand'
+          : 'inline-flex h-12 w-12 items-center justify-center rounded-2xl border border-warm-border bg-warm-surface text-stone-800 shadow-sm transition-all hover:border-brand/35 hover:bg-warm-muted hover:text-slate-950 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-warm-page'
+      }
+    >
+      <Gear className={compact ? 'h-4 w-4' : 'h-5 w-5'} aria-hidden="true" />
+    </Link>
+  );
+}
+
+function AccountUserControls({ compact = false, projectChrome = false }: UserControlsProps = {}) {
   const sessionQuery = betterAuthClient.useSession();
   const session = sessionQuery.data;
   const user = session?.user;
   const [open, setOpen] = useState(false);
-  const [settingsOpen, setSettingsOpen] = useState(false);
   const [avatarFailed, setAvatarFailed] = useState(false);
-  const menuRef = useRef<HTMLDivElement>(null);
+  const accountMenuId = useId();
+  const avatarButtonRef = useRef<HTMLButtonElement>(null);
   const balance = useBillingBalance(!!user);
-
-  useEffect(() => {
-    const handleClickOutside = (e: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
-        setOpen(false);
-      }
-    };
-    if (open) document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, [open]);
 
   const handleSignOut = async () => {
     try {
@@ -80,7 +90,7 @@ export default function UserControls({ compact = false, projectChrome = false }:
   return (
     <div className={`flex items-center ${compact || projectChrome ? 'gap-1.5' : 'gap-3'}`}>
       {user ? (
-        <div className="relative flex items-center gap-2" ref={menuRef}>
+        <div className="relative flex items-center gap-2">
           {(balance.status === 'ready' || balance.status === 'loading') && (
             <Link
               to="/billing"
@@ -109,10 +119,12 @@ export default function UserControls({ compact = false, projectChrome = false }:
             </Link>
           )}
           <button
+            ref={avatarButtonRef}
             type="button"
             onClick={() => setOpen(prev => !prev)}
             aria-haspopup="menu"
             aria-expanded={open}
+            aria-controls={open ? accountMenuId : undefined}
             aria-label={`Account menu — ${user.name}`}
             className={
               projectChrome
@@ -141,57 +153,48 @@ export default function UserControls({ compact = false, projectChrome = false }:
             )}
           </button>
 
-          <AnimatePresence>
-            {open && (
-              <motion.div
-                initial={{ opacity: 0, y: 4, scale: 0.95 }}
-                animate={{ opacity: 1, y: 0, scale: 1 }}
-                exit={{ opacity: 0, y: 4, scale: 0.95 }}
-                transition={{ duration: 0.15 }}
-                /* top-full anchors the dropdown's top edge to the
-                   parent's bottom edge — `mt-2` alone on an absolute
-                   child collapses to top:0 + margin, which made the
-                   menu overlap the avatar pill. */
-                className="absolute right-0 top-full mt-2 w-48 rounded-xl bg-warm-surface border border-warm-border shadow-lg py-1.5 z-50"
+          <FloatingMenu
+            id={accountMenuId}
+            anchorRef={avatarButtonRef}
+            open={open}
+            onOpenChange={setOpen}
+            ariaLabel="Account"
+            align="end"
+            placement="bottom"
+            menuWidth={208}
+          >
+            <Link
+              to="/settings"
+              role="menuitem"
+              onClick={() => {
+                setOpen(false);
+              }}
+              className={menuItemClassName()}
+            >
+              <Gear className="h-4 w-4 flex-shrink-0" aria-hidden="true" />
+              <span className="min-w-0 flex-1 truncate font-medium">Settings</span>
+            </Link>
+            {balance.status !== 'unavailable' && (
+              <Link
+                to="/billing"
+                role="menuitem"
+                onClick={() => setOpen(false)}
+                className={menuItemClassName()}
               >
-                <button
-                  type="button"
-                  onClick={() => {
-                    setOpen(false);
-                    setSettingsOpen(true);
-                  }}
-                  className="flex w-full items-center gap-2.5 px-4 py-2.5 text-sm font-medium text-stone-800 dark:text-stone-200 hover:bg-warm-muted transition-colors text-left"
-                >
-                  <Gear className="h-4 w-4" />
-                  Settings
-                </button>
-                {balance.status !== 'unavailable' && (
-                  <Link
-                    to="/billing"
-                    onClick={() => setOpen(false)}
-                    className="flex items-center justify-between px-4 py-2.5 text-sm font-medium text-stone-800 dark:text-stone-200 hover:bg-warm-muted transition-colors"
-                  >
-                    <span className="flex items-center gap-2.5">
-                      <CreditCard className="h-4 w-4" />
-                      Billing
-                    </span>
-                    {balance.status === 'ready' && (
-                      <span className="text-xs tabular-nums text-stone-700 dark:text-stone-300">
-                        {balance.balance.available.toLocaleString()}
-                      </span>
-                    )}
-                  </Link>
+                <CreditCard className="h-4 w-4 flex-shrink-0" aria-hidden="true" />
+                <span className="min-w-0 flex-1 truncate font-medium">Billing</span>
+                {balance.status === 'ready' && (
+                  <span className="text-xs tabular-nums text-stone-600 dark:text-stone-300">
+                    {balance.balance.available.toLocaleString()}
+                  </span>
                 )}
-                <button
-                  onClick={handleSignOut}
-                  className="flex w-full items-center gap-2.5 px-4 py-2.5 text-sm font-medium text-stone-800 dark:text-stone-200 hover:bg-warm-muted transition-colors"
-                >
-                  <SignOut className="h-4 w-4" />
-                  Sign out
-                </button>
-              </motion.div>
+              </Link>
             )}
-          </AnimatePresence>
+            <MenuItemButton role="menuitem" onClick={handleSignOut}>
+              <SignOut className="h-4 w-4 flex-shrink-0" aria-hidden="true" />
+              <span className="min-w-0 flex-1 truncate font-medium">Sign out</span>
+            </MenuItemButton>
+          </FloatingMenu>
         </div>
       ) : (
         <motion.button
@@ -211,10 +214,14 @@ export default function UserControls({ compact = false, projectChrome = false }:
           {compact || projectChrome ? 'Sign in' : 'Sign in with Google'}
         </motion.button>
       )}
-      {/* Same modal as the project page's avatar uses — Settings opens
-          as a centered overlay instead of a route nav, so the user
-          doesn't lose the current page (Home, Projects list, etc.). */}
-      <SettingsDialog open={settingsOpen} onClose={() => setSettingsOpen(false)} />
     </div>
   );
+}
+
+export default function UserControls(props: UserControlsProps = {}) {
+  if (getRuntimeConfig().mode === 'desktop') {
+    return <SettingsOnlyControl {...props} />;
+  }
+
+  return <AccountUserControls {...props} />;
 }

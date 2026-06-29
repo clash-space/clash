@@ -1,21 +1,16 @@
 
-import { useState, useRef, useCallback, useEffect } from 'react';
+import { useState, useRef, useCallback, useEffect, type ReactNode } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ArrowUp, Plus, Microphone, X, Check, StopCircle, CircleNotch } from '@phosphor-icons/react';
+import { ArrowUp, Plus, Microphone, X, Check, CircleNotch } from '@phosphor-icons/react';
 import { lazy } from 'react';
 import { useTranslation } from 'react-i18next';
 import { getSignedUrl } from '@clash/web-ui/lib/hooks/useSignedUrl';
-import { resolveSpeechRecognitionLocale } from '@clash/web-ui/lib/utils/speechRecognitionLocale';
 import { runtimeApiUrl } from '@clash/web-ui/lib/runtimeConfig';
 import { IconButton } from '../ui/icon-button';
 import type { MilkdownEditorHandle, MentionableNode } from '../MilkdownEditor';
 
 // Lazy load MilkdownEditor to avoid SSR issues
 const MilkdownEditor = lazy(() => import('../MilkdownEditor'));
-
-declare global {
-    interface Window { SpeechRecognition?: any; webkitSpeechRecognition?: any; }
-}
 
 // ─── Types ───────────────────────────────────────────────────
 
@@ -42,6 +37,8 @@ interface ChatInputProps {
     error?: string | null;
     onDismissError?: () => void;
     disabled?: boolean;
+    /** Runtime mode can accept follow-up prompts while the current agent loop is still running. */
+    allowSubmitWhileProcessing?: boolean;
     placeholder?: string;
     variant?: 'default' | 'hero';
     mentionableNodes?: MentionableNode[];
@@ -49,6 +46,47 @@ interface ChatInputProps {
     onMentionAdded?: (nodeId: string) => void;
     /** When present, chat attachments also get registered in the assets table under this project. */
     projectId?: string;
+    /** Optional controls rendered inside the composer's bottom toolbar, next to attach. */
+    toolbarAccessory?: ReactNode;
+    /** Optional controls rendered on the right side before voice/send. */
+    rightToolbarAccessory?: ReactNode;
+    onCaretTargetChange?: (target: { x: number; y: number } | null) => void;
+}
+
+interface LocalAudioConfig {
+    asr: {
+        enabled: boolean;
+        ready: boolean;
+        provider: 'builtin-funasr';
+        base_url: string | null;
+        model: string;
+        setup?: {
+            provider: 'funasr';
+            runtime?: 'builtin-rpc';
+            status: 'disabled' | 'needs-install' | 'ready';
+        };
+    };
+}
+
+async function loadLocalAudioConfig(): Promise<LocalAudioConfig> {
+    const res = await fetch(runtimeApiUrl('/api/v1/local/audio'), { credentials: 'include' });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return (await res.json()) as LocalAudioConfig;
+}
+
+async function transcribeLocalAudio(blob: Blob): Promise<string> {
+    const type = blob.type || 'audio/webm';
+    const form = new FormData();
+    form.append('file', new File([blob], `voice-${Date.now()}.webm`, { type }));
+    const res = await fetch(runtimeApiUrl('/api/v1/local/audio/transcriptions'), {
+        method: 'POST',
+        credentials: 'include',
+        body: form,
+    });
+    const json = await res.json().catch(() => null) as { text?: string; error?: string } | null;
+    if (!res.ok) throw new Error(json?.error ?? `HTTP ${res.status}`);
+    if (!json?.text) throw new Error('Local ASR returned no transcript');
+    return json.text;
 }
 
 // ─── Helpers ─────────────────────────────────────────────────
@@ -241,20 +279,24 @@ export function ChatInput({
     onStop,
     isProcessing = false,
     isCreatingSession = false,
-    connected = true,
     error,
     onDismissError,
     disabled = false,
+    allowSubmitWhileProcessing = false,
     placeholder = 'Ask anything...',
     variant = 'default',
     mentionableNodes,
     connectedNodeIds,
     onMentionAdded,
     projectId,
+    toolbarAccessory,
+    rightToolbarAccessory,
+    onCaretTargetChange,
 }: ChatInputProps) {
-    const { t, i18n } = useTranslation();
+    const { t } = useTranslation();
     const fileInputRef = useRef<HTMLInputElement>(null);
     const editorRef = useRef<MilkdownEditorHandle>(null);
+    const editorHostRef = useRef<HTMLDivElement | null>(null);
     const [uploading, setUploading] = useState(0);
 
     // ─── File upload → insert into editor on complete ──────────
@@ -300,49 +342,128 @@ export function ChatInput({
         const attachments = extractAssetKeys(text);
         onInputChange('');
         editorRef.current?.clear();
+        onCaretTargetChange?.(null);
         onSubmit(text, attachments);
-    }, [input, uploading, onInputChange, onSubmit]);
+    }, [input, uploading, onInputChange, onSubmit, onCaretTargetChange]);
+
+    const updateCaretTarget = useCallback(() => {
+        if (!onCaretTargetChange) return;
+        const host = editorHostRef.current;
+        const selection = document.getSelection?.();
+        if (!host || !selection || selection.rangeCount === 0 || !selection.isCollapsed) {
+            onCaretTargetChange(null);
+            return;
+        }
+
+        const anchor = selection.anchorNode;
+        const anchorElement = anchor?.nodeType === Node.ELEMENT_NODE
+            ? anchor
+            : anchor?.parentNode;
+        if (!anchorElement || !host.contains(anchorElement)) {
+            onCaretTargetChange(null);
+            return;
+        }
+
+        const range = selection.getRangeAt(0).cloneRange();
+        let rect = range.getBoundingClientRect();
+        if (rect.width === 0 && rect.height === 0) {
+            const marker = document.createElement('span');
+            marker.textContent = '\u200b';
+            range.insertNode(marker);
+            rect = marker.getBoundingClientRect();
+            marker.remove();
+        }
+
+        if (rect.width === 0 && rect.height === 0) {
+            onCaretTargetChange(null);
+            return;
+        }
+
+        onCaretTargetChange({
+            x: rect.left + rect.width / 2,
+            y: rect.top + rect.height / 2,
+        });
+    }, [onCaretTargetChange]);
+
+    useEffect(() => {
+        if (!onCaretTargetChange) return;
+        return () => onCaretTargetChange(null);
+    }, [onCaretTargetChange]);
 
     // ─── ASR ─────────────────────────────────────────────────
     const [isListening, setIsListening] = useState(false);
+    const [isTranscribing, setIsTranscribing] = useState(false);
+    const [voiceSetupError, setVoiceSetupError] = useState<string | null>(null);
     const [audioLevels, setAudioLevels] = useState<number[]>(new Array(24).fill(0));
-    const recognitionRef = useRef<any>(null);
+    const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+    const recordedChunksRef = useRef<Blob[]>([]);
     const audioContextRef = useRef<AudioContext | null>(null);
     const animFrameRef = useRef<number>(0);
     const streamRef = useRef<MediaStream | null>(null);
-    const transcriptRef = useRef('');
 
     const cleanup = useCallback(() => {
-        recognitionRef.current?.stop();
+        const recorder = mediaRecorderRef.current;
+        if (recorder && recorder.state !== 'inactive') {
+            try {
+                recorder.stop();
+            } catch {
+                // The recorder can already be stopping after a permission or device error.
+            }
+        }
         if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
         streamRef.current?.getTracks().forEach(t => t.stop());
         audioContextRef.current?.close().catch(() => {});
         audioContextRef.current = null;
         streamRef.current = null;
-        recognitionRef.current = null;
+        mediaRecorderRef.current = null;
+        recordedChunksRef.current = [];
         setAudioLevels(new Array(24).fill(0));
         setIsListening(false);
     }, []);
 
-    const startListening = useCallback(() => {
-        const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-        if (!SR) return;
-        transcriptRef.current = '';
-        const recognition = new SR();
-        recognition.lang = resolveSpeechRecognitionLocale(i18n.language);
-        recognition.interimResults = true;
-        recognition.continuous = true;
-        recognition.onresult = (e: any) => {
-            transcriptRef.current = Array.from(e.results as any[]).map((r: any) => r[0].transcript).join('');
-        };
-        recognition.onerror = () => cleanup();
-        recognitionRef.current = recognition;
-        recognition.start();
-        setIsListening(true);
+    const stopRecorder = useCallback(async (): Promise<Blob[]> => {
+        const recorder = mediaRecorderRef.current;
+        if (!recorder || recorder.state === 'inactive') return [...recordedChunksRef.current];
+        await new Promise<void>((resolve) => {
+            recorder.addEventListener('stop', () => resolve(), { once: true });
+            recorder.stop();
+        });
+        return [...recordedChunksRef.current];
+    }, []);
 
-        if (!navigator.mediaDevices?.getUserMedia) return;
-        navigator.mediaDevices.getUserMedia({ audio: true }).then(stream => {
+    const startListening = useCallback(async () => {
+        setVoiceSetupError(null);
+        try {
+            const audioConfig = await loadLocalAudioConfig();
+            if (!audioConfig.asr.enabled || !audioConfig.asr.ready) {
+                setVoiceSetupError('Deploy an ASR model in Models first.');
+                return;
+            }
+        } catch {
+            setVoiceSetupError('Deploy an ASR model in Models first.');
+            return;
+        }
+
+        if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === 'undefined') {
+            setVoiceSetupError('Local microphone recording is unavailable in this browser.');
+            return;
+        }
+
+        try {
+            recordedChunksRef.current = [];
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
             streamRef.current = stream;
+            const recorder = new MediaRecorder(stream);
+            recorder.ondataavailable = (event) => {
+                if (event.data.size > 0) recordedChunksRef.current.push(event.data);
+            };
+            recorder.onerror = () => {
+                setVoiceSetupError('Local microphone recording failed.');
+                cleanup();
+            };
+            mediaRecorderRef.current = recorder;
+            recorder.start();
+
             const ctx = new AudioContext();
             const analyser = ctx.createAnalyser();
             analyser.fftSize = 64;
@@ -359,14 +480,35 @@ export function ChatInput({
                 animFrameRef.current = requestAnimationFrame(tick);
             };
             tick();
-        }).catch(() => {});
+            setIsListening(true);
+        } catch {
+            setVoiceSetupError('Microphone permission is required for local ASR.');
+            cleanup();
+        }
     }, [cleanup]);
 
-    const confirmVoice = useCallback(() => {
-        const text = transcriptRef.current.trim();
-        cleanup();
-        if (text) onInputChange(input ? `${input} ${text}` : text);
-    }, [cleanup, onInputChange, input]);
+    const confirmVoice = useCallback(async () => {
+        if (isTranscribing) return;
+        setIsTranscribing(true);
+        setVoiceSetupError(null);
+        try {
+            const chunks = await stopRecorder();
+            const mimeType = mediaRecorderRef.current?.mimeType || 'audio/webm';
+            const blob = new Blob(chunks, { type: mimeType });
+            cleanup();
+            if (!blob.size) {
+                setVoiceSetupError('No microphone audio was captured.');
+                return;
+            }
+            const text = (await transcribeLocalAudio(blob)).trim();
+            if (text) onInputChange(input ? `${input} ${text}` : text);
+        } catch (err) {
+            setVoiceSetupError(err instanceof Error ? err.message : String(err));
+            cleanup();
+        } finally {
+            setIsTranscribing(false);
+        }
+    }, [cleanup, input, isTranscribing, onInputChange, stopRecorder]);
 
     useEffect(() => () => cleanup(), [cleanup]);
 
@@ -376,15 +518,17 @@ export function ChatInput({
         if (e.dataTransfer.files.length) handleFiles(e.dataTransfer.files);
     }, [handleFiles]);
 
-    const isBusy = isProcessing || isCreatingSession || disabled;
-    const canSend = input.trim() && !isBusy && uploading === 0;
+    const actionLocked = isCreatingSession || disabled;
+    const submitLocked = actionLocked || (isProcessing && !allowSubmitWhileProcessing);
+    const canSend = input.trim() && !submitLocked && uploading === 0;
+    const showQueuedSend = isProcessing && allowSubmitWhileProcessing && canSend;
     const isHero = variant === 'hero';
     // placeholder prop is currently unused by MilkdownEditor; reference it
     // so TS/lint doesn't flag it as unused while keeping the public API.
     void placeholder;
 
     return (
-        <div className={isHero ? '' : 'px-4 pb-3'}>
+        <div className={isHero ? '' : 'px-4 pb-4'}>
             <input
                 ref={fileInputRef}
                 type="file"
@@ -411,12 +555,30 @@ export function ChatInput({
                             {error}
                         </motion.div>
                     )}
+                    {voiceSetupError && (
+                        <motion.div
+                            role="alert"
+                            initial={{ opacity: 0, y: 4 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            exit={{ opacity: 0, y: 4 }}
+                            className="clash-chat-input-alert-error mb-2 px-3 py-1.5 text-xs rounded-lg text-center"
+                        >
+                            <span>{voiceSetupError}</span>
+                            {' '}
+                            <a
+                                href="/settings?section=models"
+                                className="font-semibold underline underline-offset-2"
+                            >
+                                Open Models
+                            </a>
+                        </motion.div>
+                    )}
                 </AnimatePresence>
             )}
 
             {/* Main input card */}
             <div
-                className={`clash-chat-input-surface ${isHero ? 'rounded-[2rem] p-2' : 'rounded-2xl'}`}
+                className={`clash-chat-input-surface ${isHero ? 'rounded-[2rem] p-2' : 'rounded-[18px]'}`}
                 onDrop={handleDrop}
                 onDragOver={(e) => e.preventDefault()}
             >
@@ -442,19 +604,33 @@ export function ChatInput({
                             <IconButton
                                 onClick={cleanup}
                                 label={t('copilot.chatInput.cancelVoice')}
+                                disabled={isTranscribing}
                                 icon={<X className="w-4 h-4" weight="bold" />}
                             />
                             <IconButton
                                 onClick={confirmVoice}
                                 label={t('copilot.chatInput.confirmVoice')}
-                                icon={<Check className="w-4 h-4" weight="bold" />}
+                                disabled={isTranscribing}
+                                icon={isTranscribing ? <CircleNotch className="w-4 h-4 animate-spin motion-reduce:animate-none" weight="bold" /> : <Check className="w-4 h-4" weight="bold" />}
                             />
                         </div>
                     </div>
                 ) : (
                     /* ─── Rich text input ─── */
                     <div className={isHero ? 'flex min-h-[142px] flex-col' : ''}>
-                        <div className={`clash-chat-input-editor ${isHero ? 'clash-chat-input-editor--hero' : 'clash-chat-input-editor--default'} milkdown-chat-input w-full text-left chat-scroll-hidden ${isHero ? 'min-h-[100px] flex-1 px-5 pt-4' : 'min-h-[52px] max-h-[200px]'} overflow-y-auto`}>
+                        <div
+                            ref={editorHostRef}
+                            className={`clash-chat-input-editor ${isHero ? 'clash-chat-input-editor--hero' : 'clash-chat-input-editor--default'} milkdown-chat-input w-full text-left chat-scroll-hidden ${isHero ? 'min-h-[100px] flex-1 px-5 pt-4' : 'min-h-[52px] max-h-[200px]'} overflow-y-auto`}
+                            onFocusCapture={() => window.requestAnimationFrame(updateCaretTarget)}
+                            onBlurCapture={(event) => {
+                                if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
+                                    onCaretTargetChange?.(null);
+                                }
+                            }}
+                            onKeyUp={() => window.requestAnimationFrame(updateCaretTarget)}
+                            onPointerUp={() => window.requestAnimationFrame(updateCaretTarget)}
+                            onInput={() => window.requestAnimationFrame(updateCaretTarget)}
+                        >
                             <MilkdownEditor
                                 ref={editorRef}
                                 value={input}
@@ -481,37 +657,45 @@ export function ChatInput({
 
                         {/* Bottom toolbar */}
                         <div className={`clash-chat-input-actions flex items-center justify-between pb-2.5 pt-1.5 ${isHero ? 'px-5' : 'px-4'}`}>
-                            <div className="flex items-center gap-1">
+                            <div className="flex min-w-0 items-center gap-2">
                                 <IconButton
                                     onClick={() => fileInputRef.current?.click()}
-                                    disabled={isBusy}
+                                    disabled={actionLocked}
                                     label={t('copilot.chatInput.attach')}
                                     shape="rounded"
                                     icon={<Plus className="w-4 h-4" weight="bold" />}
                                     className="-ml-1.5"
                                 />
+                                {!isHero && toolbarAccessory ? (
+                                    <div className="min-w-0">
+                                        {toolbarAccessory}
+                                    </div>
+                                ) : null}
                             </div>
                             <div className="flex items-center gap-1.5 -mr-1.5">
-                                {!isHero && (
-                                    <div
-                                        role="status"
-                                        aria-live="polite"
-                                        aria-label={connected ? t('copilot.status.connected') : t('copilot.status.disconnected')}
-                                        className="flex items-center"
-                                    >
-                                        <span
-                                            aria-hidden="true"
-                                            className={`block w-2.5 h-2.5 rounded-full transition-colors ${connected ? 'bg-emerald-500 dark:bg-emerald-400' : 'bg-red-500 dark:bg-red-400'}`}
-                                        />
+                                {!isHero && rightToolbarAccessory ? (
+                                    <div className="min-w-0">
+                                        {rightToolbarAccessory}
                                     </div>
-                                )}
+                                ) : null}
                                 <IconButton
                                     onClick={startListening}
-                                    disabled={isBusy}
+                                    disabled={actionLocked}
                                     label={t('copilot.chatInput.voice')}
                                     shape="rounded"
                                     icon={<Microphone className="w-4 h-4" weight="bold" />}
                                 />
+                                {showQueuedSend ? (
+                                    <button
+                                        type="button"
+                                        onClick={handleFormSubmit}
+                                        disabled={!canSend}
+                                        aria-label={t('copilot.chatInput.send')}
+                                        className="clash-chat-input-primary w-9 h-9 min-h-[36px] min-w-[36px] rounded-xl flex items-center justify-center transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-warm-surface"
+                                    >
+                                        <ArrowUp className="w-3.5 h-3.5" weight="bold" aria-hidden="true" />
+                                    </button>
+                                ) : null}
                                 {isProcessing && onStop ? (
                                     <button
                                         type="button"
@@ -519,7 +703,7 @@ export function ChatInput({
                                         aria-label={t('copilot.chatInput.stop')}
                                         className="clash-chat-input-stop w-9 h-9 min-h-[36px] min-w-[36px] rounded-xl flex items-center justify-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-warm-surface"
                                     >
-                                        <StopCircle className="w-4 h-4" weight="fill" aria-hidden="true" />
+                                        <span className="h-2.5 w-2.5 rounded-[3px] bg-current" aria-hidden="true" />
                                     </button>
                                 ) : (
                                     <button

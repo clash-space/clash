@@ -8,6 +8,7 @@ import { log } from "../../logger";
 import { generateImage as generateFalImage } from "../../services/fal-image";
 import type { GenerationContext } from "../context";
 import type { GenerationProvider } from "../provider";
+import { credentialsForProvider } from "./provider-credentials";
 
 async function uploadR2ToFal(bucket: R2Bucket, key: string, falApiKey: string): Promise<string> {
   fal.config({ credentials: falApiKey });
@@ -23,7 +24,7 @@ export const falImageProvider: GenerationProvider = {
 
   async execute(ctx) {
     const { params, env } = ctx;
-    const falKey = env.FAL_API_KEY ?? "";
+    const falKey = (await credentialsForProvider(ctx, "fal", ["apiKey"], { upstreamId: "fal" })).apiKey;
 
     const referenceImageUrls = await ctx.step(
       "resolve-references",

@@ -1,5 +1,4 @@
-import type { LoaderFunctionArgs } from "react-router";
-import { redirect, useLoaderData } from "react-router";
+import { useLoaderData } from "react-router";
 import MarketplaceClient from "@clash/web-ui/components/MarketplaceClient";
 import type { RegistryItem } from "@clash/web-ui/lib/clientActions";
 import { runtimeApiUrl } from "@clash/web-ui/lib/runtimeConfig";
@@ -10,29 +9,32 @@ interface RegistryData {
   skills: RegistryItem[];
 }
 
-export async function loader(_: LoaderFunctionArgs) {
-  const guard = await fetch(runtimeApiUrl("/api/settings/actions"), { credentials: "include" });
-  if (guard.status === 401) throw redirect("/login");
+const emptyRegistry: RegistryData = { version: 1, actions: [], skills: [] };
 
-  const [registryRes, actions, skills] = await Promise.all([
-    fetch(runtimeApiUrl("/api/marketplace/registry")).then((r) =>
-      r.ok
-        ? (r.json() as Promise<RegistryData>)
-        : ({ version: 1, actions: [], skills: [] } as RegistryData),
-    ),
-    fetch(runtimeApiUrl("/api/settings/actions"), { credentials: "include" }).then((r) =>
-      r.ok ? (r.json() as Promise<any[]>) : [],
-    ),
-    fetch(runtimeApiUrl("/api/settings/skills"), { credentials: "include" }).then((r) =>
-      r.ok ? (r.json() as Promise<any[]>) : [],
-    ),
-  ]);
+async function fetchRegistry() {
+  const controller = new AbortController();
+  const timeout = globalThis.setTimeout(() => controller.abort(), 2000);
+
+  try {
+    const response = await fetch(runtimeApiUrl("/api/marketplace/registry"), {
+      signal: controller.signal,
+    });
+    return response.ok ? (response.json() as Promise<RegistryData>) : emptyRegistry;
+  } catch {
+    return emptyRegistry;
+  } finally {
+    globalThis.clearTimeout(timeout);
+  }
+}
+
+export async function loader() {
+  const registryRes = await fetchRegistry();
 
   const items = [...registryRes.actions, ...registryRes.skills];
   return {
     items,
-    installedActionIds: actions.map((a: any) => a.actionId),
-    installedSkillIds: skills.map((s: any) => s.skillId),
+    installedActionIds: [],
+    installedSkillIds: [],
   };
 }
 
@@ -44,6 +46,7 @@ export default function MarketplaceRoute() {
       items={items}
       installedActionIds={installedActionIds}
       installedSkillIds={installedSkillIds}
+      mode="public"
     />
   );
 }

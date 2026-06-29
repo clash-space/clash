@@ -20,7 +20,7 @@ interface AgentCardProps {
     status: 'working' | 'done' | 'waiting' | 'failed';
     children?: React.ReactNode;
     isExpanded?: boolean;
-    persona?: 'director' | 'scriptwriter' | 'videoproducer' | 'conceptartist' | 'storyboardartist' | 'default';
+    persona?: 'masterClash' | 'scriptwriter' | 'videoproducer' | 'conceptartist' | 'storyboardartist' | 'default';
     logs?: AgentLog[];
 }
 
@@ -42,7 +42,7 @@ export function AgentCard({ agentName, status, children, isExpanded: initialExpa
     // Differentiation through iconography keeps the panel calm; semantic
     // color is reserved for status (working/done/failed).
     const personaIcons: Record<NonNullable<AgentCardProps['persona']>, typeof Robot> = {
-        director: Crown,
+        masterClash: Crown,
         scriptwriter: Scroll,
         videoproducer: VideoCamera,
         conceptartist: MagicWand,

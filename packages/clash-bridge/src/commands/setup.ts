@@ -183,8 +183,8 @@ async function runSetupInner(opts: SetupOpts): Promise<void> {
   if (agents.length > 0) {
     log.ok(`agents detected  ${c.dim(agents.map((a) => a.id).join(", "))}`);
   } else {
-    log.warn("no ACP agents on PATH yet");
-    log.hint("install one, e.g. `npm i -g @zed-industries/claude-code-acp`");
+    log.warn("no local agents detected yet");
+    log.hint("Use Clash desktop Settings > Runtimes to install or enable an agent.");
   }
 
   if (opts.noService || currentPlatform() !== "darwin") {

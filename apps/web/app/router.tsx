@@ -18,6 +18,12 @@ function lazyRoute(importer: () => Promise<any>) {
   };
 }
 
+const devOnlyRoutes = import.meta.env.DEV
+  ? [
+      { path: "__canvas-perf", lazy: lazyRoute(() => import("./routes/__canvas-perf")) },
+    ]
+  : [];
+
 export const router = createBrowserRouter([
   {
     Component: AppLayout,
@@ -27,13 +33,20 @@ export const router = createBrowserRouter([
     children: [
       { index: true, lazy: lazyRoute(() => import("./routes/home")) },
       { path: "landing", lazy: lazyRoute(() => import("./routes/landing")) },
+      { path: "docs", lazy: lazyRoute(() => import("./routes/docs")) },
+      { path: "download", lazy: lazyRoute(() => import("./routes/download")) },
       { path: "login", lazy: lazyRoute(() => import("./routes/login")) },
       { path: "projects", lazy: lazyRoute(() => import("./routes/projects")) },
+      { path: "settings", lazy: lazyRoute(() => import("./routes/settings")) },
       {
         path: "projects/:id",
         lazy: lazyRoute(() => import("./routes/project.$id")),
       },
       { path: "billing", lazy: lazyRoute(() => import("./routes/billing")) },
+      {
+        path: "marketplace/manage",
+        lazy: lazyRoute(() => import("./routes/marketplace.manage")),
+      },
       {
         path: "marketplace",
         lazy: lazyRoute(() => import("./routes/marketplace")),
@@ -44,6 +57,8 @@ export const router = createBrowserRouter([
       },
       { path: "auth/cli", lazy: lazyRoute(() => import("./routes/auth.cli")) },
       { path: "connect-daemon", lazy: lazyRoute(() => import("./routes/connect-daemon")) },
+      { path: "__codex-copilot-preview", lazy: lazyRoute(() => import("./routes/__codex-copilot-preview")) },
+      ...devOnlyRoutes,
       { path: "terms", lazy: lazyRoute(() => import("./routes/terms")) },
       { path: "privacy", lazy: lazyRoute(() => import("./routes/privacy")) },
     ],

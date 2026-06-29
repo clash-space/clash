@@ -25,11 +25,11 @@ export interface TabPillProps {
   onClose?: () => void;
   unread?: boolean;
   pendingCount?: number;
-  /** Raw crew status string — mapped to dot color + a11y label internally. */
+  /** Raw agent status string — mapped to dot color + a11y label internally. */
   status?: string;
-  /** Avatar initials. Required for `kind === 'crew'`. */
+  /** Avatar initials. Required for `kind === 'agent'`. */
   initials?: string;
-  kind?: 'room' | 'crew';
+  kind?: 'room' | 'agent';
   /** id of the panel this tab controls — pairs with the panel's
    *  `aria-labelledby`. The parent generates and threads the same id. */
   controlsId?: string;
@@ -53,7 +53,7 @@ export const TabPill = forwardRef<HTMLButtonElement, TabPillProps>(function TabP
     pendingCount,
     status,
     initials,
-    kind = 'crew',
+    kind = 'agent',
     controlsId,
     tabId,
     onKeyDown,

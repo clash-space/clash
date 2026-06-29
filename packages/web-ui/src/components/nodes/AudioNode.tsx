@@ -396,7 +396,7 @@ const AudioNode = ({ data, selected, id }: NodeProps<Node<Record<string, any>>>)
                     style={{ top: '50%', left: '-8px' }}
                     className="!h-4 !w-4 !border-4 !border-warm-surface !bg-stone-400 transition-all hover:!bg-brand hover:scale-125 shadow-sm"
                 />
-                <SourceHandleMenu nodeId={id} />
+                <SourceHandleMenu nodeId={id} sourceType="audio" />
             </div>
 
             {typeof window !== 'undefined' && showModal && createPortal(modalContent, document.body)}

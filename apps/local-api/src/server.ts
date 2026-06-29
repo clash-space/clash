@@ -5,20 +5,29 @@ import { pathToFileURL } from "node:url";
 import { chmodSync, mkdirSync, writeFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { serve } from "@hono/node-server";
+import type { HostLaunchMode, HostStartedBy } from "@clash/shared-runtime";
 import { createLocalApiApp } from "./app.js";
+import {
+  createHostDiscoveryRecord,
+  removeHostDiscovery,
+  writeHostDiscovery,
+} from "./host-discovery.js";
 import { createMockExternalAigcService } from "./local-aigc.js";
+import { createDreaminaCliOAuthDriver } from "./dreamina-cli.js";
 import {
   attachLocalAcpSessions,
   createLocalAcpAdapter,
+  createLocalHarnessConfigStore,
   type SessionManagerLike,
   type SessionSender,
 } from "./local-acp.js";
 import { createMockFalQueueService } from "./fal-mock.js";
 import { createLocalWorkflowProcessor } from "./local-processor.js";
 import {
+  providerAccountsForRuntime,
   publicProviderAccounts,
   type LocalProviderAccountConfig,
-  type LocalVariableRecord,
+  type LocalProviderOAuthRecord,
 } from "./provider-accounts.js";
 import {
   attachLocalSync,
@@ -36,14 +45,21 @@ export interface LocalApiServerOptions {
   port: number;
   dataDir: string;
   remotePersistence?: RemoteLoroPersistenceSource | null;
+  discovery?: {
+    enabled?: boolean;
+    runDir?: string;
+    launchMode?: HostLaunchMode;
+    ownerClientId?: string;
+    startedBy?: HostStartedBy;
+  };
 }
 
 function shellQuote(value: string): string {
   return `'${value.replace(/'/g, "'\\''")}'`;
 }
 
-function resolveClashCliEntry(): string {
-  return require.resolve("@clash-space/cli");
+function resolveClashCliEntry(env: Record<string, string | undefined>): string {
+  return env.CLASH_CLI_ENTRY_PATH || require.resolve("@clash-space/cli");
 }
 
 export function createLocalAgentToolEnv({
@@ -60,6 +76,7 @@ export function createLocalAgentToolEnv({
 
   const apiKey = env.CLASH_API_KEY ?? "clsh_local_desktop";
   const apiUrl = env.CLASH_API_URL ?? apiBaseUrl;
+  const cliEntry = resolveClashCliEntry(env);
   const shim = join(binDir, "clash");
   writeFileSync(
     shim,
@@ -67,14 +84,17 @@ export function createLocalAgentToolEnv({
       "#!/bin/sh",
       `export CLASH_API_KEY=${shellQuote(apiKey)}`,
       `export CLASH_API_URL=${shellQuote(apiUrl)}`,
+      "export ELECTRON_RUN_AS_NODE=1",
+      `if [ -n "$CLASH_CLI_NODE_PATH" ]; then`,
+      `  export NODE_PATH="$CLASH_CLI_NODE_PATH${"${NODE_PATH:+:$NODE_PATH}"}"`,
+      "fi",
       `if [ -n "$CLASH_NODE_EXEC_PATH" ]; then`,
-      `  exec "$CLASH_NODE_EXEC_PATH" ${shellQuote(resolveClashCliEntry())} "$@"`,
+      `  exec "$CLASH_NODE_EXEC_PATH" ${shellQuote(cliEntry)} "$@"`,
       "fi",
       "if command -v node >/dev/null 2>&1; then",
-      `  exec node ${shellQuote(resolveClashCliEntry())} "$@"`,
+      `  exec node ${shellQuote(cliEntry)} "$@"`,
       "fi",
-      "export ELECTRON_RUN_AS_NODE=1",
-      `exec ${shellQuote(process.execPath)} ${shellQuote(resolveClashCliEntry())} "$@"`,
+      `exec ${shellQuote(process.execPath)} ${shellQuote(cliEntry)} "$@"`,
       "",
     ].join("\n"),
     "utf8",
@@ -85,6 +105,8 @@ export function createLocalAgentToolEnv({
     CLASH_API_KEY: apiKey,
     CLASH_API_URL: apiUrl,
     ...(env.CLASH_NODE_EXEC_PATH ? { CLASH_NODE_EXEC_PATH: env.CLASH_NODE_EXEC_PATH } : {}),
+    ...(env.CLASH_CLI_ENTRY_PATH ? { CLASH_CLI_ENTRY_PATH: env.CLASH_CLI_ENTRY_PATH } : {}),
+    ...(env.CLASH_CLI_NODE_PATH ? { CLASH_CLI_NODE_PATH: env.CLASH_CLI_NODE_PATH } : {}),
     PATH: [binDir, env.PATH].filter(Boolean).join(delimiter),
   };
 }
@@ -141,6 +163,11 @@ function createMockCanvasPatch(turnId: string, text: string) {
 }
 
 function createMockAcpSessionManager(send: SessionSender): SessionManagerLike {
+  const delayMs = Number(process.env.CLASH_E2E_STUB_ACP_DELAY_MS ?? "0");
+  const promptDelayMs = Number.isFinite(delayMs) && delayMs > 0 ? delayMs : 0;
+  const waitForPromptDelay = () =>
+    promptDelayMs > 0 ? new Promise<void>((resolve) => setTimeout(resolve, promptDelayMs)) : Promise.resolve();
+
   return {
     start: ({ session_id }) => {
       send({
@@ -149,7 +176,80 @@ function createMockAcpSessionManager(send: SessionSender): SessionManagerLike {
         acp_session_id: "mock-acp-session",
       });
     },
-    prompt: ({ session_id, turn_id, text }) => {
+    prompt: async ({ session_id, turn_id, text }) => {
+      if (promptDelayMs > 0) {
+        send({
+          type: "session.event",
+          session_id,
+          turn_id,
+          event: {
+            sessionUpdate: "agent_thought_chunk",
+            content: { type: "text", text: "Preparing mock response." },
+          },
+        });
+      }
+      await waitForPromptDelay();
+      if (text.includes("列出画布上的节点")) {
+        send({
+          type: "session.event",
+          session_id,
+          turn_id,
+          event: {
+            sessionUpdate: "agent_thought_chunk",
+            content: { type: "text", text: "先读取当前画布结构。" },
+          },
+        });
+        send({
+          type: "session.event",
+          session_id,
+          turn_id,
+          event: {
+            sessionUpdate: "tool_call",
+            toolCallId: `tool-list-canvas-${turn_id}`,
+            title: "List canvas nodes",
+            kind: "list",
+            status: "in_progress",
+            rawInput: { query: "canvas.nodes", projectId: "mock-project" },
+          },
+        });
+        send({
+          type: "session.event",
+          session_id,
+          turn_id,
+          event: {
+            sessionUpdate: "tool_call_update",
+            toolCallId: `tool-list-canvas-${turn_id}`,
+            title: "List canvas nodes",
+            kind: "list",
+            status: "completed",
+            rawOutput: [
+              { id: "dianmwa7", type: "action-badge", label: "Image Prompt" },
+              { id: "lrcleamx", type: "image", label: "生成类似的" },
+              { id: "upload-1781414847642-oq6cbcl", type: "image", label: "258251d8857f30efff6b9b7085302bf5.JPG" },
+            ],
+          },
+        });
+        send({
+          type: "session.event",
+          session_id,
+          turn_id,
+          event: {
+            sessionUpdate: "agent_message_chunk",
+            content: {
+              type: "text",
+              text: [
+                "画布上当前有 3 个节点：",
+                "",
+                "- `dianmwa7` — action-badge，标签是 **Image Prompt**，动作 `image-gen`。",
+                "- `lrcleamx` — image，状态 **completed**，标签是 **生成类似的**。",
+                "- `upload-1781414847642-oq6cbcl` — image，文件名是 `258251d8857f30efff6b9b7085302bf5.JPG`。",
+              ].join("\n"),
+            },
+          },
+        });
+        send({ type: "session.complete", session_id, turn_id });
+        return;
+      }
       send({
         type: "session.event",
         session_id,
@@ -175,7 +275,7 @@ export function createConfiguredLocalAcpAdapter(
   env: Record<string, string | undefined> = process.env,
   options: { apiBaseUrl?: string } = {},
 ) {
-  if (env.CLASH_LOCAL_ACP_MOCK === "1") {
+  if (env.CLASH_E2E_STUB_ACP === "1") {
     return createLocalAcpAdapter({
       detectAgents: async () => [
         {
@@ -190,84 +290,48 @@ export function createConfiguredLocalAcpAdapter(
       osTag: () => "mock/e2e",
     });
   }
+  const localDataDir = env.CLASH_LOCAL_DATA_DIR ?? dataDir;
+  const harnessDownloadDir = join(localDataDir, "acp-bin");
+  const acpBinDir = [env.CLASH_ACP_TEST_BIN_DIR, harnessDownloadDir].filter(Boolean).join(delimiter);
   return createLocalAcpAdapter({
-    spawnEnv: createLocalAgentToolEnv({
-      dataDir: env.CLASH_LOCAL_DATA_DIR ?? dataDir,
-      apiBaseUrl: options.apiBaseUrl ?? env.CLASH_API_URL ?? `http://127.0.0.1:${port}`,
-      env,
-    }),
+    harnessConfig: createLocalHarnessConfigStore(localDataDir),
+    harnessDownloadDir,
+    probeCwd: join(localDataDir, "acp-probe"),
+    spawnEnv: {
+      ...createLocalAgentToolEnv({
+        dataDir: localDataDir,
+        apiBaseUrl: options.apiBaseUrl ?? env.CLASH_API_URL ?? `http://127.0.0.1:${port}`,
+        env,
+      }),
+      CLASH_ACP_BIN_DIR: acpBinDir,
+    },
   });
-}
-
-const LOCAL_PROVIDER_VARIABLE_KEYS = [
-  "FAL_API_KEY",
-  "OPENAI_API_KEY",
-  "GOOGLE_API_KEY",
-  "GOOGLE_VERTEX",
-  "REPLICATE_API_TOKEN",
-  "KIE_API_KEY",
-  "OFFICIAL_API_KEY",
-  "ANTHROPIC_API_KEY",
-  "ELEVENLABS_API_KEY",
-];
-
-async function loadLocalVariables(
-  dataDir: string,
-  userId = "local-user",
-  env: Record<string, string | undefined> = process.env,
-): Promise<Record<string, string>> {
-  const variables: Record<string, string> = {};
-  for (const key of LOCAL_PROVIDER_VARIABLE_KEYS) {
-    const value = env[key]?.trim();
-    if (value) variables[key] = value;
-  }
-  try {
-    const db = JSON.parse(await readFile(join(dataDir, "db.json"), "utf8")) as {
-      variables?: Array<{ userId?: string; key?: string; value?: string }>;
-    };
-    for (const variable of db.variables ?? []) {
-      if (variable.userId !== userId) continue;
-      if (typeof variable.key !== "string" || typeof variable.value !== "string") continue;
-      if (variable.value.trim()) variables[variable.key] = variable.value;
-    }
-    return variables;
-  } catch {
-    return variables;
-  }
 }
 
 async function loadLocalProviderAccounts(
   dataDir: string,
   userId = "local-user",
-  env: Record<string, string | undefined> = process.env,
 ) {
-  const variables: LocalVariableRecord[] = [];
-  for (const key of LOCAL_PROVIDER_VARIABLE_KEYS) {
-    const value = env[key]?.trim();
-    if (value) variables.push({ userId, key, value });
-  }
   let providerAccounts: LocalProviderAccountConfig[] = [];
+  let providerOAuth: LocalProviderOAuthRecord[] = [];
   try {
     const db = JSON.parse(await readFile(join(dataDir, "db.json"), "utf8")) as {
-      variables?: LocalVariableRecord[];
       providerAccounts?: LocalProviderAccountConfig[];
+      providerOAuth?: LocalProviderOAuthRecord[];
     };
-    for (const variable of db.variables ?? []) {
-      if (variable.userId !== userId) continue;
-      if (typeof variable.key !== "string" || typeof variable.value !== "string") continue;
-      if (variable.value.trim()) variables.push(variable);
-    }
     providerAccounts = (db.providerAccounts ?? []).filter((account) => account.userId === userId);
+    providerOAuth = (db.providerOAuth ?? []).filter((record) => record.userId === userId);
   } catch {
-    // Missing local DB should not prevent env-only provider account discovery.
+    // Missing local DB means no configured local provider accounts.
   }
-  return publicProviderAccounts(providerAccounts, variables, userId);
+  return providerAccountsForRuntime(providerAccounts, userId, providerOAuth);
 }
 
 export function startLocalApiServer(options: LocalApiServerOptions) {
   const localAcp = createConfiguredLocalAcpAdapter(process.env, {
     apiBaseUrl: `http://127.0.0.1:${options.port}`,
   });
+  void Promise.resolve(localAcp.warmup?.()).catch(() => undefined);
   const falMock = createMockFalQueueService();
   const syncConfig = createLocalSyncConfigStore({
     dataDir: options.dataDir,
@@ -278,15 +342,40 @@ export function startLocalApiServer(options: LocalApiServerOptions) {
     localAcp,
     falMock,
     syncConfig,
+    providerOAuth: {
+      dreamina: createDreaminaCliOAuthDriver(),
+    },
   });
   const workflowProcessor = createLocalWorkflowProcessor({
     dataDir: options.dataDir,
+    textAgent: localAcp.runTextTask
+      ? {
+          generate: async (input) => {
+            const result = await localAcp.runTextTask!({
+              projectId: input.projectId,
+              prompt: input.prompt,
+              ...(input.actorAgentId ? { agentId: input.actorAgentId } : {}),
+              modelId: typeof input.modelParams?.acp_model === "string" && input.modelParams.acp_model.trim()
+                ? input.modelParams.acp_model.trim()
+                : undefined,
+              systemPrompt: typeof input.modelParams?.system_prompt === "string"
+                ? input.modelParams.system_prompt
+                : undefined,
+            });
+            return {
+              text: result.text,
+              provider: "local-acp",
+              modelEndpoint: result.agentId ?? "default-agent",
+            };
+          },
+        }
+      : undefined,
     aigc: createMockExternalAigcService({
       fal: falMock,
       origin: `http://127.0.0.1:${options.port}`,
-      variables: () => loadLocalVariables(options.dataDir),
       providerAccounts: () => loadLocalProviderAccounts(options.dataDir),
       openAiBaseUrl: process.env.OPENAI_BASE_URL,
+      anthropicBaseUrl: process.env.ANTHROPIC_BASE_URL,
       falQueueBaseUrl: process.env.CLASH_FAL_QUEUE_URL,
     }),
   });
@@ -300,6 +389,7 @@ export function startLocalApiServer(options: LocalApiServerOptions) {
     resolveListening = resolve;
     rejectListening = reject;
   });
+  let discoveryHostId: string | undefined;
   const server = serve({ fetch: app.fetch, hostname: "127.0.0.1", port: options.port }, (info) => {
     settled = true;
     console.log(`[local-api] listening on http://127.0.0.1:${info.port}`);
@@ -309,8 +399,17 @@ export function startLocalApiServer(options: LocalApiServerOptions) {
         console.log(`[local-api] remote Loro persistence: enabled (${config.remote_loro.source})`);
       }
     });
-    resolveListening(server);
+    void (async () => {
+      if (options.discovery?.enabled !== false) {
+        discoveryHostId = await writeServerDiscoveryRecord(info.port, options);
+      }
+      resolveListening(server);
+    })().catch((error) => {
+      server.close();
+      rejectListening(error);
+    });
   });
+  wrapServerCloseWithDiscoveryCleanup(server, () => discoveryHostId, options.discovery?.runDir);
   server.once("error", (error) => {
     if (settled) {
       console.error("[local-api] server error", error);
@@ -321,6 +420,40 @@ export function startLocalApiServer(options: LocalApiServerOptions) {
   attachLocalSync(server, { dataDir: options.dataDir, remotePersistence, workflowProcessor });
   attachLocalAcpSessions(server, localAcp);
   return listening;
+}
+
+async function writeServerDiscoveryRecord(
+  actualPort: number,
+  options: LocalApiServerOptions,
+): Promise<string> {
+  const record = createHostDiscoveryRecord({
+    endpoint: `http://127.0.0.1:${actualPort}`,
+    launchMode: options.discovery?.launchMode ?? "cli-once",
+    startedBy: options.discovery?.startedBy ?? "cli",
+    ownerClientId: options.discovery?.ownerClientId,
+  });
+  await writeHostDiscovery(record, { runDir: options.discovery?.runDir });
+  return record.hostId;
+}
+
+function wrapServerCloseWithDiscoveryCleanup(
+  server: ReturnType<typeof serve>,
+  getHostId: () => string | undefined,
+  runDir: string | undefined,
+): void {
+  const originalClose = server.close.bind(server);
+  server.close = ((callback?: (error?: Error) => void) => {
+    return originalClose((error?: Error) => {
+      const hostId = getHostId();
+      if (!hostId) {
+        callback?.(error);
+        return;
+      }
+      void removeHostDiscovery(hostId, { runDir })
+        .catch(() => undefined)
+        .finally(() => callback?.(error));
+    });
+  }) as typeof server.close;
 }
 
 const directRunUrl = process.argv[1] ? pathToFileURL(process.argv[1]).href : "";

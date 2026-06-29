@@ -3,8 +3,8 @@ import {
   type ModelKind,
   type ModelUpstreamRoute,
   type ProviderAccountAvailability,
-  type UpstreamAvailability,
 } from "@clash/shared-types";
+import { generateTextCompletion } from "@clash/shared-runtime";
 
 import {
   createMockFalQueueService,
@@ -14,6 +14,7 @@ import {
   type FalMockResult,
   type FalVideoResult,
 } from "./fal-mock.js";
+import { generateDreaminaCliVideoMedia, type DreaminaCliRun } from "./dreamina-cli.js";
 
 export interface MockMediaGenerationInput {
   taskId: string;
@@ -38,30 +39,36 @@ export interface MockMediaGenerationResult {
   remoteUrl?: string;
 }
 
+export interface MockTextGenerationResult {
+  text: string;
+  provider?: string;
+  modelEndpoint?: string;
+}
+
 export interface ExternalAigcService {
   generateImage(input: MockMediaGenerationInput): Promise<MockMediaGenerationResult>;
   generateVideo(input: MockMediaGenerationInput): Promise<MockMediaGenerationResult>;
   generateAudio(input: MockMediaGenerationInput): Promise<MockMediaGenerationResult>;
+  generateText(input: MockMediaGenerationInput): Promise<MockTextGenerationResult>;
 }
 
 export interface MockFalExternalAigcServiceOptions {
   fal?: FalMockQueueService;
   origin?: string;
-  variables?: () => Promise<Record<string, string | undefined>>;
-  providerAccounts?: () => Promise<ProviderAccountAvailability[]>;
+  providerAccounts?: () => Promise<RuntimeProviderAccountAvailability[]>;
   fetch?: typeof fetch;
   openAiBaseUrl?: string;
+  anthropicBaseUrl?: string;
   falQueueBaseUrl?: string;
   googleAiStudioBaseUrl?: string;
   kieBaseUrl?: string;
   replicateBaseUrl?: string;
+  dreaminaRun?: DreaminaCliRun;
 }
 
-const LOCAL_UPSTREAM_ORDER: UpstreamAvailability["upstreamId"][] = [
-  "openai",
-  "fal",
-  "mock",
-];
+type RuntimeProviderAccountAvailability = ProviderAccountAvailability & {
+  credentials?: Record<string, string>;
+};
 
 function resolveMockFalModelId(model: string, kind: ModelKind, fallback: string): string {
   const route = resolveModelUpstreamRoute({
@@ -73,26 +80,10 @@ function resolveMockFalModelId(model: string, kind: ModelKind, fallback: string)
   return route?.upstreamModel ?? fallback;
 }
 
-function availableVariableKeys(variables: Record<string, string | undefined>): string[] {
-  return Object.entries(variables)
-    .filter(([, value]) => typeof value === "string" && value.trim().length > 0)
-    .map(([key]) => key);
-}
-
-function configuredUpstreamsForVariables(variables: Record<string, string | undefined>): UpstreamAvailability[] {
-  const availableVariables = availableVariableKeys(variables);
-  return LOCAL_UPSTREAM_ORDER.map((upstreamId) => ({
-    upstreamId,
-    enabled: true,
-    availableVariables,
-  }));
-}
-
 function resolveLocalRoute(
   model: string,
   kind: ModelKind,
-  variables: Record<string, string | undefined>,
-  providerAccounts?: ProviderAccountAvailability[],
+  providerAccounts?: RuntimeProviderAccountAvailability[],
 ): ModelUpstreamRoute | null {
   if (providerAccounts) {
     return resolveModelUpstreamRoute({
@@ -109,7 +100,7 @@ function resolveLocalRoute(
     modelCode: model,
     kind,
     allowMock: true,
-    configuredUpstreams: configuredUpstreamsForVariables(variables),
+    configuredUpstreams: [{ upstreamId: "mock", enabled: true }],
   });
 }
 
@@ -686,22 +677,61 @@ export function createMockExternalAigcService(
 ): ExternalAigcService {
   const fal = options.fal ?? createMockFalQueueService();
   const fetchImpl = options.fetch ?? fetch;
-  const loadVariables: () => Promise<Record<string, string | undefined>> =
-    options.variables ?? (async () => ({}));
   const loadProviderAccounts = options.providerAccounts;
+
+  const providerIdForRoute = (route: ModelUpstreamRoute) => {
+    if (route.providerId) return route.providerId;
+    if (route.upstreamId === "openai" || route.upstreamId === "google" || route.upstreamId === "anthropic") return "official";
+    return route.upstreamId;
+  };
+
+  const accountForRoute = (
+    route: ModelUpstreamRoute,
+    accounts: RuntimeProviderAccountAvailability[] | undefined,
+  ) => {
+    const candidates = (accounts ?? [])
+      .map((account, index) => ({ account, index }))
+      .filter(({ account }) =>
+        account.providerId === providerIdForRoute(route) &&
+        (!account.upstreamId || account.upstreamId === route.upstreamId) &&
+        (!account.region || !route.region || account.region === route.region)
+      )
+      .sort((a, b) => {
+        const priority = (a.account.priority ?? 1000) - (b.account.priority ?? 1000);
+        if (priority !== 0) return priority;
+        const weight = (b.account.weight ?? 0) - (a.account.weight ?? 0);
+        if (weight !== 0) return weight;
+        return a.index - b.index;
+      });
+
+    const hasRequiredCredentials = (account: RuntimeProviderAccountAvailability) =>
+      (route.requiredCredentials ?? []).every((key) => account.credentials?.[key]?.trim());
+    const hasRequiredOAuth = (account: RuntimeProviderAccountAvailability) =>
+      (route.requiredOAuth ?? []).every((provider) => account.availableOAuth?.includes(provider));
+    return candidates.find(({ account }) =>
+      account.enabled !== false &&
+      hasRequiredCredentials(account) &&
+      hasRequiredOAuth(account)
+    )?.account ?? candidates.find(({ account }) => account.enabled !== false)?.account ?? candidates[0]?.account;
+  };
+
+  const credential = (
+    route: ModelUpstreamRoute,
+    accounts: RuntimeProviderAccountAvailability[] | undefined,
+    key: string,
+  ) => accountForRoute(route, accounts)?.credentials?.[key]?.trim();
 
   async function generateWithRoute(
     input: MockMediaGenerationInput,
     kind: ModelKind,
     fallback: () => Promise<MockMediaGenerationResult>,
   ): Promise<MockMediaGenerationResult> {
-    const variables = await loadVariables();
     const providerAccounts = loadProviderAccounts ? await loadProviderAccounts() : undefined;
-    const route = resolveLocalRoute(input.model, kind, variables, providerAccounts);
+    const route = resolveLocalRoute(input.model, kind, providerAccounts);
     if (!route || route.upstreamId === "mock") return fallback();
 
     if (route.apiShape === "openai-images") {
-      const apiKey = variables.OPENAI_API_KEY?.trim();
+      const apiKey = credential(route, providerAccounts, "apiKey");
       if (!apiKey) return fallback();
       return generateOpenAiImage(input, route, {
         fetch: fetchImpl,
@@ -709,8 +739,52 @@ export function createMockExternalAigcService(
       }, apiKey);
     }
 
+    if (route.apiShape === "openai-compatible") {
+      const apiKey = credential(route, providerAccounts, "apiKey");
+      if (!apiKey) return fallback();
+      const model = stringParam(input.modelParams, "model_name") || route.upstreamModel;
+      const result = await generateTextCompletion({
+        provider: "openai-compatible",
+        apiKey,
+        baseUrl: credential(route, providerAccounts, "baseUrl") || options.openAiBaseUrl,
+        model,
+        systemPrompt: stringParam(input.modelParams, "system_prompt"),
+        messages: [{ role: "user", content: input.prompt }],
+        fetch: fetchImpl,
+      });
+      return {
+        bytes: new TextEncoder().encode(result.text),
+        contentType: "text/plain; charset=utf-8",
+        requestId: input.taskId,
+        provider: "openai-compatible",
+        modelEndpoint: result.model,
+      };
+    }
+
+    if (route.apiShape === "anthropic-compatible") {
+      const apiKey = credential(route, providerAccounts, "apiKey");
+      if (!apiKey) return fallback();
+      const model = stringParam(input.modelParams, "model_name") || route.upstreamModel;
+      const result = await generateTextCompletion({
+        provider: "anthropic-compatible",
+        apiKey,
+        baseUrl: credential(route, providerAccounts, "baseUrl") || options.anthropicBaseUrl,
+        model,
+        systemPrompt: stringParam(input.modelParams, "system_prompt"),
+        messages: [{ role: "user", content: input.prompt }],
+        fetch: fetchImpl,
+      });
+      return {
+        bytes: new TextEncoder().encode(result.text),
+        contentType: "text/plain; charset=utf-8",
+        requestId: input.taskId,
+        provider: "anthropic-compatible",
+        modelEndpoint: result.model,
+      };
+    }
+
     if (route.apiShape === "google-ai-studio") {
-      const apiKey = variables.GOOGLE_API_KEY?.trim();
+      const apiKey = credential(route, providerAccounts, "apiKey");
       if (!apiKey) return fallback();
       return generateGoogleAiStudioMedia(input, kind, route, {
         fetch: fetchImpl,
@@ -719,7 +793,7 @@ export function createMockExternalAigcService(
     }
 
     if (route.apiShape === "fal") {
-      const apiKey = variables.FAL_API_KEY?.trim();
+      const apiKey = credential(route, providerAccounts, "apiKey");
       if (!apiKey) return fallback();
       return generateFalMedia(input, kind, route, {
         fetch: fetchImpl,
@@ -728,7 +802,7 @@ export function createMockExternalAigcService(
     }
 
     if (route.apiShape === "kie") {
-      const apiKey = variables.KIE_API_KEY?.trim();
+      const apiKey = credential(route, providerAccounts, "apiKey");
       if (!apiKey) return fallback();
       return generateKieMedia(input, kind, route, {
         fetch: fetchImpl,
@@ -737,12 +811,30 @@ export function createMockExternalAigcService(
     }
 
     if (route.apiShape === "replicate") {
-      const apiKey = variables.REPLICATE_API_TOKEN?.trim();
+      const apiKey = credential(route, providerAccounts, "apiKey");
       if (!apiKey) return fallback();
       return generateReplicateMedia(input, kind, route, {
         fetch: fetchImpl,
         replicateBaseUrl: options.replicateBaseUrl,
       }, apiKey);
+    }
+
+    if (route.apiShape === "dreamina-cli" && kind === "video") {
+      const result = await generateDreaminaCliVideoMedia({
+        prompt: input.prompt,
+        modelName: input.model,
+        upstreamModel: route.upstreamModel,
+        duration: input.duration,
+        aspectRatio: input.aspectRatio,
+        run: options.dreaminaRun,
+      });
+      return {
+        bytes: result.bytes,
+        contentType: result.contentType,
+        requestId: result.taskId,
+        provider: "dreamina-cli",
+        modelEndpoint: result.model,
+      };
     }
 
     throw missingAdapter(route);
@@ -824,6 +916,21 @@ export function createMockExternalAigcService(
           remoteUrl: result.audio.url,
         };
       });
+    },
+
+    async generateText(input) {
+      const result = await generateWithRoute(input, "text", async () => ({
+        bytes: new TextEncoder().encode(`Generated text (${input.model})\n\n${input.prompt || "Mock text"}`),
+        contentType: "text/plain; charset=utf-8",
+        requestId: input.taskId,
+        provider: "mock",
+        modelEndpoint: input.model || "mock-text",
+      }));
+      return {
+        text: new TextDecoder().decode(result.bytes),
+        provider: result.provider,
+        modelEndpoint: result.modelEndpoint,
+      };
     },
   };
 }

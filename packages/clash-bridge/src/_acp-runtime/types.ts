@@ -23,6 +23,24 @@
  * a host can ship a Spawner without pulling in the ACP protocol layer.
  */
 
+import type {
+  ContentBlock,
+  PromptResponse,
+  PromptCapabilities,
+  RequestPermissionRequest,
+  SessionConfigOption,
+  SessionModeState,
+  SessionUpdate,
+} from "@agentclientprotocol/sdk";
+
+export type AcpSessionEvent =
+  | SessionUpdate
+  | { type: "requestPermission"; params: RequestPermissionRequest }
+  | { type: "promptComplete"; response: PromptResponse }
+  | { type: "promptError"; error: string };
+
+export type AcpPromptInput = string | ContentBlock[];
+
 /**
  * Where to find the agent binary and how to invoke it.
  *
@@ -37,6 +55,8 @@ export interface AgentSpec {
   env?: Record<string, string>;
   /** Working directory. Defaults to the spawner's cwd if omitted. */
   cwd?: string;
+  /** Structured diagnostic tap for host UIs. Never participates in ACP JSON-RPC. */
+  onDiagnosticLine?: (line: string) => void;
 }
 
 /**
@@ -122,13 +142,19 @@ export interface SessionOptions {
    */
   perTurnTimeoutMs?: number;
   /**
-   * If set, init() calls ACP `session/load` with this id instead of
-   * `session/new`. Powers cross-process resume — the agent re-hydrates
-   * a previous conversation from its on-disk transcript.
+   * Hard cap on initialize/auth/session creation. 0 disables. Default: 2 min.
+   */
+  initTimeoutMs?: number;
+  /**
+   * If set, init() reconnects to an existing ACP session instead of
+   * `session/new`. The runtime prefers ACP `session/resume`, which does not
+   * replay old messages. When only `session/load` exists, the runtime uses it
+   * only as a compatibility path and suppresses transcript replay because
+   * Clash owns local transcript persistence.
    *
-   * Agents that don't support `session/load` (capability check at init
-   * fails) fall back to a fresh `session/new` and the caller is expected
-   * to surface the loss of history.
+   * Agents that support neither capability fall back to a fresh `session/new`.
+   * The caller can still show the persisted Clash transcript, but agent-side
+   * context is not restored.
    */
   resumeAcpSessionId?: string;
 }
@@ -144,10 +170,22 @@ export interface SessionOptions {
 export interface AcpSession {
   /** Stable identifier for logging / pairing / multiplex routing. */
   readonly id: string;
-  /** The ACP-side session id (returned by `session/new` or echoed by `session/load`). */
+  /** The ACP-side session id (returned by `session/new` or reattached by resume/load). */
   readonly acpSessionId: string;
   /** Read-only snapshot of how this session was started. */
   readonly options: SessionOptions;
+  /** Last ACP session configuration snapshot returned by the agent. */
+  readonly configOptions: SessionConfigOption[];
+  /** Last ACP session mode snapshot returned by the agent. */
+  readonly modes: SessionModeState | undefined;
+  /** Prompt content types advertised by the agent during initialize. */
+  readonly promptCapabilities: PromptCapabilities | undefined;
+  /**
+   * Transcript-like events replayed during ACP `session/load`. These are not
+   * part of the live prompt stream. Hosts may import them into their own
+   * transcript store when local history is missing.
+   */
+  readonly loadedReplayEvents: AcpSessionEvent[];
 
   /**
    * Send one user prompt and stream back ACP events until the agent
@@ -155,7 +193,20 @@ export interface AcpSession {
    * value is a raw ACP notification — caller is expected to handle the
    * protocol. For typed handlers, layer on top.
    */
-  prompt(text: string, opts?: { abortSignal?: AbortSignal }): AsyncIterable<unknown>;
+  prompt(input: AcpPromptInput, opts?: { abortSignal?: AbortSignal }): AsyncIterable<AcpSessionEvent>;
+
+  /**
+   * Apply an ACP-native session configuration value. Hosts should use
+   * this for model, thought level, mode, and any future agent-provided
+   * config instead of inventing per-harness request params.
+   */
+  setConfigOption(configId: string, value: string | boolean): Promise<SessionConfigOption[]>;
+
+  /**
+   * Apply an ACP-native session mode. This is intentionally separate from
+   * config options because ACP exposes modes as a first-class session feature.
+   */
+  setMode(modeId: string): Promise<SessionModeState | undefined>;
 
   /**
    * Apply a tool result that was requested by the agent. Use when the

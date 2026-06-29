@@ -33,7 +33,7 @@ function buildPlist(opts: InstallOptions): string {
   const userPath = (process.env.PATH ?? "").split(":").filter(Boolean);
   const baseline = ["/opt/homebrew/bin", "/usr/local/bin", "/usr/bin", "/bin"];
   const merged = Array.from(new Set([...userPath, ...baseline]));
-  // Also forward HOME explicitly — some tools (claude-code-acp) read
+  // Also forward HOME explicitly — some tools (claude-agent-acp) read
   // ~/.claude/credentials based on HOME, which launchd already sets,
   // but being explicit doesn't hurt and helps when the daemon is
   // launched manually for testing.

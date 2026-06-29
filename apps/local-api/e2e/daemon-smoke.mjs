@@ -22,18 +22,26 @@ function assert(condition, message, details) {
   }
 }
 
+function requestBodyText(request) {
+  return JSON.stringify(request?.body ?? {});
+}
+
 async function findFreePort(start) {
+  const failures = [];
   for (let port = start; port < start + 100; port += 1) {
     const ok = await new Promise((resolve) => {
       const server = net.createServer();
-      server.once("error", () => resolve(false));
+      server.once("error", (error) => {
+        failures.push(`${port}:${error.code ?? error.message}`);
+        resolve(false);
+      });
       server.listen(port, "127.0.0.1", () => {
         server.close(() => resolve(true));
       });
     });
     if (ok) return port;
   }
-  throw new Error(`No free port found from ${start}`);
+  throw new Error(`No free port found from ${start}. Last bind errors: ${failures.slice(-5).join(", ")}`);
 }
 
 async function readRequestBody(req) {
@@ -119,6 +127,108 @@ async function startMockOpenAiImages() {
   };
 }
 
+async function startMockCodexResponses() {
+  const port = await findFreePort(49680);
+  const requests = [];
+
+  function responseEvent(event, data) {
+    return `event: ${event}\ndata: ${JSON.stringify({ type: event, ...data })}\n\n`;
+  }
+
+  const server = createServer(async (req, res) => {
+    const url = new URL(req.url ?? "/", `http://127.0.0.1:${port}`);
+    if (url.pathname === "/v1/models" && req.method === "GET") {
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(JSON.stringify({
+        object: "list",
+        data: [
+          { id: "gpt-5.5", object: "model", created: 0, owned_by: "stub" },
+          { id: "gpt-5.4-mini", object: "model", created: 0, owned_by: "stub" },
+        ],
+      }));
+      return;
+    }
+    if (url.pathname === "/v1/responses" && req.method === "POST") {
+      const raw = await readRequestBody(req);
+      const body = raw.byteLength ? JSON.parse(raw.toString("utf8")) : {};
+      requests.push({
+        method: "POST",
+        path: url.pathname,
+        authorization: req.headers.authorization ?? "",
+        accept: req.headers.accept ?? "",
+        body,
+      });
+
+      const response = {
+        id: "resp_daemon_stub_1",
+        object: "response",
+        created_at: Math.floor(Date.now() / 1000),
+        status: "completed",
+        model: body.model || "gpt-5.5",
+        output: [
+          {
+            id: "msg_daemon_stub_1",
+            type: "message",
+            status: "completed",
+            role: "assistant",
+            content: [{ type: "output_text", annotations: [], text: "stub ok" }],
+          },
+        ],
+        usage: {
+          input_tokens: 1,
+          input_tokens_details: { cached_tokens: 0 },
+          output_tokens: 2,
+          output_tokens_details: { reasoning_tokens: 0 },
+          total_tokens: 3,
+        },
+      };
+      const item = response.output[0];
+      const part = item.content[0];
+      res.writeHead(200, {
+        "content-type": "text/event-stream",
+        "cache-control": "no-cache",
+        connection: "keep-alive",
+      });
+      res.write(responseEvent("response.created", { response: { ...response, status: "in_progress", output: [] } }));
+      res.write(responseEvent("response.in_progress", { response: { ...response, status: "in_progress", output: [] } }));
+      res.write(responseEvent("response.output_item.added", { output_index: 0, item: { ...item, content: [] } }));
+      res.write(responseEvent("response.content_part.added", { output_index: 0, content_index: 0, part: { ...part, text: "" } }));
+      res.write(responseEvent("response.output_text.delta", {
+        output_index: 0,
+        content_index: 0,
+        item_id: item.id,
+        delta: "stub ok",
+      }));
+      res.write(responseEvent("response.output_text.done", {
+        output_index: 0,
+        content_index: 0,
+        item_id: item.id,
+        text: "stub ok",
+      }));
+      res.write(responseEvent("response.content_part.done", {
+        output_index: 0,
+        content_index: 0,
+        part,
+      }));
+      res.write(responseEvent("response.output_item.done", { output_index: 0, item }));
+      res.write(responseEvent("response.completed", { response }));
+      res.end();
+      return;
+    }
+    res.writeHead(404, { "content-type": "application/json" });
+    res.end(JSON.stringify({ error: "not found" }));
+  });
+  await new Promise((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(port, "127.0.0.1", resolve);
+  });
+  return {
+    url: `http://127.0.0.1:${port}`,
+    requests,
+    close: () => new Promise((resolve) => server.close(resolve)),
+  };
+}
+
 async function waitForValue(fn, label, timeoutMs = 12000) {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
@@ -145,7 +255,7 @@ async function exerciseLocalSession(origin) {
   const created = await jsonFetch(`${origin}/api/v1/runtimes/desktop-local/sessions`, {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ crew_id: "director", project_id: "daemon-e2e-project", agent_id: "mock-acp" }),
+    body: JSON.stringify({ agent_template_id: "master-clash", project_id: "daemon-e2e-project", agent_id: "mock-acp" }),
   });
   assert(created.session_id, "local ACP session is created", created);
 
@@ -183,14 +293,17 @@ async function exerciseLocalSession(origin) {
     events,
   );
 
-  const history = await jsonFetch(`${origin}/api/v1/local-sessions/${encodeURIComponent(created.session_id)}/messages`);
-  assert(
-    history.messages?.some((message) =>
-      message.sender_kind === "crew" &&
-      message.events?.some((event) => event.type === "text" && event.text === "Mock ACP reply: hello daemon helper")
-    ),
+  await waitForValue(
+    async () => {
+      const history = await jsonFetch(`${origin}/api/v1/local-sessions/${encodeURIComponent(created.session_id)}/messages`);
+      return history.messages?.some((message) =>
+        message.sender_kind === "agent" &&
+        message.events?.some((event) => event.type === "text" && event.text === "Mock ACP reply: hello daemon helper")
+      )
+        ? history
+        : null;
+    },
     "local session history persists mock ACP reply",
-    history,
   );
   return { sessionId: created.session_id, events: events.map((event) => event.type) };
 }
@@ -368,7 +481,7 @@ async function exerciseAgentCliShim(origin, createLocalAgentToolEnv) {
 
   const agentEnv = {
     ...env,
-    CLASH_CREW_MEMBER_ID: "local-director",
+    CLASH_AGENT_MEMBER_ID: "local-master-clash",
     CLASH_PROJECT_ID: created.id,
   };
 
@@ -392,7 +505,7 @@ async function exerciseAgentCliShim(origin, createLocalAgentToolEnv) {
         msg.clients?.some((client) =>
           client.clientType === "agent" &&
           client.userId === "local-user" &&
-          client.name === "local-director"
+          client.name === "local-master-clash"
         )
       ),
       "agent CLI presence as local user surrogate",
@@ -409,7 +522,7 @@ async function exerciseAgentCliShim(origin, createLocalAgentToolEnv) {
     assert(node, "agent CLI canvas list can read the node it created", { added, listed });
     assert(node.data?.actorType === "agent", "agent CLI-created node is attributed to an agent", node);
     assert(node.data?.actorUserId === "local-user", "CLI-created node resolves the local user id", node);
-    assert(node.data?.actorAgentId === "local-director", "agent CLI-created node keeps the crew member id", node);
+    assert(node.data?.actorAgentId === "local-master-clash", "agent CLI-created node keeps the agent member id", node);
     return {
       projectId: created.id,
       nodeId: added.node_id,
@@ -606,7 +719,7 @@ async function exerciseOpenAiProviderGeneration(origin, mockOpenAi) {
 
 async function writeFakeCodexAcp(binDir) {
   await mkdir(binDir, { recursive: true });
-  const wrapper = path.join(binDir, "codex");
+  const wrapper = path.join(binDir, "codex-acp");
   const agent = path.join(binDir, "fake-codex-acp.mjs");
   await writeFile(
     wrapper,
@@ -629,12 +742,8 @@ async function writeFakeCodexAcp(binDir) {
       "",
       "const argv = process.argv.slice(2);",
       "if (argv.includes('--help')) {",
-      "  console.log('Usage: codex [OPTIONS] [PROMPT]\\n  --acp');",
+      "  console.log('Usage: codex-acp [OPTIONS]');",
       "  process.exit(0);",
-      "}",
-      "if (!argv.includes('--acp')) {",
-      "  console.error('fake codex only supports --acp in this smoke test');",
-      "  process.exit(2);",
       "}",
       "",
       "function runClash(args) {",
@@ -654,6 +763,47 @@ async function writeFakeCodexAcp(binDir) {
       "  });",
       "}",
       "",
+      "function configOptions(state = {}) {",
+      "  return [",
+      "    {",
+      "      id: 'mode',",
+      "      name: 'Mode',",
+      "      type: 'select',",
+      "      category: 'mode',",
+      "      currentValue: state.mode || 'full-access',",
+      "      options: [",
+      "        { value: 'read-only', name: 'Read only' },",
+      "        { value: 'auto', name: 'Auto' },",
+      "        { value: 'full-access', name: 'Full access' },",
+      "      ],",
+      "    },",
+      "    {",
+      "      id: 'model',",
+      "      name: 'Model',",
+      "      type: 'select',",
+      "      category: 'model',",
+      "      currentValue: state.model || 'gpt-5.5',",
+      "      options: [",
+      "        { value: 'gpt-5.5', name: 'GPT-5.5', description: 'Codex conversational model' },",
+      "        { value: 'gpt-5.4', name: 'GPT-5.4', description: 'Codex compatibility profile' },",
+      "      ],",
+      "    },",
+      "    {",
+      "      id: 'reasoning_effort',",
+      "      name: 'Reasoning',",
+      "      type: 'select',",
+      "      category: 'thought_level',",
+      "      currentValue: state.reasoning_effort || 'low',",
+      "      options: [",
+      "        { value: 'low', name: 'Low' },",
+      "        { value: 'medium', name: 'Medium' },",
+      "        { value: 'high', name: 'High' },",
+      "        { value: 'xhigh', name: 'Extra High' },",
+      "      ],",
+      "    },",
+      "  ];",
+      "}",
+      "",
       "class FakeCodexAcpAgent {",
       "  constructor(connection) {",
       "    this.connection = connection;",
@@ -664,19 +814,45 @@ async function writeFakeCodexAcp(binDir) {
       "  }",
       "  async newSession(params) {",
       "    const sessionId = randomUUID();",
-      "    this.sessions.set(sessionId, { cwd: params.cwd || process.cwd() });",
-      "    return { sessionId };",
+      "    const state = { cwd: params.cwd || process.cwd(), mode: 'full-access', model: 'gpt-5.5', reasoning_effort: 'low' };",
+      "    this.sessions.set(sessionId, state);",
+      "    return { sessionId, configOptions: configOptions(state) };",
       "  }",
       "  async authenticate() { return {}; }",
+      "  async setSessionConfigOption(params) {",
+      "    const state = this.sessions.get(params.sessionId);",
+      "    if (!state) throw new Error('unknown session ' + params.sessionId);",
+      "    state[params.configId] = params.value;",
+      "    return { configOptions: configOptions(state) };",
+      "  }",
       "  async prompt(params) {",
       "    if (!this.sessions.has(params.sessionId)) throw new Error('unknown session ' + params.sessionId);",
+      "    await this.connection.sessionUpdate({",
+      "      sessionId: params.sessionId,",
+      "      update: {",
+      "        sessionUpdate: 'agent_thought_chunk',",
+      "        content: { type: 'text', text: 'Checking the canvas before editing.' },",
+      "        messageId: 'local-api-fake-thought',",
+      "      },",
+      "    });",
+      "    await this.connection.sessionUpdate({",
+      "      sessionId: params.sessionId,",
+      "      update: {",
+      "        sessionUpdate: 'tool_call',",
+      "        toolCallId: 'local-api-fake-clash-cli',",
+      "        title: 'Run clash canvas add',",
+      "        kind: 'execute',",
+      "        status: 'in_progress',",
+      "        rawInput: { command: 'clash canvas add' },",
+      "      },",
+      "    });",
       "    const projectId = process.env.CLASH_PROJECT_ID;",
       "    if (!projectId) throw new Error('CLASH_PROJECT_ID missing');",
       "    const created = JSON.parse(await runClash([",
       "      'canvas', 'add',",
       "      '--project', projectId,",
       "      '--type', 'text',",
-      "      '--label', 'Real ACP CLI Note',",
+      "      '--label', 'Fake ACP CLI Note',",
       "      '--content', 'created by fake ACP child through clash CLI',",
       "      '--json',",
       "    ]));",
@@ -685,6 +861,15 @@ async function writeFakeCodexAcp(binDir) {
       "      update: {",
       "        sessionUpdate: 'agent_message_chunk',",
       "        content: { type: 'text', text: 'Fake ACP wrote node ' + created.node_id },",
+      "      },",
+      "    });",
+      "    await this.connection.sessionUpdate({",
+      "      sessionId: params.sessionId,",
+      "      update: {",
+      "        sessionUpdate: 'tool_call_update',",
+      "        toolCallId: 'local-api-fake-clash-cli',",
+      "        status: 'completed',",
+      "        rawOutput: created,",
       "      },",
       "    });",
       "    return { stopReason: 'end_turn' };",
@@ -709,19 +894,46 @@ function restoreEnv(snapshot) {
   }
 }
 
-async function exerciseRealAcpChildSession(startLocalApiServer, createLocalAgentToolEnv) {
-  const realDataDir = path.join(repoRoot, ".tmp", "local-api-real-acp-e2e-data");
-  const realHome = path.join(repoRoot, ".tmp", "local-api-real-acp-home");
-  const fakeBinDir = path.join(repoRoot, ".tmp", "local-api-real-acp-bin");
-  await rm(realDataDir, { recursive: true, force: true });
-  await rm(realHome, { recursive: true, force: true });
+async function writeCodexStubConfig(home, mockCodex) {
+  await mkdir(home, { recursive: true });
+  await writeFile(
+    path.join(home, "config.toml"),
+    [
+      'model = "gpt-5.5"',
+      'model_provider = "stub-openai"',
+      'approval_policy = "never"',
+      'sandbox_mode = "danger-full-access"',
+      'model_reasoning_effort = "low"',
+      "",
+      "[model_providers.stub-openai]",
+      'name = "Stub OpenAI"',
+      `base_url = "${mockCodex.url}/v1"`,
+      'env_key = "OPENAI_API_KEY"',
+      'wire_api = "responses"',
+      "supports_websockets = false",
+      "",
+    ].join("\n"),
+    "utf8",
+  );
+}
+
+function hasConfigOption(options, category) {
+  return Array.isArray(options) && options.some((option) => option?.category === category);
+}
+
+async function exerciseFakeCodexAcpChildSession(startLocalApiServer, createLocalAgentToolEnv) {
+  const fakeDataDir = path.join(repoRoot, ".tmp", "local-api-fake-acp-e2e-data");
+  const fakeHome = path.join(repoRoot, ".tmp", "local-api-fake-acp-home");
+  const fakeBinDir = path.join(repoRoot, ".tmp", "local-api-fake-acp-bin");
+  await rm(fakeDataDir, { recursive: true, force: true });
+  await rm(fakeHome, { recursive: true, force: true });
   await rm(fakeBinDir, { recursive: true, force: true });
-  await mkdir(realHome, { recursive: true });
+  await mkdir(fakeHome, { recursive: true });
   await writeFakeCodexAcp(fakeBinDir);
 
   const envSnapshot = {
     CLASH_ACP_BIN_DIR: process.env.CLASH_ACP_BIN_DIR,
-    CLASH_LOCAL_ACP_MOCK: process.env.CLASH_LOCAL_ACP_MOCK,
+    CLASH_E2E_STUB_ACP: process.env.CLASH_E2E_STUB_ACP,
     CLASH_LOCAL_DATA_DIR: process.env.CLASH_LOCAL_DATA_DIR,
     CLASH_NODE_EXEC_PATH: process.env.CLASH_NODE_EXEC_PATH,
     HOME: process.env.HOME,
@@ -730,16 +942,16 @@ async function exerciseRealAcpChildSession(startLocalApiServer, createLocalAgent
   const origin = `http://127.0.0.1:${port}`;
 
   process.env.CLASH_ACP_BIN_DIR = fakeBinDir;
-  delete process.env.CLASH_LOCAL_ACP_MOCK;
-  process.env.CLASH_LOCAL_DATA_DIR = realDataDir;
+  delete process.env.CLASH_E2E_STUB_ACP;
+  process.env.CLASH_LOCAL_DATA_DIR = fakeDataDir;
   process.env.CLASH_NODE_EXEC_PATH = process.execPath;
-  process.env.HOME = realHome;
+  process.env.HOME = fakeHome;
 
   let server;
   try {
-    server = await startLocalApiServer({ port, dataDir: realDataDir });
+    server = await startLocalApiServer({ port, dataDir: fakeDataDir });
     const env = createLocalAgentToolEnv({
-      dataDir: realDataDir,
+      dataDir: fakeDataDir,
       apiBaseUrl: origin,
       env: process.env,
     });
@@ -747,15 +959,15 @@ async function exerciseRealAcpChildSession(startLocalApiServer, createLocalAgent
       "projects",
       "create",
       "--name",
-      "real acp agent project",
+      "fake acp agent project",
       "--json",
     ], env));
-    assert(project.id, "real ACP project create returns an id", project);
+    assert(project.id, "fake ACP project create returns an id", project);
 
     const runtimes = await jsonFetch(`${origin}/api/v1/runtimes`);
     assert(
-      runtimes.runtimes?.[0]?.agents?.some((agent) => agent.id === "codex-cli"),
-      "fake codex ACP child is discovered as codex-cli",
+      runtimes.runtimes?.[0]?.agents?.some((agent) => agent.id === "codex-acp"),
+      "fake Zed Codex ACP child is discovered as codex-acp",
       runtimes,
     );
 
@@ -763,27 +975,51 @@ async function exerciseRealAcpChildSession(startLocalApiServer, createLocalAgent
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
-        crew_member_id: "local-director",
+        agent_member_id: "local-master-clash",
         project_id: project.id,
-        agent_id: "codex-cli",
+        agent_id: "codex-acp",
       }),
     });
-    assert(session.session_id, "real ACP session is created", session);
+    assert(session.session_id, "fake ACP session is created", session);
 
     const ws = new WebSocket(`${origin.replace("http:", "ws:")}/api/v1/local-sessions/${encodeURIComponent(session.session_id)}/_stream`);
     const events = [];
     await new Promise((resolve, reject) => {
       const timeout = setTimeout(() => {
         ws.close();
-        reject(new Error("Timed out waiting for real ACP session disposal"));
+        reject(new Error("Timed out waiting for fake ACP session disposal"));
       }, 20000);
-      ws.addEventListener("open", () => {
-        ws.send(JSON.stringify({ type: "prompt", turn_id: "real-acp-turn", text: "use clash cli on the canvas" }));
-      });
+      let promptSent = false;
       ws.addEventListener("message", (event) => {
         const msg = JSON.parse(String(event.data));
         events.push(msg);
-        if (msg.type === "session.complete" && msg.turn_id === "real-acp-turn") {
+        if (msg.type === "session.ready") {
+          const options = msg.config_options || [];
+          if (!options.some((option) => option.category === "model")) {
+            clearTimeout(timeout);
+            ws.close();
+            reject(new Error(`session.ready did not include ACP model config option: ${JSON.stringify(msg)}`));
+            return;
+          }
+          if (!options.some((option) => option.category === "thought_level")) {
+            clearTimeout(timeout);
+            ws.close();
+            reject(new Error(`session.ready did not include ACP thought_level config option: ${JSON.stringify(msg)}`));
+            return;
+          }
+          ws.send(JSON.stringify({ type: "set_config_option", config_id: "model", value: "gpt-5.4" }));
+          return;
+        }
+        if (
+          msg.type === "session.config_options" &&
+          msg.config_options?.some((option) => option.id === "model" && option.currentValue === "gpt-5.4") &&
+          !promptSent
+        ) {
+          promptSent = true;
+          ws.send(JSON.stringify({ type: "prompt", turn_id: "fake-acp-turn", text: "use clash cli on the canvas" }));
+          return;
+        }
+        if (msg.type === "session.complete" && msg.turn_id === "fake-acp-turn") {
           ws.send(JSON.stringify({ type: "dispose" }));
           return;
         }
@@ -799,9 +1035,18 @@ async function exerciseRealAcpChildSession(startLocalApiServer, createLocalAgent
     assert(
       events.some((event) =>
         event.type === "session.event" &&
-        event.event?.update?.content?.text?.startsWith("Fake ACP wrote node ")
+        event.event?.content?.text?.startsWith("Fake ACP wrote node ")
       ),
-      "real ACP child emits a text event after invoking clash CLI",
+      "fake ACP child emits a text event after invoking clash CLI",
+      events,
+    );
+    assert(
+      events.some((event) =>
+        event.type === "session.event" &&
+        event.event?.sessionUpdate === "tool_call" &&
+        event.event?.toolCallId === "local-api-fake-clash-cli"
+      ),
+      "fake ACP child emits a tool_call event",
       events,
     );
 
@@ -812,11 +1057,11 @@ async function exerciseRealAcpChildSession(startLocalApiServer, createLocalAgent
       project.id,
       "--json",
     ], env));
-    const node = nodes.find((candidate) => candidate.data?.label === "Real ACP CLI Note");
-    assert(node, "real ACP child created a canvas node through clash CLI", nodes);
-    assert(node.data?.actorType === "agent", "real ACP CLI node is attributed to an agent", node);
-    assert(node.data?.actorUserId === "local-user", "real ACP CLI node is attributed to the local user", node);
-    assert(node.data?.actorAgentId === "local-director", "real ACP CLI node keeps the crew member id", node);
+    const node = nodes.find((candidate) => candidate.data?.label === "Fake ACP CLI Note");
+    assert(node, "fake ACP child created a canvas node through clash CLI", nodes);
+    assert(node.data?.actorType === "agent", "fake ACP CLI node is attributed to an agent", node);
+    assert(node.data?.actorUserId === "local-user", "fake ACP CLI node is attributed to the local user", node);
+    assert(node.data?.actorAgentId === "local-master-clash", "fake ACP CLI node keeps the agent member id", node);
 
     return {
       sessionId: session.session_id,
@@ -832,16 +1077,210 @@ async function exerciseRealAcpChildSession(startLocalApiServer, createLocalAgent
   }
 }
 
+async function exerciseOfficialCodexAcpWithStubModel(startLocalApiServer, createLocalAgentToolEnv) {
+  const realDataDir = path.join(repoRoot, ".tmp", "local-api-official-codex-acp-e2e-data");
+  const codexHome = path.join(repoRoot, ".tmp", "local-api-official-codex-acp-home");
+  const tapPath = path.join(repoRoot, ".tmp", "local-api-official-codex-acp-events.jsonl");
+  await rm(realDataDir, { recursive: true, force: true });
+  await rm(codexHome, { recursive: true, force: true });
+  await rm(tapPath, { force: true });
+
+  const mockCodex = await startMockCodexResponses();
+  await writeCodexStubConfig(codexHome, mockCodex);
+
+  const envSnapshot = {
+    CLASH_ACP_BIN_DIR: process.env.CLASH_ACP_BIN_DIR,
+    CLASH_E2E_STUB_ACP: process.env.CLASH_E2E_STUB_ACP,
+    CLASH_LOCAL_DATA_DIR: process.env.CLASH_LOCAL_DATA_DIR,
+    CLASH_NODE_EXEC_PATH: process.env.CLASH_NODE_EXEC_PATH,
+    CLASH_ACP_TAP: process.env.CLASH_ACP_TAP,
+    CODEX_HOME: process.env.CODEX_HOME,
+    CODEX_API_KEY: process.env.CODEX_API_KEY,
+    OPENAI_API_KEY: process.env.OPENAI_API_KEY,
+    HOME: process.env.HOME,
+  };
+  const port = await findFreePort(49720);
+  const origin = `http://127.0.0.1:${port}`;
+
+  delete process.env.CLASH_ACP_BIN_DIR;
+  delete process.env.CLASH_E2E_STUB_ACP;
+  process.env.CLASH_LOCAL_DATA_DIR = realDataDir;
+  process.env.CLASH_NODE_EXEC_PATH = process.execPath;
+  process.env.CLASH_ACP_TAP = tapPath;
+  process.env.CODEX_HOME = codexHome;
+  process.env.HOME = codexHome;
+  process.env.OPENAI_API_KEY = "sk-daemon-codex-stub";
+  delete process.env.CODEX_API_KEY;
+
+  let server;
+  try {
+    server = await startLocalApiServer({ port, dataDir: realDataDir });
+    const env = createLocalAgentToolEnv({
+      dataDir: realDataDir,
+      apiBaseUrl: origin,
+      env: process.env,
+    });
+    const project = JSON.parse(await runClashCli([
+      "projects",
+      "create",
+      "--name",
+      "official codex acp project",
+      "--json",
+    ], env));
+    assert(project.id, "official codex ACP project create returns an id", project);
+
+    const runtimes = await jsonFetch(`${origin}/api/v1/runtimes`);
+    assert(
+      runtimes.runtimes?.[0]?.agents?.some((agent) => agent.id === "codex-acp"),
+      "official Zed Codex ACP is discovered as codex-acp",
+      runtimes,
+    );
+
+    const session = await jsonFetch(`${origin}/api/v1/runtimes/desktop-local/sessions`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        agent_member_id: "local-master-clash",
+        project_id: project.id,
+        agent_id: "codex-acp",
+      }),
+    });
+    assert(session.session_id, "official codex ACP session is created", session);
+
+    const ws = new WebSocket(`${origin.replace("http:", "ws:")}/api/v1/local-sessions/${encodeURIComponent(session.session_id)}/_stream`);
+    const events = [];
+    await new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        ws.close();
+        reject(new Error(`Timed out waiting for official codex ACP session disposal: ${JSON.stringify(events.slice(-8))}`));
+      }, 30000);
+      let promptSent = false;
+      ws.addEventListener("message", (event) => {
+        const msg = JSON.parse(String(event.data));
+        events.push(msg);
+        if (msg.type === "session.error") {
+          clearTimeout(timeout);
+          ws.close();
+          reject(new Error(`official codex ACP session error: ${msg.message}`));
+          return;
+        }
+        if (msg.type === "session.ready") {
+          const options = msg.config_options || [];
+          if (!hasConfigOption(options, "model")) {
+            clearTimeout(timeout);
+            ws.close();
+            reject(new Error(`session.ready did not include ACP model config option: ${JSON.stringify(msg)}`));
+            return;
+          }
+          if (!hasConfigOption(options, "thought_level")) {
+            clearTimeout(timeout);
+            ws.close();
+            reject(new Error(`session.ready did not include ACP thought_level config option: ${JSON.stringify(msg)}`));
+            return;
+          }
+          ws.send(JSON.stringify({ type: "set_config_option", config_id: "model", value: "gpt-5.4-mini" }));
+          return;
+        }
+        if (
+          msg.type === "session.config_options" &&
+          msg.config_options?.some((option) => option.id === "model" && option.currentValue === "gpt-5.4-mini") &&
+          !promptSent
+        ) {
+          promptSent = true;
+          ws.send(JSON.stringify({
+            type: "prompt",
+            turn_id: "official-codex-acp-turn",
+            text: "Say exactly stub ok.",
+          }));
+          return;
+        }
+        if (msg.type === "session.complete" && msg.turn_id === "official-codex-acp-turn") {
+          ws.send(JSON.stringify({ type: "dispose" }));
+          return;
+        }
+        if (msg.type === "session.disposed" && msg.session_id === session.session_id) {
+          clearTimeout(timeout);
+          ws.close();
+          resolve(true);
+        }
+      });
+      ws.addEventListener("error", reject);
+    });
+
+    assert(
+      events.some((event) =>
+        event.type === "session.event" &&
+        event.event?.sessionUpdate === "agent_message_chunk" &&
+        event.event?.content?.text === "stub ok"
+      ),
+      "official codex ACP emits assistant text from the stub model",
+      events,
+    );
+    assert(
+      events.some((event) =>
+        event.type === "session.event" &&
+        event.event?.sessionUpdate === "usage_update"
+      ),
+      "official codex ACP emits usage updates",
+      events,
+    );
+    const request = mockCodex.requests.find((item) => item.path === "/v1/responses");
+    assert(request, "official codex ACP called the stub Responses API", mockCodex.requests);
+    assert(request.authorization === "Bearer sk-daemon-codex-stub", "official codex ACP used the stub API key", request);
+    assert(request.accept.includes("text/event-stream"), "official codex ACP requested Responses SSE", request);
+    assert(request.body?.stream === true, "official codex ACP enabled response streaming", request.body);
+    assert(request.body?.model === "gpt-5.4-mini", "official codex ACP honored ACP model config", request.body);
+    assert(Array.isArray(request.body?.tools) && request.body.tools.length > 0, "official codex ACP exposed tool schemas to the model", request.body);
+    const requestText = requestBodyText(request);
+    assert(
+      requestText.includes("# Clash agent contract (read first)"),
+      "official codex ACP request includes the Clash prompt contract",
+    );
+    assert(
+      requestText.includes("Master Clash"),
+      "official codex ACP request includes the single Master Clash identity",
+    );
+    assert(
+      requestText.includes(`CLASH_PROJECT_ID=${project.id}`),
+      "official codex ACP request includes the active Clash project id",
+    );
+    assert(
+      requestText.includes("# User request") && requestText.includes("Say exactly stub ok."),
+      "official codex ACP request preserves the user request after the Clash contract",
+    );
+    assert(
+      !requestText.includes("No AGENTS.md was found"),
+      "official codex ACP request used fallback guidance instead of installed AGENTS.md",
+    );
+
+    return {
+      sessionId: session.session_id,
+      projectId: project.id,
+      model: request.body.model,
+      toolCount: request.body.tools.length,
+      requestCount: mockCodex.requests.length,
+      promptContract: "clash-contract-present",
+      eventTypes: events
+        .filter((event) => event.type === "session.event")
+        .map((event) => event.event?.sessionUpdate ?? event.event?.type ?? "unknown"),
+    };
+  } finally {
+    if (server) await closeServer(server);
+    await mockCodex.close();
+    restoreEnv(envSnapshot);
+  }
+}
+
 async function closeServer(server) {
   await new Promise((resolve) => server.close(resolve));
 }
 
 async function main() {
   const envSnapshot = {
-    CLASH_LOCAL_ACP_MOCK: process.env.CLASH_LOCAL_ACP_MOCK,
+    CLASH_E2E_STUB_ACP: process.env.CLASH_E2E_STUB_ACP,
     OPENAI_BASE_URL: process.env.OPENAI_BASE_URL,
   };
-  process.env.CLASH_LOCAL_ACP_MOCK = "1";
+  process.env.CLASH_E2E_STUB_ACP = "1";
   await rm(dataDir, { recursive: true, force: true });
 
   const port = await findFreePort(49500);
@@ -858,7 +1297,8 @@ async function main() {
     const modelProviders = await exerciseCliModelProviders(origin, createLocalAgentToolEnv);
     const openai = await exerciseOpenAiProviderGeneration(origin, mockOpenAi);
     const cli = await exerciseAgentCliShim(origin, createLocalAgentToolEnv);
-    const realAcp = await exerciseRealAcpChildSession(startLocalApiServer, createLocalAgentToolEnv);
+    const fakeAcp = await exerciseFakeCodexAcpChildSession(startLocalApiServer, createLocalAgentToolEnv);
+    const officialCodexAcp = await exerciseOfficialCodexAcpWithStubModel(startLocalApiServer, createLocalAgentToolEnv);
     const loro = await exerciseLoroSync(origin, mockRemote);
     const fal = await exerciseFalMock(origin);
     console.log("[daemon-smoke] runtime", JSON.stringify(runtime));
@@ -866,7 +1306,8 @@ async function main() {
     console.log("[daemon-smoke] model-providers", JSON.stringify(modelProviders));
     console.log("[daemon-smoke] openai", JSON.stringify(openai));
     console.log("[daemon-smoke] agent-cli", JSON.stringify(cli));
-    console.log("[daemon-smoke] real-acp", JSON.stringify(realAcp));
+    console.log("[daemon-smoke] fake-acp", JSON.stringify(fakeAcp));
+    console.log("[daemon-smoke] official-codex-acp", JSON.stringify(officialCodexAcp));
     console.log("[daemon-smoke] loro", JSON.stringify(loro));
     console.log("[daemon-smoke] fal", JSON.stringify(fal));
   } finally {

@@ -1,71 +1,55 @@
-
-import { useState, useCallback, useEffect, useRef } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { runtimeApiUrl } from '../lib/runtimeConfig';
 
 export interface SessionInfo {
+  id?: string;
   threadId: string;
   title?: string;
+  type: 'cloud' | 'runtime';
+  projectId?: string;
+  runtimeId?: string;
+  agentId?: string;
+  agentMemberId?: string;
+  permissionMode?: string;
+  acpSessionId?: string;
+  status?: string;
   updatedAt?: string;
 }
 
 type SessionsResponse = {
-  sessions?: Array<{
-    thread_id?: string;
-    threadId?: string;
-    id?: string;
-    title?: string;
-    updated_at?: string;
-    updatedAt?: string;
-  }>;
+  sessions?: SessionInfo[];
 };
 
 export function useSessionHistory(projectId: string) {
   const [sessions, setSessions] = useState<SessionInfo[]>([]);
-  const loadedRef = useRef(false);
 
-  // Load once per projectId
   useEffect(() => {
-    loadedRef.current = false;
     fetch(runtimeApiUrl(`/api/v1/sessions?projectId=${encodeURIComponent(projectId)}`), {
       credentials: 'include',
     })
       .then(async (res): Promise<SessionsResponse> => res.ok ? await res.json() as SessionsResponse : { sessions: [] })
       .then((data) => {
-        const nextSessions = (data.sessions || []).flatMap((s): SessionInfo[] => {
-          const threadId = s.thread_id ?? s.threadId ?? s.id;
-          if (!threadId) return [];
-          return [{
-            threadId,
-            title: s.title,
-            updatedAt: s.updated_at ?? s.updatedAt,
-          }];
-        });
-        setSessions(nextSessions);
-        loadedRef.current = true;
+        setSessions((data.sessions || []).map((session) => ({
+          ...session,
+          id: session.id ?? session.threadId,
+        })));
       })
       .catch(() => {
         setSessions([]);
-        loadedRef.current = true;
       });
   }, [projectId]);
 
-  // Upsert: update local state immediately, sync to D1 in background
-  const upsertSession = useCallback((threadId: string, title: string) => {
+  // Upsert: the session was already persisted by the create/attach path.
+  // This hook only keeps the in-panel history list current.
+  const upsertSession = useCallback((session: SessionInfo) => {
     setSessions(prev => {
-      const exists = prev.some(s => s.threadId === threadId);
+      const exists = prev.some(s => s.threadId === session.threadId);
       if (exists) {
-        return prev.map(s => s.threadId === threadId ? { ...s, title } : s);
+        return prev.map(s => s.threadId === session.threadId ? { ...s, ...session } : s);
       }
-      return [{ threadId, title }, ...prev];
+      return [session, ...prev];
     });
-
-    fetch(runtimeApiUrl('/api/v1/sessions'), {
-      method: 'POST',
-      credentials: 'include',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ projectId, threadId, title }),
-    }).catch(() => {});
-  }, [projectId]);
+  }, []);
 
   // Delete: optimistic with rollback
   const deleteSession = useCallback((threadId: string) => {
@@ -75,9 +59,13 @@ export function useSessionHistory(projectId: string) {
     fetch(runtimeApiUrl(`/api/v1/sessions?threadId=${encodeURIComponent(threadId)}`), {
       method: 'DELETE',
       credentials: 'include',
-    }).catch(() => {
-      setSessions(backup);
-    });
+    })
+      .then((res) => {
+        if (!res.ok) setSessions(backup);
+      })
+      .catch(() => {
+        setSessions(backup);
+      });
   }, [sessions]);
 
   return { sessions, upsertSession, deleteSession };

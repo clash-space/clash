@@ -18,8 +18,68 @@ import { spawn as nodeSpawn, type ChildProcessWithoutNullStreams } from "node:ch
 import { Readable, Writable } from "node:stream";
 import type { AgentSpec, ChildHandle, Spawner } from "../types.js";
 
+type ManagedChild = {
+  child: ChildProcessWithoutNullStreams;
+  detached: boolean;
+};
+
+type ShutdownSignal = "SIGHUP" | "SIGINT" | "SIGTERM";
+
+const activeChildren = new Set<ManagedChild>();
+let cleanupHandlersInstalled = false;
+
+function killProcessTree(
+  child: ChildProcessWithoutNullStreams,
+  signal: "SIGTERM" | "SIGKILL",
+  detached: boolean,
+): void {
+  if (child.exitCode !== null || child.signalCode !== null) return;
+  if (detached && child.pid !== undefined) {
+    try {
+      process.kill(-child.pid, signal);
+      return;
+    } catch {
+      // Fall back to the direct process below. This can happen if the
+      // process already exited between the exitCode check and kill(2).
+    }
+  }
+  child.kill(signal);
+}
+
+function cleanupActiveChildren(signal: "SIGTERM" | "SIGKILL" = "SIGTERM"): void {
+  for (const managed of Array.from(activeChildren)) {
+    killProcessTree(managed.child, signal, managed.detached);
+  }
+}
+
+function installProcessCleanupHandlers(): void {
+  if (cleanupHandlersInstalled) return;
+  cleanupHandlersInstalled = true;
+
+  process.once("exit", () => cleanupActiveChildren("SIGTERM"));
+
+  for (const signal of ["SIGHUP", "SIGINT", "SIGTERM"] satisfies ShutdownSignal[]) {
+    const handler = () => {
+      cleanupActiveChildren("SIGTERM");
+      if (process.listenerCount(signal) === 1) {
+        process.off(signal, handler);
+        process.kill(process.pid, signal);
+      }
+    };
+    process.on(signal, handler);
+  }
+}
+
+function shouldMirrorChildStderr(): boolean {
+  return process.env.CLASH_DEBUG_ACP_CHILD_STDERR === "1";
+}
+
 export class NodeSpawner implements Spawner {
   async spawn(spec: AgentSpec): Promise<ChildHandle> {
+    installProcessCleanupHandlers();
+
+    const detached = process.platform !== "win32";
+
     // stdio: [stdin, stdout, stderr] all piped — we own all three streams.
     // Inheriting stderr would dump child noise into the bridge's own stderr
     // and lose it from any structured log we set up; keep it captured.
@@ -27,6 +87,7 @@ export class NodeSpawner implements Spawner {
       env: { ...process.env, ...(spec.env ?? {}) },
       cwd: spec.cwd,
       stdio: ["pipe", "pipe", "pipe"],
+      detached,
     });
 
     // node:stream → Web stream. Node 18+ exposes `.toWeb()` on these classes;
@@ -38,7 +99,9 @@ export class NodeSpawner implements Spawner {
       toWeb(s: NodeJS.ReadableStream): ReadableStream<Uint8Array>;
     }).toWeb(child.stdout);
 
-    // Drain agent stderr to our own stderr with a [acp.child] prefix.
+    // Drain agent stderr so the OS pipe buffer cannot fill and block the
+    // child. Structured callers receive these lines through onDiagnosticLine;
+    // direct stderr mirroring is debug-only because most agents are noisy.
     // Without this, the OS pipe buffer fills (~64KB) and the agent
     // process blocks on its next stderr write — looks like the agent
     // "hung" with zero progress, no events, no responses.
@@ -57,7 +120,12 @@ export class NodeSpawner implements Spawner {
     child.stderr.setEncoding("utf8");
     child.stderr.on("data", (chunk: string) => {
       for (const line of chunk.split(/\r?\n/)) {
-        if (line.length > 0) process.stderr.write(`[acp.child] ${line}\n`);
+        if (line.length > 0) {
+          spec.onDiagnosticLine?.(line);
+          if (shouldMirrorChildStderr()) {
+            process.stderr.write(`[acp.child] ${line}\n`);
+          }
+        }
       }
     });
     child.stderr.on("error", () => { /* ignore — child died */ });
@@ -78,9 +146,19 @@ export class NodeSpawner implements Spawner {
       child.once("error", () => settle(null, null));
     });
 
+    // Detached process groups keep grandchildren controllable, but they
+    // also stop inheriting the host's SIGINT/SIGTERM. Keep each group in a
+    // registry owned by this process so shutdown signals can reap it before
+    // the host exits.
+    const managed: ManagedChild = { child, detached };
+    activeChildren.add(managed);
+    void exited.finally(() => {
+      activeChildren.delete(managed);
+    });
+
     const kill = async (signal: "SIGTERM" | "SIGKILL" = "SIGTERM"): Promise<void> => {
       if (child.exitCode !== null || child.signalCode !== null) return;
-      child.kill(signal);
+      killProcessTree(child, signal, detached);
       await exited;
     };
 

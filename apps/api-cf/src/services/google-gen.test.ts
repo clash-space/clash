@@ -15,7 +15,7 @@ describe("Google audio generation", () => {
 
   it("recognizes supported Google Gemini TTS model cards", () => {
     expect(isGoogleAudioModel("gemini-3.1-flash-tts")).toBe(true);
-    expect(isGoogleAudioModel("gemini-2.5-flash-tts")).toBe(true);
+    expect(isGoogleAudioModel("gemini-2.5-flash-tts")).toBe(false);
     expect(isGoogleAudioModel("gemini-2.5-pro-tts")).toBe(true);
     expect(isGoogleAudioModel("minimax-tts")).toBe(false);
   });

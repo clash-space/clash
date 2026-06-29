@@ -5,26 +5,27 @@
  * No asset output — result lands on node.data.content.
  */
 import { log } from "../../logger";
-import { generateGoogleText, type VertexCredentials } from "../../services/google-gen";
+import { generateGoogleText } from "../../services/google-gen";
 import type { GenerationProvider } from "../provider";
 import { buildMultimodalUserMessage } from "../multimodal";
+import { credentialsForProvider, vertexCredentialsFromProvider } from "./provider-credentials";
 
 export const googleTextProvider: GenerationProvider = {
   name: "google-text",
 
   async execute(ctx) {
-    const { params, env } = ctx;
+    const { params } = ctx;
 
     const content = await ctx.step(
       "google-text-generate",
       { retries: { limit: 2, delay: "5 seconds", backoff: "exponential" }, timeout: "3 minutes" },
       async () => {
-        const creds: VertexCredentials = {
-          clientEmail: env.GOOGLE_CLIENT_EMAIL ?? "",
-          privateKey: env.GOOGLE_PRIVATE_KEY ?? "",
-          project: env.GOOGLE_CLOUD_PROJECT ?? "",
-          location: env.GOOGLE_CLOUD_LOCATION ?? "global",
-        };
+        const creds = vertexCredentialsFromProvider(
+          await credentialsForProvider(ctx, "official", ["vertexCredentials"], {
+            upstreamId: "google",
+            region: "global",
+          }),
+        );
         const systemPrompt =
           typeof params.modelParams?.system_prompt === "string"
             ? params.modelParams.system_prompt.trim()

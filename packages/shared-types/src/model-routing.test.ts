@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  MODEL_PROVIDER_DEFINITIONS,
   listModelCatalogEntries,
+  listProviderModelSupport,
   listModelUpstreamRoutes,
   resolveModelUpstreamRoute,
   type ProviderAccountAvailability,
@@ -27,8 +29,8 @@ describe("model upstream routing", () => {
 
   it("skips configured upstreams without required variables and falls back", () => {
     const upstreams: UpstreamAvailability[] = [
-      { upstreamId: "fal", enabled: true, availableVariables: [] },
-      { upstreamId: "google", enabled: true, availableVariables: ["GOOGLE_VERTEX"] },
+      { upstreamId: "fal", enabled: true, configuredCredentials: [] },
+      { upstreamId: "google", enabled: true, configuredCredentials: ["vertexCredentials"] },
     ];
 
     const route = resolveModelUpstreamRoute({
@@ -48,8 +50,8 @@ describe("model upstream routing", () => {
       modelCode: "gemini-flash-image-2",
       kind: "image",
       configuredUpstreams: [
-        { upstreamId: "fal", enabled: true, availableVariables: ["FAL_API_KEY"] },
-        { upstreamId: "google", enabled: true, availableVariables: ["GOOGLE_VERTEX"] },
+        { upstreamId: "fal", enabled: true, configuredCredentials: ["apiKey"] },
+        { upstreamId: "google", enabled: true, configuredCredentials: ["vertexCredentials"] },
       ],
     });
 
@@ -71,7 +73,7 @@ describe("model upstream routing", () => {
       modelCode: "gpt-image-2",
       kind: "image",
       configuredUpstreams: [
-        { upstreamId: "openai", enabled: true, availableVariables: ["OPENAI_API_KEY"] },
+        { upstreamId: "openai", enabled: true, configuredCredentials: ["apiKey"] },
       ],
     });
 
@@ -80,7 +82,7 @@ describe("model upstream routing", () => {
       upstreamId: "openai",
       upstreamModel: "gpt-image-2",
       apiShape: "openai-images",
-      requiredVariables: ["OPENAI_API_KEY"],
+      requiredCredentials: ["apiKey"],
     });
     expect(route).not.toHaveProperty("requiredSecretIds");
   });
@@ -95,7 +97,7 @@ describe("model upstream routing", () => {
           upstreamId: "google",
           region: "global",
           enabled: true,
-          availableVariables: ["GOOGLE_API_KEY"],
+          configuredCredentials: ["apiKey"],
         },
       ],
     });
@@ -105,7 +107,7 @@ describe("model upstream routing", () => {
       upstreamId: "google",
       upstreamModel: "gemini-3.1-flash-image",
       apiShape: "google-ai-studio",
-      requiredVariables: ["GOOGLE_API_KEY"],
+      requiredCredentials: ["apiKey"],
     });
   });
 
@@ -114,7 +116,7 @@ describe("model upstream routing", () => {
       modelCode: "minimax-tts",
       kind: "audio",
       configuredUpstreams: [
-        { upstreamId: "fal", enabled: true, availableVariables: ["FAL_API_KEY"] },
+        { upstreamId: "fal", enabled: true, configuredCredentials: ["apiKey"] },
       ],
     });
 
@@ -123,8 +125,197 @@ describe("model upstream routing", () => {
       upstreamId: "fal",
       upstreamModel: "fal-ai/minimax/speech-02-hd",
       apiShape: "fal",
-      requiredVariables: ["FAL_API_KEY"],
+      requiredCredentials: ["apiKey"],
     });
+  });
+
+  it("keeps local ASR model cards available without hosted provider setup", () => {
+    const route = resolveModelUpstreamRoute({
+      modelCode: "sensevoice-small-asr",
+      kind: "asr",
+      configuredProviders: [],
+    });
+
+    expect(route).toMatchObject({
+      modelCode: "sensevoice-small-asr",
+      providerId: "local",
+      upstreamId: "local",
+      upstreamModel: "iic/SenseVoiceSmall",
+      apiShape: "local-asr",
+    });
+
+    const entries = listModelCatalogEntries({ configuredProviders: [] });
+    expect(entries.find((entry) => entry.model.id === "sensevoice-small-asr")).toMatchObject({
+      tier: "available",
+      selectedRoute: {
+        providerId: "local",
+        upstreamId: "local",
+        upstreamModel: "iic/SenseVoiceSmall",
+      },
+      missingCredentials: [],
+    });
+  });
+
+  it("routes hosted official media providers from configured provider accounts", () => {
+    const cases = [
+      {
+        modelCode: "kling-3",
+        kind: "video" as const,
+        providerId: "kling",
+        upstreamId: "kling",
+        upstreamModel: "kling-v3",
+        apiShape: "kling",
+        credentials: ["accessKey", "secretKey"],
+      },
+      {
+        modelCode: "minimax-tts",
+        kind: "audio" as const,
+        providerId: "minimax",
+        upstreamId: "minimax",
+        upstreamModel: "speech-02-hd",
+        apiShape: "minimax",
+        credentials: ["apiKey"],
+      },
+      {
+        modelCode: "elevenlabs-tts",
+        kind: "audio" as const,
+        providerId: "elevenlabs",
+        upstreamId: "elevenlabs",
+        upstreamModel: "eleven_multilingual_v2",
+        apiShape: "elevenlabs",
+        credentials: ["apiKey"],
+      },
+      {
+        modelCode: "seedance-2-ref",
+        kind: "video" as const,
+        providerId: "jimeng",
+        upstreamId: "jimeng",
+        upstreamModel: "seedance2.0fast",
+        apiShape: "dreamina-cli",
+        credentials: [],
+        oauth: ["dreamina"],
+      },
+      {
+        modelCode: "seedance-2-text",
+        kind: "video" as const,
+        providerId: "volcengine",
+        upstreamId: "volcengine",
+        upstreamModel: "doubao-seedance-2-0-pro",
+        apiShape: "modelark",
+        credentials: ["apiKey"],
+      },
+    ] as const;
+
+    for (const item of cases) {
+      const route = resolveModelUpstreamRoute({
+        modelCode: item.modelCode,
+        kind: item.kind,
+        configuredProviders: [
+          {
+            providerId: item.providerId,
+            upstreamId: item.upstreamId,
+            enabled: true,
+            configuredCredentials: [...item.credentials],
+            availableOAuth: "oauth" in item ? [...item.oauth] : undefined,
+          },
+        ],
+      });
+
+      expect(route, item.providerId).toMatchObject({
+        modelCode: item.modelCode,
+        providerId: item.providerId,
+        upstreamId: item.upstreamId,
+        upstreamModel: item.upstreamModel,
+        apiShape: item.apiShape,
+      });
+      if (item.credentials.length) expect(route).toMatchObject({ requiredCredentials: [...item.credentials] });
+      else expect(route?.requiredCredentials).toBeUndefined();
+      if ("oauth" in item) expect(route).toMatchObject({ requiredOAuth: [...item.oauth] });
+    }
+  });
+
+  it("routes Dreamina through the official CLI adapter only when OAuth is connected", () => {
+    const route = resolveModelUpstreamRoute({
+      modelCode: "seedance-2-ref",
+      kind: "video",
+      configuredProviders: [
+        {
+          providerId: "jimeng",
+          upstreamId: "jimeng",
+          enabled: true,
+          availableOAuth: ["dreamina"],
+        } as any,
+      ],
+    });
+
+    expect(route).toMatchObject({
+      modelCode: "seedance-2-ref",
+      providerId: "jimeng",
+      upstreamId: "jimeng",
+      upstreamModel: "seedance2.0fast",
+      apiShape: "dreamina-cli",
+      requiredOAuth: ["dreamina"],
+    });
+    expect(route?.requiredCredentials).toBeUndefined();
+  });
+
+  it("keeps Dreamina model cards in the missing-provider tier until OAuth is connected", () => {
+    const entries = listModelCatalogEntries({
+      configuredProviders: [
+        {
+          providerId: "jimeng",
+          upstreamId: "jimeng",
+          enabled: true,
+          availableOAuth: [],
+        } as any,
+      ],
+    });
+
+    const seedance = entries.find((entry) => entry.model.id === "seedance-2-ref");
+    expect(seedance).toMatchObject({
+      tier: "configured-provider",
+      selectedRoute: null,
+      candidateProviders: ["jimeng"],
+      missingCredentials: [],
+    });
+    expect((seedance as any)?.missingOAuth).toEqual(["dreamina"]);
+  });
+
+  it("indexes provider-declared model support by provider", () => {
+    const supports = listProviderModelSupport();
+    const byProvider = new Map<string, (typeof supports)[number]>(
+      supports.map((support) => [support.providerId, support]),
+    );
+
+    expect(byProvider.get("kling")).toMatchObject({
+      providerId: "kling",
+      upstreamId: "kling",
+      models: [expect.objectContaining({ id: "kling-3", apiShape: "kling" })],
+      requiredCredentials: ["accessKey", "secretKey"],
+    });
+    expect(byProvider.get("minimax")).toMatchObject({
+      providerId: "minimax",
+      models: [expect.objectContaining({ id: "minimax-tts", apiShape: "minimax" })],
+      requiredCredentials: ["apiKey"],
+    });
+    expect(byProvider.get("elevenlabs")).toMatchObject({
+      providerId: "elevenlabs",
+      models: [expect.objectContaining({ id: "elevenlabs-tts", apiShape: "elevenlabs" })],
+      requiredCredentials: ["apiKey"],
+    });
+    expect(byProvider.get("jimeng")?.models.map((model) => model.id)).toContain("seedance-2-ref");
+    expect(byProvider.get("volcengine")?.models.map((model) => model.id)).toContain("seedance-2-text");
+    expect(byProvider.has("midjourney")).toBe(false);
+  });
+
+  it("keeps provider declarations as the source for hosted provider support", () => {
+    const declared = new Set(
+      MODEL_PROVIDER_DEFINITIONS.map((provider) => [provider.providerId, provider.upstreamId, provider.region ?? ""].join(":")),
+    );
+
+    for (const support of listProviderModelSupport()) {
+      expect(declared.has([support.providerId, support.upstreamId, support.region ?? ""].join(":"))).toBe(true);
+    }
   });
 
   it("falls back Gemini TTS model codes to fal when only the fal key is configured", () => {
@@ -132,7 +323,7 @@ describe("model upstream routing", () => {
       modelCode: "gemini-3.1-flash-tts",
       kind: "audio",
       configuredUpstreams: [
-        { upstreamId: "fal", enabled: true, availableVariables: ["FAL_API_KEY"] },
+        { upstreamId: "fal", enabled: true, configuredCredentials: ["apiKey"] },
       ],
     });
 
@@ -153,13 +344,13 @@ describe("model upstream routing", () => {
           upstreamId: "google",
           region: "global",
           enabled: true,
-          availableVariables: ["GOOGLE_VERTEX"],
+          configuredCredentials: ["vertexCredentials"],
           weight: 10,
         },
         {
           providerId: "fal",
           enabled: true,
-          availableVariables: ["FAL_API_KEY"],
+          configuredCredentials: ["apiKey"],
           weight: 90,
         },
       ],
@@ -173,6 +364,191 @@ describe("model upstream routing", () => {
     });
   });
 
+  it("uses configured provider order before static route priority when provider weights tie", () => {
+    const routes = listModelUpstreamRoutes({
+      modelCode: "gpt-image-2",
+      kind: "image",
+      configuredProviders: [
+        {
+          providerId: "replicate",
+          upstreamId: "replicate",
+          enabled: true,
+          configuredCredentials: ["apiKey"],
+        },
+        {
+          providerId: "official",
+          upstreamId: "openai",
+          region: "global",
+          enabled: true,
+          configuredCredentials: ["apiKey"],
+        },
+      ],
+    });
+
+    expect(routes.map((route) => `${route.providerId}/${route.upstreamId}`)).toEqual([
+      "replicate/replicate",
+      "official/openai",
+    ]);
+  });
+
+  it("uses provider weight before array order for the same model", () => {
+    const routes = listModelUpstreamRoutes({
+      modelCode: "gpt-image-2",
+      kind: "image",
+      configuredProviders: [
+        {
+          providerId: "official",
+          upstreamId: "openai",
+          region: "global",
+          enabled: true,
+          weight: 10,
+          configuredCredentials: ["apiKey"],
+        },
+        {
+          providerId: "replicate",
+          upstreamId: "replicate",
+          enabled: true,
+          weight: 90,
+          configuredCredentials: ["apiKey"],
+        },
+      ],
+    });
+
+    expect(routes.map((route) => `${route.providerId}/${route.upstreamId}`)).toEqual([
+      "replicate/replicate",
+      "official/openai",
+    ]);
+  });
+
+  it("does not let an incomplete higher-priority key block a complete key for the same provider", () => {
+    const route = resolveModelUpstreamRoute({
+      modelCode: "gpt-image-2",
+      kind: "image",
+      allowMock: true,
+      configuredProviders: [
+        {
+          providerId: "replicate",
+          upstreamId: "replicate",
+          enabled: true,
+          priority: 1,
+          configuredCredentials: [],
+        },
+        {
+          providerId: "replicate",
+          upstreamId: "replicate",
+          enabled: true,
+          priority: 20,
+          configuredCredentials: ["apiKey"],
+        },
+        { providerId: "mock", enabled: true },
+      ],
+    });
+
+    expect(route).toMatchObject({
+      providerId: "replicate",
+      upstreamId: "replicate",
+      apiShape: "replicate",
+      upstreamModel: "openai/gpt-image-2",
+    });
+  });
+
+  it("does not let a disabled key block an enabled key for the same provider", () => {
+    const route = resolveModelUpstreamRoute({
+      modelCode: "gemini-3.1-flash-tts",
+      kind: "audio",
+      configuredProviders: [
+        {
+          providerId: "official",
+          upstreamId: "google",
+          region: "global",
+          enabled: false,
+          priority: 1,
+          configuredCredentials: ["apiKey"],
+        },
+        {
+          providerId: "official",
+          upstreamId: "google",
+          region: "global",
+          enabled: true,
+          priority: 20,
+          configuredCredentials: ["apiKey"],
+        },
+      ],
+    });
+
+    expect(route).toMatchObject({
+      providerId: "official",
+      upstreamId: "google",
+      apiShape: "google-ai-studio",
+      upstreamModel: "gemini-3.1-flash-tts-preview",
+    });
+  });
+
+  it("uses the credential set that satisfies the route when official provider accounts share an upstream", () => {
+    const route = resolveModelUpstreamRoute({
+      modelCode: "gemini-3.1-flash-tts",
+      kind: "audio",
+      configuredProviders: [
+        {
+          providerId: "official",
+          upstreamId: "google",
+          region: "global",
+          enabled: true,
+          priority: 1,
+          configuredCredentials: ["vertexCredentials"],
+        },
+        {
+          providerId: "official",
+          upstreamId: "google",
+          region: "global",
+          enabled: true,
+          priority: 20,
+          configuredCredentials: ["apiKey"],
+        },
+      ],
+    });
+
+    expect(route).toMatchObject({
+      providerId: "official",
+      upstreamId: "google",
+      apiShape: "google-ai-studio",
+      upstreamModel: "gemini-3.1-flash-tts-preview",
+    });
+  });
+
+  it("marks a model available when any configured key for its provider satisfies required credentials", () => {
+    const entries = listModelCatalogEntries({
+      configuredProviders: [
+        {
+          providerId: "official",
+          upstreamId: "openai",
+          region: "global",
+          enabled: true,
+          priority: 1,
+          configuredCredentials: [],
+        },
+        {
+          providerId: "official",
+          upstreamId: "openai",
+          region: "global",
+          enabled: true,
+          priority: 20,
+          configuredCredentials: ["apiKey"],
+        },
+      ],
+    });
+
+    const gptImage = entries.find((entry) => entry.model.id === "gpt-image-2");
+    expect(gptImage).toMatchObject({
+      tier: "available",
+      selectedRoute: {
+        providerId: "official",
+        upstreamId: "openai",
+      },
+      missingCredentials: [],
+    });
+  });
+
   it("routes KIE provider accounts through the KIE market API shape", () => {
     const route = resolveModelUpstreamRoute({
       modelCode: "nano-banana-2",
@@ -181,13 +557,13 @@ describe("model upstream routing", () => {
         {
           providerId: "kie",
           upstreamId: "kie",
-          availableVariables: ["KIE_API_KEY"],
+          configuredCredentials: ["apiKey"],
           weight: 100,
         },
         {
           providerId: "fal",
           upstreamId: "fal",
-          availableVariables: ["FAL_API_KEY"],
+          configuredCredentials: ["apiKey"],
         },
       ],
     });
@@ -197,7 +573,7 @@ describe("model upstream routing", () => {
       upstreamId: "kie",
       upstreamModel: "nano-banana-2",
       apiShape: "kie",
-      requiredVariables: ["KIE_API_KEY"],
+      requiredCredentials: ["apiKey"],
     });
   });
 
@@ -209,13 +585,13 @@ describe("model upstream routing", () => {
         {
           providerId: "replicate",
           upstreamId: "replicate",
-          availableVariables: ["REPLICATE_API_TOKEN"],
+          configuredCredentials: ["apiKey"],
           weight: 100,
         },
         {
           providerId: "official",
           upstreamId: "openai",
-          availableVariables: ["OPENAI_API_KEY"],
+          configuredCredentials: ["apiKey"],
         },
       ],
     });
@@ -225,7 +601,7 @@ describe("model upstream routing", () => {
       upstreamId: "replicate",
       upstreamModel: "openai/gpt-image-2",
       apiShape: "replicate",
-      requiredVariables: ["REPLICATE_API_TOKEN"],
+      requiredCredentials: ["apiKey"],
     });
   });
 
@@ -239,7 +615,7 @@ describe("model upstream routing", () => {
           upstreamId: "openai",
           region: "global",
           enabled: true,
-          availableVariables: ["OPENAI_API_KEY"],
+          configuredCredentials: ["apiKey"],
         },
       ],
     });
@@ -254,8 +630,8 @@ describe("model upstream routing", () => {
 
   it("classifies model catalog entries by runnable and configured-provider tiers", () => {
     const configuredProviders: ProviderAccountAvailability[] = [
-      { providerId: "fal", enabled: true, availableVariables: ["FAL_API_KEY"] },
-      { providerId: "official", upstreamId: "openai", enabled: true, availableVariables: [] },
+      { providerId: "fal", enabled: true, configuredCredentials: ["apiKey"] },
+      { providerId: "official", upstreamId: "openai", enabled: true, configuredCredentials: [] },
     ];
 
     const entries = listModelCatalogEntries({ configuredProviders });
@@ -271,7 +647,7 @@ describe("model upstream routing", () => {
     });
     expect(gptImage).toMatchObject({
       tier: "configured-provider",
-      missingVariables: ["OPENAI_API_KEY"],
+      missingCredentials: ["apiKey"],
       candidateProviders: ["official"],
     });
   });

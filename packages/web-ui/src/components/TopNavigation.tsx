@@ -1,9 +1,11 @@
 
-import { useEffect, useState, type CSSProperties } from 'react';
+import { useEffect, useRef, useState, type CSSProperties } from 'react';
 import { motion } from 'framer-motion';
 import { Link, useLocation, useNavigate } from 'react-router';
 import { desktopChromeMetrics } from '@clash/shared-runtime';
 import {
+  ArrowLeft,
+  ArrowRight,
   House,
   FolderOpen,
   Storefront,
@@ -12,8 +14,8 @@ import {
 import UserControls from './UserControls';
 import {
   activateOrAppendDesktopTab,
-  appendDesktopTab,
   closeDesktopTab,
+  createDesktopTab,
   DESKTOP_TAB_TITLE_EVENT,
   type DesktopTabTitleEventDetail,
   type DesktopTab,
@@ -32,7 +34,7 @@ declare global {
 const navItems = [
   { name: 'Home', href: '/', icon: House },
   { name: 'Projects', href: '/projects', icon: FolderOpen },
-  { name: 'Store', href: '/marketplace', icon: Storefront },
+  { name: 'Store', href: '/marketplace/manage', icon: Storefront },
 ];
 
 const desktopChromeStyle = {
@@ -40,34 +42,73 @@ const desktopChromeStyle = {
   '--clash-desktop-toolbar-left-inset': `${desktopChromeMetrics.toolbarLeftInset}px`,
 } as CSSProperties;
 
+const HOME_DESKTOP_TAB_ID = 'tab-home';
+
+function ensureHomeDesktopTab(tabs: DesktopTab[]): DesktopTab[] {
+  const homeTab = tabs.find((tab) => tab.path === '/');
+  const remainingTabs = tabs.filter((tab) => tab.path !== '/');
+  return [homeTab ?? createDesktopTab('/', HOME_DESKTOP_TAB_ID), ...remainingTabs];
+}
+
 export default function TopNavigation() {
   const pathname = useLocation().pathname;
   const navigate = useNavigate();
   const isProjectDetailPage = /^\/projects\/[^/]+$/.test(pathname);
+  const isSettingsPage = pathname === '/settings';
   const [isDesktop, setIsDesktop] = useState(false);
   const [desktopTabs, setDesktopTabs] = useState<DesktopTab[]>([]);
   const [activeDesktopTabId, setActiveDesktopTabId] = useState<string | null>(null);
+  const [desktopHistory, setDesktopHistory] = useState<{ entries: string[]; index: number }>(() => ({
+    entries: [pathname],
+    index: 0,
+  }));
+  const pendingDesktopHistoryPathRef = useRef<string | null>(null);
 
   useEffect(() => {
     const desktop = globalThis.__CLASH_DESKTOP__?.isDesktop === true;
     setIsDesktop(desktop);
 
     if (desktop) {
-      const initial = appendDesktopTab([], pathname, `tab-${Date.now().toString(36)}`);
-      setDesktopTabs(initial.tabs);
+      setDesktopHistory({ entries: [pathname], index: 0 });
+      const initial = activateOrAppendDesktopTab(
+        ensureHomeDesktopTab([]),
+        pathname,
+        `tab-${Date.now().toString(36)}`,
+      );
+      setDesktopTabs(ensureHomeDesktopTab(initial.tabs));
       setActiveDesktopTabId(initial.activeTabId);
     }
   }, []);
 
   useEffect(() => {
-    if (!isDesktop || !activeDesktopTabId) return;
+    if (!isDesktop) return;
+    setDesktopHistory((history) => {
+      const pendingPath = pendingDesktopHistoryPathRef.current;
+      if (pendingPath === pathname) {
+        pendingDesktopHistoryPathRef.current = null;
+        return history;
+      }
+
+      const currentPath = history.entries[history.index];
+      if (currentPath === pathname) return history;
+
+      const previousEntries = history.entries.slice(0, history.index + 1);
+      return {
+        entries: [...previousEntries, pathname],
+        index: previousEntries.length,
+      };
+    });
+  }, [isDesktop, pathname]);
+
+  useEffect(() => {
+    if (!isDesktop) return;
     const id = `tab-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
     setDesktopTabs((tabs) => {
-      const next = activateOrAppendDesktopTab(tabs, pathname, id);
+      const next = activateOrAppendDesktopTab(ensureHomeDesktopTab(tabs), pathname, id);
       setActiveDesktopTabId(next.activeTabId);
-      return next.tabs;
+      return ensureHomeDesktopTab(next.tabs);
     });
-  }, [activeDesktopTabId, isDesktop, pathname]);
+  }, [isDesktop, pathname]);
 
   useEffect(() => {
     if (!isDesktop) return;
@@ -85,9 +126,9 @@ export default function TopNavigation() {
   const openPathInDesktopTab = (path: string) => {
     const id = `tab-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
     setDesktopTabs((tabs) => {
-      const next = activateOrAppendDesktopTab(tabs, path, id);
+      const next = activateOrAppendDesktopTab(ensureHomeDesktopTab(tabs), path, id);
       setActiveDesktopTabId(next.activeTabId);
-      return next.tabs;
+      return ensureHomeDesktopTab(next.tabs);
     });
     if (pathname !== path) navigate(path);
   };
@@ -98,17 +139,35 @@ export default function TopNavigation() {
   };
 
   const closeTab = (tabId: string) => {
-    if (!activeDesktopTabId) return;
+    const tabToClose = desktopTabs.find((tab) => tab.id === tabId);
+    if (!tabToClose || tabToClose.path === '/') return;
+
+    if (!activeDesktopTabId) {
+      setDesktopTabs((tabs) => ensureHomeDesktopTab(tabs.filter((tab) => tab.id !== tabId)));
+      return;
+    }
 
     const result = closeDesktopTab(
-      desktopTabs,
+      ensureHomeDesktopTab(desktopTabs),
       activeDesktopTabId,
       tabId,
-      `tab-${Date.now().toString(36)}-home`,
+      HOME_DESKTOP_TAB_ID,
     );
-    setDesktopTabs(result.tabs);
-    setActiveDesktopTabId(result.activeTabId);
-    if (result.nextPath !== pathname) navigate(result.nextPath);
+    const nextTabs = ensureHomeDesktopTab(result.tabs);
+    const nextActiveTab = nextTabs.find((tab) => tab.id === result.activeTabId) ?? nextTabs[0];
+    setDesktopTabs(nextTabs);
+    setActiveDesktopTabId(nextActiveTab.id);
+    if (nextActiveTab.path !== pathname) navigate(nextActiveTab.path);
+  };
+  const canGoBack = desktopHistory.index > 0;
+  const canGoForward = desktopHistory.index < desktopHistory.entries.length - 1;
+  const navigateDesktopHistory = (delta: -1 | 1) => {
+    const nextIndex = desktopHistory.index + delta;
+    if (nextIndex < 0 || nextIndex >= desktopHistory.entries.length) return;
+    const nextPath = desktopHistory.entries[nextIndex];
+    pendingDesktopHistoryPathRef.current = nextPath;
+    setDesktopHistory((history) => ({ ...history, index: nextIndex }));
+    if (nextPath !== pathname) navigate(nextPath);
   };
 
   if (isDesktop) {
@@ -123,6 +182,26 @@ export default function TopNavigation() {
             data-desktop-toolbar="true"
             className="flex h-full items-center gap-1 pl-[max(var(--clash-desktop-toolbar-left-inset),env(safe-area-inset-left))] pr-[max(0.75rem,env(safe-area-inset-right))]"
           >
+            <button
+              type="button"
+              onClick={() => navigateDesktopHistory(-1)}
+              disabled={!canGoBack}
+              aria-label="Back"
+              title="Back"
+              className="desktop-no-drag inline-flex h-8 w-8 flex-none items-center justify-center rounded-lg text-stone-700 transition-colors hover:bg-black/[0.055] disabled:cursor-default disabled:text-stone-300 disabled:hover:bg-transparent"
+            >
+              <ArrowLeft className="h-4 w-4" aria-hidden="true" />
+            </button>
+            <button
+              type="button"
+              onClick={() => navigateDesktopHistory(1)}
+              disabled={!canGoForward}
+              aria-label="Forward"
+              title="Forward"
+              className="desktop-no-drag inline-flex h-8 w-8 flex-none items-center justify-center rounded-lg text-stone-700 transition-colors hover:bg-black/[0.055] disabled:cursor-default disabled:text-stone-300 disabled:hover:bg-transparent"
+            >
+              <ArrowRight className="h-4 w-4" aria-hidden="true" />
+            </button>
             <div
               role="tablist"
               aria-label="Open tabs"
@@ -130,6 +209,7 @@ export default function TopNavigation() {
             >
               {desktopTabs.map((tab, index) => {
                 const active = tab.id === activeDesktopTabId;
+                const isHomeTab = tab.path === '/';
                 const nextTab = desktopTabs[index + 1];
                 const nextActive = nextTab?.id === activeDesktopTabId;
                 const showInactiveSeparator = !active && !!nextTab && !nextActive;
@@ -137,7 +217,9 @@ export default function TopNavigation() {
                   <div
                     key={tab.id}
                     data-desktop-tab="true"
-                    className={`desktop-no-drag group relative flex h-8 min-w-36 max-w-60 items-center gap-1 rounded-lg border px-2.5 text-[13px] font-medium transition-colors ${
+                    className={`desktop-no-drag group relative flex h-8 items-center gap-1 rounded-lg border text-[13px] font-medium transition-colors ${
+                      isHomeTab ? 'w-10 flex-none justify-center px-0' : 'min-w-36 max-w-60 px-2.5'
+                    } ${
                       active
                         ? 'border-[#e1ddd5] bg-[#fffefd] text-slate-950 shadow-sm'
                         : 'border-transparent bg-transparent text-stone-600 hover:bg-white/55 hover:text-stone-950'
@@ -147,24 +229,37 @@ export default function TopNavigation() {
                       type="button"
                       role="tab"
                       aria-selected={active}
+                      aria-label={isHomeTab ? 'Home' : undefined}
                       onClick={() => selectDesktopTab(tab)}
-                      className="min-w-0 flex-1 truncate text-left focus-visible:outline-none"
-                    >
-                      {tab.title}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => closeTab(tab.id)}
-                      aria-label={`Close ${tab.title}`}
-                      title={`Close ${tab.title}`}
-                      className={`inline-flex h-5 w-5 flex-none items-center justify-center rounded-full transition-colors ${
-                        active
-                          ? 'text-stone-500 hover:bg-black/10 hover:text-stone-950'
-                          : 'text-stone-400 opacity-0 hover:bg-black/10 hover:text-stone-800 group-hover:opacity-100'
+                      className={`min-w-0 focus-visible:outline-none ${
+                        isHomeTab ? 'inline-flex h-full w-full items-center justify-center' : 'flex-1 truncate text-left'
                       }`}
                     >
-                      <X className="h-3 w-3" weight="bold" />
+                      {isHomeTab ? (
+                        <House
+                          className={`h-4 w-4 ${active ? 'text-brand' : ''}`}
+                          weight={active ? 'fill' : 'regular'}
+                          aria-hidden="true"
+                        />
+                      ) : (
+                        tab.title
+                      )}
                     </button>
+                    {!isHomeTab && (
+                      <button
+                        type="button"
+                        onClick={() => closeTab(tab.id)}
+                        aria-label={`Close ${tab.title}`}
+                        title={`Close ${tab.title}`}
+                        className={`inline-flex h-5 w-5 flex-none items-center justify-center rounded-full transition-colors ${
+                          active
+                            ? 'text-stone-500 hover:bg-black/10 hover:text-stone-950'
+                            : 'text-stone-400 opacity-0 hover:bg-black/10 hover:text-stone-800 group-hover:opacity-100'
+                        }`}
+                      >
+                        <X className="h-3 w-3" weight="bold" />
+                      </button>
+                    )}
                     {showInactiveSeparator && (
                       <span
                         aria-hidden="true"
@@ -179,7 +274,7 @@ export default function TopNavigation() {
           </div>
         </header>
 
-        {!isProjectDetailPage && (
+        {!isProjectDetailPage && !isSettingsPage && (
           <div
             style={desktopChromeStyle}
             className="pointer-events-none fixed left-0 right-0 top-[calc(var(--clash-desktop-chrome-height)+0.5rem)] z-40 pb-5"

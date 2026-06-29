@@ -58,11 +58,11 @@ const mentionPluginKey = new PluginKey('asset-mention-trigger');
 /**
  * Trigger character for the unified mention picker.
  *
- * `@` opens a single picker over BOTH crew members and canvas nodes
- * (GroupChatPanel concatenates `invitedCrew` into `mentionableNodes`
+ * `@` opens a single picker over BOTH agent members and canvas nodes
+ * (GroupChatPanel concatenates `invitedAgent` into `mentionableNodes`
  * before passing them in). Every selection is inserted as
  * `@[label](node:<id>)`. The submit handler then re-partitions:
- * if `<id>` matches an invited crew id it dispatches via the
+ * if `<id>` matches an invited agent id it dispatches via the
  * room-mention path, otherwise it's a canvas-asset attachment.
  *
  * Keeping a single trigger avoids the "what's the right key?"
@@ -189,12 +189,12 @@ function AssetMentionMenu({
 }) {
     const [selectedIndex, setSelectedIndex] = useState(0);
 
-    // Filter by modalities and query. Crew bypass the modality filter
+    // Filter by modalities and query. Agent bypass the modality filter
     // — they aren't an "asset modality" and the user always wants to
-    // be able to @-address an invited crew member regardless of what
+    // be able to @-address an invited agent member regardless of what
     // the surrounding action expects as input.
     const filtered = nodes.filter((n) => {
-        if (n.type !== 'crew') {
+        if (n.type !== 'agent') {
             const modality = n.type === 'image' ? 'image' : n.type === 'video' ? 'video' : n.type === 'audio' ? 'audio' : 'text';
             if (!promptModalities.includes(modality)) return false;
         }
@@ -202,14 +202,14 @@ function AssetMentionMenu({
         return true;
     });
 
-    // Group: crew first (always at the top — they're who you usually
+    // Group: agent first (always at the top — they're who you usually
     // want to talk to), then assets ordered by connected → other.
-    const crewEntries = filtered.filter((n) => n.type === 'crew');
-    const assetEntries = filtered.filter((n) => n.type !== 'crew');
+    const agentEntries = filtered.filter((n) => n.type === 'agent');
+    const assetEntries = filtered.filter((n) => n.type !== 'agent');
     const connectedAssets = assetEntries.filter((n) => connectedIds.has(n.id));
     const otherAssets = assetEntries.filter((n) => !connectedIds.has(n.id));
     const sortedAssets = [...connectedAssets, ...otherAssets];
-    const sorted = [...crewEntries, ...sortedAssets];
+    const sorted = [...agentEntries, ...sortedAssets];
 
     useEffect(() => { setSelectedIndex(0); }, [query]);
 
@@ -250,7 +250,7 @@ function AssetMentionMenu({
             onMouseDown={(e) => { e.preventDefault(); onSelect(node); }}
             onMouseEnter={() => setSelectedIndex(i)}
         >
-            {node.type === 'crew' ? (
+            {node.type === 'agent' ? (
                 <span
                     className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-lg bg-brand-light text-[10px] font-bold text-slate-950 ring-1 ring-brand/20 dark:bg-brand/20 dark:text-slate-50"
                     aria-hidden="true"
@@ -269,9 +269,9 @@ function AssetMentionMenu({
                 </span>
             )}
             <span className="text-sm text-slate-800 dark:text-slate-100 truncate flex-1">{node.label}</span>
-            {node.type === 'crew' && (
+            {node.type === 'agent' && (
                 <span className="text-[9px] uppercase tracking-wider text-stone-700 dark:text-stone-300 font-medium">
-                    Crew
+                    Agent
                 </span>
             )}
         </button>
@@ -282,18 +282,18 @@ function AssetMentionMenu({
             className="fixed z-[9999] w-64 max-h-60 overflow-y-auto bg-warm-surface rounded-xl border border-warm-border shadow-lg"
             style={{ left: coords.left, bottom: window.innerHeight - coords.top + 4 }}
         >
-            {crewEntries.length > 0 && (
+            {agentEntries.length > 0 && (
                 <div className="px-3 py-1 text-[10px] font-medium text-stone-600 dark:text-stone-300 uppercase tracking-wider bg-warm-muted border-b border-warm-border">
-                    Crew
+                    Agent
                 </div>
             )}
-            {crewEntries.map((node, j) => renderRow(node, j))}
+            {agentEntries.map((node, j) => renderRow(node, j))}
             {sortedAssets.length > 0 && (
-                <div className={`px-3 py-1 text-[10px] font-medium text-stone-600 dark:text-stone-300 uppercase tracking-wider bg-warm-muted ${crewEntries.length > 0 ? 'border-t border-warm-border' : ''}`}>
+                <div className={`px-3 py-1 text-[10px] font-medium text-stone-600 dark:text-stone-300 uppercase tracking-wider bg-warm-muted ${agentEntries.length > 0 ? 'border-t border-warm-border' : ''}`}>
                     Canvas
                 </div>
             )}
-            {sortedAssets.map((node, j) => renderRow(node, crewEntries.length + j))}
+            {sortedAssets.map((node, j) => renderRow(node, agentEntries.length + j))}
         </div>
     );
 }
@@ -454,17 +454,17 @@ const MilkdownEditorInner = forwardRef<MilkdownEditorHandle, MilkdownEditorProps
                 view.focus();
             }
         } else {
-            // Non-image entries (crew, plain text nodes, etc.): insert as
+            // Non-image entries (agent, plain text nodes, etc.): insert as
             // a real link mark, not raw text. If we plug the literal
             // string `@[label](node:id)` straight into a Text node,
             // Milkdown's CommonMark serializer escapes the brackets
             // (→ `@\[label\](node:id)`) to keep them inert on re-parse —
             // which then breaks the submit-time regex that partitions
-            // crew vs canvas mentions (`/@\[[^\]]*\]\(node:([^)]+)\)/`).
+            // agent vs canvas mentions (`/@\[[^\]]*\]\(node:([^)]+)\)/`).
             // Building it as an `@` text node + a link-marked label +
             // trailing space round-trips through the serializer as
             // exactly `@[label](node:id) `, matches the regex, and the
-            // crew gets routed correctly.
+            // agent gets routed correctly.
             const schema = view.state.schema;
             const linkMark = schema.marks.link;
             // IMPORTANT: do NOT set a `title` on the link mark. Milkdown's
@@ -472,8 +472,8 @@ const MilkdownEditorInner = forwardRef<MilkdownEditorHandle, MilkdownEditorProps
             // `[label](node:<id> "title")` — and downstream regexes
             // (`/@\[[^\]]*\]\(node:([^)]+)\)/`) then capture
             // `<id> "title"` as the id, which fails the
-            // invitedCrewIdSet membership check and silently drops
-            // the @-mention from the dispatched crewMentions array.
+            // invitedAgentIdSet membership check and silently drops
+            // the @-mention from the dispatched agentMentions array.
             // The label itself already serves as the human-readable
             // text; the title attribute brought no value.
             const labelText = linkMark

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Copy, Check, CircleNotch } from '@phosphor-icons/react';
-import type { ByoStatus, BridgeCrewMember, BridgeSession } from '@clash/web-ui/hooks/useAgentByoBridge';
+import type { ByoStatus, BridgeAgentTemplate, BridgeSession } from '@clash/web-ui/hooks/useAgentByoBridge';
 import { getRuntimeConfig } from '@clash/web-ui/lib/runtimeConfig';
 import { Dialog } from '../ui/dialog';
 import { SessionStartPicker } from './SessionStartPicker';
@@ -20,10 +20,10 @@ interface Props {
   status: ByoStatus;
   pairTokenDisplay: string | null;
   errorMessage: string | null;
-  crew: BridgeCrewMember[];
+  agents: BridgeAgentTemplate[];
   sessions: BridgeSession[];
   onStartPairing: () => void;
-  onStartWith: (crewId: string | null, resumeSessionId?: string) => void;
+  onStartWith: (agentTemplateId: string | null, resumeSessionId?: string) => void;
   onClose: () => void;
 }
 
@@ -32,7 +32,7 @@ export function ByoAgentDialog({
   status,
   pairTokenDisplay,
   errorMessage,
-  crew,
+  agents,
   sessions,
   onStartPairing,
   onStartWith,
@@ -95,7 +95,7 @@ export function ByoAgentDialog({
     >
       {status === 'awaiting_choice' ? (
         <SessionStartPicker
-          crew={crew}
+          agentTemplates={agents}
           sessions={sessions}
           onStart={onStartWith}
           startLabel="Start helper"
@@ -110,12 +110,6 @@ export function ByoAgentDialog({
         />
       )}
 
-      <p className="mt-4 text-xs text-stone-600 leading-relaxed dark:text-stone-400">
-        First time? Install once with{' '}
-        <code className="font-mono text-[11px] bg-warm-muted px-1.5 py-0.5 rounded">
-          npm i -g @zed-industries/claude-code-acp
-        </code>
-      </p>
     </Dialog>
   );
 }

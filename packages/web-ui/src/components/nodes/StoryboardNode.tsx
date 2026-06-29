@@ -2,6 +2,7 @@ import { memo, useState, useEffect, useMemo } from 'react';
 import { Handle, Position, NodeProps, Node, useNodes, useEdges } from '@xyflow/react';
 import { PaintBrush, Link as LinkIcon, MagicWand, Warning } from '@phosphor-icons/react';
 import { Shot } from './ScriptNode';
+import { SelectMenu } from '../ui/select';
 
 const StoryboardNode = ({ id, data: _data, selected }: NodeProps<Node<Record<string, any>>>) => {
     // React Flow v11 compatible approach
@@ -63,17 +64,21 @@ const StoryboardNode = ({ id, data: _data, selected }: NodeProps<Node<Record<str
                     </div>
 
                     {shots.length > 0 ? (
-                        <select
-                            className="bg-transparent text-xs font-bold text-slate-800 dark:text-slate-200 outline-none cursor-pointer max-w-[150px]"
+                        <SelectMenu
                             value={linkedShotId}
-                            onChange={(e) => setLinkedShotId(e.target.value)}
-                        >
-                            {shots.map((shot, _) => (
-                                <option key={shot.id} value={shot.id}>
-                                    Scene {shot.scene}: {shot.content.substring(0, 15)}...
-                                </option>
-                            ))}
-                        </select>
+                            options={shots.map((shot) => ({
+                                value: shot.id,
+                                label: `Scene ${shot.scene}: ${shot.content.substring(0, 15)}...`,
+                            }))}
+                            onValueChange={setLinkedShotId}
+                            ariaLabel="Linked shot"
+                            variant="inline"
+                            placement="bottom"
+                            align="end"
+                            menuWidth={260}
+                            triggerClassName="max-w-[150px] text-xs font-bold"
+                            stopPropagation
+                        />
                     ) : (
                         <span className="text-[10px] text-red-400 flex items-center gap-1">
                             <Warning /> No Script Connected

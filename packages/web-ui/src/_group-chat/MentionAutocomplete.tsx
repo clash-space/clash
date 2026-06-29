@@ -1,5 +1,5 @@
 /**
- * Floating popover that surfaces invited-crew matches for the current
+ * Floating popover that surfaces invited-agent matches for the current
  * `@<query>` token. Pure presentation — state lives in
  * useMentionAutocomplete; this component only consumes it.
  *
@@ -10,14 +10,14 @@
  */
 
 import { motion, AnimatePresence } from 'framer-motion';
-import { crewHandle, crewInitials, type CrewRow } from './panel-types';
+import { agentHandle, agentInitials, type AgentRow } from './panel-types';
 
 interface MentionAutocompleteProps {
   open: boolean;
-  matches: CrewRow[];
+  matches: AgentRow[];
   activeIndex: number;
   onHover: (idx: number) => void;
-  onPick: (row: CrewRow) => void;
+  onPick: (row: AgentRow) => void;
   listboxId: string;
   optionId: (idx: number) => string;
 }
@@ -37,7 +37,7 @@ export function MentionAutocomplete({
         <motion.ul
           id={listboxId}
           role="listbox"
-          aria-label="Crew matches"
+          aria-label="Agent matches"
           initial={{ opacity: 0, y: 4 }}
           animate={{ opacity: 1, y: 0 }}
           exit={{ opacity: 0, y: 4 }}
@@ -46,11 +46,11 @@ export function MentionAutocomplete({
         >
           <li className="px-3 py-1.5 bg-warm-muted">
             <div className="font-display text-[10px] font-semibold text-stone-500 dark:text-stone-400 uppercase tracking-wider">
-              Address crew
+              Address agent
             </div>
           </li>
           {matches.map((c, idx) => {
-            const handle = crewHandle(c.display_name);
+            const handle = agentHandle(c.display_name);
             const offline = c.runtime_status !== 'online';
             const selected = idx === activeIndex;
             return (
@@ -77,7 +77,7 @@ export function MentionAutocomplete({
                     className="flex h-6 w-6 items-center justify-center rounded-full bg-warm-muted text-[10px] font-bold text-stone-700 dark:text-stone-200"
                     aria-hidden="true"
                   >
-                    {crewInitials(c.display_name)}
+                    {agentInitials(c.display_name)}
                   </span>
                   <span className="flex-1 text-left">
                     <span className="font-medium text-stone-800 dark:text-stone-100">@{handle}</span>

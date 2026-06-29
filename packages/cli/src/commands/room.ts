@@ -1,21 +1,21 @@
 /**
  * `clash room` — talk in a project's group-chat room.
  *
- * Designed to be invoked by a spawned crew agent (claude-code-acp /
+ * Designed to be invoked by a spawned agent (claude-agent-acp /
  * codex / etc.) via its Bash-equivalent tool. The bridge daemon
  * injects two env vars when it spawns the agent:
  *
  *   CLASH_PROJECT_ID       — which project's room to address
- *   CLASH_CREW_MEMBER_ID   — the calling crew_member.id (sender)
+ *   CLASH_AGENT_MEMBER_ID  — the calling agent member id (sender)
  *
  * Together with the existing CLASH_API_KEY, these are everything the
  * agent needs. Humans running the CLI by hand can also talk in their
  * own rooms by exporting CLASH_PROJECT_ID + impersonating one of
- * their own crew_member ids (server-side ownership check enforces
+ * their own agent member ids (server-side ownership check enforces
  * this).
  *
  * Subcommands:
- *   say <text>            POST a message as `sender_kind=crew`
+ *   say <text>            POST a message as the current agent
  *   read [--limit N]      GET recent messages (newest first)
  */
 
@@ -28,12 +28,12 @@ export const roomCommand = new Command("room")
 
 interface RoomMessage {
   id: string;
-  sender_kind: "user" | "crew";
+  sender_kind: "user" | "agent";
   sender_id: string;
   sender_user_id: string;
   text: string;
   at: number;
-  mentions?: Array<{ user_id: string; crew_member_id?: string; crew_id?: string }>;
+  mentions?: Array<{ user_id: string; agent_member_id?: string; agent_template_id?: string }>;
 }
 
 function projectId(): string {
@@ -49,40 +49,39 @@ function projectId(): string {
   return p;
 }
 
-function crewMemberId(): string {
-  const cm = process.env.CLASH_CREW_MEMBER_ID;
-  if (!cm) {
+function agentMemberId(): string {
+  const id = process.env.CLASH_AGENT_MEMBER_ID;
+  if (!id) {
     process.stderr.write(
-      "error: CLASH_CREW_MEMBER_ID is not set.\n" +
+      "error: CLASH_AGENT_MEMBER_ID is not set.\n" +
       "When invoked by the bridge daemon, this is injected automatically.\n" +
-      "Set it manually only if you've claimed a crew you want to impersonate.\n",
+      "Set it manually only if you've claimed an agent you want to impersonate.\n",
     );
     process.exit(2);
   }
-  return cm;
+  return id;
 }
 
 roomCommand
   .command("say")
   .description("Broadcast a message to the project's group-chat room")
   .argument("<text>", "Message body")
-  .option("--mention <crew_member_id...>", "Crew member id(s) to @-mention", [])
+  .option("--mention <agent_member_id...>", "Agent member id(s) to @-mention", [])
   .option("--json", "Output the saved message as JSON")
   .action(async (text: string, options: { mention?: string[]; json?: boolean }) => {
     const pid = projectId();
-    const senderId = crewMemberId();
+    const senderId = agentMemberId();
     const mentions = (options.mention ?? [])
       .filter((s) => s && s.trim())
-      .map((id) => ({ user_id: "", crew_member_id: id.trim() }));
-    // user_id is optional in the new mention shape — leave blank;
-    // server resolves crew_member_id directly. Kept the field for
-    // schema compatibility with browser-sent mentions.
+      .map((id) => ({ user_id: "", agent_member_id: id.trim() }));
+    // user_id is optional in the mention shape; the server resolves the
+    // backend member id directly.
 
     const data = await apiJson<RoomMessage>(`/api/v1/projects/${pid}/room/messages`, {
       method: "POST",
       body: JSON.stringify({
         text,
-        sender_kind: "crew",
+        sender_kind: "agent",
         sender_id: senderId,
         ...(mentions.length > 0 ? { mentions } : {}),
       }),
@@ -118,7 +117,7 @@ roomCommand
     }
     for (const m of data.messages) {
       const t = new Date(m.at * 1000).toLocaleTimeString();
-      const tag = m.sender_kind === "crew" ? "crew" : "user";
+      const tag = m.sender_kind === "agent" ? "agent" : "user";
       console.log(`[${t}] ${tag}/${m.sender_id.slice(0, 12)}: ${m.text}`);
     }
   });

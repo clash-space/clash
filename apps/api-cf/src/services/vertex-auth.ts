@@ -15,13 +15,15 @@
  * margin before the declared expiry. One worker instance → one active token
  * at a time; multiple concurrent callers share the in-flight exchange.
  */
-import type { Env } from "../config";
-
 const TOKEN_URL = "https://oauth2.googleapis.com/token";
 const SCOPE = "https://www.googleapis.com/auth/cloud-platform";
 const REFRESH_MARGIN_SEC = 300; // refresh 5 min before expiry
 
 type CachedToken = { accessToken: string; expiresAt: number };
+export interface VertexAuthCredentials {
+  clientEmail: string;
+  privateKey: string;
+}
 
 const tokenCache = new Map<string, CachedToken>();
 const inflight = new Map<string, Promise<CachedToken>>();
@@ -50,7 +52,7 @@ function utf8ToBase64Url(str: string): string {
 
 /** Parse a "-----BEGIN PRIVATE KEY-----...END PRIVATE KEY-----" PEM string
  *  into a CryptoKey suitable for RS256 signing. Accepts newlines encoded as
- *  literal "\n" (how GOOGLE_PRIVATE_KEY typically ships in env vars). */
+ *  literal "\n" (common when service-account JSON is pasted into settings). */
 async function importPrivateKey(pem: string): Promise<CryptoKey> {
   const normalized = pem.replace(/\\n/g, "\n");
   const body = normalized
@@ -116,13 +118,10 @@ async function exchangeJwtForToken(jwt: string): Promise<CachedToken> {
 
 // ─── Public: getAccessToken(env) ──────────────────────────────
 
-/** Return a valid Vertex access token, minting + caching as needed. */
-export async function getVertexAccessToken(env: Env): Promise<string> {
-  const clientEmail = env.GOOGLE_CLIENT_EMAIL ?? "";
-  const privateKey = env.GOOGLE_PRIVATE_KEY ?? "";
+async function getVertexAccessTokenForRawCredentials(clientEmail: string, privateKey: string): Promise<string> {
   if (!clientEmail || !privateKey) {
     throw new Error(
-      "Vertex auth requires GOOGLE_CLIENT_EMAIL + GOOGLE_PRIVATE_KEY env vars",
+      "Vertex auth requires clientEmail and privateKey provider credentials",
     );
   }
 
@@ -153,6 +152,10 @@ export async function getVertexAccessToken(env: Env): Promise<string> {
   }
   const token = await pending;
   return token.accessToken;
+}
+
+export async function getVertexAccessTokenForCredentials(credentials: VertexAuthCredentials): Promise<string> {
+  return getVertexAccessTokenForRawCredentials(credentials.clientEmail, credentials.privateKey);
 }
 
 /** Clear the cached token for a given client email. For tests / manual revoke. */

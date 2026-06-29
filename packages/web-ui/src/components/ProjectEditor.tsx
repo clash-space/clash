@@ -101,10 +101,25 @@ import { getRuntimeCapabilities, runtimeApiUrl } from '@clash/web-ui/lib/runtime
 import { DESKTOP_TAB_TITLE_EVENT, type DesktopTabTitleEventDetail } from '@clash/web-ui/lib/desktopTabs';
 import { buildFallbackCanvasFromAssets } from '@clash/web-ui/lib/projectFallbackCanvas';
 import { visiblePresenceClients } from '@clash/web-ui/lib/presenceVisibility';
+import { sanitizeNodesForReactFlow } from '@clash/web-ui/lib/canvasNodeOrder';
 import { shouldDismissToolbarMenu, shouldDismissToolbarMenuOnKey } from './toolbarDismiss';
 import UserControls from './UserControls';
 
 const CHILD_NODE_Z_INDEX_BASE = 1000;
+const DEFAULT_COPILOT_PANEL_FRACTION = 1 / 3;
+const MAX_COPILOT_PANEL_FRACTION = 3 / 7;
+const MIN_COPILOT_PANEL_WIDTH = 420;
+
+function clampCopilotPanelWidth(width: number) {
+    if (typeof window === 'undefined') return width;
+    const maxWidth = Math.max(MIN_COPILOT_PANEL_WIDTH, Math.round(window.innerWidth * MAX_COPILOT_PANEL_FRACTION));
+    return Math.max(MIN_COPILOT_PANEL_WIDTH, Math.min(maxWidth, width));
+}
+
+function defaultCopilotPanelWidth() {
+    if (typeof window === 'undefined') return 720;
+    return clampCopilotPanelWidth(Math.round(window.innerWidth * DEFAULT_COPILOT_PANEL_FRACTION));
+}
 
 interface ProjectEditorProps {
     project: Project;
@@ -164,35 +179,12 @@ const defaultVideoModel = MODEL_CARDS.find((card) => card.kind === 'video');
 const defaultAudioModel = MODEL_CARDS.find((card) => card.kind === 'audio');
 const defaultTextModel = MODEL_CARDS.find((card) => card.kind === 'text');
 
-// ReactFlow v12: parent nodes must appear before children in the nodes array.
-const sortNodesParentFirst = (nodes: AppNode[]): AppNode[] => {
-    const idSet = new Set(nodes.map((n) => n.id));
-    const result: AppNode[] = [];
-    const visited = new Set<string>();
-    const visit = (node: AppNode) => {
-        if (visited.has(node.id)) return;
-        visited.add(node.id);
-        if (node.parentId && idSet.has(node.parentId)) {
-            const parent = nodes.find((n) => n.id === node.parentId);
-            if (parent) visit(parent);
-        }
-        result.push(node);
-    };
-    for (const node of nodes) visit(node);
-    return result;
-};
-
 const sanitizeNodes = (nodes: AppNode[]): AppNode[] => {
-    const nodeIds = new Set(nodes.map(n => n.id));
-    const cleaned = nodes.map(node => {
-        if (node.parentId && !nodeIds.has(node.parentId)) {
-            console.warn(`[Sanitize] Removing invalid parentId ${node.parentId} from node ${node.id}`);
-            const { parentId: _, ...rest } = node;
-            return { ...rest, parentId: undefined, extent: undefined };
-        }
-        return node;
+    return sanitizeNodesForReactFlow(nodes, {
+        onInvalidParent: (node, parentId) => {
+            console.warn(`[Sanitize] Removing invalid parentId ${parentId} from node ${node.id}`);
+        },
     });
-    return sortNodesParentFirst(cleaned);
 };
 
 /**
@@ -646,14 +638,20 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
 
     // Sidebar state
     // Sidebar state starts with server defaults; localStorage is read post-mount to avoid hydration mismatch.
-    const [sidebarWidth, setSidebarWidth] = useState(384);
+    const [sidebarWidth, setSidebarWidth] = useState(defaultCopilotPanelWidth);
     const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
     const [sidebarHydrated, setSidebarHydrated] = useState(false);
     const topActionsRight = isSidebarCollapsed ? 24 : sidebarWidth + 32;
 
     useEffect(() => {
         const savedWidth = localStorage.getItem('copilot-sidebar-width');
-        if (savedWidth) setSidebarWidth(parseInt(savedWidth, 10));
+        if (savedWidth) {
+            const parsedWidth = parseInt(savedWidth, 10);
+            const nextDefault = defaultCopilotPanelWidth();
+            setSidebarWidth(Number.isFinite(parsedWidth) && parsedWidth >= MIN_COPILOT_PANEL_WIDTH
+                ? clampCopilotPanelWidth(parsedWidth)
+                : nextDefault);
+        }
         setIsSidebarCollapsed(localStorage.getItem('copilot-sidebar-collapsed') === 'true');
         setSidebarHydrated(true);
     }, []);
@@ -728,7 +726,7 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
     const handleCopilotCreateSession = useCallback(async (initialMessage: string) => {
         const result = await handleCreateSession(initialMessage);
         if (!result) throw new Error('Failed to create session');
-        upsertSession(result.threadId, result.title);
+        upsertSession({ threadId: result.threadId, title: result.title, type: 'cloud' });
         setChatInitialPrompt(initialMessage);
         setThreadId(result.threadId);
         setSessionKey(k => k + 1);
@@ -744,7 +742,7 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
             hasCreatedSessionRef.current = true;
             handleCreateSession(initialPrompt).then(result => {
                 if (result) {
-                    upsertSession(result.threadId, result.title);
+                    upsertSession({ threadId: result.threadId, title: result.title, type: 'cloud' });
                     setChatInitialPrompt(initialPrompt!);
                     setThreadId(result.threadId);
                 }
@@ -762,38 +760,7 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
 
 	    // Always sanitize nodes before passing to ReactFlow to prevent "Parent node X not found" errors
 	    // This is the final safety net - removes any invalid parentId references
-	    const sanitizedNodes = useMemo(() => {
-	        const nodeIds = new Set(nodes.map(n => n.id));
-	        let sanitizedCount = 0;
-	        const result = nodes.map(node => {
-	            if (node.parentId && !nodeIds.has(node.parentId)) {
-	                sanitizedCount++;
-	                console.warn(`[ProjectEditor] Sanitizing node ${node.id}: removing invalid parentId "${node.parentId}"`);
-	                // Explicitly create new object without parentId
-	                return {
-	                    id: node.id,
-	                    type: node.type,
-	                    position: node.position,
-	                    data: node.data,
-	                    width: node.width,
-	                    height: node.height,
-	                    style: node.style,
-	                    className: node.className,
-	                    selected: node.selected,
-	                    dragging: node.dragging,
-	                    resizing: node.resizing,
-	                    // Explicitly set parentId to undefined
-	                    parentId: undefined,
-	                    extent: undefined,
-	                } as Node;
-	            }
-	            return node;
-	        });
-	        if (sanitizedCount > 0) {
-	            console.log(`[ProjectEditor] Sanitized ${sanitizedCount} nodes with invalid parentIds`);
-	        }
-	        return result;
-	    }, [nodes]);
+	    const sanitizedNodes = useMemo(() => sanitizeNodes(nodes), [nodes]);
 
 
 	    const applyAutoZIndex = useCallback((nodeList: Node[]): Node[] => {
@@ -2482,6 +2449,7 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
 
                                     nodeTypes={nodeTypes}
                                     fitView
+                                    onlyRenderVisibleElements
                                     minZoom={0.1}
                                     selectionOnDrag={canvasMode === 'select'}
                                     panOnDrag={canvasMode === 'select' ? [1, 2] : true}
@@ -2736,6 +2704,7 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
                                         onNewSession={handleNewSession}
                                         onSwitchSession={handleSwitchSession}
                                         onDeleteSession={handleDeleteSession}
+                                        onUpsertSession={upsertSession}
                                         onCreateSession={handleCopilotCreateSession}
                                         actorUserId={project.ownerId}
                                     />

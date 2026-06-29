@@ -8,6 +8,7 @@ import { transcribeAudio } from "../../services/asr";
 import { analyzeVisual } from "../../services/visual-understanding";
 import type { GenerationContext } from "../context";
 import type { GenerationProvider } from "../provider";
+import { credentialsForProvider } from "./provider-credentials";
 
 async function uploadR2ToFal(bucket: R2Bucket, key: string, falApiKey: string): Promise<string> {
   fal.config({ credentials: falApiKey });
@@ -38,8 +39,9 @@ export const understandProvider: GenerationProvider = {
         { retries: { limit: 2, delay: "5 seconds", backoff: "exponential" }, timeout: "5 minutes" },
         async () => {
           log.info("ASR started", ctx.tag);
-          const audioUrl = await uploadR2ToFal(env.R2_BUCKET, r2Key, env.FAL_API_KEY ?? "");
-          const result = await transcribeAudio(env.FAL_API_KEY ?? "", audioUrl, {
+          const falKey = (await credentialsForProvider(ctx, "fal", ["apiKey"], { upstreamId: "fal" })).apiKey;
+          const audioUrl = await uploadR2ToFal(env.R2_BUCKET, r2Key, falKey);
+          const result = await transcribeAudio(falKey, audioUrl, {
             language: params.language,
           });
           log.info("ASR completed", {

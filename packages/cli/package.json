@@ -21,6 +21,7 @@
     "test:e2e": "node --test e2e/canvas-add-refs.test.mjs"
   },
   "dependencies": {
+    "@clash/shared-runtime": "workspace:*",
     "commander": "^13.0.0",
     "loro-crdt": "^1.10.3",
     "ws": "^8.18.0"

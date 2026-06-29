@@ -72,6 +72,35 @@ export const userVariables = sqliteTable(
 )
 
 /**
+ * Provider Accounts — encrypted credentials for model provider routing.
+ * Supports multiple accounts per provider; no legacy user_variable fallback.
+ */
+export const providerAccounts = sqliteTable(
+    "provider_account",
+    {
+        id: text("id")
+            .primaryKey()
+            .$defaultFn(() => crypto.randomUUID()),
+        userId: text("user_id").notNull(),
+        providerId: text("provider_id").notNull(),
+        upstreamId: text("upstream_id"),
+        region: text("region"),
+        label: text("label"),
+        enabled: integer("enabled").notNull().default(1),
+        priority: integer("priority"),
+        weight: integer("weight"),
+        encryptedCredentials: text("encrypted_credentials"),
+        configuredCredentials: text("configured_credentials"),
+        createdAt: integer("created_at", { mode: "timestamp" }).default(sql`(strftime('%s', 'now'))`),
+        updatedAt: integer("updated_at", { mode: "timestamp" }).default(sql`(strftime('%s', 'now'))`),
+    },
+    (table) => ({
+        providerAccountUserIdx: index("provider_account_user_idx").on(table.userId),
+        providerAccountProviderIdx: index("provider_account_provider_idx").on(table.userId, table.providerId, table.upstreamId),
+    })
+)
+
+/**
  * Installed Actions — globally installed canvas actions per user.
  * Actions appear in all project toolbars.
  */
@@ -242,10 +271,8 @@ export const runtimeSession = sqliteTable(
         id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
         userId: text("user_id").notNull(),
         runtimeId: text("runtime_id").notNull(),
-        agentId: text("agent_id").notNull(),
-        // Phase 2: links a session to its claimed crew_member. Nullable
-        // for back-compat with rows created before the claim layer.
-        crewMemberId: text("crew_member_id"),
+        agentTemplateId: text("agent_template_id").notNull(),
+        agentMemberId: text("agent_member_id").notNull(),
         acpSessionId: text("acp_session_id"),
         cwd: text("cwd").notNull(),
         title: text("title"),
@@ -256,14 +283,14 @@ export const runtimeSession = sqliteTable(
     (table) => ({
         runtimeSessionUserIdx: index("runtime_session_user_idx").on(table.userId, table.lastActiveAt),
         runtimeSessionRuntimeIdx: index("runtime_session_runtime_idx").on(table.runtimeId),
-        runtimeSessionCrewMemberIdx: index("runtime_session_crew_member_idx").on(table.crewMemberId),
+        runtimeSessionAgentMemberIdx: index("runtime_session_agent_member_idx").on(table.agentMemberId),
     })
 )
 
 /**
  * Chat history per local-runtime session.
  *
- * One row per logical message (user prompt or assembled crew turn).
+ * One row per logical message (user prompt or assembled agent turn).
  * Streaming chunks aren't persisted — they're broadcast live via the
  * RuntimeRoom DO and the assembled message gets written on
  * session.complete (events_json holds the raw ACP events; browser
@@ -279,8 +306,8 @@ export const chatMessage = sqliteTable(
         id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
         sessionId: text("session_id").notNull(),
         userId: text("user_id").notNull(),
-        senderKind: text("sender_kind").notNull(), // 'user' | 'crew'
-        senderId: text("sender_id").notNull(),     // crew_id or user_id
+        senderKind: text("sender_kind").notNull(), // 'user' | 'agent'
+        senderId: text("sender_id").notNull(),     // agent_member_id or user_id
         turnId: text("turn_id"),
         eventsJson: text("events_json").notNull(),
         createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
@@ -294,26 +321,26 @@ export const chatMessage = sqliteTable(
 /**
  * Project room — group-chat IM layer.
  *
- * One row per "speech act" — humans typing in the room input or crews
- * broadcasting via the say_to_room tool. Crew internal activity (tool
+ * One row per "speech act" — humans typing in the room input or agents
+ * broadcasting via the say_to_room tool. Agent internal activity (tool
  * calls, streamed text chunks) does NOT land here — that lives in
- * chat_message scoped to the crew's runtime_session.
+ * chat_message scoped to the agent's runtime_session.
  *
- * sender_user_id is on every row (even when sender_kind='crew') so the
- * UI can render "director (alice)". Per-user crew model: each user runs
+ * sender_user_id is on every row (even when sender_kind='agent') so the
+ * UI can render "director (alice)". Per-user agent model: each user runs
  * their own daemon; the room is shared across the project's members.
  *
- * mentions_json — array of {user_id, crew_id?}. ProjectRoom DO uses it
+ * mentions_json — array of {user_id, agent_member_id?}. ProjectRoom DO uses it
  * to look up the matching runtime_session and push room.mention into
- * that crew's react loop.
+ * that agent's react loop.
  */
 export const roomMessage = sqliteTable(
     "room_message",
     {
         id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
         projectId: text("project_id").notNull(),
-        senderKind: text("sender_kind").notNull(), // 'user' | 'crew'
-        senderId: text("sender_id").notNull(),     // user_id (when 'user') or crew_id (when 'crew')
+        senderKind: text("sender_kind").notNull(), // 'user' | 'agent'
+        senderId: text("sender_id").notNull(),     // user_id (when 'user') or agent_member_id (when 'agent')
         senderUserId: text("sender_user_id").notNull(),
         mentionsJson: text("mentions_json").notNull(),
         text: text("text").notNull(),
@@ -325,31 +352,27 @@ export const roomMessage = sqliteTable(
 )
 
 /**
- * Claimed crew members — concrete instances of bundled crew templates.
+ * Claimed agent members — concrete instances of bundled agent templates.
  *
  * Templates (Director / Canvas Editor / …) ship in the bridge daemon
  * as read-only role definitions. A user "claims" a template + runtime
  * to create one of these rows — e.g. "Alice's Director on alice-mac".
  *
  * Once claimed, the row is what gets invited into project rooms, what
- * room mentions target, and what spawns sessions. runtime_session
- * eventually references crew_member.id (currently stores template_id
- * in agent_id; migration to crew_member_id is a follow-up).
+ * room mentions target, and what spawns sessions.
  *
  * Display name defaults to template label; user can rename to
  * distinguish multiple instances of the same template.
  */
-export const crewMember = sqliteTable(
-    "crew_member",
+export const agentMember = sqliteTable(
+    "agent_member",
     {
         id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
         userId: text("user_id").notNull(),
         templateId: text("template_id").notNull(),
         runtimeId: text("runtime_id").notNull(),
-        // ACP CLI to spawn (claude-code-acp / codex / gemini / …).
-        // Nullable for back-compat with rows claimed before agent_id
-        // existed; server falls back to the template's bundled default.
-        agentId: text("agent_id"),
+        // ACP CLI to spawn (claude-agent-acp / codex / gemini / …).
+        agentId: text("agent_id").notNull(),
         displayName: text("display_name").notNull(),
         createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
         // ── Per-agent budget (Phase 0 multi-actor billing) ───────
@@ -364,8 +387,8 @@ export const crewMember = sqliteTable(
         budgetResetAt: integer("budget_reset_at"),
     },
     (table) => ({
-        crewMemberUserIdx: index("crew_member_user_idx").on(table.userId, table.createdAt),
-        crewMemberRuntimeIdx: index("crew_member_runtime_idx").on(table.runtimeId),
+        agentMemberUserIdx: index("agent_member_user_idx").on(table.userId, table.createdAt),
+        agentMemberRuntimeIdx: index("agent_member_runtime_idx").on(table.runtimeId),
     })
 )
 

@@ -38,7 +38,20 @@ from .models import (
     define_provider,
     define_serverless_provider,
 )
-from .agent import ClashAgent, run
+
+
+def run(*args, **kwargs):
+    from .agent import run as _run
+
+    return _run(*args, **kwargs)
+
+
+def __getattr__(name: str):
+    if name == "ClashAgent":
+        from .agent import ClashAgent
+
+        return ClashAgent
+    raise AttributeError(name)
 
 __all__ = [
     "action",

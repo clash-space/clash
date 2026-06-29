@@ -7,6 +7,7 @@
     },
     "header": {
       "newSession": "新建会话",
+      "newChat": "New chat",
       "history": "历史会话",
       "runOn": "运行环境（云端 / 本地）"
     },
@@ -58,6 +59,25 @@
       "disconnected": "未连接",
       "thinking": "思考中",
       "streaming": "生成中",
+      "reconnecting": "正在重连 {{attempt}}/{{maxAttempts}}",
+      "switchingTransport": "正在切换传输",
+      "readyWhenYouAre": "随时可以开始",
+      "workedForSeconds": "工作了 {{count}} 秒",
+      "workedForMinutes": "工作了 {{count}} 分钟",
+      "creativeThinking": [
+        "酝酿一下",
+        "找个角度",
+        "捋捋节奏",
+        "抓住钩子",
+        "灵感冒泡"
+      ],
+      "creativeStreaming": [
+        "开始落字",
+        "节奏铺开",
+        "翻成画面",
+        "线索串起来",
+        "下一拍来了"
+      ],
       "localAgentReady": "本地 Agent 已连接，发送消息以开始。",
       "desktopLocalStarting": "正在连接这台 Mac 上的本地 Agent…",
       "desktopLocalRequired": "这台 Mac 上还没有可用的本地 Agent。",

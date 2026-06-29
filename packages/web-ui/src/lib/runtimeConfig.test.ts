@@ -8,10 +8,6 @@ import {
   runtimeWebSocketUrl,
 } from "./runtimeConfig";
 
-declare global {
-  var __CLASH_RUNTIME_CONFIG__: { apiBaseUrl?: string; wsBaseUrl?: string } | undefined;
-}
-
 describe("web-ui runtimeConfig", () => {
   beforeEach(() => {
     globalThis.__CLASH_RUNTIME_CONFIG__ = undefined;

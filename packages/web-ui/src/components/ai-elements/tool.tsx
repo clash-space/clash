@@ -14,7 +14,7 @@
 //     code blocks, no big "INPUT" / "OUTPUT" labels.
 //
 // Status colour comes from the shared status-* tokens so it matches
-// the crew-list dots in the rest of the panel.
+// the agent-list dots in the rest of the panel.
 
 import {
   Collapsible,
@@ -54,7 +54,7 @@ export type ToolHeaderProps = {
     }
 );
 
-// Aligned with crew status-dot palette:
+// Aligned with agent status-dot palette:
 //   green  "live"    — actively streaming / running
 //   amber  "linked"  — waiting for approval / connected but idle
 //   empty  "offline" — gone / never started
@@ -108,7 +108,7 @@ export const ToolHeader = ({
 }: ToolHeaderProps & { previewInput?: unknown }) => {
   const derivedName =
     type === "dynamic-tool" ? toolName : type.split("-").slice(1).join("-");
-  // Long / backtick-wrapped titles are claude-code-acp's fallback when
+  // Long / backtick-wrapped titles are claude-agent-acp's fallback when
   // it doesn't have a proper title — prefer the tool name in that case
   // so the header stays one tidy line. Full title still goes into the
   // body via ToolInput.

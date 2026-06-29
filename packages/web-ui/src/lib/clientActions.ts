@@ -68,8 +68,27 @@ export interface InstalledSkillInfo {
   createdAt: Date | null;
 }
 
-export type ModelProviderAccountInfo = ProviderAccountAvailability;
+export type ModelProviderAccountInfo = ProviderAccountAvailability & {
+  id?: string;
+  label?: string;
+  credentials?: Record<string, string>;
+  createdAt?: number | string | null;
+  updatedAt?: number | string | null;
+};
 export type ModelCatalogEntryInfo = ModelCatalogEntry;
+
+export interface ProviderOAuthInfo {
+  providerId: string;
+  status: "pending" | "authorized" | "expired" | "revoked" | "error";
+  verificationUri?: string;
+  userCode?: string;
+  deviceCode?: string;
+  expiresAt?: string;
+  intervalSeconds?: number;
+  accountLabel?: string;
+  error?: string;
+  hasAccessToken: boolean;
+}
 
 export interface RegistryItem {
   id: string;
@@ -206,6 +225,24 @@ export async function updateModelProviders(
 export async function listModelCatalog(): Promise<ModelCatalogEntryInfo[]> {
   const data = await jsonFetch<{ models: ModelCatalogEntryInfo[] }>("/api/v1/models/catalog");
   return data.models;
+}
+
+export async function listProviderOAuth(): Promise<ProviderOAuthInfo[]> {
+  const data = await jsonFetch<{ providers: ProviderOAuthInfo[] }>("/api/v1/provider-oauth");
+  return data.providers;
+}
+
+export async function startProviderOAuth(providerId: string): Promise<ProviderOAuthInfo> {
+  return jsonFetch(`/api/v1/provider-oauth/${encodeURIComponent(providerId)}/start`, {
+    method: "POST",
+  });
+}
+
+export async function completeProviderOAuth(providerId: string, deviceCode?: string): Promise<ProviderOAuthInfo> {
+  return jsonFetch(`/api/v1/provider-oauth/${encodeURIComponent(providerId)}/complete`, {
+    method: "POST",
+    body: JSON.stringify({ deviceCode }),
+  });
 }
 
 // ───────── Settings: Installed actions ─────────

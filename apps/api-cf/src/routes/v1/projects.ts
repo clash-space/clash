@@ -86,31 +86,20 @@ projectRoutes.delete("/:id", async (c) => {
 
 // ─── Project room (group-chat IM layer) ──────────────────────────
 //
-// Multi-user, multi-crew speech-act log. Crews broadcast via the
+// Multi-user, multi-agent speech-act log. Agents broadcast via the
 // say_to_room tool (HTTP POST here); humans type into the room input
-// (same POST). Crew internal activity (tool calls, streaming text)
+// (same POST). Agent internal activity (tool calls, streaming text)
 // stays in chat_message — it does NOT come through here.
 //
-// Mention dispatch: each {user_id, crew_id} entry → look up that
-// user's active runtime_session for the crew → push room.mention via
+// Mention dispatch: each {user_id, agent_member_id} entry → look up the
+// active runtime_session for that agent member → push room.mention via
 // RuntimeRoom DO RPC. Best-effort: if no live session, the mention is
 // silently dropped (the room message itself is still visible — the
-// crew just won't auto-respond until next time it's spawned).
+// agent just won't auto-respond until next time it's spawned).
 
 interface RoomMention {
   user_id: string;
-  /**
-   * Phase 2 preferred — references a claimed crew_member.id. Server
-   * looks up the active runtime_session by crew_member_id directly.
-   */
-  crew_member_id?: string;
-  /**
-   * @deprecated template id — only used by browsers that haven't
-   * picked up the claim layer yet. Server falls back to looking up
-   * runtime_session by (user_id, agent_id=template). Drop once all
-   * clients send crew_member_id.
-   */
-  crew_id?: string;
+  agent_member_id?: string;
 }
 
 // Membership check — for v1, "in the project" means owner. When
@@ -187,33 +176,33 @@ projectRoutes.post("/:pid/room/messages", async (c) => {
     id?: string;
     text?: string;
     mentions?: RoomMention[];
-    /** Required when sender is a crew (called by say_to_room tool). */
-    sender_kind?: "user" | "crew";
+    /** Required when sender is an agent (called by say_to_room tool). */
+    sender_kind?: "user" | "agent";
     sender_id?: string;
   };
 
   const text = body.text?.trim();
   if (!text) return c.json({ error: "text required" }, 400);
 
-  const senderKind = body.sender_kind === "crew" ? "crew" : "user";
+  const senderKind = body.sender_kind === "agent" ? "agent" : "user";
   const senderId =
-    senderKind === "crew"
+    senderKind === "agent"
       ? (body.sender_id?.trim() ?? "")
       : userId;
-  if (senderKind === "crew" && !senderId) {
-    return c.json({ error: "sender_id required for crew sender" }, 400);
+  if (senderKind === "agent" && !senderId) {
+    return c.json({ error: "sender_id required for agent sender" }, 400);
   }
 
-  // Crew sender hardening: prevent an API-key holder from spoofing
-  // someone else's crew. sender_id MUST be a crew_member.id owned by
+  // Agent sender hardening: prevent an API-key holder from spoofing
+  // someone else's agent. sender_id MUST be an agent_member.id owned by
   // the calling user. Without this check, alice's token could write a
   // room message claiming to be bob's Director.
-  if (senderKind === "crew") {
+  if (senderKind === "agent") {
     const owns = await c.env.DB.prepare(
-      "SELECT id FROM crew_member WHERE id = ? AND user_id = ?",
+      "SELECT id FROM agent_member WHERE id = ? AND user_id = ?",
     ).bind(senderId, userId).first<{ id: string }>();
     if (!owns) {
-      return c.json({ error: "sender_id is not a crew_member you own" }, 403);
+      return c.json({ error: "sender_id is not an agent_member you own" }, 403);
     }
   }
 
@@ -250,9 +239,9 @@ projectRoutes.post("/:pid/room/messages", async (c) => {
   }).broadcastRoomMessage(payload).catch(() => undefined);
 
   // Mention dispatch: best-effort. For each mention, find the target
-  // user's most-recently-active runtime_session for that crew, and push
+  // user's most-recently-active runtime_session for that agent, and push
   // a room.mention frame to that session's RuntimeRoom DO. The browser
-  // CrewSession decides what to do with it (queue as next-turn prompt).
+  // AgentSession decides what to do with it (queue as next-turn prompt).
   //
   // NOTE: runtime_session.cwd is currently overloaded to hold project_id
   // (existing hack — see runtimes.ts:267). Filtering by it here scopes
@@ -260,21 +249,12 @@ projectRoutes.post("/:pid/room/messages", async (c) => {
   // dedicated project_id column later, swap the predicate.
   for (const m of mentions) {
     let target: { id: string; runtime_id: string } | null = null;
-    if (m.crew_member_id) {
-      // Modern path — crew_member_id pins user + runtime + template.
-      target = await c.env.DB.prepare(
-        `SELECT id, runtime_id FROM runtime_session
-         WHERE crew_member_id = ? AND status = 'active' AND cwd = ?
-         ORDER BY last_active_at DESC LIMIT 1`,
-      ).bind(m.crew_member_id, projectId).first<{ id: string; runtime_id: string }>();
-    } else if (m.crew_id) {
-      // Legacy path — agent_id stores template id.
-      target = await c.env.DB.prepare(
-        `SELECT id, runtime_id FROM runtime_session
-         WHERE user_id = ? AND agent_id = ? AND status = 'active' AND cwd = ?
-         ORDER BY last_active_at DESC LIMIT 1`,
-      ).bind(m.user_id, m.crew_id, projectId).first<{ id: string; runtime_id: string }>();
-    }
+    if (!m.agent_member_id) continue;
+    target = await c.env.DB.prepare(
+      `SELECT id, runtime_id FROM runtime_session
+       WHERE agent_member_id = ? AND status = 'active' AND cwd = ?
+       ORDER BY last_active_at DESC LIMIT 1`,
+    ).bind(m.agent_member_id, projectId).first<{ id: string; runtime_id: string }>();
     if (!target) continue;
     const runtimeStub = c.env.RUNTIME_ROOM.get(c.env.RUNTIME_ROOM.idFromName(target.runtime_id));
     void (runtimeStub as unknown as {

@@ -1,44 +1,41 @@
 ---
 name: setup
-description: Set up Clash CLI authentication and verify connection
+description: Verify or repair the current Clash project workspace
 ---
 
 # Clash Setup
 
-Follow these steps to set up the Clash CLI:
-
-## 1. Check if CLI is installed
+This managed workspace should already be initialized. Verify the standard
+project marker first:
 
 ```bash
-which clash || echo "Not installed. Run: npm install -g @clash-space/cli"
+pwd
+clash project status --json
 ```
 
-## 2. Configure your API token
-
-Get your API token from the Clash dashboard at **Settings > API Tokens**, then:
+If the marker is missing, repair it with the standard init command:
 
 ```bash
-export CLASH_API_KEY=clsh_your_token_here
+clash init --project "$CLASH_PROJECT_ID" --json
 ```
 
-Or save it permanently:
+For an external directory that should point at an existing project, link it:
 
 ```bash
-clash auth login
+clash project link <project-id> --json
 ```
 
-## 3. Verify
+Then verify the main surfaces:
 
 ```bash
+clash canvas list --json
+clash room read --limit 20 --json
+```
+
+Authentication is injected by the Clash host. If auth looks broken, inspect
+the environment and status rather than asking the user to paste a token:
+
+```bash
+env | grep '^CLASH_'
 clash auth status
 ```
-
-You should see your authentication status and project count.
-
-## 4. Test
-
-```bash
-clash projects list --json
-```
-
-If you see your projects, you're all set!

@@ -3,10 +3,6 @@ import { renderHook, waitFor, act } from "@testing-library/react";
 import { useAsset, invalidateAsset, getAsset } from "./useAsset";
 import type { Asset } from "@clash/shared-types";
 
-declare global {
-  var __CLASH_RUNTIME_CONFIG__: { apiBaseUrl?: string; wsBaseUrl?: string } | undefined;
-}
-
 function makeAsset(over: Partial<Asset> = {}): Asset {
   return {
     id: "asset-1",

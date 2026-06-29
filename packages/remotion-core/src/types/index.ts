@@ -155,10 +155,22 @@ export type Item =
   | StickerItem
   | TransitionItem;
 
+export type TrackRole =
+  | 'primary-video'
+  | 'b-roll'
+  | 'overlay'
+  | 'subtitle'
+  | 'narration'
+  | 'music'
+  | 'sfx'
+  | 'transition'
+  | 'mixed';
+
 // Track definition
 export type Track = {
   id: string;
   name: string;
+  role?: TrackRole;
   items: Item[];
   locked?: boolean;
   hidden?: boolean;

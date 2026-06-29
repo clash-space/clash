@@ -22,3 +22,18 @@ export {
   type ServerlessProviderResponse,
 } from './types.js';
 export { ClashAgent, run } from './agent.js';
+export {
+  PythonLocalAsrRuntime,
+  createPythonLocalAsrRuntime,
+  type LocalAsrRuntime,
+  type LocalAsrTranscribeInput,
+  type LocalAsrTranscription,
+  type LocalModelDeployInput,
+  type LocalModelKind,
+  type LocalModelRpcInvoker,
+  type LocalModelRpcMethod,
+  type LocalModelRpcRequest,
+  type LocalModelRpcResponse,
+  type LocalModelStatus,
+  type PythonLocalAsrRuntimeOptions,
+} from './local-models.js';

@@ -4,9 +4,9 @@ import { Link } from 'react-router';
 const modes = [
   {
     name: 'Local',
-    signal: '$0',
+    signal: 'default',
     context: 'desktop first',
-    description: 'For one person shaping projects on their own machine.',
+    description: 'For one person shaping projects on their own machine with local project state and local helpers.',
     features: [
       'Local project graph',
       'Local daemon pairing',
@@ -14,15 +14,15 @@ const modes = [
       'BYOK model routes',
       'No cloud required',
     ],
-    cta: 'Get Started',
+    cta: 'Open Local',
     href: '/login',
     emphasis: false,
   },
   {
     name: 'Synced',
-    signal: 'Cloud',
+    signal: 'optional',
     context: 'when useful',
-    description: 'For projects that need backup, web access, or another device.',
+    description: 'For projects that need backup, web access, or another device without losing the local working model.',
     features: [
       'Cloud Loro mirror',
       'Remote room messages',
@@ -37,15 +37,15 @@ const modes = [
   },
   {
     name: 'Shared',
-    signal: 'Team',
+    signal: 'invited',
     context: 'multiplayer',
-    description: 'For collaborators who need the same canvas at the same time.',
+    description: 'For collaborators who need presence, comments, and the same canvas at the same time.',
     features: [
       'Cloud sequenced room',
       'Presence and cursors',
       'Project members',
       'Shared messages',
-      'Per-user local crew',
+      'Per-user local agent',
       'Permissioned access',
     ],
     cta: 'Invite Team',
@@ -60,12 +60,12 @@ export default function Pricing() {
       <div className="mx-auto max-w-[1120px] px-5 sm:px-8 lg:px-10">
         <div className="grid gap-12 lg:grid-cols-[0.62fr_1fr] lg:gap-20">
           <div className="max-w-xl">
-            <h2 className="font-display text-sm font-semibold leading-7 text-brand">Modes</h2>
+            <h2 className="font-display text-sm font-semibold leading-7 text-brand">Work modes</h2>
             <p className="mt-2 font-display text-3xl font-bold tracking-tight text-slate-950 dark:text-slate-50 sm:text-4xl">
-              Local by default, cloud when it helps
+              Choose where agents run, keep one canvas
             </p>
             <p className="mt-6 text-lg leading-8 text-stone-700 dark:text-stone-300">
-              The interface should tell users where their work lives and who can join it.
+              Local runtime, sync, and multiplayer are modes around the same project graph, not separate products.
             </p>
           </div>
 

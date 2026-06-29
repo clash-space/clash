@@ -1,13 +1,12 @@
 export interface RemoteRoomMention {
   user_id: string;
-  crew_member_id?: string;
-  crew_id?: string;
+  agent_member_id?: string;
 }
 
 export interface RemoteRoomMessage {
   id: string;
   project_id: string;
-  sender_kind: "user" | "crew";
+  sender_kind: "user" | "agent";
   sender_id: string;
   sender_user_id: string;
   mentions: RemoteRoomMention[];
@@ -19,7 +18,7 @@ export interface RemoteRoomMessageInput {
   id: string;
   text: string;
   mentions: RemoteRoomMention[];
-  sender_kind: "user" | "crew";
+  sender_kind: "user" | "agent";
   sender_id: string;
 }
 
@@ -56,7 +55,7 @@ function normalizeRemoteMessage(raw: unknown, projectId: string): RemoteRoomMess
   if (
     typeof row.id !== "string" ||
     typeof row.text !== "string" ||
-    (row.sender_kind !== "user" && row.sender_kind !== "crew") ||
+    (row.sender_kind !== "user" && row.sender_kind !== "agent") ||
     typeof row.sender_id !== "string" ||
     typeof row.sender_user_id !== "string" ||
     typeof row.at !== "number"
@@ -68,8 +67,7 @@ function normalizeRemoteMessage(raw: unknown, projectId: string): RemoteRoomMess
         .filter((mention): mention is Record<string, unknown> => !!mention && typeof mention === "object")
         .map((mention) => ({
           user_id: typeof mention.user_id === "string" ? mention.user_id : "",
-          ...(typeof mention.crew_member_id === "string" ? { crew_member_id: mention.crew_member_id } : {}),
-          ...(typeof mention.crew_id === "string" ? { crew_id: mention.crew_id } : {}),
+          ...(typeof mention.agent_member_id === "string" ? { agent_member_id: mention.agent_member_id } : {}),
         }))
         .filter((mention) => mention.user_id.length > 0)
     : [];

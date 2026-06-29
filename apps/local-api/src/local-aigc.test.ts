@@ -42,10 +42,10 @@ describe("local mock AIGC", () => {
     expect(result.transcript).toBe("seedance mock fal shape");
   }, 45_000);
 
-  it("uses the desktop OPENAI_API_KEY for GPT Image instead of the mock route", async () => {
+  it("uses provider account OpenAI credentials for GPT Image instead of the mock route", async () => {
     const calls: Array<{ url: string; init?: RequestInit }> = [];
     const service = createMockExternalAigcService({
-      variables: async () => ({ OPENAI_API_KEY: "sk-local-openai" }),
+      providerAccounts: async () => [{ providerId: "official", upstreamId: "openai", region: "global", enabled: true, configuredCredentials: ["apiKey"], credentials: { apiKey: "sk-local-openai" } }],
       fetch: async (input: string | URL | Request, init?: RequestInit) => {
         const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
         calls.push({ url, init });
@@ -77,17 +77,99 @@ describe("local mock AIGC", () => {
     });
   });
 
-  it("uses the desktop GOOGLE_API_KEY for Google AI Studio image models", async () => {
+  it("uses OpenAI-compatible settings for local text generation", async () => {
     const calls: Array<{ url: string; init?: RequestInit }> = [];
     const service = createMockExternalAigcService({
-      variables: async () => ({ GOOGLE_API_KEY: "google-local-key" }),
+      providerAccounts: async () => [{ providerId: "official", upstreamId: "openai", region: "global", enabled: true, configuredCredentials: ["apiKey", "baseUrl"], credentials: { apiKey: "sk-local-openai", baseUrl: "https://openai-compatible.test/v1" } }],
+      fetch: async (input: string | URL | Request, init?: RequestInit) => {
+        const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+        calls.push({ url, init });
+        return Response.json({ choices: [{ message: { content: "openai text result" } }] });
+      },
+    } as never);
+
+    const result = await service.generateText({
+      taskId: "task-openai-text",
+      prompt: "write titles",
+      model: "openai-compatible-text",
+      modelParams: { model_name: "custom/text-model", system_prompt: "Be concise" },
+    });
+
+    expect(result).toMatchObject({
+      text: "openai text result",
+      provider: "openai-compatible",
+      modelEndpoint: "custom/text-model",
+    });
+    expect(calls[0].url).toBe("https://openai-compatible.test/v1/chat/completions");
+    expect(calls[0].init?.headers).toMatchObject({
+      authorization: "Bearer sk-local-openai",
+      "content-type": "application/json",
+    });
+    expect(JSON.parse(String(calls[0].init?.body))).toMatchObject({
+      model: "custom/text-model",
+      messages: [
+        { role: "system", content: "Be concise" },
+        { role: "user", content: "write titles" },
+      ],
+    });
+  });
+
+  it("uses Anthropic-compatible settings for local text generation", async () => {
+    const calls: Array<{ url: string; init?: RequestInit }> = [];
+    const service = createMockExternalAigcService({
+      providerAccounts: async () => [
+        {
+          providerId: "official",
+          upstreamId: "anthropic",
+          region: "global",
+          enabled: true,
+          configuredCredentials: ["apiKey", "baseUrl"],
+          credentials: { apiKey: "sk-ant-local", baseUrl: "https://anthropic-compatible.test" },
+        },
+      ],
+      fetch: async (input: string | URL | Request, init?: RequestInit) => {
+        const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+        calls.push({ url, init });
+        return Response.json({ content: [{ type: "text", text: "anthropic text result" }] });
+      },
+    } as never);
+
+    const result = await service.generateText({
+      taskId: "task-anthropic-text",
+      prompt: "write titles",
+      model: "anthropic-compatible-text",
+      modelParams: { model_name: "claude-compatible-custom", system_prompt: "Be concise" },
+    });
+
+    expect(result).toMatchObject({
+      text: "anthropic text result",
+      provider: "anthropic-compatible",
+      modelEndpoint: "claude-compatible-custom",
+    });
+    expect(calls[0].url).toBe("https://anthropic-compatible.test/v1/messages");
+    expect(calls[0].init?.headers).toMatchObject({
+      "x-api-key": "sk-ant-local",
+      "anthropic-version": "2023-06-01",
+      "content-type": "application/json",
+    });
+    expect(JSON.parse(String(calls[0].init?.body))).toMatchObject({
+      model: "claude-compatible-custom",
+      system: "Be concise",
+      messages: [{ role: "user", content: "write titles" }],
+    });
+  });
+
+  it("uses provider account Google AI Studio credentials for image models", async () => {
+    const calls: Array<{ url: string; init?: RequestInit }> = [];
+    const service = createMockExternalAigcService({
       providerAccounts: async () => [
         {
           providerId: "official",
           upstreamId: "google",
           region: "global",
           enabled: true,
-          availableVariables: ["GOOGLE_API_KEY"],
+          configuredCredentials: ["apiKey"],
+          credentials: { apiKey: "google-local-key" },
         },
       ],
       fetch: async (input: string | URL | Request, init?: RequestInit) => {
@@ -140,17 +222,17 @@ describe("local mock AIGC", () => {
     });
   });
 
-  it("uses the desktop GOOGLE_API_KEY for Google AI Studio TTS models", async () => {
+  it("uses provider account Google AI Studio credentials for TTS models", async () => {
     const calls: Array<{ url: string; init?: RequestInit }> = [];
     const service = createMockExternalAigcService({
-      variables: async () => ({ GOOGLE_API_KEY: "google-local-key" }),
       providerAccounts: async () => [
         {
           providerId: "official",
           upstreamId: "google",
           region: "global",
           enabled: true,
-          availableVariables: ["GOOGLE_API_KEY"],
+          configuredCredentials: ["apiKey"],
+          credentials: { apiKey: "google-local-key" },
         },
       ],
       fetch: async (input: string | URL | Request, init?: RequestInit) => {
@@ -202,10 +284,10 @@ describe("local mock AIGC", () => {
     });
   });
 
-  it("uses the desktop FAL_API_KEY for fal-routed video models", async () => {
+  it("uses provider account fal credentials for fal-routed video models", async () => {
     const calls: Array<{ url: string; init?: RequestInit }> = [];
     const service = createMockExternalAigcService({
-      variables: async () => ({ FAL_API_KEY: "fal-local-key" }),
+      providerAccounts: async () => [{ providerId: "fal", upstreamId: "fal", enabled: true, configuredCredentials: ["apiKey"], credentials: { apiKey: "fal-local-key" } }],
       fetch: async (input: string | URL | Request, init?: RequestInit) => {
         const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
         calls.push({ url, init });
@@ -267,12 +349,12 @@ describe("local mock AIGC", () => {
     const calls: Array<{ url: string; init?: RequestInit }> = [];
     const service = createMockExternalAigcService({
       origin: "http://local.test",
-      variables: async () => ({ FAL_API_KEY: "fal-local-key" }),
       providerAccounts: async () => [
         {
           providerId: "fal",
           enabled: false,
-          availableVariables: ["FAL_API_KEY"],
+          configuredCredentials: ["apiKey"],
+          credentials: { apiKey: "fal-local-key" },
         },
       ],
       fetch: async (input: string | URL | Request, init?: RequestInit) => {
@@ -308,23 +390,24 @@ describe("local mock AIGC", () => {
     expect(calls).toEqual([]);
   });
 
-  it("uses the desktop KIE_API_KEY for KIE-routed image models", async () => {
+  it("uses provider account KIE credentials for KIE-routed image models", async () => {
     const calls: Array<{ url: string; init?: RequestInit }> = [];
     const service = createMockExternalAigcService({
-      variables: async () => ({ KIE_API_KEY: "kie-local-key", FAL_API_KEY: "fal-local-key" }),
       providerAccounts: async () => [
         {
           providerId: "kie",
           upstreamId: "kie",
           enabled: true,
-          availableVariables: ["KIE_API_KEY"],
+          configuredCredentials: ["apiKey"],
+          credentials: { apiKey: "kie-local-key" },
           weight: 100,
         },
         {
           providerId: "fal",
           upstreamId: "fal",
           enabled: true,
-          availableVariables: ["FAL_API_KEY"],
+          configuredCredentials: ["apiKey"],
+          credentials: { apiKey: "fal-local-key" },
         },
       ],
       fetch: async (input: string | URL | Request, init?: RequestInit) => {
@@ -379,23 +462,24 @@ describe("local mock AIGC", () => {
     });
   });
 
-  it("uses the desktop REPLICATE_API_TOKEN for Replicate-routed image models", async () => {
+  it("uses provider account Replicate credentials for Replicate-routed image models", async () => {
     const calls: Array<{ url: string; init?: RequestInit }> = [];
     const service = createMockExternalAigcService({
-      variables: async () => ({ REPLICATE_API_TOKEN: "r8-local-token", OPENAI_API_KEY: "sk-local-openai" }),
       providerAccounts: async () => [
         {
           providerId: "replicate",
           upstreamId: "replicate",
           enabled: true,
-          availableVariables: ["REPLICATE_API_TOKEN"],
+          configuredCredentials: ["apiKey"],
+          credentials: { apiKey: "r8-local-token" },
           weight: 100,
         },
         {
           providerId: "official",
           upstreamId: "openai",
           enabled: true,
-          availableVariables: ["OPENAI_API_KEY"],
+          configuredCredentials: ["apiKey"],
+          credentials: { apiKey: "sk-local-openai" },
         },
       ],
       fetch: async (input: string | URL | Request, init?: RequestInit) => {
@@ -446,6 +530,76 @@ describe("local mock AIGC", () => {
         size: "1024x1024",
         quality: "high",
       },
+    });
+  });
+
+  it("uses the highest-priority matching provider key for the selected route", async () => {
+    const calls: Array<{ url: string; init?: RequestInit }> = [];
+    const service = createMockExternalAigcService({
+      providerAccounts: async () => [
+        {
+          providerId: "replicate",
+          upstreamId: "replicate",
+          enabled: true,
+          priority: 30,
+          configuredCredentials: ["apiKey"],
+          credentials: { apiKey: "r8-slow-token" },
+          weight: 100,
+        },
+        {
+          providerId: "replicate",
+          upstreamId: "replicate",
+          enabled: true,
+          priority: 1,
+          configuredCredentials: ["apiKey"],
+          credentials: { apiKey: "r8-fast-token" },
+          weight: 100,
+        },
+        {
+          providerId: "official",
+          upstreamId: "openai",
+          enabled: true,
+          configuredCredentials: ["apiKey"],
+          credentials: { apiKey: "sk-local-openai" },
+        },
+      ],
+      fetch: async (input: string | URL | Request, init?: RequestInit) => {
+        const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+        calls.push({ url, init });
+        if (url === "https://api.replicate.com/v1/models/openai/gpt-image-2/predictions") {
+          return Response.json({
+            id: "replicate-priority-1",
+            status: "starting",
+            urls: { get: "https://api.replicate.com/v1/predictions/replicate-priority-1" },
+          });
+        }
+        if (url === "https://api.replicate.com/v1/predictions/replicate-priority-1") {
+          return Response.json({
+            id: "replicate-priority-1",
+            status: "succeeded",
+            output: ["https://replicate-cdn.test/priority.webp"],
+          });
+        }
+        if (url === "https://replicate-cdn.test/priority.webp") {
+          return new Response("priority-replicate-image", { headers: { "content-type": "image/webp" } });
+        }
+        return new Response("not found", { status: 404 });
+      },
+    } as never);
+
+    const result = await service.generateImage({
+      taskId: "task-replicate-priority",
+      prompt: "priority replicate image",
+      model: "gpt-image-2",
+      aspectRatio: "1:1",
+    });
+
+    expect(result.provider).toBe("replicate");
+    expect(result.requestId).toBe("replicate-priority-1");
+    expect(Buffer.from(result.bytes).toString("utf8")).toBe("priority-replicate-image");
+    expect(calls[0].init?.headers).toMatchObject({
+      authorization: "Bearer r8-fast-token",
+      "content-type": "application/json",
     });
   });
 });

@@ -1,6 +1,6 @@
 import { memo, useEffect, useMemo, useRef, useState } from 'react';
 /* eslint-disable @next/next/no-img-element */
-import { Handle, Position, NodeProps, Node, useReactFlow, useNodes } from '@xyflow/react';
+import { Handle, Position, NodeProps, Node, useReactFlow } from '@xyflow/react';
 import SourceHandleMenu from './SourceHandleMenu';
 import DraftPlaceholder from './DraftPlaceholder';
 import { FilmSlate, TextT } from '@phosphor-icons/react';
@@ -17,11 +17,10 @@ import {
     resolveInitialMediaSize,
 } from './assetNodeSizing';
 
-const VideoNode = ({ data, selected, id }: NodeProps<Node<Record<string, any>>>) => {
+const VideoNode = ({ data, selected, id, width, height }: NodeProps<Node<Record<string, any>>>) => {
     const [label, setLabel] = useState(data.label || 'Video Node');
     const { openViewer } = useMediaViewer();
     const { setNodes } = useReactFlow();
-    const nodes = useNodes();
     const loroSync = useOptionalLoroSyncContext();
     const [status, setStatus] = useState<AssetStatus>(normalizeStatus(data.status) || (data.assetId ? 'completed' : 'generating'));
     const nodeAssetId = data.assetId as string | undefined;
@@ -45,10 +44,9 @@ const VideoNode = ({ data, selected, id }: NodeProps<Node<Record<string, any>>>)
         videoUrlRef.current = videoUrl;
     }, [videoUrl]);
 
-    const currentNode = nodes.find((n) => n.id === id);
     const aspectRatioDimensions = calculateDimensionsFromAspectRatio(data.aspectRatio);
-    const measuredWidth = currentNode?.width ?? currentNode?.style?.width;
-    const measuredHeight = currentNode?.height ?? currentNode?.style?.height;
+    const measuredWidth = width;
+    const measuredHeight = height;
 
     // Size = measuredSize (Loro) OR aspectRatio placeholder. See ImageNode /
     // assetNodeSizing.ts — asset.metadata only drives the reconciliation
@@ -516,7 +514,7 @@ const VideoNode = ({ data, selected, id }: NodeProps<Node<Record<string, any>>>)
                 style={{ top: '50%', left: '-8px' }}
                 className="!h-4 !w-4 !border-4 !border-warm-surface !bg-stone-400 transition-all hover:!bg-brand hover:scale-125 shadow-sm !opacity-0 !pointer-events-none"
             />
-            <SourceHandleMenu nodeId={id} />
+            <SourceHandleMenu nodeId={id} sourceType="video" />
         </div>
     );
 };

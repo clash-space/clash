@@ -166,7 +166,7 @@ export const NodeDataSchema = z.object({
   /** The accountable human user id. Always set for new nodes; for
    *  actorType='agent' this is the agent's owner / claimer. */
   actorUserId: z.string().optional(),
-  /** crew_member.id when actorType='agent'. */
+  /** agent member id when actorType='agent'. */
   actorAgentId: z.string().optional(),
   /** Structured understanding results (ASR transcription, visual analysis, etc.).
    *  Keys are overwritten, not merged — each key is independently owned. */
@@ -277,7 +277,7 @@ export function validateGenerationInput(input: ValidateGenerationInput): string 
 export interface BuildPendingAssetNodeInput {
   nodeId: string;
   prompt: string;
-  /** For built-in models: the modelId (`gemini-flash-image`, etc.).
+  /** For built-in models: the modelId (`gemini-flash-image-2`, etc.).
    *  For custom actions: empty string (the action id lives in
    *  `customActionId` instead). NodeProcessor switches by
    *  `actionType.startsWith('custom:')`. */

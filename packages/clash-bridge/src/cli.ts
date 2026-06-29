@@ -16,7 +16,7 @@
  *      $ npx @clash-space/bridge --token=<PAIR_CODE> [--server=<wss://host>]
  *
  *      Pair token is shown in the chat panel ("Quick connect"). Bridge
- *      spawns claude-code-acp, talks to it for the duration of one
+ *      spawns claude-agent-acp, talks to it for the duration of one
  *      browser session, exits when the user closes the chat. See
  *      relay.ts + the existing byo-bridge flow on the server.
  *
@@ -31,7 +31,7 @@ import { AcpRuntimeImpl, KNOWN_ACP_AGENTS } from "./_acp-runtime/index.js";
 import { NodeSpawner } from "./_acp-runtime/spawners/node.js";
 import { detectAll } from "./_acp-runtime/registry.js";
 import { listLocalCcSessions } from "./lib/cc-sessions.js";
-import { ensureCrewCwd, listBundledCrew, readCrewRuntime } from "./lib/session-cwd.js";
+import { ensureAgentCwd, listBundledAgents, readAgentRuntime } from "./lib/session-cwd.js";
 import { Relay } from "./relay.js";
 
 const DEFAULT_API_SERVER_URL = "https://api.clash.video";
@@ -53,8 +53,8 @@ function printUsage(): never {
       `\n` +
       `Ad-hoc pairing (one-shot, no install):\n` +
       `  clash-bridge --token=<PAIR_CODE> [--server=<wss://host>] [--agent=<id>]\n` +
-      `        Auto-detects whichever ACP agent is on PATH (claude-code-acp,\n` +
-      `        codex, gemini, opencode, hermes, openclaw via acpx). --agent picks\n` +
+      `        Auto-detects whichever local agent is available (codex,\n` +
+      `        claude, gemini, opencode, hermes, openclaw). --agent picks\n` +
       `        explicitly when more than one is installed.\n` +
       `\n` +
       `Get a pair code from the chat panel ("Quick connect"). For persistent\n` +
@@ -148,7 +148,7 @@ async function runAdHocPair(): Promise<void> {
 
   // --agent narrows the picker the browser sees down to a single option;
   // otherwise we publish every detected agent and let the user choose
-  // in-dialog. Bridge no longer auto-picks claude-code-acp on connect.
+  // in-dialog. Bridge no longer auto-picks claude-agent-acp on connect.
   let chosen: typeof KNOWN_ACP_AGENTS[number] | null = null;
   if (values.agent) {
     chosen = KNOWN_ACP_AGENTS.find((a) => a.id === values.agent) ?? null;
@@ -168,9 +168,9 @@ async function runAdHocPair(): Promise<void> {
   const candidates = chosen ? [chosen] : detected;
   if (candidates.length === 0) {
     process.stderr.write(
-      `✗ no ACP agents detected on PATH\n` +
-        `  install one of:\n` +
-        KNOWN_ACP_AGENTS.map((a) => `    ${a.id}  →  ${a.installHint ?? a.homepage ?? "?"}`).join("\n") +
+      `✗ no local agent detected\n` +
+        `  enable or install an agent in Clash Desktop Settings > Runtimes:\n` +
+        KNOWN_ACP_AGENTS.map((a) => `    ${a.id}  →  ${a.downloadUrl ?? a.homepage ?? "?"}`).join("\n") +
         `\n`,
     );
     process.exit(1);
@@ -216,16 +216,16 @@ async function runAdHocPair(): Promise<void> {
     process.stderr.write("✓ paired\n");
 
     if (!session) {
-      // First attach — let the browser pick crew + (optional) resume id.
+      // First attach — let the browser pick an agent template + optional resume id.
       // Re-enumerate local sessions every attach so the picker is fresh.
       const sessions = await listLocalCcSessions(20).catch(() => []);
-      const crew = await listBundledCrew();
+      const agents = await listBundledAgents();
       ws.send(JSON.stringify({
         type: "bridge_setup",
-        crew,
+        agents,
         sessions,
       }));
-      process.stderr.write(`→ waiting for browser to pick crew${sessions.length ? " / session" : ""} …\n`);
+      process.stderr.write(`→ waiting for browser to pick agent${sessions.length ? " / session" : ""} …\n`);
 
       const startMsg = await waitForStart(ws).catch((e) => {
         process.stderr.write(`✗ ${e instanceof Error ? e.message : String(e)}\n`);
@@ -233,20 +233,20 @@ async function runAdHocPair(): Promise<void> {
       });
       if (!startMsg) continue; // WS dropped before pick — reconnect, browser repicks
 
-      // Resolve picked crew member → which ACP agent CLI to spawn.
-      const crewId = startMsg.crew_id ?? crew[0]?.id ?? "director";
-      const crewRuntime = await readCrewRuntime(crewId);
+      // Resolve picked agent template → which ACP agent CLI to spawn.
+      const agentTemplateId = startMsg.agent_template_id ?? agents[0]?.id ?? "master-clash";
+      const agentRuntime = await readAgentRuntime(agentTemplateId);
       const pickedAgent =
-        candidates.find((a) => a.id === crewRuntime?.agent_id) ??
-        candidates.find((a) => a.id === "claude-code-acp") ??
+        candidates.find((a) => a.id === agentRuntime?.agent_id) ??
+        candidates.find((a) => a.id === "codex-acp") ??
         candidates[0];
       process.stderr.write(
-        `→ spawning crew=${crewId} via ${pickedAgent.spec.command} (${pickedAgent.id})${
+        `→ spawning agent=${agentTemplateId} via ${pickedAgent.spec.command} (${pickedAgent.id})${
           startMsg.resume_session_id ? ` resume=${startMsg.resume_session_id.slice(0, 8)}…` : ""
         } …\n`,
       );
-      // Workspace cwd: ~/.clash/crew/<crewId>/<projectId-or-default>/
-      const sessionCwd = await ensureCrewCwd(crewId);
+      // Workspace cwd: ~/.clash/projects/<projectId-or-default>/
+      const sessionCwd = await ensureAgentCwd(agentTemplateId);
       // Browser passed CLASH_API_KEY (issued by /pair); inject so the
       // spawned ACP agent's `clash` CLI / plugin hooks authenticate
       // without prompting.
@@ -260,7 +260,7 @@ async function runAdHocPair(): Promise<void> {
         });
       } catch (e) {
         const msg = `could not start ${pickedAgent.spec.command}: ${e instanceof Error ? e.message : String(e)}`;
-        process.stderr.write(`✗ ${msg}\n${pickedAgent.installHint ? "  install: " + pickedAgent.installHint + "\n" : ""}`);
+        process.stderr.write(`✗ ${msg}\n${pickedAgent.downloadUrl ? "  " + pickedAgent.downloadUrl + "\n" : ""}`);
         try { ws.send(JSON.stringify({ type: "error", message: msg })); } catch { /* */ }
         // Don't kill the process — let the user re-pair / re-pick.
         ws.close(1011, "spawn failed");
@@ -294,14 +294,11 @@ function sleep(ms: number): Promise<void> {
 
 interface StartMessage {
   type: "start";
-  /** Picked crew member id (director / canvas-editor / …). Bridge
-   *  resolves to the underlying ACP agent CLI via the bundled
-   *  crew/<id>/runtime.json. */
-  crew_id?: string;
-  /** Legacy field retained for the brief window between releases —
-   *  older browsers still send agent_id. Treated as a hint at picker
-   *  default; the crew runtime.json is always the source of truth for
-   *  which CLI gets spawned. */
+  /** Picked agent template id (master-clash). Bridge
+   *  resolves to the underlying ACP agent CLI via
+   *  agents/<id>/runtime.json. */
+  agent_template_id?: string;
+  /** Optional explicit ACP agent catalog id from the picker. */
   agent_id?: string;
   resume_session_id?: string;
   /** Server-issued clsh_* — bridge sets as CLASH_API_KEY in spawn env. */

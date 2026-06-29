@@ -9,26 +9,7 @@ import type {
   AwarenessBroadcastMessage,
 } from '@clash/shared-types';
 import { isSidebandMessage } from '@clash/shared-types';
-
-// ReactFlow v12: parent nodes must appear before children in the nodes array.
-function sortNodesParentFirst(nodes: Node[]): Node[] {
-  const idSet = new Set(nodes.map((n) => n.id));
-  const result: Node[] = [];
-  const visited = new Set<string>();
-
-  const visit = (node: Node) => {
-    if (visited.has(node.id)) return;
-    visited.add(node.id);
-    if (node.parentId && idSet.has(node.parentId)) {
-      const parent = nodes.find((n) => n.id === node.parentId);
-      if (parent) visit(parent);
-    }
-    result.push(node);
-  };
-
-  for (const node of nodes) visit(node);
-  return result;
-}
+import { sanitizeNodesForReactFlow } from '../lib/canvasNodeOrder';
 
 interface LoroSyncOptions {
   projectId: string;
@@ -273,9 +254,7 @@ export function useLoroSync(options: LoroSyncOptions): UseLoroSyncReturn {
       });
     }
 
-    // v12 requires parent nodes to appear before their children in the nodes array.
-    // Sort topologically: nodes without parentId first, then children in order.
-    const sortedNodes = sortNodesParentFirst(nodes);
+    const sortedNodes = sanitizeNodesForReactFlow(nodes);
 
     const edges: Edge[] = [];
     for (const [key, value] of edgesMap.entries()) {

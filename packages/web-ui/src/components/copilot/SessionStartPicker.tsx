@@ -1,28 +1,29 @@
 import { useEffect, useState } from 'react';
 import type { BridgeSession } from '@clash/web-ui/hooks/useAgentByoBridge';
 
-/**
- * Legacy role identity kept for daemon compatibility. The product now
- * exposes a single helper agent, but older local bridges still expect a
- * crew_id field when starting an ACP session.
- */
-export interface CrewMember {
+export interface AgentTemplate {
   id: string;
   label: string;
   summary?: string;
-  /** Underlying ACP runtime CLI this crew member spawns (claude-code-acp,
+  /** Underlying ACP runtime CLI this agent template spawns (claude-agent-acp,
    *  openclaw, hermes, …). Diagnostic only — picker shows label, not this. */
   agent_id?: string;
 }
 
 export interface RuntimeAgentOption {
   id: string;
+  label?: string;
   binary?: string;
   version?: string;
+  auth?: {
+    status: 'configured' | 'needs-auth' | 'unknown';
+    message: string;
+    command?: string;
+  };
 }
 
 function preferredAgentId(agents: RuntimeAgentOption[]): string | null {
-  for (const id of ['codex-app-server', 'codex-cli', 'gemini-cli', 'claude-code-acp', 'claude-agent-acp']) {
+  for (const id of ['codex-acp', 'claude-acp', 'gemini']) {
     if (agents.some((agent) => agent.id === id)) return id;
   }
   return agents[0]?.id ?? null;
@@ -30,27 +31,32 @@ function preferredAgentId(agents: RuntimeAgentOption[]): string | null {
 
 /**
  * Shared local-agent + resume picker for Quick connect and registered
- * runtimes. It intentionally hides crew roles: the helper spends the
+ * runtimes. It intentionally hides role templates: the helper spends the
  * user's own budget and runs as the user's selected local coding agent.
  */
 export function SessionStartPicker({
-  crew,
+  agentTemplates,
   sessions,
   agents = [],
   onStart,
+  onRecheckAuth,
   busy = false,
   startLabel = 'Start chat',
 }: {
-  crew: CrewMember[];
+  agentTemplates: AgentTemplate[];
   sessions: BridgeSession[];
   agents?: RuntimeAgentOption[];
-  onStart: (crewId: string | null, resumeSessionId?: string, agentId?: string) => void;
+  onStart: (agentTemplateId: string | null, resumeSessionId?: string, agentId?: string) => void;
+  onRecheckAuth?: () => void;
   busy?: boolean;
   startLabel?: string;
 }) {
   const [resumeId, setResumeId] = useState<string | null>(null);
   const [agentId, setAgentId] = useState<string | null>(() => preferredAgentId(agents));
-  const helperCrewId = crew[0]?.id ?? 'director';
+  void agentTemplates;
+  const selectedAgent = agents.find((agent) => agent.id === agentId) ?? null;
+  const selectedAgentNeedsAuth = selectedAgent?.auth?.status === 'needs-auth';
+  const selectedAgentName = selectedAgent?.label ?? selectedAgent?.id ?? 'agent';
 
   useEffect(() => {
     if (agents.length === 0) {
@@ -85,13 +91,45 @@ export function SessionStartPicker({
                   onChange={() => setAgentId(agent.id)}
                 />
                 <div className="min-w-0 flex-1">
-                  <div className="text-sm font-medium text-slate-800 dark:text-slate-200">{agent.id}</div>
+                  <div className="text-sm font-medium text-slate-800 dark:text-slate-200">{agent.label ?? agent.id}</div>
+                  {agent.auth?.status === 'needs-auth' && (
+                    <div className="mt-0.5 text-[11px] font-medium text-amber-700 dark:text-amber-300">Auth needed</div>
+                  )}
                   {agent.binary && (
                     <div className="text-[11px] text-stone-700 dark:text-stone-300 truncate">{agent.binary}</div>
                   )}
                 </div>
               </label>
             ))}
+          </div>
+        </div>
+      )}
+
+      {selectedAgentNeedsAuth && (
+        <div
+          role="alert"
+          className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5 text-xs text-amber-950 dark:border-amber-300/25 dark:bg-amber-500/10 dark:text-amber-100"
+        >
+          <div className="font-semibold">Sign in to {selectedAgentName}</div>
+          <div className="mt-0.5 leading-5 text-amber-900/80 dark:text-amber-100/80">
+            {selectedAgent.auth?.message}
+          </div>
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            {onRecheckAuth && (
+              <button
+                type="button"
+                onClick={onRecheckAuth}
+                disabled={busy}
+                className="rounded-lg border border-amber-300/70 bg-transparent px-2.5 py-1 text-xs font-semibold text-amber-900 transition hover:bg-amber-100 disabled:cursor-wait disabled:opacity-60 dark:border-amber-300/30 dark:text-amber-100"
+              >
+                Check again
+              </button>
+            )}
+            {selectedAgent.auth?.command && (
+              <span className="min-w-0 truncate font-mono text-[11px] text-amber-800/75 dark:text-amber-100/70">
+                {selectedAgent.auth.command}
+              </span>
+            )}
           </div>
         </div>
       )}
@@ -153,8 +191,8 @@ export function SessionStartPicker({
 
       <button
         type="button"
-        onClick={() => onStart(helperCrewId, resumeId ?? undefined, agentId ?? undefined)}
-        disabled={busy}
+        onClick={() => onStart(null, resumeId ?? undefined, agentId ?? undefined)}
+        disabled={busy || selectedAgentNeedsAuth}
         className="clash-copilot-primary w-full rounded-xl py-2.5 min-h-[44px] text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-warm-surface"
       >
         {busy ? 'Starting…' : startLabel}

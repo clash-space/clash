@@ -29,6 +29,7 @@
   "dependencies": {
     "@clash-space/bridge": "workspace:*",
     "@clash-space/cli": "workspace:*",
+    "@clash-space/sdk": "workspace:*",
     "@clash/shared-runtime": "workspace:*",
     "@clash/shared-types": "workspace:*",
     "@hono/node-server": "^1.13.0",

@@ -1,5 +1,5 @@
 import { memo, useEffect, useMemo, useRef, useState } from 'react';
-import { Handle, Position, NodeProps, Node, useReactFlow, useNodes } from '@xyflow/react';
+import { Handle, Position, NodeProps, Node, useReactFlow } from '@xyflow/react';
 import SourceHandleMenu from './SourceHandleMenu';
 import DraftPlaceholder from './DraftPlaceholder';
 import { Image as ImageIcon, TextT } from '@phosphor-icons/react';
@@ -18,11 +18,10 @@ import {
     resolveInitialMediaSize,
 } from './assetNodeSizing';
 
-const ImageNode = ({ data, selected, id }: NodeProps<Node<Record<string, any>>>) => {
+const ImageNode = ({ data, selected, id, width, height }: NodeProps<Node<Record<string, any>>>) => {
     const [label, setLabel] = useState(data.label || 'Image Node');
     const { openViewer } = useMediaViewer();
     const { setNodes } = useReactFlow();
-    const nodes = useNodes();
     const loroSync = useOptionalLoroSyncContext();
     // Peers (other connected users) who currently have THIS node selected.
     // Empty array reference is stable when no peer is selecting us, so the
@@ -36,10 +35,9 @@ const ImageNode = ({ data, selected, id }: NodeProps<Node<Record<string, any>>>)
     const [showDescription, setShowDescription] = useState(false);
     const signedImageUrl = useSignedUrl(imageUrl);
 
-    const currentNode = nodes.find((n) => n.id === id);
     const aspectRatioDimensions = calculateDimensionsFromAspectRatio(data.aspectRatio);
-    const measuredWidth = currentNode?.width ?? currentNode?.style?.width;
-    const measuredHeight = currentNode?.height ?? currentNode?.style?.height;
+    const measuredWidth = width;
+    const measuredHeight = height;
 
     // Size = measuredSize (Loro) OR aspectRatio placeholder. See
     // assetNodeSizing.ts — the previous four-layer precedence (preview +
@@ -291,7 +289,7 @@ const ImageNode = ({ data, selected, id }: NodeProps<Node<Record<string, any>>>)
                 style={{ top: '50%', left: '-8px' }}
                 className="!h-4 !w-4 !border-4 !border-warm-surface !bg-stone-400 transition-all hover:!bg-brand hover:scale-125 shadow-sm !opacity-0 !pointer-events-none"
             />
-            <SourceHandleMenu nodeId={id} />
+            <SourceHandleMenu nodeId={id} sourceType="image" />
         </div>
     );
 };

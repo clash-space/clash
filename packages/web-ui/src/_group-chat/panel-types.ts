@@ -6,8 +6,8 @@
  * tangled with the hook layer.
  */
 
-export interface CrewRow {
-  /** crew_member.id — the row identifier in D1, also the routing key for
+export interface AgentRow {
+  /** agent_member.id — the row identifier in D1, also the routing key for
    *  room mentions. */
   id: string;
   template_id: string;
@@ -18,19 +18,19 @@ export interface CrewRow {
 }
 
 /** Lowercase, dash-joined version of display_name — what users type after
- *  `@`. Single source of truth so MentionAutocomplete, InviteCrewMenu, and
+ *  `@`. Single source of truth so MentionAutocomplete, InviteAgentMenu, and
  *  the panel's resolveMention all agree on the canonical form. */
-export function crewHandle(displayName: string): string {
+export function agentHandle(displayName: string): string {
   return displayName.toLowerCase().replace(/\s+/g, '-');
 }
 
 /**
  * Up-to-two letter avatar fallback, word-first-letter style.
- * "Canvas Editor" → "CE", "director" → "D", "x" → "X".
- * Matches the rule used by UserControls so the same person/crew shows the
+ * "Master Clash" -> "MC", "x" -> "X".
+ * Matches the rule used by UserControls so the same person/agent shows the
  * same monogram across the app.
  */
-export function crewInitials(displayName: string): string {
+export function agentInitials(displayName: string): string {
   const words = displayName
     .split(/\s+/)
     .map((w) => w.trim())

@@ -56,11 +56,11 @@ describe("useGroupChat", () => {
     );
 
     await act(async () => {
-      await result.current.addCrew({
-        id: "crew-1",
-        template_id: "director",
+      await result.current.addAgent({
+        id: "agent-1",
+        template_id: "master-clash",
         runtime_id: "desktop-local",
-        display_name: "Director",
+        display_name: "Master Clash",
       });
     });
 
@@ -68,7 +68,7 @@ describe("useGroupChat", () => {
     act(() => {
       ws.emit({ type: "session.ready", session_id: "session-1" });
     });
-    await waitFor(() => expect(result.current.focusedCrew?.status).toBe("connected"));
+    await waitFor(() => expect(result.current.focusedAgent?.status).toBe("connected"));
 
     act(() => {
       result.current.sendToFocused("build the canvas");
@@ -99,7 +99,7 @@ describe("useGroupChat", () => {
     });
 
     expect(onSessionEvent).toHaveBeenCalledWith({
-      crewId: "crew-1",
+      agentMemberId: "agent-1",
       sessionId: "session-1",
       turnId: prompt.turn_id,
       event: canvasPatch,
@@ -122,11 +122,11 @@ describe("useGroupChat", () => {
     const { result } = renderHook(() => useGroupChat("project-mention"));
 
     await act(async () => {
-      await result.current.addCrew({
-        id: "crew-director",
-        template_id: "director",
+      await result.current.addAgent({
+        id: "agent-master-clash",
+        template_id: "master-clash",
         runtime_id: "desktop-local",
-        display_name: "Director",
+        display_name: "Master Clash",
       });
     });
 
@@ -134,7 +134,7 @@ describe("useGroupChat", () => {
     act(() => {
       ws.emit({ type: "session.ready", session_id: "session-mention" });
     });
-    await waitFor(() => expect(result.current.focusedCrew?.status).toBe("connected"));
+    await waitFor(() => expect(result.current.focusedAgent?.status).toBe("connected"));
 
     act(() => {
       ws.emit({
@@ -143,15 +143,15 @@ describe("useGroupChat", () => {
         from_kind: "user",
         from_id: "local-user",
         from_user_id: "local-user",
-        text: "@director choreograph the canvas",
+        text: "@master-clash choreograph the canvas",
       });
     });
 
     expect(ws.sent).toHaveLength(1);
     expect(JSON.parse(ws.sent[0])).toMatchObject({
       type: "prompt",
-      text: "[room from human] @director choreograph the canvas",
+      text: "[room from human] @master-clash choreograph the canvas",
     });
-    expect(result.current.focusedCrew?.pendingPrompts).toEqual([]);
+    expect(result.current.focusedAgent?.pendingPrompts).toEqual([]);
   });
 });

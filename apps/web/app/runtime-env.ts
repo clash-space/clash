@@ -14,6 +14,14 @@ function trimTrailingSlash(value: string): string {
 }
 
 export function installViteRuntimeConfig(env: ViteEnv): void {
+  if (
+    (globalThis as typeof globalThis & {
+      __CLASH_RUNTIME_CONFIG__?: RuntimeEndpointConfig;
+    }).__CLASH_RUNTIME_CONFIG__
+  ) {
+    return;
+  }
+
   const apiBaseUrl = env.VITE_CLASH_API_BASE_URL?.trim();
   if (!apiBaseUrl) return;
 

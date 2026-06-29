@@ -6,14 +6,14 @@
  *   - actorType='user'  → that user's display name ("Made by Alice")
  *   - actorType='agent' → the agent's display name plus, when the agent
  *                          isn't owned by the local user, a parenthetical
- *                          owner suffix ("Made by Test Director (Bob's)").
+ *                          owner suffix ("Made by Test Agent (Bob's)").
  *
  * Name resolution prefers cheap in-memory sources:
  *   1. Presence peers (already loaded by the awareness layer) carry
  *      `userName` for every live participant — zero network cost.
- *   2. The Loro `customActions` map indirectly identifies which crew
- *      member registered each action; for full crew labels we fall back
- *      to `/api/v1/crew` cached per-mount.
+ *   2. The Loro `customActions` map indirectly identifies which agent
+ *      member registered each action; for full agent labels we fall back
+ *      to `/api/v1/agents` cached per-mount.
  *   3. Worst case: show the raw id (truncated) so the UI never blanks.
  */
 import { useEffect, useState } from 'react';
@@ -21,26 +21,26 @@ import { useAllPeers } from '../PresenceAwarenessContext';
 import betterAuthClient from '@clash/web-ui/lib/betterAuthClient';
 import { runtimeApiUrl } from '@clash/web-ui/lib/runtimeConfig';
 
-interface CrewLite {
+interface AgentLite {
     id: string;
     user_id: string;
     display_name: string;
 }
 
-// Module-scoped crew cache. Crew membership rarely changes during a
+// Module-scoped agent cache. Agent membership rarely changes during a
 // session and the same handful of agents appear across every node;
 // caching once per page load avoids N round-trips per render. Not a
 // React state on purpose — components mounting later still see the
 // fetched result. Refresh happens on full page reload.
-let crewCachePromise: Promise<CrewLite[]> | null = null;
-function loadCrewOnce(): Promise<CrewLite[]> {
-    if (!crewCachePromise) {
-        crewCachePromise = fetch(runtimeApiUrl('/api/v1/crew'), { credentials: 'include' })
+let agentCachePromise: Promise<AgentLite[]> | null = null;
+function loadAgentOnce(): Promise<AgentLite[]> {
+    if (!agentCachePromise) {
+        agentCachePromise = fetch(runtimeApiUrl('/api/v1/agents'), { credentials: 'include' })
             .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
-            .then((j) => (j as { crew?: CrewLite[] }).crew ?? [])
+            .then((j) => (j as { agents?: AgentLite[] }).agents ?? [])
             .catch(() => []);
     }
-    return crewCachePromise;
+    return agentCachePromise;
 }
 
 interface AttributionLineProps {
@@ -57,11 +57,11 @@ export default function AttributionLine({ actorType, actorUserId, actorAgentId }
     const localUserId = session.data?.user?.id;
     const localUserName = session.data?.user?.name ?? session.data?.user?.email;
 
-    const [crew, setCrew] = useState<CrewLite[]>([]);
+    const [agents, setAgents] = useState<AgentLite[]>([]);
     useEffect(() => {
         let cancelled = false;
-        void loadCrewOnce().then((rows) => {
-            if (!cancelled) setCrew(rows);
+        void loadAgentOnce().then((rows) => {
+            if (!cancelled) setAgents(rows);
         });
         return () => {
             cancelled = true;
@@ -88,7 +88,7 @@ export default function AttributionLine({ actorType, actorUserId, actorAgentId }
     }
 
     // actorType === 'agent'
-    const agent = actorAgentId ? crew.find((c) => c.id === actorAgentId) : undefined;
+    const agent = actorAgentId ? agents.find((c) => c.id === actorAgentId) : undefined;
     const agentName = agent?.display_name ?? (actorAgentId ? actorAgentId.slice(0, 8) : 'agent');
     const ownerSuffix = actorUserId !== localUserId
         ? ` (${resolveUserName(actorUserId)}'s)`

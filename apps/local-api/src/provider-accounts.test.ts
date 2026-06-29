@@ -1,0 +1,175 @@
+import { describe, expect, it } from "vitest";
+
+import { normalizeProviderAccountInput, providerAccountsForRuntime, publicProviderAccounts } from "./provider-accounts";
+
+describe("provider accounts", () => {
+  it("exposes provider account credentials without env-shaped variable keys", () => {
+    const providers = publicProviderAccounts(
+      [
+        { userId: "user-1", providerId: "kling", upstreamId: "kling", enabled: true, credentials: { accessKey: "ak", secretKey: "sk" } },
+        { userId: "user-1", providerId: "minimax", upstreamId: "minimax", enabled: true, credentials: { apiKey: "mini" } },
+        { userId: "user-1", providerId: "volcengine", upstreamId: "volcengine", enabled: true, credentials: { apiKey: "volc", baseUrl: "https://ark.example/v3" } },
+        { userId: "user-1", providerId: "elevenlabs", upstreamId: "elevenlabs", enabled: true, credentials: { apiKey: "eleven" } },
+      ],
+      "user-1",
+    );
+
+    expect(providers).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          providerId: "kling",
+          upstreamId: "kling",
+          configuredCredentials: ["accessKey", "secretKey"],
+        }),
+        expect.objectContaining({
+          providerId: "minimax",
+          upstreamId: "minimax",
+          configuredCredentials: ["apiKey"],
+        }),
+        expect.objectContaining({
+          providerId: "volcengine",
+          upstreamId: "volcengine",
+          configuredCredentials: ["apiKey", "baseUrl"],
+        }),
+        expect.objectContaining({
+          providerId: "elevenlabs",
+          upstreamId: "elevenlabs",
+          configuredCredentials: ["apiKey"],
+        }),
+      ]),
+    );
+  });
+
+  it("normalizes hosted provider account input to its matching upstream", () => {
+    expect(normalizeProviderAccountInput({ providerId: "elevenlabs", enabled: true })).toMatchObject({
+      providerId: "elevenlabs",
+      upstreamId: "elevenlabs",
+      enabled: true,
+    });
+  });
+
+  it("preserves multiple API-key accounts for the same provider", () => {
+    expect(normalizeProviderAccountInput({
+      id: "replicate-secondary",
+      label: "API key 2",
+      providerId: "replicate",
+      enabled: true,
+      credentials: { apiKey: " r8-second-key " },
+    })).toMatchObject({
+      id: "replicate-secondary",
+      label: "API key 2",
+      providerId: "replicate",
+      upstreamId: "replicate",
+      enabled: true,
+      credentials: { apiKey: "r8-second-key" },
+    });
+
+    const providers = publicProviderAccounts(
+      [
+        {
+          id: "replicate-primary",
+          label: "Primary",
+          userId: "user-1",
+          providerId: "replicate",
+          upstreamId: "replicate",
+          enabled: true,
+          credentials: { apiKey: "r8-primary" },
+        },
+        {
+          id: "replicate-secondary",
+          label: "API key 2",
+          userId: "user-1",
+          providerId: "replicate",
+          upstreamId: "replicate",
+          enabled: true,
+          credentials: { apiKey: "r8-second-key" },
+        },
+      ],
+      "user-1",
+    );
+
+    expect(providers).toEqual([
+      expect.objectContaining({ id: "replicate-primary", label: "Primary", configuredCredentials: ["apiKey"] }),
+      expect.objectContaining({ id: "replicate-secondary", label: "API key 2", configuredCredentials: ["apiKey"] }),
+    ]);
+  });
+
+  it("orders keys for the same provider by configured priority before runtime selection", () => {
+    const providers = providerAccountsForRuntime(
+      [
+        {
+          id: "replicate-slow",
+          label: "Slow key",
+          userId: "user-1",
+          providerId: "replicate",
+          upstreamId: "replicate",
+          enabled: true,
+          priority: 30,
+          credentials: { apiKey: "r8-slow" },
+        },
+        {
+          id: "replicate-fast",
+          label: "Fast key",
+          userId: "user-1",
+          providerId: "replicate",
+          upstreamId: "replicate",
+          enabled: true,
+          priority: 1,
+          credentials: { apiKey: "r8-fast" },
+        },
+      ],
+      "user-1",
+    );
+
+    expect(providers.map((provider) => provider.id)).toEqual(["replicate-fast", "replicate-slow"]);
+    expect(providers[0]).toMatchObject({
+      providerId: "replicate",
+      upstreamId: "replicate",
+      priority: 1,
+      credentials: { apiKey: "r8-fast" },
+      configuredCredentials: ["apiKey"],
+    });
+  });
+
+  it("discovers Dreamina provider availability from connected OAuth state", () => {
+    const providers = publicProviderAccounts(
+      [],
+      "user-1",
+      [
+        {
+          userId: "user-1",
+          providerId: "dreamina",
+          status: "authorized",
+          accessToken: "access-token",
+          refreshToken: "refresh-token",
+        },
+      ] as any,
+    );
+
+    expect(providers).toEqual([
+      expect.objectContaining({
+        providerId: "jimeng",
+        upstreamId: "jimeng",
+        enabled: true,
+        configuredCredentials: [],
+        availableOAuth: ["dreamina"],
+      }),
+    ]);
+  });
+
+  it("normalizes provider account credential payloads", () => {
+    expect(normalizeProviderAccountInput({
+      providerId: "volcengine",
+      enabled: true,
+      credentials: { apiKey: " volc-key ", baseUrl: " https://ark.example/v3 " },
+    })).toMatchObject({
+      providerId: "volcengine",
+      upstreamId: "volcengine",
+      enabled: true,
+      credentials: {
+        apiKey: "volc-key",
+        baseUrl: "https://ark.example/v3",
+      },
+    });
+  });
+});

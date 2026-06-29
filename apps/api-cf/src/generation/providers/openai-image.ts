@@ -1,8 +1,8 @@
 import { log } from "../../logger";
 import { generateOpenAIImage, type OpenAIInlineImage } from "../../services/openai-image";
-import { getVariable } from "../../services/user-variables";
 import type { GenerationContext } from "../context";
 import type { GenerationProvider } from "../provider";
+import { credentialsForProvider } from "./provider-credentials";
 
 async function loadInlineFromR2(bucket: R2Bucket, key: string): Promise<OpenAIInlineImage | null> {
   const obj = await bucket.get(key);
@@ -12,22 +12,6 @@ async function loadInlineFromR2(bucket: R2Bucket, key: string): Promise<OpenAIIn
     data: new Uint8Array(buf),
     mimeType: obj.httpMetadata?.contentType ?? "image/png",
   };
-}
-
-async function resolveOpenAIKey(ctx: GenerationContext): Promise<string | undefined> {
-  const { env, params } = ctx;
-  if (env.ACTION_SECRET_KEY && params.actorUserId) {
-    try {
-      const userKey = await getVariable(env.DB, params.actorUserId, "OPENAI_API_KEY", env.ACTION_SECRET_KEY);
-      if (userKey?.trim()) return userKey.trim();
-    } catch (error) {
-      log.error("Failed to load OPENAI_API_KEY user variable", {
-        ...ctx.tag,
-        error: error instanceof Error ? error.message : String(error),
-      });
-    }
-  }
-  return env.OPENAI_API_KEY ?? env.CF_AIG_TOKEN;
 }
 
 export const openaiImageProvider: GenerationProvider = {
@@ -52,9 +36,13 @@ export const openaiImageProvider: GenerationProvider = {
           model: params.modelName,
           refs: referenceImages.length,
         });
+        const credentials = await credentialsForProvider(ctx, "official", ["apiKey"], {
+          upstreamId: "openai",
+          region: "global",
+        });
         const result = await generateOpenAIImage({
-          apiKey: await resolveOpenAIKey(ctx),
-          baseUrl: env.OPENAI_BASE_URL ?? env.CF_AIG_OPENAI_URL,
+          apiKey: credentials.apiKey,
+          baseUrl: credentials.baseUrl,
           prompt: params.prompt ?? "",
           modelName: params.modelName ?? "gpt-image-2",
           modelParams: params.modelParams,

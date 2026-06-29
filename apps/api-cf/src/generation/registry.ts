@@ -8,6 +8,10 @@ import { googleImageProvider } from "./providers/google-image";
 import { falImageProvider } from "./providers/fal-image";
 import { openaiImageProvider } from "./providers/openai-image";
 import { geminiTtsProvider } from "./providers/gemini-tts";
+import { minimaxAudioProvider } from "./providers/minimax-audio";
+import { elevenLabsTtsProvider } from "./providers/elevenlabs-tts";
+import { klingVideoProvider } from "./providers/kling-video";
+import { volcengineVideoProvider } from "./providers/modelark-video";
 import { videoRenderProvider } from "./providers/render";
 import { customActionProvider } from "./providers/custom-action";
 import { textGenProvider } from "./providers/text-gen";
@@ -17,6 +21,10 @@ import { describeProvider } from "./providers/describe";
 
 const HOSTED_UPSTREAM_AVAILABILITY: UpstreamAvailability[] = [
   { upstreamId: "google", enabled: true },
+  { upstreamId: "volcengine", enabled: true },
+  { upstreamId: "kling", enabled: true },
+  { upstreamId: "minimax", enabled: true },
+  { upstreamId: "elevenlabs", enabled: true },
   { upstreamId: "fal", enabled: true },
   { upstreamId: "openai", enabled: true },
 ];
@@ -35,7 +43,13 @@ export function resolveProvider(params: GenerationParams): GenerationProvider {
     case "video_gen": {
       const model = params.videoModel ?? params.modelName;
       const route = resolveRoute("video", model);
-      return route?.upstreamId === "google" ? veoProvider : falVideoProvider;
+      if (route?.upstreamId === "google") return veoProvider;
+      if (route?.upstreamId === "kling") return klingVideoProvider;
+      if (route?.apiShape === "dreamina-cli") {
+        throw new Error("Dreamina CLI generation is only available in the local desktop runtime.");
+      }
+      if (route?.upstreamId === "volcengine") return volcengineVideoProvider;
+      return falVideoProvider;
     }
     case "image_gen": {
       const route = resolveRoute("image", params.modelName);
@@ -45,10 +59,10 @@ export function resolveProvider(params: GenerationParams): GenerationProvider {
     case "audio_gen": {
       const model = params.modelName ?? "gemini-3.1-flash-tts";
       const route = resolveRoute("audio", model);
-      if (route?.upstreamId !== "google") {
-        throw new Error(`Unsupported audio model: ${params.modelName}`);
-      }
-      return geminiTtsProvider;
+      if (route?.upstreamId === "google") return geminiTtsProvider;
+      if (route?.upstreamId === "minimax") return minimaxAudioProvider;
+      if (route?.upstreamId === "elevenlabs") return elevenLabsTtsProvider;
+      throw new Error(`Unsupported audio model: ${params.modelName}`);
     }
     case "video_render":
       return videoRenderProvider;

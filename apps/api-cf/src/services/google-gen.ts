@@ -7,8 +7,7 @@
  */
 import { generateImage, generateText, experimental_generateVideo } from "ai";
 import { createVertex } from "@ai-sdk/google-vertex/edge";
-import type { Env } from "../config";
-import { getVertexAccessToken } from "./vertex-auth";
+import { getVertexAccessTokenForCredentials } from "./vertex-auth";
 
 // ─── Shared ─────────────────────────────────────────────
 
@@ -50,13 +49,11 @@ export interface GoogleAudioResult {
 
 export const GOOGLE_AUDIO_MODELS = new Set([
   "gemini-3.1-flash-tts",
-  "gemini-2.5-flash-tts",
   "gemini-2.5-pro-tts",
 ]);
 
 const GOOGLE_AUDIO_MODEL_MAP: Record<string, string> = {
   "gemini-3.1-flash-tts": "gemini-3.1-flash-tts-preview",
-  "gemini-2.5-flash-tts": "gemini-2.5-flash-tts",
   "gemini-2.5-pro-tts": "gemini-2.5-pro-tts",
 };
 
@@ -122,7 +119,7 @@ export async function generateGoogleAudio(
   apiKey: string | undefined,
   params: GoogleAudioParams,
 ): Promise<GoogleAudioResult> {
-  if (!apiKey) throw new Error("GOOGLE_API_KEY is required for Gemini TTS audio generation.");
+  if (!apiKey) throw new Error("Google AI Studio provider account is missing apiKey.");
 
   const prompt = params.prompt.trim();
   if (!prompt) throw new Error("Prompt is required for Gemini TTS audio generation.");
@@ -264,7 +261,6 @@ export interface GoogleImageResult {
 // scheduled for shutdown on 2026-06-24; Google recommends the Gemini Image
 // "nano-banana" models as the replacement.
 export const GOOGLE_IMAGE_MODELS = new Set([
-  "gemini-flash-image",
   "gemini-flash-image-2",
   "gemini-pro-image",
 ]);
@@ -274,7 +270,6 @@ export function isGoogleImageModel(modelName: string | undefined): boolean {
 }
 
 const GOOGLE_IMAGE_MODEL_MAP: Record<string, string> = {
-  "gemini-flash-image": "gemini-2.5-flash-image",
   "gemini-flash-image-2": "gemini-3.1-flash-image-preview",
   "gemini-pro-image": "gemini-3-pro-image-preview",
 };
@@ -324,8 +319,8 @@ export async function generateGoogleImage(
   params: GoogleImageParams,
 ): Promise<GoogleImageResult> {
   const modelId =
-    GOOGLE_IMAGE_MODEL_MAP[params.modelName ?? "gemini-flash-image"] ??
-    "gemini-2.5-flash-image";
+    GOOGLE_IMAGE_MODEL_MAP[params.modelName ?? "gemini-flash-image-2"] ??
+    "gemini-3.1-flash-image-preview";
   const vertex = makeVertex(creds);
 
   // Force the Gemini `:generateContent` (multimodal) path when references
@@ -581,10 +576,10 @@ function vertexBaseHost(location: string): string {
   return location === "global" ? "aiplatform.googleapis.com" : `${location}-aiplatform.googleapis.com`;
 }
 
-function vertexModelUrl(env: Env, modelId: string, action: string): string {
-  const project = env.GOOGLE_CLOUD_PROJECT ?? "";
-  const location = env.GOOGLE_CLOUD_LOCATION ?? "global";
-  if (!project) throw new Error("GOOGLE_CLOUD_PROJECT not set");
+function vertexModelUrl(creds: VertexCredentials, modelId: string, action: string): string {
+  const project = creds.project ?? "";
+  const location = creds.location ?? "global";
+  if (!project) throw new Error("Google Vertex provider account is missing project.");
   return `https://${vertexBaseHost(location)}/v1/projects/${project}/locations/${location}/publishers/google/models/${modelId}:${action}`;
 }
 
@@ -596,12 +591,12 @@ function vertexModelUrl(env: Env, modelId: string, action: string): string {
  * instead of re-submitting (which would re-bill).
  */
 export async function submitVeoOperation(
-  env: Env,
+  creds: VertexCredentials,
   input: GoogleVideoParams,
 ): Promise<SubmitVeoOperationResult> {
   const modelId = GOOGLE_VIDEO_MODEL_MAP[input.modelName ?? "veo-3.1"] ?? "veo-3.1-generate-001";
-  const url = vertexModelUrl(env, modelId, "predictLongRunning");
-  const token = await getVertexAccessToken(env);
+  const url = vertexModelUrl(creds, modelId, "predictLongRunning");
+  const token = await getVertexAccessTokenForCredentials(creds);
 
   const instance: Record<string, unknown> = { prompt: input.prompt };
   if (input.image) {
@@ -644,12 +639,12 @@ export async function submitVeoOperation(
 
 /** One-shot poll. Returns `{ done, response?, error? }`. */
 export async function fetchVeoOperationOnce(
-  env: Env,
+  creds: VertexCredentials,
   modelId: string,
   operationName: string,
 ): Promise<{ done?: boolean; response?: any; error?: any; name?: string }> {
-  const url = vertexModelUrl(env, modelId, "fetchPredictOperation");
-  const token = await getVertexAccessToken(env);
+  const url = vertexModelUrl(creds, modelId, "fetchPredictOperation");
+  const token = await getVertexAccessTokenForCredentials(creds);
   const resp = await fetch(url, {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
@@ -674,7 +669,7 @@ export interface VeoVideoBytes {
  * a DO reset mid-poll causes a re-poll, not a re-submit.
  */
 export async function pollVeoOperation(
-  env: Env,
+  creds: VertexCredentials,
   modelId: string,
   operationName: string,
   opts: { intervalMs?: number; maxWaitMs?: number } = {},
@@ -684,7 +679,7 @@ export async function pollVeoOperation(
   const start = Date.now();
   // eslint-disable-next-line no-constant-condition
   while (true) {
-    const op = await fetchVeoOperationOnce(env, modelId, operationName);
+    const op = await fetchVeoOperationOnce(creds, modelId, operationName);
     if (op.done) {
       if (op.error) {
         throw new Error(`Veo operation errored: ${JSON.stringify(op.error).slice(0, 500)}`);

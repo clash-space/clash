@@ -3,32 +3,57 @@ import { z } from "zod";
 import { MODEL_CARDS, type ModelCard, type ModelKind } from "./models";
 
 export const ModelUpstreamIdSchema = z.enum([
+  "local",
   "mock",
   "fal",
   "google",
   "openai",
+  "anthropic",
   "openrouter",
   "replicate",
   "kie",
+  "kling",
+  "minimax",
+  "jimeng",
+  "volcengine",
+  "elevenlabs",
 ]);
 export type ModelUpstreamId = z.infer<typeof ModelUpstreamIdSchema>;
 
 export const ModelUpstreamApiShapeSchema = z.enum([
+  "local-asr",
   "fal",
   "google-vertex",
   "google-ai-studio",
   "openai-images",
   "openai-compatible",
+  "anthropic-compatible",
   "replicate",
   "kie",
+  "kling",
+  "minimax",
+  "modelark",
+  "dreamina-cli",
+  "elevenlabs",
 ]);
 export type ModelUpstreamApiShape = z.infer<typeof ModelUpstreamApiShapeSchema>;
 
+export const ProviderOAuthIdSchema = z.enum([
+  "dreamina",
+]);
+export type ProviderOAuthId = z.infer<typeof ProviderOAuthIdSchema>;
+
 export const ProviderAccountIdSchema = z.enum([
+  "local",
   "official",
   "fal",
   "kie",
   "replicate",
+  "kling",
+  "minimax",
+  "jimeng",
+  "volcengine",
+  "elevenlabs",
   "mock",
   "custom",
 ]);
@@ -51,17 +76,35 @@ export interface ModelUpstreamRoute {
   priority: number;
   /** Higher numbers win when user/provider route weighting is configured. */
   weight?: number;
-  requiredVariables?: string[];
+  requiredCredentials?: string[];
+  requiredOAuth?: ProviderOAuthId[];
+}
+
+export interface ModelProviderSupportedModel {
+  modelCode: string;
+  kind: ModelKind;
+  upstreamModel: string;
+  priority?: number;
+  weight?: number;
+}
+
+export interface ModelProviderDefinition {
+  providerId: ProviderAccountId;
+  upstreamId: ModelUpstreamId;
+  region?: "global" | "cn" | string;
+  apiShape: ModelUpstreamApiShape;
+  priority: number;
+  weight?: number;
+  requiredCredentials?: string[];
+  requiredOAuth?: ProviderOAuthId[];
+  supportedModels: ModelProviderSupportedModel[];
 }
 
 export interface UpstreamAvailability {
   upstreamId: ModelUpstreamId;
   enabled?: boolean;
-  /**
-   * Omit when key availability is unknown and should be checked by the adapter.
-   * Pass [] to explicitly indicate BYOK is missing.
-   */
-  availableVariables?: string[];
+  configuredCredentials?: string[];
+  availableOAuth?: ProviderOAuthId[];
   /** Lower numbers win within this upstream. */
   priority?: number;
   /** Higher numbers win before provider order when set. */
@@ -73,11 +116,8 @@ export interface ProviderAccountAvailability {
   upstreamId?: ModelUpstreamId;
   region?: string;
   enabled?: boolean;
-  /**
-   * Omit when key availability is unknown and should be checked by the adapter.
-   * Pass [] to explicitly indicate BYOK is missing.
-   */
-  availableVariables?: string[];
+  configuredCredentials?: string[];
+  availableOAuth?: ProviderOAuthId[];
   /** Lower numbers win within equal weights. */
   priority?: number;
   /** Higher numbers win before declaration order. */
@@ -107,33 +147,16 @@ export interface ModelCatalogEntry {
   routes: ModelUpstreamRoute[];
   selectedRoute: ModelUpstreamRoute | null;
   candidateProviders: ProviderAccountId[];
-  missingVariables: string[];
+  missingCredentials: string[];
+  missingOAuth: ProviderOAuthId[];
 }
 
-const FAL_SECRET = "FAL_API_KEY";
-const GOOGLE_VERTEX_SECRET = "GOOGLE_VERTEX";
-const GOOGLE_AI_STUDIO_SECRET = "GOOGLE_API_KEY";
-const OPENAI_SECRET = "OPENAI_API_KEY";
-const KIE_SECRET = "KIE_API_KEY";
-const REPLICATE_SECRET = "REPLICATE_API_TOKEN";
-
-function fal(
-  modelCode: string,
-  kind: ModelKind,
-  upstreamModel: string,
-  priority = 20,
-): ModelProviderRoute {
-  return {
-    modelCode,
-    kind,
-    providerId: "fal",
-    upstreamId: "fal",
-    upstreamModel,
-    apiShape: "fal",
-    priority,
-    requiredVariables: [FAL_SECRET],
-  };
-}
+const API_KEY_CREDENTIAL = "apiKey";
+const BASE_URL_CREDENTIAL = "baseUrl";
+const ACCESS_KEY_CREDENTIAL = "accessKey";
+const SECRET_KEY_CREDENTIAL = "secretKey";
+const VERTEX_CREDENTIAL = "vertexCredentials";
+const DREAMINA_OAUTH = "dreamina";
 
 function falMock(
   modelCode: string,
@@ -151,116 +174,6 @@ function falMock(
   };
 }
 
-function googleVertex(
-  modelCode: string,
-  kind: ModelKind,
-  upstreamModel: string,
-  priority = 10,
-): ModelProviderRoute {
-  return {
-    modelCode,
-    kind,
-    providerId: "official",
-    region: "global",
-    upstreamId: "google",
-    upstreamModel,
-    apiShape: "google-vertex",
-    priority,
-    requiredVariables: [GOOGLE_VERTEX_SECRET],
-  };
-}
-
-function googleAiStudio(
-  modelCode: string,
-  kind: ModelKind,
-  upstreamModel: string,
-  priority = 10,
-): ModelProviderRoute {
-  return {
-    modelCode,
-    kind,
-    providerId: "official",
-    region: "global",
-    upstreamId: "google",
-    upstreamModel,
-    apiShape: "google-ai-studio",
-    priority,
-    requiredVariables: [GOOGLE_AI_STUDIO_SECRET],
-  };
-}
-
-function openAiCompatible(
-  modelCode: string,
-  upstreamModel: string,
-  priority = 10,
-): ModelProviderRoute {
-  return {
-    modelCode,
-    kind: "text",
-    providerId: "official",
-    region: "global",
-    upstreamId: "openai",
-    upstreamModel,
-    apiShape: "openai-compatible",
-    priority,
-    requiredVariables: [OPENAI_SECRET],
-  };
-}
-
-function openAiImages(
-  modelCode: string,
-  upstreamModel: string,
-  priority = 10,
-): ModelProviderRoute {
-  return {
-    modelCode,
-    kind: "image",
-    providerId: "official",
-    region: "global",
-    upstreamId: "openai",
-    upstreamModel,
-    apiShape: "openai-images",
-    priority,
-    requiredVariables: [OPENAI_SECRET],
-  };
-}
-
-function kie(
-  modelCode: string,
-  kind: ModelKind,
-  upstreamModel: string,
-  priority = 25,
-): ModelProviderRoute {
-  return {
-    modelCode,
-    kind,
-    providerId: "kie",
-    upstreamId: "kie",
-    upstreamModel,
-    apiShape: "kie",
-    priority,
-    requiredVariables: [KIE_SECRET],
-  };
-}
-
-function replicate(
-  modelCode: string,
-  kind: ModelKind,
-  upstreamModel: string,
-  priority = 25,
-): ModelProviderRoute {
-  return {
-    modelCode,
-    kind,
-    providerId: "replicate",
-    upstreamId: "replicate",
-    upstreamModel,
-    apiShape: "replicate",
-    priority,
-    requiredVariables: [REPLICATE_SECRET],
-  };
-}
-
 const FAL_IMAGE_ROUTES: Array<[string, string]> = [
   ["flux-schnell", "fal-ai/flux/schnell"],
   ["flux-dev", "fal-ai/flux/dev"],
@@ -273,23 +186,18 @@ const FAL_IMAGE_ROUTES: Array<[string, string]> = [
 
 const FAL_VIDEO_ROUTES: Array<[string, string]> = [
   ["sora-2", "fal-ai/sora-2/text-to-video"],
-  ["kling-2.1", "fal-ai/kling-video/v2.1/standard/text-to-video"],
   ["kling-3", "fal-ai/kling-video/v3/pro/image-to-video"],
-  ["veo3", "fal-ai/veo3"],
-  ["veo3-fast-text-to-video", "fal-ai/veo3/fast"],
   ["seedance-2-text", "bytedance/seedance-2.0/text-to-video"],
   ["seedance-2-startend", "bytedance/seedance-2.0/image-to-video"],
   ["seedance-2-ref", "bytedance/seedance-2.0/reference-to-video"],
 ];
 
 const GOOGLE_IMAGE_ROUTES: Array<[string, string]> = [
-  ["gemini-flash-image", "gemini-2.5-flash-image"],
   ["gemini-flash-image-2", "gemini-3.1-flash-image-preview"],
   ["gemini-pro-image", "gemini-3-pro-image-preview"],
 ];
 
 const GOOGLE_AI_STUDIO_IMAGE_ROUTES: Array<[string, string]> = [
-  ["gemini-flash-image", "gemini-2.5-flash-image"],
   ["gemini-flash-image-2", "gemini-3.1-flash-image"],
   ["gemini-pro-image", "gemini-3-pro-image"],
 ];
@@ -304,7 +212,6 @@ const GOOGLE_VIDEO_ROUTES: Array<[string, string]> = [
 
 const GOOGLE_AUDIO_ROUTES: Array<[string, string]> = [
   ["gemini-3.1-flash-tts", "gemini-3.1-flash-tts-preview"],
-  ["gemini-2.5-flash-tts", "gemini-2.5-flash-tts"],
   ["gemini-2.5-pro-tts", "gemini-2.5-pro-tts"],
 ];
 
@@ -325,7 +232,6 @@ const KIE_VIDEO_ROUTES: Array<[string, string]> = [
   ["seedance-2-text", "bytedance/seedance-2"],
   ["seedance-2-startend", "bytedance/seedance-2"],
   ["seedance-2-ref", "bytedance/seedance-2"],
-  ["kling-2.1", "kling/v2-1-standard"],
   ["kling-3", "kling-3.0/video"],
 ];
 
@@ -341,48 +247,221 @@ const REPLICATE_VIDEO_ROUTES: Array<[string, string]> = [
   ["seedance-2-ref", "bytedance/seedance-2.0"],
 ];
 
-export const MODEL_UPSTREAM_ROUTES: ModelUpstreamRoute[] = [
-  ...FAL_IMAGE_ROUTES.flatMap(([modelCode, upstreamModel]) => [
-    fal(modelCode, "image", upstreamModel),
-    falMock(modelCode, "image", upstreamModel),
-  ]),
-  ...KIE_IMAGE_ROUTES.map(([modelCode, upstreamModel]) => kie(modelCode, "image", upstreamModel)),
-  ...REPLICATE_IMAGE_ROUTES.map(([modelCode, upstreamModel]) => replicate(modelCode, "image", upstreamModel)),
-  ...FAL_VIDEO_ROUTES.flatMap(([modelCode, upstreamModel]) => [
-    fal(modelCode, "video", upstreamModel),
-    falMock(modelCode, "video", upstreamModel),
-  ]),
-  ...KIE_VIDEO_ROUTES.map(([modelCode, upstreamModel]) => kie(modelCode, "video", upstreamModel)),
-  ...REPLICATE_VIDEO_ROUTES.map(([modelCode, upstreamModel]) => replicate(modelCode, "video", upstreamModel)),
-  ...GOOGLE_IMAGE_ROUTES.flatMap(([modelCode, upstreamModel]) => [
-    googleAiStudio(
-      modelCode,
-      "image",
-      GOOGLE_AI_STUDIO_IMAGE_ROUTES.find(([candidate]) => candidate === modelCode)?.[1] ?? upstreamModel,
-      12,
-    ),
-    googleVertex(modelCode, "image", upstreamModel),
-    fal(modelCode, "image", "fal-ai/nano-banana-2", 30),
-    falMock(modelCode, "image", "fal-ai/nano-banana-2"),
-  ]),
-  ...GOOGLE_VIDEO_ROUTES.flatMap(([modelCode, upstreamModel]) => [
-    googleVertex(modelCode, "video", upstreamModel),
-    falMock(modelCode, "video", modelCode.includes("fast") ? "fal-ai/veo3/fast" : "fal-ai/veo3"),
-  ]),
-  ...GOOGLE_AUDIO_ROUTES.flatMap(([modelCode, upstreamModel]) => [
-    googleAiStudio(modelCode, "audio", upstreamModel),
-    fal(modelCode, "audio", "fal-ai/minimax/speech-02-hd", 30),
-    falMock(modelCode, "audio", "fal-ai/minimax/speech-02-hd"),
-  ]),
-  ...GOOGLE_TEXT_ROUTES.map(([modelCode, upstreamModel]) =>
-    googleVertex(modelCode, "text", upstreamModel),
-  ),
-  openAiImages("gpt-image-2", "gpt-image-2"),
+const JIMENG_SEEDANCE_ROUTES: Array<[string, string]> = [
+  ["seedance-2-text", "seedance2.0fast"],
+  ["seedance-2-startend", "seedance2.0fast"],
+  ["seedance-2-ref", "seedance2.0fast"],
+];
+
+const VOLCENGINE_SEEDANCE_ROUTES: Array<[string, string]> = [
+  ["seedance-2-text", "doubao-seedance-2-0-pro"],
+  ["seedance-2-startend", "doubao-seedance-2-0-pro"],
+  ["seedance-2-ref", "doubao-seedance-2-0-pro"],
+];
+
+function supportedModels(
+  routes: Array<[string, string]>,
+  kind: ModelKind,
+  priority?: number,
+): ModelProviderSupportedModel[] {
+  return routes.map(([modelCode, upstreamModel]) => ({
+    modelCode,
+    kind,
+    upstreamModel,
+    ...(priority === undefined ? {} : { priority }),
+  }));
+}
+
+function fallbackModels(
+  modelCodes: string[],
+  kind: ModelKind,
+  upstreamModel: string,
+  priority: number,
+): ModelProviderSupportedModel[] {
+  return modelCodes.map((modelCode) => ({
+    modelCode,
+    kind,
+    upstreamModel,
+    priority,
+  }));
+}
+
+function routesFromProviderDefinition(provider: ModelProviderDefinition): ModelUpstreamRoute[] {
+  return provider.supportedModels.map((model) => ({
+    modelCode: model.modelCode,
+    kind: model.kind,
+    providerId: provider.providerId,
+    ...(provider.region ? { region: provider.region } : {}),
+    upstreamId: provider.upstreamId,
+    upstreamModel: model.upstreamModel,
+    apiShape: provider.apiShape,
+    priority: model.priority ?? provider.priority,
+    ...(model.weight ?? provider.weight ? { weight: (model.weight ?? 0) + (provider.weight ?? 0) } : {}),
+    ...(provider.requiredCredentials?.length ? { requiredCredentials: [...provider.requiredCredentials] } : {}),
+    ...(provider.requiredOAuth?.length ? { requiredOAuth: [...provider.requiredOAuth] } : {}),
+  }));
+}
+
+export const MODEL_PROVIDER_DEFINITIONS: ModelProviderDefinition[] = [
+  {
+    providerId: "local",
+    upstreamId: "local",
+    apiShape: "local-asr",
+    priority: 1,
+    supportedModels: [{ modelCode: "sensevoice-small-asr", kind: "asr", upstreamModel: "iic/SenseVoiceSmall" }],
+  },
+  {
+    providerId: "fal",
+    upstreamId: "fal",
+    apiShape: "fal",
+    priority: 20,
+    requiredCredentials: [API_KEY_CREDENTIAL],
+    supportedModels: [
+      ...supportedModels(FAL_IMAGE_ROUTES, "image"),
+      ...supportedModels(FAL_VIDEO_ROUTES, "video"),
+      ...fallbackModels(GOOGLE_IMAGE_ROUTES.map(([modelCode]) => modelCode), "image", "fal-ai/nano-banana-2", 30),
+      ...fallbackModels(GOOGLE_AUDIO_ROUTES.map(([modelCode]) => modelCode), "audio", "fal-ai/minimax/speech-02-hd", 30),
+      { modelCode: "minimax-tts", kind: "audio", upstreamModel: "fal-ai/minimax/speech-02-hd" },
+    ],
+  },
+  {
+    providerId: "kie",
+    upstreamId: "kie",
+    apiShape: "kie",
+    priority: 25,
+    requiredCredentials: [API_KEY_CREDENTIAL],
+    supportedModels: [
+      ...supportedModels(KIE_IMAGE_ROUTES, "image"),
+      ...supportedModels(KIE_VIDEO_ROUTES, "video"),
+    ],
+  },
+  {
+    providerId: "replicate",
+    upstreamId: "replicate",
+    apiShape: "replicate",
+    priority: 25,
+    requiredCredentials: [API_KEY_CREDENTIAL],
+    supportedModels: [
+      ...supportedModels(REPLICATE_IMAGE_ROUTES, "image"),
+      ...supportedModels(REPLICATE_VIDEO_ROUTES, "video"),
+    ],
+  },
+  {
+    providerId: "official",
+    upstreamId: "google",
+    region: "global",
+    apiShape: "google-ai-studio",
+    priority: 10,
+    requiredCredentials: [API_KEY_CREDENTIAL],
+    supportedModels: [
+      ...supportedModels(GOOGLE_AI_STUDIO_IMAGE_ROUTES, "image", 12),
+      ...supportedModels(GOOGLE_AUDIO_ROUTES, "audio"),
+    ],
+  },
+  {
+    providerId: "official",
+    upstreamId: "google",
+    region: "global",
+    apiShape: "google-vertex",
+    priority: 10,
+    requiredCredentials: [VERTEX_CREDENTIAL],
+    supportedModels: [
+      ...supportedModels(GOOGLE_IMAGE_ROUTES, "image"),
+      ...supportedModels(GOOGLE_VIDEO_ROUTES, "video"),
+      ...supportedModels(GOOGLE_TEXT_ROUTES, "text"),
+    ],
+  },
+  {
+    providerId: "official",
+    upstreamId: "openai",
+    region: "global",
+    apiShape: "openai-images",
+    priority: 10,
+    requiredCredentials: [API_KEY_CREDENTIAL],
+    supportedModels: [{ modelCode: "gpt-image-2", kind: "image", upstreamModel: "gpt-image-2" }],
+  },
+  {
+    providerId: "official",
+    upstreamId: "openai",
+    region: "global",
+    apiShape: "openai-compatible",
+    priority: 10,
+    requiredCredentials: [API_KEY_CREDENTIAL],
+    supportedModels: [
+      { modelCode: "gpt-5.4", kind: "text", upstreamModel: "gpt-5.4" },
+      { modelCode: "openai-compatible-text", kind: "text", upstreamModel: "gpt-5.4", priority: 15 },
+    ],
+  },
+  {
+    providerId: "official",
+    upstreamId: "anthropic",
+    region: "global",
+    apiShape: "anthropic-compatible",
+    priority: 10,
+    requiredCredentials: [API_KEY_CREDENTIAL],
+    supportedModels: [
+      { modelCode: "claude-sonnet-4", kind: "text", upstreamModel: "claude-sonnet-4-20250514" },
+      { modelCode: "anthropic-compatible-text", kind: "text", upstreamModel: "claude-sonnet-4-20250514", priority: 15 },
+    ],
+  },
+  {
+    providerId: "kling",
+    upstreamId: "kling",
+    apiShape: "kling",
+    priority: 8,
+    requiredCredentials: [ACCESS_KEY_CREDENTIAL, SECRET_KEY_CREDENTIAL],
+    supportedModels: [{ modelCode: "kling-3", kind: "video", upstreamModel: "kling-v3" }],
+  },
+  {
+    providerId: "jimeng",
+    upstreamId: "jimeng",
+    apiShape: "dreamina-cli",
+    priority: 8,
+    requiredOAuth: [DREAMINA_OAUTH],
+    supportedModels: supportedModels(JIMENG_SEEDANCE_ROUTES, "video"),
+  },
+  {
+    providerId: "volcengine",
+    upstreamId: "volcengine",
+    apiShape: "modelark",
+    priority: 9,
+    requiredCredentials: [API_KEY_CREDENTIAL],
+    supportedModels: supportedModels(VOLCENGINE_SEEDANCE_ROUTES, "video"),
+  },
+  {
+    providerId: "minimax",
+    upstreamId: "minimax",
+    apiShape: "minimax",
+    priority: 8,
+    requiredCredentials: [API_KEY_CREDENTIAL],
+    supportedModels: [{ modelCode: "minimax-tts", kind: "audio", upstreamModel: "speech-02-hd" }],
+  },
+  {
+    providerId: "elevenlabs",
+    upstreamId: "elevenlabs",
+    apiShape: "elevenlabs",
+    priority: 8,
+    requiredCredentials: [API_KEY_CREDENTIAL],
+    supportedModels: [{ modelCode: "elevenlabs-tts", kind: "audio", upstreamModel: "eleven_multilingual_v2" }],
+  },
+];
+
+const PROVIDER_DECLARED_ROUTES = MODEL_PROVIDER_DEFINITIONS.flatMap(routesFromProviderDefinition);
+
+const MOCK_ROUTES: ModelUpstreamRoute[] = [
+  ...FAL_IMAGE_ROUTES.map(([modelCode, upstreamModel]) => falMock(modelCode, "image", upstreamModel)),
+  ...FAL_VIDEO_ROUTES.map(([modelCode, upstreamModel]) => falMock(modelCode, "video", upstreamModel)),
+  ...GOOGLE_IMAGE_ROUTES.map(([modelCode]) => falMock(modelCode, "image", "fal-ai/nano-banana-2")),
+  ...GOOGLE_VIDEO_ROUTES.map(([modelCode]) => falMock(modelCode, "video", modelCode.includes("fast") ? "fal-ai/veo3/fast" : "fal-ai/veo3")),
+  ...GOOGLE_AUDIO_ROUTES.map(([modelCode]) => falMock(modelCode, "audio", "fal-ai/minimax/speech-02-hd")),
   falMock("gpt-image-2", "image", "fal-ai/nano-banana-2"),
-  openAiCompatible("gpt-5.4", "gpt-5.4"),
-  fal("minimax-tts", "audio", "fal-ai/minimax/speech-02-hd"),
   falMock("minimax-tts", "audio", "fal-ai/minimax/speech-02-hd"),
   falMock("elevenlabs-tts", "audio", "fal-ai/minimax/speech-02-hd"),
+];
+
+export const MODEL_UPSTREAM_ROUTES: ModelUpstreamRoute[] = [
+  ...PROVIDER_DECLARED_ROUTES,
+  ...MOCK_ROUTES,
 ];
 
 export const MODEL_PROVIDER_ROUTES = MODEL_UPSTREAM_ROUTES;
@@ -399,17 +478,69 @@ function directFalRoute(query: ModelUpstreamRouteQuery): ModelUpstreamRoute | nu
     upstreamModel: query.modelCode,
     apiShape: "fal",
     priority: 50,
-    requiredVariables: query.allowMock ? undefined : [FAL_SECRET],
+    requiredCredentials: query.allowMock ? undefined : [API_KEY_CREDENTIAL],
   };
 }
 
 function providerIdForRoute(route: ModelUpstreamRoute): ProviderAccountId {
   if (route.providerId) return route.providerId;
-  if (route.upstreamId === "openai" || route.upstreamId === "google") return "official";
+  if (route.upstreamId === "local") return "local";
+  if (route.upstreamId === "openai" || route.upstreamId === "google" || route.upstreamId === "anthropic") return "official";
   if (route.upstreamId === "fal" || route.upstreamId === "kie" || route.upstreamId === "replicate" || route.upstreamId === "mock") {
     return route.upstreamId;
   }
   return "custom";
+}
+
+export interface ProviderModelSupport {
+  providerId: ProviderAccountId;
+  upstreamId: ModelUpstreamId;
+  region?: string;
+  models: Array<{
+    id: string;
+    name: string;
+    kind: ModelKind;
+    upstreamModel: string;
+    apiShape: ModelUpstreamApiShape;
+  }>;
+  requiredCredentials: string[];
+  requiredOAuth: ProviderOAuthId[];
+}
+
+export function listProviderModelSupport(options: {
+  models?: readonly ModelCard[];
+  includeMock?: boolean;
+} = {}): ProviderModelSupport[] {
+  const modelById = new Map((options.models ?? MODEL_CARDS).map((model) => [model.id, model]));
+  const rows = new Map<string, ProviderModelSupport>();
+  for (const route of MODEL_UPSTREAM_ROUTES) {
+    if (!options.includeMock && route.upstreamId === "mock") continue;
+    const model = modelById.get(route.modelCode);
+    if (!model) continue;
+    const providerId = providerIdForRoute(route);
+    const key = [providerId, route.upstreamId, route.region ?? ""].join(":");
+    const row = rows.get(key) ?? {
+      providerId,
+      upstreamId: route.upstreamId,
+      ...(route.region ? { region: route.region } : {}),
+      models: [],
+      requiredCredentials: [],
+      requiredOAuth: [],
+    };
+    row.models.push({
+      id: model.id,
+      name: model.name,
+      kind: route.kind,
+      upstreamModel: route.upstreamModel,
+      apiShape: route.apiShape,
+    });
+    row.requiredCredentials = [...new Set([...row.requiredCredentials, ...(route.requiredCredentials ?? [])])].sort();
+    row.requiredOAuth = [...new Set([...row.requiredOAuth, ...(route.requiredOAuth ?? [])])].sort();
+    rows.set(key, row);
+  }
+  return [...rows.values()].sort((a, b) =>
+    [a.providerId, a.upstreamId, a.region ?? ""].join(":").localeCompare([b.providerId, b.upstreamId, b.region ?? ""].join(":")),
+  );
 }
 
 function upstreamIndex(configuredUpstreams: UpstreamAvailability[] | undefined, upstreamId: ModelUpstreamId): number {
@@ -425,12 +556,6 @@ function upstreamConfig(
   return configuredUpstreams?.find((upstream) => upstream.upstreamId === upstreamId);
 }
 
-function providerIndex(configuredProviders: ProviderAccountAvailability[] | undefined, route: ModelUpstreamRoute): number {
-  if (!configuredProviders) return Number.POSITIVE_INFINITY;
-  const index = configuredProviders.findIndex((provider) => matchesProviderAccount(route, provider));
-  return index >= 0 ? index : Number.POSITIVE_INFINITY;
-}
-
 function matchesProviderAccount(route: ModelUpstreamRoute, provider: ProviderAccountAvailability): boolean {
   if (provider.providerId !== providerIdForRoute(route)) return false;
   if (provider.upstreamId && provider.upstreamId !== route.upstreamId) return false;
@@ -438,11 +563,58 @@ function matchesProviderAccount(route: ModelUpstreamRoute, provider: ProviderAcc
   return true;
 }
 
+type ProviderAccountCandidate = {
+  provider: ProviderAccountAvailability;
+  index: number;
+};
+
+function providerCandidates(
+  configuredProviders: ProviderAccountAvailability[] | undefined,
+  route: ModelUpstreamRoute,
+): ProviderAccountCandidate[] {
+  return (configuredProviders ?? [])
+    .map((provider, index) => ({ provider, index }))
+    .filter((candidate) => matchesProviderAccount(route, candidate.provider));
+}
+
+function compareProviderCandidates(a: ProviderAccountCandidate, b: ProviderAccountCandidate): number {
+  const priority = (a.provider.priority ?? 1000) - (b.provider.priority ?? 1000);
+  if (priority !== 0) return priority;
+  const weight = (b.provider.weight ?? 0) - (a.provider.weight ?? 0);
+  if (weight !== 0) return weight;
+  return a.index - b.index;
+}
+
+function canServeRoute(route: ModelUpstreamRoute, provider: ProviderAccountAvailability): boolean {
+  return provider.enabled !== false && hasRequiredCredentials(route, provider) && hasRequiredOAuth(route, provider);
+}
+
+function providerCandidate(
+  configuredProviders: ProviderAccountAvailability[] | undefined,
+  route: ModelUpstreamRoute,
+): ProviderAccountCandidate | undefined {
+  const candidates = providerCandidates(configuredProviders, route);
+  if (!candidates.length) return undefined;
+  const runnable = candidates
+    .filter((candidate) => canServeRoute(route, candidate.provider))
+    .sort(compareProviderCandidates);
+  if (runnable[0]) return runnable[0];
+  const enabled = candidates
+    .filter((candidate) => candidate.provider.enabled !== false)
+    .sort(compareProviderCandidates);
+  if (enabled[0]) return enabled[0];
+  return candidates.sort(compareProviderCandidates)[0];
+}
+
+function providerIndex(configuredProviders: ProviderAccountAvailability[] | undefined, route: ModelUpstreamRoute): number {
+  return providerCandidate(configuredProviders, route)?.index ?? Number.POSITIVE_INFINITY;
+}
+
 function providerConfig(
   configuredProviders: ProviderAccountAvailability[] | undefined,
   route: ModelUpstreamRoute,
 ): ProviderAccountAvailability | undefined {
-  return configuredProviders?.find((provider) => matchesProviderAccount(route, provider));
+  return providerCandidate(configuredProviders, route)?.provider;
 }
 
 function configForRoute(
@@ -453,30 +625,49 @@ function configForRoute(
   return upstreamConfig(query.configuredUpstreams, route.upstreamId);
 }
 
-function missingRequiredVariables(
+function missingRequiredCredentials(
   route: ModelUpstreamRoute,
   config: ProviderAccountAvailability | UpstreamAvailability | undefined,
 ): string[] {
-  if (!route.requiredVariables?.length) return [];
-  if (!config || config.availableVariables === undefined) return [];
-  return route.requiredVariables.filter((variable) => !config.availableVariables?.includes(variable));
+  if (!route.requiredCredentials?.length) return [];
+  if (!config || config.configuredCredentials === undefined) return [];
+  return route.requiredCredentials.filter((credential) => !config.configuredCredentials?.includes(credential));
 }
 
-function hasRequiredVariables(
+function hasRequiredCredentials(
   route: ModelUpstreamRoute,
   config: ProviderAccountAvailability | UpstreamAvailability | undefined,
 ): boolean {
-  if (!route.requiredVariables?.length) return true;
-  if (!config || config.availableVariables === undefined) return true;
-  return missingRequiredVariables(route, config).length === 0;
+  if (!route.requiredCredentials?.length) return true;
+  if (!config || config.configuredCredentials === undefined) return true;
+  return missingRequiredCredentials(route, config).length === 0;
+}
+
+function missingRequiredOAuth(
+  route: ModelUpstreamRoute,
+  config: ProviderAccountAvailability | UpstreamAvailability | undefined,
+): ProviderOAuthId[] {
+  if (!route.requiredOAuth?.length) return [];
+  if (!config || config.availableOAuth === undefined) return [];
+  return route.requiredOAuth.filter((provider) => !config.availableOAuth?.includes(provider));
+}
+
+function hasRequiredOAuth(
+  route: ModelUpstreamRoute,
+  config: ProviderAccountAvailability | UpstreamAvailability | undefined,
+): boolean {
+  if (!route.requiredOAuth?.length) return true;
+  if (!config || config.availableOAuth === undefined) return true;
+  return missingRequiredOAuth(route, config).length === 0;
 }
 
 function isEnabled(route: ModelUpstreamRoute, query: ModelUpstreamRouteQuery): boolean {
+  if (route.upstreamId === "local") return true;
   if (route.upstreamId === "mock" && !query.allowMock) return false;
   if (!query.configuredUpstreams && !query.configuredProviders) return true;
   const config = configForRoute(query, route);
   if (!config || config.enabled === false) return false;
-  return hasRequiredVariables(route, config);
+  return hasRequiredCredentials(route, config) && hasRequiredOAuth(route, config);
 }
 
 function candidateRoutes(query: ModelUpstreamRouteQuery): ModelUpstreamRoute[] {
@@ -545,8 +736,11 @@ export function listModelCatalogEntries(options: {
       const config = configForRoute(query, route);
       return !!config && config.enabled !== false;
     });
-    const missingVariables = [
-      ...new Set(configuredCandidates.flatMap((route) => missingRequiredVariables(route, configForRoute(query, route)))),
+    const missingCredentials = [
+      ...new Set(configuredCandidates.flatMap((route) => missingRequiredCredentials(route, configForRoute(query, route)))),
+    ];
+    const missingOAuth = [
+      ...new Set(configuredCandidates.flatMap((route) => missingRequiredOAuth(route, configForRoute(query, route)))),
     ];
     const tier: ModelCatalogTier = selectedRoute
       ? "available"
@@ -559,7 +753,8 @@ export function listModelCatalogEntries(options: {
       routes,
       selectedRoute,
       candidateProviders: uniqueProviderIds(configuredCandidates.length ? configuredCandidates : allRoutes),
-      missingVariables,
+      missingCredentials,
+      missingOAuth,
     };
   });
 }

@@ -51,14 +51,15 @@ function makeEnv(overrides: { db?: D1Database } = {}): Env {
     R2_PUBLIC_URL: "",
     JWT_SECRET: "test-secret",
     ENVIRONMENT: "test",
-    GOOGLE_API_KEY: "",
     CF_AIG_TOKEN: "",
-    KLING_ACCESS_KEY: "",
-    KLING_SECRET_KEY: "",
+    CF_AIG_OPENAI_URL: "https://gateway.example/openai",
+    AI: {} as any,
     ROOM: {} as any,
     SUPERVISOR: {} as any,
     GENERATION_WORKFLOW: {} as any,
     RENDER_CONTAINER: {} as any,
+    BYO_BRIDGE: {} as any,
+    RUNTIME_ROOM: {} as any,
   } as Env;
 }
 

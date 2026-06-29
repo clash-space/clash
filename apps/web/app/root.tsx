@@ -78,7 +78,7 @@ export function ErrorBoundary() {
 
       <section className="relative w-full max-w-xl">
         <div className="mb-8 flex items-center gap-3">
-          <img src="/brand/logo-mark.svg" alt="Clash" className="h-11 w-11" />
+          <img src="/brand/logo-mark-error.svg" alt="Clash" className="h-11 w-11" />
           <div>
             <p className="text-xs font-semibold uppercase tracking-[0.18em] text-brand">Route paused</p>
             <h1 className="font-display text-3xl font-bold tracking-tight sm:text-4xl">

@@ -13,13 +13,13 @@ The product reference is:
 - Anytype for local-first data ownership, optional network modes, encrypted backup/sync, and shared spaces.
 - Figma for real-time multiplayer, presence, permissions, and a reliable cloud sequencer with journal/checkpoint persistence.
 
-This does not mean copying either product surface. Clash's distinctive surface is creative canvas + media assets + AIGC processors + local crew daemon.
+This does not mean copying either product surface. Clash's distinctive surface is creative canvas + media assets + AIGC processors + local agent daemon.
 
 ## Principles
 
 1. Default to local.
 
-   A new desktop project should work without cloud login, OSS, remote workflow, or remote media processing. Local project creation, canvas editing, AIGC mock/provider calls, crew chat, room messages, and assets should all function through local API + local storage.
+   A new desktop project should work without cloud login, OSS, remote workflow, or remote media processing. Local project creation, canvas editing, AIGC mock/provider calls, agent chat, room messages, and assets should all function through local API + local storage.
 
 2. Cloud is an upgrade, not a dependency.
 
@@ -29,13 +29,13 @@ This does not mean copying either product surface. Clash's distinctive surface i
 
    Users should always know whether a project is Local-only, Synced, or Shared. This is product state, not hidden infra.
 
-4. Separate human team membership from agent crew identity.
+4. Separate human team membership from agent agent identity.
 
-   Human collaborators are project members. Crew members are user-owned agent actors bound to a runtime and an agent CLI. A shared project can contain multiple humans, each bringing their own local crew.
+   Human collaborators are project members. Agent members are user-owned agent actors bound to a runtime and an agent CLI. A shared project can contain multiple humans, each bringing their own local agent.
 
 5. Sync shared context before private traces.
 
-   Canvas state, project metadata, room messages, and asset metadata are sync-worthy. Detailed crew session traces, local file paths, tool logs, and raw agent scratch context are sensitive and should be local by default or opt-in for sync.
+   Canvas state, project metadata, room messages, and asset metadata are sync-worthy. Detailed agent session traces, local file paths, tool logs, and raw agent scratch context are sensitive and should be local by default or opt-in for sync.
 
 6. Shared projects need a cloud sequencer.
 
@@ -51,16 +51,16 @@ User promise:
 
 - Works offline.
 - Data stays on this machine.
-- Local crew and local AIGC processors work.
+- Local agent and local AIGC processors work.
 - Web cannot open this project.
 - Other users cannot join.
 
 Backend authority:
 
-- Local API owns project metadata, room messages, crew members, assets, and Loro state.
+- Local API owns project metadata, room messages, agent members, assets, and Loro state.
 - Local Loro room is the canvas source of truth.
 - Local assets live on disk.
-- Local crew sessions run through desktop-local runtime.
+- Local agent sessions run through desktop-local runtime.
 
 Primary UI signals:
 
@@ -102,7 +102,7 @@ User promise:
 - Multiple people can edit and chat in real time.
 - Permissions are explicit.
 - Everyone sees presence, cursors, and room messages.
-- Each user can attach their own local crew if their machine is online.
+- Each user can attach their own local agent if their machine is online.
 - If a user's daemon is offline, mentions/tasks queue or show unavailable.
 
 Backend authority:
@@ -116,7 +116,7 @@ Primary UI signals:
 
 - Badge: `Shared`
 - Members panel: Owner, Editor, Viewer
-- Runtime/crew status per user: `Online`, `Offline`, `Local only`, `Queued`
+- Runtime/agent status per user: `Online`, `Offline`, `Local only`, `Queued`
 
 ## Data Model Guide
 
@@ -146,9 +146,9 @@ Store:
 
 - message id
 - project id
-- sender kind: user or crew
+- sender kind: user or agent
 - sender user id
-- sender crew member id when applicable
+- sender agent member id when applicable
 - mentions
 - text/content parts
 - created sequence/time
@@ -156,9 +156,9 @@ Store:
 
 Room chat should sync in Synced and Shared projects. It is the user-visible project conversation and should be available in Web.
 
-### Crew Session Log
+### Agent Session Log
 
-Crew session logs are not the same as room chat.
+Agent session logs are not the same as room chat.
 
 Default local-only fields:
 
@@ -172,7 +172,7 @@ Default local-only fields:
 Sync-safe fields:
 
 - session id
-- crew member id
+- agent member id
 - title
 - high-level status
 - user-visible assistant messages
@@ -182,7 +182,7 @@ Sync-safe fields:
 Product rule:
 
 - Sync room chat by default once project sync is enabled.
-- Sync detailed crew logs only with explicit setting or team policy.
+- Sync detailed agent logs only with explicit setting or team policy.
 
 ### Assets
 
@@ -206,12 +206,12 @@ Shared:
 - Shared assets required by the room should upload or stream through cloud storage.
 - Large media should be cached locally after first open/play.
 
-### Crew Members
+### Agent Members
 
-Crew member is a local/user-owned actor:
+Agent member is a local/user-owned actor:
 
 ```text
-crew_member = user_id + template_id + runtime_id + agent_id + display_name
+agent_member = user_id + template_id + runtime_id + agent_id + display_name
 ```
 
 In local desktop:
@@ -223,8 +223,8 @@ In local desktop:
 
 In cloud/shared:
 
-- crew members still belong to a specific user.
-- project mentions target a `crew_member_id`.
+- agent members still belong to a specific user.
+- project mentions target a `agent_member_id`.
 - cloud routes mentions to that user's active runtime session when available.
 
 ## Network and Privacy Guide
@@ -287,7 +287,7 @@ Rules:
 - Synced projects open on Web using cloud Loro + cloud room log.
 - Shared projects open with multiplayer presence and membership.
 - If the user's desktop daemon is offline, local-only actions show unavailable or queue.
-- Cloud-native actions can be offered later, but should be visually distinct from local crew actions.
+- Cloud-native actions can be offered later, but should be visually distinct from local agent actions.
 
 ## UX Copy Guide
 
@@ -307,14 +307,14 @@ Avoid:
 - `Decentralized` unless we actually support peer/self-host semantics.
 - `Private cloud` unless E2EE is implemented.
 - `Synced` when only canvas syncs but room chat/assets do not.
-- `Team` when the feature only invites local crew agents.
+- `Team` when the feature only invites local agent agents.
 
 ## Product Boundaries
 
 ### In Scope for First Hybrid Release
 
 - Local-only desktop projects.
-- Local crew claims.
+- Local agent claims.
 - Local room message persistence.
 - Cloud sync opt-in.
 - Web access for synced projects.
@@ -329,7 +329,7 @@ Avoid:
 - Anytype-level self-hosted network UX.
 - E2EE shared spaces.
 - Cloud agent workers as the default runtime.
-- Syncing every raw crew trace by default.
+- Syncing every raw agent trace by default.
 
 ## Implementation Phases
 
@@ -339,10 +339,10 @@ Goal: desktop works without cloud.
 
 Requirements:
 
-- Local DB stores projects, assets, room messages, crew members, project crew invites.
-- `/api/v1/crew` returns local crew claims.
-- `/api/v1/runtimes/:runtimeId/sessions` resolves `crew_member_id`.
-- Local room messages persist and dispatch mentions to local crew sessions.
+- Local DB stores projects, assets, room messages, agent members, project agent invites.
+- `/api/v1/agents` returns local agent claims.
+- `/api/v1/runtimes/:runtimeId/sessions` resolves `agent_member_id`.
+- Local room messages persist and dispatch mentions to local agent sessions.
 - Local Loro room remains the canvas source of truth.
 
 ### Phase 1: Add Remote Persistence
@@ -377,7 +377,7 @@ Requirements:
 - `project_member` table with owner/editor/viewer roles.
 - Cloud ProjectRoom authorizes members, not just owner.
 - Presence and awareness work across users.
-- Room message mentions route to each user's active crew sessions.
+- Room message mentions route to each user's active agent sessions.
 - Cloud ProjectRoom sequences shared Loro updates.
 
 ### Phase 4: Privacy and Self-Host Hardening

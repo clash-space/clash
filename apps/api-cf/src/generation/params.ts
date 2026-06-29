@@ -37,7 +37,7 @@ export interface GenerationParams {
    *  (in which case it's the agent's owner / claimer). createAsset uses
    *  this as the asset row's user_id. */
   actorUserId: string;
-  /** crew_member.id when actorType='agent'. Undefined otherwise. The
+  /** agent_member.id when actorType='agent'. Undefined otherwise. The
    *  plugin uses this to look up the agent's budget pocket. */
   actorAgentId?: string;
 

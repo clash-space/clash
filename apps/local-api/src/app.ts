@@ -1,15 +1,20 @@
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { extname, join, normalize, relative } from "node:path";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { defaultRuntimeCapabilities } from "@clash/shared-runtime";
-import { listModelCatalogEntries } from "@clash/shared-types";
+import { listModelCatalogEntries, ProviderOAuthIdSchema, type ProviderOAuthId } from "@clash/shared-types";
 import type { Asset, AssetKind, AssetRefRow } from "@clash/shared-types/assets";
 import {
   createMockFalQueueService,
   handleFalMockHttpRequest,
   type FalMockQueueService,
 } from "./fal-mock.js";
+import {
+  createLocalAudioConfigStore,
+  LocalAudioConfigError,
+  type LocalAudioConfigStore,
+} from "./audio-config.js";
 import {
   createLocalSyncConfigStore,
   LocalSyncConfigError,
@@ -23,23 +28,71 @@ import {
   providerAccountKey,
   publicProviderAccounts,
   type LocalProviderAccountConfig,
+  type LocalProviderOAuthRecord,
 } from "./provider-accounts.js";
+
+export interface ProviderOAuthDeviceFlowStart {
+  verificationUri: string;
+  userCode: string;
+  deviceCode: string;
+  expiresAt?: string;
+  intervalSeconds?: number;
+}
+
+export interface ProviderOAuthTokenResult {
+  accessToken: string;
+  refreshToken?: string;
+  tokenType?: string;
+  expiresAt?: string;
+  accountLabel?: string;
+}
+
+export interface ProviderOAuthDriver {
+  start(): Promise<ProviderOAuthDeviceFlowStart>;
+  complete(input: { deviceCode: string }): Promise<ProviderOAuthTokenResult>;
+}
 
 export interface LocalApiOptions {
   dataDir: string;
   userId?: string;
   localAcp?: LocalAcpAdapter;
   falMock?: FalMockQueueService;
+  audioConfig?: LocalAudioConfigStore;
   syncConfig?: LocalSyncConfigStore;
   syncEnv?: RemoteLoroPersistenceEnv;
+  providerOAuth?: Partial<Record<ProviderOAuthId, ProviderOAuthDriver>>;
 }
 
 export type LocalAcpRuntimeStatus = "online" | "offline";
 
+export interface LocalAcpHarnessAuth {
+  status: "configured" | "needs-auth" | "unknown";
+  message: string;
+  command?: string;
+  methodId?: string;
+  methodName?: string;
+  methods?: Array<{
+    id: string;
+    name?: string;
+    description?: string;
+    type?: string;
+    vars?: Array<{
+      name: string;
+      label?: string;
+      secret?: boolean;
+      optional?: boolean;
+    }>;
+    link?: string;
+  }>;
+}
+
 export interface LocalAcpRuntimeAgent {
   id: string;
+  label?: string;
   binary?: string;
   version?: string;
+  config_options?: unknown[];
+  auth?: LocalAcpHarnessAuth;
 }
 
 export interface LocalAcpRuntime {
@@ -54,6 +107,34 @@ export interface LocalAcpRuntime {
   created_at: number;
 }
 
+export interface LocalAcpHarness {
+  id: string;
+  label: string;
+  binary: string;
+  enabled: boolean;
+  available: boolean;
+  custom?: boolean;
+  installed?: boolean;
+  installedVersion?: string;
+  latestVersion?: string;
+  updateAvailable?: boolean;
+  installable?: boolean;
+  installSource?: "registry" | "adapter";
+  downloadUrl?: string;
+  downloadKind?: "adapter";
+  homepage?: string;
+  auth?: LocalAcpHarnessAuth;
+}
+
+export interface LocalAcpCustomAgentServer {
+  type: "custom";
+  command: string;
+  args?: string[];
+  env?: Record<string, string>;
+}
+
+export type LocalAcpAgentServersConfig = Record<string, LocalAcpCustomAgentServer>;
+
 export interface LocalAcpResumeSession {
   id: string;
   title: string;
@@ -63,40 +144,87 @@ export interface LocalAcpResumeSession {
 
 export interface LocalAcpSessionMessage {
   id: string;
-  sender_kind: "user" | "crew";
+  sender_kind: "user" | "agent";
   sender_id: string;
   turn_id: string | null;
   events: unknown[];
   created_at: number;
 }
 
+export interface LocalAcpSessionMessageStore {
+  appendUserPrompt(sessionId: string, message: LocalAcpSessionMessage): Promise<void> | void;
+  appendAgentEvent(sessionId: string, message: LocalAcpSessionMessage): Promise<void> | void;
+  markTurnComplete?(sessionId: string, turnId: string): Promise<void> | void;
+  appendTurnError?(sessionId: string, turnId: string | null, message: string): Promise<void> | void;
+  listSessionMessages(sessionId: string): Promise<{ messages: LocalAcpSessionMessage[] } | null>;
+}
+
 export interface LocalAcpCreateSessionParams {
+  sessionId?: string;
   runtimeId: string;
-  crewId: string;
-  crewMemberId?: string;
+  agentTemplateId?: string;
+  agentMemberId?: string;
   agentId?: string;
+  permissionMode?: string;
   projectId?: string;
   resumeAcpSessionId?: string;
+  onReady?: (event: { sessionId: string; acpSessionId?: string }) => Promise<void> | void;
+  onError?: (event: { sessionId: string; message: string }) => Promise<void> | void;
+}
+
+export interface LocalAcpAttachSessionParams extends LocalAcpCreateSessionParams {
+  sessionId: string;
 }
 
 export interface LocalAcpAdapter {
-  listRuntimes(): Promise<{ runtimes: LocalAcpRuntime[] }>;
+  warmup?(): Promise<void> | void;
+  listRuntimes(opts?: { probe?: boolean | "auth" | "config" | "none"; refresh?: boolean }): Promise<{ runtimes: LocalAcpRuntime[] }>;
   createSession(params: LocalAcpCreateSessionParams): Promise<{ session_id: string }>;
+  attachSession?(params: LocalAcpAttachSessionParams): Promise<{ session_id: string }>;
   listResumeSessions(runtimeId: string): Promise<{ sessions: LocalAcpResumeSession[] }>;
+  listHarnesses?(opts?: { probe?: boolean | "auth" | "config" | "none"; refresh?: boolean }): Promise<{ harnesses: LocalAcpHarness[] }>;
+  updateHarnesses?(enabledIds: string[]): Promise<{ harnesses: LocalAcpHarness[] }>;
+  listAgentServers?(): Promise<{ agent_servers: LocalAcpAgentServersConfig }>;
+  updateAgentServers?(servers: LocalAcpAgentServersConfig): Promise<{
+    agent_servers: LocalAcpAgentServersConfig;
+    harnesses: LocalAcpHarness[];
+  }>;
+  installHarness?(id: string): Promise<{ harnesses: LocalAcpHarness[] }>;
+  installHarnessAdapter?(id: string): Promise<{ harnesses: LocalAcpHarness[] }>;
+  upgradeHarness?(id: string): Promise<{ harnesses: LocalAcpHarness[] }>;
+  uninstallHarness?(id: string): Promise<{ harnesses: LocalAcpHarness[] }>;
+  authenticateHarness?(id: string, options?: { methodId?: string }): Promise<{ harnesses: LocalAcpHarness[] }>;
   listSessionMessages?(sessionId: string): Promise<{ messages: LocalAcpSessionMessage[] } | null>;
+  setSessionMessageStore?(store: LocalAcpSessionMessageStore): void;
   pushRoomMention?(
     projectId: string,
-    crewMemberId: string,
+    agentMemberId: string,
     mention: Record<string, unknown>,
   ): Promise<boolean>;
+  runTextTask?(params: {
+    projectId: string;
+    prompt: string;
+    agentId?: string;
+    modelId?: string;
+    modelConfigId?: string;
+    systemPrompt?: string;
+    timeoutMs?: number;
+  }): Promise<{ text: string; agentId?: string; sessionId: string }>;
 }
 
 function formatLocalAcpSessionError(error: unknown): string {
   const message = error instanceof Error ? error.message : String(error);
   if (message === "No local ACP agent found on PATH") {
-    return "No local ACP agent found. Configure CLASH_ACP_BIN_DIR or expose a native ACP CLI such as claude-agent-acp or gemini, then retry.";
+    return "No local agent found. Install or enable an agent in Settings > Runtimes, then retry.";
   }
-  return message || "Failed to create local ACP session";
+  if (message === "No enabled local agent harness found") {
+    return "No enabled local agent found. Enable an agent in Settings > Runtimes, or install one from Clash.";
+  }
+  if (message.startsWith("Local agent harness is not enabled or unavailable:")) {
+    const id = message.slice("Local agent harness is not enabled or unavailable:".length).trim();
+    return `Local agent ${id} is not enabled or available. Enable it in Settings > Runtimes, install it, or choose another agent.`;
+  }
+  return message || "Failed to create local session";
 }
 
 interface LocalProjectAsset {
@@ -117,15 +245,29 @@ interface LocalProject {
   assets: LocalProjectAsset[];
 }
 
+type LocalSessionType = "cloud" | "runtime";
+type LocalSessionStatus = "starting" | "active" | "closed" | "error";
+
 interface LocalSession {
   id: string;
   projectId: string;
   title: string;
+  type?: LocalSessionType;
+  runtimeId?: string;
+  agentId?: string;
+  agentTemplateId?: string;
+  permissionMode?: string;
+  acpSessionId?: string;
+  status?: LocalSessionStatus;
   createdAt: string;
   updatedAt: string;
 }
 
-interface LocalCrewMember {
+interface PersistedLocalAcpSessionMessage extends LocalAcpSessionMessage {
+  session_id: string;
+}
+
+interface LocalAgentMember {
   id: string;
   user_id: string;
   template_id: string;
@@ -137,14 +279,13 @@ interface LocalCrewMember {
 
 interface LocalRoomMention {
   user_id: string;
-  crew_member_id?: string;
-  crew_id?: string;
+  agent_member_id?: string;
 }
 
 interface LocalRoomMessage {
   id: string;
   project_id: string;
-  sender_kind: "user" | "crew";
+  sender_kind: "user" | "agent";
   sender_id: string;
   sender_user_id: string;
   mentions: LocalRoomMention[];
@@ -177,10 +318,12 @@ interface LocalDb {
   assets: Array<Asset & { projectId?: string }>;
   assetRefs: AssetRefRow[];
   sessions: LocalSession[];
-  crewMembers: LocalCrewMember[];
+  agentMembers: LocalAgentMember[];
   roomMessages: LocalRoomMessage[];
+  sessionMessages: PersistedLocalAcpSessionMessage[];
   variables: LocalUserVariable[];
   providerAccounts: LocalProviderAccountConfig[];
+  providerOAuth: LocalProviderOAuthRecord[];
 }
 
 const DEFAULT_DB: LocalDb = {
@@ -188,24 +331,91 @@ const DEFAULT_DB: LocalDb = {
   assets: [],
   assetRefs: [],
   sessions: [],
-  crewMembers: [],
+  agentMembers: [],
   roomMessages: [],
+  sessionMessages: [],
   variables: [],
   providerAccounts: [],
+  providerOAuth: [],
 };
 
 const LOCAL_RUNTIME_ID = "desktop-local";
+const DEFAULT_RUNTIME_SESSION_CONTEXT_ID = "master-clash";
+const DEFAULT_RUNTIME_SESSION_TITLE = "New session";
 
-const BUILTIN_CREW_TEMPLATES: Array<{ id: string; label: string }> = [
-  { id: "director", label: "Director" },
-  { id: "canvas-editor", label: "Canvas Editor" },
-  { id: "generator", label: "Generator" },
-  { id: "storyboard", label: "Storyboard Artist" },
-  { id: "project-manager", label: "Project Manager" },
+const BUILTIN_AGENT_TEMPLATES: Array<{ id: string; label: string }> = [
+  { id: "master-clash", label: "Master Clash" },
 ];
 
 function truncateProjectName(prompt: string): string {
   return prompt.length > 20 ? `${prompt.slice(0, 20)}...` : prompt;
+}
+
+function agentTemplateTitle(agentTemplateId: string): string {
+  return BUILTIN_AGENT_TEMPLATES.find((template) => template.id === agentTemplateId)?.label ?? agentTemplateId;
+}
+
+function initialRuntimeSessionTitle(agentTemplateId?: string): string {
+  return agentTemplateId ? agentTemplateTitle(agentTemplateId) : DEFAULT_RUNTIME_SESSION_TITLE;
+}
+
+function publicLocalSession(session: LocalSession) {
+  return {
+    id: session.id,
+    threadId: session.id,
+    projectId: session.projectId,
+    title: session.title,
+    type: session.type ?? "cloud",
+    ...(session.runtimeId ? { runtimeId: session.runtimeId } : {}),
+    ...(session.agentId ? { agentId: session.agentId } : {}),
+    ...(session.agentTemplateId ? { agentTemplateId: session.agentTemplateId } : {}),
+    ...(session.permissionMode ? { permissionMode: session.permissionMode } : {}),
+    ...(session.acpSessionId ? { acpSessionId: session.acpSessionId } : {}),
+    ...(session.status ? { status: session.status } : {}),
+    createdAt: session.createdAt,
+    updatedAt: session.updatedAt,
+  };
+}
+
+async function updateRuntimeSession(
+  db: ReturnType<typeof createDb>,
+  sessionId: string,
+  patch: Partial<Pick<LocalSession, "acpSessionId" | "status" | "title">>,
+) {
+  await db.update((state) => {
+    const session = state.sessions.find((candidate) => candidate.id === sessionId);
+    if (!session) return;
+    Object.assign(session, patch, { updatedAt: nowIso() });
+  });
+}
+
+async function precreateRuntimeSession(
+  db: ReturnType<typeof createDb>,
+  session: LocalSession,
+): Promise<void> {
+  await db.update((state) => {
+    state.sessions = [
+      session,
+      ...state.sessions.filter((candidate) => candidate.id !== session.id),
+    ];
+  });
+}
+
+async function finalizeRuntimeSessionId(
+  db: ReturnType<typeof createDb>,
+  temporarySessionId: string,
+  finalSessionId: string,
+  patch?: Partial<Pick<LocalSession, "acpSessionId" | "status" | "title">>,
+): Promise<void> {
+  await db.update((state) => {
+    const session = state.sessions.find((candidate) => candidate.id === temporarySessionId);
+    if (!session) return;
+    session.id = finalSessionId;
+    Object.assign(session, patch ?? {}, { updatedAt: nowIso() });
+    state.sessionMessages = state.sessionMessages.map((message) =>
+      message.session_id === temporarySessionId ? { ...message, session_id: finalSessionId } : message
+    );
+  });
 }
 
 function sanitizeFileName(name: string): string {
@@ -250,31 +460,217 @@ async function readJson<T>(path: string, fallback: T): Promise<T> {
 
 async function writeJson(path: string, value: unknown): Promise<void> {
   await mkdir(join(path, ".."), { recursive: true });
-  await writeFile(path, JSON.stringify(value, null, 2), "utf8");
+  const tmpPath = `${path}.${process.pid}.${Date.now()}.${Math.random().toString(36).slice(2)}.tmp`;
+  await writeFile(tmpPath, JSON.stringify(value, null, 2), "utf8");
+  await rename(tmpPath, path);
 }
 
 function createDb(dataDir: string) {
   const dbPath = join(dataDir, "db.json");
+  let writeQueue: Promise<unknown> = Promise.resolve();
 
   async function load(): Promise<LocalDb> {
+    await writeQueue.catch(() => undefined);
     const db = await readJson<LocalDb>(dbPath, DEFAULT_DB);
     return {
       projects: db.projects ?? [],
       assets: db.assets ?? [],
       assetRefs: db.assetRefs ?? [],
       sessions: db.sessions ?? [],
-      crewMembers: db.crewMembers ?? [],
+      agentMembers: db.agentMembers ?? [],
       roomMessages: db.roomMessages ?? [],
+      sessionMessages: db.sessionMessages ?? [],
       variables: db.variables ?? [],
       providerAccounts: db.providerAccounts ?? [],
+      providerOAuth: db.providerOAuth ?? [],
     };
   }
 
   async function save(db: LocalDb): Promise<void> {
-    await writeJson(dbPath, db);
+    const task = writeQueue.catch(() => undefined).then(() => writeJson(dbPath, db));
+    writeQueue = task.then(() => undefined, () => undefined);
+    await task;
   }
 
-  return { load, save };
+  async function update<T>(mutate: (db: LocalDb) => T | Promise<T>): Promise<T> {
+    const task = writeQueue.catch(() => undefined).then(async () => {
+      const db = await readJson<LocalDb>(dbPath, DEFAULT_DB);
+      const normalized: LocalDb = {
+        projects: db.projects ?? [],
+        assets: db.assets ?? [],
+        assetRefs: db.assetRefs ?? [],
+        sessions: db.sessions ?? [],
+        agentMembers: db.agentMembers ?? [],
+        roomMessages: db.roomMessages ?? [],
+        sessionMessages: db.sessionMessages ?? [],
+        variables: db.variables ?? [],
+        providerAccounts: db.providerAccounts ?? [],
+        providerOAuth: db.providerOAuth ?? [],
+      };
+      const result = await mutate(normalized);
+      await writeJson(dbPath, normalized);
+      return result;
+    });
+    writeQueue = task.then(() => undefined, () => undefined);
+    return task;
+  }
+
+  return { load, save, update };
+}
+
+function eventKey(event: unknown): string {
+  try {
+    return JSON.stringify(event);
+  } catch {
+    return String(event);
+  }
+}
+
+function appendPersistedSessionMessage(
+  state: LocalDb,
+  sessionId: string,
+  incoming: LocalAcpSessionMessage,
+): void {
+  const existing = state.sessionMessages.find(
+    (message) => message.session_id === sessionId && message.id === incoming.id,
+  );
+  if (!existing) {
+    state.sessionMessages.push({
+      session_id: sessionId,
+      ...structuredClone(incoming),
+    });
+    return;
+  }
+
+  const seen = new Set(existing.events.map(eventKey));
+  for (const event of incoming.events) {
+    const key = eventKey(event);
+    if (seen.has(key)) continue;
+    existing.events.push(structuredClone(event));
+    seen.add(key);
+  }
+}
+
+function extractUserPromptTitle(message: LocalAcpSessionMessage): string | null {
+  if (message.sender_kind !== "user") return null;
+  for (const event of message.events) {
+    if (
+      event &&
+      typeof event === "object" &&
+      (event as { type?: unknown }).type === "text" &&
+      typeof (event as { text?: unknown }).text === "string"
+    ) {
+      const text = (event as { text: string }).text.trim();
+      return text ? truncateProjectName(text) : null;
+    }
+  }
+  return null;
+}
+
+function extractSessionInfoTitle(message: LocalAcpSessionMessage): string | null {
+  for (const event of message.events) {
+    if (!event || typeof event !== "object") continue;
+    const typed = event as {
+      type?: unknown;
+      sessionUpdate?: unknown;
+      title?: unknown;
+      sessionInfo?: { title?: unknown };
+    };
+    if (typed.type !== "session_info_update" && typed.sessionUpdate !== "session_info_update") continue;
+    const title = typeof typed.title === "string"
+      ? typed.title
+      : typeof typed.sessionInfo?.title === "string"
+        ? typed.sessionInfo.title
+        : "";
+    const trimmed = title.trim();
+    if (trimmed) return truncateProjectName(trimmed);
+  }
+  return null;
+}
+
+function patchSessionAfterMessage(
+  state: LocalDb,
+  sessionId: string,
+  message: LocalAcpSessionMessage,
+): void {
+  const session = state.sessions.find((candidate) => candidate.id === sessionId);
+  if (!session) return;
+  const sessionInfoTitle = extractSessionInfoTitle(message);
+  const promptTitle = extractUserPromptTitle(message);
+  if (sessionInfoTitle) {
+    session.title = sessionInfoTitle;
+  } else if (
+    promptTitle &&
+    (
+      !session.title ||
+      session.title === DEFAULT_RUNTIME_SESSION_TITLE ||
+      (!!session.agentTemplateId && session.title === agentTemplateTitle(session.agentTemplateId))
+    )
+  ) {
+    session.title = promptTitle;
+  }
+  session.updatedAt = nowIso();
+}
+
+async function listPersistedLocalSessionMessages(
+  db: ReturnType<typeof createDb>,
+  sessionId: string,
+): Promise<{ messages: LocalAcpSessionMessage[] } | null> {
+  const state = await db.load();
+  const rows = state.sessionMessages
+    .filter((message) => message.session_id === sessionId)
+    .sort((a, b) => a.created_at - b.created_at);
+  if (rows.length === 0 && !state.sessions.some((session) => session.id === sessionId)) return null;
+  return {
+    messages: rows.map(({ session_id: _sessionId, ...message }) => ({
+      ...message,
+      events: structuredClone(message.events),
+    })),
+  };
+}
+
+function createLocalSessionMessageStore(
+  db: ReturnType<typeof createDb>,
+): LocalAcpSessionMessageStore {
+  async function append(sessionId: string, message: LocalAcpSessionMessage): Promise<void> {
+    await db.update((state) => {
+      appendPersistedSessionMessage(state, sessionId, message);
+      patchSessionAfterMessage(state, sessionId, message);
+    });
+  }
+
+  async function touch(sessionId: string, patch?: Partial<Pick<LocalSession, "status">>): Promise<void> {
+    await db.update((state) => {
+      const session = state.sessions.find((candidate) => candidate.id === sessionId);
+      if (session) Object.assign(session, patch ?? {}, { updatedAt: nowIso() });
+    });
+  }
+
+  return {
+    appendUserPrompt: append,
+    appendAgentEvent: append,
+    async markTurnComplete(sessionId) {
+      await touch(sessionId);
+    },
+    async appendTurnError(sessionId, turnId, message) {
+      await db.update((state) => {
+        const at = Math.floor(Date.now() / 1000);
+        appendPersistedSessionMessage(state, sessionId, {
+          id: `${turnId ?? `error-${at}`}-agent`,
+          sender_kind: "agent",
+          sender_id: "local-agent",
+          turn_id: turnId,
+          events: [{ type: "promptError", error: message }],
+          created_at: at,
+        });
+        const session = state.sessions.find((candidate) => candidate.id === sessionId);
+        if (session) Object.assign(session, { status: "error" as const, updatedAt: nowIso() });
+      });
+    },
+    listSessionMessages(sessionId) {
+      return listPersistedLocalSessionMessages(db, sessionId);
+    },
+  };
 }
 
 function assetRoot(dataDir: string): string {
@@ -292,9 +688,14 @@ function assetPath(dataDir: string, storageKey: string): string {
 }
 
 function json(data: unknown, status = 200): Response {
-  return new Response(JSON.stringify(data), {
+  const body = JSON.stringify(data).replace(/[\u007f-\uffff]/g, (char) => (
+    `\\u${char.charCodeAt(0).toString(16).padStart(4, "0")}`
+  ));
+  return new Response(body, {
     status,
-    headers: { "content-type": "application/json" },
+    headers: {
+      "content-type": "application/json; charset=utf-8",
+    },
   });
 }
 
@@ -426,6 +827,50 @@ function publicV1Variable(variable: LocalUserVariable) {
   };
 }
 
+function parseProviderOAuthId(value: unknown): ProviderOAuthId | null {
+  const parsed = ProviderOAuthIdSchema.safeParse(value);
+  return parsed.success ? parsed.data : null;
+}
+
+function publicProviderOAuth(record: LocalProviderOAuthRecord) {
+  return {
+    providerId: record.providerId,
+    status: record.status,
+    ...(record.verificationUri ? { verificationUri: record.verificationUri } : {}),
+    ...(record.userCode ? { userCode: record.userCode } : {}),
+    ...(record.deviceCode ? { deviceCode: record.deviceCode } : {}),
+    ...(record.expiresAt ? { expiresAt: record.expiresAt } : {}),
+    ...(record.intervalSeconds !== undefined ? { intervalSeconds: record.intervalSeconds } : {}),
+    ...(record.accountLabel ? { accountLabel: record.accountLabel } : {}),
+    ...(record.error ? { error: record.error } : {}),
+    hasAccessToken: typeof record.accessToken === "string" && record.accessToken.trim().length > 0,
+  };
+}
+
+function upsertProviderOAuth(
+  state: LocalDb,
+  userId: string,
+  providerId: ProviderOAuthId,
+  patch: Partial<LocalProviderOAuthRecord>,
+): LocalProviderOAuthRecord {
+  const now = nowIso();
+  const existing = state.providerOAuth.find((record) => record.userId === userId && record.providerId === providerId);
+  if (existing) {
+    Object.assign(existing, patch, { updatedAt: now });
+    return existing;
+  }
+  const record: LocalProviderOAuthRecord = {
+    userId,
+    providerId,
+    status: patch.status ?? "pending",
+    createdAt: now,
+    updatedAt: now,
+    ...patch,
+  };
+  state.providerOAuth.unshift(record);
+  return record;
+}
+
 function upsertVariable(
   state: LocalDb,
   userId: string,
@@ -454,8 +899,7 @@ function upsertVariable(
 function normalizeLocalRoomMention(mention: RemoteRoomMessage["mentions"][number]): LocalRoomMention {
   return {
     user_id: mention.user_id,
-    ...(mention.crew_member_id ? { crew_member_id: mention.crew_member_id } : {}),
-    ...(mention.crew_id ? { crew_id: mention.crew_id } : {}),
+    ...(mention.agent_member_id ? { agent_member_id: mention.agent_member_id } : {}),
   };
 }
 
@@ -479,10 +923,10 @@ function upsertRoomMessages(state: LocalDb, incoming: LocalRoomMessage[]): void 
   state.roomMessages = [...byId.values()];
 }
 
-function seedLocalCrewMembers(state: LocalDb, userId: string): LocalCrewMember[] {
-  if (state.crewMembers.length > 0) return state.crewMembers;
+function seedLocalAgentMembers(state: LocalDb, userId: string): LocalAgentMember[] {
+  if (state.agentMembers.length > 0) return state.agentMembers;
   const createdAt = Math.floor(Date.now() / 1000);
-  state.crewMembers = BUILTIN_CREW_TEMPLATES.map((template) => ({
+  state.agentMembers = BUILTIN_AGENT_TEMPLATES.map((template) => ({
     id: `local-${template.id}`,
     user_id: userId,
     template_id: template.id,
@@ -491,7 +935,7 @@ function seedLocalCrewMembers(state: LocalDb, userId: string): LocalCrewMember[]
     display_name: template.label,
     created_at: createdAt,
   }));
-  return state.crewMembers;
+  return state.agentMembers;
 }
 
 async function localRuntimeSummary(options: LocalApiOptions): Promise<{
@@ -518,10 +962,15 @@ async function localRuntimeSummary(options: LocalApiOptions): Promise<{
 export function createLocalApiApp(options: LocalApiOptions): Hono {
   const userId = options.userId ?? "local-user";
   const db = createDb(options.dataDir);
+  const sessionMessageStore = createLocalSessionMessageStore(db);
+  options.localAcp?.setSessionMessageStore?.(sessionMessageStore);
   const falMock = options.falMock ?? createMockFalQueueService();
   const syncConfig = options.syncConfig ?? createLocalSyncConfigStore({
     dataDir: options.dataDir,
     env: options.syncEnv ?? process.env,
+  });
+  const audioConfig = options.audioConfig ?? createLocalAudioConfigStore({
+    dataDir: options.dataDir,
   });
   const app = new Hono();
 
@@ -618,7 +1067,7 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
   app.get("/api/v1/model-providers", async (c) => {
     const state = await db.load();
     return c.json({
-      providers: publicProviderAccounts(state.providerAccounts, state.variables, userId),
+      providers: publicProviderAccounts(state.providerAccounts, userId, state.providerOAuth),
     });
   });
   app.patch("/api/v1/model-providers", async (c) => {
@@ -643,6 +1092,9 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
       existing.set(key, {
         ...previous,
         ...provider,
+        credentials: provider.credentials
+          ? { ...(previous?.credentials ?? {}), ...provider.credentials }
+          : previous?.credentials,
         userId,
         createdAt: previous?.createdAt ?? now,
         updatedAt: now,
@@ -654,14 +1106,83 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
     ];
     await db.save(state);
     return c.json({
-      providers: publicProviderAccounts(state.providerAccounts, state.variables, userId),
+      providers: publicProviderAccounts(state.providerAccounts, userId, state.providerOAuth),
     });
+  });
+  app.get("/api/v1/provider-oauth", async (c) => {
+    const state = await db.load();
+    return c.json({
+      providers: state.providerOAuth
+        .filter((record) => record.userId === userId)
+        .sort((a, b) => a.providerId.localeCompare(b.providerId))
+        .map(publicProviderOAuth),
+    });
+  });
+  app.post("/api/v1/provider-oauth/:providerId/start", async (c) => {
+    const providerId = parseProviderOAuthId(c.req.param("providerId"));
+    if (!providerId) return c.json({ error: "Unsupported OAuth provider" }, 404);
+    const driver = options.providerOAuth?.[providerId];
+    if (!driver) return c.json({ error: "OAuth provider is not configured" }, 501);
+    const started = await driver.start();
+    const state = await db.load();
+    const record = upsertProviderOAuth(state, userId, providerId, {
+      status: "pending",
+      verificationUri: started.verificationUri,
+      userCode: started.userCode,
+      deviceCode: started.deviceCode,
+      expiresAt: started.expiresAt,
+      intervalSeconds: started.intervalSeconds,
+      accessToken: undefined,
+      refreshToken: undefined,
+      tokenType: undefined,
+      accountLabel: undefined,
+      error: undefined,
+    });
+    await db.save(state);
+    return c.json(publicProviderOAuth(record));
+  });
+  app.post("/api/v1/provider-oauth/:providerId/complete", async (c) => {
+    const providerId = parseProviderOAuthId(c.req.param("providerId"));
+    if (!providerId) return c.json({ error: "Unsupported OAuth provider" }, 404);
+    const driver = options.providerOAuth?.[providerId];
+    if (!driver) return c.json({ error: "OAuth provider is not configured" }, 501);
+    const body = (await c.req.json().catch(() => ({}))) as { deviceCode?: unknown };
+    const state = await db.load();
+    const existing = state.providerOAuth.find((record) => record.userId === userId && record.providerId === providerId);
+    const deviceCode = typeof body.deviceCode === "string" && body.deviceCode.trim()
+      ? body.deviceCode.trim()
+      : existing?.deviceCode;
+    if (!deviceCode) return c.json({ error: "deviceCode is required" }, 400);
+    const completed = await driver.complete({ deviceCode });
+    const record = upsertProviderOAuth(state, userId, providerId, {
+      status: "authorized",
+      accessToken: completed.accessToken,
+      refreshToken: completed.refreshToken,
+      tokenType: completed.tokenType,
+      expiresAt: completed.expiresAt,
+      accountLabel: completed.accountLabel,
+      verificationUri: undefined,
+      userCode: undefined,
+      deviceCode: undefined,
+      intervalSeconds: undefined,
+      error: undefined,
+    });
+    await db.save(state);
+    return c.json(publicProviderOAuth(record));
+  });
+  app.delete("/api/v1/provider-oauth/:providerId", async (c) => {
+    const providerId = parseProviderOAuthId(c.req.param("providerId"));
+    if (!providerId) return c.json({ error: "Unsupported OAuth provider" }, 404);
+    const state = await db.load();
+    state.providerOAuth = state.providerOAuth.filter((record) => !(record.userId === userId && record.providerId === providerId));
+    await db.save(state);
+    return new Response(null, { status: 204 });
   });
   app.get("/api/v1/models/catalog", async (c) => {
     const state = await db.load();
     return c.json({
       models: listModelCatalogEntries({
-        configuredProviders: publicProviderAccounts(state.providerAccounts, state.variables, userId),
+        configuredProviders: publicProviderAccounts(state.providerAccounts, userId, state.providerOAuth),
       }),
     });
   });
@@ -678,15 +1199,55 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
       throw error;
     }
   });
-  app.get("/api/v1/crew", async (c) => {
+  app.get("/api/v1/local/audio", async (c) => c.json(await audioConfig.getPublicConfig()));
+  app.patch("/api/v1/local/audio", async (c) => {
+    const body = (await c.req.json().catch(() => ({}))) as Record<string, unknown>;
+    try {
+      return c.json(await audioConfig.updateFromRequest(body));
+    } catch (error) {
+      if (error instanceof LocalAudioConfigError) {
+        return c.json({ error: error.message }, error.status as 400);
+      }
+      throw error;
+    }
+  });
+  app.post("/api/v1/local/audio/install", async (c) => {
+    const body = (await c.req.json().catch(() => ({}))) as Record<string, unknown>;
+    try {
+      return c.json(await audioConfig.installBuiltin({ model: body.asr_model }));
+    } catch (error) {
+      if (error instanceof LocalAudioConfigError) {
+        return c.json({ error: error.message }, error.status as 400);
+      }
+      throw error;
+    }
+  });
+  app.post("/api/v1/local/audio/transcriptions", async (c) => {
+    const form = await c.req.formData();
+    const file = form.get("file");
+    if (!file || typeof file === "string") return c.json({ error: "Missing file" }, 400);
+    const language = form.get("language");
+    try {
+      return c.json(await audioConfig.transcribe({
+        file,
+        language: typeof language === "string" ? language : null,
+      }));
+    } catch (error) {
+      if (error instanceof LocalAudioConfigError) {
+        return c.json({ error: error.message }, error.status as 400);
+      }
+      throw error;
+    }
+  });
+  app.get("/api/v1/agents", async (c) => {
     const state = await db.load();
-    const hadCrew = state.crewMembers.length > 0;
-    const crewMembers = seedLocalCrewMembers(state, userId);
-    if (!hadCrew) await db.save(state);
+    const hadAgents = state.agentMembers.length > 0;
+    const agentMembers = seedLocalAgentMembers(state, userId);
+    if (!hadAgents) await db.save(state);
 
     const runtime = await localRuntimeSummary(options);
     return c.json({
-      crew: crewMembers.map((member) => ({
+      agents: agentMembers.map((member) => ({
         id: member.id,
         user_id: member.user_id,
         template_id: member.template_id,
@@ -706,47 +1267,228 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
   });
   app.all("/fal/*", (c) => handleFalMockHttpRequest(falMock, c.req.raw));
   app.get("/api/v1/runtimes", async (c) => {
-    if (!options.localAcp) return c.json({ runtimes: [] });
-    return c.json(await options.localAcp.listRuntimes());
+    if (!options.localAcp) return json({ runtimes: [] });
+    const rawProbe = c.req.query("probe");
+    const probe = rawProbe === "1" || rawProbe === "true"
+      ? true
+      : rawProbe === "auth" || rawProbe === "config" || rawProbe === "none"
+        ? rawProbe
+        : false;
+    const refresh = c.req.query("refresh") === "1" || c.req.query("refresh") === "true";
+    return json(await options.localAcp.listRuntimes({ probe, refresh }));
+  });
+
+  app.get("/api/v1/local/harnesses", async (c) => {
+    if (!options.localAcp?.listHarnesses) return c.json({ harnesses: [] });
+    const rawProbe = c.req.query("probe");
+    const probe = rawProbe === "1" || rawProbe === "true"
+      ? "auth"
+      : rawProbe === "auth" || rawProbe === "config" || rawProbe === "none"
+        ? rawProbe
+        : false;
+    const refresh = c.req.query("refresh") === "1" || c.req.query("refresh") === "true";
+    return c.json(await options.localAcp.listHarnesses({ probe, refresh }));
+  });
+
+  app.put("/api/v1/local/harnesses", async (c) => {
+    if (!options.localAcp?.updateHarnesses) return c.json({ error: "Local harness settings unavailable" }, 404);
+    const body = (await c.req.json().catch(() => ({}))) as {
+      enabled_harness_ids?: unknown;
+      enabledHarnessIds?: unknown;
+    };
+    const rawIds = Array.isArray(body.enabled_harness_ids)
+      ? body.enabled_harness_ids
+      : Array.isArray(body.enabledHarnessIds)
+        ? body.enabledHarnessIds
+        : [];
+    const enabledIds = rawIds.filter((id): id is string => typeof id === "string");
+    try {
+      return c.json(await options.localAcp.updateHarnesses(enabledIds));
+    } catch (error) {
+      return c.json({ error: error instanceof Error ? error.message : String(error) }, 400);
+    }
+  });
+
+  app.get("/api/v1/local/agent-servers", async (c) => {
+    if (!options.localAcp?.listAgentServers) return c.json({ agent_servers: {} });
+    return c.json(await options.localAcp.listAgentServers());
+  });
+
+  app.put("/api/v1/local/agent-servers", async (c) => {
+    if (!options.localAcp?.updateAgentServers) return c.json({ error: "Custom agent server settings unavailable" }, 404);
+    const body = (await c.req.json().catch(() => ({}))) as {
+      agent_servers?: unknown;
+      agentServers?: unknown;
+    };
+    const rawServers = body.agent_servers ?? body.agentServers ?? {};
+    try {
+      return c.json(await options.localAcp.updateAgentServers(rawServers as LocalAcpAgentServersConfig));
+    } catch (error) {
+      return c.json({ error: error instanceof Error ? error.message : String(error) }, 400);
+    }
+  });
+
+  app.post("/api/v1/local/harnesses/:harnessId/install", async (c) => {
+    if (!options.localAcp?.installHarness && !options.localAcp?.installHarnessAdapter) {
+      return c.json({ error: "Local agent install unavailable" }, 404);
+    }
+    try {
+      return c.json(options.localAcp.installHarness
+        ? await options.localAcp.installHarness(c.req.param("harnessId"))
+        : await options.localAcp.installHarnessAdapter!(c.req.param("harnessId")));
+    } catch (error) {
+      return c.json({ error: error instanceof Error ? error.message : String(error) }, 400);
+    }
+  });
+
+  app.post("/api/v1/local/harnesses/:harnessId/install-adapter", async (c) => {
+    if (!options.localAcp?.installHarness && !options.localAcp?.installHarnessAdapter) {
+      return c.json({ error: "Local agent install unavailable" }, 404);
+    }
+    try {
+      return c.json(options.localAcp.installHarness
+        ? await options.localAcp.installHarness(c.req.param("harnessId"))
+        : await options.localAcp.installHarnessAdapter!(c.req.param("harnessId")));
+    } catch (error) {
+      return c.json({ error: error instanceof Error ? error.message : String(error) }, 400);
+    }
+  });
+
+  app.post("/api/v1/local/harnesses/:harnessId/upgrade", async (c) => {
+    if (!options.localAcp?.upgradeHarness) return c.json({ error: "Local agent upgrade unavailable" }, 404);
+    try {
+      return c.json(await options.localAcp.upgradeHarness(c.req.param("harnessId")));
+    } catch (error) {
+      return c.json({ error: error instanceof Error ? error.message : String(error) }, 400);
+    }
+  });
+
+  app.delete("/api/v1/local/harnesses/:harnessId/install", async (c) => {
+    if (!options.localAcp?.uninstallHarness) return c.json({ error: "Local agent uninstall unavailable" }, 404);
+    try {
+      return c.json(await options.localAcp.uninstallHarness(c.req.param("harnessId")));
+    } catch (error) {
+      return c.json({ error: error instanceof Error ? error.message : String(error) }, 400);
+    }
+  });
+
+  app.post("/api/v1/local/harnesses/:harnessId/authenticate", async (c) => {
+    if (!options.localAcp?.authenticateHarness) return c.json({ error: "Local harness auth unavailable" }, 404);
+    try {
+      const body = (await c.req.json().catch(() => ({}))) as { method_id?: unknown; methodId?: unknown };
+      const methodId = typeof body.method_id === "string" && body.method_id.length > 0
+        ? body.method_id
+        : typeof body.methodId === "string" && body.methodId.length > 0
+          ? body.methodId
+          : undefined;
+      return c.json(await options.localAcp.authenticateHarness(
+        c.req.param("harnessId"),
+        methodId ? { methodId } : undefined,
+      ));
+    } catch (error) {
+      return c.json({ error: error instanceof Error ? error.message : String(error) }, 500);
+    }
   });
 
   app.post("/api/v1/runtimes/:runtimeId/sessions", async (c) => {
-    if (!options.localAcp) return c.json({ error: "Local ACP runtime unavailable" }, 404);
+    if (!options.localAcp) return c.json({ error: "Local agent runtime unavailable" }, 404);
     const body = (await c.req.json().catch(() => ({}))) as {
-      crew_id?: string;
-      crew_member_id?: string;
+      agent_template_id?: string;
+      agent_member_id?: string;
       agent_id?: string;
+      permission_mode?: string;
       project_id?: string;
       resume_session_id?: string;
     };
-    let crewId = body.crew_id?.trim() || "";
-    let crewMemberId = body.crew_member_id?.trim() || undefined;
+    let agentTemplateId = body.agent_template_id?.trim() || undefined;
+    let agentMemberId = body.agent_member_id?.trim() || undefined;
     const requestedAgentId = body.agent_id?.trim() || undefined;
+    const permissionMode = body.permission_mode?.trim() || undefined;
     let agentId: string | undefined = requestedAgentId;
-    if (crewMemberId) {
+    if (agentMemberId) {
       const state = await db.load();
-      const crewMembers = seedLocalCrewMembers(state, userId);
-      const member = crewMembers.find((row) => row.id === crewMemberId);
-      if (!member) return c.json({ error: "crew member not found" }, 404);
+      const agentMembers = seedLocalAgentMembers(state, userId);
+      const member = agentMembers.find((row) => row.id === agentMemberId);
+      if (!member) return c.json({ error: "agent member not found" }, 404);
       if (member.runtime_id !== c.req.param("runtimeId")) {
-        return c.json({ error: "crew member belongs to a different runtime" }, 400);
+        return c.json({ error: "agent member belongs to a different runtime" }, 400);
       }
-      crewId = member.template_id;
+      agentTemplateId = member.template_id;
       agentId = requestedAgentId ?? member.agent_id ?? undefined;
     }
-    if (!crewId) return c.json({ error: "Missing crew_id" }, 400);
+    if (!agentTemplateId && !agentId) return c.json({ error: "Missing agent_id" }, 400);
+    const sessionContextId = agentTemplateId ?? DEFAULT_RUNTIME_SESSION_CONTEXT_ID;
+
+    const localSessionId = body.project_id ? crypto.randomUUID() : undefined;
+    if (body.project_id && localSessionId) {
+      const at = nowIso();
+      await precreateRuntimeSession(db, {
+        id: localSessionId,
+        projectId: body.project_id,
+        title: initialRuntimeSessionTitle(agentTemplateId),
+        type: "runtime",
+        runtimeId: c.req.param("runtimeId"),
+        ...(agentId ? { agentId } : {}),
+        ...(agentTemplateId ? { agentTemplateId } : {}),
+        ...(permissionMode ? { permissionMode } : {}),
+        status: "starting",
+        createdAt: at,
+        updatedAt: at,
+      });
+    }
 
     try {
-      return c.json(await options.localAcp.createSession({
+      const pendingSessionPatches = new Map<string, Partial<Pick<LocalSession, "acpSessionId" | "status" | "title">>>();
+      const rememberRuntimeSessionPatch = async (
+        sessionId: string,
+        patch: Partial<Pick<LocalSession, "acpSessionId" | "status" | "title">>,
+      ) => {
+        pendingSessionPatches.set(sessionId, {
+          ...pendingSessionPatches.get(sessionId),
+          ...patch,
+        });
+        await updateRuntimeSession(db, sessionId, patch);
+      };
+      const created = await options.localAcp.createSession({
+        ...(localSessionId ? { sessionId: localSessionId } : {}),
         runtimeId: c.req.param("runtimeId"),
-        crewId,
-        ...(crewMemberId ? { crewMemberId } : {}),
+        agentTemplateId: sessionContextId,
+        ...(agentMemberId ? { agentMemberId } : {}),
         ...(agentId ? { agentId } : {}),
+        ...(permissionMode ? { permissionMode } : {}),
         ...(body.project_id ? { projectId: body.project_id } : {}),
         ...(body.resume_session_id ? { resumeAcpSessionId: body.resume_session_id } : {}),
-      }));
+        ...(body.project_id
+          ? {
+              onReady: async (event: { sessionId: string; acpSessionId?: string }) => {
+                await rememberRuntimeSessionPatch(event.sessionId, {
+                  ...(event.acpSessionId ? { acpSessionId: event.acpSessionId } : {}),
+                  status: "active",
+                });
+              },
+              onError: async (event: { sessionId: string }) => {
+                await rememberRuntimeSessionPatch(event.sessionId, { status: "error" });
+              },
+            }
+          : {}),
+      });
+      if (body.project_id && localSessionId) {
+        await finalizeRuntimeSessionId(
+          db,
+          localSessionId,
+          created.session_id,
+          {
+            ...pendingSessionPatches.get(localSessionId),
+            ...pendingSessionPatches.get(created.session_id),
+          },
+        );
+      }
+      return c.json(created);
     } catch (error) {
       const message = formatLocalAcpSessionError(error);
+      if (localSessionId) {
+        await sessionMessageStore.appendTurnError?.(localSessionId, null, message);
+      }
       console.error("[local-api] local ACP session create failed:", message);
       return c.text(message, 503);
     }
@@ -758,11 +1500,56 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
   });
 
   app.get("/api/v1/local-sessions/:sessionId/messages", async (c) => {
-    if (!options.localAcp?.listSessionMessages) {
-      return c.json({ error: "local session history unavailable" }, 404);
-    }
-    const history = await options.localAcp.listSessionMessages(c.req.param("sessionId"));
+    const sessionId = c.req.param("sessionId");
+    const persisted = await sessionMessageStore.listSessionMessages(sessionId);
+    if (persisted) return c.json(persisted);
+    if (!options.localAcp?.listSessionMessages) return c.json({ error: "not found" }, 404);
+    const history = await options.localAcp.listSessionMessages(sessionId);
     return history ? c.json(history) : c.json({ error: "not found" }, 404);
+  });
+
+  app.post("/api/v1/local-sessions/:sessionId/_attach", async (c) => {
+    if (!options.localAcp?.attachSession) return c.json({ error: "local ACP attach is not available" }, 501);
+    const sessionId = c.req.param("sessionId");
+    const state = await db.load();
+    const session = state.sessions.find((candidate) => candidate.id === sessionId);
+    if (!session || (session.type ?? "cloud") !== "runtime") return c.json({ error: "runtime session not found" }, 404);
+    if (!session.runtimeId) return c.json({ error: "runtime session is missing runtimeId" }, 409);
+    if (!session.agentId && !session.agentTemplateId) return c.json({ error: "runtime session is missing agent identity" }, 409);
+
+    const rememberRuntimeSessionPatch = async (
+      patch: Partial<Pick<LocalSession, "acpSessionId" | "status" | "title">>,
+    ) => {
+      await updateRuntimeSession(db, sessionId, patch);
+    };
+
+    try {
+      await rememberRuntimeSessionPatch({ status: "starting" });
+      const attached = await options.localAcp.attachSession({
+        sessionId,
+        runtimeId: session.runtimeId,
+        ...(session.agentTemplateId ? { agentTemplateId: session.agentTemplateId } : {}),
+        ...(session.agentId ? { agentId: session.agentId } : {}),
+        ...(session.permissionMode ? { permissionMode: session.permissionMode } : {}),
+        projectId: session.projectId,
+        ...(session.acpSessionId ? { resumeAcpSessionId: session.acpSessionId } : {}),
+        onReady: async (event: { acpSessionId?: string }) => {
+          await rememberRuntimeSessionPatch({
+            ...(event.acpSessionId ? { acpSessionId: event.acpSessionId } : {}),
+            status: "active",
+          });
+        },
+        onError: async () => {
+          await rememberRuntimeSessionPatch({ status: "error" });
+        },
+      });
+      return c.json(attached);
+    } catch (error) {
+      const message = formatLocalAcpSessionError(error);
+      console.error("[local-api] local ACP session attach failed:", message);
+      await rememberRuntimeSessionPatch({ status: "error" });
+      return c.text(message, 503);
+    }
   });
 
   app.get("/api/v1/projects", async (c) => {
@@ -882,8 +1669,8 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
     const projectId = c.req.query("projectId");
     return c.json({
       sessions: projectId
-        ? state.sessions.filter((s) => s.projectId === projectId)
-        : state.sessions,
+        ? state.sessions.filter((s) => s.projectId === projectId).map(publicLocalSession)
+        : state.sessions.map(publicLocalSession),
     });
   });
 
@@ -896,12 +1683,27 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
       id: crypto.randomUUID(),
       projectId: body.projectId,
       title: body.title?.trim() || "Session",
+      type: "cloud",
       createdAt: at,
       updatedAt: at,
     };
     state.sessions.unshift(session);
     await db.save(state);
     return c.json({ threadId: session.id, title: session.title });
+  });
+
+  app.delete("/api/v1/sessions", async (c) => {
+    const threadId = c.req.query("threadId");
+    if (!threadId) return c.json({ error: "Missing threadId" }, 400);
+
+    const state = await db.load();
+    const before = state.sessions.length;
+    state.sessions = state.sessions.filter((session) => session.id !== threadId);
+    state.sessionMessages = state.sessionMessages.filter((message) => message.session_id !== threadId);
+    if (state.sessions.length === before) return c.json({ error: "Not found" }, 404);
+
+    await db.save(state);
+    return new Response(null, { status: 204 });
   });
 
   app.get("/assets/sign", (c) => {
@@ -1128,23 +1930,22 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
     const body = (await c.req.json().catch(() => ({}))) as {
       text?: string;
       mentions?: unknown[];
-      sender_kind?: "user" | "crew";
+      sender_kind?: "user" | "agent";
       sender_id?: string;
     };
     const text = body.text?.trim();
     if (!text) return c.json({ error: "text required" }, 400);
-    const senderKind = body.sender_kind === "crew" ? "crew" : "user";
-    const senderId = senderKind === "crew" ? body.sender_id?.trim() ?? "" : userId;
-    if (senderKind === "crew" && !senderId) {
-      return c.json({ error: "sender_id required for crew sender" }, 400);
+    const senderKind = body.sender_kind === "agent" ? "agent" : "user";
+    const senderId = senderKind === "agent" ? body.sender_id?.trim() ?? "" : userId;
+    if (senderKind === "agent" && !senderId) {
+      return c.json({ error: "sender_id required for agent sender" }, 400);
     }
     const mentions: LocalRoomMention[] = Array.isArray(body.mentions)
       ? body.mentions
           .filter((mention): mention is Record<string, unknown> => !!mention && typeof mention === "object")
           .map((mention) => ({
             user_id: typeof mention.user_id === "string" ? mention.user_id : userId,
-            ...(typeof mention.crew_member_id === "string" ? { crew_member_id: mention.crew_member_id } : {}),
-            ...(typeof mention.crew_id === "string" ? { crew_id: mention.crew_id } : {}),
+            ...(typeof mention.agent_member_id === "string" ? { agent_member_id: mention.agent_member_id } : {}),
           }))
       : [];
     const message: LocalRoomMessage = {
@@ -1187,13 +1988,13 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
       };
       await Promise.all(
         mentions
-          .filter((mention): mention is LocalRoomMention & { crew_member_id: string } =>
-            typeof mention.crew_member_id === "string" && mention.crew_member_id.length > 0
+          .filter((mention): mention is LocalRoomMention & { agent_member_id: string } =>
+            typeof mention.agent_member_id === "string" && mention.agent_member_id.length > 0
           )
           .map((mention) =>
             options.localAcp!.pushRoomMention!(
               message.project_id,
-              mention.crew_member_id,
+              mention.agent_member_id,
               mentionPayload,
             ).catch(() => false)
           ),

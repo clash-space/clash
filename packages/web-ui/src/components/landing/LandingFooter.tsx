@@ -3,20 +3,15 @@ import { Link } from 'react-router';
 
 const navigation = {
   product: [
-    { name: 'Features', href: '#' },
-    { name: 'Templates', href: '#' },
-    { name: 'Pricing', href: '#' },
-    { name: 'Showcase', href: '#' },
+    { name: 'Docs', href: '/docs' },
   ],
   company: [
-    { name: 'About', href: '#' },
-    { name: 'Blog', href: '#' },
-    { name: 'Careers', href: '#' },
-    { name: 'Contact', href: '#' },
+    { name: 'Marketplace', href: '/marketplace' },
+    { name: 'Download', href: '/download' },
   ],
   legal: [
-    { name: 'Privacy', href: '#' },
-    { name: 'Terms', href: '#' },
+    { name: 'Privacy', href: '/privacy' },
+    { name: 'Terms', href: '/terms' },
   ],
 };
 
@@ -43,7 +38,7 @@ export default function LandingFooter() {
               </div>
             </Link>
             <p className="text-sm leading-6 text-stone-700 dark:text-stone-300">
-              Making video creation accessible to everyone through the power of AI.
+              Open-source workbench for agent-assisted creation.
             </p>
             <div className="flex space-x-6">
               {/* Social links would go here */}
@@ -52,13 +47,13 @@ export default function LandingFooter() {
           <div className="mt-16 grid grid-cols-2 gap-8 xl:col-span-2 xl:mt-0">
             <div className="md:grid md:grid-cols-2 md:gap-8">
               <div>
-                <h3 className="text-sm font-semibold leading-6 text-slate-900 dark:text-slate-50">Product</h3>
+                <h3 className="text-sm font-semibold leading-6 text-slate-900 dark:text-slate-50">Resources</h3>
                 <ul role="list" className="mt-6 space-y-4">
                   {navigation.product.map((item) => (
                     <li key={item.name}>
-                      <a href={item.href} className="text-sm leading-6 text-stone-700 dark:text-stone-300 hover:text-slate-950">
+                      <Link to={item.href} className="text-sm leading-6 text-stone-700 dark:text-stone-300 hover:text-slate-950">
                         {item.name}
-                      </a>
+                      </Link>
                     </li>
                   ))}
                 </ul>
@@ -68,9 +63,9 @@ export default function LandingFooter() {
                 <ul role="list" className="mt-6 space-y-4">
                   {navigation.company.map((item) => (
                     <li key={item.name}>
-                      <a href={item.href} className="text-sm leading-6 text-stone-700 dark:text-stone-300 hover:text-slate-950">
+                      <Link to={item.href} className="text-sm leading-6 text-stone-700 dark:text-stone-300 hover:text-slate-950">
                         {item.name}
-                      </a>
+                      </Link>
                     </li>
                   ))}
                 </ul>
@@ -82,9 +77,9 @@ export default function LandingFooter() {
                 <ul role="list" className="mt-6 space-y-4">
                   {navigation.legal.map((item) => (
                     <li key={item.name}>
-                      <a href={item.href} className="text-sm leading-6 text-stone-700 dark:text-stone-300 hover:text-slate-950">
+                      <Link to={item.href} className="text-sm leading-6 text-stone-700 dark:text-stone-300 hover:text-slate-950">
                         {item.name}
-                      </a>
+                      </Link>
                     </li>
                   ))}
                 </ul>

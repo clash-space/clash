@@ -24,12 +24,19 @@ import {
 } from "../../services/google-gen";
 import type { GenerationContext } from "../context";
 import type { GenerationProvider } from "../provider";
+import { credentialsForProvider, vertexCredentialsFromProvider } from "./provider-credentials";
 
 export const veoProvider: GenerationProvider = {
   name: "veo",
 
   async execute(ctx: GenerationContext): Promise<void> {
-    const { params, env } = ctx;
+    const { params } = ctx;
+    const creds = vertexCredentialsFromProvider(
+      await credentialsForProvider(ctx, "official", ["vertexCredentials"], {
+        upstreamId: "google",
+        region: "global",
+      }),
+    );
 
     // Step 1: submit. Inline image bytes (R2 reads kept inside the step —
     // base64 of a 1280×720 PNG is 1-2 MiB, exceeds Workflows' 1 MiB step
@@ -58,7 +65,7 @@ export const veoProvider: GenerationProvider = {
           hasTail: !!tailImage,
           refs: referenceImages?.length ?? 0,
         });
-        const result = await submitVeoOperation(env, {
+        const result = await submitVeoOperation(creds, {
           prompt: params.prompt ?? "",
           aspectRatio: params.aspectRatio,
           modelName,
@@ -78,7 +85,7 @@ export const veoProvider: GenerationProvider = {
       "veo-poll",
       { retries: { limit: 2, delay: "10 seconds" }, timeout: "10 minutes" },
       async () => {
-        const { bytes, mediaType } = await pollVeoOperation(env, modelId, operationName, {
+        const { bytes, mediaType } = await pollVeoOperation(creds, modelId, operationName, {
           intervalMs: 5000,
           maxWaitMs: 9 * 60 * 1000,
         });

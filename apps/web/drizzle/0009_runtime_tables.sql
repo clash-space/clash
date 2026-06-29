@@ -58,7 +58,7 @@ CREATE TABLE `runtime_session` (
     `id` TEXT PRIMARY KEY NOT NULL,
     `user_id` TEXT NOT NULL,
     `runtime_id` TEXT NOT NULL,
-    `agent_id` TEXT NOT NULL,
+    `agent_template_id` TEXT NOT NULL,
     `acp_session_id` TEXT,
     `cwd` TEXT NOT NULL,
     `title` TEXT,

@@ -13,6 +13,7 @@ import { requireApiKey, getServerUrl } from "../lib/config";
 import { isJsonMode, printJson } from "../lib/output";
 import { isDaemonRunning, sendCommand, startDaemon, getSocketPath } from "../lib/daemon";
 import { apiFetch, apiJson } from "../lib/api";
+import { resolveProjectContext } from "../lib/project-context";
 
 export interface CanvasPresenceOptions {
   clientType: "cli" | "agent";
@@ -26,13 +27,13 @@ export function resolveCanvasPresenceOptions(
 ): CanvasPresenceOptions {
   const userId = env.CLASH_USER_ID?.trim();
   const userName = env.CLASH_USER_NAME?.trim();
-  const crewMemberId = env.CLASH_CREW_MEMBER_ID?.trim();
-  const agentName = env.CLASH_AGENT_NAME?.trim() || crewMemberId;
+  const agentMemberId = env.CLASH_AGENT_MEMBER_ID?.trim();
+  const agentName = env.CLASH_AGENT_NAME?.trim() || agentMemberId;
   const base = {
     ...(userId ? { userId } : {}),
     ...(userName ? { userName } : {}),
   };
-  if (crewMemberId) {
+  if (agentMemberId) {
     return {
       ...base,
       clientType: "agent",
@@ -50,45 +51,39 @@ export function resolveCanvasPresenceOptions(
  *     own API token. Hit /api/v1/me to translate the token into a
  *     user id, then stamp `{actorType:'user', actorUserId:<user>}`.
  *   - Agent-driven: the CLI was launched by the bridge daemon as the
- *     subprocess of an ACP crew member. Bridge stamps
- *     CLASH_CREW_MEMBER_ID + CLASH_API_KEY into the env. The API token
- *     still resolves to the crew member's owner (because crew claims
+ *     subprocess of an ACP agent. Bridge stamps
+ *     CLASH_AGENT_MEMBER_ID + CLASH_API_KEY into the env. The API token
+ *     still resolves to the agent member's owner (because agent claims
  *     run under the user's bearer); we stamp `{actorType:'agent',
  *     actorAgentId:<cm>, actorUserId:<owner>}` so the resulting node
  *     attributes back to the human accountable for it.
  *
  * Both lookups go through the same /api/v1/me endpoint — agent-driven
- * just additionally carries the crew_member id from the env.
+ * just additionally carries the agent member id from the env.
  */
 async function resolveActor(): Promise<{ actorType: "user" | "agent"; actorUserId: string; actorAgentId?: string }> {
   const me = await apiJson<{ id: string }>("/api/v1/me").catch((e) => {
     throw new Error(`Failed to resolve user from API key: ${e instanceof Error ? e.message : String(e)}`);
   });
-  const crewMemberId = process.env.CLASH_CREW_MEMBER_ID;
-  if (crewMemberId) {
-    return { actorType: "agent", actorUserId: me.id, actorAgentId: crewMemberId };
+  const agentMemberId = process.env.CLASH_AGENT_MEMBER_ID;
+  if (agentMemberId) {
+    return { actorType: "agent", actorUserId: me.id, actorAgentId: agentMemberId };
   }
   return { actorType: "user", actorUserId: me.id };
 }
 
-/**
- * Resolve project id from `--project` flag or fall back to env. Matches
- * the `clash room` convention so the canvas-editor crew (which has
- * CLASH_PROJECT_ID injected by the bridge daemon) doesn't have to
- * thread the id explicitly through every subcommand.
- *
- * Required by `timeline pull/push`; the older subcommands keep
- * `--project` as a hard requirement for back-compat.
- */
-function resolveProjectId(opts: { project?: string }): string {
-  if (opts.project) return opts.project;
-  const env = process.env.CLASH_PROJECT_ID;
-  if (env) return env;
-  process.stderr.write(
-    "error: project id is required.\n" +
-      "Pass --project <id> or set CLASH_PROJECT_ID in the environment.\n",
-  );
-  process.exit(2);
+export async function resolveCanvasProjectId(options: {
+  project?: string;
+  cwd?: string;
+  env?: Record<string, string | undefined>;
+} = {}): Promise<string> {
+  try {
+    const context = await resolveProjectContext(options);
+    return context.projectId;
+  } catch (error) {
+    process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
+    process.exit(2);
+  }
 }
 
 /**
@@ -127,24 +122,26 @@ export const canvasCommand = new Command("canvas")
 Node types: text, group, image, video, audio, image_gen, video_gen, audio_gen, text_gen
 
 Daemon mode (recommended for multi-command sessions):
-  clash canvas connect --project <id>     # start persistent connection
-  clash canvas list --project <id> --json # uses daemon automatically
-  clash canvas disconnect --project <id>  # stop (auto-exits after 10min idle)`);
+  clash init --project <id>       # one-time workspace setup
+  clash canvas connect            # start persistent connection
+  clash canvas list --json        # uses cwd marker automatically
+  clash canvas disconnect         # stop (auto-exits after 10min idle)`);
 
 // ─── connect ─────────────────────────────────────────────
 
 canvasCommand
   .command("connect")
   .description("Start persistent connection to a project (daemon mode)")
-  .requiredOption("--project <id>", "Project ID")
+  .option("--project <id>", "Project ID (defaults to cwd marker or $CLASH_PROJECT_ID)")
   .action(async (options) => {
-    if (isDaemonRunning(options.project)) {
-      console.log(JSON.stringify({ status: "already_running", socket: getSocketPath(options.project) }));
+    const projectId = await resolveCanvasProjectId(options);
+    if (isDaemonRunning(projectId)) {
+      console.log(JSON.stringify({ status: "already_running", socket: getSocketPath(projectId) }));
       return;
     }
     const apiKey = requireApiKey();
     const serverUrl = getServerUrl();
-    await startDaemon(options.project, serverUrl, apiKey);
+    await startDaemon(projectId, serverUrl, apiKey);
   });
 
 // ─── disconnect ──────────────────────────────────────────
@@ -152,13 +149,14 @@ canvasCommand
 canvasCommand
   .command("disconnect")
   .description("Stop persistent connection")
-  .requiredOption("--project <id>", "Project ID")
+  .option("--project <id>", "Project ID (defaults to cwd marker or $CLASH_PROJECT_ID)")
   .action(async (options) => {
-    if (!isDaemonRunning(options.project)) {
+    const projectId = await resolveCanvasProjectId(options);
+    if (!isDaemonRunning(projectId)) {
       console.log("No daemon running.");
       return;
     }
-    const result = await sendCommand(options.project, { action: "disconnect" });
+    const result = await sendCommand(projectId, { action: "disconnect" });
     console.log(JSON.stringify(result));
   });
 
@@ -167,11 +165,12 @@ canvasCommand
 canvasCommand
   .command("list")
   .description("List canvas nodes")
-  .requiredOption("--project <id>", "Project ID")
+  .option("--project <id>", "Project ID (defaults to cwd marker or $CLASH_PROJECT_ID)")
   .option("--type <type>", "Filter by node type")
   .option("--json", "Output as JSON")
   .action(async (options) => {
-    const daemonResult = await runCommand(options.project, { action: "list", type: options.type });
+    const projectId = await resolveCanvasProjectId(options);
+    const daemonResult = await runCommand(projectId, { action: "list", type: options.type });
     if (daemonResult) {
       if (daemonResult.error) { console.error(daemonResult.error); process.exit(1); }
       if (isJsonMode(options)) { printJson(daemonResult.nodes); }
@@ -184,7 +183,7 @@ canvasCommand
       return;
     }
 
-    const client = await connectToProject(options.project);
+    const client = await connectToProject(projectId);
     try {
       const nodes = client.listNodes(options.type);
       if (isJsonMode(options)) {
@@ -260,18 +259,19 @@ function printNodeInfo(n: any) {
 canvasCommand
   .command("get")
   .description("Get a specific node. For media nodes, downloads the asset to a temp file.")
-  .requiredOption("--project <id>", "Project ID")
+  .option("--project <id>", "Project ID (defaults to cwd marker or $CLASH_PROJECT_ID)")
   .requiredOption("--node <id>", "Node ID")
   .option("--json", "Output as JSON")
   .action(async (options) => {
     let node: any = null;
 
-    const daemonResult = await runCommand(options.project, { action: "get", nodeId: options.node });
+    const projectId = await resolveCanvasProjectId(options);
+    const daemonResult = await runCommand(projectId, { action: "get", nodeId: options.node });
     if (daemonResult) {
       if (daemonResult.error) { console.error(daemonResult.error); process.exit(1); }
       node = daemonResult.node;
     } else {
-      const client = await connectToProject(options.project);
+      const client = await connectToProject(projectId);
       try {
         node = client.readNode(options.node);
         if (!node) { console.error(`Node not found: ${options.node}`); process.exit(1); }
@@ -337,8 +337,8 @@ const ACTION_TYPE_BY_NODE_TYPE: Record<string, string> = {
   text_gen: "text-gen",
 };
 const DEFAULT_MODEL_BY_NODE_TYPE: Record<string, string> = {
-  image_gen: "gemini-flash-image",
-  video_gen: "veo3-fast-text-to-video",
+  image_gen: "gemini-flash-image-2",
+  video_gen: "veo-3.1-fast",
   audio_gen: "gemini-3.1-flash-tts",
   text_gen: "gemini-3-flash",
 };
@@ -422,7 +422,7 @@ async function resolveReferences(
 canvasCommand
   .command("add")
   .description("Add a text, group, or action-badge node")
-  .requiredOption("--project <id>", "Project ID")
+  .option("--project <id>", "Project ID (defaults to cwd marker or $CLASH_PROJECT_ID)")
   .requiredOption("--type <type>", "Node type: text, group, image_gen, video_gen, audio_gen, text_gen")
   .requiredOption("--label <label>", "Node label")
   .option("--prompt <text>", "Generation prompt for *_gen nodes. May contain `@[Label](node:<id>)` mentions to reference canvas asset nodes; type partitioning is automatic from the referenced asset's kind.")
@@ -430,7 +430,7 @@ canvasCommand
   .option("--parent <id>", "Parent group ID")
   .option(
     "--model <id>",
-    "Generation model id (e.g. gemini-flash-image, imagen-4-fast, veo3-fast-text-to-video). Stored as data.modelId. Required for *_gen action nodes when no marketplace action is installed.",
+    "Generation model id (e.g. gemini-flash-image-2, gpt-image-2, veo-3.1-fast). Stored as data.modelId. Required for *_gen action nodes when no marketplace action is installed.",
   )
   .option(
     "--ref <id...>",
@@ -454,6 +454,7 @@ canvasCommand
   )
   .option("--json", "Output as JSON")
   .action(async (options) => {
+    const projectId = await resolveCanvasProjectId(options);
     // Phase 0 attribution: every node landed via the CLI gets stamped
     // with the actor that's running it. NodeProcessor refuses to
     // dispatch generations without these fields, so they're mandatory
@@ -538,7 +539,7 @@ canvasCommand
     // creates them (ActionBadge.addRefNode does the same).
     let refNodeIds: string[] = [];
     if (isGenNode && allRefIds.length > 0) {
-      const resolved = await resolveReferences(options.project, allRefIds);
+      const resolved = await resolveReferences(projectId, allRefIds);
       refNodeIds = resolved.refNodeIds;
       if (refNodeIds.length > 0) extraData.referenceImageOrder = refNodeIds;
       if (resolved.missing.length > 0 && !isJsonMode(options)) {
@@ -552,7 +553,7 @@ canvasCommand
     // sets `data.content` from this top-level field. For *_gen nodes
     // we've already populated data.content from --prompt above, so
     // don't double-write.
-    const daemonResult = await runCommand(options.project, {
+    const daemonResult = await runCommand(projectId, {
       action: "add", type: options.type, label: options.label,
       content: isGenNode ? undefined : options.content,
       parentId: options.parent,
@@ -566,9 +567,9 @@ canvasCommand
      *  and the prompt editor's mention chips resolve their thumbnails. */
     async function wireRefEdges(newNodeId: string): Promise<void> {
       if (refNodeIds.length === 0) return;
-      if (isDaemonRunning(options.project)) {
+      if (isDaemonRunning(projectId)) {
         for (const sourceId of refNodeIds) {
-          await sendCommand(options.project, { action: "ensure_edge", source: sourceId, target: newNodeId });
+          await sendCommand(projectId, { action: "ensure_edge", source: sourceId, target: newNodeId });
         }
         return;
       }
@@ -577,7 +578,7 @@ canvasCommand
       // in the createNode fallback below), each with its own connect /
       // disconnect. Not ideal but matches the existing one-shot pattern
       // elsewhere in this file. Daemon mode (recommended) avoids it.
-      const client = await connectToProject(options.project);
+      const client = await connectToProject(projectId);
       try {
         const existing = client.canvas.listEdges();
         for (const sourceId of refNodeIds) {
@@ -602,7 +603,7 @@ canvasCommand
       return;
     }
 
-    const client = await connectToProject(options.project);
+    const client = await connectToProject(projectId);
     try {
       const nodeId = crypto.randomUUID().slice(0, 8);
       const data: Record<string, unknown> = { ...extraData, label: options.label };
@@ -634,10 +635,11 @@ canvasCommand
   .description(
     "Execute a node — triggers generation for action-badge nodes or render for video-editor nodes",
   )
-  .requiredOption("--project <id>", "Project ID")
+  .option("--project <id>", "Project ID (defaults to cwd marker or $CLASH_PROJECT_ID)")
   .requiredOption("--node <id>", "Node ID (action-badge or video-editor)")
   .option("--json", "Output as JSON")
   .action(async (options) => {
+    const projectId = await resolveCanvasProjectId(options);
     const printExecuteResult = (kind: string | null, childNodeId: string, childNodeType: string) => {
       if (kind === "render") {
         console.log(`Executed video-editor: ${options.node}`);
@@ -648,7 +650,7 @@ canvasCommand
       }
     };
 
-    const daemonResult = await runCommand(options.project, { action: "execute", nodeId: options.node });
+    const daemonResult = await runCommand(projectId, { action: "execute", nodeId: options.node });
     if (daemonResult) {
       if (daemonResult.error) { console.error(daemonResult.error); process.exit(1); }
       if (isJsonMode(options)) printJson(daemonResult);
@@ -656,7 +658,7 @@ canvasCommand
       return;
     }
 
-    const client = await connectToProject(options.project);
+    const client = await connectToProject(projectId);
     try {
       const canvas = new Canvas(client.doc, () => {});
       const r = canvas.execute(options.node, () => crypto.randomUUID().slice(0, 8));
@@ -675,8 +677,8 @@ canvasCommand
 //
 // VideoEditorNode owns a `timelineDsl` blob under `node.data.timelineDsl`
 // (tracks + fps + composition size + duration; shape defined in
-// `@master-clash/remotion-core` as `TimelineDsl`). The agent (canvas-editor
-// crew) edits videos by:
+// `@master-clash/remotion-core` as `TimelineDsl`). The canvas-editor agent
+// edits videos by:
 //   1. `clash canvas timeline pull --node <id> -o timeline.yaml`
 //   2. opening timeline.yaml in their Read/Edit toolchain
 //   3. `clash canvas timeline push --node <id> -i timeline.yaml`
@@ -732,10 +734,10 @@ timelineCommand
   .command("pull")
   .description("Export the node's timelineDsl as YAML to stdout or a file")
   .requiredOption("--node <id>", "VideoEditorNode ID")
-  .option("--project <id>", "Project ID (defaults to $CLASH_PROJECT_ID)")
+  .option("--project <id>", "Project ID (defaults to cwd marker or $CLASH_PROJECT_ID)")
   .option("-o, --output <path>", "Write to this file instead of stdout")
   .action(async (options) => {
-    const projectId = resolveProjectId(options);
+    const projectId = await resolveCanvasProjectId(options);
     const node = await readNode(projectId, options.node);
     if (!node) {
       console.error(`Node not found: ${options.node}`);
@@ -744,7 +746,7 @@ timelineCommand
     if (node.type !== "video-editor") {
       // Soft warning, not a hard error — power users might keep timeline
       // blobs on non-editor nodes during migrations. Surface it loudly so
-      // crew agents notice and pick a different node.
+      // agents notice and pick a different node.
       process.stderr.write(
         `warning: node ${options.node} has type "${node.type}", expected "video-editor". ` +
           `Proceeding; the editor may ignore the result.\n`,
@@ -778,11 +780,11 @@ timelineCommand
   .command("push")
   .description("Write a timelineDsl YAML file back into the node")
   .requiredOption("--node <id>", "VideoEditorNode ID")
-  .option("--project <id>", "Project ID (defaults to $CLASH_PROJECT_ID)")
+  .option("--project <id>", "Project ID (defaults to cwd marker or $CLASH_PROJECT_ID)")
   .option("-i, --input <path>", "Read from this file (default: stdin, or '-' for stdin)")
   .option("--json", "Output result as JSON")
   .action(async (options) => {
-    const projectId = resolveProjectId(options);
+    const projectId = await resolveCanvasProjectId(options);
 
     // Read body. `-i -` and omitting `-i` both read stdin; `-i <path>` reads file.
     const raw = readBody(options.input);
@@ -998,7 +1000,7 @@ async function readNode(
 canvasCommand
   .command("update")
   .description("Update a node's data")
-  .requiredOption("--project <id>", "Project ID")
+  .option("--project <id>", "Project ID (defaults to cwd marker or $CLASH_PROJECT_ID)")
   .requiredOption("--node <id>", "Node ID")
   .option("--label <label>", "New label")
   .option("--content <content>", "New content")
@@ -1015,11 +1017,12 @@ canvasCommand
   )
   .option("--json", "Output as JSON")
   .action(async (options) => {
+    const projectId = await resolveCanvasProjectId(options);
     const extraData: Record<string, unknown> = {};
     if (options.assetId) extraData.assetId = options.assetId;
     for (const [k, v] of (options.data ?? [])) extraData[k] = v;
 
-    const daemonResult = await runCommand(options.project, {
+    const daemonResult = await runCommand(projectId, {
       action: "update",
       nodeId: options.node,
       label: options.label,
@@ -1033,7 +1036,7 @@ canvasCommand
       return;
     }
 
-    const client = await connectToProject(options.project);
+    const client = await connectToProject(projectId);
     try {
       const updates: Record<string, unknown> = { ...extraData };
       if (options.label) updates.label = options.label;
@@ -1056,11 +1059,12 @@ canvasCommand
 canvasCommand
   .command("delete")
   .description("Delete a node")
-  .requiredOption("--project <id>", "Project ID")
+  .option("--project <id>", "Project ID (defaults to cwd marker or $CLASH_PROJECT_ID)")
   .requiredOption("--node <id>", "Node ID")
   .option("--json", "Output as JSON")
   .action(async (options) => {
-    const daemonResult = await runCommand(options.project, { action: "delete", nodeId: options.node });
+    const projectId = await resolveCanvasProjectId(options);
+    const daemonResult = await runCommand(projectId, { action: "delete", nodeId: options.node });
     if (daemonResult) {
       if (daemonResult.error) { console.error(daemonResult.error); process.exit(1); }
       if (isJsonMode(options)) { printJson(daemonResult); }
@@ -1068,7 +1072,7 @@ canvasCommand
       return;
     }
 
-    const client = await connectToProject(options.project);
+    const client = await connectToProject(projectId);
     try {
       const ok = client.deleteNode(options.node);
       if (!ok) { console.error(`Node not found: ${options.node}`); process.exit(1); }
@@ -1084,12 +1088,13 @@ canvasCommand
 canvasCommand
   .command("search")
   .description("Search nodes by content")
-  .requiredOption("--project <id>", "Project ID")
+  .option("--project <id>", "Project ID (defaults to cwd marker or $CLASH_PROJECT_ID)")
   .requiredOption("--query <query>", "Search query")
   .option("--type <types>", "Comma-separated node types to filter")
   .option("--json", "Output as JSON")
   .action(async (options) => {
-    const daemonResult = await runCommand(options.project, {
+    const projectId = await resolveCanvasProjectId(options);
+    const daemonResult = await runCommand(projectId, {
       action: "search", query: options.query, types: options.type?.split(",") ?? null,
     });
     if (daemonResult) {
@@ -1104,7 +1109,7 @@ canvasCommand
       return;
     }
 
-    const client = await connectToProject(options.project);
+    const client = await connectToProject(projectId);
     try {
       const nodeTypes = options.type?.split(",") ?? null;
       const nodes = client.searchNodes(options.query, nodeTypes);

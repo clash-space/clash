@@ -16,8 +16,12 @@ function params(type: GenerationParams["type"], modelName?: string): GenerationP
 }
 
 describe("generation provider registry", () => {
-  it("routes Seedance model codes to the fal video provider", () => {
-    expect(resolveProvider(params("video_gen", "seedance-2-ref")).name).toBe("fal-video");
+  it("routes Seedance model codes to the hosted Volcengine video provider", () => {
+    expect(resolveProvider(params("video_gen", "seedance-2-ref")).name).toBe("volcengine-video");
+  });
+
+  it("routes Kling model codes to the hosted Kling video provider", () => {
+    expect(resolveProvider(params("video_gen", "kling-3")).name).toBe("kling-video");
   });
 
   it("routes Google image model codes to the Google image provider", () => {
@@ -28,9 +32,11 @@ describe("generation provider registry", () => {
     expect(resolveProvider(params("image_gen", "gpt-image-2")).name).toBe("openai-image");
   });
 
-  it("does not route mock-only providers in hosted registry", () => {
-    expect(() => resolveProvider(params("audio_gen", "minimax-tts"))).toThrow(
-      "Unsupported audio model: minimax-tts",
-    );
+  it("routes MiniMax TTS to the hosted MiniMax audio provider", () => {
+    expect(resolveProvider(params("audio_gen", "minimax-tts")).name).toBe("minimax-audio");
+  });
+
+  it("routes ElevenLabs TTS to the hosted ElevenLabs audio provider", () => {
+    expect(resolveProvider(params("audio_gen", "elevenlabs-tts")).name).toBe("elevenlabs-tts");
   });
 });

@@ -27,6 +27,8 @@ export interface VideoGenInput {
   duration?: number;
   modelName?: string;
   modelParams?: Record<string, unknown>;
+  credentials?: Record<string, string>;
+  vertexCredentials?: VertexCredentials;
 }
 
 export interface VideoGenOutput {
@@ -76,7 +78,8 @@ async function uploadR2ToFal(
 
 const falVideoProvider: VideoProvider = {
   async generate(env, params) {
-    const falApiKey = env.FAL_API_KEY ?? "";
+    const falApiKey = params.credentials?.apiKey;
+    if (!falApiKey) throw new Error("fal provider account is missing apiKey.");
     const toFal = (k?: string) => (k ? uploadR2ToFal(env.R2_BUCKET, k, falApiKey) : Promise.resolve(undefined));
     const toFalAll = async (keys?: string[]) => {
       if (!keys?.length) return undefined;
@@ -116,12 +119,8 @@ const falVideoProvider: VideoProvider = {
 
 const googleVideoProvider: VideoProvider = {
   async generate(env, params) {
-    const creds: VertexCredentials = {
-      clientEmail: env.GOOGLE_CLIENT_EMAIL ?? "",
-      privateKey: env.GOOGLE_PRIVATE_KEY ?? "",
-      project: env.GOOGLE_CLOUD_PROJECT ?? "",
-      location: env.GOOGLE_CLOUD_LOCATION ?? "global",
-    };
+    const creds = params.vertexCredentials;
+    if (!creds) throw new Error("Google provider account is missing vertexCredentials.");
 
     // Vertex wants base64 in-body — read R2 directly, no third party.
     const toBase64 = (k?: string) =>

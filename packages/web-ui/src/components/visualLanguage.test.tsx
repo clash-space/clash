@@ -24,7 +24,11 @@ vi.mock("@clash/web-ui/lib/clientActions", () => ({
   uninstallAction: vi.fn(),
   uninstallSkill: vi.fn(),
   listModelCatalog: vi.fn(),
+  listModelProviders: vi.fn(async () => []),
   updateModelProviders: vi.fn(),
+  listProviderOAuth: vi.fn(async () => []),
+  startProviderOAuth: vi.fn(),
+  completeProviderOAuth: vi.fn(),
 }));
 
 vi.mock("framer-motion", async () => {
@@ -170,6 +174,16 @@ describe("visual language surfaces", () => {
     expect(avatarRule).toMatch(/box-shadow:\s*none/);
     expect(avatarHoverRule).toMatch(/background:\s*transparent/);
     expect(avatarHoverRule).toMatch(/box-shadow:\s*none/);
+  });
+
+  it("caps the desktop copilot panel at three sevenths of the viewport", () => {
+    const projectSource = readFileSync(join(process.cwd(), "packages/web-ui/src/components/ProjectEditor.tsx"), "utf8");
+    const copilotSource = readFileSync(join(process.cwd(), "packages/web-ui/src/components/ChatbotCopilot.tsx"), "utf8");
+
+    expect(projectSource).toMatch(/const MAX_COPILOT_PANEL_FRACTION = 3 \/ 7/);
+    expect(copilotSource).toMatch(/const COPILOT_PANEL_MAX_WIDTH_FRACTION = 3 \/ 7/);
+    expect(projectSource).not.toMatch(/const MAX_COPILOT_PANEL_FRACTION = 2 \/ 3/);
+    expect(copilotSource).not.toMatch(/const COPILOT_PANEL_MAX_WIDTH_FRACTION = 2 \/ 3/);
   });
 
   it("renders billing cards with warm surfaces instead of a purple gradient hero", () => {
@@ -357,26 +371,63 @@ describe("visual language surfaces", () => {
     expect(projectSource).not.toMatch(/MonitorPlay|isPresentationMode|Present canvas|Presenting/);
     expect(copilotSource).toMatch(/clash-copilot-launcher/);
     expect(copilotSource).toMatch(/bottom-\[max\(1rem,env\(safe-area-inset-bottom\)\)\]/);
-    expect(copilotSource).toMatch(/\/brand\/logo-mark-animated\.svg/);
+    expect(copilotSource).toMatch(/AgentMotion/);
     expect(copilotSource).toMatch(/clash-copilot-panel-shell fixed bottom-3 right-3/);
     expect(copilotSource).toMatch(/height: 'calc\(100dvh - var\(--clash-desktop-chrome-height, 0px\) - 1\.5rem\)'/);
     expect(copilotSource).toMatch(/rounded-matrix/);
-    expect(copilotSource).toMatch(/transformOrigin: 'right bottom'/);
-    expect(copilotSource).toMatch(/absolute left-12 top-6/);
-    expect(copilotSource).toMatch(/absolute right-4 top-6/);
-    expect(copilotSource).toMatch(/top-20 overflow-y-auto/);
-    expect(copilotSource).toMatch(/scale: isCollapsed \? 0\.82 : 1/);
-    expect(copilotSource).toMatch(/x: isCollapsed \? 48 : 0/);
-    expect(copilotSource).toMatch(/y: isCollapsed \? 48 : 0/);
-    expect(copilotSource).toMatch(/from-warm-surface via-warm-surface\/85/);
+    expect(copilotSource).toMatch(/const COPILOT_PANEL_LAUNCHER_FOCAL_OFFSET_PX = 44/);
+    expect(copilotSource).toMatch(/const COPILOT_PANEL_DESKTOP_TRANSFORM_ORIGIN =[\s\S]*?calc\(100% - \$\{COPILOT_PANEL_LAUNCHER_FOCAL_OFFSET_PX\}px\)/);
+    expect(copilotSource).toMatch(/transformOrigin: COPILOT_PANEL_DESKTOP_TRANSFORM_ORIGIN/);
+    expect(copilotSource).not.toMatch(/transformOrigin: 'right bottom'/);
+    expect(copilotSource).toMatch(/const COPILOT_PANEL_COLLAPSE_TRANSITION = \{ duration: 0\.34,[\s\S]*?times: \[0, 0\.52, 1\]/);
+    expect(copilotSource).toMatch(/const COPILOT_PANEL_COLLAPSED_DESKTOP_STATE = \{[\s\S]*?opacity: \[1, 0\.76, 0\],[\s\S]*?scale: \[1, 0\.56, 0\.08\],[\s\S]*?x: \[0, 0, 42\],[\s\S]*?y: \[0, 34, 34\]/);
+    expect(copilotSource).toMatch(/transition=\{isResizing \? \{ duration: 0 \} : isCollapsed && !isMobile \? COPILOT_PANEL_COLLAPSE_TRANSITION : COPILOT_PANEL_TRANSITION\}/);
+    expect(copilotSource).toMatch(/const COPILOT_LAUNCHER_ENTER_TRANSITION = \{ duration: 0\.24, delay: 0\.12/);
+    expect(copilotSource).toMatch(/initial=\{\{ opacity: 0, scale: 0\.86, y: 8 \}\}/);
+    expect(copilotSource).toMatch(/const CREATIVE_STATUS_ROTATION_MS = 15_000/);
+    expect(copilotSource).toMatch(/setInterval\(\(\) => \{[\s\S]*?\}, CREATIVE_STATUS_ROTATION_MS\)/);
+    expect(copilotSource).not.toMatch(/\}, 4600\)/);
+    expect(copilotSource).toMatch(/clash-copilot-panel-header/);
+    expect(copilotSource).toMatch(/clash-copilot-panel-header relative z-20 flex shrink-0 items-center gap-2 px-6 py-3/);
+    expect(copilotSource).toMatch(/import \{ CopilotRailSlot \} from '\.\/copilot\/CopilotRail'/);
+    expect(copilotSource).toMatch(/<CopilotRailSlot ariaHidden=\{false\}>[\s\S]*<IconButton[\s\S]*label=\{t\('copilot\.panel\.collapse'\)\}/);
+    expect(copilotSource).not.toMatch(/clash-copilot-agent-perch/);
+    expect(copilotSource).toMatch(/clash-copilot-agent-activity-row/);
+    expect(copilotSource).toMatch(/clash-copilot-agent-activity-row flex items-center gap-0\.5 px-0/);
+    expect(copilotSource).toMatch(/<CopilotRailSlot className="h-8">[\s\S]*<AgentMotion/);
+    expect(copilotSource).not.toMatch(/-ml-1\.5/);
+    expect(copilotSource).not.toMatch(/clash-copilot-agent-activity-row[\s\S]*w-5 shrink-0 items-center justify-center/);
+    expect(copilotSource).toMatch(/clash-session-config-trigger/);
+    expect(copilotSource).toMatch(/clash-runtime-prompt-queue/);
+    expect(copilotSource).toMatch(/AgentMotion[\s\S]*state=\{state\}[\s\S]*className="h-6 w-6"[\s\S]*gazeTarget=\{gazeTarget \?\? null\}/);
+    expect(copilotSource).toMatch(/toolbarAccessory=\{\(/);
+    expect(copilotSource).toMatch(/AcpAgentLogo/);
+    expect(copilotSource).toMatch(/embedded/);
+    expect(copilotSource).toMatch(/relative flex-1 min-h-0 overflow-y-auto/);
+    expect(copilotSource).toMatch(/isCollapsed[\s\S]*\? COPILOT_PANEL_COLLAPSED_DESKTOP_STATE[\s\S]*: COPILOT_PANEL_EXPANDED_DESKTOP_STATE/);
+    expect(copilotSource).not.toMatch(/initial=\{\{ opacity: 0, scale: 0\.82/);
+    expect(copilotSource).not.toMatch(/from-warm-surface via-warm-surface\/85/);
     expect(copilotSource).not.toMatch(/border-l border-warm-border shadow-\[0_18px_50px/);
     expect(cssSource).toMatch(/\.clash-copilot-launcher/);
     expect(cssSource).toMatch(/\.clash-copilot-panel-shell/);
     expect(cssSource).toMatch(/\.clash-copilot-panel-shell\s*\{[\s\S]*?border-radius:\s*28px/);
-    expect(cssSource).toMatch(/\.clash-copilot-panel-shell\s*\{[\s\S]*?radial-gradient\(rgba\(214, 209, 200, 0\.22\) 1px, transparent 1px\)/);
-    expect(cssSource).toMatch(/\.clash-copilot-panel-shell\s*\{[\s\S]*?background-size:\s*18px 18px, auto, auto, auto/);
-    expect(cssSource).toMatch(/\.clash-canvas-toolbar-surface,\s*\n\.clash-canvas-menu-surface\s*\{[\s\S]*?radial-gradient\(rgba\(214, 209, 200, 0\.22\) 1px, transparent 1px\)/);
-    expect(cssSource).toMatch(/\.clash-canvas-toolbar-surface,\s*\n\.clash-canvas-menu-surface\s*\{[\s\S]*?background-size:\s*18px 18px, auto, auto, auto/);
+    const panelShellRule = cssSource.match(/\.clash-copilot-panel-shell\s*\{[\s\S]*?\}/)?.[0] ?? "";
+    const toolbarSurfaceRule = cssSource.match(/\.clash-canvas-toolbar-surface,\s*\n\.clash-canvas-menu-surface\s*\{[\s\S]*?\}/)?.[0] ?? "";
+    const promptQueueRule = cssSource.match(/\.clash-runtime-prompt-queue\s*\{[\s\S]*?\}/)?.[0] ?? "";
+    expect(panelShellRule).toMatch(/background:\s*rgba\(255, 254, 253, 0\.96\)/);
+    expect(panelShellRule).not.toMatch(/linear-gradient|radial-gradient|background-size/);
+    expect(cssSource).toMatch(/\.clash-copilot-panel-header\s*\{[\s\S]*?background:\s*transparent;[\s\S]*?border-bottom:\s*0;[\s\S]*?box-shadow:\s*none;/);
+    expect(promptQueueRule).toMatch(/linear-gradient\(180deg, rgba\(255, 254, 253, 0\.9\), rgba\(250, 248, 244, 0\.74\)\)/);
+    expect(promptQueueRule).toMatch(/border-bottom:\s*0/);
+    expect(promptQueueRule).toMatch(/0 -6px 18px rgba\(35, 31, 25, 0\.034\)/);
+    const railSource = readFileSync(
+      join(process.cwd(), "packages/web-ui/src/components/copilot/CopilotRail.tsx"),
+      "utf8",
+    );
+    expect(railSource).toMatch(/COPILOT_RAIL_SLOT_CLASS/);
+    expect(railSource).toMatch(/clash-copilot-rail-slot flex h-8 w-8 shrink-0 -translate-x-1 items-center justify-center/);
+    expect(toolbarSurfaceRule).toMatch(/background:\s*rgba\(255, 254, 253, 0\.94\)/);
+    expect(toolbarSurfaceRule).not.toMatch(/linear-gradient|radial-gradient|background-size/);
     expect(cssSource).toMatch(/\.clash-canvas-toolbar-surface::before,\s*\n\.clash-canvas-menu-surface::before\s*\{[\s\S]*?content:\s*none;/);
     expect(cssSource).toMatch(/\.clash-copilot-resize-handle::before/);
     expect(cssSource).toMatch(/\.clash-project-top-action/);
@@ -386,6 +437,22 @@ describe("visual language surfaces", () => {
     expect(launcherRule).toMatch(/border:\s*0/);
     expect(launcherRule).toMatch(/background:\s*transparent/);
     expect(launcherRule).toMatch(/box-shadow:\s*none/);
+  });
+
+  it("keeps the Clash agent eyes pointer-reactive without rerender-heavy motion", () => {
+    const agentSource = readFileSync(
+      join(process.cwd(), "packages/web-ui/src/components/copilot/AgentMotion.tsx"),
+      "utf8",
+    );
+    const cssSource = readFileSync(join(process.cwd(), "apps/web/app/globals.css"), "utf8");
+
+    expect(agentSource).toMatch(/pointermove/);
+    expect(agentSource).toMatch(/requestAnimationFrame/);
+    expect(agentSource).toMatch(/prefers-reduced-motion: reduce/);
+    expect(agentSource).toMatch(/--clash-agent-eye-x/);
+    expect(agentSource).toMatch(/data-agent-motion-tracking/);
+    expect(cssSource).toMatch(/\.clash-agent-motion\[data-agent-motion-tracking="true"\] \.clash-agent-motion__gaze/);
+    expect(cssSource).toMatch(/transform:\s*translate3d\(var\(--clash-agent-eye-x\), var\(--clash-agent-eye-y\), 0\)/);
   });
 
   it("keeps activity and presence feedback out of legacy blue or gradient states", () => {
@@ -437,6 +504,24 @@ describe("visual language surfaces", () => {
     expect(source).not.toMatch(/clash-projects-empty-node--wide|clash-projects-empty-node--small|clash-projects-empty-node--accent/);
   });
 
+  it("keeps the authenticated home hero headline bounded inside the first viewport", () => {
+    const heroSource = readFileSync(join(process.cwd(), "packages/web-ui/src/components/HeroSection.tsx"), "utf8");
+    const cssSource = readFileSync(join(process.cwd(), "apps/web/app/globals.css"), "utf8");
+
+    expect(heroSource).toMatch(/clash-home-hero-heading/);
+    expect(heroSource).toMatch(/clash-home-hero/);
+    expect(heroSource).toMatch(/clash-home-hero-copy/);
+    expect(heroSource).toMatch(/clash-home-hero-copy[\s\S]*<\/motion\.h1>[\s\S]*<\/div>\s*<div className="clash-hero-prompt"/);
+    expect(cssSource).toMatch(/\.clash-home-hero-heading\s*\{/);
+    expect(cssSource).toMatch(/\.clash-home-hero\s*\{[\s\S]*100dvh[\s\S]*\}/);
+    expect(cssSource).toMatch(/\.clash-home-hero\s+\.clash-hero-stage\s*\{[\s\S]*min-height:\s*auto/);
+    expect(cssSource).toMatch(/\.clash-home-hero\s+\.clash-hero-stage\s*\{[\s\S]*align-items:\s*center/);
+    expect(cssSource).toMatch(/\.clash-hero-prompt\s*\{[\s\S]*width:\s*min\(100%,\s*72rem\)[\s\S]*margin-inline:\s*auto/);
+    expect(cssSource).toMatch(/max-width:\s*min\(100%,\s*62rem\)/);
+    expect(cssSource).toMatch(/font-size:\s*clamp\(3\.25rem,\s*7\.6vw,\s*8rem\)/);
+    expect(cssSource).toMatch(/overflow-wrap:\s*normal/);
+  });
+
   it("keeps the landing capability section out of generic icon-card grid patterns", () => {
     const source = readFileSync(join(process.cwd(), "packages/web-ui/src/components/landing/FeatureGrid.tsx"), "utf8");
     const cssSource = readFileSync(join(process.cwd(), "apps/web/app/globals.css"), "utf8");
@@ -482,7 +567,7 @@ describe("visual language surfaces", () => {
     expect(source).not.toMatch(/rounded-2xl border border-warm-border\/80 bg-warm-surface\/88/);
   });
 
-  it("keeps the public landing page aligned with canvas and local-runtime product language", () => {
+  it("keeps the public landing page aligned with agent-canvas product language", () => {
     const source = [
       "packages/web-ui/src/components/landing/LandingHero.tsx",
       "packages/web-ui/src/components/landing/FeatureGrid.tsx",
@@ -496,14 +581,24 @@ describe("visual language surfaces", () => {
       .join("\n");
 
     expect(source).not.toMatch(/HeroCanvasPreview|Agent drafting|Scene rhythm|Shot pass|Neon rain/);
-    expect(source).toMatch(/variant="hero"/);
-    expect(source).toMatch(/Canvas-first planning/);
-    expect(source).toMatch(/Local runtime ready/);
-    expect(source).toMatch(/Cloud when invited/);
+    expect(source).not.toMatch(/variant="hero"/);
+    expect(source).not.toMatch(/Start with a video idea/);
+    expect(source).toMatch(/Workspace where/);
+    expect(source).toMatch(/Agents/);
+    expect(source).toMatch(/and Creators/);
+    expect(source).toMatch(/Co-create\./);
+    expect(source).toMatch(/Open-source workbench for agent-assisted creation/);
+    expect(source).not.toMatch(/living media/);
+    expect(source).not.toMatch(/Open-source creative workspace/);
+    expect(source).not.toMatch(/Clash brings ideas, media, agent tasks, and review/);
+    expect(source).toMatch(/One project surface, not a prompt queue/);
+    expect(source).toMatch(/Canvas project file/);
+    expect(source).toMatch(/Desktop runtime/);
+    expect(source).toMatch(/Open source base/);
     expect(source).toMatch(/From idea to canvas to runtime/);
     expect(source).toMatch(/Solo creator studio/);
-    expect(source).toMatch(/Local by default, cloud when it helps/);
-    expect(source).toMatch(/Start local\. Add cloud only when the project needs it\./);
+    expect(source).toMatch(/Choose where agents run, keep one canvas/);
+    expect(source).toMatch(/Open a canvas agents can work inside\./);
     expect(source).toMatch(/clash-landing-note-ledger/);
     expect(source).toMatch(/Field notes/);
     expect(source).toMatch(/The canvas is the contract/);
@@ -593,6 +688,7 @@ describe("visual language surfaces", () => {
 
   it("keeps the root error boundary transparent and recoverable instead of generic copy", () => {
     const source = readFileSync(join(process.cwd(), "apps/web/app/root.tsx"), "utf8");
+    const errorMark = readFileSync(join(process.cwd(), "apps/web/public/brand/logo-mark-error.svg"), "utf8");
 
     expect(source).not.toMatch(oldRouteErrorTokens);
     expect(source).toMatch(/clash-route-error-surface/);
@@ -603,11 +699,14 @@ describe("visual language surfaces", () => {
     expect(source).toMatch(/error\.code/);
     expect(source).toMatch(/Reload/);
     expect(source).toMatch(/Go home/);
+    expect(source).toMatch(/\/brand\/logo-mark-error\.svg/);
+    expect(errorMark).toMatch(/aria-label="Clash error logo"/);
+    expect(errorMark.match(/stroke-linecap="round"/g)?.length).toBeGreaterThanOrEqual(5);
   });
 
   it("keeps settings modal chrome in Clash surfaces instead of inherited generic modal styling", () => {
     const source = [
-      "packages/web-ui/src/components/SettingsDialog.tsx",
+      "packages/web-ui/src/components/SettingsSurface.tsx",
       "apps/web/app/globals.css",
     ]
       .map((path) => readFileSync(join(process.cwd(), path), "utf8"))
@@ -632,6 +731,21 @@ describe("visual language surfaces", () => {
     expect(source).toMatch(/clash-settings-code/);
     expect(source).toMatch(/clash-settings-alert-error/);
     expect(source).toMatch(/clash-settings-danger-ghost/);
+  });
+
+  it("keeps settings form controls on shared field and menu tokens", () => {
+    const source = [
+      "packages/web-ui/src/components/SettingsClient.tsx",
+      "packages/web-ui/src/components/ui/select.tsx",
+      "apps/web/app/globals.css",
+    ]
+      .map((path) => readFileSync(join(process.cwd(), path), "utf8"))
+      .join("\n");
+
+    expect(source).not.toMatch(/<select\b/);
+    expect(source).toMatch(/clash-settings-field/);
+    expect(source).toMatch(/clash-settings-secondary/);
+    expect(source).toMatch(/clash-settings-select-trigger/);
   });
 
   it("keeps project tiles on Clash canvas surfaces instead of generic dashed cards", () => {
@@ -711,11 +825,11 @@ describe("visual language surfaces", () => {
 
   it.each([
     ["tokens", "API Tokens"],
-    ["variables", "API Keys"],
+    ["providers", "Providers"],
     ["actions", "Installed Actions"],
     ["skills", "Installed Skills"],
     ["cli", "CLI"],
-    ["runtimes", "Runtimes"],
+    ["agents", "Agents"],
   ] as const)("renders %s settings with warm controls instead of default gray chrome", (section, heading) => {
     const { container } = render(
       <MemoryRouter>

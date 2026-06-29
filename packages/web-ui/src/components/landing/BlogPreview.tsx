@@ -1,5 +1,4 @@
 import { motion } from 'framer-motion';
-import { ArrowRight } from '@phosphor-icons/react';
 
 const posts = [
   {
@@ -52,19 +51,11 @@ export default function BlogPreview() {
           <div>
             <h2 className="font-display text-sm font-semibold leading-7 text-brand">Field notes</h2>
             <p className="mt-2 max-w-md font-display text-3xl font-bold tracking-tight text-slate-950 dark:text-slate-50 sm:text-4xl">
-              Notes from the working surface
+              The agent canvas, written as product decisions
             </p>
             <p className="mt-6 max-w-sm text-base leading-7 text-stone-700 dark:text-stone-300">
-              Product thinking for a canvas where people keep intent and agents do visible work.
+              A public trail for how Clash keeps intent, agent work, runtime, sync, and generated media accountable to the canvas.
             </p>
-            <motion.a
-              href="#"
-              className="clash-landing-note-all mt-8 inline-flex items-center gap-2 text-sm font-semibold text-slate-950 transition-colors hover:text-brand dark:text-slate-50"
-              whileHover={{ x: 2 }}
-            >
-              Read all notes
-              <ArrowRight className="h-4 w-4" weight="bold" />
-            </motion.a>
           </div>
 
           <ol className="clash-landing-note-ledger" aria-label="Clash field notes">
@@ -83,10 +74,10 @@ export default function BlogPreview() {
                   <span>{post.readTime}</span>
                 </div>
 
-                <a href="#" className="clash-landing-note-copy">
+                <div className="clash-landing-note-copy">
                   <h3>{post.title}</h3>
                   <p>{post.excerpt}</p>
-                </a>
+                </div>
 
                 <div className="clash-landing-note-signal">
                   <NotePath nodes={post.nodes} />

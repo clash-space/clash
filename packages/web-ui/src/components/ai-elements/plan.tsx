@@ -4,13 +4,13 @@
 //
 //   <Plan />     — full block, used inline or in dialogs
 //   <PlanBar />  — slim sticky footer (1 row, click to expand into a
-//                  popover above) for per-crew bottom status. The
+//                  popover above) for per-agent bottom status. The
 //                  whole-bubble version was distracting in chat flow;
-//                  the bar lives at the crew tab footer instead and
-//                  reflects the *latest* plan snapshot from the crew.
+//                  the bar lives at the agent tab footer instead and
+//                  reflects the *latest* plan snapshot from the agent.
 
 import * as React from "react";
-import { Brain, CheckCircle2, Circle, Loader2, ChevronUp } from "lucide-react";
+import { CheckCircle2, Circle, Loader2 } from "lucide-react";
 import type { PlanEntry } from "../../lib/acpEvents";
 import { cn } from "./utils";
 
@@ -87,9 +87,9 @@ export function PlanBar({ entries, className }: PlanBarProps) {
     <div className={cn("relative", className)}>
       {open && (
         <div
-          className="absolute bottom-full left-0 right-0 mb-1 max-h-[60vh] overflow-y-auto rounded-md border border-border bg-card shadow-lg p-2"
+          className="absolute bottom-full left-0 right-0 mb-1 max-h-[60vh] overflow-y-auto rounded-xl border border-warm-border/60 bg-background/95 p-2 shadow-lg backdrop-blur"
           role="dialog"
-          aria-label="Crew plan"
+          aria-label="Agent plan"
         >
           <Plan entries={entries} className="my-0 border-0 bg-transparent p-0" />
         </div>
@@ -98,13 +98,12 @@ export function PlanBar({ entries, className }: PlanBarProps) {
         type="button"
         onClick={() => setOpen((v) => !v)}
         className={cn(
-          "group/planbar flex w-full items-center gap-2 rounded-md border border-border bg-muted/60 px-2.5 py-1.5 text-xs text-foreground transition-colors hover:bg-muted",
+          "group/planbar flex h-8 w-full items-center gap-1.5 rounded-full bg-warm-muted/70 px-2.5 text-xs text-foreground transition-colors hover:bg-warm-muted",
           "focus:outline-none focus-visible:ring-2 focus-visible:ring-ring/50",
         )}
         aria-expanded={open}
         aria-label={open ? "Hide plan" : "Show plan"}
       >
-        <Brain className="size-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
         <span className="shrink-0 font-semibold text-[10px] uppercase tracking-wide text-muted-foreground">
           Plan
         </span>
@@ -117,13 +116,6 @@ export function PlanBar({ entries, className }: PlanBarProps) {
         <span className="truncate text-muted-foreground min-w-0 flex-1 text-left">
           {current}
         </span>
-        <ChevronUp
-          className={cn(
-            "size-3 shrink-0 text-muted-foreground transition-transform",
-            open && "rotate-180",
-          )}
-          aria-hidden="true"
-        />
       </button>
     </div>
   );

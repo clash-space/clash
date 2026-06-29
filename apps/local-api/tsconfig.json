@@ -8,6 +8,10 @@
     "esModuleInterop": true,
     "skipLibCheck": true,
     "resolveJsonModule": true,
+    "baseUrl": ".",
+    "paths": {
+      "@clash-space/sdk": ["../../packages/clash-sdk/js/src/index.ts"]
+    },
     "outDir": "dist"
   },
   "include": ["src/**/*.ts"]

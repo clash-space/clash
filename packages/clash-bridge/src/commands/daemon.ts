@@ -28,7 +28,7 @@ import WebSocket from "ws";
 // runtime spent 4+ minutes of every cycle marked offline — the browser
 // then can't create new sessions (POST /sessions returns 409 "runtime
 // offline" via the deriveRuntimeStatus check in routes/v1/runtimes.ts),
-// so Test Director was effectively unreachable. 30s gives comfortable
+// so the test agent was effectively unreachable. 30s gives comfortable
 // headroom under the 90s threshold.
 const HEARTBEAT_INTERVAL_MS = 30 * 1000;
 const RECONNECT_BACKOFF_MIN_MS = 1000;
@@ -46,9 +46,8 @@ export async function runDaemon(): Promise<void> {
 
   printBanner(`daemon — runtime ${creds.runtimeId.slice(0, 8)}… → ${creds.serverUrl}`, PKG_VERSION);
 
-  // Best-effort GC of session dirs older than 7 days. Non-blocking — if
-  // it fails the daemon still starts; user can clean ~/.clash/sessions/
-  // by hand if it ever piles up.
+  // Historical no-op hook. Project directories are durable product state and
+  // must not be cleaned up implicitly when sessions age out.
   void gcOldSessions().then((r) => {
     if (r.removed > 0) log.step(`GC: removed ${r.removed} stale session dir${r.removed === 1 ? "" : "s"}`);
   }).catch(() => undefined);
@@ -170,7 +169,7 @@ export async function runDaemon(): Promise<void> {
             return;
           case "session.start":
             process.stderr.write(
-              `  session.start sid=${(msg.session_id as string)?.slice(0, 8)} crew=${msg.crew_id}${msg.agent_id ? ` agent=${msg.agent_id}` : ""}\n`,
+              `  session.start sid=${(msg.session_id as string)?.slice(0, 8)} template=${msg.agent_template_id}${msg.agent_id ? ` agent=${msg.agent_id}` : ""}\n`,
             );
             void sessions.start(msg as never);
             return;

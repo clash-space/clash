@@ -9,6 +9,8 @@
     "AGENTS_JSON_SPEC.md": "Specification for this documentation system (agents.json and file headers).",
     "agents.md": "Documentation on the Agent/Model configuration and shared patterns.",
     "loro-crdt-explained.md": "Deep dive into the Loro CRDT implementation for real-time sync.",
+    "local-loro-host-architecture.md": "Local-first Loro architecture: Local Host, actors, persistent replicas, cloud alignment, and presence boundaries.",
+    "local-host-cli-implementation-plan.md": "Implementation plan for project context, Local Host persistence, CLI commands, actor presence, and cloud code reuse.",
     "group-logic-7ef9.md": "Explanation of the complex grouping logic for canvas nodes.",
     "loro-sync-python-improvements.md": "Notes on Python integration with Loro Sync."
   },

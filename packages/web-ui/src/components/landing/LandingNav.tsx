@@ -1,21 +1,16 @@
 
 import { motion } from 'framer-motion';
 import { Link } from 'react-router';
-import betterAuthClient from '@clash/web-ui/lib/betterAuthClient';
 
 const navLinks = [
-  { name: 'Use Cases', href: '#use-cases' },
-  { name: 'Pricing', href: '#pricing' },
-  { name: 'Blog', href: '#blog' },
+  { name: 'Docs', href: '/docs' },
+  { name: 'Marketplace', href: '/marketplace' },
 ];
 
 export default function LandingNav() {
-  const session = betterAuthClient.useSession();
-  const user = session.data?.user;
-
   return (
-    <header className="pointer-events-none fixed left-0 right-0 top-0 z-50 px-4 py-4">
-      <div className="clash-landing-header clash-control-surface pointer-events-auto mx-auto flex h-16 max-w-6xl items-center justify-between rounded-2xl px-4 pl-5 pr-3 sm:px-5 lg:px-6">
+    <header className="pointer-events-none fixed left-0 right-0 top-0 z-50 px-4 py-3">
+      <div className="clash-landing-header clash-control-surface pointer-events-auto mx-auto flex h-14 max-w-[1280px] items-center justify-between rounded-2xl px-3 pl-4 pr-2 sm:px-5 lg:px-6">
         {/* Logo */}
         <Link to="/" className="group">
           <motion.div
@@ -36,52 +31,22 @@ export default function LandingNav() {
         </Link>
 
         {/* Center Links */}
-        <nav className="hidden md:flex items-center gap-8">
+        <nav className="clash-landing-nav">
           {navLinks.map((link) => (
-            <a
+            <Link
               key={link.name}
-              href={link.href}
-              className="rounded-lg px-3 py-2 text-sm font-medium text-stone-700 dark:text-stone-300 transition-colors hover:bg-warm-muted/70 hover:text-slate-950"
+              to={link.href}
+              className="rounded-lg px-3 py-2 text-sm font-medium text-stone-700 transition-colors hover:bg-warm-muted/70 hover:text-slate-950 dark:text-stone-300"
             >
               {link.name}
-            </a>
+            </Link>
           ))}
         </nav>
 
-        {/* Right Actions */}
-        <div className="flex items-center gap-4">
-          {user ? (
-            <Link to="/">
-              <motion.button
-                whileHover={{ scale: 1.05 }}
-                whileTap={{ scale: 0.95 }}
-                className="rounded-xl bg-brand px-5 py-2.5 text-sm font-bold text-white shadow-sm shadow-brand/15 transition-all hover:bg-red-600"
-              >
-                Go to Dashboard
-              </motion.button>
-            </Link>
-          ) : (
-            <>
-              <Link to="/login">
-                <motion.button
-                  whileHover={{ scale: 1.02 }}
-                  whileTap={{ scale: 0.98 }}
-                  className="rounded-lg px-4 py-2 text-sm font-medium text-stone-700 dark:text-stone-300 transition-colors hover:bg-warm-muted/70 hover:text-slate-950"
-                >
-                  Sign In
-                </motion.button>
-              </Link>
-              <Link to="/login">
-                <motion.button
-                  whileHover={{ scale: 1.05 }}
-                  whileTap={{ scale: 0.95 }}
-                  className="rounded-xl bg-brand px-5 py-2.5 text-sm font-bold text-white shadow-sm shadow-brand/15 transition-all hover:bg-red-600"
-                >
-                  Get Started
-                </motion.button>
-              </Link>
-            </>
-          )}
+        <div className="flex items-center gap-2">
+          <Link to="/download" className="clash-desktop-download-placeholder">
+            Download
+          </Link>
         </div>
       </div>
     </header>

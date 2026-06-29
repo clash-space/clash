@@ -1,7 +1,7 @@
 -- Chat history for local-runtime sessions (BYO bridge / daemon).
 --
--- One row per message — both user prompts and assembled crew responses.
--- Crew responses are accumulated server-side from session.event chunks
+-- One row per message — both user prompts and assembled agent responses.
+-- Agent responses are accumulated server-side from session.event chunks
 -- and written on session.complete (one row per turn). Streaming chunks
 -- aren't individually persisted; they're broadcast live and re-derived
 -- from the final row on history reads.
@@ -15,10 +15,10 @@ CREATE TABLE `chat_message` (
     `id` TEXT PRIMARY KEY NOT NULL,
     `session_id` TEXT NOT NULL,         -- runtime_session.id
     `user_id` TEXT NOT NULL,            -- denormalized from runtime_session for query speed
-    `sender_kind` TEXT NOT NULL,        -- 'user' | 'crew'
-    `sender_id` TEXT NOT NULL,          -- crew_id when 'crew', user_id when 'user'
+    `sender_kind` TEXT NOT NULL,        -- 'user' | 'agent'
+    `sender_id` TEXT NOT NULL,          -- agent_member_id when 'agent', user_id when 'user'
     `turn_id` TEXT,                     -- ACP turn id; null for user rows
-    `events_json` TEXT NOT NULL,        -- JSON array of raw ACP events (for crew) or [{type:'text',text:'...'}] (user)
+    `events_json` TEXT NOT NULL,        -- JSON array of raw ACP events (for agent) or [{type:'text',text:'...'}] (user)
     `created_at` INTEGER NOT NULL
 );
 CREATE INDEX `chat_message_session_idx` ON `chat_message` (`session_id`, `created_at`);

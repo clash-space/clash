@@ -16,6 +16,7 @@ const appBinary = process.env.CLASH_DESKTOP_APP_BINARY;
 const usePackagedApp = Boolean(appBinary);
 const realAcpSmoke = process.env.CLASH_DESKTOP_REAL_ACP_SMOKE === "1";
 let webUrl = process.env.CLASH_WEB_URL;
+const webPortStart = Number(process.env.CLASH_DESKTOP_WEB_PORT_START ?? "3001");
 const captureDir =
   process.env.CLASH_DESKTOP_CAPTURE_DIR ??
   path.join(repoRoot, ".tmp", "electron-smoke-captures");
@@ -50,18 +51,46 @@ async function assertWebServer() {
   );
 }
 
+async function assertViteRouteModulesReady() {
+  const deadline = Date.now() + 25000;
+  let lastError;
+  const paths = ["/app/main.tsx", "/app/routes/home.tsx"];
+  while (Date.now() < deadline) {
+    try {
+      const responses = await Promise.all(
+        paths.map((pathname) => fetch(new URL(pathname, webUrl), { signal: AbortSignal.timeout(2500) })),
+      );
+      if (responses.every((res) => res.ok && (res.headers.get("content-type") ?? "").includes("javascript"))) {
+        return;
+      }
+      lastError = new Error(responses.map((res) => `${res.url} -> HTTP ${res.status}`).join(", "));
+    } catch (error) {
+      lastError = error;
+    }
+    await sleep(250);
+  }
+  throw new Error(
+    `Vite route modules are not reachable at ${webUrl}. ` +
+      `Reason: ${lastError instanceof Error ? lastError.message : String(lastError)}`,
+  );
+}
+
 async function findFreePort(start) {
+  const failures = [];
   for (let port = start; port < start + 100; port += 1) {
     const ok = await new Promise((resolve) => {
       const server = net.createServer();
-      server.once("error", () => resolve(false));
+      server.once("error", (error) => {
+        failures.push(`${port}:${error.code ?? error.message}`);
+        resolve(false);
+      });
       server.listen(port, "127.0.0.1", () => {
         server.close(() => resolve(true));
       });
     });
     if (ok) return port;
   }
-  throw new Error(`No free port found from ${start}`);
+  throw new Error(`No free port found from ${start}. Last bind errors: ${failures.slice(-5).join(", ")}`);
 }
 
 async function readRequestBody(req) {
@@ -204,7 +233,7 @@ function tail(lines, max = 80) {
 
 async function writeFakeCodexAcp(binDir) {
   await mkdir(binDir, { recursive: true });
-  const wrapper = path.join(binDir, "codex");
+  const wrapper = path.join(binDir, "codex-acp");
   const agent = path.join(binDir, "fake-codex-acp.mjs");
   await writeFile(
     wrapper,
@@ -230,12 +259,8 @@ async function writeFakeCodexAcp(binDir) {
       "",
       "const argv = process.argv.slice(2);",
       "if (argv.includes('--help')) {",
-      "  console.log('Usage: codex [OPTIONS] [PROMPT]\\n  --acp');",
+      "  console.log('Usage: codex-acp [OPTIONS]');",
       "  process.exit(0);",
-      "}",
-      "if (!argv.includes('--acp')) {",
-      "  console.error('fake codex only supports --acp in this smoke test');",
-      "  process.exit(2);",
       "}",
       "",
       "function runClash(args) {",
@@ -255,6 +280,47 @@ async function writeFakeCodexAcp(binDir) {
       "  });",
       "}",
       "",
+      "function configOptions(state = {}) {",
+      "  return [",
+      "    {",
+      "      id: 'mode',",
+      "      name: 'Mode',",
+      "      type: 'select',",
+      "      category: 'mode',",
+      "      currentValue: state.mode || 'full-access',",
+      "      options: [",
+      "        { value: 'read-only', name: 'Read only' },",
+      "        { value: 'auto', name: 'Auto' },",
+      "        { value: 'full-access', name: 'Full access' },",
+      "      ],",
+      "    },",
+      "    {",
+      "      id: 'model',",
+      "      name: 'Model',",
+      "      type: 'select',",
+      "      category: 'model',",
+      "      currentValue: state.model || 'gpt-5.5',",
+      "      options: [",
+      "        { value: 'gpt-5.5', name: 'GPT-5.5', description: 'Codex conversational model' },",
+      "        { value: 'gpt-5.4', name: 'GPT-5.4', description: 'Codex compatibility profile' },",
+      "      ],",
+      "    },",
+      "    {",
+      "      id: 'reasoning_effort',",
+      "      name: 'Reasoning',",
+      "      type: 'select',",
+      "      category: 'thought_level',",
+      "      currentValue: state.reasoning_effort || 'low',",
+      "      options: [",
+      "        { value: 'low', name: 'Low' },",
+      "        { value: 'medium', name: 'Medium' },",
+      "        { value: 'high', name: 'High' },",
+      "        { value: 'xhigh', name: 'Extra High' },",
+      "      ],",
+      "    },",
+      "  ];",
+      "}",
+      "",
       "class FakeCodexAcpAgent {",
       "  constructor(connection) {",
       "    this.connection = connection;",
@@ -265,12 +331,38 @@ async function writeFakeCodexAcp(binDir) {
       "  }",
       "  async newSession(params) {",
       "    const sessionId = randomUUID();",
-      "    this.sessions.set(sessionId, { cwd: params.cwd || process.cwd() });",
-      "    return { sessionId };",
+      "    const state = { cwd: params.cwd || process.cwd(), mode: 'full-access', model: 'gpt-5.5', reasoning_effort: 'low' };",
+      "    this.sessions.set(sessionId, state);",
+      "    return { sessionId, configOptions: configOptions(state) };",
       "  }",
       "  async authenticate() { return {}; }",
+      "  async setSessionConfigOption(params) {",
+      "    const state = this.sessions.get(params.sessionId);",
+      "    if (!state) throw new Error('unknown session ' + params.sessionId);",
+      "    state[params.configId] = params.value;",
+      "    return { configOptions: configOptions(state) };",
+      "  }",
       "  async prompt(params) {",
       "    if (!this.sessions.has(params.sessionId)) throw new Error('unknown session ' + params.sessionId);",
+      "    await this.connection.sessionUpdate({",
+      "      sessionId: params.sessionId,",
+      "      update: {",
+      "        sessionUpdate: 'agent_thought_chunk',",
+      "        content: { type: 'text', text: 'Checking the canvas before editing.' },",
+      "        messageId: 'desktop-fake-thought',",
+      "      },",
+      "    });",
+      "    await this.connection.sessionUpdate({",
+      "      sessionId: params.sessionId,",
+      "      update: {",
+      "        sessionUpdate: 'tool_call',",
+      "        toolCallId: 'desktop-fake-clash-cli',",
+      "        title: 'Run clash canvas add',",
+      "        kind: 'execute',",
+      "        status: 'in_progress',",
+      "        rawInput: { command: 'clash canvas add' },",
+      "      },",
+      "    });",
       "    const projectId = process.env.CLASH_PROJECT_ID;",
       "    if (!projectId) throw new Error('CLASH_PROJECT_ID missing');",
       "    const created = JSON.parse(await runClash([",
@@ -286,6 +378,15 @@ async function writeFakeCodexAcp(binDir) {
       "      update: {",
       "        sessionUpdate: 'agent_message_chunk',",
       "        content: { type: 'text', text: 'Desktop fake ACP wrote node ' + created.node_id },",
+      "      },",
+      "    });",
+      "    await this.connection.sessionUpdate({",
+      "      sessionId: params.sessionId,",
+      "      update: {",
+      "        sessionUpdate: 'tool_call_update',",
+      "        toolCallId: 'desktop-fake-clash-cli',",
+      "        status: 'completed',",
+      "        rawOutput: created,",
       "      },",
       "    });",
       "    return { stopReason: 'end_turn' };",
@@ -328,7 +429,7 @@ async function startWebServerIfNeeded() {
     return null;
   }
 
-  const port = await findFreePort(3001);
+  const port = await findFreePort(webPortStart);
   webUrl = `http://127.0.0.1:${port}`;
   const webDir = path.join(repoRoot, "apps", "web");
   const logs = [];
@@ -349,6 +450,7 @@ async function startWebServerIfNeeded() {
   });
   try {
     await assertWebServer();
+    await assertViteRouteModulesReady();
   } catch (error) {
     console.error("[desktop-smoke] web server logs\n" + tail(logs));
     await stopProcess(child);
@@ -510,7 +612,7 @@ async function exerciseLocalAcpSessionHistory(cdp) {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
-        crew_id: "director",
+        agent_template_id: "master-clash",
         project_id: "desktop-smoke-agent"
       })
     });
@@ -519,43 +621,50 @@ async function exerciseLocalAcpSessionHistory(cdp) {
       return { ok: false, stage: "create", status: createdRes.status, runtimes, created };
     }
 
-    const turnId = "desktop-smoke-turn";
-    const promptText = "hello desktop local agent";
-    const events = [];
-    await new Promise((resolve, reject) => {
-      const ws = new WebSocket(runtime.wsBaseUrl + "/api/v1/local-sessions/" + encodeURIComponent(created.session_id) + "/_stream");
-      const timeout = setTimeout(() => {
-        ws.close();
-        reject(new Error("Timed out waiting for mock ACP completion"));
-      }, 10000);
-      ws.addEventListener("open", () => {
-        ws.send(JSON.stringify({ type: "prompt", turn_id: turnId, text: promptText }));
-      });
-      ws.addEventListener("message", (event) => {
-        const msg = JSON.parse(String(event.data));
-        events.push(msg);
-        if (msg.type === "session.complete" && msg.turn_id === turnId) {
-          clearTimeout(timeout);
+    async function promptSession(turnId, promptText) {
+      const events = [];
+      await new Promise((resolve, reject) => {
+        const ws = new WebSocket(runtime.wsBaseUrl + "/api/v1/local-sessions/" + encodeURIComponent(created.session_id) + "/_stream");
+        const timeout = setTimeout(() => {
           ws.close();
-          resolve(true);
-        }
+          reject(new Error("Timed out waiting for mock ACP completion"));
+        }, 10000);
+        ws.addEventListener("open", () => {
+          ws.send(JSON.stringify({ type: "prompt", turn_id: turnId, text: promptText }));
+        });
+        ws.addEventListener("message", (event) => {
+          const msg = JSON.parse(String(event.data));
+          events.push(msg);
+          if (msg.type === "session.complete" && msg.turn_id === turnId) {
+            clearTimeout(timeout);
+            ws.close();
+            resolve(true);
+          }
+        });
+        ws.addEventListener("error", () => {
+          clearTimeout(timeout);
+          reject(new Error("Mock ACP websocket failed"));
+        });
       });
-      ws.addEventListener("error", () => {
-        clearTimeout(timeout);
-        reject(new Error("Mock ACP websocket failed"));
-      });
-    });
+      return events;
+    }
+
+    const firstEvents = await promptSession("desktop-smoke-turn-1", "hello desktop local agent");
+    const secondEvents = await promptSession("desktop-smoke-turn-2", "hello again after detach");
 
     const historyRes = await fetch(runtime.apiBaseUrl + "/api/v1/local-sessions/" + encodeURIComponent(created.session_id) + "/messages");
     const history = await historyRes.json();
+    const sessionsRes = await fetch(runtime.apiBaseUrl + "/api/v1/sessions?projectId=desktop-smoke-agent");
+    const sessions = await sessionsRes.json();
     return {
-      ok: historyRes.ok,
+      ok: historyRes.ok && sessionsRes.ok,
       stage: "history",
-      status: historyRes.status,
+      status: { history: historyRes.status, sessions: sessionsRes.status },
       runtimes,
       created,
-      events,
-      history
+      events: [...firstEvents, ...secondEvents],
+      history,
+      sessions
     };
   })()`);
 
@@ -564,15 +673,39 @@ async function exerciseLocalAcpSessionHistory(cdp) {
     message.sender_kind === "user" &&
     message.events?.some((event) => event.type === "text" && event.text === "hello desktop local agent")
   );
-  const crewMessage = state.history?.messages?.find((message) =>
-    message.sender_kind === "crew" &&
+  const agentMessage = state.history?.messages?.find((message) =>
+    message.sender_kind === "agent" &&
     message.events?.some((event) => event.type === "text" && event.text === "Mock ACP reply: hello desktop local agent")
   );
-  if (!state.ok || !agents.some((agent) => agent.id === "mock-acp") || !userMessage || !crewMessage) {
+  const reopenedUserMessage = state.history?.messages?.find((message) =>
+    message.sender_kind === "user" &&
+    message.turn_id === "desktop-smoke-turn-2" &&
+    message.events?.some((event) => event.type === "text" && event.text === "hello again after detach")
+  );
+  const reopenedAgentMessage = state.history?.messages?.find((message) =>
+    message.sender_kind === "agent" &&
+    message.turn_id === "desktop-smoke-turn-2" &&
+    message.events?.some((event) => event.type === "text" && event.text === "Mock ACP reply: hello again after detach")
+  );
+  const persistedSession = state.sessions?.sessions?.find((session) =>
+    session.threadId === state.created?.session_id &&
+    session.type === "runtime" &&
+    session.projectId === "desktop-smoke-agent"
+  );
+  if (
+    !state.ok ||
+    !agents.some((agent) => agent.id === "mock-acp") ||
+    !userMessage ||
+    !agentMessage ||
+    !reopenedUserMessage ||
+    !reopenedAgentMessage ||
+    !persistedSession
+  ) {
     throw new Error(`Local ACP session history smoke failed: ${JSON.stringify(state)}`);
   }
   console.log("[desktop-smoke] local acp history", JSON.stringify({
     session_id: state.created.session_id,
+    persisted: { threadId: persistedSession.threadId, type: persistedSession.type },
     events: state.events.map((event) => event.type),
     messages: state.history.messages.map((message) => ({
       sender_kind: message.sender_kind,
@@ -596,7 +729,7 @@ async function exerciseRealAcpSessionThroughDesktopRuntime(cdp, apiPort) {
     }
 
     const runtimes = await (await fetch(runtime.apiBaseUrl + "/api/v1/runtimes")).json();
-    if (!runtimes.runtimes?.[0]?.agents?.some((agent) => agent.id === "codex-cli")) {
+    if (!runtimes.runtimes?.[0]?.agents?.some((agent) => agent.id === "codex-acp")) {
       return { ok: false, stage: "runtimes", runtimes };
     }
 
@@ -604,9 +737,9 @@ async function exerciseRealAcpSessionThroughDesktopRuntime(cdp, apiPort) {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
-        crew_member_id: "local-director",
+        agent_member_id: "local-master-clash",
         project_id: project.id,
-        agent_id: "codex-cli"
+        agent_id: "codex-acp"
       })
     });
     const created = await createdRes.json();
@@ -618,16 +751,40 @@ async function exerciseRealAcpSessionThroughDesktopRuntime(cdp, apiPort) {
     const events = [];
     await new Promise((resolve, reject) => {
       const ws = new WebSocket(runtime.wsBaseUrl + "/api/v1/local-sessions/" + encodeURIComponent(created.session_id) + "/_stream");
+      let promptSent = false;
       const timeout = setTimeout(() => {
         ws.close();
         reject(new Error("Timed out waiting for desktop real ACP disposal"));
       }, 20000);
-      ws.addEventListener("open", () => {
-        ws.send(JSON.stringify({ type: "prompt", turn_id: turnId, text: "use clash cli on the desktop canvas" }));
-      });
       ws.addEventListener("message", (event) => {
         const msg = JSON.parse(String(event.data));
         events.push(msg);
+        if (msg.type === "session.ready") {
+          const options = msg.config_options || [];
+          if (!options.some((option) => option.category === "model")) {
+            clearTimeout(timeout);
+            ws.close();
+            reject(new Error("session.ready did not include ACP model config_options"));
+            return;
+          }
+          if (!options.some((option) => option.category === "thought_level")) {
+            clearTimeout(timeout);
+            ws.close();
+            reject(new Error("session.ready did not include ACP thought_level config_options"));
+            return;
+          }
+          ws.send(JSON.stringify({ type: "set_config_option", config_id: "model", value: "gpt-5.4" }));
+          return;
+        }
+        if (
+          msg.type === "session.config_options" &&
+          msg.config_options?.some((option) => option.id === "model" && option.currentValue === "gpt-5.4") &&
+          !promptSent
+        ) {
+          promptSent = true;
+          ws.send(JSON.stringify({ type: "prompt", turn_id: turnId, text: "use clash cli on the desktop canvas" }));
+          return;
+        }
         if (msg.type === "session.complete" && msg.turn_id === turnId) {
           ws.send(JSON.stringify({ type: "dispose" }));
           return;
@@ -646,16 +803,21 @@ async function exerciseRealAcpSessionThroughDesktopRuntime(cdp, apiPort) {
 
     const textEvent = events.find((event) =>
       event.type === "session.event" &&
-      event.event?.update?.content?.text?.startsWith("Desktop fake ACP wrote node ")
+      event.event?.content?.text?.startsWith("Desktop fake ACP wrote node ")
+    );
+    const toolCallEvent = events.find((event) =>
+      event.type === "session.event" &&
+      event.event?.sessionUpdate === "tool_call" &&
+      event.event?.toolCallId === "desktop-fake-clash-cli"
     );
     return {
-      ok: !!textEvent,
+      ok: !!textEvent && !!toolCallEvent,
       stage: "events",
       runtimes,
       project,
       created,
       events,
-      text: textEvent?.event?.update?.content?.text ?? null
+      text: textEvent?.event?.content?.text ?? null
     };
   })()`);
 
@@ -683,7 +845,7 @@ async function exerciseRealAcpSessionThroughDesktopRuntime(cdp, apiPort) {
   if (
     node.data?.actorType !== "agent" ||
     node.data?.actorUserId !== "local-user" ||
-    node.data?.actorAgentId !== "local-director"
+    node.data?.actorAgentId !== "local-master-clash"
   ) {
     throw new Error(`Desktop real ACP CLI node attribution mismatch: ${JSON.stringify(node)}`);
   }
@@ -854,11 +1016,11 @@ async function main() {
       CLASH_DESKTOP_CAPTURE_DIR: captureDir,
       ...(realAcpSmoke
         ? {
-            CLASH_ACP_BIN_DIR: realAcpBinDir,
+            CLASH_ACP_TEST_BIN_DIR: realAcpBinDir,
             CLASH_NODE_EXEC_PATH: process.execPath,
             HOME: realAcpHome,
           }
-        : { CLASH_LOCAL_ACP_MOCK: "1" }),
+        : { CLASH_E2E_STUB_ACP: "1" }),
     },
     stdio: ["ignore", "pipe", "pipe"],
   });

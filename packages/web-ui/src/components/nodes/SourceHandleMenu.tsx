@@ -1,6 +1,6 @@
 import { memo, useState, useCallback, useRef, useMemo } from 'react';
-import { Handle, Position, useReactFlow, useNodes, useEdges, Node } from '@xyflow/react';
-import type { Node as RFNode } from '@xyflow/react';
+import { Handle, Position, useReactFlow, Node } from '@xyflow/react';
+import type { Edge, Node as RFNode } from '@xyflow/react';
 import { Copy } from '@phosphor-icons/react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useOptionalLoroSyncContext } from '../LoroSyncContext';
@@ -15,16 +15,22 @@ import CloneTrajectoryDialog from './CloneTrajectoryDialog';
 
 interface SourceHandleMenuProps {
     nodeId: string;
+    sourceType: Modality;
 }
 
-const SourceHandleMenu = ({ nodeId }: SourceHandleMenuProps) => {
+interface CloneDialogState {
+    subgraph: TrajectorySubgraph;
+    nodes: RFNode[];
+    edges: Edge[];
+}
+
+const SourceHandleMenu = ({ nodeId, sourceType }: SourceHandleMenuProps) => {
     const [isOpen, setIsOpen] = useState(false);
-    const [cloneDialog, setCloneDialog] = useState<TrajectorySubgraph | null>(null);
+    const [cloneDialog, setCloneDialog] = useState<CloneDialogState | null>(null);
+    const [hasUpstreamTrajectory, setHasUpstreamTrajectory] = useState(false);
     const leaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const { projectId } = useProject();
-    const { addEdges } = useReactFlow();
-    const allNodes = useNodes();
-    const allEdges = useEdges();
+    const { addEdges, getNodes, getEdges } = useReactFlow();
     const loroSync = useOptionalLoroSyncContext();
 
     const onNodesMutated = useCallback(
@@ -39,25 +45,18 @@ const SourceHandleMenu = ({ nodeId }: SourceHandleMenuProps) => {
 
     // Filter options by this source's modality — e.g. video source shouldn't
     // offer Image Gen because no mainstream image model accepts video refs.
-    const sourceType = useMemo<Modality | undefined>(() => {
-        const n = allNodes.find((nn) => nn.id === nodeId);
-        const t = n?.type;
-        return t === 'text' || t === 'image' || t === 'video' || t === 'audio' ? t : undefined;
-    }, [allNodes, nodeId]);
     const visibleOptions = useMemo(() => {
         return PIPELINE_MENU_OPTIONS.filter((opt) => opt.isCompatibleWithSource(sourceType));
     }, [sourceType]);
 
-    // Clone-trajectory option — only meaningful when this node was produced by
-    // an upstream action chain (i.e. there's a trajectory to clone backward).
-    // Head materials (uploads) have no incoming action edges → nothing to copy.
-    const hasUpstreamTrajectory = useMemo(() => {
-        const incoming = allEdges.filter((e) => e.target === nodeId);
-        return incoming.some((e) => {
-            const parent = allNodes.find((n) => n.id === e.source);
-            return parent?.type === 'action-badge';
-        });
-    }, [allEdges, allNodes, nodeId]);
+    const refreshHasUpstreamTrajectory = useCallback(() => {
+        const nodes = getNodes();
+        const edges = getEdges();
+        const nodeById = new Map(nodes.map((node) => [node.id, node]));
+        setHasUpstreamTrajectory(
+            edges.some((edge) => edge.target === nodeId && nodeById.get(edge.source)?.type === 'action-badge'),
+        );
+    }, [getEdges, getNodes, nodeId]);
 
     const cancelLeave = useCallback(() => {
         if (leaveTimerRef.current) {
@@ -68,8 +67,9 @@ const SourceHandleMenu = ({ nodeId }: SourceHandleMenuProps) => {
 
     const handleMouseEnter = useCallback(() => {
         cancelLeave();
+        refreshHasUpstreamTrajectory();
         setIsOpen(true);
-    }, [cancelLeave]);
+    }, [cancelLeave, refreshHasUpstreamTrajectory]);
 
     const handleMouseLeave = useCallback(() => {
         leaveTimerRef.current = setTimeout(() => {
@@ -130,13 +130,15 @@ const SourceHandleMenu = ({ nodeId }: SourceHandleMenuProps) => {
             e.stopPropagation();
             e.preventDefault();
             setIsOpen(false);
-            const sub = computeTrajectory(nodeId, allNodes as RFNode[], allEdges);
+            const nodes = getNodes() as RFNode[];
+            const edges = getEdges();
+            const sub = computeTrajectory(nodeId, nodes, edges);
             // Need at least one cloneset node (i.e. more than just heads) to be useful.
             const clonesetSize = sub.nodeIds.size - sub.headIds.size;
             if (clonesetSize <= 0) return;
-            setCloneDialog(sub);
+            setCloneDialog({ subgraph: sub, nodes, edges });
         },
-        [nodeId, allNodes, allEdges],
+        [nodeId, getEdges, getNodes],
     );
 
     const handleCloneApply = useCallback(
@@ -264,9 +266,9 @@ const SourceHandleMenu = ({ nodeId }: SourceHandleMenuProps) => {
             {cloneDialog && (
                 <CloneTrajectoryDialog
                     open={true}
-                    subgraph={cloneDialog}
-                    nodes={allNodes as RFNode[]}
-                    edges={allEdges}
+                    subgraph={cloneDialog.subgraph}
+                    nodes={cloneDialog.nodes}
+                    edges={cloneDialog.edges}
                     projectId={projectId}
                     onApply={handleCloneApply}
                     onCancel={() => setCloneDialog(null)}

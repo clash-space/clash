@@ -54,6 +54,7 @@ describe("TopNavigation desktop chrome", () => {
     const tablist = await screen.findByRole("tablist", { name: "Open tabs" });
     const account = await screen.findByRole("button", { name: "Account" });
     await waitFor(() => expect(screen.getByRole("tab", { name: "Home" })).toBeTruthy());
+    expect(screen.queryByRole("button", { name: "Open Home" })).toBeNull();
 
     expect(desktopChrome?.contains(tablist)).toBe(true);
     expect(desktopChrome?.contains(shortcuts)).toBe(false);
@@ -77,6 +78,7 @@ describe("TopNavigation desktop chrome", () => {
     );
 
     await waitFor(() => expect(screen.getByRole("tab", { name: "Home" })).toBeTruthy());
+    expect(screen.queryByRole("button", { name: "Open Home" })).toBeNull();
 
     fireEvent.click(screen.getByRole("link", { name: "Open Project" }));
 
@@ -124,7 +126,7 @@ describe("TopNavigation desktop chrome", () => {
     expect(globalCss).toMatch(/\.desktop-no-drag,\s*\.desktop-no-drag \*[\s\S]*user-select:\s*none;/);
   });
 
-  it("keeps the empty tab strip area draggable without redundant toolbar buttons", async () => {
+  it("keeps the empty tab strip area draggable with fixed desktop navigation controls", async () => {
     globalThis.__CLASH_DESKTOP__ = {
       isDesktop: true,
       newWindow: vi.fn(),
@@ -137,15 +139,155 @@ describe("TopNavigation desktop chrome", () => {
     );
 
     const tablist = await screen.findByRole("tablist", { name: "Open tabs" });
+    const backButton = screen.getByRole("button", { name: "Back" }) as HTMLButtonElement;
+    const forwardButton = screen.getByRole("button", { name: "Forward" }) as HTMLButtonElement;
     const homeTab = await screen.findByRole("tab", { name: "Home" });
 
     expect(tablist.className).toContain("desktop-drag-region");
     expect(tablist.className).not.toContain("desktop-no-drag");
     expect(homeTab.closest("[data-desktop-tab]")?.className).toContain("desktop-no-drag");
-    expect(screen.queryByRole("button", { name: "Back" })).toBeNull();
-    expect(screen.queryByRole("button", { name: "Forward" })).toBeNull();
+    expect(backButton.disabled).toBe(true);
+    expect(forwardButton.disabled).toBe(true);
+    expect(backButton.parentElement?.className).not.toContain("rounded-full");
+    expect(backButton.parentElement?.className).not.toContain("border");
+    expect(backButton.compareDocumentPosition(forwardButton) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(forwardButton.compareDocumentPosition(tablist) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(tablist.contains(homeTab)).toBe(true);
     expect(screen.queryByRole("button", { name: "Reload" })).toBeNull();
     expect(screen.queryByRole("button", { name: "New Tab" })).toBeNull();
+  });
+
+  it("keeps the desktop tab strip on settings without the product toolbar", async () => {
+    globalThis.__CLASH_DESKTOP__ = {
+      isDesktop: true,
+      newWindow: vi.fn(),
+    };
+
+    render(
+      <MemoryRouter initialEntries={["/settings"]}>
+        <TopNavigation />
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByRole("tablist", { name: "Open tabs" })).toBeTruthy();
+    expect(screen.getByRole("tab", { name: "Home" }).getAttribute("aria-selected")).toBe("false");
+    expect(screen.getByRole("tab", { name: "Settings" }).getAttribute("aria-selected")).toBe("true");
+    expect(screen.queryByRole("navigation", { name: "Primary" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Account" })).toBeNull();
+  });
+
+  it("keeps Home as a normal desktop tab even when another route is active", async () => {
+    globalThis.__CLASH_DESKTOP__ = {
+      isDesktop: true,
+      newWindow: vi.fn(),
+    };
+
+    render(
+      <MemoryRouter initialEntries={["/settings"]}>
+        <TopNavigation />
+        <LocationEcho />
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByRole("tab", { name: "Settings" })).toBeTruthy();
+    const homeTab = screen.getByRole("tab", { name: "Home" });
+    expect(homeTab.closest('[role="tablist"]')).toBeTruthy();
+    expect(homeTab.getAttribute("aria-selected")).toBe("false");
+    expect(screen.queryByRole("button", { name: "Open Home" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Close Home" })).toBeNull();
+
+    fireEvent.click(homeTab);
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("location").textContent).toBe("/");
+      expect(screen.getByRole("tab", { name: "Home" }).getAttribute("aria-selected")).toBe("true");
+      expect(screen.getByRole("tab", { name: "Settings" })).toBeTruthy();
+    });
+  });
+
+  it("keeps Home inside the retained tab sequence when Home is active", async () => {
+    globalThis.__CLASH_DESKTOP__ = {
+      isDesktop: true,
+      newWindow: vi.fn(),
+    };
+
+    const { container } = render(
+      <MemoryRouter initialEntries={["/settings"]}>
+        <TopNavigation />
+        <LocationEcho />
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByRole("tab", { name: "Settings" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("tab", { name: "Home" }));
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("location").textContent).toBe("/");
+      expect(screen.getByRole("tab", { name: "Home" }).getAttribute("aria-selected")).toBe("true");
+      expect(screen.getByRole("tab", { name: "Settings" })).toBeTruthy();
+    });
+
+    const boundary = container.querySelector('[data-desktop-tab-boundary-separator="true"]');
+    const tablist = screen.getByRole("tablist", { name: "Open tabs" });
+    const homeTab = screen.getByRole("tab", { name: "Home" });
+
+    expect(boundary).toBeNull();
+    expect(tablist.contains(homeTab)).toBe(true);
+    expect(homeTab.compareDocumentPosition(screen.getByRole("tab", { name: "Settings" })) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it("uses desktop back and forward controls for route history while retaining Home as a tab", async () => {
+    globalThis.__CLASH_DESKTOP__ = {
+      isDesktop: true,
+      newWindow: vi.fn(),
+    };
+
+    render(
+      <MemoryRouter initialEntries={["/"]}>
+        <TopNavigation />
+        <Link to="/projects">Projects route</Link>
+        <Link to="/projects/project-1">Project route</Link>
+        <LocationEcho />
+      </MemoryRouter>,
+    );
+
+    const back = await screen.findByRole("button", { name: "Back" }) as HTMLButtonElement;
+    const forward = screen.getByRole("button", { name: "Forward" }) as HTMLButtonElement;
+    expect(back.disabled).toBe(true);
+    expect(forward.disabled).toBe(true);
+    expect(screen.getByRole("tab", { name: "Home" }).getAttribute("aria-selected")).toBe("true");
+
+    fireEvent.click(screen.getByRole("link", { name: "Projects route" }));
+    await waitFor(() => {
+      expect(screen.getByLabelText("location").textContent).toBe("/projects");
+      expect(screen.getByRole("tab", { name: "Projects" }).getAttribute("aria-selected")).toBe("true");
+      expect(back.disabled).toBe(false);
+    });
+
+    fireEvent.click(screen.getByRole("link", { name: "Project route" }));
+    await waitFor(() => {
+      expect(screen.getByLabelText("location").textContent).toBe("/projects/project-1");
+      expect(screen.getByRole("tab", { name: "Project" }).getAttribute("aria-selected")).toBe("true");
+    });
+
+    fireEvent.click(back);
+    await waitFor(() => {
+      expect(screen.getByLabelText("location").textContent).toBe("/projects");
+      expect(screen.getByRole("tab", { name: "Projects" }).getAttribute("aria-selected")).toBe("true");
+      expect(forward.disabled).toBe(false);
+    });
+
+    fireEvent.click(back);
+    await waitFor(() => {
+      expect(screen.getByLabelText("location").textContent).toBe("/");
+      expect(screen.getByRole("tab", { name: "Home" }).getAttribute("aria-selected")).toBe("true");
+    });
+
+    fireEvent.click(forward);
+    await waitFor(() => {
+      expect(screen.getByLabelText("location").textContent).toBe("/projects");
+      expect(screen.getByRole("tab", { name: "Projects" }).getAttribute("aria-selected")).toBe("true");
+    });
   });
 
   it("uses shared desktop chrome metrics to align toolbar icons with macOS traffic lights", async () => {
@@ -163,6 +305,7 @@ describe("TopNavigation desktop chrome", () => {
     const desktopChrome = container.querySelector<HTMLElement>('[data-desktop-chrome="true"]');
     const toolbar = container.querySelector<HTMLElement>('[data-desktop-toolbar="true"]');
     await waitFor(() => expect(screen.getByRole("tab", { name: "Home" })).toBeTruthy());
+    expect(screen.queryByRole("button", { name: "Open Home" })).toBeNull();
 
     expect(desktopChrome?.style.getPropertyValue("--clash-desktop-chrome-height")).toBe("40px");
     expect(desktopChrome?.style.getPropertyValue("--clash-desktop-toolbar-left-inset")).toBe("92px");
@@ -187,6 +330,7 @@ describe("TopNavigation desktop chrome", () => {
     );
 
     await waitFor(() => expect(screen.getByRole("tab", { name: "Home" })).toBeTruthy());
+    expect(screen.queryByRole("button", { name: "Open Home" })).toBeNull();
 
     fireEvent.click(screen.getByRole("link", { name: "Projects route" }));
     await waitFor(() => expect(screen.getByRole("tab", { name: "Projects" })).toBeTruthy());

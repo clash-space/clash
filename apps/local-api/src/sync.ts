@@ -1,9 +1,9 @@
-import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
-import { dirname, join } from "node:path";
+import { join } from "node:path";
 import { LoroDoc } from "loro-crdt";
 import { Canvas, CustomActionDefinitionSchema, type ClientType, type PresenceClient } from "@clash/shared-types";
 import { WebSocketServer, type WebSocket } from "ws";
+import { FileReplicaStore } from "./loro/file-replica-store.js";
 import { createLocalWorkflowProcessor, type LocalWorkflowProcessor } from "./local-processor.js";
 
 type UpgradeCapableServer = {
@@ -58,10 +58,6 @@ function exactBytes(view: Uint8Array): Uint8Array {
 function exactArrayBuffer(view: Uint8Array): ArrayBuffer {
   const bytes = exactBytes(view);
   return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
-}
-
-function snapshotPath(dataDir: string, projectId: string): string {
-  return join(dataDir, "loro", `${encodeURIComponent(projectId)}.bin`);
 }
 
 function remoteProjectUrl(baseUrl: string, projectId: string, suffix: string): string {
@@ -130,13 +126,16 @@ export function createRemoteLoroPersistenceFromEnv(
 
 async function loadDoc(options: LocalSyncOptions): Promise<{
   doc: LoroDoc;
+  store: FileReplicaStore;
   importedRemoteSnapshot: boolean;
 }> {
-  const doc = new LoroDoc();
+  const store = new FileReplicaStore(join(options.dataDir, "projects"));
+  let doc: LoroDoc;
   try {
-    doc.import(await readFile(snapshotPath(options.dataDir, options.projectId)));
-  } catch {
-    // Missing or corrupt local snapshots should not stop the desktop app from opening.
+    doc = await store.recover(options.projectId);
+  } catch (error) {
+    console.error("[local-sync] failed to recover local replica", error);
+    doc = new LoroDoc();
   }
 
   let importedRemoteSnapshot = false;
@@ -153,16 +152,16 @@ async function loadDoc(options: LocalSyncOptions): Promise<{
     }
   }
 
-  return { doc, importedRemoteSnapshot };
+  return { doc, store, importedRemoteSnapshot };
 }
 
 export class LocalLoroRoom {
   private peers = new Map<PeerId, LocalPeer>();
 
   private constructor(
-    private readonly dataDir: string,
     private readonly projectId: string,
     private readonly doc: LoroDoc,
+    private readonly store: FileReplicaStore,
     private readonly remotePersistence?: RemoteLoroPersistenceSource,
     private readonly workflowProcessor?: LocalWorkflowProcessor,
   ) {}
@@ -173,13 +172,13 @@ export class LocalLoroRoom {
       ? createLocalWorkflowProcessor({ dataDir: options.dataDir })
       : options.workflowProcessor ?? undefined;
     const room = new LocalLoroRoom(
-      options.dataDir,
       options.projectId,
       loaded.doc,
+      loaded.store,
       options.remotePersistence,
       workflowProcessor,
     );
-    if (loaded.importedRemoteSnapshot) await room.persist();
+    if (loaded.importedRemoteSnapshot) await room.saveSnapshot();
     await room.processPendingWork();
     return room;
   }
@@ -209,7 +208,7 @@ export class LocalLoroRoom {
   async receive(sender: PeerId, update: Uint8Array): Promise<void> {
     const updateBytes = exactBytes(update);
     this.doc.import(updateBytes);
-    await this.persist();
+    await this.persistUpdate(updateBytes);
     for (const [peerId, peer] of this.peers.entries()) {
       if (peerId !== sender) peer.sendUpdate(updateBytes);
     }
@@ -289,10 +288,13 @@ export class LocalLoroRoom {
     }
   }
 
-  private async persist(): Promise<void> {
-    const path = snapshotPath(this.dataDir, this.projectId);
-    await mkdir(dirname(path), { recursive: true });
-    await writeFile(path, exactBytes(this.snapshot()));
+  private async saveSnapshot(): Promise<void> {
+    await this.store.saveSnapshotAtomic(this.projectId, this.snapshot(), this.doc.version());
+  }
+
+  private async persistUpdate(update: Uint8Array): Promise<void> {
+    await this.store.appendUpdate(this.projectId, update);
+    await this.saveSnapshot();
   }
 
   private async processPendingWork(): Promise<void> {
@@ -306,7 +308,7 @@ export class LocalLoroRoom {
     });
     if (!changed) return;
     const update = exactBytes(this.doc.export({ mode: "update", from: versionBefore }));
-    await this.persist();
+    await this.persistUpdate(update);
     for (const peer of this.peers.values()) {
       peer.sendUpdate(update);
     }
@@ -316,7 +318,7 @@ export class LocalLoroRoom {
 
   private async publishUpdate(versionBefore: unknown): Promise<void> {
     const update = exactBytes(this.doc.export({ mode: "update", from: versionBefore as never }));
-    await this.persist();
+    await this.persistUpdate(update);
     for (const peer of this.peers.values()) {
       peer.sendUpdate(update);
     }

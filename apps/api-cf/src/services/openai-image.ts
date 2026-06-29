@@ -163,7 +163,7 @@ async function editImage(input: {
 
 export async function generateOpenAIImage(params: OpenAIImageParams): Promise<OpenAIImageResult> {
   const apiKey = params.apiKey?.trim();
-  if (!apiKey) throw new Error("OPENAI_API_KEY is required for GPT Image generation.");
+  if (!apiKey) throw new Error("OpenAI provider account is missing apiKey.");
 
   const prompt = params.prompt.trim();
   if (!prompt) throw new Error("Prompt is required for GPT Image generation.");

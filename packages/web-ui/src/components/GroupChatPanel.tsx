@@ -2,31 +2,30 @@
  * GroupChatPanel — group chat panel built on the claim layer.
  *
  * Identity model:
- *   - Templates (Director / Canvas Editor / …) live in the bridge as
- *     read-only role definitions.
- *   - User claims them in Settings → produces crew_member rows.
- *   - This panel works on **claimed crew**: the + dropdown shows the
- *     user's claimed crew (via /api/v1/crew); each claim is bound to a
+ *   - Agent templates live in the bridge as read-only runtime definitions.
+ *   - User claims them in Settings → produces agent_member rows.
+ *   - This panel works on **claimed agent**: the + dropdown shows the
+ *     user's claimed agent (via /api/v1/agents); each claim is bound to a
  *     specific runtime, so there's no panel-wide runtime picker.
- *   - Per-project, the user "invites" claimed crew into the room;
+ *   - Per-project, the user "invites" claimed agent into the room;
  *     invitations persist in localStorage (keyed by project_id) so
  *     refreshing the page doesn't re-empty the rail.
  *
  * Three views, switched via top tabs:
  *   - Room       (default): the project-wide IM log. Humans typing +
- *                future crew broadcasts (via say_to_room) land here.
- *   - <Crew>     One per invited crew. Shows that crew's full event
+ *                future agent broadcasts (via say_to_room) land here.
+ *   - <Agent>     One per invited agent. Shows that agent's full event
  *                stream (tool calls, streamed text, etc.).
  *
- * Input parses leading `@<displayname>` (matched against invited crew's
+ * Input parses leading `@<displayname>` (matched against invited agent's
  * display name; falls back to template id for back-compat). Mention
- * encodes crew_member_id in the room message; server's mention
+ * encodes agent_member_id in the room message; server's mention
  * dispatcher uses that to find the right runtime_session and push a
- * room.mention frame to the crew's react loop (which queues it as
+ * room.mention frame to the agent's react loop (which queues it as
  * next-turn prompt — append-on-next-turn semantics).
  *
- * Sub-components live under `_group-chat/` (TabPill, RoomView, CrewView,
- * MentionAutocomplete, InviteCrewMenu). State machinery for the @-mention
+ * Sub-components live under `_group-chat/` (TabPill, RoomView, AgentView,
+ * MentionAutocomplete, InviteAgentMenu). State machinery for the @-mention
  * autocomplete + cursor placement lives in
  * `hooks/useMentionAutocomplete`. This file is the shell that wires
  * them together.
@@ -38,27 +37,26 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
 import { CaretLeft, CaretRight, ArrowClockwise, Lightning } from '@phosphor-icons/react';
-import { Link } from 'react-router';
+import { Link, useNavigate } from 'react-router';
 import betterAuthClient from '@clash/web-ui/lib/betterAuthClient';
 import { useBillingBalance } from '@clash/web-ui/hooks/useBillingBalance';
-import { SettingsDialog } from './SettingsDialog';
 import { ChatInput, type UploadedAttachment } from './copilot/ChatInput';
 import type { MentionableNode } from './MilkdownEditor';
 import { useGroupChat, type GroupChatSessionEvent } from '@clash/web-ui/hooks/useGroupChat';
 import { useProjectRoom, type RoomSyncMeta } from '@clash/web-ui/hooks/useProjectRoom';
-import { useClaimedCrew } from '@clash/web-ui/hooks/useClaimedCrew';
+import { useClaimedAgents } from '@clash/web-ui/hooks/useClaimedAgents';
 import { useMentionAutocomplete } from '@clash/web-ui/hooks/useMentionAutocomplete';
 import PresenceBar from '@clash/web-ui/components/PresenceBar';
 import { visiblePresenceClients } from '@clash/web-ui/lib/presenceVisibility';
 import type { PresenceClient, RoomMessageEvent } from '@clash/shared-types';
 import { parseMention } from '../_group-chat/mention';
-import { crewHandle, crewInitials, type CrewRow } from '../_group-chat/panel-types';
+import { agentHandle, agentInitials, type AgentRow } from '../_group-chat/panel-types';
 import { loadInvited, saveInvited } from '../_group-chat/invitedStorage';
 import { TabPill } from '../_group-chat/TabPill';
 import { RoomView } from '../_group-chat/RoomView';
-import { CrewView } from '../_group-chat/CrewView';
+import { AgentView } from '../_group-chat/AgentView';
 import { MentionAutocomplete } from '../_group-chat/MentionAutocomplete';
-import { InviteCrewMenu } from '../_group-chat/InviteCrewMenu';
+import { InviteAgentMenu } from '../_group-chat/InviteAgentMenu';
 import { statusDotClass, statusDotLabel } from '../_group-chat/statusDot';
 
 const ROOM_TAB = '__room__';
@@ -136,8 +134,8 @@ export interface GroupChatPanelProps {
    * Canvas-side context for ChatInput's @-mention picker. Both come
    * straight from ProjectEditor — `mentionableNodes` is the asset /
    * media subset of the React Flow nodes already filtered + thumbnail-
-   * resolved; we add invited crew on top here so the user can @ a
-   * crew member from the same picker.
+   * resolved; we add invited agent on top here so the user can @ a
+   * agent member from the same picker.
    */
   mentionableNodes?: MentionableNode[];
 }
@@ -154,9 +152,10 @@ export function GroupChatPanel({
   onSessionEvent,
   mentionableNodes: canvasMentionableNodes,
 }: GroupChatPanelProps) {
+  const navigate = useNavigate();
   const room = useProjectRoom(projectId);
   const group = useGroupChat(projectId, { onSessionEvent });
-  const { crew: claimedCrew, loading: crewLoading } = useClaimedCrew();
+  const { agents: claimedAgent, loading: agentLoading } = useClaimedAgents();
   const [invitedIds, setInvitedIds] = useState<string[]>(() => loadInvited(projectId));
   const [activeTab, setActiveTab] = useState<string>(ROOM_TAB);
   const [showAddMenu, setShowAddMenu] = useState(false);
@@ -187,19 +186,19 @@ export function GroupChatPanel({
     registerRoomSink?.(room.setLiveMessage);
   }, [registerRoomSink, room.setLiveMessage]);
 
-  const claimById = useCallback((id: string) => claimedCrew.find((c) => c.id === id), [claimedCrew]);
-  const invitedCrew = useMemo(
-    () => invitedIds.map(claimById).filter((c): c is CrewRow => !!c),
+  const claimById = useCallback((id: string) => claimedAgent.find((c) => c.id === id), [claimedAgent]);
+  const invitedAgent = useMemo(
+    () => invitedIds.map(claimById).filter((c): c is AgentRow => !!c),
     [invitedIds, claimById],
   );
 
-  // Auto-spawn sessions for invited crew that don't have one yet.
-  // Runs whenever invited list or claimed crew changes.
+  // Auto-spawn sessions for invited agent that don't have one yet.
+  // Runs whenever invited list or claimed agent changes.
   useEffect(() => {
-    for (const c of invitedCrew) {
-      const exists = group.crew.some((x) => x.crewId === c.id);
+    for (const c of invitedAgent) {
+      const exists = group.agent.some((x) => x.agentMemberId === c.id);
       if (!exists) {
-        void group.addCrew({
+        void group.addAgent({
           id: c.id,
           template_id: c.template_id,
           runtime_id: c.runtime_id,
@@ -207,9 +206,9 @@ export function GroupChatPanel({
         });
       }
     }
-  }, [invitedCrew, group]);
+  }, [invitedAgent, group]);
 
-  const invite = useCallback((row: CrewRow) => {
+  const invite = useCallback((row: AgentRow) => {
     setInvitedIds((prev) => (prev.includes(row.id) ? prev : [...prev, row.id]));
     setShowAddMenu(false);
     setActiveTab(row.id);
@@ -218,56 +217,56 @@ export function GroupChatPanel({
   const uninvite = useCallback(
     (id: string) => {
       setInvitedIds((prev) => prev.filter((x) => x !== id));
-      group.removeCrew(id);
+      group.removeAgent(id);
       setActiveTab((cur) => (cur === id ? ROOM_TAB : cur));
     },
     [group],
   );
 
-  // Mention name resolution: try invited crew display_name first, then
-  // fall back to template id (lets `@director` still work as a shortcut
-  // when there's exactly one Director invited). Returns the matching
-  // claim id (= crew_member.id) or null.
+  // Mention name resolution: try invited agent display_name first, then
+  // fall back to template id (lets `@master-clash` work as a shortcut
+  // when there's exactly one matching agent invited). Returns the matching
+  // claim id (= agent_member.id) or null.
   const resolveMention = useCallback(
-    (handle: string): CrewRow | null => {
+    (handle: string): AgentRow | null => {
       const lower = handle.toLowerCase();
-      const byName = invitedCrew.find((c) => crewHandle(c.display_name) === lower);
+      const byName = invitedAgent.find((c) => agentHandle(c.display_name) === lower);
       if (byName) return byName;
-      const byTemplate = invitedCrew.filter((c) => c.template_id === lower);
+      const byTemplate = invitedAgent.filter((c) => c.template_id === lower);
       if (byTemplate.length === 1) return byTemplate[0]; // ambiguous → null
       return null;
     },
-    [invitedCrew],
+    [invitedAgent],
   );
 
   /**
    * Mentionable picker fed to ChatInput's MilkdownEditor. Combines
    * canvas media nodes (passed in by ProjectEditor) and currently
-   * invited crew so the user can `@` either kind from one list.
-   * Crew get a stable id namespace (their `crew_member.id`) so
+   * invited agent so the user can `@` either kind from one list.
+   * Agent get a stable id namespace (their `agent_member.id`) so
    * onChatSubmit can route each mention to the right channel
    * (room.mentions[] vs inline canvas reference).
    */
   const mentionableNodes = useMemo<MentionableNode[]>(() => {
-    const crew: MentionableNode[] = invitedCrew.map((c) => ({
+    const agent: MentionableNode[] = invitedAgent.map((c) => ({
       id: c.id,
-      type: 'crew',
+      type: 'agent',
       label: c.display_name,
     }));
-    return [...crew, ...(canvasMentionableNodes ?? [])];
-  }, [invitedCrew, canvasMentionableNodes]);
+    return [...agent, ...(canvasMentionableNodes ?? [])];
+  }, [invitedAgent, canvasMentionableNodes]);
 
-  /** Set of crew_member.ids so submit-time partitioning is O(1). */
-  const invitedCrewIdSet = useMemo(
-    () => new Set(invitedCrew.map((c) => c.id)),
-    [invitedCrew],
+  /** Set of agent_member.ids so submit-time partitioning is O(1). */
+  const invitedAgentIdSet = useMemo(
+    () => new Set(invitedAgent.map((c) => c.id)),
+    [invitedAgent],
   );
 
   /**
    * ChatInput submit handler. Receives markdown text containing
    * inline mentions in the canonical `@[label](node:id)` form (or
    * `@<handle>` legacy plain-text form), plus any uploaded
-   * attachments. Splits crew mentions out into the room API's
+   * attachments. Splits agent mentions out into the room API's
    * `mentions[]` array; canvas mentions stay in the text body so
    * the message renderer can inline-thumbnail them on display.
    */
@@ -277,7 +276,7 @@ export function GroupChatPanel({
       if (!value) return;
       void _attachments; // attachments wired in next pass (asset/upload plumbing)
 
-      const crewMentions: Array<{ user_id: string; crew_member_id: string }> = [];
+      const agentMentions: Array<{ user_id: string; agent_member_id: string }> = [];
       // ChatInput emits `@[label](node:<id>)` for every picker selection.
       // Defensive: some older Milkdown builds (and any human typing a
       // title attribute) emit `[label](node:<id> "title")`; capturing
@@ -286,38 +285,38 @@ export function GroupChatPanel({
       let m: RegExpExecArray | null;
       while ((m = re.exec(value)) !== null) {
         const id = m[1];
-        if (invitedCrewIdSet.has(id)) {
-          crewMentions.push({ user_id: userId, crew_member_id: id });
+        if (invitedAgentIdSet.has(id)) {
+          agentMentions.push({ user_id: userId, agent_member_id: id });
         }
       }
 
       // Fall back to legacy plain `@<handle>` syntax if no
-      // structured crew mention found (lets a user typing a bare
-      // @director still address a crew).
-      if (crewMentions.length === 0) {
-        const { crewId: handle } = parseMention(value);
+      // structured agent mention found (lets a user typing a bare
+      // @master-clash still address an agent).
+      if (agentMentions.length === 0) {
+        const { agentMemberId: handle } = parseMention(value);
         const target = handle ? resolveMention(handle) : null;
-        if (target) crewMentions.push({ user_id: userId, crew_member_id: target.id });
+        if (target) agentMentions.push({ user_id: userId, agent_member_id: target.id });
       }
 
       setDraft('');
       // POST to room — server's mention dispatcher pushes a room.mention
-      // frame to the target crew's session; useGroupChat queues it; one
+      // frame to the target agent's session; useGroupChat queues it; one
       // dispatch path (don't also call sendToFocused here, or the agent
       // receives the same message twice).
-      await room.send(value, crewMentions);
+      await room.send(value, agentMentions);
 
-      // Switch focus to the (first) target crew so reply streams into
+      // Switch focus to the (first) target agent so reply streams into
       // the right tab.
-      if (crewMentions[0]) group.focus(crewMentions[0].crew_member_id);
+      if (agentMentions[0]) group.focus(agentMentions[0].agent_member_id);
     },
-    [userId, room, group, resolveMention, invitedCrewIdSet],
+    [userId, room, group, resolveMention, invitedAgentIdSet],
   );
 
   // Kept for back-compat with the (now-deprecated) plain-text composer
   // path. The new ChatInput owns its own input state — no autocomplete
   // hook needed here since MilkdownEditor's @-picker covers it.
-  const ac = useMentionAutocomplete(draft, setDraft, textareaRef, invitedCrew);
+  const ac = useMentionAutocomplete(draft, setDraft, textareaRef, invitedAgent);
   void ac;
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -331,8 +330,8 @@ export function GroupChatPanel({
   // ends. Roving tabindex on TabPill keeps Tab/Shift-Tab moving past the
   // whole tablist instead of stepping through every chip.
   const tabOrder = useMemo<string[]>(
-    () => [ROOM_TAB, ...invitedCrew.map((c) => c.id)],
-    [invitedCrew],
+    () => [ROOM_TAB, ...invitedAgent.map((c) => c.id)],
+    [invitedAgent],
   );
   const focusTab = useCallback(
     (key: string) => {
@@ -409,12 +408,12 @@ export function GroupChatPanel({
   // panel card hides. The chevron in the rail flips direction so it
   // points "into" what clicking will reveal (left = pull the panel
   // back into view; right = push it away to the right). Status dots
-  // on the rail's crew avatars give the user the same presence
+  // on the rail's agent avatars give the user the same presence
   // signal a separate floating PresenceBar would.
 
-  const uninvitedClaimed = claimedCrew.filter((c) => !invitedIds.includes(c.id));
-  const focusedCrew = group.crew.find((c) => c.crewId === activeTab);
-  const firstInvitedHandle = invitedCrew[0] && crewHandle(invitedCrew[0].display_name);
+  const uninvitedClaimed = claimedAgent.filter((c) => !invitedIds.includes(c.id));
+  const focusedAgent = group.agent.find((c) => c.agentMemberId === activeTab);
+  const firstInvitedHandle = invitedAgent[0] && agentHandle(invitedAgent[0].display_name);
 
   // "Other clients" — humans / cli / agents connected to this project's
   // ProjectRoom besides the local user. Mirrors the canvas presence
@@ -435,10 +434,9 @@ export function GroupChatPanel({
     .join('')
     .toUpperCase()
     .slice(0, 2);
-  const [settingsOpen, setSettingsOpen] = useState(false);
 
-  const activeTabLabel = activeTab === ROOM_TAB ? 'Room' : focusedCrew?.crewId
-    ? invitedCrew.find((c) => c.id === activeTab)?.display_name ?? 'Crew'
+  const activeTabLabel = activeTab === ROOM_TAB ? 'Room' : focusedAgent?.agentMemberId
+    ? invitedAgent.find((c) => c.id === activeTab)?.display_name ?? 'Agent'
     : 'Room';
   const syncIndicator = roomSyncIndicator(room.sync);
 
@@ -493,8 +491,8 @@ export function GroupChatPanel({
             onKeyDown={(e) => onTabKeyDown(e, ROOM_TAB)}
             compact
           />
-          {invitedCrew.map((c) => {
-            const live = group.crew.find((x) => x.crewId === c.id);
+          {invitedAgent.map((c) => {
+            const live = group.agent.find((x) => x.agentMemberId === c.id);
             return (
               <TabPill
                 key={c.id}
@@ -509,7 +507,7 @@ export function GroupChatPanel({
                 unread={!!live?.unread}
                 pendingCount={live?.pendingPrompts.length ?? 0}
                 status={live?.status}
-                initials={crewInitials(c.display_name)}
+                initials={agentInitials(c.display_name)}
                 controlsId={panelId}
                 tabId={tabIdFor(c.id)}
                 onKeyDown={(e) => onTabKeyDown(e, c.id)}
@@ -518,22 +516,22 @@ export function GroupChatPanel({
             );
           })}
 
-          <InviteCrewMenu
+          <InviteAgentMenu
             open={showAddMenu}
             onToggle={() => {
               setShowAddMenu((v) => !v);
               if (isCollapsed) onCollapseChange(false);
             }}
             uninvitedClaimed={uninvitedClaimed}
-            totalClaimed={claimedCrew.length}
-            loading={crewLoading}
+            totalClaimed={claimedAgent.length}
+            loading={agentLoading}
             onInvite={invite}
-            onOpenSettings={() => setSettingsOpen(true)}
+            onOpenSettings={() => navigate('/settings')}
           />
 
           {/* Refresh sits immediately under the + button — same
               size + shape so they read as a paired tool cluster
-              ("add crew" / "reload room"). */}
+              ("add agent" / "reload room"). */}
           <motion.button
             onClick={() => void room.refetch()}
             whileHover={{ scale: 1.05 }}
@@ -554,9 +552,8 @@ export function GroupChatPanel({
             <PresenceBar clients={otherClients} />
           </div>
         )}
-        <button
-          type="button"
-          onClick={() => setSettingsOpen(true)}
+        <Link
+          to="/settings"
           className="block rounded-xl focus:outline-none focus-visible:ring-2 focus-visible:ring-brand/60 focus-visible:ring-offset-1 focus-visible:ring-offset-warm-surface"
           aria-label={`Settings — signed in as ${sessionUser?.name ?? 'guest'}`}
           title={sessionUser?.name ?? 'Settings'}
@@ -573,7 +570,7 @@ export function GroupChatPanel({
               {userInitials}
             </div>
           )}
-        </button>
+        </Link>
         {(balance.status === 'ready' || balance.status === 'loading') && (
           <Link
             to="/billing"
@@ -595,7 +592,7 @@ export function GroupChatPanel({
 
       {/* ── Panel card — resizable, contains message body + composer.
           Hidden when isCollapsed; the rail above stays visible so
-          the user keeps the tab list + crew presence on screen.
+          the user keeps the tab list + agent presence on screen.
           Constants PANEL_MIN_WIDTH / PANEL_MAX_WIDTH bound the
           resize handle range.
           Collapse/expand animates the shell's `width` (and opacity)
@@ -677,24 +674,24 @@ export function GroupChatPanel({
               userId={userId}
               labelFor={(id) => claimById(id)?.display_name ?? id}
               empty={!room.loading && room.messages.length === 0}
-              hasInvited={invitedCrew.length > 0}
+              hasInvited={invitedAgent.length > 0}
               mentionableNodes={mentionableNodes}
               sync={room.sync}
             />
           ) : (
-            <CrewView
-              messages={focusedCrew?.messages ?? []}
-              status={focusedCrew?.status}
-              errorMessage={focusedCrew?.errorMessage}
-              onRetry={focusedCrew ? () => group.retryCrew?.(focusedCrew.crewId) : undefined}
+            <AgentView
+              messages={focusedAgent?.messages ?? []}
+              status={focusedAgent?.status}
+              errorMessage={focusedAgent?.errorMessage}
+              onRetry={focusedAgent ? () => group.retryAgent?.(focusedAgent.agentMemberId) : undefined}
             />
           )}
         </div>
 
-        {/* Input lives only on the Room tab. Crew tabs are read-only event
+        {/* Input lives only on the Room tab. Agent tabs are read-only event
             streams — typing into them never made sense (the input always
             POSTed to /room anyway, with @-mention routing). Hiding it
-            here makes the crew tab's purpose obvious: spectate this
+            here makes the agent tab's purpose obvious: spectate this
             agent's tool calls + thinking. To talk to the agent, switch
             to Room and use @<name>. */}
         {activeTab === ROOM_TAB && (
@@ -703,9 +700,9 @@ export function GroupChatPanel({
           onInputChange={setDraft}
           onSubmit={onChatSubmit}
           placeholder={
-            invitedCrew.length === 0
-              ? 'Invite a crew member with + to start chatting'
-              : `Chat the room, or @${firstInvitedHandle} a crew member`
+            invitedAgent.length === 0
+              ? 'Invite a agent member with + to start chatting'
+              : `Chat the room, or @${firstInvitedHandle} a agent member`
           }
           mentionableNodes={mentionableNodes}
           projectId={projectId}
@@ -715,7 +712,6 @@ export function GroupChatPanel({
         />)}
       </div>
       </motion.div>
-      <SettingsDialog open={settingsOpen} onClose={() => setSettingsOpen(false)} />
     </div>
   );
 }

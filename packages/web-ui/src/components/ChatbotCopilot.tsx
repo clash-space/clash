@@ -1,7 +1,7 @@
 
-import { memo, useState, useRef, useEffect, useCallback, useMemo, useId, type ReactNode } from 'react';
+import { memo, useState, useRef, useEffect, useCallback, useMemo, useId } from 'react';
 import { motion, AnimatePresence, MotionConfig } from 'framer-motion';
-import { CaretDown, CaretRight, Check, Plus, ClockCounterClockwise, Trash, Plug } from '@phosphor-icons/react';
+import { ArrowBendDownRight, CaretRight, DotsSixVertical, DotsThree, PencilSimple, Plus, ClockCounterClockwise, Trash, Plug, ShieldWarning } from '@phosphor-icons/react';
 import { useTranslation } from 'react-i18next';
 import { Command } from '@clash/web-ui/lib/clientActions';
 import { UserMessage } from './copilot/UserMessage';
@@ -12,12 +12,18 @@ import { ThinkingProcess } from './copilot/ThinkingProcess';
 import { ChatInput } from './copilot/ChatInput';
 import { TodoList, TodoItem } from './copilot/TodoList';
 import { ThinkingIndicator } from './copilot/ThinkingIndicator';
+import { AcpMessageList, AcpProgressPanel, getAcpGlobalState } from './copilot/AcpMessageList';
+import { AgentMotion, type AgentMotionState } from './copilot/AgentMotion';
+import { AcpAgentLogo } from './copilot/AcpAgentLogo';
+import { CopilotRailSlot } from './copilot/CopilotRail';
 import { MessageErrorBoundary } from './copilot/MessageErrorBoundary';
 import { RuntimePickerDialog } from './copilot/RuntimePickerDialog';
 import { Dialog } from './ui/dialog';
 import { IconButton } from './ui/icon-button';
-import { useClashRuntime, type ClashRuntimeStatus, type Runtime } from '@clash/web-ui/hooks/useClashRuntime';
-import type { ByoMessage as RuntimeMessage } from '@clash/web-ui/lib/acpEvents';
+import { FloatingMenu, MenuItemButton, SelectMenu, menuItemClassName, type SelectSection } from './ui/select';
+import { useAppFeedback } from './AppFeedback';
+import { useClashRuntime, type AcpSessionConfigOption, type AcpSessionModeState, type ClashRuntimeStatus, type Runtime, type RuntimePromptQueueMode, type RuntimeQueuedPrompt, type RuntimeSessionInfo } from '@clash/web-ui/hooks/useClashRuntime';
+import type { AvailableCommand, ByoMessage as RuntimeMessage } from '@clash/web-ui/lib/acpEvents';
 import { applyAgentAttribution, parseAgentCanvasPatch } from '@clash/web-ui/lib/agentCanvasPatch';
 import type { Node as RFNode, Edge as RFEdge, Connection as RFConnection } from '@xyflow/react';
 import ReactMarkdown from 'react-markdown';
@@ -26,7 +32,8 @@ import { useAsset, getAsset } from '@clash/web-ui/lib/hooks/useAsset';
 import { useIsBelowLg } from '@clash/web-ui/lib/hooks/useMediaQuery';
 import { useFocusTrap } from '@clash/web-ui/lib/hooks/useFocusTrap';
 import { useAgentCopilot, type CustomEvent } from '@clash/web-ui/hooks/useAgentCopilot';
-import { getRuntimeConfig } from '@clash/web-ui/lib/runtimeConfig';
+import { getRuntimeConfig, runtimeApiUrl } from '@clash/web-ui/lib/runtimeConfig';
+import { buildMention } from '@clash/shared-types';
 
 
 interface Message {
@@ -55,16 +62,73 @@ interface ChatbotCopilotProps {
     edges?: RFEdge[];
     initialPrompt?: string;
     /** Session history + actions passed from parent */
-    sessionHistory?: Array<{ threadId: string; title?: string }>;
+    sessionHistory?: Array<CopilotSessionHistoryItem>;
     onNewSession?: () => void;
     onSwitchSession?: (threadId: string) => void;
     onDeleteSession?: (threadId: string) => void;
+    onUpsertSession?: (session: CopilotSessionHistoryItem) => void;
     /** Called when user sends first message with no active session */
     onCreateSession?: (initialMessage: string) => void;
     /** Create canvas nodes from already-uploaded attachments */
     onUploadFiles?: (attachments: import('./copilot/ChatInput').UploadedAttachment[]) => void;
     /** Human user represented by the selected local agent. */
     actorUserId?: string;
+}
+
+const COPILOT_PANEL_MIN_WIDTH = 420;
+const COPILOT_PANEL_MAX_WIDTH_FRACTION = 3 / 7;
+const CREATIVE_STATUS_ROTATION_MS = 15_000;
+const ACTIVITY_DURATION_MINUTE_MS = 60_000;
+
+function displayErrorMessage(error: unknown): string {
+    return error instanceof Error ? error.message : String(error);
+}
+
+type CompletedActivity = {
+    startedAt: number;
+    completedAt: number;
+};
+
+function formatActivityDuration(ms: number, t: ReturnType<typeof useTranslation>['t']): string {
+    const safeMs = Math.max(0, ms);
+    if (safeMs < ACTIVITY_DURATION_MINUTE_MS) {
+        return t('copilot.status.workedForSeconds', {
+            count: Math.max(1, Math.round(safeMs / 1000)),
+        });
+    }
+    return t('copilot.status.workedForMinutes', {
+        count: Math.max(1, Math.round(safeMs / ACTIVITY_DURATION_MINUTE_MS)),
+    });
+}
+
+type CopilotSessionHistoryItem = {
+    id?: string;
+    threadId: string;
+    title?: string;
+    type: 'cloud' | 'runtime';
+    projectId?: string;
+    runtimeId?: string;
+    agentId?: string;
+    agentMemberId?: string;
+    permissionMode?: string;
+    acpSessionId?: string;
+    status?: string;
+};
+
+function runtimeSessionToHistoryItem(session: RuntimeSessionInfo, title?: string): CopilotSessionHistoryItem {
+    return {
+        id: session.id,
+        threadId: session.threadId,
+        title: title ?? session.title,
+        type: 'runtime',
+        projectId: session.projectId,
+        runtimeId: session.runtimeId,
+        agentId: session.agentId ?? undefined,
+        agentMemberId: session.agentMemberId,
+        permissionMode: session.permissionMode,
+        acpSessionId: session.acpSessionId,
+        status: session.status,
+    };
 }
 
 /** Markdown components for assistant text rendering */
@@ -134,67 +198,30 @@ type MentionNodeRef = { id: string; type: string; label: string; thumbnail?: str
 
 const DESKTOP_LOCAL_RUNTIME_ID = 'desktop-local';
 const LOCAL_AGENT_PREFERENCE = [
-    'codex-app-server',
-    'codex-cli',
-    'gemini-cli',
-    'claude-code-acp',
-    'claude-agent-acp',
+    'codex-acp',
+    'claude-acp',
+    'gemini',
 ];
 
-type AcpHarnessFamily = 'codex' | 'claude' | 'gemini' | 'generic';
-
-type AcpModelProfile = {
-    id: string;
-    label: string;
-    description: string;
-    harnessFamilies?: AcpHarnessFamily[];
+const COPILOT_PANEL_TRANSITION = { duration: 0.24, ease: [0.16, 1, 0.3, 1] as const };
+const COPILOT_PANEL_COLLAPSE_TRANSITION = { duration: 0.34, ease: [0.22, 1, 0.36, 1] as const, times: [0, 0.52, 1] };
+const COPILOT_LAUNCHER_ENTER_TRANSITION = { duration: 0.24, delay: 0.12, ease: [0.22, 1, 0.36, 1] as const };
+const COPILOT_LAUNCHER_EXIT_TRANSITION = { duration: 0.12, ease: [0.25, 1, 0.5, 1] as const };
+const COPILOT_PANEL_LAUNCHER_FOCAL_OFFSET_PX = 44;
+const COPILOT_PANEL_DESKTOP_TRANSFORM_ORIGIN =
+    `calc(100% - ${COPILOT_PANEL_LAUNCHER_FOCAL_OFFSET_PX}px) calc(100% - ${COPILOT_PANEL_LAUNCHER_FOCAL_OFFSET_PX}px)`;
+const COPILOT_PANEL_COLLAPSED_DESKTOP_STATE = {
+    opacity: [1, 0.76, 0],
+    scale: [1, 0.56, 0.08],
+    x: [0, 0, 42],
+    y: [0, 34, 34],
 };
-
-const ACP_MODEL_PROFILE_CATALOG: AcpModelProfile[] = [
-    {
-        id: 'auto',
-        label: 'Auto',
-        description: 'Use the selected harness default model',
-    },
-    {
-        id: 'codex:gpt-5.5',
-        label: 'GPT-5.5',
-        description: 'Codex conversational model profile',
-        harnessFamilies: ['codex'],
-    },
-    {
-        id: 'codex:gpt-5.4',
-        label: 'GPT-5.4',
-        description: 'Codex compatibility profile',
-        harnessFamilies: ['codex'],
-    },
-    {
-        id: 'claude:sonnet',
-        label: 'Claude Sonnet',
-        description: 'Claude Code default coding profile',
-        harnessFamilies: ['claude'],
-    },
-    {
-        id: 'claude:opus',
-        label: 'Claude Opus',
-        description: 'Claude Code high-reasoning profile',
-        harnessFamilies: ['claude'],
-    },
-    {
-        id: 'gemini:pro',
-        label: 'Gemini Pro',
-        description: 'Gemini CLI pro profile',
-        harnessFamilies: ['gemini'],
-    },
-    {
-        id: 'gemini:flash',
-        label: 'Gemini Flash',
-        description: 'Gemini CLI fast profile',
-        harnessFamilies: ['gemini'],
-    },
-];
-const DEFAULT_ACP_MODEL_PROFILE = ACP_MODEL_PROFILE_CATALOG[0]!;
-const DEFAULT_ACP_MODEL_PROFILE_ID = 'auto';
+const COPILOT_PANEL_EXPANDED_DESKTOP_STATE = {
+    opacity: 1,
+    scale: 1,
+    x: 0,
+    y: 0,
+};
 
 function preferredLocalAgentId(agents: Runtime['agents']): string | undefined {
     for (const id of LOCAL_AGENT_PREFERENCE) {
@@ -205,29 +232,145 @@ function preferredLocalAgentId(agents: Runtime['agents']): string | undefined {
 
 function agentDisplayName(agentId?: string | null): string {
     if (!agentId) return 'Agent';
-    if (agentId === 'codex-cli' || agentId === 'codex-app-server') return 'Codex';
-    if (agentId === 'claude-code-acp' || agentId === 'claude-agent-acp') return 'Claude Code';
-    if (agentId === 'gemini-cli') return 'Gemini CLI';
+    if (agentId === 'codex-acp') return 'Codex';
+    if (agentId === 'claude-acp') return 'Claude';
+    if (agentId === 'gemini') return 'Gemini';
     if (agentId === 'mock-acp') return 'Mock ACP';
     return agentId
         .replace(/[-_]+/g, ' ')
         .replace(/\b\w/g, (char) => char.toUpperCase());
 }
 
-function agentHarnessFamily(agentId?: string | null): AcpHarnessFamily {
-    if (!agentId) return 'generic';
-    if (agentId.includes('codex')) return 'codex';
-    if (agentId.includes('claude')) return 'claude';
-    if (agentId.includes('gemini')) return 'gemini';
-    return 'generic';
+type AcpSelectValue = { value: string; name: string; description?: string | null };
+type AcpSelectValueGroup = { id: string; name: string; options: AcpSelectValue[] };
+
+function findAcpSelectConfigOption(
+    options: AcpSessionConfigOption[],
+    category: 'model' | 'thought_level' | 'mode',
+): AcpSessionConfigOption | null {
+    return options.find((option) =>
+        option.type === 'select' &&
+        option.category === category &&
+        Array.isArray(option.options)
+    ) ?? null;
 }
 
-function modelProfilesForHarness(agentId?: string | null): AcpModelProfile[] {
-    const family = agentHarnessFamily(agentId);
-    return ACP_MODEL_PROFILE_CATALOG.filter((profile) => {
-        if (profile.id === DEFAULT_ACP_MODEL_PROFILE_ID) return true;
-        return profile.harnessFamilies?.includes(family) ?? false;
-    });
+function flattenAcpSelectValues(option?: AcpSessionConfigOption | null): AcpSelectValue[] {
+    if (!option?.options) return [];
+    return option.options.flatMap((entry) => {
+        if ('options' in entry && Array.isArray(entry.options)) return entry.options;
+        return [entry as AcpSelectValue];
+    }).filter((entry): entry is AcpSelectValue =>
+        !!entry &&
+        typeof entry.value === 'string' &&
+        typeof entry.name === 'string',
+    );
+}
+
+function defaultPermissionModeForSession(
+    sessionModes?: AcpSessionModeState | null,
+    modeConfigOption?: AcpSessionConfigOption | null,
+): string | null {
+    const availableModes = sessionModes?.availableModes ?? [];
+    if (sessionModes?.currentModeId && availableModes.some((mode) => mode.id === sessionModes.currentModeId)) {
+        return sessionModes.currentModeId;
+    }
+    if (availableModes.length > 0) return availableModes[0]?.id ?? null;
+    const modeValues = flattenAcpSelectValues(modeConfigOption);
+    if (modeConfigOption?.currentValue && modeValues.some((value) => value.value === modeConfigOption.currentValue)) {
+        return modeConfigOption.currentValue;
+    }
+    if (modeValues.length > 0) return modeValues[0]?.value ?? null;
+    return null;
+}
+
+function isPermissionModeValidForSession(
+    modeId: string | undefined,
+    sessionModes?: AcpSessionModeState | null,
+    modeConfigOption?: AcpSessionConfigOption | null,
+): modeId is string {
+    if (!modeId) return false;
+    const availableModes = sessionModes?.availableModes ?? [];
+    if (availableModes.length > 0) return availableModes.some((mode) => mode.id === modeId);
+    const modeValues = flattenAcpSelectValues(modeConfigOption);
+    if (modeValues.length > 0) return modeValues.some((value) => value.value === modeId);
+    return false;
+}
+
+function resolvePermissionModeForSession(
+    savedModeId: string | undefined,
+    sessionModes?: AcpSessionModeState | null,
+    modeConfigOption?: AcpSessionConfigOption | null,
+): string | null {
+    if (isPermissionModeValidForSession(savedModeId, sessionModes, modeConfigOption)) return savedModeId;
+    return defaultPermissionModeForSession(sessionModes, modeConfigOption);
+}
+
+function permissionModeOption(modeId: string | null | undefined): { permissionModeId?: string } {
+    return modeId ? { permissionModeId: modeId } : {};
+}
+
+function modelValuesForHarness(
+    option: AcpSessionConfigOption | null,
+    harnessName: string,
+): AcpSelectValueGroup[] {
+    const values = flattenAcpSelectValues(option);
+    if (values.length === 0) return [];
+    return [{
+        id: harnessName.toLowerCase().replace(/[^a-z0-9]+/g, '-') || 'harness',
+        name: harnessName,
+        options: values,
+    }];
+}
+
+function selectedAcpSelectValue(option?: AcpSessionConfigOption | null): AcpSelectValue | null {
+    const values = flattenAcpSelectValues(option);
+    return values.find((entry) => entry.value === option?.currentValue) ?? values[0] ?? null;
+}
+
+function sessionTitleForHeader(
+    threadId: string,
+    sessionHistory: CopilotSessionHistoryItem[],
+    fallback: string,
+): string {
+    if (!threadId) return fallback;
+    const title = sessionHistory.find((session) => session.threadId === threadId)?.title?.trim();
+    if (title === 'New session') return fallback;
+    return title || fallback;
+}
+
+function normalizedRuntimeSessionTitle(title?: string | null): string | undefined {
+    const trimmed = title?.trim();
+    if (!trimmed || trimmed === 'New session') return undefined;
+    return trimmed;
+}
+
+function titleFromRuntimeMessages(messages: RuntimeMessage[]): string | null {
+    for (const message of messages) {
+        if (message.role !== 'user') continue;
+        const textPart = message.parts.find((part) => part.type === 'text');
+        const text = textPart?.text?.trim();
+        if (!text) continue;
+        return text.length > 52 ? `${text.slice(0, 52)}...` : text;
+    }
+    return null;
+}
+
+function labelForMentionNode(node: RFNode): string {
+    const data = (node.data ?? {}) as Record<string, unknown>;
+    if (typeof data.label === 'string' && data.label.trim()) return data.label.trim();
+    if (typeof data.name === 'string' && data.name.trim()) return data.name.trim();
+    return node.id;
+}
+
+function withSelectedNodeMentions(prompt: string, selectedNodes: RFNode[]): string {
+    if (selectedNodes.length === 0) return prompt;
+    const mentions = selectedNodes
+        .filter((node) => !prompt.includes(`node:${node.id}`))
+        .map((node) => buildMention(labelForMentionNode(node), node.id));
+    if (mentions.length === 0) return prompt;
+    const selectedContext = `Selected context: ${mentions.join(' ')}`;
+    return prompt ? `${prompt}\n\n${selectedContext}` : selectedContext;
 }
 
 const PERSONA_MAP: Record<string, string> = {
@@ -398,11 +541,13 @@ export default function ChatbotCopilot({
     onNewSession,
     onSwitchSession,
     onDeleteSession,
+    onUpsertSession,
     onCreateSession,
     onUploadFiles,
     actorUserId,
 }: ChatbotCopilotProps) {
     const { t } = useTranslation();
+    const feedback = useAppFeedback();
     const historyMenuId = useId();
     const runtimeMenuId = useId();
     // Below Tailwind's `lg` (1024px), the panel switches to a full-screen
@@ -422,11 +567,35 @@ export default function ChatbotCopilot({
     const [runtimeMenuOpen, setRuntimeMenuOpen] = useState(false);
     const [sessionConfigOpen, setSessionConfigOpen] = useState(false);
     const [sessionHarnessId, setSessionHarnessId] = useState<string | null>(null);
-    const [sessionModelProfileId, setSessionModelProfileId] = useState(DEFAULT_ACP_MODEL_PROFILE_ID);
+    const [sessionPermissionModeByAgentId, setSessionPermissionModeByAgentId] = useState<Record<string, string>>({});
+    const [authenticatingHarnessId, setAuthenticatingHarnessId] = useState<string | null>(null);
     const [addMachineOpen, setAddMachineOpen] = useState(false);
     /** When set, the runtime picker dialog is open for this runtime. */
     const [runtimePicker, setRuntimePicker] = useState<Runtime | null>(null);
     const clashRt = useClashRuntime();
+    const slashCommandQuery = useMemo(() => {
+        if (chatMode === 'cloud') return null;
+        if (!input.startsWith('/')) return null;
+        const query = input.slice(1);
+        if (/\s/.test(query)) return null;
+        return query.toLowerCase();
+    }, [chatMode, input]);
+    const slashCommandOptions = useMemo(() => {
+        if (slashCommandQuery === null) return [];
+        return (clashRt.availableCommands ?? [])
+            .filter((command) => {
+                const name = normalizeSlashCommandName(command);
+                if (!name) return false;
+                if (slashCommandQuery.length === 0) return true;
+                return name.toLowerCase().startsWith(slashCommandQuery);
+            })
+            .slice(0, 12);
+    }, [clashRt.availableCommands, slashCommandQuery]);
+    const handlePickSlashCommand = useCallback((command: AvailableCommand) => {
+        const name = normalizeSlashCommandName(command);
+        if (!name) return;
+        setInput(`/${name} `);
+    }, []);
     const isDesktopLocalMode = useMemo(() => getRuntimeConfig().mode === 'desktop', []);
     const desktopLocalRuntime = useMemo(
         () => clashRt.runtimes.find((rt) => rt.id === DESKTOP_LOCAL_RUNTIME_ID) ?? null,
@@ -444,14 +613,96 @@ export default function ChatbotCopilot({
         clashRt.selectedAgentId ??
         preferredLocalAgentId(sessionHarnessOptions) ??
         null;
-    const sessionModelProfiles = useMemo(
-        () => modelProfilesForHarness(effectiveSessionHarnessId),
-        [effectiveSessionHarnessId],
+    const selectedSessionHarness = useMemo(
+        () => sessionHarnessOptions.find((agent) => agent.id === effectiveSessionHarnessId) ?? null,
+        [effectiveSessionHarnessId, sessionHarnessOptions],
     );
-    const selectedSessionModelProfile =
-        sessionModelProfiles.find((model) => model.id === sessionModelProfileId) ??
-        sessionModelProfiles[0] ??
-        DEFAULT_ACP_MODEL_PROFILE;
+    const selectedSessionHarnessAuth = selectedSessionHarness?.auth?.status === 'needs-auth'
+        ? selectedSessionHarness.auth
+        : null;
+    const selectedSessionHarnessAuthTitle = selectedSessionHarnessAuth && effectiveSessionHarnessId
+        ? `Sign in to ${agentDisplayName(effectiveSessionHarnessId)}`
+        : null;
+    const selectedSessionHarnessAuthMessage = selectedSessionHarnessAuth?.message ?? null;
+    const effectiveSessionConfigOptions = useMemo(() => {
+        const agentConfigOptions = selectedSessionHarness?.config_options ?? [];
+        if (clashRt.selectedAgentId === effectiveSessionHarnessId && clashRt.sessionConfigOptions.length > 0) {
+            return clashRt.sessionConfigOptions;
+        }
+        if (agentConfigOptions.length > 0) return agentConfigOptions;
+        if (selectedSessionHarness) return [];
+        return clashRt.sessionConfigOptions;
+    }, [
+        clashRt.selectedAgentId,
+        clashRt.sessionConfigOptions,
+        effectiveSessionHarnessId,
+        selectedSessionHarness?.config_options,
+    ]);
+    const effectiveSessionModes = useMemo(() => {
+        if (clashRt.selectedAgentId === effectiveSessionHarnessId && clashRt.sessionModes) {
+            return clashRt.sessionModes;
+        }
+        return selectedSessionHarness?.session_modes ?? null;
+    }, [
+        clashRt.selectedAgentId,
+        clashRt.sessionModes,
+        effectiveSessionHarnessId,
+        selectedSessionHarness?.session_modes,
+    ]);
+    const modelConfigOption = useMemo(
+        () => findAcpSelectConfigOption(effectiveSessionConfigOptions, 'model'),
+        [effectiveSessionConfigOptions],
+    );
+    const thoughtLevelConfigOption = useMemo(
+        () => findAcpSelectConfigOption(effectiveSessionConfigOptions, 'thought_level'),
+        [effectiveSessionConfigOptions],
+    );
+    const modeConfigOption = useMemo(
+        () => findAcpSelectConfigOption(effectiveSessionConfigOptions, 'mode'),
+        [effectiveSessionConfigOptions],
+    );
+    const sessionPermissionModeId = useMemo(() => {
+        if (!effectiveSessionHarnessId) return defaultPermissionModeForSession(effectiveSessionModes, modeConfigOption);
+        return resolvePermissionModeForSession(
+            sessionPermissionModeByAgentId[effectiveSessionHarnessId],
+            effectiveSessionModes,
+            modeConfigOption,
+        );
+    }, [effectiveSessionHarnessId, effectiveSessionModes, modeConfigOption, sessionPermissionModeByAgentId]);
+    const setSessionPermissionModeForAgent = useCallback((agentId: string | null | undefined, modeId: string) => {
+        if (!agentId) return;
+        setSessionPermissionModeByAgentId((prev) => (
+            prev[agentId] === modeId ? prev : { ...prev, [agentId]: modeId }
+        ));
+    }, []);
+    const runtimeTitle = useMemo(
+        () => titleFromRuntimeMessages(clashRt.messages) ?? normalizedRuntimeSessionTitle(clashRt.currentSession?.title),
+        [clashRt.currentSession?.title, clashRt.messages],
+    );
+    const runtimeHistoryItem = useMemo<CopilotSessionHistoryItem | null>(() => {
+        if (chatMode !== 'runtime' || !clashRt.currentSession) return null;
+        return runtimeSessionToHistoryItem(clashRt.currentSession, runtimeTitle);
+    }, [chatMode, clashRt.currentSession, runtimeTitle]);
+    const visibleSessionHistory = useMemo<CopilotSessionHistoryItem[]>(() => {
+        if (!runtimeHistoryItem) return sessionHistory;
+        if (sessionHistory.some((session) => session.threadId === runtimeHistoryItem.threadId)) return sessionHistory;
+        return [runtimeHistoryItem, ...sessionHistory];
+    }, [runtimeHistoryItem, sessionHistory]);
+    const hasThreadInHistory = Boolean(threadId && visibleSessionHistory.some((session) => session.threadId === threadId));
+    const activeSessionId = chatMode === 'runtime'
+        ? clashRt.currentSession?.threadId ?? (hasThreadInHistory ? threadId : '')
+        : threadId;
+    const sessionHarnessLocked = chatMode === 'runtime' && Boolean(clashRt.currentSession || clashRt.sessionId || clashRt.ready);
+    const panelTitle = sessionTitleForHeader(
+        activeSessionId,
+        visibleSessionHistory,
+        chatMode === 'runtime' ? t('copilot.header.newChat') : t('copilot.panel.label'),
+    );
+
+    useEffect(() => {
+        if (chatMode !== 'runtime' || !clashRt.currentSession || !onUpsertSession) return;
+        onUpsertSession(runtimeSessionToHistoryItem(clashRt.currentSession, runtimeTitle));
+    }, [chatMode, clashRt.currentSession, onUpsertSession, runtimeTitle]);
 
     useEffect(() => {
         if (sessionHarnessOptions.length === 0) return;
@@ -459,38 +710,182 @@ export default function ChatbotCopilot({
         setSessionHarnessId(preferredLocalAgentId(sessionHarnessOptions) ?? null);
     }, [effectiveSessionHarnessId, sessionHarnessOptions]);
 
-    useEffect(() => {
-        if (sessionModelProfiles.some((profile) => profile.id === sessionModelProfileId)) return;
-        setSessionModelProfileId(DEFAULT_ACP_MODEL_PROFILE_ID);
-    }, [sessionModelProfileId, sessionModelProfiles]);
-
-    const selectSessionRuntime = useCallback((runtime: Runtime) => {
-        if (runtime.status !== 'online' || runtime.agents.length === 0) return;
-        const agentId = preferredLocalAgentId(runtime.agents);
-        setChatMode('runtime');
-        setSessionHarnessId(agentId ?? null);
-        void clashRt.select(runtime.id, 'director', {
-            projectId,
-            agentId,
-        });
-    }, [clashRt, projectId]);
-
-    const selectSessionHarness = useCallback((agentId: string) => {
+    const handleSelectSessionHarness = useCallback((agentId: string) => {
+        if (sessionHarnessLocked) return;
         setSessionHarnessId(agentId);
+        const pickedAgent = sessionHarnessOptions.find((agent) => agent.id === agentId);
+        if (pickedAgent?.auth?.status === 'needs-auth') {
+            setSessionError(null);
+            void clashRt.refresh({ probe: 'config', refresh: true }).catch((error) => {
+                feedback.notify({
+                    variant: 'error',
+                    title: 'Could not check agent auth',
+                    message: displayErrorMessage(error),
+                    actionLabel: 'Open Runtimes',
+                    actionHref: '/settings?section=runtimes',
+                });
+            });
+            return;
+        }
+        const nextModeConfigOption = findAcpSelectConfigOption(pickedAgent?.config_options ?? [], 'mode');
+        const nextPermissionModeId = resolvePermissionModeForSession(
+            sessionPermissionModeByAgentId[agentId],
+            pickedAgent?.session_modes ?? null,
+            nextModeConfigOption,
+        );
+        if (nextPermissionModeId) setSessionPermissionModeForAgent(agentId, nextPermissionModeId);
         const runtime = selectedRuntimeForSession ?? desktopLocalRuntime;
-        if (!runtime || runtime.status !== 'online') return;
-        setChatMode('runtime');
-        void clashRt.select(runtime.id, 'director', {
-            projectId,
-            agentId,
-        });
-    }, [clashRt, desktopLocalRuntime, projectId, selectedRuntimeForSession]);
+        if (chatMode === 'runtime' && runtime?.status === 'online') {
+            const sessionOptions = {
+                projectId,
+                agentId,
+                ...permissionModeOption(nextPermissionModeId),
+            };
+            if (clashRt.ready) {
+                void clashRt.select(runtime.id, undefined, sessionOptions);
+            } else {
+                clashRt.startDraft(runtime.id, undefined, sessionOptions);
+            }
+        }
+    }, [
+        chatMode,
+        clashRt.select,
+        clashRt.ready,
+        clashRt.refresh,
+        clashRt.startDraft,
+        desktopLocalRuntime,
+        projectId,
+        selectedRuntimeForSession,
+        sessionHarnessLocked,
+        sessionHarnessOptions,
+        sessionPermissionModeByAgentId,
+        setSessionPermissionModeForAgent,
+        feedback,
+    ]);
+
+    const handleSelectSessionConfigOption = useCallback((configId: string, value: string | boolean) => {
+        clashRt.setConfigOption(configId, value);
+    }, [clashRt.setConfigOption]);
+
+    const handleAuthenticateSessionHarness = useCallback(async () => {
+        if (!effectiveSessionHarnessId) return;
+        const label = selectedSessionHarness?.label ?? agentDisplayName(effectiveSessionHarnessId);
+        setAuthenticatingHarnessId(effectiveSessionHarnessId);
+        setSessionError(null);
+        try {
+            const res = await fetch(runtimeApiUrl(`/api/v1/local/harnesses/${encodeURIComponent(effectiveSessionHarnessId)}/authenticate`), {
+                method: 'POST',
+                credentials: 'include',
+            });
+            if (!res.ok) {
+                const body = (await res.json().catch(() => null)) as { error?: string } | null;
+                throw new Error(body?.error ?? `HTTP ${res.status}`);
+            }
+            await clashRt.refresh({ probe: 'config', refresh: true });
+            feedback.notify({
+                variant: 'info',
+                title: `${label} sign in opened`,
+                message: 'Finish authentication, then check again.',
+                actionLabel: 'Check again',
+                onAction: () => {
+                    void clashRt.refresh({ probe: 'config', refresh: true });
+                },
+            });
+        } catch (e) {
+            feedback.notify({
+                variant: 'error',
+                title: `Could not start ${label} sign in`,
+                message: displayErrorMessage(e),
+                actionLabel: 'Check again',
+                onAction: () => {
+                    void clashRt.refresh({ probe: 'config', refresh: true });
+                },
+            });
+        } finally {
+            setAuthenticatingHarnessId(null);
+        }
+    }, [clashRt.refresh, effectiveSessionHarnessId, feedback, selectedSessionHarness?.label]);
+
+    const handleRecheckSessionHarness = useCallback(async () => {
+        setSessionError(null);
+        try {
+            await clashRt.refresh({ probe: 'config', refresh: true });
+        } catch (error) {
+            feedback.notify({
+                variant: 'error',
+                title: 'Could not check agent auth',
+                message: displayErrorMessage(error),
+                actionLabel: 'Open Runtimes',
+                actionHref: '/settings?section=runtimes',
+            });
+        }
+    }, [clashRt.refresh, feedback]);
+
+    const handleSelectSessionPermissionMode = useCallback((modeId: string) => {
+        const runtime = selectedRuntimeForSession ?? desktopLocalRuntime;
+        const agentId = effectiveSessionHarnessId ?? preferredLocalAgentId(runtime?.agents ?? []);
+        if (!agentId) return;
+        setSessionPermissionModeForAgent(agentId, modeId);
+
+        if (effectiveSessionModes) {
+            clashRt.setSessionMode(modeId);
+            if (chatMode === 'runtime' && runtime?.status === 'online' && !clashRt.ready && clashRt.status !== 'draft') {
+                clashRt.startDraft(runtime.id, undefined, {
+                    projectId,
+                    agentId,
+                    ...permissionModeOption(modeId),
+                });
+            }
+            return;
+        }
+
+        if (modeConfigOption && clashRt.ready) {
+            clashRt.setConfigOption(modeConfigOption.id, modeId);
+            return;
+        }
+        if (modeConfigOption && clashRt.status === 'draft') {
+            clashRt.setConfigOption(modeConfigOption.id, modeId);
+        }
+        if (chatMode === 'runtime' && runtime?.status === 'online') {
+            const sessionOptions = {
+                projectId,
+                agentId,
+                ...permissionModeOption(modeId),
+            };
+            if (clashRt.ready) {
+                void clashRt.select(runtime.id, undefined, sessionOptions);
+            } else {
+                clashRt.startDraft(runtime.id, undefined, sessionOptions);
+            }
+        }
+    }, [
+        chatMode,
+        clashRt.select,
+        clashRt.ready,
+        clashRt.setConfigOption,
+        clashRt.setSessionMode,
+        clashRt.startDraft,
+        clashRt.status,
+        desktopLocalRuntime,
+        effectiveSessionHarnessId,
+        effectiveSessionModes,
+        modeConfigOption,
+        projectId,
+        selectedRuntimeForSession,
+        setSessionPermissionModeForAgent,
+    ]);
 
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const scrollContainerRef = useRef<HTMLDivElement>(null);
+    const stickToBottomRef = useRef(true);
+    const scrollFrameRef = useRef<number | null>(null);
     const [shouldStickToBottom, setShouldStickToBottom] = useState(true);
-    const historyDropdownRef = useRef<HTMLDivElement | null>(null);
+    const updateStickToBottom = useCallback((next: boolean) => {
+        stickToBottomRef.current = next;
+        setShouldStickToBottom(next);
+    }, []);
     const historyButtonRef = useRef<HTMLButtonElement | null>(null);
+    const runtimeButtonRef = useRef<HTMLButtonElement | null>(null);
     const panelRef = useRef<HTMLElement | null>(null);
     const appliedRuntimeCanvasNodesRef = useRef<Set<string>>(new Set());
 
@@ -529,38 +924,143 @@ export default function ChatbotCopilot({
         if (clashRt.selectedRuntimeId || clashRt.ready || clashRt.status === 'connecting') return;
         const runtime = desktopLocalRuntime;
         if (!runtime || runtime.status !== 'online' || runtime.agents.length === 0) return;
-        void clashRt.select(runtime.id, 'director', {
+        clashRt.startDraft(runtime.id, undefined, {
             projectId,
             agentId: preferredLocalAgentId(runtime.agents),
+            ...permissionModeOption(sessionPermissionModeId),
         });
     }, [
         chatMode,
         clashRt.ready,
-        clashRt.select,
         clashRt.selectedRuntimeId,
+        clashRt.startDraft,
         clashRt.status,
         desktopLocalRuntime,
         isDesktopLocalMode,
         projectId,
+        sessionPermissionModeId,
     ]);
 
     const cloudIsProcessing = status === 'submitted' || status === 'streaming';
-    const runtimeIsProcessing = clashRt.status === 'connecting' || clashRt.status === 'sending' || clashRt.status === 'streaming';
+    const runtimeIsConnecting = clashRt.status === 'connecting';
+    const runtimeTurnIsProcessing =
+        clashRt.status === 'sending' ||
+        clashRt.status === 'streaming' ||
+        (clashRt.status === 'connecting' && clashRt.messages.length > 0);
     const isProcessing =
-        chatMode === 'runtime' ? runtimeIsProcessing :
+        chatMode === 'runtime' ? runtimeTurnIsProcessing :
         cloudIsProcessing;
     const showRuntimeConnectingStatus =
-        chatMode === 'runtime' && clashRt.status === 'connecting' && !isDesktopLocalMode;
+        chatMode === 'runtime' && runtimeIsConnecting && !isDesktopLocalMode;
     const showProcessingIndicator =
         chatMode === 'runtime'
-            ? clashRt.messages.length > 0 && (clashRt.status === 'sending' || clashRt.status === 'streaming')
+            ? clashRt.messages.length > 0 && runtimeTurnIsProcessing
             : isProcessing;
     const processingIndicatorMessage =
         chatMode === 'runtime'
             ? t(clashRt.status === 'sending' ? 'copilot.status.thinking' : 'copilot.status.streaming')
             : t(status === 'submitted' ? 'copilot.status.thinking' : 'copilot.status.streaming');
+    const creativeStatusKey = showProcessingIndicator
+        ? (chatMode === 'runtime'
+            ? (clashRt.status === 'sending' ? 'copilot.status.creativeThinking' : 'copilot.status.creativeStreaming')
+            : (status === 'submitted' ? 'copilot.status.creativeThinking' : 'copilot.status.creativeStreaming'))
+        : null;
+    const [creativeStatusIndex, setCreativeStatusIndex] = useState(0);
+    const creativeStatusMessages = useMemo(() => {
+        if (!creativeStatusKey) {
+            return [] as string[];
+        }
+        const messages = t(creativeStatusKey, { returnObjects: true });
+        return Array.isArray(messages) && messages.length > 0
+            ? messages.map((message) => String(message)).filter(Boolean)
+            : [processingIndicatorMessage];
+    }, [creativeStatusKey, processingIndicatorMessage, t]);
+    useEffect(() => {
+        setCreativeStatusIndex(0);
+        if (!creativeStatusKey || creativeStatusMessages.length <= 1) return;
+        const interval = window.setInterval(() => {
+            setCreativeStatusIndex((index) => (index + 1) % creativeStatusMessages.length);
+        }, CREATIVE_STATUS_ROTATION_MS);
+        return () => window.clearInterval(interval);
+    }, [creativeStatusKey, creativeStatusMessages.length]);
+    const creativeStatusLabel = creativeStatusKey
+        ? (creativeStatusMessages[creativeStatusIndex % Math.max(creativeStatusMessages.length, 1)] ?? processingIndicatorMessage)
+        : null;
+    const activeTurnStartedAtRef = useRef<number | null>(null);
+    const [lastCompletedActivity, setLastCompletedActivity] = useState<CompletedActivity | null>(null);
+    const activitySessionScopeRef = useRef<string | null>(null);
+    useEffect(() => {
+        if (showProcessingIndicator) {
+            if (activeTurnStartedAtRef.current === null) {
+                activeTurnStartedAtRef.current = Date.now();
+            }
+            setLastCompletedActivity(null);
+            return;
+        }
+        if (activeTurnStartedAtRef.current !== null) {
+            const completedActivity = {
+                startedAt: activeTurnStartedAtRef.current,
+                completedAt: Date.now(),
+            };
+            setLastCompletedActivity(completedActivity);
+            activeTurnStartedAtRef.current = null;
+        }
+    }, [showProcessingIndicator]);
+    useEffect(() => {
+        const nextScope = chatMode === 'runtime' ? clashRt.sessionId : threadId;
+        const previousScope = activitySessionScopeRef.current;
+        activitySessionScopeRef.current = nextScope;
+        if (previousScope === null || previousScope === nextScope) return;
+        activeTurnStartedAtRef.current = null;
+        setLastCompletedActivity(null);
+    }, [chatMode, clashRt.sessionId, threadId]);
+    const pendingCompletedActivityLabel = !showProcessingIndicator && activeTurnStartedAtRef.current !== null
+        ? formatActivityDuration(Date.now() - activeTurnStartedAtRef.current, t)
+        : null;
+    const completedActivityLabel = pendingCompletedActivityLabel
+        ?? (lastCompletedActivity
+            ? formatActivityDuration(lastCompletedActivity.completedAt - lastCompletedActivity.startedAt, t)
+            : null);
+    const runtimeTransientStatusLabel = useMemo(() => {
+        if (chatMode !== 'runtime' || !clashRt.transientStatus) return null;
+        const status = clashRt.transientStatus;
+        const label = status.kind === 'reconnecting'
+            ? t('copilot.status.reconnecting', {
+                attempt: status.attempt ?? 0,
+                maxAttempts: status.maxAttempts ?? 0,
+            })
+            : t('copilot.status.switchingTransport');
+        return status.detail ? `${label} · ${status.detail}` : label;
+    }, [chatMode, clashRt.transientStatus, t]);
+    const activityStatusLabel =
+        runtimeTransientStatusLabel ??
+        creativeStatusLabel ??
+        completedActivityLabel ??
+        (showProcessingIndicator ? processingIndicatorMessage : null);
+    const showRuntimeActivityRow =
+        chatMode === 'runtime' && (!!runtimeTransientStatusLabel || showProcessingIndicator || !!completedActivityLabel);
+    const showCloudActivityRow =
+        chatMode === 'cloud' && !!activityStatusLabel && (showProcessingIndicator || !!completedActivityLabel);
+    const acpGlobalState = useMemo(() => getAcpGlobalState(clashRt.messages), [clashRt.messages]);
+    const visibleRuntimeUserTurnIds = useMemo(() => {
+        const turnIds = new Set<string>();
+        for (const message of clashRt.messages) {
+            if (message.role !== 'user' || !message.id.startsWith('user-')) continue;
+            turnIds.add(message.id.slice('user-'.length));
+        }
+        return turnIds;
+    }, [clashRt.messages]);
+    const visibleRuntimePromptQueue = useMemo(
+        () => clashRt.promptQueue.filter((item) => !visibleRuntimeUserTurnIds.has(item.turnId)),
+        [clashRt.promptQueue, visibleRuntimeUserTurnIds],
+    );
     const runtimeAlertMessage = chatMode === 'runtime' && !isDesktopLocalMode ? clashRt.errorMessage : null;
     const desktopLocalSetupIssue = chatMode === 'runtime' && isDesktopLocalMode ? clashRt.errorMessage : null;
+    const showRuntimeComposerCompanion =
+        chatMode === 'runtime' &&
+        clashRt.messages.length === 0 &&
+        !desktopLocalSetupIssue &&
+        (showRuntimeActivityRow || (isDesktopLocalMode && (clashRt.status === 'draft' || clashRt.ready)));
 
     useEffect(() => {
         if (chatMode !== 'runtime' || !onAddNode) return;
@@ -630,8 +1130,28 @@ export default function ChatbotCopilot({
     const handleNewSession = useCallback(() => {
         setTodoItems([]);
         clearCustomEvents();
+        const runtime = selectedRuntimeForSession ?? desktopLocalRuntime;
+        if (chatMode === 'runtime' && runtime?.status === 'online') {
+            clashRt.startDraft(runtime.id, undefined, {
+                projectId,
+                agentId: effectiveSessionHarnessId ?? preferredLocalAgentId(runtime.agents),
+                ...permissionModeOption(sessionPermissionModeId),
+                freshSession: true,
+            });
+            return;
+        }
         onNewSession?.();
-    }, [clearCustomEvents, onNewSession]);
+    }, [
+        chatMode,
+        clashRt.startDraft,
+        clearCustomEvents,
+        desktopLocalRuntime,
+        effectiveSessionHarnessId,
+        onNewSession,
+        projectId,
+        selectedRuntimeForSession,
+        sessionPermissionModeId,
+    ]);
 
     const deleteSession = useCallback((id: string, e: React.MouseEvent) => {
         e.stopPropagation();
@@ -650,40 +1170,31 @@ export default function ChatbotCopilot({
         setShowHistory(prev => !prev);
     };
 
-    // Close history dropdown on outside click
-    useEffect(() => {
-        if (!showHistory) return;
-        const onPointerDown = (event: PointerEvent) => {
-            const target = event.target as globalThis.Node | null;
-            if (!target) return;
-            if (historyDropdownRef.current?.contains(target)) return;
-            if (historyButtonRef.current?.contains(target)) return;
-            setShowHistory(false);
-        };
-        const onKeyDown = (event: KeyboardEvent) => {
-            if (event.key === 'Escape') {
-                setShowHistory(false);
-                // Return focus to the trigger so keyboard users keep their place.
-                historyButtonRef.current?.focus();
-            }
-        };
-        document.addEventListener('pointerdown', onPointerDown, true);
-        document.addEventListener('keydown', onKeyDown);
-        return () => {
-            document.removeEventListener('pointerdown', onPointerDown, true);
-            document.removeEventListener('keydown', onKeyDown);
-        };
-    }, [showHistory]);
-
-    // Close runtime menu on Escape too.
-    useEffect(() => {
-        if (!runtimeMenuOpen) return;
-        const onKeyDown = (event: KeyboardEvent) => {
-            if (event.key === 'Escape') setRuntimeMenuOpen(false);
-        };
-        document.addEventListener('keydown', onKeyDown);
-        return () => document.removeEventListener('keydown', onKeyDown);
-    }, [runtimeMenuOpen]);
+    const selectHistoryItem = useCallback((item: CopilotSessionHistoryItem) => {
+        if (item.type === 'runtime' && item.runtimeId) {
+            const nextAgentId = item.agentId ?? effectiveSessionHarnessId ?? null;
+            if (nextAgentId) setSessionHarnessId(nextAgentId);
+            if (item.permissionMode) setSessionPermissionModeForAgent(nextAgentId, item.permissionMode);
+            setChatMode('runtime');
+            void clashRt.attachSession({
+                id: item.id ?? item.threadId,
+                threadId: item.threadId,
+                title: item.title,
+                type: 'runtime',
+                projectId: item.projectId ?? projectId,
+                runtimeId: item.runtimeId,
+                agentId: nextAgentId,
+                ...(item.agentMemberId ? { agentMemberId: item.agentMemberId } : {}),
+                permissionMode: item.permissionMode,
+                acpSessionId: item.acpSessionId,
+                status: item.status,
+            });
+        } else {
+            onSwitchSession?.(item.threadId);
+        }
+        setShowHistory(false);
+        historyButtonRef.current?.focus();
+    }, [clashRt.attachSession, effectiveSessionHarnessId, onSwitchSession, projectId, setSessionPermissionModeForAgent]);
 
     // On mobile, the panel covers the canvas — lock body scroll while open.
     // (Escape-to-close + focus trap are handled by useFocusTrap above.)
@@ -696,9 +1207,30 @@ export default function ChatbotCopilot({
 
     // ─── Scroll ──────────────────────────────────────────────
     const scrollToBottom = useCallback(() => {
-        if (!shouldStickToBottom) return;
-        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-    }, [shouldStickToBottom]);
+        if (!stickToBottomRef.current) return;
+        if (scrollFrameRef.current !== null) return;
+        const scheduleFrame = typeof globalThis.requestAnimationFrame === 'function'
+            ? globalThis.requestAnimationFrame.bind(globalThis)
+            : ((callback: FrameRequestCallback) => window.setTimeout(() => callback(Date.now()), 0));
+        scrollFrameRef.current = scheduleFrame(() => {
+            scrollFrameRef.current = null;
+            if (!stickToBottomRef.current) return;
+            const container = scrollContainerRef.current;
+            if (!container) return;
+            container.scrollTop = container.scrollHeight;
+        });
+    }, []);
+
+    useEffect(() => {
+        return () => {
+            if (scrollFrameRef.current === null) return;
+            const cancelFrame = typeof globalThis.cancelAnimationFrame === 'function'
+                ? globalThis.cancelAnimationFrame.bind(globalThis)
+                : window.clearTimeout.bind(window);
+            cancelFrame(scrollFrameRef.current);
+            scrollFrameRef.current = null;
+        };
+    }, []);
 
     // Stick-to-bottom is driven by IntersectionObserver instead of an
     // onScroll handler so we don't force a layout read (scrollHeight) on
@@ -713,16 +1245,17 @@ export default function ChatbotCopilot({
         const container = scrollContainerRef.current;
         if (!sentinel || !container) return;
         const observer = new IntersectionObserver(
-            ([entry]) => setShouldStickToBottom(entry.isIntersecting),
+            ([entry]) => updateStickToBottom(entry.isIntersecting),
             { root: container, rootMargin: '0px 0px 120px 0px', threshold: 0 },
         );
         observer.observe(sentinel);
         return () => observer.disconnect();
-    }, [isCollapsed]);
+    }, [isCollapsed, updateStickToBottom]);
 
     useEffect(() => {
+        if (isCollapsed) return;
         scrollToBottom();
-    }, [isCollapsed, messages, shouldStickToBottom, scrollToBottom]);
+    }, [chatMode, clashRt.messages, isCollapsed, messages, shouldStickToBottom, scrollToBottom]);
 
     // ─── @-mention nodes for ChatInput ────────────────────────
     // `thumbnail` decides whether the mention renders as an inline image chip:
@@ -792,37 +1325,64 @@ export default function ChatbotCopilot({
     // ─── Submit ──────────────────────────────────────────────
     const [isCreatingSession, setIsCreatingSession] = useState(false);
     const [sessionError, setSessionError] = useState<string | null>(null);
+    const [editingQueuedTurnId, setEditingQueuedTurnId] = useState<string | null>(null);
+    const agentMotionState: AgentMotionState =
+        runtimeAlertMessage || desktopLocalSetupIssue || sessionError
+            ? 'failed'
+            : showProcessingIndicator
+                ? 'working'
+                : chatMode === 'runtime' && !clashRt.ready && (clashRt.status === 'idle' || clashRt.status === 'connecting')
+                    ? 'connecting'
+                    : suggestions.length > 0
+                        ? 'waiting'
+                        : clashRt.ready && clashRt.messages.length > 0
+                            ? 'review'
+                            : 'idle';
 
     const handleSubmit = async (text: string, attachments: import('./copilot/ChatInput').UploadedAttachment[] = []) => {
         const value = text.trim();
         if (!value && attachments.length === 0) return;
-        if (isProcessing || isCreatingSession) return;
+        if ((chatMode !== 'runtime' && isProcessing) || isCreatingSession) return;
+        if (chatMode === 'runtime' && editingQueuedTurnId) {
+            clashRt.updateQueuedPrompt(editingQueuedTurnId, value);
+            setEditingQueuedTurnId(null);
+            setInput('');
+            return;
+        }
         setSuggestions([]);
         setSessionError(null);
         clearConnectionError();
-        setShouldStickToBottom(true);
+        updateStickToBottom(true);
 
         // Persistent-runtime mode: raw prompt, daemon handles the local ACP session.
         if (chatMode === 'runtime') {
-            if (!clashRt.ready) {
-                setInput(value);
-                if (isDesktopLocalMode) {
-                    const runtime = desktopLocalRuntime;
-                    if (runtime && runtime.status === 'online' && runtime.agents.length > 0) {
-                        void clashRt.select(runtime.id, 'director', {
-                            projectId,
-                            agentId: preferredLocalAgentId(runtime.agents),
-                        });
-                    } else {
-                        void clashRt.refresh();
-                    }
-                } else {
-                    setSessionError(t('copilot.status.localRuntimeRequired'));
-                }
+            const runtimePrompt = withSelectedNodeMentions(value, selectedNodes);
+            if (selectedSessionHarnessAuth) {
+                setInput(runtimePrompt);
                 return;
             }
+            if (!clashRt.ready) {
+                const runtime = selectedRuntimeForSession ?? desktopLocalRuntime;
+                if (isDesktopLocalMode && runtime && runtime.status === 'online' && runtime.agents.length > 0) {
+                    if (!clashRt.selectedRuntimeId || clashRt.status === 'idle' || clashRt.status === 'disconnected') {
+                        clashRt.startDraft(runtime.id, undefined, {
+                            projectId,
+                            agentId: effectiveSessionHarnessId ?? preferredLocalAgentId(runtime.agents),
+                            ...permissionModeOption(sessionPermissionModeId),
+                        });
+                    }
+                } else if (isDesktopLocalMode) {
+                    setInput(runtimePrompt);
+                    void clashRt.refresh();
+                    return;
+                } else {
+                    setInput(runtimePrompt);
+                    setSessionError(t('copilot.status.localRuntimeRequired'));
+                    return;
+                }
+            }
             setInput('');
-            clashRt.sendMessage(value);
+            clashRt.sendMessage(runtimePrompt);
             return;
         }
 
@@ -878,8 +1438,9 @@ export default function ChatbotCopilot({
             rafId = null;
             if (pendingX == null) return;
             const newWidth = window.innerWidth - pendingX;
+            const maxWidth = Math.max(COPILOT_PANEL_MIN_WIDTH, Math.floor(window.innerWidth * COPILOT_PANEL_MAX_WIDTH_FRACTION));
             pendingX = null;
-            onWidthChange(Math.max(300, Math.min(700, newWidth)));
+            onWidthChange(Math.max(COPILOT_PANEL_MIN_WIDTH, Math.min(maxWidth, newWidth)));
         };
         const handleMouseMove = (e: MouseEvent) => {
             if (!isResizing) return;
@@ -910,26 +1471,20 @@ export default function ChatbotCopilot({
                 {isCollapsed && (
                     <motion.button
                         type="button"
-                        initial={{ opacity: 0 }}
-                        animate={{ opacity: 1 }}
-                        exit={{ opacity: 0 }}
+                        initial={{ opacity: 0, scale: 0.86, y: 8 }}
+                        animate={{ opacity: 1, scale: 1, y: 0, transition: COPILOT_LAUNCHER_ENTER_TRANSITION }}
+                        exit={{ opacity: 0, scale: 0.92, y: 6, transition: COPILOT_LAUNCHER_EXIT_TRANSITION }}
                         onClick={() => onCollapseChange(false)}
                         aria-label={t('copilot.panel.expand')}
                         aria-expanded={false}
                         aria-controls="clash-copilot-panel"
                         // Clears the iPhone home-indicator gesture zone with safe-area-inset-bottom
                         // while keeping the same bottom-right launcher position on desktop.
-                        className="clash-copilot-launcher fixed bottom-[max(1rem,env(safe-area-inset-bottom))] right-[max(1rem,env(safe-area-inset-right))] z-50 flex h-20 w-20 items-center justify-center rounded-[26px] transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-warm-page"
+                        className="clash-copilot-launcher fixed bottom-[max(1rem,env(safe-area-inset-bottom))] right-[max(1rem,env(safe-area-inset-right))] z-50 flex h-20 w-20 items-center justify-center rounded-[26px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-warm-page"
                         whileHover={{ scale: 1.035, y: -1 }}
                         whileTap={{ scale: 0.965 }}
                     >
-                        <img
-                            src="/brand/logo-mark-animated.svg"
-                            alt=""
-                            className="h-16 w-16 object-contain"
-                            draggable={false}
-                            aria-hidden="true"
-                        />
+                        <AgentMotion state="idle" className="h-16 w-16" />
                     </motion.button>
                 )}
             </AnimatePresence>
@@ -966,20 +1521,17 @@ export default function ChatbotCopilot({
                 style={isMobile ? undefined : {
                     width: `${width}px`,
                     height: 'calc(100dvh - var(--clash-desktop-chrome-height, 0px) - 1.5rem)',
-                    transformOrigin: 'right bottom',
+                    transformOrigin: COPILOT_PANEL_DESKTOP_TRANSFORM_ORIGIN,
                 }}
                 animate={
                     isMobile
                         ? { x: isCollapsed ? '100%' : 0 }
-                        : {
-                            opacity: isCollapsed ? 0 : 1,
-                            scale: isCollapsed ? 0.82 : 1,
-                            x: isCollapsed ? 48 : 0,
-                            y: isCollapsed ? 48 : 0,
-                        }
+                        : isCollapsed
+                            ? COPILOT_PANEL_COLLAPSED_DESKTOP_STATE
+                            : COPILOT_PANEL_EXPANDED_DESKTOP_STATE
                 }
                 initial={false}
-                transition={isResizing ? { duration: 0 } : { duration: isCollapsed ? 0.16 : 0.32, ease: [0.16, 1, 0.3, 1] }}
+                transition={isResizing ? { duration: 0 } : isCollapsed && !isMobile ? COPILOT_PANEL_COLLAPSE_TRANSITION : COPILOT_PANEL_TRANSITION}
             >
                 {/* Screen-reader-only heading: gives heading-nav rotor users
                     a landmark to jump to. Hidden visually because the panel
@@ -996,87 +1548,96 @@ export default function ChatbotCopilot({
                     />
                 )}
 
-                {!isCollapsed && (
-                    <>
-                        <IconButton
-                            onClick={() => onCollapseChange(true)}
-                            label={t('copilot.panel.collapse')}
-                            aria-expanded={true}
-                            aria-controls="clash-copilot-panel"
-                            icon={<CaretRight className="w-5 h-5" weight="bold" />}
-                            className="absolute left-2 top-6 z-20 text-stone-700 dark:text-stone-300"
-                        />
-
-                        <div className="pointer-events-none absolute left-12 top-6 z-20 flex h-10 items-center gap-2">
-                            <img
-                                src="/brand/logo-mark-animated.svg"
-                                alt=""
-                                aria-hidden="true"
-                                className="h-10 w-10 object-contain"
-                                draggable={false}
-                            />
-                            <span className="font-display text-sm font-semibold text-slate-900 dark:text-slate-100">
-                                {t('copilot.panel.label')}
-                            </span>
-                        </div>
-
-                        {/* Session Controls */}
-                        <div className="absolute right-4 top-6 z-20 flex items-center gap-1" role="toolbar" aria-label={t('copilot.panel.label')}>
-                            <IconButton
-                                onClick={handleNewSession}
-                                label={t('copilot.header.newSession')}
-                                icon={<Plus className="w-5 h-5" weight="bold" />}
-                            />
-                            <IconButton
-                                ref={historyButtonRef}
-                                onClick={handleHistoryClick}
-                                label={t('copilot.header.history')}
-                                aria-expanded={showHistory}
-                                aria-controls={historyMenuId}
-                                aria-haspopup="dialog"
-                                className="relative"
-                                icon={
-                                    <>
-                                        <ClockCounterClockwise className="w-5 h-5" weight="bold" />
-                                        {sessionHistory.length > 0 && (
-                                            <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-brand rounded-full border border-warm-surface" />
-                                        )}
-                                    </>
-                                }
-                            />
-                            {!isDesktopLocalMode && (
-                                /* "Run on:" picker. Click opens menu; brand-tinted when something other than Cloud is the active runtime. */
-                                <div className="relative">
+                <AnimatePresence>
+                    {!isCollapsed && (
+                        <motion.div
+                            initial={{ opacity: 0, y: 8, scale: 0.99 }}
+                            animate={{ opacity: 1, y: 0, scale: 1 }}
+                            exit={{ opacity: 0, y: 8, scale: 0.99 }}
+                            transition={COPILOT_PANEL_TRANSITION}
+                            className="h-full flex flex-col relative"
+                        >
+                            <div className="clash-copilot-panel-header relative z-20 flex shrink-0 items-center gap-2 px-6 py-3">
+                                <CopilotRailSlot ariaHidden={false}>
                                     <IconButton
-                                        onClick={() => {
-                                            // Refresh the runtime list each time the menu opens so
-                                            // users don't see a stale offline marker right after
-                                            // starting their daemon.
-                                            if (!runtimeMenuOpen) void clashRt.refresh();
-                                            setRuntimeMenuOpen((v) => !v);
-                                        }}
-                                        label={t('copilot.header.runOn')}
-                                        aria-expanded={runtimeMenuOpen}
-                                        aria-controls={runtimeMenuId}
-                                        aria-haspopup="menu"
-                                        variant={chatMode !== 'cloud' ? 'active' : 'default'}
-                                        icon={<Plug className="w-5 h-5" weight="bold" />}
+                                        onClick={() => onCollapseChange(true)}
+                                        label={t('copilot.panel.collapse')}
+                                        aria-expanded={true}
+                                        aria-controls="clash-copilot-panel"
+                                        size="sm"
+                                        icon={<CaretRight className="w-4 h-4" weight="bold" />}
+                                        className="h-8 w-8 text-stone-700 dark:text-stone-300"
                                     />
-                                    <AnimatePresence>
-                                        {runtimeMenuOpen && (
-                                            <motion.div
+                                </CopilotRailSlot>
+
+                                <div className="min-w-0 flex-1">
+                                    <div className="truncate font-display text-[14px] font-semibold text-slate-900 dark:text-slate-100">
+                                        {panelTitle}
+                                    </div>
+                                </div>
+
+                                <div className="flex translate-x-1 items-center gap-1" role="toolbar" aria-label={t('copilot.panel.label')}>
+                                    <AcpProgressPanel
+                                        planEntries={acpGlobalState.planEntries}
+                                        outputs={acpGlobalState.outputs}
+                                        className="shrink-0"
+                                    />
+                                    <IconButton
+                                        onClick={handleNewSession}
+                                        label={t('copilot.header.newSession')}
+                                        size="sm"
+                                        icon={<Plus className="w-4 h-4" weight="bold" />}
+                                    />
+                                    <IconButton
+                                        ref={historyButtonRef}
+                                        onClick={handleHistoryClick}
+                                        label={t('copilot.header.history')}
+                                        aria-expanded={showHistory}
+                                        aria-controls={historyMenuId}
+                                        aria-haspopup="menu"
+                                        size="sm"
+                                        className="relative"
+                                        icon={
+                                            <>
+                                                <ClockCounterClockwise className="w-4 h-4" weight="bold" />
+                                                {visibleSessionHistory.length > 0 && (
+                                                    <span className="absolute top-1 right-1 w-2 h-2 bg-brand rounded-full border border-warm-surface" />
+                                                )}
+                                            </>
+                                        }
+                                    />
+                                    {!isDesktopLocalMode && (
+                                        <div className="relative">
+                                            <IconButton
+                                                ref={runtimeButtonRef}
+                                                onClick={() => {
+                                                    // Refresh the runtime list each time the menu opens so
+                                                    // users don't see a stale offline marker right after
+                                                    // starting their daemon.
+                                                    if (!runtimeMenuOpen) void clashRt.refresh();
+                                                    setRuntimeMenuOpen((v) => !v);
+                                                }}
+                                                label={t('copilot.header.runOn')}
+                                                aria-expanded={runtimeMenuOpen}
+                                                aria-controls={runtimeMenuId}
+                                                aria-haspopup="menu"
+                                                variant={chatMode !== 'cloud' ? 'active' : 'default'}
+                                                icon={<Plug className="w-5 h-5" weight="bold" />}
+                                            />
+                                            <FloatingMenu
                                                 id={runtimeMenuId}
-                                                role="menu"
-                                                aria-label={t('copilot.runtime.menuTitle')}
-                                                initial={{ opacity: 0, y: -6, scale: 0.96 }}
-                                                animate={{ opacity: 1, y: 0, scale: 1 }}
-                                                exit={{ opacity: 0, y: -6, scale: 0.96 }}
-	                                                className="absolute top-11 right-0 z-30 w-72 bg-warm-surface rounded-2xl shadow-[0_18px_48px_rgba(35,31,25,0.12)] border border-warm-border overflow-hidden"
+                                                anchorRef={runtimeButtonRef}
+                                                open={runtimeMenuOpen}
+                                                onOpenChange={setRuntimeMenuOpen}
+                                                ariaLabel={t('copilot.runtime.menuTitle')}
+                                                align="end"
+                                                placement="bottom"
+                                                menuWidth={288}
                                             >
-                                                <div className="px-3 py-2 border-b border-warm-border bg-warm-muted">
-                                                    <div className="font-display text-xs font-semibold text-stone-700 uppercase tracking-wider dark:text-stone-300">{t('copilot.runtime.menuTitle')}</div>
+                                                <div className="px-3 pb-1 pt-1 text-sm font-medium text-stone-500 dark:text-stone-400">
+                                                    {t('copilot.runtime.menuTitle')}
                                                 </div>
-                                                <div className="py-1">
+                                                <div className="space-y-0.5">
                                                     <RuntimeMenuRow
                                                         label={t('copilot.runtime.cloud.label')}
                                                         sub={t('copilot.runtime.cloud.sub')}
@@ -1085,7 +1646,9 @@ export default function ChatbotCopilot({
                                                         onClick={() => setRuntimeMenuOpen(false)}
                                                     />
                                                     {clashRt.runtimes.length > 0 && (
-                                                        <div role="presentation" className="px-3 pt-1 pb-0.5 text-[11px] text-stone-600 uppercase tracking-wider dark:text-stone-400">{t('copilot.runtime.machinesHeader')}</div>
+                                                        <div role="presentation" className="px-3 pt-1.5 text-xs font-medium text-stone-500 dark:text-stone-400">
+                                                            {t('copilot.runtime.machinesHeader')}
+                                                        </div>
                                                     )}
                                                     {clashRt.runtimes.map((rt) => {
                                                         const online = rt.status === 'online';
@@ -1108,7 +1671,7 @@ export default function ChatbotCopilot({
                                                             />
                                                         );
                                                     })}
-                                                    <div role="separator" className="border-t border-warm-border/70 my-1" />
+                                                    <div role="separator" className="my-1.5 border-t border-warm-border/80 dark:border-slate-700" />
                                                     <RuntimeMenuRow
                                                         label={t('copilot.runtime.addMachine.label')}
                                                         sub={t('copilot.runtime.addMachine.sub')}
@@ -1118,89 +1681,68 @@ export default function ChatbotCopilot({
                                                         }}
                                                     />
                                                 </div>
-                                            </motion.div>
-                                        )}
-                                    </AnimatePresence>
+                                            </FloatingMenu>
+                                        </div>
+                                    )}
                                 </div>
-                            )}
-                        </div>
+                            </div>
 
-                        {/* History Dropdown */}
-                        <AnimatePresence>
-                            {showHistory && (
-                                <motion.div
-                                    id={historyMenuId}
-                                    role="dialog"
-                                    aria-label={t('copilot.history.title')}
-                                    initial={{ opacity: 0, y: -10, scale: 0.95 }}
-                                    animate={{ opacity: 1, y: 0, scale: 1 }}
-                                    exit={{ opacity: 0, y: -10, scale: 0.95 }}
-                                    ref={historyDropdownRef}
-	                                    className="absolute top-[4.75rem] right-4 z-30 w-64 bg-warm-surface rounded-2xl shadow-[0_18px_48px_rgba(35,31,25,0.12)] border border-warm-border overflow-hidden"
-                                >
-                                    <div className="p-3 border-b border-warm-border bg-warm-muted">
-                                        <h3 className="font-display text-xs font-semibold text-stone-700 uppercase tracking-wider dark:text-stone-300">{t('copilot.history.title')}</h3>
-                                    </div>
-                                    <ul className="max-h-60 overflow-y-auto" role="list">
-                                        {sessionHistory.length === 0 ? (
-                                            <li className="p-4 text-center text-sm text-slate-700 dark:text-slate-300">{t('copilot.history.empty')}</li>
-                                        ) : (
-                                            sessionHistory.map((item, index) => (
-                                                <li
-                                                    key={item.threadId}
-                                                    className="border-b border-warm-border/70 last:border-0 group"
+                            <FloatingMenu
+                                id={historyMenuId}
+                                anchorRef={historyButtonRef}
+                                open={showHistory}
+                                onOpenChange={setShowHistory}
+                                ariaLabel={t('copilot.history.title')}
+                                align="end"
+                                placement="bottom"
+                                menuWidth={288}
+                                maxMenuHeight={320}
+                                stopPropagation
+                            >
+                                <div className="space-y-0.5">
+                                    {visibleSessionHistory.length === 0 ? (
+                                        <div className="px-3 py-3 text-center text-sm text-slate-700 dark:text-slate-300">
+                                            {t('copilot.history.empty')}
+                                        </div>
+                                    ) : (
+                                        visibleSessionHistory.map((item, index) => (
+                                            <div key={item.threadId} className="group flex items-center gap-1">
+                                                <MenuItemButton
+                                                    role="menuitem"
+                                                    aria-label={`${item.title || t('copilot.history.fallbackTitle', { index: index + 1 })} ${item.threadId.slice(-6)}`}
+                                                    onClick={() => selectHistoryItem(item)}
+                                                    className="min-h-[48px] flex-1"
                                                 >
-                                                    <div className="flex items-stretch">
-                                                        <button
-                                                            type="button"
-                                                            onClick={() => {
-                                                                onSwitchSession?.(item.threadId);
-                                                                setShowHistory(false);
-                                                                historyButtonRef.current?.focus();
-                                                            }}
-                                                            className="flex-1 text-left px-4 py-3 hover:bg-warm-muted transition-colors flex items-center justify-between gap-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand"
-                                                        >
-                                                            <span className="flex flex-col min-w-0">
-                                                                <span className="text-sm font-medium text-slate-800 truncate max-w-[180px] dark:text-slate-100">
-                                                                    {item.title || t('copilot.history.fallbackTitle', { index: index + 1 })}
-                                                                </span>
-                                                                <span className="text-[11px] text-slate-600 font-mono dark:text-slate-400">{item.threadId.slice(-6)}</span>
-                                                            </span>
-                                                            <CaretRight className="w-3 h-3 text-slate-500 dark:text-slate-400 flex-shrink-0" aria-hidden="true" />
-                                                        </button>
-                                                        <IconButton
-                                                            onClick={(e) => deleteSession(item.threadId, e)}
-                                                            label={t('copilot.history.delete')}
-                                                            variant="destructive"
-                                                            size="sm"
-                                                            icon={<Trash className="w-3.5 h-3.5" />}
-                                                            className="mr-1 my-1 opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
-                                                        />
-                                                    </div>
-                                                </li>
-                                            ))
-                                        )}
-                                    </ul>
-                                </motion.div>
-                            )}
-                        </AnimatePresence>
-                    </>
-                )}
+                                                    <span className="min-w-0 flex-1">
+                                                        <span className="block truncate font-medium leading-5">
+                                                            {item.title || t('copilot.history.fallbackTitle', { index: index + 1 })}
+                                                        </span>
+                                                        <span className="block truncate font-mono text-[11px] font-normal leading-4 text-stone-600 dark:text-stone-400">
+                                                            {item.threadId.slice(-6)}
+                                                        </span>
+                                                    </span>
+                                                </MenuItemButton>
+                                                {onDeleteSession && (
+                                                    <IconButton
+                                                        onClick={(e) => deleteSession(item.threadId, e)}
+                                                        label={t('copilot.history.delete')}
+                                                        variant="destructive"
+                                                        size="sm"
+                                                        icon={<Trash className="w-3.5 h-3.5" />}
+                                                        className="shrink-0 opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
+                                                    />
+                                                )}
+                                            </div>
+                                        ))
+                                    )}
+                                </div>
+                            </FloatingMenu>
 
-                <AnimatePresence>
-                    {!isCollapsed && (
-                        <motion.div
-                            initial={{ opacity: 0, y: 10, scale: 0.985 }}
-                            animate={{ opacity: 1, y: 0, scale: 1 }}
-                            exit={{ opacity: 0, y: 8, scale: 0.99 }}
-                            transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
-                            className="h-full flex flex-col pt-20 relative"
-                        >
                             <div
                                 ref={scrollContainerRef}
-                                className="absolute inset-0 top-20 overflow-y-auto px-6 pt-4 pb-32"
+                                className="relative flex-1 min-h-0 overflow-y-auto px-4 pt-10 pb-40 sm:px-6"
                             >
-                                <div className="space-y-6">
+                                <div className="space-y-3">
                                     {/* Runtime mode produces the local ACP message shape.
                                         Cloud renders the heavier UIMessage path. */}
                                     {chatMode === 'runtime' && (
@@ -1211,6 +1753,16 @@ export default function ChatbotCopilot({
                                             {runtimeAlertMessage && (
                                                 <div role="alert" className="text-sm text-red-700 dark:text-red-300">{t('copilot.errors.warningPrefix')} {runtimeAlertMessage}</div>
                                             )}
+                                            {selectedSessionHarnessAuthTitle && selectedSessionHarnessAuth && (
+                                                <RuntimeAuthNotice
+                                                    title={selectedSessionHarnessAuthTitle}
+                                                    message={selectedSessionHarnessAuthMessage ?? ''}
+                                                    command={selectedSessionHarnessAuth?.command}
+                                                    busy={authenticatingHarnessId === effectiveSessionHarnessId}
+                                                    onAuthenticate={handleAuthenticateSessionHarness}
+                                                    onRecheck={handleRecheckSessionHarness}
+                                                />
+                                            )}
                                             <RuntimeMessageList
                                                 messages={clashRt.messages}
                                                 ready={clashRt.ready}
@@ -1218,6 +1770,10 @@ export default function ChatbotCopilot({
                                                 localRuntime={desktopLocalRuntime}
                                                 setupIssue={desktopLocalSetupIssue}
                                                 status={clashRt.status}
+                                                activityLabel={showRuntimeActivityRow ? activityStatusLabel : null}
+                                                agentMotionState={agentMotionState}
+                                                mentionableNodes={mentionableNodes}
+                                                renderEmptyActivity={!showRuntimeComposerCompanion}
                                             />
                                         </>
                                     )}
@@ -1230,13 +1786,14 @@ export default function ChatbotCopilot({
                                                     mentionableNodes={mentionableNodes}
                                                 />
                                             ))}
+                                            {showCloudActivityRow && (
+                                                <AgentActivityRow
+                                                    label={activityStatusLabel}
+                                                    state={agentMotionState}
+                                                    gazeTarget={null}
+                                                />
+                                            )}
                                         </>
-                                    )}
-
-                                    {showProcessingIndicator && (
-                                        <div role="status" aria-live="polite">
-                                            <ThinkingIndicator message={processingIndicatorMessage} />
-                                        </div>
                                     )}
 
                                     {/* Suggestion chips (e.g. "Continue" after step limit) */}
@@ -1275,7 +1832,7 @@ export default function ChatbotCopilot({
                                         initial={{ opacity: 0, y: 10, scale: 0.9 }}
                                         animate={{ opacity: 1, y: 0, scale: 1 }}
                                         exit={{ opacity: 0, y: 10, scale: 0.9 }}
-                                        className="absolute bottom-[80px] right-6 z-20 pointer-events-auto"
+                                        className="absolute bottom-[8.75rem] right-6 z-20 pointer-events-auto"
                                     >
                                         <div
                                             role="status"
@@ -1305,50 +1862,94 @@ export default function ChatbotCopilot({
                                 )}
                             </AnimatePresence>
 
-                            <div className="absolute bottom-0 left-0 right-0 h-28 bg-gradient-to-t from-warm-surface via-warm-surface/85 to-transparent pointer-events-none" />
-
-                            <div className="absolute bottom-0 left-0 right-0">
-                                {/* Slash commands the spawned ACP agent advertises (only present
-                                    in runtime mode). Click → prepends `/<name> ` into the
-                                    input so the user can finish typing args before sending. */}
-                                {chatMode !== 'cloud' && (() => {
-                                    const cmds = clashRt.availableCommands;
-                                    if (!cmds || cmds.length === 0) return null;
-                                    return (
-                                        <SlashCommandBar
-                                            commands={cmds}
-                                            onPick={(name) => setInput((prev) => `/${name} ` + (prev?.startsWith('/') ? '' : prev))}
+                            <div className="clash-copilot-composer-stack absolute bottom-0 left-0 right-0">
+                                {slashCommandOptions.length > 0 && (
+                                    <SlashCommandPalette
+                                        commands={slashCommandOptions}
+                                        onPick={handlePickSlashCommand}
+                                    />
+                                )}
+                                {chatMode === 'runtime' && clashRt.promptQueueEnabled && visibleRuntimePromptQueue.length > 0 && (
+                                    <RuntimePromptQueueBar
+                                        items={visibleRuntimePromptQueue}
+                                        onSteer={clashRt.steerQueuedPrompt}
+                                        onEdit={(item) => {
+                                            setEditingQueuedTurnId(item.turnId);
+                                            setInput(item.text);
+                                        }}
+                                        onRemove={clashRt.removeQueuedPrompt}
+                                        onReorder={clashRt.reorderPromptQueue}
+                                    />
+                                )}
+                                <div className="relative z-20">
+                                    {showRuntimeComposerCompanion && (
+                                        <motion.div
+                                            className="clash-copilot-agent-activity-empty-anchor clash-copilot-agent-activity-composer-companion mx-auto w-full max-w-[68rem] px-4 pb-1 sm:px-6"
+                                            initial={{ opacity: 0, y: 10 }}
+                                            animate={{ opacity: 1, y: 0 }}
+                                            exit={{ opacity: 0, y: 6 }}
+                                            transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
+                                        >
+                                            <AgentActivitySlot
+                                                label={showRuntimeActivityRow ? activityStatusLabel : null}
+                                                state={showRuntimeActivityRow ? agentMotionState : 'idle'}
+                                                gazeTarget={null}
+                                                emptyLabel={t('copilot.status.readyWhenYouAre')}
+                                            />
+                                        </motion.div>
+                                    )}
+                                    <div
+                                        aria-hidden="true"
+                                        data-testid="composer-bottom-fade"
+                                        className="clash-copilot-composer-bottom-fade"
+                                    />
+                                    <div className="relative z-10">
+                                        <ChatInput
+                                            input={input}
+                                            onInputChange={setInput}
+                                            onSubmit={handleSubmit}
+                                            onStop={handleStop}
+                                            isProcessing={isProcessing}
+                                            isCreatingSession={isCreatingSession || (chatMode === 'cloud' && waitingFirstSend)}
+                                            connected={chatMode === 'runtime' ? clashRt.ready : connected}
+                                            error={chatMode === 'cloud' ? (sessionError || connectionError) : sessionError}
+                                            onDismissError={() => { setSessionError(null); clearConnectionError(); }}
+                                            allowSubmitWhileProcessing={chatMode === 'runtime'}
+                                            disabled={chatMode === 'runtime' && !clashRt.ready && !(
+                                                isDesktopLocalMode &&
+                                                desktopLocalRuntime?.status === 'online' &&
+                                                desktopLocalRuntime.agents.length > 0 &&
+                                                (clashRt.status === 'draft' || clashRt.status === 'idle' || clashRt.status === 'disconnected')
+                                            )}
+                                            placeholder={selectedNodes.length > 0 ? 'Ask anything about selected files...' : 'Ask anything...'}
+                                            mentionableNodes={mentionableNodes}
+                                            projectId={projectId}
+                                            toolbarAccessory={(
+                                                <HarnessPermissionSelector
+                                                    selectedPermissionModeId={sessionPermissionModeId}
+                                                    sessionModes={effectiveSessionModes}
+                                                    modeConfigOption={modeConfigOption}
+                                                    onSelectPermissionMode={handleSelectSessionPermissionMode}
+                                                />
+                                            )}
+                                            rightToolbarAccessory={(
+                                                <SessionConfigSelector
+                                                    open={sessionConfigOpen}
+                                                    onOpenChange={setSessionConfigOpen}
+                                                    embedded
+                                                    selectedHarnessId={effectiveSessionHarnessId}
+                                                    statusLabel={null}
+                                                    harnessOptions={sessionHarnessOptions}
+                                                    harnessLocked={sessionHarnessLocked}
+                                                    modelConfigOption={modelConfigOption}
+                                                    thoughtLevelConfigOption={thoughtLevelConfigOption}
+                                                    onSelectHarness={handleSelectSessionHarness}
+                                                    onSelectConfigOption={handleSelectSessionConfigOption}
+                                                />
+                                            )}
                                         />
-                                    );
-                                })()}
-                                <SessionConfigSelector
-                                    open={sessionConfigOpen}
-                                    onOpenChange={setSessionConfigOpen}
-                                    runtimes={clashRt.runtimes}
-                                    chatMode={chatMode}
-                                    selectedRuntime={selectedRuntimeForSession}
-                                    selectedHarnessId={effectiveSessionHarnessId}
-                                    selectedModelProfileId={selectedSessionModelProfile.id}
-                                    modelProfiles={sessionModelProfiles}
-                                    onSelectRuntime={selectSessionRuntime}
-                                    onSelectHarness={selectSessionHarness}
-                                    onSelectModelProfile={setSessionModelProfileId}
-                                />
-                                <ChatInput
-                                    input={input}
-                                    onInputChange={setInput}
-                                    onSubmit={handleSubmit}
-                                    onStop={handleStop}
-                                    isProcessing={isProcessing}
-                                    isCreatingSession={isCreatingSession || (chatMode === 'cloud' && waitingFirstSend)}
-                                    connected={chatMode === 'runtime' ? clashRt.ready : connected}
-                                    error={chatMode === 'cloud' ? (sessionError || connectionError) : (isDesktopLocalMode ? null : sessionError)}
-                                    onDismissError={() => { setSessionError(null); clearConnectionError(); }}
-                                    disabled={chatMode === 'runtime' && !clashRt.ready}
-                                    placeholder={selectedNodes.length > 0 ? 'Ask anything about selected files...' : 'Ask anything...'}
-                                    mentionableNodes={mentionableNodes}
-                                    projectId={projectId}
-                                />
+                                    </div>
+                                </div>
                             </div>
                         </motion.div>
                     )}
@@ -1360,16 +1961,36 @@ export default function ChatbotCopilot({
                 open={!!runtimePicker}
                 runtime={runtimePicker}
                 loadResumeOptions={clashRt.loadResumeOptions}
-                onPick={async (crewId, resumeId, agentId) => {
+                onPick={async (agentMemberId, resumeId, agentId) => {
                     const rt = runtimePicker;
                     setRuntimePicker(null);
                     if (!rt) return;
                     setChatMode('runtime');
-                    await clashRt.select(rt.id, crewId ?? undefined, {
+                    const pickedAgentId = agentId ?? preferredLocalAgentId(rt.agents);
+                    const pickedAgent = pickedAgentId ? rt.agents.find((agent) => agent.id === pickedAgentId) : null;
+                    if (pickedAgent?.auth?.status === 'needs-auth') {
+                        setSessionHarnessId(pickedAgent.id);
+                        setSessionError(null);
+                        await clashRt.refresh({ probe: 'config', refresh: true });
+                        return;
+                    }
+                    const pickedModeConfigOption = findAcpSelectConfigOption(pickedAgent?.config_options ?? [], 'mode');
+                    const pickedPermissionModeId = pickedAgentId
+                        ? resolvePermissionModeForSession(
+                            sessionPermissionModeByAgentId[pickedAgentId],
+                            pickedAgent?.session_modes ?? null,
+                            pickedModeConfigOption,
+                        )
+                        : null;
+                    await clashRt.select(rt.id, agentMemberId ?? undefined, {
                         projectId,
                         resumeAcpSessionId: resumeId,
                         agentId,
+                        ...permissionModeOption(pickedPermissionModeId),
                     });
+                }}
+                onRecheckAgents={() => {
+                    void clashRt.refresh({ probe: 'config', refresh: true });
                 }}
                 onClose={() => setRuntimePicker(null)}
                 busy={clashRt.status === 'connecting'}
@@ -1433,41 +2054,104 @@ function AddMachineDialog({ open, onClose }: { open: boolean; onClose: () => voi
     );
 }
 
-/**
- * Horizontal scrollable bar of `/` commands the spawned ACP agent
- * advertised via available_commands_update. Hidden when the agent
- * hasn't reported any (or when in cloud mode). One-click prepends
- * `/<name> ` into the input so the user can add args + send.
- *
- * Capped to first ~12 commands so the bar doesn't dominate the panel
- * — claude-code-acp ships ~50 by default. Tooltip shows description.
- */
-function SlashCommandBar({
+function normalizeSlashCommandName(command: AvailableCommand): string {
+    return command.name.replace(/^\/+/, '').trim();
+}
+
+function SlashCommandPalette({
     commands,
     onPick,
 }: {
-    commands: import('@clash/web-ui/lib/acpEvents').AvailableCommand[];
-    onPick: (name: string) => void;
+    commands: AvailableCommand[];
+    onPick: (command: AvailableCommand) => void;
 }) {
-    const { t } = useTranslation();
-    const visible = commands.slice(0, 12);
     return (
-        <div role="group" aria-label="Slash commands" className="px-4 pb-1 -mb-1 overflow-x-auto whitespace-nowrap text-xs">
-            {visible.map((c) => (
+        <div
+            role="listbox"
+            aria-label="Slash commands"
+            className="mx-5 mb-2 max-h-64 overflow-y-auto rounded-2xl border border-warm-border bg-warm-surface/95 p-1.5 shadow-[0_18px_48px_rgba(23,19,13,0.12)] backdrop-blur"
+        >
+            {commands.map((command) => {
+                const name = normalizeSlashCommandName(command);
+                const description = command.description ?? command.input?.hint;
+                return (
                 <button
-                    key={c.name}
+                    key={command.name}
                     type="button"
-                    onClick={() => onPick(c.name)}
-                    title={c.description ?? c.name}
-                    aria-label={c.description ? `/${c.name} — ${c.description}` : `/${c.name}`}
-	                    className="inline-flex items-center mr-1.5 px-2 py-1 min-h-[28px] rounded-lg bg-warm-muted text-stone-700 hover:bg-warm-hover transition-colors font-mono dark:text-stone-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-1 focus-visible:ring-offset-warm-page"
+                    role="option"
+                    aria-selected="false"
+                    onMouseDown={(event) => event.preventDefault()}
+                    onClick={() => onPick(command)}
+                    title={description ?? `/${name}`}
+                    aria-label={description ? `/${name} ${description}` : `/${name}`}
+                    className="grid w-full grid-cols-[minmax(8rem,auto)_1fr] items-baseline gap-4 rounded-xl px-3 py-2 text-left transition-colors hover:bg-warm-muted focus-visible:bg-warm-muted focus-visible:outline-none"
                 >
-                    /{c.name}
+                    <span className="font-mono text-sm font-medium text-slate-900 dark:text-slate-100">/{name}</span>
+                    {description ? (
+                        <span className="min-w-0 truncate text-sm text-stone-500 dark:text-stone-400">{description}</span>
+                    ) : null}
                 </button>
-            ))}
-            {commands.length > visible.length && (
-                <span className="text-stone-600 ml-1 dark:text-stone-400">{t('copilot.status.slashCommandsMore', { count: commands.length - visible.length })}</span>
-            )}
+                );
+            })}
+        </div>
+    );
+}
+
+function RuntimeAuthNotice({
+    title,
+    message,
+    command,
+    busy,
+    onAuthenticate,
+    onRecheck,
+}: {
+    title: string;
+    message: string;
+    command?: string;
+    busy: boolean;
+    onAuthenticate: () => void;
+    onRecheck: () => void;
+}) {
+    return (
+        <div
+            role="alert"
+            className="mx-auto flex w-full max-w-[68rem] items-start gap-3 rounded-xl border border-amber-200/80 bg-amber-50/80 px-3.5 py-3 text-sm text-amber-950 shadow-sm dark:border-amber-400/20 dark:bg-amber-500/10 dark:text-amber-100"
+        >
+            <span className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-amber-100 text-amber-700 dark:bg-amber-300/10 dark:text-amber-200">
+                <ShieldWarning className="h-4 w-4" weight="bold" />
+            </span>
+            <span className="min-w-0 flex-1">
+                <span className="block font-semibold leading-5">{title}</span>
+                {message ? (
+                    <span className="mt-0.5 block leading-5 text-amber-900/80 dark:text-amber-100/80">{message}</span>
+                ) : null}
+                {command ? (
+                    <details className="mt-1.5 text-xs text-amber-800/75 dark:text-amber-100/70">
+                        <summary className="cursor-pointer select-none font-medium">Manual fallback</summary>
+                        <span className="mt-1 block leading-5">
+                            If Sign in does not open, run <code className="rounded bg-amber-100 px-1 font-mono dark:bg-amber-300/10">{command}</code> and use <code className="rounded bg-amber-100 px-1 font-mono dark:bg-amber-300/10">/auth</code>.
+                        </span>
+                    </details>
+                ) : null}
+            </span>
+            <span className="flex shrink-0 items-center gap-1.5">
+                <button
+                    type="button"
+                    onClick={onRecheck}
+                    disabled={busy}
+                    className="rounded-lg border border-amber-300/70 bg-transparent px-3 py-1.5 text-xs font-semibold text-amber-900 transition hover:bg-amber-100 disabled:cursor-wait disabled:opacity-60 dark:border-amber-300/30 dark:text-amber-100"
+                >
+                    Check again
+                </button>
+                <button
+                    type="button"
+                    onClick={onAuthenticate}
+                    disabled={busy}
+                    className="rounded-lg border border-amber-300 bg-white px-3 py-1.5 text-xs font-semibold text-amber-900 transition hover:bg-amber-100 disabled:cursor-wait disabled:opacity-60 dark:border-amber-300/30 dark:bg-amber-300/10 dark:text-amber-100"
+                >
+                    {busy ? "Opening..." : "Sign in"}
+                </button>
+            </span>
         </div>
     );
 }
@@ -1475,178 +2159,283 @@ function SlashCommandBar({
 function SessionConfigSelector({
     open,
     onOpenChange,
-    runtimes,
-    chatMode,
-    selectedRuntime,
+    embedded = false,
     selectedHarnessId,
-    selectedModelProfileId,
-    modelProfiles,
-    onSelectRuntime,
+    statusLabel,
+    harnessOptions,
+    harnessLocked,
+    modelConfigOption,
+    thoughtLevelConfigOption,
     onSelectHarness,
-    onSelectModelProfile,
+    onSelectConfigOption,
 }: {
     open: boolean;
     onOpenChange: (open: boolean) => void;
-    runtimes: Runtime[];
-    chatMode: 'cloud' | 'runtime';
-    selectedRuntime: Runtime | null;
+    embedded?: boolean;
     selectedHarnessId: string | null;
-    selectedModelProfileId: string;
-    modelProfiles: AcpModelProfile[];
-    onSelectRuntime: (runtime: Runtime) => void;
+    statusLabel?: string | null;
+    harnessOptions: Runtime['agents'];
+    harnessLocked?: boolean;
+    modelConfigOption: AcpSessionConfigOption | null;
+    thoughtLevelConfigOption: AcpSessionConfigOption | null;
     onSelectHarness: (agentId: string) => void;
-    onSelectModelProfile: (profileId: string) => void;
+    onSelectConfigOption: (configId: string, value: string | boolean) => void;
 }) {
     const { t } = useTranslation();
-    const selectedModelProfile =
-        modelProfiles.find((profile) => profile.id === selectedModelProfileId) ??
-        modelProfiles[0];
-    const runtimeLabel =
-        chatMode === 'cloud'
-            ? t('copilot.sessionConfig.cloud')
-            : selectedRuntime?.id === DESKTOP_LOCAL_RUNTIME_ID
-                ? t('copilot.sessionConfig.local')
-                : selectedRuntime?.hostname || t('copilot.sessionConfig.local');
-    const harnessLabel = agentDisplayName(selectedHarnessId);
-    const modelLabel = selectedModelProfile?.label ?? 'Auto';
-    const selectedRuntimeId = chatMode === 'runtime' ? selectedRuntime?.id ?? null : null;
+    const selectedHarnessName = agentDisplayName(selectedHarnessId);
+    const modelGroups = useMemo(
+        () => modelValuesForHarness(modelConfigOption, selectedHarnessName),
+        [modelConfigOption, selectedHarnessName],
+    );
+    const selectedModel = useMemo(() => selectedAcpSelectValue(modelConfigOption), [modelConfigOption]);
+    const thoughtValues = useMemo(() => flattenAcpSelectValues(thoughtLevelConfigOption), [thoughtLevelConfigOption]);
+    const selectedThoughtLevel = useMemo(() => selectedAcpSelectValue(thoughtLevelConfigOption), [thoughtLevelConfigOption]);
+    const modelLabel = selectedModel?.name ?? agentDisplayName(selectedHarnessId);
+    const triggerLabel = selectedModel
+        ? `${selectedHarnessName} · ${modelLabel}`
+        : selectedHarnessName;
+    const modelOptionCount = useMemo(
+        () => modelGroups.reduce((count, group) => count + group.options.length, 0),
+        [modelGroups],
+    );
+    const hasModelSwitch = !!modelConfigOption && modelOptionCount > 0;
+    const selectorDisabled = !!harnessLocked && !hasModelSwitch;
+    const submenuMode = modelOptionCount > 8 ? 'drilldown' : 'flyout';
+    const hasStatusLabel = !!statusLabel;
+    const menuLabel = t('copilot.sessionConfig.label');
+    const comboHarnesses = harnessOptions.length > 0
+        ? harnessOptions
+        : selectedHarnessId
+            ? [{ id: selectedHarnessId }]
+            : [];
+    const modelSections = useMemo<SelectSection<string>[]>(() => {
+        const sections: SelectSection<string>[] = [];
+        const thoughtSubmenuSections: SelectSection<string>[] = thoughtLevelConfigOption && thoughtValues.length > 0
+            ? [{
+                id: 'thought-level-values',
+                label: <span className="text-[11px] font-semibold uppercase tracking-[0.11em]">Effort</span>,
+                options: thoughtValues.map((value) => ({
+                    value: JSON.stringify({ type: 'config', configId: thoughtLevelConfigOption.id, value: value.value }),
+                    label: value.name,
+                    description: value.description ?? undefined,
+                    selected: value.value === thoughtLevelConfigOption.currentValue,
+                })),
+            }]
+            : [];
+        if (comboHarnesses.length > 0) {
+            sections.push({
+                id: 'harness',
+                label: <span className="text-[11px] font-semibold uppercase tracking-[0.11em]">Harness</span>,
+                options: comboHarnesses.map((agent) => ({
+                    value: JSON.stringify({ type: 'harness', agentId: agent.id }),
+                    label: agent.label ?? agentDisplayName(agent.id),
+                    description: harnessLocked
+                        ? 'Locked for this session'
+                        : agent.auth?.status === 'needs-auth'
+                            ? 'Auth needed'
+                            : undefined,
+                    icon: <AcpAgentLogo agentId={agent.id} title={agent.label ?? agentDisplayName(agent.id)} className="h-4 w-4" />,
+                    selected: agent.id === selectedHarnessId,
+                    disabled: harnessLocked,
+                })),
+            });
+        }
+        if (modelConfigOption && modelGroups.length > 0) {
+            sections.push({
+                id: 'acp-model',
+                label: (
+                    <span className="text-[11px] font-semibold uppercase tracking-[0.11em]">
+                        {modelConfigOption.name || 'Model'}
+                    </span>
+                ),
+                options: modelGroups.flatMap((group) => group.options).map((value) => {
+                    const selected = value.value === modelConfigOption.currentValue;
+                    return {
+                        value: JSON.stringify({ type: 'config', configId: modelConfigOption.id, value: value.value }),
+                        label: value.name,
+                        selected,
+                        ...(selected && thoughtSubmenuSections.length > 0
+                            ? {
+                                hasSubmenu: true,
+                                submenuLabel: 'Effort',
+                                submenuSections: thoughtSubmenuSections,
+                            }
+                            : {}),
+                    };
+                }),
+            });
+        }
+        if (!modelConfigOption && thoughtLevelConfigOption && thoughtValues.length > 0) {
+            sections.push({
+                id: 'thought-level',
+                options: [{
+                    value: JSON.stringify({ type: 'noop', configId: thoughtLevelConfigOption.id }),
+                    label: thoughtLevelConfigOption.name || 'Thinking effort',
+                    description: selectedThoughtLevel?.name,
+                    hasSubmenu: true,
+                    submenuLabel: thoughtLevelConfigOption.name || 'Thinking effort',
+                    submenuSections: [{
+                        id: 'thought-level-values',
+                        options: thoughtValues.map((value) => ({
+                            value: JSON.stringify({ type: 'config', configId: thoughtLevelConfigOption.id, value: value.value }),
+                            label: value.name,
+                            description: value.description ?? undefined,
+                            selected: value.value === thoughtLevelConfigOption.currentValue,
+                        })),
+                    }],
+                }],
+            });
+        }
+        return sections;
+    }, [
+        comboHarnesses,
+        harnessLocked,
+        modelConfigOption,
+        modelGroups,
+        selectedHarnessId,
+        selectedThoughtLevel?.name,
+        thoughtLevelConfigOption,
+        thoughtValues,
+    ]);
 
     return (
-        <div className="relative px-4 pb-2">
-            <button
-                type="button"
-                aria-label={t('copilot.sessionConfig.label')}
-                aria-expanded={open}
-                aria-haspopup="menu"
-                onClick={() => onOpenChange(!open)}
-                className="inline-flex max-w-full items-center gap-1.5 rounded-xl border border-warm-border bg-warm-surface/90 px-3 py-1.5 text-xs font-medium text-slate-800 shadow-sm transition-colors hover:bg-warm-muted dark:text-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-warm-page"
-            >
-                <span className="truncate">{runtimeLabel}</span>
-                <span className="text-stone-400" aria-hidden="true">·</span>
-                <span className="truncate">{harnessLabel}</span>
-                <span className="text-stone-400" aria-hidden="true">·</span>
-                <span className="truncate">{modelLabel}</span>
-                <CaretDown className="h-3.5 w-3.5 flex-shrink-0 text-stone-500" aria-hidden="true" />
-            </button>
-
-            <AnimatePresence>
-                {open && (
-                    <motion.div
-                        role="menu"
-                        aria-label={t('copilot.sessionConfig.label')}
-                        initial={{ opacity: 0, y: 8, scale: 0.98 }}
-                        animate={{ opacity: 1, y: 0, scale: 1 }}
-                        exit={{ opacity: 0, y: 8, scale: 0.98 }}
-                        transition={{ duration: 0.16, ease: [0.16, 1, 0.3, 1] }}
-                        className="absolute bottom-full left-4 z-40 mb-2 w-[calc(100%-2rem)] max-h-[58vh] overflow-y-auto rounded-2xl border border-warm-border bg-warm-surface shadow-[0_18px_48px_rgba(35,31,25,0.14)]"
-                    >
-                        <SessionConfigSection title={t('copilot.sessionConfig.runtime')}>
-                            <SessionConfigRow
-                                label={t('copilot.sessionConfig.local')}
-                                sub={selectedRuntime?.id === DESKTOP_LOCAL_RUNTIME_ID ? selectedRuntime.hostname : undefined}
-                                active={chatMode === 'runtime' && selectedRuntimeId === DESKTOP_LOCAL_RUNTIME_ID}
-                                disabled={!runtimes.some((runtime) => runtime.id === DESKTOP_LOCAL_RUNTIME_ID && runtime.status === 'online' && runtime.agents.length > 0)}
-                                onClick={() => {
-                                    const runtime = runtimes.find((item) => item.id === DESKTOP_LOCAL_RUNTIME_ID);
-                                    if (runtime) onSelectRuntime(runtime);
-                                }}
-                            />
-                            {runtimes
-                                .filter((runtime) => runtime.id !== DESKTOP_LOCAL_RUNTIME_ID)
-                                .map((runtime) => (
-                                    <SessionConfigRow
-                                        key={runtime.id}
-                                        label={runtime.hostname || runtime.machine_id.slice(0, 10)}
-                                        sub={runtime.status === 'online'
-                                            ? t('copilot.runtime.machineSub_online', { count: runtime.agents.length })
-                                            : t('copilot.runtime.machineSub_offline')}
-                                        active={chatMode === 'runtime' && selectedRuntimeId === runtime.id}
-                                        disabled={runtime.status !== 'online' || runtime.agents.length === 0}
-                                        onClick={() => onSelectRuntime(runtime)}
-                                    />
-                                ))}
-                            <SessionConfigRow
-                                label={t('copilot.sessionConfig.cloud')}
-                                sub={t('copilot.sessionConfig.cloudSoon')}
-                                active={chatMode === 'cloud'}
-                                disabled
-                                onClick={() => undefined}
-                            />
-                        </SessionConfigSection>
-
-                        <SessionConfigSection title={t('copilot.sessionConfig.harness')}>
-                            {(selectedRuntime?.agents ?? []).map((agent) => (
-                                <SessionConfigRow
-                                    key={agent.id}
-                                    label={agentDisplayName(agent.id)}
-                                    sub={agent.binary}
-                                    active={selectedHarnessId === agent.id}
-                                    onClick={() => onSelectHarness(agent.id)}
-                                />
-                            ))}
-                        </SessionConfigSection>
-
-                        <SessionConfigSection title={t('copilot.sessionConfig.model')}>
-                            {modelProfiles.map((profile) => (
-                                <SessionConfigRow
-                                    key={profile.id}
-                                    label={profile.label}
-                                    sub={profile.description}
-                                    active={selectedModelProfileId === profile.id}
-                                    onClick={() => onSelectModelProfile(profile.id)}
-                                />
-                            ))}
-                        </SessionConfigSection>
-                    </motion.div>
-                )}
-            </AnimatePresence>
-        </div>
+        <SelectMenu
+            className={embedded ? 'relative flex justify-start' : 'relative flex justify-start px-4 pb-2'}
+            triggerClassName="clash-session-config-trigger max-w-full text-left"
+            open={open}
+            onOpenChange={onOpenChange}
+            value={modelConfigOption && selectedModel
+                ? JSON.stringify({ type: 'config', configId: modelConfigOption.id, value: selectedModel.value })
+                : JSON.stringify({ type: 'harness', agentId: selectedHarnessId ?? '' })}
+            sections={modelSections}
+            disabled={selectorDisabled}
+            onValueChange={(value) => {
+                try {
+                    const parsed = JSON.parse(value) as { type?: string; configId?: string; value?: string; agentId?: string };
+                    if (parsed.type === 'config' && parsed.configId && typeof parsed.value === 'string') {
+                        onSelectConfigOption(parsed.configId, parsed.value);
+                    } else if (parsed.type === 'harness' && parsed.agentId) {
+                        onSelectHarness(parsed.agentId);
+                    }
+                } catch { /* ignore malformed menu value */ }
+            }}
+            ariaLabel={menuLabel}
+            title={triggerLabel}
+            variant="inline"
+            placement="top"
+            menuWidth={280}
+            maxMenuHeight={420}
+            submenuMode={submenuMode}
+            submenuWidth={220}
+            stopPropagation
+            triggerPrefix={(
+                <>
+                <span className="flex h-5 w-5 flex-shrink-0 items-center justify-center text-slate-700 dark:text-slate-200">
+                    <AcpAgentLogo agentId={selectedHarnessId} title={agentDisplayName(selectedHarnessId)} className="h-4 w-4" />
+                </span>
+                <span
+                    data-session-config-status-slot=""
+                    aria-live="polite"
+                    className={`clash-session-config-status-slot truncate text-[11px] font-medium text-stone-500 transition-[max-width,opacity] duration-150 dark:text-stone-400 ${
+                        hasStatusLabel ? 'max-w-[4.25rem] opacity-100' : 'max-w-0 opacity-0'
+                    }`}
+                >
+                    {statusLabel ?? ''}
+                </span>
+                </>
+            )}
+            triggerLabel={modelLabel}
+        />
     );
 }
 
-function SessionConfigSection({ title, children }: { title: string; children: ReactNode }) {
-    return (
-        <section className="border-b border-warm-border/70 last:border-b-0 py-1.5">
-            <div className="px-3 pb-1 pt-1 text-[11px] font-semibold uppercase tracking-wider text-stone-600 dark:text-stone-400">
-                {title}
-            </div>
-            <div className="pb-1">{children}</div>
-        </section>
-    );
-}
-
-function SessionConfigRow({
-    label,
-    sub,
-    active,
-    disabled,
-    onClick,
+function HarnessPermissionSelector({
+    selectedPermissionModeId,
+    sessionModes,
+    modeConfigOption,
+    onSelectPermissionMode,
 }: {
-    label: string;
-    sub?: string;
-    active?: boolean;
-    disabled?: boolean;
-    onClick: () => void;
+    selectedPermissionModeId: string | null;
+    sessionModes: AcpSessionModeState | null;
+    modeConfigOption: AcpSessionConfigOption | null;
+    onSelectPermissionMode: (modeId: string) => void;
 }) {
+    const modeValues = useMemo(() => flattenAcpSelectValues(modeConfigOption), [modeConfigOption]);
+    const sessionModeValues = useMemo(
+        () => sessionModes?.availableModes.filter((mode) => typeof mode.id === 'string' && typeof mode.name === 'string') ?? [],
+        [sessionModes],
+    );
+    const selectedSessionMode = useMemo(() => (
+        sessionModeValues.find((mode) => mode.id === selectedPermissionModeId) ??
+        sessionModeValues.find((mode) => mode.id === sessionModes?.currentModeId) ??
+        sessionModeValues[0] ??
+        null
+    ), [selectedPermissionModeId, sessionModeValues, sessionModes?.currentModeId]);
+    const selectedAcpMode = useMemo(() => (
+        modeValues.find((mode) => mode.value === selectedPermissionModeId) ??
+        selectedAcpSelectValue(modeConfigOption)
+    ), [modeConfigOption, modeValues, selectedPermissionModeId]);
+    const selectedMode = useMemo(() => {
+        if (selectedSessionMode) {
+            return {
+                value: selectedSessionMode.id,
+                label: selectedSessionMode.name,
+                description: selectedSessionMode.description ?? undefined,
+            };
+        }
+        if (selectedAcpMode) {
+            return {
+                value: selectedAcpMode.value,
+                label: selectedAcpMode.name,
+                description: selectedAcpMode.description ?? undefined,
+            };
+        }
+        return null;
+    }, [selectedAcpMode, selectedSessionMode]);
+    const sections = useMemo<SelectSection<string>[]>(() => [
+        {
+            id: 'modes',
+            label: sessionModeValues.length > 0 ? 'Mode' : modeConfigOption?.name ?? 'Mode',
+            options: sessionModeValues.length > 0
+                ? sessionModeValues.map((mode) => ({
+                    value: mode.id,
+                    label: mode.name,
+                    description: mode.description ?? undefined,
+                    selected: mode.id === selectedMode?.value,
+                    icon: <ShieldWarning className="h-4 w-4" aria-hidden="true" />,
+                }))
+                : modeValues.map((mode) => ({
+                    value: mode.value,
+                    label: mode.name,
+                    description: mode.description ?? undefined,
+                    selected: mode.value === selectedPermissionModeId,
+                    icon: <ShieldWarning className="h-4 w-4" aria-hidden="true" />,
+            })),
+        },
+    ], [modeConfigOption?.name, modeValues, selectedMode, selectedPermissionModeId, sessionModeValues]);
+
+    if (!selectedMode) return null;
     return (
-        <button
-            type="button"
-            role="menuitem"
-            disabled={disabled}
-            aria-checked={active}
-            onClick={onClick}
-            className={`flex min-h-[44px] w-full items-center gap-3 px-3 py-2 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand ${
-                disabled ? 'cursor-not-allowed opacity-50' : 'hover:bg-warm-muted'
-            } ${active ? 'bg-brand/10 dark:bg-brand/15' : ''}`}
-        >
-            <span className="flex h-4 w-4 flex-shrink-0 items-center justify-center" aria-hidden="true">
-                {active ? <Check className="h-4 w-4 text-brand" weight="bold" /> : null}
-            </span>
-            <span className="min-w-0 flex-1">
-                <span className="block truncate text-sm font-medium text-slate-800 dark:text-slate-100">{label}</span>
-                {sub ? <span className="block truncate text-[11px] text-stone-600 dark:text-stone-400">{sub}</span> : null}
-            </span>
-        </button>
+        <SelectMenu
+            className="relative flex justify-start"
+            triggerClassName="clash-session-config-trigger max-w-full text-left text-status-down"
+            value={selectedMode.value}
+            sections={sections}
+            onValueChange={onSelectPermissionMode}
+            ariaLabel="Harness permission mode"
+            title={selectedMode.description ?? undefined}
+            variant="inline"
+            placement="top"
+            menuWidth={220}
+            maxMenuHeight={280}
+            stopPropagation
+            triggerPrefix={(
+                <span className="flex h-5 w-5 flex-shrink-0 items-center justify-center text-status-down">
+                    <ShieldWarning className="h-4 w-4" aria-hidden="true" />
+                </span>
+            )}
+            triggerLabel={selectedMode.label}
+        />
     );
 }
 
@@ -1675,11 +2464,11 @@ function RuntimeMenuRow({
             aria-checked={active}
             disabled={disabled}
             onClick={onClick}
-            className={`w-full text-left px-3 py-2 min-h-[44px] flex items-center gap-3 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand ${
-                disabled
-                    ? 'opacity-60 cursor-not-allowed'
-                    : 'hover:bg-warm-muted cursor-pointer'
-            } ${active ? 'bg-brand/10 dark:bg-brand/15' : ''}`}
+            className={menuItemClassName({
+                selected: active,
+                disabled,
+                className: 'min-h-[44px]',
+            })}
         >
             <span
                 aria-hidden="true"
@@ -1695,6 +2484,42 @@ function RuntimeMenuRow({
     );
 }
 
+const RuntimeMessageRow = memo(function RuntimeMessageRow({
+    message,
+    mentionableNodes,
+}: {
+    message: RuntimeMessage;
+    mentionableNodes: MentionNodeRef[];
+}) {
+    const userContent = message.role === 'user'
+        ? message.parts
+            .filter((part) => part.type === 'text')
+            .map((part) => part.text)
+            .join('\n')
+        : '';
+
+    return (
+        <motion.div
+            className={message.role === 'user'
+                ? 'flex justify-end'
+                : 'w-full max-w-[min(68rem,100%)]'}
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.25, ease: [0.25, 1, 0.5, 1] }}
+            style={{ contentVisibility: 'auto', containIntrinsicSize: 'auto 180px' }}
+        >
+            {message.role === 'user' ? (
+                <UserMessage
+                    content={userContent}
+                    mentionNodes={mentionableNodes}
+                />
+            ) : (
+                <AcpMessageList messages={[message]} />
+            )}
+        </motion.div>
+    );
+});
+
 /**
  * Stripped-down message list for local runtime mode. The cloud render path is heavy
  * (tool cards, agent personas, thinking process, mentions, …) and assumes
@@ -1708,6 +2533,10 @@ function RuntimeMessageList({
     localRuntime,
     setupIssue,
     status,
+    activityLabel,
+    agentMotionState,
+    mentionableNodes,
+    renderEmptyActivity = true,
 }: {
     messages: RuntimeMessage[];
     ready: boolean;
@@ -1715,15 +2544,45 @@ function RuntimeMessageList({
     localRuntime?: Runtime | null;
     setupIssue?: string | null;
     status: ClashRuntimeStatus;
+    activityLabel?: string | null;
+    agentMotionState: AgentMotionState;
+    mentionableNodes: MentionNodeRef[];
+    renderEmptyActivity?: boolean;
 }) {
     const { t } = useTranslation();
     if (messages.length === 0) {
         const hasLocalAgent = !!localRuntime && localRuntime.status === 'online' && localRuntime.agents.length > 0;
+        const activitySlot = (
+            <motion.div
+                className="clash-copilot-agent-activity-empty-anchor clash-copilot-agent-activity-composer-companion mx-auto flex min-h-[calc(100dvh-6.5rem)] w-full max-w-[68rem] flex-col justify-end gap-3 pb-0"
+                initial={{ opacity: 0, y: 18 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -10 }}
+                transition={{ duration: 0.32, ease: [0.16, 1, 0.3, 1] }}
+            >
+                <AgentActivitySlot
+                    label={activityLabel ?? null}
+                    state={activityLabel ? agentMotionState : 'idle'}
+                    gazeTarget={null}
+                    emptyLabel={t('copilot.status.readyWhenYouAre')}
+                />
+            </motion.div>
+        );
+        if (activityLabel && renderEmptyActivity) {
+            return activitySlot;
+        }
+        if (setupIssue) return null;
         if (desktopLocalMode && !setupIssue && !ready && (status === 'idle' || status === 'connecting') && (!localRuntime || hasLocalAgent)) {
             return <RuntimeLoadingStatus label={t('copilot.status.desktopLocalStarting')} />;
         }
-        if (desktopLocalMode && ready) {
+        if (!renderEmptyActivity) {
             return null;
+        }
+        if (desktopLocalMode && status === 'draft' && renderEmptyActivity) {
+            return activitySlot;
+        }
+        if (desktopLocalMode && ready && renderEmptyActivity) {
+            return activitySlot;
         }
         const emptyText = setupIssue
             ? t('copilot.status.desktopLocalSetupRequired')
@@ -1739,69 +2598,250 @@ function RuntimeMessageList({
         );
     }
     return (
-        <>
-            {messages.map((m) => (
-                <motion.div
-                    key={m.id}
-                    initial={{ opacity: 0, y: 12 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ duration: 0.25, ease: [0.25, 1, 0.5, 1] }}
-                    className={m.role === 'user' ? 'flex justify-end' : ''}
-                >
-                    {m.role === 'user' ? (
-                        <div className="max-w-[82%] px-4 py-3 rounded-matrix shadow-sm border bg-brand-light border-warm-border text-slate-900 dark:bg-warm-muted dark:text-slate-100 dark:border-warm-border">
-                            {m.parts.map((p, i) => (p.type === 'text' ? <p key={i} className="text-sm leading-relaxed mb-1 last:mb-0">{p.text}</p> : null))}
-                        </div>
-                    ) : (
-                        <div className="space-y-2">
-                            {m.parts.map((p, i) => {
-                                if (p.type === 'text') {
-                                    return <div key={i} className="text-base text-slate-800 leading-relaxed px-1 whitespace-pre-wrap dark:text-slate-100">{p.text}</div>;
-                                }
-                                if (p.type === 'thought') {
-                                    return <div key={i} className="text-sm text-stone-600 leading-relaxed px-1 whitespace-pre-wrap italic dark:text-stone-300">{p.text}</div>;
-                                }
-                                if (p.type === 'plan') {
-                                    return null;
-                                }
-                                if (p.type === 'tool_call') {
-                                    return (
-                                        <div key={i} className="text-xs font-mono bg-warm-muted border border-warm-border rounded px-2.5 py-1.5 text-slate-700 dark:text-slate-300">
-                                            <span className="font-semibold">{p.toolName || p.title || 'tool'}</span>
-                                            {p.rawInput !== undefined ? <span className="opacity-80"> {JSON.stringify(p.rawInput)}</span> : null}
-                                        </div>
-                                    );
-                                }
-                                if (p.type !== 'raw_event') {
-                                    return null;
-                                }
-                                if (parseAgentCanvasPatch(p.event).length > 0) {
-                                    return null;
-                                }
-                                // raw_event fallback — show JSON in collapsed form so we can debug
-                                // unrecognized ACP events without losing them.
-                                return (
-                                    <details key={i} className="text-[11px] font-mono text-stone-700 dark:text-stone-300">
-                                        <summary className="cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand rounded-sm">event</summary>
-                                        <pre className="mt-1 bg-warm-muted/60 p-2 rounded overflow-x-auto">{JSON.stringify(p.event, null, 2)}</pre>
-                                    </details>
-                                );
-                            })}
-                        </div>
-                    )}
-                </motion.div>
+        <div className="mx-auto flex w-full max-w-[68rem] flex-col gap-3">
+            {messages.map((message) => (
+                <RuntimeMessageRow
+                    key={message.id}
+                    message={message}
+                    mentionableNodes={mentionableNodes}
+                />
             ))}
-        </>
+            {activityLabel ? (
+                <div key="runtime-agent-activity-slot-wrapper" className="clash-copilot-agent-activity-wrapper">
+                    <AgentActivitySlot
+                        label={activityLabel}
+                        state={agentMotionState}
+                        gazeTarget={null}
+                    />
+                </div>
+            ) : null}
+        </div>
+    );
+}
+
+function RuntimePromptQueueBar({
+    items,
+    onSteer,
+    onEdit,
+    onRemove,
+    onReorder,
+}: {
+    items: RuntimeQueuedPrompt[];
+    onSteer: (turnId: string) => void;
+    onEdit: (item: RuntimeQueuedPrompt) => void;
+    onRemove: (turnId: string) => void;
+    onReorder: (turnIds: string[]) => void;
+}) {
+    const [openMenuTurnId, setOpenMenuTurnId] = useState<string | null>(null);
+    const [draggingTurnId, setDraggingTurnId] = useState<string | null>(null);
+    const [dragOverTurnId, setDragOverTurnId] = useState<string | null>(null);
+    const reorder = (fromTurnId: string, toTurnId: string) => {
+        if (fromTurnId === toTurnId) return;
+        const fromIndex = items.findIndex((item) => item.turnId === fromTurnId);
+        const toIndex = items.findIndex((item) => item.turnId === toTurnId);
+        if (fromIndex < 0 || toIndex < 0) return;
+        const next = [...items];
+        const [moved] = next.splice(fromIndex, 1);
+        if (!moved) return;
+        next.splice(toIndex, 0, moved);
+        onReorder(next.map((item) => item.turnId));
+    };
+
+    return (
+        <div className="clash-runtime-prompt-queue relative z-0 mx-auto -mb-10 w-[calc(100%-6rem)] max-w-[940px] overflow-visible rounded-t-[20px] px-3 pb-[3.25rem] pt-2.5 text-xs">
+            <div className="flex flex-col gap-1">
+                {items.map((item, index) => {
+                    return (
+                        <div
+                            key={item.turnId}
+                            draggable
+                            onDragStart={(event) => {
+                                setDraggingTurnId(item.turnId);
+                                event.dataTransfer.effectAllowed = 'move';
+                                event.dataTransfer.setData('text/plain', item.turnId);
+                            }}
+                            onDragEnter={() => setDragOverTurnId(item.turnId)}
+                            onDragOver={(event) => {
+                                event.preventDefault();
+                                event.dataTransfer.dropEffect = 'move';
+                                setDragOverTurnId(item.turnId);
+                            }}
+                            onDrop={(event) => {
+                                event.preventDefault();
+                                const fromTurnId = event.dataTransfer.getData('text/plain') || draggingTurnId;
+                                if (fromTurnId) reorder(fromTurnId, item.turnId);
+                                setDraggingTurnId(null);
+                                setDragOverTurnId(null);
+                            }}
+                            onDragEnd={() => {
+                                setDraggingTurnId(null);
+                                setDragOverTurnId(null);
+                            }}
+                            className={`relative flex min-w-0 items-center gap-2 rounded-lg px-1.5 py-1 transition-colors ${
+                                dragOverTurnId === item.turnId && draggingTurnId !== item.turnId
+                                    ? 'bg-warm-muted/70 dark:bg-stone-900'
+                                    : ''
+                            } ${draggingTurnId === item.turnId ? 'opacity-55' : ''}`}
+                        >
+                            <span className="flex h-5 w-5 shrink-0 cursor-grab items-center justify-center text-stone-500 opacity-100 transition-colors hover:text-stone-600 active:cursor-grabbing dark:text-stone-400 dark:hover:text-stone-300" aria-hidden="true">
+                                <DotsSixVertical className="h-4 w-4" weight="bold" />
+                            </span>
+                            <ArrowBendDownRight className="h-3.5 w-3.5 shrink-0 text-stone-500/70 dark:text-stone-400/70" aria-hidden="true" />
+                            <span className="min-w-0 flex-1 truncate text-[13px] font-medium leading-5 text-stone-700 dark:text-stone-200">
+                                {item.text}
+                            </span>
+                            <button
+                                type="button"
+                                aria-label={`Steer queued message ${index + 1}`}
+                                onClick={() => onSteer(item.turnId)}
+                                className="inline-flex shrink-0 items-center gap-1 rounded-md px-1.5 py-px text-[13px] font-medium text-stone-500 opacity-70 transition hover:bg-warm-muted/70 hover:text-slate-900 hover:opacity-100 dark:text-stone-400 dark:hover:bg-stone-900/70 dark:hover:text-slate-50"
+                            >
+                                <ArrowBendDownRight className="h-3.5 w-3.5" aria-hidden="true" />
+                                Steer
+                            </button>
+                            <button
+                                type="button"
+                                aria-label={`Remove queued message ${index + 1}`}
+                                onClick={() => onRemove(item.turnId)}
+                                className="flex h-5 w-5 shrink-0 items-center justify-center rounded-md text-stone-500 opacity-70 transition hover:bg-red-50 hover:text-red-600 hover:opacity-100 dark:text-stone-400 dark:hover:bg-red-950/30 dark:hover:text-red-300"
+                            >
+                                <Trash className="h-4 w-4" aria-hidden="true" />
+                            </button>
+                            <div className="relative shrink-0">
+                                <button
+                                    type="button"
+                                    aria-label={`Queued message options ${index + 1}`}
+                                    onClick={() => setOpenMenuTurnId((current) => current === item.turnId ? null : item.turnId)}
+                                    className="flex h-5 w-5 items-center justify-center rounded-full text-stone-500 opacity-70 transition hover:bg-warm-muted hover:text-slate-800 hover:opacity-100 dark:text-stone-400 dark:hover:bg-stone-900 dark:hover:text-slate-100"
+                                >
+                                    <DotsThree className="h-4 w-4" weight="bold" aria-hidden="true" />
+                                </button>
+                                <AnimatePresence>
+                                    {openMenuTurnId === item.turnId && (
+                                        <motion.div
+                                            initial={{ opacity: 0, y: 4, scale: 0.98 }}
+                                            animate={{ opacity: 1, y: 0, scale: 1 }}
+                                            exit={{ opacity: 0, y: 4, scale: 0.98 }}
+                                            transition={{ duration: 0.12, ease: [0.16, 1, 0.3, 1] }}
+                                            className="absolute right-0 top-8 z-40 w-52 rounded-2xl border border-warm-border bg-warm-surface p-1.5 text-sm shadow-xl dark:border-stone-800 dark:bg-stone-950"
+                                        >
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    onEdit(item);
+                                                    setOpenMenuTurnId(null);
+                                                }}
+                                                className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left font-medium text-slate-800 transition-colors hover:bg-warm-muted dark:text-slate-100 dark:hover:bg-stone-900"
+                                            >
+                                                <PencilSimple className="h-4 w-4 text-stone-500" aria-hidden="true" />
+                                                Edit message
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    onRemove(item.turnId);
+                                                    setOpenMenuTurnId(null);
+                                                }}
+                                                className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left font-medium text-red-600 transition-colors hover:bg-red-50 dark:text-red-300 dark:hover:bg-red-950/30"
+                                            >
+                                                <Trash className="h-4 w-4" aria-hidden="true" />
+                                                Delete
+                                            </button>
+                                        </motion.div>
+                                    )}
+                                </AnimatePresence>
+                            </div>
+                        </div>
+                    );
+                })}
+            </div>
+        </div>
+    );
+}
+
+function AgentActivityRow({
+    label,
+    state,
+    gazeTarget,
+}: {
+    label: string;
+    state: AgentMotionState;
+    gazeTarget?: { x: number; y: number } | null;
+}) {
+    return (
+        <div
+            data-activity-layout="stable"
+            className="clash-copilot-agent-activity-row flex items-center gap-0.5 px-0 py-0.5"
+        >
+            <span className="inline-flex">
+                <CopilotRailSlot className="h-8">
+                    <AgentMotion
+                        state={state}
+                        className="h-6 w-6"
+                        gazeTarget={gazeTarget ?? null}
+                    />
+                </CopilotRailSlot>
+            </span>
+            <span data-agent-activity-label className="inline-flex min-w-0 -ml-0.5">
+                <AgentStatusLine label={label} />
+            </span>
+        </div>
+    );
+}
+
+function AgentActivitySlot({
+    label,
+    state,
+    gazeTarget,
+    emptyLabel,
+}: {
+    label: string | null;
+    state: AgentMotionState;
+    gazeTarget?: { x: number; y: number } | null;
+    emptyLabel?: string | null;
+}) {
+    const visibleLabel = label ?? emptyLabel ?? null;
+    return (
+        <div className="clash-copilot-agent-activity-slot min-h-9">
+            {visibleLabel ? (
+                <AgentActivityRow
+                    label={visibleLabel}
+                    state={state}
+                    gazeTarget={gazeTarget ?? null}
+                />
+            ) : null}
+        </div>
+    );
+}
+
+function AgentStatusLine({ label }: { label: string }) {
+    return (
+        <motion.div
+            role="status"
+            aria-label={label}
+            initial={{ opacity: 0, x: -4 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: -4 }}
+            transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
+            className="inline-flex min-h-[24px] items-center overflow-hidden rounded-full px-0.5 text-xs font-semibold text-stone-600 dark:text-stone-300"
+        >
+            <AnimatePresence mode="wait" initial={false}>
+                <motion.span
+                    key={label}
+                    initial={{ opacity: 0, y: 8, filter: 'blur(2px)' }}
+                    animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
+                    exit={{ opacity: 0, y: -8, filter: 'blur(2px)' }}
+                    transition={{ duration: 0.28, ease: [0.16, 1, 0.3, 1] }}
+                >
+                    {label}
+                </motion.span>
+            </AnimatePresence>
+        </motion.div>
     );
 }
 
 function RuntimeLoadingStatus({ label }: { label: string }) {
     return (
-        <div role="status" aria-label={label} aria-live="polite" className="flex justify-center py-12">
-            <span
-                aria-hidden="true"
-                className="h-4 w-4 rounded-full border-2 border-warm-border border-t-brand animate-spin"
-            />
-        </div>
+        <div role="status" aria-label={label} aria-live="polite" className="sr-only" />
     );
 }

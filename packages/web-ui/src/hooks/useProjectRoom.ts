@@ -6,7 +6,7 @@
  *     updates piped in via setLiveMessage).
  *   - The send path (POST /api/v1/projects/:pid/room/messages) which
  *     handles both human-typed messages (sender_kind='user', omitted in
- *     body — server uses x-user-id) and crew tool-originated broadcasts
+ *     body — server uses x-user-id) and agent tool-originated broadcasts
  *     (later, when the say_to_room MCP tool ships).
  *
  * Live broadcast is delivered by useLoroSync via its `onRoomMessage`
@@ -19,7 +19,7 @@
  * History fetch fires once on mount; refetch() can be called manually
  * after a long disconnect / reconnect to backfill anything missed.
  *
- * No coupling to crew sessions — the GroupChat panel composes this hook
+ * No coupling to agent sessions — the GroupChat panel composes this hook
  * with useGroupChat to wire @-mention dispatch and inbound room.mention
  * forwarding.
  */

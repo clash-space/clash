@@ -17,9 +17,9 @@
  */
 
 import { useCallback, useId, useMemo, useState } from 'react';
-import { crewHandle, type CrewRow } from '../_group-chat/panel-types';
+import { agentHandle, type AgentRow } from '../_group-chat/panel-types';
 
-export interface UseMentionAutocompleteResult<R extends CrewRow> {
+export interface UseMentionAutocompleteResult<R extends AgentRow> {
   open: boolean;
   matches: R[];
   activeIndex: number;
@@ -44,7 +44,7 @@ export interface UseMentionAutocompleteResult<R extends CrewRow> {
   optionId: (idx: number) => string;
 }
 
-export function useMentionAutocomplete<R extends CrewRow>(
+export function useMentionAutocomplete<R extends AgentRow>(
   draft: string,
   setDraft: (next: string) => void,
   textareaRef: React.RefObject<HTMLTextAreaElement | null>,
@@ -60,8 +60,8 @@ export function useMentionAutocomplete<R extends CrewRow>(
     if (!open) return [];
     const q = query.toLowerCase();
     return candidates.filter((c) => {
-      const handle = crewHandle(c.display_name);
-      // Prefix match wins; substring as fallback so longer crew names
+      const handle = agentHandle(c.display_name);
+      // Prefix match wins; substring as fallback so longer agent names
       // (e.g. "canvas-editor") still surface when the user types "edit".
       return handle.startsWith(q) || c.template_id.startsWith(q) || handle.includes(q);
     });
@@ -110,7 +110,7 @@ export function useMentionAutocomplete<R extends CrewRow>(
       if (!ta) return;
       const p = partial();
       if (!p) return;
-      const inserted = `@${crewHandle(row.display_name)} `;
+      const inserted = `@${agentHandle(row.display_name)} `;
       const before = draft.slice(0, p.start);
       const after = draft.slice(p.cursor);
       const next = before + inserted + after;

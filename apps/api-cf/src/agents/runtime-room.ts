@@ -294,11 +294,11 @@ export class RuntimeRoom extends DurableObject<Env> {
       ? [...events, { type: "synthetic_error", message: errMsg ?? "unknown error" }]
       : events;
 
-    // Look up the session's user_id + crew_id (sender) from the row
+    // Look up the session's user_id + agent_member_id (sender) from the row
     // we wrote at POST /sessions time.
     const row = await this.env.DB.prepare(
-      "SELECT user_id, agent_id FROM runtime_session WHERE id = ?",
-    ).bind(sid).first<{ user_id: string; agent_id: string }>();
+      "SELECT user_id, agent_member_id FROM runtime_session WHERE id = ?",
+    ).bind(sid).first<{ user_id: string; agent_member_id: string }>();
     if (!row) {
       log.warn(`${this.tag()} flushTurn: no runtime_session row for ${sid}`);
       await this.ctx.storage.delete(key);
@@ -308,12 +308,12 @@ export class RuntimeRoom extends DurableObject<Env> {
     try {
       await this.env.DB.prepare(
         `INSERT INTO chat_message (id, session_id, user_id, sender_kind, sender_id, turn_id, events_json, created_at)
-         VALUES (?, ?, ?, 'crew', ?, ?, ?, unixepoch())`,
+         VALUES (?, ?, ?, 'agent', ?, ?, ?, unixepoch())`,
       ).bind(
         crypto.randomUUID(),
         sid,
         row.user_id,
-        row.agent_id,  // crew_id is stored in runtime_session.agent_id (legacy column name)
+        row.agent_member_id,
         turnId,
         JSON.stringify(eventsToStore),
       ).run();
@@ -429,9 +429,9 @@ export class RuntimeRoom extends DurableObject<Env> {
   /**
    * Forward a `room.mention` text frame to every browser client attached
    * to one runtime_session. Called by routes/v1/projects.ts after a room
-   * message that mentions this crew lands. The browser-side CrewSession
+   * message that mentions this agent lands. The browser-side AgentSession
    * decides what to do with it (later: enqueue as a system prompt so the
-   * mentioned crew responds on its next turn — append-on-next-turn,
+   * mentioned agent responds on its next turn — append-on-next-turn,
    * never interrupt).
    *
    * Daemon is NOT involved — mentions never leave the api-cf layer until

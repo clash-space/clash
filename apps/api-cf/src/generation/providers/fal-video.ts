@@ -1,5 +1,5 @@
 /**
- * fal.ai video generation (sora-2, kling-2.1, kling-3, seedance-2, veo3 via fal).
+ * fal.ai video generation (sora-2, kling-3, seedance-2, plus legacy fal video ids).
  * Sources → fal.storage.upload → CDN URLs → model API.
  */
 import { fal } from "@fal-ai/client";
@@ -7,6 +7,7 @@ import { log } from "../../logger";
 import { generateFalVideo } from "../../services/fal-video";
 import type { GenerationContext } from "../context";
 import type { GenerationProvider } from "../provider";
+import { credentialsForProvider } from "./provider-credentials";
 
 async function uploadR2ToFal(bucket: R2Bucket, key: string, falApiKey: string): Promise<string> {
   fal.config({ credentials: falApiKey });
@@ -22,7 +23,7 @@ export const falVideoProvider: GenerationProvider = {
 
   async execute(ctx) {
     const { params, env } = ctx;
-    const falKey = env.FAL_API_KEY ?? "";
+    const falKey = (await credentialsForProvider(ctx, "fal", ["apiKey"], { upstreamId: "fal" })).apiKey;
 
     // Cached in Workflow DO state → on generate retry we don't re-upload.
     const sources = await ctx.step(

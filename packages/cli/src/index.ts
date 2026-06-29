@@ -1,12 +1,13 @@
 import { Command } from "commander";
 import { authCommand } from "./commands/auth";
-import { projectsCommand } from "./commands/projects";
+import { initCommand, projectsCommand } from "./commands/projects";
 import { canvasCommand } from "./commands/canvas";
 import { tasksCommand } from "./commands/tasks";
 import { actionsCommand } from "./commands/actions";
 import { varsCommand } from "./commands/vars";
 import { modelsCommand } from "./commands/models";
 import { roomCommand } from "./commands/room";
+import { hostCommand } from "./commands/host";
 
 const program = new Command();
 
@@ -27,6 +28,7 @@ Config file: ~/.clash/config.json`)
   .version("0.1.0");
 
 program.addCommand(authCommand);
+program.addCommand(initCommand);
 program.addCommand(projectsCommand);
 program.addCommand(canvasCommand);
 program.addCommand(tasksCommand);
@@ -34,5 +36,6 @@ program.addCommand(actionsCommand);
 program.addCommand(varsCommand);
 program.addCommand(modelsCommand);
 program.addCommand(roomCommand);
+program.addCommand(hostCommand);
 
 program.parse();

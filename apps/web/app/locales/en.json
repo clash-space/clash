@@ -7,6 +7,7 @@
     },
     "header": {
       "newSession": "New session",
+      "newChat": "New chat",
       "history": "Session history",
       "runOn": "Run on (Cloud / local runtime)"
     },
@@ -58,6 +59,25 @@
       "disconnected": "Disconnected",
       "thinking": "Thinking",
       "streaming": "Streaming",
+      "reconnecting": "Reconnecting {{attempt}}/{{maxAttempts}}",
+      "switchingTransport": "Switching transport",
+      "readyWhenYouAre": "Ready when you are",
+      "workedForSeconds": "Worked for {{count}}s",
+      "workedForMinutes": "Worked for {{count}}m",
+      "creativeThinking": [
+        "Letting it simmer",
+        "Finding the angle",
+        "Sorting the beats",
+        "Hunting for the hook",
+        "Shaping the spark"
+      ],
+      "creativeStreaming": [
+        "Putting it into words",
+        "Laying out the rhythm",
+        "Turning it into scenes",
+        "Threading it together",
+        "Writing the next beat"
+      ],
       "localAgentReady": "Local agent connected. Send a message to start.",
       "desktopLocalStarting": "Connecting to the local agent on this Mac…",
       "desktopLocalRequired": "No local agent is available on this Mac.",

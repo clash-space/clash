@@ -11,6 +11,7 @@ import {
   createRemoteLoroPersistenceFromEnv,
   LocalLoroRoom,
 } from "./sync";
+import { createLocalWorkflowProcessor } from "./local-processor";
 
 let dataDir = "";
 
@@ -261,6 +262,83 @@ describe("LocalLoroRoom", () => {
 
     const audioBytes = await readFile(join(dataDir, "assets", audioAsset.srcR2Key), "utf8");
     expect(audioBytes).toContain("这是一段三秒 mock 音频");
+  });
+
+  it("processes pending text generation nodes in place", async () => {
+    const room = await LocalLoroRoom.open({ dataDir, projectId: "project/local-text-gen" });
+    const peer = room.addPeer(() => {});
+
+    const clientDoc = new LoroDoc();
+    clientDoc.getMap("nodes").set("text-node-1", {
+      id: "text-node-1",
+      type: "text",
+      position: { x: 0, y: 0 },
+      data: {
+        status: "pending",
+        actionType: "text-gen",
+        prompt: "Write three title options",
+        modelId: "gpt-5.4",
+        modelParams: {},
+      },
+    });
+
+    await room.receive(peer, clientDoc.export({ mode: "snapshot" }));
+
+    const finalDoc = new LoroDoc();
+    finalDoc.import(room.snapshot());
+    const textNode = finalDoc.getMap("nodes").get("text-node-1") as any;
+    expect(textNode.data.status).toBe("completed");
+    expect(textNode.data.content).toContain("Generated text (gpt-5.4)");
+    expect(textNode.data.content).toContain("Write three title options");
+    expect(textNode.data.assetId).toBeUndefined();
+    expect(textNode.data.pendingTask).toBeUndefined();
+  });
+
+  it("processes pending local-agent text generation nodes through a local text agent", async () => {
+    const generate = vi.fn(async ({ prompt, modelParams }) => ({
+      text: `agent generated: ${prompt} (${String(modelParams?.acp_model ?? "")})`,
+      provider: "local-acp",
+      modelEndpoint: "codex-acp",
+    }));
+    const room = await LocalLoroRoom.open({
+      dataDir,
+      projectId: "project/local-agent-text-gen",
+      workflowProcessor: createLocalWorkflowProcessor({
+        dataDir,
+        textAgent: { generate },
+      }),
+    });
+    const peer = room.addPeer(() => {});
+
+    const clientDoc = new LoroDoc();
+    clientDoc.getMap("nodes").set("text-node-agent", {
+      id: "text-node-agent",
+      type: "text",
+      position: { x: 0, y: 0 },
+      data: {
+        status: "pending",
+        actionType: "text-gen",
+        prompt: "Write three title options",
+        modelId: "local-acp",
+        modelParams: { acp_model: "gpt-5.4" },
+      },
+    });
+
+    await room.receive(peer, clientDoc.export({ mode: "snapshot" }));
+
+    const finalDoc = new LoroDoc();
+    finalDoc.import(room.snapshot());
+    const textNode = finalDoc.getMap("nodes").get("text-node-agent") as any;
+    expect(textNode.data).toMatchObject({
+      status: "completed",
+      content: "agent generated: Write three title options (gpt-5.4)",
+      provider: "local-acp",
+      modelEndpoint: "codex-acp",
+    });
+    expect(generate).toHaveBeenCalledWith(expect.objectContaining({
+      modelId: "local-acp",
+      modelParams: { acp_model: "gpt-5.4" },
+    }));
   });
 
   it("mirrors received updates to optional remote persistence", async () => {

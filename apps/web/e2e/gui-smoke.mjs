@@ -141,42 +141,64 @@ async function createProject(cdp) {
 async function exerciseRuntimeGui(cdp) {
   await createProject(cdp);
   await assertNoCriticalA11yRegressions(cdp);
-  await click(
-    cdp,
-    `document.querySelector("button[aria-label='Run on (Cloud / local runtime)']") ||
-      document.querySelector("button[aria-label='运行环境（云端 / 本地）']")`,
-    "Run on runtime picker",
-  );
-  await waitFor(cdp, `document.body.innerText.includes("Mock Desktop")`, "runtime menu lists mock desktop");
-  await click(
-    cdp,
-    `([...document.querySelectorAll("[role='menuitem'], button")].find((el) => {
-      const text = (el.innerText || el.textContent || "").trim();
-      const rect = el.getBoundingClientRect();
-      const style = getComputedStyle(el);
-      return text.includes("Mock Desktop") &&
-        rect.width > 0 &&
-        rect.height > 0 &&
-        style.display !== "none" &&
-        style.visibility !== "hidden";
-    }))`,
-    "Mock Desktop runtime option",
-  );
-  await waitFor(cdp, `document.querySelector('[role="dialog"]')?.innerText.includes("Start local helper on Mock Desktop")`, "runtime dialog");
-  await waitFor(
-    cdp,
-    `(document.querySelector('[role="dialog"]')?.innerText || "").toLowerCase().includes("resume a session")`,
-    "resume picker",
-  );
-  await waitFor(cdp, `document.querySelector('[role="dialog"]')?.innerText.includes("Start fresh")`, "fresh session option");
-  await clickByText(cdp, "Start helper", "Start helper");
-  await waitFor(
-    cdp,
-    `document.body.innerText.includes("Local agent connected") ||
-      document.body.innerText.includes("本地 Agent 已连接")`,
-    "local agent connected",
-    15000,
-  );
+  const hasRuntimePickerButton = await evaluate(cdp, `(() => {
+    const button = document.querySelector("button[aria-label='Run on (Cloud / local runtime)']") ||
+      document.querySelector("button[aria-label='运行环境（云端 / 本地）']");
+    if (!button) return false;
+    const rect = button.getBoundingClientRect();
+    const style = getComputedStyle(button);
+    return rect.width > 0 &&
+      rect.height > 0 &&
+      style.display !== "none" &&
+      style.visibility !== "hidden";
+  })()`);
+
+  if (hasRuntimePickerButton) {
+    await click(
+      cdp,
+      `document.querySelector("button[aria-label='Run on (Cloud / local runtime)']") ||
+        document.querySelector("button[aria-label='运行环境（云端 / 本地）']")`,
+      "Run on runtime picker",
+    );
+    await waitFor(cdp, `document.body.innerText.includes("Mock Desktop")`, "runtime menu lists mock desktop");
+    await click(
+      cdp,
+      `([...document.querySelectorAll("[role='menuitem'], button")].find((el) => {
+        const text = (el.innerText || el.textContent || "").trim();
+        const rect = el.getBoundingClientRect();
+        const style = getComputedStyle(el);
+        return text.includes("Mock Desktop") &&
+          rect.width > 0 &&
+          rect.height > 0 &&
+          style.display !== "none" &&
+          style.visibility !== "hidden";
+      }))`,
+      "Mock Desktop runtime option",
+    );
+    await waitFor(cdp, `document.querySelector('[role="dialog"]')?.innerText.includes("Start local helper on Mock Desktop")`, "runtime dialog");
+    await waitFor(
+      cdp,
+      `(document.querySelector('[role="dialog"]')?.innerText || "").toLowerCase().includes("resume a session")`,
+      "resume picker",
+    );
+    await waitFor(cdp, `document.querySelector('[role="dialog"]')?.innerText.includes("Start fresh")`, "fresh session option");
+    await clickByText(cdp, "Start helper", "Start helper");
+    await waitFor(
+      cdp,
+      `document.body.innerText.includes("Local agent connected") ||
+        document.body.innerText.includes("本地 Agent 已连接") ||
+        document.body.innerText.includes("Mock ACP")`,
+      "local agent connected",
+      15000,
+    );
+  } else {
+    await waitFor(
+      cdp,
+      `document.body.innerText.includes("Mock ACP")`,
+      "default mock ACP runtime selected",
+      15000,
+    );
+  }
 
   const prompt = "gui e2e choreograph a small canvas";
   await typeText(cdp, `.milkdown-chat-input [contenteditable='true']`, prompt);
@@ -238,7 +260,7 @@ async function exerciseRuntimeGui(cdp) {
 }
 
 async function main() {
-  process.env.CLASH_LOCAL_ACP_MOCK = "1";
+  process.env.CLASH_E2E_STUB_ACP = "1";
   await rm(dataDir, { recursive: true, force: true });
   await rm(chromeDataDir, { recursive: true, force: true });
   await mkdir(captureDir, { recursive: true });

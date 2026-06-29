@@ -8,8 +8,9 @@ import { assetsRoutes } from "./assets";
 import { editsRoutes } from "./edits";
 import { runtimesRoutes } from "./runtimes";
 import { sessionsRuntimeRoutes } from "./sessions-runtime";
-import { crewRoutes } from "./crew";
+import { agentRoutes } from "./agents";
 import { actionsRoutes } from "./actions";
+import { modelProviderRoutes } from "./model-providers";
 
 export const v1Routes = new Hono<{ Bindings: Env }>();
 
@@ -20,7 +21,8 @@ v1Routes.route("/cli-auth", cliAuthRoutes);
 v1Routes.route("/assets", assetsRoutes);
 v1Routes.route("/edits", editsRoutes);
 v1Routes.route("/runtimes", runtimesRoutes);
-v1Routes.route("/crew", crewRoutes);
+v1Routes.route("/agents", agentRoutes);
+v1Routes.route("/", modelProviderRoutes);
 // Curated registry of installable actions — served as packages
 // (manifest + base64-encoded source files) for the CLI `action install`
 // command to write into ~/.clash/actions/.

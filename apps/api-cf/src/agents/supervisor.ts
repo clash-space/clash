@@ -500,8 +500,8 @@ export class SupervisorAgent extends AIChatAgent<Env> {
       }
     };
     // The in-API supervisor is the user's own chat — every canvas node
-    // it creates inherits the user's identity (NOT a crew_member).
-    // ACP crew supervisors (Director / Generator / …) live outside this
+    // it creates inherits the user's identity (NOT a agent_member).
+    // ACP agent supervisors (Director / Generator / …) live outside this
     // file; when they wire createCanvasTools they pass actorType='agent'.
     const canvasTools = createCanvasTools(
       this.doc,

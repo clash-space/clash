@@ -1,6 +1,6 @@
 /**
  * Single layout for empty states in the chat panel (Room blank, no
- * messages for a crew, all crew invited, loading list, …). Keeps the
+ * messages for a agent, all agent invited, loading list, …). Keeps the
  * spacing/typography consistent so the panel doesn't read as three
  * different products stitched together.
  *

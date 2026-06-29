@@ -15,7 +15,6 @@ import {
   type TopupPack,
   createCheckout,
 } from "@clash/web-ui/lib/billingClient";
-import { SettingsDialog } from "./SettingsDialog";
 
 interface Props {
   balance: Balance | null;
@@ -321,8 +320,6 @@ function SectionHeader({
 }
 
 function NotEnabledState() {
-  const [settingsOpen, setSettingsOpen] = useState(false);
-
   return (
     <div className="min-h-screen bg-warm-page text-slate-950 dark:text-slate-50 flex items-center justify-center px-6">
       <div className="max-w-md text-center">
@@ -332,15 +329,13 @@ function NotEnabledState() {
           This is a self-hosted deployment without the managed billing plugin.
           Use BYOK API keys directly — no credits required.
         </p>
-        <button
-          type="button"
-          onClick={() => setSettingsOpen(true)}
+        <Link
+          to="/settings?section=providers"
           className="clash-billing-primary mt-6 inline-flex items-center gap-2 rounded-lg px-5 py-2.5 text-sm font-medium"
         >
-          Configure API keys
-        </button>
+          Configure providers
+        </Link>
       </div>
-      <SettingsDialog open={settingsOpen} onClose={() => setSettingsOpen(false)} initialSection="variables" />
     </div>
   );
 }

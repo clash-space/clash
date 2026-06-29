@@ -11,7 +11,7 @@ import LandingFooter from "@clash/web-ui/components/landing/LandingFooter";
 
 export default function LandingRoute() {
   return (
-    <div className="relative">
+    <div className="clash-landing-page relative overflow-x-hidden">
       <Background />
       <LandingNav />
       <LandingHero />

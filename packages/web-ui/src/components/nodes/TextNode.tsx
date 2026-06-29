@@ -186,7 +186,7 @@ const TextNode = ({ data, selected, id }: NodeProps<Node<Record<string, any>>>) 
                     style={{ left: -8, top: '50%', transform: 'translateY(-50%)', zIndex: 100 }}
                     className="!h-4 !w-4 !border-4 !border-warm-surface !bg-stone-400 transition-all hover:scale-125 shadow-sm hover:!bg-brand"
                 />
-                <SourceHandleMenu nodeId={id} />
+                <SourceHandleMenu nodeId={id} sourceType="text" />
             </div>
 
             {/* Render modal in portal */}

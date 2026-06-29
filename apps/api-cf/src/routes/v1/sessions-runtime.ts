@@ -9,7 +9,7 @@
  *
  * Routes (all auth'd via x-user-id middleware in app.ts):
  *   POST   /api/v1/runtimes/:rid/sessions
- *     { agent_id, cwd?, resume_session_id? }
+ *     { agent_member_id, project_id?, resume_session_id? }
  *     → { session_id }
  *     Creates a runtime_session row, tells the daemon (via RuntimeRoom DO
  *     `sendToDaemon`) to start the agent, returns immediately. The browser
@@ -45,7 +45,7 @@ sessionsRuntimeRoutes.get("/", async (c) => {
   const userId = c.req.header("x-user-id");
   if (!userId) return c.json({ error: "unauthorized" }, 401);
   const { results } = await c.env.DB.prepare(
-    `SELECT id, runtime_id, agent_id, acp_session_id, cwd, title, status, created_at, last_active_at
+    `SELECT id, runtime_id, agent_template_id, agent_member_id, acp_session_id, cwd, title, status, created_at, last_active_at
      FROM runtime_session WHERE user_id = ? ORDER BY last_active_at DESC LIMIT 50`,
   ).bind(userId).all();
   return c.json({ sessions: results ?? [] });
@@ -56,7 +56,7 @@ sessionsRuntimeRoutes.get("/:sid", async (c) => {
   const userId = c.req.header("x-user-id");
   if (!userId) return c.json({ error: "unauthorized" }, 401);
   const session = await c.env.DB.prepare(
-    `SELECT id, runtime_id, agent_id, acp_session_id, cwd, title, status, created_at, last_active_at
+    `SELECT id, runtime_id, agent_template_id, agent_member_id, acp_session_id, cwd, title, status, created_at, last_active_at
      FROM runtime_session WHERE id = ? AND user_id = ?`,
   ).bind(c.req.param("sid"), userId).first();
   if (!session) return c.json({ error: "not found" }, 404);
@@ -87,40 +87,39 @@ sessionsRuntimeRoutes.delete("/:sid", async (c) => {
 
 // GET /:sid/messages — chat history for a local-runtime session.
 //
-// Returns the union of every chat_message row for the (crew_member_id,
+// Returns the union of every chat_message row for the (agent_member_id,
 // project_id) pair backing this session — NOT just rows tied to this
-// session_id. Why: each `addCrew` POST creates a fresh
+// session_id. Why: each `addAgent` POST creates a fresh
 // runtime_session; querying `chat_message WHERE session_id = ?` only
 // surfaces messages from the latest session, so a re-invite would look
-// like the crew has no history. Joining via crew_member_id + cwd (=
+// like the agent has no history. Joining via agent_member_id + cwd (=
 // project_id, an existing schema overload — see runtimes.ts:267) gives
 // the user a stable transcript across re-invites.
 //
-// Falls back to plain session-scoped query if either field is null on
-// the row (older sessions written before crew_member_id existed).
+// Falls back to a plain session-scoped query when no project id is recorded.
 sessionsRuntimeRoutes.get("/:sid/messages", async (c) => {
   const userId = c.req.header("x-user-id");
   if (!userId) return c.json({ error: "unauthorized" }, 401);
 
   const sid = c.req.param("sid");
   const session = await c.env.DB.prepare(
-    "SELECT id, crew_member_id, cwd FROM runtime_session WHERE id = ? AND user_id = ?",
-  ).bind(sid, userId).first<{ id: string; crew_member_id: string | null; cwd: string | null }>();
+    "SELECT id, agent_member_id, cwd FROM runtime_session WHERE id = ? AND user_id = ?",
+  ).bind(sid, userId).first<{ id: string; agent_member_id: string | null; cwd: string | null }>();
   if (!session) return c.json({ error: "not found" }, 404);
 
-  const useCrossSession = session.crew_member_id && session.cwd;
+  const useCrossSession = session.agent_member_id && session.cwd;
   const sql = useCrossSession
-    ? // Cross-session: every message authored by this crew member in
+    ? // Cross-session: every message authored by this agent member in
       // this project, regardless of which session it came from.
       `SELECT cm.id, cm.sender_kind, cm.sender_id, cm.turn_id, cm.events_json, cm.created_at
        FROM chat_message cm
        JOIN runtime_session rs ON rs.id = cm.session_id
-       WHERE rs.user_id = ? AND rs.crew_member_id = ? AND rs.cwd = ?
+       WHERE rs.user_id = ? AND rs.agent_member_id = ? AND rs.cwd = ?
        ORDER BY cm.created_at ASC LIMIT 500`
     : `SELECT id, sender_kind, sender_id, turn_id, events_json, created_at
        FROM chat_message WHERE session_id = ? ORDER BY created_at ASC LIMIT 500`;
   const stmt = useCrossSession
-    ? c.env.DB.prepare(sql).bind(userId, session.crew_member_id, session.cwd)
+    ? c.env.DB.prepare(sql).bind(userId, session.agent_member_id, session.cwd)
     : c.env.DB.prepare(sql).bind(sid);
 
   const { results } = await stmt.all<{

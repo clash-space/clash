@@ -1,5 +1,5 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
-import { dirname, join, normalize, relative } from "node:path";
+import { delimiter, dirname, join, normalize, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { app, BrowserWindow, ipcMain, Menu, protocol } from "electron";
 import type { MenuItemConstructorOptions } from "electron";
@@ -9,7 +9,7 @@ import {
   isAddressInUse,
   resolveAvailableDesktopApiPort,
 } from "./api-port";
-import { resolveWebDistDir } from "./paths";
+import { resolveAcpBinDirs, resolveClashCliEntryPath, resolveClashCliNodePath, resolveWebDistDir } from "./paths";
 import { resolveDesktopRuntime, type DesktopRuntime } from "./runtime";
 import { hydrateMacGuiPath } from "./shell-path";
 import {
@@ -18,6 +18,7 @@ import {
   resolveDesktopWindowOptions,
   shouldCreateWindowOnActivate,
 } from "./windowing";
+import { createDesktopLogger } from "./stdio-logger";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const remoteDebuggingPort = process.env.CLASH_DESKTOP_REMOTE_DEBUGGING_PORT;
@@ -41,6 +42,7 @@ protocol.registerSchemesAsPrivileged([
 const windowRegistry = createWindowRegistry<BrowserWindow>();
 let captureCount = 0;
 let runtime: DesktopRuntime | null = null;
+const desktopLog = createDesktopLogger();
 
 function currentRuntime(): DesktopRuntime {
   if (!runtime) throw new Error("Desktop runtime is not initialized");
@@ -57,9 +59,10 @@ async function captureRenderer(label: string, window: BrowserWindow): Promise<vo
     const safeLabel = label.replace(/[^a-z0-9-]+/gi, "-").replace(/^-|-$/g, "").toLowerCase();
     const file = join(captureDir, `${String(++captureCount).padStart(3, "0")}-${safeLabel}.png`);
     await writeFile(file, image.toPNG());
-    console.log(`[desktop:${label}] capture ${file}`);
+    desktopLog.info(`[desktop:${label}] capture ${file}`);
   } catch (err) {
-    console.error(`[desktop:${label}] capture failed`, err);
+    if (window.isDestroyed() || String(err).includes("Object has been destroyed")) return;
+    desktopLog.error(`[desktop:${label}] capture failed`, err);
   }
 }
 
@@ -74,15 +77,42 @@ async function logRendererState(label: string, window: BrowserWindow): Promise<v
         runtime: window.__CLASH_RUNTIME_CONFIG__ ?? null
       })
     `);
-    console.log(`[desktop:${label}] ${JSON.stringify(state)}`);
+    desktopLog.info(`[desktop:${label}] ${JSON.stringify(state)}`);
     await captureRenderer(label, window);
   } catch (err) {
-    console.error(`[desktop:${label}] renderer inspect failed`, err);
+    if (window.isDestroyed() || String(err).includes("Object has been destroyed")) return;
+    desktopLog.error(`[desktop:${label}] renderer inspect failed`, err);
   }
 }
 
 function resolveDataDir(): string {
   return process.env.CLASH_LOCAL_DATA_DIR ?? join(app.getPath("userData"), "local-api");
+}
+
+async function configureAcpHarnessEnvironment(dataDir: string): Promise<void> {
+  const acpBinDirs = resolveAcpBinDirs({
+    isPackaged: app.isPackaged,
+    moduleDir: __dirname,
+    resourcesPath: process.resourcesPath,
+    dataDir,
+  });
+  const testBinDirs = process.env.CLASH_ACP_TEST_BIN_DIR?.split(delimiter).filter(Boolean) ?? [];
+  process.env.CLASH_ACP_BIN_DIR = [...new Set([...testBinDirs, ...acpBinDirs])].join(delimiter);
+  process.env.CLASH_CLI_ENTRY_PATH = resolveClashCliEntryPath({
+    isPackaged: app.isPackaged,
+    moduleDir: __dirname,
+    resourcesPath: process.resourcesPath,
+  });
+  const clashCliNodePath = resolveClashCliNodePath({
+    isPackaged: app.isPackaged,
+    moduleDir: __dirname,
+    resourcesPath: process.resourcesPath,
+  });
+  if (clashCliNodePath) process.env.CLASH_CLI_NODE_PATH = clashCliNodePath;
+  process.env.CLASH_NODE_EXEC_PATH ??= process.execPath;
+
+  const hotDownloadBinDir = acpBinDirs[0];
+  if (hotDownloadBinDir) await mkdir(hotDownloadBinDir, { recursive: true });
 }
 
 function contentTypeForPath(path: string): string {
@@ -125,12 +155,14 @@ function registerWebProtocol(): void {
   });
 }
 
-async function startLocalApiOnPort(port: number): Promise<void> {
-  await startLocalApiServer({ dataDir: resolveDataDir(), port });
+async function startLocalApiOnPort(port: number, dataDir: string): Promise<void> {
+  await startLocalApiServer({ dataDir, port });
 }
 
 async function initializeRuntime(): Promise<void> {
   let apiPort = DEFAULT_DESKTOP_API_PORT;
+  const dataDir = resolveDataDir();
+  await configureAcpHarnessEnvironment(dataDir);
 
   if (!process.env.CLASH_API_BASE_URL) {
     const resolved = await resolveAvailableDesktopApiPort({
@@ -138,17 +170,17 @@ async function initializeRuntime(): Promise<void> {
     });
     apiPort = resolved.port;
     if (resolved.source === "ephemeral") {
-      console.warn(`[desktop] local API port ${resolved.preferredPort} is unavailable; using ${resolved.port}`);
+      desktopLog.warn(`[desktop] local API port ${resolved.preferredPort} is unavailable; using ${resolved.port}`);
     }
 
     try {
-      await startLocalApiOnPort(apiPort);
+      await startLocalApiOnPort(apiPort, dataDir);
     } catch (error) {
       if (process.env.CLASH_LOCAL_API_PORT || !isAddressInUse(error)) throw error;
       const fallback = await resolveAvailableDesktopApiPort({ envPort: "0" });
       apiPort = fallback.port;
-      console.warn(`[desktop] local API port changed during startup; retrying on ${apiPort}`);
-      await startLocalApiOnPort(apiPort);
+      desktopLog.warn(`[desktop] local API port changed during startup; retrying on ${apiPort}`);
+      await startLocalApiOnPort(apiPort, dataDir);
     }
   }
 
@@ -189,7 +221,7 @@ function installApplicationMenu(): void {
 
 function bindWindowEvents(window: BrowserWindow): void {
   window.webContents.on("console-message", (_event, level, message) => {
-    console.log(`[desktop:renderer:${window.id}:${level}] ${message}`);
+    desktopLog.info(`[desktop:renderer:${window.id}:${level}] ${message}`);
   });
   window.webContents.on("dom-ready", () => {
     void logRendererState(`window-${window.id}-dom-ready`, window);
@@ -198,16 +230,16 @@ function bindWindowEvents(window: BrowserWindow): void {
     void logRendererState(`window-${window.id}-finish-load`, window);
   });
   window.webContents.on("did-navigate-in-page", (_event, url) => {
-    console.log(`[desktop:${window.id}] navigate in page: ${url}`);
+    desktopLog.info(`[desktop:${window.id}] navigate in page: ${url}`);
     setTimeout(() => {
       if (!window.isDestroyed()) void logRendererState(`window-${window.id}-after-navigate`, window);
     }, 500);
   });
   window.webContents.on("did-fail-load", (_event, code, description, url) => {
-    console.error(`[desktop:${window.id}] failed to load ${url}: ${code} ${description}`);
+    desktopLog.error(`[desktop:${window.id}] failed to load ${url}: ${code} ${description}`);
   });
   window.webContents.on("render-process-gone", (_event, details) => {
-    console.error(`[desktop:${window.id}] renderer gone: ${JSON.stringify(details)}`);
+    desktopLog.error(`[desktop:${window.id}] renderer gone: ${JSON.stringify(details)}`);
   });
 
   const captureIntervalMs = Number(process.env.CLASH_DESKTOP_CAPTURE_INTERVAL_MS ?? 0);

@@ -221,7 +221,7 @@ describe("Canvas.execute", () => {
         customActionId: "grid-split",
         actorType: "agent",
         actorUserId: "user-1",
-        actorAgentId: "crew-1",
+        actorAgentId: "agent-1",
       },
       null,
       { x: 160, y: 0 },
@@ -234,7 +234,7 @@ describe("Canvas.execute", () => {
     expect(canvas.readNode("pending-split")?.data).toMatchObject({
       actorType: "agent",
       actorUserId: "user-1",
-      actorAgentId: "crew-1",
+      actorAgentId: "agent-1",
     });
   });
 });

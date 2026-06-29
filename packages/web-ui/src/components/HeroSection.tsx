@@ -17,11 +17,11 @@ export default function HeroSection() {
     };
 
     return (
-        <section className="flex min-h-[64vh] w-full items-center px-5 pb-8 pt-8 sm:px-8 lg:px-10">
-            <div className="clash-hero-stage mx-auto w-full max-w-[1120px]">
-                <div className="w-full max-w-[980px]">
+        <section className="clash-home-hero flex w-full items-center px-5 pb-8 pt-8 sm:px-8 lg:px-10">
+            <div className="clash-hero-stage mx-auto w-full max-w-[1440px]">
+                <div className="clash-home-hero-copy w-full max-w-[1120px]">
                     <motion.h1
-                        className="clash-hero-heading mb-10 text-left font-display text-6xl font-bold tracking-tighter text-slate-950 md:text-7xl dark:text-slate-50"
+                        className="clash-home-hero-heading mb-8 text-left font-display font-bold tracking-tighter text-slate-950 dark:text-slate-50"
                         initial={{ opacity: 0, y: 20 }}
                         animate={{ opacity: 1, y: 0 }}
                         transition={{ duration: 0.42, ease: [0.16, 1, 0.3, 1] }}
@@ -29,18 +29,18 @@ export default function HeroSection() {
                         Hey! <br />
                         Let&apos;s make some <span className="text-brand">CLASH</span>?
                     </motion.h1>
+                </div>
 
-                    <div className="clash-hero-prompt">
-                        <ChatInput
-                            input={inputValue}
-                            onInputChange={setInputValue}
-                            onSubmit={(text) => handleSend(text)}
-                            isProcessing={isPending}
-                            isCreatingSession={isPending}
-                            placeholder="Describe your video idea..."
-                            variant="hero"
-                        />
-                    </div>
+                <div className="clash-hero-prompt">
+                    <ChatInput
+                        input={inputValue}
+                        onInputChange={setInputValue}
+                        onSubmit={(text) => handleSend(text)}
+                        isProcessing={isPending}
+                        isCreatingSession={isPending}
+                        placeholder="Describe your video idea..."
+                        variant="hero"
+                    />
                 </div>
             </div>
         </section>

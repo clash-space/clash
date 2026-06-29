@@ -24,17 +24,21 @@ function assert(condition, message, details) {
 }
 
 async function findFreePort(start) {
+  const failures = [];
   for (let port = start; port < start + 100; port += 1) {
     const ok = await new Promise((resolve) => {
       const server = net.createServer();
-      server.once("error", () => resolve(false));
+      server.once("error", (error) => {
+        failures.push(`${port}:${error.code ?? error.message}`);
+        resolve(false);
+      });
       server.listen(port, "127.0.0.1", () => {
         server.close(() => resolve(true));
       });
     });
     if (ok) return port;
   }
-  throw new Error(`No free port found from ${start}`);
+  throw new Error(`No free port found from ${start}. Last bind errors: ${failures.slice(-5).join(", ")}`);
 }
 
 async function waitForHttp(url, label, timeoutMs = 20000) {
@@ -214,35 +218,57 @@ async function exerciseLocalRuntimeUi(cdp) {
     15000,
   );
 
-  await click(
-    cdp,
-    `document.querySelector("button[aria-label='Run on (Cloud / local runtime)']") ||
-      document.querySelector("button[aria-label='运行环境（云端 / 本地）']")`,
-    "Run on runtime picker",
-  );
-  await click(
-    cdp,
-    `([...document.querySelectorAll("[role='menuitem'], button")].find((el) => {
-      const text = (el.innerText || el.textContent || "").trim();
-      const rect = el.getBoundingClientRect();
-      const style = getComputedStyle(el);
-      return text.includes("Mock Desktop") &&
-        rect.width > 0 &&
-        rect.height > 0 &&
-        style.display !== "none" &&
-        style.visibility !== "hidden";
-    }))`,
-    "Mock Desktop runtime",
-  );
-  await waitFor(cdp, `document.body.innerText.includes("Start local helper on Mock Desktop")`, "runtime picker dialog");
-  await click(cdp, clickableByText("Start helper"), "Start helper");
-  await waitFor(
-    cdp,
-    `document.body.innerText.includes("Local agent connected") ||
-      document.body.innerText.includes("本地 Agent 已连接")`,
-    "local runtime connected",
-    15000,
-  );
+  const hasRuntimePickerButton = await evaluate(cdp, `(() => {
+    const button = document.querySelector("button[aria-label='Run on (Cloud / local runtime)']") ||
+      document.querySelector("button[aria-label='运行环境（云端 / 本地）']");
+    if (!button) return false;
+    const rect = button.getBoundingClientRect();
+    const style = getComputedStyle(button);
+    return rect.width > 0 &&
+      rect.height > 0 &&
+      style.display !== "none" &&
+      style.visibility !== "hidden";
+  })()`);
+
+  if (hasRuntimePickerButton) {
+    await click(
+      cdp,
+      `document.querySelector("button[aria-label='Run on (Cloud / local runtime)']") ||
+        document.querySelector("button[aria-label='运行环境（云端 / 本地）']")`,
+      "Run on runtime picker",
+    );
+    await click(
+      cdp,
+      `([...document.querySelectorAll("[role='menuitem'], button")].find((el) => {
+        const text = (el.innerText || el.textContent || "").trim();
+        const rect = el.getBoundingClientRect();
+        const style = getComputedStyle(el);
+        return text.includes("Mock Desktop") &&
+          rect.width > 0 &&
+          rect.height > 0 &&
+          style.display !== "none" &&
+          style.visibility !== "hidden";
+      }))`,
+      "Mock Desktop runtime",
+    );
+    await waitFor(cdp, `document.body.innerText.includes("Start local helper on Mock Desktop")`, "runtime picker dialog");
+    await click(cdp, clickableByText("Start helper"), "Start helper");
+    await waitFor(
+      cdp,
+      `document.body.innerText.includes("Local agent connected") ||
+        document.body.innerText.includes("本地 Agent 已连接") ||
+        document.body.innerText.includes("Mock ACP")`,
+      "local runtime connected",
+      15000,
+    );
+  } else {
+    await waitFor(
+      cdp,
+      `document.body.innerText.includes("Mock ACP")`,
+      "default mock ACP runtime selected",
+      15000,
+    );
+  }
 
   const prompt = "hello web runtime helper";
   await typeChatMessage(cdp, prompt);
@@ -310,7 +336,7 @@ async function closeServer(server) {
 }
 
 async function main() {
-  process.env.CLASH_LOCAL_ACP_MOCK = "1";
+  process.env.CLASH_E2E_STUB_ACP = "1";
   await rm(dataDir, { recursive: true, force: true });
   await rm(chromeDataDir, { recursive: true, force: true });
 

@@ -230,63 +230,37 @@ runtimesRoutes.get("/", async (c) => {
 });
 
 // POST /:rid/sessions — start a new local-runtime chat session on a runtime.
-//
-// Two payload shapes (Phase 2 added crew_member_id; old crew_id kept for
-// back-compat with browsers that haven't been refreshed yet):
-//
-//   Modern: { crew_member_id, project_id }
-//     Server resolves the claimed crew_member → template_id (used for
-//     daemon dispatch) and verifies crew_member.runtime_id == :rid +
-//     crew_member.user_id == caller. Single source of truth — caller
-//     doesn't pass template_id directly.
-//
-//   Legacy: { crew_id (template), project_id }
-//     Used by the old GroupChatPanel before the claim layer landed.
-//     Server still spawns the daemon agent, but the row's
-//     crew_member_id is NULL — it has no claimed identity. Stops
-//     working once we fully migrate; for now keeps refresh-during-
-//     deploy from breaking.
-//
-// Browser then opens /api/v1/local-sessions/:sid/_stream for the
-// session's event stream.
+// Payload: { agent_member_id, project_id, resume_session_id? }.
+// The server resolves the claimed agent member to its bundled template and
+// selected ACP CLI before dispatching to the daemon.
 runtimesRoutes.post("/:rid/sessions", async (c) => {
   const userId = c.req.header("x-user-id");
   if (!userId) return c.json({ error: "unauthorized" }, 401);
 
   const rid = c.req.param("rid");
   const body = (await c.req.json().catch(() => ({}))) as {
-    crew_member_id?: string;
-    crew_id?: string;
+    agent_member_id?: string;
     project_id?: string;
-    /** @deprecated kept for older browsers; prefer crew_id. */
-    agent_id?: string;
     cwd?: string;
     resume_session_id?: string;
   };
 
-  let crewId: string | null = null;            // template id sent to daemon
-  let crewMemberId: string | null = null;      // null in legacy path
-  let agentOverride: string | null = null;     // ACP CLI override from claim
-
-  if (body.crew_member_id) {
-    // Modern path — resolve through claim layer.
-    const cm = await c.env.DB.prepare(
-      "SELECT id, template_id, runtime_id, agent_id FROM crew_member WHERE id = ? AND user_id = ?",
-    ).bind(body.crew_member_id, userId).first<{
-      id: string; template_id: string; runtime_id: string; agent_id: string | null;
-    }>();
-    if (!cm) return c.json({ error: "crew member not found" }, 404);
-    if (cm.runtime_id !== rid) {
-      return c.json({ error: "crew member belongs to a different runtime" }, 400);
-    }
-    crewId = cm.template_id;
-    crewMemberId = cm.id;
-    agentOverride = cm.agent_id;
-  } else {
-    // Legacy path — accept template id directly. Soon to be removed.
-    crewId = body.crew_id ?? (body.agent_id ? "director" : null);
-    if (!crewId) return c.json({ error: "crew_member_id or crew_id required" }, 400);
+  const requestedAgentMemberId = body.agent_member_id?.trim() ?? "";
+  if (!requestedAgentMemberId) {
+    return c.json({ error: "agent_member_id required" }, 400);
   }
+  const agentMember = await c.env.DB.prepare(
+    "SELECT id, template_id, runtime_id, agent_id FROM agent_member WHERE id = ? AND user_id = ?",
+  ).bind(requestedAgentMemberId, userId).first<{
+    id: string; template_id: string; runtime_id: string; agent_id: string | null;
+  }>();
+  if (!agentMember) return c.json({ error: "agent member not found" }, 404);
+  if (agentMember.runtime_id !== rid) {
+    return c.json({ error: "agent member belongs to a different runtime" }, 400);
+  }
+  const agentTemplateId = agentMember.template_id;
+  const agentMemberId = agentMember.id;
+  const agentOverride = agentMember.agent_id;
 
   const runtime = await c.env.DB.prepare(
     "SELECT id, status, last_heartbeat FROM runtime WHERE id = ? AND owner_user_id = ?",
@@ -307,9 +281,9 @@ runtimesRoutes.post("/:rid/sessions", async (c) => {
   // mention dispatcher in projects.ts will need the same change.
   await c.env.DB.prepare(
     `INSERT INTO runtime_session
-       (id, user_id, runtime_id, agent_id, crew_member_id, cwd, status, created_at, last_active_at)
+       (id, user_id, runtime_id, agent_template_id, agent_member_id, cwd, status, created_at, last_active_at)
      VALUES (?, ?, ?, ?, ?, ?, 'active', unixepoch(), unixepoch())`,
-  ).bind(sessionId, userId, rid, crewId, crewMemberId, body.project_id ?? "").run();
+  ).bind(sessionId, userId, rid, agentTemplateId, agentMemberId, body.project_id ?? "").run();
 
   const doStub = c.env.RUNTIME_ROOM.get(c.env.RUNTIME_ROOM.idFromName(rid));
   const ok = await (doStub as unknown as {
@@ -317,14 +291,11 @@ runtimesRoutes.post("/:rid/sessions", async (c) => {
   }).sendToDaemon({
     type: "session.start",
     session_id: sessionId,
-    crew_id: crewId,
-    // crew_member_id forwarded so the daemon can inject it into the
-    // spawned agent's env (CLASH_CREW_MEMBER_ID). The agent then uses
-    // it as the sender_id when calling `clash room say`.
-    ...(crewMemberId ? { crew_member_id: crewMemberId } : {}),
+    agent_template_id: agentTemplateId,
+    agent_member_id: agentMemberId,
     // agent_id override — daemon prefers this over the bundled
     // template's runtime.json default. Lets each user pick which CLI
-    // (claude-code-acp / codex / gemini / …) powers their crew.
+    // (claude-agent-acp / codex / gemini / …) powers their agent.
     ...(agentOverride ? { agent_id: agentOverride } : {}),
     ...(body.project_id ? { project_id: body.project_id } : {}),
     ...(body.resume_session_id ? { resume: { acp_session_id: body.resume_session_id } } : {}),

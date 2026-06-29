@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { readdir } from "node:fs/promises";
+import { readFile, readdir } from "node:fs/promises";
 import { join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -31,15 +31,40 @@ if (tests.length === 0) {
   process.exit(1);
 }
 
-const child = spawn(process.execPath, ["--import", "tsx", "--test", ...tests], {
-  cwd: packageRoot,
-  stdio: "inherit",
-});
-
-child.on("exit", (code, signal) => {
-  if (signal) {
-    console.error(`CLI tests terminated by ${signal}.`);
-    process.exit(1);
+const nodeTests = [];
+const vitestTests = [];
+for (const test of tests) {
+  const source = await readFile(join(packageRoot, test), "utf8");
+  if (source.includes("from \"vitest\"") || source.includes("from 'vitest'")) {
+    vitestTests.push(test);
+  } else {
+    nodeTests.push(test);
   }
-  process.exit(code ?? 1);
-});
+}
+
+function run(label, command, args) {
+  return new Promise((resolve) => {
+    const child = spawn(command, args, {
+      cwd: packageRoot,
+      stdio: "inherit",
+    });
+    child.on("exit", (code, signal) => {
+      if (signal) {
+        console.error(`${label} terminated by ${signal}.`);
+        resolve(1);
+        return;
+      }
+      resolve(code ?? 1);
+    });
+  });
+}
+
+if (nodeTests.length > 0) {
+  const code = await run("CLI node tests", process.execPath, ["--import", "tsx", "--test", ...nodeTests]);
+  if (code !== 0) process.exit(code);
+}
+
+if (vitestTests.length > 0) {
+  const code = await run("CLI vitest tests", "pnpm", ["exec", "vitest", "run", ...vitestTests]);
+  if (code !== 0) process.exit(code);
+}

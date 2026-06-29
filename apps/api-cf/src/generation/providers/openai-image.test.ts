@@ -1,12 +1,12 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
-  getVariable: vi.fn(),
+  credentialsForProvider: vi.fn(),
   generateOpenAIImage: vi.fn(),
 }));
 
-vi.mock("../../services/user-variables", () => ({
-  getVariable: mocks.getVariable,
+vi.mock("./provider-credentials", () => ({
+  credentialsForProvider: mocks.credentialsForProvider,
 }));
 
 vi.mock("../../services/openai-image", () => ({
@@ -36,9 +36,6 @@ function makeCtx() {
     env: {
       DB: {} as D1Database,
       ACTION_SECRET_KEY: "secret-key",
-      OPENAI_API_KEY: "env-openai-key",
-      CF_AIG_TOKEN: "gateway-token",
-      CF_AIG_OPENAI_URL: "https://gateway.example/openai",
     },
     tag: { taskId: "task-1", nodeId: "node-1" },
     step: async (_name: string, optsOrFn: unknown, maybeFn?: () => Promise<unknown>) => {
@@ -58,8 +55,11 @@ describe("openaiImageProvider", () => {
     vi.clearAllMocks();
   });
 
-  it("loads OPENAI_API_KEY from user variables before falling back to env", async () => {
-    mocks.getVariable.mockResolvedValue("user-openai-key");
+  it("loads OpenAI credentials from provider accounts", async () => {
+    mocks.credentialsForProvider.mockResolvedValue({
+      apiKey: "provider-openai-key",
+      baseUrl: "https://openai-compatible.example/v1",
+    });
     mocks.generateOpenAIImage.mockResolvedValue({
       data: new Uint8Array([1, 2, 3]),
       mediaType: "image/png",
@@ -69,16 +69,14 @@ describe("openaiImageProvider", () => {
 
     await openaiImageProvider.execute(ctx as never);
 
-    expect(mocks.getVariable).toHaveBeenCalledWith(
-      ctx.env.DB,
-      "user-1",
-      "OPENAI_API_KEY",
-      "secret-key",
-    );
+    expect(mocks.credentialsForProvider).toHaveBeenCalledWith(ctx, "official", ["apiKey"], {
+      upstreamId: "openai",
+      region: "global",
+    });
     expect(mocks.generateOpenAIImage).toHaveBeenCalledWith(
       expect.objectContaining({
-        apiKey: "user-openai-key",
-        baseUrl: "https://gateway.example/openai",
+        apiKey: "provider-openai-key",
+        baseUrl: "https://openai-compatible.example/v1",
         modelName: "gpt-image-2",
       }),
     );

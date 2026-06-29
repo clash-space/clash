@@ -15,3 +15,4 @@ export {
 export * from './utils/waveform';
 export * from './utils/itemRefs';
 export * from './utils/assets';
+export * from './timelineSemantics';

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { appendAcpEvent, type ByoMessage, type AvailableCommand } from '@clash/web-ui/lib/acpEvents';
+import { appendAcpEvent, getAcpEventBlockKey, parseAcpEvent, type ByoMessage, type AvailableCommand } from '@clash/web-ui/lib/acpEvents';
 import type { BridgeSession } from '@clash/web-ui/hooks/useAgentByoBridge';
 import { runtimeApiUrl, runtimeWebSocketUrl } from '../lib/runtimeConfig';
 
@@ -15,21 +15,33 @@ import { runtimeApiUrl, runtimeWebSocketUrl } from '../lib/runtimeConfig';
  * renderer works without changes.
  *
  * v1 scope:
- *   - One active session at a time. Switching runtime disposes the old
- *     session.
- *   - Single agent per runtime (whichever the user picks; for now we just
- *     hardcode claude-code-acp because that's what the daemon detects).
+ *   - One attached browser socket at a time. Switching sessions detaches
+ *     the socket; the local ACP child stays alive until explicit shutdown.
  *   - No reconnect of the WS — drop = "disconnected", user re-selects
  *     the runtime to retry.
- *   - No history / resume — every selection creates a fresh session.
  */
 
 export type RuntimeStatus = 'online' | 'offline';
 
+export interface RuntimeAgentAuth {
+  status: 'configured' | 'needs-auth' | 'unknown';
+  message: string;
+  command?: string;
+}
+
+export interface RuntimeProbeOptions {
+  probe?: boolean | 'auth' | 'config' | 'none';
+  refresh?: boolean;
+}
+
 export interface RuntimeAgent {
   id: string;
+  label?: string;
   binary?: string;
   version?: string;
+  config_options?: AcpSessionConfigOption[];
+  session_modes?: AcpSessionModeState;
+  auth?: RuntimeAgentAuth;
 }
 
 export interface Runtime {
@@ -46,6 +58,7 @@ export interface Runtime {
 
 export type ClashRuntimeStatus =
   | 'idle'              // no runtime selected
+  | 'draft'             // runtime/agent chosen, no ACP session created yet
   | 'connecting'        // POST /sessions in flight or waiting for session.ready
   | 'connected'         // session.ready received
   | 'sending'           // user prompt in flight
@@ -53,10 +66,96 @@ export type ClashRuntimeStatus =
   | 'disconnected'      // WS dropped or daemon went offline
   | 'error';
 
+export interface RuntimeTransientStatus {
+  kind: 'reconnecting' | 'transport_fallback';
+  message: string;
+  detail?: string;
+  attempt?: number;
+  maxAttempts?: number;
+}
+
+export interface RuntimeDiagnostic {
+  stream: 'stderr';
+  severity: 'debug' | 'info' | 'warning' | 'error';
+  raw: string;
+  message: string;
+  transientStatus?: {
+    status: RuntimeTransientStatus['kind'];
+    message: string;
+    detail?: string;
+    attempt?: number;
+    maxAttempts?: number;
+  };
+}
+
+export type RuntimePromptQueueMode = 'single' | 'flush';
+
+export interface RuntimeQueuedPrompt {
+  id: string;
+  turnId: string;
+  text: string;
+  createdAt: number;
+}
+
+interface RuntimeQueueUpdateQueuedPrompt {
+  turn_id?: unknown;
+  text?: unknown;
+  created_at?: unknown;
+}
+
 export interface ClashRuntimeSelectOptions {
   projectId?: string;
   resumeAcpSessionId?: string;
+  freshSession?: boolean;
   agentId?: string;
+  permissionModeId?: string;
+}
+
+export interface RuntimeSessionInfo {
+  id: string;
+  threadId: string;
+  title?: string;
+  type: 'runtime';
+  projectId?: string;
+  runtimeId: string;
+  agentId?: string | null;
+  agentMemberId?: string;
+  permissionMode?: string;
+  acpSessionId?: string;
+  status?: string;
+}
+
+export interface AcpSessionConfigSelectValue {
+  value: string;
+  name: string;
+  description?: string | null;
+}
+
+export interface AcpSessionConfigSelectGroup {
+  group: string;
+  name: string;
+  options: AcpSessionConfigSelectValue[];
+}
+
+export interface AcpSessionConfigOption {
+  id: string;
+  name: string;
+  type: string;
+  category?: string | null;
+  description?: string | null;
+  currentValue?: string;
+  options?: Array<AcpSessionConfigSelectValue | AcpSessionConfigSelectGroup>;
+}
+
+export interface AcpSessionMode {
+  id: string;
+  name: string;
+  description?: string | null;
+}
+
+export interface AcpSessionModeState {
+  currentModeId: string;
+  availableModes: AcpSessionMode[];
 }
 
 export interface UseClashRuntimeReturn {
@@ -68,34 +167,302 @@ export interface UseClashRuntimeReturn {
   selectedAgentId: string | null;
   /** id of the currently-open session (one at a time in v1). */
   sessionId: string | null;
+  /** Current local-runtime task/session, if one is attached. */
+  currentSession: RuntimeSessionInfo | null;
   status: ClashRuntimeStatus;
   errorMessage: string | null;
+  transientStatus: RuntimeTransientStatus | null;
+  diagnostics: RuntimeDiagnostic[];
   messages: ByoMessage[];
   /** Slash commands the agent currently advertises (replaced per
    *  available_commands_update event). UI uses this for the `/` picker. */
   availableCommands: AvailableCommand[];
+  /** User prompts waiting for a safe point before being sent through ACP prompt. */
+  promptQueue: RuntimeQueuedPrompt[];
+  /** Whether follow-up prompts are product-queued while the current agent turn is running. */
+  promptQueueEnabled: boolean;
+  /** `single` drains one queued prompt per agent loop; `flush` drains all after the current loop. */
+  promptQueueMode: RuntimePromptQueueMode;
+  /** ACP-native session config options reported by the current agent. */
+  sessionConfigOptions: AcpSessionConfigOption[];
+  /** ACP-native session modes reported by the current agent. */
+  sessionModes: AcpSessionModeState | null;
   /** True iff status === connected/sending/streaming. */
   ready: boolean;
   /** Re-fetch the runtime list. Cheap; safe to call from a settings page. */
-  refresh: () => Promise<void>;
-  /** Pick a runtime + crew member + (optional) project + resume target.
-   *  Disposes any existing session and starts a fresh one. crewId
-   *  defaults to "director" when not supplied. */
-  select: (runtimeId: string | null, crewId?: string, opts?: ClashRuntimeSelectOptions) => Promise<void>;
+  refresh: (opts?: RuntimeProbeOptions) => Promise<void>;
+  /** Pick a runtime + optional legacy agent context + project/resume target.
+   *  Current Copilot starts from the selected ACP agent; agentMemberId is only
+   *  kept for legacy group-chat/session resume paths. */
+  select: (runtimeId: string | null, agentMemberId?: string, opts?: ClashRuntimeSelectOptions) => Promise<void>;
+  /** Prepare a blank local-runtime draft. The ACP session is created on first prompt. */
+  startDraft: (runtimeId: string | null, agentMemberId?: string, opts?: ClashRuntimeSelectOptions) => void;
+  /** Attach to an already-created local runtime session without creating or disposing it. */
+  attachSession: (session: RuntimeSessionInfo) => Promise<void>;
   /** RPC the daemon for resumeable local CC sessions. Returns [] if the
    *  runtime is offline or the daemon doesn't respond. Used by the
    *  picker dialog so the user can pick "Resume X" instead of fresh. */
   loadResumeOptions: (runtimeId: string) => Promise<BridgeSession[]>;
   sendMessage: (text: string) => void;
+  setPromptQueueEnabled: (enabled: boolean) => void;
+  setPromptQueueMode: (mode: RuntimePromptQueueMode) => void;
+  steerQueuedPrompt: (turnId: string) => void;
+  updateQueuedPrompt: (turnId: string, text: string) => void;
+  removeQueuedPrompt: (turnId: string) => void;
+  reorderPromptQueue: (turnIds: string[]) => void;
+  clearPromptQueue: () => void;
+  setConfigOption: (configId: string, value: string | boolean) => void;
+  setSessionMode: (modeId: string) => void;
   cancel: () => void;
   shutdown: () => void;
 }
 
 const RUNTIMES_PATH = '/api/v1/runtimes';
 const SESSIONS_BASE = '/api/v1/local-sessions';
+const PROMPT_QUEUE_ENABLED_STORAGE_KEY = 'clash.runtimePromptQueue.enabled';
+const PROMPT_QUEUE_ENABLED_EVENT = 'clash-runtime-prompt-queue-enabled';
+
+function readPromptQueueEnabled(): boolean {
+  if (typeof window === 'undefined') return true;
+  try {
+    return window.localStorage.getItem(PROMPT_QUEUE_ENABLED_STORAGE_KEY) !== 'false';
+  } catch {
+    return true;
+  }
+}
+
+function runtimeTitleFromPrompt(text: string): string | null {
+  const trimmed = text.trim();
+  if (!trimmed) return null;
+  return trimmed.length > 52 ? `${trimmed.slice(0, 52)}...` : trimmed;
+}
+
+function shouldReplaceRuntimeSessionTitle(title: string | undefined): boolean {
+  const trimmed = title?.trim();
+  return !trimmed || trimmed === 'New session';
+}
+
+function isAuthSetupMessage(message: string): boolean {
+  return /\b(auth|authenticate|authentication|login|sign in)\b/i.test(message);
+}
 
 interface CreateSessionResponse {
   session_id: string;
+}
+
+async function fetchRuntimeSessionMessages(sessionId: string): Promise<ByoMessage[] | null> {
+  let res: Response;
+  try {
+    res = await fetch(runtimeApiUrl(`${SESSIONS_BASE}/${encodeURIComponent(sessionId)}/messages`), {
+      credentials: 'include',
+    });
+  } catch {
+    return null;
+  }
+  if (!res.ok) return null;
+  let json: {
+    messages?: Array<{
+      id: string;
+      sender_kind: 'user' | 'agent';
+      sender_id: string;
+      turn_id: string | null;
+      events: unknown[];
+      created_at: number;
+    }>;
+  };
+  try {
+    json = await res.json();
+  } catch {
+    return null;
+  }
+  const bubbles: ByoMessage[] = [];
+  for (const row of json.messages ?? []) {
+    if (row.sender_kind === 'user') {
+      const parts = (row.events ?? [])
+        .map((part) => part as { type?: string; text?: string })
+        .filter((part) => part?.type === 'text' && typeof part.text === 'string')
+        .map((part) => ({ type: 'text' as const, text: part.text! }));
+      bubbles.push({ id: row.id, role: 'user', parts });
+      continue;
+    }
+
+    const turnId = row.turn_id ?? row.id;
+    let knownIdx: number | undefined;
+    for (const event of row.events ?? []) {
+      const result = appendAcpEvent(bubbles, turnId, knownIdx, event);
+      if (knownIdx === undefined && result.idx >= 0) knownIdx = result.idx;
+    }
+  }
+  return bubbles;
+}
+
+function appendRuntimeError(messages: ByoMessage[], turnId: string | undefined, message: string): ByoMessage[] {
+  const id = turnId ? `runtime-error-${turnId}` : `runtime-error-${Date.now().toString(36)}`;
+  if (messages.some((candidate) => candidate.id === id)) return messages;
+  return [
+    ...messages,
+    {
+      id,
+      role: 'assistant',
+      parts: [{ type: 'event_note', title: message, tone: 'error' }],
+    },
+  ];
+}
+
+function normalizeSessionConfigOptions(value: unknown): AcpSessionConfigOption[] | null {
+  if (!Array.isArray(value)) return null;
+  return value
+    .filter((option): option is Record<string, unknown> => !!option && typeof option === 'object')
+    .filter((option) => typeof option.id === 'string' && typeof option.name === 'string' && typeof option.type === 'string')
+    .map((option) => ({
+      id: String(option.id),
+      name: String(option.name),
+      type: String(option.type),
+      ...(typeof option.category === 'string' || option.category === null ? { category: option.category } : {}),
+      ...(typeof option.description === 'string' || option.description === null ? { description: option.description } : {}),
+      ...(typeof option.currentValue === 'string'
+        ? { currentValue: option.currentValue }
+        : typeof option.current_value === 'string'
+          ? { currentValue: option.current_value }
+          : {}),
+      ...(Array.isArray(option.options) ? { options: option.options as AcpSessionConfigOption['options'] } : {}),
+    }));
+}
+
+function normalizeSessionModes(value: unknown): AcpSessionModeState | null {
+  if (!value || typeof value !== 'object') return null;
+  const modes = value as Record<string, unknown>;
+  if (typeof modes.currentModeId !== 'string' || !Array.isArray(modes.availableModes)) return null;
+  const availableModes = modes.availableModes
+    .filter((mode): mode is Record<string, unknown> => !!mode && typeof mode === 'object')
+    .filter((mode) => typeof mode.id === 'string' && typeof mode.name === 'string')
+    .map((mode) => ({
+      id: String(mode.id),
+      name: String(mode.name),
+      ...(typeof mode.description === 'string' || mode.description === null ? { description: mode.description } : {}),
+    }));
+  return {
+    currentModeId: modes.currentModeId,
+    availableModes,
+  };
+}
+
+function normalizeRuntimeAgent(value: unknown): RuntimeAgent | null {
+  if (!value || typeof value !== 'object') return null;
+  const agent = value as Record<string, unknown>;
+  if (typeof agent.id !== 'string') return null;
+  const configOptions = normalizeSessionConfigOptions(agent.config_options ?? agent.configOptions);
+  const sessionModes = normalizeSessionModes(agent.session_modes ?? agent.sessionModes);
+  const rawAuth = agent.auth && typeof agent.auth === 'object' ? agent.auth as Record<string, unknown> : null;
+  const auth = rawAuth && (
+    rawAuth.status === 'configured' ||
+    rawAuth.status === 'needs-auth' ||
+    rawAuth.status === 'unknown'
+  ) && typeof rawAuth.message === 'string'
+    ? {
+        status: rawAuth.status,
+        message: rawAuth.message,
+        ...(typeof rawAuth.command === 'string' ? { command: rawAuth.command } : {}),
+      } satisfies RuntimeAgentAuth
+    : null;
+  return {
+    id: agent.id,
+    ...(typeof agent.label === 'string' ? { label: agent.label } : {}),
+    ...(typeof agent.binary === 'string' ? { binary: agent.binary } : {}),
+    ...(typeof agent.version === 'string' ? { version: agent.version } : {}),
+    ...(configOptions && configOptions.length > 0 ? { config_options: configOptions } : {}),
+    ...(sessionModes ? { session_modes: sessionModes } : {}),
+    ...(auth ? { auth } : {}),
+  };
+}
+
+function normalizeRuntime(value: unknown): Runtime | null {
+  if (!value || typeof value !== 'object') return null;
+  const runtime = value as Record<string, unknown>;
+  if (
+    typeof runtime.id !== 'string' ||
+    typeof runtime.machine_id !== 'string' ||
+    typeof runtime.hostname !== 'string' ||
+    typeof runtime.os !== 'string' ||
+    typeof runtime.version !== 'string' ||
+    (runtime.status !== 'online' && runtime.status !== 'offline') ||
+    typeof runtime.created_at !== 'number'
+  ) {
+    return null;
+  }
+  const agents = Array.isArray(runtime.agents)
+    ? runtime.agents.map(normalizeRuntimeAgent).filter((agent): agent is RuntimeAgent => agent !== null)
+    : [];
+  return {
+    id: runtime.id,
+    machine_id: runtime.machine_id,
+    hostname: runtime.hostname,
+    os: runtime.os,
+    agents,
+    version: runtime.version,
+    status: runtime.status,
+    last_heartbeat: typeof runtime.last_heartbeat === 'number' ? runtime.last_heartbeat : null,
+    created_at: runtime.created_at,
+  };
+}
+
+function resolveRuntimeAgent(runtime: Runtime | undefined, agentId?: string | null): RuntimeAgent | null {
+  if (!runtime) return null;
+  if (agentId) {
+    const match = runtime.agents.find((agent) => agent.id === agentId);
+    if (match) return match;
+  }
+  return runtime.agents[0] ?? null;
+}
+
+function seedConfigOptionsForAgent(runtime: Runtime | undefined, agentId?: string | null): AcpSessionConfigOption[] {
+  return resolveRuntimeAgent(runtime, agentId)?.config_options ?? [];
+}
+
+function seedSessionModesForAgent(runtime: Runtime | undefined, agentId?: string | null): AcpSessionModeState | null {
+  return resolveRuntimeAgent(runtime, agentId)?.session_modes ?? null;
+}
+
+function configOptionsFromAcpEvent(event: unknown): AcpSessionConfigOption[] | null {
+  const update = (event as { update?: unknown } | null | undefined)?.update ?? event;
+  if ((update as { sessionUpdate?: unknown } | null | undefined)?.sessionUpdate !== 'config_option_update') return null;
+  return normalizeSessionConfigOptions((update as { configOptions?: unknown } | null | undefined)?.configOptions);
+}
+
+function modeIdFromAcpEvent(event: unknown): string | null {
+  const update = (event as { update?: unknown } | null | undefined)?.update ?? event;
+  if ((update as { sessionUpdate?: unknown } | null | undefined)?.sessionUpdate !== 'current_mode_update') return null;
+  const modeId = (update as { currentModeId?: unknown } | null | undefined)?.currentModeId;
+  return typeof modeId === 'string' && modeId.length > 0 ? modeId : null;
+}
+
+function runtimeBlockMessageId(turnId: string, blockKey: string | null, fallback: string): string {
+  if (!blockKey) return fallback;
+  return `asst-${turnId}-${blockKey.replace(/[^a-zA-Z0-9_-]+/g, '-')}`;
+}
+
+function lastAssistantRunIndex(messages: ByoMessage[], partType: 'text' | 'thought'): number | undefined {
+  const lastIndex = messages.length - 1;
+  const lastMessage = messages[lastIndex];
+  if (lastMessage?.role !== 'assistant') return undefined;
+  const lastPart = lastMessage.parts.at(-1);
+  return lastPart?.type === partType ? lastIndex : undefined;
+}
+
+function normalizePromptQueue(value: unknown): RuntimeQueuedPrompt[] | null {
+  if (!Array.isArray(value)) return null;
+  return value
+    .filter((prompt): prompt is RuntimeQueueUpdateQueuedPrompt => !!prompt && typeof prompt === 'object')
+    .filter((prompt) => (
+      typeof prompt.turn_id === 'string' &&
+      typeof prompt.text === 'string'
+    ))
+    .map((prompt) => ({
+      id: `queued-${prompt.turn_id}`,
+      turnId: prompt.turn_id as string,
+      text: prompt.text as string,
+      createdAt: typeof prompt.created_at === 'number' ? prompt.created_at : Date.now(),
+    }));
 }
 
 export function useClashRuntime(): UseClashRuntimeReturn {
@@ -103,33 +470,85 @@ export function useClashRuntime(): UseClashRuntimeReturn {
   const [selectedRuntimeId, setSelectedRuntimeId] = useState<string | null>(null);
   const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
   const [sessionId, setSessionId] = useState<string | null>(null);
+  const [currentSession, setCurrentSession] = useState<RuntimeSessionInfo | null>(null);
   const [status, setStatus] = useState<ClashRuntimeStatus>('idle');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [transientStatus, setTransientStatus] = useState<RuntimeTransientStatus | null>(null);
+  const [diagnostics, setDiagnostics] = useState<RuntimeDiagnostic[]>([]);
   const [messages, setMessages] = useState<ByoMessage[]>([]);
   const [availableCommands, setAvailableCommands] = useState<AvailableCommand[]>([]);
+  const [promptQueue, setPromptQueue] = useState<RuntimeQueuedPrompt[]>([]);
+  const [promptQueueEnabled, setPromptQueueEnabledState] = useState(readPromptQueueEnabled);
+  const [promptQueueMode, setPromptQueueModeState] = useState<RuntimePromptQueueMode>('single');
+  const [sessionConfigOptions, setSessionConfigOptions] = useState<AcpSessionConfigOption[]>([]);
+  const [sessionModes, setSessionModes] = useState<AcpSessionModeState | null>(null);
 
   const wsRef = useRef<WebSocket | null>(null);
+  const sessionIdRef = useRef<string | null>(null);
+  const statusRef = useRef<ClashRuntimeStatus>('idle');
+  const acpSessionIdRef = useRef<string | null>(null);
+  const messagesRef = useRef<ByoMessage[]>([]);
+  const promptQueueRef = useRef<RuntimeQueuedPrompt[]>([]);
+  const queuedPromptLookupRef = useRef(new Map<string, RuntimeQueuedPrompt>());
+  const promptQueueEnabledRef = useRef(readPromptQueueEnabled());
+  const promptQueueModeRef = useRef<RuntimePromptQueueMode>('single');
+  const draftRef = useRef<{ runtimeId: string; agentMemberId?: string; opts?: ClashRuntimeSelectOptions } | null>(null);
+  const pendingPromptRef = useRef<{ turnId: string; text: string } | null>(null);
+  const pendingTitleRef = useRef<string | null>(null);
+  const pendingConfigOptionsRef = useRef(new Map<string, string | boolean>());
+  const pendingSessionModeRef = useRef<string | null>(null);
   const turnSeq = useRef(0);
+  const queuedPromptSeq = useRef(0);
   const turnToMsgIdx = useRef(new Map<string, number>());
+  const eventBlockToMsgIdx = useRef(new Map<string, number>());
+  const turnFallbackSegment = useRef(new Map<string, number>());
+  const activeTurnIds = useRef(new Set<string>());
 
   const ready = status === 'connected' || status === 'sending' || status === 'streaming';
 
-  const refresh = useCallback(async () => {
+  const setRuntimeSessionId = useCallback((next: string | null) => {
+    sessionIdRef.current = next;
+    setSessionId(next);
+  }, []);
+
+  const hydrateMessagesFromStore = useCallback(async (targetSessionId: string) => {
+    const history = await fetchRuntimeSessionMessages(targetSessionId);
+    if (!history || sessionIdRef.current !== targetSessionId || history.length === 0) return;
+    messagesRef.current = history;
+    setMessages(history);
+  }, []);
+
+  const setRuntimeStatus = useCallback((next: ClashRuntimeStatus | ((prev: ClashRuntimeStatus) => ClashRuntimeStatus)) => {
+    const resolved = typeof next === 'function' ? next(statusRef.current) : next;
+    statusRef.current = resolved;
+    setStatus(resolved);
+  }, []);
+
+  const refresh = useCallback(async (opts: RuntimeProbeOptions = {}) => {
     try {
-      const res = await fetch(runtimeApiUrl(RUNTIMES_PATH), { credentials: 'include' });
+      const query = new URLSearchParams();
+      if (opts.probe === true) query.set('probe', '1');
+      else if (opts.probe && opts.probe !== 'none') query.set('probe', opts.probe);
+      if (opts.refresh) query.set('refresh', '1');
+      const path = query.toString() ? `${RUNTIMES_PATH}?${query.toString()}` : RUNTIMES_PATH;
+      const res = await fetch(runtimeApiUrl(path), { credentials: 'include' });
       if (!res.ok) {
         // Don't error-state the whole hook just because the list call
         // failed — chat panel still works in cloud mode.
         return;
       }
-      const json = (await res.json()) as { runtimes: Runtime[] };
-      setRuntimes(json.runtimes ?? []);
+      const json = (await res.json()) as { runtimes?: unknown[] };
+      const next = Array.isArray(json.runtimes)
+        ? json.runtimes.map(normalizeRuntime).filter((runtime): runtime is Runtime => runtime !== null)
+        : [];
+      setRuntimes(next);
     } catch {
       /* network noise; user can refresh manually */
     }
   }, []);
 
-  // Initial fetch on mount.
+  // Initial fetch should make the local machine visible quickly. Agent auth and
+  // model metadata probes run from explicit settings refreshes or session flows.
   useEffect(() => { void refresh(); }, [refresh]);
 
   // Tear down on unmount so the WS doesn't leak across page changes.
@@ -139,19 +558,209 @@ export function useClashRuntime(): UseClashRuntimeReturn {
     };
   }, []);
 
+  useEffect(() => {
+    const syncEnabled = (enabled: boolean) => {
+      promptQueueEnabledRef.current = enabled;
+      setPromptQueueEnabledState(enabled);
+    };
+    const onCustom = (event: Event) => {
+      const enabled = (event as CustomEvent<{ enabled?: unknown }>).detail?.enabled;
+      if (typeof enabled === 'boolean') syncEnabled(enabled);
+    };
+    const onStorage = (event: StorageEvent) => {
+      if (event.key === PROMPT_QUEUE_ENABLED_STORAGE_KEY) syncEnabled(event.newValue !== 'false');
+    };
+    window.addEventListener(PROMPT_QUEUE_ENABLED_EVENT, onCustom);
+    window.addEventListener('storage', onStorage);
+    return () => {
+      window.removeEventListener(PROMPT_QUEUE_ENABLED_EVENT, onCustom);
+      window.removeEventListener('storage', onStorage);
+    };
+  }, []);
+
   const handleAcpEvent = useCallback((turnId: string, event: unknown) => {
     setMessages((prev) => {
       const messages = prev.slice();
-      const knownIdx = turnToMsgIdx.current.get(turnId);
-      const result = appendAcpEvent(messages, turnId, knownIdx, event);
-      if (knownIdx === undefined && result.idx >= 0) turnToMsgIdx.current.set(turnId, result.idx);
+      const parsed = parseAcpEvent(event);
+      const blockKey = getAcpEventBlockKey(event);
+      const knownIdx = blockKey
+        ? eventBlockToMsgIdx.current.get(blockKey)
+        : (
+            parsed.kind === 'text' || parsed.kind === 'thought'
+              ? lastAssistantRunIndex(messages, parsed.kind)
+              : turnToMsgIdx.current.get(turnId)
+          );
+      const segment = turnFallbackSegment.current.get(turnId) ?? 0;
+      const fallbackMessageId = segment > 0 ? `asst-${turnId}-${segment}` : `asst-${turnId}`;
+      const messageId = runtimeBlockMessageId(turnId, blockKey, fallbackMessageId);
+      const result = appendAcpEvent(messages, turnId, knownIdx, event, messageId);
+      if (result.idx >= 0) {
+        if (blockKey) {
+          eventBlockToMsgIdx.current.set(blockKey, result.idx);
+        } else if (parsed.kind === 'text' || parsed.kind === 'thought') {
+          if (knownIdx === undefined) {
+            turnFallbackSegment.current.set(turnId, segment + 1);
+          }
+        } else if (knownIdx === undefined) {
+          turnToMsgIdx.current.set(turnId, result.idx);
+        }
+      }
       if (result.commands) setAvailableCommands(result.commands);
+      messagesRef.current = messages;
       return messages;
     });
   }, []);
 
+  const replacePromptQueue = useCallback((next: RuntimeQueuedPrompt[]) => {
+    for (const prompt of next) queuedPromptLookupRef.current.set(prompt.turnId, prompt);
+    promptQueueRef.current = next;
+    setPromptQueue(next);
+  }, []);
+
+  const clearPromptQueue = useCallback(() => {
+    queuedPromptLookupRef.current.clear();
+    replacePromptQueue([]);
+    const ws = wsRef.current;
+    if (ws?.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ type: 'clear_prompt_queue' }));
+    }
+  }, [replacePromptQueue]);
+
+  const makePrompt = useCallback((text: string): RuntimeQueuedPrompt => ({
+    id: `queued-${++queuedPromptSeq.current}-${Date.now().toString(36)}`,
+    turnId: `t-${++turnSeq.current}-${Date.now().toString(36)}`,
+    text,
+    createdAt: Date.now(),
+  }), []);
+
+  const appendUserMessage = useCallback((turnId: string, text: string) => {
+    setMessages((prev) => {
+      if (prev.some((message) => message.id === `user-${turnId}`)) return prev;
+      const next: ByoMessage[] = [...prev, { id: `user-${turnId}`, role: 'user', parts: [{ type: 'text', text }] }];
+      messagesRef.current = next;
+      return next;
+    });
+    const nextTitle = runtimeTitleFromPrompt(text);
+    if (nextTitle) {
+      pendingTitleRef.current = nextTitle;
+      setCurrentSession((session) => {
+        if (!session || !shouldReplaceRuntimeSessionTitle(session.title)) return session;
+        return { ...session, title: nextTitle };
+      });
+    }
+  }, []);
+
+  const sendPromptFrame = useCallback((
+    prompt: Pick<RuntimeQueuedPrompt, 'turnId' | 'text'>,
+    opts: {
+      queueMode?: RuntimePromptQueueMode;
+      markActive?: boolean;
+    } = {},
+  ): boolean => {
+    const ws = wsRef.current;
+    if (!ws || ws.readyState !== WebSocket.OPEN) return false;
+    if (opts.markActive !== false) {
+      appendUserMessage(prompt.turnId, prompt.text);
+      activeTurnIds.current.add(prompt.turnId);
+      setTransientStatus(null);
+      setRuntimeStatus('sending');
+    }
+    ws.send(JSON.stringify({
+      type: 'prompt',
+      turn_id: prompt.turnId,
+      text: prompt.text,
+      ...(opts.queueMode ? { queue_mode: opts.queueMode } : {}),
+    }));
+    return true;
+  }, [appendUserMessage, setRuntimeStatus]);
+
+  const enqueuePrompt = useCallback((prompt: RuntimeQueuedPrompt) => {
+    if (promptQueueRef.current.some((queued) => queued.turnId === prompt.turnId)) return;
+    replacePromptQueue([...promptQueueRef.current, prompt]);
+  }, [replacePromptQueue]);
+
+  const sendQueuedPromptFrame = useCallback((prompt: RuntimeQueuedPrompt): boolean => {
+    const sent = sendPromptFrame(prompt, {
+      queueMode: promptQueueModeRef.current,
+      markActive: false,
+    });
+    if (sent) enqueuePrompt(prompt);
+    return sent;
+  }, [enqueuePrompt, sendPromptFrame]);
+
+  const setPromptQueueMode = useCallback((mode: RuntimePromptQueueMode) => {
+    promptQueueModeRef.current = mode;
+    setPromptQueueModeState(mode);
+    const ws = wsRef.current;
+    if (ws?.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ type: 'set_prompt_queue_mode', queue_mode: mode }));
+    }
+  }, []);
+
+  const setPromptQueueEnabled = useCallback((enabled: boolean) => {
+    promptQueueEnabledRef.current = enabled;
+    setPromptQueueEnabledState(enabled);
+    try {
+      window.localStorage.setItem(PROMPT_QUEUE_ENABLED_STORAGE_KEY, enabled ? 'true' : 'false');
+    } catch {
+      /* ignore unavailable storage */
+    }
+    window.dispatchEvent(new CustomEvent(PROMPT_QUEUE_ENABLED_EVENT, { detail: { enabled } }));
+  }, []);
+
+  const closeSessionSocket = useCallback((opts: { dispose?: boolean } = {}) => {
+    const ws = wsRef.current;
+    if (opts.dispose && ws?.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ type: 'dispose' }));
+    }
+    try { ws?.close(); } catch { /* ignore */ }
+    wsRef.current = null;
+  }, []);
+
+  const resetRuntimeState = useCallback((opts: { disposeSocket?: boolean } = {}) => {
+    closeSessionSocket({ dispose: opts.disposeSocket });
+    turnToMsgIdx.current.clear();
+    eventBlockToMsgIdx.current.clear();
+    turnFallbackSegment.current.clear();
+    activeTurnIds.current.clear();
+    queuedPromptLookupRef.current.clear();
+    pendingPromptRef.current = null;
+    pendingTitleRef.current = null;
+    pendingSessionModeRef.current = null;
+    messagesRef.current = [];
+    setMessages([]);
+    setAvailableCommands([]);
+    replacePromptQueue([]);
+    setSessionConfigOptions([]);
+    setSessionModes(null);
+    setErrorMessage(null);
+    setTransientStatus(null);
+    setDiagnostics([]);
+  }, [closeSessionSocket, replacePromptQueue]);
+
   const onWsMessage = useCallback((data: unknown) => {
-    let msg: { type: string; session_id?: string; turn_id?: string; event?: unknown; message?: string; daemon_online?: boolean };
+    let msg: {
+      type: string;
+      session_id?: string;
+      acp_session_id?: string;
+      turn_id?: string;
+      event?: unknown;
+      config_options?: unknown;
+      modes?: unknown;
+      message?: string;
+      detail?: string;
+      status?: string;
+      attempt?: number;
+      maxAttempts?: number;
+      diagnostic?: RuntimeDiagnostic;
+      daemon_online?: boolean;
+      mode?: string;
+      active_turn_id?: string | null;
+      queued?: unknown;
+      code?: string;
+      agent_id?: string;
+      auth?: unknown;
+    };
     try { msg = JSON.parse(typeof data === 'string' ? data : ''); }
     catch { return; }
 
@@ -162,128 +771,516 @@ export function useClashRuntime(): UseClashRuntimeReturn {
         // so don't re-surface here.
         return;
       case 'session.ready':
-        setStatus('connected');
+        {
+          const configOptions = normalizeSessionConfigOptions(msg.config_options);
+          if (configOptions) setSessionConfigOptions(configOptions);
+          const modes = normalizeSessionModes(msg.modes);
+          if (modes) setSessionModes(modes);
+        }
+        if (typeof msg.acp_session_id === 'string' && msg.acp_session_id.length > 0) {
+          acpSessionIdRef.current = msg.acp_session_id;
+          setCurrentSession((session) => session ? { ...session, acpSessionId: msg.acp_session_id, status: 'active' } : session);
+        }
+        if (wsRef.current?.readyState === WebSocket.OPEN) {
+          for (const [configId, value] of pendingConfigOptionsRef.current) {
+            wsRef.current.send(JSON.stringify({ type: 'set_config_option', config_id: configId, value }));
+          }
+          pendingConfigOptionsRef.current.clear();
+          const pendingModeId = pendingSessionModeRef.current;
+          if (pendingModeId) {
+            wsRef.current.send(JSON.stringify({ type: 'set_session_mode', mode_id: pendingModeId }));
+            pendingSessionModeRef.current = null;
+          }
+          const pendingPrompt = pendingPromptRef.current;
+          if (pendingPrompt) {
+            pendingPromptRef.current = null;
+            sendPromptFrame(pendingPrompt);
+            for (const queued of promptQueueRef.current) {
+              if (promptQueueEnabledRef.current) {
+                sendPromptFrame(queued, {
+                  queueMode: promptQueueModeRef.current,
+                  markActive: false,
+                });
+              } else {
+                sendPromptFrame(queued);
+              }
+            }
+            if (!promptQueueEnabledRef.current) {
+              queuedPromptLookupRef.current.clear();
+              replacePromptQueue([]);
+            }
+            return;
+          }
+        }
+        setRuntimeStatus('connected');
+        return;
+      case 'session.config_options':
+        {
+          const configOptions = normalizeSessionConfigOptions(msg.config_options);
+          if (configOptions) setSessionConfigOptions(configOptions);
+        }
+        return;
+      case 'session.mode':
+        {
+          const modes = normalizeSessionModes(msg.modes);
+          if (modes) setSessionModes(modes);
+        }
+        return;
+      case 'session.queue_update':
+        if (msg.mode === 'single' || msg.mode === 'flush') {
+          promptQueueModeRef.current = msg.mode;
+          setPromptQueueModeState(msg.mode);
+        }
+        {
+          const activeQueued = typeof msg.active_turn_id === 'string' && msg.active_turn_id.length > 0
+            ? promptQueueRef.current.find((queued) => queued.turnId === msg.active_turn_id)
+              ?? queuedPromptLookupRef.current.get(msg.active_turn_id)
+            : null;
+          if (activeQueued) {
+            appendUserMessage(activeQueued.turnId, activeQueued.text);
+            queuedPromptLookupRef.current.delete(activeQueued.turnId);
+          }
+          const queue = normalizePromptQueue(msg.queued);
+          if (queue) replacePromptQueue(queue);
+        }
+        if (typeof msg.active_turn_id === 'string' && msg.active_turn_id.length > 0) {
+          activeTurnIds.current.clear();
+          activeTurnIds.current.add(msg.active_turn_id);
+          setRuntimeStatus('sending');
+        } else {
+          activeTurnIds.current.clear();
+          if (!promptQueueRef.current.length) setRuntimeStatus('connected');
+        }
+        return;
+      case 'session.status':
+        if (msg.status === 'reconnecting' || msg.status === 'transport_fallback') {
+          setTransientStatus({
+            kind: msg.status,
+            message: msg.message ?? (msg.status === 'reconnecting' ? 'Reconnecting' : 'Switching transport'),
+            ...(typeof msg.detail === 'string' ? { detail: msg.detail } : {}),
+            ...(typeof msg.attempt === 'number' ? { attempt: msg.attempt } : {}),
+            ...(typeof msg.maxAttempts === 'number' ? { maxAttempts: msg.maxAttempts } : {}),
+          });
+        }
+        return;
+      case 'session.diagnostic':
+        if (msg.diagnostic) {
+          setDiagnostics((prev) => [...prev.slice(-99), msg.diagnostic as RuntimeDiagnostic]);
+          const status = msg.diagnostic.transientStatus;
+          if (status?.status === 'reconnecting' || status?.status === 'transport_fallback') {
+            setTransientStatus({
+              kind: status.status,
+              message: status.message,
+              ...(typeof status.detail === 'string' ? { detail: status.detail } : {}),
+              ...(typeof status.attempt === 'number' ? { attempt: status.attempt } : {}),
+              ...(typeof status.maxAttempts === 'number' ? { maxAttempts: status.maxAttempts } : {}),
+            });
+          }
+        }
         return;
       case 'session.event':
-        if (msg.turn_id) handleAcpEvent(msg.turn_id, msg.event);
-        setStatus('streaming');
+        {
+          const configOptions = configOptionsFromAcpEvent(msg.event);
+          if (configOptions) setSessionConfigOptions(configOptions);
+          const currentModeId = modeIdFromAcpEvent(msg.event);
+          if (currentModeId) {
+            setSessionModes((prev) => prev ? { ...prev, currentModeId } : prev);
+          }
+          const parsed = parseAcpEvent(msg.event);
+          if (parsed.commands) setAvailableCommands(parsed.commands);
+          if (!msg.turn_id) {
+            return;
+          }
+        }
+        handleAcpEvent(msg.turn_id, msg.event);
+        setRuntimeStatus('streaming');
         return;
       case 'session.complete':
-        if (msg.turn_id) turnToMsgIdx.current.delete(msg.turn_id);
-        if (turnToMsgIdx.current.size === 0) setStatus('connected');
+        if (msg.turn_id) {
+          turnToMsgIdx.current.delete(msg.turn_id);
+          turnFallbackSegment.current.delete(msg.turn_id);
+          activeTurnIds.current.delete(msg.turn_id);
+        }
+        {
+          const completedSessionId = typeof msg.session_id === 'string' && msg.session_id.length > 0
+            ? msg.session_id
+            : sessionIdRef.current;
+          if (completedSessionId) void hydrateMessagesFromStore(completedSessionId);
+        }
+        setTransientStatus(null);
+        if (activeTurnIds.current.size === 0) {
+          if (promptQueueRef.current.length > 0) setRuntimeStatus('sending');
+          else setRuntimeStatus('connected');
+        }
         return;
       case 'session.error':
-        setErrorMessage(msg.message ?? 'unknown error');
-        setStatus('error');
+        {
+          const message = msg.message ?? 'unknown error';
+          if (msg.turn_id) activeTurnIds.current.delete(msg.turn_id);
+          setErrorMessage(message);
+          if (msg.code === 'auth_required') {
+            void refresh({ probe: 'config', refresh: true });
+          }
+          setTransientStatus(null);
+          setMessages((prev) => {
+            const next = appendRuntimeError(prev, msg.turn_id, message);
+            messagesRef.current = next;
+            return next;
+          });
+          setCurrentSession((session) => session ? { ...session, status: 'error' } : session);
+        }
+        setRuntimeStatus('error');
         return;
       case 'session.disposed':
-        setStatus('idle');
-        setSessionId(null);
+        setTransientStatus(null);
+        setRuntimeStatus('idle');
+        setRuntimeSessionId(null);
+        setCurrentSession(null);
         return;
       case 'daemon_offline':
-        setStatus('disconnected');
+        setTransientStatus(null);
+        setRuntimeStatus('disconnected');
         setErrorMessage('runtime went offline');
         return;
       case 'daemon_online':
         // No state change — we'd need to re-select to start a new session.
         return;
     }
-  }, [handleAcpEvent]);
+  }, [appendUserMessage, handleAcpEvent, hydrateMessagesFromStore, refresh, replacePromptQueue, sendPromptFrame]);
 
-  const select = useCallback(async (
+  const openSessionStream = useCallback((id: string, opts: { replayBacklog?: boolean } = {}) => {
+    const replayQuery = opts.replayBacklog === false ? '?replay=0' : '';
+    const ws = new WebSocket(runtimeWebSocketUrl(`${SESSIONS_BASE}/${encodeURIComponent(id)}/_stream${replayQuery}`));
+    wsRef.current = ws;
+    ws.onmessage = (ev) => onWsMessage(ev.data);
+    ws.onclose = () => {
+      if (wsRef.current !== ws) return;
+      wsRef.current = null;
+      setRuntimeStatus((s) => (s === 'idle' ? s : 'disconnected'));
+    };
+  }, [onWsMessage]);
+
+  const createRuntimeSession = useCallback(async (
     runtimeId: string | null,
-    crewId?: string,
+    agentMemberId?: string,
     opts?: ClashRuntimeSelectOptions,
   ) => {
-    // Tear down anything already open.
-    try { wsRef.current?.close(); } catch { /* */ }
-    wsRef.current = null;
-    turnToMsgIdx.current.clear();
-    setMessages([]);
-    setAvailableCommands([]);
-    setErrorMessage(null);
-    setSessionId(null);
+    setRuntimeSessionId(null);
+    const runtime = runtimeId ? runtimes.find((candidate) => candidate.id === runtimeId) : undefined;
+    const resolvedAgent = resolveRuntimeAgent(runtime, opts?.agentId);
+    const resolvedAgentId = resolvedAgent?.id ?? opts?.agentId ?? null;
+    const resolvedOpts: ClashRuntimeSelectOptions | undefined = resolvedAgentId && !opts?.agentId
+      ? { ...(opts ?? {}), agentId: resolvedAgentId }
+      : opts;
     setSelectedRuntimeId(runtimeId);
-    setSelectedAgentId(runtimeId ? opts?.agentId ?? null : null);
-    if (!runtimeId) { setStatus('idle'); return; }
+    setSelectedAgentId(runtimeId ? resolvedAgentId : null);
+    setSessionConfigOptions(runtimeId ? seedConfigOptionsForAgent(runtime, resolvedAgentId) : []);
+    setSessionModes(runtimeId ? seedSessionModesForAgent(runtime, resolvedAgentId) : null);
+    if (!runtimeId) {
+      acpSessionIdRef.current = null;
+      setCurrentSession(null);
+      setRuntimeStatus('idle');
+      return;
+    }
 
-    setStatus('connecting');
+    setRuntimeStatus('connecting');
     try {
-      const finalCrewId = crewId ?? 'director';
+      const sessionContextId = agentMemberId?.trim() || undefined;
+      const resumeAcpSessionId = resolvedOpts?.freshSession ? undefined : resolvedOpts?.resumeAcpSessionId;
+      acpSessionIdRef.current = resumeAcpSessionId ?? null;
       const res = await fetch(runtimeApiUrl(`${RUNTIMES_PATH}/${runtimeId}/sessions`), {
         method: 'POST',
         credentials: 'include',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
-          crew_id: finalCrewId,
-          ...(opts?.agentId ? { agent_id: opts.agentId } : {}),
-          ...(opts?.projectId ? { project_id: opts.projectId } : {}),
-          ...(opts?.resumeAcpSessionId ? { resume_session_id: opts.resumeAcpSessionId } : {}),
+          ...(sessionContextId ? { agent_member_id: sessionContextId } : {}),
+          ...(resolvedOpts?.agentId ? { agent_id: resolvedOpts.agentId } : {}),
+          ...(resolvedOpts?.permissionModeId ? { permission_mode: resolvedOpts.permissionModeId } : {}),
+          ...(resolvedOpts?.projectId ? { project_id: resolvedOpts.projectId } : {}),
+          ...(resumeAcpSessionId ? { resume_session_id: resumeAcpSessionId } : {}),
         }),
       });
       if (!res.ok) {
         const text = await res.text();
+        if (isAuthSetupMessage(text)) {
+          void refresh({ probe: 'config', refresh: true });
+        }
         setErrorMessage(`session create failed: ${text.slice(0, 200)}`);
-        setStatus('error');
+        setRuntimeStatus('error');
         return;
       }
       const json = (await res.json()) as CreateSessionResponse;
-      setSessionId(json.session_id);
+      setRuntimeSessionId(json.session_id);
+      setCurrentSession({
+        id: json.session_id,
+        threadId: json.session_id,
+        type: 'runtime',
+        title: pendingTitleRef.current ?? 'New session',
+        ...(resolvedOpts?.projectId ? { projectId: resolvedOpts.projectId } : {}),
+        runtimeId,
+        agentId: resolvedAgentId,
+        ...(sessionContextId ? { agentMemberId: sessionContextId } : {}),
+        ...(resolvedOpts?.permissionModeId ? { permissionMode: resolvedOpts.permissionModeId } : {}),
+        ...(resumeAcpSessionId ? { acpSessionId: resumeAcpSessionId } : {}),
+        status: 'active',
+      });
 
-      const ws = new WebSocket(
-        runtimeWebSocketUrl(`${SESSIONS_BASE}/${encodeURIComponent(json.session_id)}/_stream`),
-      );
-      wsRef.current = ws;
-      ws.onmessage = (ev) => onWsMessage(ev.data);
-      ws.onclose = () => {
-        wsRef.current = null;
-        // session.disposed handler already moves to idle if it ran;
-        // reaching here without that means the WS was killed mid-flight.
-        setStatus((s) => (s === 'idle' ? s : 'disconnected'));
-      };
+      openSessionStream(json.session_id);
     } catch (e) {
       setErrorMessage(e instanceof Error ? e.message : String(e));
-      setStatus('error');
+      setRuntimeStatus('error');
     }
-  }, [onWsMessage]);
+  }, [openSessionStream, runtimes]);
+
+  const select = useCallback(async (
+    runtimeId: string | null,
+    agentMemberId?: string,
+    opts?: ClashRuntimeSelectOptions,
+  ) => {
+    resetRuntimeState();
+    draftRef.current = null;
+    pendingConfigOptionsRef.current.clear();
+    await createRuntimeSession(runtimeId, agentMemberId, opts);
+  }, [createRuntimeSession, resetRuntimeState]);
+
+  const startDraft = useCallback((
+    runtimeId: string | null,
+    agentMemberId?: string,
+    opts?: ClashRuntimeSelectOptions,
+  ) => {
+    resetRuntimeState();
+    acpSessionIdRef.current = null;
+    pendingConfigOptionsRef.current.clear();
+    setRuntimeSessionId(null);
+    setCurrentSession(null);
+    const runtime = runtimeId ? runtimes.find((candidate) => candidate.id === runtimeId) : undefined;
+    const resolvedAgent = resolveRuntimeAgent(runtime, opts?.agentId);
+    const resolvedAgentId = resolvedAgent?.id ?? opts?.agentId ?? null;
+    const resolvedOpts: ClashRuntimeSelectOptions | undefined = resolvedAgentId && !opts?.agentId
+      ? { ...(opts ?? {}), agentId: resolvedAgentId }
+      : opts;
+    setSelectedRuntimeId(runtimeId);
+    setSelectedAgentId(runtimeId ? resolvedAgentId : null);
+    setSessionConfigOptions(runtimeId ? seedConfigOptionsForAgent(runtime, resolvedAgentId) : []);
+    setSessionModes(runtimeId ? seedSessionModesForAgent(runtime, resolvedAgentId) : null);
+    if (!runtimeId) {
+      draftRef.current = null;
+      setRuntimeStatus('idle');
+      return;
+    }
+    draftRef.current = { runtimeId, ...(agentMemberId ? { agentMemberId } : {}), opts: resolvedOpts };
+    setRuntimeStatus('draft');
+  }, [resetRuntimeState, runtimes]);
+
+  const attachSession = useCallback(async (session: RuntimeSessionInfo) => {
+    resetRuntimeState();
+    const runtime = runtimes.find((candidate) => candidate.id === session.runtimeId);
+    setSelectedRuntimeId(session.runtimeId);
+    setSelectedAgentId(session.agentId ?? null);
+    setSessionConfigOptions(seedConfigOptionsForAgent(runtime, session.agentId));
+    setSessionModes(seedSessionModesForAgent(runtime, session.agentId));
+    setRuntimeSessionId(session.id);
+    setCurrentSession(session);
+    acpSessionIdRef.current = session.acpSessionId ?? null;
+    setRuntimeStatus('connecting');
+
+    const history = await fetchRuntimeSessionMessages(session.id);
+    const historyLoaded = history !== null;
+    if (historyLoaded) {
+      messagesRef.current = history;
+      setMessages(history);
+      setRuntimeStatus('connected');
+    }
+
+    const attach = await fetch(runtimeApiUrl(`/api/v1/local-sessions/${encodeURIComponent(session.id)}/_attach`), {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({}),
+    });
+    if (!attach.ok) {
+      const text = await attach.text();
+      setErrorMessage(`session attach failed: ${text.slice(0, 200)}`);
+      setRuntimeStatus('error');
+      return;
+    }
+    if (historyLoaded) {
+      setRuntimeStatus('connected');
+    }
+
+    openSessionStream(session.id, { replayBacklog: !historyLoaded });
+  }, [openSessionStream, resetRuntimeState, runtimes]);
 
   const sendMessage = useCallback((text: string) => {
+    const prompt = makePrompt(text);
+
+    const ws = wsRef.current;
+    if ((!ws || ws.readyState !== WebSocket.OPEN) && draftRef.current) {
+      if (pendingPromptRef.current) {
+        appendUserMessage(prompt.turnId, prompt.text);
+        enqueuePrompt(prompt);
+        return;
+      }
+      pendingPromptRef.current = { turnId: prompt.turnId, text: prompt.text };
+      appendUserMessage(prompt.turnId, prompt.text);
+      setTransientStatus(null);
+      setRuntimeStatus('connecting');
+      const draft = draftRef.current;
+      void createRuntimeSession(draft.runtimeId, draft.agentMemberId, draft.opts);
+      return;
+    }
+
+    if (!ws || ws.readyState !== WebSocket.OPEN) {
+      setErrorMessage('not connected');
+      setRuntimeStatus('error');
+      return;
+    }
+
+    const currentStatus = statusRef.current;
+    if (currentStatus === 'connecting') {
+      if (!pendingPromptRef.current && activeTurnIds.current.size === 0) {
+        pendingPromptRef.current = { turnId: prompt.turnId, text: prompt.text };
+        appendUserMessage(prompt.turnId, prompt.text);
+      } else {
+        appendUserMessage(prompt.turnId, prompt.text);
+        enqueuePrompt(prompt);
+      }
+      return;
+    }
+    if (
+      promptQueueEnabledRef.current &&
+      (activeTurnIds.current.size > 0 || currentStatus === 'sending' || currentStatus === 'streaming')
+    ) {
+      sendQueuedPromptFrame(prompt);
+      return;
+    }
+    sendPromptFrame(prompt);
+  }, [createRuntimeSession, enqueuePrompt, makePrompt, sendPromptFrame, sendQueuedPromptFrame]);
+
+  const steerQueuedPrompt = useCallback((turnId: string) => {
+    const queued = promptQueueRef.current.find((prompt) => prompt.turnId === turnId)
+      ?? queuedPromptLookupRef.current.get(turnId);
+    if (!queued) return;
     const ws = wsRef.current;
     if (!ws || ws.readyState !== WebSocket.OPEN) {
       setErrorMessage('not connected');
-      setStatus('error');
+      setRuntimeStatus('error');
       return;
     }
-    const turnId = `t-${++turnSeq.current}-${Date.now().toString(36)}`;
-    setMessages((prev) => [...prev, { id: `user-${turnId}`, role: 'user', parts: [{ type: 'text', text }] }]);
-    setStatus('sending');
-    ws.send(JSON.stringify({ type: 'prompt', turn_id: turnId, text }));
+    ws.send(JSON.stringify({ type: 'steer_queued_prompt', turn_id: turnId }));
+    appendUserMessage(queued.turnId, queued.text);
+    queuedPromptLookupRef.current.delete(turnId);
+    replacePromptQueue(promptQueueRef.current.filter((prompt) => prompt.turnId !== turnId));
+  }, [appendUserMessage, replacePromptQueue, setRuntimeStatus]);
+
+  const updateQueuedPrompt = useCallback((turnId: string, text: string) => {
+    const nextText = text.trim();
+    if (!nextText) return;
+    const next = promptQueueRef.current.map((prompt) => (
+      prompt.turnId === turnId ? { ...prompt, text: nextText } : prompt
+    ));
+    const updated = next.find((prompt) => prompt.turnId === turnId);
+    if (updated) queuedPromptLookupRef.current.set(turnId, updated);
+    replacePromptQueue(next);
+    const ws = wsRef.current;
+    if (ws?.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ type: 'update_queued_prompt', turn_id: turnId, text: nextText }));
+    }
+  }, [replacePromptQueue]);
+
+  const removeQueuedPrompt = useCallback((turnId: string) => {
+    queuedPromptLookupRef.current.delete(turnId);
+    replacePromptQueue(promptQueueRef.current.filter((prompt) => prompt.turnId !== turnId));
+    const ws = wsRef.current;
+    if (ws?.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ type: 'remove_queued_prompt', turn_id: turnId }));
+    }
+  }, [replacePromptQueue]);
+
+  const reorderPromptQueue = useCallback((turnIds: string[]) => {
+    const byTurnId = new Map(promptQueueRef.current.map((prompt) => [prompt.turnId, prompt]));
+    const seen = new Set<string>();
+    const ordered: RuntimeQueuedPrompt[] = [];
+    for (const turnId of turnIds) {
+      const prompt = byTurnId.get(turnId);
+      if (!prompt || seen.has(turnId)) continue;
+      seen.add(turnId);
+      ordered.push(prompt);
+    }
+    for (const prompt of promptQueueRef.current) {
+      if (!seen.has(prompt.turnId)) ordered.push(prompt);
+    }
+    replacePromptQueue(ordered);
+    const ws = wsRef.current;
+    if (ws?.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ type: 'reorder_prompt_queue', turn_ids: ordered.map((prompt) => prompt.turnId) }));
+    }
+  }, [replacePromptQueue]);
+
+  const setConfigOption = useCallback((configId: string, value: string | boolean) => {
+    const ws = wsRef.current;
+    if (!ws || ws.readyState !== WebSocket.OPEN) {
+      if (draftRef.current) {
+        pendingConfigOptionsRef.current.set(configId, value);
+        setSessionConfigOptions((prev) => prev.map((option) => (
+          option.id === configId && typeof value === 'string'
+            ? { ...option, currentValue: value }
+            : option
+        )));
+        return;
+      }
+      setErrorMessage('not connected');
+      setRuntimeStatus('error');
+      return;
+    }
+    ws.send(JSON.stringify({ type: 'set_config_option', config_id: configId, value }));
+  }, []);
+
+  const setSessionMode = useCallback((modeId: string) => {
+    const nextModeId = modeId.trim();
+    if (!nextModeId) return;
+    const applyLocal = () => setSessionModes((prev) => prev ? { ...prev, currentModeId: nextModeId } : prev);
+    const ws = wsRef.current;
+    if (!ws || ws.readyState !== WebSocket.OPEN) {
+      if (draftRef.current) {
+        pendingSessionModeRef.current = nextModeId;
+        draftRef.current = {
+          ...draftRef.current,
+          opts: {
+            ...(draftRef.current.opts ?? {}),
+            permissionModeId: nextModeId,
+          },
+        };
+        applyLocal();
+        return;
+      }
+      pendingSessionModeRef.current = nextModeId;
+      applyLocal();
+      return;
+    }
+    ws.send(JSON.stringify({ type: 'set_session_mode', mode_id: nextModeId }));
   }, []);
 
   const cancel = useCallback(() => {
     const ws = wsRef.current;
     if (!ws || ws.readyState !== WebSocket.OPEN) return;
-    for (const turnId of turnToMsgIdx.current.keys()) {
+    const turnIds = new Set([...activeTurnIds.current, ...turnToMsgIdx.current.keys()]);
+    for (const turnId of turnIds) {
       ws.send(JSON.stringify({ type: 'cancel', turn_id: turnId }));
     }
   }, []);
 
   const shutdown = useCallback(() => {
-    const ws = wsRef.current;
-    if (ws && ws.readyState === WebSocket.OPEN) {
-      ws.send(JSON.stringify({ type: 'dispose' }));
-    }
-    try { ws?.close(); } catch { /* */ }
-    wsRef.current = null;
-    turnToMsgIdx.current.clear();
-    setSessionId(null);
+    resetRuntimeState({ disposeSocket: true });
+        setRuntimeSessionId(null);
+    setCurrentSession(null);
     setSelectedRuntimeId(null);
     setSelectedAgentId(null);
-    setMessages([]);
-    setAvailableCommands([]);
-    setErrorMessage(null);
-    setStatus('idle');
-  }, []);
+    draftRef.current = null;
+    pendingConfigOptionsRef.current.clear();
+    replacePromptQueue([]);
+    setRuntimeStatus('idle');
+  }, [replacePromptQueue, resetRuntimeState]);
 
   const loadResumeOptions = useCallback(async (runtimeId: string): Promise<BridgeSession[]> => {
     try {
@@ -303,15 +1300,34 @@ export function useClashRuntime(): UseClashRuntimeReturn {
     selectedRuntimeId,
     selectedAgentId,
     sessionId,
+    currentSession,
     status,
     errorMessage,
+    transientStatus,
+    diagnostics,
     messages,
     availableCommands,
+    promptQueue,
+    promptQueueEnabled,
+    promptQueueMode,
+    sessionConfigOptions,
+    sessionModes,
     ready,
     refresh,
+    startDraft,
     select,
+    attachSession,
     loadResumeOptions,
     sendMessage,
+    setPromptQueueEnabled,
+    setPromptQueueMode,
+    steerQueuedPrompt,
+    updateQueuedPrompt,
+    removeQueuedPrompt,
+    reorderPromptQueue,
+    clearPromptQueue,
+    setConfigOption,
+    setSessionMode,
     cancel,
     shutdown,
   };

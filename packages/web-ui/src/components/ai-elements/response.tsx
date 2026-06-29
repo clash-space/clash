@@ -22,20 +22,31 @@ export function Response({ className, components, ...props }: ResponseProps) {
     <Streamdown
       className={cn(
         "prose prose-sm dark:prose-invert max-w-none",
-        "prose-p:my-2 prose-pre:my-2 prose-ul:my-2 prose-ol:my-2 prose-li:my-0.5",
+        "text-[13px] leading-[1.55] prose-p:my-1 prose-pre:my-1.5 prose-ul:my-1 prose-ol:my-1 prose-li:my-0.5",
         "prose-headings:font-semibold prose-h1:text-base prose-h2:text-base prose-h3:text-sm",
-        "prose-code:before:content-none prose-code:after:content-none",
-        "prose-pre:bg-muted prose-pre:border prose-pre:border-border",
-        "prose-table:my-3 prose-table:text-xs prose-th:px-2 prose-th:py-1 prose-td:px-2 prose-td:py-1 prose-td:align-top",
+        "prose-code:before:content-none prose-code:after:content-none prose-code:rounded-none prose-code:bg-transparent prose-code:px-0 prose-code:py-0",
+        "prose-pre:border-0 prose-pre:bg-transparent prose-pre:p-0",
+        "prose-table:my-2 prose-table:text-[13px] prose-th:px-0 prose-th:py-1 prose-td:px-0 prose-td:py-1 prose-td:align-top",
         "prose-a:text-primary hover:prose-a:underline",
+        "[&>*]:!mb-0 [&>*]:!mt-0 [&>*+*]:!mt-1.5",
         className,
       )}
+      controls={{ code: false, table: false, mermaid: false }}
+      linkSafety={{ enabled: false }}
       components={{
+        code: ({ node: _node, children, ...rest }) => (
+          <code
+            {...rest}
+            className="rounded-none bg-transparent p-0 font-[inherit] text-inherit"
+          >
+            {children}
+          </code>
+        ),
         table: ({ node: _node, children, ...rest }) => (
-          <div className="not-prose my-3 overflow-x-auto rounded-md border border-border bg-card">
+          <div className="not-prose my-2 overflow-x-auto">
             <table
               {...rest}
-              className="w-full border-collapse text-xs [&_tr]:bg-card [&_tr:nth-child(even)]:bg-muted/30 [&_td]:px-2 [&_td]:py-1 [&_td]:align-top [&_td]:border-b [&_td]:border-border [&_tr:last-child_td]:border-b-0 [&_th]:px-2 [&_th]:py-1 [&_th]:text-left [&_th]:font-semibold [&_th]:border-b [&_th]:border-border [&_th]:bg-muted"
+              className="w-full border-separate border-spacing-0 text-[13px] leading-[1.45] text-[#05070d] [&_tr]:bg-transparent [&_td]:border-t [&_td]:border-neutral-200/70 [&_td]:px-0 [&_td]:py-1 [&_td]:pr-4 [&_td]:align-top [&_th]:border-b [&_th]:border-neutral-200/80 [&_th]:px-0 [&_th]:py-1 [&_th]:pr-4 [&_th]:text-left [&_th]:font-medium [&_th]:text-neutral-500"
             >
               {children}
             </table>
@@ -44,7 +55,7 @@ export function Response({ className, components, ...props }: ResponseProps) {
         pre: ({ node: _node, children, ...rest }) => (
           <pre
             {...rest}
-            className="not-prose my-2 overflow-x-auto rounded-md border border-border bg-muted p-3 text-[11px] font-mono leading-relaxed"
+            className="not-prose my-1.5 overflow-x-auto whitespace-pre-wrap bg-transparent p-0 text-[12px] font-mono leading-[1.5] text-neutral-500"
           >
             {children}
           </pre>

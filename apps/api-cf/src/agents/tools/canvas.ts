@@ -22,7 +22,7 @@ import { log } from "../../logger";
  * threads it into every canvas tool call so the nodes it creates carry
  * `data.actorType` / `data.actorUserId` / `data.actorAgentId`. For the
  * built-in in-API supervisor this is `{ actorType: 'user', actorUserId }`;
- * for ACP crew sessions (Test Director / Generator / …) the room WS layer
+ * for ACP agent sessions (Test Director / Generator / …) the room WS layer
  * supplies `{ actorType: 'agent', actorUserId: owner_id, actorAgentId: cm_id }`.
  *
  * Optional only because tests / call sites pre-Phase-0 don't have it yet;

@@ -1,14 +1,14 @@
 /**
- * localStorage-backed invited-crew list, scoped by project_id.
+ * localStorage-backed invited-agent list, scoped by project_id.
  *
- * The room-side identity (which crew member shows up as a tab) doesn't
+ * The room-side identity (which agent member shows up as a tab) doesn't
  * round-trip through the server — it's a pure client preference, so
  * persistence lives in the browser. SSR-safe: every entry guards
  * `typeof window`, returning empty/no-op when called from a server
  * render (the loader path).
  */
 
-const invitedKey = (projectId: string) => `clash:invitedCrew:${projectId}`;
+const invitedKey = (projectId: string) => `clash:invitedAgent:${projectId}`;
 
 export function loadInvited(projectId: string): string[] {
   if (typeof window === 'undefined') return [];

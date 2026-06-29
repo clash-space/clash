@@ -1,5 +1,5 @@
 /**
- * OS paths for daemon state, logs, service files, and per-session cwd.
+ * OS paths for daemon state, logs, service files, and per-project cwd.
  *
  * Single convention across platforms: `~/.clash/` is the user-level root,
  * matching every other modern AI tool (`~/.claude`, `~/.codex`, `~/.gemini`,
@@ -35,11 +35,9 @@ export interface Paths {
   machineIdFile: string;
   /** Daemon log file. */
   logFile: string;
-  /** Per-chat workspace root. Each spawned ACP agent runs in a subdir
-   *  under this; the subdir is the cwd, holds .claude/ config + the
-   *  CC transcript that powers Resume. Named "workspaces" to avoid
-   *  conflating with CC's own notion of "session" (the conversation
-   *  transcript, identified by acp_session_id). */
+  /** Local project roots. ACP agents run here; sessions do not own cwd. */
+  projectsDir: string;
+  /** Legacy workspace root retained for migration/scanning only. */
   workspacesDir: string;
   /** launchd plist (macOS) / systemd user unit (linux). null on win32. */
   serviceFile: string | null;
@@ -55,6 +53,7 @@ export function paths(): Paths {
   const configDir = join(home, ".clash");
   const credsFile = join(configDir, "credentials.json");
   const machineIdFile = join(configDir, "machine-id");
+  const projectsDir = join(configDir, "projects");
   const workspacesDir = join(configDir, "workspaces");
   const logFile = join(configDir, "logs", "bridge.log");
 
@@ -64,7 +63,7 @@ export function paths(): Paths {
   } else if (p === "linux") {
     serviceFile = join(home, ".config", "systemd", "user", `${SERVICE_LABEL}.service`);
   }
-  return { configDir, credsFile, machineIdFile, workspacesDir, logFile, serviceFile, serviceLabel: SERVICE_LABEL };
+  return { configDir, credsFile, machineIdFile, projectsDir, workspacesDir, logFile, serviceFile, serviceLabel: SERVICE_LABEL };
 }
 
 /** "darwin/arm64" — sent to server as the runtime's `os` field. */
