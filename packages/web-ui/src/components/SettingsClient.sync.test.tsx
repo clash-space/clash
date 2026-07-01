@@ -555,10 +555,9 @@ describe("SettingsClient audio section", () => {
     expect(screen.queryByText(/FunASR/i)).toBeNull();
     expect(screen.queryByText("python3 -m pip install -U funasr modelscope torch torchaudio")).toBeNull();
 
-    const modelSelect = screen.getByRole("button", { name: "ASR model" });
+    const modelSelect = screen.getByRole("combobox", { name: "ASR model" });
     expect(modelSelect.className).toContain("clash-settings-select-trigger");
     expect(modelSelect.textContent).toContain("SenseVoice Small");
-    expect(screen.queryByRole("combobox", { name: "ASR model" })).toBeNull();
     expect((screen.getByRole("switch", { name: "Enable voice input" }) as HTMLButtonElement).disabled).toBe(false);
 
     fireEvent.click(screen.getByRole("switch", { name: "Enable voice input" }));
@@ -3515,8 +3514,8 @@ describe("SettingsClient model routing", () => {
 
     const editor = within(providerConfig).getByRole("group", { name: "Mock primary Mock Provider API key" });
     expect(within(editor).getByText("Model access")).toBeTruthy();
-    fireEvent.click(within(editor).getByRole("button", { name: "Model access" }));
-    fireEvent.click(screen.getByRole("menuitemradio", { name: /Specific models/ }));
+    fireEvent.click(within(editor).getByRole("combobox", { name: "Model access" }));
+    fireEvent.click(screen.getByRole("option", { name: /Specific models/ }));
     fireEvent.click(within(editor).getByRole("button", { name: "Add supported model" }));
     const search = screen.getByRole("searchbox", { name: "Filter supported models" });
     fireEvent.change(search, { target: { value: "gpt image" } });
@@ -3576,8 +3575,8 @@ describe("SettingsClient model routing", () => {
     fireEvent.click(within(providerConfig).getByText("Google primary"));
 
     const editor = screen.getByRole("group", { name: "Google primary Google API key" });
-    fireEvent.click(within(editor).getByRole("button", { name: "Model access" }));
-    fireEvent.click(screen.getByRole("menuitemradio", { name: /Specific models/ }));
+    fireEvent.click(within(editor).getByRole("combobox", { name: "Model access" }));
+    fireEvent.click(screen.getByRole("option", { name: /Specific models/ }));
     fireEvent.click(within(editor).getByRole("button", { name: "Add supported model" }));
     fireEvent.change(screen.getByRole("searchbox", { name: "Filter supported models" }), {
       target: { value: "Gemini Flash Image 2" },
@@ -3833,7 +3832,7 @@ describe("SettingsClient model routing", () => {
     expect(screen.getByRole("heading", { name: "Models" })).toBeTruthy();
     expect(screen.getByText("Nano Banana 2")).toBeTruthy();
     expect(screen.getByText("Available model cards")).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Modality" })).toBeTruthy();
+    expect(screen.getByRole("combobox", { name: "Modality" })).toBeTruthy();
     expect(screen.queryByLabelText("OpenAI API key")).toBeNull();
     expect(screen.queryByRole("button", { name: "Add" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Remove" })).toBeNull();
@@ -3948,13 +3947,11 @@ describe("SettingsClient model routing", () => {
       </MemoryRouter>,
     );
 
-    const modality = screen.getByRole("button", { name: "Modality" });
-    const providerStatus = screen.getByRole("button", { name: "Provider status" });
+    const modality = screen.getByRole("combobox", { name: "Modality" });
+    const providerStatus = screen.getByRole("combobox", { name: "Provider status" });
 
     expect(modality.className).toContain("clash-select-trigger");
     expect(providerStatus.className).toContain("clash-select-trigger");
-    expect(screen.queryByRole("combobox", { name: "Modality" })).toBeNull();
-    expect(screen.queryByRole("combobox", { name: "Provider status" })).toBeNull();
   });
 
   it("lets a model reorder its supported provider priority", async () => {

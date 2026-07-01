@@ -519,9 +519,9 @@ describe("ChatbotCopilot desktop local mode", () => {
 
     renderDesktopCopilot();
 
-    const trigger = screen.getByRole("button", { name: "Session runtime, harness, and model" });
+    const trigger = screen.getByRole("combobox", { name: "Session runtime, harness, and model" });
     fireEvent.click(trigger);
-    fireEvent.click(screen.getByRole("menuitemradio", { name: /Devin/ }));
+    fireEvent.click(screen.getByRole("option", { name: /Devin/ }));
 
     await waitFor(() => expect(screen.getByText("Sign in to Devin")).toBeTruthy());
     expect(screen.getByText("Devin is not signed in for ACP.")).toBeTruthy();
@@ -1125,7 +1125,7 @@ describe("ChatbotCopilot desktop local mode", () => {
       agentId: "cursor",
       status: "active",
     });
-    expect(screen.getByRole("button", { name: "Session runtime, harness, and model" }).textContent).toContain("Cursor");
+    expect(screen.getByRole("combobox", { name: "Session runtime, harness, and model" }).textContent).toContain("Cursor");
   });
 
   it("keeps ACP progress in the top-right header toolbar", () => {
@@ -1443,12 +1443,12 @@ describe("ChatbotCopilot desktop local mode", () => {
 
     renderDesktopCopilot();
 
-    const trigger = screen.getByRole("button", { name: "Session runtime, harness, and model" }) as HTMLButtonElement;
+    const trigger = screen.getByRole("combobox", { name: "Session runtime, harness, and model" }) as HTMLButtonElement;
     expect(trigger.disabled).toBe(true);
 
     fireEvent.click(trigger);
 
-    expect(screen.queryByRole("menu", { name: "Session runtime, harness, and model" })).toBeNull();
+    expect(screen.queryByRole("listbox", { name: "Session runtime, harness, and model" })).toBeNull();
   });
 
   it("keeps long Cursor model menus scrollable inside the viewport", () => {
@@ -1489,10 +1489,11 @@ describe("ChatbotCopilot desktop local mode", () => {
 
     renderDesktopCopilot();
 
-    fireEvent.click(screen.getByRole("button", { name: "Session runtime, harness, and model" }));
+    fireEvent.click(screen.getByRole("combobox", { name: "Session runtime, harness, and model" }));
 
-    const menu = screen.getByRole("menu", { name: "Session runtime, harness, and model" });
-    expect(menu.className).toContain("overflow-y-auto");
+    const menu = screen.getByRole("listbox", { name: "Session runtime, harness, and model" });
+    expect(menu.className).toContain("overflow-hidden");
+    expect(menu.querySelector('[class*="overflow-y-auto"]')).toBeTruthy();
     expect(menu.className).not.toContain("overflow-visible");
     expect(menu.getAttribute("style")).toContain("max-height:");
   });
@@ -1527,10 +1528,10 @@ describe("ChatbotCopilot desktop local mode", () => {
 
     renderDesktopCopilot();
 
-    const permissionTrigger = screen.getByRole("button", { name: "Harness permission mode" });
+    const permissionTrigger = screen.getByRole("combobox", { name: "Harness permission mode" });
     expect(permissionTrigger.textContent).toContain("Full access");
     fireEvent.click(permissionTrigger);
-    fireEvent.click(screen.getByRole("menuitemradio", { name: /Review/ }));
+    fireEvent.click(screen.getByRole("option", { name: /Review/ }));
 
     expect(setSessionMode).toHaveBeenCalledWith("codex:review");
     expect(select).not.toHaveBeenCalled();
@@ -1585,34 +1586,34 @@ describe("ChatbotCopilot desktop local mode", () => {
 
     renderDesktopCopilot();
 
-    const permissionTrigger = screen.getByRole("button", { name: "Harness permission mode" });
+    const permissionTrigger = screen.getByRole("combobox", { name: "Harness permission mode" });
     expect(permissionTrigger.textContent).toContain("Full access");
 
     fireEvent.click(permissionTrigger);
-    fireEvent.click(screen.getByRole("menuitemradio", { name: /Review/ }));
+    fireEvent.click(screen.getByRole("option", { name: /Review/ }));
     expect(setSessionMode).toHaveBeenLastCalledWith("codex:review");
 
-    fireEvent.click(screen.getByRole("button", { name: "Session runtime, harness, and model" }));
-    fireEvent.click(screen.getByRole("menuitemradio", { name: /Claude/ }));
+    fireEvent.click(screen.getByRole("combobox", { name: "Session runtime, harness, and model" }));
+    fireEvent.click(screen.getByRole("option", { name: /Claude/ }));
     expect(startDraft).toHaveBeenLastCalledWith("desktop-local", undefined, {
       projectId: "project-one",
       agentId: "claude-acp",
       permissionModeId: "claude:full-access",
     });
-    expect(screen.getByRole("button", { name: "Harness permission mode" }).textContent).not.toContain("Review");
+    expect(screen.getByRole("combobox", { name: "Harness permission mode" }).textContent).not.toContain("Review");
 
-    fireEvent.click(screen.getByRole("button", { name: "Harness permission mode" }));
-    fireEvent.click(screen.getByRole("menuitemradio", { name: /Ask first/ }));
+    fireEvent.click(screen.getByRole("combobox", { name: "Harness permission mode" }));
+    fireEvent.click(screen.getByRole("option", { name: /Ask first/ }));
     expect(setSessionMode).toHaveBeenLastCalledWith("claude:ask");
 
-    fireEvent.click(screen.getByRole("button", { name: "Session runtime, harness, and model" }));
-    fireEvent.click(screen.getByRole("menuitemradio", { name: /Codex/ }));
+    fireEvent.click(screen.getByRole("combobox", { name: "Session runtime, harness, and model" }));
+    fireEvent.click(screen.getByRole("option", { name: /Codex/ }));
     expect(startDraft).toHaveBeenLastCalledWith("desktop-local", undefined, {
       projectId: "project-one",
       agentId: "codex-acp",
       permissionModeId: "codex:review",
     });
-    expect(screen.getByRole("button", { name: "Harness permission mode" }).textContent).toContain("Review");
+    expect(screen.getByRole("combobox", { name: "Harness permission mode" }).textContent).toContain("Review");
   });
 
   it("uses the selected agent's native ACP mode option as the visible permission mode", () => {
@@ -1672,9 +1673,9 @@ describe("ChatbotCopilot desktop local mode", () => {
 
     renderDesktopCopilot();
 
-    expect(screen.getByRole("button", { name: "Harness permission mode" }).textContent).toContain("Agent");
-    fireEvent.click(screen.getByRole("button", { name: "Harness permission mode" }));
-    fireEvent.click(screen.getByRole("menuitemradio", { name: /Read-only/ }));
+    expect(screen.getByRole("combobox", { name: "Harness permission mode" }).textContent).toContain("Agent");
+    fireEvent.click(screen.getByRole("combobox", { name: "Harness permission mode" }));
+    fireEvent.click(screen.getByRole("option", { name: /Read-only/ }));
 
     expect(setConfigOption).toHaveBeenCalledWith("mode", "read-only");
     expect(startDraft).toHaveBeenLastCalledWith("desktop-local", undefined, {
@@ -1683,19 +1684,19 @@ describe("ChatbotCopilot desktop local mode", () => {
       permissionModeId: "read-only",
     });
 
-    fireEvent.click(screen.getByRole("button", { name: "Session runtime, harness, and model" }));
-    fireEvent.click(screen.getByRole("menuitemradio", { name: /Qwen Code/ }));
-    expect(screen.getByRole("button", { name: "Harness permission mode" }).textContent).toContain("Qwen safe");
+    fireEvent.click(screen.getByRole("combobox", { name: "Session runtime, harness, and model" }));
+    fireEvent.click(screen.getByRole("option", { name: /Qwen Code/ }));
+    expect(screen.getByRole("combobox", { name: "Harness permission mode" }).textContent).toContain("Qwen safe");
 
-    fireEvent.click(screen.getByRole("button", { name: "Session runtime, harness, and model" }));
-    fireEvent.click(screen.getByRole("menuitemradio", { name: /Codex/ }));
+    fireEvent.click(screen.getByRole("combobox", { name: "Session runtime, harness, and model" }));
+    fireEvent.click(screen.getByRole("option", { name: /Codex/ }));
 
     expect(startDraft).toHaveBeenLastCalledWith("desktop-local", undefined, {
       projectId: "project-one",
       agentId: "codex-acp",
       permissionModeId: "read-only",
     });
-    expect(screen.getByRole("button", { name: "Harness permission mode" }).textContent).toContain("Read-only");
+    expect(screen.getByRole("combobox", { name: "Harness permission mode" }).textContent).toContain("Read-only");
   });
 
   it("does not reuse one agent's ACP mode config for another agent without mode config", () => {
@@ -1741,14 +1742,14 @@ describe("ChatbotCopilot desktop local mode", () => {
 
     renderDesktopCopilot();
 
-    fireEvent.click(screen.getByRole("button", { name: "Session runtime, harness, and model" }));
-    fireEvent.click(screen.getByRole("menuitemradio", { name: /OpenClaw/ }));
+    fireEvent.click(screen.getByRole("combobox", { name: "Session runtime, harness, and model" }));
+    fireEvent.click(screen.getByRole("option", { name: /OpenClaw/ }));
 
     expect(startDraft).toHaveBeenLastCalledWith("desktop-local", undefined, {
       projectId: "project-one",
       agentId: "openclaw",
     });
-    expect(screen.queryByRole("button", { name: "Harness permission mode" })).toBeNull();
+    expect(screen.queryByRole("combobox", { name: "Harness permission mode" })).toBeNull();
   });
 
   it("shows ACP slash commands only while the draft starts with slash", () => {

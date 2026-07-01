@@ -33,7 +33,7 @@ import {
 } from '@clash/web-ui/lib/clientActions';
 import { runtimeApiUrl } from '@clash/web-ui/lib/runtimeConfig';
 import { Dialog } from './ui/dialog';
-import { FloatingMenu, SelectMenu, StableSelectMenu, type SelectOption } from './ui/select';
+import { FloatingMenu, SelectMenu, type SelectOption } from './ui/select';
 import { Switch } from './ui/switch';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from './ui/collapsible';
 import { useAppFeedback } from './AppFeedback';
@@ -2931,7 +2931,7 @@ function ModelRoutingSection({
                             <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
                                 <label className="min-w-0">
                                     <span className="mb-1 block text-xs font-medium text-stone-500 dark:text-stone-400">Model to test</span>
-                                    <StableSelectMenu
+                                    <SelectMenu
                                         value={selectedProviderTestModelId}
                                         options={providerTestOptions}
                                         onValueChange={(value) => {

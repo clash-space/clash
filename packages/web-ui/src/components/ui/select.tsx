@@ -304,7 +304,7 @@ export function FloatingMenu({
     );
 }
 
-export function SelectMenu<Value extends SelectValue = string>({
+function LegacySelectMenu<Value extends SelectValue = string>({
     value,
     options,
     sections,
@@ -518,7 +518,7 @@ export function SelectMenu<Value extends SelectValue = string>({
     );
 }
 
-export function StableSelectMenu<Value extends SelectValue = string>({
+function RadixSelectMenu<Value extends SelectValue = string>({
     value,
     options,
     sections,
@@ -683,6 +683,21 @@ export function StableSelectMenu<Value extends SelectValue = string>({
             </SelectPrimitive.Portal>
         </SelectPrimitive.Root>
     );
+}
+
+function hasSubmenuOptions<Value extends SelectValue>(
+    options?: SelectOption<Value>[],
+    sections?: SelectSection<Value>[],
+) {
+    const sectionOptions = sections?.flatMap((section) => section.options) ?? options ?? [];
+    return sectionOptions.some((option) => option.hasSubmenu || !!option.submenuSections?.length);
+}
+
+export function SelectMenu<Value extends SelectValue = string>(props: SelectMenuProps<Value>) {
+    if (hasSubmenuOptions(props.options, props.sections)) {
+        return <LegacySelectMenu {...props} />;
+    }
+    return <RadixSelectMenu {...props} />;
 }
 
 function SelectMenuSection<Value extends SelectValue>({
