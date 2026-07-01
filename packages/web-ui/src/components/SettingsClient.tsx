@@ -2596,7 +2596,9 @@ function ModelRoutingSection({
             });
             if (saved) {
                 setAddingProviderKey((prev) => (prev === row.key ? null : prev));
-                setEditingProviderAccountKey((prev) => (prev?.providerKey === row.key ? null : prev));
+                if (isAddingPrioritizedKey) {
+                    setEditingProviderAccountKey((prev) => (prev?.providerKey === row.key ? null : prev));
+                }
             }
             return saved;
         };

@@ -131,6 +131,20 @@ function clickMenuItemContaining(agentBrowser, text) {
   })()`);
 }
 
+function menuContainsText(agentBrowser, text) {
+  return evalJson(agentBrowser, `(() => {
+    const wanted = ${JSON.stringify(text)};
+    return [...document.querySelectorAll("[role='menu'] [role='menuitemradio'], [role='menu'] [role='menuitem']")].some((candidate) => {
+      const value = (candidate.innerText || candidate.textContent || "").trim();
+      const rect = candidate.getBoundingClientRect();
+      const style = getComputedStyle(candidate);
+      return value.includes(wanted) &&
+        rect.width > 0 && rect.height > 0 &&
+        style.display !== "none" && style.visibility !== "hidden";
+    });
+  })()`);
+}
+
 function clickListboxOptionContaining(agentBrowser, text) {
   return evalJson(agentBrowser, `(() => {
     const wanted = ${JSON.stringify(text)};
@@ -248,6 +262,21 @@ async function runProviderFlow(agentBrowser, apiOrigin) {
       .catch(() => false)`,
     "desktop mock provider model allowlist saved",
   );
+  if (!clickButtonByLabel(agentBrowser, "Model to test")) {
+    throw new Error("Could not reopen desktop provider test model selector after saving allowlist");
+  }
+  await waitForEval(
+    agentBrowser,
+    `(() => {
+      const items = [...document.querySelectorAll("[role='menu'] [role='menuitemradio'], [role='menu'] [role='menuitem']")]
+        .map((item) => (item.innerText || item.textContent || "").trim());
+      return items.some((item) => item.includes("GPT Image 2"));
+    })()`,
+    "desktop scoped provider test model selector",
+  );
+  if (menuContainsText(agentBrowser, "Nano Banana 2")) {
+    throw new Error("Desktop provider test model selector exposed a model outside the saved allowlist");
+  }
 
   if (!clickByText(agentBrowser, "View supported models")) {
     throw new Error("Could not open desktop supported models link");
