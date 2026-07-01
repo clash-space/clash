@@ -486,6 +486,46 @@ describe("local API app", () => {
     });
   });
 
+  it("does not test a provider account disabled by the test request", async () => {
+    const app = createLocalApiApp({ dataDir, userId: "local-user" });
+
+    await app.request("/api/v1/model-providers", {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        providers: [
+          {
+            id: "replicate-primary",
+            providerId: "replicate",
+            upstreamId: "replicate",
+            enabled: true,
+            priority: 1,
+            credentials: { apiKey: "r8-local-key" },
+          },
+        ],
+      }),
+    });
+
+    const response = await app.request("/api/v1/model-providers/test", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        provider: { id: "replicate-primary", providerId: "replicate", upstreamId: "replicate", enabled: false },
+        modelId: "nano-banana-2",
+      }),
+    });
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({
+      ok: false,
+      providerId: "replicate",
+      upstreamId: "replicate",
+      modelId: "nano-banana-2",
+      disabled: true,
+      message: "Replicate is disabled for Nano Banana 2.",
+    });
+  });
+
   it("checks a configured live provider account against a selected model without a fake skipped state", async () => {
     const app = createLocalApiApp({ dataDir, userId: "local-user" });
 

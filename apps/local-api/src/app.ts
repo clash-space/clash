@@ -1246,6 +1246,9 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
   app.post("/api/v1/model-providers/test", async (c) => {
     const body = (await c.req.json().catch(() => ({}))) as { provider?: unknown; modelId?: unknown };
     const provider = normalizeProviderAccountInput(body.provider);
+    const rawProvider = body.provider && typeof body.provider === "object"
+      ? body.provider as Record<string, unknown>
+      : {};
     const modelId = typeof body.modelId === "string" && body.modelId.trim() ? body.modelId.trim() : "";
     if (!provider || !modelId) return c.json({ error: "provider and modelId are required" }, 400);
 
@@ -1253,9 +1256,11 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
     const stored = state.providerAccounts.find((account) =>
       account.userId === userId && providerAccountKey(account) === providerAccountKey(provider)
     );
+    const enabled = rawProvider.enabled === false ? false : stored?.enabled ?? provider.enabled;
     const account: LocalProviderAccountConfig = {
       ...provider,
       ...stored,
+      enabled,
       credentials: {
         ...(stored?.credentials ?? {}),
         ...(provider.credentials ?? {}),

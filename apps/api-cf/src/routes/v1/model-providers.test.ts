@@ -220,6 +220,49 @@ describe("modelProviderRoutes", () => {
     });
   });
 
+  it("does not test a disabled hosted provider config", async () => {
+    const app = makeApp();
+    const env = {
+      DB: new MemoryD1() as unknown as D1Database,
+      ACTION_SECRET_KEY: "secret-key",
+    } as Env;
+
+    await app.request("/api/v1/model-providers", {
+      method: "PATCH",
+      headers: { "content-type": "application/json", "x-user-id": "user-1" },
+      body: JSON.stringify({
+        providers: [
+          {
+            id: "replicate-disabled",
+            providerId: "replicate",
+            upstreamId: "replicate",
+            enabled: false,
+            credentials: { apiKey: "r8-api-cf-key" },
+          },
+        ],
+      }),
+    }, env);
+
+    const test = await app.request("/api/v1/model-providers/test", {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-user-id": "user-1" },
+      body: JSON.stringify({
+        provider: { id: "replicate-disabled", providerId: "replicate", upstreamId: "replicate", enabled: false },
+        modelId: "nano-banana-2",
+      }),
+    }, env);
+
+    expect(test.status).toBe(200);
+    expect(await test.json()).toEqual({
+      ok: false,
+      providerId: "replicate",
+      upstreamId: "replicate",
+      modelId: "nano-banana-2",
+      disabled: true,
+      message: "Replicate is disabled for Nano Banana 2.",
+    });
+  });
+
   it("tests Google AI Studio models with only the API key credential", async () => {
     const app = makeApp();
     const env = {

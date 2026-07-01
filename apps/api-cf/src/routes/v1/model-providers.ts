@@ -148,11 +148,15 @@ modelProviderRoutes.post("/model-providers/test", async (c) => {
   if (!userId) return c.json({ error: "Unauthorized" }, 401);
   const body = (await c.req.json().catch(() => ({}))) as { provider?: unknown; modelId?: unknown };
   const provider = normalizeProviderAccountInput(body.provider);
+  const rawProvider = body.provider && typeof body.provider === "object"
+    ? body.provider as Record<string, unknown>
+    : {};
   const modelId = typeof body.modelId === "string" && body.modelId.trim() ? body.modelId.trim() : "";
   if (!provider || !modelId) return c.json({ error: "provider and modelId are required" }, 400);
 
   const accounts = await listProviderAccountsWithOAuth(c.env, userId);
   const stored = accounts.find((account) => sameProviderAccount(provider, account));
+  const enabled = rawProvider.enabled === false ? false : stored?.enabled ?? provider.enabled;
   const configuredCredentials = new Set([
     ...(stored?.configuredCredentials ?? []),
     ...Object.keys(provider.credentials ?? {}).filter((key) => provider.credentials?.[key]?.trim()),
@@ -169,6 +173,14 @@ modelProviderRoutes.post("/model-providers/test", async (c) => {
     ...(provider.region ? { region: provider.region } : {}),
     modelId,
   };
+  if (enabled === false) {
+    return c.json({
+      ok: false,
+      ...baseResult,
+      disabled: true,
+      message: `${displayProviderName(provider)} is disabled for ${modelName}.`,
+    });
+  }
   const supportedModelEntries = support?.models.filter((model) => model.id === modelId) ?? [];
   if (!support || supportedModelEntries.length === 0) {
     return c.json({
