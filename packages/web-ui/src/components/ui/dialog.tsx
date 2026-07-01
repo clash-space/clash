@@ -1,8 +1,7 @@
-import { useId, useRef, type ReactNode } from 'react';
-import { createPortal } from 'react-dom';
-import { motion, AnimatePresence } from 'framer-motion';
+import { type ReactNode } from 'react';
+import { motion } from 'framer-motion';
 import { X } from '@phosphor-icons/react';
-import { useFocusTrap } from '@clash/web-ui/lib/hooks/useFocusTrap';
+import { Dialog as DialogPrimitive } from 'radix-ui';
 
 export interface DialogProps {
     open: boolean;
@@ -36,13 +35,13 @@ const sizeClasses = {
 };
 
 /**
- * App-wide modal dialog. Owns the a11y wiring (role=dialog, aria-modal,
- * aria-labelledby/describedby, focus trap, Escape, focus restoration on
- * close) so callers don't have to remember each piece.
+ * App-wide modal dialog. Radix owns the modal a11y wiring (role=dialog,
+ * aria-modal, focus trap, Escape, outside interaction, focus restoration) so
+ * callers don't have to remember each piece.
  *
  * Pattern: spring-scale entry + backdrop fade. Backdrop click closes by
  * default; Escape always closes. Returns focus to the previously focused
- * element on close (handled by useFocusTrap).
+ * element on close.
  */
 export function Dialog({
     open,
@@ -56,72 +55,82 @@ export function Dialog({
     disableBackdropClose = false,
     unstyled = false,
 }: DialogProps) {
-    const titleId = useId();
-    const descId = useId();
-    const dialogRef = useRef<HTMLDivElement>(null);
-    useFocusTrap(dialogRef, open, onClose);
-
     if (process.env.NODE_ENV !== 'production' && !title && !ariaLabel) {
         // eslint-disable-next-line no-console
         console.warn('<Dialog> needs either `title` or `ariaLabel` for an accessible name.');
     }
 
-    const dialog = (
-        <AnimatePresence>
-            {open && (
-                <motion.div
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    exit={{ opacity: 0 }}
-                    transition={{ duration: 0.15 }}
-                    className="fixed inset-0 z-[70] flex items-center justify-center bg-warm-page/75 backdrop-blur-sm p-4"
-                    onClick={disableBackdropClose ? undefined : onClose}
-                >
-                    <motion.div
-                        ref={dialogRef}
-                        role="dialog"
-                        aria-modal="true"
-                        aria-labelledby={title ? titleId : undefined}
-                        aria-label={!title ? ariaLabel : undefined}
-                        aria-describedby={description ? descId : undefined}
-                        tabIndex={-1}
-                        initial={{ scale: 0.95, opacity: 0 }}
-                        animate={{ scale: 1, opacity: 1 }}
-                        exit={{ scale: 0.95, opacity: 0 }}
-                        transition={{ type: 'spring', stiffness: 340, damping: 32 }}
-                        className={
-                            unstyled
-                                ? `relative ${sizeClasses[size]} max-w-[92vw] focus:outline-none`
-                                : `relative ${sizeClasses[size]} max-w-[92vw] max-h-[85vh] overflow-y-auto rounded-2xl bg-warm-surface border border-warm-border shadow-lg p-6 focus:outline-none`
-                        }
-                        onClick={(e) => e.stopPropagation()}
-                    >
-                        {!hideCloseButton && !unstyled && (
-                            <button
-                                type="button"
-                                aria-label="Close"
-                                onClick={onClose}
-                                className="absolute top-3 right-3 p-2 min-h-[36px] min-w-[36px] rounded-md text-stone-700 hover:text-stone-900 hover:bg-warm-muted transition-colors dark:text-stone-300 dark:hover:text-stone-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-warm-surface"
-                            >
-                                <X className="w-4 h-4" weight="bold" aria-hidden="true" />
-                            </button>
-                        )}
-                        {title && (
-                            <h2 id={titleId} className="font-display text-lg font-bold text-slate-900 mb-1 dark:text-slate-50 pr-8">
-                                {title}
-                            </h2>
-                        )}
-                        {description && (
-                            <div id={descId} className="text-sm text-stone-700 mb-5 dark:text-stone-300">
-                                {description}
-                            </div>
-                        )}
-                        {children}
-                    </motion.div>
-                </motion.div>
-            )}
-        </AnimatePresence>
-    );
+    const accessibleTitle = title ?? ariaLabel;
 
-    return typeof document !== 'undefined' ? createPortal(dialog, document.body) : dialog;
+    return (
+        <DialogPrimitive.Root
+            open={open}
+            onOpenChange={(nextOpen) => {
+                if (!nextOpen) onClose();
+            }}
+        >
+            <DialogPrimitive.Portal>
+                <DialogPrimitive.Overlay asChild>
+                    <motion.div
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        transition={{ duration: 0.15 }}
+                        className="fixed inset-0 z-[70] bg-warm-page/75 backdrop-blur-sm"
+                    />
+                </DialogPrimitive.Overlay>
+                <motion.div
+                    className="fixed inset-0 z-[70] flex items-center justify-center p-4"
+                >
+                    <DialogPrimitive.Content
+                        asChild
+                        onInteractOutside={(event) => {
+                            if (disableBackdropClose) event.preventDefault();
+                        }}
+                    >
+                        <motion.div
+                            initial={{ scale: 0.95, opacity: 0 }}
+                            animate={{ scale: 1, opacity: 1 }}
+                            transition={{ type: 'spring', stiffness: 340, damping: 32 }}
+                            className={
+                                unstyled
+                                    ? `relative ${sizeClasses[size]} max-w-[92vw] focus:outline-none`
+                                    : `relative ${sizeClasses[size]} max-w-[92vw] max-h-[85vh] overflow-y-auto rounded-2xl bg-warm-surface border border-warm-border shadow-lg p-6 focus:outline-none`
+                            }
+                        >
+                            {!hideCloseButton && !unstyled && (
+                                <DialogPrimitive.Close asChild>
+                                    <button
+                                        type="button"
+                                        aria-label="Close"
+                                        className="absolute top-3 right-3 p-2 min-h-[36px] min-w-[36px] rounded-md text-stone-700 hover:text-stone-900 hover:bg-warm-muted transition-colors dark:text-stone-300 dark:hover:text-stone-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-warm-surface"
+                                    >
+                                        <X className="w-4 h-4" weight="bold" aria-hidden="true" />
+                                    </button>
+                                </DialogPrimitive.Close>
+                            )}
+                            {accessibleTitle ? (
+                                <DialogPrimitive.Title
+                                    className={
+                                        title
+                                            ? 'font-display text-lg font-bold text-slate-900 mb-1 dark:text-slate-50 pr-8'
+                                            : 'sr-only'
+                                    }
+                                >
+                                    {accessibleTitle}
+                                </DialogPrimitive.Title>
+                            ) : null}
+                            {description && (
+                                <DialogPrimitive.Description asChild>
+                                    <div className="text-sm text-stone-700 mb-5 dark:text-stone-300">
+                                        {description}
+                                    </div>
+                                </DialogPrimitive.Description>
+                            )}
+                            {children}
+                        </motion.div>
+                    </DialogPrimitive.Content>
+                </motion.div>
+            </DialogPrimitive.Portal>
+        </DialogPrimitive.Root>
+    );
 }

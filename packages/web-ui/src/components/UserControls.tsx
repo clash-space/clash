@@ -1,14 +1,14 @@
 
 /* eslint-disable @next/next/no-img-element */
 
-import { useId, useRef, useState } from 'react';
+import { useState } from 'react';
 import { motion } from 'framer-motion';
 import { GoogleLogo, Gear, SignOut, CreditCard, Lightning } from '@phosphor-icons/react';
 import { Link } from 'react-router';
 import betterAuthClient from '@clash/web-ui/lib/betterAuthClient';
 import { useBillingBalance } from '@clash/web-ui/hooks/useBillingBalance';
 import { getRuntimeConfig } from '@clash/web-ui/lib/runtimeConfig';
-import { FloatingMenu, MenuItemButton, menuItemClassName } from './ui/select';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from './ui/dropdown-menu';
 
 interface UserControlsProps {
   compact?: boolean;
@@ -45,10 +45,7 @@ function AccountUserControls({ compact = false, projectChrome = false }: UserCon
   const sessionQuery = betterAuthClient.useSession();
   const session = sessionQuery.data;
   const user = session?.user;
-  const [open, setOpen] = useState(false);
   const [avatarFailed, setAvatarFailed] = useState(false);
-  const accountMenuId = useId();
-  const avatarButtonRef = useRef<HTMLButtonElement>(null);
   const balance = useBillingBalance(!!user);
 
   const handleSignOut = async () => {
@@ -118,83 +115,69 @@ function AccountUserControls({ compact = false, projectChrome = false }: UserCon
               )}
             </Link>
           )}
-          <button
-            ref={avatarButtonRef}
-            type="button"
-            onClick={() => setOpen(prev => !prev)}
-            aria-haspopup="menu"
-            aria-expanded={open}
-            aria-controls={open ? accountMenuId : undefined}
-            aria-label={`Account menu — ${user.name}`}
-            className={
-              projectChrome
-                ? 'clash-project-top-avatar flex h-10 w-10 items-center justify-center rounded-xl transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-warm-page'
-                : compact
-                ? 'flex h-8 items-center rounded-lg px-1 text-stone-700 transition-colors hover:bg-stone-200/70 hover:text-stone-950 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand'
-                : 'flex items-center gap-3 rounded-2xl bg-warm-surface border border-warm-border pl-1.5 pr-4 py-1.5 shadow-sm cursor-pointer hover:shadow-md transition-shadow focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-warm-page'
-            }
-          >
-            {user.image && !avatarFailed ? (
-              <img
-                src={user.image}
-                alt=""
-                className={`${compact ? 'h-7 w-7' : projectChrome ? 'h-8 w-8' : 'h-10 w-10'} rounded-xl object-cover`}
-                onError={() => setAvatarFailed(true)}
-              />
-            ) : (
-              <div className={`flex ${compact ? 'h-7 w-7 text-[11px]' : projectChrome ? 'h-8 w-8 text-xs' : 'h-10 w-10 text-sm'} items-center justify-center rounded-xl bg-brand-light font-bold text-slate-950 ring-1 ring-brand/20 dark:bg-brand/20 dark:text-slate-50`} aria-hidden="true">
-                {getInitials(user.name)}
-              </div>
-            )}
-            {!compact && !projectChrome && (
-              <span className="text-base font-display font-medium text-stone-800 dark:text-stone-200 max-w-[120px] truncate">
-                {user.name}
-              </span>
-            )}
-          </button>
-
-          <FloatingMenu
-            id={accountMenuId}
-            anchorRef={avatarButtonRef}
-            open={open}
-            onOpenChange={setOpen}
-            ariaLabel="Account"
-            align="end"
-            placement="bottom"
-            menuWidth={208}
-          >
-            <Link
-              to="/settings"
-              role="menuitem"
-              onClick={() => {
-                setOpen(false);
-              }}
-              className={menuItemClassName()}
-            >
-              <Gear className="h-4 w-4 flex-shrink-0" aria-hidden="true" />
-              <span className="min-w-0 flex-1 truncate font-medium">Settings</span>
-            </Link>
-            {balance.status !== 'unavailable' && (
-              <Link
-                to="/billing"
-                role="menuitem"
-                onClick={() => setOpen(false)}
-                className={menuItemClassName()}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button
+                type="button"
+                aria-label={`Account menu — ${user.name}`}
+                className={
+                  projectChrome
+                    ? 'clash-project-top-avatar flex h-10 w-10 items-center justify-center rounded-xl transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-warm-page'
+                    : compact
+                    ? 'flex h-8 items-center rounded-lg px-1 text-stone-700 transition-colors hover:bg-stone-200/70 hover:text-stone-950 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand'
+                    : 'flex items-center gap-3 rounded-2xl bg-warm-surface border border-warm-border pl-1.5 pr-4 py-1.5 shadow-sm cursor-pointer hover:shadow-md transition-shadow focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-warm-page'
+                }
               >
-                <CreditCard className="h-4 w-4 flex-shrink-0" aria-hidden="true" />
-                <span className="min-w-0 flex-1 truncate font-medium">Billing</span>
-                {balance.status === 'ready' && (
-                  <span className="text-xs tabular-nums text-stone-600 dark:text-stone-300">
-                    {balance.balance.available.toLocaleString()}
+                {user.image && !avatarFailed ? (
+                  <img
+                    src={user.image}
+                    alt=""
+                    className={`${compact ? 'h-7 w-7' : projectChrome ? 'h-8 w-8' : 'h-10 w-10'} rounded-xl object-cover`}
+                    onError={() => setAvatarFailed(true)}
+                  />
+                ) : (
+                  <div className={`flex ${compact ? 'h-7 w-7 text-[11px]' : projectChrome ? 'h-8 w-8 text-xs' : 'h-10 w-10 text-sm'} items-center justify-center rounded-xl bg-brand-light font-bold text-slate-950 ring-1 ring-brand/20 dark:bg-brand/20 dark:text-slate-50`} aria-hidden="true">
+                    {getInitials(user.name)}
+                  </div>
+                )}
+                {!compact && !projectChrome && (
+                  <span className="text-base font-display font-medium text-stone-800 dark:text-stone-200 max-w-[120px] truncate">
+                    {user.name}
                   </span>
                 )}
-              </Link>
-            )}
-            <MenuItemButton role="menuitem" onClick={handleSignOut}>
-              <SignOut className="h-4 w-4 flex-shrink-0" aria-hidden="true" />
-              <span className="min-w-0 flex-1 truncate font-medium">Sign out</span>
-            </MenuItemButton>
-          </FloatingMenu>
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent aria-label="Account" align="end" side="bottom" className="w-[208px]">
+              <DropdownMenuItem asChild>
+                <Link to="/settings">
+                  <Gear className="h-4 w-4 flex-shrink-0" aria-hidden="true" />
+                  <span className="min-w-0 flex-1 truncate font-medium">Settings</span>
+                </Link>
+              </DropdownMenuItem>
+              {balance.status !== 'unavailable' && (
+                <DropdownMenuItem asChild>
+                  <Link to="/billing">
+                    <CreditCard className="h-4 w-4 flex-shrink-0" aria-hidden="true" />
+                    <span className="min-w-0 flex-1 truncate font-medium">Billing</span>
+                    {balance.status === 'ready' && (
+                      <span className="text-xs tabular-nums text-stone-600 dark:text-stone-300">
+                        {balance.balance.available.toLocaleString()}
+                      </span>
+                    )}
+                  </Link>
+                </DropdownMenuItem>
+              )}
+              <DropdownMenuItem
+                onSelect={(event) => {
+                  event.preventDefault();
+                  void handleSignOut();
+                }}
+              >
+                <SignOut className="h-4 w-4 flex-shrink-0" aria-hidden="true" />
+                <span className="min-w-0 flex-1 truncate font-medium">Sign out</span>
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       ) : (
         <motion.button

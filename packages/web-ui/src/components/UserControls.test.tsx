@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import type { ReactNode } from "react";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -92,5 +92,29 @@ describe("UserControls", () => {
     expect(screen.getByText("Local User")).toBeTruthy();
     expect(screen.getByRole("button", { name: /Account menu.*Local User/i })).toBeTruthy();
     expect(authClientMock.useSession).toHaveBeenCalled();
+  });
+
+  it("uses Radix dropdown menu positioning for the hosted account menu", () => {
+    authClientMock.useSession.mockReturnValue({
+      data: {
+        user: {
+          name: "Local User",
+          image: null,
+        },
+      },
+    });
+
+    renderUserControls();
+
+    fireEvent.pointerDown(screen.getByRole("button", { name: /Account menu.*Local User/i }), {
+      button: 0,
+      ctrlKey: false,
+    });
+
+    const menu = screen.getByRole("menu");
+    expect(menu.getAttribute("data-side")).toBe("bottom");
+    expect(menu.getAttribute("data-align")).toBe("end");
+    expect(screen.getByRole("menuitem", { name: "Settings" })).toBeTruthy();
+    expect(screen.getByRole("menuitem", { name: "Sign out" })).toBeTruthy();
   });
 });
