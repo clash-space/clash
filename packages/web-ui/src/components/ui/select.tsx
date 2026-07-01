@@ -1,23 +1,13 @@
 import {
     useCallback,
-    useEffect,
-    useId,
-    useLayoutEffect,
     useMemo,
-    useRef,
     useState,
-    type ButtonHTMLAttributes,
-    type CSSProperties,
-    type KeyboardEvent as ReactKeyboardEvent,
     type MouseEvent as ReactMouseEvent,
     type PointerEvent as ReactPointerEvent,
     type ReactNode,
-    type RefObject,
 } from 'react';
-import { createPortal } from 'react-dom';
-import { motion } from 'framer-motion';
-import { CaretDown, CaretLeft, CaretRight, Check } from '@phosphor-icons/react';
-import { Select as SelectPrimitive } from 'radix-ui';
+import { CaretDown, CaretRight, Check } from '@phosphor-icons/react';
+import { DropdownMenu as DropdownMenuPrimitive, Select as SelectPrimitive } from 'radix-ui';
 
 import { cn } from '../ai-elements/utils';
 
@@ -40,33 +30,6 @@ export interface SelectSection<Value extends SelectValue = string> {
     id: string;
     label?: ReactNode;
     options: SelectOption<Value>[];
-}
-
-type SelectAnchor = {
-    left: number;
-    width: number;
-    maxHeight: number;
-    top?: number;
-    bottom?: number;
-    transformOrigin: string;
-};
-
-type FloatingMenuAnchorRef = RefObject<HTMLElement | null>;
-
-export interface FloatingMenuProps {
-    anchorRef: FloatingMenuAnchorRef;
-    open: boolean;
-    onOpenChange: (open: boolean) => void;
-    ariaLabel: string;
-    id?: string;
-    children: ReactNode;
-    align?: 'start' | 'end';
-    placement?: 'top' | 'bottom' | 'auto';
-    menuWidth?: number | 'trigger' | 'auto';
-    maxMenuHeight?: number;
-    allowOverflow?: boolean;
-    stopPropagation?: boolean;
-    className?: string;
 }
 
 export interface SelectMenuProps<Value extends SelectValue = string> {
@@ -119,44 +82,7 @@ function sameValue(a: SelectValue, b: SelectValue) {
     return String(a) === String(b);
 }
 
-function calculateAnchor(
-    rect: DOMRect,
-    {
-        align,
-        maxMenuHeight,
-        menuWidth,
-        placement,
-    }: Required<Pick<FloatingMenuProps, 'align' | 'maxMenuHeight' | 'menuWidth' | 'placement'>>,
-): SelectAnchor {
-    const naturalWidth =
-        menuWidth === 'trigger'
-            ? rect.width
-            : typeof menuWidth === 'number'
-                ? menuWidth
-                : Math.max(rect.width, 248);
-    const width = Math.min(naturalWidth, window.innerWidth - VIEWPORT_MARGIN * 2);
-    const unclampedLeft = align === 'end' ? rect.right - width : rect.left;
-    const left = Math.min(
-        Math.max(unclampedLeft, VIEWPORT_MARGIN),
-        window.innerWidth - width - VIEWPORT_MARGIN,
-    );
-    const availableAbove = Math.max(0, rect.top - VIEWPORT_MARGIN - MENU_OFFSET);
-    const availableBelow = Math.max(0, window.innerHeight - rect.bottom - VIEWPORT_MARGIN - MENU_OFFSET);
-    const useTop =
-        placement === 'top' ||
-        (placement === 'auto' && availableAbove > availableBelow && availableAbove >= 140);
-
-    return {
-        left,
-        width,
-        maxHeight: Math.max(120, Math.min(maxMenuHeight, useTop ? availableAbove : availableBelow)),
-        top: useTop ? undefined : Math.min(rect.bottom + MENU_OFFSET, window.innerHeight - VIEWPORT_MARGIN),
-        bottom: useTop ? Math.max(window.innerHeight - rect.top + MENU_OFFSET, VIEWPORT_MARGIN) : undefined,
-        transformOrigin: useTop ? 'bottom left' : 'top left',
-    };
-}
-
-export function menuItemClassName({
+function menuItemClassName({
     selected = false,
     disabled = false,
     className,
@@ -176,135 +102,7 @@ export function menuItemClassName({
     );
 }
 
-export function MenuItemButton({
-    children,
-    selected = false,
-    disabled = false,
-    className,
-    ...props
-}: ButtonHTMLAttributes<HTMLButtonElement> & {
-    selected?: boolean;
-}) {
-    return (
-        <button
-            type="button"
-            disabled={disabled}
-            className={menuItemClassName({ selected, disabled, className })}
-            {...props}
-        >
-            {children}
-        </button>
-    );
-}
-
-export function FloatingMenu({
-    anchorRef,
-    open,
-    onOpenChange,
-    ariaLabel,
-    id,
-    children,
-    align = 'start',
-    placement = 'auto',
-    menuWidth = 'auto',
-    maxMenuHeight = 320,
-    allowOverflow = false,
-    stopPropagation = false,
-    className,
-}: FloatingMenuProps) {
-    const generatedId = useId();
-    const menuId = id ?? generatedId;
-    const menuRef = useRef<HTMLDivElement>(null);
-    const [anchor, setAnchor] = useState<SelectAnchor | null>(null);
-
-    const updateAnchor = useCallback(() => {
-        if (typeof window === 'undefined') return;
-        const rect = anchorRef.current?.getBoundingClientRect();
-        if (!rect) return;
-        setAnchor(calculateAnchor(rect, { align, maxMenuHeight, menuWidth, placement }));
-    }, [align, anchorRef, maxMenuHeight, menuWidth, placement]);
-
-    useLayoutEffect(() => {
-        if (!open) {
-            setAnchor(null);
-            return;
-        }
-        updateAnchor();
-    }, [open, updateAnchor]);
-
-    useEffect(() => {
-        if (!open) return;
-
-        const handlePointerDown = (event: PointerEvent) => {
-            const target = event.target;
-            if (!(target instanceof Node)) return;
-            if (anchorRef.current?.contains(target) || menuRef.current?.contains(target)) return;
-            onOpenChange(false);
-        };
-        const handleKeyDown = (event: KeyboardEvent) => {
-            if (event.key === 'Escape') {
-                onOpenChange(false);
-                anchorRef.current?.focus();
-            }
-        };
-        const handleReposition = () => updateAnchor();
-
-        window.addEventListener('resize', handleReposition);
-        window.addEventListener('scroll', handleReposition, true);
-        document.addEventListener('pointerdown', handlePointerDown, true);
-        document.addEventListener('keydown', handleKeyDown);
-
-        return () => {
-            window.removeEventListener('resize', handleReposition);
-            window.removeEventListener('scroll', handleReposition, true);
-            document.removeEventListener('pointerdown', handlePointerDown, true);
-            document.removeEventListener('keydown', handleKeyDown);
-        };
-    }, [anchorRef, onOpenChange, open, updateAnchor]);
-
-    const menuStyle: CSSProperties | undefined = anchor
-        ? {
-            left: anchor.left,
-            width: anchor.width,
-            maxHeight: anchor.maxHeight,
-            transformOrigin: anchor.transformOrigin,
-            ...(anchor.top !== undefined ? { top: anchor.top } : { bottom: anchor.bottom }),
-        }
-        : undefined;
-
-    if (!open || !anchor || typeof document === 'undefined') return null;
-
-    return createPortal(
-        <motion.div
-            ref={menuRef}
-            id={menuId}
-            role="menu"
-            aria-label={ariaLabel}
-            initial={{ opacity: 0, y: anchor.bottom !== undefined ? 8 : -8, scale: 0.98 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: anchor.bottom !== undefined ? 8 : -8, scale: 0.98 }}
-            transition={{ duration: 0.16, ease: [0.16, 1, 0.3, 1] }}
-            style={menuStyle}
-            className={cn(
-                'fixed z-[80] rounded-2xl border border-warm-border/90 bg-warm-surface p-1.5 shadow-[0_18px_48px_rgba(35,31,25,0.14)]',
-                allowOverflow ? 'overflow-visible' : 'overflow-y-auto',
-                'dark:border-slate-700 dark:bg-slate-900 dark:shadow-[0_18px_48px_rgba(0,0,0,0.36)]',
-                className,
-            )}
-            onClick={(event) => {
-                if (stopPropagation) event.stopPropagation();
-            }}
-            onPointerDown={(event) => {
-                if (stopPropagation) event.stopPropagation();
-            }}
-        >
-            {children}
-        </motion.div>,
-        document.body,
-    );
-}
-
-function LegacySelectMenu<Value extends SelectValue = string>({
+function DropdownSelectMenu<Value extends SelectValue = string>({
     value,
     options,
     sections,
@@ -324,7 +122,6 @@ function LegacySelectMenu<Value extends SelectValue = string>({
     placement = 'auto',
     menuWidth = 'auto',
     maxMenuHeight = 320,
-    submenuMode = 'drilldown',
     submenuWidth = 220,
     showCaret = true,
     stopPropagation = false,
@@ -332,18 +129,11 @@ function LegacySelectMenu<Value extends SelectValue = string>({
     triggerClassName,
     menuClassName,
 }: SelectMenuProps<Value>) {
-    const listboxId = useId();
-    const triggerRef = useRef<HTMLButtonElement>(null);
-    const [uncontrolledOpen, setUncontrolledOpen] = useState(false);
-    const [activeSubmenu, setActiveSubmenu] = useState<SelectOption<Value> | null>(null);
-    const open = controlledOpen ?? uncontrolledOpen;
-    const flyoutEnabled = submenuMode === 'flyout';
-
+    const [openSubmenu, setOpenSubmenu] = useState<string | null>(null);
     const normalizedSections = useMemo<SelectSection<Value>[]>(() => {
         if (sections) return sections;
         return [{ id: 'options', options: options ?? [] }];
     }, [options, sections]);
-
     const flatOptions = useMemo(
         () => normalizedSections.flatMap((section) => [
             ...section.options,
@@ -354,167 +144,94 @@ function LegacySelectMenu<Value extends SelectValue = string>({
     const selectedOption = flatOptions.find((option) => option.selected ?? sameValue(option.value, value));
     const label = triggerLabel ?? selectedOption?.label ?? placeholder;
     const isDisabled = disabled || flatOptions.length === 0;
+    const contentWidth =
+        menuWidth === 'trigger'
+            ? 'var(--radix-dropdown-menu-trigger-width)'
+            : typeof menuWidth === 'number'
+                ? `min(${menuWidth}px, calc(100vw - ${VIEWPORT_MARGIN * 2}px))`
+                : undefined;
 
-    const setOpen = useCallback(
-        (nextOpen: boolean) => {
-            if (controlledOpen === undefined) {
-                setUncontrolledOpen(nextOpen);
-            }
-            if (!nextOpen) setActiveSubmenu(null);
-            onOpenChange?.(nextOpen);
-        },
-        [controlledOpen, onOpenChange],
-    );
-
-    const handleTriggerClick = (event: ReactMouseEvent<HTMLButtonElement>) => {
-        if (stopPropagation) event.stopPropagation();
-        if (isDisabled) return;
-        setOpen(!open);
-    };
-
-    const handleTriggerPointerDown = (event: ReactPointerEvent<HTMLButtonElement>) => {
+    const handleEventBoundary = (event: ReactMouseEvent<HTMLElement> | ReactPointerEvent<HTMLElement>) => {
         if (stopPropagation) event.stopPropagation();
     };
 
-    const handleTriggerKeyDown = (event: ReactKeyboardEvent<HTMLButtonElement>) => {
-        if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
-            event.preventDefault();
-            setOpen(true);
-        }
-    };
+    const handleOpenChange = useCallback((nextOpen: boolean) => {
+        if (!nextOpen) setOpenSubmenu(null);
+        onOpenChange?.(nextOpen);
+    }, [onOpenChange]);
+
+    const selectOption = useCallback((option: SelectOption<Value>) => {
+        if (option.disabled) return;
+        onValueChange(option.value, option);
+    }, [onValueChange]);
 
     return (
-        <div className={cn('relative inline-flex min-w-0', className)}>
-            <button
-                ref={triggerRef}
-                type="button"
-                aria-label={ariaLabel}
-                aria-expanded={open}
-                aria-haspopup="menu"
-                aria-controls={open ? listboxId : undefined}
-                disabled={isDisabled}
-                title={title}
-                onClick={handleTriggerClick}
-                onPointerDown={handleTriggerPointerDown}
-                onKeyDown={handleTriggerKeyDown}
-                className={cn(
-                    'clash-select-trigger inline-flex min-w-0 items-center gap-1.5 transition-colors',
-                    'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-warm-surface',
-                    'disabled:cursor-not-allowed disabled:opacity-45',
-                    triggerVariantClasses[variant],
-                    triggerSizeClasses[size],
-                    triggerClassName,
-                )}
-            >
-                {triggerPrefix}
-                <span className="min-w-0 flex-1 truncate text-left">{label}</span>
-                {triggerSuffix}
-                {showCaret ? <CaretDown className="h-3.5 w-3.5 flex-shrink-0 text-stone-500 dark:text-stone-400" aria-hidden="true" /> : null}
-            </button>
-            <FloatingMenu
-                id={listboxId}
-                anchorRef={triggerRef}
-                open={open}
-                onOpenChange={setOpen}
-                ariaLabel={flyoutEnabled ? ariaLabel : String(activeSubmenu?.submenuLabel ?? activeSubmenu?.label ?? ariaLabel)}
-                align={align}
-                placement={placement}
-                menuWidth={menuWidth}
-                maxMenuHeight={maxMenuHeight}
-                allowOverflow={flyoutEnabled}
-                stopPropagation={stopPropagation}
-                className={menuClassName}
-            >
-                {activeSubmenu && !flyoutEnabled ? (
-                    <div>
-                        <button
-                            type="button"
-                            role="menuitem"
-                            onClick={(event) => {
-                                if (stopPropagation) event.stopPropagation();
-                                setActiveSubmenu(null);
-                            }}
-                            className={menuItemClassName({ className: 'min-h-[36px] text-stone-600 dark:text-stone-300' })}
-                        >
-                            <CaretLeft className="h-4 w-4 flex-shrink-0" aria-hidden="true" />
-                            <span className="min-w-0 flex-1 truncate font-medium">{activeSubmenu.submenuLabel ?? activeSubmenu.label}</span>
-                        </button>
-                        <div role="separator" className="my-1.5 border-t border-warm-border/80 dark:border-slate-700" />
-                        {(activeSubmenu.submenuSections ?? []).map((section, sectionIndex) => (
-                            <SelectMenuSection
-                                key={section.id}
-                                section={section}
-                                sectionIndex={sectionIndex}
-                                value={value}
-                                stopPropagation={stopPropagation}
-                                submenuMode="drilldown"
-                                activeSubmenu={null}
-                                onSelect={(option) => {
-                                    onValueChange(option.value, option);
-                                    setOpen(false);
-                                    triggerRef.current?.focus();
-                                }}
-                                onOpenSubmenu={setActiveSubmenu}
-                            />
-                        ))}
-                    </div>
-                ) : (
-                    <div
-                        className="relative"
-                        onMouseLeave={() => {
-                            if (flyoutEnabled) setActiveSubmenu(null);
-                        }}
+        <DropdownMenuPrimitive.Root
+            open={controlledOpen}
+            onOpenChange={handleOpenChange}
+        >
+            <div className={cn('relative inline-flex min-w-0', className)}>
+                <DropdownMenuPrimitive.Trigger asChild>
+                    <button
+                        type="button"
+                        aria-label={ariaLabel}
+                        disabled={isDisabled}
+                        title={title}
+                        onClick={handleEventBoundary}
+                        onPointerDown={handleEventBoundary}
+                        className={cn(
+                            'clash-select-trigger inline-flex min-w-0 items-center gap-1.5 transition-colors',
+                            'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-warm-surface',
+                            'disabled:cursor-not-allowed disabled:opacity-45',
+                            triggerVariantClasses[variant],
+                            triggerSizeClasses[size],
+                            triggerClassName,
+                        )}
                     >
+                        {triggerPrefix}
+                        <span className="min-w-0 flex-1 truncate text-left">{label}</span>
+                        {triggerSuffix}
+                        {showCaret ? <CaretDown className="h-3.5 w-3.5 flex-shrink-0 text-stone-500 dark:text-stone-400" aria-hidden="true" /> : null}
+                    </button>
+                </DropdownMenuPrimitive.Trigger>
+            </div>
+            <DropdownMenuPrimitive.Portal>
+                <DropdownMenuPrimitive.Content
+                    aria-label={ariaLabel}
+                    side={placement === 'top' ? 'top' : 'bottom'}
+                    align={align}
+                    sideOffset={MENU_OFFSET}
+                    collisionPadding={VIEWPORT_MARGIN}
+                    style={{
+                        width: contentWidth,
+                        maxHeight: `min(var(--radix-dropdown-menu-content-available-height), ${maxMenuHeight}px)`,
+                    }}
+                    className={cn(
+                        'z-[80] overflow-hidden rounded-2xl border border-warm-border/90 bg-warm-surface shadow-[0_18px_48px_rgba(35,31,25,0.14)]',
+                        'dark:border-slate-700 dark:bg-slate-900 dark:shadow-[0_18px_48px_rgba(0,0,0,0.36)]',
+                        menuWidth === 'auto' && 'min-w-[min(var(--radix-dropdown-menu-trigger-width),calc(100vw-24px))]',
+                        menuClassName,
+                    )}
+                    onClick={handleEventBoundary}
+                    onPointerDown={handleEventBoundary}
+                >
+                    <div className="max-h-[inherit] overflow-y-auto p-1.5">
                         {normalizedSections.map((section, sectionIndex) => (
-                            <SelectMenuSection
+                            <DropdownSelectMenuSection
                                 key={section.id}
                                 section={section}
                                 sectionIndex={sectionIndex}
                                 value={value}
-                                stopPropagation={stopPropagation}
-                                submenuMode={submenuMode}
-                                activeSubmenu={activeSubmenu}
-                                onSelect={(option) => {
-                                    onValueChange(option.value, option);
-                                    setOpen(false);
-                                    triggerRef.current?.focus();
-                                }}
-                                onOpenSubmenu={setActiveSubmenu}
+                                selectOption={selectOption}
+                                openSubmenu={openSubmenu}
+                                setOpenSubmenu={setOpenSubmenu}
+                                submenuWidth={submenuWidth}
                             />
                         ))}
-                        {flyoutEnabled && activeSubmenu?.submenuSections?.length ? (
-                            <motion.div
-                                role="menu"
-                                aria-label={String(activeSubmenu.submenuLabel ?? activeSubmenu.label)}
-                                initial={{ opacity: 0, x: -6, scale: 0.98 }}
-                                animate={{ opacity: 1, x: 0, scale: 1 }}
-                                transition={{ duration: 0.14, ease: [0.16, 1, 0.3, 1] }}
-                                style={{ width: submenuWidth }}
-                                className="absolute bottom-0 left-[calc(100%+8px)] rounded-2xl border border-warm-border/90 bg-warm-surface p-1.5 shadow-[0_18px_48px_rgba(35,31,25,0.14)] dark:border-slate-700 dark:bg-slate-900 dark:shadow-[0_18px_48px_rgba(0,0,0,0.36)]"
-                            >
-                                {(activeSubmenu.submenuSections ?? []).map((section, sectionIndex) => (
-                                    <SelectMenuSection
-                                        key={section.id}
-                                        section={section}
-                                        sectionIndex={sectionIndex}
-                                        value={value}
-                                        stopPropagation={stopPropagation}
-                                        submenuMode="drilldown"
-                                        activeSubmenu={null}
-                                        onSelect={(option) => {
-                                            onValueChange(option.value, option);
-                                            setOpen(false);
-                                            triggerRef.current?.focus();
-                                        }}
-                                        onOpenSubmenu={setActiveSubmenu}
-                                    />
-                                ))}
-                            </motion.div>
-                        ) : null}
                     </div>
-                )}
-            </FloatingMenu>
-        </div>
+                </DropdownMenuPrimitive.Content>
+            </DropdownMenuPrimitive.Portal>
+        </DropdownMenuPrimitive.Root>
     );
 }
 
@@ -685,76 +402,112 @@ function RadixSelectMenu<Value extends SelectValue = string>({
     );
 }
 
-function hasSubmenuOptions<Value extends SelectValue>(
-    options?: SelectOption<Value>[],
-    sections?: SelectSection<Value>[],
-) {
-    const sectionOptions = sections?.flatMap((section) => section.options) ?? options ?? [];
-    return sectionOptions.some((option) => option.hasSubmenu || !!option.submenuSections?.length);
-}
-
-export function SelectMenu<Value extends SelectValue = string>(props: SelectMenuProps<Value>) {
-    if (hasSubmenuOptions(props.options, props.sections)) {
-        return <LegacySelectMenu {...props} />;
-    }
-    return <RadixSelectMenu {...props} />;
-}
-
-function SelectMenuSection<Value extends SelectValue>({
+function DropdownSelectMenuSection<Value extends SelectValue>({
     section,
     sectionIndex,
     value,
-    stopPropagation,
-    submenuMode,
-    activeSubmenu,
-    onSelect,
-    onOpenSubmenu,
+    selectOption,
+    openSubmenu,
+    setOpenSubmenu,
+    submenuWidth,
 }: {
     section: SelectSection<Value>;
     sectionIndex: number;
     value: Value;
-    stopPropagation: boolean;
-    submenuMode: 'drilldown' | 'flyout';
-    activeSubmenu: SelectOption<Value> | null;
-    onSelect: (option: SelectOption<Value>) => void;
-    onOpenSubmenu: (option: SelectOption<Value>) => void;
+    selectOption: (option: SelectOption<Value>) => void;
+    openSubmenu: string | null;
+    setOpenSubmenu: (value: string | null) => void;
+    submenuWidth: number;
 }) {
+    const selectedSectionValue = section.options.find((option) => option.selected ?? sameValue(option.value, value))?.value;
+
     return (
-        <div
+        <DropdownMenuPrimitive.Group
             className={cn(sectionIndex > 0 && 'mt-1.5 border-t border-warm-border/80 pt-1.5 dark:border-slate-700')}
         >
             {section.label ? (
-                <div className="px-3 pb-1 pt-1 text-sm font-medium text-stone-500 dark:text-stone-400">
+                <DropdownMenuPrimitive.Label className="px-3 pb-1 pt-1 text-sm font-medium text-stone-500 dark:text-stone-400">
                     {section.label}
-                </div>
+                </DropdownMenuPrimitive.Label>
             ) : null}
-            <div className="space-y-0.5">
+            <DropdownMenuPrimitive.RadioGroup
+                value={selectedSectionValue === undefined ? undefined : String(selectedSectionValue)}
+                className="space-y-0.5"
+            >
                 {section.options.map((option) => {
                     const selected = option.selected ?? sameValue(option.value, value);
-                    const opensSubmenu = option.hasSubmenu || !!option.submenuSections;
-                    const submenuActive = opensSubmenu && activeSubmenu?.value === option.value;
+                    const opensSubmenu = option.hasSubmenu || !!option.submenuSections?.length;
+                    const submenuKey = String(option.value);
+                    if (opensSubmenu) {
+                        return (
+                            <DropdownMenuPrimitive.Sub
+                                key={submenuKey}
+                                open={openSubmenu === submenuKey}
+                                onOpenChange={(open) => setOpenSubmenu(open ? submenuKey : null)}
+                            >
+                                <DropdownMenuPrimitive.SubTrigger
+                                    disabled={option.disabled}
+                                    onClick={(event) => {
+                                        event.preventDefault();
+                                        if (!option.disabled) setOpenSubmenu(submenuKey);
+                                    }}
+                                    onMouseEnter={() => {
+                                        if (!option.disabled) setOpenSubmenu(submenuKey);
+                                    }}
+                                    className={menuItemClassName({ selected: selected || openSubmenu === submenuKey, disabled: option.disabled })}
+                                >
+                                    {option.icon ? (
+                                        <span className="flex h-5 w-5 flex-shrink-0 items-center justify-center text-slate-700 dark:text-slate-300" aria-hidden="true">
+                                            {option.icon}
+                                        </span>
+                                    ) : null}
+                                    <span className="min-w-0 flex-1">
+                                        <span className="block truncate font-medium leading-5">{option.label}</span>
+                                        {option.description ? (
+                                            <span className="block truncate text-xs font-normal leading-4 text-stone-600 dark:text-stone-400">
+                                                {option.description}
+                                            </span>
+                                        ) : null}
+                                    </span>
+                                    <span className="flex h-5 w-5 flex-shrink-0 items-center justify-center text-stone-600 dark:text-stone-300" aria-hidden="true">
+                                        {option.rightAdornment ?? <CaretRight className="h-4 w-4" />}
+                                    </span>
+                                </DropdownMenuPrimitive.SubTrigger>
+                                <DropdownMenuPrimitive.Portal>
+                                    <DropdownMenuPrimitive.SubContent
+                                        aria-label={String(option.submenuLabel ?? option.label)}
+                                        sideOffset={MENU_OFFSET}
+                                        collisionPadding={VIEWPORT_MARGIN}
+                                        style={{ width: submenuWidth }}
+                                        className="z-[90] overflow-hidden rounded-2xl border border-warm-border/90 bg-warm-surface shadow-[0_18px_48px_rgba(35,31,25,0.14)] dark:border-slate-700 dark:bg-slate-900 dark:shadow-[0_18px_48px_rgba(0,0,0,0.36)]"
+                                    >
+                                        <div className="max-h-[min(var(--radix-dropdown-menu-content-available-height),320px)] overflow-y-auto p-1.5">
+                                            {(option.submenuSections ?? []).map((submenuSection, submenuIndex) => (
+                                                <DropdownSelectMenuSection
+                                                    key={submenuSection.id}
+                                                    section={submenuSection}
+                                                    sectionIndex={submenuIndex}
+                                                    value={value}
+                                                    selectOption={selectOption}
+                                                    openSubmenu={openSubmenu}
+                                                    setOpenSubmenu={setOpenSubmenu}
+                                                    submenuWidth={submenuWidth}
+                                                />
+                                            ))}
+                                        </div>
+                                    </DropdownMenuPrimitive.SubContent>
+                                </DropdownMenuPrimitive.Portal>
+                            </DropdownMenuPrimitive.Sub>
+                        );
+                    }
+
                     return (
-                        <button
+                        <DropdownMenuPrimitive.RadioItem
                             key={String(option.value)}
-                            type="button"
-                            role={opensSubmenu ? 'menuitem' : 'menuitemradio'}
-                            aria-checked={opensSubmenu ? undefined : selected}
+                            value={String(option.value)}
                             disabled={option.disabled}
-                            onClick={(event) => {
-                                if (stopPropagation) event.stopPropagation();
-                                if (option.disabled) return;
-                                if (opensSubmenu) {
-                                    onOpenSubmenu(option);
-                                    return;
-                                }
-                                onSelect(option);
-                            }}
-                            onMouseEnter={() => {
-                                if (submenuMode === 'flyout' && opensSubmenu && !option.disabled) {
-                                    onOpenSubmenu(option);
-                                }
-                            }}
-                            className={menuItemClassName({ selected: selected || submenuActive, disabled: option.disabled })}
+                            onSelect={() => selectOption(option)}
+                            className={menuItemClassName({ selected, disabled: option.disabled })}
                         >
                             {option.icon ? (
                                 <span className="flex h-5 w-5 flex-shrink-0 items-center justify-center text-slate-700 dark:text-slate-300" aria-hidden="true">
@@ -771,17 +524,30 @@ function SelectMenuSection<Value extends SelectValue>({
                             </span>
                             <span className="flex h-5 w-5 flex-shrink-0 items-center justify-center text-stone-600 dark:text-stone-300" aria-hidden="true">
                                 {option.rightAdornment ?? (
-                                    opensSubmenu
-                                        ? <CaretRight className="h-4 w-4" />
-                                        : selected
-                                            ? <Check className="h-4 w-4" weight="bold" />
-                                            : null
+                                    <DropdownMenuPrimitive.ItemIndicator>
+                                        <Check className="h-4 w-4" weight="bold" />
+                                    </DropdownMenuPrimitive.ItemIndicator>
                                 )}
                             </span>
-                        </button>
+                        </DropdownMenuPrimitive.RadioItem>
                     );
                 })}
-            </div>
-        </div>
+            </DropdownMenuPrimitive.RadioGroup>
+        </DropdownMenuPrimitive.Group>
     );
+}
+
+function hasSubmenuOptions<Value extends SelectValue>(
+    options?: SelectOption<Value>[],
+    sections?: SelectSection<Value>[],
+) {
+    const sectionOptions = sections?.flatMap((section) => section.options) ?? options ?? [];
+    return sectionOptions.some((option) => option.hasSubmenu || !!option.submenuSections?.length);
+}
+
+export function SelectMenu<Value extends SelectValue = string>(props: SelectMenuProps<Value>) {
+    if (hasSubmenuOptions(props.options, props.sections)) {
+        return <DropdownSelectMenu {...props} />;
+    }
+    return <RadixSelectMenu {...props} />;
 }

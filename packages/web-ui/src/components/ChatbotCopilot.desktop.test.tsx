@@ -1343,7 +1343,7 @@ describe("ChatbotCopilot desktop local mode", () => {
     expect(trigger.textContent).not.toContain("Local");
     expect(trigger.textContent).not.toContain("Codex");
 
-    fireEvent.click(trigger);
+    fireEvent.pointerDown(trigger);
 
     expect(screen.queryByText("Runtime")).toBeNull();
     expect(screen.queryByText("Cloud")).toBeNull();
@@ -1393,7 +1393,7 @@ describe("ChatbotCopilot desktop local mode", () => {
     renderDesktopCopilot();
 
     const trigger = screen.getByRole("button", { name: "Session runtime, harness, and model" });
-    fireEvent.click(trigger);
+    fireEvent.pointerDown(trigger);
 
     fireEvent.click(screen.getByRole("menuitemradio", { name: "GPT-5.4" }));
 
@@ -1439,12 +1439,12 @@ describe("ChatbotCopilot desktop local mode", () => {
 
     const trigger = screen.getByRole("button", { name: "Session runtime, harness, and model" });
     expect((trigger as HTMLButtonElement).disabled).toBe(false);
-    fireEvent.click(trigger);
+    fireEvent.pointerDown(trigger);
 
-    const codexHarness = screen.getByRole("menuitemradio", { name: /Codex/ }) as HTMLButtonElement;
-    const cursorHarness = screen.getByRole("menuitemradio", { name: /Cursor/ }) as HTMLButtonElement;
-    expect(codexHarness.disabled).toBe(true);
-    expect(cursorHarness.disabled).toBe(true);
+    const codexHarness = screen.getByRole("menuitemradio", { name: /Codex/ });
+    const cursorHarness = screen.getByRole("menuitemradio", { name: /Cursor/ });
+    expect(codexHarness.getAttribute("aria-disabled")).toBe("true");
+    expect(cursorHarness.getAttribute("aria-disabled")).toBe("true");
 
     fireEvent.click(cursorHarness);
     expect(select).not.toHaveBeenCalled();
