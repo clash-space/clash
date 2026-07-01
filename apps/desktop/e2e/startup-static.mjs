@@ -63,8 +63,12 @@ const registrySource = await readFile(
 );
 assert(!registrySource.includes("claude-code-acp"), "registry still references claude-code-acp");
 assert(registrySource.includes("claude-agent-acp"), "registry does not reference claude-agent-acp");
-assert(registrySource.includes("gemini") && registrySource.includes("--experimental-acp"), "registry is missing Gemini current ACP launch");
-assert(registrySource.includes("gemini") && registrySource.includes("--acp"), "registry is missing Gemini legacy ACP launch fallback");
+assert(
+  registrySource.includes('id: "gemini"') &&
+    registrySource.includes('registryShimName("gemini")') &&
+    registrySource.includes('args: ["--acp"]'),
+  "registry is missing Gemini managed ACP launch",
+);
 assert(registrySource.includes("hermes") && registrySource.includes("acp"), "registry is missing Hermes native ACP launch");
 
 if (failures.length > 0) {
