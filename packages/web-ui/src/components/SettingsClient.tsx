@@ -2583,7 +2583,7 @@ function ModelRoutingSection({
         };
         const saveDraft = async () => {
             if (!setup || !hasProviderDraft) return false;
-            const createAccount = isAddingPrioritizedKey && (savedAccounts.length > 0 || !!oauthProviderId);
+            const createAccount = isAddingPrioritizedKey;
             if (isAddingPrioritizedKey && !hasCredentialDraft && !oauthProviderId) return false;
             if (modelAccessInvalid) return false;
             const saved = await commitProviderDraft(row.key, setup, {

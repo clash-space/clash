@@ -220,6 +220,83 @@ describe("modelProviderRoutes", () => {
     });
   });
 
+  it("tests Google AI Studio models with only the API key credential", async () => {
+    const app = makeApp();
+    const env = {
+      DB: new MemoryD1() as unknown as D1Database,
+      ACTION_SECRET_KEY: "secret-key",
+    } as Env;
+
+    await app.request("/api/v1/model-providers", {
+      method: "PATCH",
+      headers: { "content-type": "application/json", "x-user-id": "user-1" },
+      body: JSON.stringify({
+        providers: [
+          {
+            id: "google-ai-studio",
+            providerId: "official",
+            upstreamId: "google",
+            region: "global",
+            enabled: true,
+            credentials: { apiKey: "gemini-api-key" },
+          },
+        ],
+      }),
+    }, env);
+
+    const test = await app.request("/api/v1/model-providers/test", {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-user-id": "user-1" },
+      body: JSON.stringify({
+        provider: {
+          id: "google-ai-studio",
+          providerId: "official",
+          upstreamId: "google",
+          region: "global",
+          enabled: true,
+        },
+        modelId: "gemini-flash-image-2",
+      }),
+    }, env);
+
+    expect(test.status).toBe(200);
+    expect(await test.json()).toEqual({
+      ok: true,
+      providerId: "official",
+      upstreamId: "google",
+      region: "global",
+      modelId: "gemini-flash-image-2",
+      message: "Google configuration is ready for Gemini Flash Image 2.",
+    });
+  });
+
+  it("does not fake mock provider execution in the hosted API", async () => {
+    const app = makeApp();
+    const env = {
+      DB: new MemoryD1() as unknown as D1Database,
+      ACTION_SECRET_KEY: "secret-key",
+    } as Env;
+
+    const test = await app.request("/api/v1/model-providers/test", {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-user-id": "user-1" },
+      body: JSON.stringify({
+        provider: { id: "mock-primary", providerId: "mock", upstreamId: "mock", enabled: true },
+        modelId: "nano-banana-2",
+      }),
+    }, env);
+
+    expect(test.status).toBe(200);
+    expect(await test.json()).toEqual({
+      ok: false,
+      providerId: "mock",
+      upstreamId: "mock",
+      modelId: "nano-banana-2",
+      skipped: true,
+      message: "Mock provider tests run through the local desktop runtime for Nano Banana 2.",
+    });
+  });
+
   it("rejects provider account model filters outside the provider support list", async () => {
     const app = makeApp();
     const db = new MemoryD1();

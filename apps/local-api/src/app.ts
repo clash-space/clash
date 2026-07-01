@@ -19,6 +19,7 @@ import {
   handleFalMockHttpRequest,
   type FalMockQueueService,
 } from "./fal-mock.js";
+import { createMockExternalAigcService } from "./local-aigc.js";
 import {
   createLocalAudioConfigStore,
   LocalAudioConfigError,
@@ -996,6 +997,9 @@ interface ModelProviderTestResult {
   region?: string;
   modelId: string;
   message: string;
+  provider?: string;
+  requestId?: string;
+  modelEndpoint?: string;
   disabled?: boolean;
   missingCredentials?: string[];
   missingOAuth?: string[];
@@ -1069,6 +1073,10 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
   const sessionMessageStore = createLocalSessionMessageStore(db);
   options.localAcp?.setSessionMessageStore?.(sessionMessageStore);
   const falMock = options.falMock ?? createMockFalQueueService();
+  const providerTestAigc = createMockExternalAigcService({
+    fal: falMock,
+    origin: "http://local-provider-test",
+  });
   const syncConfig = options.syncConfig ?? createLocalSyncConfigStore({
     dataDir: options.dataDir,
     env: options.syncEnv ?? process.env,
@@ -1339,13 +1347,42 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
       } satisfies ModelProviderTestResult);
     }
 
+    if (account.providerId === "mock") {
+      const model = MODEL_CARDS.find((candidate) => candidate.id === modelId);
+      const taskId = `provider-test-${modelId}`;
+      const prompt = `Provider test for ${modelName}`;
+      try {
+        const result = model?.kind === "video"
+          ? await providerTestAigc.generateVideo({ taskId, prompt, model: modelId, aspectRatio: "16:9" })
+          : model?.kind === "audio"
+            ? await providerTestAigc.generateAudio({ taskId, prompt, model: modelId })
+            : model?.kind === "text"
+              ? await providerTestAigc.generateText({ taskId, prompt, model: modelId })
+              : await providerTestAigc.generateImage({ taskId, prompt, model: modelId, aspectRatio: "16:9" });
+        return c.json({
+          ok: true,
+          ...baseResult,
+          ...(result.provider ? { provider: result.provider } : {}),
+          ...("requestId" in result && result.requestId ? { requestId: result.requestId } : {}),
+          ...(result.modelEndpoint ? { modelEndpoint: result.modelEndpoint } : {}),
+          message: result.modelEndpoint
+            ? `Mock provider ran ${modelName} through ${result.modelEndpoint}.`
+            : `Mock provider ran ${modelName}.`,
+        } satisfies ModelProviderTestResult);
+      } catch (err) {
+        return c.json({
+          ok: false,
+          ...baseResult,
+          message: `Mock provider test failed for ${modelName}: ${err instanceof Error ? err.message : String(err)}`,
+        } satisfies ModelProviderTestResult);
+      }
+    }
+
     const providerName = displayProviderName(account);
     return c.json({
       ok: true,
       ...baseResult,
-      message: account.providerId === "mock"
-        ? `Mock provider can run ${modelName}.`
-        : `${providerName} configuration is ready for ${modelName}.`,
+      message: `${providerName} configuration is ready for ${modelName}.`,
     } satisfies ModelProviderTestResult);
   });
   app.get("/api/v1/provider-oauth", async (c) => {

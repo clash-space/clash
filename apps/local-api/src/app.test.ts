@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createLocalApiApp, type LocalAcpAgentServersConfig } from "./app";
 import { createLocalAudioConfigStore } from "./audio-config";
+import { createMockFalQueueService } from "./fal-mock";
 import { createLocalSyncConfigStore } from "./sync-config";
 
 let dataDir = "";
@@ -389,7 +390,9 @@ describe("local API app", () => {
   });
 
   it("tests a configured mock provider account against a selected model", async () => {
-    const app = createLocalApiApp({ dataDir, userId: "local-user" });
+    const falMock = createMockFalQueueService();
+    const submit = vi.spyOn(falMock, "submit");
+    const app = createLocalApiApp({ dataDir, userId: "local-user", falMock });
 
     await app.request("/api/v1/model-providers", {
       method: "PATCH",
@@ -416,8 +419,19 @@ describe("local API app", () => {
       providerId: "mock",
       upstreamId: "mock",
       modelId: "nano-banana-2",
-      message: "Mock provider can run Nano Banana 2.",
+      provider: "fal-mock",
+      modelEndpoint: "fal-ai/nano-banana-2",
+      requestId: expect.stringMatching(/^fal-mock-/),
+      message: "Mock provider ran Nano Banana 2 through fal-ai/nano-banana-2.",
     });
+    expect(submit).toHaveBeenCalledWith(
+      "fal-ai/nano-banana-2",
+      expect.objectContaining({
+        prompt: "Provider test for Nano Banana 2",
+        output_type: "image",
+      }),
+      expect.any(Object),
+    );
 
     const unsupported = await app.request("/api/v1/model-providers/test", {
       method: "POST",

@@ -207,7 +207,7 @@ async function runProviderFlow(agentBrowser, apiOrigin) {
   }
   await waitForEval(
     agentBrowser,
-    `document.body.innerText.includes("Mock provider can run GPT Image 2.")`,
+    `document.body.innerText.includes("Mock provider ran GPT Image 2 through fal-ai/nano-banana-2.")`,
     "desktop mock provider test result",
   );
 
@@ -374,6 +374,82 @@ async function runProviderFlow(agentBrowser, apiOrigin) {
       })
       .catch(() => false)`,
     "desktop Replicate key removed",
+  );
+
+  navigateTo(agentBrowser, "/settings?section=providers");
+  await waitForEval(agentBrowser, `document.body.innerText.includes("BYOK")`, "desktop BYOK providers before OpenAI multi-key");
+  if (!clickButtonByLabel(agentBrowser, "Open OpenAI BYOK settings")) {
+    throw new Error("Could not open OpenAI BYOK settings");
+  }
+  await waitForEval(agentBrowser, `document.body.innerText.includes("OpenAI")`, "desktop OpenAI provider detail");
+
+  if (!clickButtonByLabel(agentBrowser, "Add prioritized OpenAI key")) {
+    throw new Error("Could not add the first OpenAI key");
+  }
+  await waitForEval(
+    agentBrowser,
+    `!!document.querySelector("[role='group'][aria-label='New OpenAI API key']")`,
+    "desktop first new OpenAI key editor",
+  );
+  if (!setInputValueByLabel(agentBrowser, "OpenAI key name", "OpenAI smoke key 1")) {
+    throw new Error("Could not enter first OpenAI key name");
+  }
+  if (!setInputValueByLabel(agentBrowser, "OpenAI API key", "sk-desktop-smoke-openai-1")) {
+    throw new Error("Could not enter first OpenAI key");
+  }
+  if (!clickButtonInGroup(agentBrowser, "New OpenAI API key", "Save")) {
+    throw new Error("Could not save first OpenAI key");
+  }
+  await waitForEval(
+    agentBrowser,
+    `fetch(${JSON.stringify(`${apiOrigin}/api/v1/model-providers`)})
+      .then((res) => res.json())
+      .then((json) => (json.providers ?? []).some((provider) =>
+        provider.providerId === "official" &&
+        provider.upstreamId === "openai" &&
+        provider.region === "global" &&
+        provider.label === "OpenAI smoke key 1" &&
+        typeof provider.id === "string" &&
+        provider.id.length > 0
+      ))
+      .catch(() => false)`,
+    "desktop first OpenAI key saved with id",
+  );
+
+  if (!clickButtonByLabel(agentBrowser, "Add prioritized OpenAI key")) {
+    throw new Error("Could not add the second OpenAI key");
+  }
+  await waitForEval(
+    agentBrowser,
+    `!!document.querySelector("[role='group'][aria-label='New OpenAI API key']")`,
+    "desktop second new OpenAI key editor",
+  );
+  if (!setInputValueByLabel(agentBrowser, "OpenAI key name", "OpenAI smoke key 2")) {
+    throw new Error("Could not enter second OpenAI key name");
+  }
+  if (!setInputValueByLabel(agentBrowser, "OpenAI API key", "sk-desktop-smoke-openai-2")) {
+    throw new Error("Could not enter second OpenAI key");
+  }
+  if (!clickButtonInGroup(agentBrowser, "New OpenAI API key", "Save")) {
+    throw new Error("Could not save second OpenAI key");
+  }
+  await waitForEval(
+    agentBrowser,
+    `fetch(${JSON.stringify(`${apiOrigin}/api/v1/model-providers`)})
+      .then((res) => res.json())
+      .then((json) => {
+        const providers = (json.providers ?? []).filter((provider) =>
+          provider.providerId === "official" &&
+          provider.upstreamId === "openai" &&
+          provider.region === "global" &&
+          (provider.label === "OpenAI smoke key 1" || provider.label === "OpenAI smoke key 2")
+        );
+        return providers.length === 2 &&
+          providers.every((provider) => typeof provider.id === "string" && provider.id.length > 0) &&
+          new Set(providers.map((provider) => provider.id)).size === 2;
+      })
+      .catch(() => false)`,
+    "desktop two OpenAI keys saved with distinct ids",
   );
 
   return evalJson(agentBrowser, `(() => ({

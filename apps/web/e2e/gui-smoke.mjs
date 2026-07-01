@@ -231,7 +231,7 @@ async function exerciseProviderModelRouting(cdp, { webOrigin, apiOrigin }) {
   );
   await waitFor(
     cdp,
-    `document.body.innerText.includes("Mock provider can run Nano Banana 2.")`,
+    `document.body.innerText.includes("Mock provider ran Nano Banana 2 through fal-ai/nano-banana-2.")`,
     "mock provider test result",
   );
   await click(
@@ -256,7 +256,7 @@ async function exerciseProviderModelRouting(cdp, { webOrigin, apiOrigin }) {
   );
   await click(
     cdp,
-    `([...document.querySelectorAll("[role='menuitemradio']")].find((item) => (item.innerText || item.textContent || "").includes("GPT Image 2")))`,
+    `([...document.querySelectorAll("[role='listbox'] [role='option']")].find((item) => (item.innerText || item.textContent || "").includes("GPT Image 2")))`,
     "Add GPT Image 2 to mock account access",
   );
   await waitFor(

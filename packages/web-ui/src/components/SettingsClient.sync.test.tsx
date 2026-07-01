@@ -3086,7 +3086,10 @@ describe("SettingsClient model routing", () => {
       providerId: "mock",
       upstreamId: "mock",
       modelId,
-      message: `Mock provider can run ${modelId === "gpt-image-2" ? "GPT Image 2" : "Nano Banana 2"}.`,
+      provider: "fal-mock",
+      requestId: "fal-mock-provider-test",
+      modelEndpoint: "fal-ai/nano-banana-2",
+      message: `Mock provider ran ${modelId === "gpt-image-2" ? "GPT Image 2" : "Nano Banana 2"} through fal-ai/nano-banana-2.`,
     }));
 
     render(
@@ -3134,7 +3137,7 @@ describe("SettingsClient model routing", () => {
         modelId: "gpt-image-2",
       });
     });
-    expect(await within(editor).findByText("Mock provider can run GPT Image 2.")).toBeTruthy();
+    expect(await within(editor).findByText("Mock provider ran GPT Image 2 through fal-ai/nano-banana-2.")).toBeTruthy();
   });
 
   it("scopes provider test model choices to the provider config model allowlist", async () => {
@@ -3498,6 +3501,63 @@ describe("SettingsClient model routing", () => {
       );
     });
     expect(screen.queryByRole("button", { name: "Save" })).toBeNull();
+  });
+
+  it("creates a stable account id for every new provider key", async () => {
+    const actions = await import("@clash/web-ui/lib/clientActions");
+    vi.mocked(actions.updateModelProviders).mockClear();
+    vi.mocked(actions.listModelCatalog).mockClear();
+    vi.mocked(actions.updateModelProviders).mockImplementation(async (providers) => providers);
+    vi.mocked(actions.listModelCatalog).mockResolvedValue([]);
+
+    render(
+      <MemoryRouter>
+        <SettingsClient
+          initialTokens={[]}
+          initialVariables={[]}
+          initialActions={[]}
+          initialSkills={[]}
+          activeSection="providers"
+          embedded
+          initialModelProviders={[]}
+          initialModelCatalog={[]}
+        />
+      </MemoryRouter>,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Open OpenAI BYOK settings" }));
+    fireEvent.click(screen.getByRole("button", { name: "Add prioritized OpenAI key" }));
+    fireEvent.change(screen.getByLabelText("OpenAI API key"), {
+      target: { value: "sk-first-openai" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    await waitFor(() => {
+      expect(actions.updateModelProviders).toHaveBeenCalledTimes(1);
+    });
+    const firstSave = vi.mocked(actions.updateModelProviders).mock.calls[0]?.[0] ?? [];
+    expect(firstSave).toHaveLength(1);
+    expect(firstSave[0]).toEqual(expect.objectContaining({
+      id: expect.stringMatching(/^official-openai-global-/),
+      label: "API key 1",
+      providerId: "official",
+      upstreamId: "openai",
+      region: "global",
+    }));
+
+    fireEvent.click(screen.getByRole("button", { name: "Add prioritized OpenAI key" }));
+    fireEvent.change(screen.getByLabelText("OpenAI API key"), {
+      target: { value: "sk-second-openai" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    await waitFor(() => {
+      expect(actions.updateModelProviders).toHaveBeenCalledTimes(2);
+    });
+    const secondSave = vi.mocked(actions.updateModelProviders).mock.calls[1]?.[0] ?? [];
+    expect(secondSave).toHaveLength(2);
+    expect(new Set(secondSave.map((provider) => provider.id)).size).toBe(2);
+    expect(secondSave.every((provider) => !!provider.id)).toBe(true);
   });
 
   it("configures all required Kling credential fields inline", async () => {
