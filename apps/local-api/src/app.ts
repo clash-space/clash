@@ -841,6 +841,7 @@ function parseProviderOAuthId(value: unknown): ProviderOAuthId | null {
 function publicProviderOAuth(record: LocalProviderOAuthRecord) {
   return {
     providerId: record.providerId,
+    ...(record.accountId ? { accountId: record.accountId } : {}),
     status: record.status,
     ...(record.verificationUri ? { verificationUri: record.verificationUri } : {}),
     ...(record.userCode ? { userCode: record.userCode } : {}),
@@ -860,7 +861,12 @@ function upsertProviderOAuth(
   patch: Partial<LocalProviderOAuthRecord>,
 ): LocalProviderOAuthRecord {
   const now = nowIso();
-  const existing = state.providerOAuth.find((record) => record.userId === userId && record.providerId === providerId);
+  const accountId = patch.accountId;
+  const existing = state.providerOAuth.find((record) =>
+    record.userId === userId &&
+    record.providerId === providerId &&
+    (record.accountId ?? "") === (accountId ?? "")
+  );
   if (existing) {
     Object.assign(existing, patch, { updatedAt: now });
     return existing;
@@ -875,6 +881,21 @@ function upsertProviderOAuth(
   };
   state.providerOAuth.unshift(record);
   return record;
+}
+
+function stringBodyField(value: unknown): string | undefined {
+  return typeof value === "string" && value.trim() ? value.trim() : undefined;
+}
+
+function providerOAuthMatches(
+  record: LocalProviderOAuthRecord,
+  userId: string,
+  providerId: ProviderOAuthId,
+  accountId?: string,
+): boolean {
+  return record.userId === userId &&
+    record.providerId === providerId &&
+    (record.accountId ?? "") === (accountId ?? "");
 }
 
 function upsertVariable(
@@ -1225,11 +1246,9 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
       } satisfies ModelProviderTestResult);
     }
 
-    const availableOAuth = new Set(
-      state.providerOAuth
-        .filter((record) => record.userId === userId && record.status === "authorized")
-        .map((record) => record.providerId),
-    );
+    const testedAccount = publicProviderAccounts([account], userId, state.providerOAuth)
+      .find((candidate) => providerAccountKey(candidate) === providerAccountKey(account));
+    const availableOAuth = new Set(testedAccount?.availableOAuth ?? []);
     const missingOAuth = support.requiredOAuth.filter((providerId) => !availableOAuth.has(providerId));
     if (missingOAuth.length > 0) {
       return c.json({
@@ -1254,7 +1273,10 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
     return c.json({
       providers: state.providerOAuth
         .filter((record) => record.userId === userId)
-        .sort((a, b) => a.providerId.localeCompare(b.providerId))
+        .sort((a, b) => (
+          a.providerId.localeCompare(b.providerId) ||
+          (a.accountId ?? "").localeCompare(b.accountId ?? "")
+        ))
         .map(publicProviderOAuth),
     });
   });
@@ -1263,9 +1285,13 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
     if (!providerId) return c.json({ error: "Unsupported OAuth provider" }, 404);
     const driver = options.providerOAuth?.[providerId];
     if (!driver) return c.json({ error: "OAuth provider is not configured" }, 501);
+    const body = (await c.req.json().catch(() => ({}))) as { accountId?: unknown; accountLabel?: unknown };
+    const accountId = stringBodyField(body.accountId);
+    const accountLabel = stringBodyField(body.accountLabel);
     const started = await driver.start();
     const state = await db.load();
     const record = upsertProviderOAuth(state, userId, providerId, {
+      ...(accountId ? { accountId } : {}),
       status: "pending",
       verificationUri: started.verificationUri,
       userCode: started.userCode,
@@ -1275,7 +1301,7 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
       accessToken: undefined,
       refreshToken: undefined,
       tokenType: undefined,
-      accountLabel: undefined,
+      accountLabel,
       error: undefined,
     });
     await db.save(state);
@@ -1286,15 +1312,17 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
     if (!providerId) return c.json({ error: "Unsupported OAuth provider" }, 404);
     const driver = options.providerOAuth?.[providerId];
     if (!driver) return c.json({ error: "OAuth provider is not configured" }, 501);
-    const body = (await c.req.json().catch(() => ({}))) as { deviceCode?: unknown };
+    const body = (await c.req.json().catch(() => ({}))) as { accountId?: unknown; deviceCode?: unknown };
+    const accountId = stringBodyField(body.accountId);
     const state = await db.load();
-    const existing = state.providerOAuth.find((record) => record.userId === userId && record.providerId === providerId);
+    const existing = state.providerOAuth.find((record) => providerOAuthMatches(record, userId, providerId, accountId));
     const deviceCode = typeof body.deviceCode === "string" && body.deviceCode.trim()
       ? body.deviceCode.trim()
       : existing?.deviceCode;
     if (!deviceCode) return c.json({ error: "deviceCode is required" }, 400);
     const completed = await driver.complete({ deviceCode });
     const record = upsertProviderOAuth(state, userId, providerId, {
+      ...(accountId ? { accountId } : {}),
       status: "authorized",
       accessToken: completed.accessToken,
       refreshToken: completed.refreshToken,
@@ -1313,8 +1341,9 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
   app.delete("/api/v1/provider-oauth/:providerId", async (c) => {
     const providerId = parseProviderOAuthId(c.req.param("providerId"));
     if (!providerId) return c.json({ error: "Unsupported OAuth provider" }, 404);
+    const accountId = stringBodyField(c.req.query("accountId"));
     const state = await db.load();
-    state.providerOAuth = state.providerOAuth.filter((record) => !(record.userId === userId && record.providerId === providerId));
+    state.providerOAuth = state.providerOAuth.filter((record) => !providerOAuthMatches(record, userId, providerId, accountId));
     await db.save(state);
     return new Response(null, { status: 204 });
   });

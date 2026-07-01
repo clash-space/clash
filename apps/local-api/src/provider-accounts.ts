@@ -31,6 +31,7 @@ export interface LocalVariableRecord {
 export interface LocalProviderOAuthRecord {
   userId?: string;
   providerId: ProviderOAuthId;
+  accountId?: string;
   status: "pending" | "authorized" | "expired" | "revoked" | "error";
   accessToken?: string;
   refreshToken?: string;
@@ -196,25 +197,40 @@ function configuredCredentialsForAccount(account: Pick<LocalProviderAccountConfi
     .sort();
 }
 
-function oauthProviders(records: LocalProviderOAuthRecord[], userId: string): Set<ProviderOAuthId> {
-  return new Set(
-    records
-      .filter((record) => (record.userId ?? userId) === userId)
-      .filter((record) => record.status === "authorized")
-      .map((record) => record.providerId),
-  );
+function authorizedOAuthRecords(records: LocalProviderOAuthRecord[], userId: string): LocalProviderOAuthRecord[] {
+  return records
+    .filter((record) => (record.userId ?? userId) === userId)
+    .filter((record) => record.status === "authorized");
 }
 
 function oauthAccounts(records: LocalProviderOAuthRecord[], userId: string): LocalProviderAccountConfig[] {
-  const providers = oauthProviders(records, userId);
   const accounts: LocalProviderAccountConfig[] = [];
-  if (providers.has("dreamina")) accounts.push({ providerId: "jimeng", upstreamId: "jimeng", enabled: true });
+  const seen = new Set<string>();
+  for (const record of authorizedOAuthRecords(records, userId)) {
+    if (record.providerId !== "dreamina") continue;
+    const account: LocalProviderAccountConfig = {
+      ...(record.accountId ? { id: record.accountId } : {}),
+      providerId: "jimeng",
+      upstreamId: "jimeng",
+      ...(record.accountLabel ? { label: record.accountLabel } : {}),
+      enabled: true,
+    };
+    const key = providerAccountKey(account);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    accounts.push(account);
+  }
   return accounts;
 }
 
-function oauthForAccount(account: Pick<LocalProviderAccountConfig, "providerId">, providers: Set<ProviderOAuthId>): ProviderOAuthId[] {
-  if (account.providerId === "jimeng" && providers.has("dreamina")) return ["dreamina"];
-  return [];
+function oauthForAccount(account: Pick<LocalProviderAccountConfig, "id" | "providerId">, records: LocalProviderOAuthRecord[]): ProviderOAuthId[] {
+  if (account.providerId !== "jimeng") return [];
+  const hasDreamina = records.some((record) => {
+    if (record.providerId !== "dreamina") return false;
+    if (!record.accountId) return true;
+    return account.id === record.accountId;
+  });
+  return hasDreamina ? ["dreamina"] : [];
 }
 
 export function publicProviderAccounts(
@@ -230,7 +246,7 @@ export function providerAccountsForRuntime(
   userId: string,
   oauthRecords: LocalProviderOAuthRecord[] = [],
 ): RuntimeProviderAccountAvailability[] {
-  const connectedOAuth = oauthProviders(oauthRecords, userId);
+  const connectedOAuth = authorizedOAuthRecords(oauthRecords, userId);
   const merged = new Map<string, LocalProviderAccountConfig>();
   for (const account of oauthAccounts(oauthRecords, userId)) merged.set(providerAccountKey(account), account);
   for (const account of stored) {
@@ -243,7 +259,7 @@ export function providerAccountsForRuntime(
       if (base !== 0) return base;
       const priority = (a.priority ?? 1000) - (b.priority ?? 1000);
       if (priority !== 0) return priority;
-      return 0;
+      return providerAccountKey(a).localeCompare(providerAccountKey(b));
     })
     .map((account) => ({
       ...(account.id ? { id: account.id } : {}),

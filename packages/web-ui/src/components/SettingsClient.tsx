@@ -22,7 +22,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Key, Plus, Trash, Copy, Check, ArrowLeft, ArrowUp, ArrowDown, Lock, Eye, EyeSlash, PuzzlePiece, BookOpen, Terminal, Plug, CloudArrowUp, MagnifyingGlass, CaretDown, CaretRight, Microphone, X, ImageSquare, VideoCamera, SpeakerHigh, TextT } from '@phosphor-icons/react';
 import { useClashRuntime } from '@clash/web-ui/hooks/useClashRuntime';
 import { Link, useSearchParams } from 'react-router';
-import { ACTION_PROVIDER_PRESETS, CustomActionDefinitionSchema, listModelCatalogEntries, listProviderModelSupport, normalizeActionProviderId } from '@clash/shared-types';
+import { ACTION_PROVIDER_PRESETS, CustomActionDefinitionSchema, listModelCatalogEntries, listProviderModelSupport, normalizeActionProviderId, type ProviderOAuthId } from '@clash/shared-types';
 import {
     createApiToken, revokeApiToken, type ApiTokenInfo,
     setVariable, deleteVariable, type VariableInfo,
@@ -677,13 +677,13 @@ export default function SettingsClient({
         };
     }, []);
 
-    const handleStartProviderOAuth = useCallback(async (providerId: string) => {
-        const row = await startProviderOAuth(providerId);
+    const handleStartProviderOAuth = useCallback(async (providerId: string, accountId?: string, accountLabel?: string) => {
+        const row = await startProviderOAuth(providerId, accountId, accountLabel);
         setProviderOAuth((prev) => upsertProviderOAuthRow(prev, row));
     }, []);
 
-    const handleCompleteProviderOAuth = useCallback(async (providerId: string, deviceCode?: string) => {
-        const row = await completeProviderOAuth(providerId, deviceCode);
+    const handleCompleteProviderOAuth = useCallback(async (providerId: string, deviceCode?: string, accountId?: string) => {
+        const row = await completeProviderOAuth(providerId, deviceCode, accountId);
         setProviderOAuth((prev) => upsertProviderOAuthRow(prev, row));
         const [providerRows, catalogRows] = await Promise.all([
             listModelProviders(),
@@ -1202,7 +1202,7 @@ type ModelProviderSetup = {
     description: string;
     apiKey: string;
     credentials?: ModelProviderCredentialField[];
-    oauthProviderId?: string;
+    oauthProviderId?: ProviderOAuthId;
     requiresAllCredentials?: boolean;
     baseUrlKey?: string;
     baseUrlPlaceholder?: string;
@@ -1421,7 +1421,10 @@ function patchModelProviderLists(
 }
 
 function upsertProviderOAuthRow(rows: ProviderOAuthInfo[], next: ProviderOAuthInfo): ProviderOAuthInfo[] {
-    return [next, ...rows.filter((row) => row.providerId !== next.providerId)];
+    return [next, ...rows.filter((row) => (
+        row.providerId !== next.providerId ||
+        (row.accountId ?? '') !== (next.accountId ?? '')
+    ))];
 }
 
 function countModelCatalogTiers(catalog: ModelCatalogEntryInfo[]) {
@@ -1455,6 +1458,7 @@ function writeSelectedModelIds(ids: Set<string>) {
 type ProviderSupportRow = ReturnType<typeof listProviderModelSupport>[number];
 
 type ProviderDraft = {
+    accountId?: string;
     apiKeys?: Record<string, string>;
     baseUrl?: string;
     label?: string;
@@ -1479,11 +1483,31 @@ function providerAccountSort(a: ModelProviderAccountInfo, b: ModelProviderAccoun
     return modelProviderAccountIdentity(a).localeCompare(modelProviderAccountIdentity(b));
 }
 
+function oauthForProviderAccount(
+    rows: ProviderOAuthInfo[],
+    providerId: string,
+    account?: Pick<ModelProviderAccountInfo, 'id'> | null,
+): ProviderOAuthInfo | undefined {
+    return rows.find((row) =>
+        row.providerId === providerId &&
+        (row.accountId ?? '') === (account?.id ?? '')
+    );
+}
+
+function providerOAuthStatusText(oauth?: ProviderOAuthInfo): string {
+    if (!oauth) return 'Not connected';
+    if (oauth.status === 'authorized') return oauth.accountLabel ? `Connected: ${oauth.accountLabel}` : 'Connected';
+    if (oauth.status === 'pending') return 'Authorization pending';
+    if (oauth.status === 'error') return oauth.error ? `Error: ${oauth.error}` : 'Authorization error';
+    return 'Not connected';
+}
+
 type SortableProviderKeyRowProps = {
     id: string;
     index: number;
     account: ModelProviderAccountInfo;
     accountLabel: string;
+    accountMeta: string;
     expanded: boolean;
     expandedPanel?: ReactNode;
     onOpen: () => void;
@@ -1495,6 +1519,7 @@ function SortableProviderKeyRow({
     index,
     account,
     accountLabel,
+    accountMeta,
     expanded,
     expandedPanel,
     onOpen,
@@ -1549,7 +1574,7 @@ function SortableProviderKeyRow({
                                         {accountLabel}
                                     </span>
                                     <code className="mt-0.5 block font-mono text-xs text-stone-500 dark:text-stone-400">
-                                        {HIDDEN_CREDENTIAL_MASK}
+                                        {accountMeta}
                                     </code>
                                 </span>
                             </button>
@@ -1703,8 +1728,8 @@ interface ModelRoutingSectionProps {
     selectedModelIds: Set<string>;
     onSelectedModelIdsChange: Dispatch<SetStateAction<Set<string>>>;
     providerOAuth: ProviderOAuthInfo[];
-    onStartProviderOAuth: (providerId: string) => Promise<void>;
-    onCompleteProviderOAuth: (providerId: string, deviceCode?: string) => Promise<void>;
+    onStartProviderOAuth: (providerId: string, accountId?: string, accountLabel?: string) => Promise<void>;
+    onCompleteProviderOAuth: (providerId: string, deviceCode?: string, accountId?: string) => Promise<void>;
     onPatchProvider: (key: string, patch: Partial<ModelProviderAccountInfo>) => Promise<ModelProviderAccountInfo[]>;
     onPatchProviders: (patches: ModelProviderPatch[]) => Promise<ModelProviderAccountInfo[]>;
     saving: boolean;
@@ -1770,7 +1795,7 @@ function ModelRoutingSection({
     const commitProviderDraft = useCallback(async (
         key: string,
         setup: NonNullable<ReturnType<typeof modelProviderSetup>>,
-        options: { createAccount?: boolean; label?: string; account?: ModelProviderAccountInfo } = {},
+        options: { createAccount?: boolean; accountId?: string; label?: string; account?: ModelProviderAccountInfo } = {},
     ) => {
         const draft = providerDrafts[key] ?? {};
         const credentialDrafts = modelProviderCredentialFields(setup)
@@ -1783,14 +1808,16 @@ function ModelRoutingSection({
         const nextSupportedModelIds = nextModelAccessMode === 'all'
             ? []
             : draft.supportedModelIds ?? options.account?.supportedModelIds ?? [];
-        if (credentialDrafts.length === 0 && !draft.baseUrl?.trim() && !label && !hasModelAccessDraft) return;
+        const isOAuthAccountDraft = !!setup.oauthProviderId && !!options.createAccount;
+        if (credentialDrafts.length === 0 && !draft.baseUrl?.trim() && !label && !hasModelAccessDraft && !isOAuthAccountDraft) return;
         setSavingProviderKey(key);
         try {
             const credentials = Object.fromEntries(credentialDrafts);
             if (setup.baseUrlKey && draft.baseUrl?.trim()) credentials[setup.baseUrlKey] = draft.baseUrl.trim();
             await onPatchProvider(key, {
                 ...(options.account?.id ? { id: options.account.id } : {}),
-                ...(options.createAccount ? { id: createProviderAccountId(key) } : {}),
+                ...(options.createAccount ? { id: options.accountId ?? createProviderAccountId(key) } : {}),
+                ...(options.createAccount ? { enabled: true } : {}),
                 ...(label ? { label } : {}),
                 ...(Object.keys(credentials).length > 0 ? { credentials } : {}),
                 ...(hasModelAccessDraft ? { supportedModelIds: nextSupportedModelIds } : {}),
@@ -1843,9 +1870,13 @@ function ModelRoutingSection({
                 ...accountRows.flatMap((account) => account.configuredCredentials ?? []),
             ])].sort();
             const hasBaseUrl = setup?.baseUrlKey ? configuredKeys.includes(setup.baseUrlKey) : false;
-            const oauth = setup?.oauthProviderId
-                ? providerOAuth.find((item) => item.providerId === setup.oauthProviderId)
+            const oauthProviderId = setup?.oauthProviderId;
+            const oauth = oauthProviderId
+                ? oauthForProviderAccount(providerOAuth, oauthProviderId)
                 : undefined;
+            const hasRequiredOAuth = oauthProviderId
+                ? accountRows.some((account) => account.availableOAuth?.includes(oauthProviderId))
+                : false;
             const hasRequiredCredentials = credentialFields.length === 0
                 ? accountRows.length > 0
                 : setup?.requiresAllCredentials
@@ -1875,8 +1906,8 @@ function ModelRoutingSection({
                 support,
                 title,
                 searchText,
-                configured: setup?.oauthProviderId
-                    ? oauth?.status === 'authorized'
+                configured: oauthProviderId
+                    ? hasRequiredOAuth
                     : hasRequiredCredentials,
             };
         })
@@ -2238,6 +2269,13 @@ function ModelRoutingSection({
     const providerStatusLabel = (row: typeof providerViewRows[number]) => {
         if (row.oauth?.status === 'pending') return 'Pending';
         if (!row.configured) return 'Not configured';
+        if (row.setup?.oauthProviderId) {
+            const oauthProviderId = row.setup.oauthProviderId;
+            const accountCount = row.accounts.filter((account) =>
+                account.availableOAuth?.includes(oauthProviderId),
+            ).length || row.accounts.length || 1;
+            return `${accountCount} account${accountCount === 1 ? '' : 's'}`;
+        }
         const keyCount = providerCredentialAccountCount(row) || 1;
         return `${keyCount} key${keyCount === 1 ? '' : 's'}`;
     };
@@ -2271,7 +2309,6 @@ function ModelRoutingSection({
         if (!setup) return null;
         const credentialFields = modelProviderCredentialFields(setup);
         const oauthProviderId = setup.oauthProviderId;
-        const oauthBusy = providerOAuthBusyKey === row.key;
         const supportedModelsHref = row.support?.models.length
             ? providerModelsHref(row.key)
             : '/settings?section=models';
@@ -2282,13 +2319,15 @@ function ModelRoutingSection({
         const configuredAccounts = row.accounts.filter((account) =>
             (account.configuredCredentials ?? []).some((credentialKey) => setupCredentialKeys.has(credentialKey)),
         );
-        const savedAccounts = (credentialFields.length === 0 && !oauthProviderId
+        const savedAccounts = (oauthProviderId
             ? row.accounts
-            : configuredAccounts.length > 0
-            ? configuredAccounts
-            : row.configuredKeys.some((credentialKey) => setupCredentialKeys.has(credentialKey))
-                ? [row.provider]
-                : []
+            : credentialFields.length === 0
+                ? row.accounts
+                : configuredAccounts.length > 0
+                    ? configuredAccounts
+                    : row.configuredKeys.some((credentialKey) => setupCredentialKeys.has(credentialKey))
+                        ? [row.provider]
+                        : []
         ).sort(providerAccountSort);
         const editingAccountKey = editingProviderAccountKey?.providerKey === row.key ? editingProviderAccountKey.accountKey : null;
         const editingAccount = editingAccountKey
@@ -2312,7 +2351,7 @@ function ModelRoutingSection({
         ) || (
             draft.supportedModelIds !== undefined && !sameStringArray(draft.supportedModelIds, editingSupportedModelIds)
         );
-        const hasProviderDraft = hasCredentialDraft || (!!editingAccount && !!draft.label?.trim()) || hasModelAccessDraft;
+        const hasProviderDraft = hasCredentialDraft || (!!editingAccount && !!draft.label?.trim()) || hasModelAccessDraft || (isAddingPrioritizedKey && !!oauthProviderId);
         const selectedSupportedModelIds = new Set(draftSupportedModelIds);
         const modelAccessInvalid = modelAccessMode === 'specific' && draftSupportedModelIds.length === 0;
         const updateProviderDraft = (patch: Partial<ProviderDraft>) => setProviderDrafts((prev) => ({
@@ -2341,11 +2380,16 @@ function ModelRoutingSection({
         };
         const openPrioritizedKeyEditor = () => {
             setEditingProviderAccountKey(null);
-            clearProviderDraft();
+            setProviderDrafts((prev) => ({
+                ...prev,
+                [row.key]: oauthProviderId ? { accountId: createProviderAccountId(row.key) } : {},
+            }));
             setAddingProviderKey(row.key);
-            window.setTimeout(() => {
-                document.querySelector<HTMLInputElement>('[data-provider-key-input="true"]')?.focus();
-            }, 0);
+            if (credentialFields.length > 0) {
+                window.setTimeout(() => {
+                    document.querySelector<HTMLInputElement>('[data-provider-key-input="true"]')?.focus();
+                }, 0);
+            }
         };
         const openExistingKeyEditor = (account: ModelProviderAccountInfo) => {
             setAddingProviderKey(null);
@@ -2354,14 +2398,15 @@ function ModelRoutingSection({
         };
         const saveDraft = async () => {
             if (!setup || !hasProviderDraft) return false;
-            const createAccount = isAddingPrioritizedKey && savedAccounts.length > 0;
-            if (isAddingPrioritizedKey && !hasCredentialDraft) return false;
+            const createAccount = isAddingPrioritizedKey && (savedAccounts.length > 0 || !!oauthProviderId);
+            if (isAddingPrioritizedKey && !hasCredentialDraft && !oauthProviderId) return false;
             if (modelAccessInvalid) return false;
             const saved = await commitProviderDraft(row.key, setup, {
                 createAccount,
+                accountId: draft.accountId,
                 account: editingAccount ?? undefined,
                 label: isAddingPrioritizedKey
-                    ? createAccount ? (draft.label?.trim() || `API key ${newKeyNumber}`) : draft.label?.trim()
+                    ? createAccount ? (draft.label?.trim() || (oauthProviderId ? `${row.title} account ${newKeyNumber}` : `API key ${newKeyNumber}`)) : draft.label?.trim()
                     : draft.label?.trim(),
             });
             if (saved) {
@@ -2370,11 +2415,12 @@ function ModelRoutingSection({
             }
             return saved;
         };
-        const editorTitle = editingAccountLabel ?? 'New key';
+        const accountNoun = oauthProviderId ? 'account' : 'API key';
+        const editorTitle = editingAccountLabel ?? (oauthProviderId ? 'New account' : 'New key');
         const editorNumber = editingAccount ? editingAccountIndex + 1 : newKeyNumber;
         const editorAriaLabel = editingAccountLabel
-            ? `${editingAccountLabel} ${row.title} API key`
-            : `New ${row.title} API key`;
+            ? `${editingAccountLabel} ${row.title} ${accountNoun}`
+            : `New ${row.title} ${accountNoun}`;
         const providerTestKey = editingAccount ? modelProviderAccountIdentity(editingAccount) : `new:${row.key}`;
         const providerTestOptions = (row.support?.models ?? []).map<SelectOption<string>>((model) => ({
             value: model.id,
@@ -2389,6 +2435,11 @@ function ModelRoutingSection({
         const selectedProviderTestModelId = providerTestModelIds[providerTestKey] ?? defaultProviderTestModelId;
         const providerTestResult = providerTestResults[providerTestKey];
         const canRunProviderTest = !!editingAccount && providerTestOptions.length > 0;
+        const editingOAuth = oauthProviderId && editingAccount
+            ? oauthForProviderAccount(providerOAuth, oauthProviderId, editingAccount)
+            : undefined;
+        const editingOAuthBusyKey = oauthProviderId && editingAccount?.id ? `${oauthProviderId}:${editingAccount.id}` : null;
+        const editingOAuthBusy = editingOAuthBusyKey ? providerOAuthBusyKey === editingOAuthBusyKey : false;
         const runProviderTest = async () => {
             if (!canRunProviderTest || !editingAccount || !selectedProviderTestModelId) return;
             setProviderTestBusyKey(providerTestKey);
@@ -2444,7 +2495,7 @@ function ModelRoutingSection({
                     <label className="block">
                         <span className="mb-1 block text-xs font-medium text-stone-500 dark:text-stone-400">Name (optional)</span>
                         <input
-                            aria-label={`${row.title} key name`}
+                            aria-label={`${row.title} ${oauthProviderId ? 'account' : 'key'} name`}
                             type="text"
                             value={draft.label ?? ''}
                             onChange={(e) => updateProviderDraft({ label: e.target.value })}
@@ -2494,6 +2545,68 @@ function ModelRoutingSection({
                                 className={settingsFieldClass}
                             />
                         </label>
+                    )}
+                    {oauthProviderId && editingAccount?.id && (
+                        <div className="rounded-xl border border-warm-border bg-warm-muted/20 p-3">
+                            <div className="flex flex-wrap items-start justify-between gap-3">
+                                <div className="min-w-0">
+                                    <div className="text-xs font-semibold text-slate-900 dark:text-slate-50">Authorization</div>
+                                    <p className="mt-1 text-xs font-medium text-stone-500 dark:text-stone-400">
+                                        {providerOAuthStatusText(editingOAuth)}
+                                    </p>
+                                    {editingOAuth?.verificationUri && (
+                                        <p className="mt-2 text-xs text-stone-500 dark:text-stone-400">
+                                            Open {editingOAuth.verificationUri}{editingOAuth.userCode ? ` and enter ${editingOAuth.userCode}` : ''}.
+                                        </p>
+                                    )}
+                                </div>
+                                <div className="flex flex-wrap gap-2">
+                                    <button
+                                        type="button"
+                                        disabled={editingOAuthBusy}
+                                        onClick={async () => {
+                                            if (!editingOAuthBusyKey || !editingAccount.id) return;
+                                            setProviderOAuthBusyKey(editingOAuthBusyKey);
+                                            try {
+                                                await onStartProviderOAuth(
+                                                    oauthProviderId,
+                                                    editingAccount.id,
+                                                    draft.label?.trim() || editingAccount.label,
+                                                );
+                                            } finally {
+                                                setProviderOAuthBusyKey(null);
+                                            }
+                                        }}
+                                        className={settingsCompactSecondaryButtonClass}
+                                    >
+                                        {editingOAuth?.status === 'pending' ? 'Restart authorization' : editingOAuth?.status === 'authorized' ? 'Reconnect' : 'Connect'}
+                                    </button>
+                                    {editingOAuth?.status === 'pending' && (
+                                        <button
+                                            type="button"
+                                            disabled={editingOAuthBusy}
+                                            onClick={async () => {
+                                                if (!editingOAuthBusyKey || !editingAccount.id) return;
+                                                setProviderOAuthBusyKey(editingOAuthBusyKey);
+                                                try {
+                                                    await onCompleteProviderOAuth(oauthProviderId, editingOAuth.deviceCode, editingAccount.id);
+                                                } finally {
+                                                    setProviderOAuthBusyKey(null);
+                                                }
+                                            }}
+                                            className={settingsSmallPrimaryButtonClass}
+                                        >
+                                            Complete
+                                        </button>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+                    )}
+                    {oauthProviderId && !editingAccount && (
+                        <div className="rounded-xl border border-warm-border bg-warm-muted/20 p-3 text-xs font-medium text-stone-500 dark:text-stone-400">
+                            Save this account before starting authorization.
+                        </div>
                     )}
                     {providerTestOptions.length > 0 && (
                         <div className="rounded-xl border border-warm-border bg-warm-muted/20 p-3">
@@ -2604,25 +2717,29 @@ function ModelRoutingSection({
                             )}
                         </div>
                     )}
-                    <div className="flex justify-end gap-2">
-                        {includeHeader && (
-                            <button
-                                type="button"
-                                onClick={closeProviderKeyEditor}
-                                className={settingsCompactSecondaryButtonClass}
-                            >
-                                Cancel
-                            </button>
-                        )}
-                        <button
-                            type="button"
-                            onClick={() => { void saveDraft(); }}
-                            disabled={!hasProviderDraft || modelAccessInvalid || savingProviderKey === row.key || saving}
-                            className={settingsSmallPrimaryButtonClass}
-                        >
-                            {savingProviderKey === row.key ? 'Saving...' : 'Save'}
-                        </button>
-                    </div>
+                    {(includeHeader || hasProviderDraft || savingProviderKey === row.key) && (
+                        <div className="flex justify-end gap-2">
+                            {includeHeader && (
+                                <button
+                                    type="button"
+                                    onClick={closeProviderKeyEditor}
+                                    className={settingsCompactSecondaryButtonClass}
+                                >
+                                    Cancel
+                                </button>
+                            )}
+                            {(hasProviderDraft || savingProviderKey === row.key) && (
+                                <button
+                                    type="button"
+                                    onClick={() => { void saveDraft(); }}
+                                    disabled={modelAccessInvalid || savingProviderKey === row.key || saving}
+                                    className={settingsSmallPrimaryButtonClass}
+                                >
+                                    {savingProviderKey === row.key ? 'Saving...' : 'Save'}
+                                </button>
+                            )}
+                        </div>
+                    )}
                 </div>
             </div>
         );
@@ -2669,10 +2786,12 @@ function ModelRoutingSection({
                         <aside className="text-sm text-stone-500 dark:text-stone-400">
                             <div className="flex items-center gap-2 font-semibold text-slate-900 dark:text-slate-50">
                                 <Key className="h-4 w-4" aria-hidden="true" />
-                                <span>Provider Keys</span>
+                                <span>{oauthProviderId ? 'Provider Accounts' : 'Provider Keys'}</span>
                             </div>
                             <p className="mt-3 leading-7">
-                                Add and configure your API keys. Drag a key by its handle to reorder it within a section or move it between sections.
+                                {oauthProviderId
+                                    ? 'Add and authorize provider accounts. Drag an account by its handle to reorder priority.'
+                                    : 'Add and configure your API keys. Drag a key by its handle to reorder priority.'}
                             </p>
                         </aside>
                         <div className="space-y-9">
@@ -2686,65 +2805,14 @@ function ModelRoutingSection({
                                     </div>
                                     <button
                                         type="button"
-                                        aria-label={`Add prioritized ${row.title} key`}
+                                        aria-label={`Add prioritized ${row.title} ${oauthProviderId ? 'account' : 'key'}`}
                                         onClick={openPrioritizedKeyEditor}
                                         className={`${settingsCompactSecondaryButtonClass} gap-1.5`}
                                     >
                                         <Plus className="h-3.5 w-3.5" aria-hidden="true" />
-                                        Add key
+                                        {oauthProviderId ? 'Add account' : 'Add key'}
                                     </button>
                                 </div>
-                                {oauthProviderId && (
-                                    <div className="rounded-xl border border-warm-border bg-warm-surface px-3 py-3">
-                                <div className="flex flex-wrap items-center justify-between gap-3">
-                                    <div className="min-w-0">
-                                        <p className="text-sm font-medium text-slate-900 dark:text-slate-50">
-                                            {row.oauth?.status === 'authorized' ? 'Connected' : row.oauth?.status === 'pending' ? 'Authorization pending' : 'Not connected'}
-                                        </p>
-                                        {row.oauth?.verificationUri && (
-                                            <p className="mt-1 text-xs text-stone-500 dark:text-stone-400">
-                                                Open {row.oauth.verificationUri}{row.oauth.userCode ? ` and enter ${row.oauth.userCode}` : ''}
-                                            </p>
-                                        )}
-                                    </div>
-                                    <div className="flex flex-wrap gap-2">
-                                        <button
-                                            type="button"
-                                            disabled={oauthBusy}
-                                            onClick={async () => {
-                                                setProviderOAuthBusyKey(row.key);
-                                                try {
-                                                    await onStartProviderOAuth(oauthProviderId);
-                                                } finally {
-                                                    setProviderOAuthBusyKey(null);
-                                                }
-                                            }}
-                                            className={settingsSmallPrimaryButtonClass}
-                                        >
-                                            {row.oauth?.status === 'pending' ? 'Restart OAuth' : row.oauth?.status === 'authorized' ? 'Reconnect' : 'Connect'}
-                                        </button>
-                                        {row.oauth?.status === 'pending' && (
-                                            <button
-                                                type="button"
-                                                disabled={oauthBusy}
-                                                onClick={async () => {
-                                                    setProviderOAuthBusyKey(row.key);
-                                                    try {
-                                                        await onCompleteProviderOAuth(oauthProviderId, row.oauth?.deviceCode);
-                                                    } finally {
-                                                        setProviderOAuthBusyKey(null);
-                                                    }
-                                                }}
-                                                className={settingsSmallPrimaryButtonClass}
-                                            >
-                                                Complete
-                                            </button>
-                                        )}
-                                    </div>
-                                </div>
-                            </div>
-                        )}
-                        {!oauthProviderId && (
                             <div className="space-y-3">
                                 {savedAccounts.length > 0 && (
                                     <DndContext
@@ -2757,10 +2825,14 @@ function ModelRoutingSection({
                                             items={savedAccounts.map(modelProviderAccountIdentity)}
                                             strategy={verticalListSortingStrategy}
                                         >
-                                            <ul aria-label={`${row.title} prioritized keys`} className="space-y-2">
+                                            <ul aria-label={`${row.title} prioritized ${oauthProviderId ? 'accounts' : 'keys'}`} className="space-y-2">
                                                 {savedAccounts.map((account, index) => {
                                                     const accountKey = modelProviderAccountIdentity(account);
-                                                    const accountLabel = account.label ?? `API key ${index + 1}`;
+                                                    const accountLabel = account.label ?? `${oauthProviderId ? 'Account' : 'API key'} ${index + 1}`;
+                                                    const accountOAuth = oauthProviderId
+                                                        ? oauthForProviderAccount(providerOAuth, oauthProviderId, account)
+                                                        : undefined;
+                                                    const accountMeta = oauthProviderId ? providerOAuthStatusText(accountOAuth) : HIDDEN_CREDENTIAL_MASK;
                                                     const expanded = editingAccountKey === accountKey;
                                                     return (
                                                         <SortableProviderKeyRow
@@ -2769,6 +2841,7 @@ function ModelRoutingSection({
                                                             index={index}
                                                             account={account}
                                                             accountLabel={accountLabel}
+                                                            accountMeta={accountMeta}
                                                             expanded={expanded}
                                                             expandedPanel={expanded ? renderProviderKeyEditor({ includeHeader: false }) : undefined}
                                                             onOpen={() => {
@@ -2793,13 +2866,12 @@ function ModelRoutingSection({
                                 {savedAccounts.length === 0 && !isAddingPrioritizedKey && (
                                     <div className="flex min-h-20 items-center justify-center rounded-xl border border-dashed border-warm-border bg-warm-muted/20 px-4 py-5 text-sm font-medium text-stone-500 dark:text-stone-400">
                                         <Plus className="mr-2 h-4 w-4" aria-hidden="true" />
-                                        Add a prioritized key
+                                        Add a prioritized {oauthProviderId ? 'account' : 'key'}
                                     </div>
                                 )}
 
                                 {isAddingPrioritizedKey && renderProviderKeyEditor({ includeHeader: true })}
                             </div>
-                        )}
                             </section>
                         {savingProviderKey === row.key && (
                             <div className="text-xs font-medium text-stone-500 dark:text-stone-400" aria-live="polite">

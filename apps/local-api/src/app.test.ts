@@ -478,6 +478,77 @@ describe("local API app", () => {
     });
   });
 
+  it("tests OAuth-backed provider configs against only their own authorization", async () => {
+    const oauth = {
+      dreamina: {
+        start: vi.fn(async () => ({
+          verificationUri: "https://jimeng.jianying.com/device",
+          userCode: "AAAA-BBBB",
+          deviceCode: "device-code-primary",
+          expiresAt: "2026-06-26T03:00:00.000Z",
+          intervalSeconds: 5,
+        })),
+        complete: vi.fn(async () => ({
+          accessToken: "access-token-primary",
+          refreshToken: "refresh-token-primary",
+          expiresAt: "2026-06-27T03:00:00.000Z",
+          accountLabel: "Primary Dreamina",
+        })),
+      },
+    };
+    const app = createLocalApiApp({
+      dataDir,
+      userId: "local-user",
+      providerOAuth: oauth,
+    } as any);
+
+    await app.request("/api/v1/provider-oauth/dreamina/start", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ accountId: "jimeng-primary" }),
+    });
+    await app.request("/api/v1/provider-oauth/dreamina/complete", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ accountId: "jimeng-primary", deviceCode: "device-code-primary" }),
+    });
+
+    const primary = await app.request("/api/v1/model-providers/test", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        provider: { id: "jimeng-primary", providerId: "jimeng", upstreamId: "jimeng", enabled: true },
+        modelId: "seedance-2-text",
+      }),
+    });
+    expect(primary.status).toBe(200);
+    expect(await primary.json()).toMatchObject({
+      ok: true,
+      providerId: "jimeng",
+      upstreamId: "jimeng",
+      modelId: "seedance-2-text",
+      message: "Dreamina configuration is ready for Seedance 2.0 (Text).",
+    });
+
+    const secondary = await app.request("/api/v1/model-providers/test", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        provider: { id: "jimeng-secondary", providerId: "jimeng", upstreamId: "jimeng", enabled: true },
+        modelId: "seedance-2-text",
+      }),
+    });
+    expect(secondary.status).toBe(200);
+    expect(await secondary.json()).toEqual({
+      ok: false,
+      providerId: "jimeng",
+      upstreamId: "jimeng",
+      modelId: "seedance-2-text",
+      missingOAuth: ["dreamina"],
+      message: "Dreamina needs authorization before testing Seedance 2.0 (Text).",
+    });
+  });
+
   it("persists provider account model filters and enforces them in catalog and tests", async () => {
     const app = createLocalApiApp({ dataDir, userId: "local-user" });
 
@@ -675,6 +746,130 @@ describe("local API app", () => {
           providerId: "jimeng",
           upstreamId: "jimeng",
           enabled: true,
+          availableOAuth: ["dreamina"],
+        }),
+      ],
+    });
+  });
+
+  it("keeps provider OAuth device flows scoped to individual provider configs", async () => {
+    const oauth = {
+      dreamina: {
+        start: vi
+          .fn()
+          .mockResolvedValueOnce({
+            verificationUri: "https://jimeng.jianying.com/device",
+            userCode: "AAAA-BBBB",
+            deviceCode: "device-code-primary",
+            expiresAt: "2026-06-26T03:00:00.000Z",
+            intervalSeconds: 5,
+          })
+          .mockResolvedValueOnce({
+            verificationUri: "https://jimeng.jianying.com/device",
+            userCode: "CCCC-DDDD",
+            deviceCode: "device-code-secondary",
+            expiresAt: "2026-06-26T04:00:00.000Z",
+            intervalSeconds: 5,
+          }),
+        complete: vi.fn(async ({ deviceCode }: { deviceCode: string }) => ({
+          accessToken: `access-token-${deviceCode}`,
+          refreshToken: `refresh-token-${deviceCode}`,
+          expiresAt: "2026-06-27T03:00:00.000Z",
+          accountLabel: deviceCode.includes("primary") ? "Primary Dreamina" : "Secondary Dreamina",
+        })),
+      },
+    };
+    const app = createLocalApiApp({
+      dataDir,
+      userId: "local-user",
+      providerOAuth: oauth,
+    } as any);
+
+    const primaryStart = await app.request("/api/v1/provider-oauth/dreamina/start", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ accountId: "jimeng-primary" }),
+    });
+    expect(primaryStart.status).toBe(200);
+    expect(await primaryStart.json()).toMatchObject({
+      providerId: "dreamina",
+      accountId: "jimeng-primary",
+      status: "pending",
+      deviceCode: "device-code-primary",
+    });
+
+    const secondaryStart = await app.request("/api/v1/provider-oauth/dreamina/start", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ accountId: "jimeng-secondary" }),
+    });
+    expect(secondaryStart.status).toBe(200);
+    expect(await secondaryStart.json()).toMatchObject({
+      providerId: "dreamina",
+      accountId: "jimeng-secondary",
+      status: "pending",
+      deviceCode: "device-code-secondary",
+    });
+
+    const primaryComplete = await app.request("/api/v1/provider-oauth/dreamina/complete", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ accountId: "jimeng-primary", deviceCode: "device-code-primary" }),
+    });
+    expect(primaryComplete.status).toBe(200);
+    expect(await primaryComplete.json()).toMatchObject({
+      providerId: "dreamina",
+      accountId: "jimeng-primary",
+      accountLabel: "Primary Dreamina",
+      status: "authorized",
+      hasAccessToken: true,
+    });
+
+    const secondaryComplete = await app.request("/api/v1/provider-oauth/dreamina/complete", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ accountId: "jimeng-secondary", deviceCode: "device-code-secondary" }),
+    });
+    expect(secondaryComplete.status).toBe(200);
+    expect(await secondaryComplete.json()).toMatchObject({
+      providerId: "dreamina",
+      accountId: "jimeng-secondary",
+      accountLabel: "Secondary Dreamina",
+      status: "authorized",
+      hasAccessToken: true,
+    });
+
+    const listed = await app.request("/api/v1/provider-oauth");
+    expect(await listed.json()).toEqual({
+      providers: [
+        expect.objectContaining({
+          providerId: "dreamina",
+          accountId: "jimeng-primary",
+          accountLabel: "Primary Dreamina",
+          status: "authorized",
+        }),
+        expect.objectContaining({
+          providerId: "dreamina",
+          accountId: "jimeng-secondary",
+          accountLabel: "Secondary Dreamina",
+          status: "authorized",
+        }),
+      ],
+    });
+
+    const providers = await app.request("/api/v1/model-providers");
+    expect(await providers.json()).toEqual({
+      providers: [
+        expect.objectContaining({
+          id: "jimeng-primary",
+          label: "Primary Dreamina",
+          providerId: "jimeng",
+          availableOAuth: ["dreamina"],
+        }),
+        expect.objectContaining({
+          id: "jimeng-secondary",
+          label: "Secondary Dreamina",
+          providerId: "jimeng",
           availableOAuth: ["dreamina"],
         }),
       ],

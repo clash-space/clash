@@ -258,6 +258,95 @@ describe("provider accounts", () => {
     ]);
   });
 
+  it("keeps Dreamina OAuth availability scoped to the matching provider account config", () => {
+    const providers = publicProviderAccounts(
+      [
+        {
+          id: "jimeng-primary",
+          label: "Primary Dreamina",
+          userId: "user-1",
+          providerId: "jimeng",
+          upstreamId: "jimeng",
+          enabled: true,
+        },
+        {
+          id: "jimeng-secondary",
+          label: "Secondary Dreamina",
+          userId: "user-1",
+          providerId: "jimeng",
+          upstreamId: "jimeng",
+          enabled: true,
+        },
+      ],
+      "user-1",
+      [
+        {
+          userId: "user-1",
+          accountId: "jimeng-primary",
+          providerId: "dreamina",
+          status: "authorized",
+          accessToken: "access-token",
+        },
+      ] as any,
+    );
+
+    expect(providers).toEqual([
+      expect.objectContaining({
+        id: "jimeng-primary",
+        availableOAuth: ["dreamina"],
+      }),
+      expect.objectContaining({
+        id: "jimeng-secondary",
+        availableOAuth: [],
+      }),
+    ]);
+  });
+
+  it("creates one Dreamina-backed Jimeng provider account for each authorized OAuth config", () => {
+    const providers = publicProviderAccounts(
+      [],
+      "user-1",
+      [
+        {
+          userId: "user-1",
+          accountId: "jimeng-production",
+          accountLabel: "Production Dreamina",
+          providerId: "dreamina",
+          status: "authorized",
+          accessToken: "access-token-1",
+        },
+        {
+          userId: "user-1",
+          accountId: "jimeng-team",
+          accountLabel: "Team Dreamina",
+          providerId: "dreamina",
+          status: "authorized",
+          accessToken: "access-token-2",
+        },
+      ] as any,
+    );
+
+    expect(providers).toHaveLength(2);
+    expect(providers).toEqual([
+      expect.objectContaining({
+        id: "jimeng-production",
+        label: "Production Dreamina",
+        providerId: "jimeng",
+        upstreamId: "jimeng",
+        enabled: true,
+        availableOAuth: ["dreamina"],
+      }),
+      expect.objectContaining({
+        id: "jimeng-team",
+        label: "Team Dreamina",
+        providerId: "jimeng",
+        upstreamId: "jimeng",
+        enabled: true,
+        availableOAuth: ["dreamina"],
+      }),
+    ]);
+  });
+
   it("normalizes provider account credential payloads", () => {
     expect(normalizeProviderAccountInput({
       providerId: "volcengine",

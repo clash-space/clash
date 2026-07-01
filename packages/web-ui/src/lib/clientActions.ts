@@ -79,6 +79,7 @@ export type ModelCatalogEntryInfo = ModelCatalogEntry;
 
 export interface ProviderOAuthInfo {
   providerId: string;
+  accountId?: string;
   status: "pending" | "authorized" | "expired" | "revoked" | "error";
   verificationUri?: string;
   userCode?: string;
@@ -255,16 +256,17 @@ export async function listProviderOAuth(): Promise<ProviderOAuthInfo[]> {
   return data.providers;
 }
 
-export async function startProviderOAuth(providerId: string): Promise<ProviderOAuthInfo> {
+export async function startProviderOAuth(providerId: string, accountId?: string, accountLabel?: string): Promise<ProviderOAuthInfo> {
   return jsonFetch(`/api/v1/provider-oauth/${encodeURIComponent(providerId)}/start`, {
     method: "POST",
+    body: JSON.stringify({ accountId, accountLabel }),
   });
 }
 
-export async function completeProviderOAuth(providerId: string, deviceCode?: string): Promise<ProviderOAuthInfo> {
+export async function completeProviderOAuth(providerId: string, deviceCode?: string, accountId?: string): Promise<ProviderOAuthInfo> {
   return jsonFetch(`/api/v1/provider-oauth/${encodeURIComponent(providerId)}/complete`, {
     method: "POST",
-    body: JSON.stringify({ deviceCode }),
+    body: JSON.stringify({ accountId, deviceCode }),
   });
 }
 

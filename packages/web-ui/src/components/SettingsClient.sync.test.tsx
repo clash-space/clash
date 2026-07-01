@@ -2476,6 +2476,10 @@ describe("SettingsClient model routing", () => {
     const existingKeyEditor = within(existingRow).getByRole("group", { name: "API key 1 Replicate API key" });
     expect(within(existingKeyEditor).getByLabelText("Replicate key name")).toBeTruthy();
     expect(within(existingKeyEditor).getByLabelText("Replicate API key")).toBeTruthy();
+    expect(within(existingKeyEditor).queryByRole("button", { name: "Save" })).toBeNull();
+    fireEvent.change(within(existingKeyEditor).getByLabelText("Replicate key name"), {
+      target: { value: "Primary" },
+    });
     expect(within(existingKeyEditor).getByRole("button", { name: "Save" })).toBeTruthy();
     expect(within(existingKeyEditor).queryByText("Filters")).toBeNull();
     expect(within(existingKeyEditor).queryByText("API Keys")).toBeNull();
@@ -2603,6 +2607,124 @@ describe("SettingsClient model routing", () => {
     expect(within(rows[1]).getByText("Primary")).toBeTruthy();
     expect(within(apiKeys).getByRole("button", { name: "Drag Team" })).toBeTruthy();
     expect(within(apiKeys).getByRole("button", { name: "Drag Primary" })).toBeTruthy();
+  });
+
+  it("renders OAuth providers as account configs with scoped authorization controls", async () => {
+    const actions = await import("@clash/web-ui/lib/clientActions");
+    vi.mocked(actions.listProviderOAuth).mockResolvedValue([
+      {
+        providerId: "dreamina",
+        accountId: "jimeng-primary",
+        status: "authorized",
+        accountLabel: "Primary Dreamina",
+        hasAccessToken: true,
+      },
+    ]);
+
+    render(
+      <MemoryRouter>
+        <SettingsClient
+          initialTokens={[]}
+          initialVariables={[]}
+          initialActions={[]}
+          initialSkills={[]}
+          activeSection="providers"
+          embedded
+          initialModelProviders={[
+            {
+              id: "jimeng-primary",
+              label: "Primary Dreamina",
+              providerId: "jimeng",
+              upstreamId: "jimeng",
+              enabled: true,
+              priority: 10,
+              availableOAuth: ["dreamina"],
+            },
+          ]}
+          initialModelCatalog={[]}
+        />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByRole("button", { name: "Open Dreamina BYOK settings" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Open Dreamina BYOK settings" }));
+
+    expect(screen.getByText("Provider Accounts")).toBeTruthy();
+    expect(screen.queryByText("Provider Keys")).toBeNull();
+    expect(screen.getByRole("button", { name: "Add prioritized Dreamina account" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Connect" })).toBeNull();
+
+    const accounts = screen.getByRole("list", { name: "Dreamina prioritized accounts" });
+    const accountRow = within(accounts).getByText("Primary Dreamina").closest("li") as HTMLElement;
+    await waitFor(() => {
+      expect(within(accountRow).getByText("Connected: Primary Dreamina")).toBeTruthy();
+    });
+    expect(within(accountRow).getByRole("switch", { name: "Provider enabled for Primary Dreamina" })).toBeTruthy();
+
+    fireEvent.click(within(accountRow).getByText("Primary Dreamina"));
+
+    const editor = within(accountRow).getByRole("group", { name: "Primary Dreamina Dreamina account" });
+    expect(within(editor).getByText("Authorization")).toBeTruthy();
+    expect(within(editor).getByRole("button", { name: "Reconnect" })).toBeTruthy();
+    expect(within(editor).getByRole("button", { name: "Model to test" })).toBeTruthy();
+    expect(within(editor).getByRole("button", { name: "Run provider test" })).toBeTruthy();
+    expect(within(editor).queryByLabelText("Dreamina API key")).toBeNull();
+  });
+
+  it("creates a Dreamina account before starting OAuth for that account", async () => {
+    const actions = await import("@clash/web-ui/lib/clientActions");
+    vi.mocked(actions.updateModelProviders).mockImplementation(async (providers) => providers);
+    vi.mocked(actions.listModelCatalog).mockResolvedValue([]);
+    vi.mocked(actions.startProviderOAuth).mockImplementation(async (providerId, accountId, accountLabel) => ({
+      providerId,
+      accountId,
+      accountLabel,
+      status: "pending",
+      verificationUri: "https://jimeng.example/device",
+      userCode: "AAAA-BBBB",
+      deviceCode: "device-code",
+      hasAccessToken: false,
+    }));
+
+    render(
+      <MemoryRouter>
+        <SettingsClient
+          initialTokens={[]}
+          initialVariables={[]}
+          initialActions={[]}
+          initialSkills={[]}
+          activeSection="providers"
+          embedded
+          initialModelProviders={[]}
+          initialModelCatalog={[]}
+        />
+      </MemoryRouter>,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Open Dreamina BYOK settings" }));
+    fireEvent.click(screen.getByRole("button", { name: "Add prioritized Dreamina account" }));
+    const newAccountEditor = screen.getByRole("group", { name: "New Dreamina account" });
+    fireEvent.change(within(newAccountEditor).getByLabelText("Dreamina account name"), {
+      target: { value: "Studio" },
+    });
+    fireEvent.click(within(newAccountEditor).getByRole("button", { name: "Save" }));
+
+    let savedAccountId = "";
+    await waitFor(() => {
+      const savedProviders = vi.mocked(actions.updateModelProviders).mock.calls.at(-1)?.[0] ?? [];
+      const savedAccount = savedProviders.find((provider) => provider.providerId === "jimeng" && provider.label === "Studio");
+      expect(savedAccount).toBeTruthy();
+      savedAccountId = savedAccount?.id ?? "";
+      expect(savedAccountId).toEqual(expect.any(String));
+    });
+
+    const accountRow = (await screen.findByText("Studio")).closest("li") as HTMLElement;
+    fireEvent.click(within(accountRow).getByText("Studio"));
+    fireEvent.click(within(accountRow).getByRole("button", { name: "Connect" }));
+
+    await waitFor(() => {
+      expect(actions.startProviderOAuth).toHaveBeenCalledWith("dreamina", savedAccountId, "Studio");
+    });
   });
 
   it("runs a deterministic mock provider test from the provider config editor", async () => {
