@@ -2640,6 +2640,33 @@ describe("SettingsClient model routing", () => {
     });
   });
 
+  it("does not expose a provider saving status while idle", () => {
+    render(
+      <MemoryRouter>
+        <SettingsClient
+          initialTokens={[]}
+          initialVariables={[]}
+          initialActions={[]}
+          initialSkills={[]}
+          activeSection="providers"
+          embedded
+          initialModelProviders={[
+            {
+              id: "replicate-primary",
+              providerId: "replicate",
+              upstreamId: "replicate",
+              enabled: true,
+              configuredCredentials: ["apiKey"],
+            },
+          ]}
+          initialModelCatalog={[]}
+        />
+      </MemoryRouter>,
+    );
+
+    expect(screen.queryByText("Saving provider settings…")).toBeNull();
+  });
+
   it("renders provider keys in priority order with drag handles", () => {
     render(
       <MemoryRouter>
@@ -3656,6 +3683,140 @@ describe("SettingsClient model routing", () => {
           }),
         ]),
       );
+    });
+  });
+
+  it("disables model provider ordering while provider settings are saving", async () => {
+    const actions = await import("@clash/web-ui/lib/clientActions");
+    let resolveSave!: (providers: any[]) => void;
+    vi.mocked(actions.updateModelProviders).mockImplementation(
+      (providers) =>
+        new Promise((resolve) => {
+          resolveSave = resolve;
+        }),
+    );
+    vi.mocked(actions.listModelCatalog).mockResolvedValue([]);
+
+    render(
+      <MemoryRouter>
+        <SettingsClient
+          initialTokens={[]}
+          initialVariables={[]}
+          initialActions={[]}
+          initialSkills={[]}
+          activeSection="models"
+          embedded
+          initialModelProviders={[
+            {
+              providerId: "official",
+              upstreamId: "openai",
+              region: "global",
+              enabled: true,
+              priority: 30,
+              weight: 10,
+              configuredCredentials: ["apiKey"],
+            },
+            {
+              providerId: "replicate",
+              upstreamId: "replicate",
+              enabled: true,
+              priority: 50,
+              weight: 1,
+              configuredCredentials: ["apiKey"],
+            },
+          ]}
+          initialModelCatalog={[
+            {
+              model: {
+                id: "gpt-image-2",
+                name: "GPT Image 2",
+                provider: "OpenAI",
+                kind: "image",
+                parameters: [],
+                defaultParams: {},
+                defaultAspectRatio: "1:1",
+                input: { requiresPrompt: true, inputMode: {}, promptModalities: ["text"] },
+              },
+              tier: "available",
+              selectedRoute: {
+                modelCode: "gpt-image-2",
+                kind: "image",
+                providerId: "official",
+                upstreamId: "openai",
+                region: "global",
+                upstreamModel: "gpt-image-2",
+                apiShape: "openai-images",
+                priority: 10,
+              },
+              routes: [
+                {
+                  modelCode: "gpt-image-2",
+                  kind: "image",
+                  providerId: "official",
+                  upstreamId: "openai",
+                  region: "global",
+                  upstreamModel: "gpt-image-2",
+                  apiShape: "openai-images",
+                  priority: 10,
+                },
+                {
+                  modelCode: "gpt-image-2",
+                  kind: "image",
+                  providerId: "replicate",
+                  upstreamId: "replicate",
+                  upstreamModel: "openai/gpt-image-2",
+                  apiShape: "replicate",
+                  priority: 25,
+                },
+              ],
+              candidateProviders: ["official", "replicate"],
+              missingCredentials: [],
+              missingOAuth: [],
+            },
+          ]}
+        />
+      </MemoryRouter>,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Edit provider order for GPT Image 2" }));
+    fireEvent.click(screen.getByRole("button", { name: "Move Replicate up for GPT Image 2" }));
+
+    await waitFor(() => {
+      expect(actions.updateModelProviders).toHaveBeenCalled();
+    });
+
+    const pendingProviderOrder = screen.getByRole("list", { name: "GPT Image 2 provider order" });
+    expect(within(pendingProviderOrder).getByRole("button", { name: "Move Replicate down for GPT Image 2" }).hasAttribute("disabled")).toBe(true);
+    expect(within(pendingProviderOrder).getByRole("button", { name: "Move OpenAI up for GPT Image 2" }).hasAttribute("disabled")).toBe(true);
+
+    await act(async () => {
+      resolveSave([
+        {
+          providerId: "replicate",
+          upstreamId: "replicate",
+          enabled: true,
+          priority: 50,
+          weight: 1,
+          configuredCredentials: ["apiKey"],
+          modelPriorities: { "gpt-image-2": 10 },
+        },
+        {
+          providerId: "official",
+          upstreamId: "openai",
+          region: "global",
+          enabled: true,
+          priority: 30,
+          weight: 10,
+          configuredCredentials: ["apiKey"],
+          modelPriorities: { "gpt-image-2": 20 },
+        },
+      ]);
+    });
+
+    await waitFor(() => {
+      const savedProviderOrder = screen.getByRole("list", { name: "GPT Image 2 provider order" });
+      expect(within(savedProviderOrder).getByRole("button", { name: "Move Replicate down for GPT Image 2" }).hasAttribute("disabled")).toBe(false);
+      expect(within(savedProviderOrder).getByRole("button", { name: "Move OpenAI up for GPT Image 2" }).hasAttribute("disabled")).toBe(false);
     });
   });
 });

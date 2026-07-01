@@ -2238,6 +2238,7 @@ function ModelRoutingSection({
             });
         const providerOrderOpen = expandedModelProviderOrderId === entry.model.id;
         const moveModelProvider = (fromIndex: number, toIndex: number) => {
+            if (saving) return;
             if (toIndex < 0 || toIndex >= providerOrderRows.length) return;
             const ordered = arrayMove(providerOrderRows, fromIndex, toIndex);
             void onPatchProviders(ordered.flatMap((providerRow, index) => {
@@ -2347,7 +2348,7 @@ function ModelRoutingSection({
                                                 <button
                                                     type="button"
                                                     aria-label={`Move ${providerRow.title} up for ${entry.model.name}`}
-                                                    disabled={index === 0}
+                                                    disabled={saving || index === 0}
                                                     onClick={() => moveModelProvider(index, index - 1)}
                                                     className="rounded-lg p-1.5 text-stone-500 transition-colors hover:bg-warm-surface hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-35 dark:text-stone-300 dark:hover:text-slate-50"
                                                 >
@@ -2356,7 +2357,7 @@ function ModelRoutingSection({
                                                 <button
                                                     type="button"
                                                     aria-label={`Move ${providerRow.title} down for ${entry.model.name}`}
-                                                    disabled={index === providerOrderRows.length - 1}
+                                                    disabled={saving || index === providerOrderRows.length - 1}
                                                     onClick={() => moveModelProvider(index, index + 1)}
                                                     className="rounded-lg p-1.5 text-stone-500 transition-colors hover:bg-warm-surface hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-35 dark:text-stone-300 dark:hover:text-slate-50"
                                                 >
@@ -3159,17 +3160,16 @@ function ModelRoutingSection({
                                     />
                                 </div>
                             </div>
-                            <span
-                                role="status"
-                                aria-label="Provider save status"
-                                aria-live="polite"
-                                aria-hidden={!saving}
-                                className={`pointer-events-none absolute right-0 top-full mt-1 rounded-lg border border-warm-border bg-warm-muted px-3 py-1 text-xs font-medium text-stone-700 shadow-sm transition-opacity dark:text-stone-200 ${
-                                    saving ? 'opacity-100' : 'opacity-0'
-                                }`}
-                            >
-                                Saving provider settings…
-                            </span>
+                            {saving && (
+                                <span
+                                    role="status"
+                                    aria-label="Provider save status"
+                                    aria-live="polite"
+                                    className="pointer-events-none absolute right-0 top-full mt-1 rounded-lg border border-warm-border bg-warm-muted px-3 py-1 text-xs font-medium text-stone-700 shadow-sm dark:text-stone-200"
+                                >
+                                    Saving provider settings…
+                                </span>
+                            )}
                         </div>
                     </div>
 
