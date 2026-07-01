@@ -2525,25 +2525,37 @@ function ModelRoutingSection({
             draft.supportedModelIds !== undefined && !sameStringArray(draft.supportedModelIds, editingSupportedModelIds)
         );
         const hasProviderDraft = hasCredentialDraft || (!!editingAccount && !!draft.label?.trim()) || hasModelAccessDraft || (isAddingPrioritizedKey && !!oauthProviderId);
+        const providerTestKey = editingAccount ? modelProviderAccountIdentity(editingAccount) : `new:${row.key}`;
         const selectedSupportedModelIds = new Set(draftSupportedModelIds);
         const modelAccessInvalid = modelAccessMode === 'specific' && draftSupportedModelIds.length === 0;
-        const updateProviderDraft = (patch: Partial<ProviderDraft>) => setProviderDrafts((prev) => ({
-            ...prev,
-            [row.key]: {
-                ...prev[row.key],
-                ...patch,
-            },
-        }));
-        const updateCredentialDraft = (credentialKey: string, value: string) => setProviderDrafts((prev) => ({
-            ...prev,
-            [row.key]: {
-                ...prev[row.key],
-                apiKeys: {
-                    ...prev[row.key]?.apiKeys,
-                    [credentialKey]: value,
+        const clearProviderTestResult = () => setProviderTestResults((prev) => {
+            if (!(providerTestKey in prev)) return prev;
+            const { [providerTestKey]: _result, ...rest } = prev;
+            return rest;
+        });
+        const updateProviderDraft = (patch: Partial<ProviderDraft>) => {
+            clearProviderTestResult();
+            setProviderDrafts((prev) => ({
+                ...prev,
+                [row.key]: {
+                    ...prev[row.key],
+                    ...patch,
                 },
-            },
-        }));
+            }));
+        };
+        const updateCredentialDraft = (credentialKey: string, value: string) => {
+            clearProviderTestResult();
+            setProviderDrafts((prev) => ({
+                ...prev,
+                [row.key]: {
+                    ...prev[row.key],
+                    apiKeys: {
+                        ...prev[row.key]?.apiKeys,
+                        [credentialKey]: value,
+                    },
+                },
+            }));
+        };
         const setSupportedModelIdsDraft = (ids: string[]) => updateProviderDraft({ modelAccessMode: 'specific', supportedModelIds: ids });
         const clearProviderDraft = () => setProviderDrafts((prev) => ({ ...prev, [row.key]: {} }));
         const closeProviderKeyEditor = () => {
@@ -2606,7 +2618,6 @@ function ModelRoutingSection({
         const editorAriaLabel = editingAccountLabel
             ? `${editingAccountLabel} ${row.title} ${accountNoun}`
             : `New ${row.title} ${accountNoun}`;
-        const providerTestKey = editingAccount ? modelProviderAccountIdentity(editingAccount) : `new:${row.key}`;
         const providerTestOptions = (row.support?.models ?? []).map<SelectOption<string>>((model) => ({
             value: model.id,
             label: model.name,

@@ -3250,6 +3250,59 @@ describe("SettingsClient model routing", () => {
     expect(actions.testModelProvider).not.toHaveBeenCalled();
   });
 
+  it("clears provider test results when the provider editor changes", async () => {
+    const actions = await import("@clash/web-ui/lib/clientActions");
+    vi.mocked(actions.testModelProvider).mockResolvedValue({
+      ok: true,
+      providerId: "replicate",
+      upstreamId: "replicate",
+      modelId: "nano-banana-2",
+      message: "Replicate configuration is ready for Nano Banana 2.",
+    });
+
+    render(
+      <MemoryRouter>
+        <SettingsClient
+          initialTokens={[]}
+          initialVariables={[]}
+          initialActions={[]}
+          initialSkills={[]}
+          activeSection="providers"
+          embedded
+          initialModelProviders={[
+            {
+              id: "replicate-primary",
+              label: "Replicate primary",
+              providerId: "replicate",
+              upstreamId: "replicate",
+              enabled: true,
+              priority: 10,
+              configuredCredentials: ["apiKey"],
+            },
+          ]}
+          initialModelCatalog={[]}
+        />
+      </MemoryRouter>,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Open Replicate BYOK settings" }));
+    const providerConfigs = screen.getByRole("list", { name: "Replicate prioritized keys" });
+    const providerConfig = within(providerConfigs).getByText("Replicate primary").closest("li") as HTMLElement;
+    fireEvent.click(within(providerConfig).getByText("Replicate primary"));
+
+    const editor = within(providerConfig).getByRole("group", { name: "Replicate primary Replicate API key" });
+    fireEvent.click(within(editor).getByRole("button", { name: "Run provider test" }));
+
+    expect(await within(editor).findByText("Replicate configuration is ready for Nano Banana 2.")).toBeTruthy();
+
+    fireEvent.change(within(editor).getByLabelText("Replicate key name"), {
+      target: { value: "Unsaved key name" },
+    });
+
+    expect(within(editor).getByRole("button", { name: "Save" })).toBeTruthy();
+    expect(within(editor).queryByText("Replicate configuration is ready for Nano Banana 2.")).toBeNull();
+  });
+
   it("saves a provider account model allowlist from the config editor", async () => {
     const actions = await import("@clash/web-ui/lib/clientActions");
     vi.mocked(actions.updateModelProviders).mockImplementation(async (providers) => providers);
