@@ -1,5 +1,5 @@
 
-import { useState, useCallback, useEffect, useMemo, useRef, type Dispatch, type ReactNode, type SetStateAction } from 'react';
+import { useState, useCallback, useEffect, useMemo, useRef, type ReactNode } from 'react';
 import {
     closestCenter,
     DndContext,
@@ -531,15 +531,10 @@ export default function SettingsClient({
             : listModelCatalogEntries({ configuredProviders: modelProviderRows })
     ), [modelCatalog, modelProviderRows]);
     const modelTierCounts = useMemo(() => countModelCatalogTiers(effectiveModelCatalog), [effectiveModelCatalog]);
-    const [selectedModelIds, setSelectedModelIds] = useState<Set<string>>(() => readSelectedModelIds());
-    const selectedAsrModelEntries = useMemo(
-        () => effectiveModelCatalog.filter((entry) => (entry.model.kind as string) === 'asr' && selectedModelIds.has(entry.model.id)),
-        [effectiveModelCatalog, selectedModelIds],
+    const asrModelEntries = useMemo(
+        () => effectiveModelCatalog.filter((entry) => (entry.model.kind as string) === 'asr'),
+        [effectiveModelCatalog],
     );
-
-    useEffect(() => {
-        writeSelectedModelIds(selectedModelIds);
-    }, [selectedModelIds]);
 
     const handleCreate = useCallback(async () => {
         if (!newTokenName.trim()) return;
@@ -787,7 +782,7 @@ export default function SettingsClient({
                 {showAll && <hr className="border-warm-border" />}
 
                 {/* ── Audio ── */}
-                {showSection('audio') && <AudioSection asrModels={selectedAsrModelEntries} />}
+                {showSection('audio') && <AudioSection asrModels={asrModelEntries} />}
 
                 {showAll && <hr className="border-warm-border" />}
 
@@ -893,8 +888,6 @@ export default function SettingsClient({
                     providerAccounts={modelProviders}
                     catalog={effectiveModelCatalog}
                     tierCounts={modelTierCounts}
-                    selectedModelIds={selectedModelIds}
-                    onSelectedModelIdsChange={setSelectedModelIds}
                     providerOAuth={providerOAuth}
                     onStartProviderOAuth={handleStartProviderOAuth}
                     onCompleteProviderOAuth={handleCompleteProviderOAuth}
@@ -1025,8 +1018,6 @@ export default function SettingsClient({
                     providerAccounts={modelProviders}
                     catalog={effectiveModelCatalog}
                     tierCounts={modelTierCounts}
-                    selectedModelIds={selectedModelIds}
-                    onSelectedModelIdsChange={setSelectedModelIds}
                     providerOAuth={providerOAuth}
                     onStartProviderOAuth={handleStartProviderOAuth}
                     onCompleteProviderOAuth={handleCompleteProviderOAuth}
@@ -1504,24 +1495,6 @@ function countModelCatalogTiers(catalog: ModelCatalogEntryInfo[]) {
     );
 }
 
-const SELECTED_MODEL_IDS_STORAGE_KEY = 'clash.settings.selectedModelIds';
-
-function readSelectedModelIds(): Set<string> {
-    if (typeof window === 'undefined') return new Set();
-    try {
-        const raw = window.localStorage.getItem(SELECTED_MODEL_IDS_STORAGE_KEY);
-        const parsed = raw ? JSON.parse(raw) : [];
-        return new Set(Array.isArray(parsed) ? parsed.filter((id): id is string => typeof id === 'string') : []);
-    } catch {
-        return new Set();
-    }
-}
-
-function writeSelectedModelIds(ids: Set<string>) {
-    if (typeof window === 'undefined') return;
-    window.localStorage.setItem(SELECTED_MODEL_IDS_STORAGE_KEY, JSON.stringify([...ids]));
-}
-
 type ProviderSupportRow = ReturnType<typeof listProviderModelSupport>[number];
 
 type ProviderDraft = {
@@ -1947,8 +1920,6 @@ interface ModelRoutingSectionProps {
     providerAccounts: ModelProviderAccountInfo[];
     catalog: ModelCatalogEntryInfo[];
     tierCounts: ReturnType<typeof countModelCatalogTiers>;
-    selectedModelIds: Set<string>;
-    onSelectedModelIdsChange: Dispatch<SetStateAction<Set<string>>>;
     providerOAuth: ProviderOAuthInfo[];
     onStartProviderOAuth: (providerId: string, accountId?: string, accountLabel?: string) => Promise<void>;
     onCompleteProviderOAuth: (providerId: string, deviceCode?: string, accountId?: string) => Promise<void>;
@@ -1965,8 +1936,6 @@ function ModelRoutingSection({
     providerAccounts,
     catalog,
     tierCounts,
-    selectedModelIds,
-    onSelectedModelIdsChange,
     providerOAuth,
     onStartProviderOAuth,
     onCompleteProviderOAuth,
@@ -2198,8 +2167,6 @@ function ModelRoutingSection({
             if (modelProviderFilter === 'missing') return modelNeedsProvider(entry);
             return true;
         }), [catalog, focusedProviderModelIds, focusedProviderRow, modelKindFilter, modelProviderFilter, modelNeedsProvider, modelQuery]);
-    const selectedModelEntries = catalog.filter((entry) => selectedModelIds.has(entry.model.id));
-    const availableModelEntries = filteredModelCatalog.filter((entry) => !selectedModelIds.has(entry.model.id));
     useEffect(() => {
         if (!showModels || !focusedModelId) return;
         const frame = window.requestAnimationFrame(() => {
@@ -2207,14 +2174,6 @@ function ModelRoutingSection({
         });
         return () => window.cancelAnimationFrame(frame);
     }, [focusedModelId, showModels, filteredModelCatalog.length]);
-    const toggleSelectedModel = useCallback((modelId: string) => {
-        onSelectedModelIdsChange((prev) => {
-            const next = new Set(prev);
-            if (next.has(modelId)) next.delete(modelId);
-            else next.add(modelId);
-            return next;
-        });
-    }, [onSelectedModelIdsChange]);
     const deployLocalAsrModel = useCallback(async (entry: ModelCatalogEntryInfo) => {
         const asrModel = asrModelValue(entry);
         localAsrConfigVersionRef.current += 1;
@@ -2246,9 +2205,8 @@ function ModelRoutingSection({
             setLocalAsrBusyModelId(null);
         }
     }, [feedback]);
-    const renderModelCard = (entry: ModelCatalogEntryInfo, selected: boolean) => {
+    const renderModelCard = (entry: ModelCatalogEntryInfo) => {
         const needsProvider = modelNeedsProvider(entry);
-        const showProviderProblem = selected && needsProvider;
         const focused = focusedModelId === entry.model.id;
         const route = entry.selectedRoute;
         const selectedRouteKey = route ? modelRouteProviderKey(route) : null;
@@ -2314,8 +2272,6 @@ function ModelRoutingSection({
                 className={`rounded-xl border bg-warm-surface p-4 transition-colors ${
                     focused
                         ? 'border-brand/45 bg-brand-light/35 ring-2 ring-brand/15'
-                        : showProviderProblem
-                        ? 'border-rose-300 bg-rose-50/55 dark:border-rose-900/60 dark:bg-rose-950/20'
                         : 'border-warm-border'
                 }`}
             >
@@ -2329,20 +2285,11 @@ function ModelRoutingSection({
                         </div>
                         <p className="mt-1 truncate text-xs text-stone-500 dark:text-stone-400">{entry.model.id}</p>
                     </div>
-                    <button
-                        type="button"
-                        onClick={() => toggleSelectedModel(entry.model.id)}
-                        className={selected ? settingsDangerGhostButtonClass.replace('opacity-0 group-hover:opacity-100 ', '') : settingsSmallPrimaryButtonClass}
-                    >
-                        {selected ? 'Remove' : 'Add'}
-                    </button>
                 </div>
-                <div className={`mt-3 text-xs ${showProviderProblem ? 'font-medium text-rose-700 dark:text-rose-300' : 'text-stone-500 dark:text-stone-400'}`}>
-                    {showProviderProblem
-                        ? `Provider missing: ${entry.missingCredentials.length > 0 ? 'credential required' : routeLabel}`
-                        : needsProvider
-                            ? `Provider not configured: ${routeLabel}`
-                            : `Provider ready: ${routeLabel}`}
+                <div className="mt-3 text-xs text-stone-500 dark:text-stone-400">
+                    {needsProvider
+                        ? `Provider not configured: ${entry.missingCredentials.length > 0 ? 'credential required' : routeLabel}`
+                        : `Provider ready: ${routeLabel}`}
                 </div>
                 {providerOrderRows.length > 1 && (
                     <div className="mt-3 border-t border-warm-border pt-3">
@@ -3286,27 +3233,14 @@ function ModelRoutingSection({
                     </div>
 
                     <div className="space-y-2">
-                        <h3 className="text-sm font-medium text-stone-500 dark:text-stone-400">Selected models</h3>
-                        {selectedModelEntries.length === 0 ? (
-                            <div className="rounded-xl border border-dashed border-warm-border py-8 text-center text-sm text-stone-600 dark:text-stone-300">
-                                No selected models yet.
-                            </div>
-                        ) : (
-                            <div className="grid gap-3 lg:grid-cols-2">
-                                {selectedModelEntries.map((entry) => renderModelCard(entry, true))}
-                            </div>
-                        )}
-                    </div>
-
-                    <div className="space-y-2">
                         <h3 className="text-sm font-medium text-stone-500 dark:text-stone-400">Available model cards</h3>
-                        {availableModelEntries.length === 0 ? (
+                        {filteredModelCatalog.length === 0 ? (
                             <div className="rounded-xl border border-dashed border-warm-border py-8 text-center text-sm text-stone-600 dark:text-stone-300">
                                 No model cards match these filters.
                             </div>
                         ) : (
                             <div className="grid gap-3 lg:grid-cols-2">
-                                {availableModelEntries.map((entry) => renderModelCard(entry, false))}
+                                {filteredModelCatalog.map((entry) => renderModelCard(entry))}
                             </div>
                         )}
                     </div>

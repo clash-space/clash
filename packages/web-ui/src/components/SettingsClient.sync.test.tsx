@@ -394,7 +394,7 @@ describe("SettingsClient audio section", () => {
     expect(screen.queryByRole("status", { name: "Loading audio settings" })).toBeNull();
   });
 
-  it("deploys local ASR from the model card and persists selected ASR models", async () => {
+  it("deploys local ASR from the model card without fake model selection", async () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
       if (url.includes("/api/v1/local/audio/install") && init?.method === "POST") {
@@ -470,15 +470,11 @@ describe("SettingsClient audio section", () => {
       String(input).includes("/api/v1/local/audio/install") && init?.method === "POST"
     ))).toBe(true));
     await screen.findByText("Deployed");
-
-    const deployedModelCard = screen.getByText("sensevoice-small-asr").closest(".rounded-xl") as HTMLElement;
-    fireEvent.click(within(deployedModelCard).getByRole("button", { name: "Add" }));
-
-    expect(JSON.parse(window.localStorage.getItem("clash.settings.selectedModelIds") ?? "[]")).toContain("sensevoice-small-asr");
+    expect(within(modelCard).queryByRole("button", { name: "Add" })).toBeNull();
+    expect(window.localStorage.getItem("clash.settings.selectedModelIds")).toBeNull();
   });
 
-  it("loads and saves local ASR using a model selected from model cards", async () => {
-    window.localStorage.setItem("clash.settings.selectedModelIds", JSON.stringify(["sensevoice-small-asr"]));
+  it("loads and saves local ASR using catalog model cards", async () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
       if (url.includes("/api/v1/local/audio") && (!init?.method || init.method === "GET")) {
@@ -575,7 +571,7 @@ describe("SettingsClient audio section", () => {
     expect(screen.queryByText("Audio settings saved.")).toBeNull();
   });
 
-  it("explains missing ASR model configuration instead of disabling audio controls", async () => {
+  it("explains missing ASR deployment instead of disabling audio controls", async () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
       if (url.includes("/api/v1/local/audio") && (!init?.method || init.method === "GET")) {
@@ -626,8 +622,8 @@ describe("SettingsClient audio section", () => {
 
     fireEvent.click(switchButton);
 
-    const dialog = await screen.findByRole("dialog", { name: "Configure ASR model" });
-    expect(within(dialog).getByText("Voice input needs a local ASR model before it can transcribe microphone clips.")).toBeTruthy();
+    const dialog = await screen.findByRole("dialog", { name: "Deploy ASR model" });
+    expect(within(dialog).getByText("The selected ASR model must be deployed before voice input can run locally.")).toBeTruthy();
     const openModels = within(dialog).getByRole("link", { name: "Open Models" });
     expect(openModels.getAttribute("href")).toBe("/settings?section=models");
     expect(fetchMock.mock.calls.some(([input, init]) => (
@@ -635,10 +631,10 @@ describe("SettingsClient audio section", () => {
     ))).toBe(false);
 
     fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
-    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Configure ASR model" })).toBeNull());
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Deploy ASR model" })).toBeNull());
     fireEvent.click(screen.getByRole("button", { name: "ASR model" }));
 
-    expect(await screen.findByRole("dialog", { name: "Configure ASR model" })).toBeTruthy();
+    expect(await screen.findByRole("dialog", { name: "Deploy ASR model" })).toBeTruthy();
   });
 
   it("shows local ASR deploy failures through global feedback instead of an inline alert", async () => {
@@ -3424,11 +3420,10 @@ describe("SettingsClient model routing", () => {
     expect(screen.getByText("Available model cards")).toBeTruthy();
     expect(screen.getByRole("button", { name: "Modality" })).toBeTruthy();
     expect(screen.queryByLabelText("OpenAI API key")).toBeNull();
-
-    fireEvent.click(screen.getByRole("button", { name: "Add" }));
-
-    expect(screen.getByText("Selected models")).toBeTruthy();
-    expect(screen.getByText("Provider missing: fal")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Add" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Remove" })).toBeNull();
+    expect(screen.queryByText("Selected models")).toBeNull();
+    expect(screen.getByText("Provider not configured: fal")).toBeTruthy();
   });
 
   it("filters the Models page to one provider from the supported-models link", () => {
