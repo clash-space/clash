@@ -112,6 +112,25 @@ function clickButtonInGroup(agentBrowser, groupLabel, buttonLabel) {
   })()`);
 }
 
+function clickMenuItemContaining(agentBrowser, text) {
+  return evalJson(agentBrowser, `(() => {
+    const wanted = ${JSON.stringify(text)};
+    const item = [...document.querySelectorAll("[role='menuitemradio'], [role='menuitem'], button")].find((candidate) => {
+      const value = (candidate.innerText || candidate.textContent || "").trim();
+      const rect = candidate.getBoundingClientRect();
+      const style = getComputedStyle(candidate);
+      return value.includes(wanted) &&
+        rect.width > 0 && rect.height > 0 &&
+        style.display !== "none" && style.visibility !== "hidden" &&
+        !candidate.disabled;
+    });
+    if (!item) return false;
+    item.scrollIntoView({ block: "center", inline: "center" });
+    item.click();
+    return true;
+  })()`);
+}
+
 async function runProviderFlow(agentBrowser, apiOrigin) {
   await seedMockProviders(apiOrigin);
   navigateTo(agentBrowser, "/settings?section=providers");
@@ -146,6 +165,50 @@ async function runProviderFlow(agentBrowser, apiOrigin) {
     agentBrowser,
     `document.body.innerText.includes("Mock provider can run Nano Banana 2.")`,
     "desktop mock provider test result",
+  );
+
+  if (!clickButtonByLabel(agentBrowser, "Model access")) {
+    throw new Error("Could not open desktop model access selector");
+  }
+  if (!clickMenuItemContaining(agentBrowser, "Specific models")) {
+    throw new Error("Could not switch desktop mock provider to specific model access");
+  }
+  await waitForEval(
+    agentBrowser,
+    `!!document.querySelector("button[aria-label='Add supported model']")`,
+    "desktop specific model access controls",
+  );
+  if (!clickButtonByLabel(agentBrowser, "Add supported model")) {
+    throw new Error("Could not open desktop supported model picker");
+  }
+  if (!clickMenuItemContaining(agentBrowser, "GPT Image 2")) {
+    throw new Error("Could not add GPT Image 2 to the desktop mock provider allowlist");
+  }
+  await waitForEval(
+    agentBrowser,
+    `document.body.innerText.includes("GPT Image 2") && (() => {
+      const editor = document.querySelector("[role='group'][aria-label='Mock primary Mock Provider API key']");
+      return !![...(editor?.querySelectorAll("button") ?? [])].find((button) =>
+        (button.innerText || button.textContent || "").trim() === "Save" && !button.disabled
+      );
+    })()`,
+    "desktop mock provider model allowlist draft",
+  );
+  if (!clickButtonInGroup(agentBrowser, "Mock primary Mock Provider API key", "Save")) {
+    throw new Error("Could not save desktop mock provider model allowlist");
+  }
+  await waitForEval(
+    agentBrowser,
+    `fetch(${JSON.stringify(`${apiOrigin}/api/v1/model-providers`)})
+      .then((res) => res.json())
+      .then((json) => json.providers?.some((provider) =>
+        provider.id === "mock-primary" &&
+        Array.isArray(provider.supportedModelIds) &&
+        provider.supportedModelIds.length === 1 &&
+        provider.supportedModelIds[0] === "gpt-image-2"
+      ))
+      .catch(() => false)`,
+    "desktop mock provider model allowlist saved",
   );
 
   if (!clickByText(agentBrowser, "View supported models")) {
