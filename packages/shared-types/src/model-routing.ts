@@ -506,6 +506,8 @@ export interface ProviderModelSupport {
     kind: ModelKind;
     upstreamModel: string;
     apiShape: ModelUpstreamApiShape;
+    requiredCredentials: string[];
+    requiredOAuth: ProviderOAuthId[];
   }>;
   requiredCredentials: string[];
   requiredOAuth: ProviderOAuthId[];
@@ -544,6 +546,8 @@ export function listProviderModelSupport(options: {
       kind: route.kind,
       upstreamModel: route.upstreamModel,
       apiShape: route.apiShape,
+      requiredCredentials: [...(route.requiredCredentials ?? [])],
+      requiredOAuth: [...(route.requiredOAuth ?? [])],
     });
     row.requiredCredentials = [...new Set([...row.requiredCredentials, ...(route.requiredCredentials ?? [])])].sort();
     row.requiredOAuth = [...new Set([...row.requiredOAuth, ...(route.requiredOAuth ?? [])])].sort();

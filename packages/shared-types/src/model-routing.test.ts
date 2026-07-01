@@ -427,6 +427,29 @@ describe("model upstream routing", () => {
     expect(byProvider.has("midjourney")).toBe(false);
   });
 
+  it("keeps route-specific requirements for providers with multiple implementations", () => {
+    const google = listProviderModelSupport().find((support) =>
+      support.providerId === "official" &&
+      support.upstreamId === "google" &&
+      support.region === "global"
+    );
+    const flashRoutes = google?.models.filter((model) => model.id === "gemini-flash-image-2");
+
+    expect(flashRoutes).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        apiShape: "google-ai-studio",
+        requiredCredentials: ["apiKey"],
+        requiredOAuth: [],
+      }),
+      expect.objectContaining({
+        apiShape: "google-vertex",
+        requiredCredentials: ["vertexCredentials"],
+        requiredOAuth: [],
+      }),
+    ]));
+    expect(google?.requiredCredentials).toEqual(["apiKey", "vertexCredentials"]);
+  });
+
   it("keeps provider declarations as the source for hosted provider support", () => {
     const declared = new Set(
       MODEL_PROVIDER_DEFINITIONS.map((provider) => [provider.providerId, provider.upstreamId, provider.region ?? ""].join(":")),

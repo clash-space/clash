@@ -511,6 +511,53 @@ describe("local API app", () => {
     });
   });
 
+  it("tests Google AI Studio models with only the API key credential", async () => {
+    const app = createLocalApiApp({ dataDir, userId: "local-user" });
+
+    await app.request("/api/v1/model-providers", {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        providers: [
+          {
+            id: "google-ai-studio",
+            providerId: "official",
+            upstreamId: "google",
+            region: "global",
+            enabled: true,
+            priority: 1,
+            credentials: { apiKey: "gemini-api-key" },
+          },
+        ],
+      }),
+    });
+
+    const ok = await app.request("/api/v1/model-providers/test", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        provider: {
+          id: "google-ai-studio",
+          providerId: "official",
+          upstreamId: "google",
+          region: "global",
+          enabled: true,
+        },
+        modelId: "gemini-flash-image-2",
+      }),
+    });
+
+    expect(ok.status).toBe(200);
+    expect(await ok.json()).toEqual({
+      ok: true,
+      providerId: "official",
+      upstreamId: "google",
+      region: "global",
+      modelId: "gemini-flash-image-2",
+      message: "Google configuration is ready for Gemini Flash Image 2.",
+    });
+  });
+
   it("tests OAuth-backed provider configs against only their own authorization", async () => {
     const oauth = {
       dreamina: {

@@ -8,8 +8,10 @@ import {
   listModelCatalogEntries,
   listProviderModelSupport,
   MODEL_CARDS,
+  MODEL_UPSTREAM_ROUTES,
   ProviderOAuthIdSchema,
   type ProviderOAuthId,
+  type ModelUpstreamRoute,
 } from "@clash/shared-types";
 import type { Asset, AssetKind, AssetRefRow } from "@clash/shared-types/assets";
 import {
@@ -1037,6 +1039,30 @@ function configuredCredentialKeys(account: Pick<LocalProviderAccountConfig, "cre
   );
 }
 
+function routeProviderId(route: ModelUpstreamRoute): string {
+  if (route.providerId) return route.providerId;
+  if (route.upstreamId === "local") return "local";
+  if (route.upstreamId === "openai" || route.upstreamId === "google" || route.upstreamId === "anthropic") {
+    return "official";
+  }
+  if (route.upstreamId === "fal" || route.upstreamId === "kie" || route.upstreamId === "replicate" || route.upstreamId === "mock") {
+    return route.upstreamId;
+  }
+  return "custom";
+}
+
+function modelRoutesForProviderAccount(
+  account: Pick<LocalProviderAccountConfig, "providerId" | "upstreamId" | "region">,
+  modelId: string,
+): ModelUpstreamRoute[] {
+  return MODEL_UPSTREAM_ROUTES.filter((route) =>
+    route.modelCode === modelId &&
+    routeProviderId(route) === account.providerId &&
+    (!account.upstreamId || route.upstreamId === account.upstreamId) &&
+    (route.region ?? "") === (account.region ?? "")
+  );
+}
+
 export function createLocalApiApp(options: LocalApiOptions): Hono {
   const userId = options.userId ?? "local-user";
   const db = createDb(options.dataDir);
@@ -1249,7 +1275,8 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
         message: `${displayProviderName(account)} is disabled for ${modelName}.`,
       } satisfies ModelProviderTestResult);
     }
-    if (!support || !support.models.some((model) => model.id === modelId)) {
+    const supportedModelEntries = support?.models.filter((model) => model.id === modelId) ?? [];
+    if (!support || supportedModelEntries.length === 0) {
       return c.json({
         ok: false,
         ...baseResult,
@@ -1267,12 +1294,29 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
     }
 
     const credentialKeys = configuredCredentialKeys(account);
-    const missingCredentials = support.requiredCredentials.filter((credential) => !credentialKeys.has(credential));
-    if (missingCredentials.length > 0) {
+    const routeRequirements = modelRoutesForProviderAccount(account, modelId);
+    const requirementCandidates = routeRequirements.length > 0
+      ? routeRequirements.map((route) => ({
+        requiredCredentials: route.requiredCredentials ?? [],
+        requiredOAuth: route.requiredOAuth ?? [],
+      }))
+      : supportedModelEntries.map((model) => ({
+        requiredCredentials: "requiredCredentials" in model ? model.requiredCredentials : support.requiredCredentials,
+        requiredOAuth: "requiredOAuth" in model ? model.requiredOAuth : support.requiredOAuth,
+      }));
+    const credentialChecks = requirementCandidates.map((candidate) => ({
+      candidate,
+      missingCredentials: candidate.requiredCredentials.filter((credential) => !credentialKeys.has(credential)),
+    }));
+    const credentialReadyChecks = credentialChecks.filter((check) => check.missingCredentials.length === 0);
+    if (credentialReadyChecks.length === 0) {
+      const bestCredentialCheck = [...credentialChecks].sort((a, b) =>
+        a.missingCredentials.length - b.missingCredentials.length
+      )[0];
       return c.json({
         ok: false,
         ...baseResult,
-        missingCredentials,
+        missingCredentials: bestCredentialCheck?.missingCredentials ?? [],
         message: `${displayProviderName(account)} is missing required credentials for ${modelName}.`,
       } satisfies ModelProviderTestResult);
     }
@@ -1280,12 +1324,17 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
     const testedAccount = publicProviderAccounts([account], userId, state.providerOAuth)
       .find((candidate) => providerAccountKey(candidate) === providerAccountKey(account));
     const availableOAuth = new Set(testedAccount?.availableOAuth ?? []);
-    const missingOAuth = support.requiredOAuth.filter((providerId) => !availableOAuth.has(providerId));
-    if (missingOAuth.length > 0) {
+    const oauthChecks = credentialReadyChecks.map((check) => ({
+      ...check,
+      missingOAuth: check.candidate.requiredOAuth.filter((providerId) => !availableOAuth.has(providerId)),
+    }));
+    const oauthReadyCheck = oauthChecks.find((check) => check.missingOAuth.length === 0);
+    if (!oauthReadyCheck) {
+      const bestOAuthCheck = [...oauthChecks].sort((a, b) => a.missingOAuth.length - b.missingOAuth.length)[0];
       return c.json({
         ok: false,
         ...baseResult,
-        missingOAuth,
+        missingOAuth: bestOAuthCheck?.missingOAuth ?? [],
         message: `${displayProviderName(account)} needs authorization before testing ${modelName}.`,
       } satisfies ModelProviderTestResult);
     }

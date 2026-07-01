@@ -2620,7 +2620,8 @@ function ModelRoutingSection({
         const editorAriaLabel = editingAccountLabel
             ? `${editingAccountLabel} ${row.title} ${accountNoun}`
             : `New ${row.title} ${accountNoun}`;
-        const allProviderModelOptions = (row.support?.models ?? []).map<SelectOption<string>>((model) => ({
+        const allProviderModels = [...new Map((row.support?.models ?? []).map((model) => [model.id, model])).values()];
+        const allProviderModelOptions = allProviderModels.map<SelectOption<string>>((model) => ({
             value: model.id,
             label: model.name,
             description: model.id,
@@ -2630,7 +2631,7 @@ function ModelRoutingSection({
         );
         const supportedModelOptions = allProviderModelOptions.filter((option) => !selectedSupportedModelIds.has(option.value));
         const selectedSupportedModels = draftSupportedModelIds
-            .map((id) => row.support?.models.find((model) => model.id === id))
+            .map((id) => allProviderModels.find((model) => model.id === id))
             .filter((model): model is NonNullable<typeof row.support>['models'][number] => !!model);
         const defaultProviderTestModelId = providerTestOptions.find((option) => option.value === 'nano-banana-2')?.value ?? providerTestOptions[0]?.value ?? '';
         const selectedProviderTestModelId = providerTestOptions.some((option) => option.value === providerTestModelIds[providerTestKey])

@@ -3403,6 +3403,53 @@ describe("SettingsClient model routing", () => {
     });
   });
 
+  it("deduplicates provider model choices that have multiple route implementations", async () => {
+    const actions = await import("@clash/web-ui/lib/clientActions");
+    vi.mocked(actions.updateModelProviders).mockImplementation(async (providers) => providers);
+    vi.mocked(actions.listModelCatalog).mockResolvedValue([]);
+
+    render(
+      <MemoryRouter>
+        <SettingsClient
+          initialTokens={[]}
+          initialVariables={[]}
+          initialActions={[]}
+          initialSkills={[]}
+          activeSection="providers"
+          embedded
+          initialModelProviders={[
+            {
+              id: "google-primary",
+              label: "Google primary",
+              providerId: "official",
+              upstreamId: "google",
+              region: "global",
+              enabled: true,
+              priority: 10,
+              configuredCredentials: ["apiKey"],
+            },
+          ]}
+          initialModelCatalog={[]}
+        />
+      </MemoryRouter>,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Open Google BYOK settings" }));
+    const providerConfigs = screen.getByRole("list", { name: "Google prioritized keys" });
+    const providerConfig = within(providerConfigs).getByText("Google primary").closest("li") as HTMLElement;
+    fireEvent.click(within(providerConfig).getByText("Google primary"));
+
+    const editor = screen.getByRole("group", { name: "Google primary Google API key" });
+    fireEvent.click(within(editor).getByRole("button", { name: "Model access" }));
+    fireEvent.click(screen.getByRole("menuitemradio", { name: /Specific models/ }));
+    fireEvent.click(within(editor).getByRole("button", { name: "Add supported model" }));
+    fireEvent.change(screen.getByRole("searchbox", { name: "Filter supported models" }), {
+      target: { value: "Gemini Flash Image 2" },
+    });
+
+    expect(screen.getAllByRole("option", { name: /Gemini Flash Image 2/ })).toHaveLength(1);
+  });
+
   it("configures multiple OpenAI provider keys inline", async () => {
     const actions = await import("@clash/web-ui/lib/clientActions");
     vi.mocked(actions.updateModelProviders).mockImplementation(async (providers) => providers);
