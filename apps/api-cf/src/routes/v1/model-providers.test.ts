@@ -7,6 +7,7 @@ type Row = Record<string, any>;
 
 class MemoryD1 {
   rows: Row[] = [];
+  oauthRows: Row[] = [];
 
   prepare(sql: string) {
     const db = this;
@@ -32,6 +33,13 @@ class MemoryD1 {
           },
           async all<T>() {
             const [userId] = args;
+            if (sql.includes("FROM provider_oauth")) {
+              return {
+                results: db.oauthRows
+                  .filter((row) => row.user_id === userId)
+                  .sort((a, b) => `${a.provider_id}:${a.account_id ?? ""}`.localeCompare(`${b.provider_id}:${b.account_id ?? ""}`)),
+              } as T;
+            }
             return {
               results: db.rows
                 .filter((row) => row.user_id === userId)
@@ -165,6 +173,157 @@ describe("modelProviderRoutes", () => {
       upstreamId: "replicate",
       modelId: "nano-banana-2",
       message: "Replicate configuration is ready for Nano Banana 2.",
+    });
+  });
+
+  it("checks OAuth-backed provider configs against account-scoped authorization", async () => {
+    const app = makeApp();
+    const db = new MemoryD1();
+    const env = {
+      DB: db as unknown as D1Database,
+      ACTION_SECRET_KEY: "secret-key",
+    } as Env;
+
+    db.rows.push(
+      {
+        id: "jimeng-primary",
+        user_id: "user-1",
+        provider_id: "jimeng",
+        upstream_id: "jimeng",
+        region: null,
+        label: "Primary Dreamina",
+        enabled: 1,
+        priority: 10,
+        weight: null,
+        encrypted_credentials: null,
+        configured_credentials: null,
+        supported_model_ids: null,
+        model_priorities: null,
+        created_at: 1,
+        updated_at: 1,
+      },
+      {
+        id: "jimeng-secondary",
+        user_id: "user-1",
+        provider_id: "jimeng",
+        upstream_id: "jimeng",
+        region: null,
+        label: "Secondary Dreamina",
+        enabled: 1,
+        priority: 20,
+        weight: null,
+        encrypted_credentials: null,
+        configured_credentials: null,
+        supported_model_ids: null,
+        model_priorities: null,
+        created_at: 1,
+        updated_at: 1,
+      },
+    );
+    db.oauthRows.push({
+      id: "oauth-primary",
+      user_id: "user-1",
+      provider_id: "dreamina",
+      account_id: "jimeng-primary",
+      status: "authorized",
+      account_label: "Primary Dreamina",
+      verification_uri: null,
+      user_code: null,
+      device_code: null,
+      interval_seconds: null,
+      expires_at: null,
+      error: null,
+      has_tokens: 1,
+      encrypted_tokens: "encrypted-secret-payload",
+      created_at: 1,
+      updated_at: 1,
+    });
+
+    const oauth = await app.request("/api/v1/provider-oauth", {
+      headers: { "x-user-id": "user-1" },
+    }, env);
+    expect(oauth.status).toBe(200);
+    expect(await oauth.json()).toEqual({
+      providers: [
+        {
+          providerId: "dreamina",
+          accountId: "jimeng-primary",
+          status: "authorized",
+          accountLabel: "Primary Dreamina",
+          hasAccessToken: true,
+        },
+      ],
+    });
+
+    const providers = await app.request("/api/v1/model-providers", {
+      headers: { "x-user-id": "user-1" },
+    }, env);
+    expect(providers.status).toBe(200);
+    expect(await providers.json()).toEqual({
+      providers: [
+        expect.objectContaining({
+          id: "jimeng-primary",
+          providerId: "jimeng",
+          availableOAuth: ["dreamina"],
+        }),
+        expect.objectContaining({
+          id: "jimeng-secondary",
+          providerId: "jimeng",
+          availableOAuth: [],
+        }),
+      ],
+    });
+
+    const primary = await app.request("/api/v1/model-providers/test", {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-user-id": "user-1" },
+      body: JSON.stringify({
+        provider: { id: "jimeng-primary", providerId: "jimeng", upstreamId: "jimeng", enabled: true },
+        modelId: "seedance-2-text",
+      }),
+    }, env);
+    expect(primary.status).toBe(200);
+    expect(await primary.json()).toMatchObject({
+      ok: true,
+      providerId: "jimeng",
+      upstreamId: "jimeng",
+      modelId: "seedance-2-text",
+      message: "Dreamina configuration is ready for Seedance 2.0 (Text).",
+    });
+
+    const secondary = await app.request("/api/v1/model-providers/test", {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-user-id": "user-1" },
+      body: JSON.stringify({
+        provider: { id: "jimeng-secondary", providerId: "jimeng", upstreamId: "jimeng", enabled: true },
+        modelId: "seedance-2-text",
+      }),
+    }, env);
+    expect(secondary.status).toBe(200);
+    expect(await secondary.json()).toEqual({
+      ok: false,
+      providerId: "jimeng",
+      upstreamId: "jimeng",
+      modelId: "seedance-2-text",
+      missingOAuth: ["dreamina"],
+      message: "Dreamina needs authorization before testing Seedance 2.0 (Text).",
+    });
+
+    const catalog = await app.request("/api/v1/models/catalog", {
+      headers: { "x-user-id": "user-1" },
+    }, env);
+    expect(catalog.status).toBe(200);
+    const catalogJson = (await catalog.json()) as {
+      models: Array<{
+        model: { id: string };
+        selectedRoute?: { providerId?: string; upstreamId?: string } | null;
+      }>;
+    };
+    expect(catalogJson.models.find((entry) => entry.model.id === "seedance-2-text")).toMatchObject({
+      selectedRoute: expect.objectContaining({
+        providerId: "jimeng",
+        upstreamId: "jimeng",
+      }),
     });
   });
 });

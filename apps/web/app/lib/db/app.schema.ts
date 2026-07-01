@@ -103,6 +103,39 @@ export const providerAccounts = sqliteTable(
 )
 
 /**
+ * Provider OAuth records — account-scoped authorization state for providers
+ * that are not API-key based. Token payloads stay internal; public APIs only
+ * expose status and device-flow metadata.
+ */
+export const providerOAuth = sqliteTable(
+    "provider_oauth",
+    {
+        id: text("id")
+            .primaryKey()
+            .$defaultFn(() => crypto.randomUUID()),
+        userId: text("user_id").notNull(),
+        providerId: text("provider_id").notNull(),
+        accountId: text("account_id"),
+        status: text("status").notNull().default("pending"),
+        encryptedTokens: text("encrypted_tokens"),
+        verificationUri: text("verification_uri"),
+        userCode: text("user_code"),
+        deviceCode: text("device_code"),
+        intervalSeconds: integer("interval_seconds"),
+        accountLabel: text("account_label"),
+        expiresAt: integer("expires_at", { mode: "timestamp" }),
+        error: text("error"),
+        hasTokens: integer("has_tokens").notNull().default(0),
+        createdAt: integer("created_at", { mode: "timestamp" }).default(sql`(strftime('%s', 'now'))`),
+        updatedAt: integer("updated_at", { mode: "timestamp" }).default(sql`(strftime('%s', 'now'))`),
+    },
+    (table) => ({
+        providerOAuthUserIdx: index("provider_oauth_user_idx").on(table.userId),
+        providerOAuthProviderIdx: index("provider_oauth_provider_idx").on(table.userId, table.providerId, table.accountId),
+    })
+)
+
+/**
  * Installed Actions — globally installed canvas actions per user.
  * Actions appear in all project toolbars.
  */
