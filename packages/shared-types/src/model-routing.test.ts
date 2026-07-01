@@ -757,4 +757,43 @@ describe("model upstream routing", () => {
       candidateProviders: ["official"],
     });
   });
+
+  it("does not treat an enabled provider account with omitted credential metadata as ready", () => {
+    const entries = listModelCatalogEntries({
+      configuredProviders: [
+        {
+          providerId: "official",
+          upstreamId: "openai",
+          region: "global",
+          enabled: true,
+        },
+      ],
+    });
+
+    expect(entries.find((entry) => entry.model.id === "gpt-image-2")).toMatchObject({
+      tier: "configured-provider",
+      selectedRoute: null,
+      missingCredentials: ["apiKey"],
+      candidateProviders: ["official"],
+    });
+  });
+
+  it("does not treat an OAuth-backed provider account with omitted OAuth metadata as ready", () => {
+    const entries = listModelCatalogEntries({
+      configuredProviders: [
+        {
+          providerId: "jimeng",
+          upstreamId: "jimeng",
+          enabled: true,
+        },
+      ],
+    });
+
+    expect(entries.find((entry) => entry.model.id === "seedance-2-text")).toMatchObject({
+      tier: "configured-provider",
+      selectedRoute: null,
+      missingOAuth: ["dreamina"],
+      candidateProviders: ["jimeng"],
+    });
+  });
 });

@@ -644,7 +644,8 @@ function missingRequiredCredentials(
   config: ProviderAccountAvailability | UpstreamAvailability | undefined,
 ): string[] {
   if (!route.requiredCredentials?.length) return [];
-  if (!config || config.configuredCredentials === undefined) return [];
+  if (!config) return [];
+  if (config.configuredCredentials === undefined) return [...route.requiredCredentials];
   return route.requiredCredentials.filter((credential) => !config.configuredCredentials?.includes(credential));
 }
 
@@ -653,7 +654,7 @@ function hasRequiredCredentials(
   config: ProviderAccountAvailability | UpstreamAvailability | undefined,
 ): boolean {
   if (!route.requiredCredentials?.length) return true;
-  if (!config || config.configuredCredentials === undefined) return true;
+  if (!config) return true;
   return missingRequiredCredentials(route, config).length === 0;
 }
 
@@ -662,7 +663,8 @@ function missingRequiredOAuth(
   config: ProviderAccountAvailability | UpstreamAvailability | undefined,
 ): ProviderOAuthId[] {
   if (!route.requiredOAuth?.length) return [];
-  if (!config || config.availableOAuth === undefined) return [];
+  if (!config) return [];
+  if (config.availableOAuth === undefined) return [...route.requiredOAuth];
   return route.requiredOAuth.filter((provider) => !config.availableOAuth?.includes(provider));
 }
 
@@ -671,7 +673,7 @@ function hasRequiredOAuth(
   config: ProviderAccountAvailability | UpstreamAvailability | undefined,
 ): boolean {
   if (!route.requiredOAuth?.length) return true;
-  if (!config || config.availableOAuth === undefined) return true;
+  if (!config) return true;
   return missingRequiredOAuth(route, config).length === 0;
 }
 
