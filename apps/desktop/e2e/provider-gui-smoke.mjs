@@ -115,7 +115,7 @@ function clickButtonInGroup(agentBrowser, groupLabel, buttonLabel) {
 function clickMenuItemContaining(agentBrowser, text) {
   return evalJson(agentBrowser, `(() => {
     const wanted = ${JSON.stringify(text)};
-    const item = [...document.querySelectorAll("[role='menuitemradio'], [role='menuitem'], button")].find((candidate) => {
+    const item = [...document.querySelectorAll("[role='menu'] [role='menuitemradio'], [role='menu'] [role='menuitem']")].find((candidate) => {
       const value = (candidate.innerText || candidate.textContent || "").trim();
       const rect = candidate.getBoundingClientRect();
       const style = getComputedStyle(candidate);
@@ -158,12 +158,23 @@ async function runProviderFlow(agentBrowser, apiOrigin) {
     "desktop mock provider test controls",
   );
 
+  if (!clickButtonByLabel(agentBrowser, "Model to test")) {
+    throw new Error("Could not open desktop provider test model selector");
+  }
+  if (!clickMenuItemContaining(agentBrowser, "GPT Image 2")) {
+    throw new Error("Could not select GPT Image 2 for the desktop mock provider test");
+  }
+  await waitForEval(
+    agentBrowser,
+    `document.body.innerText.includes("GPT Image 2")`,
+    "desktop mock provider selected test model",
+  );
   if (!clickButtonByLabel(agentBrowser, "Run provider test")) {
     throw new Error("Could not run desktop mock provider test");
   }
   await waitForEval(
     agentBrowser,
-    `document.body.innerText.includes("Mock provider can run Nano Banana 2.")`,
+    `document.body.innerText.includes("Mock provider can run GPT Image 2.")`,
     "desktop mock provider test result",
   );
 

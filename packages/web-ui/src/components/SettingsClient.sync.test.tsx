@@ -2980,13 +2980,13 @@ describe("SettingsClient model routing", () => {
 
   it("runs a deterministic mock provider test from the provider config editor", async () => {
     const actions = await import("@clash/web-ui/lib/clientActions");
-    vi.mocked(actions.testModelProvider).mockResolvedValue({
+    vi.mocked(actions.testModelProvider).mockImplementation(async ({ modelId }) => ({
       ok: true,
       providerId: "mock",
       upstreamId: "mock",
-      modelId: "nano-banana-2",
-      message: "Mock provider can run Nano Banana 2.",
-    });
+      modelId,
+      message: `Mock provider can run ${modelId === "gpt-image-2" ? "GPT Image 2" : "Nano Banana 2"}.`,
+    }));
 
     render(
       <MemoryRouter>
@@ -3019,6 +3019,8 @@ describe("SettingsClient model routing", () => {
 
     const editor = within(providerConfig).getByRole("group", { name: "Mock primary Mock Provider API key" });
     expect(within(editor).getByRole("button", { name: "Model to test" })).toBeTruthy();
+    fireEvent.click(within(editor).getByRole("button", { name: "Model to test" }));
+    fireEvent.click(screen.getByRole("menuitemradio", { name: /GPT Image 2/ }));
     fireEvent.click(within(editor).getByRole("button", { name: "Run provider test" }));
 
     await waitFor(() => {
@@ -3028,10 +3030,10 @@ describe("SettingsClient model routing", () => {
           providerId: "mock",
           upstreamId: "mock",
         }),
-        modelId: "nano-banana-2",
+        modelId: "gpt-image-2",
       });
     });
-    expect(await within(editor).findByText("Mock provider can run Nano Banana 2.")).toBeTruthy();
+    expect(await within(editor).findByText("Mock provider can run GPT Image 2.")).toBeTruthy();
   });
 
   it("runs a saved live provider configuration check from the provider config editor", async () => {
