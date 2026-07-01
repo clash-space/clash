@@ -29,11 +29,75 @@ describe("model upstream routing", () => {
     expect(parsed.defaultProvider).toBe("jimeng");
   });
 
+  it("rejects model cards whose default provider is not one of their implementations", () => {
+    expect(() => ModelCardSchema.parse({
+      id: "broken-model",
+      name: "Broken",
+      provider: "Broken Provider",
+      kind: "image",
+      parameters: [],
+      defaultParams: {},
+      availableProviders: ["fal"],
+    })).toThrow(/defaultProvider/);
+
+    expect(() => ModelCardSchema.parse({
+      id: "broken-model",
+      name: "Broken",
+      provider: "Broken Provider",
+      kind: "image",
+      parameters: [],
+      defaultParams: {},
+      availableProviders: ["fal"],
+      defaultProvider: "replicate",
+    })).toThrow(/defaultProvider/);
+  });
+
   it("keeps every routed model backed by a first-class model card", () => {
     const modelCardIds = new Set(MODEL_CARDS.map((model) => model.id));
     const routedModelIds = [...new Set(MODEL_UPSTREAM_ROUTES.map((route) => route.modelCode))].sort();
 
     expect(routedModelIds.filter((modelId) => !modelCardIds.has(modelId))).toEqual([]);
+  });
+
+  it("requires routed model cards to explicitly declare their provider implementations", () => {
+    const modelCards = new Map(MODEL_CARDS.map((model) => [model.id, model]));
+    const providersByModel = new Map<string, Set<string>>();
+
+    for (const route of MODEL_UPSTREAM_ROUTES) {
+      const providerId = route.providerId ?? route.upstreamId;
+      if (providerId === "local" || providerId === "mock") continue;
+      const providers = providersByModel.get(route.modelCode) ?? new Set<string>();
+      providers.add(providerId);
+      providersByModel.set(route.modelCode, providers);
+    }
+
+    const failures = [...providersByModel.entries()].flatMap(([modelId, providerIds]) => {
+      const model = modelCards.get(modelId);
+      const declaredProviders = (model?.availableProviders ?? []).map(String);
+      const missingProviders = [...providerIds].filter((providerId) => !declaredProviders.includes(providerId));
+      const extraProviders = declaredProviders.filter((providerId) => !providerIds.has(providerId));
+      const defaultProvider = model?.defaultProvider ? String(model.defaultProvider) : "";
+      const routedDefaultProvider = MODEL_UPSTREAM_ROUTES
+        .filter((route) => route.modelCode === modelId)
+        .map((route) => ({
+          providerId: route.providerId ?? route.upstreamId,
+          priority: route.priority ?? 1000,
+        }))
+        .filter((route) => route.providerId !== "local" && route.providerId !== "mock")
+        .sort((a, b) => a.priority - b.priority || a.providerId.localeCompare(b.providerId))[0]?.providerId;
+      const problems: string[] = [];
+      if (!model) problems.push("missing model card");
+      if (missingProviders.length > 0) problems.push(`missing providers: ${missingProviders.join(", ")}`);
+      if (extraProviders.length > 0) problems.push(`providers without routes: ${extraProviders.join(", ")}`);
+      if (!defaultProvider) problems.push("missing defaultProvider");
+      else if (!declaredProviders.includes(defaultProvider)) problems.push(`defaultProvider not declared: ${defaultProvider}`);
+      else if (routedDefaultProvider && defaultProvider !== routedDefaultProvider) {
+        problems.push(`defaultProvider ${defaultProvider} does not match routed default ${routedDefaultProvider}`);
+      }
+      return problems.length > 0 ? [`${modelId}: ${problems.join("; ")}`] : [];
+    }).sort();
+
+    expect(failures).toEqual([]);
   });
 
   it("routes canonical Seedance model codes to fal-shaped mock endpoints", () => {
