@@ -3571,7 +3571,8 @@ describe("SettingsClient model routing", () => {
     fireEvent.click(within(editor).getByRole("combobox", { name: "Model access" }));
     fireEvent.click(screen.getByRole("option", { name: /Specific models/ }));
     fireEvent.click(within(editor).getByRole("button", { name: "Add supported model" }));
-    const search = screen.getByRole("searchbox", { name: "Filter supported models" });
+    expect(screen.queryByRole("menu", { name: "Add supported model" })).toBeNull();
+    const search = screen.getByRole("combobox", { name: "Search supported models" });
     fireEvent.change(search, { target: { value: "gpt image" } });
     expect(screen.queryByRole("option", { name: /Nano Banana 2/ })).toBeNull();
     fireEvent.click(screen.getByRole("option", { name: /GPT Image 2/ }));
@@ -3632,7 +3633,8 @@ describe("SettingsClient model routing", () => {
     fireEvent.click(within(editor).getByRole("combobox", { name: "Model access" }));
     fireEvent.click(screen.getByRole("option", { name: /Specific models/ }));
     fireEvent.click(within(editor).getByRole("button", { name: "Add supported model" }));
-    fireEvent.change(screen.getByRole("searchbox", { name: "Filter supported models" }), {
+    expect(screen.queryByRole("menu", { name: "Add supported model" })).toBeNull();
+    fireEvent.change(screen.getByRole("combobox", { name: "Search supported models" }), {
       target: { value: "Gemini Flash Image 2" },
     });
 

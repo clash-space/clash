@@ -380,10 +380,13 @@ async function runProviderFlow(agentBrowser, apiOrigin) {
   }
   await waitForEval(
     agentBrowser,
-    `!!document.querySelector("input[aria-label='Filter supported models']")`,
+    `!!document.querySelector("input[aria-label='Search supported models']") &&
+      ![...document.querySelectorAll("[role='menu']")].some((el) =>
+        el.getAttribute("aria-label") === "Add supported model"
+      )`,
     "desktop supported model picker search",
   );
-  if (!setInputValueByLabel(agentBrowser, "Filter supported models", "gpt image")) {
+  if (!setInputValueByLabel(agentBrowser, "Search supported models", "gpt image")) {
     throw new Error("Could not filter desktop supported models");
   }
   if (!clickListboxOptionContaining(agentBrowser, "GPT Image 2")) {

@@ -35,7 +35,7 @@ import {
 } from '@clash/web-ui/lib/clientActions';
 import { runtimeApiUrl } from '@clash/web-ui/lib/runtimeConfig';
 import { Dialog } from './ui/dialog';
-import { FloatingMenu, SelectMenu, type SelectOption } from './ui/select';
+import { SelectMenu, type SelectOption } from './ui/select';
 import { Switch } from './ui/switch';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from './ui/collapsible';
 import { useAppFeedback } from './AppFeedback';
@@ -1551,105 +1551,103 @@ function SupportedModelPicker({
     options: SelectOption<string>[];
     onSelect: (value: string) => void;
 }) {
-    const triggerRef = useRef<HTMLButtonElement>(null);
-    const searchRef = useRef<HTMLInputElement>(null);
+    const listId = useId();
+    const inputRef = useRef<HTMLInputElement>(null);
     const [open, setOpen] = useState(false);
-    const [query, setQuery] = useState('');
-    const filteredOptions = useMemo(() => {
-        const normalized = query.trim().toLowerCase();
-        if (!normalized) return options;
-        return options.filter((option) => [
-            selectOptionText(option.label),
-            selectOptionText(option.description),
-            String(option.value),
-        ].join(' ').toLowerCase().includes(normalized));
-    }, [options, query]);
+    const [search, setSearch] = useState('');
 
     useEffect(() => {
         if (!open) {
-            setQuery('');
+            setSearch('');
             return;
         }
-        const frame = window.requestAnimationFrame(() => searchRef.current?.focus());
+        const frame = window.requestAnimationFrame(() => inputRef.current?.focus());
         return () => window.cancelAnimationFrame(frame);
     }, [open]);
 
     return (
-        <div className="relative inline-flex w-full min-w-0">
-            <button
-                ref={triggerRef}
-                type="button"
-                aria-label="Add supported model"
-                aria-expanded={open}
-                aria-haspopup="listbox"
-                disabled={options.length === 0}
-                onClick={() => setOpen((current) => !current)}
-                className={`clash-select-trigger inline-flex min-w-0 items-center gap-1.5 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-warm-surface disabled:cursor-not-allowed disabled:opacity-45 min-h-[34px] justify-between rounded-xl border border-warm-border bg-warm-surface px-3 py-2 text-xs font-medium text-slate-900 shadow-[inset_0_1px_0_rgba(255,255,255,0.76)] hover:bg-warm-muted/45 dark:text-slate-50 dark:hover:bg-slate-800 ${settingsSelectTriggerClass}`}
-            >
-                <span className="min-w-0 flex-1 truncate text-left">Add model</span>
-                <CaretDown className="h-3.5 w-3.5 flex-shrink-0 text-stone-500 dark:text-stone-400" aria-hidden="true" />
-            </button>
-            <FloatingMenu
-                anchorRef={triggerRef}
-                open={open}
-                onOpenChange={setOpen}
-                ariaLabel="Add supported model"
-                menuWidth="trigger"
-                maxMenuHeight={360}
-                className="overflow-hidden p-0"
-            >
-                <div className="w-full p-2">
-                    <div className="relative">
-                        <MagnifyingGlass className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-stone-400" aria-hidden="true" />
-                        <input
-                            ref={searchRef}
-                            aria-label="Filter supported models"
-                            type="search"
-                            value={query}
-                            onChange={(event) => setQuery(event.target.value)}
-                            placeholder="Filter models..."
-                            className={settingsSearchFieldClass}
-                        />
-                    </div>
-                    <div
-                        role="listbox"
-                        aria-label="Supported models"
-                        className="mt-2 max-h-72 overflow-y-auto pr-1"
-                    >
-                        {filteredOptions.length > 0 ? (
-                            filteredOptions.map((option) => (
-                                <button
-                                    key={String(option.value)}
-                                    type="button"
-                                    role="option"
-                                    aria-selected="false"
-                                    className="flex min-h-[40px] w-full items-center gap-3 rounded-xl px-3 py-2 text-left text-sm text-slate-900 transition-colors hover:bg-warm-muted/75 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand dark:text-slate-100 dark:hover:bg-slate-800/80"
-                                    onClick={() => {
-                                        onSelect(String(option.value));
-                                        setOpen(false);
-                                        setQuery('');
-                                        triggerRef.current?.focus();
-                                    }}
-                                >
-                                    <span className="min-w-0 flex-1">
-                                        <span className="block truncate font-medium leading-5">{option.label}</span>
-                                        {option.description ? (
-                                            <span className="block truncate text-xs font-normal leading-4 text-stone-600 dark:text-stone-400">
-                                                {option.description}
-                                            </span>
-                                        ) : null}
-                                    </span>
-                                </button>
-                            ))
-                        ) : (
-                            <div className="px-3 py-5 text-center text-xs font-medium text-stone-500 dark:text-stone-400">
-                                No supported models match.
+        <PopoverPrimitive.Root open={open} onOpenChange={setOpen}>
+            <PopoverPrimitive.Trigger asChild>
+                <button
+                    type="button"
+                    aria-label="Add supported model"
+                    aria-expanded={open}
+                    aria-haspopup="listbox"
+                    aria-controls={open ? listId : undefined}
+                    disabled={options.length === 0}
+                    className={`clash-select-trigger inline-flex min-w-0 items-center gap-1.5 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-warm-surface disabled:cursor-not-allowed disabled:opacity-45 min-h-[34px] justify-between rounded-xl border border-warm-border bg-warm-surface px-3 py-2 text-xs font-medium text-slate-900 shadow-[inset_0_1px_0_rgba(255,255,255,0.76)] hover:bg-warm-muted/45 dark:text-slate-50 dark:hover:bg-slate-800 ${settingsSelectTriggerClass}`}
+                >
+                    <span className="min-w-0 flex-1 truncate text-left">Add model</span>
+                    <CaretDown className="h-3.5 w-3.5 flex-shrink-0 text-stone-500 dark:text-stone-400" aria-hidden="true" />
+                </button>
+            </PopoverPrimitive.Trigger>
+            <PopoverPrimitive.Portal>
+                <PopoverPrimitive.Content
+                    align="start"
+                    sideOffset={8}
+                    collisionPadding={12}
+                    onOpenAutoFocus={(event) => {
+                        event.preventDefault();
+                        inputRef.current?.focus();
+                    }}
+                    className="z-[90] overflow-hidden rounded-2xl border border-warm-border/90 bg-warm-surface shadow-[0_18px_48px_rgba(35,31,25,0.14)] dark:border-slate-700 dark:bg-slate-900 dark:shadow-[0_18px_48px_rgba(0,0,0,0.36)]"
+                    style={{ width: 'min(var(--radix-popover-trigger-width), calc(100vw - 24px))' }}
+                >
+                    <Command label="Search supported models" className="w-full">
+                        <div className="border-b border-warm-border/80 p-2 dark:border-slate-700">
+                            <div className="relative">
+                                <MagnifyingGlass className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-stone-400" aria-hidden="true" />
+                                <Command.Input
+                                    ref={inputRef}
+                                    aria-label="Search supported models"
+                                    value={search}
+                                    onValueChange={setSearch}
+                                    placeholder="Search models..."
+                                    className={`${settingsSearchFieldClass} h-9 text-xs`}
+                                />
                             </div>
-                        )}
-                    </div>
-                </div>
-            </FloatingMenu>
-        </div>
+                        </div>
+                        <Command.List
+                            id={listId}
+                            label="Supported models"
+                            className="max-h-72 overflow-y-auto p-1.5"
+                        >
+                            <Command.Empty className="px-3 py-5 text-center text-xs font-medium text-stone-500 dark:text-stone-400">
+                                No supported models match.
+                            </Command.Empty>
+                            <Command.Group>
+                                {options.map((option) => {
+                                    const optionLabel = selectOptionText(option.label) || String(option.value);
+                                    const description = selectOptionText(option.description);
+                                    return (
+                                        <Command.Item
+                                            key={String(option.value)}
+                                            value={String(option.value)}
+                                            keywords={[optionLabel, description, String(option.value)].filter(Boolean)}
+                                            onSelect={() => {
+                                                onSelect(String(option.value));
+                                                setOpen(false);
+                                                setSearch('');
+                                            }}
+                                            className="flex min-h-[42px] w-full cursor-default items-center gap-3 rounded-xl px-3 py-2 text-left text-sm text-slate-900 transition-colors outline-none data-[selected=true]:bg-warm-muted/75 dark:text-slate-100 dark:data-[selected=true]:bg-slate-800/80"
+                                        >
+                                            <span className="min-w-0 flex-1">
+                                                <span className="block truncate font-medium leading-5">{option.label}</span>
+                                                {option.description ? (
+                                                    <span className="block truncate text-xs font-normal leading-4 text-stone-600 dark:text-stone-400">
+                                                        {option.description}
+                                                    </span>
+                                                ) : null}
+                                            </span>
+                                        </Command.Item>
+                                    );
+                                })}
+                            </Command.Group>
+                        </Command.List>
+                    </Command>
+                </PopoverPrimitive.Content>
+            </PopoverPrimitive.Portal>
+        </PopoverPrimitive.Root>
     );
 }
 
