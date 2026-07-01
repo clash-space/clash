@@ -3194,6 +3194,62 @@ describe("SettingsClient model routing", () => {
     expect(await within(editor).findByText("Replicate configuration is ready for Nano Banana 2.")).toBeTruthy();
   });
 
+  it("does not run provider tests against stale saved data when the editor has unsaved changes", async () => {
+    const actions = await import("@clash/web-ui/lib/clientActions");
+    vi.mocked(actions.testModelProvider).mockResolvedValue({
+      ok: true,
+      providerId: "replicate",
+      upstreamId: "replicate",
+      modelId: "nano-banana-2",
+      message: "Replicate configuration is ready for Nano Banana 2.",
+    });
+
+    render(
+      <MemoryRouter>
+        <SettingsClient
+          initialTokens={[]}
+          initialVariables={[]}
+          initialActions={[]}
+          initialSkills={[]}
+          activeSection="providers"
+          embedded
+          initialModelProviders={[
+            {
+              id: "replicate-primary",
+              label: "Replicate primary",
+              providerId: "replicate",
+              upstreamId: "replicate",
+              enabled: true,
+              priority: 10,
+              configuredCredentials: ["apiKey"],
+            },
+          ]}
+          initialModelCatalog={[]}
+        />
+      </MemoryRouter>,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Open Replicate BYOK settings" }));
+    const providerConfigs = screen.getByRole("list", { name: "Replicate prioritized keys" });
+    const providerConfig = within(providerConfigs).getByText("Replicate primary").closest("li") as HTMLElement;
+    fireEvent.click(within(providerConfig).getByText("Replicate primary"));
+
+    const editor = within(providerConfig).getByRole("group", { name: "Replicate primary Replicate API key" });
+    const testButton = within(editor).getByRole("button", { name: "Run provider test" });
+    expect(testButton.hasAttribute("disabled")).toBe(false);
+
+    fireEvent.change(within(editor).getByLabelText("Replicate key name"), {
+      target: { value: "Unsaved key name" },
+    });
+
+    expect(within(editor).getByRole("button", { name: "Save" })).toBeTruthy();
+    expect(testButton.hasAttribute("disabled")).toBe(true);
+
+    vi.mocked(actions.testModelProvider).mockClear();
+    fireEvent.click(testButton);
+    expect(actions.testModelProvider).not.toHaveBeenCalled();
+  });
+
   it("saves a provider account model allowlist from the config editor", async () => {
     const actions = await import("@clash/web-ui/lib/clientActions");
     vi.mocked(actions.updateModelProviders).mockImplementation(async (providers) => providers);

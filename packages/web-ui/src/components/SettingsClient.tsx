@@ -2620,13 +2620,14 @@ function ModelRoutingSection({
         const selectedProviderTestModelId = providerTestModelIds[providerTestKey] ?? defaultProviderTestModelId;
         const providerTestResult = providerTestResults[providerTestKey];
         const canRunProviderTest = !!editingAccount && providerTestOptions.length > 0;
+        const providerTestDisabled = providerTestBusyKey === providerTestKey || !selectedProviderTestModelId || hasProviderDraft || saving;
         const editingOAuth = oauthProviderId && editingAccount
             ? oauthForProviderAccount(providerOAuth, oauthProviderId, editingAccount)
             : undefined;
         const editingOAuthBusyKey = oauthProviderId && editingAccount?.id ? `${oauthProviderId}:${editingAccount.id}` : null;
         const editingOAuthBusy = editingOAuthBusyKey ? providerOAuthBusyKey === editingOAuthBusyKey : false;
         const runProviderTest = async () => {
-            if (!canRunProviderTest || !editingAccount || !selectedProviderTestModelId) return;
+            if (!canRunProviderTest || providerTestDisabled || !editingAccount || !selectedProviderTestModelId) return;
             setProviderTestBusyKey(providerTestKey);
             try {
                 const result = await testModelProvider({
@@ -2890,7 +2891,7 @@ function ModelRoutingSection({
                                 <button
                                     type="button"
                                     aria-label="Run provider test"
-                                    disabled={providerTestBusyKey === providerTestKey || !selectedProviderTestModelId}
+                                    disabled={providerTestDisabled}
                                     onClick={() => { void runProviderTest(); }}
                                     className={settingsCompactSecondaryButtonClass}
                                 >
