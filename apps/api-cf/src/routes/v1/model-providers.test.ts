@@ -340,6 +340,45 @@ describe("modelProviderRoutes", () => {
     });
   });
 
+  it("keeps mock provider routes out of the hosted model catalog", async () => {
+    const app = makeApp();
+    const env = {
+      DB: new MemoryD1() as unknown as D1Database,
+      ACTION_SECRET_KEY: "secret-key",
+    } as Env;
+
+    await app.request("/api/v1/model-providers", {
+      method: "PATCH",
+      headers: { "content-type": "application/json", "x-user-id": "user-1" },
+      body: JSON.stringify({
+        providers: [
+          {
+            id: "mock-primary",
+            providerId: "mock",
+            upstreamId: "mock",
+            enabled: true,
+          },
+        ],
+      }),
+    }, env);
+
+    const catalog = await app.request("/api/v1/models/catalog", {
+      headers: { "x-user-id": "user-1" },
+    }, env);
+
+    expect(catalog.status).toBe(200);
+    const catalogJson = (await catalog.json()) as {
+      models: Array<{
+        model: { id: string };
+        tier: string;
+        selectedRoute?: { providerId?: string; upstreamId?: string } | null;
+      }>;
+    };
+    const nanoBanana = catalogJson.models.find((entry) => entry.model.id === "nano-banana-2");
+    expect(nanoBanana?.selectedRoute?.providerId).not.toBe("mock");
+    expect(nanoBanana?.selectedRoute?.upstreamId).not.toBe("mock");
+  });
+
   it("rejects provider account model filters outside the provider support list", async () => {
     const app = makeApp();
     const db = new MemoryD1();

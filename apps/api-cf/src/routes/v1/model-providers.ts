@@ -261,7 +261,9 @@ modelProviderRoutes.get("/models/catalog", async (c) => {
   if (!userId) return c.json({ error: "Unauthorized" }, 401);
   const providers = await listProviderAccountsWithOAuth(c.env, userId);
   return c.json({
-    models: listModelCatalogEntries({ configuredProviders: providers }),
+    models: listModelCatalogEntries({
+      configuredProviders: providers.filter((provider) => provider.providerId !== "mock"),
+    }),
   });
 });
 
