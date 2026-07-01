@@ -2211,15 +2211,24 @@ function ModelRoutingSection({
         const route = entry.selectedRoute;
         const selectedRouteKey = route ? modelRouteProviderKey(route) : null;
         const routeOrder = new Map(entry.routes.map((candidate, index) => [modelRouteProviderKey(candidate), index]));
+        const modelOrderAccounts = (row: typeof providerViewRows[number]) => (
+            row.accounts.length > 0
+                ? row.accounts.filter((account) =>
+                    !account.supportedModelIds?.length || account.supportedModelIds.includes(entry.model.id),
+                )
+                : [row.provider]
+        );
         const providerRowModelPriority = (row: typeof providerViewRows[number]) => {
-            const targets = row.accounts.length > 0 ? row.accounts : [row.provider];
-            const priorities = targets
+            const priorities = modelOrderAccounts(row)
                 .map((account) => account.modelPriorities?.[entry.model.id])
                 .filter((priority): priority is number => typeof priority === 'number' && Number.isFinite(priority));
             return priorities.length ? Math.min(...priorities) : undefined;
         };
         const providerOrderRows = providerViewRows
-            .filter((row) => row.support?.models.some((model) => model.id === entry.model.id))
+            .filter((row) => (
+                row.support?.models.some((model) => model.id === entry.model.id) &&
+                modelOrderAccounts(row).length > 0
+            ))
             .sort((a, b) => {
                 const aModelPriority = providerRowModelPriority(a);
                 const bModelPriority = providerRowModelPriority(b);
@@ -2243,7 +2252,7 @@ function ModelRoutingSection({
             const ordered = arrayMove(providerOrderRows, fromIndex, toIndex);
             void onPatchProviders(ordered.flatMap((providerRow, index) => {
                 const priority = (index + 1) * 10;
-                const targets = providerRow.accounts.length > 0 ? providerRow.accounts : [providerRow.provider];
+                const targets = modelOrderAccounts(providerRow);
                 return targets.map((account) => ({
                     key: providerRow.key,
                     patch: {

@@ -3980,6 +3980,46 @@ describe("SettingsClient model routing", () => {
     });
   });
 
+  it("omits provider configs filtered out of a model from that model provider order", async () => {
+    const actions = await import("@clash/web-ui/lib/clientActions");
+    vi.mocked(actions.listModelCatalog).mockResolvedValue([]);
+
+    render(
+      <MemoryRouter>
+        <SettingsClient
+          initialTokens={[]}
+          initialVariables={[]}
+          initialActions={[]}
+          initialSkills={[]}
+          activeSection="models"
+          embedded
+          initialModelProviders={[
+            {
+              providerId: "official",
+              upstreamId: "openai",
+              region: "global",
+              enabled: true,
+              configuredCredentials: ["apiKey"],
+            },
+            {
+              providerId: "replicate",
+              upstreamId: "replicate",
+              enabled: true,
+              configuredCredentials: ["apiKey"],
+              supportedModelIds: ["nano-banana-2"],
+            },
+          ]}
+        />
+      </MemoryRouter>,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Edit provider order for GPT Image 2" }));
+
+    const providerOrder = screen.getByRole("list", { name: "GPT Image 2 provider order" });
+    expect(within(providerOrder).getByText("OpenAI")).toBeTruthy();
+    expect(within(providerOrder).queryByText("Replicate")).toBeNull();
+  });
+
   it("disables model provider ordering while provider settings are saving", async () => {
     const actions = await import("@clash/web-ui/lib/clientActions");
     let resolveSave!: (providers: any[]) => void;
