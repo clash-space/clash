@@ -29,6 +29,42 @@ describe("model upstream routing", () => {
     expect(parsed.defaultProvider).toBe("jimeng");
   });
 
+  it("allows model cards to own provider route implementations", () => {
+    const parsed = ModelCardSchema.parse({
+      id: "gpt-image-2",
+      name: "GPT Image 2",
+      provider: "OpenAI",
+      kind: "image",
+      parameters: [],
+      defaultParams: {},
+      availableProviders: ["official"],
+      defaultProvider: "official",
+      providerImplementations: [
+        {
+          providerId: "official",
+          upstreamId: "openai",
+          region: "global",
+          upstreamModel: "gpt-image-2",
+          apiShape: "openai-images",
+          priority: 10,
+          requiredCredentials: ["apiKey"],
+        },
+      ],
+    });
+
+    expect((parsed as any).providerImplementations).toEqual([
+      {
+        providerId: "official",
+        upstreamId: "openai",
+        region: "global",
+        upstreamModel: "gpt-image-2",
+        apiShape: "openai-images",
+        priority: 10,
+        requiredCredentials: ["apiKey"],
+      },
+    ]);
+  });
+
   it("rejects model cards whose default provider is not one of their implementations", () => {
     expect(() => ModelCardSchema.parse({
       id: "broken-model",
@@ -107,6 +143,51 @@ describe("model upstream routing", () => {
     }).sort();
 
     expect(failures).toEqual([]);
+  });
+
+  it("builds hosted route table from model card implementations", () => {
+    const compactRoute = (route: {
+      modelCode: string;
+      providerId?: string;
+      upstreamId: string;
+      region?: string;
+      upstreamModel: string;
+      apiShape: string;
+      priority: number;
+      requiredCredentials?: readonly string[];
+      requiredOAuth?: readonly string[];
+    }) => Object.fromEntries(Object.entries({
+      modelCode: route.modelCode,
+      providerId: route.providerId,
+      upstreamId: route.upstreamId,
+      region: route.region,
+      upstreamModel: route.upstreamModel,
+      apiShape: route.apiShape,
+      priority: route.priority,
+      requiredCredentials: route.requiredCredentials,
+      requiredOAuth: route.requiredOAuth,
+    }).filter(([, value]) => value !== undefined));
+
+    const declared = MODEL_CARDS.flatMap((model) =>
+      (model.providerImplementations ?? []).map((implementation) => compactRoute({
+        modelCode: model.id,
+        providerId: implementation.providerId,
+        upstreamId: implementation.upstreamId,
+        region: implementation.region,
+        upstreamModel: implementation.upstreamModel,
+        apiShape: implementation.apiShape,
+        priority: implementation.priority ?? 100,
+        requiredCredentials: implementation.requiredCredentials,
+        requiredOAuth: implementation.requiredOAuth,
+      })),
+    ).sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b)));
+
+    const hostedRoutes = MODEL_UPSTREAM_ROUTES
+      .filter((route) => route.upstreamId !== "mock")
+      .map(compactRoute)
+      .sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b)));
+
+    expect(hostedRoutes).toEqual(declared);
   });
 
   it("routes canonical Seedance model codes to fal-shaped mock endpoints", () => {
@@ -427,6 +508,51 @@ describe("model upstream routing", () => {
     expect(byProvider.has("midjourney")).toBe(false);
   });
 
+  it("indexes provider support from model card implementations", () => {
+    const model = ModelCardSchema.parse({
+      id: "custom-model",
+      name: "Custom Model",
+      provider: "Custom",
+      kind: "image",
+      parameters: [],
+      defaultParams: {},
+      availableProviders: ["custom"],
+      defaultProvider: "custom",
+      providerImplementations: [
+        {
+          providerId: "custom",
+          upstreamId: "openai",
+          region: "team-a",
+          upstreamModel: "team/custom-model",
+          apiShape: "openai-compatible",
+          priority: 42,
+          requiredCredentials: ["apiKey"],
+        },
+      ],
+    });
+
+    expect(listProviderModelSupport({ models: [model] })).toEqual([
+      {
+        providerId: "custom",
+        upstreamId: "openai",
+        region: "team-a",
+        models: [
+          {
+            id: "custom-model",
+            name: "Custom Model",
+            kind: "image",
+            upstreamModel: "team/custom-model",
+            apiShape: "openai-compatible",
+            requiredCredentials: ["apiKey"],
+            requiredOAuth: [],
+          },
+        ],
+        requiredCredentials: ["apiKey"],
+        requiredOAuth: [],
+      },
+    ]);
+  });
+
   it("keeps route-specific requirements for providers with multiple implementations", () => {
     const google = listProviderModelSupport().find((support) =>
       support.providerId === "official" &&
@@ -450,14 +576,12 @@ describe("model upstream routing", () => {
     expect(google?.requiredCredentials).toEqual(["apiKey", "vertexCredentials"]);
   });
 
-  it("keeps provider declarations as the source for hosted provider support", () => {
-    const declared = new Set(
-      MODEL_PROVIDER_DEFINITIONS.map((provider) => [provider.providerId, provider.upstreamId, provider.region ?? ""].join(":")),
-    );
+  it("keeps provider definitions free of per-model support declarations", () => {
+    const providersWithModelLists = MODEL_PROVIDER_DEFINITIONS
+      .filter((provider) => "supportedModels" in provider)
+      .map((provider) => [provider.providerId, provider.upstreamId, provider.region ?? ""].join(":"));
 
-    for (const support of listProviderModelSupport()) {
-      expect(declared.has([support.providerId, support.upstreamId, support.region ?? ""].join(":"))).toBe(true);
-    }
+    expect(providersWithModelLists).toEqual([]);
   });
 
   it("falls back Gemini TTS model codes to fal when only the fal key is configured", () => {

@@ -1270,7 +1270,7 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
     const providerSupports = listProviderModelSupport({ includeMock: account.providerId === "mock" });
     const support = providerSupports.find((row) =>
       row.providerId === account.providerId &&
-      row.upstreamId === account.upstreamId &&
+      (!account.upstreamId || row.upstreamId === account.upstreamId) &&
       (row.region ?? "") === (account.region ?? "")
     );
     const modelName = displayModelName(modelId);

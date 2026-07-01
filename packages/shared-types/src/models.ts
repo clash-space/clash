@@ -182,6 +182,19 @@ export const ModelProviderConfigSchema = z.object({
 });
 export type ModelProviderConfig = z.infer<typeof ModelProviderConfigSchema>;
 
+export const ModelProviderImplementationSchema = z.object({
+  providerId: ProviderSchema,
+  upstreamId: z.string(),
+  region: z.string().optional(),
+  upstreamModel: z.string(),
+  apiShape: z.string(),
+  priority: z.number().optional(),
+  weight: z.number().optional(),
+  requiredCredentials: z.array(z.string()).optional(),
+  requiredOAuth: z.array(z.string()).optional(),
+});
+export type ModelProviderImplementation = z.infer<typeof ModelProviderImplementationSchema>;
+
 export const ModelParameterSchema = z.object({
   id: z.string(),
   label: z.string(),
@@ -268,6 +281,7 @@ export const ModelCardSchema = z.object({
   input: ModelInputRuleSchema.default({ requiresPrompt: true, inputMode: {}, promptModalities: ['text'] }),
   availableProviders: z.array(ProviderSchema).optional(),
   defaultProvider: ProviderSchema.optional(),
+  providerImplementations: z.array(ModelProviderImplementationSchema).optional(),
   /**
    * Upper bound (ms) for a healthy run. NodeProcessor marks a workflow Failed if
    * engine status is still "running" past this point (orphan from miniflare
@@ -1639,4 +1653,119 @@ const MODEL_CARD_DEFINITIONS = [
   },
 ];
 
-export const MODEL_CARDS: ModelCard[] = z.array(ModelCardSchema).parse(MODEL_CARD_DEFINITIONS);
+type ModelProviderImplementationRow = readonly [
+  modelId: string,
+  providerId: Provider,
+  upstreamId: string,
+  apiShape: string,
+  upstreamModel: string,
+  priority: number,
+  options?: {
+    region?: string;
+    credentials?: string[];
+    oauth?: string[];
+  },
+];
+
+const MODEL_PROVIDER_IMPLEMENTATION_ROWS: ModelProviderImplementationRow[] = [
+  ['sensevoice-small-asr', 'local', 'local', 'local-asr', 'iic/SenseVoiceSmall', 1],
+
+  ['flux-schnell', 'fal', 'fal', 'fal', 'fal-ai/flux/schnell', 20, { credentials: ['apiKey'] }],
+  ['flux-dev', 'fal', 'fal', 'fal', 'fal-ai/flux/dev', 20, { credentials: ['apiKey'] }],
+  ['nano-banana-2', 'fal', 'fal', 'fal', 'fal-ai/nano-banana-2', 20, { credentials: ['apiKey'] }],
+  ['nano-banana-2-edit', 'fal', 'fal', 'fal', 'fal-ai/nano-banana-2/edit', 20, { credentials: ['apiKey'] }],
+  ['recraft-v4', 'fal', 'fal', 'fal', 'fal-ai/recraft/v4/pro/text-to-image', 20, { credentials: ['apiKey'] }],
+  ['flux-2-pro', 'fal', 'fal', 'fal', 'fal-ai/flux-2-pro', 20, { credentials: ['apiKey'] }],
+  ['flux-2-pro-edit', 'fal', 'fal', 'fal', 'fal-ai/flux-2-pro/edit', 20, { credentials: ['apiKey'] }],
+  ['sora-2', 'fal', 'fal', 'fal', 'fal-ai/sora-2/text-to-video', 20, { credentials: ['apiKey'] }],
+  ['kling-3', 'fal', 'fal', 'fal', 'fal-ai/kling-video/v3/pro/image-to-video', 20, { credentials: ['apiKey'] }],
+  ['seedance-2-text', 'fal', 'fal', 'fal', 'bytedance/seedance-2.0/text-to-video', 20, { credentials: ['apiKey'] }],
+  ['seedance-2-startend', 'fal', 'fal', 'fal', 'bytedance/seedance-2.0/image-to-video', 20, { credentials: ['apiKey'] }],
+  ['seedance-2-ref', 'fal', 'fal', 'fal', 'bytedance/seedance-2.0/reference-to-video', 20, { credentials: ['apiKey'] }],
+  ['gemini-flash-image-2', 'fal', 'fal', 'fal', 'fal-ai/nano-banana-2', 30, { credentials: ['apiKey'] }],
+  ['gemini-pro-image', 'fal', 'fal', 'fal', 'fal-ai/nano-banana-2', 30, { credentials: ['apiKey'] }],
+  ['gemini-3.1-flash-tts', 'fal', 'fal', 'fal', 'fal-ai/minimax/speech-02-hd', 30, { credentials: ['apiKey'] }],
+  ['gemini-2.5-pro-tts', 'fal', 'fal', 'fal', 'fal-ai/minimax/speech-02-hd', 30, { credentials: ['apiKey'] }],
+  ['minimax-tts', 'fal', 'fal', 'fal', 'fal-ai/minimax/speech-02-hd', 20, { credentials: ['apiKey'] }],
+
+  ['nano-banana-2', 'kie', 'kie', 'kie', 'nano-banana-2', 25, { credentials: ['apiKey'] }],
+  ['gpt-image-2', 'kie', 'kie', 'kie', 'gpt-image-2-text-to-image', 25, { credentials: ['apiKey'] }],
+  ['flux-schnell', 'kie', 'kie', 'kie', 'flux-2/flex-text-to-image', 25, { credentials: ['apiKey'] }],
+  ['flux-dev', 'kie', 'kie', 'kie', 'flux-2/flex-text-to-image', 25, { credentials: ['apiKey'] }],
+  ['flux-2-pro', 'kie', 'kie', 'kie', 'flux-2/pro-text-to-image', 25, { credentials: ['apiKey'] }],
+  ['seedance-2-text', 'kie', 'kie', 'kie', 'bytedance/seedance-2', 25, { credentials: ['apiKey'] }],
+  ['seedance-2-startend', 'kie', 'kie', 'kie', 'bytedance/seedance-2', 25, { credentials: ['apiKey'] }],
+  ['seedance-2-ref', 'kie', 'kie', 'kie', 'bytedance/seedance-2', 25, { credentials: ['apiKey'] }],
+  ['kling-3', 'kie', 'kie', 'kie', 'kling-3.0/video', 25, { credentials: ['apiKey'] }],
+
+  ['nano-banana-2', 'replicate', 'replicate', 'replicate', 'google/nano-banana-2', 25, { credentials: ['apiKey'] }],
+  ['gpt-image-2', 'replicate', 'replicate', 'replicate', 'openai/gpt-image-2', 25, { credentials: ['apiKey'] }],
+  ['flux-schnell', 'replicate', 'replicate', 'replicate', 'black-forest-labs/flux-schnell', 25, { credentials: ['apiKey'] }],
+  ['seedance-2-text', 'replicate', 'replicate', 'replicate', 'bytedance/seedance-2.0', 25, { credentials: ['apiKey'] }],
+  ['seedance-2-startend', 'replicate', 'replicate', 'replicate', 'bytedance/seedance-2.0', 25, { credentials: ['apiKey'] }],
+  ['seedance-2-ref', 'replicate', 'replicate', 'replicate', 'bytedance/seedance-2.0', 25, { credentials: ['apiKey'] }],
+
+  ['gemini-flash-image-2', 'official', 'google', 'google-ai-studio', 'gemini-3.1-flash-image', 12, { region: 'global', credentials: ['apiKey'] }],
+  ['gemini-pro-image', 'official', 'google', 'google-ai-studio', 'gemini-3-pro-image', 12, { region: 'global', credentials: ['apiKey'] }],
+  ['gemini-3.1-flash-tts', 'official', 'google', 'google-ai-studio', 'gemini-3.1-flash-tts-preview', 10, { region: 'global', credentials: ['apiKey'] }],
+  ['gemini-2.5-pro-tts', 'official', 'google', 'google-ai-studio', 'gemini-2.5-pro-tts', 10, { region: 'global', credentials: ['apiKey'] }],
+  ['gemini-flash-image-2', 'official', 'google', 'google-vertex', 'gemini-3.1-flash-image-preview', 10, { region: 'global', credentials: ['vertexCredentials'] }],
+  ['gemini-pro-image', 'official', 'google', 'google-vertex', 'gemini-3-pro-image-preview', 10, { region: 'global', credentials: ['vertexCredentials'] }],
+  ['veo-3.1', 'official', 'google', 'google-vertex', 'veo-3.1-generate-001', 10, { region: 'global', credentials: ['vertexCredentials'] }],
+  ['veo-3.1-startend', 'official', 'google', 'google-vertex', 'veo-3.1-generate-001', 10, { region: 'global', credentials: ['vertexCredentials'] }],
+  ['veo-3.1-lite', 'official', 'google', 'google-vertex', 'veo-3.1-lite-generate-001', 10, { region: 'global', credentials: ['vertexCredentials'] }],
+  ['veo-3.1-fast', 'official', 'google', 'google-vertex', 'veo-3.1-fast-generate-001', 10, { region: 'global', credentials: ['vertexCredentials'] }],
+  ['veo-3.1-fast-startend', 'official', 'google', 'google-vertex', 'veo-3.1-fast-generate-001', 10, { region: 'global', credentials: ['vertexCredentials'] }],
+  ['gemini-3.1-pro', 'official', 'google', 'google-vertex', 'gemini-3.1-pro-preview', 10, { region: 'global', credentials: ['vertexCredentials'] }],
+  ['gemini-3-flash', 'official', 'google', 'google-vertex', 'gemini-3-flash-preview', 10, { region: 'global', credentials: ['vertexCredentials'] }],
+
+  ['gpt-image-2', 'official', 'openai', 'openai-images', 'gpt-image-2', 10, { region: 'global', credentials: ['apiKey'] }],
+  ['gpt-5.4', 'official', 'openai', 'openai-compatible', 'gpt-5.4', 10, { region: 'global', credentials: ['apiKey'] }],
+  ['openai-compatible-text', 'official', 'openai', 'openai-compatible', 'gpt-5.4', 15, { region: 'global', credentials: ['apiKey'] }],
+  ['claude-sonnet-4', 'official', 'anthropic', 'anthropic-compatible', 'claude-sonnet-4-20250514', 10, { region: 'global', credentials: ['apiKey'] }],
+  ['anthropic-compatible-text', 'official', 'anthropic', 'anthropic-compatible', 'claude-sonnet-4-20250514', 15, { region: 'global', credentials: ['apiKey'] }],
+
+  ['kling-3', 'kling', 'kling', 'kling', 'kling-v3', 8, { credentials: ['accessKey', 'secretKey'] }],
+  ['seedance-2-text', 'jimeng', 'jimeng', 'dreamina-cli', 'seedance2.0fast', 8, { oauth: ['dreamina'] }],
+  ['seedance-2-startend', 'jimeng', 'jimeng', 'dreamina-cli', 'seedance2.0fast', 8, { oauth: ['dreamina'] }],
+  ['seedance-2-ref', 'jimeng', 'jimeng', 'dreamina-cli', 'seedance2.0fast', 8, { oauth: ['dreamina'] }],
+  ['seedance-2-text', 'volcengine', 'volcengine', 'modelark', 'doubao-seedance-2-0-pro', 9, { credentials: ['apiKey'] }],
+  ['seedance-2-startend', 'volcengine', 'volcengine', 'modelark', 'doubao-seedance-2-0-pro', 9, { credentials: ['apiKey'] }],
+  ['seedance-2-ref', 'volcengine', 'volcengine', 'modelark', 'doubao-seedance-2-0-pro', 9, { credentials: ['apiKey'] }],
+  ['minimax-tts', 'minimax', 'minimax', 'minimax', 'speech-02-hd', 8, { credentials: ['apiKey'] }],
+  ['elevenlabs-tts', 'elevenlabs', 'elevenlabs', 'elevenlabs', 'eleven_multilingual_v2', 8, { credentials: ['apiKey'] }],
+];
+
+function implementationFromRow(row: ModelProviderImplementationRow): ModelProviderImplementation {
+  const [, providerId, upstreamId, apiShape, upstreamModel, priority, options] = row;
+  return {
+    providerId,
+    upstreamId,
+    ...(options?.region ? { region: options.region } : {}),
+    upstreamModel,
+    apiShape,
+    priority,
+    ...(options?.credentials?.length ? { requiredCredentials: [...options.credentials] } : {}),
+    ...(options?.oauth?.length ? { requiredOAuth: [...options.oauth] } : {}),
+  };
+}
+
+function modelProviderImplementationsById(rows: readonly ModelProviderImplementationRow[]): Record<string, ModelProviderImplementation[]> {
+  const byId: Record<string, ModelProviderImplementation[]> = {};
+  for (const row of rows) {
+    const [modelId] = row;
+    byId[modelId] = [...(byId[modelId] ?? []), implementationFromRow(row)];
+  }
+  return byId;
+}
+
+const MODEL_PROVIDER_IMPLEMENTATIONS_BY_ID = modelProviderImplementationsById(MODEL_PROVIDER_IMPLEMENTATION_ROWS);
+
+const MODEL_CARD_DEFINITIONS_WITH_PROVIDER_IMPLEMENTATIONS = MODEL_CARD_DEFINITIONS.map((model) => ({
+  ...model,
+  ...(MODEL_PROVIDER_IMPLEMENTATIONS_BY_ID[model.id]
+    ? { providerImplementations: MODEL_PROVIDER_IMPLEMENTATIONS_BY_ID[model.id] }
+    : {}),
+}));
+
+export const MODEL_CARDS: ModelCard[] = z.array(ModelCardSchema).parse(MODEL_CARD_DEFINITIONS_WITH_PROVIDER_IMPLEMENTATIONS);

@@ -97,7 +97,6 @@ export interface ModelProviderDefinition {
   weight?: number;
   requiredCredentials?: string[];
   requiredOAuth?: ProviderOAuthId[];
-  supportedModels: ModelProviderSupportedModel[];
 }
 
 export interface UpstreamAvailability {
@@ -201,11 +200,6 @@ const GOOGLE_IMAGE_ROUTES: Array<[string, string]> = [
   ["gemini-pro-image", "gemini-3-pro-image-preview"],
 ];
 
-const GOOGLE_AI_STUDIO_IMAGE_ROUTES: Array<[string, string]> = [
-  ["gemini-flash-image-2", "gemini-3.1-flash-image"],
-  ["gemini-pro-image", "gemini-3-pro-image"],
-];
-
 const GOOGLE_VIDEO_ROUTES: Array<[string, string]> = [
   ["veo-3.1", "veo-3.1-generate-001"],
   ["veo-3.1-startend", "veo-3.1-generate-001"],
@@ -219,91 +213,26 @@ const GOOGLE_AUDIO_ROUTES: Array<[string, string]> = [
   ["gemini-2.5-pro-tts", "gemini-2.5-pro-tts"],
 ];
 
-const GOOGLE_TEXT_ROUTES: Array<[string, string]> = [
-  ["gemini-3.1-pro", "gemini-3.1-pro-preview"],
-  ["gemini-3-flash", "gemini-3-flash-preview"],
-];
-
-const KIE_IMAGE_ROUTES: Array<[string, string]> = [
-  ["nano-banana-2", "nano-banana-2"],
-  ["gpt-image-2", "gpt-image-2-text-to-image"],
-  ["flux-schnell", "flux-2/flex-text-to-image"],
-  ["flux-dev", "flux-2/flex-text-to-image"],
-  ["flux-2-pro", "flux-2/pro-text-to-image"],
-];
-
-const KIE_VIDEO_ROUTES: Array<[string, string]> = [
-  ["seedance-2-text", "bytedance/seedance-2"],
-  ["seedance-2-startend", "bytedance/seedance-2"],
-  ["seedance-2-ref", "bytedance/seedance-2"],
-  ["kling-3", "kling-3.0/video"],
-];
-
-const REPLICATE_IMAGE_ROUTES: Array<[string, string]> = [
-  ["nano-banana-2", "google/nano-banana-2"],
-  ["gpt-image-2", "openai/gpt-image-2"],
-  ["flux-schnell", "black-forest-labs/flux-schnell"],
-];
-
-const REPLICATE_VIDEO_ROUTES: Array<[string, string]> = [
-  ["seedance-2-text", "bytedance/seedance-2.0"],
-  ["seedance-2-startend", "bytedance/seedance-2.0"],
-  ["seedance-2-ref", "bytedance/seedance-2.0"],
-];
-
-const JIMENG_SEEDANCE_ROUTES: Array<[string, string]> = [
-  ["seedance-2-text", "seedance2.0fast"],
-  ["seedance-2-startend", "seedance2.0fast"],
-  ["seedance-2-ref", "seedance2.0fast"],
-];
-
-const VOLCENGINE_SEEDANCE_ROUTES: Array<[string, string]> = [
-  ["seedance-2-text", "doubao-seedance-2-0-pro"],
-  ["seedance-2-startend", "doubao-seedance-2-0-pro"],
-  ["seedance-2-ref", "doubao-seedance-2-0-pro"],
-];
-
-function supportedModels(
-  routes: Array<[string, string]>,
-  kind: ModelKind,
-  priority?: number,
-): ModelProviderSupportedModel[] {
-  return routes.map(([modelCode, upstreamModel]) => ({
-    modelCode,
-    kind,
-    upstreamModel,
-    ...(priority === undefined ? {} : { priority }),
-  }));
-}
-
-function fallbackModels(
-  modelCodes: string[],
-  kind: ModelKind,
-  upstreamModel: string,
-  priority: number,
-): ModelProviderSupportedModel[] {
-  return modelCodes.map((modelCode) => ({
-    modelCode,
-    kind,
-    upstreamModel,
-    priority,
-  }));
-}
-
-function routesFromProviderDefinition(provider: ModelProviderDefinition): ModelUpstreamRoute[] {
-  return provider.supportedModels.map((model) => ({
-    modelCode: model.modelCode,
+function routesFromModelCard(model: ModelCard): ModelUpstreamRoute[] {
+  return (model.providerImplementations ?? []).map((implementation) => ({
+    modelCode: model.id,
     kind: model.kind,
-    providerId: provider.providerId,
-    ...(provider.region ? { region: provider.region } : {}),
-    upstreamId: provider.upstreamId,
-    upstreamModel: model.upstreamModel,
-    apiShape: provider.apiShape,
-    priority: model.priority ?? provider.priority,
-    ...(model.weight ?? provider.weight ? { weight: (model.weight ?? 0) + (provider.weight ?? 0) } : {}),
-    ...(provider.requiredCredentials?.length ? { requiredCredentials: [...provider.requiredCredentials] } : {}),
-    ...(provider.requiredOAuth?.length ? { requiredOAuth: [...provider.requiredOAuth] } : {}),
+    providerId: implementation.providerId,
+    ...(implementation.region ? { region: implementation.region } : {}),
+    upstreamId: ModelUpstreamIdSchema.parse(implementation.upstreamId),
+    upstreamModel: implementation.upstreamModel,
+    apiShape: ModelUpstreamApiShapeSchema.parse(implementation.apiShape),
+    priority: implementation.priority ?? 100,
+    ...(implementation.weight !== undefined ? { weight: implementation.weight } : {}),
+    ...(implementation.requiredCredentials?.length ? { requiredCredentials: [...implementation.requiredCredentials] } : {}),
+    ...(implementation.requiredOAuth?.length
+      ? { requiredOAuth: implementation.requiredOAuth.map((provider) => ProviderOAuthIdSchema.parse(provider)) }
+      : {}),
   }));
+}
+
+function routesFromModelCards(models: readonly ModelCard[]): ModelUpstreamRoute[] {
+  return models.flatMap(routesFromModelCard);
 }
 
 export const MODEL_PROVIDER_DEFINITIONS: ModelProviderDefinition[] = [
@@ -312,7 +241,6 @@ export const MODEL_PROVIDER_DEFINITIONS: ModelProviderDefinition[] = [
     upstreamId: "local",
     apiShape: "local-asr",
     priority: 1,
-    supportedModels: [{ modelCode: "sensevoice-small-asr", kind: "asr", upstreamModel: "iic/SenseVoiceSmall" }],
   },
   {
     providerId: "fal",
@@ -320,13 +248,6 @@ export const MODEL_PROVIDER_DEFINITIONS: ModelProviderDefinition[] = [
     apiShape: "fal",
     priority: 20,
     requiredCredentials: [API_KEY_CREDENTIAL],
-    supportedModels: [
-      ...supportedModels(FAL_IMAGE_ROUTES, "image"),
-      ...supportedModels(FAL_VIDEO_ROUTES, "video"),
-      ...fallbackModels(GOOGLE_IMAGE_ROUTES.map(([modelCode]) => modelCode), "image", "fal-ai/nano-banana-2", 30),
-      ...fallbackModels(GOOGLE_AUDIO_ROUTES.map(([modelCode]) => modelCode), "audio", "fal-ai/minimax/speech-02-hd", 30),
-      { modelCode: "minimax-tts", kind: "audio", upstreamModel: "fal-ai/minimax/speech-02-hd" },
-    ],
   },
   {
     providerId: "kie",
@@ -334,10 +255,6 @@ export const MODEL_PROVIDER_DEFINITIONS: ModelProviderDefinition[] = [
     apiShape: "kie",
     priority: 25,
     requiredCredentials: [API_KEY_CREDENTIAL],
-    supportedModels: [
-      ...supportedModels(KIE_IMAGE_ROUTES, "image"),
-      ...supportedModels(KIE_VIDEO_ROUTES, "video"),
-    ],
   },
   {
     providerId: "replicate",
@@ -345,10 +262,6 @@ export const MODEL_PROVIDER_DEFINITIONS: ModelProviderDefinition[] = [
     apiShape: "replicate",
     priority: 25,
     requiredCredentials: [API_KEY_CREDENTIAL],
-    supportedModels: [
-      ...supportedModels(REPLICATE_IMAGE_ROUTES, "image"),
-      ...supportedModels(REPLICATE_VIDEO_ROUTES, "video"),
-    ],
   },
   {
     providerId: "official",
@@ -357,10 +270,6 @@ export const MODEL_PROVIDER_DEFINITIONS: ModelProviderDefinition[] = [
     apiShape: "google-ai-studio",
     priority: 10,
     requiredCredentials: [API_KEY_CREDENTIAL],
-    supportedModels: [
-      ...supportedModels(GOOGLE_AI_STUDIO_IMAGE_ROUTES, "image", 12),
-      ...supportedModels(GOOGLE_AUDIO_ROUTES, "audio"),
-    ],
   },
   {
     providerId: "official",
@@ -369,11 +278,6 @@ export const MODEL_PROVIDER_DEFINITIONS: ModelProviderDefinition[] = [
     apiShape: "google-vertex",
     priority: 10,
     requiredCredentials: [VERTEX_CREDENTIAL],
-    supportedModels: [
-      ...supportedModels(GOOGLE_IMAGE_ROUTES, "image"),
-      ...supportedModels(GOOGLE_VIDEO_ROUTES, "video"),
-      ...supportedModels(GOOGLE_TEXT_ROUTES, "text"),
-    ],
   },
   {
     providerId: "official",
@@ -382,7 +286,6 @@ export const MODEL_PROVIDER_DEFINITIONS: ModelProviderDefinition[] = [
     apiShape: "openai-images",
     priority: 10,
     requiredCredentials: [API_KEY_CREDENTIAL],
-    supportedModels: [{ modelCode: "gpt-image-2", kind: "image", upstreamModel: "gpt-image-2" }],
   },
   {
     providerId: "official",
@@ -391,10 +294,6 @@ export const MODEL_PROVIDER_DEFINITIONS: ModelProviderDefinition[] = [
     apiShape: "openai-compatible",
     priority: 10,
     requiredCredentials: [API_KEY_CREDENTIAL],
-    supportedModels: [
-      { modelCode: "gpt-5.4", kind: "text", upstreamModel: "gpt-5.4" },
-      { modelCode: "openai-compatible-text", kind: "text", upstreamModel: "gpt-5.4", priority: 15 },
-    ],
   },
   {
     providerId: "official",
@@ -403,10 +302,6 @@ export const MODEL_PROVIDER_DEFINITIONS: ModelProviderDefinition[] = [
     apiShape: "anthropic-compatible",
     priority: 10,
     requiredCredentials: [API_KEY_CREDENTIAL],
-    supportedModels: [
-      { modelCode: "claude-sonnet-4", kind: "text", upstreamModel: "claude-sonnet-4-20250514" },
-      { modelCode: "anthropic-compatible-text", kind: "text", upstreamModel: "claude-sonnet-4-20250514", priority: 15 },
-    ],
   },
   {
     providerId: "kling",
@@ -414,7 +309,6 @@ export const MODEL_PROVIDER_DEFINITIONS: ModelProviderDefinition[] = [
     apiShape: "kling",
     priority: 8,
     requiredCredentials: [ACCESS_KEY_CREDENTIAL, SECRET_KEY_CREDENTIAL],
-    supportedModels: [{ modelCode: "kling-3", kind: "video", upstreamModel: "kling-v3" }],
   },
   {
     providerId: "jimeng",
@@ -422,7 +316,6 @@ export const MODEL_PROVIDER_DEFINITIONS: ModelProviderDefinition[] = [
     apiShape: "dreamina-cli",
     priority: 8,
     requiredOAuth: [DREAMINA_OAUTH],
-    supportedModels: supportedModels(JIMENG_SEEDANCE_ROUTES, "video"),
   },
   {
     providerId: "volcengine",
@@ -430,7 +323,6 @@ export const MODEL_PROVIDER_DEFINITIONS: ModelProviderDefinition[] = [
     apiShape: "modelark",
     priority: 9,
     requiredCredentials: [API_KEY_CREDENTIAL],
-    supportedModels: supportedModels(VOLCENGINE_SEEDANCE_ROUTES, "video"),
   },
   {
     providerId: "minimax",
@@ -438,7 +330,6 @@ export const MODEL_PROVIDER_DEFINITIONS: ModelProviderDefinition[] = [
     apiShape: "minimax",
     priority: 8,
     requiredCredentials: [API_KEY_CREDENTIAL],
-    supportedModels: [{ modelCode: "minimax-tts", kind: "audio", upstreamModel: "speech-02-hd" }],
   },
   {
     providerId: "elevenlabs",
@@ -446,11 +337,10 @@ export const MODEL_PROVIDER_DEFINITIONS: ModelProviderDefinition[] = [
     apiShape: "elevenlabs",
     priority: 8,
     requiredCredentials: [API_KEY_CREDENTIAL],
-    supportedModels: [{ modelCode: "elevenlabs-tts", kind: "audio", upstreamModel: "eleven_multilingual_v2" }],
   },
 ];
 
-const PROVIDER_DECLARED_ROUTES = MODEL_PROVIDER_DEFINITIONS.flatMap(routesFromProviderDefinition);
+const MODEL_DECLARED_ROUTES = routesFromModelCards(MODEL_CARDS);
 
 const MOCK_ROUTES: ModelUpstreamRoute[] = [
   ...FAL_IMAGE_ROUTES.map(([modelCode, upstreamModel]) => falMock(modelCode, "image", upstreamModel)),
@@ -464,7 +354,7 @@ const MOCK_ROUTES: ModelUpstreamRoute[] = [
 ];
 
 export const MODEL_UPSTREAM_ROUTES: ModelUpstreamRoute[] = [
-  ...PROVIDER_DECLARED_ROUTES,
+  ...MODEL_DECLARED_ROUTES,
   ...MOCK_ROUTES,
 ];
 
@@ -524,9 +414,16 @@ export function listProviderModelSupport(options: {
   models?: readonly ModelCard[];
   includeMock?: boolean;
 } = {}): ProviderModelSupport[] {
-  const modelById = new Map((options.models ?? MODEL_CARDS).map((model) => [model.id, model]));
+  const models = options.models ?? MODEL_CARDS;
+  const modelById = new Map(models.map((model) => [model.id, model]));
+  const modelDeclaredRoutes = routesFromModelCards(models);
+  const routes = modelDeclaredRoutes.length > 0
+    ? options.includeMock
+      ? [...modelDeclaredRoutes, ...MOCK_ROUTES]
+      : modelDeclaredRoutes
+    : MODEL_UPSTREAM_ROUTES;
   const rows = new Map<string, ProviderModelSupport>();
-  for (const route of MODEL_UPSTREAM_ROUTES) {
+  for (const route of routes) {
     if (!options.includeMock && route.upstreamId === "mock") continue;
     const model = modelById.get(route.modelCode);
     if (!model) continue;
@@ -568,7 +465,7 @@ export function unsupportedProviderModelFilterIds(
     includeMock: options.includeMock ?? true,
   }).find((row) =>
     row.providerId === provider.providerId &&
-    row.upstreamId === provider.upstreamId &&
+    (!provider.upstreamId || row.upstreamId === provider.upstreamId) &&
     (row.region ?? "") === (provider.region ?? "")
   );
   if (!support) return [...provider.supportedModelIds];

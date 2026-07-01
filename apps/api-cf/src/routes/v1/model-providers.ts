@@ -163,7 +163,7 @@ modelProviderRoutes.post("/model-providers/test", async (c) => {
   ]);
   const support = listProviderModelSupport({ includeMock: provider.providerId === "mock" }).find((row) =>
     row.providerId === provider.providerId &&
-    row.upstreamId === provider.upstreamId &&
+    (!provider.upstreamId || row.upstreamId === provider.upstreamId) &&
     (row.region ?? "") === (provider.region ?? "")
   );
   const modelName = displayModelName(modelId);
