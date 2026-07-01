@@ -132,6 +132,34 @@ function makeApp() {
 }
 
 describe("modelProviderRoutes", () => {
+  it("rejects provider account rows with unsupported provider ids", async () => {
+    const app = makeApp();
+    const db = new MemoryD1();
+    const env = {
+      DB: db as unknown as D1Database,
+      ACTION_SECRET_KEY: "secret-key",
+    } as Env;
+
+    const response = await app.request("/api/v1/model-providers", {
+      method: "PATCH",
+      headers: { "content-type": "application/json", "x-user-id": "user-1" },
+      body: JSON.stringify({
+        providers: [
+          {
+            id: "not-real",
+            providerId: "not-a-provider",
+            upstreamId: "not-an-upstream",
+            enabled: true,
+          },
+        ],
+      }),
+    }, env);
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({ error: "Invalid providers" });
+    expect(db.rows).toEqual([]);
+  });
+
   it("checks a saved live provider config against a selected model", async () => {
     const app = makeApp();
     const env = {

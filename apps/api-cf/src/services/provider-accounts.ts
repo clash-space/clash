@@ -3,6 +3,10 @@ import type {
   ProviderAccountAvailability,
   ProviderAccountId,
 } from "@clash/shared-types";
+import {
+  ModelUpstreamIdSchema,
+  ProviderAccountIdSchema,
+} from "@clash/shared-types";
 
 export interface ProviderAccountInput {
   id?: string;
@@ -105,6 +109,24 @@ function configuredCredentialKeys(credentials: Record<string, string> | undefine
     .sort();
 }
 
+function defaultUpstream(providerId: ProviderAccountId): ModelUpstreamId | undefined {
+  if (
+    providerId === "fal" ||
+    providerId === "local" ||
+    providerId === "kie" ||
+    providerId === "replicate" ||
+    providerId === "kling" ||
+    providerId === "minimax" ||
+    providerId === "jimeng" ||
+    providerId === "volcengine" ||
+    providerId === "elevenlabs" ||
+    providerId === "mock"
+  ) {
+    return providerId;
+  }
+  return undefined;
+}
+
 function parseConfiguredCredentials(value: string | null): string[] {
   if (!value) return [];
   try {
@@ -185,9 +207,14 @@ function requireCredentialSecret(secretKey: string | undefined): string {
 export function normalizeProviderAccountInput(value: unknown): ProviderAccountInput | null {
   if (!value || typeof value !== "object") return null;
   const raw = value as Record<string, unknown>;
-  const providerId = trimString(raw.providerId) as ProviderAccountId | undefined;
-  if (!providerId) return null;
-  const upstreamId = trimString(raw.upstreamId) as ModelUpstreamId | undefined;
+  const providerId = ProviderAccountIdSchema.safeParse(trimString(raw.providerId));
+  if (!providerId.success) return null;
+  const rawUpstreamId = trimString(raw.upstreamId);
+  const parsedUpstreamId = rawUpstreamId ? ModelUpstreamIdSchema.safeParse(rawUpstreamId) : null;
+  if (rawUpstreamId && !parsedUpstreamId?.success) return null;
+  const upstreamId = parsedUpstreamId?.success
+    ? parsedUpstreamId.data
+    : defaultUpstream(providerId.data);
   const region = trimString(raw.region);
   const id = trimString(raw.id);
   const label = trimString(raw.label);
@@ -197,7 +224,7 @@ export function normalizeProviderAccountInput(value: unknown): ProviderAccountIn
   const modelPriorities = cleanNumberRecord(raw.modelPriorities);
   const credentials = cleanCredentials(raw.credentials);
   return {
-    providerId,
+    providerId: providerId.data,
     ...(id ? { id } : {}),
     ...(upstreamId ? { upstreamId } : {}),
     ...(region ? { region } : {}),
