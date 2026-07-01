@@ -131,6 +131,25 @@ function clickMenuItemContaining(agentBrowser, text) {
   })()`);
 }
 
+function clickListboxOptionContaining(agentBrowser, text) {
+  return evalJson(agentBrowser, `(() => {
+    const wanted = ${JSON.stringify(text)};
+    const item = [...document.querySelectorAll("[role='listbox'] [role='option']")].find((candidate) => {
+      const value = (candidate.innerText || candidate.textContent || "").trim();
+      const rect = candidate.getBoundingClientRect();
+      const style = getComputedStyle(candidate);
+      return value.includes(wanted) &&
+        rect.width > 0 && rect.height > 0 &&
+        style.display !== "none" && style.visibility !== "hidden" &&
+        !candidate.disabled;
+    });
+    if (!item) return false;
+    item.scrollIntoView({ block: "center", inline: "center" });
+    item.click();
+    return true;
+  })()`);
+}
+
 async function runProviderFlow(agentBrowser, apiOrigin) {
   await seedMockProviders(apiOrigin);
   navigateTo(agentBrowser, "/settings?section=providers");
@@ -192,7 +211,15 @@ async function runProviderFlow(agentBrowser, apiOrigin) {
   if (!clickButtonByLabel(agentBrowser, "Add supported model")) {
     throw new Error("Could not open desktop supported model picker");
   }
-  if (!clickMenuItemContaining(agentBrowser, "GPT Image 2")) {
+  await waitForEval(
+    agentBrowser,
+    `!!document.querySelector("input[aria-label='Filter supported models']")`,
+    "desktop supported model picker search",
+  );
+  if (!setInputValueByLabel(agentBrowser, "Filter supported models", "gpt image")) {
+    throw new Error("Could not filter desktop supported models");
+  }
+  if (!clickListboxOptionContaining(agentBrowser, "GPT Image 2")) {
     throw new Error("Could not add GPT Image 2 to the desktop mock provider allowlist");
   }
   await waitForEval(

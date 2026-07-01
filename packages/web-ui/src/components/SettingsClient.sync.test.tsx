@@ -3132,7 +3132,10 @@ describe("SettingsClient model routing", () => {
     fireEvent.click(within(editor).getByRole("button", { name: "Model access" }));
     fireEvent.click(screen.getByRole("menuitemradio", { name: /Specific models/ }));
     fireEvent.click(within(editor).getByRole("button", { name: "Add supported model" }));
-    fireEvent.click(screen.getByRole("menuitemradio", { name: /GPT Image 2/ }));
+    const search = screen.getByRole("searchbox", { name: "Filter supported models" });
+    fireEvent.change(search, { target: { value: "gpt image" } });
+    expect(screen.queryByRole("option", { name: /Nano Banana 2/ })).toBeNull();
+    fireEvent.click(screen.getByRole("option", { name: /GPT Image 2/ }));
     expect(within(editor).getByText("GPT Image 2")).toBeTruthy();
     fireEvent.click(within(editor).getByRole("button", { name: "Save" }));
 

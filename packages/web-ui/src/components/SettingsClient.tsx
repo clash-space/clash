@@ -33,7 +33,7 @@ import {
 } from '@clash/web-ui/lib/clientActions';
 import { runtimeApiUrl } from '@clash/web-ui/lib/runtimeConfig';
 import { Dialog } from './ui/dialog';
-import { SelectMenu, type SelectOption } from './ui/select';
+import { FloatingMenu, SelectMenu, type SelectOption } from './ui/select';
 import { Switch } from './ui/switch';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from './ui/collapsible';
 import { useAppFeedback } from './AppFeedback';
@@ -1540,6 +1540,121 @@ const MODEL_ACCESS_OPTIONS: SelectOption<'all' | 'specific'>[] = [
     { value: 'specific', label: 'Specific models', description: 'Restrict this account to selected model cards.' },
 ];
 
+function selectOptionText(node: ReactNode): string {
+    if (typeof node === 'string' || typeof node === 'number') return String(node);
+    if (Array.isArray(node)) return node.map(selectOptionText).join(' ');
+    return '';
+}
+
+function SupportedModelPicker({
+    options,
+    onSelect,
+}: {
+    options: SelectOption<string>[];
+    onSelect: (value: string) => void;
+}) {
+    const triggerRef = useRef<HTMLButtonElement>(null);
+    const searchRef = useRef<HTMLInputElement>(null);
+    const [open, setOpen] = useState(false);
+    const [query, setQuery] = useState('');
+    const filteredOptions = useMemo(() => {
+        const normalized = query.trim().toLowerCase();
+        if (!normalized) return options;
+        return options.filter((option) => [
+            selectOptionText(option.label),
+            selectOptionText(option.description),
+            String(option.value),
+        ].join(' ').toLowerCase().includes(normalized));
+    }, [options, query]);
+
+    useEffect(() => {
+        if (!open) {
+            setQuery('');
+            return;
+        }
+        const frame = window.requestAnimationFrame(() => searchRef.current?.focus());
+        return () => window.cancelAnimationFrame(frame);
+    }, [open]);
+
+    return (
+        <div className="relative inline-flex w-full min-w-0">
+            <button
+                ref={triggerRef}
+                type="button"
+                aria-label="Add supported model"
+                aria-expanded={open}
+                aria-haspopup="listbox"
+                disabled={options.length === 0}
+                onClick={() => setOpen((current) => !current)}
+                className={`clash-select-trigger inline-flex min-w-0 items-center gap-1.5 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-warm-surface disabled:cursor-not-allowed disabled:opacity-45 min-h-[34px] justify-between rounded-xl border border-warm-border bg-warm-surface px-3 py-2 text-xs font-medium text-slate-900 shadow-[inset_0_1px_0_rgba(255,255,255,0.76)] hover:bg-warm-muted/45 dark:text-slate-50 dark:hover:bg-slate-800 ${settingsSelectTriggerClass}`}
+            >
+                <span className="min-w-0 flex-1 truncate text-left">Add model</span>
+                <CaretDown className="h-3.5 w-3.5 flex-shrink-0 text-stone-500 dark:text-stone-400" aria-hidden="true" />
+            </button>
+            <FloatingMenu
+                anchorRef={triggerRef}
+                open={open}
+                onOpenChange={setOpen}
+                ariaLabel="Add supported model"
+                menuWidth="trigger"
+                maxMenuHeight={360}
+                className="overflow-hidden p-0"
+            >
+                <div className="w-full p-2">
+                    <div className="relative">
+                        <MagnifyingGlass className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-stone-400" aria-hidden="true" />
+                        <input
+                            ref={searchRef}
+                            aria-label="Filter supported models"
+                            type="search"
+                            value={query}
+                            onChange={(event) => setQuery(event.target.value)}
+                            placeholder="Filter models..."
+                            className={settingsSearchFieldClass}
+                        />
+                    </div>
+                    <div
+                        role="listbox"
+                        aria-label="Supported models"
+                        className="mt-2 max-h-72 overflow-y-auto pr-1"
+                    >
+                        {filteredOptions.length > 0 ? (
+                            filteredOptions.map((option) => (
+                                <button
+                                    key={String(option.value)}
+                                    type="button"
+                                    role="option"
+                                    aria-selected="false"
+                                    className="flex min-h-[40px] w-full items-center gap-3 rounded-xl px-3 py-2 text-left text-sm text-slate-900 transition-colors hover:bg-warm-muted/75 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand dark:text-slate-100 dark:hover:bg-slate-800/80"
+                                    onClick={() => {
+                                        onSelect(String(option.value));
+                                        setOpen(false);
+                                        setQuery('');
+                                        triggerRef.current?.focus();
+                                    }}
+                                >
+                                    <span className="min-w-0 flex-1">
+                                        <span className="block truncate font-medium leading-5">{option.label}</span>
+                                        {option.description ? (
+                                            <span className="block truncate text-xs font-normal leading-4 text-stone-600 dark:text-stone-400">
+                                                {option.description}
+                                            </span>
+                                        ) : null}
+                                    </span>
+                                </button>
+                            ))
+                        ) : (
+                            <div className="px-3 py-5 text-center text-xs font-medium text-stone-500 dark:text-stone-400">
+                                No supported models match.
+                            </div>
+                        )}
+                    </div>
+                </div>
+            </FloatingMenu>
+        </div>
+    );
+}
+
 function sameStringArray(a: readonly string[], b: readonly string[]): boolean {
     return a.length === b.length && a.every((value, index) => value === b[index]);
 }
@@ -2792,16 +2907,9 @@ function ModelRoutingSection({
                                             Add at least one model before saving this restriction.
                                         </p>
                                     )}
-                                    <SelectMenu
-                                        value=""
+                                    <SupportedModelPicker
                                         options={supportedModelOptions}
-                                        onValueChange={(value) => setSupportedModelIdsDraft([...draftSupportedModelIds, String(value)])}
-                                        ariaLabel="Add supported model"
-                                        placeholder="Add model"
-                                        triggerLabel="Add model"
-                                        variant="field"
-                                        triggerClassName={settingsSelectTriggerClass}
-                                        menuWidth="trigger"
+                                        onSelect={(value) => setSupportedModelIdsDraft([...draftSupportedModelIds, value])}
                                     />
                                 </div>
                             )}
