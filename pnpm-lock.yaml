@@ -772,6 +772,9 @@ importers:
       '@ai-sdk/react':
         specifier: ^3.0.140
         version: 3.0.140(react@19.2.5)(zod@4.3.6)
+      '@ariakit/react':
+        specifier: ^0.4.31
+        version: 0.4.31(react-dom@19.2.5)(react@19.2.5)
       '@clash/shared-layout':
         specifier: workspace:^
         version: link:../shared-layout
@@ -871,9 +874,6 @@ importers:
       clsx:
         specifier: ^2.1.1
         version: 2.1.1
-      cmdk:
-        specifier: ^1.1.1
-        version: 1.1.1(@types/react-dom@19.2.3)(@types/react@19.2.14)(react-dom@19.2.5)(react@19.2.5)
       elkjs:
         specifier: ^0.11.0
         version: 0.11.1
@@ -1302,6 +1302,72 @@ packages:
       '@jsdevtools/ono': 7.1.3
       '@types/json-schema': 7.0.15
       js-yaml: 4.1.1
+    dev: false
+
+  /@ariakit/components@0.1.4:
+    resolution: {integrity: sha512-XXF/FXypfw3PQ+YJZFOHvdGCShA/Ls3EDi5/N+CY2UIdK3xlk584Q1+4/iBQWlz3hHrqAQf7y6HYdicR6CQn+g==}
+    dependencies:
+      '@ariakit/store': 0.1.4
+      '@ariakit/utils': 0.1.4
+    dev: false
+
+  /@ariakit/react-components@0.3.0(react-dom@19.2.5)(react@19.2.5):
+    resolution: {integrity: sha512-/1DeIinBj2Vlmm3kgkcech17Y2Zt5aFjP04pxduuoB/K+vntDd3qxiavJ6OfyQZdLhpck7AKpRPOw+Ot9iPGGA==}
+    peerDependencies:
+      react: 19.2.5
+      react-dom: 19.2.5
+    dependencies:
+      '@ariakit/components': 0.1.4
+      '@ariakit/react-store': 0.1.4(react@19.2.5)
+      '@ariakit/react-utils': 0.2.0(react@19.2.5)
+      '@ariakit/store': 0.1.4
+      '@ariakit/utils': 0.1.4
+      '@floating-ui/dom': 1.7.6
+      react: 19.2.5
+      react-dom: 19.2.5(react@19.2.5)
+    dev: false
+
+  /@ariakit/react-store@0.1.4(react@19.2.5):
+    resolution: {integrity: sha512-v1eXwNmNldFHviVzRuar/8U9Y7rWfuq3awJxOiVDrOWd+kQkkBrbovgPNotU3RdW177N6Me44At2Dj2vc3mx0A==}
+    peerDependencies:
+      react: 19.2.5
+    dependencies:
+      '@ariakit/react-utils': 0.2.0(react@19.2.5)
+      '@ariakit/store': 0.1.4
+      '@ariakit/utils': 0.1.4
+      react: 19.2.5
+      use-sync-external-store: 1.6.0(react@19.2.5)
+    dev: false
+
+  /@ariakit/react-utils@0.2.0(react@19.2.5):
+    resolution: {integrity: sha512-tyIx/qxYY5i8ntGSzDYZ5Olak7zZ58QeEYjbbMNSZEywgtrQlKhZXkVnXK72UkGXmCLg7OrrTsesv8Qh6Bx2LQ==}
+    peerDependencies:
+      react: 19.2.5
+    dependencies:
+      '@ariakit/store': 0.1.4
+      '@ariakit/utils': 0.1.4
+      react: 19.2.5
+    dev: false
+
+  /@ariakit/react@0.4.31(react-dom@19.2.5)(react@19.2.5):
+    resolution: {integrity: sha512-P8N/Y9Yjavw+1MHpQgA2WOUR304zcfijwVAceY8xnGxDAiw5kOrMKPV5+apFJtM0MB/Fab1o33ERGdgwdPYALg==}
+    peerDependencies:
+      react: 19.2.5
+      react-dom: 19.2.5
+    dependencies:
+      '@ariakit/react-components': 0.3.0(react-dom@19.2.5)(react@19.2.5)
+      react: 19.2.5
+      react-dom: 19.2.5(react@19.2.5)
+    dev: false
+
+  /@ariakit/store@0.1.4:
+    resolution: {integrity: sha512-VQDtp5eq4MgIjxzo6M/6NN2sVx8WykiSs9HNMv2AnfAGntF1fMA6cxCuBIFFWkHekNMGWwe/utzbTt3J/mtuiA==}
+    dependencies:
+      '@ariakit/utils': 0.1.4
+    dev: false
+
+  /@ariakit/utils@0.1.4:
+    resolution: {integrity: sha512-gIC/FR/gcOtp2FQQDOnRPfxizJjqp4PSQWS7fH2tNr6O6iTwwW8CPao7VUpu8Y8xKeMXrvzHvkOHhBhfBf4OrA==}
     dev: false
 
   /@asamuzakjp/css-color@5.1.10:
@@ -11021,23 +11087,6 @@ packages:
   /clsx@2.1.1:
     resolution: {integrity: sha512-eYm0QWBtUrBWZWG0d386OGAw16Z995PiOVo2B7bjWSbHedGl5e0ZWaq65kOGgUSNesEIDkB9ISbTg/JK9dhCZA==}
     engines: {node: '>=6'}
-    dev: false
-
-  /cmdk@1.1.1(@types/react-dom@19.2.3)(@types/react@19.2.14)(react-dom@19.2.5)(react@19.2.5):
-    resolution: {integrity: sha512-Vsv7kFaXm+ptHDMZ7izaRsP70GgrW9NBNGswt9OZaVBLlE0SNpDq8eu/VGXyF9r7M0azK3Wy7OlYXsuyYLFzHg==}
-    peerDependencies:
-      react: 19.2.5
-      react-dom: 19.2.5
-    dependencies:
-      '@radix-ui/react-compose-refs': 1.1.2(@types/react@19.2.14)(react@19.2.5)
-      '@radix-ui/react-dialog': 1.1.15(@types/react-dom@19.2.3)(@types/react@19.2.14)(react-dom@19.2.5)(react@19.2.5)
-      '@radix-ui/react-id': 1.1.1(@types/react@19.2.14)(react@19.2.5)
-      '@radix-ui/react-primitive': 2.1.3(@types/react-dom@19.2.3)(@types/react@19.2.14)(react-dom@19.2.5)(react@19.2.5)
-      react: 19.2.5
-      react-dom: 19.2.5(react@19.2.5)
-    transitivePeerDependencies:
-      - '@types/react'
-      - '@types/react-dom'
     dev: false
 
   /codemirror@6.0.2:

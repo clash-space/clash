@@ -3315,7 +3315,7 @@ describe("SettingsClient model routing", () => {
     fireEvent.click(within(providerConfig).getByText("Mock primary"));
 
     const editor = within(providerConfig).getByRole("group", { name: "Mock primary Mock Provider API key" });
-    expect(within(editor).getByRole("combobox", { name: "Model to test" }).textContent).toContain("GPT Image 2");
+    expect((within(editor).getByRole("combobox", { name: "Model to test" }) as HTMLInputElement).value).toContain("GPT Image 2");
 
     fireEvent.click(within(editor).getByRole("combobox", { name: "Model to test" }));
 
@@ -3357,12 +3357,12 @@ describe("SettingsClient model routing", () => {
     const editor = within(providerConfig).getByRole("group", { name: "Mock primary Mock Provider API key" });
     fireEvent.click(within(editor).getByRole("combobox", { name: "Model to test" }));
 
-    const search = screen.getByRole("combobox", { name: "Search test models" });
+    const search = within(editor).getByRole("combobox", { name: "Model to test" });
     fireEvent.change(search, { target: { value: "text" } });
 
     fireEvent.click(screen.getByRole("option", { name: /Mock Text Model/ }));
 
-    expect(within(editor).getByRole("combobox", { name: "Model to test" }).textContent).toContain("Mock Text Model");
+    expect((within(editor).getByRole("combobox", { name: "Model to test" }) as HTMLInputElement).value).toContain("Mock Text Model");
     expect(screen.queryByRole("option", { name: /Mock Image Model/ })).toBeNull();
   });
 
@@ -3402,7 +3402,7 @@ describe("SettingsClient model routing", () => {
     fireEvent.keyDown(modelPicker, { key: "ArrowDown" });
 
     expect(screen.getByRole("listbox", { name: "Model to test" })).toBeTruthy();
-    expect(screen.getByRole("combobox", { name: "Search test models" })).toBe(document.activeElement);
+    expect(modelPicker).toBe(document.activeElement);
   });
 
   it("runs a saved live provider configuration check from the provider config editor", async () => {
@@ -3611,7 +3611,7 @@ describe("SettingsClient model routing", () => {
     fireEvent.click(screen.getByRole("option", { name: /Specific models/ }));
     fireEvent.click(within(editor).getByRole("combobox", { name: "Add supported model" }));
     expect(screen.queryByRole("menu", { name: "Add supported model" })).toBeNull();
-    const search = screen.getByRole("combobox", { name: "Search supported models" });
+    const search = within(editor).getByRole("combobox", { name: "Add supported model" });
     fireEvent.change(search, { target: { value: "gpt image" } });
     expect(screen.queryByRole("option", { name: /Nano Banana 2/ })).toBeNull();
     fireEvent.click(screen.getByRole("option", { name: /GPT Image 2/ }));
@@ -3673,7 +3673,7 @@ describe("SettingsClient model routing", () => {
     fireEvent.click(screen.getByRole("option", { name: /Specific models/ }));
     fireEvent.click(within(editor).getByRole("combobox", { name: "Add supported model" }));
     expect(screen.queryByRole("menu", { name: "Add supported model" })).toBeNull();
-    fireEvent.change(screen.getByRole("combobox", { name: "Search supported models" }), {
+    fireEvent.change(within(editor).getByRole("combobox", { name: "Add supported model" }), {
       target: { value: "Gemini Flash Image 2" },
     });
 

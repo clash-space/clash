@@ -18,6 +18,7 @@
   },
   "dependencies": {
     "@ai-sdk/react": "^3.0.140",
+    "@ariakit/react": "^0.4.31",
     "@clash/shared-layout": "workspace:^",
     "@clash/shared-runtime": "workspace:*",
     "@clash/shared-types": "workspace:*",
@@ -51,7 +52,6 @@
     "better-auth-cloudflare": "^0.2.9",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
-    "cmdk": "^1.1.1",
     "elkjs": "^0.11.0",
     "framer-motion": "^12.23.24",
     "i18next": "^26.2.0",

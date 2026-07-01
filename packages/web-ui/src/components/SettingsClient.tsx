@@ -1547,14 +1547,12 @@ function SupportedModelPicker({
     return (
         <SearchableSelect
             ariaLabel="Add supported model"
-            commandLabel="Search supported models"
             emptyMessage="No supported models match."
             listboxLabel="Supported models"
             matchTriggerWidth
             onValueChange={(value) => onSelect(String(value))}
             options={options}
             placeholder="Add model"
-            searchAriaLabel="Search supported models"
             searchInputClassName={`${settingsSearchFieldClass} h-9 text-xs`}
             searchPlaceholder="Search models..."
             triggerClassName={`min-h-[34px] justify-between ${settingsSelectTriggerClass}`}
@@ -1574,13 +1572,11 @@ function ProviderTestModelPicker({
     return (
         <SearchableSelect
             ariaLabel="Model to test"
-            commandLabel="Search test models"
             emptyMessage="No matching models."
             listboxLabel="Model to test"
             onValueChange={(nextValue, option) => onValueChange(String(nextValue), option)}
             options={options}
             placeholder="Select model"
-            searchAriaLabel="Search test models"
             searchInputClassName={`${settingsSearchFieldClass} h-9 text-xs`}
             searchPlaceholder="Search models..."
             triggerClassName={`clash-settings-select-trigger ${settingsSelectTriggerClass}`}
