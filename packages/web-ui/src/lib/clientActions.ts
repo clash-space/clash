@@ -244,6 +244,8 @@ export interface ModelProviderTestResult {
   provider?: string;
   requestId?: string;
   modelEndpoint?: string;
+  input?: Record<string, unknown>;
+  output?: Record<string, unknown>;
   disabled?: boolean;
   missingCredentials?: string[];
   missingOAuth?: string[];

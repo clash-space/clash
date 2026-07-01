@@ -1793,4 +1793,26 @@ export const MOCK_MODEL_CARDS: ModelCard[] = z.array(ModelCardSchema).parse([
       },
     ],
   },
+  {
+    id: 'mock-text-model',
+    name: 'Mock Text Model',
+    provider: 'Clash Mock',
+    availableProviders: ['mock'],
+    defaultProvider: 'mock',
+    kind: 'text',
+    defaultAspectRatio: '1:1',
+    description: 'Deterministic text model used by provider routing tests.',
+    parameters: [],
+    defaultParams: {},
+    input: { requiresPrompt: true, inputMode: {}, promptModalities: ['text'] },
+    providerImplementations: [
+      {
+        providerId: 'mock',
+        upstreamId: 'mock',
+        upstreamModel: 'mock/text-completion',
+        apiShape: 'openai-compatible',
+        priority: 1,
+      },
+    ],
+  },
 ]);

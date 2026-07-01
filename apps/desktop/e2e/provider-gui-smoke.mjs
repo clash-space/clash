@@ -27,6 +27,14 @@ const latestScreenshot = path.join(captureDir, "latest-provider-gui-desktop.png"
 
 function captureEvidence(agentBrowser, name) {
   const screenshotPath = path.join(captureDir, `${name}.png`);
+  evalJson(agentBrowser, `(() => {
+    for (const el of [...document.body.querySelectorAll("*")]) {
+      const style = getComputedStyle(el);
+      const text = (el.innerText || el.textContent || "").trim();
+      if (style.position === "fixed" && text.includes("Provider settings saved")) el.remove();
+    }
+    return true;
+  })()`);
   agentBrowser(["screenshot", screenshotPath]);
   console.log(`[desktop-provider-gui] evidence ${name} ${screenshotPath}`);
   return screenshotPath;
@@ -127,10 +135,42 @@ function clickButtonInGroup(agentBrowser, groupLabel, buttonLabel) {
   })()`);
 }
 
+function openControlByLabel(agentBrowser, label) {
+  return evalJson(agentBrowser, `(() => {
+    const wanted = ${JSON.stringify(label)};
+    const control = [...document.querySelectorAll("button, [role='combobox']")].find((el) => {
+      const text = (el.innerText || el.textContent || "").trim();
+      const aria = el.getAttribute("aria-label") || "";
+      const rect = el.getBoundingClientRect();
+      const style = getComputedStyle(el);
+      return (text === wanted || aria === wanted) &&
+        rect.width > 0 && rect.height > 0 &&
+        style.display !== "none" && style.visibility !== "hidden" &&
+        !el.disabled;
+    });
+    if (!control) return false;
+    control.scrollIntoView({ block: "center", inline: "center" });
+    control.dispatchEvent(new PointerEvent("pointerdown", {
+      bubbles: true,
+      cancelable: true,
+      pointerType: "mouse",
+      button: 0,
+    }));
+    if (![...document.querySelectorAll("[role='listbox'], [role='menu']")].some((menu) => {
+      const rect = menu.getBoundingClientRect();
+      const style = getComputedStyle(menu);
+      return rect.width > 0 && rect.height > 0 && style.display !== "none" && style.visibility !== "hidden";
+    })) {
+      control.click();
+    }
+    return true;
+  })()`);
+}
+
 function clickMenuItemContaining(agentBrowser, text) {
   return evalJson(agentBrowser, `(() => {
     const wanted = ${JSON.stringify(text)};
-    const item = [...document.querySelectorAll("[role='menu'] [role='menuitemradio'], [role='menu'] [role='menuitem']")].find((candidate) => {
+    const item = [...document.querySelectorAll("[role='listbox'] [role='option'], [role='menu'] [role='menuitemradio'], [role='menu'] [role='menuitem']")].find((candidate) => {
       const value = (candidate.innerText || candidate.textContent || "").trim();
       const rect = candidate.getBoundingClientRect();
       const style = getComputedStyle(candidate);
@@ -149,7 +189,7 @@ function clickMenuItemContaining(agentBrowser, text) {
 function menuContainsText(agentBrowser, text) {
   return evalJson(agentBrowser, `(() => {
     const wanted = ${JSON.stringify(text)};
-    return [...document.querySelectorAll("[role='menu'] [role='menuitemradio'], [role='menu'] [role='menuitem']")].some((candidate) => {
+    return [...document.querySelectorAll("[role='listbox'] [role='option'], [role='menu'] [role='menuitemradio'], [role='menu'] [role='menuitem']")].some((candidate) => {
       const value = (candidate.innerText || candidate.textContent || "").trim();
       const rect = candidate.getBoundingClientRect();
       const style = getComputedStyle(candidate);
@@ -223,9 +263,32 @@ async function runProviderFlow(agentBrowser, apiOrigin) {
     "desktop mock provider test controls",
   );
 
-  if (!clickButtonByLabel(agentBrowser, "Model to test")) {
+  if (!openControlByLabel(agentBrowser, "Model to test")) {
     throw new Error("Could not open desktop provider test model selector");
   }
+  await waitForEval(
+    agentBrowser,
+    `(() => {
+      const trigger = [...document.querySelectorAll("[role='combobox'], button")].find((el) =>
+        el.getAttribute("aria-label") === "Model to test"
+      );
+      const menu = [...document.querySelectorAll("[role='listbox'], [role='menu']")].find((el) =>
+        (el.innerText || el.textContent || "").includes("Mock Image Model")
+      );
+      if (!trigger || !menu) return false;
+      const triggerRect = trigger.getBoundingClientRect();
+      const menuRect = menu.getBoundingClientRect();
+      return menu.getAttribute("role") === "listbox" &&
+        trigger.getAttribute("role") === "combobox" &&
+        menuRect.width >= Math.min(triggerRect.width, 160) &&
+        menuRect.width > 180 &&
+        menuRect.height > 40 &&
+        menuRect.left <= triggerRect.right &&
+        menuRect.right >= triggerRect.left;
+    })()`,
+    "desktop provider test model selector uses stable combobox/listbox popup",
+  );
+  captureEvidence(agentBrowser, "00-test-model-selector-open");
   if (!clickMenuItemContaining(agentBrowser, "Mock Image Model")) {
     throw new Error("Could not select Mock Image Model for the desktop mock provider test");
   }
@@ -239,10 +302,31 @@ async function runProviderFlow(agentBrowser, apiOrigin) {
   }
   await waitForEval(
     agentBrowser,
-    `document.body.innerText.includes("Mock provider ran Mock Image Model through fal-ai/mock-image.")`,
+    `document.body.innerText.includes("Mock provider ran Mock Image Model through fal-ai/mock-image.") &&
+      document.body.innerText.includes('"shape": "image"') &&
+      document.body.innerText.includes('"url":')`,
     "desktop mock provider test result",
   );
-  captureEvidence(agentBrowser, "01-provider-test-result");
+  captureEvidence(agentBrowser, "01-provider-test-image-result");
+
+  if (!openControlByLabel(agentBrowser, "Model to test")) {
+    throw new Error("Could not reopen desktop provider test model selector for text shape");
+  }
+  if (!clickMenuItemContaining(agentBrowser, "Mock Text Model")) {
+    throw new Error("Could not select Mock Text Model for the desktop mock provider test");
+  }
+  if (!clickButtonByLabel(agentBrowser, "Run provider test")) {
+    throw new Error("Could not run desktop mock text provider test");
+  }
+  await waitForEval(
+    agentBrowser,
+    `document.body.innerText.includes("Mock provider ran Mock Text Model through mock/text-completion.") &&
+      document.body.innerText.includes('"shape": "text"') &&
+      document.body.innerText.includes('"text": "Generated text (mock-text-model)') &&
+      !document.body.innerText.includes('"url": "http://local-provider-test/fal/media/')`,
+    "desktop mock text provider test result",
+  );
+  captureEvidence(agentBrowser, "02-provider-test-text-result");
 
   if (!clickButtonByLabel(agentBrowser, "Model access")) {
     throw new Error("Could not open desktop model access selector");
@@ -295,13 +379,13 @@ async function runProviderFlow(agentBrowser, apiOrigin) {
       .catch(() => false)`,
     "desktop mock provider model allowlist saved",
   );
-  if (!clickButtonByLabel(agentBrowser, "Model to test")) {
+  if (!openControlByLabel(agentBrowser, "Model to test")) {
     throw new Error("Could not reopen desktop provider test model selector after saving allowlist");
   }
   await waitForEval(
     agentBrowser,
     `(() => {
-      const items = [...document.querySelectorAll("[role='menu'] [role='menuitemradio'], [role='menu'] [role='menuitem']")]
+      const items = [...document.querySelectorAll("[role='listbox'] [role='option'], [role='menu'] [role='menuitemradio'], [role='menu'] [role='menuitem']")]
         .map((item) => (item.innerText || item.textContent || "").trim());
       return items.some((item) => item.includes("GPT Image 2"));
     })()`,
@@ -322,7 +406,7 @@ async function runProviderFlow(agentBrowser, apiOrigin) {
       document.body.innerText.includes("Models supported by Mock Provider")`,
     "desktop mock supported models page",
   );
-  captureEvidence(agentBrowser, "02-supported-models-page");
+  captureEvidence(agentBrowser, "03-supported-models-page");
 
   if (!clickButtonByLabel(agentBrowser, "Edit provider order for GPT Image 2")) {
     throw new Error("Could not open desktop GPT Image 2 provider order");
@@ -349,7 +433,7 @@ async function runProviderFlow(agentBrowser, apiOrigin) {
       .catch(() => false)`,
     "desktop GPT Image 2 provider order saved",
   );
-  captureEvidence(agentBrowser, "03-model-provider-order-saved");
+  captureEvidence(agentBrowser, "04-model-provider-order-saved");
 
   navigateTo(agentBrowser, "/settings?section=providers");
   await waitForEval(agentBrowser, `document.body.innerText.includes("BYOK")`, "desktop BYOK providers after model order");
@@ -486,7 +570,7 @@ async function runProviderFlow(agentBrowser, apiOrigin) {
       .catch(() => false)`,
     "desktop two OpenAI keys saved with distinct ids",
   );
-  captureEvidence(agentBrowser, "04-two-openai-keys-saved");
+  captureEvidence(agentBrowser, "05-two-openai-keys-saved");
 
   return evalJson(agentBrowser, `(() => ({
     href: location.href,

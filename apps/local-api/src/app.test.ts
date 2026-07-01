@@ -482,6 +482,22 @@ describe("local API app", () => {
       provider: "fal-mock",
       modelEndpoint: "fal-ai/nano-banana-2",
       requestId: expect.stringMatching(/^fal-mock-/),
+      input: {
+        shape: "image",
+        model: "nano-banana-2",
+        prompt: "Provider test for Nano Banana 2",
+        aspectRatio: "16:9",
+      },
+      output: {
+        shape: "image",
+        provider: "fal-mock",
+        endpoint: "fal-ai/nano-banana-2",
+        requestId: expect.stringMatching(/^fal-mock-/),
+        url: expect.stringContaining("/fal/media/"),
+        contentType: expect.stringMatching(/^image\//),
+        width: expect.any(Number),
+        height: expect.any(Number),
+      },
       message: "Mock provider ran Nano Banana 2 through fal-ai/nano-banana-2.",
     });
     expect(submit).toHaveBeenCalledWith(
@@ -511,6 +527,22 @@ describe("local API app", () => {
       provider: "fal-mock",
       modelEndpoint: "fal-ai/mock-image",
       requestId: expect.stringMatching(/^fal-mock-/),
+      input: {
+        shape: "image",
+        model: "mock-image-model",
+        prompt: "Provider test for Mock Image Model",
+        aspectRatio: "16:9",
+      },
+      output: {
+        shape: "image",
+        provider: "fal-mock",
+        endpoint: "fal-ai/mock-image",
+        requestId: expect.stringMatching(/^fal-mock-/),
+        url: expect.stringContaining("/fal/media/"),
+        contentType: expect.stringMatching(/^image\//),
+        width: expect.any(Number),
+        height: expect.any(Number),
+      },
       message: "Mock provider ran Mock Image Model through fal-ai/mock-image.",
     });
     expect(submit).toHaveBeenCalledWith(
@@ -521,6 +553,37 @@ describe("local API app", () => {
       }),
       expect.any(Object),
     );
+
+    const mockTextModel = await app.request("/api/v1/model-providers/test", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        provider: { id: "mock-primary", providerId: "mock", upstreamId: "mock", enabled: true },
+        modelId: "mock-text-model",
+      }),
+    });
+
+    expect(mockTextModel.status).toBe(200);
+    expect(await mockTextModel.json()).toEqual({
+      ok: true,
+      providerId: "mock",
+      upstreamId: "mock",
+      modelId: "mock-text-model",
+      provider: "mock",
+      modelEndpoint: "mock/text-completion",
+      input: {
+        shape: "text",
+        model: "mock-text-model",
+        prompt: "Provider test for Mock Text Model",
+      },
+      output: {
+        shape: "text",
+        provider: "mock",
+        endpoint: "mock/text-completion",
+        text: "Generated text (mock-text-model)\n\nProvider test for Mock Text Model",
+      },
+      message: "Mock provider ran Mock Text Model through mock/text-completion.",
+    });
 
     const unsupported = await app.request("/api/v1/model-providers/test", {
       method: "POST",

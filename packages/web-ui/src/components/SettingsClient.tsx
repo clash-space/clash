@@ -33,7 +33,7 @@ import {
 } from '@clash/web-ui/lib/clientActions';
 import { runtimeApiUrl } from '@clash/web-ui/lib/runtimeConfig';
 import { Dialog } from './ui/dialog';
-import { FloatingMenu, SelectMenu, type SelectOption } from './ui/select';
+import { FloatingMenu, SelectMenu, StableSelectMenu, type SelectOption } from './ui/select';
 import { Switch } from './ui/switch';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from './ui/collapsible';
 import { useAppFeedback } from './AppFeedback';
@@ -93,6 +93,10 @@ const settingsCompactSecondaryButtonClass =
     'clash-settings-secondary inline-flex items-center justify-center rounded-lg px-3 py-1.5 text-xs font-medium disabled:cursor-not-allowed disabled:opacity-60';
 const settingsSelectTriggerClass =
     'clash-settings-select-trigger h-10 w-full';
+
+function formatProviderTestPayload(payload: Record<string, unknown>): string {
+    return JSON.stringify(payload, null, 2);
+}
 
 const MODEL_PROVIDER_FILTER_OPTIONS: SelectOption<'all' | 'ready' | 'missing'>[] = [
     { value: 'all', label: 'All provider states' },
@@ -2927,7 +2931,7 @@ function ModelRoutingSection({
                             <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
                                 <label className="min-w-0">
                                     <span className="mb-1 block text-xs font-medium text-stone-500 dark:text-stone-400">Model to test</span>
-                                    <SelectMenu
+                                    <StableSelectMenu
                                         value={selectedProviderTestModelId}
                                         options={providerTestOptions}
                                         onValueChange={(value) => {
@@ -2940,7 +2944,7 @@ function ModelRoutingSection({
                                         ariaLabel="Model to test"
                                         variant="field"
                                         triggerClassName={settingsSelectTriggerClass}
-                                        menuWidth="trigger"
+                                        menuWidth={360}
                                     />
                                 </label>
                                 <button
@@ -2954,15 +2958,43 @@ function ModelRoutingSection({
                                 </button>
                             </div>
                             {providerTestResult && (
-                                <p
-                                    className={`mt-3 text-xs font-medium ${
-                                        providerTestResult.ok
-                                            ? 'text-emerald-700 dark:text-emerald-300'
-                                            : 'text-amber-700 dark:text-amber-300'
-                                    }`}
-                                >
-                                    {providerTestResult.message}
-                                </p>
+                                <div className="mt-3 space-y-3">
+                                    <p
+                                        className={`text-xs font-medium ${
+                                            providerTestResult.ok
+                                                ? 'text-emerald-700 dark:text-emerald-300'
+                                                : 'text-amber-700 dark:text-amber-300'
+                                        }`}
+                                    >
+                                        {providerTestResult.message}
+                                    </p>
+                                    {(providerTestResult.input || providerTestResult.output) && (
+                                        <div className="grid gap-3 lg:grid-cols-2">
+                                            {providerTestResult.input && (
+                                                <div className="min-w-0">
+                                                    <div className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-stone-500 dark:text-stone-400">Input</div>
+                                                    <pre
+                                                        aria-label="Provider test input"
+                                                        className={`${settingsCodeBlockClass} whitespace-pre-wrap break-words text-xs leading-5`}
+                                                    >
+                                                        {formatProviderTestPayload(providerTestResult.input)}
+                                                    </pre>
+                                                </div>
+                                            )}
+                                            {providerTestResult.output && (
+                                                <div className="min-w-0">
+                                                    <div className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-stone-500 dark:text-stone-400">Output</div>
+                                                    <pre
+                                                        aria-label="Provider test output"
+                                                        className={`${settingsCodeBlockClass} whitespace-pre-wrap break-words text-xs leading-5`}
+                                                    >
+                                                        {formatProviderTestPayload(providerTestResult.output)}
+                                                    </pre>
+                                                </div>
+                                            )}
+                                        </div>
+                                    )}
+                                </div>
                             )}
                         </div>
                     )}

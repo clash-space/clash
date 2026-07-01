@@ -13,6 +13,7 @@ import {
   ProviderOAuthIdSchema,
   type ProviderOAuthId,
   type ModelUpstreamRoute,
+  type ModelKind,
 } from "@clash/shared-types";
 import type { Asset, AssetKind, AssetRefRow } from "@clash/shared-types/assets";
 import {
@@ -1001,11 +1002,94 @@ interface ModelProviderTestResult {
   provider?: string;
   requestId?: string;
   modelEndpoint?: string;
+  input?: ModelProviderTestInputSummary;
+  output?: ModelProviderTestOutputSummary;
   disabled?: boolean;
   missingCredentials?: string[];
   missingOAuth?: string[];
   unsupported?: boolean;
   skipped?: boolean;
+}
+
+interface ModelProviderTestInputSummary {
+  shape: ModelKind;
+  model: string;
+  prompt: string;
+  aspectRatio?: string;
+  duration?: number;
+}
+
+type ModelProviderTestOutputSummary =
+  | {
+    shape: "image";
+    provider?: string;
+    endpoint?: string;
+    requestId?: string;
+    url?: string;
+    contentType: string;
+    width?: number;
+    height?: number;
+  }
+  | {
+    shape: "video";
+    provider?: string;
+    endpoint?: string;
+    requestId?: string;
+    url?: string;
+    contentType: string;
+    width?: number;
+    height?: number;
+    durationMs?: number;
+  }
+  | {
+    shape: "audio";
+    provider?: string;
+    endpoint?: string;
+    requestId?: string;
+    url?: string;
+    contentType: string;
+    durationMs?: number;
+    transcript?: string;
+  }
+  | {
+    shape: "text";
+    provider?: string;
+    endpoint?: string;
+    text: string;
+  }
+  | {
+    shape: "asr";
+    provider?: string;
+    endpoint?: string;
+    transcript?: string;
+  };
+
+function providerTestInputSummary(input: ModelProviderTestInputSummary): ModelProviderTestInputSummary {
+  return {
+    shape: input.shape,
+    model: input.model,
+    prompt: input.prompt,
+    ...(input.aspectRatio ? { aspectRatio: input.aspectRatio } : {}),
+    ...(typeof input.duration === "number" ? { duration: input.duration } : {}),
+  };
+}
+
+function providerTestMediaOutput(
+  shape: "image" | "video" | "audio",
+  result: Awaited<ReturnType<ReturnType<typeof createMockExternalAigcService>["generateImage"]>>,
+): ModelProviderTestOutputSummary {
+  return {
+    shape,
+    ...(result.provider ? { provider: result.provider } : {}),
+    ...(result.modelEndpoint ? { endpoint: result.modelEndpoint } : {}),
+    ...(result.requestId ? { requestId: result.requestId } : {}),
+    ...(result.remoteUrl ? { url: result.remoteUrl } : {}),
+    contentType: result.contentType,
+    ...(typeof result.width === "number" ? { width: result.width } : {}),
+    ...(typeof result.height === "number" ? { height: result.height } : {}),
+    ...(typeof result.durationMs === "number" ? { durationMs: result.durationMs } : {}),
+    ...(result.transcript ? { transcript: result.transcript } : {}),
+  };
 }
 
 function displayModelName(modelId: string): string {
@@ -1357,20 +1441,51 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
       const model = [...MODEL_CARDS, ...MOCK_MODEL_CARDS].find((candidate) => candidate.id === modelId);
       const taskId = `provider-test-${modelId}`;
       const prompt = `Provider test for ${modelName}`;
+      const shape = model?.kind ?? supportedModelEntries[0]?.kind ?? "image";
+      const testInput = providerTestInputSummary({
+        shape,
+        model: modelId,
+        prompt,
+        ...(shape === "image" || shape === "video" ? { aspectRatio: "16:9" } : {}),
+        ...(shape === "video" || shape === "audio" ? { duration: shape === "video" ? 4 : 5 } : {}),
+      });
       try {
-        const result = model?.kind === "video"
-          ? await providerTestAigc.generateVideo({ taskId, prompt, model: modelId, aspectRatio: "16:9" })
-          : model?.kind === "audio"
-            ? await providerTestAigc.generateAudio({ taskId, prompt, model: modelId })
-            : model?.kind === "text"
-              ? await providerTestAigc.generateText({ taskId, prompt, model: modelId })
-              : await providerTestAigc.generateImage({ taskId, prompt, model: modelId, aspectRatio: "16:9" });
+        if (shape === "text") {
+          const result = await providerTestAigc.generateText({ taskId, prompt, model: modelId });
+          const output: ModelProviderTestOutputSummary = {
+            shape: "text",
+            ...(result.provider ? { provider: result.provider } : {}),
+            ...(result.modelEndpoint ? { endpoint: result.modelEndpoint } : {}),
+            text: result.text,
+          };
+          return c.json({
+            ok: true,
+            ...baseResult,
+            ...(result.provider ? { provider: result.provider } : {}),
+            ...(result.modelEndpoint ? { modelEndpoint: result.modelEndpoint } : {}),
+            input: testInput,
+            output,
+            message: result.modelEndpoint
+              ? `Mock provider ran ${modelName} through ${result.modelEndpoint}.`
+              : `Mock provider ran ${modelName}.`,
+          } satisfies ModelProviderTestResult);
+        }
+
+        const mediaShape = shape === "video" || shape === "audio" ? shape : "image";
+        const result = mediaShape === "video"
+          ? await providerTestAigc.generateVideo({ taskId, prompt, model: modelId, aspectRatio: testInput.aspectRatio, duration: testInput.duration })
+          : mediaShape === "audio"
+            ? await providerTestAigc.generateAudio({ taskId, prompt, model: modelId, duration: testInput.duration })
+            : await providerTestAigc.generateImage({ taskId, prompt, model: modelId, aspectRatio: testInput.aspectRatio });
+        const output = providerTestMediaOutput(mediaShape, result);
         return c.json({
           ok: true,
           ...baseResult,
           ...(result.provider ? { provider: result.provider } : {}),
           ...("requestId" in result && result.requestId ? { requestId: result.requestId } : {}),
           ...(result.modelEndpoint ? { modelEndpoint: result.modelEndpoint } : {}),
+          input: testInput,
+          output,
           message: result.modelEndpoint
             ? `Mock provider ran ${modelName} through ${result.modelEndpoint}.`
             : `Mock provider ran ${modelName}.`,

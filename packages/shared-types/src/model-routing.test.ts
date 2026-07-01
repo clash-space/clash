@@ -95,8 +95,9 @@ describe("model upstream routing", () => {
     expect(routedModelIds.filter((modelId) => !modelCardIds.has(modelId))).toEqual([]);
   });
 
-  it("exposes a first-class mock model card only when mock routing is enabled", () => {
+  it("exposes first-class mock model cards only when mock routing is enabled", () => {
     const mockModel = MOCK_MODEL_CARDS.find((model) => model.id === "mock-image-model");
+    const mockTextModel = MOCK_MODEL_CARDS.find((model) => model.id === "mock-text-model");
 
     expect(mockModel).toMatchObject({
       id: "mock-image-model",
@@ -112,12 +113,29 @@ describe("model upstream routing", () => {
         }),
       ],
     });
+    expect(mockTextModel).toMatchObject({
+      id: "mock-text-model",
+      name: "Mock Text Model",
+      kind: "text",
+      availableProviders: ["mock"],
+      defaultProvider: "mock",
+      providerImplementations: [
+        expect.objectContaining({
+          providerId: "mock",
+          upstreamId: "mock",
+          upstreamModel: "mock/text-completion",
+          apiShape: "openai-compatible",
+        }),
+      ],
+    });
     expect(listModelCatalogEntries().some((entry) => entry.model.id === "mock-image-model")).toBe(false);
+    expect(listModelCatalogEntries().some((entry) => entry.model.id === "mock-text-model")).toBe(false);
 
     const mockEntries = listModelCatalogEntries({
       configuredProviders: [{ providerId: "mock", upstreamId: "mock", enabled: true }],
     });
     const entry = mockEntries.find((candidate) => candidate.model.id === "mock-image-model");
+    const textEntry = mockEntries.find((candidate) => candidate.model.id === "mock-text-model");
 
     expect(entry).toMatchObject({
       tier: "available",
@@ -129,9 +147,21 @@ describe("model upstream routing", () => {
       },
       candidateProviders: ["mock"],
     });
-    expect(listProviderModelSupport({ includeMock: true })
+    expect(textEntry).toMatchObject({
+      tier: "available",
+      selectedRoute: {
+        modelCode: "mock-text-model",
+        providerId: "mock",
+        upstreamId: "mock",
+        upstreamModel: "mock/text-completion",
+      },
+      candidateProviders: ["mock"],
+    });
+    const supportedMockModelIds = listProviderModelSupport({ includeMock: true })
       .find((support) => support.providerId === "mock")?.models
-      .map((model) => model.id)).toContain("mock-image-model");
+      .map((model) => model.id);
+    expect(supportedMockModelIds).toContain("mock-image-model");
+    expect(supportedMockModelIds).toContain("mock-text-model");
   });
 
   it("exports model cards after applying schema validation and defaults", () => {

@@ -931,7 +931,7 @@ export function createMockExternalAigcService(
         contentType: "text/plain; charset=utf-8",
         requestId: input.taskId,
         provider: "mock",
-        modelEndpoint: input.model || "mock-text",
+        modelEndpoint: resolveMockFalModelId(input.model, "text", "mock-text"),
       }));
       return {
         text: new TextDecoder().decode(result.bytes),

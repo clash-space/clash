@@ -2482,7 +2482,7 @@ describe("SettingsClient model routing", () => {
     expect(within(existingKeyEditor).queryByText("Filters")).toBeNull();
     expect(within(existingKeyEditor).queryByText("API Keys")).toBeNull();
     expect(within(existingKeyEditor).queryByText("Always use for this provider")).toBeNull();
-    expect(within(existingKeyEditor).getByRole("button", { name: "Model to test" })).toBeTruthy();
+    expect(within(existingKeyEditor).getByRole("combobox", { name: "Model to test" })).toBeTruthy();
     expect(within(existingKeyEditor).getByRole("button", { name: "Run provider test" })).toBeTruthy();
     expect(within(existingKeyEditor).queryByRole("button", { name: /Remove key/i })).toBeNull();
 
@@ -2983,7 +2983,7 @@ describe("SettingsClient model routing", () => {
     const editor = within(accountRow).getByRole("group", { name: "Primary Dreamina Dreamina account" });
     expect(within(editor).getByText("Authorization")).toBeTruthy();
     expect(within(editor).getByRole("button", { name: "Reconnect" })).toBeTruthy();
-    expect(within(editor).getByRole("button", { name: "Model to test" })).toBeTruthy();
+    expect(within(editor).getByRole("combobox", { name: "Model to test" })).toBeTruthy();
     expect(within(editor).getByRole("button", { name: "Run provider test" })).toBeTruthy();
     expect(within(editor).queryByLabelText("Dreamina API key")).toBeNull();
   });
@@ -3172,10 +3172,39 @@ describe("SettingsClient model routing", () => {
       providerId: "mock",
       upstreamId: "mock",
       modelId,
-      provider: "fal-mock",
-      requestId: "fal-mock-provider-test",
-      modelEndpoint: modelId === "mock-image-model" ? "fal-ai/mock-image" : "fal-ai/nano-banana-2",
-      message: `Mock provider ran ${modelId === "mock-image-model" ? "Mock Image Model" : "Nano Banana 2"} through ${modelId === "mock-image-model" ? "fal-ai/mock-image" : "fal-ai/nano-banana-2"}.`,
+      provider: modelId === "mock-text-model" ? "mock" : "fal-mock",
+      ...(modelId === "mock-text-model" ? {} : { requestId: "fal-mock-provider-test" }),
+      modelEndpoint: modelId === "mock-text-model" ? "mock/text-completion" : modelId === "mock-image-model" ? "fal-ai/mock-image" : "fal-ai/nano-banana-2",
+      input: modelId === "mock-text-model"
+        ? {
+          shape: "text",
+          model: "mock-text-model",
+          prompt: "Provider test for Mock Text Model",
+        }
+        : {
+          shape: "image",
+          model: modelId,
+          prompt: `Provider test for ${modelId === "mock-image-model" ? "Mock Image Model" : "Nano Banana 2"}`,
+          aspectRatio: "16:9",
+        },
+      output: modelId === "mock-text-model"
+        ? {
+          shape: "text",
+          provider: "mock",
+          endpoint: "mock/text-completion",
+          text: "Generated text (mock-text-model)\n\nProvider test for Mock Text Model",
+        }
+        : {
+          shape: "image",
+          provider: "fal-mock",
+          endpoint: modelId === "mock-image-model" ? "fal-ai/mock-image" : "fal-ai/nano-banana-2",
+          requestId: "fal-mock-provider-test",
+          url: "http://local-provider-test/api/mock-fal/files/fal-mock-provider-test.png",
+          contentType: "image/png",
+          width: 1024,
+          height: 576,
+        },
+      message: `Mock provider ran ${modelId === "mock-text-model" ? "Mock Text Model" : modelId === "mock-image-model" ? "Mock Image Model" : "Nano Banana 2"} through ${modelId === "mock-text-model" ? "mock/text-completion" : modelId === "mock-image-model" ? "fal-ai/mock-image" : "fal-ai/nano-banana-2"}.`,
     }));
 
     render(
@@ -3208,9 +3237,11 @@ describe("SettingsClient model routing", () => {
     fireEvent.click(within(providerConfig).getByText("Mock primary"));
 
     const editor = within(providerConfig).getByRole("group", { name: "Mock primary Mock Provider API key" });
-    expect(within(editor).getByRole("button", { name: "Model to test" })).toBeTruthy();
-    fireEvent.click(within(editor).getByRole("button", { name: "Model to test" }));
-    fireEvent.click(screen.getByRole("menuitemradio", { name: /Mock Image Model/ }));
+    const modelToTestSelect = within(editor).getByRole("combobox", { name: "Model to test" });
+    expect(modelToTestSelect).toBeTruthy();
+    fireEvent.click(modelToTestSelect);
+    expect(screen.getByRole("listbox", { name: "Model to test" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("option", { name: /Mock Image Model/ }));
     fireEvent.click(within(editor).getByRole("button", { name: "Run provider test" }));
 
     await waitFor(() => {
@@ -3224,6 +3255,21 @@ describe("SettingsClient model routing", () => {
       });
     });
     expect(await within(editor).findByText("Mock provider ran Mock Image Model through fal-ai/mock-image.")).toBeTruthy();
+    expect(within(editor).getByText("Input")).toBeTruthy();
+    expect(within(editor).getByText("Output")).toBeTruthy();
+    expect(within(editor).getByLabelText("Provider test input").textContent).toContain('"shape": "image"');
+    expect(within(editor).getByLabelText("Provider test input").textContent).toContain('"aspectRatio": "16:9"');
+    expect(within(editor).getByLabelText("Provider test output").textContent).toContain('"url": "http://local-provider-test/api/mock-fal/files/fal-mock-provider-test.png"');
+
+    fireEvent.click(within(editor).getByRole("combobox", { name: "Model to test" }));
+    expect(screen.getByRole("listbox", { name: "Model to test" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("option", { name: /Mock Text Model/ }));
+    fireEvent.click(within(editor).getByRole("button", { name: "Run provider test" }));
+
+    expect(await within(editor).findByText("Mock provider ran Mock Text Model through mock/text-completion.")).toBeTruthy();
+    expect(within(editor).getByLabelText("Provider test input").textContent).toContain('"shape": "text"');
+    expect(within(editor).getByLabelText("Provider test output").textContent).toContain('"text": "Generated text (mock-text-model)\\n\\nProvider test for Mock Text Model"');
+    expect(within(editor).getByLabelText("Provider test output").textContent).not.toContain('"url":');
   });
 
   it("scopes provider test model choices to the provider config model allowlist", async () => {
@@ -3258,12 +3304,13 @@ describe("SettingsClient model routing", () => {
     fireEvent.click(within(providerConfig).getByText("Mock primary"));
 
     const editor = within(providerConfig).getByRole("group", { name: "Mock primary Mock Provider API key" });
-    expect(within(editor).getByRole("button", { name: "Model to test" }).textContent).toContain("GPT Image 2");
+    expect(within(editor).getByRole("combobox", { name: "Model to test" }).textContent).toContain("GPT Image 2");
 
-    fireEvent.click(within(editor).getByRole("button", { name: "Model to test" }));
+    fireEvent.click(within(editor).getByRole("combobox", { name: "Model to test" }));
 
-    expect(screen.getByRole("menuitemradio", { name: /GPT Image 2/ })).toBeTruthy();
-    expect(screen.queryByRole("menuitemradio", { name: /Nano Banana 2/ })).toBeNull();
+    expect(screen.getByRole("listbox", { name: "Model to test" })).toBeTruthy();
+    expect(screen.getByRole("option", { name: /GPT Image 2/ })).toBeTruthy();
+    expect(screen.queryByRole("option", { name: /Nano Banana 2/ })).toBeNull();
   });
 
   it("runs a saved live provider configuration check from the provider config editor", async () => {
@@ -3307,7 +3354,7 @@ describe("SettingsClient model routing", () => {
     fireEvent.click(within(providerConfig).getByText("Replicate primary"));
 
     const editor = within(providerConfig).getByRole("group", { name: "Replicate primary Replicate API key" });
-    expect(within(editor).getByRole("button", { name: "Model to test" })).toBeTruthy();
+    expect(within(editor).getByRole("combobox", { name: "Model to test" })).toBeTruthy();
     fireEvent.click(within(editor).getByRole("button", { name: "Run provider test" }));
 
     await waitFor(() => {
