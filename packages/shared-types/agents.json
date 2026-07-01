@@ -16,5 +16,5 @@
     "src/tasks.ts": "Task definitions for the Async Job system.",
     "src/pipeline.ts": "Pipeline execution state definitions."
   },
-  "architecture_notes": "Single Source of Truth (SSOT) pattern. Zod is the master definition."
+  "architecture_notes": "Single Source of Truth (SSOT) pattern. Zod is the master definition. Model cards own provider implementation route metadata via providerImplementations; provider definitions must not reintroduce provider-supported model matrices."
 }

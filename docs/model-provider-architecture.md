@@ -1,11 +1,12 @@
 # Model Provider Architecture
 
-Last updated: 2026-06-26
+Last updated: 2026-07-01
 
 This document defines Clash's model/provider contract. The design is inspired
 by OpenRouter's mental model: users choose a model, and the system resolves a
-provider that can run it. Internally, providers declare the models they support;
-the model catalog is an indexed view over those declarations.
+provider that can run it. Internally, model cards declare concrete provider
+implementations; provider pages and model routing controls are reverse indexes
+over those declarations plus the user's configured provider accounts.
 
 ## Goals
 
@@ -40,14 +41,17 @@ Model cards own:
 - parameter schema shown in the UI
 - default parameters
 - product description
+- provider implementation rows: provider identity, upstream endpoint id,
+  adapter shape, credential/OAuth requirements, parameter mapping, and static
+  fallback priority
 
 Model cards do not own:
 
 - API keys
 - base URLs
 - provider account state
-- upstream endpoint details
-- provider priority
+- user provider priority
+- per-model user priority overrides
 
 The UI starts from model cards because that is how users think: "I want this
 model or capability." The execution system then asks which provider can run
@@ -56,9 +60,8 @@ that model.
 ### Provider Definition
 
 A provider definition is the execution adapter Clash knows how to operate.
-Providers declare their supported models in reverse.
-
-That means the provider is the source of truth for support:
+It describes provider identity, hosting mode, setup requirements, and the UI
+copy needed to configure accounts. It does not own model support.
 
 ```ts
 type ProviderDefinition = {
@@ -66,14 +69,17 @@ type ProviderDefinition = {
   title: string;
   hosting: "clash-hosted" | "custom";
   auth: ProviderAuthSpec;
-  supportedModels: ProviderModelSupport[];
 };
+```
 
-type ProviderModelSupport = {
-  modelId: string;
+Model support is declared from the model card side:
+
+```ts
+type ModelProviderImplementation = {
+  providerId: ProviderId;
+  upstreamId: ModelUpstreamId;
   upstreamModel: string;
-  shape: ProviderShape;
-  kind: "text" | "image" | "video" | "audio";
+  apiShape: ProviderShape;
   priority?: number;
   requiredCredentials?: ProviderCredentialId[];
   requiredOAuth?: ProviderOAuthId[];
@@ -81,17 +87,17 @@ type ProviderModelSupport = {
 };
 ```
 
-The model catalog is built by indexing all `supportedModels` rows by
-`modelId`.
+The model catalog and provider detail pages are built by indexing all
+`model.providerImplementations` rows.
 
-This gives both directions:
+This gives both directions from one source of truth:
 
-- Provider page: "Kling official supports Kling 3."
-- Model page: "Kling 3 can run on Kling official, fal.ai, and KIE."
+- Provider page: "Replicate supports Nano Banana 2 and GPT Image 2."
+- Model page: "GPT Image 2 can run on OpenAI, Replicate, and Mock."
 
-The provider definition is authoritative because provider support changes by
-API capability, region, account type, and endpoint availability. A model card
-should not try to maintain those details.
+Provider definitions are still authoritative for setup and execution identity:
+API keys, OAuth methods, hosted/custom status, labels, and bounded account
+configuration. They must not reintroduce a parallel `supportedModels` list.
 
 ### Provider Account
 
@@ -118,14 +124,14 @@ Provider accounts own:
 - user-provided credential availability, for BYOK or custom providers
 - region or channel
 - routing priority and weight
-- optional model allowlist for this account, selected from the provider
-  definition's supported model list
+- optional model allowlist for this account, selected from the model-card-derived
+  provider support list
 - optional per-model provider priority, so changing `gpt-image-2` routing does
   not change `flux-schnell` routing
 
 Provider accounts do not invent model support directly. The provider
-definition declares the full support set; an account may only restrict that
-set to a subset with `supportedModelIds`.
+implementation rows declare the full support set; an account may only restrict
+that set to a subset with `supportedModelIds`.
 
 ### Provider Shape
 
@@ -223,12 +229,23 @@ user-hosted:
   title: "ElevenLabs",
   hosting: "clash-hosted",
   auth: { credentials: ["apiKey"] },
-  supportedModels: [
+}
+```
+
+The `elevenlabs-tts` model card owns the matching provider implementation row:
+
+```ts
+{
+  id: "elevenlabs-tts",
+  name: "ElevenLabs TTS",
+  kind: "audio",
+  providerImplementations: [
     {
-      modelId: "elevenlabs-tts",
+      providerId: "elevenlabs",
+      upstreamId: "elevenlabs",
       upstreamModel: "eleven_multilingual_v2",
-      shape: "elevenlabs",
-      kind: "audio",
+      apiShape: "elevenlabs",
+      requiredCredentials: ["apiKey"],
       priority: 10,
     },
   ],
@@ -245,16 +262,20 @@ user-hosted:
   shape: "openai-compatible",
   baseUrl: "https://proxy.example.com/v1",
   auth: { credentials: ["apiKey"] },
-  supportedModels: [
+  modelImplementations: [
     {
       modelId: "gpt-5.4",
       upstreamModel: "gpt-5.4",
-      shape: "openai-compatible",
+      apiShape: "openai-compatible",
       kind: "text",
     },
   ],
 }
 ```
+
+A custom provider cannot create a fake Clash model card by naming an upstream
+model. It must map to an existing model card or create a real custom model card
+with a UI contract, parameters, routing entry, and tests.
 
 ## Resolver Flow
 
@@ -262,7 +283,7 @@ The resolver starts with a model card id and modality.
 
 ```text
 modelId + kind
-  -> find provider support rows for modelId
+  -> find model card providerImplementation rows for modelId
   -> remove disabled provider accounts
   -> remove provider accounts whose model allowlist excludes modelId
   -> remove rows missing required credentials
@@ -300,10 +321,10 @@ Each row should show:
 - provider logo/name
 - hosted/custom badge
 - configured state
-- supported model count and modalities
+- supported model count and modalities derived from model card implementations
 - account credential state
 - enable switch
-- advanced routing controls
+- a single configure/manage entry point when account credentials are required
 
 The provider page should not repeat the surrounding Settings title. The page
 title already says `Providers`; the content should start with filters/search
@@ -317,7 +338,7 @@ The bottom of the provider list should include `Add custom provider`.
 - shape
 - base URL
 - API key secret
-- supported model cards
+- supported model cards or real custom model cards
 - upstream model id for each model card
 - optional parameter mapping
 
@@ -334,17 +355,17 @@ The shape selector should include at least:
 
 ## Data Model Direction
 
-The current code has route arrays shaped like model-to-provider entries. The
-target shape should move toward provider definitions with reverse declarations.
-
-Target source of truth:
+Source of truth:
 
 ```text
-providerDefinitions[]
-  provider.supportedModels[]
-    modelId
+modelCards[]
+  model.providerImplementations[]
+    providerId
+    upstreamId
     upstreamModel
-    shape
+    apiShape
+    credential/OAuth requirements
+    static fallback priority
 ```
 
 Derived indexes:
@@ -355,8 +376,10 @@ providerId -> supported model rows
 providerId/account -> availability
 ```
 
-This keeps the product model-card-first while avoiding model cards becoming a
-large provider compatibility matrix.
+This keeps model cards first-class and prevents a parallel provider-owned model
+matrix from drifting out of sync. Provider definitions describe account setup
+and execution identity; model cards describe which providers can execute the
+model.
 
 ## Migration Plan
 
@@ -366,8 +389,9 @@ large provider compatibility matrix.
 4. Replace `OpenAI-compatible` and `Anthropic-compatible` provider rows with
    provider rows plus shape metadata.
 5. Add `custom provider` definitions that can use compatible shapes.
-6. Convert static route arrays into provider definitions.
-7. Build model catalog entries by indexing `provider.supportedModels`.
+6. Convert static route arrays into `model.providerImplementations`.
+7. Build model catalog entries and provider detail support lists by indexing
+   `model.providerImplementations`.
 8. Update generation registry to dispatch by resolved provider adapter.
 9. Add tests for both directions:
    - model card resolves to all configured providers
@@ -378,5 +402,5 @@ large provider compatibility matrix.
 - Do not make a fake Midjourney provider unless Midjourney exposes an official
   API contract Clash can call directly.
 - Do not treat a shape as a provider identity.
-- Do not let model cards own provider credentials.
+- Do not let model cards own provider credential values or secrets.
 - Do not require custom providers to be Clash-hosted.
