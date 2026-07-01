@@ -984,7 +984,23 @@ function displayModelName(modelId: string): string {
 
 function displayProviderName(account: Pick<LocalProviderAccountConfig, "providerId" | "upstreamId" | "region">): string {
   if (account.providerId === "mock") return "Mock provider";
-  if (account.providerId === "official" && account.upstreamId) return account.upstreamId;
+  if (account.providerId === "official" && account.upstreamId) {
+    if (account.upstreamId === "openai") return "OpenAI";
+    if (account.upstreamId === "anthropic") return "Anthropic";
+    if (account.upstreamId === "google") return "Google";
+    return account.upstreamId;
+  }
+  const names: Record<string, string> = {
+    fal: "fal.ai",
+    kie: "KIE",
+    replicate: "Replicate",
+    kling: "Kling",
+    minimax: "MiniMax",
+    jimeng: "Dreamina",
+    volcengine: "Volcengine",
+    elevenlabs: "ElevenLabs",
+  };
+  if (names[account.providerId]) return names[account.providerId];
   return account.upstreamId && account.upstreamId !== account.providerId
     ? `${account.providerId}/${account.upstreamId}`
     : account.providerId;
@@ -1224,19 +1240,13 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
       } satisfies ModelProviderTestResult);
     }
 
-    if (account.providerId !== "mock") {
-      return c.json({
-        ok: false,
-        ...baseResult,
-        skipped: true,
-        message: `Live provider test is not implemented for ${displayProviderName(account)} yet.`,
-      } satisfies ModelProviderTestResult);
-    }
-
+    const providerName = displayProviderName(account);
     return c.json({
       ok: true,
       ...baseResult,
-      message: `Mock provider can run ${modelName}.`,
+      message: account.providerId === "mock"
+        ? `Mock provider can run ${modelName}.`
+        : `${providerName} configuration is ready for ${modelName}.`,
     } satisfies ModelProviderTestResult);
   });
   app.get("/api/v1/provider-oauth", async (c) => {

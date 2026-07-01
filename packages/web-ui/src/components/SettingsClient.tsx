@@ -2388,7 +2388,7 @@ function ModelRoutingSection({
         const defaultProviderTestModelId = providerTestOptions.find((option) => option.value === 'nano-banana-2')?.value ?? providerTestOptions[0]?.value ?? '';
         const selectedProviderTestModelId = providerTestModelIds[providerTestKey] ?? defaultProviderTestModelId;
         const providerTestResult = providerTestResults[providerTestKey];
-        const canRunProviderTest = row.provider.providerId === 'mock' && !!editingAccount && providerTestOptions.length > 0;
+        const canRunProviderTest = !!editingAccount && providerTestOptions.length > 0;
         const runProviderTest = async () => {
             if (!canRunProviderTest || !editingAccount || !selectedProviderTestModelId) return;
             setProviderTestBusyKey(providerTestKey);

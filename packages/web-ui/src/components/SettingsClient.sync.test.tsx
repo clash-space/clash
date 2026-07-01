@@ -2480,7 +2480,8 @@ describe("SettingsClient model routing", () => {
     expect(within(existingKeyEditor).queryByText("Filters")).toBeNull();
     expect(within(existingKeyEditor).queryByText("API Keys")).toBeNull();
     expect(within(existingKeyEditor).queryByText("Always use for this provider")).toBeNull();
-    expect(within(existingKeyEditor).queryByRole("button", { name: /Test/i })).toBeNull();
+    expect(within(existingKeyEditor).getByRole("button", { name: "Model to test" })).toBeTruthy();
+    expect(within(existingKeyEditor).getByRole("button", { name: "Run provider test" })).toBeTruthy();
     expect(within(existingKeyEditor).queryByRole("button", { name: /Remove key/i })).toBeNull();
 
     fireEvent.click(screen.getByRole("button", { name: "Add prioritized Replicate key" }));
@@ -2658,6 +2659,63 @@ describe("SettingsClient model routing", () => {
       });
     });
     expect(await within(editor).findByText("Mock provider can run Nano Banana 2.")).toBeTruthy();
+  });
+
+  it("runs a saved live provider configuration check from the provider config editor", async () => {
+    const actions = await import("@clash/web-ui/lib/clientActions");
+    vi.mocked(actions.testModelProvider).mockResolvedValue({
+      ok: true,
+      providerId: "replicate",
+      upstreamId: "replicate",
+      modelId: "nano-banana-2",
+      message: "Replicate configuration is ready for Nano Banana 2.",
+    });
+
+    render(
+      <MemoryRouter>
+        <SettingsClient
+          initialTokens={[]}
+          initialVariables={[]}
+          initialActions={[]}
+          initialSkills={[]}
+          activeSection="providers"
+          embedded
+          initialModelProviders={[
+            {
+              id: "replicate-primary",
+              label: "Replicate primary",
+              providerId: "replicate",
+              upstreamId: "replicate",
+              enabled: true,
+              priority: 10,
+              configuredCredentials: ["apiKey"],
+            },
+          ]}
+          initialModelCatalog={[]}
+        />
+      </MemoryRouter>,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Open Replicate BYOK settings" }));
+    const providerConfigs = screen.getByRole("list", { name: "Replicate prioritized keys" });
+    const providerConfig = within(providerConfigs).getByText("Replicate primary").closest("li") as HTMLElement;
+    fireEvent.click(within(providerConfig).getByText("Replicate primary"));
+
+    const editor = within(providerConfig).getByRole("group", { name: "Replicate primary Replicate API key" });
+    expect(within(editor).getByRole("button", { name: "Model to test" })).toBeTruthy();
+    fireEvent.click(within(editor).getByRole("button", { name: "Run provider test" }));
+
+    await waitFor(() => {
+      expect(actions.testModelProvider).toHaveBeenCalledWith({
+        provider: expect.objectContaining({
+          id: "replicate-primary",
+          providerId: "replicate",
+          upstreamId: "replicate",
+        }),
+        modelId: "nano-banana-2",
+      });
+    });
+    expect(await within(editor).findByText("Replicate configuration is ready for Nano Banana 2.")).toBeTruthy();
   });
 
   it("saves a provider account model allowlist from the config editor", async () => {

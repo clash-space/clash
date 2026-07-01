@@ -321,6 +321,41 @@ async function exerciseProviderModelRouting(cdp, { webOrigin, apiOrigin }) {
       .catch(() => false)`,
     "GPT Image 2 provider order saved",
   );
+  await cdp.send("Page.navigate", { url: `${webOrigin}/settings?section=providers` });
+  await waitFor(cdp, `document.body.innerText.includes("BYOK")`, "BYOK settings page after model order");
+  await click(
+    cdp,
+    `document.querySelector("button[aria-label='Open Replicate BYOK settings']")`,
+    "Replicate settings row",
+  );
+  await waitFor(
+    cdp,
+    `document.body.innerText.includes("Replicate primary")`,
+    "replicate provider config row",
+  );
+  await click(
+    cdp,
+    `([...document.querySelectorAll("button[aria-label^='Expand ']")].find((button) => {
+      const label = button.getAttribute("aria-label") || "";
+      return label.includes("Replicate primary");
+    }))`,
+    "Expand replicate provider config",
+  );
+  await waitFor(
+    cdp,
+    `document.body.innerText.includes("Model to test") && !!document.querySelector("button[aria-label='Run provider test']")`,
+    "replicate provider test controls",
+  );
+  await click(
+    cdp,
+    `document.querySelector("button[aria-label='Run provider test']")`,
+    "Run replicate provider readiness check",
+  );
+  await waitFor(
+    cdp,
+    `document.body.innerText.includes("Replicate configuration is ready for Nano Banana 2.")`,
+    "replicate provider readiness result",
+  );
 }
 
 async function createProject(cdp) {

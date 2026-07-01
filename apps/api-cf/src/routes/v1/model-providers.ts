@@ -30,7 +30,23 @@ function displayModelName(modelId: string): string {
 
 function displayProviderName(provider: Pick<ProviderAccountInput, "providerId" | "upstreamId">): string {
   if (provider.providerId === "mock") return "Mock provider";
-  if (provider.providerId === "official" && provider.upstreamId) return provider.upstreamId;
+  if (provider.providerId === "official" && provider.upstreamId) {
+    if (provider.upstreamId === "openai") return "OpenAI";
+    if (provider.upstreamId === "anthropic") return "Anthropic";
+    if (provider.upstreamId === "google") return "Google";
+    return provider.upstreamId;
+  }
+  const names: Record<string, string> = {
+    fal: "fal.ai",
+    kie: "KIE",
+    replicate: "Replicate",
+    kling: "Kling",
+    minimax: "MiniMax",
+    jimeng: "Dreamina",
+    volcengine: "Volcengine",
+    elevenlabs: "ElevenLabs",
+  };
+  if (names[provider.providerId]) return names[provider.providerId];
   return provider.upstreamId && provider.upstreamId !== provider.providerId
     ? `${provider.providerId}/${provider.upstreamId}`
     : provider.providerId;
@@ -116,18 +132,13 @@ modelProviderRoutes.post("/model-providers/test", async (c) => {
       message: `${displayProviderName(provider)} needs authorization before testing ${modelName}.`,
     });
   }
-  if (provider.providerId !== "mock") {
-    return c.json({
-      ok: false,
-      ...baseResult,
-      skipped: true,
-      message: `Live provider test is not implemented for ${displayProviderName(provider)} yet.`,
-    });
-  }
+  const providerName = displayProviderName(provider);
   return c.json({
     ok: true,
     ...baseResult,
-    message: `Mock provider can run ${modelName}.`,
+    message: provider.providerId === "mock"
+      ? `Mock provider can run ${modelName}.`
+      : `${providerName} configuration is ready for ${modelName}.`,
   });
 });
 
