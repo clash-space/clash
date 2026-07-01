@@ -2432,6 +2432,7 @@ function ModelRoutingSection({
     const providerCredentialAccountCount = (row: typeof providerViewRows[number]) => {
         const setup = row.setup;
         const credentialFields = setup ? modelProviderCredentialFields(setup) : [];
+        if (credentialFields.length === 0 && row.accounts.length > 0) return row.accounts.length;
         const credentialAccounts = row.accounts.filter((account) =>
             credentialFields.some((credential) => account.configuredCredentials?.includes(credential.key)),
         );

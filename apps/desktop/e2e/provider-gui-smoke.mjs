@@ -40,6 +40,14 @@ async function seedMockProviders(apiOrigin) {
           priority: 10,
         },
         {
+          id: "mock-secondary",
+          label: "Mock secondary",
+          providerId: "mock",
+          upstreamId: "mock",
+          enabled: true,
+          priority: 20,
+        },
+        {
           id: "replicate-primary",
           label: "Replicate primary",
           providerId: "replicate",
@@ -180,6 +188,23 @@ async function runProviderFlow(agentBrowser, apiOrigin) {
     throw new Error("Could not open Mock Provider BYOK settings");
   }
   await waitForEval(agentBrowser, `document.body.innerText.includes("Mock primary")`, "desktop mock provider row");
+
+  if (!clickButtonByLabel(agentBrowser, "Move Mock secondary up")) {
+    throw new Error("Could not move secondary mock provider account up");
+  }
+  await waitForEval(
+    agentBrowser,
+    `fetch(${JSON.stringify(`${apiOrigin}/api/v1/model-providers`)})
+      .then((res) => res.json())
+      .then((json) => {
+        const providers = json.providers ?? [];
+        const primary = providers.find((provider) => provider.id === "mock-primary");
+        const secondary = providers.find((provider) => provider.id === "mock-secondary");
+        return primary?.priority === 20 && secondary?.priority === 10;
+      })
+      .catch(() => false)`,
+    "desktop mock provider account order saved",
+  );
 
   if (!clickButtonByLabel(agentBrowser, "Expand Mock primary")) {
     throw new Error("Could not expand Mock primary provider account");

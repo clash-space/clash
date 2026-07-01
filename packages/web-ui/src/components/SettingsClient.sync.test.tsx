@@ -2509,6 +2509,44 @@ describe("SettingsClient model routing", () => {
     expect(screen.queryByLabelText("Replicate API key")).toBeNull();
   });
 
+  it("counts multiple credentialless provider accounts in the directory summary", () => {
+    render(
+      <MemoryRouter>
+        <SettingsClient
+          initialTokens={[]}
+          initialVariables={[]}
+          initialActions={[]}
+          initialSkills={[]}
+          activeSection="providers"
+          embedded
+          initialModelProviders={[
+            {
+              id: "mock-primary",
+              label: "Mock primary",
+              providerId: "mock",
+              upstreamId: "mock",
+              enabled: true,
+              priority: 10,
+            },
+            {
+              id: "mock-secondary",
+              label: "Mock secondary",
+              providerId: "mock",
+              upstreamId: "mock",
+              enabled: true,
+              priority: 20,
+            },
+          ]}
+          initialModelCatalog={[]}
+        />
+      </MemoryRouter>,
+    );
+
+    const configuredProviders = screen.getByRole("list", { name: "Configured BYOK providers" });
+    expect(within(configuredProviders).getByText("Mock Provider")).toBeTruthy();
+    expect(within(configuredProviders).getByText("2 keys")).toBeTruthy();
+  });
+
   it("adds another API key as a separate provider account", async () => {
     const actions = await import("@clash/web-ui/lib/clientActions");
     vi.mocked(actions.updateModelProviders).mockImplementation(async (providers) => providers);
