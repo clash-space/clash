@@ -20,7 +20,8 @@ import { MessageErrorBoundary } from './copilot/MessageErrorBoundary';
 import { RuntimePickerDialog } from './copilot/RuntimePickerDialog';
 import { Dialog } from './ui/dialog';
 import { IconButton } from './ui/icon-button';
-import { FloatingMenu, MenuItemButton, SelectMenu, menuItemClassName, type SelectSection } from './ui/select';
+import { SelectMenu, type SelectSection } from './ui/select';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from './ui/dropdown-menu';
 import { useAppFeedback } from './AppFeedback';
 import { useClashRuntime, type AcpSessionConfigOption, type AcpSessionModeState, type ClashRuntimeStatus, type Runtime, type RuntimePromptQueueMode, type RuntimeQueuedPrompt, type RuntimeSessionInfo } from '@clash/web-ui/hooks/useClashRuntime';
 import type { AvailableCommand, ByoMessage as RuntimeMessage } from '@clash/web-ui/lib/acpEvents';
@@ -885,7 +886,6 @@ export default function ChatbotCopilot({
         setShouldStickToBottom(next);
     }, []);
     const historyButtonRef = useRef<HTMLButtonElement | null>(null);
-    const runtimeButtonRef = useRef<HTMLButtonElement | null>(null);
     const panelRef = useRef<HTMLElement | null>(null);
     const appliedRuntimeCanvasNodesRef = useRef<Set<string>>(new Set());
 
@@ -1164,10 +1164,6 @@ export default function ChatbotCopilot({
             return;
         }
         await stop();
-    };
-
-    const handleHistoryClick = () => {
-        setShowHistory(prev => !prev);
     };
 
     const selectHistoryItem = useCallback((item: CopilotSessionHistoryItem) => {
@@ -1588,155 +1584,151 @@ export default function ChatbotCopilot({
                                         size="sm"
                                         icon={<Plus className="w-4 h-4" weight="bold" />}
                                     />
-                                    <IconButton
-                                        ref={historyButtonRef}
-                                        onClick={handleHistoryClick}
-                                        label={t('copilot.header.history')}
-                                        aria-expanded={showHistory}
-                                        aria-controls={historyMenuId}
-                                        aria-haspopup="menu"
-                                        size="sm"
-                                        className="relative"
-                                        icon={
-                                            <>
-                                                <ClockCounterClockwise className="w-4 h-4" weight="bold" />
-                                                {visibleSessionHistory.length > 0 && (
-                                                    <span className="absolute top-1 right-1 w-2 h-2 bg-brand rounded-full border border-warm-surface" />
+                                    <DropdownMenu open={showHistory} onOpenChange={setShowHistory}>
+                                        <DropdownMenuTrigger asChild>
+                                            <IconButton
+                                                ref={historyButtonRef}
+                                                label={t('copilot.header.history')}
+                                                aria-expanded={showHistory}
+                                                aria-controls={historyMenuId}
+                                                aria-haspopup="menu"
+                                                size="sm"
+                                                className="relative"
+                                                icon={
+                                                    <>
+                                                        <ClockCounterClockwise className="w-4 h-4" weight="bold" />
+                                                        {visibleSessionHistory.length > 0 && (
+                                                            <span className="absolute top-1 right-1 w-2 h-2 bg-brand rounded-full border border-warm-surface" />
+                                                        )}
+                                                    </>
+                                                }
+                                            />
+                                        </DropdownMenuTrigger>
+                                        <DropdownMenuContent
+                                            id={historyMenuId}
+                                            aria-label={t('copilot.history.title')}
+                                            align="end"
+                                            side="bottom"
+                                            className="max-h-[320px] w-72 overflow-y-auto"
+                                            onClick={(event) => event.stopPropagation()}
+                                        >
+                                            <div className="space-y-0.5">
+                                                {visibleSessionHistory.length === 0 ? (
+                                                    <div className="px-3 py-3 text-center text-sm text-slate-700 dark:text-slate-300">
+                                                        {t('copilot.history.empty')}
+                                                    </div>
+                                                ) : (
+                                                    visibleSessionHistory.map((item, index) => (
+                                                        <div key={item.threadId} className="group flex items-center gap-1">
+                                                            <DropdownMenuItem
+                                                                aria-label={`${item.title || t('copilot.history.fallbackTitle', { index: index + 1 })} ${item.threadId.slice(-6)}`}
+                                                                onSelect={() => selectHistoryItem(item)}
+                                                                className="min-h-[48px] flex-1"
+                                                            >
+                                                                <span className="min-w-0 flex-1">
+                                                                    <span className="block truncate font-medium leading-5">
+                                                                        {item.title || t('copilot.history.fallbackTitle', { index: index + 1 })}
+                                                                    </span>
+                                                                    <span className="block truncate font-mono text-[11px] font-normal leading-4 text-stone-600 dark:text-stone-400">
+                                                                        {item.threadId.slice(-6)}
+                                                                    </span>
+                                                                </span>
+                                                            </DropdownMenuItem>
+                                                            {onDeleteSession && (
+                                                                <IconButton
+                                                                    onClick={(e) => deleteSession(item.threadId, e)}
+                                                                    label={t('copilot.history.delete')}
+                                                                    variant="destructive"
+                                                                    size="sm"
+                                                                    icon={<Trash className="w-3.5 h-3.5" />}
+                                                                    className="shrink-0 opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
+                                                                />
+                                                            )}
+                                                        </div>
+                                                    ))
                                                 )}
-                                            </>
-                                        }
-                                    />
+                                            </div>
+                                        </DropdownMenuContent>
+                                    </DropdownMenu>
                                     {!isDesktopLocalMode && (
                                         <div className="relative">
-                                            <IconButton
-                                                ref={runtimeButtonRef}
-                                                onClick={() => {
-                                                    // Refresh the runtime list each time the menu opens so
-                                                    // users don't see a stale offline marker right after
-                                                    // starting their daemon.
-                                                    if (!runtimeMenuOpen) void clashRt.refresh();
-                                                    setRuntimeMenuOpen((v) => !v);
-                                                }}
-                                                label={t('copilot.header.runOn')}
-                                                aria-expanded={runtimeMenuOpen}
-                                                aria-controls={runtimeMenuId}
-                                                aria-haspopup="menu"
-                                                variant={chatMode !== 'cloud' ? 'active' : 'default'}
-                                                icon={<Plug className="w-5 h-5" weight="bold" />}
-                                            />
-                                            <FloatingMenu
-                                                id={runtimeMenuId}
-                                                anchorRef={runtimeButtonRef}
+                                            <DropdownMenu
                                                 open={runtimeMenuOpen}
-                                                onOpenChange={setRuntimeMenuOpen}
-                                                ariaLabel={t('copilot.runtime.menuTitle')}
-                                                align="end"
-                                                placement="bottom"
-                                                menuWidth={288}
+                                                onOpenChange={(open) => {
+                                                    if (open) void clashRt.refresh();
+                                                    setRuntimeMenuOpen(open);
+                                                }}
                                             >
-                                                <div className="px-3 pb-1 pt-1 text-sm font-medium text-stone-500 dark:text-stone-400">
-                                                    {t('copilot.runtime.menuTitle')}
-                                                </div>
-                                                <div className="space-y-0.5">
-                                                    <RuntimeMenuRow
-                                                        label={t('copilot.runtime.cloud.label')}
-                                                        sub={t('copilot.runtime.cloud.sub')}
-                                                        active={chatMode === 'cloud'}
-                                                        disabled
-                                                        onClick={() => setRuntimeMenuOpen(false)}
+                                                <DropdownMenuTrigger asChild>
+                                                    <IconButton
+                                                        label={t('copilot.header.runOn')}
+                                                        aria-expanded={runtimeMenuOpen}
+                                                        aria-controls={runtimeMenuId}
+                                                        aria-haspopup="menu"
+                                                        variant={chatMode !== 'cloud' ? 'active' : 'default'}
+                                                        icon={<Plug className="w-5 h-5" weight="bold" />}
                                                     />
-                                                    {clashRt.runtimes.length > 0 && (
-                                                        <div role="presentation" className="px-3 pt-1.5 text-xs font-medium text-stone-500 dark:text-stone-400">
-                                                            {t('copilot.runtime.machinesHeader')}
-                                                        </div>
-                                                    )}
-                                                    {clashRt.runtimes.map((rt) => {
-                                                        const online = rt.status === 'online';
-                                                        const sub = online
-                                                            ? t('copilot.runtime.machineSub_online', { count: rt.agents.length })
-                                                            : t('copilot.runtime.machineSub_offline');
-                                                        return (
-                                                            <RuntimeMenuRow
-                                                                key={rt.id}
-                                                                label={rt.hostname || rt.machine_id.slice(0, 10)}
-                                                                sub={sub}
-                                                                active={chatMode === 'runtime' && clashRt.selectedRuntimeId === rt.id}
-                                                                disabled={!online || rt.agents.length === 0}
-                                                                onClick={() => {
-                                                                    // Open the daemon picker so runtime sessions keep
-                                                                    // the same agent + resume-session UX.
-                                                                    setRuntimeMenuOpen(false);
-                                                                    setRuntimePicker(rt);
-                                                                }}
-                                                            />
-                                                        );
-                                                    })}
-                                                    <div role="separator" className="my-1.5 border-t border-warm-border/80 dark:border-slate-700" />
-                                                    <RuntimeMenuRow
-                                                        label={t('copilot.runtime.addMachine.label')}
-                                                        sub={t('copilot.runtime.addMachine.sub')}
-                                                        onClick={() => {
-                                                            setRuntimeMenuOpen(false);
-                                                            setAddMachineOpen(true);
-                                                        }}
-                                                    />
-                                                </div>
-                                            </FloatingMenu>
+                                                </DropdownMenuTrigger>
+                                                <DropdownMenuContent
+                                                    id={runtimeMenuId}
+                                                    aria-label={t('copilot.runtime.menuTitle')}
+                                                    align="end"
+                                                    side="bottom"
+                                                    className="w-72"
+                                                >
+                                                    <div className="px-3 pb-1 pt-1 text-sm font-medium text-stone-500 dark:text-stone-400">
+                                                        {t('copilot.runtime.menuTitle')}
+                                                    </div>
+                                                    <div className="space-y-0.5">
+                                                        <RuntimeMenuRow
+                                                            label={t('copilot.runtime.cloud.label')}
+                                                            sub={t('copilot.runtime.cloud.sub')}
+                                                            active={chatMode === 'cloud'}
+                                                            disabled
+                                                            onSelect={() => setRuntimeMenuOpen(false)}
+                                                        />
+                                                        {clashRt.runtimes.length > 0 && (
+                                                            <div role="presentation" className="px-3 pt-1.5 text-xs font-medium text-stone-500 dark:text-stone-400">
+                                                                {t('copilot.runtime.machinesHeader')}
+                                                            </div>
+                                                        )}
+                                                        {clashRt.runtimes.map((rt) => {
+                                                            const online = rt.status === 'online';
+                                                            const sub = online
+                                                                ? t('copilot.runtime.machineSub_online', { count: rt.agents.length })
+                                                                : t('copilot.runtime.machineSub_offline');
+                                                            return (
+                                                                <RuntimeMenuRow
+                                                                    key={rt.id}
+                                                                    label={rt.hostname || rt.machine_id.slice(0, 10)}
+                                                                    sub={sub}
+                                                                    active={chatMode === 'runtime' && clashRt.selectedRuntimeId === rt.id}
+                                                                    disabled={!online || rt.agents.length === 0}
+                                                                    onSelect={() => {
+                                                                        // Open the daemon picker so runtime sessions keep
+                                                                        // the same agent + resume-session UX.
+                                                                        setRuntimeMenuOpen(false);
+                                                                        setRuntimePicker(rt);
+                                                                    }}
+                                                                />
+                                                            );
+                                                        })}
+                                                        <div role="separator" className="my-1.5 border-t border-warm-border/80 dark:border-slate-700" />
+                                                        <RuntimeMenuRow
+                                                            label={t('copilot.runtime.addMachine.label')}
+                                                            sub={t('copilot.runtime.addMachine.sub')}
+                                                            onSelect={() => {
+                                                                setRuntimeMenuOpen(false);
+                                                                setAddMachineOpen(true);
+                                                            }}
+                                                        />
+                                                    </div>
+                                                </DropdownMenuContent>
+                                            </DropdownMenu>
                                         </div>
                                     )}
                                 </div>
                             </div>
-
-                            <FloatingMenu
-                                id={historyMenuId}
-                                anchorRef={historyButtonRef}
-                                open={showHistory}
-                                onOpenChange={setShowHistory}
-                                ariaLabel={t('copilot.history.title')}
-                                align="end"
-                                placement="bottom"
-                                menuWidth={288}
-                                maxMenuHeight={320}
-                                stopPropagation
-                            >
-                                <div className="space-y-0.5">
-                                    {visibleSessionHistory.length === 0 ? (
-                                        <div className="px-3 py-3 text-center text-sm text-slate-700 dark:text-slate-300">
-                                            {t('copilot.history.empty')}
-                                        </div>
-                                    ) : (
-                                        visibleSessionHistory.map((item, index) => (
-                                            <div key={item.threadId} className="group flex items-center gap-1">
-                                                <MenuItemButton
-                                                    role="menuitem"
-                                                    aria-label={`${item.title || t('copilot.history.fallbackTitle', { index: index + 1 })} ${item.threadId.slice(-6)}`}
-                                                    onClick={() => selectHistoryItem(item)}
-                                                    className="min-h-[48px] flex-1"
-                                                >
-                                                    <span className="min-w-0 flex-1">
-                                                        <span className="block truncate font-medium leading-5">
-                                                            {item.title || t('copilot.history.fallbackTitle', { index: index + 1 })}
-                                                        </span>
-                                                        <span className="block truncate font-mono text-[11px] font-normal leading-4 text-stone-600 dark:text-stone-400">
-                                                            {item.threadId.slice(-6)}
-                                                        </span>
-                                                    </span>
-                                                </MenuItemButton>
-                                                {onDeleteSession && (
-                                                    <IconButton
-                                                        onClick={(e) => deleteSession(item.threadId, e)}
-                                                        label={t('copilot.history.delete')}
-                                                        variant="destructive"
-                                                        size="sm"
-                                                        icon={<Trash className="w-3.5 h-3.5" />}
-                                                        className="shrink-0 opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
-                                                    />
-                                                )}
-                                            </div>
-                                        ))
-                                    )}
-                                </div>
-                            </FloatingMenu>
 
                             <div
                                 ref={scrollContainerRef}
@@ -2449,26 +2441,20 @@ function RuntimeMenuRow({
     sub,
     active,
     disabled,
-    onClick,
+    onSelect,
 }: {
     label: string;
     sub?: string;
     active?: boolean;
     disabled?: boolean;
-    onClick: () => void;
+    onSelect: () => void;
 }) {
     return (
-        <button
-            type="button"
-            role="menuitem"
-            aria-checked={active}
+        <DropdownMenuItem
+            aria-current={active ? 'true' : undefined}
             disabled={disabled}
-            onClick={onClick}
-            className={menuItemClassName({
-                selected: active,
-                disabled,
-                className: 'min-h-[44px]',
-            })}
+            onSelect={onSelect}
+            className={`min-h-[44px] ${active ? 'bg-warm-muted/80 dark:bg-slate-800' : ''}`}
         >
             <span
                 aria-hidden="true"
@@ -2480,7 +2466,7 @@ function RuntimeMenuRow({
                 <div className="text-sm font-medium text-slate-800 truncate dark:text-slate-100">{label}</div>
                 {sub && <div className="text-[11px] text-stone-600 truncate dark:text-stone-400">{sub}</div>}
             </div>
-        </button>
+        </DropdownMenuItem>
     );
 }
 

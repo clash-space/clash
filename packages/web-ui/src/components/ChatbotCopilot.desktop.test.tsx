@@ -270,6 +270,10 @@ function renderDesktopCopilotWithFeedback(props: Partial<ComponentProps<typeof C
   );
 }
 
+function openSessionHistoryMenu() {
+  fireEvent.pointerDown(screen.getByRole("button", { name: "Session history" }));
+}
+
 describe("ChatbotCopilot desktop local mode", () => {
   afterEach(() => {
     cleanup();
@@ -1011,12 +1015,51 @@ describe("ChatbotCopilot desktop local mode", () => {
       }],
     });
 
-    fireEvent.click(screen.getByRole("button", { name: "Session history" }));
+    openSessionHistoryMenu();
     const historyItem = screen.getByRole("menuitem", { name: /Run pwd/ });
     expect(historyItem.querySelector("svg")).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Delete session" }));
 
     expect(onDeleteSession).toHaveBeenCalledWith("runtime-session-one");
+  });
+
+  it("renders session history through the shared dropdown menu", () => {
+    globalThis.__CLASH_RUNTIME_CONFIG__ = { mode: "desktop" };
+    vi.stubGlobal(
+      "IntersectionObserver",
+      vi.fn(function IntersectionObserver() {
+        return {
+          observe: vi.fn(),
+          disconnect: vi.fn(),
+        };
+      }),
+    );
+    Element.prototype.scrollIntoView = vi.fn();
+    mocks.useClashRuntime.mockReturnValue(runtimeState({
+      selectedRuntimeId: "desktop-local",
+      selectedAgentId: "codex-acp",
+      status: "connected",
+      ready: true,
+    }));
+    mocks.useAgentCopilot.mockReturnValue(cloudState());
+
+    renderDesktopCopilot({
+      sessionHistory: [{
+        threadId: "runtime-session-one",
+        title: "Run pwd",
+        type: "runtime",
+        projectId: "project-one",
+        runtimeId: "desktop-local",
+        agentId: "codex-acp",
+      }],
+    });
+
+    openSessionHistoryMenu();
+
+    const historyMenu = screen.getByRole("menu", { name: "Session history" });
+    expect(historyMenu.getAttribute("data-side")).toBe("bottom");
+    expect(historyMenu.getAttribute("data-align")).toBe("end");
+    expect(screen.getByRole("menuitem", { name: /Run pwd/ })).toBeTruthy();
   });
 
   it("surfaces restored desktop runtime messages in session history", () => {
@@ -1059,7 +1102,7 @@ describe("ChatbotCopilot desktop local mode", () => {
     const headerTitle = container.querySelector(".clash-copilot-panel-header .font-display");
     expect(headerTitle?.textContent).toBe("Run pwd");
 
-    fireEvent.click(screen.getByRole("button", { name: "Session history" }));
+    openSessionHistoryMenu();
 
     const historyMenu = screen.getByRole("menu", { name: "Session history" });
     expect(within(historyMenu).queryByText("Session history")).toBeNull();
@@ -1111,7 +1154,7 @@ describe("ChatbotCopilot desktop local mode", () => {
       }],
     });
 
-    fireEvent.click(screen.getByRole("button", { name: "Session history" }));
+    openSessionHistoryMenu();
     fireEvent.click(screen.getByRole("menuitem", { name: /Run pwd/ }));
 
     expect(onSwitchSession).not.toHaveBeenCalled();
