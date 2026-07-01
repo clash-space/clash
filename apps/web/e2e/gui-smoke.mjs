@@ -162,6 +162,15 @@ async function seedMockProvider(apiOrigin) {
           priority: 20,
           credentials: { apiKey: "r8-gui-smoke-key" },
         },
+        {
+          id: "replicate-secondary",
+          label: "Replicate secondary",
+          providerId: "replicate",
+          upstreamId: "replicate",
+          enabled: true,
+          priority: 30,
+          credentials: { apiKey: "r8-gui-smoke-key-2" },
+        },
       ],
     }),
   });
@@ -330,8 +339,26 @@ async function exerciseProviderModelRouting(cdp, { webOrigin, apiOrigin }) {
   );
   await waitFor(
     cdp,
-    `document.body.innerText.includes("Replicate primary")`,
-    "replicate provider config row",
+    `document.body.innerText.includes("Replicate primary") && document.body.innerText.includes("Replicate secondary")`,
+    "replicate provider config rows",
+  );
+  await click(
+    cdp,
+    `document.querySelector("button[aria-label='Move Replicate secondary up']")`,
+    "Move Replicate secondary above primary",
+  );
+  await waitFor(
+    cdp,
+    `fetch(${JSON.stringify(`${apiOrigin}/api/v1/model-providers`)})
+      .then((res) => res.json())
+      .then((json) => {
+        const providers = json.providers ?? [];
+        const primary = providers.find((provider) => provider.id === "replicate-primary");
+        const secondary = providers.find((provider) => provider.id === "replicate-secondary");
+        return primary?.priority === 20 && secondary?.priority === 10;
+      })
+      .catch(() => false)`,
+    "replicate provider key order saved",
   );
   await click(
     cdp,

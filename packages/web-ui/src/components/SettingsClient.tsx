@@ -1512,6 +1512,10 @@ type SortableProviderKeyRowProps = {
     expandedPanel?: ReactNode;
     onOpen: () => void;
     onEnabledChange: (checked: boolean) => void;
+    onMoveUp: () => void;
+    onMoveDown: () => void;
+    canMoveUp: boolean;
+    canMoveDown: boolean;
 };
 
 function SortableProviderKeyRow({
@@ -1524,6 +1528,10 @@ function SortableProviderKeyRow({
     expandedPanel,
     onOpen,
     onEnabledChange,
+    onMoveUp,
+    onMoveDown,
+    canMoveUp,
+    canMoveDown,
 }: SortableProviderKeyRowProps) {
     const {
         attributes,
@@ -1580,7 +1588,31 @@ function SortableProviderKeyRow({
                             </button>
                         </CollapsibleTrigger>
                     </div>
-                    <div className="flex items-center justify-end gap-3 pl-10 sm:pl-0">
+                    <div className="flex items-center justify-end gap-1 pl-10 sm:pl-0">
+                        <button
+                            type="button"
+                            aria-label={`Move ${accountLabel} up`}
+                            disabled={!canMoveUp}
+                            onClick={(event) => {
+                                event.stopPropagation();
+                                onMoveUp();
+                            }}
+                            className="rounded-md p-1 text-stone-400 transition-colors hover:bg-warm-muted hover:text-stone-700 disabled:cursor-not-allowed disabled:opacity-35 dark:hover:text-stone-200"
+                        >
+                            <ArrowUp className="h-4 w-4" aria-hidden="true" />
+                        </button>
+                        <button
+                            type="button"
+                            aria-label={`Move ${accountLabel} down`}
+                            disabled={!canMoveDown}
+                            onClick={(event) => {
+                                event.stopPropagation();
+                                onMoveDown();
+                            }}
+                            className="rounded-md p-1 text-stone-400 transition-colors hover:bg-warm-muted hover:text-stone-700 disabled:cursor-not-allowed disabled:opacity-35 dark:hover:text-stone-200"
+                        >
+                            <ArrowDown className="h-4 w-4" aria-hidden="true" />
+                        </button>
                         <Switch
                             aria-label={`Provider enabled for ${accountLabel}`}
                             checked={account.enabled !== false}
@@ -2415,6 +2447,18 @@ function ModelRoutingSection({
             }
             return saved;
         };
+        const moveSavedAccount = (fromIndex: number, toIndex: number) => {
+            if (toIndex < 0 || toIndex >= savedAccounts.length) return;
+            const ordered = arrayMove(savedAccounts, fromIndex, toIndex);
+            void onPatchProviders(ordered.map((account, index) => ({
+                key: row.key,
+                patch: {
+                    ...(account.id ? { id: account.id } : {}),
+                    ...(account.label ? { label: account.label } : {}),
+                    priority: (index + 1) * 10,
+                },
+            })));
+        };
         const accountNoun = oauthProviderId ? 'account' : 'API key';
         const editorTitle = editingAccountLabel ?? (oauthProviderId ? 'New account' : 'New key');
         const editorNumber = editingAccount ? editingAccountIndex + 1 : newKeyNumber;
@@ -2855,6 +2899,10 @@ function ModelRoutingSection({
                                                                     enabled: checked,
                                                                 });
                                                             }}
+                                                            onMoveUp={() => moveSavedAccount(index, index - 1)}
+                                                            onMoveDown={() => moveSavedAccount(index, index + 1)}
+                                                            canMoveUp={index > 0}
+                                                            canMoveDown={index < savedAccounts.length - 1}
                                                         />
                                                     );
                                                 })}

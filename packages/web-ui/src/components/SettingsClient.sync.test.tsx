@@ -2609,6 +2609,69 @@ describe("SettingsClient model routing", () => {
     expect(within(apiKeys).getByRole("button", { name: "Drag Primary" })).toBeTruthy();
   });
 
+  it("reorders provider keys with keyboard-accessible controls and persists priorities", async () => {
+    const actions = await import("@clash/web-ui/lib/clientActions");
+    vi.mocked(actions.updateModelProviders).mockImplementation(async (providers) => providers);
+    vi.mocked(actions.listModelCatalog).mockResolvedValue([]);
+
+    render(
+      <MemoryRouter>
+        <SettingsClient
+          initialTokens={[]}
+          initialVariables={[]}
+          initialActions={[]}
+          initialSkills={[]}
+          activeSection="providers"
+          embedded
+          initialModelProviders={[
+            {
+              id: "replicate-primary",
+              label: "Primary",
+              providerId: "replicate",
+              upstreamId: "replicate",
+              enabled: true,
+              priority: 20,
+              configuredCredentials: ["apiKey"],
+            },
+            {
+              id: "replicate-team",
+              label: "Team",
+              providerId: "replicate",
+              upstreamId: "replicate",
+              enabled: true,
+              priority: 10,
+              configuredCredentials: ["apiKey"],
+            },
+          ]}
+          initialModelCatalog={[]}
+        />
+      </MemoryRouter>,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Open Replicate BYOK settings" }));
+    const apiKeys = screen.getByRole("list", { name: "Replicate prioritized keys" });
+    const rows = within(apiKeys).getAllByRole("listitem");
+    expect(within(rows[0]).getByText("Team")).toBeTruthy();
+    expect(within(rows[1]).getByText("Primary")).toBeTruthy();
+
+    fireEvent.click(within(rows[1]).getByRole("button", { name: "Move Primary up" }));
+
+    await waitFor(() => {
+      expect(actions.updateModelProviders).toHaveBeenCalledWith(
+        expect.arrayContaining([
+          expect.objectContaining({
+            id: "replicate-primary",
+            priority: 10,
+          }),
+          expect.objectContaining({
+            id: "replicate-team",
+            priority: 20,
+          }),
+        ]),
+      );
+    });
+  });
+
   it("renders OAuth providers as account configs with scoped authorization controls", async () => {
     const actions = await import("@clash/web-ui/lib/clientActions");
     vi.mocked(actions.listProviderOAuth).mockResolvedValue([
