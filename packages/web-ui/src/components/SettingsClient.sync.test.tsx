@@ -2911,6 +2911,73 @@ describe("SettingsClient model routing", () => {
     });
   });
 
+  it("surfaces provider OAuth completion failures on the edited account", async () => {
+    const actions = await import("@clash/web-ui/lib/clientActions");
+    vi.mocked(actions.listProviderOAuth).mockResolvedValue([
+      {
+        providerId: "dreamina",
+        accountId: "jimeng-primary",
+        accountLabel: "Primary Dreamina",
+        status: "pending",
+        verificationUri: "https://jimeng.example/device",
+        userCode: "FAIL-CODE",
+        deviceCode: "device-code-fails",
+        hasAccessToken: false,
+      },
+    ]);
+    vi.mocked(actions.completeProviderOAuth).mockRejectedValue(new Error("Dreamina device code expired"));
+
+    render(
+      <MemoryRouter>
+        <AppFeedbackProvider>
+          <SettingsClient
+            initialTokens={[]}
+            initialVariables={[]}
+            initialActions={[]}
+            initialSkills={[]}
+            activeSection="providers"
+            embedded
+            initialModelProviders={[
+              {
+                id: "jimeng-primary",
+                label: "Primary Dreamina",
+                providerId: "jimeng",
+                upstreamId: "jimeng",
+                enabled: true,
+                priority: 10,
+                availableOAuth: ["dreamina"],
+              },
+            ]}
+            initialModelCatalog={[]}
+          />
+        </AppFeedbackProvider>
+      </MemoryRouter>,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Open Dreamina BYOK settings" }));
+    const accounts = screen.getByRole("list", { name: "Dreamina prioritized accounts" });
+    const accountRow = within(accounts).getByText("Primary Dreamina").closest("li") as HTMLElement;
+    await waitFor(() => {
+      expect(within(accountRow).getByText("Authorization pending")).toBeTruthy();
+    });
+    fireEvent.click(within(accountRow).getByText("Primary Dreamina"));
+
+    const editor = within(accountRow).getByRole("group", { name: "Primary Dreamina Dreamina account" });
+    const completeButton = within(editor).getByRole("button", { name: "Complete" });
+    fireEvent.click(completeButton);
+
+    await waitFor(() => {
+      expect(actions.completeProviderOAuth).toHaveBeenCalledWith("dreamina", "device-code-fails", "jimeng-primary");
+    });
+    const toast = await screen.findByRole("alert");
+    expect(toast.textContent).toContain("Could not complete Dreamina authorization");
+    expect(toast.textContent).toContain("Dreamina device code expired");
+    expect(within(editor).getByText("Error: Dreamina device code expired")).toBeTruthy();
+    await waitFor(() => {
+      expect(within(editor).getByRole("button", { name: "Connect" })).toBeTruthy();
+    });
+  });
+
   it("runs a deterministic mock provider test from the provider config editor", async () => {
     const actions = await import("@clash/web-ui/lib/clientActions");
     vi.mocked(actions.testModelProvider).mockResolvedValue({

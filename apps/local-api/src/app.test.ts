@@ -945,6 +945,59 @@ describe("local API app", () => {
     });
   });
 
+  it("records provider OAuth completion failures on the scoped account", async () => {
+    const oauth = {
+      dreamina: {
+        start: vi.fn(async () => ({
+          verificationUri: "https://jimeng.jianying.com/device",
+          userCode: "FAIL-CODE",
+          deviceCode: "device-code-fails",
+          expiresAt: "2026-06-26T03:00:00.000Z",
+          intervalSeconds: 5,
+        })),
+        complete: vi.fn(async () => {
+          throw new Error("Dreamina device code expired");
+        }),
+      },
+    };
+    const app = createLocalApiApp({
+      dataDir,
+      userId: "local-user",
+      providerOAuth: oauth,
+    } as any);
+
+    const start = await app.request("/api/v1/provider-oauth/dreamina/start", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ accountId: "jimeng-primary", accountLabel: "Primary Dreamina" }),
+    });
+    expect(start.status).toBe(200);
+
+    const complete = await app.request("/api/v1/provider-oauth/dreamina/complete", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ accountId: "jimeng-primary", deviceCode: "device-code-fails" }),
+    });
+    expect(complete.status).toBe(502);
+    expect(await complete.json()).toEqual({
+      error: "Dreamina device code expired",
+    });
+
+    const listed = await app.request("/api/v1/provider-oauth");
+    expect(await listed.json()).toEqual({
+      providers: [
+        expect.objectContaining({
+          providerId: "dreamina",
+          accountId: "jimeng-primary",
+          accountLabel: "Primary Dreamina",
+          status: "error",
+          error: "Dreamina device code expired",
+          hasAccessToken: false,
+        }),
+      ],
+    });
+  });
+
   it("allows browser requests from the local web runtime", async () => {
     const app = createLocalApiApp({ dataDir, userId: "local-user" });
 

@@ -1343,7 +1343,22 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
       ? body.deviceCode.trim()
       : existing?.deviceCode;
     if (!deviceCode) return c.json({ error: "deviceCode is required" }, 400);
-    const completed = await driver.complete({ deviceCode });
+    let completed: ProviderOAuthTokenResult;
+    try {
+      completed = await driver.complete({ deviceCode });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      upsertProviderOAuth(state, userId, providerId, {
+        ...(accountId ? { accountId } : {}),
+        status: "error",
+        accessToken: undefined,
+        refreshToken: undefined,
+        tokenType: undefined,
+        error: message,
+      });
+      await db.save(state);
+      return c.json({ error: message }, 502);
+    }
     const record = upsertProviderOAuth(state, userId, providerId, {
       ...(accountId ? { accountId } : {}),
       status: "authorized",
