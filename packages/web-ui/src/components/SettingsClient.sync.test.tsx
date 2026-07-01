@@ -3366,6 +3366,45 @@ describe("SettingsClient model routing", () => {
     expect(screen.queryByRole("option", { name: /Mock Image Model/ })).toBeNull();
   });
 
+  it("opens provider test model choices from keyboard like a real select", async () => {
+    render(
+      <MemoryRouter>
+        <SettingsClient
+          initialTokens={[]}
+          initialVariables={[]}
+          initialActions={[]}
+          initialSkills={[]}
+          activeSection="providers"
+          embedded
+          initialModelProviders={[
+            {
+              id: "mock-primary",
+              label: "Mock primary",
+              providerId: "mock",
+              upstreamId: "mock",
+              enabled: true,
+              priority: 10,
+            },
+          ]}
+          initialModelCatalog={[]}
+        />
+      </MemoryRouter>,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Open Mock Provider BYOK settings" }));
+    const providerConfigs = screen.getByRole("list", { name: "Mock Provider prioritized keys" });
+    const providerConfig = within(providerConfigs).getByText("Mock primary").closest("li") as HTMLElement;
+    fireEvent.click(within(providerConfig).getByText("Mock primary"));
+
+    const editor = within(providerConfig).getByRole("group", { name: "Mock primary Mock Provider API key" });
+    const modelPicker = within(editor).getByRole("combobox", { name: "Model to test" });
+    modelPicker.focus();
+    fireEvent.keyDown(modelPicker, { key: "ArrowDown" });
+
+    expect(screen.getByRole("listbox", { name: "Model to test" })).toBeTruthy();
+    expect(screen.getByRole("combobox", { name: "Search test models" })).toBe(document.activeElement);
+  });
+
   it("runs a saved live provider configuration check from the provider config editor", async () => {
     const actions = await import("@clash/web-ui/lib/clientActions");
     vi.mocked(actions.testModelProvider).mockResolvedValue({
@@ -3570,7 +3609,7 @@ describe("SettingsClient model routing", () => {
     expect(within(editor).getByText("Model access")).toBeTruthy();
     fireEvent.click(within(editor).getByRole("combobox", { name: "Model access" }));
     fireEvent.click(screen.getByRole("option", { name: /Specific models/ }));
-    fireEvent.click(within(editor).getByRole("button", { name: "Add supported model" }));
+    fireEvent.click(within(editor).getByRole("combobox", { name: "Add supported model" }));
     expect(screen.queryByRole("menu", { name: "Add supported model" })).toBeNull();
     const search = screen.getByRole("combobox", { name: "Search supported models" });
     fireEvent.change(search, { target: { value: "gpt image" } });
@@ -3632,7 +3671,7 @@ describe("SettingsClient model routing", () => {
     const editor = screen.getByRole("group", { name: "Google primary Google API key" });
     fireEvent.click(within(editor).getByRole("combobox", { name: "Model access" }));
     fireEvent.click(screen.getByRole("option", { name: /Specific models/ }));
-    fireEvent.click(within(editor).getByRole("button", { name: "Add supported model" }));
+    fireEvent.click(within(editor).getByRole("combobox", { name: "Add supported model" }));
     expect(screen.queryByRole("menu", { name: "Add supported model" })).toBeNull();
     fireEvent.change(screen.getByRole("combobox", { name: "Search supported models" }), {
       target: { value: "Gemini Flash Image 2" },
