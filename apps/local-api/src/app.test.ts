@@ -388,6 +388,57 @@ describe("local API app", () => {
     });
   });
 
+  it("tests a configured mock provider account against a selected model", async () => {
+    const app = createLocalApiApp({ dataDir, userId: "local-user" });
+
+    await app.request("/api/v1/model-providers", {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        providers: [
+          { id: "mock-primary", providerId: "mock", upstreamId: "mock", enabled: true, priority: 1 },
+        ],
+      }),
+    });
+
+    const ok = await app.request("/api/v1/model-providers/test", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        provider: { id: "mock-primary", providerId: "mock", upstreamId: "mock", enabled: true },
+        modelId: "nano-banana-2",
+      }),
+    });
+
+    expect(ok.status).toBe(200);
+    expect(await ok.json()).toEqual({
+      ok: true,
+      providerId: "mock",
+      upstreamId: "mock",
+      modelId: "nano-banana-2",
+      message: "Mock provider can run Nano Banana 2.",
+    });
+
+    const unsupported = await app.request("/api/v1/model-providers/test", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        provider: { id: "mock-primary", providerId: "mock", upstreamId: "mock", enabled: true },
+        modelId: "claude-sonnet-4",
+      }),
+    });
+
+    expect(unsupported.status).toBe(200);
+    expect(await unsupported.json()).toEqual({
+      ok: false,
+      providerId: "mock",
+      upstreamId: "mock",
+      modelId: "claude-sonnet-4",
+      unsupported: true,
+      message: "Mock provider does not support Claude Sonnet 4.",
+    });
+  });
+
   it("manages provider OAuth device flow and exposes connected providers", async () => {
     const oauth = {
       dreamina: {

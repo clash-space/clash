@@ -172,6 +172,9 @@ importers:
       '@clash-space/cli':
         specifier: workspace:*
         version: link:../../packages/cli
+      '@clash-space/sdk':
+        specifier: workspace:*
+        version: link:../../packages/clash-sdk/js
       '@clash/shared-runtime':
         specifier: workspace:*
         version: link:../../packages/shared-runtime
@@ -9607,6 +9610,16 @@ packages:
     dev: false
     optional: true
 
+  /@zed-industries/codex-acp-linux-arm64@0.16.0:
+    resolution: {integrity: sha512-8HaZGWVPVs1N6yqImLCKlnlcYTYc9BMCEhaVJk0ON9lyofhK9mOBBAHQndKC4Scqq5JLUHQIOyb8+jwHUe3hSQ==}
+    cpu: [arm64]
+    os: [linux]
+    deprecated: This package has been replaced by @agentclientprotocol/codex-acp. Please migrate to continue receiving updates.
+    hasBin: true
+    requiresBuild: true
+    dev: false
+    optional: true
+
   /@zed-industries/codex-acp-linux-x64@0.16.0:
     resolution: {integrity: sha512-xs5zZBLpJuciEbZNx6ZSNL0qCa9h3i/zWpj40sp6QtF+L4Ow/7qzHdBzboGhHdcz1jrLedfZeRFDA2Elj8TLMA==}
     cpu: [x64]
@@ -9640,6 +9653,7 @@ packages:
     optionalDependencies:
       '@zed-industries/codex-acp-darwin-arm64': 0.16.0
       '@zed-industries/codex-acp-darwin-x64': 0.16.0
+      '@zed-industries/codex-acp-linux-arm64': 0.16.0
       '@zed-industries/codex-acp-linux-x64': 0.16.0
       '@zed-industries/codex-acp-win32-arm64': 0.16.0
       '@zed-industries/codex-acp-win32-x64': 0.16.0

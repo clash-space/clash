@@ -42,6 +42,7 @@ vi.mock("@clash/web-ui/lib/clientActions", () => ({
   listInstalledSkills: vi.fn(async () => []),
   listModelProviders: vi.fn(async () => []),
   updateModelProviders: vi.fn(),
+  testModelProvider: vi.fn(),
   listProviderOAuth: vi.fn(async () => []),
   startProviderOAuth: vi.fn(),
   completeProviderOAuth: vi.fn(),
@@ -2452,7 +2453,7 @@ describe("SettingsClient model routing", () => {
     expect(screen.getByRole("button", { name: "Back to BYOK" })).toBeTruthy();
     expect(screen.getByRole("heading", { name: "Replicate" })).toBeTruthy();
     const nanoLink = screen.getByRole("link", { name: "View supported models" });
-    expect(nanoLink.getAttribute("href")).toBe("/settings?section=models&model=nano-banana-2");
+    expect(nanoLink.getAttribute("href")).toBe("/settings?section=models&provider=replicate%3Areplicate%3A");
     expect(screen.getByText("Provider Keys")).toBeTruthy();
     expect(screen.getByText("Prioritized")).toBeTruthy();
     expect(screen.queryByText("Fallback")).toBeNull();
@@ -2465,6 +2466,7 @@ describe("SettingsClient model routing", () => {
     expect(screen.getByRole("button", { name: "Add prioritized Replicate key" })).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Add fallback Replicate key" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Add Replicate API key" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Save" })).toBeNull();
     expect(screen.queryByLabelText("Replicate API key")).toBeNull();
     expect(screen.queryByPlaceholderText("Saved")).toBeNull();
 
@@ -2474,6 +2476,7 @@ describe("SettingsClient model routing", () => {
     const existingKeyEditor = within(existingRow).getByRole("group", { name: "API key 1 Replicate API key" });
     expect(within(existingKeyEditor).getByLabelText("Replicate key name")).toBeTruthy();
     expect(within(existingKeyEditor).getByLabelText("Replicate API key")).toBeTruthy();
+    expect(within(existingKeyEditor).getByRole("button", { name: "Save" })).toBeTruthy();
     expect(within(existingKeyEditor).queryByText("Filters")).toBeNull();
     expect(within(existingKeyEditor).queryByText("API Keys")).toBeNull();
     expect(within(existingKeyEditor).queryByText("Always use for this provider")).toBeNull();
@@ -2601,6 +2604,62 @@ describe("SettingsClient model routing", () => {
     expect(within(apiKeys).getByRole("button", { name: "Drag Primary" })).toBeTruthy();
   });
 
+  it("runs a deterministic mock provider test from the provider config editor", async () => {
+    const actions = await import("@clash/web-ui/lib/clientActions");
+    vi.mocked(actions.testModelProvider).mockResolvedValue({
+      ok: true,
+      providerId: "mock",
+      upstreamId: "mock",
+      modelId: "nano-banana-2",
+      message: "Mock provider can run Nano Banana 2.",
+    });
+
+    render(
+      <MemoryRouter>
+        <SettingsClient
+          initialTokens={[]}
+          initialVariables={[]}
+          initialActions={[]}
+          initialSkills={[]}
+          activeSection="providers"
+          embedded
+          initialModelProviders={[
+            {
+              id: "mock-primary",
+              label: "Mock primary",
+              providerId: "mock",
+              upstreamId: "mock",
+              enabled: true,
+              priority: 10,
+            },
+          ]}
+          initialModelCatalog={[]}
+        />
+      </MemoryRouter>,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Open Mock Provider BYOK settings" }));
+    const providerConfigs = screen.getByRole("list", { name: "Mock Provider prioritized keys" });
+    const providerConfig = within(providerConfigs).getByText("Mock primary").closest("li") as HTMLElement;
+    fireEvent.click(within(providerConfig).getByText("Mock primary"));
+
+    const editor = within(providerConfig).getByRole("group", { name: "Mock primary Mock Provider API key" });
+    expect(within(editor).getByRole("button", { name: "Model to test" })).toBeTruthy();
+    fireEvent.click(within(editor).getByRole("button", { name: "Run provider test" }));
+
+    await waitFor(() => {
+      expect(actions.testModelProvider).toHaveBeenCalledWith({
+        provider: expect.objectContaining({
+          id: "mock-primary",
+          providerId: "mock",
+          upstreamId: "mock",
+        }),
+        modelId: "nano-banana-2",
+      });
+    });
+    expect(await within(editor).findByText("Mock provider can run Nano Banana 2.")).toBeTruthy();
+  });
+
   it("configures multiple OpenAI provider keys inline", async () => {
     const actions = await import("@clash/web-ui/lib/clientActions");
     vi.mocked(actions.updateModelProviders).mockImplementation(async (providers) => providers);
@@ -2648,7 +2707,7 @@ describe("SettingsClient model routing", () => {
         ]),
       );
     });
-    expect(screen.getByRole("button", { name: "Save" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Save" })).toBeNull();
   });
 
   it("configures all required Kling credential fields inline", async () => {
@@ -2799,6 +2858,79 @@ describe("SettingsClient model routing", () => {
 
     expect(screen.getByText("Selected models")).toBeTruthy();
     expect(screen.getByText("Provider missing: fal")).toBeTruthy();
+  });
+
+  it("filters the Models page to one provider from the supported-models link", () => {
+    render(
+      <MemoryRouter initialEntries={["/settings?section=models&provider=replicate%3Areplicate%3A"]}>
+        <SettingsClient
+          initialTokens={[]}
+          initialVariables={[]}
+          initialActions={[]}
+          initialSkills={[]}
+          activeSection="models"
+          embedded
+          initialModelProviders={[
+            {
+              providerId: "replicate",
+              upstreamId: "replicate",
+              enabled: true,
+              configuredCredentials: ["apiKey"],
+            },
+            {
+              providerId: "official",
+              upstreamId: "openai",
+              region: "global",
+              enabled: true,
+              configuredCredentials: ["apiKey"],
+            },
+          ]}
+          initialModelCatalog={[
+            {
+              model: {
+                id: "nano-banana-2",
+                name: "Nano Banana 2",
+                provider: "Replicate",
+                kind: "image",
+                parameters: [],
+                defaultParams: {},
+                defaultAspectRatio: "16:9",
+                input: { requiresPrompt: true, inputMode: {}, promptModalities: ["text"] },
+              },
+              tier: "available",
+              selectedRoute: null,
+              routes: [],
+              candidateProviders: ["replicate"],
+              missingCredentials: [],
+              missingOAuth: [],
+            },
+            {
+              model: {
+                id: "claude-sonnet-4",
+                name: "Claude Sonnet 4",
+                provider: "Anthropic",
+                kind: "text",
+                parameters: [],
+                defaultParams: {},
+                defaultAspectRatio: "16:9",
+                input: { requiresPrompt: true, inputMode: {}, promptModalities: ["text"] },
+              },
+              tier: "available",
+              selectedRoute: null,
+              routes: [],
+              candidateProviders: ["official"],
+              missingCredentials: [],
+              missingOAuth: [],
+            },
+          ]}
+        />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByText("Models supported by Replicate")).toBeTruthy();
+    expect(screen.getByText("Nano Banana 2")).toBeTruthy();
+    expect(screen.queryByText("Claude Sonnet 4")).toBeNull();
+    expect(screen.getByRole("link", { name: "Show all" }).getAttribute("href")).toBe("/settings?section=models");
   });
 
   it("uses shared select controls for model filters", () => {

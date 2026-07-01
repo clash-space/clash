@@ -68,6 +68,27 @@ describe("model upstream routing", () => {
     expect(route).toBeNull();
   });
 
+  it("marks mock-backed catalog entries available only when mock routing is explicitly configured", () => {
+    const mockEntries = listModelCatalogEntries({
+      configuredProviders: [{ providerId: "mock", upstreamId: "mock", enabled: true }],
+    });
+    const mockNanoBanana = mockEntries.find((entry) => entry.model.id === "nano-banana-2");
+
+    expect(mockNanoBanana).toMatchObject({
+      tier: "available",
+      selectedRoute: {
+        providerId: "mock",
+        upstreamId: "mock",
+        upstreamModel: "fal-ai/nano-banana-2",
+      },
+      missingCredentials: [],
+    });
+
+    const unavailableEntries = listModelCatalogEntries({ configuredProviders: [] });
+    const unavailableNanoBanana = unavailableEntries.find((entry) => entry.model.id === "nano-banana-2");
+    expect(unavailableNanoBanana?.selectedRoute?.upstreamId).not.toBe("mock");
+  });
+
   it("routes GPT Image 2 to the OpenAI image upstream with variables", () => {
     const route = resolveModelUpstreamRoute({
       modelCode: "gpt-image-2",

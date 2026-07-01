@@ -714,6 +714,16 @@ function uniqueProviderIds(routes: ModelUpstreamRoute[]): ProviderAccountId[] {
   return [...new Set(routes.map(providerIdForRoute))];
 }
 
+function shouldAllowMockCatalogRoutes(options: {
+  configuredProviders?: ProviderAccountAvailability[];
+  configuredUpstreams?: UpstreamAvailability[];
+  allowMock?: boolean;
+}): boolean {
+  if (options.allowMock) return true;
+  if (options.configuredProviders?.some((provider) => provider.providerId === "mock" && provider.enabled !== false)) return true;
+  return !!options.configuredUpstreams?.some((upstream) => upstream.upstreamId === "mock" && upstream.enabled !== false);
+}
+
 export function listModelCatalogEntries(options: {
   models?: readonly ModelCard[];
   configuredProviders?: ProviderAccountAvailability[];
@@ -721,15 +731,16 @@ export function listModelCatalogEntries(options: {
   allowMock?: boolean;
 } = {}): ModelCatalogEntry[] {
   const models = options.models ?? MODEL_CARDS;
+  const allowMock = shouldAllowMockCatalogRoutes(options);
   return models.map((model) => {
     const query: ModelUpstreamRouteQuery = {
       modelCode: model.id,
       kind: model.kind,
       configuredProviders: options.configuredProviders,
       configuredUpstreams: options.configuredUpstreams,
-      allowMock: options.allowMock,
+      allowMock,
     };
-    const allRoutes = candidateRoutes({ modelCode: model.id, kind: model.kind, allowMock: options.allowMock });
+    const allRoutes = candidateRoutes({ modelCode: model.id, kind: model.kind, allowMock });
     const routes = listModelUpstreamRoutes(query);
     const selectedRoute = routes[0] ?? null;
     const configuredCandidates = allRoutes.filter((route) => {

@@ -10,8 +10,9 @@
     "resolveJsonModule": true,
     "baseUrl": ".",
     "paths": {
-      "@clash-space/sdk": ["../../packages/clash-sdk/js/src/index.ts"]
+      "@clash-space/sdk": ["../../packages/clash-sdk/js/dist/index.d.ts"]
     },
+    "rootDir": "src",
     "outDir": "dist"
   },
   "include": ["src/**/*.ts"]

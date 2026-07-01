@@ -28,8 +28,8 @@ import {
     setVariable, deleteVariable, type VariableInfo,
     uninstallAction, type InstalledActionInfo,
     uninstallSkill, type InstalledSkillInfo,
-    updateModelProviders, listModelProviders, listModelCatalog, listProviderOAuth, startProviderOAuth, completeProviderOAuth,
-    type ModelProviderAccountInfo, type ModelCatalogEntryInfo, type ProviderOAuthInfo,
+    updateModelProviders, listModelProviders, listModelCatalog, listProviderOAuth, startProviderOAuth, completeProviderOAuth, testModelProvider,
+    type ModelProviderAccountInfo, type ModelCatalogEntryInfo, type ProviderOAuthInfo, type ModelProviderTestResult,
 } from '@clash/web-ui/lib/clientActions';
 import { runtimeApiUrl } from '@clash/web-ui/lib/runtimeConfig';
 import { Dialog } from './ui/dialog';
@@ -518,10 +518,8 @@ export default function SettingsClient({
     const [modelProviders, setModelProviders] = useState<ModelProviderAccountInfo[]>(initialModelProviders);
     const [modelCatalog, setModelCatalog] = useState<ModelCatalogEntryInfo[]>(initialModelCatalog);
     const [isSavingModelProviders, setIsSavingModelProviders] = useState(false);
-    const [modelProviderDirty, setModelProviderDirty] = useState(false);
     const [modelProviderError, setModelProviderError] = useState<string | null>(null);
     const [providerOAuth, setProviderOAuth] = useState<ProviderOAuthInfo[]>([]);
-    const modelProviderVersionRef = useRef(0);
     const feedback = useAppFeedback();
 
     const variableKeys = new Set(variables.map((v) => v.key));
@@ -625,29 +623,47 @@ export default function SettingsClient({
         }
     }, []);
 
-    const handlePatchModelProvider = useCallback((key: string, patch: Partial<ModelProviderAccountInfo>) => {
-        modelProviderVersionRef.current += 1;
-        setModelProviders((prev) => {
-            const row = patch.id
-                ? prev.find((provider) => provider.id === patch.id) ?? buildModelProviderRows(prev).find((provider) => modelProviderKey(provider) === key)
-                : buildModelProviderRows(prev).find((provider) => modelProviderKey(provider) === key);
-            if (!row) return prev;
-            const credentialKeys = patch.credentials
-                ? Object.entries(patch.credentials)
-                    .filter(([, value]) => typeof value === 'string' && value.trim().length > 0)
-                    .map(([credentialKey]) => credentialKey)
-                : [];
-            return upsertModelProvider(prev, {
-                ...row,
-                ...patch,
-                configuredCredentials: credentialKeys.length
-                    ? [...new Set([...(row.configuredCredentials ?? []), ...credentialKeys])].sort()
-                    : patch.configuredCredentials ?? row.configuredCredentials,
-            });
-        });
-        setModelProviderDirty(true);
+    const saveModelProviders = useCallback(async (nextProviders: ModelProviderAccountInfo[]) => {
+        const previousProviders = modelProviders;
+        setModelProviders(nextProviders);
+        setIsSavingModelProviders(true);
         setModelProviderError(null);
-    }, []);
+        try {
+            const savedProviders = await updateModelProviders(nextProviders);
+            const nextCatalog = await listModelCatalog();
+            setModelProviders(savedProviders);
+            setModelCatalog(nextCatalog);
+            feedback.notify({
+                variant: 'success',
+                title: 'Provider settings saved',
+            });
+            return savedProviders;
+        } catch (err) {
+            setModelProviders(previousProviders);
+            const message = displayErrorMessage(err);
+            setModelProviderError(message);
+            feedback.notify({
+                variant: 'error',
+                title: 'Could not save provider settings',
+                message,
+            });
+            throw err;
+        } finally {
+            setIsSavingModelProviders(false);
+        }
+    }, [feedback, modelProviders]);
+
+    const handlePatchModelProvider = useCallback((key: string, patch: Partial<ModelProviderAccountInfo>) => {
+        const nextProviders = patchModelProviderList(modelProviders, key, patch);
+        if (nextProviders === modelProviders) return Promise.resolve(modelProviders);
+        return saveModelProviders(nextProviders);
+    }, [modelProviders, saveModelProviders]);
+
+    const handlePatchModelProviders = useCallback((patches: ModelProviderPatch[]) => {
+        const nextProviders = patchModelProviderLists(modelProviders, patches);
+        if (nextProviders === modelProviders) return Promise.resolve(modelProviders);
+        return saveModelProviders(nextProviders);
+    }, [modelProviders, saveModelProviders]);
 
     useEffect(() => {
         let cancelled = false;
@@ -676,35 +692,6 @@ export default function SettingsClient({
         setModelProviders(providerRows);
         setModelCatalog(catalogRows);
     }, []);
-
-    useEffect(() => {
-        if (!modelProviderDirty || modelProviders.length === 0) return;
-        const version = modelProviderVersionRef.current;
-        const timer = window.setTimeout(() => {
-            setIsSavingModelProviders(true);
-            setModelProviderError(null);
-            void updateModelProviders(modelProviders)
-                .then(async (savedProviders) => {
-                    const nextCatalog = await listModelCatalog();
-                    if (modelProviderVersionRef.current !== version) return;
-                    setModelProviderDirty(false);
-                    setModelProviders(savedProviders);
-                    setModelCatalog(nextCatalog);
-                    feedback.notify({
-                        variant: 'success',
-                        title: 'Provider settings saved',
-                    });
-                })
-                .catch((err) => {
-                    if (modelProviderVersionRef.current !== version) return;
-                    setModelProviderError(err instanceof Error ? err.message : String(err));
-                })
-                .finally(() => {
-                    if (modelProviderVersionRef.current === version) setIsSavingModelProviders(false);
-                });
-        }, 350);
-        return () => window.clearTimeout(timer);
-    }, [feedback, modelProviderDirty, modelProviders]);
 
     const handleCopy = useCallback(async (text: string, id: string) => {
         await navigator.clipboard.writeText(text);
@@ -847,6 +834,7 @@ export default function SettingsClient({
                     onStartProviderOAuth={handleStartProviderOAuth}
                     onCompleteProviderOAuth={handleCompleteProviderOAuth}
                     onPatchProvider={handlePatchModelProvider}
+                    onPatchProviders={handlePatchModelProviders}
                     saving={isSavingModelProviders}
                     error={modelProviderError}
                 />
@@ -977,6 +965,7 @@ export default function SettingsClient({
                     onStartProviderOAuth={handleStartProviderOAuth}
                     onCompleteProviderOAuth={handleCompleteProviderOAuth}
                     onPatchProvider={handlePatchModelProvider}
+                    onPatchProviders={handlePatchModelProviders}
                     saving={isSavingModelProviders}
                     error={modelProviderError}
                 />
@@ -1231,6 +1220,14 @@ function modelProviderCredentialFields(setup: ModelProviderSetup): ModelProvider
 }
 
 function modelProviderSetup(provider: Pick<ModelProviderAccountInfo, 'providerId' | 'upstreamId'>): ModelProviderSetup | null {
+    if (provider.providerId === 'mock') {
+        return {
+            title: 'Mock Provider',
+            description: 'Deterministic local provider used to verify provider and model routing flows.',
+            apiKey: '',
+            credentials: [],
+        };
+    }
     if (provider.providerId === 'fal') {
         return {
             title: 'fal.ai',
@@ -1386,6 +1383,41 @@ function upsertModelProvider(
     const key = modelProviderAccountIdentity(next);
     const filtered = providers.filter((provider) => modelProviderAccountIdentity(provider) !== key);
     return [...filtered, next];
+}
+
+type ModelProviderPatch = {
+    key: string;
+    patch: Partial<ModelProviderAccountInfo>;
+};
+
+function patchModelProviderList(
+    providers: ModelProviderAccountInfo[],
+    key: string,
+    patch: Partial<ModelProviderAccountInfo>,
+): ModelProviderAccountInfo[] {
+    const row = patch.id
+        ? providers.find((provider) => provider.id === patch.id) ?? buildModelProviderRows(providers).find((provider) => modelProviderKey(provider) === key)
+        : buildModelProviderRows(providers).find((provider) => modelProviderKey(provider) === key);
+    if (!row) return providers;
+    const credentialKeys = patch.credentials
+        ? Object.entries(patch.credentials)
+            .filter(([, value]) => typeof value === 'string' && value.trim().length > 0)
+            .map(([credentialKey]) => credentialKey)
+        : [];
+    return upsertModelProvider(providers, {
+        ...row,
+        ...patch,
+        configuredCredentials: credentialKeys.length
+            ? [...new Set([...(row.configuredCredentials ?? []), ...credentialKeys])].sort()
+            : patch.configuredCredentials ?? row.configuredCredentials,
+    });
+}
+
+function patchModelProviderLists(
+    providers: ModelProviderAccountInfo[],
+    patches: ModelProviderPatch[],
+): ModelProviderAccountInfo[] {
+    return patches.reduce((nextProviders, { key, patch }) => patchModelProviderList(nextProviders, key, patch), providers);
 }
 
 function upsertProviderOAuthRow(rows: ProviderOAuthInfo[], next: ProviderOAuthInfo): ProviderOAuthInfo[] {
@@ -1558,6 +1590,10 @@ function modelCardHref(modelId: string): string {
     return `/settings?section=models&model=${encodeURIComponent(modelId)}`;
 }
 
+function providerModelsHref(providerKey: string): string {
+    return `/settings?section=models&provider=${encodeURIComponent(providerKey)}`;
+}
+
 function supportForProvider(
     supports: ProviderSupportRow[],
     provider: Pick<ModelProviderAccountInfo, 'providerId' | 'upstreamId' | 'region'>,
@@ -1658,7 +1694,8 @@ interface ModelRoutingSectionProps {
     providerOAuth: ProviderOAuthInfo[];
     onStartProviderOAuth: (providerId: string) => Promise<void>;
     onCompleteProviderOAuth: (providerId: string, deviceCode?: string) => Promise<void>;
-    onPatchProvider: (key: string, patch: Partial<ModelProviderAccountInfo>) => void;
+    onPatchProvider: (key: string, patch: Partial<ModelProviderAccountInfo>) => Promise<ModelProviderAccountInfo[]>;
+    onPatchProviders: (patches: ModelProviderPatch[]) => Promise<ModelProviderAccountInfo[]>;
     saving: boolean;
     error: string | null;
 }
@@ -1675,11 +1712,15 @@ function ModelRoutingSection({
     onStartProviderOAuth,
     onCompleteProviderOAuth,
     onPatchProvider,
+    onPatchProviders,
     saving,
     error,
 }: ModelRoutingSectionProps) {
     const feedback = useAppFeedback();
     const [providerDrafts, setProviderDrafts] = useState<Record<string, ProviderDraft>>({});
+    const [providerTestModelIds, setProviderTestModelIds] = useState<Record<string, string>>({});
+    const [providerTestBusyKey, setProviderTestBusyKey] = useState<string | null>(null);
+    const [providerTestResults, setProviderTestResults] = useState<Record<string, ModelProviderTestResult>>({});
     const [savingProviderKey, setSavingProviderKey] = useState<string | null>(null);
     const [providerOAuthBusyKey, setProviderOAuthBusyKey] = useState<string | null>(null);
     const [providerQuery, setProviderQuery] = useState('');
@@ -1697,11 +1738,12 @@ function ModelRoutingSection({
         useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
         useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
     );
-    const providerSupports = useMemo(() => listProviderModelSupport(), []);
+    const providerSupports = useMemo(() => listProviderModelSupport({ includeMock: true }), []);
     const showProviders = mode === 'providers';
     const showModels = mode === 'models';
     const [searchParams] = useSearchParams();
     const focusedModelId = showModels ? searchParams.get('model') : null;
+    const focusedProviderKey = showModels ? searchParams.get('provider') : null;
     const providerAccountsByKey = useMemo(() => {
         const rows = new Map<string, ModelProviderAccountInfo[]>();
         for (const account of providerAccounts) {
@@ -1729,13 +1771,16 @@ function ModelRoutingSection({
         try {
             const credentials = Object.fromEntries(credentialDrafts);
             if (setup.baseUrlKey && draft.baseUrl?.trim()) credentials[setup.baseUrlKey] = draft.baseUrl.trim();
-            onPatchProvider(key, {
+            await onPatchProvider(key, {
                 ...(options.account?.id ? { id: options.account.id } : {}),
                 ...(options.createAccount ? { id: createProviderAccountId(key) } : {}),
                 ...(label ? { label } : {}),
                 ...(Object.keys(credentials).length > 0 ? { credentials } : {}),
             });
             setProviderDrafts((prev) => ({ ...prev, [key]: {} }));
+            return true;
+        } catch {
+            return false;
         } finally {
             setSavingProviderKey(null);
         }
@@ -1753,14 +1798,15 @@ function ModelRoutingSection({
         const newIndex = accountIds.indexOf(String(over.id));
         if (oldIndex < 0 || newIndex < 0) return;
         const ordered = arrayMove(accounts, oldIndex, newIndex);
-        ordered.forEach((account, index) => {
-            onPatchProvider(key, {
+        void onPatchProviders(ordered.map((account, index) => ({
+            key,
+            patch: {
                 ...(account.id ? { id: account.id } : {}),
                 ...(account.label ? { label: account.label } : {}),
                 priority: (index + 1) * 10,
-            });
-        });
-    }, [onPatchProvider]);
+            },
+        })));
+    }, [onPatchProviders]);
 
     const providerViewRows = useMemo(() => providers
         .map((provider) => {
@@ -1782,13 +1828,15 @@ function ModelRoutingSection({
             const oauth = setup?.oauthProviderId
                 ? providerOAuth.find((item) => item.providerId === setup.oauthProviderId)
                 : undefined;
-            const hasRequiredCredentials = setup?.requiresAllCredentials
-                ? accountRows.some((account) => credentialFields.every((credential) =>
-                    account.configuredCredentials?.includes(credential.key),
-                ))
-                : accountRows.some((account) => credentialFields.some((credential) =>
-                    account.configuredCredentials?.includes(credential.key),
-                ));
+            const hasRequiredCredentials = credentialFields.length === 0
+                ? accountRows.length > 0
+                : setup?.requiresAllCredentials
+                    ? accountRows.some((account) => credentialFields.every((credential) =>
+                        account.configuredCredentials?.includes(credential.key),
+                    ))
+                    : accountRows.some((account) => credentialFields.some((credential) =>
+                        account.configuredCredentials?.includes(credential.key),
+                    ));
             const support = supportForProvider(providerSupports, provider);
             const title = setup?.title ?? modelProviderLabel(provider);
             const searchText = [
@@ -1824,6 +1872,13 @@ function ModelRoutingSection({
 	    const configuredProviderRows = providerViewRows.filter((row) => row.configured);
 	    const availableProviderRows = providerViewRows.filter((row) => !row.configured);
 	    const selectedProviderRow = providerViewRows.find((row) => row.key === selectedProviderKey) ?? null;
+        const focusedProviderRow = focusedProviderKey
+            ? providerViewRows.find((row) => row.key === focusedProviderKey) ?? null
+            : null;
+        const focusedProviderModelIds = useMemo(
+            () => new Set(focusedProviderRow?.support?.models.map((model) => model.id) ?? []),
+            [focusedProviderRow],
+        );
     useEffect(() => {
         if (!showModels || !catalog.some(isLocalAsrModelEntry)) return;
         let cancelled = false;
@@ -1852,6 +1907,7 @@ function ModelRoutingSection({
     const modelNeedsProvider = useCallback((entry: ModelCatalogEntryInfo) =>
         !entry.selectedRoute || entry.missingCredentials.length > 0 || entry.tier !== 'available', []);
     const filteredModelCatalog = useMemo(() => catalog
+        .filter((entry) => !focusedProviderRow || focusedProviderModelIds.has(entry.model.id))
         .filter((entry) => {
             if (!modelQuery.trim()) return true;
             const text = [
@@ -1867,9 +1923,16 @@ function ModelRoutingSection({
             if (modelProviderFilter === 'ready') return !modelNeedsProvider(entry);
             if (modelProviderFilter === 'missing') return modelNeedsProvider(entry);
             return true;
-        }), [catalog, modelKindFilter, modelProviderFilter, modelNeedsProvider, modelQuery]);
+        }), [catalog, focusedProviderModelIds, focusedProviderRow, modelKindFilter, modelProviderFilter, modelNeedsProvider, modelQuery]);
     const selectedModelEntries = catalog.filter((entry) => selectedModelIds.has(entry.model.id));
     const availableModelEntries = filteredModelCatalog.filter((entry) => !selectedModelIds.has(entry.model.id));
+    useEffect(() => {
+        if (!showModels || !focusedModelId) return;
+        const frame = window.requestAnimationFrame(() => {
+            document.getElementById(`model-card-${focusedModelId}`)?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+        });
+        return () => window.cancelAnimationFrame(frame);
+    }, [focusedModelId, showModels, filteredModelCatalog.length]);
     const toggleSelectedModel = useCallback((modelId: string) => {
         onSelectedModelIdsChange((prev) => {
             const next = new Set(prev);
@@ -1932,17 +1995,18 @@ function ModelRoutingSection({
         const moveModelProvider = (fromIndex: number, toIndex: number) => {
             if (toIndex < 0 || toIndex >= providerOrderRows.length) return;
             const ordered = arrayMove(providerOrderRows, fromIndex, toIndex);
-            ordered.forEach((providerRow, index) => {
+            void onPatchProviders(ordered.flatMap((providerRow, index) => {
                 const weight = 100 - index * 10;
                 const targets = providerRow.accounts.length > 0 ? providerRow.accounts : [providerRow.provider];
-                targets.forEach((account) => {
-                    onPatchProvider(providerRow.key, {
+                return targets.map((account) => ({
+                    key: providerRow.key,
+                    patch: {
                         ...(account.id ? { id: account.id } : {}),
                         ...(account.label ? { label: account.label } : {}),
                         weight,
-                    });
-                });
-            });
+                    },
+                }));
+            }));
         };
         const localAsr = isLocalAsrModelEntry(entry);
         const localAsrModel = asrModelValue(entry);
@@ -2174,8 +2238,8 @@ function ModelRoutingSection({
         const credentialFields = modelProviderCredentialFields(setup);
         const oauthProviderId = setup.oauthProviderId;
         const oauthBusy = providerOAuthBusyKey === row.key;
-        const supportedModelsHref = row.support?.models[0]
-            ? modelCardHref(row.support.models[0].id)
+        const supportedModelsHref = row.support?.models.length
+            ? providerModelsHref(row.key)
             : '/settings?section=models';
         const setupCredentialKeys = new Set([
             ...credentialFields.map((credential) => credential.key),
@@ -2184,7 +2248,9 @@ function ModelRoutingSection({
         const configuredAccounts = row.accounts.filter((account) =>
             (account.configuredCredentials ?? []).some((credentialKey) => setupCredentialKeys.has(credentialKey)),
         );
-        const savedAccounts = (configuredAccounts.length > 0
+        const savedAccounts = (credentialFields.length === 0 && !oauthProviderId
+            ? row.accounts
+            : configuredAccounts.length > 0
             ? configuredAccounts
             : row.configuredKeys.some((credentialKey) => setupCredentialKeys.has(credentialKey))
                 ? [row.provider]
@@ -2240,26 +2306,63 @@ function ModelRoutingSection({
             clearProviderDraft();
             setEditingProviderAccountKey({ providerKey: row.key, accountKey: modelProviderAccountIdentity(account) });
         };
-        const saveDraft = () => {
-            if (!setup || !hasProviderDraft) return;
+        const saveDraft = async () => {
+            if (!setup || !hasProviderDraft) return false;
             const createAccount = isAddingPrioritizedKey && savedAccounts.length > 0;
-            if (isAddingPrioritizedKey && !hasCredentialDraft) return;
-            void commitProviderDraft(row.key, setup, {
+            if (isAddingPrioritizedKey && !hasCredentialDraft) return false;
+            const saved = await commitProviderDraft(row.key, setup, {
                 createAccount,
                 account: editingAccount ?? undefined,
                 label: isAddingPrioritizedKey
                     ? createAccount ? (draft.label?.trim() || `API key ${newKeyNumber}`) : draft.label?.trim()
                     : draft.label?.trim(),
-            }).then(() => {
+            });
+            if (saved) {
                 setAddingProviderKey((prev) => (prev === row.key ? null : prev));
                 setEditingProviderAccountKey((prev) => (prev?.providerKey === row.key ? null : prev));
-            });
+            }
+            return saved;
         };
         const editorTitle = editingAccountLabel ?? 'New key';
         const editorNumber = editingAccount ? editingAccountIndex + 1 : newKeyNumber;
         const editorAriaLabel = editingAccountLabel
             ? `${editingAccountLabel} ${row.title} API key`
             : `New ${row.title} API key`;
+        const providerTestKey = editingAccount ? modelProviderAccountIdentity(editingAccount) : `new:${row.key}`;
+        const providerTestOptions = (row.support?.models ?? []).map<SelectOption<string>>((model) => ({
+            value: model.id,
+            label: model.name,
+            description: model.id,
+        }));
+        const defaultProviderTestModelId = providerTestOptions.find((option) => option.value === 'nano-banana-2')?.value ?? providerTestOptions[0]?.value ?? '';
+        const selectedProviderTestModelId = providerTestModelIds[providerTestKey] ?? defaultProviderTestModelId;
+        const providerTestResult = providerTestResults[providerTestKey];
+        const canRunProviderTest = row.provider.providerId === 'mock' && !!editingAccount && providerTestOptions.length > 0;
+        const runProviderTest = async () => {
+            if (!canRunProviderTest || !editingAccount || !selectedProviderTestModelId) return;
+            setProviderTestBusyKey(providerTestKey);
+            try {
+                const result = await testModelProvider({
+                    provider: editingAccount,
+                    modelId: selectedProviderTestModelId,
+                });
+                setProviderTestResults((prev) => ({ ...prev, [providerTestKey]: result }));
+            } catch (err) {
+                setProviderTestResults((prev) => ({
+                    ...prev,
+                    [providerTestKey]: {
+                        ok: false,
+                        providerId: editingAccount.providerId,
+                        ...(editingAccount.upstreamId ? { upstreamId: editingAccount.upstreamId } : {}),
+                        ...(editingAccount.region ? { region: editingAccount.region } : {}),
+                        modelId: selectedProviderTestModelId,
+                        message: displayErrorMessage(err),
+                    },
+                }));
+            } finally {
+                setProviderTestBusyKey(null);
+            }
+        };
         const renderProviderKeyEditor = ({ includeHeader }: { includeHeader: boolean }) => (
             <div
                 role="group"
@@ -2310,7 +2413,7 @@ function ModelRoutingSection({
                                     onKeyDown={(e) => {
                                         if (e.key === 'Enter') {
                                             e.preventDefault();
-                                            saveDraft();
+                                            void saveDraft();
                                         }
                                     }}
                                     placeholder={editingAccount ? 'Saved credential' : credential.placeholder ?? (index === 0 && savedAccounts.length > 0 ? 'Paste another API key' : 'Paste API key')}
@@ -2333,7 +2436,7 @@ function ModelRoutingSection({
                                 onKeyDown={(e) => {
                                     if (e.key === 'Enter') {
                                         e.preventDefault();
-                                        saveDraft();
+                                        void saveDraft();
                                     }
                                 }}
                                 placeholder={row.hasBaseUrl ? 'Saved base URL' : setup.baseUrlPlaceholder}
@@ -2341,8 +2444,52 @@ function ModelRoutingSection({
                             />
                         </label>
                     )}
-                    {includeHeader && (
-                        <div className="flex justify-end">
+                    {canRunProviderTest && (
+                        <div className="rounded-xl border border-warm-border bg-warm-muted/25 p-3">
+                            <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
+                                <label className="min-w-0">
+                                    <span className="mb-1 block text-xs font-medium text-stone-500 dark:text-stone-400">Model to test</span>
+                                    <SelectMenu
+                                        value={selectedProviderTestModelId}
+                                        options={providerTestOptions}
+                                        onValueChange={(value) => {
+                                            setProviderTestModelIds((prev) => ({ ...prev, [providerTestKey]: String(value) }));
+                                            setProviderTestResults((prev) => {
+                                                const { [providerTestKey]: _result, ...rest } = prev;
+                                                return rest;
+                                            });
+                                        }}
+                                        ariaLabel="Model to test"
+                                        variant="field"
+                                        triggerClassName={settingsSelectTriggerClass}
+                                        menuWidth="trigger"
+                                    />
+                                </label>
+                                <button
+                                    type="button"
+                                    aria-label="Run provider test"
+                                    disabled={providerTestBusyKey === providerTestKey || !selectedProviderTestModelId}
+                                    onClick={() => { void runProviderTest(); }}
+                                    className={settingsCompactSecondaryButtonClass}
+                                >
+                                    {providerTestBusyKey === providerTestKey ? 'Testing...' : 'Run test'}
+                                </button>
+                            </div>
+                            {providerTestResult && (
+                                <p
+                                    className={`mt-3 text-xs font-medium ${
+                                        providerTestResult.ok
+                                            ? 'text-emerald-700 dark:text-emerald-300'
+                                            : 'text-amber-700 dark:text-amber-300'
+                                    }`}
+                                >
+                                    {providerTestResult.message}
+                                </p>
+                            )}
+                        </div>
+                    )}
+                    <div className="flex justify-end gap-2">
+                        {includeHeader && (
                             <button
                                 type="button"
                                 onClick={closeProviderKeyEditor}
@@ -2350,8 +2497,16 @@ function ModelRoutingSection({
                             >
                                 Cancel
                             </button>
-                        </div>
-                    )}
+                        )}
+                        <button
+                            type="button"
+                            onClick={() => { void saveDraft(); }}
+                            disabled={!hasProviderDraft || savingProviderKey === row.key || saving}
+                            className={settingsSmallPrimaryButtonClass}
+                        >
+                            {savingProviderKey === row.key ? 'Saving...' : 'Save'}
+                        </button>
+                    </div>
                 </div>
             </div>
         );
@@ -2390,14 +2545,6 @@ function ModelRoutingSection({
                                 </Link>
                             </div>
                         </div>
-                        <button
-                            type="button"
-                            onClick={saveDraft}
-                            disabled={!hasProviderDraft}
-                            className={settingsSmallPrimaryButtonClass}
-                        >
-                            Save
-                        </button>
                     </div>
                 </div>
 
@@ -2512,11 +2659,13 @@ function ModelRoutingSection({
                                                                 if (expanded) closeProviderKeyEditor();
                                                                 else openExistingKeyEditor(account);
                                                             }}
-                                                            onEnabledChange={(checked) => onPatchProvider(row.key, {
-                                                                ...(account.id ? { id: account.id } : {}),
-                                                                ...(account.label ? { label: account.label } : {}),
-                                                                enabled: checked,
-                                                            })}
+                                                            onEnabledChange={(checked) => {
+                                                                void onPatchProvider(row.key, {
+                                                                    ...(account.id ? { id: account.id } : {}),
+                                                                    ...(account.label ? { label: account.label } : {}),
+                                                                    enabled: checked,
+                                                                });
+                                                            }}
                                                         />
                                                     );
                                                 })}
@@ -2555,9 +2704,19 @@ function ModelRoutingSection({
                 <div className="flex-1">
                     <h2 className="font-display text-base font-bold text-slate-900 dark:text-slate-50">Models</h2>
                     <p className="text-sm text-stone-600 dark:text-stone-300">
-                        Supported models and available providers
+                        {focusedProviderRow
+                            ? `Models supported by ${focusedProviderRow.title}`
+                            : 'Supported models and available providers'}
                     </p>
                 </div>
+                {focusedProviderRow && (
+                    <Link
+                        to="/settings?section=models"
+                        className="text-sm font-medium text-stone-600 transition-colors hover:text-brand dark:text-stone-300 dark:hover:text-brand"
+                    >
+                        Show all
+                    </Link>
+                )}
             </div>}
 
             {showModels && <div className="mb-6 grid grid-cols-3 gap-2">

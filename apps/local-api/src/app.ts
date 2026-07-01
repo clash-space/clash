@@ -3,7 +3,13 @@ import { extname, join, normalize, relative } from "node:path";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { defaultRuntimeCapabilities } from "@clash/shared-runtime";
-import { listModelCatalogEntries, ProviderOAuthIdSchema, type ProviderOAuthId } from "@clash/shared-types";
+import {
+  listModelCatalogEntries,
+  listProviderModelSupport,
+  MODEL_CARDS,
+  ProviderOAuthIdSchema,
+  type ProviderOAuthId,
+} from "@clash/shared-types";
 import type { Asset, AssetKind, AssetRefRow } from "@clash/shared-types/assets";
 import {
   createMockFalQueueService,
@@ -959,6 +965,39 @@ async function localRuntimeSummary(options: LocalApiOptions): Promise<{
   }
 }
 
+interface ModelProviderTestResult {
+  ok: boolean;
+  providerId: string;
+  upstreamId?: string;
+  region?: string;
+  modelId: string;
+  message: string;
+  missingCredentials?: string[];
+  missingOAuth?: string[];
+  unsupported?: boolean;
+  skipped?: boolean;
+}
+
+function displayModelName(modelId: string): string {
+  return MODEL_CARDS.find((model) => model.id === modelId)?.name ?? modelId;
+}
+
+function displayProviderName(account: Pick<LocalProviderAccountConfig, "providerId" | "upstreamId" | "region">): string {
+  if (account.providerId === "mock") return "Mock provider";
+  if (account.providerId === "official" && account.upstreamId) return account.upstreamId;
+  return account.upstreamId && account.upstreamId !== account.providerId
+    ? `${account.providerId}/${account.upstreamId}`
+    : account.providerId;
+}
+
+function configuredCredentialKeys(account: Pick<LocalProviderAccountConfig, "credentials">): Set<string> {
+  return new Set(
+    Object.entries(account.credentials ?? {})
+      .filter(([, value]) => typeof value === "string" && value.trim().length > 0)
+      .map(([key]) => key),
+  );
+}
+
 export function createLocalApiApp(options: LocalApiOptions): Hono {
   const userId = options.userId ?? "local-user";
   const db = createDb(options.dataDir);
@@ -1108,6 +1147,89 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
     return c.json({
       providers: publicProviderAccounts(state.providerAccounts, userId, state.providerOAuth),
     });
+  });
+  app.post("/api/v1/model-providers/test", async (c) => {
+    const body = (await c.req.json().catch(() => ({}))) as { provider?: unknown; modelId?: unknown };
+    const provider = normalizeProviderAccountInput(body.provider);
+    const modelId = typeof body.modelId === "string" && body.modelId.trim() ? body.modelId.trim() : "";
+    if (!provider || !modelId) return c.json({ error: "provider and modelId are required" }, 400);
+
+    const state = await db.load();
+    const stored = state.providerAccounts.find((account) =>
+      account.userId === userId && providerAccountKey(account) === providerAccountKey(provider)
+    );
+    const account: LocalProviderAccountConfig = {
+      ...stored,
+      ...provider,
+      credentials: {
+        ...(stored?.credentials ?? {}),
+        ...(provider.credentials ?? {}),
+      },
+      userId,
+      enabled: provider.enabled,
+    };
+    const providerSupports = listProviderModelSupport({ includeMock: account.providerId === "mock" });
+    const support = providerSupports.find((row) =>
+      row.providerId === account.providerId &&
+      row.upstreamId === account.upstreamId &&
+      (row.region ?? "") === (account.region ?? "")
+    );
+    const modelName = displayModelName(modelId);
+    const baseResult = {
+      providerId: account.providerId,
+      ...(account.upstreamId ? { upstreamId: account.upstreamId } : {}),
+      ...(account.region ? { region: account.region } : {}),
+      modelId,
+    };
+    if (!support || !support.models.some((model) => model.id === modelId)) {
+      return c.json({
+        ok: false,
+        ...baseResult,
+        unsupported: true,
+        message: `${displayProviderName(account)} does not support ${modelName}.`,
+      } satisfies ModelProviderTestResult);
+    }
+
+    const credentialKeys = configuredCredentialKeys(account);
+    const missingCredentials = support.requiredCredentials.filter((credential) => !credentialKeys.has(credential));
+    if (missingCredentials.length > 0) {
+      return c.json({
+        ok: false,
+        ...baseResult,
+        missingCredentials,
+        message: `${displayProviderName(account)} is missing required credentials for ${modelName}.`,
+      } satisfies ModelProviderTestResult);
+    }
+
+    const availableOAuth = new Set(
+      state.providerOAuth
+        .filter((record) => record.userId === userId && record.status === "authorized")
+        .map((record) => record.providerId),
+    );
+    const missingOAuth = support.requiredOAuth.filter((providerId) => !availableOAuth.has(providerId));
+    if (missingOAuth.length > 0) {
+      return c.json({
+        ok: false,
+        ...baseResult,
+        missingOAuth,
+        message: `${displayProviderName(account)} needs authorization before testing ${modelName}.`,
+      } satisfies ModelProviderTestResult);
+    }
+
+    if (account.providerId !== "mock") {
+      return c.json({
+        ok: false,
+        ...baseResult,
+        skipped: true,
+        message: `Live provider test is not implemented for ${displayProviderName(account)} yet.`,
+      } satisfies ModelProviderTestResult);
+    }
+
+    return c.json({
+      ok: true,
+      ...baseResult,
+      message: `Mock provider can run ${modelName}.`,
+    } satisfies ModelProviderTestResult);
   });
   app.get("/api/v1/provider-oauth", async (c) => {
     const state = await db.load();

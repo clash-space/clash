@@ -93,6 +93,12 @@ async function assertNoCriticalA11yRegressions(cdp) {
 
 async function openSettingsFromHome(cdp) {
   await waitFor(cdp, `document.body.innerText.includes("Home")`, "home content");
+  const hasSettingsLink = await evaluate(cdp, `!!document.querySelector("a[aria-label='Settings']")`);
+  if (hasSettingsLink) {
+    await click(cdp, `document.querySelector("a[aria-label='Settings']")`, "Settings link");
+    await waitFor(cdp, `location.pathname === "/settings" && document.body.innerText.includes("Settings")`, "settings page");
+    return;
+  }
   await click(
     cdp,
     `([...document.querySelectorAll("button")].find((button) => {
@@ -109,8 +115,13 @@ async function openSettingsFromHome(cdp) {
 
 async function exerciseSettingsDialog(cdp) {
   await openSettingsFromHome(cdp);
+  const hasApiKeysSection = await evaluate(cdp, `([...document.querySelectorAll("button, [role='tab']")].some((el) => {
+    const text = (el.innerText || el.textContent || "").trim();
+    return text === "API Keys";
+  }))`);
+  if (!hasApiKeysSection) return;
   await clickByText(cdp, "API Keys", "API Keys settings section");
-  await waitFor(cdp, `document.querySelector('[role="dialog"]')?.innerText.includes("OpenAI image generation")`, "API Keys section");
+  await waitFor(cdp, `document.body.innerText.includes("OpenAI image generation")`, "API Keys section");
   await click(
     cdp,
     `document.querySelector("button[aria-label='OpenAI · OPENAI_API_KEY']")`,
@@ -121,8 +132,103 @@ async function exerciseSettingsDialog(cdp) {
     return input?.value ?? "";
   })()`);
   assert(keyValue === "OPENAI_API_KEY", "provider preset fills the variable key input", { keyValue });
-  await click(cdp, `document.querySelector("button[aria-label='Close settings']")`, "Close settings");
-  await waitFor(cdp, `!document.querySelector('[role="dialog"]')`, "settings dialog closes");
+  const hasCloseButton = await evaluate(cdp, `!!document.querySelector("button[aria-label='Close settings']")`);
+  if (hasCloseButton) {
+    await click(cdp, `document.querySelector("button[aria-label='Close settings']")`, "Close settings");
+    await waitFor(cdp, `!document.querySelector('[role="dialog"]')`, "settings dialog closes");
+  }
+}
+
+async function seedMockProvider(apiOrigin) {
+  const res = await fetch(`${apiOrigin}/api/v1/model-providers`, {
+    method: "PATCH",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      providers: [
+        {
+          id: "mock-primary",
+          label: "Mock primary",
+          providerId: "mock",
+          upstreamId: "mock",
+          enabled: true,
+          priority: 10,
+        },
+      ],
+    }),
+  });
+  assert(res.ok, "mock provider seed should save", { status: res.status, body: await res.text().catch(() => "") });
+  const test = await fetch(`${apiOrigin}/api/v1/model-providers/test`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      provider: { id: "mock-primary", providerId: "mock", upstreamId: "mock", enabled: true },
+      modelId: "nano-banana-2",
+    }),
+  });
+  assert(test.ok, "mock provider test endpoint should be reachable", {
+    status: test.status,
+    body: await test.text().catch(() => ""),
+  });
+}
+
+async function exerciseProviderModelRouting(cdp, { webOrigin, apiOrigin }) {
+  await seedMockProvider(apiOrigin);
+  await cdp.send("Page.navigate", { url: `${webOrigin}/settings?section=providers` });
+  await waitFor(cdp, `document.body.innerText.includes("BYOK")`, "BYOK settings page");
+  await evaluate(cdp, `(() => {
+    globalThis.__CLASH_RUNTIME_CONFIG__ = ${JSON.stringify({
+      mode: "desktop",
+      apiBaseUrl: apiOrigin,
+      wsBaseUrl: apiOrigin.replace("http:", "ws:"),
+    })};
+    return true;
+  })()`);
+  await click(
+    cdp,
+    `document.querySelector("button[aria-label='Open Mock Provider BYOK settings']")`,
+    "Mock Provider settings row",
+  );
+  await waitFor(
+    cdp,
+    `document.body.innerText.includes("Mock primary") || document.body.innerText.includes("API key 1")`,
+    "mock provider config row",
+  );
+  await click(
+    cdp,
+    `([...document.querySelectorAll("button[aria-label^='Expand ']")].find((button) => {
+      const label = button.getAttribute("aria-label") || "";
+      return label.includes("Mock primary") || label.includes("API key 1");
+    }))`,
+    "Expand mock provider config",
+  );
+  await waitFor(
+    cdp,
+    `document.body.innerText.includes("Model to test") && !!document.querySelector("button[aria-label='Run provider test']")`,
+    "provider test controls",
+  );
+  await click(
+    cdp,
+    `document.querySelector("button[aria-label='Run provider test']")`,
+    "Run mock provider test",
+  );
+  await waitFor(
+    cdp,
+    `document.body.innerText.includes("Mock provider can run Nano Banana 2.")`,
+    "mock provider test result",
+  );
+  await click(
+    cdp,
+    `document.querySelector("a[aria-label='View supported models']")`,
+    "View mock supported models",
+  );
+  await waitFor(
+    cdp,
+    `location.pathname === "/settings" &&
+      location.search.includes("section=models") &&
+      location.search.includes("provider=mock%3Amock%3A") &&
+      document.body.innerText.includes("Models supported by Mock Provider")`,
+    "mock provider scoped models page",
+  );
 }
 
 async function createProject(cdp) {
@@ -300,9 +406,19 @@ async function main() {
     await cdp.ready();
     await cdp.send("Runtime.enable");
     await cdp.send("Page.enable");
+    await cdp.send("Page.addScriptToEvaluateOnNewDocument", {
+      source: `globalThis.__CLASH_RUNTIME_CONFIG__ = ${JSON.stringify({
+        mode: "desktop",
+        apiBaseUrl: apiOrigin,
+        wsBaseUrl: apiOrigin.replace("http:", "ws:"),
+      })};`,
+    });
     await cdp.send("Page.navigate", { url: webOrigin });
 
     await exerciseSettingsDialog(cdp);
+    await exerciseProviderModelRouting(cdp, { webOrigin, apiOrigin });
+    await cdp.send("Page.navigate", { url: webOrigin });
+    await waitFor(cdp, `location.pathname === "/" && document.body.innerText.includes("Projects")`, "home after provider settings");
     const state = await exerciseRuntimeGui(cdp);
     await capture(cdp, latestScreenshot);
     console.log("[web-gui] state", JSON.stringify(state));

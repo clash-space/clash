@@ -227,6 +227,29 @@ export async function listModelCatalog(): Promise<ModelCatalogEntryInfo[]> {
   return data.models;
 }
 
+export interface ModelProviderTestResult {
+  ok: boolean;
+  providerId: string;
+  upstreamId?: string;
+  region?: string;
+  modelId: string;
+  message: string;
+  missingCredentials?: string[];
+  missingOAuth?: string[];
+  unsupported?: boolean;
+  skipped?: boolean;
+}
+
+export async function testModelProvider(input: {
+  provider: ModelProviderAccountInfo;
+  modelId: string;
+}): Promise<ModelProviderTestResult> {
+  return jsonFetch("/api/v1/model-providers/test", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
 export async function listProviderOAuth(): Promise<ProviderOAuthInfo[]> {
   const data = await jsonFetch<{ providers: ProviderOAuthInfo[] }>("/api/v1/provider-oauth");
   return data.providers;
