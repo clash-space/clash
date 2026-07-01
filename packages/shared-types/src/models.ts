@@ -159,7 +159,20 @@ export type ModelParameterType = z.infer<typeof ModelParameterTypeSchema>;
 /**
  * Provider configuration for models
  */
-export const ProviderSchema = z.enum(['official', 'kie', 'fal', 'replicate']);
+export const ProviderSchema = z.enum([
+  'local',
+  'official',
+  'fal',
+  'kie',
+  'replicate',
+  'kling',
+  'minimax',
+  'jimeng',
+  'volcengine',
+  'elevenlabs',
+  'mock',
+  'custom',
+]);
 export type Provider = z.infer<typeof ProviderSchema>;
 
 export const ModelProviderConfigSchema = z.object({
@@ -392,6 +405,48 @@ export const MODEL_CARDS: ModelCard[] = [
       count: 1,
     },
     input: { requiresPrompt: true, inputMode: { images: { max: 8 } }, promptModalities: ['text', 'image'] },
+  },
+
+  // ─── Image: Nano Banana 2 Edit (fal.ai) ─────────────────────
+  {
+    id: 'nano-banana-2-edit',
+    name: 'Nano Banana 2 Edit',
+    provider: 'fal.ai',
+    kind: 'image',
+    defaultAspectRatio: '16:9',
+    description: 'Nano Banana 2 image editing with one or more reference images.',
+    parameters: [
+      {
+        id: 'aspect_ratio',
+        label: 'Aspect Ratio',
+        type: 'select',
+        options: NANO_BANANA_ASPECT_RATIOS.map(r => ({ label: r.label, value: r.value })),
+        defaultValue: '16:9',
+      },
+      {
+        id: 'resolution',
+        label: 'Resolution',
+        type: 'select',
+        options: NANO_BANANA_RESOLUTIONS.map(s => ({ label: s.label, value: s.value })),
+        defaultValue: '1K',
+      },
+      {
+        id: 'count',
+        label: 'Count',
+        type: 'number',
+        min: 1,
+        max: 4,
+        step: 1,
+        defaultValue: 1,
+        description: 'How many edited images to generate.',
+      },
+    ],
+    defaultParams: {
+      aspect_ratio: '16:9',
+      resolution: '1K',
+      count: 1,
+    },
+    input: { requiresPrompt: true, inputMode: { images: { min: 1, max: 8 } }, promptModalities: ['text', 'image'] },
   },
 
   // ─── Image: GPT Image 2 (OpenAI) ────────────────────────────
@@ -892,6 +947,44 @@ export const MODEL_CARDS: ModelCard[] = [
       safety_tolerance: '2',
     },
     input: { requiresPrompt: true, inputMode: { images: { max: 8 } }, promptModalities: ['text', 'image'] },
+  },
+
+  // ─── Image: FLUX 2 Pro Edit (fal.ai) ─────────────────────────
+  {
+    id: 'flux-2-pro-edit',
+    name: 'FLUX 2 Pro Edit',
+    provider: 'fal.ai',
+    kind: 'image',
+    defaultAspectRatio: '4:3',
+    aspectRatioParam: 'image_size',
+    description: 'FLUX 2 Pro image editing with reference images.',
+    parameters: [
+      {
+        id: 'image_size',
+        label: 'Aspect Ratio',
+        type: 'select',
+        options: FLUX2_ASPECT_RATIOS.map(r => ({ label: r.label, value: r.value })),
+        defaultValue: 'landscape_4_3',
+      },
+      {
+        id: 'safety_tolerance',
+        label: 'Safety Tolerance',
+        type: 'select',
+        options: [
+          { label: 'Strict (1)', value: '1' },
+          { label: 'Moderate (2)', value: '2' },
+          { label: 'Balanced (3)', value: '3' },
+          { label: 'Relaxed (4)', value: '4' },
+          { label: 'Permissive (5)', value: '5' },
+        ],
+        defaultValue: '2',
+      },
+    ],
+    defaultParams: {
+      image_size: 'landscape_4_3',
+      safety_tolerance: '2',
+    },
+    input: { requiresPrompt: true, inputMode: { images: { min: 1, max: 8 } }, promptModalities: ['text', 'image'] },
   },
 
   // ─── Image: Gemini Image (Google Vertex) ────────────────────

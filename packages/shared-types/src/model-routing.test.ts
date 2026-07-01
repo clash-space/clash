@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  MODEL_UPSTREAM_ROUTES,
   MODEL_PROVIDER_DEFINITIONS,
   listModelCatalogEntries,
   listProviderModelSupport,
@@ -9,8 +10,32 @@ import {
   type ProviderAccountAvailability,
   type UpstreamAvailability,
 } from "./model-routing";
+import { MODEL_CARDS, ModelCardSchema } from "./models";
 
 describe("model upstream routing", () => {
+  it("allows model cards to declare current provider account implementations", () => {
+    const parsed = ModelCardSchema.parse({
+      id: "seedance-2-text",
+      name: "Seedance 2.0",
+      provider: "ByteDance",
+      kind: "video",
+      parameters: [],
+      defaultParams: {},
+      availableProviders: ["jimeng", "volcengine", "replicate", "kie", "mock"],
+      defaultProvider: "jimeng",
+    });
+
+    expect(parsed.availableProviders).toEqual(["jimeng", "volcengine", "replicate", "kie", "mock"]);
+    expect(parsed.defaultProvider).toBe("jimeng");
+  });
+
+  it("keeps every routed model backed by a first-class model card", () => {
+    const modelCardIds = new Set(MODEL_CARDS.map((model) => model.id));
+    const routedModelIds = [...new Set(MODEL_UPSTREAM_ROUTES.map((route) => route.modelCode))].sort();
+
+    expect(routedModelIds.filter((modelId) => !modelCardIds.has(modelId))).toEqual([]);
+  });
+
   it("routes canonical Seedance model codes to fal-shaped mock endpoints", () => {
     const route = resolveModelUpstreamRoute({
       modelCode: "seedance-2-ref",
