@@ -2857,6 +2857,60 @@ describe("SettingsClient model routing", () => {
     });
   });
 
+  it("surfaces provider OAuth launch failures instead of silently dropping the action", async () => {
+    const actions = await import("@clash/web-ui/lib/clientActions");
+    vi.mocked(actions.listProviderOAuth).mockResolvedValue([]);
+    vi.mocked(actions.startProviderOAuth).mockRejectedValue(
+      new Error("Dreamina authorization is only available in the local desktop runtime."),
+    );
+
+    render(
+      <MemoryRouter>
+        <AppFeedbackProvider>
+          <SettingsClient
+            initialTokens={[]}
+            initialVariables={[]}
+            initialActions={[]}
+            initialSkills={[]}
+            activeSection="providers"
+            embedded
+            initialModelProviders={[
+              {
+                id: "jimeng-primary",
+                label: "Primary Dreamina",
+                providerId: "jimeng",
+                upstreamId: "jimeng",
+                enabled: true,
+                priority: 10,
+                availableOAuth: ["dreamina"],
+              },
+            ]}
+            initialModelCatalog={[]}
+          />
+        </AppFeedbackProvider>
+      </MemoryRouter>,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Open Dreamina BYOK settings" }));
+    const accounts = screen.getByRole("list", { name: "Dreamina prioritized accounts" });
+    const accountRow = within(accounts).getByText("Primary Dreamina").closest("li") as HTMLElement;
+    fireEvent.click(within(accountRow).getByText("Primary Dreamina"));
+
+    const editor = within(accountRow).getByRole("group", { name: "Primary Dreamina Dreamina account" });
+    const connectButton = within(editor).getByRole("button", { name: "Connect" });
+    fireEvent.click(connectButton);
+
+    await waitFor(() => {
+      expect(actions.startProviderOAuth).toHaveBeenCalledWith("dreamina", "jimeng-primary", "Primary Dreamina");
+    });
+    const toast = await screen.findByRole("alert");
+    expect(toast.textContent).toContain("Could not start Dreamina authorization");
+    expect(toast.textContent).toContain("Dreamina authorization is only available in the local desktop runtime.");
+    await waitFor(() => {
+      expect((connectButton as HTMLButtonElement).disabled).toBe(false);
+    });
+  });
+
   it("runs a deterministic mock provider test from the provider config editor", async () => {
     const actions = await import("@clash/web-ui/lib/clientActions");
     vi.mocked(actions.testModelProvider).mockResolvedValue({

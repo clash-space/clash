@@ -710,20 +710,53 @@ export default function SettingsClient({
     }, []);
 
     const handleStartProviderOAuth = useCallback(async (providerId: string, accountId?: string, accountLabel?: string) => {
-        const row = await startProviderOAuth(providerId, accountId, accountLabel);
-        setProviderOAuth((prev) => upsertProviderOAuthRow(prev, row));
-    }, []);
+        try {
+            const row = await startProviderOAuth(providerId, accountId, accountLabel);
+            setProviderOAuth((prev) => upsertProviderOAuthRow(prev, row));
+        } catch (err) {
+            const message = displayErrorMessage(err);
+            setProviderOAuth((prev) => upsertProviderOAuthRow(prev, {
+                providerId,
+                ...(accountId ? { accountId } : {}),
+                ...(accountLabel ? { accountLabel } : {}),
+                status: 'error',
+                error: message,
+                hasAccessToken: false,
+            }));
+            feedback.notify({
+                variant: 'error',
+                title: `Could not start ${providerOAuthDisplayName(providerId)} authorization`,
+                message,
+            });
+        }
+    }, [feedback]);
 
     const handleCompleteProviderOAuth = useCallback(async (providerId: string, deviceCode?: string, accountId?: string) => {
-        const row = await completeProviderOAuth(providerId, deviceCode, accountId);
-        setProviderOAuth((prev) => upsertProviderOAuthRow(prev, row));
-        const [providerRows, catalogRows] = await Promise.all([
-            listModelProviders(),
-            listModelCatalog(),
-        ]);
-        setModelProviders(providerRows);
-        setModelCatalog(catalogRows);
-    }, []);
+        try {
+            const row = await completeProviderOAuth(providerId, deviceCode, accountId);
+            setProviderOAuth((prev) => upsertProviderOAuthRow(prev, row));
+            const [providerRows, catalogRows] = await Promise.all([
+                listModelProviders(),
+                listModelCatalog(),
+            ]);
+            setModelProviders(providerRows);
+            setModelCatalog(catalogRows);
+        } catch (err) {
+            const message = displayErrorMessage(err);
+            setProviderOAuth((prev) => upsertProviderOAuthRow(prev, {
+                providerId,
+                ...(accountId ? { accountId } : {}),
+                status: 'error',
+                error: message,
+                hasAccessToken: false,
+            }));
+            feedback.notify({
+                variant: 'error',
+                title: `Could not complete ${providerOAuthDisplayName(providerId)} authorization`,
+                message,
+            });
+        }
+    }, [feedback]);
 
     const handleCopy = useCallback(async (text: string, id: string) => {
         await navigator.clipboard.writeText(text);
@@ -1534,6 +1567,11 @@ function providerOAuthStatusText(oauth?: ProviderOAuthInfo): string {
     if (oauth.status === 'pending') return 'Authorization pending';
     if (oauth.status === 'error') return oauth.error ? `Error: ${oauth.error}` : 'Authorization error';
     return 'Not connected';
+}
+
+function providerOAuthDisplayName(providerId: string): string {
+    if (providerId === 'dreamina') return 'Dreamina';
+    return providerId;
 }
 
 type SortableProviderKeyRowProps = {
