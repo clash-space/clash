@@ -22,6 +22,7 @@
     "test:startup": "pnpm test:startup:static && pnpm test:startup:api && pnpm test:startup:ui",
     "test:startup:api": "pnpm --filter @master-clash/local-api test:e2e",
     "test:startup:queue": "pnpm --filter @master-clash/local-api build && pnpm build && node e2e/queue-agent-browser-smoke.mjs",
+    "test:startup:providers": "pnpm --filter @master-clash/local-api build && pnpm build && node e2e/provider-gui-smoke.mjs",
     "test:startup:real-codex": "node scripts/prepare-clash-cli.mjs && pnpm prepare:harnesses && pnpm --filter @master-clash/local-api build && pnpm build && CLASH_E2E_REAL_CODEX=1 node e2e/real-codex-agent-browser.mjs",
     "test:startup:real-codex-resume": "node scripts/prepare-clash-cli.mjs && pnpm prepare:harnesses && pnpm --filter @master-clash/local-api build && pnpm build && CLASH_E2E_REAL_CODEX=1 node e2e/real-codex-resume-agent-browser.mjs",
     "test:startup:static": "node scripts/prepare-clash-cli.mjs && pnpm prepare:harnesses && node e2e/startup-static.mjs",
