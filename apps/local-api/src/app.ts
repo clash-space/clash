@@ -4,6 +4,7 @@ import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { defaultRuntimeCapabilities } from "@clash/shared-runtime";
 import {
+  invalidProviderModelFilters,
   listModelCatalogEntries,
   listProviderModelSupport,
   MODEL_CARDS,
@@ -1153,6 +1154,10 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
       : [];
     if (incoming.length === 0 || incoming.some((provider) => !provider)) {
       return c.json({ error: "Invalid providers" }, 400);
+    }
+    const invalidProviders = invalidProviderModelFilters(incoming.filter((provider) => !!provider));
+    if (invalidProviders.length > 0) {
+      return c.json({ error: "Invalid provider model filters", invalidProviders }, 400);
     }
     const state = await db.load();
     const now = nowIso();

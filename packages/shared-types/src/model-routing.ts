@@ -511,6 +511,13 @@ export interface ProviderModelSupport {
   requiredOAuth: ProviderOAuthId[];
 }
 
+export interface InvalidProviderModelFilter {
+  providerId: ProviderAccountId;
+  upstreamId?: ModelUpstreamId;
+  region?: string;
+  unsupportedModelIds: string[];
+}
+
 export function listProviderModelSupport(options: {
   models?: readonly ModelCard[];
   includeMock?: boolean;
@@ -545,6 +552,40 @@ export function listProviderModelSupport(options: {
   return [...rows.values()].sort((a, b) =>
     [a.providerId, a.upstreamId, a.region ?? ""].join(":").localeCompare([b.providerId, b.upstreamId, b.region ?? ""].join(":")),
   );
+}
+
+export function unsupportedProviderModelFilterIds(
+  provider: Pick<ProviderAccountAvailability, "providerId" | "upstreamId" | "region" | "supportedModelIds">,
+  options: { models?: readonly ModelCard[]; includeMock?: boolean } = {},
+): string[] {
+  if (!provider.supportedModelIds?.length) return [];
+  const support = listProviderModelSupport({
+    models: options.models,
+    includeMock: options.includeMock ?? true,
+  }).find((row) =>
+    row.providerId === provider.providerId &&
+    row.upstreamId === provider.upstreamId &&
+    (row.region ?? "") === (provider.region ?? "")
+  );
+  if (!support) return [...provider.supportedModelIds];
+  const supported = new Set(support.models.map((model) => model.id));
+  return provider.supportedModelIds.filter((id) => !supported.has(id));
+}
+
+export function invalidProviderModelFilters(
+  providers: readonly Pick<ProviderAccountAvailability, "providerId" | "upstreamId" | "region" | "supportedModelIds">[],
+  options: { models?: readonly ModelCard[]; includeMock?: boolean } = {},
+): InvalidProviderModelFilter[] {
+  return providers.flatMap((provider) => {
+    const unsupportedModelIds = unsupportedProviderModelFilterIds(provider, options);
+    if (unsupportedModelIds.length === 0) return [];
+    return [{
+      providerId: provider.providerId,
+      ...(provider.upstreamId ? { upstreamId: provider.upstreamId } : {}),
+      ...(provider.region ? { region: provider.region } : {}),
+      unsupportedModelIds,
+    }];
+  });
 }
 
 function upstreamIndex(configuredUpstreams: UpstreamAvailability[] | undefined, upstreamId: ModelUpstreamId): number {

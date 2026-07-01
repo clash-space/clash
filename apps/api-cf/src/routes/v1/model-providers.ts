@@ -1,4 +1,5 @@
 import {
+  invalidProviderModelFilters,
   listModelCatalogEntries,
   listProviderModelSupport,
   MODEL_CARDS,
@@ -93,7 +94,12 @@ modelProviderRoutes.patch("/model-providers", async (c) => {
   if (providers.length === 0 || providers.some((provider) => !provider)) {
     return c.json({ error: "Invalid providers" }, 400);
   }
-  const saved = await upsertProviderAccounts(c.env, userId, providers.filter((provider) => !!provider));
+  const normalizedProviders = providers.filter((provider) => !!provider);
+  const invalidProviders = invalidProviderModelFilters(normalizedProviders);
+  if (invalidProviders.length > 0) {
+    return c.json({ error: "Invalid provider model filters", invalidProviders }, 400);
+  }
+  const saved = await upsertProviderAccounts(c.env, userId, normalizedProviders);
   const oauthRecords = await listProviderOAuthRecords(c.env.DB, userId);
   return c.json({ providers: applyProviderOAuth(saved, oauthRecords) });
 });

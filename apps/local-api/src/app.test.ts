@@ -615,6 +615,39 @@ describe("local API app", () => {
     });
   });
 
+  it("rejects provider account model filters outside the provider support list", async () => {
+    const app = createLocalApiApp({ dataDir, userId: "local-user" });
+
+    const saved = await app.request("/api/v1/model-providers", {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        providers: [
+          {
+            id: "replicate-text",
+            providerId: "replicate",
+            upstreamId: "replicate",
+            enabled: true,
+            supportedModelIds: ["claude-sonnet-4"],
+            credentials: { apiKey: "r8-local-key" },
+          },
+        ],
+      }),
+    });
+
+    expect(saved.status).toBe(400);
+    expect(await saved.json()).toEqual({
+      error: "Invalid provider model filters",
+      invalidProviders: [
+        {
+          providerId: "replicate",
+          upstreamId: "replicate",
+          unsupportedModelIds: ["claude-sonnet-4"],
+        },
+      ],
+    });
+  });
+
   it("persists per-model provider priority without changing other model routing", async () => {
     const app = createLocalApiApp({ dataDir, userId: "local-user" });
 

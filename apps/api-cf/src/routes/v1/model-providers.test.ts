@@ -204,6 +204,45 @@ describe("modelProviderRoutes", () => {
     });
   });
 
+  it("rejects provider account model filters outside the provider support list", async () => {
+    const app = makeApp();
+    const db = new MemoryD1();
+    const env = {
+      DB: db as unknown as D1Database,
+      ACTION_SECRET_KEY: "secret-key",
+    } as Env;
+
+    const response = await app.request("/api/v1/model-providers", {
+      method: "PATCH",
+      headers: { "content-type": "application/json", "x-user-id": "user-1" },
+      body: JSON.stringify({
+        providers: [
+          {
+            id: "replicate-text",
+            providerId: "replicate",
+            upstreamId: "replicate",
+            enabled: true,
+            supportedModelIds: ["claude-sonnet-4"],
+            credentials: { apiKey: "r8-api-cf-key" },
+          },
+        ],
+      }),
+    }, env);
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({
+      error: "Invalid provider model filters",
+      invalidProviders: [
+        {
+          providerId: "replicate",
+          upstreamId: "replicate",
+          unsupportedModelIds: ["claude-sonnet-4"],
+        },
+      ],
+    });
+    expect(db.rows).toEqual([]);
+  });
+
   it("checks OAuth-backed provider configs against account-scoped authorization", async () => {
     const app = makeApp();
     const db = new MemoryD1();

@@ -161,6 +161,8 @@ export {
   resolveModelProviderRoute,
   listModelCatalogEntries,
   listProviderModelSupport,
+  invalidProviderModelFilters,
+  unsupportedProviderModelFilterIds,
   type ModelUpstreamId,
   type ModelUpstreamApiShape,
   type ModelUpstreamRoute,
@@ -178,6 +180,7 @@ export {
   type ModelCatalogTier,
   type ModelCatalogEntry,
   type ProviderModelSupport,
+  type InvalidProviderModelFilter,
   type ModelProviderRouteQuery,
 } from './model-routing';
 
