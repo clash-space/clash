@@ -47,6 +47,22 @@ class MemoryD1 {
             } as T;
           },
           async run() {
+            if (sql.includes("DELETE FROM provider_account")) {
+              const [userId, id] = args;
+              db.rows = db.rows.filter((row) => !(row.user_id === userId && row.id === id));
+              return {};
+            }
+            if (sql.includes("DELETE FROM provider_oauth")) {
+              const [userId, rawSecond, rawThird] = args;
+              if (sql.includes("account_id = ?")) {
+                db.oauthRows = db.oauthRows.filter((row) => !(row.user_id === userId && row.account_id === rawSecond));
+              } else {
+                db.oauthRows = db.oauthRows.filter((row) =>
+                  !(row.user_id === userId && row.provider_id === rawSecond && (row.account_id ?? "") === rawThird)
+                );
+              }
+              return {};
+            }
             if (sql.includes("UPDATE provider_account")) {
               const [
                 providerId,
@@ -241,6 +257,59 @@ describe("modelProviderRoutes", () => {
       ],
     });
     expect(db.rows).toEqual([]);
+  });
+
+  it("deletes a saved provider account config", async () => {
+    const app = makeApp();
+    const db = new MemoryD1();
+    const env = {
+      DB: db as unknown as D1Database,
+      ACTION_SECRET_KEY: "secret-key",
+    } as Env;
+    db.rows.push(
+      {
+        id: "replicate-primary",
+        user_id: "user-1",
+        provider_id: "replicate",
+        upstream_id: "replicate",
+        region: null,
+        label: "Primary",
+        enabled: 1,
+        priority: 10,
+        weight: null,
+        encrypted_credentials: null,
+        configured_credentials: JSON.stringify(["apiKey"]),
+        supported_model_ids: null,
+        model_priorities: null,
+        created_at: 1,
+        updated_at: 1,
+      },
+      {
+        id: "replicate-secondary",
+        user_id: "user-1",
+        provider_id: "replicate",
+        upstream_id: "replicate",
+        region: null,
+        label: "Secondary",
+        enabled: 1,
+        priority: 20,
+        weight: null,
+        encrypted_credentials: null,
+        configured_credentials: JSON.stringify(["apiKey"]),
+        supported_model_ids: null,
+        model_priorities: null,
+        created_at: 1,
+        updated_at: 1,
+      },
+    );
+
+    const deleted = await app.request("/api/v1/model-providers/replicate-primary", {
+      method: "DELETE",
+      headers: { "x-user-id": "user-1" },
+    }, env);
+
+    expect(deleted.status).toBe(204);
+    expect(db.rows.map((row) => row.id)).toEqual(["replicate-secondary"]);
   });
 
   it("checks OAuth-backed provider configs against account-scoped authorization", async () => {

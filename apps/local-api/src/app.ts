@@ -1190,6 +1190,24 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
       providers: publicProviderAccounts(state.providerAccounts, userId, state.providerOAuth),
     });
   });
+  app.delete("/api/v1/model-providers/:accountId", async (c) => {
+    const accountId = stringBodyField(c.req.param("accountId"));
+    if (!accountId) return c.json({ error: "Provider account not found" }, 404);
+    const state = await db.load();
+    const beforeAccounts = state.providerAccounts.length;
+    const beforeOAuth = state.providerOAuth.length;
+    state.providerAccounts = state.providerAccounts.filter((account) =>
+      !((account.userId ?? userId) === userId && account.id === accountId)
+    );
+    state.providerOAuth = state.providerOAuth.filter((record) =>
+      !((record.userId ?? userId) === userId && record.accountId === accountId)
+    );
+    if (state.providerAccounts.length === beforeAccounts && state.providerOAuth.length === beforeOAuth) {
+      return c.json({ error: "Provider account not found" }, 404);
+    }
+    await db.save(state);
+    return new Response(null, { status: 204 });
+  });
   app.post("/api/v1/model-providers/test", async (c) => {
     const body = (await c.req.json().catch(() => ({}))) as { provider?: unknown; modelId?: unknown };
     const provider = normalizeProviderAccountInput(body.provider);

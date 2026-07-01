@@ -181,3 +181,20 @@ export async function deleteProviderOAuthRecord(
     .bind(userId, providerId, accountId ?? "")
     .run();
 }
+
+export async function deleteProviderOAuthRecordsForAccount(
+  db: D1Database,
+  userId: string,
+  accountId: string,
+): Promise<boolean> {
+  const records = await listProviderOAuthRecords(db, userId);
+  const hasRecords = records.some((record) => record.accountId === accountId);
+  await db
+    .prepare(
+      `DELETE FROM provider_oauth
+       WHERE user_id = ? AND account_id = ?`,
+    )
+    .bind(userId, accountId)
+    .run();
+  return hasRecords;
+}

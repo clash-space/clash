@@ -223,6 +223,12 @@ export async function updateModelProviders(
   return data.providers;
 }
 
+export async function deleteModelProvider(accountId: string): Promise<void> {
+  await jsonFetch(`/api/v1/model-providers/${encodeURIComponent(accountId)}`, {
+    method: "DELETE",
+  });
+}
+
 export async function listModelCatalog(): Promise<ModelCatalogEntryInfo[]> {
   const data = await jsonFetch<{ models: ModelCatalogEntryInfo[] }>("/api/v1/models/catalog");
   return data.models;

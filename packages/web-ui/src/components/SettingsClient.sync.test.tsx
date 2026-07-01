@@ -42,6 +42,7 @@ vi.mock("@clash/web-ui/lib/clientActions", () => ({
   listInstalledSkills: vi.fn(async () => []),
   listModelProviders: vi.fn(async () => []),
   updateModelProviders: vi.fn(),
+  deleteModelProvider: vi.fn(),
   testModelProvider: vi.fn(),
   listProviderOAuth: vi.fn(async () => []),
   startProviderOAuth: vi.fn(),
@@ -2671,6 +2672,71 @@ describe("SettingsClient model routing", () => {
         ]),
       );
     });
+  });
+
+  it("removes a saved provider account from the provider detail editor", async () => {
+    const actions = await import("@clash/web-ui/lib/clientActions");
+    vi.mocked(actions.deleteModelProvider).mockResolvedValue();
+    vi.mocked(actions.listModelProviders).mockResolvedValue([
+      {
+        id: "replicate-secondary",
+        label: "Secondary",
+        providerId: "replicate",
+        upstreamId: "replicate",
+        enabled: true,
+        priority: 20,
+        configuredCredentials: ["apiKey"],
+      },
+    ]);
+    vi.mocked(actions.listModelCatalog).mockResolvedValue([]);
+
+    render(
+      <MemoryRouter>
+        <SettingsClient
+          initialTokens={[]}
+          initialVariables={[]}
+          initialActions={[]}
+          initialSkills={[]}
+          activeSection="providers"
+          embedded
+          initialModelProviders={[
+            {
+              id: "replicate-primary",
+              label: "Primary",
+              providerId: "replicate",
+              upstreamId: "replicate",
+              enabled: true,
+              priority: 10,
+              configuredCredentials: ["apiKey"],
+            },
+            {
+              id: "replicate-secondary",
+              label: "Secondary",
+              providerId: "replicate",
+              upstreamId: "replicate",
+              enabled: true,
+              priority: 20,
+              configuredCredentials: ["apiKey"],
+            },
+          ]}
+          initialModelCatalog={[]}
+        />
+      </MemoryRouter>,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Open Replicate BYOK settings" }));
+    const apiKeys = screen.getByRole("list", { name: "Replicate prioritized keys" });
+    const primaryRow = within(apiKeys).getByText("Primary").closest("li") as HTMLElement;
+    fireEvent.click(within(primaryRow).getByText("Primary"));
+
+    const editor = within(primaryRow).getByRole("group", { name: "Primary Replicate API key" });
+    fireEvent.click(within(editor).getByRole("button", { name: "Remove key" }));
+
+    await waitFor(() => {
+      expect(actions.deleteModelProvider).toHaveBeenCalledWith("replicate-primary");
+    });
+    expect(screen.queryByText("Primary")).toBeNull();
+    expect(screen.getByText("Secondary")).toBeTruthy();
   });
 
   it("renders OAuth providers as account configs with scoped authorization controls", async () => {

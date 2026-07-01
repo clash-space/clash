@@ -648,6 +648,42 @@ describe("local API app", () => {
     });
   });
 
+  it("deletes a saved provider account config", async () => {
+    const app = createLocalApiApp({ dataDir, userId: "local-user" });
+
+    await app.request("/api/v1/model-providers", {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        providers: [
+          {
+            id: "replicate-primary",
+            providerId: "replicate",
+            upstreamId: "replicate",
+            enabled: true,
+            priority: 10,
+            credentials: { apiKey: "r8-primary" },
+          },
+          {
+            id: "replicate-secondary",
+            providerId: "replicate",
+            upstreamId: "replicate",
+            enabled: true,
+            priority: 20,
+            credentials: { apiKey: "r8-secondary" },
+          },
+        ],
+      }),
+    });
+
+    const deleted = await app.request("/api/v1/model-providers/replicate-primary", { method: "DELETE" });
+
+    expect(deleted.status).toBe(204);
+    const providers = await app.request("/api/v1/model-providers");
+    const providersJson = (await providers.json()) as { providers: Array<{ id?: string }> };
+    expect(providersJson.providers.map((provider) => provider.id)).toEqual(["replicate-secondary"]);
+  });
+
   it("persists per-model provider priority without changing other model routing", async () => {
     const app = createLocalApiApp({ dataDir, userId: "local-user" });
 

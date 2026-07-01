@@ -64,6 +64,54 @@ function navigateTo(agentBrowser, pathname) {
   })()`);
 }
 
+function setInputValueByLabel(agentBrowser, label, value) {
+  return evalJson(agentBrowser, `(() => {
+    const wanted = ${JSON.stringify(label)};
+    const input = [...document.querySelectorAll("input, textarea")].find((candidate) => {
+      const rect = candidate.getBoundingClientRect();
+      const style = getComputedStyle(candidate);
+      return candidate.getAttribute("aria-label") === wanted &&
+        rect.width > 0 && rect.height > 0 &&
+        style.display !== "none" && style.visibility !== "hidden" &&
+        !candidate.disabled;
+    });
+    if (!input) return false;
+    input.scrollIntoView({ block: "center", inline: "center" });
+    input.focus();
+    const proto = input instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
+    const setter = Object.getOwnPropertyDescriptor(proto, "value")?.set;
+    setter?.call(input, ${JSON.stringify(value)});
+    input.dispatchEvent(new InputEvent("input", { bubbles: true, data: ${JSON.stringify(value)}, inputType: "insertText" }));
+    input.dispatchEvent(new Event("change", { bubbles: true }));
+    return true;
+  })()`);
+}
+
+function clickButtonInGroup(agentBrowser, groupLabel, buttonLabel) {
+  return evalJson(agentBrowser, `(() => {
+    const wantedGroup = ${JSON.stringify(groupLabel)};
+    const wantedButton = ${JSON.stringify(buttonLabel)};
+    const group = [...document.querySelectorAll("[role='group']")].find((candidate) =>
+      candidate.getAttribute("aria-label") === wantedGroup
+    );
+    if (!group) return false;
+    const button = [...group.querySelectorAll("button")].find((candidate) => {
+      const text = (candidate.innerText || candidate.textContent || "").trim();
+      const aria = candidate.getAttribute("aria-label") || "";
+      const rect = candidate.getBoundingClientRect();
+      const style = getComputedStyle(candidate);
+      return (text === wantedButton || aria === wantedButton) &&
+        rect.width > 0 && rect.height > 0 &&
+        style.display !== "none" && style.visibility !== "hidden" &&
+        !candidate.disabled;
+    });
+    if (!button) return false;
+    button.scrollIntoView({ block: "center", inline: "center" });
+    button.click();
+    return true;
+  })()`);
+}
+
 async function runProviderFlow(agentBrowser, apiOrigin) {
   await seedMockProviders(apiOrigin);
   navigateTo(agentBrowser, "/settings?section=providers");
@@ -136,6 +184,66 @@ async function runProviderFlow(agentBrowser, apiOrigin) {
       })
       .catch(() => false)`,
     "desktop GPT Image 2 provider order saved",
+  );
+
+  navigateTo(agentBrowser, "/settings?section=providers");
+  await waitForEval(agentBrowser, `document.body.innerText.includes("BYOK")`, "desktop BYOK providers after model order");
+  if (!clickButtonByLabel(agentBrowser, "Open Replicate BYOK settings")) {
+    throw new Error("Could not open Replicate BYOK settings");
+  }
+  await waitForEval(agentBrowser, `document.body.innerText.includes("Replicate primary")`, "desktop Replicate provider row");
+  if (!clickButtonByLabel(agentBrowser, "Add prioritized Replicate key")) {
+    throw new Error("Could not add a Replicate provider key");
+  }
+  await waitForEval(
+    agentBrowser,
+    `!!document.querySelector("[role='group'][aria-label='New Replicate API key']")`,
+    "desktop new Replicate key editor",
+  );
+  if (!setInputValueByLabel(agentBrowser, "Replicate key name", "Desktop smoke key")) {
+    throw new Error("Could not enter Replicate key name");
+  }
+  if (!setInputValueByLabel(agentBrowser, "Replicate API key", "r8-desktop-smoke-extra-key")) {
+    throw new Error("Could not enter Replicate API key");
+  }
+  if (!clickButtonInGroup(agentBrowser, "New Replicate API key", "Save")) {
+    throw new Error("Could not save the Replicate key draft");
+  }
+  await waitForEval(
+    agentBrowser,
+    `fetch(${JSON.stringify(`${apiOrigin}/api/v1/model-providers`)})
+      .then((res) => res.json())
+      .then((json) => (json.providers ?? []).some((provider) =>
+        provider.providerId === "replicate" &&
+        provider.label === "Desktop smoke key" &&
+        provider.configuredCredentials?.includes("apiKey")
+      ))
+      .catch(() => false)`,
+    "desktop Replicate key saved",
+  );
+  await waitForEval(agentBrowser, `document.body.innerText.includes("Desktop smoke key")`, "desktop saved Replicate key visible");
+  if (!clickButtonByLabel(agentBrowser, "Expand Desktop smoke key")) {
+    throw new Error("Could not expand the saved desktop Replicate key");
+  }
+  await waitForEval(
+    agentBrowser,
+    `!!document.querySelector("[role='group'][aria-label='Desktop smoke key Replicate API key']")`,
+    "desktop saved Replicate key editor",
+  );
+  if (!clickButtonInGroup(agentBrowser, "Desktop smoke key Replicate API key", "Remove key")) {
+    throw new Error("Could not remove the saved desktop Replicate key");
+  }
+  await waitForEval(
+    agentBrowser,
+    `fetch(${JSON.stringify(`${apiOrigin}/api/v1/model-providers`)})
+      .then((res) => res.json())
+      .then((json) => {
+        const providers = json.providers ?? [];
+        return providers.some((provider) => provider.id === "replicate-primary") &&
+          !providers.some((provider) => provider.providerId === "replicate" && provider.label === "Desktop smoke key");
+      })
+      .catch(() => false)`,
+    "desktop Replicate key removed",
   );
 
   return evalJson(agentBrowser, `(() => ({

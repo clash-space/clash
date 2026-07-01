@@ -28,7 +28,7 @@ import {
     setVariable, deleteVariable, type VariableInfo,
     uninstallAction, type InstalledActionInfo,
     uninstallSkill, type InstalledSkillInfo,
-    updateModelProviders, listModelProviders, listModelCatalog, listProviderOAuth, startProviderOAuth, completeProviderOAuth, testModelProvider,
+    updateModelProviders, deleteModelProvider, listModelProviders, listModelCatalog, listProviderOAuth, startProviderOAuth, completeProviderOAuth, testModelProvider,
     type ModelProviderAccountInfo, type ModelCatalogEntryInfo, type ProviderOAuthInfo, type ModelProviderTestResult,
 } from '@clash/web-ui/lib/clientActions';
 import { runtimeApiUrl } from '@clash/web-ui/lib/runtimeConfig';
@@ -665,6 +665,38 @@ export default function SettingsClient({
         return saveModelProviders(nextProviders);
     }, [modelProviders, saveModelProviders]);
 
+    const handleDeleteModelProvider = useCallback(async (accountId: string) => {
+        const previousProviders = modelProviders;
+        setModelProviders((prev) => prev.filter((provider) => provider.id !== accountId));
+        setIsSavingModelProviders(true);
+        setModelProviderError(null);
+        try {
+            await deleteModelProvider(accountId);
+            const [savedProviders, nextCatalog] = await Promise.all([
+                listModelProviders(),
+                listModelCatalog(),
+            ]);
+            setModelProviders(savedProviders);
+            setModelCatalog(nextCatalog);
+            feedback.notify({
+                variant: 'success',
+                title: 'Provider account removed',
+            });
+        } catch (err) {
+            setModelProviders(previousProviders);
+            const message = displayErrorMessage(err);
+            setModelProviderError(message);
+            feedback.notify({
+                variant: 'error',
+                title: 'Could not remove provider account',
+                message,
+            });
+            throw err;
+        } finally {
+            setIsSavingModelProviders(false);
+        }
+    }, [feedback, modelProviders]);
+
     useEffect(() => {
         let cancelled = false;
         void listProviderOAuth()
@@ -835,6 +867,7 @@ export default function SettingsClient({
                     onCompleteProviderOAuth={handleCompleteProviderOAuth}
                     onPatchProvider={handlePatchModelProvider}
                     onPatchProviders={handlePatchModelProviders}
+                    onDeleteProvider={handleDeleteModelProvider}
                     saving={isSavingModelProviders}
                     error={modelProviderError}
                 />
@@ -966,6 +999,7 @@ export default function SettingsClient({
                     onCompleteProviderOAuth={handleCompleteProviderOAuth}
                     onPatchProvider={handlePatchModelProvider}
                     onPatchProviders={handlePatchModelProviders}
+                    onDeleteProvider={handleDeleteModelProvider}
                     saving={isSavingModelProviders}
                     error={modelProviderError}
                 />
@@ -1764,6 +1798,7 @@ interface ModelRoutingSectionProps {
     onCompleteProviderOAuth: (providerId: string, deviceCode?: string, accountId?: string) => Promise<void>;
     onPatchProvider: (key: string, patch: Partial<ModelProviderAccountInfo>) => Promise<ModelProviderAccountInfo[]>;
     onPatchProviders: (patches: ModelProviderPatch[]) => Promise<ModelProviderAccountInfo[]>;
+    onDeleteProvider: (accountId: string) => Promise<void>;
     saving: boolean;
     error: string | null;
 }
@@ -1781,6 +1816,7 @@ function ModelRoutingSection({
     onCompleteProviderOAuth,
     onPatchProvider,
     onPatchProviders,
+    onDeleteProvider,
     saving,
     error,
 }: ModelRoutingSectionProps) {
@@ -1790,6 +1826,7 @@ function ModelRoutingSection({
     const [providerTestBusyKey, setProviderTestBusyKey] = useState<string | null>(null);
     const [providerTestResults, setProviderTestResults] = useState<Record<string, ModelProviderTestResult>>({});
     const [savingProviderKey, setSavingProviderKey] = useState<string | null>(null);
+    const [deletingProviderAccountId, setDeletingProviderAccountId] = useState<string | null>(null);
     const [providerOAuthBusyKey, setProviderOAuthBusyKey] = useState<string | null>(null);
     const [providerQuery, setProviderQuery] = useState('');
     const [selectedProviderKey, setSelectedProviderKey] = useState<string | null>(null);
@@ -2509,6 +2546,21 @@ function ModelRoutingSection({
                 setProviderTestBusyKey(null);
             }
         };
+        const canDeleteAccount = !!editingAccount?.id;
+        const deleteSavedAccount = async () => {
+            if (!editingAccount?.id) return;
+            setDeletingProviderAccountId(editingAccount.id);
+            try {
+                await onDeleteProvider(editingAccount.id);
+                setProviderTestResults((prev) => {
+                    const { [providerTestKey]: _result, ...rest } = prev;
+                    return rest;
+                });
+                closeProviderKeyEditor();
+            } finally {
+                setDeletingProviderAccountId(null);
+            }
+        };
         const renderProviderKeyEditor = ({ includeHeader }: { includeHeader: boolean }) => (
             <div
                 role="group"
@@ -2761,27 +2813,42 @@ function ModelRoutingSection({
                             )}
                         </div>
                     )}
-                    {(includeHeader || hasProviderDraft || savingProviderKey === row.key) && (
-                        <div className="flex justify-end gap-2">
-                            {includeHeader && (
-                                <button
-                                    type="button"
-                                    onClick={closeProviderKeyEditor}
-                                    className={settingsCompactSecondaryButtonClass}
-                                >
-                                    Cancel
-                                </button>
-                            )}
-                            {(hasProviderDraft || savingProviderKey === row.key) && (
-                                <button
-                                    type="button"
-                                    onClick={() => { void saveDraft(); }}
-                                    disabled={modelAccessInvalid || savingProviderKey === row.key || saving}
-                                    className={settingsSmallPrimaryButtonClass}
-                                >
-                                    {savingProviderKey === row.key ? 'Saving...' : 'Save'}
-                                </button>
-                            )}
+                    {(includeHeader || hasProviderDraft || savingProviderKey === row.key || canDeleteAccount) && (
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                            <div>
+                                {canDeleteAccount && (
+                                    <button
+                                        type="button"
+                                        onClick={() => { void deleteSavedAccount(); }}
+                                        disabled={deletingProviderAccountId === editingAccount?.id || saving}
+                                        className={settingsDangerGhostButtonClass}
+                                    >
+                                        <Trash className="h-4 w-4" aria-hidden="true" />
+                                        {deletingProviderAccountId === editingAccount?.id ? 'Removing...' : 'Remove key'}
+                                    </button>
+                                )}
+                            </div>
+                            <div className="flex justify-end gap-2">
+                                {includeHeader && (
+                                    <button
+                                        type="button"
+                                        onClick={closeProviderKeyEditor}
+                                        className={settingsCompactSecondaryButtonClass}
+                                    >
+                                        Cancel
+                                    </button>
+                                )}
+                                {(hasProviderDraft || savingProviderKey === row.key) && (
+                                    <button
+                                        type="button"
+                                        onClick={() => { void saveDraft(); }}
+                                        disabled={modelAccessInvalid || savingProviderKey === row.key || saving}
+                                        className={settingsSmallPrimaryButtonClass}
+                                    >
+                                        {savingProviderKey === row.key ? 'Saving...' : 'Save'}
+                                    </button>
+                                )}
+                            </div>
                         </div>
                     )}
                 </div>

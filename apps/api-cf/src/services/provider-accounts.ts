@@ -300,6 +300,19 @@ export async function listProviderAccounts(db: D1Database, userId: string): Prom
   return (result.results ?? []).map(publicRow);
 }
 
+export async function deleteProviderAccount(db: D1Database, userId: string, accountId: string): Promise<boolean> {
+  const existing = await getAccountRow(db, userId, accountId);
+  if (!existing) return false;
+  await db
+    .prepare(
+      `DELETE FROM provider_account
+       WHERE user_id = ? AND id = ?`,
+    )
+    .bind(userId, accountId)
+    .run();
+  return true;
+}
+
 export async function upsertProviderAccount(
   env: { DB: D1Database; ACTION_SECRET_KEY?: string },
   userId: string,

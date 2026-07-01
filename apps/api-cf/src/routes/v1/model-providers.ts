@@ -11,12 +11,14 @@ import type { Env } from "../../config";
 import {
   listProviderAccounts,
   normalizeProviderAccountInput,
+  deleteProviderAccount,
   upsertProviderAccounts,
   type ProviderAccountInput,
 } from "../../services/provider-accounts";
 import {
   applyProviderOAuth,
   deleteProviderOAuthRecord,
+  deleteProviderOAuthRecordsForAccount,
   listProviderOAuthRecords,
   publicProviderOAuth,
 } from "../../services/provider-oauth";
@@ -102,6 +104,17 @@ modelProviderRoutes.patch("/model-providers", async (c) => {
   const saved = await upsertProviderAccounts(c.env, userId, normalizedProviders);
   const oauthRecords = await listProviderOAuthRecords(c.env.DB, userId);
   return c.json({ providers: applyProviderOAuth(saved, oauthRecords) });
+});
+
+modelProviderRoutes.delete("/model-providers/:accountId", async (c) => {
+  const userId = c.req.header("x-user-id");
+  if (!userId) return c.json({ error: "Unauthorized" }, 401);
+  const accountId = stringField(c.req.param("accountId"));
+  if (!accountId) return c.json({ error: "Provider account not found" }, 404);
+  const deletedAccount = await deleteProviderAccount(c.env.DB, userId, accountId);
+  const deletedOAuth = await deleteProviderOAuthRecordsForAccount(c.env.DB, userId, accountId);
+  if (!deletedAccount && !deletedOAuth) return c.json({ error: "Provider account not found" }, 404);
+  return new Response(null, { status: 204 });
 });
 
 modelProviderRoutes.post("/model-providers/test", async (c) => {
