@@ -2977,25 +2977,6 @@ function ModelRoutingSection({
                             <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
                                 <div className="min-w-0">
                                     <h2 className="font-display text-xl font-bold text-slate-900 dark:text-slate-50">BYOK</h2>
-                                    <div role="tablist" aria-label="BYOK settings" className="mt-7 flex gap-6 border-b border-warm-border">
-                                        <button
-                                            type="button"
-                                            role="tab"
-                                            aria-selected="true"
-                                            className="-mb-px border-b-2 border-slate-900 pb-2 text-sm font-semibold text-slate-900 dark:border-slate-50 dark:text-slate-50"
-                                        >
-                                            Providers
-                                        </button>
-                                        <button
-                                            type="button"
-                                            role="tab"
-                                            aria-selected="false"
-                                            aria-disabled="true"
-                                            className="-mb-px border-b-2 border-transparent pb-2 text-sm font-medium text-stone-500 dark:text-stone-400"
-                                        >
-                                            Web Search
-                                        </button>
-                                    </div>
                                 </div>
                             </div>
                             <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">

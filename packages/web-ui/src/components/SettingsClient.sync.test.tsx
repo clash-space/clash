@@ -2402,8 +2402,9 @@ describe("SettingsClient model routing", () => {
     );
 
     expect(screen.getByRole("heading", { name: "BYOK" })).toBeTruthy();
-    expect(screen.getByRole("tab", { name: "Providers" }).getAttribute("aria-selected")).toBe("true");
-    expect(screen.getByRole("tab", { name: "Web Search" })).toBeTruthy();
+    expect(screen.queryByRole("tablist", { name: "BYOK settings" })).toBeNull();
+    expect(screen.queryByRole("tab", { name: "Providers" })).toBeNull();
+    expect(screen.queryByRole("tab", { name: "Web Search" })).toBeNull();
     expect(screen.getByLabelText("Search providers")).toBeTruthy();
     expect(screen.queryByRole("button", { name: /Add custom provider/i })).toBeNull();
   });
