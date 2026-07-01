@@ -382,7 +382,7 @@ const GEMINI_TTS_PARAMETERS: ModelParameter[] = [
   },
 ];
 
-export const MODEL_CARDS: ModelCard[] = [
+const MODEL_CARD_DEFINITIONS = [
   // ─── Image: Nano Banana 2 (fal.ai) ──────────────────────────
   {
     id: 'nano-banana-2',
@@ -1637,4 +1637,6 @@ export const MODEL_CARDS: ModelCard[] = [
     },
     input: { requiresPrompt: true, inputMode: {} },
   },
-] as unknown as ModelCard[];
+];
+
+export const MODEL_CARDS: ModelCard[] = z.array(ModelCardSchema).parse(MODEL_CARD_DEFINITIONS);

@@ -59,6 +59,15 @@ describe("model upstream routing", () => {
     expect(routedModelIds.filter((modelId) => !modelCardIds.has(modelId))).toEqual([]);
   });
 
+  it("exports model cards after applying schema validation and defaults", () => {
+    const cardsMissingPromptDefaults = MODEL_CARDS
+      .filter((model) => !model.input.promptModalities?.length)
+      .map((model) => model.id);
+
+    expect(cardsMissingPromptDefaults).toEqual([]);
+    expect(MODEL_CARDS.map((model) => ModelCardSchema.parse(model).id)).toEqual(MODEL_CARDS.map((model) => model.id));
+  });
+
   it("requires routed model cards to explicitly declare their provider implementations", () => {
     const modelCards = new Map(MODEL_CARDS.map((model) => [model.id, model]));
     const providersByModel = new Map<string, Set<string>>();
