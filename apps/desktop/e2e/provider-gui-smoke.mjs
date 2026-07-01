@@ -25,6 +25,13 @@ const dataDir =
 const sessionName = `clash-desktop-provider-gui-${Date.now().toString(36)}`;
 const latestScreenshot = path.join(captureDir, "latest-provider-gui-desktop.png");
 
+function captureEvidence(agentBrowser, name) {
+  const screenshotPath = path.join(captureDir, `${name}.png`);
+  agentBrowser(["screenshot", screenshotPath]);
+  console.log(`[desktop-provider-gui] evidence ${name} ${screenshotPath}`);
+  return screenshotPath;
+}
+
 async function seedMockProviders(apiOrigin) {
   const res = await fetch(`${apiOrigin}/api/v1/model-providers`, {
     method: "PATCH",
@@ -235,6 +242,7 @@ async function runProviderFlow(agentBrowser, apiOrigin) {
     `document.body.innerText.includes("Mock provider ran Mock Image Model through fal-ai/mock-image.")`,
     "desktop mock provider test result",
   );
+  captureEvidence(agentBrowser, "01-provider-test-result");
 
   if (!clickButtonByLabel(agentBrowser, "Model access")) {
     throw new Error("Could not open desktop model access selector");
@@ -314,6 +322,7 @@ async function runProviderFlow(agentBrowser, apiOrigin) {
       document.body.innerText.includes("Models supported by Mock Provider")`,
     "desktop mock supported models page",
   );
+  captureEvidence(agentBrowser, "02-supported-models-page");
 
   if (!clickButtonByLabel(agentBrowser, "Edit provider order for GPT Image 2")) {
     throw new Error("Could not open desktop GPT Image 2 provider order");
@@ -340,6 +349,7 @@ async function runProviderFlow(agentBrowser, apiOrigin) {
       .catch(() => false)`,
     "desktop GPT Image 2 provider order saved",
   );
+  captureEvidence(agentBrowser, "03-model-provider-order-saved");
 
   navigateTo(agentBrowser, "/settings?section=providers");
   await waitForEval(agentBrowser, `document.body.innerText.includes("BYOK")`, "desktop BYOK providers after model order");
@@ -476,6 +486,7 @@ async function runProviderFlow(agentBrowser, apiOrigin) {
       .catch(() => false)`,
     "desktop two OpenAI keys saved with distinct ids",
   );
+  captureEvidence(agentBrowser, "04-two-openai-keys-saved");
 
   return evalJson(agentBrowser, `(() => ({
     href: location.href,
