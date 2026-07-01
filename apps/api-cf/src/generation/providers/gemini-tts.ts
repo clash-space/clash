@@ -22,6 +22,7 @@ export const geminiTtsProvider: GenerationProvider = {
         const credentials = await credentialsForProvider(ctx, "official", ["apiKey"], {
           upstreamId: "google",
           region: "global",
+          modelCode: modelName,
         });
         const result = await generateGoogleAudio(credentials.apiKey, {
           prompt: params.prompt ?? "",

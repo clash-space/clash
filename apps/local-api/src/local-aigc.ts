@@ -694,9 +694,16 @@ export function createMockExternalAigcService(
       .filter(({ account }) =>
         account.providerId === providerIdForRoute(route) &&
         (!account.upstreamId || account.upstreamId === route.upstreamId) &&
-        (!account.region || !route.region || account.region === route.region)
+        (!account.region || !route.region || account.region === route.region) &&
+        (!account.supportedModelIds?.length || account.supportedModelIds.includes(route.modelCode))
       )
       .sort((a, b) => {
+        const aModelPriority = a.account.modelPriorities?.[route.modelCode];
+        const bModelPriority = b.account.modelPriorities?.[route.modelCode];
+        if (aModelPriority !== undefined || bModelPriority !== undefined) {
+          const priority = (aModelPriority ?? Number.POSITIVE_INFINITY) - (bModelPriority ?? Number.POSITIVE_INFINITY);
+          if (priority !== 0) return priority;
+        }
         const priority = (a.account.priority ?? 1000) - (b.account.priority ?? 1000);
         if (priority !== 0) return priority;
         const weight = (b.account.weight ?? 0) - (a.account.weight ?? 0);

@@ -85,6 +85,7 @@ describe("volcengineVideoProvider", () => {
 
     expect(mocks.credentialsForProvider).toHaveBeenCalledWith(ctx, "volcengine", ["apiKey"], {
       upstreamId: "volcengine",
+      modelCode: "seedance-2-ref",
     });
     expect(mocks.generateModelArkVideo).toHaveBeenCalledWith(
       "ark-provider-key",

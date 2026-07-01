@@ -7,9 +7,9 @@ import { credentialsForProvider } from "./provider-credentials";
 
 type ModelArkProviderKind = "volcengine";
 
-async function credentialsForModelArk(ctx: GenerationContext, kind: ModelArkProviderKind): Promise<Record<string, string>> {
+async function credentialsForModelArk(ctx: GenerationContext, kind: ModelArkProviderKind, modelCode?: string): Promise<Record<string, string>> {
   if (kind === "volcengine") {
-    return credentialsForProvider(ctx, "volcengine", ["apiKey"], { upstreamId: "volcengine" });
+    return credentialsForProvider(ctx, "volcengine", ["apiKey"], { upstreamId: "volcengine", modelCode });
   }
   return {};
 }
@@ -48,7 +48,7 @@ function createModelArkVideoProvider(kind: ModelArkProviderKind): GenerationProv
         { retries: { limit: 2, delay: "5 seconds", backoff: "exponential" }, timeout: "10 minutes" },
         async () => {
           log.info("ModelArk video generate started", { ...ctx.tag, provider: kind, model: modelName });
-          const credentials = await credentialsForModelArk(ctx, kind);
+          const credentials = await credentialsForModelArk(ctx, kind, modelName);
           const result = await generateModelArkVideo(credentials.apiKey, {
             baseUrl: credentials.baseUrl ?? "https://ark.cn-beijing.volces.com/api/v3",
             prompt: params.prompt ?? "",

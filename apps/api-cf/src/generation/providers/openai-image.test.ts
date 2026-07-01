@@ -72,6 +72,7 @@ describe("openaiImageProvider", () => {
     expect(mocks.credentialsForProvider).toHaveBeenCalledWith(ctx, "official", ["apiKey"], {
       upstreamId: "openai",
       region: "global",
+      modelCode: "gpt-image-2",
     });
     expect(mocks.generateOpenAIImage).toHaveBeenCalledWith(
       expect.objectContaining({

@@ -333,4 +333,66 @@ describe("provider accounts", () => {
       }),
     ).resolves.toMatchObject({ apiKey: "sk-working" });
   });
+
+  it("loads credentials only from accounts allowed for the requested model", async () => {
+    const db = new MemoryD1();
+    const env = { DB: db as unknown as D1Database, ACTION_SECRET_KEY: "secret-key" };
+
+    await upsertProviderAccount(env, "user-1", {
+      id: "replicate-nano",
+      providerId: "replicate",
+      upstreamId: "replicate",
+      priority: 1,
+      supportedModelIds: ["nano-banana-2"],
+      credentials: { apiKey: "nano-key" },
+    });
+    await upsertProviderAccount(env, "user-1", {
+      id: "replicate-gpt",
+      providerId: "replicate",
+      upstreamId: "replicate",
+      priority: 20,
+      supportedModelIds: ["gpt-image-2"],
+      credentials: { apiKey: "gpt-key" },
+    });
+
+    await expect(
+      getProviderCredentials(env, "user-1", {
+        providerId: "replicate",
+        upstreamId: "replicate",
+        modelCode: "gpt-image-2",
+        requiredCredentials: ["apiKey"],
+      }),
+    ).resolves.toMatchObject({ apiKey: "gpt-key" });
+  });
+
+  it("orders credentials by per-model priority before account priority", async () => {
+    const db = new MemoryD1();
+    const env = { DB: db as unknown as D1Database, ACTION_SECRET_KEY: "secret-key" };
+
+    await upsertProviderAccount(env, "user-1", {
+      id: "replicate-general",
+      providerId: "replicate",
+      upstreamId: "replicate",
+      priority: 1,
+      modelPriorities: { "gpt-image-2": 20 },
+      credentials: { apiKey: "general-key" },
+    });
+    await upsertProviderAccount(env, "user-1", {
+      id: "replicate-gpt",
+      providerId: "replicate",
+      upstreamId: "replicate",
+      priority: 20,
+      modelPriorities: { "gpt-image-2": 10 },
+      credentials: { apiKey: "gpt-key" },
+    });
+
+    await expect(
+      getProviderCredentials(env, "user-1", {
+        providerId: "replicate",
+        upstreamId: "replicate",
+        modelCode: "gpt-image-2",
+        requiredCredentials: ["apiKey"],
+      }),
+    ).resolves.toMatchObject({ apiKey: "gpt-key" });
+  });
 });

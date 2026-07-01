@@ -39,6 +39,7 @@ export const openaiImageProvider: GenerationProvider = {
         const credentials = await credentialsForProvider(ctx, "official", ["apiKey"], {
           upstreamId: "openai",
           region: "global",
+          modelCode: params.modelName ?? "gpt-image-2",
         });
         const result = await generateOpenAIImage({
           apiKey: credentials.apiKey,

@@ -5,12 +5,13 @@ import type { GenerationContext } from "../context";
 
 export async function credentialsForRoute(
   ctx: GenerationContext,
-  route: Pick<ModelUpstreamRoute, "providerId" | "upstreamId" | "region" | "requiredCredentials">,
+  route: Pick<ModelUpstreamRoute, "modelCode" | "providerId" | "upstreamId" | "region" | "requiredCredentials">,
 ): Promise<Record<string, string>> {
   return getProviderCredentials(ctx.env, ctx.params.actorUserId, {
     providerId: route.providerId ?? (route.upstreamId as ProviderAccountId),
     upstreamId: route.upstreamId,
     region: route.region,
+    modelCode: route.modelCode,
     requiredCredentials: route.requiredCredentials,
   });
 }
@@ -19,12 +20,13 @@ export async function credentialsForProvider(
   ctx: GenerationContext,
   providerId: ProviderAccountId,
   requiredCredentials: string[],
-  options: { upstreamId?: ModelUpstreamRoute["upstreamId"]; region?: string } = {},
+  options: { upstreamId?: ModelUpstreamRoute["upstreamId"]; region?: string; modelCode?: string } = {},
 ): Promise<Record<string, string>> {
   return getProviderCredentials(ctx.env, ctx.params.actorUserId, {
     providerId,
     upstreamId: options.upstreamId,
     region: options.region,
+    modelCode: options.modelCode,
     requiredCredentials,
   });
 }

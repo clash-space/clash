@@ -24,7 +24,10 @@ export const falImageProvider: GenerationProvider = {
 
   async execute(ctx) {
     const { params, env } = ctx;
-    const falKey = (await credentialsForProvider(ctx, "fal", ["apiKey"], { upstreamId: "fal" })).apiKey;
+    const falKey = (await credentialsForProvider(ctx, "fal", ["apiKey"], {
+      upstreamId: "fal",
+      modelCode: params.modelName,
+    })).apiKey;
 
     const referenceImageUrls = await ctx.step(
       "resolve-references",

@@ -17,6 +17,7 @@ export const elevenLabsTtsProvider: GenerationProvider = {
         log.info("ElevenLabs TTS started", { ...ctx.tag, model: modelName });
         const credentials = await credentialsForProvider(ctx, "elevenlabs", ["apiKey"], {
           upstreamId: "elevenlabs",
+          modelCode: modelName,
         });
         const result = await generateElevenLabsAudio(credentials.apiKey, {
           prompt: params.prompt ?? "",

@@ -17,6 +17,7 @@ export const minimaxAudioProvider: GenerationProvider = {
         log.info("MiniMax TTS started", { ...ctx.tag, model: modelName });
         const credentials = await credentialsForProvider(ctx, "minimax", ["apiKey"], {
           upstreamId: "minimax",
+          modelCode: modelName,
         });
         const result = await generateMiniMaxAudio(credentials.apiKey, {
           prompt: params.prompt ?? "",

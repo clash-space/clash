@@ -33,6 +33,7 @@ export interface ProviderCredentialQuery {
   providerId: ProviderAccountId;
   upstreamId?: ModelUpstreamId;
   region?: string;
+  modelCode?: string;
   requiredCredentials?: string[];
 }
 
@@ -415,7 +416,27 @@ export async function getProviderCredentials(
     .all<ProviderAccountRow>();
 
   const required = query.requiredCredentials ?? [];
-  const rows = (result.results ?? []).filter((row) => !query.region || !row.region || row.region === query.region);
+  const modelCode = trimString(query.modelCode);
+  const rows = (result.results ?? [])
+    .filter((row) => !query.region || !row.region || row.region === query.region)
+    .filter((row) => {
+      if (!modelCode) return true;
+      const supportedModelIds = parseSupportedModelIds(row.supported_model_ids);
+      return !supportedModelIds?.length || supportedModelIds.includes(modelCode);
+    })
+    .sort((a, b) => {
+      if (modelCode) {
+        const aPriority = parseModelPriorities(a.model_priorities)?.[modelCode];
+        const bPriority = parseModelPriorities(b.model_priorities)?.[modelCode];
+        if (aPriority !== undefined || bPriority !== undefined) {
+          const priority = (aPriority ?? Number.POSITIVE_INFINITY) - (bPriority ?? Number.POSITIVE_INFINITY);
+          if (priority !== 0) return priority;
+        }
+      }
+      const priority = (a.priority ?? 1000) - (b.priority ?? 1000);
+      if (priority !== 0) return priority;
+      return (b.updated_at ?? 0) - (a.updated_at ?? 0);
+    });
   for (const row of rows) {
     const credentials = await decryptCredentials(row.encrypted_credentials, secret);
     if (required.every((key) => credentials[key]?.trim())) return credentials;

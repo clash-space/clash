@@ -28,6 +28,7 @@ export const klingVideoProvider: GenerationProvider = {
         log.info("Kling video generate started", { ...ctx.tag, model: modelName });
         const credentials = await credentialsForProvider(ctx, "kling", ["accessKey", "secretKey"], {
           upstreamId: "kling",
+          modelCode: modelName,
         });
         const result = await generateKlingVideo(
           {

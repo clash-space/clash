@@ -55,6 +55,7 @@ export const googleImageProvider: GenerationProvider = {
           await credentialsForProvider(ctx, "official", ["vertexCredentials"], {
             upstreamId: "google",
             region: "global",
+            modelCode: params.modelName,
           }),
         );
         log.info("Google image generate started", {

@@ -23,7 +23,10 @@ export const falVideoProvider: GenerationProvider = {
 
   async execute(ctx) {
     const { params, env } = ctx;
-    const falKey = (await credentialsForProvider(ctx, "fal", ["apiKey"], { upstreamId: "fal" })).apiKey;
+    const falKey = (await credentialsForProvider(ctx, "fal", ["apiKey"], {
+      upstreamId: "fal",
+      modelCode: params.videoModel ?? params.modelName,
+    })).apiKey;
 
     // Cached in Workflow DO state → on generate retry we don't re-upload.
     const sources = await ctx.step(

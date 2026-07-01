@@ -24,6 +24,7 @@ export const googleTextProvider: GenerationProvider = {
           await credentialsForProvider(ctx, "official", ["vertexCredentials"], {
             upstreamId: "google",
             region: "global",
+            modelCode: params.modelName,
           }),
         );
         const systemPrompt =

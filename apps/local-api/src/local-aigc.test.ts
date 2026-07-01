@@ -602,4 +602,134 @@ describe("local mock AIGC", () => {
       "content-type": "application/json",
     });
   });
+
+  it("uses the provider key allowed for the requested model", async () => {
+    const calls: Array<{ url: string; init?: RequestInit }> = [];
+    const service = createMockExternalAigcService({
+      providerAccounts: async () => [
+        {
+          providerId: "replicate",
+          upstreamId: "replicate",
+          enabled: true,
+          priority: 1,
+          supportedModelIds: ["nano-banana-2"],
+          configuredCredentials: ["apiKey"],
+          credentials: { apiKey: "r8-nano-token" },
+          weight: 100,
+        },
+        {
+          providerId: "replicate",
+          upstreamId: "replicate",
+          enabled: true,
+          priority: 20,
+          supportedModelIds: ["gpt-image-2"],
+          configuredCredentials: ["apiKey"],
+          credentials: { apiKey: "r8-gpt-token" },
+          weight: 100,
+        },
+      ],
+      fetch: async (input: string | URL | Request, init?: RequestInit) => {
+        const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+        calls.push({ url, init });
+        if (url === "https://api.replicate.com/v1/models/openai/gpt-image-2/predictions") {
+          return Response.json({
+            id: "replicate-model-filter-1",
+            status: "starting",
+            urls: { get: "https://api.replicate.com/v1/predictions/replicate-model-filter-1" },
+          });
+        }
+        if (url === "https://api.replicate.com/v1/predictions/replicate-model-filter-1") {
+          return Response.json({
+            id: "replicate-model-filter-1",
+            status: "succeeded",
+            output: ["https://replicate-cdn.test/model-filter.webp"],
+          });
+        }
+        if (url === "https://replicate-cdn.test/model-filter.webp") {
+          return new Response("model-filter-replicate-image", { headers: { "content-type": "image/webp" } });
+        }
+        return new Response("not found", { status: 404 });
+      },
+    } as never);
+
+    const result = await service.generateImage({
+      taskId: "task-replicate-model-filter",
+      prompt: "model filtered replicate image",
+      model: "gpt-image-2",
+      aspectRatio: "1:1",
+    });
+
+    expect(result.provider).toBe("replicate");
+    expect(result.requestId).toBe("replicate-model-filter-1");
+    expect(Buffer.from(result.bytes).toString("utf8")).toBe("model-filter-replicate-image");
+    expect(calls[0].init?.headers).toMatchObject({
+      authorization: "Bearer r8-gpt-token",
+      "content-type": "application/json",
+    });
+  });
+
+  it("uses per-model key priority before general provider priority", async () => {
+    const calls: Array<{ url: string; init?: RequestInit }> = [];
+    const service = createMockExternalAigcService({
+      providerAccounts: async () => [
+        {
+          providerId: "replicate",
+          upstreamId: "replicate",
+          enabled: true,
+          priority: 1,
+          modelPriorities: { "gpt-image-2": 20 },
+          configuredCredentials: ["apiKey"],
+          credentials: { apiKey: "r8-general-token" },
+          weight: 100,
+        },
+        {
+          providerId: "replicate",
+          upstreamId: "replicate",
+          enabled: true,
+          priority: 20,
+          modelPriorities: { "gpt-image-2": 10 },
+          configuredCredentials: ["apiKey"],
+          credentials: { apiKey: "r8-gpt-priority-token" },
+          weight: 100,
+        },
+      ],
+      fetch: async (input: string | URL | Request, init?: RequestInit) => {
+        const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+        calls.push({ url, init });
+        if (url === "https://api.replicate.com/v1/models/openai/gpt-image-2/predictions") {
+          return Response.json({
+            id: "replicate-model-priority-1",
+            status: "starting",
+            urls: { get: "https://api.replicate.com/v1/predictions/replicate-model-priority-1" },
+          });
+        }
+        if (url === "https://api.replicate.com/v1/predictions/replicate-model-priority-1") {
+          return Response.json({
+            id: "replicate-model-priority-1",
+            status: "succeeded",
+            output: ["https://replicate-cdn.test/model-priority.webp"],
+          });
+        }
+        if (url === "https://replicate-cdn.test/model-priority.webp") {
+          return new Response("model-priority-replicate-image", { headers: { "content-type": "image/webp" } });
+        }
+        return new Response("not found", { status: 404 });
+      },
+    } as never);
+
+    const result = await service.generateImage({
+      taskId: "task-replicate-model-priority",
+      prompt: "model priority replicate image",
+      model: "gpt-image-2",
+      aspectRatio: "1:1",
+    });
+
+    expect(result.provider).toBe("replicate");
+    expect(result.requestId).toBe("replicate-model-priority-1");
+    expect(Buffer.from(result.bytes).toString("utf8")).toBe("model-priority-replicate-image");
+    expect(calls[0].init?.headers).toMatchObject({
+      authorization: "Bearer r8-gpt-priority-token",
+      "content-type": "application/json",
+    });
+  });
 });

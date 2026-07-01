@@ -39,7 +39,10 @@ export const understandProvider: GenerationProvider = {
         { retries: { limit: 2, delay: "5 seconds", backoff: "exponential" }, timeout: "5 minutes" },
         async () => {
           log.info("ASR started", ctx.tag);
-          const falKey = (await credentialsForProvider(ctx, "fal", ["apiKey"], { upstreamId: "fal" })).apiKey;
+          const falKey = (await credentialsForProvider(ctx, "fal", ["apiKey"], {
+            upstreamId: "fal",
+            modelCode: params.modelName,
+          })).apiKey;
           const audioUrl = await uploadR2ToFal(env.R2_BUCKET, r2Key, falKey);
           const result = await transcribeAudio(falKey, audioUrl, {
             language: params.language,

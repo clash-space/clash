@@ -44,7 +44,7 @@ export const textGenProvider: GenerationProvider = {
           : "openai-compatible";
         const credentials = route
           ? await credentialsForRoute(ctx, route)
-          : await credentialsForProvider(ctx, "official", ["apiKey"], { upstreamId: "openai", region: "global" });
+          : await credentialsForProvider(ctx, "official", ["apiKey"], { upstreamId: "openai", region: "global", modelCode: modelName });
         const systemPrompt =
           typeof params.modelParams?.system_prompt === "string"
             ? params.modelParams.system_prompt.trim()
