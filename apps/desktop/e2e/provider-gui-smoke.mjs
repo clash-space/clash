@@ -275,18 +275,38 @@ async function runProviderFlow(agentBrowser, apiOrigin) {
       const menu = [...document.querySelectorAll("[role='listbox'], [role='menu']")].find((el) =>
         (el.innerText || el.textContent || "").includes("Mock Image Model")
       );
-      if (!trigger || !menu) return false;
+      const search = document.querySelector("input[aria-label='Search test models']");
+      if (!trigger || !menu || !search) return false;
       const triggerRect = trigger.getBoundingClientRect();
       const menuRect = menu.getBoundingClientRect();
+      const searchRect = search.getBoundingClientRect();
       return menu.getAttribute("role") === "listbox" &&
         trigger.getAttribute("role") === "combobox" &&
         menuRect.width >= Math.min(triggerRect.width, 160) &&
         menuRect.width > 180 &&
         menuRect.height > 40 &&
+        searchRect.width > 160 &&
+        searchRect.height > 24 &&
         menuRect.left <= triggerRect.right &&
         menuRect.right >= triggerRect.left;
     })()`,
-    "desktop provider test model selector uses stable combobox/listbox popup",
+    "desktop provider test model selector uses searchable combobox/listbox popup",
+  );
+  if (!setInputValueByLabel(agentBrowser, "Search test models", "image")) {
+    throw new Error("Could not search desktop provider test model selector for image models");
+  }
+  await waitForEval(
+    agentBrowser,
+    `(() => {
+      const menu = [...document.querySelectorAll("[role='listbox']")].find((el) => {
+        const rect = el.getBoundingClientRect();
+        const style = getComputedStyle(el);
+        return rect.width > 0 && rect.height > 0 && style.display !== "none" && style.visibility !== "hidden";
+      });
+      const text = menu ? (menu.innerText || menu.textContent || "") : "";
+      return text.includes("Mock Image Model") && !text.includes("Mock Text Model");
+    })()`,
+    "desktop provider test model selector filters image models",
   );
   captureEvidence(agentBrowser, "00-test-model-selector-open");
   if (!clickMenuItemContaining(agentBrowser, "Mock Image Model")) {
@@ -312,6 +332,22 @@ async function runProviderFlow(agentBrowser, apiOrigin) {
   if (!openControlByLabel(agentBrowser, "Model to test")) {
     throw new Error("Could not reopen desktop provider test model selector for text shape");
   }
+  if (!setInputValueByLabel(agentBrowser, "Search test models", "text")) {
+    throw new Error("Could not search desktop provider test model selector for text models");
+  }
+  await waitForEval(
+    agentBrowser,
+    `(() => {
+      const menu = [...document.querySelectorAll("[role='listbox']")].find((el) => {
+        const rect = el.getBoundingClientRect();
+        const style = getComputedStyle(el);
+        return rect.width > 0 && rect.height > 0 && style.display !== "none" && style.visibility !== "hidden";
+      });
+      const text = menu ? (menu.innerText || menu.textContent || "") : "";
+      return text.includes("Mock Text Model") && !text.includes("Mock Image Model");
+    })()`,
+    "desktop provider test model selector filters text models",
+  );
   if (!clickMenuItemContaining(agentBrowser, "Mock Text Model")) {
     throw new Error("Could not select Mock Text Model for the desktop mock provider test");
   }

@@ -72,6 +72,18 @@ vi.mock("framer-motion", async () => {
   };
 });
 
+if (typeof globalThis.ResizeObserver === "undefined") {
+  globalThis.ResizeObserver = class ResizeObserver {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  };
+}
+
+if (typeof Element !== "undefined" && !Element.prototype.scrollIntoView) {
+  Element.prototype.scrollIntoView = vi.fn();
+}
+
 const LOCAL_ASR_MODEL_CATALOG = [
   {
     model: {
@@ -3310,6 +3322,48 @@ describe("SettingsClient model routing", () => {
     expect(screen.getByRole("listbox", { name: "Model to test" })).toBeTruthy();
     expect(screen.getByRole("option", { name: /GPT Image 2/ })).toBeTruthy();
     expect(screen.queryByRole("option", { name: /Nano Banana 2/ })).toBeNull();
+  });
+
+  it("filters provider test model choices from a searchable picker", async () => {
+    render(
+      <MemoryRouter>
+        <SettingsClient
+          initialTokens={[]}
+          initialVariables={[]}
+          initialActions={[]}
+          initialSkills={[]}
+          activeSection="providers"
+          embedded
+          initialModelProviders={[
+            {
+              id: "mock-primary",
+              label: "Mock primary",
+              providerId: "mock",
+              upstreamId: "mock",
+              enabled: true,
+              priority: 10,
+            },
+          ]}
+          initialModelCatalog={[]}
+        />
+      </MemoryRouter>,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Open Mock Provider BYOK settings" }));
+    const providerConfigs = screen.getByRole("list", { name: "Mock Provider prioritized keys" });
+    const providerConfig = within(providerConfigs).getByText("Mock primary").closest("li") as HTMLElement;
+    fireEvent.click(within(providerConfig).getByText("Mock primary"));
+
+    const editor = within(providerConfig).getByRole("group", { name: "Mock primary Mock Provider API key" });
+    fireEvent.click(within(editor).getByRole("combobox", { name: "Model to test" }));
+
+    const search = screen.getByRole("combobox", { name: "Search test models" });
+    fireEvent.change(search, { target: { value: "text" } });
+
+    fireEvent.click(screen.getByRole("option", { name: /Mock Text Model/ }));
+
+    expect(within(editor).getByRole("combobox", { name: "Model to test" }).textContent).toContain("Mock Text Model");
+    expect(screen.queryByRole("option", { name: /Mock Image Model/ })).toBeNull();
   });
 
   it("runs a saved live provider configuration check from the provider config editor", async () => {

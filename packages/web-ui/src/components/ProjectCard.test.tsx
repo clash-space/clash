@@ -137,6 +137,7 @@ describe("ProjectCard", () => {
     }));
 
     const dialog = screen.getByRole("alertdialog");
+    expect(dialog.getAttribute("data-state")).toBe("open");
     expect(dialog.textContent).toContain("Delete project?");
     expect(dialog.textContent).toContain("Storyboard draft will be removed from this workspace.");
 
