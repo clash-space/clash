@@ -672,6 +672,20 @@ function modelPriority(
   return typeof priority === "number" && Number.isFinite(priority) ? priority : undefined;
 }
 
+function modelPriorityForRoute(
+  query: Pick<ModelUpstreamRouteQuery, "configuredProviders" | "configuredUpstreams">,
+  route: ModelUpstreamRoute,
+  modelCode: string,
+): number | undefined {
+  if (query.configuredProviders) {
+    const priorities = providerCandidates(query.configuredProviders, route)
+      .map((candidate) => modelPriority(candidate.provider, modelCode))
+      .filter((priority): priority is number => priority !== undefined);
+    return priorities.length ? Math.min(...priorities) : undefined;
+  }
+  return modelPriority(upstreamConfig(query.configuredUpstreams, route.upstreamId), modelCode);
+}
+
 function configForRoute(
   query: Pick<ModelUpstreamRouteQuery, "configuredProviders" | "configuredUpstreams">,
   route: ModelUpstreamRoute,
@@ -746,8 +760,8 @@ export function listModelUpstreamRoutes(query: ModelUpstreamRouteQuery): ModelUp
     .sort((a, b) => {
       const aConfig = configForRoute(query, a);
       const bConfig = configForRoute(query, b);
-      const aModelPriority = modelPriority(aConfig, query.modelCode);
-      const bModelPriority = modelPriority(bConfig, query.modelCode);
+      const aModelPriority = modelPriorityForRoute(query, a, query.modelCode);
+      const bModelPriority = modelPriorityForRoute(query, b, query.modelCode);
       if (aModelPriority !== undefined || bModelPriority !== undefined) {
         const priority = (aModelPriority ?? Number.POSITIVE_INFINITY) - (bModelPriority ?? Number.POSITIVE_INFINITY);
         if (priority !== 0) return priority;

@@ -595,6 +595,44 @@ describe("model upstream routing", () => {
     expect(fluxRoute?.providerId).toBe("fal");
   });
 
+  it("uses a provider model priority even when another key in that provider has higher key priority", () => {
+    const routes = listModelUpstreamRoutes({
+      modelCode: "gpt-image-2",
+      kind: "image",
+      configuredProviders: [
+        {
+          providerId: "replicate",
+          upstreamId: "replicate",
+          enabled: true,
+          priority: 1,
+          configuredCredentials: ["apiKey"],
+        },
+        {
+          providerId: "replicate",
+          upstreamId: "replicate",
+          enabled: true,
+          priority: 20,
+          configuredCredentials: ["apiKey"],
+          modelPriorities: { "gpt-image-2": 10 },
+        },
+        {
+          providerId: "official",
+          upstreamId: "openai",
+          region: "global",
+          enabled: true,
+          priority: 5,
+          configuredCredentials: ["apiKey"],
+          modelPriorities: { "gpt-image-2": 20 },
+        },
+      ],
+    });
+
+    expect(routes.map((route) => `${route.providerId}/${route.upstreamId}`)).toEqual([
+      "replicate/replicate",
+      "official/openai",
+    ]);
+  });
+
   it("uses provider weight before array order for the same model", () => {
     const routes = listModelUpstreamRoutes({
       modelCode: "gpt-image-2",
