@@ -3134,14 +3134,16 @@ describe("SettingsClient model routing", () => {
             providerId: "replicate",
             upstreamId: "replicate",
             priority: 50,
-            weight: 100,
+            weight: 1,
+            modelPriorities: { "gpt-image-2": 10 },
           }),
           expect.objectContaining({
             providerId: "official",
             upstreamId: "openai",
             region: "global",
             priority: 30,
-            weight: 90,
+            weight: 10,
+            modelPriorities: { "gpt-image-2": 20 },
           }),
         ]),
       );

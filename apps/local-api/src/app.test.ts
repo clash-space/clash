@@ -505,6 +505,66 @@ describe("local API app", () => {
     });
   });
 
+  it("persists per-model provider priority without changing other model routing", async () => {
+    const app = createLocalApiApp({ dataDir, userId: "local-user" });
+
+    const saved = await app.request("/api/v1/model-providers", {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        providers: [
+          {
+            providerId: "fal",
+            upstreamId: "fal",
+            enabled: true,
+            configuredCredentials: ["apiKey"],
+            modelPriorities: { "nano-banana-2": 20 },
+            credentials: { apiKey: "fal-local-key" },
+          },
+          {
+            providerId: "replicate",
+            upstreamId: "replicate",
+            enabled: true,
+            configuredCredentials: ["apiKey"],
+            modelPriorities: { "nano-banana-2": 10 },
+            credentials: { apiKey: "r8-local-key" },
+          },
+        ],
+      }),
+    });
+
+    expect(saved.status).toBe(200);
+    const savedJson = (await saved.json()) as { providers: Array<Record<string, unknown>> };
+    expect(savedJson.providers).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        providerId: "fal",
+        upstreamId: "fal",
+        modelPriorities: { "nano-banana-2": 20 },
+      }),
+      expect.objectContaining({
+        providerId: "replicate",
+        upstreamId: "replicate",
+        modelPriorities: { "nano-banana-2": 10 },
+      }),
+    ]));
+
+    const reopened = createLocalApiApp({ dataDir, userId: "local-user" });
+    const catalog = await reopened.request("/api/v1/models/catalog");
+    const catalogJson = (await catalog.json()) as {
+      models: Array<{
+        model: { id: string };
+        selectedRoute?: { providerId?: string; upstreamId?: string } | null;
+      }>;
+    };
+
+    expect(catalogJson.models.find((entry) => entry.model.id === "nano-banana-2")).toMatchObject({
+      selectedRoute: { providerId: "replicate", upstreamId: "replicate" },
+    });
+    expect(catalogJson.models.find((entry) => entry.model.id === "flux-schnell")).toMatchObject({
+      selectedRoute: { providerId: "fal", upstreamId: "fal" },
+    });
+  });
+
   it("manages provider OAuth device flow and exposes connected providers", async () => {
     const oauth = {
       dreamina: {

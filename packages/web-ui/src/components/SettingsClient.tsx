@@ -1997,9 +1997,22 @@ function ModelRoutingSection({
         const route = entry.selectedRoute;
         const selectedRouteKey = route ? modelRouteProviderKey(route) : null;
         const routeOrder = new Map(entry.routes.map((candidate, index) => [modelRouteProviderKey(candidate), index]));
+        const providerRowModelPriority = (row: typeof providerViewRows[number]) => {
+            const targets = row.accounts.length > 0 ? row.accounts : [row.provider];
+            const priorities = targets
+                .map((account) => account.modelPriorities?.[entry.model.id])
+                .filter((priority): priority is number => typeof priority === 'number' && Number.isFinite(priority));
+            return priorities.length ? Math.min(...priorities) : undefined;
+        };
         const providerOrderRows = providerViewRows
             .filter((row) => row.support?.models.some((model) => model.id === entry.model.id))
             .sort((a, b) => {
+                const aModelPriority = providerRowModelPriority(a);
+                const bModelPriority = providerRowModelPriority(b);
+                if (aModelPriority !== undefined || bModelPriority !== undefined) {
+                    const priority = (aModelPriority ?? Number.POSITIVE_INFINITY) - (bModelPriority ?? Number.POSITIVE_INFINITY);
+                    if (priority !== 0) return priority;
+                }
                 const aRouteIndex = routeOrder.get(a.key) ?? Number.POSITIVE_INFINITY;
                 const bRouteIndex = routeOrder.get(b.key) ?? Number.POSITIVE_INFINITY;
                 if (aRouteIndex !== bRouteIndex) return aRouteIndex - bRouteIndex;
@@ -2014,14 +2027,17 @@ function ModelRoutingSection({
             if (toIndex < 0 || toIndex >= providerOrderRows.length) return;
             const ordered = arrayMove(providerOrderRows, fromIndex, toIndex);
             void onPatchProviders(ordered.flatMap((providerRow, index) => {
-                const weight = 100 - index * 10;
+                const priority = (index + 1) * 10;
                 const targets = providerRow.accounts.length > 0 ? providerRow.accounts : [providerRow.provider];
                 return targets.map((account) => ({
                     key: providerRow.key,
                     patch: {
                         ...(account.id ? { id: account.id } : {}),
                         ...(account.label ? { label: account.label } : {}),
-                        weight,
+                        modelPriorities: {
+                            ...(account.modelPriorities ?? {}),
+                            [entry.model.id]: priority,
+                        },
                     },
                 }));
             }));

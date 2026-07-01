@@ -464,6 +464,39 @@ describe("model upstream routing", () => {
     });
   });
 
+  it("applies provider ordering only to the model it was configured for", () => {
+    const configuredProviders = [
+      {
+        providerId: "fal",
+        upstreamId: "fal",
+        enabled: true,
+        configuredCredentials: ["apiKey"],
+        modelPriorities: { "nano-banana-2": 20 },
+      },
+      {
+        providerId: "replicate",
+        upstreamId: "replicate",
+        enabled: true,
+        configuredCredentials: ["apiKey"],
+        modelPriorities: { "nano-banana-2": 10 },
+      },
+    ] satisfies ProviderAccountAvailability[];
+
+    const nanoRoute = resolveModelUpstreamRoute({
+      modelCode: "nano-banana-2",
+      kind: "image",
+      configuredProviders,
+    });
+    const fluxRoute = resolveModelUpstreamRoute({
+      modelCode: "flux-schnell",
+      kind: "image",
+      configuredProviders,
+    });
+
+    expect(nanoRoute?.providerId).toBe("replicate");
+    expect(fluxRoute?.providerId).toBe("fal");
+  });
+
   it("uses provider weight before array order for the same model", () => {
     const routes = listModelUpstreamRoutes({
       modelCode: "gpt-image-2",

@@ -141,6 +141,60 @@ describe("provider accounts", () => {
     ]);
   });
 
+  it("normalizes and exposes per-model provider priorities", () => {
+    expect(normalizeProviderAccountInput({
+      id: "replicate-primary",
+      providerId: "replicate",
+      enabled: true,
+      modelPriorities: {
+        " nano-banana-2 ": "10",
+        "flux-schnell": 30,
+        "bad-value": "later",
+        "": 1,
+      },
+    })).toMatchObject({
+      id: "replicate-primary",
+      providerId: "replicate",
+      upstreamId: "replicate",
+      enabled: true,
+      modelPriorities: {
+        "nano-banana-2": 10,
+        "flux-schnell": 30,
+      },
+    });
+    expect(normalizeProviderAccountInput({
+      id: "replicate-primary",
+      providerId: "replicate",
+      enabled: true,
+      modelPriorities: {},
+    })).toMatchObject({
+      modelPriorities: {},
+    });
+
+    const providers = publicProviderAccounts(
+      [
+        {
+          id: "replicate-primary",
+          userId: "user-1",
+          providerId: "replicate",
+          upstreamId: "replicate",
+          enabled: true,
+          modelPriorities: { "nano-banana-2": 10 },
+        },
+      ],
+      "user-1",
+    );
+
+    expect(providers).toEqual([
+      expect.objectContaining({
+        id: "replicate-primary",
+        providerId: "replicate",
+        upstreamId: "replicate",
+        modelPriorities: { "nano-banana-2": 10 },
+      }),
+    ]);
+  });
+
   it("orders keys for the same provider by configured priority before runtime selection", () => {
     const providers = providerAccountsForRuntime(
       [

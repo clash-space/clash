@@ -120,6 +120,8 @@ export interface ProviderAccountAvailability {
   availableOAuth?: ProviderOAuthId[];
   /** When set, this account only serves the listed public model card ids. Undefined means all models declared by the provider. */
   supportedModelIds?: string[];
+  /** Lower numbers win for a specific public model card id. */
+  modelPriorities?: Record<string, number>;
   /** Lower numbers win within equal weights. */
   priority?: number;
   /** Higher numbers win before declaration order. */
@@ -620,6 +622,15 @@ function providerConfig(
   return providerCandidate(configuredProviders, route)?.provider;
 }
 
+function modelPriority(
+  config: ProviderAccountAvailability | UpstreamAvailability | undefined,
+  modelCode: string,
+): number | undefined {
+  if (!config || !("modelPriorities" in config)) return undefined;
+  const priority = config.modelPriorities?.[modelCode];
+  return typeof priority === "number" && Number.isFinite(priority) ? priority : undefined;
+}
+
 function configForRoute(
   query: Pick<ModelUpstreamRouteQuery, "configuredProviders" | "configuredUpstreams">,
   route: ModelUpstreamRoute,
@@ -692,6 +703,12 @@ export function listModelUpstreamRoutes(query: ModelUpstreamRouteQuery): ModelUp
     .sort((a, b) => {
       const aConfig = configForRoute(query, a);
       const bConfig = configForRoute(query, b);
+      const aModelPriority = modelPriority(aConfig, query.modelCode);
+      const bModelPriority = modelPriority(bConfig, query.modelCode);
+      if (aModelPriority !== undefined || bModelPriority !== undefined) {
+        const priority = (aModelPriority ?? Number.POSITIVE_INFINITY) - (bModelPriority ?? Number.POSITIVE_INFINITY);
+        if (priority !== 0) return priority;
+      }
       const aWeight = (aConfig?.weight ?? 0) + (a.weight ?? 0);
       const bWeight = (bConfig?.weight ?? 0) + (b.weight ?? 0);
       if (aWeight !== bWeight) return bWeight - aWeight;

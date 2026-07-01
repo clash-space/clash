@@ -14,6 +14,7 @@ export interface ProviderAccountInput {
   priority?: number;
   weight?: number;
   supportedModelIds?: string[];
+  modelPriorities?: Record<string, number>;
   credentials?: Record<string, string>;
 }
 
@@ -44,6 +45,7 @@ type ProviderAccountRow = {
   encrypted_credentials: string | null;
   configured_credentials: string | null;
   supported_model_ids: string | null;
+  model_priorities: string | null;
   created_at: number | null;
   updated_at: number | null;
 };
@@ -84,6 +86,18 @@ function cleanStringArray(value: unknown): string[] | undefined {
   return values;
 }
 
+function cleanNumberRecord(value: unknown): Record<string, number> | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+  const entries: Array<[string, number]> = [];
+  for (const [rawKey, rawValue] of Object.entries(value as Record<string, unknown>)) {
+    const key = trimString(rawKey);
+    const number = numberValue(rawValue);
+    if (!key || number === undefined) continue;
+    entries.push([key, number]);
+  }
+  return Object.fromEntries(entries);
+}
+
 function configuredCredentialKeys(credentials: Record<string, string> | undefined): string[] {
   return Object.entries(credentials ?? {})
     .filter(([, value]) => value.trim().length > 0)
@@ -108,6 +122,16 @@ function parseSupportedModelIds(value: string | null): string[] | undefined {
   try {
     const parsed = cleanStringArray(JSON.parse(value));
     return parsed?.length ? parsed : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function parseModelPriorities(value: string | null): Record<string, number> | undefined {
+  if (!value) return undefined;
+  try {
+    const parsed = cleanNumberRecord(JSON.parse(value));
+    return parsed && Object.keys(parsed).length ? parsed : undefined;
   } catch {
     return undefined;
   }
@@ -170,6 +194,7 @@ export function normalizeProviderAccountInput(value: unknown): ProviderAccountIn
   const priority = numberValue(raw.priority);
   const weight = numberValue(raw.weight);
   const supportedModelIds = cleanStringArray(raw.supportedModelIds);
+  const modelPriorities = cleanNumberRecord(raw.modelPriorities);
   const credentials = cleanCredentials(raw.credentials);
   return {
     providerId,
@@ -181,12 +206,14 @@ export function normalizeProviderAccountInput(value: unknown): ProviderAccountIn
     ...(priority !== undefined ? { priority } : {}),
     ...(weight !== undefined ? { weight } : {}),
     ...(supportedModelIds !== undefined ? { supportedModelIds } : {}),
+    ...(modelPriorities !== undefined ? { modelPriorities } : {}),
     ...(credentials ? { credentials } : {}),
   };
 }
 
 function publicRow(row: ProviderAccountRow): PublicProviderAccount {
   const supportedModelIds = parseSupportedModelIds(row.supported_model_ids);
+  const modelPriorities = parseModelPriorities(row.model_priorities);
   return {
     id: row.id,
     providerId: row.provider_id as ProviderAccountId,
@@ -196,6 +223,7 @@ function publicRow(row: ProviderAccountRow): PublicProviderAccount {
     enabled: row.enabled !== 0,
     configuredCredentials: parseConfiguredCredentials(row.configured_credentials),
     ...(supportedModelIds ? { supportedModelIds } : {}),
+    ...(modelPriorities ? { modelPriorities } : {}),
     ...(row.priority !== null && row.priority !== undefined ? { priority: row.priority } : {}),
     ...(row.weight !== null && row.weight !== undefined ? { weight: row.weight } : {}),
     createdAt: row.created_at,
@@ -221,7 +249,7 @@ async function getAccountRow(db: D1Database, userId: string, id: string): Promis
   const row = await db
     .prepare(
       `SELECT id, user_id, provider_id, upstream_id, region, label, enabled, priority, weight,
-              encrypted_credentials, configured_credentials, supported_model_ids, created_at, updated_at
+              encrypted_credentials, configured_credentials, supported_model_ids, model_priorities, created_at, updated_at
        FROM provider_account
        WHERE user_id = ? AND id = ?`,
     )
@@ -234,7 +262,7 @@ export async function listProviderAccounts(db: D1Database, userId: string): Prom
   const result = await db
     .prepare(
       `SELECT id, user_id, provider_id, upstream_id, region, label, enabled, priority, weight,
-              encrypted_credentials, configured_credentials, supported_model_ids, created_at, updated_at
+              encrypted_credentials, configured_credentials, supported_model_ids, model_priorities, created_at, updated_at
        FROM provider_account
        WHERE user_id = ?
        ORDER BY provider_id, COALESCE(upstream_id, ''), COALESCE(region, ''), COALESCE(priority, 1000), updated_at DESC`,
@@ -258,6 +286,9 @@ export async function upsertProviderAccount(
   const supportedModelIds = input.supportedModelIds !== undefined
     ? input.supportedModelIds.length ? JSON.stringify(input.supportedModelIds) : null
     : existing?.supported_model_ids ?? null;
+  const modelPriorities = input.modelPriorities !== undefined
+    ? Object.keys(input.modelPriorities).length ? JSON.stringify(input.modelPriorities) : null
+    : existing?.model_priorities ?? null;
   if (input.credentials && secret) {
     const previous = await decryptCredentials(existing?.encrypted_credentials ?? null, secret);
     const merged = { ...previous, ...input.credentials };
@@ -270,7 +301,7 @@ export async function upsertProviderAccount(
       .prepare(
         `UPDATE provider_account
          SET provider_id = ?, upstream_id = ?, region = ?, label = ?, enabled = ?, priority = ?, weight = ?,
-             encrypted_credentials = ?, configured_credentials = ?, supported_model_ids = ?, updated_at = ?
+             encrypted_credentials = ?, configured_credentials = ?, supported_model_ids = ?, model_priorities = ?, updated_at = ?
          WHERE user_id = ? AND id = ?`,
       )
       .bind(
@@ -284,6 +315,7 @@ export async function upsertProviderAccount(
         encryptedCredentials,
         configuredCredentials,
         supportedModelIds,
+        modelPriorities,
         now,
         userId,
         existing.id,
@@ -299,8 +331,8 @@ export async function upsertProviderAccount(
     .prepare(
       `INSERT INTO provider_account
        (id, user_id, provider_id, upstream_id, region, label, enabled, priority, weight,
-        encrypted_credentials, configured_credentials, supported_model_ids, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        encrypted_credentials, configured_credentials, supported_model_ids, model_priorities, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
     .bind(
       id,
@@ -315,6 +347,7 @@ export async function upsertProviderAccount(
       encryptedCredentials,
       configuredCredentials,
       supportedModelIds,
+      modelPriorities,
       now,
       now,
     )
@@ -345,7 +378,7 @@ export async function getProviderCredentials(
   const result = await env.DB
     .prepare(
       `SELECT id, user_id, provider_id, upstream_id, region, label, enabled, priority, weight,
-              encrypted_credentials, configured_credentials, supported_model_ids, created_at, updated_at
+              encrypted_credentials, configured_credentials, supported_model_ids, model_priorities, created_at, updated_at
        FROM provider_account
        WHERE user_id = ? AND provider_id = ? AND enabled = 1
          AND (? IS NULL OR upstream_id = ?)

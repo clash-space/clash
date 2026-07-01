@@ -16,6 +16,7 @@ export interface LocalProviderAccountConfig {
   priority?: number;
   weight?: number;
   supportedModelIds?: string[];
+  modelPriorities?: Record<string, number>;
   credentials?: Record<string, string>;
   createdAt?: string;
   updatedAt?: string;
@@ -118,6 +119,18 @@ function stringArrayField(value: unknown): string[] | undefined {
   return values;
 }
 
+function numberRecordField(value: unknown): Record<string, number> | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+  const entries: Array<[string, number]> = [];
+  for (const [rawKey, rawValue] of Object.entries(value as Record<string, unknown>)) {
+    const key = stringField(rawKey);
+    const number = numberField(rawValue);
+    if (!key || number === undefined) continue;
+    entries.push([key, number]);
+  }
+  return Object.fromEntries(entries);
+}
+
 function providerAccountBaseKey(account: Pick<LocalProviderAccountConfig, "providerId" | "upstreamId" | "region">): string {
   return [account.providerId, account.upstreamId ?? "", account.region ?? ""].join(":");
 }
@@ -159,6 +172,7 @@ export function normalizeProviderAccountInput(value: unknown): Omit<LocalProvide
   const priority = numberField(raw.priority);
   const weight = numberField(raw.weight);
   const supportedModelIds = stringArrayField(raw.supportedModelIds);
+  const modelPriorities = numberRecordField(raw.modelPriorities);
   const credentials = credentialsField(raw.credentials);
   return {
     ...(id ? { id } : {}),
@@ -170,6 +184,7 @@ export function normalizeProviderAccountInput(value: unknown): Omit<LocalProvide
     ...(priority !== undefined ? { priority } : {}),
     ...(weight !== undefined ? { weight } : {}),
     ...(supportedModelIds !== undefined ? { supportedModelIds } : {}),
+    ...(modelPriorities !== undefined ? { modelPriorities } : {}),
     ...(credentials ? { credentials } : {}),
   };
 }
@@ -243,6 +258,7 @@ export function providerAccountsForRuntime(
       ...(account.priority !== undefined ? { priority: account.priority } : {}),
       ...(account.weight !== undefined ? { weight: account.weight } : {}),
       ...(account.supportedModelIds?.length ? { supportedModelIds: account.supportedModelIds } : {}),
+      ...(account.modelPriorities && Object.keys(account.modelPriorities).length ? { modelPriorities: account.modelPriorities } : {}),
       ...(account.createdAt ? { createdAt: account.createdAt } : {}),
       ...(account.updatedAt ? { updatedAt: account.updatedAt } : {}),
     }));

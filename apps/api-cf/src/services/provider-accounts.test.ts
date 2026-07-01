@@ -62,6 +62,7 @@ class MemoryD1 {
                 encryptedCredentials,
                 configuredCredentials,
                 supportedModelIds,
+                modelPriorities,
                 updatedAt,
                 userId,
                 id,
@@ -79,6 +80,7 @@ class MemoryD1 {
                   encrypted_credentials: encryptedCredentials,
                   configured_credentials: configuredCredentials,
                   supported_model_ids: supportedModelIds,
+                  model_priorities: modelPriorities,
                   updated_at: updatedAt,
                 });
               }
@@ -97,6 +99,7 @@ class MemoryD1 {
               encryptedCredentials,
               configuredCredentials,
               supportedModelIds,
+              modelPriorities,
               createdAt,
               updatedAt,
             ] = args;
@@ -113,6 +116,7 @@ class MemoryD1 {
               encrypted_credentials: encryptedCredentials,
               configured_credentials: configuredCredentials,
               supported_model_ids: supportedModelIds,
+              model_priorities: modelPriorities,
               created_at: createdAt,
               updated_at: updatedAt,
             });
@@ -228,6 +232,47 @@ describe("provider accounts", () => {
     expect(db.rows[0].supported_model_ids).toBeNull();
     await expect(listProviderAccounts(db as unknown as D1Database, "user-1")).resolves.toEqual([
       expect.not.objectContaining({ supportedModelIds: expect.any(Array) }),
+    ]);
+  });
+
+  it("stores and exposes per-model provider priorities", async () => {
+    const db = new MemoryD1();
+
+    await upsertProviderAccount(
+      { DB: db as unknown as D1Database, ACTION_SECRET_KEY: "secret-key" },
+      "user-1",
+      {
+        id: "replicate-primary",
+        providerId: "replicate",
+        upstreamId: "replicate",
+        modelPriorities: { "nano-banana-2": 10, "flux-schnell": 30 },
+      },
+    );
+
+    expect(db.rows[0].model_priorities).toBe(JSON.stringify({ "nano-banana-2": 10, "flux-schnell": 30 }));
+    await expect(listProviderAccounts(db as unknown as D1Database, "user-1")).resolves.toEqual([
+      expect.objectContaining({
+        id: "replicate-primary",
+        providerId: "replicate",
+        upstreamId: "replicate",
+        modelPriorities: { "nano-banana-2": 10, "flux-schnell": 30 },
+      }),
+    ]);
+
+    await upsertProviderAccount(
+      { DB: db as unknown as D1Database, ACTION_SECRET_KEY: "secret-key" },
+      "user-1",
+      {
+        id: "replicate-primary",
+        providerId: "replicate",
+        upstreamId: "replicate",
+        modelPriorities: {},
+      },
+    );
+
+    expect(db.rows[0].model_priorities).toBeNull();
+    await expect(listProviderAccounts(db as unknown as D1Database, "user-1")).resolves.toEqual([
+      expect.not.objectContaining({ modelPriorities: expect.any(Object) }),
     ]);
   });
 

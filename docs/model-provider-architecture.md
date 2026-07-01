@@ -105,6 +105,8 @@ type ProviderAccount = {
   region?: string;
   priority?: number;
   weight?: number;
+  supportedModelIds?: string[];
+  modelPriorities?: Record<string, number>;
   configuredCredentials?: ProviderCredentialId[];
   availableOAuth?: ProviderOAuthId[];
 };
@@ -116,9 +118,14 @@ Provider accounts own:
 - user-provided credential availability, for BYOK or custom providers
 - region or channel
 - routing priority and weight
+- optional model allowlist for this account, selected from the provider
+  definition's supported model list
+- optional per-model provider priority, so changing `gpt-image-2` routing does
+  not change `flux-schnell` routing
 
-Provider accounts do not declare model support directly. They select or enable
-a provider definition that already declares support.
+Provider accounts do not invent model support directly. The provider
+definition declares the full support set; an account may only restrict that
+set to a subset with `supportedModelIds`.
 
 ### Provider Shape
 
@@ -257,10 +264,11 @@ The resolver starts with a model card id and modality.
 modelId + kind
   -> find provider support rows for modelId
   -> remove disabled provider accounts
+  -> remove provider accounts whose model allowlist excludes modelId
   -> remove rows missing required credentials
   -> remove rows missing required OAuth/session providers
-  -> apply user provider weights
-  -> apply user provider order
+  -> apply model-specific provider priority
+  -> apply user provider weights and account order
   -> apply provider route priority
   -> return selected provider route
 ```

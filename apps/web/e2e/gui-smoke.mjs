@@ -153,6 +153,15 @@ async function seedMockProvider(apiOrigin) {
           enabled: true,
           priority: 10,
         },
+        {
+          id: "replicate-primary",
+          label: "Replicate primary",
+          providerId: "replicate",
+          upstreamId: "replicate",
+          enabled: true,
+          priority: 20,
+          credentials: { apiKey: "r8-gui-smoke-key" },
+        },
       ],
     }),
   });
@@ -282,6 +291,35 @@ async function exerciseProviderModelRouting(cdp, { webOrigin, apiOrigin }) {
       location.search.includes("provider=mock%3Amock%3A") &&
       document.body.innerText.includes("Models supported by Mock Provider")`,
     "mock provider scoped models page",
+  );
+  await click(
+    cdp,
+    `document.querySelector("button[aria-label='Edit provider order for GPT Image 2']")`,
+    "Open GPT Image 2 provider order",
+  );
+  await waitFor(
+    cdp,
+    `!!document.querySelector("[aria-label='GPT Image 2 provider order']")`,
+    "GPT Image 2 provider order list",
+  );
+  await click(
+    cdp,
+    `document.querySelector("button[aria-label='Move Replicate up for GPT Image 2']")`,
+    "Move Replicate above mock for GPT Image 2",
+  );
+  await waitFor(
+    cdp,
+    `fetch(${JSON.stringify(`${apiOrigin}/api/v1/model-providers`)})
+      .then((res) => res.json())
+      .then((json) => {
+        const providers = json.providers ?? [];
+        const replicate = providers.find((provider) => provider.id === "replicate-primary");
+        const mock = providers.find((provider) => provider.id === "mock-primary");
+        return replicate?.modelPriorities?.["gpt-image-2"] === 10 &&
+          mock?.modelPriorities?.["gpt-image-2"] === 20;
+      })
+      .catch(() => false)`,
+    "GPT Image 2 provider order saved",
   );
 }
 
