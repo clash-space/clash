@@ -219,12 +219,12 @@ async function runProviderFlow(agentBrowser, apiOrigin) {
   if (!clickButtonByLabel(agentBrowser, "Model to test")) {
     throw new Error("Could not open desktop provider test model selector");
   }
-  if (!clickMenuItemContaining(agentBrowser, "GPT Image 2")) {
-    throw new Error("Could not select GPT Image 2 for the desktop mock provider test");
+  if (!clickMenuItemContaining(agentBrowser, "Mock Image Model")) {
+    throw new Error("Could not select Mock Image Model for the desktop mock provider test");
   }
   await waitForEval(
     agentBrowser,
-    `document.body.innerText.includes("GPT Image 2")`,
+    `document.body.innerText.includes("Mock Image Model")`,
     "desktop mock provider selected test model",
   );
   if (!clickButtonByLabel(agentBrowser, "Run provider test")) {
@@ -232,7 +232,7 @@ async function runProviderFlow(agentBrowser, apiOrigin) {
   }
   await waitForEval(
     agentBrowser,
-    `document.body.innerText.includes("Mock provider ran GPT Image 2 through fal-ai/nano-banana-2.")`,
+    `document.body.innerText.includes("Mock provider ran Mock Image Model through fal-ai/mock-image.")`,
     "desktop mock provider test result",
   );
 

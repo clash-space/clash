@@ -10,7 +10,7 @@ import {
   type ProviderAccountAvailability,
   type UpstreamAvailability,
 } from "./model-routing";
-import { MODEL_CARDS, ModelCardSchema } from "./models";
+import { MOCK_MODEL_CARDS, MODEL_CARDS, ModelCardSchema } from "./models";
 
 describe("model upstream routing", () => {
   it("allows model cards to declare current provider account implementations", () => {
@@ -89,10 +89,49 @@ describe("model upstream routing", () => {
   });
 
   it("keeps every routed model backed by a first-class model card", () => {
-    const modelCardIds = new Set(MODEL_CARDS.map((model) => model.id));
+    const modelCardIds = new Set([...MODEL_CARDS, ...MOCK_MODEL_CARDS].map((model) => model.id));
     const routedModelIds = [...new Set(MODEL_UPSTREAM_ROUTES.map((route) => route.modelCode))].sort();
 
     expect(routedModelIds.filter((modelId) => !modelCardIds.has(modelId))).toEqual([]);
+  });
+
+  it("exposes a first-class mock model card only when mock routing is enabled", () => {
+    const mockModel = MOCK_MODEL_CARDS.find((model) => model.id === "mock-image-model");
+
+    expect(mockModel).toMatchObject({
+      id: "mock-image-model",
+      name: "Mock Image Model",
+      availableProviders: ["mock"],
+      defaultProvider: "mock",
+      providerImplementations: [
+        expect.objectContaining({
+          providerId: "mock",
+          upstreamId: "mock",
+          upstreamModel: "fal-ai/mock-image",
+          apiShape: "fal",
+        }),
+      ],
+    });
+    expect(listModelCatalogEntries().some((entry) => entry.model.id === "mock-image-model")).toBe(false);
+
+    const mockEntries = listModelCatalogEntries({
+      configuredProviders: [{ providerId: "mock", upstreamId: "mock", enabled: true }],
+    });
+    const entry = mockEntries.find((candidate) => candidate.model.id === "mock-image-model");
+
+    expect(entry).toMatchObject({
+      tier: "available",
+      selectedRoute: {
+        modelCode: "mock-image-model",
+        providerId: "mock",
+        upstreamId: "mock",
+        upstreamModel: "fal-ai/mock-image",
+      },
+      candidateProviders: ["mock"],
+    });
+    expect(listProviderModelSupport({ includeMock: true })
+      .find((support) => support.providerId === "mock")?.models
+      .map((model) => model.id)).toContain("mock-image-model");
   });
 
   it("exports model cards after applying schema validation and defaults", () => {

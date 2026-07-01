@@ -493,6 +493,35 @@ describe("local API app", () => {
       expect.any(Object),
     );
 
+    const mockModel = await app.request("/api/v1/model-providers/test", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        provider: { id: "mock-primary", providerId: "mock", upstreamId: "mock", enabled: true },
+        modelId: "mock-image-model",
+      }),
+    });
+
+    expect(mockModel.status).toBe(200);
+    expect(await mockModel.json()).toEqual({
+      ok: true,
+      providerId: "mock",
+      upstreamId: "mock",
+      modelId: "mock-image-model",
+      provider: "fal-mock",
+      modelEndpoint: "fal-ai/mock-image",
+      requestId: expect.stringMatching(/^fal-mock-/),
+      message: "Mock provider ran Mock Image Model through fal-ai/mock-image.",
+    });
+    expect(submit).toHaveBeenCalledWith(
+      "fal-ai/mock-image",
+      expect.objectContaining({
+        prompt: "Provider test for Mock Image Model",
+        output_type: "image",
+      }),
+      expect.any(Object),
+    );
+
     const unsupported = await app.request("/api/v1/model-providers/test", {
       method: "POST",
       headers: { "content-type": "application/json" },

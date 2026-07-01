@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { MODEL_CARDS, type ModelCard, type ModelKind } from "./models";
+import { MOCK_MODEL_CARDS, MODEL_CARDS, type ModelCard, type ModelKind } from "./models";
 
 export const ModelUpstreamIdSchema = z.enum([
   "local",
@@ -341,6 +341,7 @@ export const MODEL_PROVIDER_DEFINITIONS: ModelProviderDefinition[] = [
 ];
 
 const MODEL_DECLARED_ROUTES = routesFromModelCards(MODEL_CARDS);
+const MOCK_DECLARED_ROUTES = routesFromModelCards(MOCK_MODEL_CARDS);
 
 const MOCK_ROUTES: ModelUpstreamRoute[] = [
   ...FAL_IMAGE_ROUTES.map(([modelCode, upstreamModel]) => falMock(modelCode, "image", upstreamModel)),
@@ -355,6 +356,7 @@ const MOCK_ROUTES: ModelUpstreamRoute[] = [
 
 export const MODEL_UPSTREAM_ROUTES: ModelUpstreamRoute[] = [
   ...MODEL_DECLARED_ROUTES,
+  ...MOCK_DECLARED_ROUTES,
   ...MOCK_ROUTES,
 ];
 
@@ -414,17 +416,18 @@ export function listProviderModelSupport(options: {
   models?: readonly ModelCard[];
   includeMock?: boolean;
 } = {}): ProviderModelSupport[] {
-  const models = options.models ?? MODEL_CARDS;
+  const includeMock = options.includeMock ?? false;
+  const models = options.models ?? (includeMock ? [...MODEL_CARDS, ...MOCK_MODEL_CARDS] : MODEL_CARDS);
   const modelById = new Map(models.map((model) => [model.id, model]));
   const modelDeclaredRoutes = routesFromModelCards(models);
   const routes = modelDeclaredRoutes.length > 0
-    ? options.includeMock
+    ? includeMock
       ? [...modelDeclaredRoutes, ...MOCK_ROUTES]
       : modelDeclaredRoutes
     : MODEL_UPSTREAM_ROUTES;
   const rows = new Map<string, ProviderModelSupport>();
   for (const route of routes) {
-    if (!options.includeMock && route.upstreamId === "mock") continue;
+    if (!includeMock && route.upstreamId === "mock") continue;
     const model = modelById.get(route.modelCode);
     if (!model) continue;
     const providerId = providerIdForRoute(route);
@@ -708,8 +711,8 @@ export function listModelCatalogEntries(options: {
   configuredUpstreams?: UpstreamAvailability[];
   allowMock?: boolean;
 } = {}): ModelCatalogEntry[] {
-  const models = options.models ?? MODEL_CARDS;
   const allowMock = shouldAllowMockCatalogRoutes(options);
+  const models = options.models ?? (allowMock ? [...MODEL_CARDS, ...MOCK_MODEL_CARDS] : MODEL_CARDS);
   return models.map((model) => {
     const query: ModelUpstreamRouteQuery = {
       modelCode: model.id,

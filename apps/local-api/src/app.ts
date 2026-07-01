@@ -7,6 +7,7 @@ import {
   invalidProviderModelFilters,
   listModelCatalogEntries,
   listProviderModelSupport,
+  MOCK_MODEL_CARDS,
   MODEL_CARDS,
   MODEL_UPSTREAM_ROUTES,
   ProviderOAuthIdSchema,
@@ -1008,7 +1009,7 @@ interface ModelProviderTestResult {
 }
 
 function displayModelName(modelId: string): string {
-  return MODEL_CARDS.find((model) => model.id === modelId)?.name ?? modelId;
+  return [...MODEL_CARDS, ...MOCK_MODEL_CARDS].find((model) => model.id === modelId)?.name ?? modelId;
 }
 
 function displayProviderName(account: Pick<LocalProviderAccountConfig, "providerId" | "upstreamId" | "region">): string {
@@ -1353,7 +1354,7 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
     }
 
     if (account.providerId === "mock") {
-      const model = MODEL_CARDS.find((candidate) => candidate.id === modelId);
+      const model = [...MODEL_CARDS, ...MOCK_MODEL_CARDS].find((candidate) => candidate.id === modelId);
       const taskId = `provider-test-${modelId}`;
       const prompt = `Provider test for ${modelName}`;
       try {

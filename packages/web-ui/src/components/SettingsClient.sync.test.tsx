@@ -3174,8 +3174,8 @@ describe("SettingsClient model routing", () => {
       modelId,
       provider: "fal-mock",
       requestId: "fal-mock-provider-test",
-      modelEndpoint: "fal-ai/nano-banana-2",
-      message: `Mock provider ran ${modelId === "gpt-image-2" ? "GPT Image 2" : "Nano Banana 2"} through fal-ai/nano-banana-2.`,
+      modelEndpoint: modelId === "mock-image-model" ? "fal-ai/mock-image" : "fal-ai/nano-banana-2",
+      message: `Mock provider ran ${modelId === "mock-image-model" ? "Mock Image Model" : "Nano Banana 2"} through ${modelId === "mock-image-model" ? "fal-ai/mock-image" : "fal-ai/nano-banana-2"}.`,
     }));
 
     render(
@@ -3210,7 +3210,7 @@ describe("SettingsClient model routing", () => {
     const editor = within(providerConfig).getByRole("group", { name: "Mock primary Mock Provider API key" });
     expect(within(editor).getByRole("button", { name: "Model to test" })).toBeTruthy();
     fireEvent.click(within(editor).getByRole("button", { name: "Model to test" }));
-    fireEvent.click(screen.getByRole("menuitemradio", { name: /GPT Image 2/ }));
+    fireEvent.click(screen.getByRole("menuitemradio", { name: /Mock Image Model/ }));
     fireEvent.click(within(editor).getByRole("button", { name: "Run provider test" }));
 
     await waitFor(() => {
@@ -3220,10 +3220,10 @@ describe("SettingsClient model routing", () => {
           providerId: "mock",
           upstreamId: "mock",
         }),
-        modelId: "gpt-image-2",
+        modelId: "mock-image-model",
       });
     });
-    expect(await within(editor).findByText("Mock provider ran GPT Image 2 through fal-ai/nano-banana-2.")).toBeTruthy();
+    expect(await within(editor).findByText("Mock provider ran Mock Image Model through fal-ai/mock-image.")).toBeTruthy();
   });
 
   it("scopes provider test model choices to the provider config model allowlist", async () => {
