@@ -27,15 +27,19 @@ describe("ProjectEditor toolbar surface", () => {
     const toolbarTextureRule = globalCss.match(/\.clash-canvas-toolbar-surface::before,[\s\S]*?\.clash-canvas-menu-surface::before\s*\{[\s\S]*?\}/)?.[0] ?? "";
     expect(toolbarTextureRule).not.toContain("var(--canvas-dot)");
     expect(toolbarTextureRule).not.toMatch(/radial-gradient/);
-    expect(toolbarTextureRule).toMatch(/linear-gradient\(90deg/);
-    expect(toolbarTextureRule).toMatch(/linear-gradient\(180deg/);
+    expect(toolbarTextureRule).toContain("content: none");
   });
 
-  it("renders submenu flyouts outside the toolbar rail", () => {
-    expect(projectEditorSource).toContain("createPortal");
-    expect(projectEditorSource).toContain("clash-canvas-toolbar-flyout-layer");
-    expect(projectEditorSource).toContain("pointer-events-auto fixed flex flex-col");
-    expect(projectEditorSource).not.toContain("absolute left-full top-0 ml-4");
+  it("uses Radix dropdown primitives for toolbar submenus", () => {
+    expect(projectEditorSource).toContain("DropdownMenu");
+    expect(projectEditorSource).toContain("DropdownMenuTrigger");
+    expect(projectEditorSource).toContain("DropdownMenuContent");
+    expect(projectEditorSource).toContain("DropdownMenuItem");
+    expect(projectEditorSource).not.toContain("createPortal");
+    expect(projectEditorSource).not.toContain("clash-canvas-toolbar-flyout-layer");
+    expect(projectEditorSource).not.toContain("activeMenuPosition");
+    expect(projectEditorSource).not.toContain("toolbarFlyoutRef");
+    expect(projectEditorSource).not.toContain("shouldDismissToolbarMenu");
   });
 
   it("does not let the menu surface override fixed flyout positioning", () => {

@@ -1,6 +1,6 @@
 
 import { useCallback, useState, useEffect, useRef, useMemo } from 'react';
-import { createPortal, flushSync } from 'react-dom';
+import { flushSync } from 'react-dom';
 import {
     ReactFlow,
     Background,
@@ -21,7 +21,7 @@ import {
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type AppNode = Node<Record<string, any>>;
 import '@xyflow/react/dist/style.css';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion } from 'framer-motion';
 import {
     FilmSlate,
     TextT,
@@ -102,8 +102,8 @@ import { DESKTOP_TAB_TITLE_EVENT, type DesktopTabTitleEventDetail } from '@clash
 import { buildFallbackCanvasFromAssets } from '@clash/web-ui/lib/projectFallbackCanvas';
 import { visiblePresenceClients } from '@clash/web-ui/lib/presenceVisibility';
 import { sanitizeNodesForReactFlow } from '@clash/web-ui/lib/canvasNodeOrder';
-import { shouldDismissToolbarMenu, shouldDismissToolbarMenuOnKey } from './toolbarDismiss';
 import UserControls from './UserControls';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from './ui/dropdown-menu';
 
 const CHILD_NODE_Z_INDEX_BASE = 1000;
 const DEFAULT_COPILOT_PANEL_FRACTION = 1 / 3;
@@ -334,9 +334,6 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
         });
     }, [setNodesInternal]);
     const [activeMenu, setActiveMenu] = useState<string | null>(null);
-    const toolbarRef = useRef<HTMLDivElement>(null);
-    const toolbarFlyoutRef = useRef<HTMLDivElement>(null);
-    const [activeMenuPosition, setActiveMenuPosition] = useState({ top: 0, left: 0 });
     const [projectName, setProjectName] = useState(project.name);
     const location = useLocation();
     const [showDebugIds, setShowDebugIds] = useState(false);
@@ -352,36 +349,6 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
         };
         window.dispatchEvent(new CustomEvent(DESKTOP_TAB_TITLE_EVENT, { detail }));
     }, [location.pathname, project.name, projectName]);
-
-    useEffect(() => {
-        if (!activeMenu) return;
-
-        const handlePointerDown = (event: PointerEvent) => {
-            if (shouldDismissToolbarMenu({ activeMenu, toolbarRoot: toolbarRef.current, flyoutRoot: toolbarFlyoutRef.current, target: event.target })) {
-                setActiveMenu(null);
-            }
-        };
-        const handleFocusIn = (event: FocusEvent) => {
-            if (shouldDismissToolbarMenu({ activeMenu, toolbarRoot: toolbarRef.current, flyoutRoot: toolbarFlyoutRef.current, target: event.target })) {
-                setActiveMenu(null);
-            }
-        };
-        const handleKeyDown = (event: KeyboardEvent) => {
-            if (shouldDismissToolbarMenuOnKey(activeMenu, event.key)) {
-                setActiveMenu(null);
-            }
-        };
-
-        document.addEventListener('pointerdown', handlePointerDown, true);
-        document.addEventListener('focusin', handleFocusIn);
-        document.addEventListener('keydown', handleKeyDown);
-
-        return () => {
-            document.removeEventListener('pointerdown', handlePointerDown, true);
-            document.removeEventListener('focusin', handleFocusIn);
-            document.removeEventListener('keydown', handleKeyDown);
-        };
-    }, [activeMenu]);
 
     // Collaboration visibility: presence + activity
     const [presenceClients, setPresenceClients] = useState<PresenceClient[]>([]);
@@ -1424,9 +1391,6 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
         { id: 'group', label: 'Group', icon: Square },
         { id: 'text', label: 'Text', icon: TextT },
     ];
-    const activeToolbarMenu = toolbarMenu.find((item) => item.id === activeMenu && 'items' in item) as
-        | { id: string; label: string; items: Array<{ id: string; label: string; icon: React.ComponentType<any> }> }
-        | undefined;
 
     const addNode = useCallback((type: string, extraData: any = {}) => {
         let nodeType = type;
@@ -2501,7 +2465,6 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
                                 the bottom-right ChatbotCopilot popover and any modal
                                 Dialog (z-[70]). */}
                             <motion.div
-                                ref={toolbarRef}
                                 className="absolute left-6 top-1/2 -translate-y-1/2 z-10 flex flex-col items-start gap-2 pointer-events-none"
                                 initial={{ opacity: 0, x: -8, scale: 0.98 }}
                                 animate={{ opacity: 1, x: 0, scale: 1 }}
@@ -2530,24 +2493,66 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
                                     {toolbarMenu.map((item) => {
                                         const Icon = item.icon;
                                         const isActive = activeMenu === item.id;
-                                        // Check if item has 'items' property (submenu)
-                                        const hasSubmenu = 'items' in item;
+                                        const submenuItems = 'items' in item ? item.items : undefined;
+
+                                        if (submenuItems) {
+                                            return (
+                                                <DropdownMenu
+                                                    key={item.id}
+                                                    open={isActive}
+                                                    onOpenChange={(open) => setActiveMenu(open ? item.id : null)}
+                                                >
+                                                    <DropdownMenuTrigger asChild>
+                                                        <motion.button
+                                                            className={`clash-toolbar-button flex h-10 w-10 items-center justify-center rounded-xl transition-all ${
+                                                                isActive
+                                                                    ? "clash-toolbar-button-active text-white"
+                                                                    : "bg-transparent text-stone-500 hover:text-slate-950"
+                                                            }`}
+                                                            whileHover={{ scale: 1.05 }}
+                                                            whileTap={{ scale: 0.95 }}
+                                                            aria-label={item.label}
+                                                            title={item.label}
+                                                        >
+                                                            <Icon className="h-5 w-5" weight={isActive ? "fill" : "regular"} />
+                                                        </motion.button>
+                                                    </DropdownMenuTrigger>
+                                                    <DropdownMenuContent
+                                                        aria-label={`${item.label} tools`}
+                                                        side="right"
+                                                        align="start"
+                                                        sideOffset={16}
+                                                        className="clash-canvas-menu-surface flex min-w-[140px] flex-col gap-1 rounded-2xl p-2"
+                                                    >
+                                                        <div className="mb-1 px-2 py-1 text-xs font-bold uppercase tracking-wider text-stone-400">
+                                                            {item.label}
+                                                        </div>
+                                                        {submenuItems.map((subItem) => {
+                                                            const SubIcon = subItem.icon;
+                                                            return (
+                                                                <DropdownMenuItem
+                                                                    key={subItem.id}
+                                                                    onSelect={() => {
+                                                                        handleToolClick(subItem.id);
+                                                                    }}
+                                                                    className="clash-input-icon-button gap-3 rounded-xl px-3 py-2 text-sm text-stone-600 transition-colors hover:text-slate-950"
+                                                                >
+                                                                    <SubIcon className="h-4 w-4" />
+                                                                    <span className="whitespace-nowrap">{subItem.label}</span>
+                                                                </DropdownMenuItem>
+                                                            );
+                                                        })}
+                                                    </DropdownMenuContent>
+                                                </DropdownMenu>
+                                            );
+                                        }
 
                                         return (
-                                            <div key={item.id} className="relative">
+                                            <div key={item.id}>
                                                 <motion.button
-                                                    onClick={(event) => {
-                                                        if (hasSubmenu) {
-                                                            const buttonRect = event.currentTarget.getBoundingClientRect();
-                                                            setActiveMenuPosition({
-                                                                top: buttonRect.top,
-                                                                left: buttonRect.right + 16,
-                                                            });
-                                                            setActiveMenu(isActive ? null : item.id);
-                                                        } else {
-                                                            handleToolClick(item.id);
-                                                            setActiveMenu(null);
-                                                        }
+                                                    onClick={() => {
+                                                        handleToolClick(item.id);
+                                                        setActiveMenu(null);
                                                     }}
                                                     className={`clash-toolbar-button flex h-10 w-10 items-center justify-center rounded-xl transition-all ${
                                                         isActive
@@ -2561,7 +2566,6 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
                                                 >
                                                     <Icon className="h-5 w-5" weight={isActive ? "fill" : "regular"} />
                                                 </motion.button>
-
                                             </div>
                                         );
                                     })}
@@ -2633,43 +2637,6 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
                                           </>
                                       )}
                                   </div>
-                                  {typeof document !== 'undefined' && createPortal(
-                                      <AnimatePresence>
-                                          {activeToolbarMenu && (
-                                              <motion.div
-                                                  ref={toolbarFlyoutRef}
-                                                  initial={{ opacity: 0, x: 8, scale: 0.96 }}
-                                                  animate={{ opacity: 1, x: 0, scale: 1 }}
-                                                  exit={{ opacity: 0, x: 8, scale: 0.96 }}
-                                                  style={{ top: activeMenuPosition.top, left: activeMenuPosition.left }}
-                                                  className="clash-canvas-toolbar-flyout-layer clash-canvas-menu-surface pointer-events-auto fixed flex flex-col gap-1 rounded-2xl p-2 min-w-[140px] z-50"
-                                              >
-                                                  <div className="px-2 py-1 text-xs font-bold text-stone-400 uppercase tracking-wider mb-1">
-                                                      {activeToolbarMenu.label}
-                                                  </div>
-                                                  {activeToolbarMenu.items.map((subItem) => {
-                                                      const SubIcon = subItem.icon;
-                                                      return (
-                                                          <motion.button
-                                                              key={subItem.id}
-                                                              onClick={(e) => {
-                                                                  e.stopPropagation();
-                                                                  handleToolClick(subItem.id);
-                                                                  setActiveMenu(null);
-                                                              }}
-                                                              className="clash-input-icon-button flex items-center gap-3 rounded-xl px-3 py-2 text-sm text-stone-600 hover:text-slate-950 transition-colors text-left whitespace-nowrap"
-                                                              whileHover={{ x: 2 }}
-                                                          >
-                                                              <SubIcon className="h-4 w-4" />
-                                                              <span className="whitespace-nowrap">{subItem.label}</span>
-                                                          </motion.button>
-                                                      );
-                                                  })}
-                                              </motion.div>
-                                          )}
-                                      </AnimatePresence>,
-                                      document.body
-                                  )}
                              </motion.div>
 
                             <div
