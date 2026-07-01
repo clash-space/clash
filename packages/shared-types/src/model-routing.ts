@@ -118,6 +118,8 @@ export interface ProviderAccountAvailability {
   enabled?: boolean;
   configuredCredentials?: string[];
   availableOAuth?: ProviderOAuthId[];
+  /** When set, this account only serves the listed public model card ids. Undefined means all models declared by the provider. */
+  supportedModelIds?: string[];
   /** Lower numbers win within equal weights. */
   priority?: number;
   /** Higher numbers win before declaration order. */
@@ -560,6 +562,7 @@ function matchesProviderAccount(route: ModelUpstreamRoute, provider: ProviderAcc
   if (provider.providerId !== providerIdForRoute(route)) return false;
   if (provider.upstreamId && provider.upstreamId !== route.upstreamId) return false;
   if (provider.region && route.region && provider.region !== route.region) return false;
+  if (provider.supportedModelIds?.length && !provider.supportedModelIds.includes(route.modelCode)) return false;
   return true;
 }
 

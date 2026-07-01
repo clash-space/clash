@@ -1189,6 +1189,14 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
         message: `${displayProviderName(account)} does not support ${modelName}.`,
       } satisfies ModelProviderTestResult);
     }
+    if (account.supportedModelIds?.length && !account.supportedModelIds.includes(modelId)) {
+      return c.json({
+        ok: false,
+        ...baseResult,
+        unsupported: true,
+        message: `${displayProviderName(account)} is not enabled for ${modelName}.`,
+      } satisfies ModelProviderTestResult);
+    }
 
     const credentialKeys = configuredCredentialKeys(account);
     const missingCredentials = support.requiredCredentials.filter((credential) => !credentialKeys.has(credential));

@@ -61,6 +61,7 @@ class MemoryD1 {
                 weight,
                 encryptedCredentials,
                 configuredCredentials,
+                supportedModelIds,
                 updatedAt,
                 userId,
                 id,
@@ -77,6 +78,7 @@ class MemoryD1 {
                   weight,
                   encrypted_credentials: encryptedCredentials,
                   configured_credentials: configuredCredentials,
+                  supported_model_ids: supportedModelIds,
                   updated_at: updatedAt,
                 });
               }
@@ -94,6 +96,7 @@ class MemoryD1 {
               weight,
               encryptedCredentials,
               configuredCredentials,
+              supportedModelIds,
               createdAt,
               updatedAt,
             ] = args;
@@ -109,6 +112,7 @@ class MemoryD1 {
               weight,
               encrypted_credentials: encryptedCredentials,
               configured_credentials: configuredCredentials,
+              supported_model_ids: supportedModelIds,
               created_at: createdAt,
               updated_at: updatedAt,
             });
@@ -184,6 +188,47 @@ describe("provider accounts", () => {
         requiredCredentials: ["apiKey"],
       }),
     ).resolves.toMatchObject({ apiKey: "fast" });
+  });
+
+  it("stores and exposes per-account supported model filters", async () => {
+    const db = new MemoryD1();
+
+    await upsertProviderAccount(
+      { DB: db as unknown as D1Database, ACTION_SECRET_KEY: "secret-key" },
+      "user-1",
+      {
+        id: "mock-primary",
+        providerId: "mock",
+        upstreamId: "mock",
+        supportedModelIds: ["nano-banana-2", "gpt-image-2"],
+      },
+    );
+
+    expect(db.rows[0].supported_model_ids).toBe(JSON.stringify(["nano-banana-2", "gpt-image-2"]));
+    await expect(listProviderAccounts(db as unknown as D1Database, "user-1")).resolves.toEqual([
+      expect.objectContaining({
+        id: "mock-primary",
+        providerId: "mock",
+        upstreamId: "mock",
+        supportedModelIds: ["nano-banana-2", "gpt-image-2"],
+      }),
+    ]);
+
+    await upsertProviderAccount(
+      { DB: db as unknown as D1Database, ACTION_SECRET_KEY: "secret-key" },
+      "user-1",
+      {
+        id: "mock-primary",
+        providerId: "mock",
+        upstreamId: "mock",
+        supportedModelIds: [],
+      },
+    );
+
+    expect(db.rows[0].supported_model_ids).toBeNull();
+    await expect(listProviderAccounts(db as unknown as D1Database, "user-1")).resolves.toEqual([
+      expect.not.objectContaining({ supportedModelIds: expect.any(Array) }),
+    ]);
   });
 
   it("skips disabled higher-priority accounts when loading provider credentials", async () => {

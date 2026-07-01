@@ -218,6 +218,60 @@ async function exerciseProviderModelRouting(cdp, { webOrigin, apiOrigin }) {
   );
   await click(
     cdp,
+    `document.querySelector("button[aria-label='Model access']")`,
+    "Open model access menu",
+  );
+  await click(
+    cdp,
+    `([...document.querySelectorAll("[role='menuitemradio']")].find((item) => (item.innerText || item.textContent || "").includes("Specific models")))`,
+    "Select specific model access",
+  );
+  await waitFor(
+    cdp,
+    `!!document.querySelector("button[aria-label='Add supported model']")`,
+    "specific model access controls",
+  );
+  await click(
+    cdp,
+    `document.querySelector("button[aria-label='Add supported model']")`,
+    "Open supported model picker",
+  );
+  await click(
+    cdp,
+    `([...document.querySelectorAll("[role='menuitemradio']")].find((item) => (item.innerText || item.textContent || "").includes("GPT Image 2")))`,
+    "Add GPT Image 2 to mock account access",
+  );
+  await waitFor(
+    cdp,
+    `document.body.innerText.includes("GPT Image 2") && (() => {
+      const editor = document.querySelector("[aria-label='Mock primary Mock Provider API key']");
+      return !![...(editor?.querySelectorAll("button") ?? [])].find((button) => (button.innerText || button.textContent || "").trim() === "Save" && !button.disabled);
+    })()`,
+    "mock provider model allowlist draft",
+  );
+  await click(
+    cdp,
+    `(() => {
+      const editor = document.querySelector("[aria-label='Mock primary Mock Provider API key']");
+      return [...(editor?.querySelectorAll("button") ?? [])].find((button) => (button.innerText || button.textContent || "").trim() === "Save" && !button.disabled);
+    })()`,
+    "Save mock provider model allowlist",
+  );
+  await waitFor(
+    cdp,
+    `fetch(${JSON.stringify(`${apiOrigin}/api/v1/model-providers`)})
+      .then((res) => res.json())
+      .then((json) => json.providers?.some((provider) =>
+        provider.id === "mock-primary" &&
+        Array.isArray(provider.supportedModelIds) &&
+        provider.supportedModelIds.length === 1 &&
+        provider.supportedModelIds[0] === "gpt-image-2"
+      ))
+      .catch(() => false)`,
+    "mock provider model allowlist saved",
+  );
+  await click(
+    cdp,
     `document.querySelector("a[aria-label='View supported models']")`,
     "View mock supported models",
   );

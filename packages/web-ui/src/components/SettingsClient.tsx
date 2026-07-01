@@ -1458,9 +1458,20 @@ type ProviderDraft = {
     apiKeys?: Record<string, string>;
     baseUrl?: string;
     label?: string;
+    modelAccessMode?: 'all' | 'specific';
+    supportedModelIds?: string[];
 };
 
 const HIDDEN_CREDENTIAL_MASK = '•••• •••• ••••';
+
+const MODEL_ACCESS_OPTIONS: SelectOption<'all' | 'specific'>[] = [
+    { value: 'all', label: 'All models', description: 'Use every model this provider supports.' },
+    { value: 'specific', label: 'Specific models', description: 'Restrict this account to selected model cards.' },
+];
+
+function sameStringArray(a: readonly string[], b: readonly string[]): boolean {
+    return a.length === b.length && a.every((value, index) => value === b[index]);
+}
 
 function providerAccountSort(a: ModelProviderAccountInfo, b: ModelProviderAccountInfo): number {
     const priority = (a.priority ?? 1000) - (b.priority ?? 1000);
@@ -1766,7 +1777,13 @@ function ModelRoutingSection({
             .map((credential) => [credential.key, draft.apiKeys?.[credential.key]?.trim() ?? ''] as const)
             .filter(([, value]) => value.length > 0);
         const label = options.label?.trim();
-        if (credentialDrafts.length === 0 && !draft.baseUrl?.trim() && !label) return;
+        const hasModelAccessDraft = draft.modelAccessMode !== undefined || draft.supportedModelIds !== undefined;
+        const currentModelAccessMode = (options.account?.supportedModelIds ?? []).length > 0 ? 'specific' : 'all';
+        const nextModelAccessMode = draft.modelAccessMode ?? currentModelAccessMode;
+        const nextSupportedModelIds = nextModelAccessMode === 'all'
+            ? []
+            : draft.supportedModelIds ?? options.account?.supportedModelIds ?? [];
+        if (credentialDrafts.length === 0 && !draft.baseUrl?.trim() && !label && !hasModelAccessDraft) return;
         setSavingProviderKey(key);
         try {
             const credentials = Object.fromEntries(credentialDrafts);
@@ -1776,6 +1793,7 @@ function ModelRoutingSection({
                 ...(options.createAccount ? { id: createProviderAccountId(key) } : {}),
                 ...(label ? { label } : {}),
                 ...(Object.keys(credentials).length > 0 ? { credentials } : {}),
+                ...(hasModelAccessDraft ? { supportedModelIds: nextSupportedModelIds } : {}),
             });
             setProviderDrafts((prev) => ({ ...prev, [key]: {} }));
             return true;
@@ -2269,7 +2287,18 @@ function ModelRoutingSection({
         const isAddingPrioritizedKey = addingProviderKey === row.key;
         const newKeyNumber = savedAccounts.length + 1;
         const hasCredentialDraft = credentialFields.some((credential) => draft.apiKeys?.[credential.key]?.trim()) || !!draft.baseUrl?.trim();
-        const hasProviderDraft = hasCredentialDraft || (!!editingAccount && !!draft.label?.trim());
+        const editingSupportedModelIds = editingAccount?.supportedModelIds ?? [];
+        const editingModelAccessMode: 'all' | 'specific' = editingSupportedModelIds.length > 0 ? 'specific' : 'all';
+        const draftSupportedModelIds = draft.supportedModelIds ?? editingSupportedModelIds;
+        const modelAccessMode: 'all' | 'specific' = draft.modelAccessMode ?? editingModelAccessMode;
+        const hasModelAccessDraft = (
+            draft.modelAccessMode !== undefined && draft.modelAccessMode !== editingModelAccessMode
+        ) || (
+            draft.supportedModelIds !== undefined && !sameStringArray(draft.supportedModelIds, editingSupportedModelIds)
+        );
+        const hasProviderDraft = hasCredentialDraft || (!!editingAccount && !!draft.label?.trim()) || hasModelAccessDraft;
+        const selectedSupportedModelIds = new Set(draftSupportedModelIds);
+        const modelAccessInvalid = modelAccessMode === 'specific' && draftSupportedModelIds.length === 0;
         const updateProviderDraft = (patch: Partial<ProviderDraft>) => setProviderDrafts((prev) => ({
             ...prev,
             [row.key]: {
@@ -2287,6 +2316,7 @@ function ModelRoutingSection({
                 },
             },
         }));
+        const setSupportedModelIdsDraft = (ids: string[]) => updateProviderDraft({ modelAccessMode: 'specific', supportedModelIds: ids });
         const clearProviderDraft = () => setProviderDrafts((prev) => ({ ...prev, [row.key]: {} }));
         const closeProviderKeyEditor = () => {
             setAddingProviderKey(null);
@@ -2310,6 +2340,7 @@ function ModelRoutingSection({
             if (!setup || !hasProviderDraft) return false;
             const createAccount = isAddingPrioritizedKey && savedAccounts.length > 0;
             if (isAddingPrioritizedKey && !hasCredentialDraft) return false;
+            if (modelAccessInvalid) return false;
             const saved = await commitProviderDraft(row.key, setup, {
                 createAccount,
                 account: editingAccount ?? undefined,
@@ -2334,6 +2365,10 @@ function ModelRoutingSection({
             label: model.name,
             description: model.id,
         }));
+        const supportedModelOptions = providerTestOptions.filter((option) => !selectedSupportedModelIds.has(option.value));
+        const selectedSupportedModels = draftSupportedModelIds
+            .map((id) => row.support?.models.find((model) => model.id === id))
+            .filter((model): model is NonNullable<typeof row.support>['models'][number] => !!model);
         const defaultProviderTestModelId = providerTestOptions.find((option) => option.value === 'nano-banana-2')?.value ?? providerTestOptions[0]?.value ?? '';
         const selectedProviderTestModelId = providerTestModelIds[providerTestKey] ?? defaultProviderTestModelId;
         const providerTestResult = providerTestResults[providerTestKey];
@@ -2444,6 +2479,71 @@ function ModelRoutingSection({
                             />
                         </label>
                     )}
+                    {providerTestOptions.length > 0 && (
+                        <div className="rounded-xl border border-warm-border bg-warm-muted/20 p-3">
+                            <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_180px] sm:items-start">
+                                <div className="min-w-0">
+                                    <div className="text-xs font-semibold text-slate-900 dark:text-slate-50">Model access</div>
+                                    <p className="mt-1 text-xs text-stone-500 dark:text-stone-400">
+                                        Choose which supported model cards this account can serve.
+                                    </p>
+                                </div>
+                                <SelectMenu
+                                    value={modelAccessMode}
+                                    options={MODEL_ACCESS_OPTIONS}
+                                    onValueChange={(value) => {
+                                        updateProviderDraft({
+                                            modelAccessMode: value,
+                                            supportedModelIds: value === 'specific' ? [...draftSupportedModelIds] : [],
+                                        });
+                                    }}
+                                    ariaLabel="Model access"
+                                    variant="field"
+                                    triggerClassName={settingsSelectTriggerClass}
+                                    menuWidth="trigger"
+                                />
+                            </div>
+                            {modelAccessMode === 'specific' && (
+                                <div className="mt-3 space-y-3">
+                                    {selectedSupportedModels.length > 0 ? (
+                                        <div className="flex flex-wrap gap-2">
+                                            {selectedSupportedModels.map((model) => (
+                                                <span
+                                                    key={model.id}
+                                                    className="inline-flex max-w-full items-center gap-1.5 rounded-lg border border-warm-border bg-warm-surface px-2.5 py-1 text-xs font-medium text-slate-800 dark:text-slate-100"
+                                                >
+                                                    <span className="truncate">{model.name}</span>
+                                                    <button
+                                                        type="button"
+                                                        aria-label={`Remove ${model.name}`}
+                                                        onClick={() => setSupportedModelIdsDraft(draftSupportedModelIds.filter((id) => id !== model.id))}
+                                                        className="rounded p-0.5 text-stone-400 transition-colors hover:bg-warm-muted hover:text-slate-700 dark:hover:text-slate-100"
+                                                    >
+                                                        <X className="h-3.5 w-3.5" aria-hidden="true" />
+                                                    </button>
+                                                </span>
+                                            ))}
+                                        </div>
+                                    ) : (
+                                        <p className="text-xs font-medium text-amber-700 dark:text-amber-300">
+                                            Add at least one model before saving this restriction.
+                                        </p>
+                                    )}
+                                    <SelectMenu
+                                        value=""
+                                        options={supportedModelOptions}
+                                        onValueChange={(value) => setSupportedModelIdsDraft([...draftSupportedModelIds, String(value)])}
+                                        ariaLabel="Add supported model"
+                                        placeholder="Add model"
+                                        triggerLabel="Add model"
+                                        variant="field"
+                                        triggerClassName={settingsSelectTriggerClass}
+                                        menuWidth="trigger"
+                                    />
+                                </div>
+                            )}
+                        </div>
+                    )}
                     {canRunProviderTest && (
                         <div className="rounded-xl border border-warm-border bg-warm-muted/25 p-3">
                             <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
@@ -2501,7 +2601,7 @@ function ModelRoutingSection({
                         <button
                             type="button"
                             onClick={() => { void saveDraft(); }}
-                            disabled={!hasProviderDraft || savingProviderKey === row.key || saving}
+                            disabled={!hasProviderDraft || modelAccessInvalid || savingProviderKey === row.key || saving}
                             className={settingsSmallPrimaryButtonClass}
                         >
                             {savingProviderKey === row.key ? 'Saving...' : 'Save'}

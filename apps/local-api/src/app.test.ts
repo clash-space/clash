@@ -439,6 +439,72 @@ describe("local API app", () => {
     });
   });
 
+  it("persists provider account model filters and enforces them in catalog and tests", async () => {
+    const app = createLocalApiApp({ dataDir, userId: "local-user" });
+
+    const saved = await app.request("/api/v1/model-providers", {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        providers: [
+          {
+            id: "mock-primary",
+            providerId: "mock",
+            upstreamId: "mock",
+            enabled: true,
+            priority: 1,
+            supportedModelIds: ["nano-banana-2"],
+          },
+        ],
+      }),
+    });
+
+    expect(saved.status).toBe(200);
+    const savedJson = (await saved.json()) as { providers: Array<Record<string, unknown>> };
+    expect(savedJson.providers).toEqual([
+      expect.objectContaining({
+        id: "mock-primary",
+        providerId: "mock",
+        upstreamId: "mock",
+        supportedModelIds: ["nano-banana-2"],
+      }),
+    ]);
+
+    const reopened = createLocalApiApp({ dataDir, userId: "local-user" });
+    const catalog = await reopened.request("/api/v1/models/catalog");
+    const catalogJson = (await catalog.json()) as {
+      models: Array<{
+        model: { id: string };
+        tier: string;
+        selectedRoute?: { providerId?: string; upstreamId?: string } | null;
+      }>;
+    };
+    expect(catalogJson.models.find((entry) => entry.model.id === "nano-banana-2")).toMatchObject({
+      tier: "available",
+      selectedRoute: { providerId: "mock", upstreamId: "mock" },
+    });
+    expect(catalogJson.models.find((entry) => entry.model.id === "gpt-image-2")?.selectedRoute?.upstreamId).not.toBe("mock");
+
+    const rejected = await reopened.request("/api/v1/model-providers/test", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        provider: { id: "mock-primary", providerId: "mock", upstreamId: "mock", enabled: true },
+        modelId: "gpt-image-2",
+      }),
+    });
+
+    expect(rejected.status).toBe(200);
+    expect(await rejected.json()).toEqual({
+      ok: false,
+      providerId: "mock",
+      upstreamId: "mock",
+      modelId: "gpt-image-2",
+      unsupported: true,
+      message: "Mock provider is not enabled for GPT Image 2.",
+    });
+  });
+
   it("manages provider OAuth device flow and exposes connected providers", async () => {
     const oauth = {
       dreamina: {

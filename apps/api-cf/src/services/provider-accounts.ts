@@ -13,6 +13,7 @@ export interface ProviderAccountInput {
   enabled?: boolean;
   priority?: number;
   weight?: number;
+  supportedModelIds?: string[];
   credentials?: Record<string, string>;
 }
 
@@ -42,6 +43,7 @@ type ProviderAccountRow = {
   weight: number | null;
   encrypted_credentials: string | null;
   configured_credentials: string | null;
+  supported_model_ids: string | null;
   created_at: number | null;
   updated_at: number | null;
 };
@@ -69,6 +71,19 @@ function cleanCredentials(value: unknown): Record<string, string> | undefined {
   return entries.length ? Object.fromEntries(entries) : undefined;
 }
 
+function cleanStringArray(value: unknown): string[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const seen = new Set<string>();
+  const values: string[] = [];
+  for (const item of value) {
+    const normalized = trimString(item);
+    if (!normalized || seen.has(normalized)) continue;
+    seen.add(normalized);
+    values.push(normalized);
+  }
+  return values;
+}
+
 function configuredCredentialKeys(credentials: Record<string, string> | undefined): string[] {
   return Object.entries(credentials ?? {})
     .filter(([, value]) => value.trim().length > 0)
@@ -85,6 +100,16 @@ function parseConfiguredCredentials(value: string | null): string[] {
       : [];
   } catch {
     return [];
+  }
+}
+
+function parseSupportedModelIds(value: string | null): string[] | undefined {
+  if (!value) return undefined;
+  try {
+    const parsed = cleanStringArray(JSON.parse(value));
+    return parsed?.length ? parsed : undefined;
+  } catch {
+    return undefined;
   }
 }
 
@@ -144,6 +169,7 @@ export function normalizeProviderAccountInput(value: unknown): ProviderAccountIn
   const label = trimString(raw.label);
   const priority = numberValue(raw.priority);
   const weight = numberValue(raw.weight);
+  const supportedModelIds = cleanStringArray(raw.supportedModelIds);
   const credentials = cleanCredentials(raw.credentials);
   return {
     providerId,
@@ -154,11 +180,13 @@ export function normalizeProviderAccountInput(value: unknown): ProviderAccountIn
     enabled: raw.enabled === undefined ? true : raw.enabled !== false,
     ...(priority !== undefined ? { priority } : {}),
     ...(weight !== undefined ? { weight } : {}),
+    ...(supportedModelIds !== undefined ? { supportedModelIds } : {}),
     ...(credentials ? { credentials } : {}),
   };
 }
 
 function publicRow(row: ProviderAccountRow): PublicProviderAccount {
+  const supportedModelIds = parseSupportedModelIds(row.supported_model_ids);
   return {
     id: row.id,
     providerId: row.provider_id as ProviderAccountId,
@@ -167,6 +195,7 @@ function publicRow(row: ProviderAccountRow): PublicProviderAccount {
     ...(row.label ? { label: row.label } : {}),
     enabled: row.enabled !== 0,
     configuredCredentials: parseConfiguredCredentials(row.configured_credentials),
+    ...(supportedModelIds ? { supportedModelIds } : {}),
     ...(row.priority !== null && row.priority !== undefined ? { priority: row.priority } : {}),
     ...(row.weight !== null && row.weight !== undefined ? { weight: row.weight } : {}),
     createdAt: row.created_at,
@@ -192,7 +221,7 @@ async function getAccountRow(db: D1Database, userId: string, id: string): Promis
   const row = await db
     .prepare(
       `SELECT id, user_id, provider_id, upstream_id, region, label, enabled, priority, weight,
-              encrypted_credentials, configured_credentials, created_at, updated_at
+              encrypted_credentials, configured_credentials, supported_model_ids, created_at, updated_at
        FROM provider_account
        WHERE user_id = ? AND id = ?`,
     )
@@ -205,7 +234,7 @@ export async function listProviderAccounts(db: D1Database, userId: string): Prom
   const result = await db
     .prepare(
       `SELECT id, user_id, provider_id, upstream_id, region, label, enabled, priority, weight,
-              encrypted_credentials, configured_credentials, created_at, updated_at
+              encrypted_credentials, configured_credentials, supported_model_ids, created_at, updated_at
        FROM provider_account
        WHERE user_id = ?
        ORDER BY provider_id, COALESCE(upstream_id, ''), COALESCE(region, ''), COALESCE(priority, 1000), updated_at DESC`,
@@ -226,6 +255,9 @@ export async function upsertProviderAccount(
   const secret = input.credentials ? requireCredentialSecret(env.ACTION_SECRET_KEY) : undefined;
   let encryptedCredentials = existing?.encrypted_credentials ?? null;
   let configuredCredentials = existing?.configured_credentials ?? null;
+  const supportedModelIds = input.supportedModelIds !== undefined
+    ? input.supportedModelIds.length ? JSON.stringify(input.supportedModelIds) : null
+    : existing?.supported_model_ids ?? null;
   if (input.credentials && secret) {
     const previous = await decryptCredentials(existing?.encrypted_credentials ?? null, secret);
     const merged = { ...previous, ...input.credentials };
@@ -238,7 +270,7 @@ export async function upsertProviderAccount(
       .prepare(
         `UPDATE provider_account
          SET provider_id = ?, upstream_id = ?, region = ?, label = ?, enabled = ?, priority = ?, weight = ?,
-             encrypted_credentials = ?, configured_credentials = ?, updated_at = ?
+             encrypted_credentials = ?, configured_credentials = ?, supported_model_ids = ?, updated_at = ?
          WHERE user_id = ? AND id = ?`,
       )
       .bind(
@@ -251,6 +283,7 @@ export async function upsertProviderAccount(
         input.weight ?? null,
         encryptedCredentials,
         configuredCredentials,
+        supportedModelIds,
         now,
         userId,
         existing.id,
@@ -266,8 +299,8 @@ export async function upsertProviderAccount(
     .prepare(
       `INSERT INTO provider_account
        (id, user_id, provider_id, upstream_id, region, label, enabled, priority, weight,
-        encrypted_credentials, configured_credentials, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        encrypted_credentials, configured_credentials, supported_model_ids, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
     .bind(
       id,
@@ -281,6 +314,7 @@ export async function upsertProviderAccount(
       input.weight ?? null,
       encryptedCredentials,
       configuredCredentials,
+      supportedModelIds,
       now,
       now,
     )
@@ -311,7 +345,7 @@ export async function getProviderCredentials(
   const result = await env.DB
     .prepare(
       `SELECT id, user_id, provider_id, upstream_id, region, label, enabled, priority, weight,
-              encrypted_credentials, configured_credentials, created_at, updated_at
+              encrypted_credentials, configured_credentials, supported_model_ids, created_at, updated_at
        FROM provider_account
        WHERE user_id = ? AND provider_id = ? AND enabled = 1
          AND (? IS NULL OR upstream_id = ?)

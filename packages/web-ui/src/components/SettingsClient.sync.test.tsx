@@ -2660,6 +2660,63 @@ describe("SettingsClient model routing", () => {
     expect(await within(editor).findByText("Mock provider can run Nano Banana 2.")).toBeTruthy();
   });
 
+  it("saves a provider account model allowlist from the config editor", async () => {
+    const actions = await import("@clash/web-ui/lib/clientActions");
+    vi.mocked(actions.updateModelProviders).mockImplementation(async (providers) => providers);
+    vi.mocked(actions.listModelCatalog).mockResolvedValue([]);
+
+    render(
+      <MemoryRouter>
+        <SettingsClient
+          initialTokens={[]}
+          initialVariables={[]}
+          initialActions={[]}
+          initialSkills={[]}
+          activeSection="providers"
+          embedded
+          initialModelProviders={[
+            {
+              id: "mock-primary",
+              label: "Mock primary",
+              providerId: "mock",
+              upstreamId: "mock",
+              enabled: true,
+              priority: 10,
+            },
+          ]}
+          initialModelCatalog={[]}
+        />
+      </MemoryRouter>,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Open Mock Provider BYOK settings" }));
+    const providerConfigs = screen.getByRole("list", { name: "Mock Provider prioritized keys" });
+    const providerConfig = within(providerConfigs).getByText("Mock primary").closest("li") as HTMLElement;
+    fireEvent.click(within(providerConfig).getByText("Mock primary"));
+
+    const editor = within(providerConfig).getByRole("group", { name: "Mock primary Mock Provider API key" });
+    expect(within(editor).getByText("Model access")).toBeTruthy();
+    fireEvent.click(within(editor).getByRole("button", { name: "Model access" }));
+    fireEvent.click(screen.getByRole("menuitemradio", { name: /Specific models/ }));
+    fireEvent.click(within(editor).getByRole("button", { name: "Add supported model" }));
+    fireEvent.click(screen.getByRole("menuitemradio", { name: /GPT Image 2/ }));
+    expect(within(editor).getByText("GPT Image 2")).toBeTruthy();
+    fireEvent.click(within(editor).getByRole("button", { name: "Save" }));
+
+    await waitFor(() => {
+      expect(actions.updateModelProviders).toHaveBeenCalledWith(
+        expect.arrayContaining([
+          expect.objectContaining({
+            id: "mock-primary",
+            providerId: "mock",
+            upstreamId: "mock",
+            supportedModelIds: ["gpt-image-2"],
+          }),
+        ]),
+      );
+    });
+  });
+
   it("configures multiple OpenAI provider keys inline", async () => {
     const actions = await import("@clash/web-ui/lib/clientActions");
     vi.mocked(actions.updateModelProviders).mockImplementation(async (providers) => providers);

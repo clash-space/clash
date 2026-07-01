@@ -20,9 +20,9 @@
   "scripts": {
     "dev": "tsx watch src/server.ts",
     "start": "tsx src/server.ts",
-    "build": "pnpm --filter @clash-space/cli build && pnpm --filter @clash-space/bridge build && tsc",
+    "build": "pnpm --filter @clash/shared-types build && pnpm --filter @clash-space/cli build && pnpm --filter @clash-space/bridge build && tsc",
     "type-check": "tsc --noEmit",
-    "test": "pnpm --filter @clash-space/cli build && pnpm --filter @clash-space/bridge build && vitest run src",
+    "test": "pnpm --filter @clash/shared-types build && pnpm --filter @clash-space/cli build && pnpm --filter @clash-space/bridge build && vitest run src",
     "test:e2e": "pnpm build && node e2e/daemon-smoke.mjs",
     "test:watch": "vitest src"
   },

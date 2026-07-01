@@ -90,6 +90,15 @@ modelProviderRoutes.post("/model-providers/test", async (c) => {
       message: `${displayProviderName(provider)} does not support ${modelName}.`,
     });
   }
+  const supportedModelIds = provider.supportedModelIds ?? stored?.supportedModelIds;
+  if (supportedModelIds?.length && !supportedModelIds.includes(modelId)) {
+    return c.json({
+      ok: false,
+      ...baseResult,
+      unsupported: true,
+      message: `${displayProviderName(provider)} is not enabled for ${modelName}.`,
+    });
+  }
   const missingCredentials = support.requiredCredentials.filter((credential) => !configuredCredentials.has(credential));
   if (missingCredentials.length > 0) {
     return c.json({

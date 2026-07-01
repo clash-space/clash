@@ -412,6 +412,58 @@ describe("model upstream routing", () => {
     ]);
   });
 
+  it("honors per-account supported model filters before provider priority", () => {
+    const route = resolveModelUpstreamRoute({
+      modelCode: "gpt-image-2",
+      kind: "image",
+      configuredProviders: [
+        {
+          providerId: "replicate",
+          upstreamId: "replicate",
+          enabled: true,
+          priority: 1,
+          configuredCredentials: ["apiKey"],
+          supportedModelIds: ["nano-banana-2"],
+        },
+        {
+          providerId: "official",
+          upstreamId: "openai",
+          region: "global",
+          enabled: true,
+          priority: 20,
+          configuredCredentials: ["apiKey"],
+        },
+      ],
+    });
+
+    expect(route).toMatchObject({
+      providerId: "official",
+      upstreamId: "openai",
+      upstreamModel: "gpt-image-2",
+    });
+
+    const allowedRoute = resolveModelUpstreamRoute({
+      modelCode: "nano-banana-2",
+      kind: "image",
+      configuredProviders: [
+        {
+          providerId: "replicate",
+          upstreamId: "replicate",
+          enabled: true,
+          priority: 1,
+          configuredCredentials: ["apiKey"],
+          supportedModelIds: ["nano-banana-2"],
+        },
+      ],
+    });
+
+    expect(allowedRoute).toMatchObject({
+      providerId: "replicate",
+      upstreamId: "replicate",
+      upstreamModel: "google/nano-banana-2",
+    });
+  });
+
   it("uses provider weight before array order for the same model", () => {
     const routes = listModelUpstreamRoutes({
       modelCode: "gpt-image-2",

@@ -91,6 +91,7 @@ export const providerAccounts = sqliteTable(
         weight: integer("weight"),
         encryptedCredentials: text("encrypted_credentials"),
         configuredCredentials: text("configured_credentials"),
+        supportedModelIds: text("supported_model_ids"),
         createdAt: integer("created_at", { mode: "timestamp" }).default(sql`(strftime('%s', 'now'))`),
         updatedAt: integer("updated_at", { mode: "timestamp" }).default(sql`(strftime('%s', 'now'))`),
     },

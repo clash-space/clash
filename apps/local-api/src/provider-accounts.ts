@@ -15,6 +15,7 @@ export interface LocalProviderAccountConfig {
   enabled: boolean;
   priority?: number;
   weight?: number;
+  supportedModelIds?: string[];
   credentials?: Record<string, string>;
   createdAt?: string;
   updatedAt?: string;
@@ -104,6 +105,19 @@ function credentialsField(value: unknown): Record<string, string> | undefined {
   return entries.length ? Object.fromEntries(entries) : undefined;
 }
 
+function stringArrayField(value: unknown): string[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const seen = new Set<string>();
+  const values: string[] = [];
+  for (const item of value) {
+    const normalized = stringField(item);
+    if (!normalized || seen.has(normalized)) continue;
+    seen.add(normalized);
+    values.push(normalized);
+  }
+  return values;
+}
+
 function providerAccountBaseKey(account: Pick<LocalProviderAccountConfig, "providerId" | "upstreamId" | "region">): string {
   return [account.providerId, account.upstreamId ?? "", account.region ?? ""].join(":");
 }
@@ -144,6 +158,7 @@ export function normalizeProviderAccountInput(value: unknown): Omit<LocalProvide
   const region = stringField(raw.region);
   const priority = numberField(raw.priority);
   const weight = numberField(raw.weight);
+  const supportedModelIds = stringArrayField(raw.supportedModelIds);
   const credentials = credentialsField(raw.credentials);
   return {
     ...(id ? { id } : {}),
@@ -154,6 +169,7 @@ export function normalizeProviderAccountInput(value: unknown): Omit<LocalProvide
     enabled: raw.enabled === undefined ? true : raw.enabled !== false,
     ...(priority !== undefined ? { priority } : {}),
     ...(weight !== undefined ? { weight } : {}),
+    ...(supportedModelIds !== undefined ? { supportedModelIds } : {}),
     ...(credentials ? { credentials } : {}),
   };
 }
@@ -226,6 +242,7 @@ export function providerAccountsForRuntime(
       availableOAuth: oauthForAccount(account, connectedOAuth),
       ...(account.priority !== undefined ? { priority: account.priority } : {}),
       ...(account.weight !== undefined ? { weight: account.weight } : {}),
+      ...(account.supportedModelIds?.length ? { supportedModelIds: account.supportedModelIds } : {}),
       ...(account.createdAt ? { createdAt: account.createdAt } : {}),
       ...(account.updatedAt ? { updatedAt: account.updatedAt } : {}),
     }));

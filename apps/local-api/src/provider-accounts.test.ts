@@ -94,6 +94,53 @@ describe("provider accounts", () => {
     ]);
   });
 
+  it("normalizes and exposes per-account supported model filters", () => {
+    expect(normalizeProviderAccountInput({
+      id: "mock-primary",
+      providerId: "mock",
+      enabled: true,
+      supportedModelIds: [" nano-banana-2 ", "gpt-image-2", "nano-banana-2", "", 42],
+    })).toMatchObject({
+      id: "mock-primary",
+      providerId: "mock",
+      upstreamId: "mock",
+      enabled: true,
+      supportedModelIds: ["nano-banana-2", "gpt-image-2"],
+    });
+    expect(normalizeProviderAccountInput({
+      id: "mock-primary",
+      providerId: "mock",
+      enabled: true,
+      supportedModelIds: [],
+    })).toMatchObject({
+      supportedModelIds: [],
+    });
+
+    const providers = publicProviderAccounts(
+      [
+        {
+          id: "mock-primary",
+          label: "Mock primary",
+          userId: "user-1",
+          providerId: "mock",
+          upstreamId: "mock",
+          enabled: true,
+          supportedModelIds: ["nano-banana-2"],
+        },
+      ],
+      "user-1",
+    );
+
+    expect(providers).toEqual([
+      expect.objectContaining({
+        id: "mock-primary",
+        providerId: "mock",
+        upstreamId: "mock",
+        supportedModelIds: ["nano-banana-2"],
+      }),
+    ]);
+  });
+
   it("orders keys for the same provider by configured priority before runtime selection", () => {
     const providers = providerAccountsForRuntime(
       [
