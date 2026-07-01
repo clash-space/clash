@@ -1697,6 +1697,7 @@ type SortableProviderKeyRowProps = {
     accountMeta: string;
     expanded: boolean;
     expandedPanel?: ReactNode;
+    disabled?: boolean;
     onOpen: () => void;
     onEnabledChange: (checked: boolean) => void;
     onMoveUp: () => void;
@@ -1713,6 +1714,7 @@ function SortableProviderKeyRow({
     accountMeta,
     expanded,
     expandedPanel,
+    disabled = false,
     onOpen,
     onEnabledChange,
     onMoveUp,
@@ -1803,6 +1805,7 @@ function SortableProviderKeyRow({
                         <Switch
                             aria-label={`Provider enabled for ${accountLabel}`}
                             checked={account.enabled !== false}
+                            disabled={disabled}
                             onCheckedChange={onEnabledChange}
                         />
                         <CollapsibleTrigger asChild>
@@ -3101,6 +3104,7 @@ function ModelRoutingSection({
                                                             accountMeta={accountMeta}
                                                             expanded={expanded}
                                                             expandedPanel={expanded ? renderProviderKeyEditor({ includeHeader: false }) : undefined}
+                                                            disabled={saving}
                                                             onOpen={() => {
                                                                 if (expanded) closeProviderKeyEditor();
                                                                 else openExistingKeyEditor(account);

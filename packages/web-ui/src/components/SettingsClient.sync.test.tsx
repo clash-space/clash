@@ -2566,6 +2566,84 @@ describe("SettingsClient model routing", () => {
     });
   });
 
+  it("persists provider enablement and disables the switch while save is pending", async () => {
+    const actions = await import("@clash/web-ui/lib/clientActions");
+    let resolveSave!: (providers: any[]) => void;
+    vi.mocked(actions.updateModelProviders).mockImplementation(
+      (providers) =>
+        new Promise((resolve) => {
+          resolveSave = resolve;
+        }),
+    );
+    vi.mocked(actions.listModelCatalog).mockResolvedValue([]);
+
+    render(
+      <MemoryRouter>
+        <SettingsClient
+          initialTokens={[]}
+          initialVariables={[]}
+          initialActions={[]}
+          initialSkills={[]}
+          activeSection="providers"
+          embedded
+          initialModelProviders={[
+            {
+              id: "replicate-primary",
+              providerId: "replicate",
+              upstreamId: "replicate",
+              enabled: true,
+              configuredCredentials: ["apiKey"],
+            },
+          ]}
+          initialModelCatalog={[]}
+        />
+      </MemoryRouter>,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Open Replicate BYOK settings" }));
+    const initialSwitch = within(screen.getByRole("list", { name: "Replicate prioritized keys" })).getByRole("switch", {
+      name: "Provider enabled for API key 1",
+    });
+    expect(initialSwitch.getAttribute("aria-checked")).toBe("true");
+
+    fireEvent.click(initialSwitch);
+
+    await waitFor(() => {
+      expect(actions.updateModelProviders).toHaveBeenCalledWith([
+        expect.objectContaining({
+          id: "replicate-primary",
+          providerId: "replicate",
+          enabled: false,
+        }),
+      ]);
+    });
+    const pendingSwitch = within(screen.getByRole("list", { name: "Replicate prioritized keys" })).getByRole("switch", {
+      name: "Provider enabled for API key 1",
+    });
+    expect(pendingSwitch.getAttribute("aria-checked")).toBe("false");
+    expect(pendingSwitch.hasAttribute("disabled")).toBe(true);
+
+    await act(async () => {
+      resolveSave([
+        {
+          id: "replicate-primary",
+          providerId: "replicate",
+          upstreamId: "replicate",
+          enabled: false,
+          configuredCredentials: ["apiKey"],
+        },
+      ]);
+    });
+
+    await waitFor(() => {
+      const savedSwitch = within(screen.getByRole("list", { name: "Replicate prioritized keys" })).getByRole("switch", {
+        name: "Provider enabled for API key 1",
+      });
+      expect(savedSwitch.hasAttribute("disabled")).toBe(false);
+      expect(savedSwitch.getAttribute("aria-checked")).toBe("false");
+    });
+  });
+
   it("renders provider keys in priority order with drag handles", () => {
     render(
       <MemoryRouter>
