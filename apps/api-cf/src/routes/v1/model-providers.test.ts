@@ -379,6 +379,66 @@ describe("modelProviderRoutes", () => {
     expect(nanoBanana?.selectedRoute?.upstreamId).not.toBe("mock");
   });
 
+  it("appends a second provider key without replacing an existing id-less account", async () => {
+    const app = makeApp();
+    const env = {
+      DB: new MemoryD1() as unknown as D1Database,
+      ACTION_SECRET_KEY: "secret-key",
+    } as Env;
+
+    const firstSave = await app.request("/api/v1/model-providers", {
+      method: "PATCH",
+      headers: { "content-type": "application/json", "x-user-id": "user-1" },
+      body: JSON.stringify({
+        providers: [
+          {
+            providerId: "replicate",
+            upstreamId: "replicate",
+            enabled: true,
+            credentials: { apiKey: "r8-primary" },
+          },
+        ],
+      }),
+    }, env);
+    expect(firstSave.status).toBe(200);
+    const firstJson = (await firstSave.json()) as { providers: Array<Record<string, unknown>> };
+    expect(firstJson.providers).toHaveLength(1);
+
+    const secondSave = await app.request("/api/v1/model-providers", {
+      method: "PATCH",
+      headers: { "content-type": "application/json", "x-user-id": "user-1" },
+      body: JSON.stringify({
+        providers: [
+          firstJson.providers[0],
+          {
+            id: "replicate-secondary",
+            providerId: "replicate",
+            upstreamId: "replicate",
+            enabled: true,
+            credentials: { apiKey: "r8-secondary" },
+          },
+        ],
+      }),
+    }, env);
+
+    expect(secondSave.status).toBe(200);
+    const secondJson = (await secondSave.json()) as { providers: Array<Record<string, unknown>> };
+    expect(secondJson.providers).toHaveLength(2);
+    expect(secondJson.providers).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        providerId: "replicate",
+        upstreamId: "replicate",
+        configuredCredentials: ["apiKey"],
+      }),
+      expect.objectContaining({
+        id: "replicate-secondary",
+        providerId: "replicate",
+        upstreamId: "replicate",
+        configuredCredentials: ["apiKey"],
+      }),
+    ]));
+  });
+
   it("rejects provider account model filters outside the provider support list", async () => {
     const app = makeApp();
     const db = new MemoryD1();

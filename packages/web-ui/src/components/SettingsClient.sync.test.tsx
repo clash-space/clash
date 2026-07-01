@@ -2588,7 +2588,6 @@ describe("SettingsClient model routing", () => {
         expect.arrayContaining([
           expect.objectContaining({
             id: expect.any(String),
-            label: "API key 2",
             providerId: "replicate",
             upstreamId: "replicate",
             enabled: true,
@@ -2597,6 +2596,55 @@ describe("SettingsClient model routing", () => {
           }),
         ]),
       );
+    });
+  });
+
+  it("shows the saved server state after adding a second provider key", async () => {
+    const actions = await import("@clash/web-ui/lib/clientActions");
+    vi.mocked(actions.updateModelProviders).mockImplementation(async (providers) => [
+      ...providers,
+    ]);
+    vi.mocked(actions.listModelCatalog).mockResolvedValue([]);
+
+    render(
+      <MemoryRouter>
+        <SettingsClient
+          initialTokens={[]}
+          initialVariables={[]}
+          initialActions={[]}
+          initialSkills={[]}
+          activeSection="providers"
+          embedded
+          initialModelProviders={[
+            {
+              providerId: "replicate",
+              upstreamId: "replicate",
+              enabled: true,
+              configuredCredentials: ["apiKey"],
+            },
+          ]}
+          initialModelCatalog={[]}
+        />
+      </MemoryRouter>,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Open Replicate BYOK settings" }));
+    fireEvent.click(screen.getByRole("button", { name: "Add prioritized Replicate key" }));
+    fireEvent.change(screen.getByLabelText("Replicate API key"), {
+      target: { value: "r8-second-key" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    await waitFor(() => {
+      expect(actions.updateModelProviders).toHaveBeenCalled();
+    });
+
+    await waitFor(() => {
+      const apiKeys = screen.getByRole("list", { name: "Replicate prioritized keys" });
+      const rows = within(apiKeys).getAllByRole("listitem");
+      expect(rows).toHaveLength(2);
+      expect(within(apiKeys).getByText("API key 1")).toBeTruthy();
+      expect(within(apiKeys).getByText("API key 2")).toBeTruthy();
     });
   });
 
@@ -3577,7 +3625,6 @@ describe("SettingsClient model routing", () => {
     expect(firstSave).toHaveLength(1);
     expect(firstSave[0]).toEqual(expect.objectContaining({
       id: expect.stringMatching(/^official-openai-global-/),
-      label: "API key 1",
       providerId: "official",
       upstreamId: "openai",
       region: "global",
@@ -4018,6 +4065,49 @@ describe("SettingsClient model routing", () => {
     const providerOrder = screen.getByRole("list", { name: "GPT Image 2 provider order" });
     expect(within(providerOrder).getByText("OpenAI")).toBeTruthy();
     expect(within(providerOrder).queryByText("Replicate")).toBeNull();
+  });
+
+  it("builds fallback model catalog from every provider account instead of folded provider rows", async () => {
+    const actions = await import("@clash/web-ui/lib/clientActions");
+    vi.mocked(actions.listModelCatalog).mockResolvedValue([]);
+
+    render(
+      <MemoryRouter>
+        <SettingsClient
+          initialTokens={[]}
+          initialVariables={[]}
+          initialActions={[]}
+          initialSkills={[]}
+          activeSection="models"
+          embedded
+          initialModelProviders={[
+            {
+              id: "replicate-nano",
+              label: "Nano key",
+              providerId: "replicate",
+              upstreamId: "replicate",
+              enabled: true,
+              configuredCredentials: ["apiKey"],
+              supportedModelIds: ["nano-banana-2"],
+            },
+            {
+              id: "replicate-gpt-image",
+              label: "GPT Image key",
+              providerId: "replicate",
+              upstreamId: "replicate",
+              enabled: true,
+              configuredCredentials: ["apiKey"],
+              supportedModelIds: ["gpt-image-2"],
+            },
+          ]}
+          initialModelCatalog={[]}
+        />
+      </MemoryRouter>,
+    );
+
+    const gptImageCard = document.getElementById("model-card-gpt-image-2");
+    expect(gptImageCard).toBeTruthy();
+    expect(within(gptImageCard as HTMLElement).getByText("Provider ready: replicate/replicate")).toBeTruthy();
   });
 
   it("disables model provider ordering while provider settings are saving", async () => {

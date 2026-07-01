@@ -525,11 +525,15 @@ export default function SettingsClient({
     const variableKeys = new Set(variables.map((v) => v.key));
     const providerPresets = Object.values(ACTION_PROVIDER_PRESETS);
     const modelProviderRows = useMemo(() => buildModelProviderRows(modelProviders), [modelProviders]);
+    const modelCatalogProviderInputs = useMemo(
+        () => buildModelCatalogProviderInputs(modelProviders, modelProviderRows),
+        [modelProviderRows, modelProviders],
+    );
     const effectiveModelCatalog = useMemo<ModelCatalogEntryInfo[]>(() => (
         modelCatalog.length > 0
             ? modelCatalog
-            : listModelCatalogEntries({ configuredProviders: modelProviderRows })
-    ), [modelCatalog, modelProviderRows]);
+            : listModelCatalogEntries({ configuredProviders: modelCatalogProviderInputs })
+    ), [modelCatalog, modelCatalogProviderInputs]);
     const modelTierCounts = useMemo(() => countModelCatalogTiers(effectiveModelCatalog), [effectiveModelCatalog]);
     const asrModelEntries = useMemo(
         () => effectiveModelCatalog.filter((entry) => (entry.model.kind as string) === 'asr'),
@@ -1434,6 +1438,21 @@ function buildModelProviderRows(
     return [...rows.values()];
 }
 
+function buildModelCatalogProviderInputs(
+    configured: ModelProviderAccountInfo[],
+    providerRows: ModelProviderAccountInfo[],
+): ModelProviderAccountInfo[] {
+    const configuredAccounts = configured
+        .filter((provider) => modelProviderSetup(provider))
+        .map(withCredentialAvailability);
+    if (configuredAccounts.length === 0) return providerRows;
+    const configuredKeys = new Set(configuredAccounts.map(modelProviderKey));
+    return [
+        ...configuredAccounts,
+        ...providerRows.filter((provider) => !configuredKeys.has(modelProviderKey(provider))),
+    ];
+}
+
 function upsertModelProvider(
     providers: ModelProviderAccountInfo[],
     next: ModelProviderAccountInfo,
@@ -1630,6 +1649,11 @@ function SupportedModelPicker({
 
 function sameStringArray(a: readonly string[], b: readonly string[]): boolean {
     return a.length === b.length && a.every((value, index) => value === b[index]);
+}
+
+function nextProviderAccountPriority(accounts: ModelProviderAccountInfo[]): number {
+    if (accounts.length === 0) return 10;
+    return Math.max(...accounts.map((account) => account.priority ?? 1000)) + 10;
 }
 
 function providerAccountSort(a: ModelProviderAccountInfo, b: ModelProviderAccountInfo): number {
@@ -1989,7 +2013,7 @@ function ModelRoutingSection({
     const commitProviderDraft = useCallback(async (
         key: string,
         setup: NonNullable<ReturnType<typeof modelProviderSetup>>,
-        options: { createAccount?: boolean; accountId?: string; label?: string; account?: ModelProviderAccountInfo } = {},
+        options: { createAccount?: boolean; accountId?: string; label?: string; account?: ModelProviderAccountInfo; priority?: number } = {},
     ) => {
         const draft = providerDrafts[key] ?? {};
         const credentialDrafts = modelProviderCredentialFields(setup)
@@ -2012,6 +2036,7 @@ function ModelRoutingSection({
                 ...(options.account?.id ? { id: options.account.id } : {}),
                 ...(options.createAccount ? { id: options.accountId ?? createProviderAccountId(key) } : {}),
                 ...(options.createAccount ? { enabled: true } : {}),
+                ...(options.priority !== undefined ? { priority: options.priority } : {}),
                 ...(label ? { label } : {}),
                 ...(Object.keys(credentials).length > 0 ? { credentials } : {}),
                 ...(hasModelAccessDraft ? { supportedModelIds: nextSupportedModelIds } : {}),
@@ -2600,8 +2625,9 @@ function ModelRoutingSection({
                 createAccount,
                 accountId: draft.accountId,
                 account: editingAccount ?? undefined,
+                priority: createAccount ? nextProviderAccountPriority(savedAccounts) : undefined,
                 label: isAddingPrioritizedKey
-                    ? createAccount ? (draft.label?.trim() || (oauthProviderId ? `${row.title} account ${newKeyNumber}` : `API key ${newKeyNumber}`)) : draft.label?.trim()
+                    ? createAccount ? (draft.label?.trim() || (oauthProviderId ? `${row.title} account ${newKeyNumber}` : undefined)) : draft.label?.trim()
                     : draft.label?.trim(),
             });
             if (saved) {
