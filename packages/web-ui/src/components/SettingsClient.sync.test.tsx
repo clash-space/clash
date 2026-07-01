@@ -3137,6 +3137,46 @@ describe("SettingsClient model routing", () => {
     expect(await within(editor).findByText("Mock provider can run GPT Image 2.")).toBeTruthy();
   });
 
+  it("scopes provider test model choices to the provider config model allowlist", async () => {
+    render(
+      <MemoryRouter>
+        <SettingsClient
+          initialTokens={[]}
+          initialVariables={[]}
+          initialActions={[]}
+          initialSkills={[]}
+          activeSection="providers"
+          embedded
+          initialModelProviders={[
+            {
+              id: "mock-primary",
+              label: "Mock primary",
+              providerId: "mock",
+              upstreamId: "mock",
+              enabled: true,
+              priority: 10,
+              supportedModelIds: ["gpt-image-2"],
+            },
+          ]}
+          initialModelCatalog={[]}
+        />
+      </MemoryRouter>,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Open Mock Provider BYOK settings" }));
+    const providerConfigs = screen.getByRole("list", { name: "Mock Provider prioritized keys" });
+    const providerConfig = within(providerConfigs).getByText("Mock primary").closest("li") as HTMLElement;
+    fireEvent.click(within(providerConfig).getByText("Mock primary"));
+
+    const editor = within(providerConfig).getByRole("group", { name: "Mock primary Mock Provider API key" });
+    expect(within(editor).getByRole("button", { name: "Model to test" }).textContent).toContain("GPT Image 2");
+
+    fireEvent.click(within(editor).getByRole("button", { name: "Model to test" }));
+
+    expect(screen.getByRole("menuitemradio", { name: /GPT Image 2/ })).toBeTruthy();
+    expect(screen.queryByRole("menuitemradio", { name: /Nano Banana 2/ })).toBeNull();
+  });
+
   it("runs a saved live provider configuration check from the provider config editor", async () => {
     const actions = await import("@clash/web-ui/lib/clientActions");
     vi.mocked(actions.testModelProvider).mockResolvedValue({
@@ -3346,7 +3386,7 @@ describe("SettingsClient model routing", () => {
     fireEvent.change(search, { target: { value: "gpt image" } });
     expect(screen.queryByRole("option", { name: /Nano Banana 2/ })).toBeNull();
     fireEvent.click(screen.getByRole("option", { name: /GPT Image 2/ }));
-    expect(within(editor).getByText("GPT Image 2")).toBeTruthy();
+    expect(within(editor).getByRole("button", { name: "Remove GPT Image 2" })).toBeTruthy();
     fireEvent.click(within(editor).getByRole("button", { name: "Save" }));
 
     await waitFor(() => {

@@ -2618,17 +2618,22 @@ function ModelRoutingSection({
         const editorAriaLabel = editingAccountLabel
             ? `${editingAccountLabel} ${row.title} ${accountNoun}`
             : `New ${row.title} ${accountNoun}`;
-        const providerTestOptions = (row.support?.models ?? []).map<SelectOption<string>>((model) => ({
+        const allProviderModelOptions = (row.support?.models ?? []).map<SelectOption<string>>((model) => ({
             value: model.id,
             label: model.name,
             description: model.id,
         }));
-        const supportedModelOptions = providerTestOptions.filter((option) => !selectedSupportedModelIds.has(option.value));
+        const providerTestOptions = allProviderModelOptions.filter((option) =>
+            modelAccessMode !== 'specific' || selectedSupportedModelIds.has(option.value),
+        );
+        const supportedModelOptions = allProviderModelOptions.filter((option) => !selectedSupportedModelIds.has(option.value));
         const selectedSupportedModels = draftSupportedModelIds
             .map((id) => row.support?.models.find((model) => model.id === id))
             .filter((model): model is NonNullable<typeof row.support>['models'][number] => !!model);
         const defaultProviderTestModelId = providerTestOptions.find((option) => option.value === 'nano-banana-2')?.value ?? providerTestOptions[0]?.value ?? '';
-        const selectedProviderTestModelId = providerTestModelIds[providerTestKey] ?? defaultProviderTestModelId;
+        const selectedProviderTestModelId = providerTestOptions.some((option) => option.value === providerTestModelIds[providerTestKey])
+            ? providerTestModelIds[providerTestKey]
+            : defaultProviderTestModelId;
         const providerTestResult = providerTestResults[providerTestKey];
         const canRunProviderTest = !!editingAccount && providerTestOptions.length > 0;
         const providerTestDisabled = providerTestBusyKey === providerTestKey || !selectedProviderTestModelId || hasProviderDraft || saving;
@@ -2820,7 +2825,7 @@ function ModelRoutingSection({
                             Save this account before starting authorization.
                         </div>
                     )}
-                    {providerTestOptions.length > 0 && (
+                    {allProviderModelOptions.length > 0 && (
                         <div className="rounded-xl border border-warm-border bg-warm-muted/20 p-3">
                             <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_180px] sm:items-start">
                                 <div className="min-w-0">
