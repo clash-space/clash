@@ -439,6 +439,39 @@ describe("local API app", () => {
     });
   });
 
+  it("does not let provider tests override a disabled saved account", async () => {
+    const app = createLocalApiApp({ dataDir, userId: "local-user" });
+
+    await app.request("/api/v1/model-providers", {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        providers: [
+          { id: "mock-primary", providerId: "mock", upstreamId: "mock", enabled: false, priority: 1 },
+        ],
+      }),
+    });
+
+    const response = await app.request("/api/v1/model-providers/test", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        provider: { id: "mock-primary", providerId: "mock", upstreamId: "mock", enabled: true },
+        modelId: "nano-banana-2",
+      }),
+    });
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({
+      ok: false,
+      providerId: "mock",
+      upstreamId: "mock",
+      modelId: "nano-banana-2",
+      disabled: true,
+      message: "Mock provider is disabled for Nano Banana 2.",
+    });
+  });
+
   it("checks a configured live provider account against a selected model without a fake skipped state", async () => {
     const app = createLocalApiApp({ dataDir, userId: "local-user" });
 

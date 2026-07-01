@@ -994,6 +994,7 @@ interface ModelProviderTestResult {
   region?: string;
   modelId: string;
   message: string;
+  disabled?: boolean;
   missingCredentials?: string[];
   missingOAuth?: string[];
   unsupported?: boolean;
@@ -1219,14 +1220,13 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
       account.userId === userId && providerAccountKey(account) === providerAccountKey(provider)
     );
     const account: LocalProviderAccountConfig = {
-      ...stored,
       ...provider,
+      ...stored,
       credentials: {
         ...(stored?.credentials ?? {}),
         ...(provider.credentials ?? {}),
       },
       userId,
-      enabled: provider.enabled,
     };
     const providerSupports = listProviderModelSupport({ includeMock: account.providerId === "mock" });
     const support = providerSupports.find((row) =>
@@ -1241,6 +1241,14 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
       ...(account.region ? { region: account.region } : {}),
       modelId,
     };
+    if (account.enabled === false) {
+      return c.json({
+        ok: false,
+        ...baseResult,
+        disabled: true,
+        message: `${displayProviderName(account)} is disabled for ${modelName}.`,
+      } satisfies ModelProviderTestResult);
+    }
     if (!support || !support.models.some((model) => model.id === modelId)) {
       return c.json({
         ok: false,

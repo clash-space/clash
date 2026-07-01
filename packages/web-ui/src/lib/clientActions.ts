@@ -241,6 +241,7 @@ export interface ModelProviderTestResult {
   region?: string;
   modelId: string;
   message: string;
+  disabled?: boolean;
   missingCredentials?: string[];
   missingOAuth?: string[];
   unsupported?: boolean;
