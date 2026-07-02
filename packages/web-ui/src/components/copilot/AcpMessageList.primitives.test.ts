@@ -26,4 +26,16 @@ describe("AcpMessageList primitives", () => {
     expect(source).not.toContain("<details");
     expect(source).not.toContain("<summary");
   });
+
+  it("uses shared collapsible primitives for shell command detail expansion", () => {
+    const source = readCopilotSource("AcpMessageList.tsx");
+
+    expect(source).toMatch(/<Collapsible\s+[\s\S]*open=\{open\}[\s\S]*onOpenChange=\{setOpen\}/);
+    expect(source).toContain("CollapsibleTrigger asChild");
+    expect(source).toContain('data-testid="acp-tool-details"');
+    expect(source).toContain("CollapsibleContent");
+    expect(source).not.toContain("onClick={() => setOpen((value) => !value)}");
+    expect(source).not.toContain("{open ? (\n        <div data-testid=\"acp-tool-details\"");
+    expect(source).not.toContain("{open ? (\n        <div className=\"mt-1 space-y-1.5\"");
+  });
 });

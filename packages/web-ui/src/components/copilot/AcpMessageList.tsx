@@ -380,7 +380,9 @@ function ShellCommandEntry({
   const label = `${view.running ? 'Running' : 'Ran'} ${view.summary.command}`;
 
   return (
-    <div
+    <Collapsible
+      open={open}
+      onOpenChange={setOpen}
       data-testid="acp-shell-row"
       className={cn(
         'not-prose w-full text-neutral-500',
@@ -389,24 +391,24 @@ function ShellCommandEntry({
         view.failed && 'text-status-down',
       )}
     >
-      <button
-        type="button"
-        onClick={() => setOpen((value) => !value)}
-        aria-expanded={open}
-        className="group inline-flex max-w-full items-center gap-2 text-left text-[13px] leading-5 outline-none focus-visible:underline focus-visible:decoration-neutral-300 focus-visible:underline-offset-4"
-      >
-        <ShellEventIcon failed={view.failed} />
-        <span className="min-w-0 truncate font-medium text-neutral-500 dark:text-stone-300" title={label}>
-          {label}
-        </span>
-        <ChevronRight className={cn('h-3.5 w-3.5 shrink-0 text-stone-400 transition-transform', open && 'rotate-90')} />
-      </button>
-      {open ? (
+      <CollapsibleTrigger asChild>
+        <button
+          type="button"
+          className="group inline-flex max-w-full items-center gap-2 text-left text-[13px] leading-5 outline-none focus-visible:underline focus-visible:decoration-neutral-300 focus-visible:underline-offset-4"
+        >
+          <ShellEventIcon failed={view.failed} />
+          <span className="min-w-0 truncate font-medium text-neutral-500 dark:text-stone-300" title={label}>
+            {label}
+          </span>
+          <ChevronRight className={cn('h-3.5 w-3.5 shrink-0 text-stone-400 transition-transform', open && 'rotate-90')} />
+        </button>
+      </CollapsibleTrigger>
+      <CollapsibleContent asChild>
         <div data-testid="acp-tool-details" className="mt-1 w-full">
           <ShellToolDetails summary={view.summary} failed={view.failed} />
         </div>
-      ) : null}
-    </div>
+      </CollapsibleContent>
+    </Collapsible>
   );
 }
 
@@ -426,7 +428,9 @@ function ShellCommandGroup({
   const running = tools.some((tool) => tool.running);
   const label = `${running ? 'Running' : 'Ran'} ${tools.length} commands`;
   return (
-    <div
+    <Collapsible
+      open={open}
+      onOpenChange={setOpen}
       data-testid="acp-shell-group"
       className={cn(
         'not-prose my-1 w-full text-neutral-500',
@@ -434,19 +438,19 @@ function ShellCommandGroup({
         failed && 'text-status-down',
       )}
     >
-      <button
-        type="button"
-        onClick={() => setOpen((value) => !value)}
-        aria-expanded={open}
-        className="group inline-flex max-w-full items-center gap-2 text-left text-[13px] leading-5 outline-none focus-visible:underline focus-visible:decoration-neutral-300 focus-visible:underline-offset-4"
-      >
-        <ShellEventIcon failed={failed} />
-        <span className="min-w-0 truncate font-medium text-neutral-500 dark:text-stone-300">
-          {label}
-        </span>
-        <ChevronRight className={cn('h-3.5 w-3.5 shrink-0 text-stone-400 transition-transform', open && 'rotate-90')} />
-      </button>
-      {open ? (
+      <CollapsibleTrigger asChild>
+        <button
+          type="button"
+          className="group inline-flex max-w-full items-center gap-2 text-left text-[13px] leading-5 outline-none focus-visible:underline focus-visible:decoration-neutral-300 focus-visible:underline-offset-4"
+        >
+          <ShellEventIcon failed={failed} />
+          <span className="min-w-0 truncate font-medium text-neutral-500 dark:text-stone-300">
+            {label}
+          </span>
+          <ChevronRight className={cn('h-3.5 w-3.5 shrink-0 text-stone-400 transition-transform', open && 'rotate-90')} />
+        </button>
+      </CollapsibleTrigger>
+      <CollapsibleContent asChild>
         <div className="mt-1 space-y-1.5">
           {tools.map((tool, index) => (
             <ShellCommandEntry
@@ -457,8 +461,8 @@ function ShellCommandGroup({
             />
           ))}
         </div>
-      ) : null}
-    </div>
+      </CollapsibleContent>
+    </Collapsible>
   );
 }
 
