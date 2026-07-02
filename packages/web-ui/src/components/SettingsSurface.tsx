@@ -16,6 +16,7 @@ import betterAuthClient from '@clash/web-ui/lib/betterAuthClient';
 import SettingsClient, { type SettingsSection } from './SettingsClient';
 import { Tooltip } from './ui/tooltip';
 import { IconButton } from './ui/icon-button';
+import { Button } from './ui/button';
 import {
   listApiTokens,
   listVariables,
@@ -239,14 +240,14 @@ export function SettingsSurface({
           </TabList>
         </TabProvider>
         <div className="border-t border-warm-border p-2">
-          <button
-            type="button"
+          <Button
             onClick={handleSignOut}
-            className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium text-stone-700 transition-colors hover:bg-warm-surface hover:text-red-600 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand/60 dark:text-stone-200"
+            size="sm"
+            className="w-full justify-start rounded-lg border-transparent bg-transparent px-3 py-2 text-sm text-stone-700 shadow-none hover:bg-warm-surface hover:text-red-600 focus-visible:ring-brand/60 dark:text-stone-200"
+            leftIcon={<SignOut className="h-4 w-4" weight="bold" />}
           >
-            <SignOut className="h-4 w-4" weight="bold" />
             Sign out
-          </button>
+          </Button>
         </div>
       </aside>
 
