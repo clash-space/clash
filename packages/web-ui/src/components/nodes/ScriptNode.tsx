@@ -1,6 +1,7 @@
 import { memo, useState, useEffect } from 'react';
 import { Handle, Position, NodeProps, Node, useReactFlow } from '@xyflow/react';
 import { Scroll, Plus } from '@phosphor-icons/react';
+import { Button } from '../ui/button';
 
 // Define the structure for a Shot
 export interface Shot {
@@ -76,13 +77,15 @@ const ScriptNode = ({ id, data, selected }: NodeProps<Node<Record<string, any>>>
                     ))}
                 </div>
 
-                <button
+                <Button
                     onClick={addShot}
-                    className="mt-3 flex w-full items-center justify-center gap-1 rounded-lg border border-dashed border-warm-border py-2 text-xs font-medium text-slate-700 dark:text-slate-300 hover:border-brand/45 hover:bg-brand-light/60 hover:text-slate-900"
+                    size="sm"
+                    shape="rounded"
+                    leftIcon={<Plus size={14} />}
+                    className="mt-3 min-h-0 w-full rounded-lg border-dashed border-warm-border py-2 text-xs text-slate-700 hover:border-brand/45 hover:bg-brand-light/60 hover:text-slate-900 dark:text-slate-300"
                 >
-                    <Plus size={14} />
                     Add Scene
-                </button>
+                </Button>
             </div>
 
             {/* Handles */}

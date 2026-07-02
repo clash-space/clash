@@ -1,6 +1,6 @@
 import { memo, useState, useEffect, useMemo } from 'react';
 import { Handle, Position, NodeProps, Node, useNodes, useEdges } from '@xyflow/react';
-import { PaintBrush, Link as LinkIcon, MagicWand, Warning } from '@phosphor-icons/react';
+import { PaintBrush, Link as LinkIcon, Warning } from '@phosphor-icons/react';
 import { Shot } from './ScriptNode';
 import { SelectMenu } from '../ui/select';
 
@@ -101,10 +101,6 @@ const StoryboardNode = ({ id, data: _data, selected }: NodeProps<Node<Record<str
                 <div>
                     <div className="mb-1 flex items-center justify-between">
                         <label className="text-[10px] font-bold uppercase text-slate-700 dark:text-slate-300">Visual Prompt</label>
-                        <button className="text-[10px] flex items-center gap-1 text-brand hover:text-slate-950 font-medium">
-                            <MagicWand size={12} />
-                            AI Enhance
-                        </button>
                     </div>
                     <textarea
                         className="w-full h-24 rounded-lg border border-warm-border bg-warm-muted p-2 text-xs text-slate-800 dark:text-slate-200 focus:border-brand focus:ring-1 focus:ring-brand outline-none resize-none"
