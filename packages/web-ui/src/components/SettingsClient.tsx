@@ -37,6 +37,7 @@ import { Dialog } from './ui/dialog';
 import { SelectMenu, type SelectOption } from './ui/select';
 import { SearchableSelect } from './ui/searchable-select';
 import { Switch } from './ui/switch';
+import { Tooltip } from './ui/tooltip';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from './ui/collapsible';
 import { useAppFeedback } from './AppFeedback';
 
@@ -4583,6 +4584,7 @@ function AgentsSection() {
             return next;
         });
     }, []);
+    const harnessCheckTooltip = harnessLoading ? harnessLoadingMessage : "Check installed agents, auth, and model options again.";
 
     return (
         <section>
@@ -4594,15 +4596,16 @@ function AgentsSection() {
                         Install, authenticate, and enable local agents for Copilot.
                     </p>
                 </div>
-                <button
-                    type="button"
-                    onClick={() => { void onRecheckHarnesses(); }}
-                    disabled={harnessLoading}
-                    title={harnessLoading ? harnessLoadingMessage : "Check installed agents, auth, and model options again."}
-                    className={`${settingsCompactSecondaryButtonClass} min-w-[6.75rem]`}
-                >
-                    {harnessLoading ? "Checking..." : "Check again"}
-                </button>
+                <Tooltip label={harnessCheckTooltip}>
+                    <button
+                        type="button"
+                        onClick={() => { void onRecheckHarnesses(); }}
+                        disabled={harnessLoading}
+                        className={`${settingsCompactSecondaryButtonClass} min-w-[6.75rem]`}
+                    >
+                        {harnessLoading ? "Checking..." : "Check again"}
+                    </button>
+                </Tooltip>
             </div>
 
             <div className="space-y-3">
@@ -4717,6 +4720,11 @@ function AgentsSection() {
                                                                     ? `Install ${harness.label} before enabling.`
                                                                     : undefined;
                                                         const switchReasonId = switchDisabledReason ? `agent-switch-reason-${harness.id}` : undefined;
+                                                        const authRetryTooltip = savingAction === "probe"
+                                                            ? `Checking ${harness.label} auth.`
+                                                            : harnessLoading
+                                                                ? "A global agent check is already running."
+                                                                : `Check ${harness.label} auth again.`;
                                                         return (
                                                             <div
                                                                 key={harness.id}
@@ -4818,16 +4826,17 @@ function AgentsSection() {
                                                                         </button>
                                                                     )}
                                                                     {authBlocked && (
-                                                                        <button
-                                                                            type="button"
-                                                                            aria-label={`Check ${harness.label} auth again`}
-                                                                            disabled={busy || harnessLoading}
-                                                                            onClick={() => { void onRecheckHarnesses(harness.id); }}
-                                                                            title={savingAction === "probe" ? `Checking ${harness.label} auth.` : harnessLoading ? "A global agent check is already running." : `Check ${harness.label} auth again.`}
-                                                                            className={settingsCompactSecondaryButtonClass}
-                                                                        >
-                                                                            {savingAction === "probe" ? "Checking auth…" : "Check again"}
-                                                                        </button>
+                                                                        <Tooltip label={authRetryTooltip}>
+                                                                            <button
+                                                                                type="button"
+                                                                                aria-label={`Check ${harness.label} auth again`}
+                                                                                disabled={busy || harnessLoading}
+                                                                                onClick={() => { void onRecheckHarnesses(harness.id); }}
+                                                                                className={settingsCompactSecondaryButtonClass}
+                                                                            >
+                                                                                {savingAction === "probe" ? "Checking auth…" : "Check again"}
+                                                                            </button>
+                                                                        </Tooltip>
                                                                     )}
                                                                     {needsAuth && authMethods.length > 1 && authMethods.map((method) => {
                                                                         const methodLabel = method.name ?? method.id;
@@ -4864,14 +4873,25 @@ function AgentsSection() {
                                                                     )}
                                                                     {showEnableSwitch && (
                                                                         <>
-                                                                            <Switch
-                                                                                checked={switchChecked}
-                                                                                aria-label={`${switchChecked ? "Disable" : "Enable"} ${harness.label} agent`}
-                                                                                aria-describedby={switchReasonId}
-                                                                                title={switchDisabledReason}
-                                                                                disabled={switchDisabled}
-                                                                                onCheckedChange={(checked) => { void onToggleHarness(harness.id, checked); }}
-                                                                            />
+                                                                            {switchDisabledReason ? (
+                                                                                <Tooltip label={switchDisabledReason}>
+                                                                                    <Switch
+                                                                                        checked={switchChecked}
+                                                                                        aria-label={`${switchChecked ? "Disable" : "Enable"} ${harness.label} agent`}
+                                                                                        aria-describedby={switchReasonId}
+                                                                                        disabled={switchDisabled}
+                                                                                        onCheckedChange={(checked) => { void onToggleHarness(harness.id, checked); }}
+                                                                                    />
+                                                                                </Tooltip>
+                                                                            ) : (
+                                                                                <Switch
+                                                                                    checked={switchChecked}
+                                                                                    aria-label={`${switchChecked ? "Disable" : "Enable"} ${harness.label} agent`}
+                                                                                    aria-describedby={switchReasonId}
+                                                                                    disabled={switchDisabled}
+                                                                                    onCheckedChange={(checked) => { void onToggleHarness(harness.id, checked); }}
+                                                                                />
+                                                                            )}
                                                                             {switchDisabledReason && (
                                                                                 <span id={switchReasonId} className="sr-only">
                                                                                     {switchDisabledReason}

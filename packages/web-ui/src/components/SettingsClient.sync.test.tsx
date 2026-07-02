@@ -187,6 +187,31 @@ describe("SettingsSurface tab state", () => {
     expect(source).not.toContain("TooltipProvider");
     expect(source).not.toContain("TooltipAnchor");
   });
+
+  it("uses the shared tooltip primitive for agent controls instead of browser title attributes", () => {
+    const source = readFileSync(
+      resolve(process.cwd(), "packages/web-ui/src/components/SettingsClient.tsx"),
+      "utf8",
+    );
+    const tooltipSource = readFileSync(
+      resolve(process.cwd(), "packages/web-ui/src/components/ui/tooltip.tsx"),
+      "utf8",
+    );
+    const agentsSectionStart = source.indexOf("function AgentsSection()");
+    const nextSectionStart = source.indexOf("function UninstallHarnessDialog", agentsSectionStart);
+    const agentsSectionSource = source.slice(agentsSectionStart, nextSectionStart);
+
+    expect(tooltipSource).toContain("@ariakit/react");
+    expect(source).toContain("./ui/tooltip");
+    expect(agentsSectionSource).toContain("<Tooltip label={harnessCheckTooltip}>");
+    expect(agentsSectionSource).toContain("<Tooltip label={authRetryTooltip}>");
+    expect(agentsSectionSource).toContain("<Tooltip label={switchDisabledReason}>");
+    expect(agentsSectionSource).not.toContain('title={harnessLoading ? harnessLoadingMessage : "Check installed agents, auth, and model options again."}');
+    expect(agentsSectionSource).not.toContain('title={savingAction === "probe" ? `Checking ${harness.label} auth.` : harnessLoading ? "A global agent check is already running." : `Check ${harness.label} auth again.`}');
+    expect(agentsSectionSource).not.toContain("title={switchDisabledReason}");
+    expect(agentsSectionSource).not.toContain("TooltipProvider");
+    expect(agentsSectionSource).not.toContain("TooltipAnchor");
+  });
 });
 
 describe("SettingsClient sync section", () => {
@@ -813,7 +838,9 @@ describe("SettingsClient runtime harnesses", () => {
       </MemoryRouter>,
     );
 
-    await screen.findByText("Checking installed agent auth…");
+    await waitFor(() => {
+      expect(screen.getAllByText("Checking installed agent auth…").length).toBeGreaterThan(0);
+    });
     const skeleton = screen.getByRole("status", { name: "Loading agents" });
     expect(skeleton).toBeTruthy();
     expect(skeleton.className).toContain("divide-y");
