@@ -23,7 +23,7 @@ import {
 } from '@clash/web-ui/hooks/useRuntimes';
 import MilkdownEditor from '../MilkdownEditor';
 import { useConfirm } from '../ConfirmDialog';
-import { SelectMenu, type SelectValue } from '../ui/select';
+import { SelectMenu, type SelectOption, type SelectValue } from '../ui/select';
 import { Popover, PopoverContent, PopoverTrigger } from '../ui/popover';
 import { useSpawnPendingAsset } from './useSpawnPendingAsset';
 import ActionBadgePipelineMenu from './ActionBadgePipelineMenu';
@@ -48,6 +48,13 @@ const FALLBACK_MODEL_BY_KIND: Record<BuiltInActionKind, string> = {
     audio: 'gemini-3.1-flash-tts',
     text: 'gpt-5.4',
 };
+
+const BATCH_COUNT_OPTIONS: SelectOption<number>[] = [
+    { value: 1, label: 'x1' },
+    { value: 2, label: 'x2' },
+    { value: 3, label: 'x3' },
+    { value: 4, label: 'x4' },
+];
 
 type ActionMentionNode = {
     id: string;
@@ -191,7 +198,7 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
     const isFrozen = !!data.hasRun;
     const [showRefPicker, setShowRefPicker] = useState(false);
     const [paramsPopoverOpen, setParamsPopoverOpen] = useState(false);
-    const [countPopoverOpen, setCountPopoverOpen] = useState(false);
+    const [batchCountMenuOpen, setBatchCountMenuOpen] = useState(false);
 
     // Collapse retired -edit variants into their base card (backend auto-switches to /edit when refs present).
     const LEGACY_MODEL_REMAP: Record<string, string> = {
@@ -1538,7 +1545,7 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
     const closeConfigPanelControls = useCallback(() => {
         setShowModelDropdown(false);
         setParamsPopoverOpen(false);
-        setCountPopoverOpen(false);
+        setBatchCountMenuOpen(false);
         setExpandedParam(null);
         setRefPickerTarget(null);
     }, []);
@@ -1739,7 +1746,7 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
                     onClick={() => {
                         setShowModelDropdown(false);
                         setParamsPopoverOpen(false);
-                        setCountPopoverOpen(false);
+                        setBatchCountMenuOpen(false);
                     }}
                 >
                     {/* Prompt editor with inline @ mention chips.
@@ -1815,7 +1822,7 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
                                     handleModelChange(nextModelId);
                                     setShowModelDropdown(false);
                                     setParamsPopoverOpen(false);
-                                    setCountPopoverOpen(false);
+                                    setBatchCountMenuOpen(false);
                                 }}
                                 ariaLabel="Model"
                                 triggerLabel={modelDisplay}
@@ -1831,7 +1838,7 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
                                     setShowModelDropdown(nextOpen);
                                     if (nextOpen) {
                                         setParamsPopoverOpen(false);
-                                        setCountPopoverOpen(false);
+                                        setBatchCountMenuOpen(false);
                                     }
                                 }}
                                 disabled={customActionOffline}
@@ -1853,7 +1860,7 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
                                     setParamsPopoverOpen(nextOpen);
                                     if (nextOpen) {
                                         setShowModelDropdown(false);
-                                        setCountPopoverOpen(false);
+                                        setBatchCountMenuOpen(false);
                                     } else {
                                         setExpandedParam(null);
                                     }
@@ -1959,51 +1966,30 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
 
                         {/* Batch count chip (xN). Stays interactive even when frozen —
                             user can bump the count and then Run to spawn more siblings. */}
-                        <Popover
-                            open={countPopoverOpen}
+                        <SelectMenu<number>
+                            ariaLabel="Batch count"
+                            value={countValue}
+                            options={BATCH_COUNT_OPTIONS}
+                            onValueChange={(nextCount) => updateModelParam('count', nextCount)}
+                            triggerLabel={`x${countValue}`}
+                            variant="pill"
+                            size="sm"
+                            align="end"
+                            placement="top"
+                            menuWidth={80}
+                            maxMenuHeight={176}
+                            open={batchCountMenuOpen}
                             onOpenChange={(nextOpen) => {
-                                setCountPopoverOpen(nextOpen);
+                                setBatchCountMenuOpen(nextOpen);
                                 if (nextOpen) {
                                     setShowModelDropdown(false);
                                     setParamsPopoverOpen(false);
                                 }
                             }}
-                        >
-                            <PopoverTrigger asChild>
-                                <button
-                                    type="button"
-                                    className="flex items-center gap-1 px-2.5 py-1 rounded-full bg-warm-muted hover:bg-warm-hover text-xs font-medium text-stone-800 dark:text-stone-200 transition-colors"
-                                    onClick={(e) => e.stopPropagation()}
-                                >
-                                    x{countValue}
-                                    <CaretDown size={10} weight="bold" className="text-stone-700 dark:text-stone-300" />
-                                </button>
-                            </PopoverTrigger>
-                            <PopoverContent
-                                side="top"
-                                align="end"
-                                sideOffset={4}
-                                className="z-[9999] min-w-[80px] overflow-hidden rounded-xl p-0"
-                                onPointerDown={(e) => e.stopPropagation()}
-                                onClick={(e) => e.stopPropagation()}
-                            >
-                                {[1, 2, 3, 4].map((n) => (
-                                    <button
-                                        key={n}
-                                        type="button"
-                                        className={`block w-full px-3 py-2 text-xs text-center transition-colors ${
-                                            countValue === n ? 'clash-node-choice-active' : 'text-stone-800 dark:text-stone-200 hover:bg-warm-muted'
-                                        }`}
-                                        onClick={() => {
-                                            updateModelParam('count', n);
-                                            setCountPopoverOpen(false);
-                                        }}
-                                    >
-                                        x{n}
-                                    </button>
-                                ))}
-                            </PopoverContent>
-                        </Popover>
+                            showCaret
+                            stopPropagation
+                            triggerClassName="h-auto min-h-0 px-2.5 py-1 text-xs"
+                        />
 
                         {/* Frozen-only: Run (re-generate with current params) + Copy (clone into a fresh panel). */}
                         {isFrozen && (

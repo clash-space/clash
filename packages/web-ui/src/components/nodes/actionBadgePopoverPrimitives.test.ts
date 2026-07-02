@@ -43,4 +43,13 @@ describe("ActionBadge popover primitives", () => {
         expect(source).not.toContain("@ mention dropdown with thumbnails");
         expect(source).not.toContain("absolute left-4 right-4 bottom-full mb-1 bg-warm-surface border border-warm-border rounded-xl shadow-lg z-50 max-h-48 overflow-y-auto");
     });
+
+    it("uses the shared select primitive for the batch count picker", () => {
+        const source = readNodeSource("ActionBadge.tsx");
+
+        expect(source).toContain("BATCH_COUNT_OPTIONS");
+        expect(source).toContain('ariaLabel="Batch count"');
+        expect(source).not.toContain("countPopoverOpen");
+        expect(source).not.toContain("[1, 2, 3, 4].map");
+    });
 });
