@@ -20,4 +20,15 @@ describe("MarketplaceClient primitives", () => {
     expect(filterSource).toContain("<ToggleGroupItem");
     expect(filterSource).not.toContain("<button");
   });
+
+  it("uses the shared Button primitive for install controls", () => {
+    const source = readFileSync(
+      join(process.cwd(), "packages/web-ui/src/components/MarketplaceClient.tsx"),
+      "utf8",
+    );
+
+    expect(source).toContain("./ui/button");
+    expect(source).toMatch(/<Button[\s\S]*onClick=\{\(\) => handleToggleInstall\(item\)\}/);
+    expect(source).not.toContain("<motion.button");
+  });
 });

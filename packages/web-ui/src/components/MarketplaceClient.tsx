@@ -9,6 +9,7 @@ import {
     marketplaceInstallSkill,
     marketplaceUninstallSkill,
 } from '@clash/web-ui/lib/clientActions';
+import { Button } from './ui/button';
 import { ToggleGroup, ToggleGroupItem } from './ui/toggle-group';
 
 type Filter = 'all' | 'action' | 'skill';
@@ -204,30 +205,26 @@ export default function MarketplaceClient({ items, installedActionIds, installed
                                     )}
 
                                     {canManage ? (
-                                        <motion.button
+                                        <Button
                                             onClick={() => handleToggleInstall(item)}
                                             disabled={loading}
-                                            className={`mt-auto flex items-center justify-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold transition-all ${
+                                            leftIcon={loading ? undefined : installed ? (
+                                                <Check className="h-4 w-4" weight="bold" />
+                                            ) : (
+                                                <Download className="h-4 w-4" weight="bold" />
+                                            )}
+                                            size="md"
+                                            shape="rounded"
+                                            className={`mt-auto rounded-xl px-4 py-2 text-sm font-semibold ${
                                                 installed
                                                     ? 'clash-marketplace-installed'
                                                     : 'clash-marketplace-primary'
-                                            } disabled:cursor-not-allowed disabled:opacity-50`}
-                                            whileTap={{ scale: 0.97 }}
+                                            }`}
                                         >
                                             {loading ? (
                                                 <span className="animate-pulse">...</span>
-                                            ) : installed ? (
-                                                <>
-                                                    <Check className="h-4 w-4" weight="bold" />
-                                                    Installed
-                                                </>
-                                            ) : (
-                                                <>
-                                                    <Download className="h-4 w-4" weight="bold" />
-                                                    Install
-                                                </>
-                                            )}
-                                        </motion.button>
+                                            ) : installed ? 'Installed' : 'Install'}
+                                        </Button>
                                     ) : (
                                         <div className="mt-auto rounded-xl border border-warm-border bg-warm-muted px-4 py-2 text-center text-sm font-semibold text-stone-700 dark:text-stone-200">
                                             Available in workspace
