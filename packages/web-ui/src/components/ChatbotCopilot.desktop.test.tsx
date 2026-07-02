@@ -886,8 +886,8 @@ describe("ChatbotCopilot desktop local mode", () => {
 
     renderDesktopCopilot();
 
-    fireEvent.click(screen.getByRole("button", { name: "Queued message options 1" }));
-    fireEvent.click(screen.getByRole("button", { name: "Edit message" }));
+    fireEvent.pointerDown(screen.getByRole("button", { name: "Queued message options 1" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Edit message" }));
     expect((screen.getByLabelText("chat draft") as HTMLInputElement).value).toBe("draft this line");
 
     fireEvent.change(screen.getByLabelText("chat draft"), { target: { value: "updated line" } });

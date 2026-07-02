@@ -39,4 +39,16 @@ describe("ChatbotCopilot primitives", () => {
     expect(source).not.toContain("dataTransfer");
     expect(source).not.toContain("draggable");
   });
+
+  it("uses the shared dropdown primitive for queued prompt row actions", () => {
+    const source = readComponentSource("ChatbotCopilot.tsx");
+
+    expect(source).toContain("DropdownMenuTrigger");
+    expect(source).toContain("DropdownMenuContent");
+    expect(source).toContain("DropdownMenuItem");
+    expect(source).not.toContain("openMenuTurnId");
+    expect(source).not.toContain("menuOpen");
+    expect(source).not.toContain("onMenuOpenChange");
+    expect(source).not.toContain("absolute right-0 top-8 z-40");
+  });
 });

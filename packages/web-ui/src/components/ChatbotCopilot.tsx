@@ -2651,7 +2651,6 @@ function RuntimePromptQueueBar({
     onRemove: (turnId: string) => void;
     onReorder: (turnIds: string[]) => void;
 }) {
-    const [openMenuTurnId, setOpenMenuTurnId] = useState<string | null>(null);
     const itemIds = useMemo(() => items.map((item) => item.turnId), [items]);
     const sensors = useSensors(
         useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
@@ -2683,8 +2682,6 @@ function RuntimePromptQueueBar({
                                 key={item.turnId}
                                 item={item}
                                 index={index}
-                                menuOpen={openMenuTurnId === item.turnId}
-                                onMenuOpenChange={setOpenMenuTurnId}
                                 onSteer={onSteer}
                                 onEdit={onEdit}
                                 onRemove={onRemove}
@@ -2700,16 +2697,12 @@ function RuntimePromptQueueBar({
 function RuntimePromptQueueItem({
     item,
     index,
-    menuOpen,
-    onMenuOpenChange,
     onSteer,
     onEdit,
     onRemove,
 }: {
     item: RuntimeQueuedPrompt;
     index: number;
-    menuOpen: boolean;
-    onMenuOpenChange: (turnId: string | null | ((current: string | null) => string | null)) => void;
     onSteer: (turnId: string) => void;
     onEdit: (item: RuntimeQueuedPrompt) => void;
     onRemove: (turnId: string) => void;
@@ -2764,50 +2757,34 @@ function RuntimePromptQueueItem({
             >
                 <Trash className="h-4 w-4" aria-hidden="true" />
             </button>
-            <div className="relative shrink-0">
-                <button
-                    type="button"
-                    aria-label={`Queued message options ${index + 1}`}
-                    onClick={() => onMenuOpenChange((current) => current === item.turnId ? null : item.turnId)}
-                    className="flex h-5 w-5 items-center justify-center rounded-full text-stone-500 opacity-70 transition hover:bg-warm-muted hover:text-slate-800 hover:opacity-100 dark:text-stone-400 dark:hover:bg-stone-900 dark:hover:text-slate-100"
+            <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                    <button
+                        type="button"
+                        aria-label={`Queued message options ${index + 1}`}
+                        className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-stone-500 opacity-70 transition hover:bg-warm-muted hover:text-slate-800 hover:opacity-100 dark:text-stone-400 dark:hover:bg-stone-900 dark:hover:text-slate-100"
+                    >
+                        <DotsThree className="h-4 w-4" weight="bold" aria-hidden="true" />
+                    </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent
+                    align="end"
+                    side="top"
+                    className="w-52"
                 >
-                    <DotsThree className="h-4 w-4" weight="bold" aria-hidden="true" />
-                </button>
-                <AnimatePresence>
-                    {menuOpen && (
-                        <motion.div
-                            initial={{ opacity: 0, y: 4, scale: 0.98 }}
-                            animate={{ opacity: 1, y: 0, scale: 1 }}
-                            exit={{ opacity: 0, y: 4, scale: 0.98 }}
-                            transition={{ duration: 0.12, ease: [0.16, 1, 0.3, 1] }}
-                            className="absolute right-0 top-8 z-40 w-52 rounded-2xl border border-warm-border bg-warm-surface p-1.5 text-sm shadow-xl dark:border-stone-800 dark:bg-stone-950"
-                        >
-                            <button
-                                type="button"
-                                onClick={() => {
-                                    onEdit(item);
-                                    onMenuOpenChange(null);
-                                }}
-                                className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left font-medium text-slate-800 transition-colors hover:bg-warm-muted dark:text-slate-100 dark:hover:bg-stone-900"
-                            >
-                                <PencilSimple className="h-4 w-4 text-stone-500" aria-hidden="true" />
-                                Edit message
-                            </button>
-                            <button
-                                type="button"
-                                onClick={() => {
-                                    onRemove(item.turnId);
-                                    onMenuOpenChange(null);
-                                }}
-                                className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left font-medium text-red-600 transition-colors hover:bg-red-50 dark:text-red-300 dark:hover:bg-red-950/30"
-                            >
-                                <Trash className="h-4 w-4" aria-hidden="true" />
-                                Delete
-                            </button>
-                        </motion.div>
-                    )}
-                </AnimatePresence>
-            </div>
+                    <DropdownMenuItem onSelect={() => onEdit(item)}>
+                        <PencilSimple className="h-4 w-4 text-stone-500" aria-hidden="true" />
+                        Edit message
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                        onSelect={() => onRemove(item.turnId)}
+                        className="text-red-600 hover:text-red-600 dark:text-red-300 dark:hover:text-red-300"
+                    >
+                        <Trash className="h-4 w-4" aria-hidden="true" />
+                        Delete
+                    </DropdownMenuItem>
+                </DropdownMenuContent>
+            </DropdownMenu>
         </div>
     );
 }
