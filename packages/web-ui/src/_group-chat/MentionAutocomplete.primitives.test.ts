@@ -15,5 +15,6 @@ describe("MentionAutocomplete primitives", () => {
     expect(source).toContain("ComboboxItem");
     expect(source).not.toContain('role="listbox"');
     expect(source).not.toContain('role="option"');
+    expect(source).not.toContain("aria-selected={selected}");
   });
 });

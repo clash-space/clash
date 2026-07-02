@@ -46,7 +46,7 @@ describe("MentionAutocomplete", () => {
 
     expect(designOption.id).toBe("mention-option-0");
     expect(researchOption.id).toBe("mention-option-1");
-    expect(researchOption.getAttribute("aria-selected")).toBe("true");
+    expect(researchOption.className).toContain("bg-warm-hover");
 
     fireEvent.mouseEnter(designOption);
     fireEvent.mouseDown(designOption);

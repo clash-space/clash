@@ -46,7 +46,6 @@ export function MentionAutocomplete({
               value={handle}
               setValueOnClick={false}
               selectValueOnClick={false}
-              aria-selected={selected}
               onMouseDown={(e) => {
                 // mousedown, not click: textarea blur fires before click
                 // and would close the popover via the panel's onBlur.
