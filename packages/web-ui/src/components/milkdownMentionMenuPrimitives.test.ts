@@ -14,8 +14,13 @@ describe("Milkdown mention menu primitives", () => {
     expect(source).toContain("Popover");
     expect(source).toContain("PopoverAnchor");
     expect(source).toContain("PopoverContent");
+    expect(source).toContain("@ariakit/react");
+    expect(source).toContain("ComboboxProvider");
+    expect(source).toContain("ComboboxList");
+    expect(source).toContain("ComboboxItem");
     expect(source).not.toContain("createPortal");
     expect(source).not.toContain("getBoundingClientRect");
+    expect(source).not.toContain("<button\n            key={node.id}");
 
     expect(popover).toContain("PopoverPrimitive.Root");
     expect(popover).toContain("PopoverPrimitive.Anchor");

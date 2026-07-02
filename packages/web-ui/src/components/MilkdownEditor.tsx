@@ -11,6 +11,7 @@ import { history } from '@milkdown/plugin-history';
 import { $prose } from '@milkdown/utils';
 import { Plugin, PluginKey } from '@milkdown/prose/state';
 import type { EditorView } from '@milkdown/prose/view';
+import { ComboboxItem, ComboboxList, ComboboxProvider } from '@ariakit/react';
 import { SignedImg } from './SignedMedia';
 import { getSignedUrl } from '@clash/web-ui/lib/hooks/useSignedUrl';
 import { Popover, PopoverAnchor, PopoverContent } from './ui/popover';
@@ -243,8 +244,11 @@ function AssetMentionMenu({
     };
 
     const renderRow = (node: MentionableNode, i: number) => (
-        <button
+        <ComboboxItem
             key={node.id}
+            value={node.label}
+            setValueOnClick={false}
+            selectValueOnClick={false}
             className={`w-full flex items-center gap-2.5 px-3 py-2 text-left transition-colors ${
                 i === selectedIndex ? 'bg-warm-muted' : 'hover:bg-warm-muted/70'
             }`}
@@ -275,7 +279,7 @@ function AssetMentionMenu({
                     Agent
                 </span>
             )}
-        </button>
+        </ComboboxItem>
     );
 
     return (
@@ -306,18 +310,22 @@ function AssetMentionMenu({
                 onOpenAutoFocus={(event) => event.preventDefault()}
                 className="w-64 max-h-60 overflow-y-auto rounded-xl p-0"
             >
-                {agentEntries.length > 0 && (
-                    <div className="px-3 py-1 text-[10px] font-medium text-stone-600 dark:text-stone-300 uppercase tracking-wider bg-warm-muted border-b border-warm-border">
-                        Agent
-                    </div>
-                )}
-                {agentEntries.map((node, j) => renderRow(node, j))}
-                {sortedAssets.length > 0 && (
-                    <div className={`px-3 py-1 text-[10px] font-medium text-stone-600 dark:text-stone-300 uppercase tracking-wider bg-warm-muted ${agentEntries.length > 0 ? 'border-t border-warm-border' : ''}`}>
-                        Canvas
-                    </div>
-                )}
-                {sortedAssets.map((node, j) => renderRow(node, agentEntries.length + j))}
+                <ComboboxProvider value={query} setValue={() => undefined}>
+                    <ComboboxList aria-label="Mention matches" alwaysVisible className="w-full">
+                        {agentEntries.length > 0 && (
+                            <div className="px-3 py-1 text-[10px] font-medium text-stone-600 dark:text-stone-300 uppercase tracking-wider bg-warm-muted border-b border-warm-border">
+                                Agent
+                            </div>
+                        )}
+                        {agentEntries.map((node, j) => renderRow(node, j))}
+                        {sortedAssets.length > 0 && (
+                            <div className={`px-3 py-1 text-[10px] font-medium text-stone-600 dark:text-stone-300 uppercase tracking-wider bg-warm-muted ${agentEntries.length > 0 ? 'border-t border-warm-border' : ''}`}>
+                                Canvas
+                            </div>
+                        )}
+                        {sortedAssets.map((node, j) => renderRow(node, agentEntries.length + j))}
+                    </ComboboxList>
+                </ComboboxProvider>
             </PopoverContent>
         </Popover>
     );
