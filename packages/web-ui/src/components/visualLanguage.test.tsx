@@ -446,7 +446,9 @@ describe("visual language surfaces", () => {
     );
     const cssSource = readFileSync(join(process.cwd(), "apps/web/app/globals.css"), "utf8");
 
-    expect(agentSource).toMatch(/pointermove/);
+    expect(agentSource).toMatch(/@use-gesture\/react/);
+    expect(agentSource).toMatch(/useMove/);
+    expect(agentSource).not.toMatch(/addEventListener\('pointermove'/);
     expect(agentSource).toMatch(/requestAnimationFrame/);
     expect(agentSource).toMatch(/prefers-reduced-motion: reduce/);
     expect(agentSource).toMatch(/--clash-agent-eye-x/);

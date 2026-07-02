@@ -1,4 +1,5 @@
-import { useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
+import { useMove } from '@use-gesture/react';
 
 export type AgentMotionState = 'idle' | 'connecting' | 'working' | 'waiting' | 'failed' | 'review';
 
@@ -9,6 +10,7 @@ type AgentMotionProps = {
     decorative?: boolean;
     gazeTarget?: { x: number; y: number } | null;
 };
+type GazePoint = { x: number; y: number };
 
 function joinClasses(...classes: Array<string | false | null | undefined>) {
     return classes.filter(Boolean).join(' ');
@@ -16,6 +18,10 @@ function joinClasses(...classes: Array<string | false | null | undefined>) {
 
 function clamp(value: number, min: number, max: number) {
     return Math.min(max, Math.max(min, value));
+}
+
+function prefersReducedMotion() {
+    return typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches;
 }
 
 export function AgentMotion({
@@ -26,69 +32,22 @@ export function AgentMotion({
     gazeTarget = null,
 }: AgentMotionProps) {
     const rootRef = useRef<HTMLSpanElement>(null);
+    const frameRef = useRef(0);
+    const lastPointerRef = useRef<GazePoint | null>(null);
+
     const accessibilityProps = decorative
         ? { 'aria-hidden': true as const }
         : { role: 'img' as const, 'aria-label': label };
 
-    useEffect(() => {
-        if (typeof window === 'undefined') return;
-        const media = window.matchMedia?.('(prefers-reduced-motion: reduce)');
-        if (media?.matches) return;
-
-        let frame = 0;
-        let lastPointer: { x: number; y: number } | null = null;
-
-        const reset = () => {
-            const root = rootRef.current;
-            if (!root) return;
-            root.dataset.agentMotionTracking = 'false';
-            root.style.setProperty('--clash-agent-eye-x', '0px');
-            root.style.setProperty('--clash-agent-eye-y', '0px');
-        };
-
-        const update = () => {
-            frame = 0;
-            const root = rootRef.current;
-            if (!root || !lastPointer) return;
-
-            const rect = root.getBoundingClientRect();
-            if (rect.width <= 0 || rect.height <= 0) return;
-
-            const centerX = rect.left + rect.width / 2;
-            const centerY = rect.top + rect.height / 2;
-            const rangeX = Math.max(rect.width * 0.55, 1);
-            const rangeY = Math.max(rect.height * 0.6, 1);
-            const normalizedX = clamp((lastPointer.x - centerX) / rangeX, -1, 1);
-            const normalizedY = clamp((lastPointer.y - centerY) / rangeY, -1, 1);
-            const maxX = clamp(rect.width * 0.2, 4, 14);
-            const maxY = clamp(rect.height * 0.15, 3, 10);
-
-            root.dataset.agentMotionTracking = 'true';
-            root.style.setProperty('--clash-agent-eye-x', `${(normalizedX * maxX).toFixed(2)}px`);
-            root.style.setProperty('--clash-agent-eye-y', `${(normalizedY * maxY).toFixed(2)}px`);
-        };
-
-        const onPointerMove = (event: PointerEvent) => {
-            lastPointer = { x: event.clientX, y: event.clientY };
-            if (frame === 0) frame = window.requestAnimationFrame(update);
-        };
-
-        window.addEventListener('pointermove', onPointerMove, { passive: true });
-        window.addEventListener('blur', reset);
-
-        return () => {
-            window.removeEventListener('pointermove', onPointerMove);
-            window.removeEventListener('blur', reset);
-            if (frame !== 0) window.cancelAnimationFrame(frame);
-        };
+    const reset = useCallback(() => {
+        const root = rootRef.current;
+        if (!root) return;
+        root.dataset.agentMotionTracking = 'false';
+        root.style.setProperty('--clash-agent-eye-x', '0px');
+        root.style.setProperty('--clash-agent-eye-y', '0px');
     }, []);
 
-    useEffect(() => {
-        if (typeof window === 'undefined') return;
-        const media = window.matchMedia?.('(prefers-reduced-motion: reduce)');
-        if (media?.matches) return;
-        if (state !== 'idle' || !gazeTarget) return;
-
+    const updateEyes = useCallback((point: GazePoint) => {
         const root = rootRef.current;
         if (!root) return;
 
@@ -99,15 +58,57 @@ export function AgentMotion({
         const centerY = rect.top + rect.height / 2;
         const rangeX = Math.max(rect.width * 0.55, 1);
         const rangeY = Math.max(rect.height * 0.6, 1);
-        const normalizedX = clamp((gazeTarget.x - centerX) / rangeX, -1, 1);
-        const normalizedY = clamp((gazeTarget.y - centerY) / rangeY, -1, 1);
+        const normalizedX = clamp((point.x - centerX) / rangeX, -1, 1);
+        const normalizedY = clamp((point.y - centerY) / rangeY, -1, 1);
         const maxX = clamp(rect.width * 0.2, 4, 14);
         const maxY = clamp(rect.height * 0.15, 3, 10);
 
         root.dataset.agentMotionTracking = 'true';
         root.style.setProperty('--clash-agent-eye-x', `${(normalizedX * maxX).toFixed(2)}px`);
         root.style.setProperty('--clash-agent-eye-y', `${(normalizedY * maxY).toFixed(2)}px`);
-    }, [gazeTarget, state]);
+    }, []);
+
+    const schedulePointerUpdate = useCallback((point: GazePoint) => {
+        if (typeof window === 'undefined') return;
+        lastPointerRef.current = point;
+        if (frameRef.current !== 0) return;
+        frameRef.current = window.requestAnimationFrame(() => {
+            frameRef.current = 0;
+            const latest = lastPointerRef.current;
+            if (latest) updateEyes(latest);
+        });
+    }, [updateEyes]);
+
+    const bindAgentGaze = useMove<PointerEvent>(({ event }) => {
+        if (prefersReducedMotion()) return;
+        schedulePointerUpdate({ x: event.clientX, y: event.clientY });
+    }, {
+        eventOptions: { passive: true },
+        triggerAllEvents: true,
+    });
+
+    useEffect(() => {
+        if (typeof window === 'undefined') return;
+        if (prefersReducedMotion()) return;
+
+        window.addEventListener('blur', reset);
+
+        return () => {
+            window.removeEventListener('blur', reset);
+            if (frameRef.current !== 0) {
+                window.cancelAnimationFrame(frameRef.current);
+                frameRef.current = 0;
+            }
+        };
+    }, [reset]);
+
+    useEffect(() => {
+        if (typeof window === 'undefined') return;
+        if (prefersReducedMotion()) return;
+        if (state !== 'idle' || !gazeTarget) return;
+
+        updateEyes(gazeTarget);
+    }, [gazeTarget, state, updateEyes]);
 
     return (
         <span
@@ -116,6 +117,7 @@ export function AgentMotion({
             data-agent-motion-state={state}
             data-agent-motion-tracking="false"
             {...accessibilityProps}
+            {...bindAgentGaze()}
         >
             <svg
                 className="clash-agent-motion__svg"

@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, render, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { AgentMotion } from "./AgentMotion";
@@ -21,6 +21,10 @@ describe("AgentMotion", () => {
         removeEventListener: vi.fn(),
       })),
     );
+    vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => {
+      callback(0);
+      return 0;
+    });
 
     const { container } = render(<AgentMotion />);
     const root = container.querySelector(".clash-agent-motion") as HTMLElement;
@@ -38,7 +42,8 @@ describe("AgentMotion", () => {
       toJSON: () => ({}),
     } as DOMRect);
 
-    window.dispatchEvent(new MouseEvent("pointermove", { clientX: 180, clientY: 120 }));
+    fireEvent.pointerMove(root, { clientX: 180, clientY: 120, pointerType: "mouse" });
+    fireEvent.pointerMove(root, { clientX: 190, clientY: 130, pointerType: "mouse" });
 
     await waitFor(() => {
       expect(root.dataset.agentMotionTracking).toBe("true");
