@@ -936,28 +936,28 @@ export default function SettingsClient({
                         {providerPresets.map((preset) => {
                             const configured = variableKeys.has(preset.defaultSecretId);
                             return (
-                                <button
-                                    key={preset.id}
-                                    type="button"
-                                    aria-label={`${preset.label} · ${preset.defaultSecretId}`}
-                                    onClick={() => setNewVarKey(preset.defaultSecretId)}
-                                    className="flex w-full items-center justify-between gap-3 py-2.5 text-left transition-colors hover:bg-warm-muted"
-                                    title={preset.secretDescription}
-                                >
-                                    <span className="min-w-0">
-                                        <span className="block text-sm font-medium text-slate-900 dark:text-slate-50">{preset.label}</span>
-                                        <code className="block truncate text-xs text-stone-500 dark:text-stone-400">{preset.defaultSecretId}</code>
-                                    </span>
-                                    <span
-                                        className={
-                                            configured
-                                                ? "rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-medium text-emerald-700"
-                                                : "rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-medium text-amber-700"
-                                        }
+                                <Tooltip label={preset.secretDescription} key={preset.id}>
+                                    <button
+                                        type="button"
+                                        aria-label={`${preset.label} · ${preset.defaultSecretId}`}
+                                        onClick={() => setNewVarKey(preset.defaultSecretId)}
+                                        className="flex w-full items-center justify-between gap-3 py-2.5 text-left transition-colors hover:bg-warm-muted"
                                     >
-                                        {configured ? 'Configured' : 'Missing'}
-                                    </span>
-                                </button>
+                                        <span className="min-w-0">
+                                            <span className="block text-sm font-medium text-slate-900 dark:text-slate-50">{preset.label}</span>
+                                            <code className="block truncate text-xs text-stone-500 dark:text-stone-400">{preset.defaultSecretId}</code>
+                                        </span>
+                                        <span
+                                            className={
+                                                configured
+                                                    ? "rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-medium text-emerald-700"
+                                                    : "rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-medium text-amber-700"
+                                            }
+                                        >
+                                            {configured ? 'Configured' : 'Missing'}
+                                        </span>
+                                    </button>
+                                </Tooltip>
                             );
                         })}
                     </div>

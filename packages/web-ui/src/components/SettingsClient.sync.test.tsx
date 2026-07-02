@@ -233,6 +233,22 @@ describe("SettingsSurface tab state", () => {
     expect(audioSectionSource).not.toContain("TooltipProvider");
     expect(audioSectionSource).not.toContain("TooltipAnchor");
   });
+
+  it("uses the shared tooltip primitive for variable provider presets instead of browser title attributes", () => {
+    const source = readFileSync(
+      resolve(process.cwd(), "packages/web-ui/src/components/SettingsClient.tsx"),
+      "utf8",
+    );
+    const tooltipSource = readFileSync(
+      resolve(process.cwd(), "packages/web-ui/src/components/ui/tooltip.tsx"),
+      "utf8",
+    );
+
+    expect(tooltipSource).toContain("@ariakit/react");
+    expect(source).toContain("./ui/tooltip");
+    expect(source).toContain("<Tooltip label={preset.secretDescription}");
+    expect(source).not.toContain("title={preset.secretDescription}");
+  });
 });
 
 describe("SettingsClient sync section", () => {
