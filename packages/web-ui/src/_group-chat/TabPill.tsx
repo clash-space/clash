@@ -59,15 +59,15 @@ export const TabPill = forwardRef<HTMLButtonElement, TabPillProps>(function TabP
   const avatarSize = compact ? 'h-9 w-9 text-xs' : 'h-5 w-5 text-[9px]';
   const wrapperShape = compact
     ? 'min-h-11 min-w-11 p-1 rounded-matrix justify-center'
-    : 'min-h-[44px] py-1 pl-1.5 pr-3 rounded-matrix gap-2';
+    : `min-h-[44px] py-1 pl-1.5 ${onClose ? 'pr-7' : 'pr-3'} rounded-matrix gap-2`;
   return (
-    <motion.div whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} className="shrink-0">
+    <motion.div whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} className="group relative shrink-0">
       <Tab
         ref={ref}
         id={tabId}
         onClick={onClick}
         title={compact ? label : undefined}
-        className={`group relative flex items-center text-xs font-medium transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-brand/60 focus-visible:ring-offset-1 focus-visible:ring-offset-warm-surface ${wrapperShape} ${
+        className={`relative flex items-center text-xs font-medium transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-brand/60 focus-visible:ring-offset-1 focus-visible:ring-offset-warm-surface ${wrapperShape} ${
           active
             ? 'bg-brand text-brand-foreground shadow-sm'
             : 'bg-warm-muted text-stone-700 dark:text-stone-200 hover:bg-warm-hover hover:text-stone-900 dark:hover:text-white'
@@ -130,30 +130,22 @@ export const TabPill = forwardRef<HTMLButtonElement, TabPillProps>(function TabP
         {/* Close button hidden in compact mode (use right-click /
             keyboard remove later if needed; sidebar real estate is too
             tight for a hover-revealed ×). */}
-        {onClose && !compact && (
-          <span
-            role="button"
-            aria-label={`Remove ${label} from room`}
-            tabIndex={0}
-            onClick={(e) => {
-              e.stopPropagation();
-              onClose();
-            }}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' || e.key === ' ') {
-                e.preventDefault();
-                e.stopPropagation();
-                onClose();
-              }
-            }}
-            className={`ml-0.5 text-[14px] leading-none opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity ${
-              active ? 'text-white/80 hover:text-white' : 'text-stone-400 hover:text-brand'
-            }`}
-          >
-            ×
-          </span>
-        )}
       </Tab>
+      {onClose && !compact && (
+        <button
+          type="button"
+          aria-label={`Remove ${label} from room`}
+          onClick={(e) => {
+            e.stopPropagation();
+            onClose();
+          }}
+          className={`absolute right-2 top-1/2 -translate-y-1/2 rounded-sm px-0.5 text-[14px] leading-none opacity-0 transition-opacity focus:opacity-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand/60 group-hover:opacity-100 group-focus-within:opacity-100 ${
+            active ? 'text-white/80 hover:text-white' : 'text-stone-400 hover:text-brand'
+          }`}
+        >
+          ×
+        </button>
+      )}
     </motion.div>
   );
 });

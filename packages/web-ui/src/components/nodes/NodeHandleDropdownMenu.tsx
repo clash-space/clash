@@ -41,12 +41,11 @@ export function NodeHandleDropdownMenu({
                 style={{ top: '50%', right: '-8px', transform: 'translateY(-50%)' }}
             >
                 <DropdownMenuTrigger asChild>
-                    <div
-                        role="button"
-                        tabIndex={0}
+                    <button
+                        type="button"
                         aria-label={triggerLabel}
                         className={cn(
-                            'relative flex h-4 w-4 items-center justify-center rounded-full outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-warm-surface',
+                            'relative flex h-4 w-4 items-center justify-center rounded-full border-0 bg-transparent p-0 outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-warm-surface',
                             handleSurfaceClassName,
                         )}
                     >
@@ -60,7 +59,7 @@ export function NodeHandleDropdownMenu({
                                 handleClassName,
                             )}
                         />
-                    </div>
+                    </button>
                 </DropdownMenuTrigger>
             </div>
             <DropdownMenuContent

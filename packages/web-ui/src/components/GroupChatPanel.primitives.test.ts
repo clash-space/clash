@@ -19,6 +19,7 @@ describe("GroupChatPanel primitives", () => {
     expect(pillSource).toContain("@ariakit/react");
     expect(pillSource).toContain("<Tab");
     expect(pillSource).not.toContain('role="tab"');
+    expect(pillSource).not.toContain('role="button"');
     expect(pillSource).not.toContain("tabIndex={active ? 0 : -1}");
     expect(pillSource).not.toContain("aria-selected={active}");
   });

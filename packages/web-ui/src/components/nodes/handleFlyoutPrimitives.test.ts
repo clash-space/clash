@@ -18,6 +18,7 @@ describe("node handle flyout primitives", () => {
         expect(shell).toContain("DropdownMenuTrigger");
         expect(shell).toContain("DropdownMenuContent");
         expect(shell).toContain("DropdownMenuItem");
+        expect(shell).not.toContain('role="button"');
 
         for (const source of [sourceHandleMenu, actionBadgePipelineMenu]) {
             expect(source).toContain("NodeHandleDropdownMenu");
