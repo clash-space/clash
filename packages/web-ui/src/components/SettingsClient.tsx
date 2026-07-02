@@ -2730,6 +2730,11 @@ function ModelRoutingSection({
                 setDeletingProviderAccountId(null);
             }
         };
+        const handleProviderKeyEditorSubmit = (event: FormEvent<HTMLFormElement>) => {
+            event.preventDefault();
+            if (modelAccessInvalid || savingProviderKey === row.key || saving) return;
+            void saveDraft();
+        };
         const renderProviderKeyEditor = ({ includeHeader }: { includeHeader: boolean }) => (
             <div
                 role="group"
@@ -2756,7 +2761,7 @@ function ModelRoutingSection({
                         </button>
                     </div>
                 )}
-                <div className="space-y-4 px-4 py-4">
+                <form onSubmit={handleProviderKeyEditorSubmit} className="space-y-4 px-4 py-4">
                     <label className="block">
                         <span className="mb-1 block text-xs font-medium text-stone-500 dark:text-stone-400">Name (optional)</span>
                         <input
@@ -2777,12 +2782,6 @@ function ModelRoutingSection({
                                     type="password"
                                     value={draft.apiKeys?.[credential.key] ?? ''}
                                     onChange={(e) => updateCredentialDraft(credential.key, e.target.value)}
-                                    onKeyDown={(e) => {
-                                        if (e.key === 'Enter') {
-                                            e.preventDefault();
-                                            void saveDraft();
-                                        }
-                                    }}
                                     placeholder={editingAccount ? 'Saved credential' : credential.placeholder ?? (index === 0 && savedAccounts.length > 0 ? 'Paste another API key' : 'Paste API key')}
                                     autoComplete="new-password"
                                     data-provider-key-input={index === 0 ? 'true' : undefined}
@@ -2800,12 +2799,6 @@ function ModelRoutingSection({
                                 type="url"
                                 value={draft.baseUrl ?? ''}
                                 onChange={(e) => updateProviderDraft({ baseUrl: e.target.value })}
-                                onKeyDown={(e) => {
-                                    if (e.key === 'Enter') {
-                                        e.preventDefault();
-                                        void saveDraft();
-                                    }
-                                }}
                                 placeholder={row.hasBaseUrl ? 'Saved base URL' : setup.baseUrlPlaceholder}
                                 className={settingsFieldClass}
                             />
@@ -3026,8 +3019,7 @@ function ModelRoutingSection({
                                 )}
                                 {(hasProviderDraft || savingProviderKey === row.key) && (
                                     <button
-                                        type="button"
-                                        onClick={() => { void saveDraft(); }}
+                                        type="submit"
                                         disabled={modelAccessInvalid || savingProviderKey === row.key || saving}
                                         className={settingsSmallPrimaryButtonClass}
                                     >
@@ -3037,7 +3029,7 @@ function ModelRoutingSection({
                             </div>
                         </div>
                     )}
-                </div>
+                </form>
             </div>
         );
         return (

@@ -11,8 +11,10 @@ describe("SettingsClient primitives", () => {
 
     expect(source).not.toContain("onKeyDown={(e) => e.key === 'Enter' && handleCreate()}");
     expect(source).not.toContain("onKeyDown={(e) => e.key === 'Enter' && handleAddVariable()}");
+    expect(source).not.toContain("onKeyDown={(e) => {\n                                        if (e.key === 'Enter')");
     expect(source).toContain("onSubmit={handleCreateTokenSubmit}");
     expect(source).toContain("onSubmit={handleAddVariableSubmit}");
+    expect(source).toContain("onSubmit={handleProviderKeyEditorSubmit}");
   });
 
   it("uses shared collapsible primitives for agent auth fallback copy", () => {
