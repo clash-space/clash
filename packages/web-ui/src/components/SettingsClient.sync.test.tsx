@@ -1,5 +1,7 @@
 // @vitest-environment jsdom
 import type { ReactNode } from "react";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -166,6 +168,24 @@ describe("SettingsSurface tab state", () => {
 
     expect(screen.getByRole("button", { name: "Agents" }).getAttribute("aria-current")).toBe("page");
     expect(screen.queryByRole("button", { name: "Runtimes" })).toBeNull();
+  });
+
+  it("uses the shared tooltip primitive for the dialog close icon instead of a browser title attribute", () => {
+    const source = readFileSync(
+      resolve(process.cwd(), "packages/web-ui/src/components/SettingsSurface.tsx"),
+      "utf8",
+    );
+    const tooltipSource = readFileSync(
+      resolve(process.cwd(), "packages/web-ui/src/components/ui/tooltip.tsx"),
+      "utf8",
+    );
+
+    expect(tooltipSource).toContain("@ariakit/react");
+    expect(source).toContain("./ui/tooltip");
+    expect(source).toContain('<Tooltip label="Close settings">');
+    expect(source).not.toContain('title="Close (Esc)"');
+    expect(source).not.toContain("TooltipProvider");
+    expect(source).not.toContain("TooltipAnchor");
   });
 });
 

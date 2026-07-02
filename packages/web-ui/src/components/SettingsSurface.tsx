@@ -13,6 +13,7 @@ import {
 } from '@phosphor-icons/react';
 import betterAuthClient from '@clash/web-ui/lib/betterAuthClient';
 import SettingsClient, { type SettingsSection } from './SettingsClient';
+import { Tooltip } from './ui/tooltip';
 import {
   listApiTokens,
   listVariables,
@@ -184,20 +185,21 @@ export function SettingsSurface({
       <aside className={`${isPage ? 'clash-settings-page-sidebar' : 'clash-settings-dialog-sidebar'} flex w-64 shrink-0 flex-col border-r border-warm-border/75`}>
         <div className="flex items-center justify-between px-4 py-4">
           {onClose ? (
-            <button
-              type="button"
-              onPointerDown={(event) => {
-                if (event.button !== 0) return;
-                event.preventDefault();
-                onClose();
-              }}
-              onClick={onClose}
-              className="flex h-9 min-h-[36px] w-9 min-w-[36px] items-center justify-center rounded-full text-stone-700 transition-colors hover:bg-warm-hover hover:text-stone-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand/60 dark:text-stone-300 dark:hover:text-stone-100"
-              aria-label="Close settings"
-              title="Close (Esc)"
-            >
-              <X className="h-4 w-4" weight="bold" aria-hidden="true" />
-            </button>
+            <Tooltip label="Close settings">
+              <button
+                type="button"
+                onPointerDown={(event) => {
+                  if (event.button !== 0) return;
+                  event.preventDefault();
+                  onClose();
+                }}
+                onClick={onClose}
+                className="flex h-9 min-h-[36px] w-9 min-w-[36px] items-center justify-center rounded-full text-stone-700 transition-colors hover:bg-warm-hover hover:text-stone-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand/60 dark:text-stone-300 dark:hover:text-stone-100"
+                aria-label="Close settings"
+              >
+                <X className="h-4 w-4" weight="bold" aria-hidden="true" />
+              </button>
+            </Tooltip>
           ) : (
             <div>
               <h1 className="font-display text-lg font-semibold tracking-tight text-stone-900 dark:text-stone-100">
