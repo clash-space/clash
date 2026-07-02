@@ -2753,14 +2753,13 @@ function ModelRoutingSection({
                                 {editorTitle}
                             </span>
                         </div>
-                        <button
-                            type="button"
-                            aria-label={`Collapse ${editorTitle}`}
+                        <IconButton
+                            label={`Collapse ${editorTitle}`}
                             onClick={closeProviderKeyEditor}
-                            className="rounded-md p-1.5 text-stone-400 transition-colors hover:bg-warm-muted hover:text-stone-700 dark:hover:text-stone-200"
-                        >
-                            <CaretDown className="h-4 w-4" aria-hidden="true" />
-                        </button>
+                            size="sm"
+                            icon={<CaretDown className="h-4 w-4" />}
+                            className="rounded-md text-stone-400 hover:bg-warm-muted hover:text-stone-700 dark:hover:text-stone-200"
+                        />
                     </div>
                 )}
                 <form onSubmit={handleProviderKeyEditorSubmit} className="space-y-4 px-4 py-4">
@@ -2821,8 +2820,7 @@ function ModelRoutingSection({
                                     )}
                                 </div>
                                 <div className="flex flex-wrap gap-2">
-                                    <button
-                                        type="button"
+                                    <Button
                                         disabled={editingOAuthBusy}
                                         onClick={async () => {
                                             if (!editingOAuthBusyKey || !editingAccount.id) return;
@@ -2840,10 +2838,9 @@ function ModelRoutingSection({
                                         className={settingsCompactSecondaryButtonClass}
                                     >
                                         {editingOAuth?.status === 'pending' ? 'Restart authorization' : editingOAuth?.status === 'authorized' ? 'Reconnect' : 'Connect'}
-                                    </button>
+                                    </Button>
                                     {editingOAuth?.status === 'pending' && (
-                                        <button
-                                            type="button"
+                                        <Button
                                             disabled={editingOAuthBusy}
                                             onClick={async () => {
                                                 if (!editingOAuthBusyKey || !editingAccount.id) return;
@@ -2857,7 +2854,7 @@ function ModelRoutingSection({
                                             className={settingsSmallPrimaryButtonClass}
                                         >
                                             Complete
-                                        </button>
+                                        </Button>
                                     )}
                                 </div>
                             </div>
@@ -2902,14 +2899,13 @@ function ModelRoutingSection({
                                                     className="inline-flex max-w-full items-center gap-1.5 rounded-lg border border-warm-border bg-warm-surface px-2.5 py-1 text-xs font-medium text-slate-800 dark:text-slate-100"
                                                 >
                                                     <span className="truncate">{model.name}</span>
-                                                    <button
-                                                        type="button"
-                                                        aria-label={`Remove ${model.name}`}
+                                                    <IconButton
+                                                        label={`Remove ${model.name}`}
                                                         onClick={() => setSupportedModelIdsDraft(draftSupportedModelIds.filter((id) => id !== model.id))}
-                                                        className="rounded p-0.5 text-stone-400 transition-colors hover:bg-warm-muted hover:text-slate-700 dark:hover:text-slate-100"
-                                                    >
-                                                        <X className="h-3.5 w-3.5" aria-hidden="true" />
-                                                    </button>
+                                                        size="sm"
+                                                        icon={<X className="h-3.5 w-3.5" />}
+                                                        className="h-5 min-h-5 w-5 min-w-5 rounded text-stone-400 hover:bg-warm-muted hover:text-slate-700 dark:hover:text-slate-100"
+                                                    />
                                                 </span>
                                             ))}
                                         </div>
@@ -2943,15 +2939,14 @@ function ModelRoutingSection({
                                         }}
                                     />
                                 </div>
-                                <button
-                                    type="button"
+                                <Button
                                     aria-label="Run provider test"
                                     disabled={providerTestDisabled}
                                     onClick={() => { void runProviderTest(); }}
                                     className={settingsCompactSecondaryButtonClass}
                                 >
                                     {providerTestBusyKey === providerTestKey ? 'Testing...' : 'Run test'}
-                                </button>
+                                </Button>
                             </div>
                             {providerTestResult && (
                                 <div className="mt-3 space-y-3">
@@ -2998,35 +2993,35 @@ function ModelRoutingSection({
                         <div className="flex flex-wrap items-center justify-between gap-2">
                             <div>
                                 {canDeleteAccount && (
-                                    <button
-                                        type="button"
+                                    <Button
                                         onClick={() => { void deleteSavedAccount(); }}
                                         disabled={deletingProviderAccountId === editingAccount?.id || saving}
+                                        variant="destructive"
+                                        size="sm"
+                                        leftIcon={<Trash className="h-4 w-4" />}
                                         className={settingsDangerGhostButtonClass}
                                     >
-                                        <Trash className="h-4 w-4" aria-hidden="true" />
                                         {deletingProviderAccountId === editingAccount?.id ? 'Removing...' : 'Remove key'}
-                                    </button>
+                                    </Button>
                                 )}
                             </div>
                             <div className="flex justify-end gap-2">
                                 {includeHeader && (
-                                    <button
-                                        type="button"
+                                    <Button
                                         onClick={closeProviderKeyEditor}
                                         className={settingsCompactSecondaryButtonClass}
                                     >
                                         Cancel
-                                    </button>
+                                    </Button>
                                 )}
                                 {(hasProviderDraft || savingProviderKey === row.key) && (
-                                    <button
+                                    <Button
                                         type="submit"
                                         disabled={modelAccessInvalid || savingProviderKey === row.key || saving}
                                         className={settingsSmallPrimaryButtonClass}
                                     >
                                         {savingProviderKey === row.key ? 'Saving...' : 'Save'}
-                                    </button>
+                                    </Button>
                                 )}
                             </div>
                         </div>
@@ -3037,21 +3032,21 @@ function ModelRoutingSection({
         return (
             <div className="space-y-6">
                 <div className="border-b border-warm-border pb-6">
-                    <button
-                        type="button"
+                    <Button
                         aria-label="Back to BYOK"
                         onClick={() => {
                             setSelectedProviderKey(null);
                             setAddingProviderKey(null);
                             setEditingProviderAccountKey(null);
                         }}
-                        className="mb-5 inline-flex items-center gap-2 text-sm font-medium text-stone-500 transition-colors hover:text-slate-950 dark:text-stone-300 dark:hover:text-slate-50"
+                        size="sm"
+                        leftIcon={<ArrowLeft className="h-4 w-4" />}
+                        className="mb-5 h-auto min-h-0 gap-2 border-transparent bg-transparent px-0 py-0 text-sm font-medium text-stone-500 shadow-none hover:bg-transparent hover:text-slate-950 dark:text-stone-300 dark:hover:text-slate-50"
                     >
-                        <ArrowLeft className="h-4 w-4" aria-hidden="true" />
                         <span>BYOK</span>
                         <CaretRight className="h-3.5 w-3.5 text-stone-400" aria-hidden="true" />
                         <span className="text-slate-900 dark:text-slate-50">{row.title}</span>
-                    </button>
+                    </Button>
                     <div className="flex flex-wrap items-start justify-between gap-4">
                         <div className="flex min-w-0 items-start gap-3">
                             {renderProviderIcon(row.provider, row.title)}
@@ -3094,15 +3089,15 @@ function ModelRoutingSection({
                                             Attempted in order, before falling back to Clash-hosted endpoints.
                                         </p>
                                     </div>
-                                    <button
-                                        type="button"
+                                    <Button
                                         aria-label={`Add prioritized ${row.title} ${oauthProviderId ? 'account' : 'key'}`}
                                         onClick={openPrioritizedKeyEditor}
+                                        size="sm"
+                                        leftIcon={<Plus className="h-3.5 w-3.5" />}
                                         className={`${settingsCompactSecondaryButtonClass} gap-1.5`}
                                     >
-                                        <Plus className="h-3.5 w-3.5" aria-hidden="true" />
                                         {oauthProviderId ? 'Add account' : 'Add key'}
-                                    </button>
+                                    </Button>
                                 </div>
                             <div className="space-y-3">
                                 {savedAccounts.length > 0 && (

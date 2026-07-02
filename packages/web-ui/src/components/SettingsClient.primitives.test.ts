@@ -78,4 +78,17 @@ describe("SettingsClient primitives", () => {
     expect(source).not.toMatch(/<button[\s\S]{0,220}deployLocalAsrModel\(entry\)/);
     expect(source).not.toMatch(/<button[\s\S]{0,220}setSelectedProviderKey\(row\.key\)/);
   });
+
+  it("uses shared button primitives for provider key editor controls", () => {
+    const source = readSource("packages/web-ui/src/components/SettingsClient.tsx");
+
+    expect(source).not.toMatch(/<button[\s\S]{0,220}closeProviderKeyEditor/);
+    expect(source).not.toMatch(/<button[\s\S]{0,260}onStartProviderOAuth/);
+    expect(source).not.toMatch(/<button[\s\S]{0,260}onCompleteProviderOAuth/);
+    expect(source).not.toMatch(/<button[\s\S]{0,220}setSupportedModelIdsDraft/);
+    expect(source).not.toMatch(/<button[\s\S]{0,220}runProviderTest\(\)/);
+    expect(source).not.toMatch(/<button[\s\S]{0,220}deleteSavedAccount\(\)/);
+    expect(source).not.toMatch(/<button[\s\S]{0,260}setSelectedProviderKey\(null\)/);
+    expect(source).not.toMatch(/<button[\s\S]{0,220}openPrioritizedKeyEditor/);
+  });
 });
