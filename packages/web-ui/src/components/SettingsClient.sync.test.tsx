@@ -2493,7 +2493,7 @@ describe("SettingsClient model routing", () => {
     expect(within(existingKeyEditor).queryByText("Filters")).toBeNull();
     expect(within(existingKeyEditor).queryByText("API Keys")).toBeNull();
     expect(within(existingKeyEditor).queryByText("Always use for this provider")).toBeNull();
-    expect(within(existingKeyEditor).getByRole("button", { name: /Choose test model/i })).toBeTruthy();
+    expect(within(existingKeyEditor).getByRole("combobox", { name: /Choose test model/i })).toBeTruthy();
     expect(within(existingKeyEditor).getByRole("button", { name: "Run provider test" })).toBeTruthy();
     expect(within(existingKeyEditor).queryByRole("button", { name: /Remove key/i })).toBeNull();
 
@@ -2994,7 +2994,7 @@ describe("SettingsClient model routing", () => {
     const editor = within(accountRow).getByRole("group", { name: "Primary Dreamina Dreamina account" });
     expect(within(editor).getByText("Authorization")).toBeTruthy();
     expect(within(editor).getByRole("button", { name: "Reconnect" })).toBeTruthy();
-    expect(within(editor).getByRole("button", { name: /Choose test model/i })).toBeTruthy();
+    expect(within(editor).getByRole("combobox", { name: /Choose test model/i })).toBeTruthy();
     expect(within(editor).getByRole("button", { name: "Run provider test" })).toBeTruthy();
     expect(within(editor).queryByLabelText("Dreamina API key")).toBeNull();
   });
@@ -3248,8 +3248,10 @@ describe("SettingsClient model routing", () => {
     fireEvent.click(within(providerConfig).getByText("Mock primary"));
 
     const editor = within(providerConfig).getByRole("group", { name: "Mock primary Mock Provider API key" });
-    const modelToTestSelect = within(editor).getByRole("button", { name: /Choose test model/i });
+    const modelToTestSelect = within(editor).getByRole("combobox", { name: /Choose test model/i });
     expect(modelToTestSelect).toBeTruthy();
+    expect(modelToTestSelect.className).toContain("clash-select-trigger");
+    expect(modelToTestSelect.className).not.toContain("clash-settings-test-model-picker");
     fireEvent.click(modelToTestSelect);
     expect(screen.getByRole("listbox", { name: "Model to test" })).toBeTruthy();
     fireEvent.click(screen.getByRole("option", { name: /Mock Image Model/ }));
@@ -3272,7 +3274,7 @@ describe("SettingsClient model routing", () => {
     expect(within(editor).getByLabelText("Provider test input").textContent).toContain('"aspectRatio": "16:9"');
     expect(within(editor).getByLabelText("Provider test output").textContent).toContain('"url": "http://local-provider-test/api/mock-fal/files/fal-mock-provider-test.png"');
 
-    fireEvent.click(within(editor).getByRole("button", { name: /Choose test model/i }));
+    fireEvent.click(within(editor).getByRole("combobox", { name: /Choose test model/i }));
     expect(screen.getByRole("listbox", { name: "Model to test" })).toBeTruthy();
     fireEvent.click(screen.getByRole("option", { name: /Mock Text Model/ }));
     fireEvent.click(within(editor).getByRole("button", { name: "Run provider test" }));
@@ -3315,9 +3317,9 @@ describe("SettingsClient model routing", () => {
     fireEvent.click(within(providerConfig).getByText("Mock primary"));
 
     const editor = within(providerConfig).getByRole("group", { name: "Mock primary Mock Provider API key" });
-    expect(within(editor).getByRole("button", { name: /Choose test model/i }).textContent).toContain("GPT Image 2");
+    expect(within(editor).getByRole("combobox", { name: /Choose test model/i }).textContent).toContain("GPT Image 2");
 
-    fireEvent.click(within(editor).getByRole("button", { name: /Choose test model/i }));
+    fireEvent.click(within(editor).getByRole("combobox", { name: /Choose test model/i }));
 
     expect(screen.getByRole("listbox", { name: "Model to test" })).toBeTruthy();
     expect(screen.getByRole("option", { name: /GPT Image 2/ })).toBeTruthy();
@@ -3355,7 +3357,7 @@ describe("SettingsClient model routing", () => {
     fireEvent.click(within(providerConfig).getByText("Mock primary"));
 
     const editor = within(providerConfig).getByRole("group", { name: "Mock primary Mock Provider API key" });
-    fireEvent.click(within(editor).getByRole("button", { name: /Choose test model/i }));
+    fireEvent.click(within(editor).getByRole("combobox", { name: /Choose test model/i }));
 
     const search = screen.getByRole("combobox", { name: "Search test models" });
     fireEvent.change(search, { target: { value: "text" } });
@@ -3363,7 +3365,7 @@ describe("SettingsClient model routing", () => {
     expect(screen.queryByRole("option", { name: /Mock Image Model/ })).toBeNull();
     fireEvent.click(screen.getByRole("option", { name: /Mock Text Model/ }));
 
-    expect(within(editor).getByRole("button", { name: /Choose test model/i }).textContent).toContain("Mock Text Model");
+    expect(within(editor).getByRole("combobox", { name: /Choose test model/i }).textContent).toContain("Mock Text Model");
   });
 
   it("shows provider route details in the provider test model picker", async () => {
@@ -3397,7 +3399,7 @@ describe("SettingsClient model routing", () => {
     fireEvent.click(within(providerConfig).getByText("Mock primary"));
 
     const editor = within(providerConfig).getByRole("group", { name: "Mock primary Mock Provider API key" });
-    fireEvent.click(within(editor).getByRole("button", { name: /Choose test model/i }));
+    fireEvent.click(within(editor).getByRole("combobox", { name: /Choose test model/i }));
 
     const imageOption = screen.getByRole("option", { name: /Mock Image Model/ });
     expect(within(imageOption).getByText("image")).toBeTruthy();
@@ -3442,7 +3444,7 @@ describe("SettingsClient model routing", () => {
     fireEvent.click(within(providerConfig).getByText("Mock primary"));
 
     const editor = within(providerConfig).getByRole("group", { name: "Mock primary Mock Provider API key" });
-    const modelPicker = within(editor).getByRole("button", { name: /Choose test model/i });
+    const modelPicker = within(editor).getByRole("combobox", { name: /Choose test model/i });
     modelPicker.focus();
     fireEvent.keyDown(modelPicker, { key: "ArrowDown" });
     fireEvent.keyUp(modelPicker, { key: "ArrowDown" });
@@ -3492,7 +3494,7 @@ describe("SettingsClient model routing", () => {
     fireEvent.click(within(providerConfig).getByText("Replicate primary"));
 
     const editor = within(providerConfig).getByRole("group", { name: "Replicate primary Replicate API key" });
-    expect(within(editor).getByRole("button", { name: /Choose test model/i })).toBeTruthy();
+    expect(within(editor).getByRole("combobox", { name: /Choose test model/i })).toBeTruthy();
     fireEvent.click(within(editor).getByRole("button", { name: "Run provider test" }));
 
     await waitFor(() => {
