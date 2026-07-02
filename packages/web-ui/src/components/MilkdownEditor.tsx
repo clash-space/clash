@@ -1,5 +1,5 @@
 
-import { useRef, useCallback, useState, useEffect, useImperativeHandle, forwardRef } from 'react';
+import { useRef, useCallback, useState, useEffect, useImperativeHandle, forwardRef, useMemo } from 'react';
 import { Editor, rootCtx, defaultValueCtx } from '@milkdown/core';
 import { commonmark } from '@milkdown/preset-commonmark';
 import { nord } from '@milkdown/theme-nord';
@@ -11,7 +11,7 @@ import { history } from '@milkdown/plugin-history';
 import { $prose } from '@milkdown/utils';
 import { Plugin, PluginKey } from '@milkdown/prose/state';
 import type { EditorView } from '@milkdown/prose/view';
-import { ComboboxItem, ComboboxList, ComboboxProvider } from '@ariakit/react';
+import { ComboboxItem, ComboboxList, ComboboxProvider, useComboboxStore } from '@ariakit/react';
 import { SignedImg } from './SignedMedia';
 import { getSignedUrl } from '@clash/web-ui/lib/hooks/useSignedUrl';
 import { Popover, PopoverAnchor, PopoverContent } from './ui/popover';
@@ -79,12 +79,20 @@ interface MentionPluginState {
     cursorCoords: { left: number; top: number; bottom: number } | null;
 }
 
+const mentionItemId = (nodeId: string) => `milkdown-mention-${nodeId.replace(/[^a-zA-Z0-9_-]/g, '_')}`;
+
 function createMentionPlugin(
-    onStateChange: (state: MentionPluginState) => void
+    onStateChange: (state: MentionPluginState) => void,
+    onKeyDown: (event: KeyboardEvent) => boolean
 ) {
     return $prose(() => {
         return new Plugin({
             key: mentionPluginKey,
+            props: {
+                handleKeyDown(_view, event) {
+                    return onKeyDown(event);
+                },
+            },
             state: {
                 init: () => ({ active: false, query: '', from: 0, cursorCoords: null } as MentionPluginState),
                 apply(tr, prev, _oldState, newState) {
@@ -178,6 +186,7 @@ function AssetMentionMenu({
     promptModalities,
     onSelect,
     onClose,
+    onKeyboardHandlerChange,
 }: {
     active: boolean;
     query: string;
@@ -187,46 +196,85 @@ function AssetMentionMenu({
     promptModalities: string[];
     onSelect: (node: MentionableNode) => void;
     onClose: () => void;
+    onKeyboardHandlerChange: (handler: ((event: KeyboardEvent) => boolean) | null) => void;
 }) {
-    const [selectedIndex, setSelectedIndex] = useState(0);
-
     // Filter by modalities and query. Agent bypass the modality filter
     // — they aren't an "asset modality" and the user always wants to
     // be able to @-address an invited agent member regardless of what
     // the surrounding action expects as input.
-    const filtered = nodes.filter((n) => {
+    const filtered = useMemo(() => nodes.filter((n) => {
         if (n.type !== 'agent') {
             const modality = n.type === 'image' ? 'image' : n.type === 'video' ? 'video' : n.type === 'audio' ? 'audio' : 'text';
             if (!promptModalities.includes(modality)) return false;
         }
         if (query && !n.label.toLowerCase().includes(query.toLowerCase())) return false;
         return true;
-    });
+    }), [nodes, promptModalities, query]);
 
     // Group: agent first (always at the top — they're who you usually
     // want to talk to), then assets ordered by connected → other.
-    const agentEntries = filtered.filter((n) => n.type === 'agent');
-    const assetEntries = filtered.filter((n) => n.type !== 'agent');
-    const connectedAssets = assetEntries.filter((n) => connectedIds.has(n.id));
-    const otherAssets = assetEntries.filter((n) => !connectedIds.has(n.id));
-    const sortedAssets = [...connectedAssets, ...otherAssets];
-    const sorted = [...agentEntries, ...sortedAssets];
-
-    useEffect(() => { setSelectedIndex(0); }, [query]);
-
-    useEffect(() => {
-        if (!active) return;
-        const handleKeyDown = (e: KeyboardEvent) => {
-            if (e.key === 'ArrowDown') { e.preventDefault(); setSelectedIndex((i) => Math.min(i + 1, sorted.length - 1)); }
-            else if (e.key === 'ArrowUp') { e.preventDefault(); setSelectedIndex((i) => Math.max(i - 1, 0)); }
-            else if (e.key === 'Enter' && sorted[selectedIndex]) { e.preventDefault(); onSelect(sorted[selectedIndex]); }
-            else if (e.key === 'Escape') { e.preventDefault(); onClose(); }
-        };
-        document.addEventListener('keydown', handleKeyDown, true);
-        return () => document.removeEventListener('keydown', handleKeyDown, true);
-    }, [active, sorted, selectedIndex, onSelect, onClose]);
+    const agentEntries = useMemo(() => filtered.filter((n) => n.type === 'agent'), [filtered]);
+    const assetEntries = useMemo(() => filtered.filter((n) => n.type !== 'agent'), [filtered]);
+    const connectedAssets = useMemo(() => assetEntries.filter((n) => connectedIds.has(n.id)), [assetEntries, connectedIds]);
+    const otherAssets = useMemo(() => assetEntries.filter((n) => !connectedIds.has(n.id)), [assetEntries, connectedIds]);
+    const sortedAssets = useMemo(() => [...connectedAssets, ...otherAssets], [connectedAssets, otherAssets]);
+    const sorted = useMemo(() => [...agentEntries, ...sortedAssets], [agentEntries, sortedAssets]);
 
     const open = active && !!coords && sorted.length > 0;
+
+    const combobox = useComboboxStore({
+        value: query,
+        setValue: () => undefined,
+        selectedValue: '',
+        setSelectedValue(value) {
+            if (typeof value !== 'string') return;
+            const node = sorted.find((candidate) => candidate.id === value);
+            if (node) onSelect(node);
+        },
+        focusLoop: true,
+        focusWrap: true,
+        orientation: 'vertical',
+    });
+
+    useEffect(() => {
+        if (!open) {
+            onKeyboardHandlerChange(null);
+            return;
+        }
+
+        const firstItemId = sorted[0] ? mentionItemId(sorted[0].id) : undefined;
+        combobox.setActiveId(firstItemId);
+
+        onKeyboardHandlerChange((event) => {
+            if (event.key === 'ArrowDown') {
+                event.preventDefault();
+                combobox.setActiveId(combobox.next() ?? firstItemId);
+                return true;
+            }
+            if (event.key === 'ArrowUp') {
+                event.preventDefault();
+                combobox.setActiveId(combobox.previous() ?? firstItemId);
+                return true;
+            }
+            if (event.key === 'Enter' || event.key === 'Tab') {
+                const activeValue = combobox.getState().activeValue;
+                const node = sorted.find((candidate) => candidate.id === activeValue) ?? sorted[0];
+                if (!node) return false;
+                event.preventDefault();
+                onSelect(node);
+                return true;
+            }
+            if (event.key === 'Escape') {
+                event.preventDefault();
+                onClose();
+                return true;
+            }
+            return false;
+        });
+
+        return () => onKeyboardHandlerChange(null);
+    }, [combobox, onClose, onKeyboardHandlerChange, onSelect, open, sorted]);
+
     if (!open || !coords) return null;
 
     const typeIcon = (type: string) => {
@@ -243,17 +291,15 @@ function AssetMentionMenu({
         return (words[0][0] + words[1][0]).toUpperCase();
     };
 
-    const renderRow = (node: MentionableNode, i: number) => (
+    const renderRow = (node: MentionableNode) => (
         <ComboboxItem
+            id={mentionItemId(node.id)}
             key={node.id}
-            value={node.label}
+            value={node.id}
+            focusOnHover
+            hideOnClick={false}
             setValueOnClick={false}
-            selectValueOnClick={false}
-            className={`w-full flex items-center gap-2.5 px-3 py-2 text-left transition-colors ${
-                i === selectedIndex ? 'bg-warm-muted' : 'hover:bg-warm-muted/70'
-            }`}
-            onMouseDown={(e) => { e.preventDefault(); onSelect(node); }}
-            onMouseEnter={() => setSelectedIndex(i)}
+            className="w-full flex items-center gap-2.5 px-3 py-2 text-left transition-colors hover:bg-warm-muted/70 data-[active-item]:bg-warm-muted"
         >
             {node.type === 'agent' ? (
                 <span
@@ -310,20 +356,20 @@ function AssetMentionMenu({
                 onOpenAutoFocus={(event) => event.preventDefault()}
                 className="w-64 max-h-60 overflow-y-auto rounded-xl p-0"
             >
-                <ComboboxProvider value={query} setValue={() => undefined}>
+                <ComboboxProvider store={combobox}>
                     <ComboboxList aria-label="Mention matches" alwaysVisible className="w-full">
                         {agentEntries.length > 0 && (
                             <div className="px-3 py-1 text-[10px] font-medium text-stone-600 dark:text-stone-300 uppercase tracking-wider bg-warm-muted border-b border-warm-border">
                                 Agent
                             </div>
                         )}
-                        {agentEntries.map((node, j) => renderRow(node, j))}
+                        {agentEntries.map((node) => renderRow(node))}
                         {sortedAssets.length > 0 && (
                             <div className={`px-3 py-1 text-[10px] font-medium text-stone-600 dark:text-stone-300 uppercase tracking-wider bg-warm-muted ${agentEntries.length > 0 ? 'border-t border-warm-border' : ''}`}>
                                 Canvas
                             </div>
                         )}
-                        {sortedAssets.map((node, j) => renderRow(node, agentEntries.length + j))}
+                        {sortedAssets.map((node) => renderRow(node))}
                     </ComboboxList>
                 </ComboboxProvider>
             </PopoverContent>
@@ -347,6 +393,7 @@ const MilkdownEditorInner = forwardRef<MilkdownEditorHandle, MilkdownEditorProps
         active: false, query: '', from: 0, cursorCoords: null,
     });
     const editorViewRef = useRef<EditorView | null>(null);
+    const mentionKeyHandlerRef = useRef<((event: KeyboardEvent) => boolean) | null>(null);
 
     const onSubmitRef = useRef(onSubmit);
     onSubmitRef.current = onSubmit;
@@ -355,6 +402,10 @@ const MilkdownEditorInner = forwardRef<MilkdownEditorHandle, MilkdownEditorProps
 
     // Only show @-menu if modalities include non-text types
     const showMentions = promptModalities.some((m) => m !== 'text');
+
+    const setMentionKeyHandler = useCallback((handler: ((event: KeyboardEvent) => boolean) | null) => {
+        mentionKeyHandlerRef.current = handler;
+    }, []);
 
     // Enter to submit, Shift+Enter for newline
     const enterKeyPlugin = useCallback(() => {
@@ -384,7 +435,7 @@ const MilkdownEditorInner = forwardRef<MilkdownEditorHandle, MilkdownEditorProps
             // Return a no-op plugin if @-mentions not enabled
             return $prose(() => new Plugin({ key: new PluginKey('mention-noop') }));
         }
-        return createMentionPlugin(setMentionState);
+        return createMentionPlugin(setMentionState, (event) => mentionKeyHandlerRef.current?.(event) ?? false);
     }, [showMentions]);
 
     const { get } = useEditor((root) =>
@@ -563,6 +614,7 @@ const MilkdownEditorInner = forwardRef<MilkdownEditorHandle, MilkdownEditorProps
                     promptModalities={promptModalities}
                     onSelect={handleMentionSelect}
                     onClose={handleMentionClose}
+                    onKeyboardHandlerChange={setMentionKeyHandler}
                 />
             )}
         </>
