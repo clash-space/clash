@@ -106,6 +106,8 @@ import { sanitizeNodesForReactFlow } from '@clash/web-ui/lib/canvasNodeOrder';
 import UserControls from './UserControls';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from './ui/dropdown-menu';
 import { Toggle } from './ui/toggle';
+import { Button } from './ui/button';
+import { IconButton } from './ui/icon-button';
 import { Tooltip } from './ui/tooltip';
 
 const CHILD_NODE_Z_INDEX_BASE = 1000;
@@ -222,23 +224,20 @@ function SelectionGroupButton({
     return (
         <div className="pointer-events-none absolute inset-0 overflow-visible" style={{ zIndex: 10000 }}>
             <Tooltip label="Wrap selected nodes in a new Group">
-                <motion.button
-                    type="button"
-                    initial={{ opacity: 0, y: 4 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: 4 }}
-                    transition={{ duration: 0.12 }}
+                <Button
                     onClick={onGroup}
-                    className="nodrag nopan pointer-events-auto absolute flex h-7 items-center gap-1.5 rounded-md border border-warm-border bg-white/90 px-2.5 text-xs font-medium text-slate-700 shadow-sm backdrop-blur hover:bg-white hover:text-slate-900"
+                    leftIcon={<Square className="h-3.5 w-3.5" weight="regular" />}
+                    size="sm"
+                    shape="rounded"
+                    className="nodrag nopan pointer-events-auto absolute h-7 min-h-7 rounded-md border-warm-border bg-white/90 px-2.5 text-xs font-medium text-slate-700 shadow-sm backdrop-blur hover:bg-white hover:text-slate-900"
                     style={{
                         left: screenLeft + screenWidth / 2,
                         top: screenTop - 36,
                         transform: 'translateX(-50%)',
                     }}
                 >
-                    <Square className="h-3.5 w-3.5" weight="regular" />
                     Group
-                </motion.button>
+                </Button>
             </Tooltip>
         </div>
     );
@@ -2351,16 +2350,14 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
                                 so modal dialogs cover it cleanly without backdrop tricks. */}
                             <div id="editor-header" className="absolute left-9 top-4 z-20 flex items-center gap-2 pointer-events-auto">
                                 <Tooltip label="Return to projects">
-                                    <motion.button
-                                        type="button"
+                                    <IconButton
+                                        label="Return to projects"
                                         onClick={handleReturnToProjects}
-                                        aria-label="Return to projects"
-                                        className="clash-project-return-button flex h-10 w-10 items-center justify-center rounded-xl text-slate-800 transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-warm-page"
-                                        whileHover={{ scale: 1.035, x: -1 }}
-                                        whileTap={{ scale: 0.965 }}
-                                    >
-                                        <ArrowLeft className="h-5 w-5" weight="bold" aria-hidden="true" />
-                                    </motion.button>
+                                        icon={<ArrowLeft className="h-5 w-5" weight="bold" />}
+                                        size="lg"
+                                        shape="rounded"
+                                        className="clash-project-return-button h-10 min-h-10 w-10 min-w-10 rounded-xl text-slate-800 focus-visible:ring-offset-warm-page"
+                                    />
                                 </Tooltip>
                                 {/* Project Name Input */}
                                 <form onSubmit={handleProjectNameSubmit}>
@@ -2391,17 +2388,16 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
                             >
                                 <PresenceBar clients={otherClients} />
                                 {canShareProject && (
-                                    <motion.button
-                                        type="button"
+                                    <Button
                                         onClick={handleShareProject}
+                                        leftIcon={<ShareFat className="h-4 w-4" weight="bold" />}
+                                        size="sm"
+                                        shape="rounded"
                                         aria-label="Copy project link"
-                                        className="clash-project-top-action flex h-10 items-center gap-2 rounded-xl px-3 text-sm font-display font-semibold transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-warm-page"
-                                        whileHover={{ scale: 1.025, y: -1 }}
-                                        whileTap={{ scale: 0.975 }}
+                                        className="clash-project-top-action h-10 min-h-10 rounded-xl px-3 text-sm font-display font-semibold focus-visible:ring-offset-warm-page"
                                     >
-                                        <ShareFat className="h-4 w-4" weight="bold" aria-hidden="true" />
                                         <span>{shareCopied ? 'Copied' : 'Share'}</span>
-                                    </motion.button>
+                                    </Button>
                                 )}
                                 <UserControls projectChrome />
                             </motion.div>
@@ -2492,18 +2488,16 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
                                             pressed={canvasMode === 'hand'}
                                             onPressedChange={(pressed) => setCanvasMode(pressed ? 'hand' : 'select')}
                                         >
-                                            <motion.button
-                                                type="button"
-                                                className="clash-toolbar-button flex h-10 w-10 items-center justify-center rounded-xl bg-transparent text-stone-500 hover:text-slate-950 transition-all"
-                                                whileHover={{ scale: 1.05 }}
-                                                whileTap={{ scale: 0.95 }}
-                                                aria-label={canvasMode === 'select' ? 'Switch to hand mode' : 'Switch to select mode'}
-                                            >
-                                                {canvasMode === 'select'
+                                            <IconButton
+                                                label={canvasMode === 'select' ? 'Switch to hand mode' : 'Switch to select mode'}
+                                                icon={canvasMode === 'select'
                                                     ? <CursorClick className="h-5 w-5" weight="regular" />
                                                     : <HandGrabbing className="h-5 w-5" weight="fill" />
                                                 }
-                                            </motion.button>
+                                                size="lg"
+                                                shape="rounded"
+                                                className="clash-toolbar-button h-10 min-h-10 w-10 min-w-10 rounded-xl bg-transparent text-stone-500 hover:text-slate-950"
+                                            />
                                         </Toggle>
                                     </Tooltip>
 
@@ -2524,18 +2518,17 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
                                                 >
                                                     <Tooltip label={item.label}>
                                                         <DropdownMenuTrigger asChild>
-                                                            <motion.button
-                                                                className={`clash-toolbar-button flex h-10 w-10 items-center justify-center rounded-xl transition-all ${
+                                                            <IconButton
+                                                                label={item.label}
+                                                                icon={<Icon className="h-5 w-5" weight={isActive ? "fill" : "regular"} />}
+                                                                size="lg"
+                                                                shape="rounded"
+                                                                className={`clash-toolbar-button h-10 min-h-10 w-10 min-w-10 rounded-xl ${
                                                                     isActive
                                                                         ? "clash-toolbar-button-active text-white"
                                                                         : "bg-transparent text-stone-500 hover:text-slate-950"
                                                                 }`}
-                                                                whileHover={{ scale: 1.05 }}
-                                                                whileTap={{ scale: 0.95 }}
-                                                                aria-label={item.label}
-                                                            >
-                                                                <Icon className="h-5 w-5" weight={isActive ? "fill" : "regular"} />
-                                                            </motion.button>
+                                                            />
                                                         </DropdownMenuTrigger>
                                                     </Tooltip>
                                                     <DropdownMenuContent
@@ -2570,22 +2563,21 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
 
                                         return (
                                             <Tooltip key={item.id} label={item.label}>
-                                                <motion.button
+                                                <IconButton
+                                                    label={item.label}
+                                                    icon={<Icon className="h-5 w-5" weight={isActive ? "fill" : "regular"} />}
+                                                    size="lg"
+                                                    shape="rounded"
                                                     onClick={() => {
                                                         handleToolClick(item.id);
                                                         setActiveMenu(null);
                                                     }}
-                                                    className={`clash-toolbar-button flex h-10 w-10 items-center justify-center rounded-xl transition-all ${
+                                                    className={`clash-toolbar-button h-10 min-h-10 w-10 min-w-10 rounded-xl ${
                                                         isActive
                                                         ? "clash-toolbar-button-active text-white"
                                                         : "bg-transparent text-stone-500 hover:text-slate-950"
                                                     }`}
-                                                    whileHover={{ scale: 1.05 }}
-                                                    whileTap={{ scale: 0.95 }}
-                                                    aria-label={item.label}
-                                                >
-                                                    <Icon className="h-5 w-5" weight={isActive ? "fill" : "regular"} />
-                                                </motion.button>
+                                                />
                                             </Tooltip>
                                         );
                                     })}
@@ -2595,48 +2587,45 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
 
                                     {/* Helper Tools (Undo/Redo/Layout) */}
                                     <Tooltip label="Auto Layout">
-                                        <motion.button
+                                        <IconButton
+                                             label="Auto Layout"
+                                             icon={<MagicWand className="h-5 w-5" weight="regular" />}
                                              onClick={onLayout}
-                                             className="clash-toolbar-button flex h-10 w-10 items-center justify-center rounded-xl bg-transparent text-stone-500 transition-all hover:text-slate-950"
-                                             whileHover={{ scale: 1.05 }}
-                                             whileTap={{ scale: 0.95 }}
-                                             aria-label="Auto Layout"
-                                         >
-                                             <MagicWand className="h-5 w-5" weight="regular" />
-                                         </motion.button>
+                                             size="lg"
+                                             shape="rounded"
+                                             className="clash-toolbar-button h-10 min-h-10 w-10 min-w-10 rounded-xl bg-transparent text-stone-500 hover:text-slate-950"
+                                         />
                                      </Tooltip>
 
                                      <Tooltip label="Undo">
-                                         <motion.button
+                                         <IconButton
+                                             label="Undo"
+                                             icon={<ArrowCounterClockwise className="h-5 w-5" weight="bold" />}
                                              onClick={() => loroSync.undo()}
                                              disabled={!loroSync.canUndo}
-                                             className={`flex h-10 w-10 items-center justify-center rounded-xl transition-all ${
+                                             size="lg"
+                                             shape="rounded"
+                                             className={`h-10 min-h-10 w-10 min-w-10 rounded-xl ${
                                                  loroSync.canUndo
                                                  ? "clash-toolbar-button text-stone-500 hover:text-slate-950"
                                                  : "text-slate-300 cursor-not-allowed"
                                              }`}
-                                             whileHover={loroSync.canUndo ? { scale: 1.05 } : {}}
-                                             whileTap={loroSync.canUndo ? { scale: 0.95 } : {}}
-                                             aria-label="Undo"
-                                         >
-                                             <ArrowCounterClockwise className="h-5 w-5" weight="bold" />
-                                         </motion.button>
+                                         />
                                      </Tooltip>
                                      <Tooltip label="Redo">
-                                         <motion.button
+                                         <IconButton
+                                             label="Redo"
+                                             icon={<ArrowClockwise className="h-5 w-5" weight="bold" />}
                                              onClick={() => loroSync.redo()}
                                              disabled={!loroSync.canRedo}
-                                             className={`flex h-10 w-10 items-center justify-center rounded-xl transition-all ${
+                                             size="lg"
+                                             shape="rounded"
+                                             className={`h-10 min-h-10 w-10 min-w-10 rounded-xl ${
                                                  loroSync.canRedo
                                                  ? "clash-toolbar-button text-stone-500 hover:text-slate-950"
                                                  : "text-slate-300 cursor-not-allowed"
                                              }`}
-                                             whileHover={loroSync.canRedo ? { scale: 1.05 } : {}}
-                                             whileTap={loroSync.canRedo ? { scale: 0.95 } : {}}
-                                             aria-label="Redo"
-                                         >
-                                             <ArrowClockwise className="h-5 w-5" weight="bold" />
-                                         </motion.button>
+                                         />
                                      </Tooltip>
 
                                      {/* Debug: toggle node IDs (dev only) */}
@@ -2644,19 +2633,18 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
                                          <>
                                          <div className="clash-control-divider w-8 h-px" />
                                          <Tooltip label="Toggle Node IDs">
-                                             <motion.button
+                                             <IconButton
+                                                 label="Toggle Node IDs"
+                                                 icon={<span className="font-mono text-xs font-bold">ID</span>}
                                                  onClick={() => setShowDebugIds(v => !v)}
-                                                 className={`flex h-10 w-10 items-center justify-center rounded-xl transition-all ${
+                                                 size="lg"
+                                                 shape="rounded"
+                                                 className={`h-10 min-h-10 w-10 min-w-10 rounded-xl ${
                                                      showDebugIds
                                                      ? "bg-green-600 text-white shadow-md"
                                                      : "clash-toolbar-button bg-transparent text-stone-400 hover:text-slate-950"
                                                  }`}
-                                                 whileHover={{ scale: 1.05 }}
-                                                 whileTap={{ scale: 0.95 }}
-                                                 aria-label="Toggle Node IDs"
-                                             >
-                                                  <span className="font-mono text-xs font-bold">ID</span>
-                                              </motion.button>
+                                             />
                                           </Tooltip>
                                           </>
                                       )}

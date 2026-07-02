@@ -68,4 +68,17 @@ describe("ProjectEditor toolbar primitives", () => {
     expect(buttonSource).toContain("nopan");
     expect(buttonSource).not.toContain("onMouseDown={(e) => e.stopPropagation()}");
   });
+
+  it("uses shared button primitives for project editor chrome and canvas toolbar actions", () => {
+    const editorSource = readSource("packages/web-ui/src/components/ProjectEditor.tsx");
+    const toolbarSource = readCanvasToolbarSource();
+    const selectionButtonSource = readSelectionGroupButtonSource();
+
+    expect(editorSource).toContain("./ui/button");
+    expect(editorSource).toContain("./ui/icon-button");
+    expect(editorSource).toContain("<Button");
+    expect(editorSource).toContain("<IconButton");
+    expect(toolbarSource).not.toContain("<motion.button");
+    expect(selectionButtonSource).not.toContain("<motion.button");
+  });
 });
