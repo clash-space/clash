@@ -104,6 +104,7 @@ import { visiblePresenceClients } from '@clash/web-ui/lib/presenceVisibility';
 import { sanitizeNodesForReactFlow } from '@clash/web-ui/lib/canvasNodeOrder';
 import UserControls from './UserControls';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from './ui/dropdown-menu';
+import { Toggle } from './ui/toggle';
 
 const CHILD_NODE_Z_INDEX_BASE = 1000;
 const DEFAULT_COPILOT_PANEL_FRACTION = 1 / 3;
@@ -2473,20 +2474,26 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
                                 transition={{ duration: 0.18, ease: [0.25, 1, 0.5, 1] }}
                             >
                                  <div className="clash-canvas-toolbar-surface pointer-events-auto flex w-16 flex-none flex-col items-center gap-3 rounded-2xl py-6 px-3 transition-all">
-                                    {/* Canvas Mode Toggle: single button switches between select/hand */}
-                                    <motion.button
-                                        onClick={() => setCanvasMode(prev => prev === 'select' ? 'hand' : 'select')}
-                                        className="clash-toolbar-button flex h-10 w-10 items-center justify-center rounded-xl bg-transparent text-stone-500 hover:text-slate-950 transition-all"
-                                        whileHover={{ scale: 1.05 }}
-                                        whileTap={{ scale: 0.95 }}
-                                        aria-label={canvasMode === 'select' ? 'Switch to hand mode' : 'Switch to select mode'}
-                                        title={canvasMode === 'select' ? 'Select mode (V)' : 'Hand mode (H)'}
+                                    {/* Canvas Mode Toggle: select off, hand on. */}
+                                    <Toggle
+                                        asChild
+                                        pressed={canvasMode === 'hand'}
+                                        onPressedChange={(pressed) => setCanvasMode(pressed ? 'hand' : 'select')}
                                     >
-                                        {canvasMode === 'select'
-                                            ? <CursorClick className="h-5 w-5" weight="regular" />
-                                            : <HandGrabbing className="h-5 w-5" weight="fill" />
-                                        }
-                                    </motion.button>
+                                        <motion.button
+                                            type="button"
+                                            className="clash-toolbar-button flex h-10 w-10 items-center justify-center rounded-xl bg-transparent text-stone-500 hover:text-slate-950 transition-all"
+                                            whileHover={{ scale: 1.05 }}
+                                            whileTap={{ scale: 0.95 }}
+                                            aria-label={canvasMode === 'select' ? 'Switch to hand mode' : 'Switch to select mode'}
+                                            title={canvasMode === 'select' ? 'Select mode (V)' : 'Hand mode (H)'}
+                                        >
+                                            {canvasMode === 'select'
+                                                ? <CursorClick className="h-5 w-5" weight="regular" />
+                                                : <HandGrabbing className="h-5 w-5" weight="fill" />
+                                            }
+                                        </motion.button>
+                                    </Toggle>
 
                                     {/* Divider */}
                                     <div className="clash-control-divider w-8 h-px" />
