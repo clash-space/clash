@@ -706,45 +706,45 @@ function ChatInputInner({
                                     icon={<Microphone className="w-4 h-4" weight="bold" />}
                                 />
                                 {showQueuedSend ? (
-                                    <button
-                                        type="button"
+                                    <IconButton
                                         onClick={handleFormSubmit}
                                         disabled={!canSend}
-                                        aria-label={t('copilot.chatInput.send')}
+                                        label={t('copilot.chatInput.send')}
+                                        shape="rounded"
+                                        size="md"
                                         className="clash-chat-input-primary w-9 h-9 min-h-[36px] min-w-[36px] rounded-xl flex items-center justify-center transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-warm-surface"
-                                    >
-                                        <ArrowUp className="w-3.5 h-3.5" weight="bold" aria-hidden="true" />
-                                    </button>
+                                        icon={<ArrowUp className="w-3.5 h-3.5" weight="bold" />}
+                                    />
                                 ) : null}
                                 {isProcessing && onStop ? (
-                                    <button
-                                        type="button"
+                                    <IconButton
                                         onClick={onStop}
-                                        aria-label={t('copilot.chatInput.stop')}
+                                        label={t('copilot.chatInput.stop')}
+                                        shape="rounded"
+                                        size="md"
                                         className="clash-chat-input-stop w-9 h-9 min-h-[36px] min-w-[36px] rounded-xl flex items-center justify-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-warm-surface"
-                                    >
-                                        <span className="h-2.5 w-2.5 rounded-[3px] bg-current" aria-hidden="true" />
-                                    </button>
+                                        icon={<span className="h-2.5 w-2.5 rounded-[3px] bg-current" />}
+                                    />
                                 ) : (
-                                    <button
-                                        type="button"
+                                    <IconButton
                                         onClick={handleFormSubmit}
                                         disabled={!canSend && !isCreatingSession}
-                                        aria-label={t('copilot.chatInput.send')}
+                                        label={t('copilot.chatInput.send')}
                                         aria-busy={isCreatingSession || uploading > 0}
+                                        shape="rounded"
+                                        size="md"
                                         className={`w-9 h-9 min-h-[36px] min-w-[36px] rounded-xl flex items-center justify-center transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-warm-surface ${isCreatingSession || uploading > 0
                                             ? 'clash-chat-input-primary focus-visible:ring-brand'
                                             : canSend
                                                 ? 'clash-chat-input-primary focus-visible:ring-brand'
                                                 : 'bg-warm-muted text-slate-500 dark:text-slate-500 cursor-not-allowed focus-visible:ring-brand'
                                             }`}
-                                    >
-                                        {isCreatingSession || uploading > 0 ? (
-                                            <CircleNotch className="w-3.5 h-3.5 animate-spin motion-reduce:animate-none" aria-hidden="true" />
+                                        icon={isCreatingSession || uploading > 0 ? (
+                                            <CircleNotch className="w-3.5 h-3.5 animate-spin motion-reduce:animate-none" />
                                         ) : (
-                                            <ArrowUp className="w-3.5 h-3.5" weight="bold" aria-hidden="true" />
+                                            <ArrowUp className="w-3.5 h-3.5" weight="bold" />
                                         )}
-                                    </button>
+                                    />
                                 )}
                             </div>
                         </div>
