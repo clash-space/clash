@@ -56,6 +56,18 @@ const BATCH_COUNT_OPTIONS: SelectOption<number>[] = [
     { value: 4, label: 'x4' },
 ];
 
+const PARAM_BOOLEAN_OPTIONS: SelectOption<boolean>[] = [
+    { value: true, label: 'On' },
+    { value: false, label: 'Off' },
+];
+
+function paramOptionsToSelectOptions(param: ModelParameter): SelectOption<SelectValue>[] {
+    return (param.options ?? []).map((option) => ({
+        value: option.value as SelectValue,
+        label: option.label,
+    }));
+}
+
 type ActionMentionNode = {
     id: string;
     type: string;
@@ -1910,26 +1922,36 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
                                                 {isExpanded && (
                                                     <div className="px-3 pb-3">
                                                         {(p.type === 'select') && (
-                                                            <div className="flex flex-wrap gap-1.5">
-                                                                {p.options?.map((opt) => (
-                                                                    <button key={String(opt.value)}
-                                                                        type="button"
-                                                                        className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${String(currentVal) === String(opt.value) ? 'clash-node-choice-active' : 'bg-warm-muted text-stone-800 dark:text-stone-200 hover:bg-warm-hover'}`}
-                                                                        onClick={(e) => { e.stopPropagation(); updateModelParam(p.id, opt.value); setExpandedParam(null); }}
-                                                                    >{opt.label}</button>
-                                                                ))}
-                                                            </div>
+                                                            <SelectMenu<SelectValue>
+                                                                ariaLabel={p.label}
+                                                                value={currentVal as SelectValue}
+                                                                options={paramOptionsToSelectOptions(p)}
+                                                                onValueChange={(nextValue) => {
+                                                                    updateModelParam(p.id, nextValue);
+                                                                    setExpandedParam(null);
+                                                                }}
+                                                                triggerLabel={currentLabel}
+                                                                variant="field"
+                                                                placement="bottom"
+                                                                menuWidth="trigger"
+                                                                stopPropagation
+                                                            />
                                                         )}
                                                         {p.type === 'boolean' && (
-                                                            <div className="flex gap-1.5">
-                                                                {[{ l: 'On', v: true }, { l: 'Off', v: false }].map((o) => (
-                                                                    <button key={o.l}
-                                                                        type="button"
-                                                                        className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${Boolean(currentVal) === o.v ? 'clash-node-choice-active' : 'bg-warm-muted text-stone-800 dark:text-stone-200 hover:bg-warm-hover'}`}
-                                                                        onClick={(e) => { e.stopPropagation(); updateModelParam(p.id, o.v); setExpandedParam(null); }}
-                                                                    >{o.l}</button>
-                                                                ))}
-                                                            </div>
+                                                            <SelectMenu<boolean>
+                                                                ariaLabel={p.label}
+                                                                value={Boolean(currentVal)}
+                                                                options={PARAM_BOOLEAN_OPTIONS}
+                                                                onValueChange={(nextValue) => {
+                                                                    updateModelParam(p.id, nextValue);
+                                                                    setExpandedParam(null);
+                                                                }}
+                                                                triggerLabel={currentLabel}
+                                                                variant="field"
+                                                                placement="bottom"
+                                                                menuWidth="trigger"
+                                                                stopPropagation
+                                                            />
                                                         )}
                                                         {p.type === 'number' && (
                                                             <input type="number" min={p.min} max={p.max} step={p.step}

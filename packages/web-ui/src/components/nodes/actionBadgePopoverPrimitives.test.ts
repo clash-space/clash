@@ -52,4 +52,13 @@ describe("ActionBadge popover primitives", () => {
         expect(source).not.toContain("countPopoverOpen");
         expect(source).not.toContain("[1, 2, 3, 4].map");
     });
+
+    it("uses shared select primitives for expanded select and boolean parameter choices", () => {
+        const source = readNodeSource("ActionBadge.tsx");
+
+        expect(source).toContain("PARAM_BOOLEAN_OPTIONS");
+        expect(source).toContain("paramOptionsToSelectOptions");
+        expect(source).not.toContain("p.options?.map((opt)");
+        expect(source).not.toContain("[{ l: 'On', v: true }, { l: 'Off', v: false }].map");
+    });
 });
