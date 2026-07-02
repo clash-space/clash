@@ -5,6 +5,7 @@ import { motion } from 'framer-motion';
 import { useOptionalLoroSyncContext } from '../LoroSyncContext';
 import { computeBuildPlanFromGraph, type BuildPlan, type PlanEntry } from './buildPlan';
 import BuildPlanDialog from './BuildPlanDialog';
+import { Tooltip } from '../ui/tooltip';
 
 type Modality = 'image' | 'video' | 'audio' | 'text';
 
@@ -151,10 +152,10 @@ const DraftPlaceholder = ({ nodeId, modality, width, height }: DraftPlaceholderP
 
     const buttonDisabled = plan.cycle || plan.entries.length === 0;
     const suffix = ancestorCount > 0 ? ` +${ancestorCount}` : '';
-    const buttonTitle = plan.cycle
+    const buttonLabel = plan.cycle
         ? 'Cycle detected'
         : plan.blockers.length > 0
-            ? 'Has blockers — open to review'
+            ? 'Has blockers - open to review'
             : totalCalls > 0
                 ? `Will run ${totalCalls} model call${totalCalls === 1 ? '' : 's'}`
                 : 'Build this draft';
@@ -172,25 +173,26 @@ const DraftPlaceholder = ({ nodeId, modality, width, height }: DraftPlaceholderP
                     <span className="text-[11px] font-bold uppercase tracking-wider">Draft {MODALITY_LABEL[modality]}</span>
                 </div>
                 <div className="flex flex-col gap-1.5 w-full max-w-[200px]">
-                    <motion.button
-                        type="button"
-                        onClick={openDialog}
-                        disabled={buttonDisabled}
-                        whileHover={buttonDisabled ? undefined : { x: 1 }}
-                        whileTap={buttonDisabled ? undefined : { scale: 0.97 }}
-                        className="clash-node-primary flex items-center justify-center gap-1.5 min-h-11 rounded-lg disabled:opacity-40 disabled:cursor-not-allowed text-sm font-semibold px-4 py-2.5 cursor-pointer motion-reduce:transition-none focus:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-warm-muted"
-                        title={buttonTitle}
-                        aria-label={
-                            buttonDisabled
-                                ? buttonTitle
-                                : ancestorCount > 0
-                                    ? `Build — ${totalCalls} model call${totalCalls === 1 ? '' : 's'}, ${ancestorCount} upstream draft${ancestorCount === 1 ? '' : 's'}`
-                                    : `Build this draft`
-                        }
-                    >
-                        <Play size={12} weight="fill" aria-hidden="true" />
-                        <span aria-hidden="true">Build{suffix}</span>
-                    </motion.button>
+                    <Tooltip label={buttonLabel}>
+                        <motion.button
+                            type="button"
+                            onClick={openDialog}
+                            disabled={buttonDisabled}
+                            whileHover={buttonDisabled ? undefined : { x: 1 }}
+                            whileTap={buttonDisabled ? undefined : { scale: 0.97 }}
+                            className="clash-node-primary flex items-center justify-center gap-1.5 min-h-11 rounded-lg disabled:opacity-40 disabled:cursor-not-allowed text-sm font-semibold px-4 py-2.5 cursor-pointer motion-reduce:transition-none focus:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-warm-muted"
+                            aria-label={
+                                buttonDisabled
+                                    ? buttonLabel
+                                    : ancestorCount > 0
+                                        ? `Build - ${totalCalls} model call${totalCalls === 1 ? '' : 's'}, ${ancestorCount} upstream draft${ancestorCount === 1 ? '' : 's'}`
+                                        : `Build this draft`
+                            }
+                        >
+                            <Play size={12} weight="fill" aria-hidden="true" />
+                            <span aria-hidden="true">Build{suffix}</span>
+                        </motion.button>
+                    </Tooltip>
                 </div>
             </div>
 

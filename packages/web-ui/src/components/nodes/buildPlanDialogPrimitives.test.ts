@@ -25,4 +25,26 @@ describe("BuildPlanDialog primitives", () => {
     expect(source).toContain("containerClassName");
     expect(source).toContain("contentClassName");
   });
+
+  it("uses shared tooltips or explicit aria labels instead of browser title attributes", () => {
+    const dialogSource = readSource(
+      "packages/web-ui/src/components/nodes/BuildPlanDialog.tsx",
+    );
+    const draftSource = readSource(
+      "packages/web-ui/src/components/nodes/DraftPlaceholder.tsx",
+    );
+    const tooltipSource = readSource("packages/web-ui/src/components/ui/tooltip.tsx");
+
+    expect(tooltipSource).toContain("@ariakit/react");
+    expect(dialogSource).toContain("../ui/tooltip");
+    expect(draftSource).toContain("../ui/tooltip");
+    expect(dialogSource).toContain("<Tooltip label={targetLabel}>");
+    expect(dialogSource).toContain("<Tooltip label={entry.label}>");
+    expect(dialogSource).toContain("aria-label={confirmLabel}");
+    expect(draftSource).toContain("<Tooltip label={buttonLabel}>");
+    expect(dialogSource).not.toContain("title=");
+    expect(draftSource).not.toContain("title=");
+    expect(dialogSource).not.toContain("TooltipProvider");
+    expect(draftSource).not.toContain("TooltipProvider");
+  });
 });

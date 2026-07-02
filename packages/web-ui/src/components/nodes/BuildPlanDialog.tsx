@@ -2,6 +2,7 @@ import { memo, useId, useMemo } from "react";
 import { Warning, WarningCircle, X, Play } from "@phosphor-icons/react";
 import { summarizeModelCounts, type BuildPlan } from "./buildPlan";
 import { Dialog } from "../ui/dialog";
+import { Tooltip } from "../ui/tooltip";
 
 interface BuildPlanDialogProps {
   open: boolean;
@@ -34,6 +35,12 @@ const BuildPlanDialog = ({
   );
   const canBuild =
     plan.blockers.length === 0 && plan.entries.length > 0 && !plan.cycle;
+  const disabledReason = plan.cycle
+    ? "Cycle detected"
+    : (plan.blockers[0] ?? "Nothing to build");
+  const confirmLabel = canBuild
+    ? `Build ${plan.entries.length} draft${plan.entries.length === 1 ? "" : "s"}`
+    : disabledReason;
 
   const headerId = useId();
 
@@ -55,13 +62,14 @@ const BuildPlanDialog = ({
           <div className="text-[10px] font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300">
             Build plan
           </div>
-          <h2
-            id={headerId}
-            className="text-base sm:text-lg font-bold text-slate-900 truncate"
-            title={targetLabel}
-          >
-            {targetLabel}
-          </h2>
+          <Tooltip label={targetLabel}>
+            <h2
+              id={headerId}
+              className="text-base sm:text-lg font-bold text-slate-900 truncate"
+            >
+              {targetLabel}
+            </h2>
+          </Tooltip>
         </div>
         <button
           type="button"
@@ -180,12 +188,13 @@ const BuildPlanDialog = ({
                 >
                   <div className="min-w-0 flex items-center gap-2">
                     <span className="inline-block w-1.5 h-1.5 rounded-full bg-brand" />
-                    <span
-                      className="truncate text-slate-800 dark:text-slate-200"
-                      title={entry.label}
-                    >
-                      {entry.label}
-                    </span>
+                    <Tooltip label={entry.label}>
+                      <span
+                        className="truncate text-slate-800 dark:text-slate-200"
+                      >
+                        {entry.label}
+                      </span>
+                    </Tooltip>
                   </div>
                   <span className="shrink-0 text-[10px] text-slate-700 dark:text-slate-300 uppercase tracking-wide">
                     {entry.modality}
@@ -215,22 +224,14 @@ const BuildPlanDialog = ({
           aria-describedby={
             !canBuild ? `${headerId}-disabled-reason` : undefined
           }
-          title={
-            !canBuild
-              ? plan.cycle
-                ? "Cycle detected"
-                : (plan.blockers[0] ?? "Nothing to build")
-              : `Build ${plan.entries.length} draft${plan.entries.length === 1 ? "" : "s"}`
-          }
+          aria-label={confirmLabel}
         >
           <Play size={11} weight="fill" aria-hidden="true" />
           Build {totalCalls > 0 ? `(${totalCalls})` : ""}
         </button>
         {!canBuild && (
           <span id={`${headerId}-disabled-reason`} className="sr-only">
-            {plan.cycle
-              ? "Cycle detected"
-              : (plan.blockers[0] ?? "Nothing to build")}
+            {disabledReason}
           </span>
         )}
       </div>
