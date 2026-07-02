@@ -24,4 +24,15 @@ describe("InviteAgentMenu primitives", () => {
     expect(dropdown).toContain("DropdownMenuPrimitive.Content");
     expect(dropdown).toContain("DropdownMenuPrimitive.Item");
   });
+
+  it("uses the shared tooltip primitive for the trigger and removes redundant browser title attributes", () => {
+    const source = readSource("packages/web-ui/src/_group-chat/InviteAgentMenu.tsx");
+    const tooltipSource = readSource("packages/web-ui/src/components/ui/tooltip.tsx");
+
+    expect(tooltipSource).toContain("@ariakit/react");
+    expect(source).toContain("../components/ui/tooltip");
+    expect(source).toContain('<Tooltip label="Invite agent">');
+    expect(source).not.toContain('title="Invite agent"');
+    expect(source).not.toContain("title={offline ? 'Runtime offline' : ''}");
+  });
 });

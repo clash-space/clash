@@ -31,4 +31,26 @@ describe("GroupChatPanel primitives", () => {
     expect(existsSync(join(process.cwd(), "packages/web-ui/src/hooks/useMentionAutocomplete.ts"))).toBe(false);
     expect(existsSync(join(process.cwd(), "packages/web-ui/src/_group-chat/MentionAutocomplete.tsx"))).toBe(false);
   });
+
+  it("uses the shared tooltip primitive for rail icon controls instead of browser title attributes", () => {
+    const panelSource = readSource("packages/web-ui/src/components/GroupChatPanel.tsx");
+    const pillSource = readSource("packages/web-ui/src/_group-chat/TabPill.tsx");
+    const tooltipSource = readSource("packages/web-ui/src/components/ui/tooltip.tsx");
+
+    expect(tooltipSource).toContain("@ariakit/react");
+    expect(tooltipSource).toContain("TooltipProvider");
+    expect(panelSource).toContain("./ui/tooltip");
+    expect(panelSource).toContain("<Tooltip label=");
+    expect(panelSource).not.toContain("TooltipProvider");
+    expect(panelSource).not.toContain("TooltipAnchor");
+    expect(panelSource).not.toContain("title={isCollapsed ? 'Open chat' : 'Collapse'}");
+    expect(panelSource).not.toContain('title="Refresh room"');
+    expect(panelSource).not.toContain("title={sessionUser?.name ?? 'Settings'}");
+    expect(panelSource).not.toContain('title="Credits balance"');
+    expect(panelSource).not.toContain("title={syncIndicator.title}");
+
+    expect(pillSource).toContain("../components/ui/tooltip");
+    expect(pillSource).toContain("<Tooltip label=");
+    expect(pillSource).not.toContain("title=");
+  });
 });

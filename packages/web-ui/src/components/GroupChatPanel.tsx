@@ -53,6 +53,7 @@ import { TabPill } from '../_group-chat/TabPill';
 import { RoomView } from '../_group-chat/RoomView';
 import { AgentView } from '../_group-chat/AgentView';
 import { InviteAgentMenu } from '../_group-chat/InviteAgentMenu';
+import { Tooltip } from './ui/tooltip';
 
 const ROOM_TAB = '__room__';
 
@@ -417,23 +418,24 @@ export function GroupChatPanel({
           to the LEFT of the panel card with a small gap. Width
           footprint accounted for in CHAT_PANEL_RAIL_WIDTH. */}
       <aside className="relative z-30 shrink-0 w-12 flex flex-col items-center gap-1.5 py-3 pointer-events-auto">
-        <motion.button
-          onClick={() => onCollapseChange(!isCollapsed)}
-          whileHover={{ scale: 1.1 }}
-          whileTap={{ scale: 0.9 }}
-          className="h-9 w-9 flex items-center justify-center hover:bg-warm-hover rounded-full text-stone-700 dark:text-stone-300 dark:text-stone-400 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-brand/60"
-          aria-label={isCollapsed ? 'Expand chat panel' : 'Collapse chat panel'}
-          title={isCollapsed ? 'Open chat' : 'Collapse'}
-        >
-          {/* When collapsed the panel is hidden to the right of the
-              rail; clicking should pull it BACK into view (← left).
-              When expanded clicking pushes it AWAY (→ right). */}
-          {isCollapsed ? (
-            <CaretLeft className="w-4 h-4" weight="bold" aria-hidden="true" />
-          ) : (
-            <CaretRight className="w-4 h-4" weight="bold" aria-hidden="true" />
-          )}
-        </motion.button>
+        <Tooltip label={isCollapsed ? 'Open chat' : 'Collapse'}>
+          <motion.button
+            onClick={() => onCollapseChange(!isCollapsed)}
+            whileHover={{ scale: 1.1 }}
+            whileTap={{ scale: 0.9 }}
+            className="h-9 w-9 flex items-center justify-center hover:bg-warm-hover rounded-full text-stone-700 dark:text-stone-300 dark:text-stone-400 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-brand/60"
+            aria-label={isCollapsed ? 'Expand chat panel' : 'Collapse chat panel'}
+          >
+            {/* When collapsed the panel is hidden to the right of the
+                rail; clicking should pull it BACK into view (← left).
+                When expanded clicking pushes it AWAY (→ right). */}
+            {isCollapsed ? (
+              <CaretLeft className="w-4 h-4" weight="bold" aria-hidden="true" />
+            ) : (
+              <CaretRight className="w-4 h-4" weight="bold" aria-hidden="true" />
+            )}
+          </motion.button>
+        </Tooltip>
 
         <div className="my-1 h-px w-8 bg-warm-border" aria-hidden="true" />
 
@@ -492,16 +494,17 @@ export function GroupChatPanel({
           {/* Refresh sits immediately under the + button — same
               size + shape so they read as a paired tool cluster
               ("add agent" / "reload room"). */}
-          <motion.button
-            onClick={() => void room.refetch()}
-            whileHover={{ scale: 1.05 }}
-            whileTap={{ scale: 0.95 }}
-            className="h-11 w-11 rounded-matrix bg-warm-muted hover:bg-warm-hover hover:text-brand text-stone-700 dark:text-stone-300 dark:text-stone-400 flex items-center justify-center transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-brand/60 focus-visible:ring-offset-1 focus-visible:ring-offset-warm-surface"
-            aria-label="Refresh room"
-            title="Refresh room"
-          >
-            <ArrowClockwise className="w-4 h-4" weight="bold" aria-hidden="true" />
-          </motion.button>
+          <Tooltip label="Refresh room">
+            <motion.button
+              onClick={() => void room.refetch()}
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
+              className="h-11 w-11 rounded-matrix bg-warm-muted hover:bg-warm-hover hover:text-brand text-stone-700 dark:text-stone-300 dark:text-stone-400 flex items-center justify-center transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-brand/60 focus-visible:ring-offset-1 focus-visible:ring-offset-warm-surface"
+              aria-label="Refresh room"
+            >
+              <ArrowClockwise className="w-4 h-4" weight="bold" aria-hidden="true" />
+            </motion.button>
+          </Tooltip>
         </TabList>
 
         {/* Rail footer: avatar (opens Settings) + balance pill (hosted
@@ -512,41 +515,43 @@ export function GroupChatPanel({
             <PresenceBar clients={otherClients} />
           </div>
         )}
-        <Link
-          to="/settings"
-          className="block rounded-xl focus:outline-none focus-visible:ring-2 focus-visible:ring-brand/60 focus-visible:ring-offset-1 focus-visible:ring-offset-warm-surface"
-          aria-label={`Settings — signed in as ${sessionUser?.name ?? 'guest'}`}
-          title={sessionUser?.name ?? 'Settings'}
-        >
-          {sessionUser?.image ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              src={sessionUser.image}
-              alt="Your avatar"
-              className="h-9 w-9 rounded-xl object-cover ring-1 ring-warm-border hover:ring-brand/60 transition-all"
-            />
-          ) : (
-            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-brand-light text-xs font-bold text-slate-950 ring-1 ring-brand/20 transition-all hover:ring-brand/60 dark:bg-brand/20 dark:text-slate-50">
-              {userInitials}
-            </div>
-          )}
-        </Link>
-        {(balance.status === 'ready' || balance.status === 'loading') && (
+        <Tooltip label={sessionUser?.name ?? 'Settings'}>
           <Link
-            to="/billing"
-            className="flex flex-col items-center gap-0.5 text-[10px] font-medium text-stone-700 dark:text-stone-300 dark:text-stone-300 hover:text-brand transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-brand/60 focus-visible:ring-offset-1 focus-visible:ring-offset-warm-surface rounded-md px-1 py-0.5"
-            aria-label="Credits balance — click to manage billing"
-            title="Credits balance"
+            to="/settings"
+            className="block rounded-xl focus:outline-none focus-visible:ring-2 focus-visible:ring-brand/60 focus-visible:ring-offset-1 focus-visible:ring-offset-warm-surface"
+            aria-label={`Settings — signed in as ${sessionUser?.name ?? 'guest'}`}
           >
-            <Lightning weight="fill" className="h-3 w-3 text-brand" aria-hidden="true" />
-            {balance.status === 'ready' ? (
-              <span className="tabular-nums">
-                {balance.balance.available.toLocaleString()}
-              </span>
+            {sessionUser?.image ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={sessionUser.image}
+                alt="Your avatar"
+                className="h-9 w-9 rounded-xl object-cover ring-1 ring-warm-border hover:ring-brand/60 transition-all"
+              />
             ) : (
-              <span className="inline-block h-2 w-6 rounded bg-warm-muted animate-pulse" />
+              <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-brand-light text-xs font-bold text-slate-950 ring-1 ring-brand/20 transition-all hover:ring-brand/60 dark:bg-brand/20 dark:text-slate-50">
+                {userInitials}
+              </div>
             )}
           </Link>
+        </Tooltip>
+        {(balance.status === 'ready' || balance.status === 'loading') && (
+          <Tooltip label="Credits balance">
+            <Link
+              to="/billing"
+              className="flex flex-col items-center gap-0.5 text-[10px] font-medium text-stone-700 dark:text-stone-300 dark:text-stone-300 hover:text-brand transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-brand/60 focus-visible:ring-offset-1 focus-visible:ring-offset-warm-surface rounded-md px-1 py-0.5"
+              aria-label="Credits balance — click to manage billing"
+            >
+              <Lightning weight="fill" className="h-3 w-3 text-brand" aria-hidden="true" />
+              {balance.status === 'ready' ? (
+                <span className="tabular-nums">
+                  {balance.balance.available.toLocaleString()}
+                </span>
+              ) : (
+                <span className="inline-block h-2 w-6 rounded bg-warm-muted animate-pulse" />
+              )}
+            </Link>
+          </Tooltip>
         )}
       </aside>
 
@@ -609,14 +614,15 @@ export function GroupChatPanel({
 
         {activeTab === ROOM_TAB && (
           <div className="shrink-0 flex justify-end px-5 pb-1 pt-4">
-            <div
-              className={`inline-flex h-5 items-center gap-1.5 text-[11px] font-medium ${syncIndicator.textClass}`}
-              title={syncIndicator.title}
-              aria-label={syncIndicator.title}
-            >
-              <span className={`h-1.5 w-1.5 rounded-full ${syncIndicator.dotClass}`} aria-hidden="true" />
-              <span>{syncIndicator.label}</span>
-            </div>
+            <Tooltip label={syncIndicator.title}>
+              <div
+                className={`inline-flex h-5 items-center gap-1.5 text-[11px] font-medium ${syncIndicator.textClass}`}
+                aria-label={syncIndicator.title}
+              >
+                <span className={`h-1.5 w-1.5 rounded-full ${syncIndicator.dotClass}`} aria-hidden="true" />
+                <span>{syncIndicator.label}</span>
+              </div>
+            </Tooltip>
           </div>
         )}
 

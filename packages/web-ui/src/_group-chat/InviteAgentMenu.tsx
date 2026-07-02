@@ -17,6 +17,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '../components/ui/dropdown-menu';
+import { Tooltip } from '../components/ui/tooltip';
 
 interface InviteAgentMenuProps {
   open: boolean;
@@ -44,17 +45,18 @@ export function InviteAgentMenu({
   return (
     <div className="shrink-0">
       <DropdownMenu open={open} onOpenChange={handleOpenChange}>
-        <DropdownMenuTrigger asChild>
-          <motion.button
-            whileHover={{ scale: 1.05 }}
-            whileTap={{ scale: 0.95 }}
-            className="h-11 w-11 rounded-matrix bg-warm-muted hover:bg-warm-hover hover:text-brand text-stone-500 dark:text-stone-400 flex items-center justify-center transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-brand/60 focus-visible:ring-offset-1 focus-visible:ring-offset-warm-surface"
-            title="Invite agent"
-            aria-label="Invite agent member"
-          >
-            <Plus className="w-4 h-4" weight="bold" aria-hidden="true" />
-          </motion.button>
-        </DropdownMenuTrigger>
+        <Tooltip label="Invite agent">
+          <DropdownMenuTrigger asChild>
+            <motion.button
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
+              className="h-11 w-11 rounded-matrix bg-warm-muted hover:bg-warm-hover hover:text-brand text-stone-500 dark:text-stone-400 flex items-center justify-center transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-brand/60 focus-visible:ring-offset-1 focus-visible:ring-offset-warm-surface"
+              aria-label="Invite agent member"
+            >
+              <Plus className="w-4 h-4" weight="bold" aria-hidden="true" />
+            </motion.button>
+          </DropdownMenuTrigger>
+        </Tooltip>
         <DropdownMenuContent
           side="left"
           align="start"
@@ -97,7 +99,6 @@ export function InviteAgentMenu({
                     key={c.id}
                     onSelect={() => onInvite(c)}
                     disabled={offline}
-                    title={offline ? 'Runtime offline' : ''}
                     aria-label={`Invite ${c.display_name}${offline ? ' (offline)' : ''}`}
                     className="min-h-[44px] flex-col items-start gap-0 rounded-none px-3 py-2.5 text-xs"
                   >
