@@ -46,4 +46,22 @@ describe("SettingsClient primitives", () => {
     expect(source).not.toContain("document.querySelector<HTMLInputElement>('[data-provider-key-input=\"true\"]')?.focus()");
     expect(source).not.toContain('data-provider-key-input="true"');
   });
+
+  it("uses shared button primitives for token, variable, action, and skill controls", () => {
+    const source = readSource("packages/web-ui/src/components/SettingsClient.tsx");
+
+    expect(source).toContain("./ui/button");
+    expect(source).toContain("./ui/icon-button");
+    expect(source).toContain("<Button");
+    expect(source).toContain("<IconButton");
+    expect(source).not.toContain("<motion.button");
+    expect(source).not.toMatch(/<button[\s\S]{0,240}handleCopy\(revealedToken/);
+    expect(source).not.toMatch(/<button[\s\S]{0,180}setRevealedToken\(null\)/);
+    expect(source).not.toMatch(/<button[\s\S]{0,180}handleRevoke\(token\.id\)/);
+    expect(source).not.toMatch(/<button[\s\S]{0,240}setNewVarKey\(preset\.defaultSecretId\)/);
+    expect(source).not.toMatch(/<button[\s\S]{0,180}setShowVarValue\(!showVarValue\)/);
+    expect(source).not.toMatch(/<button[\s\S]{0,180}handleDeleteVariable\(v\.id\)/);
+    expect(source).not.toMatch(/<button[\s\S]{0,180}handleUninstallAction\(action\.actionId\)/);
+    expect(source).not.toMatch(/<button[\s\S]{0,180}handleUninstallSkill\(skill\.skillId\)/);
+  });
 });

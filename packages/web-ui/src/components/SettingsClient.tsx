@@ -34,6 +34,8 @@ import {
 import { runtimeApiUrl } from '@clash/web-ui/lib/runtimeConfig';
 import { cn } from './ai-elements/utils';
 import { Dialog } from './ui/dialog';
+import { Button } from './ui/button';
+import { IconButton } from './ui/icon-button';
 import { SelectMenu, type SelectOption } from './ui/select';
 import { SearchableSelect } from './ui/searchable-select';
 import { Switch } from './ui/switch';
@@ -826,14 +828,13 @@ export default function SettingsClient({
                             placeholder="Token name"
                             className={`${settingsFieldClass} min-w-0 flex-1 px-4`}
                         />
-                        <motion.button
+                        <Button
                             type="submit"
                             disabled={isCreating || !newTokenName.trim()}
                             className={settingsPrimaryButtonClass}
-                            whileTap={{ scale: 0.97 }}
                         >
                             Create
-                        </motion.button>
+                        </Button>
                     </form>
 
                     <AnimatePresence>
@@ -852,16 +853,21 @@ export default function SettingsClient({
                                         <code className="flex-1 rounded-lg bg-warm-surface border border-warm-border px-3 py-2 text-sm font-mono text-slate-900 dark:text-slate-50 select-all truncate">
                                             {revealedToken}
                                         </code>
-                                        <button
+                                        <IconButton
+                                            label="Copy new token"
                                             onClick={() => handleCopy(revealedToken, 'new')}
-                                            className="rounded-lg p-2 text-slate-800 dark:text-slate-200 hover:text-slate-900 hover:bg-warm-muted dark:text-slate-300 dark:hover:text-slate-50 dark:hover:bg-warm-hover transition-colors"
-                                        >
-                                            {copiedId === 'new' ? <Check className="h-4 w-4 text-green-600" weight="bold" /> : <Copy className="h-4 w-4" />}
-                                        </button>
+                                            size="sm"
+                                            icon={copiedId === 'new' ? <Check className="h-4 w-4 text-green-600" weight="bold" /> : <Copy className="h-4 w-4" />}
+                                            className="rounded-lg text-slate-800 hover:bg-warm-muted hover:text-slate-900 dark:text-slate-300 dark:hover:bg-warm-hover dark:hover:text-slate-50"
+                                        />
                                     </div>
-                                    <button onClick={() => setRevealedToken(null)} className="mt-2 text-xs text-slate-700 dark:text-slate-300 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200">
+                                    <Button
+                                        onClick={() => setRevealedToken(null)}
+                                        size="sm"
+                                        className="mt-2 h-auto min-h-0 border-transparent bg-transparent px-0 py-0 text-xs text-slate-700 shadow-none hover:bg-transparent hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200"
+                                    >
                                         Dismiss
-                                    </button>
+                                    </Button>
                                 </div>
                             </motion.div>
                         )}
@@ -885,12 +891,14 @@ export default function SettingsClient({
                                             Created {formatDate(token.createdAt)} · Last used {formatDate(token.lastUsedAt)}
                                         </p>
                                     </div>
-                                    <button
+                                    <IconButton
+                                        label={`Revoke ${token.name}`}
                                         onClick={() => handleRevoke(token.id)}
+                                        variant="destructive"
+                                        size="sm"
+                                        icon={<Trash className="h-4 w-4" />}
                                         className={settingsDangerGhostButtonClass}
-                                    >
-                                        <Trash className="h-4 w-4" />
-                                    </button>
+                                    />
                                 </div>
                             ))}
                         </div>
@@ -937,11 +945,10 @@ export default function SettingsClient({
                             const configured = variableKeys.has(preset.defaultSecretId);
                             return (
                                 <Tooltip label={preset.secretDescription} key={preset.id}>
-                                    <button
-                                        type="button"
+                                    <Button
                                         aria-label={`${preset.label} · ${preset.defaultSecretId}`}
                                         onClick={() => setNewVarKey(preset.defaultSecretId)}
-                                        className="flex w-full items-center justify-between gap-3 py-2.5 text-left transition-colors hover:bg-warm-muted"
+                                        className="flex h-auto min-h-0 w-full items-center justify-between gap-3 rounded-none border-transparent bg-transparent px-0 py-2.5 text-left shadow-none hover:bg-warm-muted"
                                     >
                                         <span className="min-w-0">
                                             <span className="block text-sm font-medium text-slate-900 dark:text-slate-50">{preset.label}</span>
@@ -956,7 +963,7 @@ export default function SettingsClient({
                                         >
                                             {configured ? 'Configured' : 'Missing'}
                                         </span>
-                                    </button>
+                                    </Button>
                                 </Tooltip>
                             );
                         })}
@@ -980,22 +987,21 @@ export default function SettingsClient({
                                 autoComplete="new-password"
                                 className={`${settingsFieldClass} px-4 pr-9`}
                             />
-                            <button
-                                type="button"
+                            <IconButton
+                                label={showVarValue ? "Hide variable value" : "Show variable value"}
                                 onClick={() => setShowVarValue(!showVarValue)}
-                                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-700 dark:text-slate-300 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200"
-                            >
-                                {showVarValue ? <EyeSlash className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
-                            </button>
+                                size="sm"
+                                icon={showVarValue ? <EyeSlash className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+                                className="absolute right-2 top-1/2 h-7 min-h-7 w-7 min-w-7 -translate-y-1/2 text-slate-700 hover:bg-transparent hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200"
+                            />
                         </div>
-                        <motion.button
+                        <Button
                             type="submit"
                             disabled={isAddingVar || !newVarKey.trim() || !newVarValue.trim()}
                             className={settingsPrimaryButtonClass}
-                            whileTap={{ scale: 0.97 }}
                         >
                             Set
-                        </motion.button>
+                        </Button>
                     </form>
 
                     {variables.length === 0 ? (
@@ -1014,12 +1020,14 @@ export default function SettingsClient({
                                         </div>
                                         <p className="text-xs text-stone-500 dark:text-stone-400 mt-0.5">Updated {formatDate(v.updatedAt || v.createdAt)}</p>
                                     </div>
-                                    <button
+                                    <IconButton
+                                        label={`Delete ${v.key}`}
                                         onClick={() => handleDeleteVariable(v.id)}
+                                        variant="destructive"
+                                        size="sm"
+                                        icon={<Trash className="h-4 w-4" />}
                                         className={settingsDangerGhostButtonClass}
-                                    >
-                                        <Trash className="h-4 w-4" />
-                                    </button>
+                                    />
                                 </div>
                             ))}
                         </div>
@@ -1119,12 +1127,14 @@ export default function SettingsClient({
                                                     </div>
                                                 )}
                                             </div>
-                                            <button
+                                            <IconButton
+                                                label={`Uninstall ${action.name}`}
                                                 onClick={() => handleUninstallAction(action.actionId)}
+                                                variant="destructive"
+                                                size="sm"
+                                                icon={<Trash className="h-4 w-4" />}
                                                 className={`${settingsDangerGhostButtonClass} flex-shrink-0`}
-                                            >
-                                                <Trash className="h-4 w-4" />
-                                            </button>
+                                            />
                                         </div>
                                     </div>
                                 );
@@ -1170,12 +1180,14 @@ export default function SettingsClient({
                                         </div>
                                         {skill.description && <p className="text-xs text-stone-600 dark:text-stone-300 mt-0.5 line-clamp-1">{skill.description}</p>}
                                     </div>
-                                    <button
+                                    <IconButton
+                                        label={`Uninstall ${skill.name}`}
                                         onClick={() => handleUninstallSkill(skill.skillId)}
+                                        variant="destructive"
+                                        size="sm"
+                                        icon={<Trash className="h-4 w-4" />}
                                         className={settingsDangerGhostButtonClass}
-                                    >
-                                        <Trash className="h-4 w-4" />
-                                    </button>
+                                    />
                                 </div>
                             ))}
                         </div>
