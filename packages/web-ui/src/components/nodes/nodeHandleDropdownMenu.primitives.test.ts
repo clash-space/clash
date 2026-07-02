@@ -21,4 +21,12 @@ describe("NodeHandleDropdownMenu primitives", () => {
         expect(source).not.toContain("TooltipProvider");
         expect(source).not.toContain("TooltipAnchor");
     });
+
+    it("keeps node handle menu items off browser title tooltips", () => {
+        const pipelineSource = readNodeSource("ActionBadgePipelineMenu.tsx");
+        const sourceHandleSource = readNodeSource("SourceHandleMenu.tsx");
+
+        expect(pipelineSource).not.toContain("title=");
+        expect(sourceHandleSource).not.toContain("title=");
+    });
 });

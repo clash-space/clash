@@ -176,7 +176,6 @@ const SourceHandleMenu = ({ nodeId, sourceType }: SourceHandleMenuProps) => {
                         <NodeHandleDropdownMenuSeparator>or clone upstream</NodeHandleDropdownMenuSeparator>
                         <NodeHandleDropdownMenuItem
                             onSelect={handleCloneClick}
-                            title="Duplicate the upstream trajectory as fresh drafts"
                             aria-label="Clone upstream trajectory - opens a preview dialog"
                             className="text-slate-800 hover:bg-warm-hover hover:text-slate-950 dark:text-slate-200"
                         >

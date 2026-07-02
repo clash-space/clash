@@ -138,7 +138,7 @@ const ActionBadgePipelineMenu = ({ spawnDraft, canSpawn, disabledReason, outputK
 
     const PrimaryIcon = OUTPUT_ICON[outputKind];
     const disabled = !canSpawn || isBusy;
-    const primaryTitle = disabled ? (disabledReason ?? 'Busy…') : `Add draft ${outputKind}`;
+    const primaryLabel = disabled ? (disabledReason ?? 'Busy…') : `Add draft ${outputKind}`;
 
     return (
         <NodeHandleDropdownMenu
@@ -151,8 +151,7 @@ const ActionBadgePipelineMenu = ({ spawnDraft, canSpawn, disabledReason, outputK
 
             <NodeHandleDropdownMenuItem
                 disabled={disabled}
-                title={primaryTitle}
-                aria-label={primaryTitle}
+                aria-label={primaryLabel}
                 onSelect={handlePrimaryClick}
                 className={`font-semibold ${
                     disabled
@@ -172,13 +171,12 @@ const ActionBadgePipelineMenu = ({ spawnDraft, canSpawn, disabledReason, outputK
                 .map((option) => {
                     const Icon = option.icon;
                     const rowDisabled = disabled;
-                    const rowTitle = rowDisabled ? (disabledReason ?? 'Busy…') : `Draft -> ${option.label}`;
+                    const rowLabel = rowDisabled ? (disabledReason ?? 'Busy…') : `Draft -> ${option.label}`;
                     return (
                         <NodeHandleDropdownMenuItem
                             key={option.id}
                             disabled={rowDisabled}
-                            title={rowTitle}
-                            aria-label={rowTitle}
+                            aria-label={rowLabel}
                             onSelect={() => handleChainClick(option)}
                             className={rowDisabled ? 'text-slate-700 opacity-60 dark:text-slate-300' : 'text-slate-800 hover:bg-warm-muted hover:text-slate-900 dark:text-slate-200'}
                         >
