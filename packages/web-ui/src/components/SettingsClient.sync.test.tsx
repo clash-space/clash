@@ -249,6 +249,22 @@ describe("SettingsSurface tab state", () => {
     expect(source).toContain("<Tooltip label={preset.secretDescription}");
     expect(source).not.toContain("title={preset.secretDescription}");
   });
+
+  it("uses the shared tooltip primitive for provider logos instead of browser title attributes", () => {
+    const source = readFileSync(
+      resolve(process.cwd(), "packages/web-ui/src/components/SettingsClient.tsx"),
+      "utf8",
+    );
+    const tooltipSource = readFileSync(
+      resolve(process.cwd(), "packages/web-ui/src/components/ui/tooltip.tsx"),
+      "utf8",
+    );
+
+    expect(tooltipSource).toContain("@ariakit/react");
+    expect(source).toContain("./ui/tooltip");
+    expect(source).toContain("<Tooltip label={`${title} logo`}>");
+    expect(source).not.toContain('title={`${title} logo`}');
+  });
 });
 
 describe("SettingsClient sync section", () => {

@@ -2443,19 +2443,18 @@ function ModelRoutingSection({
             );
         }
         return (
-            <span
-                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-warm-border bg-white p-1.5 shadow-sm dark:bg-white"
-                title={`${title} logo`}
-            >
-                <img
-                    src={logo.src}
-                    alt=""
-                    aria-hidden="true"
-                    data-provider-logo={logo.id}
-                    draggable={false}
-                    className="h-full w-full object-contain"
-                />
-            </span>
+            <Tooltip label={`${title} logo`}>
+                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-warm-border bg-white p-1.5 shadow-sm dark:bg-white">
+                    <img
+                        src={logo.src}
+                        alt=""
+                        aria-hidden="true"
+                        data-provider-logo={logo.id}
+                        draggable={false}
+                        className="h-full w-full object-contain"
+                    />
+                </span>
+            </Tooltip>
         );
     };
     const providerCredentialAccountCount = (row: typeof providerViewRows[number]) => {
