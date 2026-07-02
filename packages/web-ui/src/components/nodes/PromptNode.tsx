@@ -4,6 +4,8 @@ import { X } from "@phosphor-icons/react";
 import MilkdownEditor from "../MilkdownEditor";
 import { useLoroSyncContext } from "../LoroSyncContext";
 import { NodeModalDialog } from "./NodeModalDialog";
+import { Button } from "../ui/button";
+import { IconButton } from "../ui/icon-button";
 
 const PromptNode = ({
   data,
@@ -110,20 +112,19 @@ const PromptNode = ({
           }}
         />
         <div className="flex gap-2">
-          <button
-            type="button"
+          <Button
+            size="sm"
             onClick={handleSave}
-            className="clash-node-primary px-4 py-2 text-sm font-medium rounded-lg"
+            className="clash-node-primary rounded-lg px-4 py-2 text-sm"
           >
             Save
-          </button>
-          <button
-            type="button"
+          </Button>
+          <IconButton
+            label="Cancel edit"
             onClick={handleCancel}
-            className="p-2 text-slate-700 dark:text-slate-300 hover:text-slate-950 hover:bg-warm-hover rounded-lg transition-colors"
-          >
-            <X className="w-5 h-5" weight="bold" />
-          </button>
+            className="rounded-lg text-slate-700 hover:bg-warm-hover hover:text-slate-950 dark:text-slate-300"
+            icon={<X className="w-5 h-5" weight="bold" />}
+          />
         </div>
       </div>
 

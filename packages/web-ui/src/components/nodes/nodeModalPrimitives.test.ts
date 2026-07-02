@@ -27,4 +27,18 @@ describe("node modal primitives", () => {
       expect(source).not.toContain("<motion.div");
     },
   );
+
+  it.each(["TextNode.tsx", "PromptNode.tsx"])(
+    "%s uses shared primitives for modal actions",
+    (file) => {
+      const source = readNodeSource(file);
+
+      expect(source).toContain("../ui/button");
+      expect(source).toContain("../ui/icon-button");
+      expect(source).toMatch(/<Button[\s\S]*onClick=\{handleSave\}/);
+      expect(source).toMatch(/<IconButton[\s\S]*onClick=\{handleCancel\}/);
+      expect(source).not.toMatch(/<button[\s\S]*onClick=\{handleSave\}/);
+      expect(source).not.toMatch(/<button[\s\S]*onClick=\{handleCancel\}/);
+    },
+  );
 });
