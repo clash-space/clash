@@ -1,5 +1,5 @@
 
-import { useCallback, useState, useEffect, useRef, useMemo } from 'react';
+import { useCallback, useState, useEffect, useRef, useMemo, type FormEvent } from 'react';
 import { flushSync } from 'react-dom';
 import {
     ReactFlow,
@@ -341,6 +341,10 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
     const [shareCopied, setShareCopied] = useState(false);
     const canShareProject = getRuntimeCapabilities().loro.persistence !== 'local';
     const projectTitleInputWidthCh = Math.min(Math.max(Array.from(projectName || 'Untitled').length + 1, 5), 30);
+    const handleProjectNameSubmit = (event: FormEvent<HTMLFormElement>) => {
+        event.preventDefault();
+        event.currentTarget.querySelector<HTMLInputElement>('input')?.blur();
+    };
 
     useEffect(() => {
         const detail: DesktopTabTitleEventDetail = {
@@ -2351,26 +2355,23 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
                                     <ArrowLeft className="h-5 w-5" weight="bold" aria-hidden="true" />
                                 </motion.button>
                                 {/* Project Name Input */}
-                                <input
-                                    className="clash-project-name-input h-10 min-w-[5ch] bg-transparent px-1 text-xl font-display font-semibold text-slate-950 placeholder-stone-400 focus:outline-none focus:ring-0"
-                                    style={{
-                                        width: `${projectTitleInputWidthCh}ch`,
-                                        maxWidth: 'min(46vw, 360px)',
-                                    }}
-                                    value={projectName}
-                                    onChange={(e) => setProjectName(e.target.value)}
-                                    onBlur={() => {
-                                        if (projectName !== project.name) {
-                                            updateProjectName(project.id, projectName);
-                                        }
-                                    }}
-                                    onKeyDown={(e) => {
-                                        if (e.key === 'Enter') {
-                                            e.currentTarget.blur();
-                                        }
-                                    }}
-                                    placeholder="Untitled"
-                                />
+                                <form onSubmit={handleProjectNameSubmit}>
+                                    <input
+                                        className="clash-project-name-input h-10 min-w-[5ch] bg-transparent px-1 text-xl font-display font-semibold text-slate-950 placeholder-stone-400 focus:outline-none focus:ring-0"
+                                        style={{
+                                            width: `${projectTitleInputWidthCh}ch`,
+                                            maxWidth: 'min(46vw, 360px)',
+                                        }}
+                                        value={projectName}
+                                        onChange={(e) => setProjectName(e.target.value)}
+                                        onBlur={() => {
+                                            if (projectName !== project.name) {
+                                                updateProjectName(project.id, projectName);
+                                            }
+                                        }}
+                                        placeholder="Untitled"
+                                    />
+                                </form>
                             </div>
 
                             <motion.div
