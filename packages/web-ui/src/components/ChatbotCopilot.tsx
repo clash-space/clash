@@ -1,5 +1,6 @@
 
 import { memo, useState, useRef, useEffect, useCallback, useMemo, useId } from 'react';
+import { ComboboxItem, ComboboxList, ComboboxProvider } from '@ariakit/react';
 import { motion, AnimatePresence, MotionConfig } from 'framer-motion';
 import { ArrowBendDownRight, CaretRight, DotsSixVertical, DotsThree, PencilSimple, Plus, ClockCounterClockwise, Trash, Plug, ShieldWarning } from '@phosphor-icons/react';
 import { useTranslation } from 'react-i18next';
@@ -2058,34 +2059,36 @@ function SlashCommandPalette({
     onPick: (command: AvailableCommand) => void;
 }) {
     return (
-        <div
-            role="listbox"
-            aria-label="Slash commands"
-            className="mx-5 mb-2 max-h-64 overflow-y-auto rounded-2xl border border-warm-border bg-warm-surface/95 p-1.5 shadow-[0_18px_48px_rgba(23,19,13,0.12)] backdrop-blur"
-        >
-            {commands.map((command) => {
-                const name = normalizeSlashCommandName(command);
-                const description = command.description ?? command.input?.hint;
-                return (
-                <button
-                    key={command.name}
-                    type="button"
-                    role="option"
-                    aria-selected="false"
-                    onMouseDown={(event) => event.preventDefault()}
-                    onClick={() => onPick(command)}
-                    title={description ?? `/${name}`}
-                    aria-label={description ? `/${name} ${description}` : `/${name}`}
-                    className="grid w-full grid-cols-[minmax(8rem,auto)_1fr] items-baseline gap-4 rounded-xl px-3 py-2 text-left transition-colors hover:bg-warm-muted focus-visible:bg-warm-muted focus-visible:outline-none"
-                >
-                    <span className="font-mono text-sm font-medium text-slate-900 dark:text-slate-100">/{name}</span>
-                    {description ? (
-                        <span className="min-w-0 truncate text-sm text-stone-500 dark:text-stone-400">{description}</span>
-                    ) : null}
-                </button>
-                );
-            })}
-        </div>
+        <ComboboxProvider value="" setValue={() => undefined}>
+            <ComboboxList
+                aria-label="Slash commands"
+                alwaysVisible
+                className="mx-5 mb-2 max-h-64 overflow-y-auto rounded-2xl border border-warm-border bg-warm-surface/95 p-1.5 shadow-[0_18px_48px_rgba(23,19,13,0.12)] backdrop-blur"
+            >
+                {commands.map((command) => {
+                    const name = normalizeSlashCommandName(command);
+                    const description = command.description ?? command.input?.hint;
+                    return (
+                        <ComboboxItem
+                            key={command.name}
+                            value={name}
+                            setValueOnClick={false}
+                            selectValueOnClick={false}
+                            onMouseDown={(event) => event.preventDefault()}
+                            onClick={() => onPick(command)}
+                            title={description ?? `/${name}`}
+                            aria-label={description ? `/${name} ${description}` : `/${name}`}
+                            className="grid w-full cursor-default grid-cols-[minmax(8rem,auto)_1fr] items-baseline gap-4 rounded-xl px-3 py-2 text-left transition-colors outline-none hover:bg-warm-muted data-[active-item]:bg-warm-muted focus-visible:bg-warm-muted"
+                        >
+                            <span className="font-mono text-sm font-medium text-slate-900 dark:text-slate-100">/{name}</span>
+                            {description ? (
+                                <span className="min-w-0 truncate text-sm text-stone-500 dark:text-stone-400">{description}</span>
+                            ) : null}
+                        </ComboboxItem>
+                    );
+                })}
+            </ComboboxList>
+        </ComboboxProvider>
     );
 }
 
