@@ -4575,11 +4575,11 @@ function AgentsSection() {
         });
     }, [harnessLoading, harnesses, localRuntimeId, rt.runtimes]);
 
-    const toggleRuntimeCollapsed = useCallback((runtimeId: string) => {
+    const setRuntimeCollapsed = useCallback((runtimeId: string, collapsed: boolean) => {
         setCollapsedRuntimeIds((current) => {
             const next = new Set(current);
-            if (next.has(runtimeId)) next.delete(runtimeId);
-            else next.add(runtimeId);
+            if (collapsed) next.add(runtimeId);
+            else next.delete(runtimeId);
             return next;
         });
     }, []);
@@ -4610,33 +4610,38 @@ function AgentsSection() {
                     const collapsed = collapsedRuntimeIds.has(group.id);
                     const agentCountLabel = `${group.agentCount} configured agent${group.agentCount === 1 ? "" : "s"}`;
                     return (
-                        <div key={group.id} className="overflow-hidden rounded-xl border border-warm-border bg-warm-surface">
-                            <button
-                                type="button"
-                                aria-expanded={!collapsed}
-                                aria-label={`${collapsed ? "Expand" : "Collapse"} ${group.label} runtime`}
-                                onClick={() => toggleRuntimeCollapsed(group.id)}
-                                className="grid min-h-[4.25rem] w-full grid-cols-[1rem_0.5rem_minmax(0,1fr)] items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-warm-muted"
-                            >
-                                <CaretRight
-                                    className={`h-4 w-4 shrink-0 text-stone-500 transition-transform ${collapsed ? "" : "rotate-90"}`}
-                                    weight="bold"
-                                />
-                                <span className={`h-2 w-2 shrink-0 rounded-full ${group.online ? "bg-emerald-500" : "bg-stone-300"}`} />
-                                <span className="min-w-0 flex-1">
-                                    <span className="flex flex-wrap items-center gap-2">
-                                        <span className="truncate text-sm font-semibold text-slate-900 dark:text-slate-50">{group.label}</span>
-                                        <span className="rounded-full bg-warm-muted px-2 py-0.5 text-[11px] font-medium text-stone-600 dark:text-stone-300">
-                                            {group.status}
+                        <Collapsible
+                            key={group.id}
+                            open={!collapsed}
+                            onOpenChange={(open) => setRuntimeCollapsed(group.id, !open)}
+                            className="overflow-hidden rounded-xl border border-warm-border bg-warm-surface"
+                        >
+                            <CollapsibleTrigger asChild>
+                                <button
+                                    type="button"
+                                    aria-label={`${collapsed ? "Expand" : "Collapse"} ${group.label} runtime`}
+                                    className="grid min-h-[4.25rem] w-full grid-cols-[1rem_0.5rem_minmax(0,1fr)] items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-warm-muted"
+                                >
+                                    <CaretRight
+                                        className={`h-4 w-4 shrink-0 text-stone-500 transition-transform ${collapsed ? "" : "rotate-90"}`}
+                                        weight="bold"
+                                    />
+                                    <span className={`h-2 w-2 shrink-0 rounded-full ${group.online ? "bg-emerald-500" : "bg-stone-300"}`} />
+                                    <span className="min-w-0 flex-1">
+                                        <span className="flex flex-wrap items-center gap-2">
+                                            <span className="truncate text-sm font-semibold text-slate-900 dark:text-slate-50">{group.label}</span>
+                                            <span className="rounded-full bg-warm-muted px-2 py-0.5 text-[11px] font-medium text-stone-600 dark:text-stone-300">
+                                                {group.status}
+                                            </span>
+                                        </span>
+                                        <span className="mt-0.5 block truncate text-xs text-stone-500 dark:text-stone-400">
+                                            {agentCountLabel}
                                         </span>
                                     </span>
-                                    <span className="mt-0.5 block truncate text-xs text-stone-500 dark:text-stone-400">
-                                        {agentCountLabel}
-                                    </span>
-                                </span>
-                            </button>
+                                </button>
+                            </CollapsibleTrigger>
 
-                            {!collapsed && (
+                            <CollapsibleContent asChild>
                                 <div className="border-t border-warm-border">
                                     {group.localControls ? (
                                         <>
@@ -4922,8 +4927,8 @@ function AgentsSection() {
                                         </div>
                                     )}
                                 </div>
-                            )}
-                        </div>
+                            </CollapsibleContent>
+                        </Collapsible>
                     );
                 })}
             </div>
