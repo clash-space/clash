@@ -1,6 +1,7 @@
 
-import { useCallback, useState, useEffect, useRef, useMemo, type FormEvent } from 'react';
+import { useCallback, useState, useEffect, useRef, useMemo, type FormEvent, type ReactElement } from 'react';
 import { flushSync } from 'react-dom';
+import { Tooltip, TooltipAnchor, TooltipProvider } from '@ariakit/react';
 import {
     ReactFlow,
     Background,
@@ -120,6 +121,20 @@ function clampCopilotPanelWidth(width: number) {
 function defaultCopilotPanelWidth() {
     if (typeof window === 'undefined') return 720;
     return clampCopilotPanelWidth(Math.round(window.innerWidth * DEFAULT_COPILOT_PANEL_FRACTION));
+}
+
+function CanvasToolbarTooltip({ label, children }: { label: string; children: ReactElement }) {
+    return (
+        <TooltipProvider timeout={180}>
+            <TooltipAnchor render={children} />
+            <Tooltip
+                gutter={8}
+                className="z-50 whitespace-nowrap rounded-md bg-slate-900 px-2 py-1 text-xs font-medium text-white shadow-md dark:bg-slate-100 dark:text-slate-900"
+            >
+                {label}
+            </Tooltip>
+        </TooltipProvider>
+    );
 }
 
 interface ProjectEditorProps {
@@ -2475,25 +2490,26 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
                             >
                                  <div className="clash-canvas-toolbar-surface pointer-events-auto flex w-16 flex-none flex-col items-center gap-3 rounded-2xl py-6 px-3 transition-all">
                                     {/* Canvas Mode Toggle: select off, hand on. */}
-                                    <Toggle
-                                        asChild
-                                        pressed={canvasMode === 'hand'}
-                                        onPressedChange={(pressed) => setCanvasMode(pressed ? 'hand' : 'select')}
-                                    >
-                                        <motion.button
-                                            type="button"
-                                            className="clash-toolbar-button flex h-10 w-10 items-center justify-center rounded-xl bg-transparent text-stone-500 hover:text-slate-950 transition-all"
-                                            whileHover={{ scale: 1.05 }}
-                                            whileTap={{ scale: 0.95 }}
-                                            aria-label={canvasMode === 'select' ? 'Switch to hand mode' : 'Switch to select mode'}
-                                            title={canvasMode === 'select' ? 'Select mode (V)' : 'Hand mode (H)'}
+                                    <CanvasToolbarTooltip label={canvasMode === 'select' ? 'Select mode (V)' : 'Hand mode (H)'}>
+                                        <Toggle
+                                            asChild
+                                            pressed={canvasMode === 'hand'}
+                                            onPressedChange={(pressed) => setCanvasMode(pressed ? 'hand' : 'select')}
                                         >
-                                            {canvasMode === 'select'
-                                                ? <CursorClick className="h-5 w-5" weight="regular" />
-                                                : <HandGrabbing className="h-5 w-5" weight="fill" />
-                                            }
-                                        </motion.button>
-                                    </Toggle>
+                                            <motion.button
+                                                type="button"
+                                                className="clash-toolbar-button flex h-10 w-10 items-center justify-center rounded-xl bg-transparent text-stone-500 hover:text-slate-950 transition-all"
+                                                whileHover={{ scale: 1.05 }}
+                                                whileTap={{ scale: 0.95 }}
+                                                aria-label={canvasMode === 'select' ? 'Switch to hand mode' : 'Switch to select mode'}
+                                            >
+                                                {canvasMode === 'select'
+                                                    ? <CursorClick className="h-5 w-5" weight="regular" />
+                                                    : <HandGrabbing className="h-5 w-5" weight="fill" />
+                                                }
+                                            </motion.button>
+                                        </Toggle>
+                                    </CanvasToolbarTooltip>
 
                                     {/* Divider */}
                                     <div className="clash-control-divider w-8 h-px" />
@@ -2510,21 +2526,22 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
                                                     open={isActive}
                                                     onOpenChange={(open) => setActiveMenu(open ? item.id : null)}
                                                 >
-                                                    <DropdownMenuTrigger asChild>
-                                                        <motion.button
-                                                            className={`clash-toolbar-button flex h-10 w-10 items-center justify-center rounded-xl transition-all ${
-                                                                isActive
-                                                                    ? "clash-toolbar-button-active text-white"
-                                                                    : "bg-transparent text-stone-500 hover:text-slate-950"
-                                                            }`}
-                                                            whileHover={{ scale: 1.05 }}
-                                                            whileTap={{ scale: 0.95 }}
-                                                            aria-label={item.label}
-                                                            title={item.label}
-                                                        >
-                                                            <Icon className="h-5 w-5" weight={isActive ? "fill" : "regular"} />
-                                                        </motion.button>
-                                                    </DropdownMenuTrigger>
+                                                    <CanvasToolbarTooltip label={item.label}>
+                                                        <DropdownMenuTrigger asChild>
+                                                            <motion.button
+                                                                className={`clash-toolbar-button flex h-10 w-10 items-center justify-center rounded-xl transition-all ${
+                                                                    isActive
+                                                                        ? "clash-toolbar-button-active text-white"
+                                                                        : "bg-transparent text-stone-500 hover:text-slate-950"
+                                                                }`}
+                                                                whileHover={{ scale: 1.05 }}
+                                                                whileTap={{ scale: 0.95 }}
+                                                                aria-label={item.label}
+                                                            >
+                                                                <Icon className="h-5 w-5" weight={isActive ? "fill" : "regular"} />
+                                                            </motion.button>
+                                                        </DropdownMenuTrigger>
+                                                    </CanvasToolbarTooltip>
                                                     <DropdownMenuContent
                                                         aria-label={`${item.label} tools`}
                                                         side="right"
@@ -2556,7 +2573,7 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
                                         }
 
                                         return (
-                                            <div key={item.id}>
+                                            <CanvasToolbarTooltip key={item.id} label={item.label}>
                                                 <motion.button
                                                     onClick={() => {
                                                         handleToolClick(item.id);
@@ -2570,11 +2587,10 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
                                                     whileHover={{ scale: 1.05 }}
                                                     whileTap={{ scale: 0.95 }}
                                                     aria-label={item.label}
-                                                    title={item.label}
                                                 >
                                                     <Icon className="h-5 w-5" weight={isActive ? "fill" : "regular"} />
                                                 </motion.button>
-                                            </div>
+                                            </CanvasToolbarTooltip>
                                         );
                                     })}
 
@@ -2582,66 +2598,70 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
                                     <div className="clash-control-divider w-8 h-px" />
 
                                     {/* Helper Tools (Undo/Redo/Layout) */}
-                                    <motion.button
-                                         onClick={onLayout}
-                                         className="clash-toolbar-button flex h-10 w-10 items-center justify-center rounded-xl bg-transparent text-stone-500 transition-all hover:text-slate-950"
-                                         whileHover={{ scale: 1.05 }}
-                                         whileTap={{ scale: 0.95 }}
-                                         aria-label="Auto Layout"
-                                         title="Auto Layout"
-                                     >
-                                         <MagicWand className="h-5 w-5" weight="regular" />
-                                     </motion.button>
+                                    <CanvasToolbarTooltip label="Auto Layout">
+                                        <motion.button
+                                             onClick={onLayout}
+                                             className="clash-toolbar-button flex h-10 w-10 items-center justify-center rounded-xl bg-transparent text-stone-500 transition-all hover:text-slate-950"
+                                             whileHover={{ scale: 1.05 }}
+                                             whileTap={{ scale: 0.95 }}
+                                             aria-label="Auto Layout"
+                                         >
+                                             <MagicWand className="h-5 w-5" weight="regular" />
+                                         </motion.button>
+                                     </CanvasToolbarTooltip>
 
-                                     <motion.button
-                                         onClick={() => loroSync.undo()}
-                                         disabled={!loroSync.canUndo}
-                                         className={`flex h-10 w-10 items-center justify-center rounded-xl transition-all ${
-                                             loroSync.canUndo
-                                             ? "clash-toolbar-button text-stone-500 hover:text-slate-950"
-                                             : "text-slate-300 cursor-not-allowed"
-                                         }`}
-                                         whileHover={loroSync.canUndo ? { scale: 1.05 } : {}}
-                                         whileTap={loroSync.canUndo ? { scale: 0.95 } : {}}
-                                         aria-label="Undo"
-                                         title="Undo"
-                                     >
-                                         <ArrowCounterClockwise className="h-5 w-5" weight="bold" />
-                                     </motion.button>
-                                     <motion.button
-                                         onClick={() => loroSync.redo()}
-                                         disabled={!loroSync.canRedo}
-                                         className={`flex h-10 w-10 items-center justify-center rounded-xl transition-all ${
-                                             loroSync.canRedo
-                                             ? "clash-toolbar-button text-stone-500 hover:text-slate-950"
-                                             : "text-slate-300 cursor-not-allowed"
-                                         }`}
-                                         whileHover={loroSync.canRedo ? { scale: 1.05 } : {}}
-                                         whileTap={loroSync.canRedo ? { scale: 0.95 } : {}}
-                                         aria-label="Redo"
-                                         title="Redo"
-                                     >
-                                         <ArrowClockwise className="h-5 w-5" weight="bold" />
-                                     </motion.button>
+                                     <CanvasToolbarTooltip label="Undo">
+                                         <motion.button
+                                             onClick={() => loroSync.undo()}
+                                             disabled={!loroSync.canUndo}
+                                             className={`flex h-10 w-10 items-center justify-center rounded-xl transition-all ${
+                                                 loroSync.canUndo
+                                                 ? "clash-toolbar-button text-stone-500 hover:text-slate-950"
+                                                 : "text-slate-300 cursor-not-allowed"
+                                             }`}
+                                             whileHover={loroSync.canUndo ? { scale: 1.05 } : {}}
+                                             whileTap={loroSync.canUndo ? { scale: 0.95 } : {}}
+                                             aria-label="Undo"
+                                         >
+                                             <ArrowCounterClockwise className="h-5 w-5" weight="bold" />
+                                         </motion.button>
+                                     </CanvasToolbarTooltip>
+                                     <CanvasToolbarTooltip label="Redo">
+                                         <motion.button
+                                             onClick={() => loroSync.redo()}
+                                             disabled={!loroSync.canRedo}
+                                             className={`flex h-10 w-10 items-center justify-center rounded-xl transition-all ${
+                                                 loroSync.canRedo
+                                                 ? "clash-toolbar-button text-stone-500 hover:text-slate-950"
+                                                 : "text-slate-300 cursor-not-allowed"
+                                             }`}
+                                             whileHover={loroSync.canRedo ? { scale: 1.05 } : {}}
+                                             whileTap={loroSync.canRedo ? { scale: 0.95 } : {}}
+                                             aria-label="Redo"
+                                         >
+                                             <ArrowClockwise className="h-5 w-5" weight="bold" />
+                                         </motion.button>
+                                     </CanvasToolbarTooltip>
 
                                      {/* Debug: toggle node IDs (dev only) */}
                                      {process.env.NODE_ENV === 'development' && (
                                          <>
                                          <div className="clash-control-divider w-8 h-px" />
-                                         <motion.button
-                                             onClick={() => setShowDebugIds(v => !v)}
-                                             className={`flex h-10 w-10 items-center justify-center rounded-xl transition-all ${
-                                                 showDebugIds
-                                                 ? "bg-green-600 text-white shadow-md"
-                                                 : "clash-toolbar-button bg-transparent text-stone-400 hover:text-slate-950"
-                                             }`}
-                                             whileHover={{ scale: 1.05 }}
-                                             whileTap={{ scale: 0.95 }}
-                                             aria-label="Toggle Node IDs"
-                                             title="Toggle Node IDs"
-                                         >
-                                              <span className="font-mono text-xs font-bold">ID</span>
-                                          </motion.button>
+                                         <CanvasToolbarTooltip label="Toggle Node IDs">
+                                             <motion.button
+                                                 onClick={() => setShowDebugIds(v => !v)}
+                                                 className={`flex h-10 w-10 items-center justify-center rounded-xl transition-all ${
+                                                     showDebugIds
+                                                     ? "bg-green-600 text-white shadow-md"
+                                                     : "clash-toolbar-button bg-transparent text-stone-400 hover:text-slate-950"
+                                                 }`}
+                                                 whileHover={{ scale: 1.05 }}
+                                                 whileTap={{ scale: 0.95 }}
+                                                 aria-label="Toggle Node IDs"
+                                             >
+                                                  <span className="font-mono text-xs font-bold">ID</span>
+                                              </motion.button>
+                                          </CanvasToolbarTooltip>
                                           </>
                                       )}
                                   </div>
