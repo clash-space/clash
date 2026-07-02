@@ -1,9 +1,7 @@
 
-import {
-    Plus,
-} from '@phosphor-icons/react';
 import { Link } from 'react-router';
 import ProjectCard from './ProjectCard';
+import ProjectCreateTile from './ProjectCreateTile';
 
 interface RecentProjectsProps {
     projects: any[]; // Relaxed type to accept Drizzle result with assets
@@ -27,22 +25,7 @@ export default function RecentProjects({ projects, onStartNewProject }: RecentPr
             </div>
 
             <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-                {/* Empty State Card / New Project */}
-                <button
-                    type="button"
-                    aria-label="Start a new project"
-                    className="clash-project-create-tile group flex aspect-video flex-col items-center justify-center gap-4 rounded-2xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-warm-page"
-                    onClick={onStartNewProject}
-                >
-                    <div className="clash-project-create-icon flex h-14 w-14 items-center justify-center rounded-xl">
-                        <Plus
-                            className="h-7 w-7 text-stone-600 transition-colors group-hover:text-brand dark:text-stone-300"
-                            weight="bold"
-                            aria-hidden="true"
-                        />
-                    </div>
-                    <span className="text-base font-semibold text-stone-700 transition-colors group-hover:text-slate-950 dark:text-stone-300 dark:group-hover:text-slate-50">New Project</span>
-                </button>
+                <ProjectCreateTile ariaLabel="Start a new project" onActivate={onStartNewProject} />
 
                 {/* Project Cards */}
                 {projectList.map((project) => (

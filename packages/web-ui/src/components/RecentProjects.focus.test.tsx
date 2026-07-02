@@ -3,6 +3,7 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import fs from "node:fs";
+import { join } from "node:path";
 
 import RecentProjects from "./RecentProjects";
 
@@ -17,7 +18,10 @@ describe("RecentProjects new project focus", () => {
   });
 
   it("uses an explicit callback instead of querying the first textarea", () => {
-    const source = fs.readFileSync("src/components/RecentProjects.tsx", "utf8");
+    const source = fs.readFileSync(
+      join(process.cwd(), "packages/web-ui/src/components/RecentProjects.tsx"),
+      "utf8",
+    );
 
     expect(source).not.toContain("document.querySelector('textarea')");
     expect(source).not.toContain('document.querySelector("textarea")');
