@@ -52,6 +52,17 @@ describe("ChatbotCopilot primitives", () => {
     expect(source).not.toContain("absolute right-0 top-8 z-40");
   });
 
+  it("lets the shared dropdown primitive own trigger aria state", () => {
+    const source = readComponentSource("ChatbotCopilot.tsx");
+
+    expect(source).toContain("DropdownMenuTrigger asChild");
+    expect(source).not.toContain('aria-haspopup="menu"');
+    expect(source).not.toContain("aria-expanded={showHistory}");
+    expect(source).not.toContain("aria-expanded={runtimeMenuOpen}");
+    expect(source).not.toContain("aria-controls={historyMenuId}");
+    expect(source).not.toContain("aria-controls={runtimeMenuId}");
+  });
+
   it("uses the shared collapsible primitive for auth manual fallback copy", () => {
     const source = readComponentSource("ChatbotCopilot.tsx");
 

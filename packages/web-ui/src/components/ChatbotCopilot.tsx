@@ -1,5 +1,5 @@
 
-import { memo, useState, useRef, useEffect, useCallback, useMemo, useId } from 'react';
+import { memo, useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { ComboboxItem, ComboboxList, ComboboxProvider } from '@ariakit/react';
 import {
     closestCenter,
@@ -569,8 +569,6 @@ export default function ChatbotCopilot({
 }: ChatbotCopilotProps) {
     const { t } = useTranslation();
     const feedback = useAppFeedback();
-    const historyMenuId = useId();
-    const runtimeMenuId = useId();
     // Below Tailwind's `lg` (1024px), the panel switches to a full-screen
     // sheet over the canvas. Desktop keeps a resizable bottom-right popover.
     const isMobile = useIsBelowLg();
@@ -1619,9 +1617,6 @@ export default function ChatbotCopilot({
                                             <IconButton
                                                 ref={historyButtonRef}
                                                 label={t('copilot.header.history')}
-                                                aria-expanded={showHistory}
-                                                aria-controls={historyMenuId}
-                                                aria-haspopup="menu"
                                                 size="sm"
                                                 className="relative"
                                                 icon={
@@ -1635,7 +1630,6 @@ export default function ChatbotCopilot({
                                             />
                                         </DropdownMenuTrigger>
                                         <DropdownMenuContent
-                                            id={historyMenuId}
                                             aria-label={t('copilot.history.title')}
                                             align="end"
                                             side="bottom"
@@ -1692,15 +1686,11 @@ export default function ChatbotCopilot({
                                                 <DropdownMenuTrigger asChild>
                                                     <IconButton
                                                         label={t('copilot.header.runOn')}
-                                                        aria-expanded={runtimeMenuOpen}
-                                                        aria-controls={runtimeMenuId}
-                                                        aria-haspopup="menu"
                                                         variant={chatMode !== 'cloud' ? 'active' : 'default'}
                                                         icon={<Plug className="w-5 h-5" weight="bold" />}
                                                     />
                                                 </DropdownMenuTrigger>
                                                 <DropdownMenuContent
-                                                    id={runtimeMenuId}
                                                     aria-label={t('copilot.runtime.menuTitle')}
                                                     align="end"
                                                     side="bottom"
