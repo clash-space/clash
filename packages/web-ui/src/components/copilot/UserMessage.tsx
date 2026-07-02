@@ -4,6 +4,7 @@ import { useMediaViewer } from '../MediaViewerContext';
 import { useCanvasFocus } from '../CanvasFocusContext';
 import { useSignedUrl } from '@clash/web-ui/lib/hooks/useSignedUrl';
 import type { MentionableNode } from '../MilkdownEditor';
+import { Tooltip } from '../ui/tooltip';
 
 /** Inline thumbnail for a `@[label](node:<id>)` mention. Single click
  *  flies the canvas camera to the referenced asset node (via the
@@ -24,30 +25,34 @@ function InlineThumbnail({
     const { openViewer } = useMediaViewer();
     const { focusNode } = useCanvasFocus();
     const signedUrl = useSignedUrl(src);
+    const tooltipLabel = nodeId ? `${title} — click to focus, double-click to preview` : title;
 
     return (
-        // eslint-disable-next-line @next/next/no-img-element
-        signedUrl ? <img
-            src={signedUrl}
-            alt={alt}
-            title={nodeId ? `${title} — click to focus, double-click to preview` : title}
-            className="inline-block rounded object-cover align-text-bottom mx-0.5 cursor-pointer hover:ring-2 hover:ring-slate-400 dark:hover:ring-slate-500"
-            style={{ height: '1.2em', width: '1.2em' }}
-            onClick={(e) => {
-                // Single click → pan the canvas to this node. Skipped
-                // when no nodeId (the chip came from a non-canvas
-                // reference) or outside a CanvasFocusProvider (hook
-                // returns a no-op). stopPropagation so the click
-                // doesn't bubble to the message bubble's own handlers.
-                if (!nodeId) return;
-                e.stopPropagation();
-                focusNode(nodeId);
-            }}
-            onDoubleClick={(e) => {
-                e.stopPropagation();
-                openViewer('image', signedUrl, title);
-            }}
-        /> : null
+        signedUrl ? (
+            <Tooltip label={tooltipLabel}>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                    src={signedUrl}
+                    alt={alt}
+                    className="inline-block rounded object-cover align-text-bottom mx-0.5 cursor-pointer hover:ring-2 hover:ring-slate-400 dark:hover:ring-slate-500"
+                    style={{ height: '1.2em', width: '1.2em' }}
+                    onClick={(e) => {
+                        // Single click → pan the canvas to this node. Skipped
+                        // when no nodeId (the chip came from a non-canvas
+                        // reference) or outside a CanvasFocusProvider (hook
+                        // returns a no-op). stopPropagation so the click
+                        // doesn't bubble to the message bubble's own handlers.
+                        if (!nodeId) return;
+                        e.stopPropagation();
+                        focusNode(nodeId);
+                    }}
+                    onDoubleClick={(e) => {
+                        e.stopPropagation();
+                        openViewer('image', signedUrl, title);
+                    }}
+                />
+            </Tooltip>
+        ) : null
     );
 }
 
