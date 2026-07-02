@@ -72,11 +72,14 @@ describe("TopNavigation desktop chrome", () => {
     expect(tooltipSource).toContain("TooltipAnchor");
     expect(tooltipSource).toContain("Tooltip");
     expect(source).toContain("./ui/tooltip");
+    expect(source).toContain("./ui/icon-button");
     expect(desktopToolbarSource).toContain("<Tooltip label=");
+    expect(desktopToolbarSource).toContain("<IconButton");
     expect(source).not.toContain("DesktopChromeTooltip");
     expect(source).not.toContain("TooltipProvider");
     expect(source).not.toContain("TooltipAnchor");
     expect(desktopToolbarSource).not.toContain("title=");
+    expect(desktopToolbarSource).not.toContain("<button");
   });
 
   it("moves app shortcuts and account controls below the desktop tab strip", async () => {

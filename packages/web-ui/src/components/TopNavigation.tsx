@@ -13,6 +13,7 @@ import {
   X,
 } from '@phosphor-icons/react';
 import UserControls from './UserControls';
+import { IconButton } from './ui/icon-button';
 import { Tooltip } from './ui/tooltip';
 import {
   activateOrAppendDesktopTab,
@@ -191,26 +192,24 @@ export default function TopNavigation() {
             className="flex h-full items-center gap-1 pl-[max(var(--clash-desktop-toolbar-left-inset),env(safe-area-inset-left))] pr-[max(0.75rem,env(safe-area-inset-right))]"
           >
             <Tooltip label="Back">
-              <button
-                type="button"
+              <IconButton
+                label="Back"
+                icon={<ArrowLeft className="h-4 w-4" />}
+                size="sm"
                 onClick={() => navigateDesktopHistory(-1)}
                 disabled={!canGoBack}
-                aria-label="Back"
-                className="desktop-no-drag inline-flex h-8 w-8 flex-none items-center justify-center rounded-lg text-stone-700 transition-colors hover:bg-black/[0.055] disabled:cursor-default disabled:text-stone-300 disabled:hover:bg-transparent"
-              >
-                <ArrowLeft className="h-4 w-4" aria-hidden="true" />
-              </button>
+                className="desktop-no-drag flex-none text-stone-700 hover:bg-black/[0.055] disabled:cursor-default disabled:text-stone-300 disabled:hover:bg-transparent"
+              />
             </Tooltip>
             <Tooltip label="Forward">
-              <button
-                type="button"
+              <IconButton
+                label="Forward"
+                icon={<ArrowRight className="h-4 w-4" />}
+                size="sm"
                 onClick={() => navigateDesktopHistory(1)}
                 disabled={!canGoForward}
-                aria-label="Forward"
-                className="desktop-no-drag inline-flex h-8 w-8 flex-none items-center justify-center rounded-lg text-stone-700 transition-colors hover:bg-black/[0.055] disabled:cursor-default disabled:text-stone-300 disabled:hover:bg-transparent"
-              >
-                <ArrowRight className="h-4 w-4" aria-hidden="true" />
-              </button>
+                className="desktop-no-drag flex-none text-stone-700 hover:bg-black/[0.055] disabled:cursor-default disabled:text-stone-300 disabled:hover:bg-transparent"
+              />
             </Tooltip>
             <TabProvider
               selectedId={activeDesktopTabId ?? undefined}
@@ -258,18 +257,18 @@ export default function TopNavigation() {
                       </Tab>
                       {!isHomeTab && (
                         <Tooltip label={`Close ${tab.title}`}>
-                          <button
-                            type="button"
+                          <IconButton
+                            label={`Close ${tab.title}`}
+                            icon={<X className="h-3 w-3" weight="bold" />}
+                            size="sm"
+                            shape="circle"
                             onClick={() => closeTab(tab.id)}
-                            aria-label={`Close ${tab.title}`}
-                            className={`inline-flex h-5 w-5 flex-none items-center justify-center rounded-full transition-colors ${
+                            className={`flex-none ${
                               active
                                 ? 'text-stone-500 hover:bg-black/10 hover:text-stone-950'
                                 : 'text-stone-400 opacity-0 hover:bg-black/10 hover:text-stone-800 group-hover:opacity-100'
                             }`}
-                          >
-                            <X className="h-3 w-3" weight="bold" />
-                          </button>
+                          />
                         </Tooltip>
                       )}
                       {showInactiveSeparator && (
