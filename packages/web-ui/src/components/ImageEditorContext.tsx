@@ -17,7 +17,8 @@
  * Apply produces a NEW image asset; the source asset is never mutated.
  */
 
-import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import React, { createContext, useCallback, useContext, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useDrag } from '@use-gesture/react';
 import type { Edge, Node } from '@xyflow/react';
 import { EditorModalDialog } from './EditorModalDialog';
 import { useOptionalLoroSyncContext } from './LoroSyncContext';
@@ -299,15 +300,7 @@ function ImageEditorPanel({
 // ─── CropEditor ─────────────────────────────────────────────
 
 type DragKind = 'move' | 'n' | 's' | 'e' | 'w' | 'ne' | 'nw' | 'se' | 'sw';
-
-interface DragState {
-    kind: DragKind;
-    /** Image-space mouse start position. */
-    startX: number;
-    startY: number;
-    /** Crop rect at drag start — mouse delta is applied against this. */
-    origin: CropRect;
-}
+type CropDragBindProps = React.DOMAttributes<EventTarget>;
 
 interface CropEditorProps {
     src: string;
@@ -324,7 +317,7 @@ function CropEditor({
     src, crop, setCrop, rotation, naturalWidth, naturalHeight, aspectRatio,
 }: CropEditorProps) {
     const containerRef = useRef<HTMLDivElement>(null);
-    const [drag, setDrag] = useState<DragState | null>(null);
+    const dragOriginRef = useRef<CropRect>(crop);
 
     // Display fit: the crop math is in image-natural coords, but the user
     // interacts in screen pixels. `scale` converts between them.
@@ -335,38 +328,21 @@ function CropEditor({
     const dispW = naturalWidth * scale;
     const dispH = naturalHeight * scale;
 
-    const screenToImage = useCallback((clientX: number, clientY: number) => {
-        const rect = containerRef.current?.getBoundingClientRect();
-        if (!rect) return { x: 0, y: 0 };
-        return {
-            x: (clientX - rect.left) / scale,
-            y: (clientY - rect.top) / scale,
-        };
-    }, [scale]);
-
-    const beginDrag = useCallback((kind: DragKind, e: React.MouseEvent) => {
-        e.stopPropagation();
-        const { x, y } = screenToImage(e.clientX, e.clientY);
-        setDrag({ kind, startX: x, startY: y, origin: { ...crop } });
-    }, [crop, screenToImage]);
-
-    useEffect(() => {
-        if (!drag) return;
-        const onMove = (e: MouseEvent) => {
-            const { x, y } = screenToImage(e.clientX, e.clientY);
-            const dx = x - drag.startX;
-            const dy = y - drag.startY;
-            const next = applyDrag(drag.kind, drag.origin, dx, dy, naturalWidth, naturalHeight, aspectRatio);
+    const cropDragBind = useDrag<PointerEvent>(
+        ({ first, movement: [movementX, movementY], args: [kind], event }) => {
+            event.stopPropagation();
+            if (first) dragOriginRef.current = { ...crop };
+            const dx = movementX / scale;
+            const dy = movementY / scale;
+            const next = applyDrag(kind as DragKind, dragOriginRef.current, dx, dy, naturalWidth, naturalHeight, aspectRatio);
             setCrop(next);
-        };
-        const onUp = () => setDrag(null);
-        window.addEventListener('mousemove', onMove);
-        window.addEventListener('mouseup', onUp);
-        return () => {
-            window.removeEventListener('mousemove', onMove);
-            window.removeEventListener('mouseup', onUp);
-        };
-    }, [drag, screenToImage, setCrop, naturalWidth, naturalHeight, aspectRatio]);
+        },
+        {
+            preventDefault: true,
+            pointer: { capture: true },
+            eventOptions: { passive: false },
+        },
+    );
 
     return (
         <div
@@ -398,8 +374,9 @@ function CropEditor({
                     top: crop.y * scale,
                     width: crop.width * scale,
                     height: crop.height * scale,
+                    touchAction: 'none',
                 }}
-                onMouseDown={(e) => beginDrag('move', e)}
+                {...cropDragBind('move')}
             >
                 {/* Rule-of-thirds guides — split the crop into a 3×3 grid. */}
                 <div className="absolute inset-0 pointer-events-none">
@@ -414,19 +391,19 @@ function CropEditor({
                 </div>
 
                 {/* Corner handles — bigger hit area, drag both axes. */}
-                <CornerHandle pos="nw" onMouseDown={(e) => beginDrag('nw', e)} />
-                <CornerHandle pos="ne" onMouseDown={(e) => beginDrag('ne', e)} />
-                <CornerHandle pos="sw" onMouseDown={(e) => beginDrag('sw', e)} />
-                <CornerHandle pos="se" onMouseDown={(e) => beginDrag('se', e)} />
+                <CornerHandle pos="nw" dragProps={cropDragBind('nw')} />
+                <CornerHandle pos="ne" dragProps={cropDragBind('ne')} />
+                <CornerHandle pos="sw" dragProps={cropDragBind('sw')} />
+                <CornerHandle pos="se" dragProps={cropDragBind('se')} />
 
                 {/* Edge handles — drag one axis. Disabled when aspect is locked
                     so you can't break the ratio with a single-axis move. */}
                 {aspectRatio == null && (
                     <>
-                        <EdgeHandle pos="n" onMouseDown={(e) => beginDrag('n', e)} />
-                        <EdgeHandle pos="s" onMouseDown={(e) => beginDrag('s', e)} />
-                        <EdgeHandle pos="w" onMouseDown={(e) => beginDrag('w', e)} />
-                        <EdgeHandle pos="e" onMouseDown={(e) => beginDrag('e', e)} />
+                        <EdgeHandle pos="n" dragProps={cropDragBind('n')} />
+                        <EdgeHandle pos="s" dragProps={cropDragBind('s')} />
+                        <EdgeHandle pos="w" dragProps={cropDragBind('w')} />
+                        <EdgeHandle pos="e" dragProps={cropDragBind('e')} />
                     </>
                 )}
             </div>
@@ -459,22 +436,23 @@ function DarkenMask({ crop, scale, dispW, dispH }: { crop: CropRect; scale: numb
     );
 }
 
-function CornerHandle({ pos, onMouseDown }: { pos: 'nw' | 'ne' | 'sw' | 'se'; onMouseDown: (e: React.MouseEvent) => void }) {
+function CornerHandle({ pos, dragProps }: { pos: 'nw' | 'ne' | 'sw' | 'se'; dragProps: CropDragBindProps }) {
     const cursor = pos === 'nw' || pos === 'se' ? 'cursor-nwse-resize' : 'cursor-nesw-resize';
     const positionStyle: React.CSSProperties = {
         ...(pos.includes('n') ? { top: -6 } : { bottom: -6 }),
         ...(pos.includes('w') ? { left: -6 } : { right: -6 }),
     };
+    const { style: dragStyle, ...restDragProps } = dragProps as CropDragBindProps & { style?: React.CSSProperties };
     return (
         <div
-            onMouseDown={onMouseDown}
+            {...restDragProps}
             className={`absolute w-3 h-3 bg-warm-surface border-2 border-emerald-500 rounded-full ${cursor}`}
-            style={positionStyle}
+            style={{ ...positionStyle, ...dragStyle, touchAction: 'none' }}
         />
     );
 }
 
-function EdgeHandle({ pos, onMouseDown }: { pos: 'n' | 's' | 'e' | 'w'; onMouseDown: (e: React.MouseEvent) => void }) {
+function EdgeHandle({ pos, dragProps }: { pos: 'n' | 's' | 'e' | 'w'; dragProps: CropDragBindProps }) {
     const horizontal = pos === 'n' || pos === 's';
     const cursor = horizontal ? 'cursor-ns-resize' : 'cursor-ew-resize';
     const style: React.CSSProperties = horizontal
@@ -490,11 +468,12 @@ function EdgeHandle({ pos, onMouseDown }: { pos: 'n' | 's' | 'e' | 'w'; onMouseD
             ...(pos === 'w' ? { left: 0 } : { left: '100%' }),
             width: 6, height: 16,
         };
+    const { style: dragStyle, ...restDragProps } = dragProps as CropDragBindProps & { style?: React.CSSProperties };
     return (
         <div
-            onMouseDown={onMouseDown}
+            {...restDragProps}
             className={`absolute bg-warm-surface border-2 border-emerald-500 rounded-sm ${cursor}`}
-            style={style}
+            style={{ ...style, ...dragStyle, touchAction: 'none' }}
         />
     );
 }

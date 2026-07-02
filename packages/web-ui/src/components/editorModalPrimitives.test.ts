@@ -28,4 +28,16 @@ describe("editor modal primitives", () => {
     expect(source).not.toContain('role="dialog"');
     expect(source).not.toContain('aria-modal="true"');
   });
+
+  it("uses a mature gesture primitive for image crop dragging instead of window mouse listeners", () => {
+    const source = readSource(
+      "packages/web-ui/src/components/ImageEditorContext.tsx",
+    );
+
+    expect(source).toContain("@use-gesture/react");
+    expect(source).toContain("useDrag");
+    expect(source).toContain("cropDragBind(");
+    expect(source).not.toContain("window.addEventListener('mousemove'");
+    expect(source).not.toContain("window.addEventListener('mouseup'");
+  });
 });
