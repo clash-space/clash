@@ -1,6 +1,7 @@
 import React from 'react';
-import { motion } from 'framer-motion';
 import { Check, X, Play, Cube, MagicWand } from '@phosphor-icons/react';
+
+import { Button } from '../ui/button';
 
 export interface NodeProposal {
     id: string;
@@ -61,45 +62,36 @@ export const NodeProposalCard: React.FC<NodeProposalCardProps> = ({
             </div>
 
             <div className="p-3 flex items-center gap-2">
-                <motion.button
-                    type="button"
+                <Button
+                    size="sm"
                     onClick={onReject}
-                    className="flex-1 py-2 px-3 rounded-lg border border-warm-border text-slate-700 dark:text-slate-300 text-xs font-medium hover:bg-warm-muted transition-colors flex items-center justify-center gap-1.5"
-                    whileHover={{ scale: 1.02 }}
-                    whileTap={{ scale: 0.98 }}
-                    transition={{ duration: 0.15, ease: [0.25, 1, 0.5, 1] }}
+                    className="flex-1 rounded-lg px-3 py-2 text-xs text-slate-700 hover:bg-warm-muted dark:text-slate-300"
                 >
                     <X className="w-3.5 h-3.5" />
                     Reject
-                </motion.button>
+                </Button>
 
-                <motion.button
-                    type="button"
+                <Button
+                    size="sm"
                     onClick={onAccept}
-                    className={`flex-1 py-2 px-3 rounded-lg text-xs font-medium transition-colors flex items-center justify-center gap-1.5 ${isGenerative
-                            ? 'bg-warm-surface border border-warm-border text-slate-800 dark:text-slate-200 hover:bg-warm-muted'
+                    className={`flex-1 rounded-lg px-3 py-2 text-xs ${isGenerative
+                            ? 'text-slate-800 hover:bg-warm-muted dark:text-slate-200'
                             : 'clash-copilot-primary shadow-sm'
                         }`}
-                    whileHover={{ scale: 1.02 }}
-                    whileTap={{ scale: 0.98 }}
-                    transition={{ duration: 0.15, ease: [0.25, 1, 0.5, 1] }}
                 >
                     <Check className="w-3.5 h-3.5" />
                     Accept
-                </motion.button>
+                </Button>
 
                 {isGenerative && onAcceptAndRun && (
-                    <motion.button
-                        type="button"
+                    <Button
+                        size="sm"
                         onClick={onAcceptAndRun}
-                        className="clash-copilot-primary flex-1 py-2 px-3 rounded-lg text-xs font-medium shadow-sm flex items-center justify-center gap-1.5"
-                        whileHover={{ scale: 1.02 }}
-                        whileTap={{ scale: 0.98 }}
-                        transition={{ duration: 0.15, ease: [0.25, 1, 0.5, 1] }}
+                        className="clash-copilot-primary flex-1 rounded-lg px-3 py-2 text-xs shadow-sm"
                     >
                         <Play className="w-3.5 h-3.5" weight="fill" />
                         Accept & Run
-                    </motion.button>
+                    </Button>
                 )}
             </div>
         </div>

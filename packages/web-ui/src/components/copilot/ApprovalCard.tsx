@@ -1,7 +1,8 @@
 
 import { Check, X } from '@phosphor-icons/react';
-import { motion } from 'framer-motion';
 import { useTranslation } from 'react-i18next';
+
+import { Button } from '../ui/button';
 
 interface ApprovalCardProps {
     message: string;
@@ -21,31 +22,23 @@ export function ApprovalCard({ message, onApprove, onReject, isPending = false }
             <p className="text-sm text-slate-800 mb-4 font-medium dark:text-slate-100">{message}</p>
 
             <div className="flex gap-3">
-                <motion.button
-                    type="button"
-                    whileHover={{ scale: 1.02 }}
-                    whileTap={{ scale: 0.98 }}
-                    transition={{ duration: 0.15, ease: [0.25, 1, 0.5, 1] }}
+                <Button
                     onClick={onApprove}
                     disabled={isPending}
-                    className="clash-copilot-primary flex-1 flex items-center justify-center gap-2 px-4 py-2.5 min-h-[44px] rounded-lg text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-warm-surface"
+                    className="clash-copilot-primary flex-1 gap-2 rounded-lg px-4 py-2.5 text-sm focus-visible:ring-offset-warm-surface"
                 >
                     <Check weight="bold" aria-hidden="true" />
                     {t('copilot.approvalCard.approve')}
-                </motion.button>
+                </Button>
 
-                <motion.button
-                    type="button"
-                    whileHover={{ scale: 1.02 }}
-                    whileTap={{ scale: 0.98 }}
-                    transition={{ duration: 0.15, ease: [0.25, 1, 0.5, 1] }}
+                <Button
                     onClick={onReject}
                     disabled={isPending}
-                    className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 min-h-[44px] bg-warm-surface border border-warm-border text-slate-700 rounded-lg text-sm font-medium hover:bg-warm-muted transition-colors disabled:opacity-50 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-warm-surface dark:bg-warm-muted dark:text-slate-200 dark:hover:bg-warm-hover"
+                    className="flex-1 gap-2 rounded-lg px-4 py-2.5 text-sm text-slate-700 hover:bg-warm-muted focus-visible:ring-offset-warm-surface dark:bg-warm-muted dark:text-slate-200 dark:hover:bg-warm-hover"
                 >
                     <X weight="bold" aria-hidden="true" />
                     {t('copilot.approvalCard.reject')}
-                </motion.button>
+                </Button>
             </div>
         </div>
     );
