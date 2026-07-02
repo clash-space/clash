@@ -3,6 +3,7 @@ import { useState, useCallback, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Sparkle, ArrowRight, User, Terminal } from '@phosphor-icons/react';
 import type { ActivityMessage } from '@clash/shared-types';
+import { IconButton } from './ui/icon-button';
 
 interface ToastItem {
   id: string;
@@ -105,17 +106,17 @@ export default function ActivityToast({
               </span>
 
               {onGoToNode && toast.activity.action !== 'deleted' && (
-                <button
-                  type="button"
+                <IconButton
+                  label="Go to node"
+                  icon={<ArrowRight className="h-3 w-3" weight="bold" />}
+                  size="sm"
+                  shape="circle"
                   onClick={() => {
                     onGoToNode(toast.activity.nodeId);
                     dismiss(toast.id);
                   }}
-                  className="flex h-6 w-6 min-h-[24px] min-w-[24px] items-center justify-center rounded-full hover:bg-brand/10 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-1 focus-visible:ring-offset-warm-surface"
-                  aria-label="Go to node"
-                >
-                  <ArrowRight className="h-3 w-3 text-brand" weight="bold" aria-hidden="true" />
-                </button>
+                  className="text-brand hover:bg-brand/10 hover:text-brand focus-visible:ring-offset-1"
+                />
               )}
             </motion.div>
           );
