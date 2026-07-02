@@ -2,6 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState, t
 import { AnimatePresence, motion } from 'framer-motion';
 import { CheckCircle, Info, WarningCircle, X } from '@phosphor-icons/react';
 import { Link } from 'react-router';
+import { Button } from './ui/button';
 import { Dialog } from './ui/dialog';
 import { IconButton } from './ui/icon-button';
 
@@ -126,16 +127,16 @@ export function AppFeedbackProvider({ children }: { children: ReactNode }) {
                       {toast.actionLabel}
                     </Link>
                   ) : (
-                    <button
-                      type="button"
+                    <Button
+                      size="sm"
                       onClick={() => {
                         toast.onAction();
                         setToasts((prev) => prev.filter((item) => item.id !== toast.id));
                       }}
-                      className="mt-2 rounded-lg border border-current/20 px-2.5 py-1 text-xs font-semibold opacity-90 transition hover:bg-black/5 hover:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+                      className="mt-2 min-h-0 border-current/20 bg-transparent px-2.5 py-1 text-xs font-semibold text-current opacity-90 shadow-none hover:bg-black/5 hover:opacity-100"
                     >
                       {toast.actionLabel}
-                    </button>
+                    </Button>
                   )
                 ) : null}
               </span>
@@ -158,13 +159,13 @@ export function AppFeedbackProvider({ children }: { children: ReactNode }) {
         size="sm"
       >
         <div className="flex justify-end">
-          <button
-            type="button"
+          <Button
+            variant="primary"
             onClick={() => setDialog(null)}
-            className="clash-settings-primary inline-flex items-center justify-center rounded-xl px-4 py-2 text-sm font-semibold"
+            className="clash-settings-primary px-4 py-2 text-sm font-semibold"
           >
             {dialog?.actionLabel ?? 'OK'}
-          </button>
+          </Button>
         </div>
       </Dialog>
     </AppFeedbackContext.Provider>
