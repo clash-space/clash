@@ -49,6 +49,17 @@ describe("GroupChatPanel primitives", () => {
     expect(panelSource).not.toMatch(/<motion\.button(?=[^>]*aria-label="Refresh room")[^>]*>/);
   });
 
+  it("uses the shared icon button primitive for collapse controls", () => {
+    const panelSource = readSource("packages/web-ui/src/components/GroupChatPanel.tsx");
+
+    expect(panelSource).toMatch(
+      /<IconButton(?=[\s\S]*label=\{isCollapsed \? 'Expand chat panel' : 'Collapse chat panel'\})[\s\S]*\/>/,
+    );
+    expect(panelSource).not.toMatch(
+      /<motion\.button[\s\S]{0,400}aria-label=\{isCollapsed \? 'Expand chat panel' : 'Collapse chat panel'\}/,
+    );
+  });
+
   it("uses the shared button primitive for jump-to-latest controls", () => {
     const agentViewSource = readSource("packages/web-ui/src/_group-chat/AgentView.tsx");
     const roomViewSource = readSource("packages/web-ui/src/_group-chat/RoomView.tsx");

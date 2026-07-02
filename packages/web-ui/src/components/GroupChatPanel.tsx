@@ -422,22 +422,20 @@ export function GroupChatPanel({
           footprint accounted for in CHAT_PANEL_RAIL_WIDTH. */}
       <aside className="relative z-30 shrink-0 w-12 flex flex-col items-center gap-1.5 py-3 pointer-events-auto">
         <Tooltip label={isCollapsed ? 'Open chat' : 'Collapse'}>
-          <motion.button
+          <IconButton
+            label={isCollapsed ? 'Expand chat panel' : 'Collapse chat panel'}
+            icon={
+              isCollapsed ? (
+                <CaretLeft className="w-4 h-4" weight="bold" />
+              ) : (
+                <CaretRight className="w-4 h-4" weight="bold" />
+              )
+            }
+            size="md"
+            shape="circle"
             onClick={() => onCollapseChange(!isCollapsed)}
-            whileHover={{ scale: 1.1 }}
-            whileTap={{ scale: 0.9 }}
-            className="h-9 w-9 flex items-center justify-center hover:bg-warm-hover rounded-full text-stone-700 dark:text-stone-300 dark:text-stone-400 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-brand/60"
-            aria-label={isCollapsed ? 'Expand chat panel' : 'Collapse chat panel'}
-          >
-            {/* When collapsed the panel is hidden to the right of the
-                rail; clicking should pull it BACK into view (← left).
-                When expanded clicking pushes it AWAY (→ right). */}
-            {isCollapsed ? (
-              <CaretLeft className="w-4 h-4" weight="bold" aria-hidden="true" />
-            ) : (
-              <CaretRight className="w-4 h-4" weight="bold" aria-hidden="true" />
-            )}
-          </motion.button>
+            className="text-stone-700 hover:bg-warm-hover dark:text-stone-300 focus-visible:ring-brand/60 focus-visible:ring-offset-1"
+          />
         </Tooltip>
 
         <div className="my-1 h-px w-8 bg-warm-border" aria-hidden="true" />
