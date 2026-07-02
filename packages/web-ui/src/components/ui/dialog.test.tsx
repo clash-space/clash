@@ -18,7 +18,10 @@ describe("Dialog", () => {
         );
 
         expect(source).toContain("DialogPrimitive.Content");
+        expect(source).toContain("./icon-button");
+        expect(source).toContain("<IconButton");
         expect(source).not.toContain('aria-modal="true"');
+        expect(source).not.toMatch(/<button[\s\S]*aria-label="Close"/);
     });
 
     it("uses Radix dialog state while preserving close affordances", () => {

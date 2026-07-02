@@ -3,6 +3,7 @@ import { motion } from "framer-motion";
 import { X } from "@phosphor-icons/react";
 import { Dialog as DialogPrimitive } from "radix-ui";
 import { cn } from "../ai-elements/utils";
+import { IconButton } from "./icon-button";
 
 export interface DialogProps {
   open: boolean;
@@ -118,13 +119,12 @@ export function Dialog({
             >
               {!hideCloseButton && !unstyled && (
                 <DialogPrimitive.Close asChild>
-                  <button
-                    type="button"
-                    aria-label="Close"
-                    className="absolute top-3 right-3 p-2 min-h-[36px] min-w-[36px] rounded-md text-stone-700 hover:text-stone-900 hover:bg-warm-muted transition-colors dark:text-stone-300 dark:hover:text-stone-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-warm-surface"
-                  >
-                    <X className="w-4 h-4" weight="bold" aria-hidden="true" />
-                  </button>
+                  <IconButton
+                    label="Close"
+                    icon={<X className="w-4 h-4" weight="bold" />}
+                    size="md"
+                    className="absolute top-3 right-3 text-stone-700 hover:text-stone-900 dark:text-stone-300 dark:hover:text-stone-100"
+                  />
                 </DialogPrimitive.Close>
               )}
               {accessibleTitle ? (
