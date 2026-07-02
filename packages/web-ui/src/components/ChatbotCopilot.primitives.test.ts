@@ -50,6 +50,16 @@ describe("ChatbotCopilot primitives", () => {
     expect(source).not.toContain("draggable");
   });
 
+  it("uses a mature gesture primitive for desktop panel resizing instead of document mouse listeners", () => {
+    const source = readComponentSource("ChatbotCopilot.tsx");
+
+    expect(source).toContain("@use-gesture/react");
+    expect(source).toContain("useDrag");
+    expect(source).toContain("resizeGestureBind()");
+    expect(source).not.toContain("document.addEventListener('mousemove'");
+    expect(source).not.toContain("document.addEventListener('mouseup'");
+  });
+
   it("uses the shared dropdown primitive for queued prompt row actions", () => {
     const source = readComponentSource("ChatbotCopilot.tsx");
 

@@ -853,6 +853,9 @@ importers:
       '@uiw/react-md-editor':
         specifier: ^4.0.8
         version: 4.0.11(@types/react@19.2.14)(react-dom@19.2.5)(react@19.2.5)
+      '@use-gesture/react':
+        specifier: ^10.3.1
+        version: 10.3.1(react@19.2.5)
       '@xyflow/react':
         specifier: ^12.10.2
         version: 12.10.2(@types/react@19.2.14)(react-dom@19.2.5)(react@19.2.5)
@@ -9372,6 +9375,19 @@ packages:
     optionalDependencies:
       d3-selection: 3.0.0
       d3-transition: 3.0.1(d3-selection@3.0.0)
+    dev: false
+
+  /@use-gesture/core@10.3.1:
+    resolution: {integrity: sha512-WcINiDt8WjqBdUXye25anHiNxPc0VOrlT8F6LLkU6cycrOGUDyY/yyFmsg3k8i5OLvv25llc0QC45GhR/C8llw==}
+    dev: false
+
+  /@use-gesture/react@10.3.1(react@19.2.5):
+    resolution: {integrity: sha512-Yy19y6O2GJq8f7CHf7L0nxL8bf4PZCPaVOCgJrusOeFHY1LvHgYXnmnXg6N5iwAnbgbZCDjo60SiM6IPJi9C5g==}
+    peerDependencies:
+      react: 19.2.5
+    dependencies:
+      '@use-gesture/core': 10.3.1
+      react: 19.2.5
     dev: false
 
   /@vercel/oidc@3.1.0:

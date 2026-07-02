@@ -45,6 +45,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from './ui/collap
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from './ui/dropdown-menu';
 import { Tooltip } from './ui/tooltip';
 import { useAppFeedback } from './AppFeedback';
+import { useDrag } from '@use-gesture/react';
 import { useClashRuntime, type AcpSessionConfigOption, type AcpSessionModeState, type ClashRuntimeStatus, type Runtime, type RuntimePromptQueueMode, type RuntimeQueuedPrompt, type RuntimeSessionInfo } from '@clash/web-ui/hooks/useClashRuntime';
 import type { AvailableCommand, ByoMessage as RuntimeMessage } from '@clash/web-ui/lib/acpEvents';
 import { applyAgentAttribution, parseAgentCanvasPatch } from '@clash/web-ui/lib/agentCanvasPatch';
@@ -906,6 +907,7 @@ export default function ChatbotCopilot({
     }, []);
     const historyButtonRef = useRef<HTMLButtonElement | null>(null);
     const panelRef = useRef<HTMLElement | null>(null);
+    const resizeStartWidthRef = useRef(width);
     const appliedRuntimeCanvasNodesRef = useRef<Set<string>>(new Set());
 
     const closeMobileSheet = useCallback(() => onCollapseChange(true), [onCollapseChange]);
@@ -1438,43 +1440,33 @@ export default function ChatbotCopilot({
     }, []);
 
     // ─── Resize ──────────────────────────────────────────────
-    const startResizing = () => setIsResizing(true);
+    const resizeGestureBind = useDrag(({ active, first, movement: [movementX] }) => {
+        if (first) resizeStartWidthRef.current = width;
+        setIsResizing((current) => (current === active ? current : active));
+        const maxWidth = Math.max(
+            COPILOT_PANEL_MIN_WIDTH,
+            Math.floor(window.innerWidth * COPILOT_PANEL_MAX_WIDTH_FRACTION),
+        );
+        const nextWidth = Math.max(
+            COPILOT_PANEL_MIN_WIDTH,
+            Math.min(maxWidth, resizeStartWidthRef.current - movementX),
+        );
+        onWidthChange(nextWidth);
+    }, {
+        axis: 'x',
+        preventDefault: true,
+        pointer: { capture: true },
+        eventOptions: { passive: false },
+    });
 
     useEffect(() => {
-        // rAF-coalesce: native mousemove fires far faster than 60fps; we only
-        // need one width update per frame. Without this, every move triggers
-        // a state update + reflow that competes with streaming-message renders.
-        let rafId: number | null = null;
-        let pendingX: number | null = null;
-        const flush = () => {
-            rafId = null;
-            if (pendingX == null) return;
-            const newWidth = window.innerWidth - pendingX;
-            const maxWidth = Math.max(COPILOT_PANEL_MIN_WIDTH, Math.floor(window.innerWidth * COPILOT_PANEL_MAX_WIDTH_FRACTION));
-            pendingX = null;
-            onWidthChange(Math.max(COPILOT_PANEL_MIN_WIDTH, Math.min(maxWidth, newWidth)));
-        };
-        const handleMouseMove = (e: MouseEvent) => {
-            if (!isResizing) return;
-            e.preventDefault();
-            pendingX = e.clientX;
-            if (rafId == null) rafId = requestAnimationFrame(flush);
-        };
-        const handleMouseUp = () => {
-            setIsResizing(false);
-            document.body.style.userSelect = 'auto';
-        };
-        if (isResizing) {
-            document.body.style.userSelect = 'none';
-            document.addEventListener('mousemove', handleMouseMove);
-            document.addEventListener('mouseup', handleMouseUp);
-        }
+        if (!isResizing) return undefined;
+        const previousUserSelect = document.body.style.userSelect;
+        document.body.style.userSelect = 'none';
         return () => {
-            if (rafId != null) cancelAnimationFrame(rafId);
-            document.removeEventListener('mousemove', handleMouseMove);
-            document.removeEventListener('mouseup', handleMouseUp);
+            document.body.style.userSelect = previousUserSelect;
         };
-    }, [isResizing, onWidthChange]);
+    }, [isResizing]);
 
     // ─── Render ──────────────────────────────────────────────
     return (
@@ -1565,10 +1557,11 @@ export default function ChatbotCopilot({
                 <h2 className="sr-only">{t('copilot.panel.label')}</h2>
                 {!isCollapsed && !isMobile && (
                     <div
-                        onMouseDown={startResizing}
+                        {...resizeGestureBind()}
                         role="separator"
                         aria-orientation="vertical"
                         aria-label="Resize panel"
+                        style={{ touchAction: 'none' }}
                         className={`clash-copilot-resize-handle absolute -left-1 top-8 bottom-8 z-10 w-2 cursor-ew-resize rounded-full ${isResizing ? 'is-resizing' : ''}`}
                     />
                 )}
