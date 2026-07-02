@@ -15,6 +15,7 @@ import {
   type TopupPack,
   createCheckout,
 } from "@clash/web-ui/lib/billingClient";
+import { Button } from "./ui/button";
 
 interface Props {
   balance: Balance | null;
@@ -133,10 +134,10 @@ function PackCard({ pack }: { pack: TopupPack }) {
   const dollars = (pack.price_usd_cents / 100).toFixed(0);
 
   return (
-    <button
+    <Button
       onClick={handle}
       disabled={disabled || busy}
-      className={`text-left rounded-xl border bg-warm-surface/80 p-5 transition-all ${
+      className={`flex w-full flex-col items-start gap-0 rounded-xl border bg-warm-surface/80 p-5 text-left shadow-none transition-all ${
         disabled
           ? "border-warm-border opacity-50 cursor-not-allowed"
           : "border-warm-border hover:border-brand/45 hover:bg-warm-surface hover:shadow-sm cursor-pointer"
@@ -159,7 +160,7 @@ function PackCard({ pack }: { pack: TopupPack }) {
       )}
       {busy && <div className="mt-3 text-xs text-stone-500">Redirecting…</div>}
       {err && <div className="mt-3 text-xs text-red-500">{err}</div>}
-    </button>
+    </Button>
   );
 }
 
@@ -228,17 +229,17 @@ function PlanCard({ plan }: { plan: Plan }) {
         <Feature value={`Up to ${plan.features.max_duration_s}s clips`} />
         {plan.features.commercial && <Feature value="Commercial use" />}
       </ul>
-      <button
+      <Button
         onClick={handle}
         disabled={disabled || busy}
-        className={`mt-5 w-full rounded-lg py-2.5 text-sm font-medium transition-colors ${
+        className={`mt-5 w-full rounded-lg border-transparent py-2.5 text-sm shadow-none transition-colors ${
           disabled
             ? "bg-warm-muted text-stone-500 cursor-not-allowed"
             : "clash-billing-primary"
         }`}
       >
         {free ? "Default plan" : busy ? "Redirecting…" : "Choose"}
-      </button>
+      </Button>
       {err && <div className="mt-2 text-xs text-red-500">{err}</div>}
     </div>
   );
