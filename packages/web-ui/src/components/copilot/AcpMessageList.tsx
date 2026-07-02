@@ -32,6 +32,7 @@ import {
 } from 'lucide-react';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '../ui/collapsible';
 import { Popover, PopoverContent, PopoverTrigger } from '../ui/popover';
+import { Tooltip } from '../ui/tooltip';
 
 const ACP_EVENT_ICON_SLOT_CLASS =
   'flex h-5 w-5 shrink-0 items-center justify-center transition-colors group-hover:text-neutral-700';
@@ -397,9 +398,11 @@ function ShellCommandEntry({
           className="group inline-flex max-w-full items-center gap-2 text-left text-[13px] leading-5 outline-none focus-visible:underline focus-visible:decoration-neutral-300 focus-visible:underline-offset-4"
         >
           <ShellEventIcon failed={view.failed} />
-          <span className="min-w-0 truncate font-medium text-neutral-500 dark:text-stone-300" title={label}>
-            {label}
-          </span>
+          <Tooltip label={label}>
+            <span className="min-w-0 truncate font-medium text-neutral-500 dark:text-stone-300">
+              {label}
+            </span>
+          </Tooltip>
           <ChevronRight className={cn('h-3.5 w-3.5 shrink-0 text-stone-400 transition-transform', open && 'rotate-90')} />
         </button>
       </CollapsibleTrigger>
@@ -547,9 +550,11 @@ function ToolRow({ tool, defaultOpen = false }: { tool: AcpToolCallPart; default
               {pickToolVerb(tool.kind, status)}
             </span>
             {target ? (
-              <span className="min-w-0 truncate font-sans text-[13px] text-neutral-500 dark:text-stone-300" title={target}>
-                {target}
-              </span>
+              <Tooltip label={target}>
+                <span className="min-w-0 truncate font-sans text-[13px] text-neutral-500 dark:text-stone-300">
+                  {target}
+                </span>
+              </Tooltip>
             ) : null}
           </span>
           {failed ? <XCircle className="h-3.5 w-3.5 shrink-0 text-status-down" /> : null}
@@ -567,14 +572,14 @@ function ToolRow({ tool, defaultOpen = false }: { tool: AcpToolCallPart; default
             <div className="flex flex-wrap gap-1">
               {tool.locations.map((loc, index) =>
                 loc.path ? (
-                  <span
-                    key={`${loc.path}-${index}`}
-                    className="font-sans text-[12px] text-neutral-500 dark:text-stone-300"
-                    title={loc.path}
-                  >
-                    {shortPath(loc.path)}
-                    {loc.line != null ? `:${loc.line}` : ''}
-                  </span>
+                  <Tooltip label={loc.path} key={`${loc.path}-${index}`}>
+                    <span
+                      className="font-sans text-[12px] text-neutral-500 dark:text-stone-300"
+                    >
+                      {shortPath(loc.path)}
+                      {loc.line != null ? `:${loc.line}` : ''}
+                    </span>
+                  </Tooltip>
                 ) : null,
               )}
             </div>

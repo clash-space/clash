@@ -51,4 +51,23 @@ describe("AcpMessageList primitives", () => {
     expect(source).not.toContain("aria-expanded={hasBody ? open : undefined}");
     expect(source).not.toContain("{hasBody && open ? (");
   });
+
+  it("uses the shared tooltip primitive for truncated ACP labels instead of browser title attributes", () => {
+    const source = readCopilotSource("AcpMessageList.tsx");
+    const tooltipSource = readFileSync(
+      join(process.cwd(), "packages/web-ui/src/components/ui/tooltip.tsx"),
+      "utf8",
+    );
+
+    expect(tooltipSource).toContain("@ariakit/react");
+    expect(source).toContain("../ui/tooltip");
+    expect(source).toContain("<Tooltip label={label}>");
+    expect(source).toContain("<Tooltip label={target}>");
+    expect(source).toContain("<Tooltip label={loc.path}");
+    expect(source).not.toContain("title={label}");
+    expect(source).not.toContain("title={target}");
+    expect(source).not.toContain("title={loc.path}");
+    expect(source).not.toContain("TooltipProvider");
+    expect(source).not.toContain("TooltipAnchor");
+  });
 });
