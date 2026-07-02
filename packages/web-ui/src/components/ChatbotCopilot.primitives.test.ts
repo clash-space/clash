@@ -19,6 +19,14 @@ describe("ChatbotCopilot primitives", () => {
     expect(source).not.toContain("onClick={() => onPick(command)}");
   });
 
+  it("uses the shared tooltip primitive for slash command labels instead of browser title attributes", () => {
+    const source = readComponentSource("ChatbotCopilot.tsx");
+
+    expect(source).toContain("./ui/tooltip");
+    expect(source).toContain("<Tooltip key={command.name} label={description ?? `/${name}`}>");
+    expect(source).not.toContain("title={description ?? `/${name}`}");
+  });
+
   it("uses the shared sheet primitive for the mobile copilot panel", () => {
     const source = readComponentSource("ChatbotCopilot.tsx");
 

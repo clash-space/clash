@@ -43,6 +43,7 @@ import { SelectMenu, type SelectSection } from './ui/select';
 import { Sheet, SheetContent, SheetOverlay } from './ui/sheet';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from './ui/collapsible';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from './ui/dropdown-menu';
+import { Tooltip } from './ui/tooltip';
 import { useAppFeedback } from './AppFeedback';
 import { useClashRuntime, type AcpSessionConfigOption, type AcpSessionModeState, type ClashRuntimeStatus, type Runtime, type RuntimePromptQueueMode, type RuntimeQueuedPrompt, type RuntimeSessionInfo } from '@clash/web-ui/hooks/useClashRuntime';
 import type { AvailableCommand, ByoMessage as RuntimeMessage } from '@clash/web-ui/lib/acpEvents';
@@ -2102,21 +2103,21 @@ function SlashCommandPalette({
                     const name = normalizeSlashCommandName(command);
                     const description = command.description ?? command.input?.hint;
                     return (
-                        <ComboboxItem
-                            key={command.name}
-                            value={command.name}
-                            focusOnHover
-                            setValueOnClick={false}
-                            onMouseDown={(event) => event.preventDefault()}
-                            title={description ?? `/${name}`}
-                            aria-label={description ? `/${name} ${description}` : `/${name}`}
-                            className="grid w-full cursor-default grid-cols-[minmax(8rem,auto)_1fr] items-baseline gap-4 rounded-xl px-3 py-2 text-left transition-colors outline-none hover:bg-warm-muted data-[active-item]:bg-warm-muted focus-visible:bg-warm-muted"
-                        >
-                            <span className="font-mono text-sm font-medium text-slate-900 dark:text-slate-100">/{name}</span>
-                            {description ? (
-                                <span className="min-w-0 truncate text-sm text-stone-500 dark:text-stone-400">{description}</span>
-                            ) : null}
-                        </ComboboxItem>
+                        <Tooltip key={command.name} label={description ?? `/${name}`}>
+                            <ComboboxItem
+                                value={command.name}
+                                focusOnHover
+                                setValueOnClick={false}
+                                onMouseDown={(event) => event.preventDefault()}
+                                aria-label={description ? `/${name} ${description}` : `/${name}`}
+                                className="grid w-full cursor-default grid-cols-[minmax(8rem,auto)_1fr] items-baseline gap-4 rounded-xl px-3 py-2 text-left transition-colors outline-none hover:bg-warm-muted data-[active-item]:bg-warm-muted focus-visible:bg-warm-muted"
+                            >
+                                <span className="font-mono text-sm font-medium text-slate-900 dark:text-slate-100">/{name}</span>
+                                {description ? (
+                                    <span className="min-w-0 truncate text-sm text-stone-500 dark:text-stone-400">{description}</span>
+                                ) : null}
+                            </ComboboxItem>
+                        </Tooltip>
                     );
                 })}
             </ComboboxList>
