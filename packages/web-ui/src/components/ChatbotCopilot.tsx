@@ -1,6 +1,24 @@
 
 import { memo, useState, useRef, useEffect, useCallback, useMemo, useId } from 'react';
 import { ComboboxItem, ComboboxList, ComboboxProvider } from '@ariakit/react';
+import {
+    closestCenter,
+    DndContext,
+    KeyboardSensor,
+    PointerSensor,
+    useSensor,
+    useSensors,
+    type DragEndEvent,
+} from '@dnd-kit/core';
+import { restrictToVerticalAxis } from '@dnd-kit/modifiers';
+import {
+    arrayMove,
+    SortableContext,
+    sortableKeyboardCoordinates,
+    useSortable,
+    verticalListSortingStrategy,
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 import { motion, AnimatePresence, MotionConfig } from 'framer-motion';
 import { ArrowBendDownRight, CaretRight, DotsSixVertical, DotsThree, PencilSimple, Plus, ClockCounterClockwise, Trash, Plug, ShieldWarning } from '@phosphor-icons/react';
 import { useTranslation } from 'react-i18next';
@@ -2634,127 +2652,161 @@ function RuntimePromptQueueBar({
     onReorder: (turnIds: string[]) => void;
 }) {
     const [openMenuTurnId, setOpenMenuTurnId] = useState<string | null>(null);
-    const [draggingTurnId, setDraggingTurnId] = useState<string | null>(null);
-    const [dragOverTurnId, setDragOverTurnId] = useState<string | null>(null);
-    const reorder = (fromTurnId: string, toTurnId: string) => {
-        if (fromTurnId === toTurnId) return;
-        const fromIndex = items.findIndex((item) => item.turnId === fromTurnId);
-        const toIndex = items.findIndex((item) => item.turnId === toTurnId);
+    const itemIds = useMemo(() => items.map((item) => item.turnId), [items]);
+    const sensors = useSensors(
+        useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
+        useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+    );
+    const handleDragEnd = useCallback((event: DragEndEvent) => {
+        const { active, over } = event;
+        if (!over || active.id === over.id) return;
+        const activeId = String(active.id);
+        const overId = String(over.id);
+        const fromIndex = itemIds.indexOf(activeId);
+        const toIndex = itemIds.indexOf(overId);
         if (fromIndex < 0 || toIndex < 0) return;
-        const next = [...items];
-        const [moved] = next.splice(fromIndex, 1);
-        if (!moved) return;
-        next.splice(toIndex, 0, moved);
-        onReorder(next.map((item) => item.turnId));
-    };
+        onReorder(arrayMove(itemIds, fromIndex, toIndex));
+    }, [itemIds, onReorder]);
 
     return (
         <div className="clash-runtime-prompt-queue relative z-0 mx-auto -mb-10 w-[calc(100%-6rem)] max-w-[940px] overflow-visible rounded-t-[20px] px-3 pb-[3.25rem] pt-2.5 text-xs">
-            <div className="flex flex-col gap-1">
-                {items.map((item, index) => {
-                    return (
-                        <div
-                            key={item.turnId}
-                            draggable
-                            onDragStart={(event) => {
-                                setDraggingTurnId(item.turnId);
-                                event.dataTransfer.effectAllowed = 'move';
-                                event.dataTransfer.setData('text/plain', item.turnId);
-                            }}
-                            onDragEnter={() => setDragOverTurnId(item.turnId)}
-                            onDragOver={(event) => {
-                                event.preventDefault();
-                                event.dataTransfer.dropEffect = 'move';
-                                setDragOverTurnId(item.turnId);
-                            }}
-                            onDrop={(event) => {
-                                event.preventDefault();
-                                const fromTurnId = event.dataTransfer.getData('text/plain') || draggingTurnId;
-                                if (fromTurnId) reorder(fromTurnId, item.turnId);
-                                setDraggingTurnId(null);
-                                setDragOverTurnId(null);
-                            }}
-                            onDragEnd={() => {
-                                setDraggingTurnId(null);
-                                setDragOverTurnId(null);
-                            }}
-                            className={`relative flex min-w-0 items-center gap-2 rounded-lg px-1.5 py-1 transition-colors ${
-                                dragOverTurnId === item.turnId && draggingTurnId !== item.turnId
-                                    ? 'bg-warm-muted/70 dark:bg-stone-900'
-                                    : ''
-                            } ${draggingTurnId === item.turnId ? 'opacity-55' : ''}`}
+            <DndContext
+                sensors={sensors}
+                collisionDetection={closestCenter}
+                modifiers={[restrictToVerticalAxis]}
+                onDragEnd={handleDragEnd}
+            >
+                <SortableContext items={itemIds} strategy={verticalListSortingStrategy}>
+                    <div className="flex flex-col gap-1">
+                        {items.map((item, index) => (
+                            <RuntimePromptQueueItem
+                                key={item.turnId}
+                                item={item}
+                                index={index}
+                                menuOpen={openMenuTurnId === item.turnId}
+                                onMenuOpenChange={setOpenMenuTurnId}
+                                onSteer={onSteer}
+                                onEdit={onEdit}
+                                onRemove={onRemove}
+                            />
+                        ))}
+                    </div>
+                </SortableContext>
+            </DndContext>
+        </div>
+    );
+}
+
+function RuntimePromptQueueItem({
+    item,
+    index,
+    menuOpen,
+    onMenuOpenChange,
+    onSteer,
+    onEdit,
+    onRemove,
+}: {
+    item: RuntimeQueuedPrompt;
+    index: number;
+    menuOpen: boolean;
+    onMenuOpenChange: (turnId: string | null | ((current: string | null) => string | null)) => void;
+    onSteer: (turnId: string) => void;
+    onEdit: (item: RuntimeQueuedPrompt) => void;
+    onRemove: (turnId: string) => void;
+}) {
+    const {
+        attributes,
+        listeners,
+        setNodeRef,
+        transform,
+        transition,
+        isDragging,
+    } = useSortable({ id: item.turnId });
+    const style = {
+        transform: CSS.Transform.toString(transform),
+        transition,
+        zIndex: isDragging ? 30 : undefined,
+    };
+
+    return (
+        <div
+            ref={setNodeRef}
+            style={style}
+            className={`relative flex min-w-0 items-center gap-2 rounded-lg px-1.5 py-1 transition-colors ${isDragging ? 'bg-warm-muted/70 opacity-60 shadow-md ring-1 ring-brand/20 dark:bg-stone-900' : ''}`}
+        >
+            <button
+                type="button"
+                aria-label={`Drag queued message ${index + 1}`}
+                className="flex h-5 w-5 shrink-0 cursor-grab items-center justify-center text-stone-500 opacity-100 transition-colors hover:text-stone-600 active:cursor-grabbing dark:text-stone-400 dark:hover:text-stone-300"
+                {...attributes}
+                {...listeners}
+            >
+                <DotsSixVertical className="h-4 w-4" weight="bold" aria-hidden="true" />
+            </button>
+            <ArrowBendDownRight className="h-3.5 w-3.5 shrink-0 text-stone-500/70 dark:text-stone-400/70" aria-hidden="true" />
+            <span className="min-w-0 flex-1 truncate text-[13px] font-medium leading-5 text-stone-700 dark:text-stone-200">
+                {item.text}
+            </span>
+            <button
+                type="button"
+                aria-label={`Steer queued message ${index + 1}`}
+                onClick={() => onSteer(item.turnId)}
+                className="inline-flex shrink-0 items-center gap-1 rounded-md px-1.5 py-px text-[13px] font-medium text-stone-500 opacity-70 transition hover:bg-warm-muted/70 hover:text-slate-900 hover:opacity-100 dark:text-stone-400 dark:hover:bg-stone-900/70 dark:hover:text-slate-50"
+            >
+                <ArrowBendDownRight className="h-3.5 w-3.5" aria-hidden="true" />
+                Steer
+            </button>
+            <button
+                type="button"
+                aria-label={`Remove queued message ${index + 1}`}
+                onClick={() => onRemove(item.turnId)}
+                className="flex h-5 w-5 shrink-0 items-center justify-center rounded-md text-stone-500 opacity-70 transition hover:bg-red-50 hover:text-red-600 hover:opacity-100 dark:text-stone-400 dark:hover:bg-red-950/30 dark:hover:text-red-300"
+            >
+                <Trash className="h-4 w-4" aria-hidden="true" />
+            </button>
+            <div className="relative shrink-0">
+                <button
+                    type="button"
+                    aria-label={`Queued message options ${index + 1}`}
+                    onClick={() => onMenuOpenChange((current) => current === item.turnId ? null : item.turnId)}
+                    className="flex h-5 w-5 items-center justify-center rounded-full text-stone-500 opacity-70 transition hover:bg-warm-muted hover:text-slate-800 hover:opacity-100 dark:text-stone-400 dark:hover:bg-stone-900 dark:hover:text-slate-100"
+                >
+                    <DotsThree className="h-4 w-4" weight="bold" aria-hidden="true" />
+                </button>
+                <AnimatePresence>
+                    {menuOpen && (
+                        <motion.div
+                            initial={{ opacity: 0, y: 4, scale: 0.98 }}
+                            animate={{ opacity: 1, y: 0, scale: 1 }}
+                            exit={{ opacity: 0, y: 4, scale: 0.98 }}
+                            transition={{ duration: 0.12, ease: [0.16, 1, 0.3, 1] }}
+                            className="absolute right-0 top-8 z-40 w-52 rounded-2xl border border-warm-border bg-warm-surface p-1.5 text-sm shadow-xl dark:border-stone-800 dark:bg-stone-950"
                         >
-                            <span className="flex h-5 w-5 shrink-0 cursor-grab items-center justify-center text-stone-500 opacity-100 transition-colors hover:text-stone-600 active:cursor-grabbing dark:text-stone-400 dark:hover:text-stone-300" aria-hidden="true">
-                                <DotsSixVertical className="h-4 w-4" weight="bold" />
-                            </span>
-                            <ArrowBendDownRight className="h-3.5 w-3.5 shrink-0 text-stone-500/70 dark:text-stone-400/70" aria-hidden="true" />
-                            <span className="min-w-0 flex-1 truncate text-[13px] font-medium leading-5 text-stone-700 dark:text-stone-200">
-                                {item.text}
-                            </span>
                             <button
                                 type="button"
-                                aria-label={`Steer queued message ${index + 1}`}
-                                onClick={() => onSteer(item.turnId)}
-                                className="inline-flex shrink-0 items-center gap-1 rounded-md px-1.5 py-px text-[13px] font-medium text-stone-500 opacity-70 transition hover:bg-warm-muted/70 hover:text-slate-900 hover:opacity-100 dark:text-stone-400 dark:hover:bg-stone-900/70 dark:hover:text-slate-50"
+                                onClick={() => {
+                                    onEdit(item);
+                                    onMenuOpenChange(null);
+                                }}
+                                className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left font-medium text-slate-800 transition-colors hover:bg-warm-muted dark:text-slate-100 dark:hover:bg-stone-900"
                             >
-                                <ArrowBendDownRight className="h-3.5 w-3.5" aria-hidden="true" />
-                                Steer
+                                <PencilSimple className="h-4 w-4 text-stone-500" aria-hidden="true" />
+                                Edit message
                             </button>
                             <button
                                 type="button"
-                                aria-label={`Remove queued message ${index + 1}`}
-                                onClick={() => onRemove(item.turnId)}
-                                className="flex h-5 w-5 shrink-0 items-center justify-center rounded-md text-stone-500 opacity-70 transition hover:bg-red-50 hover:text-red-600 hover:opacity-100 dark:text-stone-400 dark:hover:bg-red-950/30 dark:hover:text-red-300"
+                                onClick={() => {
+                                    onRemove(item.turnId);
+                                    onMenuOpenChange(null);
+                                }}
+                                className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left font-medium text-red-600 transition-colors hover:bg-red-50 dark:text-red-300 dark:hover:bg-red-950/30"
                             >
                                 <Trash className="h-4 w-4" aria-hidden="true" />
+                                Delete
                             </button>
-                            <div className="relative shrink-0">
-                                <button
-                                    type="button"
-                                    aria-label={`Queued message options ${index + 1}`}
-                                    onClick={() => setOpenMenuTurnId((current) => current === item.turnId ? null : item.turnId)}
-                                    className="flex h-5 w-5 items-center justify-center rounded-full text-stone-500 opacity-70 transition hover:bg-warm-muted hover:text-slate-800 hover:opacity-100 dark:text-stone-400 dark:hover:bg-stone-900 dark:hover:text-slate-100"
-                                >
-                                    <DotsThree className="h-4 w-4" weight="bold" aria-hidden="true" />
-                                </button>
-                                <AnimatePresence>
-                                    {openMenuTurnId === item.turnId && (
-                                        <motion.div
-                                            initial={{ opacity: 0, y: 4, scale: 0.98 }}
-                                            animate={{ opacity: 1, y: 0, scale: 1 }}
-                                            exit={{ opacity: 0, y: 4, scale: 0.98 }}
-                                            transition={{ duration: 0.12, ease: [0.16, 1, 0.3, 1] }}
-                                            className="absolute right-0 top-8 z-40 w-52 rounded-2xl border border-warm-border bg-warm-surface p-1.5 text-sm shadow-xl dark:border-stone-800 dark:bg-stone-950"
-                                        >
-                                            <button
-                                                type="button"
-                                                onClick={() => {
-                                                    onEdit(item);
-                                                    setOpenMenuTurnId(null);
-                                                }}
-                                                className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left font-medium text-slate-800 transition-colors hover:bg-warm-muted dark:text-slate-100 dark:hover:bg-stone-900"
-                                            >
-                                                <PencilSimple className="h-4 w-4 text-stone-500" aria-hidden="true" />
-                                                Edit message
-                                            </button>
-                                            <button
-                                                type="button"
-                                                onClick={() => {
-                                                    onRemove(item.turnId);
-                                                    setOpenMenuTurnId(null);
-                                                }}
-                                                className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left font-medium text-red-600 transition-colors hover:bg-red-50 dark:text-red-300 dark:hover:bg-red-950/30"
-                                            >
-                                                <Trash className="h-4 w-4" aria-hidden="true" />
-                                                Delete
-                                            </button>
-                                        </motion.div>
-                                    )}
-                                </AnimatePresence>
-                            </div>
-                        </div>
-                    );
-                })}
+                        </motion.div>
+                    )}
+                </AnimatePresence>
             </div>
         </div>
     );

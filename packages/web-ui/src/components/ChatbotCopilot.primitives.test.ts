@@ -27,4 +27,16 @@ describe("ChatbotCopilot primitives", () => {
     expect(source).not.toContain("aria-modal=");
     expect(source).not.toContain('role={isMobile && !isCollapsed ? \'dialog\' : undefined}');
   });
+
+  it("uses dnd-kit primitives for queued prompt reordering", () => {
+    const source = readComponentSource("ChatbotCopilot.tsx");
+
+    expect(source).toContain("@dnd-kit/core");
+    expect(source).toContain("@dnd-kit/sortable");
+    expect(source).toContain("DndContext");
+    expect(source).toContain("SortableContext");
+    expect(source).toContain("useSortable");
+    expect(source).not.toContain("dataTransfer");
+    expect(source).not.toContain("draggable");
+  });
 });
