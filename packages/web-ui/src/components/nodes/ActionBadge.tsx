@@ -1775,18 +1775,7 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
                             style={{ minHeight: '3em' }}
                             data-placeholder="Describe anything you want to generate... (@ to ref assets)"
                             onInput={isFrozen ? undefined : handleEditorInput}
-                            onKeyDown={isFrozen ? undefined : (e) => {
-                                if (e.key === 'Enter') {
-                                    if (showMentionMenu && filteredMentionNodes.length > 0) {
-                                        e.preventDefault();
-                                        insertMention(filteredMentionNodes[mentionIndex]);
-                                        return;
-                                    }
-                                    // Let contentEditable handle Enter naturally (newline)
-                                    return;
-                                }
-                                handleEditorKeyDown(e);
-                            }}
+                            onKeyDown={isFrozen ? undefined : handleEditorKeyDown}
                             onMouseDown={(e) => e.stopPropagation()}
                         />
                         {showMentionMenu && filteredMentionNodes.length > 0 && (
