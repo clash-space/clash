@@ -3,6 +3,7 @@ import { AnimatePresence, motion } from 'framer-motion';
 import { CheckCircle, Info, WarningCircle, X } from '@phosphor-icons/react';
 import { Link } from 'react-router';
 import { Dialog } from './ui/dialog';
+import { IconButton } from './ui/icon-button';
 
 type FeedbackVariant = 'error' | 'info' | 'success';
 
@@ -138,14 +139,13 @@ export function AppFeedbackProvider({ children }: { children: ReactNode }) {
                   )
                 ) : null}
               </span>
-              <button
-                type="button"
-                aria-label="Dismiss notification"
+              <IconButton
+                label="Dismiss notification"
+                icon={<X className="h-3.5 w-3.5" weight="bold" />}
+                size="sm"
                 onClick={() => setToasts((prev) => prev.filter((item) => item.id !== toast.id))}
-                className="shrink-0 rounded-md p-1 opacity-60 transition hover:bg-black/5 hover:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
-              >
-                <X className="h-3.5 w-3.5" weight="bold" aria-hidden="true" />
-              </button>
+                className="shrink-0 text-current opacity-60 hover:bg-black/5 hover:text-current hover:opacity-100"
+              />
             </motion.div>
           ))}
         </AnimatePresence>
