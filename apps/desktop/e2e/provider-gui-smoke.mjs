@@ -263,14 +263,14 @@ async function runProviderFlow(agentBrowser, apiOrigin) {
     "desktop mock provider test controls",
   );
 
-  if (!openControlByLabel(agentBrowser, "Model to test")) {
+  if (!openControlByLabel(agentBrowser, "Choose test model")) {
     throw new Error("Could not open desktop provider test model selector");
   }
   await waitForEval(
     agentBrowser,
     `(() => {
-      const trigger = [...document.querySelectorAll("[role='combobox'], button")].find((el) =>
-        el.getAttribute("aria-label") === "Model to test"
+      const trigger = [...document.querySelectorAll("button")].find((el) =>
+        el.getAttribute("aria-label") === "Choose test model"
       );
       const menu = [...document.querySelectorAll("[role='listbox'], [role='menu']")].find((el) =>
         (el.innerText || el.textContent || "").includes("Mock Image Model")
@@ -281,7 +281,8 @@ async function runProviderFlow(agentBrowser, apiOrigin) {
       const menuRect = menu.getBoundingClientRect();
       const searchRect = search.getBoundingClientRect();
       return menu.getAttribute("role") === "listbox" &&
-        trigger.getAttribute("role") === "combobox" &&
+        trigger.tagName === "BUTTON" &&
+        trigger.getAttribute("role") !== "combobox" &&
         (menu.innerText || menu.textContent || "").includes("fal-ai/mock-image") &&
         (menu.innerText || menu.textContent || "").includes("image") &&
         menuRect.width >= Math.min(triggerRect.width, 160) &&
@@ -331,7 +332,7 @@ async function runProviderFlow(agentBrowser, apiOrigin) {
   );
   captureEvidence(agentBrowser, "01-provider-test-image-result");
 
-  if (!openControlByLabel(agentBrowser, "Model to test")) {
+  if (!openControlByLabel(agentBrowser, "Choose test model")) {
     throw new Error("Could not reopen desktop provider test model selector for text shape");
   }
   if (!setInputValueByLabel(agentBrowser, "Search test models", "text")) {
@@ -420,7 +421,7 @@ async function runProviderFlow(agentBrowser, apiOrigin) {
       .catch(() => false)`,
     "desktop mock provider model allowlist saved",
   );
-  if (!openControlByLabel(agentBrowser, "Model to test")) {
+  if (!openControlByLabel(agentBrowser, "Choose test model")) {
     throw new Error("Could not reopen desktop provider test model selector after saving allowlist");
   }
   await waitForEval(

@@ -1,6 +1,12 @@
 
 import { useState, useCallback, useEffect, useMemo, useRef, type ReactNode } from 'react';
 import {
+    Combobox,
+    ComboboxItem,
+    ComboboxList,
+    ComboboxProvider,
+} from '@ariakit/react';
+import {
     closestCenter,
     DndContext,
     KeyboardSensor,
@@ -32,7 +38,9 @@ import {
     type ModelProviderAccountInfo, type ModelCatalogEntryInfo, type ProviderOAuthInfo, type ModelProviderTestResult,
 } from '@clash/web-ui/lib/clientActions';
 import { runtimeApiUrl } from '@clash/web-ui/lib/runtimeConfig';
+import { cn } from './ai-elements/utils';
 import { Dialog } from './ui/dialog';
+import { Popover, PopoverContent, PopoverTrigger } from './ui/popover';
 import { SelectMenu, type SelectOption } from './ui/select';
 import { SearchableSelect } from './ui/searchable-select';
 import { Switch } from './ui/switch';
@@ -1601,6 +1609,16 @@ function providerTestModelTriggerLabel(option: ProviderTestModelOption): ReactNo
     );
 }
 
+function providerTestModelSearchText(option: ProviderTestModelOption): string {
+    return [
+        option.modelName,
+        option.modelKind,
+        option.upstreamModel,
+        option.apiShape,
+        String(option.value),
+    ].filter(Boolean).join(' ').toLowerCase();
+}
+
 function ProviderTestModelPicker({
     value,
     options,
@@ -1610,27 +1628,132 @@ function ProviderTestModelPicker({
     options: ProviderTestModelOption[];
     onValueChange: (value: string, option: ProviderTestModelOption) => void;
 }) {
+    const [open, setOpen] = useState(false);
+    const [query, setQuery] = useState('');
+    const searchInputRef = useRef<HTMLInputElement | null>(null);
     const selectedOption = options.find((option) => String(option.value) === String(value));
+    const normalizedQuery = query.trim().toLowerCase();
+    const filteredOptions = normalizedQuery
+        ? options.filter((option) => providerTestModelSearchText(option).includes(normalizedQuery))
+        : options;
+
+    useEffect(() => {
+        if (!open) setQuery('');
+    }, [open]);
+
+    const chooseOption = useCallback((option: ProviderTestModelOption) => {
+        onValueChange(String(option.value), option);
+        setOpen(false);
+    }, [onValueChange]);
 
     return (
-        <SearchableSelect
-            ariaLabel="Model to test"
-            emptyMessage="No matching models."
-            listboxLabel="Model to test"
-            matchTriggerWidth
-            onValueChange={(nextValue) => {
-                const option = options.find((item) => String(item.value) === String(nextValue));
-                if (option) onValueChange(String(nextValue), option);
-            }}
-            options={options}
-            placeholder="Select model"
-            searchAriaLabel="Search test models"
-            searchInputClassName={`${settingsSearchFieldClass} h-9 text-xs`}
-            searchPlaceholder="Search models..."
-            triggerClassName={`clash-settings-select-trigger ${settingsSelectTriggerClass}`}
-            triggerLabel={selectedOption ? providerTestModelTriggerLabel(selectedOption) : undefined}
-            value={value}
-        />
+        <ComboboxProvider value={query} setValue={setQuery}>
+            <Popover open={open} onOpenChange={setOpen}>
+                <PopoverTrigger asChild>
+                    <button
+                        type="button"
+                        aria-label="Choose test model"
+                        aria-expanded={open}
+                        disabled={options.length === 0}
+                        onKeyDown={(event) => {
+                            if (event.key !== 'ArrowDown') return;
+                            event.preventDefault();
+                            setOpen(true);
+                        }}
+                        className={`clash-settings-test-model-picker ${settingsSelectTriggerClass} flex min-w-0 items-center justify-between gap-2 rounded-xl border border-warm-border bg-warm-surface px-3 py-2 text-sm font-medium text-slate-900 shadow-[inset_0_1px_0_rgba(255,255,255,0.76)] transition-colors hover:bg-warm-muted/45 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-warm-surface disabled:cursor-not-allowed disabled:opacity-45 dark:text-slate-50 dark:hover:bg-slate-800`}
+                    >
+                        <span className={selectedOption ? 'min-w-0 flex-1 truncate text-left' : 'min-w-0 flex-1 truncate text-left text-stone-400 dark:text-stone-500'}>
+                            {selectedOption ? providerTestModelTriggerLabel(selectedOption) : 'Select model'}
+                        </span>
+                        <CaretDown className="h-3.5 w-3.5 flex-shrink-0 text-stone-500" aria-hidden="true" />
+                    </button>
+                </PopoverTrigger>
+                <PopoverContent
+                    align="start"
+                    sideOffset={8}
+                    className="w-[min(420px,calc(100vw-24px))] overflow-hidden p-0"
+                    onOpenAutoFocus={(event) => {
+                        event.preventDefault();
+                        searchInputRef.current?.focus();
+                    }}
+                >
+                    <div className="border-b border-warm-border/80 p-2 dark:border-slate-700">
+                        <div className="relative min-w-0">
+                            <MagnifyingGlass
+                                className="pointer-events-none absolute left-3 top-1/2 z-[1] h-4 w-4 -translate-y-1/2 text-stone-400"
+                                aria-hidden="true"
+                            />
+                            <Combobox
+                                ref={searchInputRef}
+                                aria-label="Search test models"
+                                autoComplete="list"
+                                placeholder="Search models, routes, or shapes..."
+                                className={`${settingsSearchFieldClass} h-9 text-xs`}
+                            />
+                        </div>
+                    </div>
+                    <ComboboxList
+                        aria-label="Model to test"
+                        alwaysVisible
+                        className="max-h-72 overflow-y-auto p-1.5"
+                    >
+                        {filteredOptions.length === 0 ? (
+                            <div className="px-3 py-5 text-center text-xs font-medium text-stone-500 dark:text-stone-400">
+                                No matching models.
+                            </div>
+                        ) : (
+                            filteredOptions.map((option) => {
+                                const selected = String(option.value) === String(value);
+                                const optionAriaLabel = [
+                                    option.modelName,
+                                    option.modelKind,
+                                    option.upstreamModel,
+                                    option.apiShape,
+                                ].filter(Boolean).join(' ');
+                                return (
+                                    <ComboboxItem
+                                        key={String(option.value)}
+                                        value={option.modelName}
+                                        aria-label={optionAriaLabel}
+                                        setValueOnClick={false}
+                                        selectValueOnClick={false}
+                                        onClick={() => chooseOption(option)}
+                                        className={cn(
+                                            'flex min-h-[52px] w-full cursor-default items-center gap-3 rounded-xl px-3 py-2 text-left text-sm transition-colors outline-none',
+                                            selected
+                                                ? 'bg-warm-muted/80 text-slate-950 dark:bg-slate-800 dark:text-slate-50'
+                                                : 'text-slate-900 hover:bg-warm-muted/75 data-[active-item]:bg-warm-muted/75 dark:text-slate-100 dark:hover:bg-slate-800/80 dark:data-[active-item]:bg-slate-800/80',
+                                        )}
+                                    >
+                                        <span className="flex h-5 w-5 flex-shrink-0 items-center justify-center text-slate-700 dark:text-slate-300" aria-hidden="true">
+                                            <ModelKindIcon kind={option.modelKind} />
+                                        </span>
+                                        <span className="min-w-0 flex-1">
+                                            <span className="flex min-w-0 items-center gap-2">
+                                                <span className="truncate font-medium leading-5">{option.modelName}</span>
+                                                <span className="inline-flex flex-shrink-0 items-center rounded-md bg-warm-muted px-1.5 py-0.5 text-[11px] font-medium text-stone-700 dark:bg-slate-800 dark:text-stone-300">
+                                                    {option.modelKind}
+                                                </span>
+                                            </span>
+                                            <span className="block truncate text-xs font-normal leading-4 text-stone-600 dark:text-stone-400">
+                                                {[option.upstreamModel, option.apiShape].filter(Boolean).join(' · ')}
+                                            </span>
+                                        </span>
+                                        <Check
+                                            className={cn(
+                                                'h-4 w-4 flex-shrink-0 text-slate-700 transition-opacity dark:text-slate-200',
+                                                selected ? 'opacity-100' : 'opacity-0',
+                                            )}
+                                            aria-hidden="true"
+                                        />
+                                    </ComboboxItem>
+                                );
+                            })
+                        )}
+                    </ComboboxList>
+                </PopoverContent>
+            </Popover>
+        </ComboboxProvider>
     );
 }
 
@@ -2927,7 +3050,7 @@ function ModelRoutingSection({
                     {canRunProviderTest && (
                         <div className="rounded-xl border border-warm-border bg-warm-muted/25 p-3">
                             <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
-                                <label className="min-w-0">
+                                <div className="min-w-0">
                                     <span className="mb-1 block text-xs font-medium text-stone-500 dark:text-stone-400">Model to test</span>
                                     <ProviderTestModelPicker
                                         value={selectedProviderTestModelId}
@@ -2940,7 +3063,7 @@ function ModelRoutingSection({
                                             });
                                         }}
                                     />
-                                </label>
+                                </div>
                                 <button
                                     type="button"
                                     aria-label="Run provider test"
