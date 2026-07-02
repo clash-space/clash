@@ -19,4 +19,12 @@ describe('GroupNode action primitives', () => {
     expect(source).not.toContain('TooltipProvider');
     expect(source).not.toContain('TooltipAnchor');
   });
+
+  it('uses ReactFlow node interaction boundary classes for selected-group actions', () => {
+    const source = readSource('packages/web-ui/src/components/nodes/GroupNode.tsx');
+
+    expect(source).toContain('nodrag');
+    expect(source).toContain('nopan');
+    expect(source).not.toContain('onMouseDown={(e) => e.stopPropagation()}');
+  });
 });

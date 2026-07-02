@@ -143,12 +143,8 @@ const GroupNode = ({ selected, data, id }: NodeProps<Node<Record<string, any>>>)
                         <Tooltip label="Ungroup (release children to parent)">
                             <button
                                 type="button"
-                                className="flex h-7 items-center gap-1.5 rounded-md border border-warm-border bg-warm-surface/90 px-2.5 text-xs font-medium text-slate-700 dark:text-slate-300 shadow-sm backdrop-blur hover:bg-warm-surface hover:text-slate-900"
-                                onMouseDown={(e) => e.stopPropagation()}
-                                onClick={(e) => {
-                                    e.stopPropagation();
-                                    ungroup(id);
-                                }}
+                                className="nodrag nopan flex h-7 items-center gap-1.5 rounded-md border border-warm-border bg-warm-surface/90 px-2.5 text-xs font-medium text-slate-700 dark:text-slate-300 shadow-sm backdrop-blur hover:bg-warm-surface hover:text-slate-900"
+                                onClick={() => ungroup(id)}
                             >
                                 <FrameCorners className="h-3.5 w-3.5" weight="regular" />
                                 Ungroup
@@ -157,12 +153,8 @@ const GroupNode = ({ selected, data, id }: NodeProps<Node<Record<string, any>>>)
                         <Tooltip label="Relayout inside group">
                             <button
                                 type="button"
-                                className="flex h-7 items-center gap-1.5 rounded-md border border-warm-border bg-warm-surface/90 px-2.5 text-xs font-medium text-slate-700 dark:text-slate-300 shadow-sm backdrop-blur hover:bg-warm-surface hover:text-slate-900"
-                                onMouseDown={(e) => e.stopPropagation()}
-                                onClick={(e) => {
-                                    e.stopPropagation();
-                                    relayoutParent(id);
-                                }}
+                                className="nodrag nopan flex h-7 items-center gap-1.5 rounded-md border border-warm-border bg-warm-surface/90 px-2.5 text-xs font-medium text-slate-700 dark:text-slate-300 shadow-sm backdrop-blur hover:bg-warm-surface hover:text-slate-900"
+                                onClick={() => relayoutParent(id)}
                             >
                                 <MagicWand className="h-3.5 w-3.5" weight="regular" />
                                 Layout
