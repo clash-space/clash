@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { ComponentType } from 'react';
+import { Tab, TabList, TabProvider } from '@ariakit/react';
 import {
   X,
   Plug,
@@ -205,31 +206,38 @@ export function SettingsSurface({
             </div>
           )}
         </div>
-        <nav className="flex-1 space-y-0.5 overflow-y-auto px-2 py-1" aria-label="Settings sections">
-          {SETTINGS_NAV_ITEMS.map((item) => {
-            const isActive = active === item.id;
-            const Icon = item.icon;
-            return (
-              <button
-                key={item.id}
-                type="button"
-                onClick={() => onActiveChange(item.id)}
-                className={`relative flex w-full items-center gap-2.5 rounded-lg border px-3 py-2 text-sm font-medium transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-brand/60 ${
-                  isActive
-                    ? 'border-brand/35 bg-brand-light text-brand shadow-sm dark:border-brand/30 dark:bg-brand/10 dark:text-brand-light'
-                    : 'border-transparent text-stone-700 hover:bg-warm-surface/60 hover:text-stone-900 dark:text-stone-200'
-                }`}
-                aria-current={isActive ? 'page' : undefined}
-              >
-                {isActive && (
-                  <span aria-hidden="true" className="absolute left-1.5 top-1/2 h-5 w-0.5 -translate-y-1/2 rounded-full bg-brand" />
-                )}
-                <Icon className={`h-4 w-4 ${isActive ? 'text-brand' : ''}`} weight="bold" />
-                <span className="truncate">{item.label}</span>
-              </button>
-            );
-          })}
-        </nav>
+        <TabProvider
+          selectedId={active}
+          setSelectedId={(section) => {
+            if (isSettingsSection(section)) onActiveChange(section);
+          }}
+          orientation="vertical"
+          focusLoop
+        >
+          <TabList className="flex-1 space-y-0.5 overflow-y-auto px-2 py-1" aria-label="Settings sections">
+            {SETTINGS_NAV_ITEMS.map((item) => {
+              const isActive = active === item.id;
+              const Icon = item.icon;
+              return (
+                <Tab
+                  key={item.id}
+                  id={item.id}
+                  className={`relative flex w-full items-center gap-2.5 rounded-lg border px-3 py-2 text-sm font-medium transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-brand/60 ${
+                    isActive
+                      ? 'border-brand/35 bg-brand-light text-brand shadow-sm dark:border-brand/30 dark:bg-brand/10 dark:text-brand-light'
+                      : 'border-transparent text-stone-700 hover:bg-warm-surface/60 hover:text-stone-900 dark:text-stone-200'
+                  }`}
+                >
+                  {isActive && (
+                    <span aria-hidden="true" className="absolute left-1.5 top-1/2 h-5 w-0.5 -translate-y-1/2 rounded-full bg-brand" />
+                  )}
+                  <Icon className={`h-4 w-4 ${isActive ? 'text-brand' : ''}`} weight="bold" />
+                  <span className="truncate">{item.label}</span>
+                </Tab>
+              );
+            })}
+          </TabList>
+        </TabProvider>
         <div className="border-t border-warm-border p-2">
           <button
             type="button"

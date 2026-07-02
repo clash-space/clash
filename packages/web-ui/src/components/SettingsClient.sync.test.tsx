@@ -153,8 +153,8 @@ describe("SettingsSurface tab state", () => {
       </MemoryRouter>,
     );
 
-    const activeTab = screen.getByRole("button", { name: "API Tokens" });
-    expect(activeTab.getAttribute("aria-current")).toBe("page");
+    const activeTab = screen.getByRole("tab", { name: "API Tokens" });
+    expect(activeTab.getAttribute("aria-selected")).toBe("true");
     expect(activeTab.className).toContain("border-brand");
     expect(activeTab.className).toContain("bg-brand-light");
   });
@@ -166,8 +166,21 @@ describe("SettingsSurface tab state", () => {
       </MemoryRouter>,
     );
 
-    expect(screen.getByRole("button", { name: "Agents" }).getAttribute("aria-current")).toBe("page");
-    expect(screen.queryByRole("button", { name: "Runtimes" })).toBeNull();
+    expect(screen.getByRole("tab", { name: "Agents" }).getAttribute("aria-selected")).toBe("true");
+    expect(screen.queryByRole("tab", { name: "Runtimes" })).toBeNull();
+  });
+
+  it("uses Ariakit tabs for the settings section selector instead of handwritten sidebar tab buttons", () => {
+    const source = readFileSync(
+      resolve(process.cwd(), "packages/web-ui/src/components/SettingsSurface.tsx"),
+      "utf8",
+    );
+
+    expect(source).toContain("@ariakit/react");
+    expect(source).toContain("TabProvider");
+    expect(source).toContain("TabList");
+    expect(source).toContain("<Tab");
+    expect(source).not.toContain("aria-current={isActive ? 'page' : undefined}");
   });
 
   it("uses the shared tooltip primitive for the dialog close icon instead of a browser title attribute", () => {
