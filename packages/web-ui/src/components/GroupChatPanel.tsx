@@ -25,10 +25,7 @@
  * next-turn prompt — append-on-next-turn semantics).
  *
  * Sub-components live under `_group-chat/` (TabPill, RoomView, AgentView,
- * MentionAutocomplete, InviteAgentMenu). State machinery for the @-mention
- * autocomplete + cursor placement lives in
- * `hooks/useMentionAutocomplete`. This file is the shell that wires
- * them together.
+ * InviteAgentMenu). This file is the shell that wires them together.
  *
  * Old ChatbotCopilot is kept in the repo (no import). Restore by
  * swapping the JSX in ProjectEditor.tsx.
@@ -46,7 +43,6 @@ import type { MentionableNode } from './MilkdownEditor';
 import { useGroupChat, type GroupChatSessionEvent } from '@clash/web-ui/hooks/useGroupChat';
 import { useProjectRoom, type RoomSyncMeta } from '@clash/web-ui/hooks/useProjectRoom';
 import { useClaimedAgents } from '@clash/web-ui/hooks/useClaimedAgents';
-import { useMentionAutocomplete } from '@clash/web-ui/hooks/useMentionAutocomplete';
 import PresenceBar from '@clash/web-ui/components/PresenceBar';
 import { visiblePresenceClients } from '@clash/web-ui/lib/presenceVisibility';
 import type { PresenceClient, RoomMessageEvent } from '@clash/shared-types';
@@ -56,9 +52,7 @@ import { loadInvited, saveInvited } from '../_group-chat/invitedStorage';
 import { TabPill } from '../_group-chat/TabPill';
 import { RoomView } from '../_group-chat/RoomView';
 import { AgentView } from '../_group-chat/AgentView';
-import { MentionAutocomplete } from '../_group-chat/MentionAutocomplete';
 import { InviteAgentMenu } from '../_group-chat/InviteAgentMenu';
-import { statusDotClass, statusDotLabel } from '../_group-chat/statusDot';
 
 const ROOM_TAB = '__room__';
 
@@ -329,19 +323,6 @@ export function GroupChatPanel({
     },
     [userId, room, group, resolveMention, invitedAgentIdSet],
   );
-
-  // Kept for back-compat with the (now-deprecated) plain-text composer
-  // path. The new ChatInput owns its own input state — no autocomplete
-  // hook needed here since MilkdownEditor's @-picker covers it.
-  const ac = useMentionAutocomplete(draft, setDraft, textareaRef, invitedAgent);
-  void ac;
-
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    // Legacy textarea was replaced with <ChatInput>; this handler is
-    // never wired anymore. Keep the no-op so dead refs don't crash if
-    // anything still hooks into it during the migration.
-    void e;
-  };
 
   // Resize handle on the LEFT edge of the panel. Drag left → wider,
   // drag right → narrower. Installs a global mousemove only for the

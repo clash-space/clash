@@ -18,8 +18,8 @@ export interface AgentRow {
 }
 
 /** Lowercase, dash-joined version of display_name — what users type after
- *  `@`. Single source of truth so MentionAutocomplete, InviteAgentMenu, and
- *  the panel's resolveMention all agree on the canonical form. */
+ *  `@`. Single source of truth so InviteAgentMenu, Milkdown mention output,
+ *  and the panel's resolveMention all agree on the canonical form. */
 export function agentHandle(displayName: string): string {
   return displayName.toLowerCase().replace(/\s+/g, '-');
 }
