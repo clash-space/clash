@@ -1,5 +1,5 @@
 
-import { useState, useRef, useCallback, useEffect, type ReactNode } from 'react';
+import { forwardRef, useState, useRef, useCallback, useEffect, useImperativeHandle, type ForwardedRef, type ReactNode } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ArrowUp, Plus, Microphone, X, Check, CircleNotch } from '@phosphor-icons/react';
 import { lazy } from 'react';
@@ -51,6 +51,10 @@ interface ChatInputProps {
     /** Optional controls rendered on the right side before voice/send. */
     rightToolbarAccessory?: ReactNode;
     onCaretTargetChange?: (target: { x: number; y: number } | null) => void;
+}
+
+export interface ChatInputHandle {
+    focus: () => void;
 }
 
 interface LocalAudioConfig {
@@ -272,7 +276,7 @@ const ACCEPT = 'image/*,video/*,audio/*,.pdf,.txt,.md,.markdown,.json,.csv,.srt,
 
 // ─── Component ───────────────────────────────────────────────
 
-export function ChatInput({
+function ChatInputInner({
     input,
     onInputChange,
     onSubmit,
@@ -292,12 +296,18 @@ export function ChatInput({
     toolbarAccessory,
     rightToolbarAccessory,
     onCaretTargetChange,
-}: ChatInputProps) {
+}: ChatInputProps, ref: ForwardedRef<ChatInputHandle>) {
     const { t } = useTranslation();
     const fileInputRef = useRef<HTMLInputElement>(null);
     const editorRef = useRef<MilkdownEditorHandle>(null);
     const editorHostRef = useRef<HTMLDivElement | null>(null);
     const [uploading, setUploading] = useState(0);
+
+    useImperativeHandle(ref, () => ({
+        focus() {
+            editorRef.current?.focus();
+        },
+    }), []);
 
     // ─── File upload → insert into editor on complete ──────────
     const handleFiles = useCallback((files: FileList | File[]) => {
@@ -734,3 +744,6 @@ export function ChatInput({
         </div>
     );
 }
+
+export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(ChatInputInner);
+ChatInput.displayName = 'ChatInput';

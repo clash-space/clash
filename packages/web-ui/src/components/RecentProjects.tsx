@@ -7,9 +7,10 @@ import ProjectCard from './ProjectCard';
 
 interface RecentProjectsProps {
     projects: any[]; // Relaxed type to accept Drizzle result with assets
+    onStartNewProject: () => void;
 }
 
-export default function RecentProjects({ projects }: RecentProjectsProps) {
+export default function RecentProjects({ projects, onStartNewProject }: RecentProjectsProps) {
     // We want to show the section even if there are no projects, so the user can see the "New Project" card
     const projectList = projects || [];
 
@@ -31,10 +32,7 @@ export default function RecentProjects({ projects }: RecentProjectsProps) {
                     type="button"
                     aria-label="Start a new project"
                     className="clash-project-create-tile group flex aspect-video flex-col items-center justify-center gap-4 rounded-2xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-warm-page"
-                    onClick={() => {
-                        document.querySelector('textarea')?.focus();
-                        window.scrollTo({ top: 0, behavior: 'smooth' });
-                    }}
+                    onClick={onStartNewProject}
                 >
                     <div className="clash-project-create-icon flex h-14 w-14 items-center justify-center rounded-xl">
                         <Plus

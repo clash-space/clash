@@ -1,12 +1,23 @@
 
-import { useState, useTransition } from 'react';
+import { forwardRef, useImperativeHandle, useRef, useState, useTransition, type ForwardedRef } from 'react';
 import { motion } from 'framer-motion';
 import { createProject } from '@clash/web-ui/lib/clientActions';
-import { ChatInput } from './copilot/ChatInput';
+import { ChatInput, type ChatInputHandle } from './copilot/ChatInput';
 
-export default function HeroSection() {
+export interface HeroSectionHandle {
+    focus: () => void;
+}
+
+function HeroSectionInner(_props: object, ref: ForwardedRef<HeroSectionHandle>) {
     const [inputValue, setInputValue] = useState('');
     const [isPending, startTransition] = useTransition();
+    const chatInputRef = useRef<ChatInputHandle>(null);
+
+    useImperativeHandle(ref, () => ({
+        focus() {
+            chatInputRef.current?.focus();
+        },
+    }), []);
 
     const handleSend = (text: string) => {
         if (text.trim()) {
@@ -33,6 +44,7 @@ export default function HeroSection() {
 
                 <div className="clash-hero-prompt">
                     <ChatInput
+                        ref={chatInputRef}
                         input={inputValue}
                         onInputChange={setInputValue}
                         onSubmit={(text) => handleSend(text)}
@@ -46,3 +58,8 @@ export default function HeroSection() {
         </section>
     );
 }
+
+const HeroSection = forwardRef<HeroSectionHandle, object>(HeroSectionInner);
+HeroSection.displayName = 'HeroSection';
+
+export default HeroSection;

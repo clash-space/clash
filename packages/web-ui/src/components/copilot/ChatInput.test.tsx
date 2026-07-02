@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { Suspense } from "react";
+import { createRef, forwardRef, Suspense, useImperativeHandle } from "react";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
@@ -7,16 +7,26 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { ChatInput } from "./ChatInput";
 
+const milkdownFocus = vi.hoisted(() => vi.fn());
+
 const root = resolve(__dirname, "../../../../..");
 const globalCss = readFileSync(resolve(root, "apps/web/app/globals.css"), "utf8");
 
 vi.mock("../MilkdownEditor", () => ({
-  default: () => <div data-testid="milkdown-editor" />,
+  default: forwardRef((_props, ref) => {
+    useImperativeHandle(ref, () => ({
+      clear: vi.fn(),
+      focus: milkdownFocus,
+      insertAtCursor: vi.fn(),
+    }));
+    return <div data-testid="milkdown-editor" />;
+  }),
 }));
 
 describe("ChatInput", () => {
   afterEach(() => {
     cleanup();
+    milkdownFocus.mockClear();
     vi.restoreAllMocks();
   });
 
@@ -121,6 +131,27 @@ describe("ChatInput", () => {
 
     expect(screen.queryByLabelText("copilot.status.connected")).toBeNull();
     expect(screen.queryByLabelText("copilot.status.disconnected")).toBeNull();
+  });
+
+  it("exposes focus through an explicit handle instead of requiring DOM queries", async () => {
+    const inputRef = createRef<{ focus: () => void }>();
+    render(
+      <Suspense fallback={<div>Loading</div>}>
+        <ChatInput
+          ref={inputRef}
+          input=""
+          onInputChange={() => undefined}
+          onSubmit={() => undefined}
+          variant="hero"
+        />
+      </Suspense>,
+    );
+
+    await screen.findByTestId("milkdown-editor");
+
+    inputRef.current?.focus();
+
+    expect(milkdownFocus).toHaveBeenCalledTimes(1);
   });
 
   it("points the microphone to Models when local ASR is not configured", async () => {

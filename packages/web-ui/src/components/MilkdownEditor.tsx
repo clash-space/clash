@@ -31,6 +31,8 @@ export interface MentionableNode {
 }
 
 export interface MilkdownEditorHandle {
+    /** Move focus into the editor. */
+    focus: () => void;
     /** Insert markdown at the current cursor position. Images (![alt](url)) are rendered inline. */
     insertAtCursor: (markdown: string) => void;
     /** Clear all editor content */
@@ -473,6 +475,9 @@ const MilkdownEditorInner = forwardRef<MilkdownEditorHandle, MilkdownEditorProps
     }, []);
 
     useImperativeHandle(ref, () => ({
+        focus() {
+            editorViewRef.current?.focus();
+        },
         clear() {
             const view = editorViewRef.current;
             if (!view) return;
