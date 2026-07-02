@@ -16,6 +16,7 @@ import {
     AlertDialogSurface,
     AlertDialogTitle,
 } from './ui/alert-dialog';
+import { Button } from './ui/button';
 
 export interface ConfirmOptions {
     title?: string;
@@ -102,26 +103,27 @@ function ConfirmDialog({
                         </div>
                         <div className="clash-confirm-dialog-footer flex justify-end gap-2 border-t border-warm-border/70 px-4 py-3">
                             <AlertDialogCancel asChild>
-                                <button
-                                    type="button"
-                                    className="clash-confirm-secondary px-3 py-2 min-h-[36px] rounded-lg text-xs font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-warm-surface"
+                                <Button
+                                    size="sm"
+                                    className="clash-confirm-secondary px-3 py-2 text-xs font-medium"
                                 >
                                     {pending.opts.cancelText ?? 'Cancel'}
-                                </button>
+                                </Button>
                             </AlertDialogCancel>
                             <AlertDialogAction asChild>
-                                <button
-                                    type="button"
+                                <Button
+                                    size="sm"
+                                    variant={pending.opts.destructive ? 'destructive' : 'primary'}
                                     ref={confirmBtnRef}
                                     onClick={() => onClose(true)}
-                                    className={`px-3 py-2 min-h-[36px] rounded-lg text-xs font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-warm-surface ${
+                                    className={`px-3 py-2 text-xs font-semibold ${
                                         pending.opts.destructive
                                             ? 'clash-confirm-danger'
                                             : 'clash-confirm-primary'
                                     }`}
                                 >
                                     {pending.opts.confirmText ?? 'Confirm'}
-                                </button>
+                                </Button>
                             </AlertDialogAction>
                         </div>
                     </>

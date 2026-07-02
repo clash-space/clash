@@ -39,6 +39,16 @@ describe("ConfirmDialog primitives", () => {
     expect(source).not.toContain("event.key === 'Enter'");
   });
 
+  it("uses the shared Button primitive for footer actions", () => {
+    const source = readSource("packages/web-ui/src/components/ConfirmDialog.tsx");
+
+    expect(source).toContain("./ui/button");
+    expect(source).toMatch(/<Button[\s\S]*clash-confirm-secondary[\s\S]*>/);
+    expect(source).toMatch(/<Button[\s\S]*confirmBtnRef[\s\S]*>/);
+    expect(source).not.toMatch(/<button[\s\S]{0,300}clash-confirm-secondary/);
+    expect(source).not.toMatch(/<button[\s\S]{0,300}confirmBtnRef/);
+  });
+
   it("does not confirm when Enter is pressed while the cancel button is focused", async () => {
     function ConfirmHarness() {
       const confirm = useConfirm();
