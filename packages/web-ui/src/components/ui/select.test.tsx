@@ -1,4 +1,6 @@
 // @vitest-environment jsdom
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -9,6 +11,18 @@ afterEach(() => {
 });
 
 describe("SelectMenu", () => {
+    it("routes trigger help text through the shared tooltip primitive instead of browser title attributes", () => {
+        const source = readFileSync(join(process.cwd(), "packages/web-ui/src/components/ui/select.tsx"), "utf8");
+        const tooltipSource = readFileSync(join(process.cwd(), "packages/web-ui/src/components/ui/tooltip.tsx"), "utf8");
+
+        expect(tooltipSource).toContain("@ariakit/react");
+        expect(source).toContain("./tooltip");
+        expect(source).toContain("<Tooltip label={title}>");
+        expect(source).not.toContain("title={title}");
+        expect(source).not.toContain("TooltipProvider");
+        expect(source).not.toContain("TooltipAnchor");
+    });
+
     it("uses native select semantics for simple option lists", () => {
         const onValueChange = vi.fn();
 

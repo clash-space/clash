@@ -10,6 +10,7 @@ import { CaretDown, CaretRight, Check } from '@phosphor-icons/react';
 import { DropdownMenu as DropdownMenuPrimitive, Select as SelectPrimitive } from 'radix-ui';
 
 import { cn } from '../ai-elements/utils';
+import { Tooltip } from './tooltip';
 
 export type SelectValue = string | number | boolean;
 
@@ -165,35 +166,38 @@ function DropdownSelectMenu<Value extends SelectValue = string>({
         onValueChange(option.value, option);
     }, [onValueChange]);
 
+    const trigger = (
+        <DropdownMenuPrimitive.Trigger asChild>
+            <button
+                type="button"
+                aria-label={ariaLabel}
+                disabled={isDisabled}
+                onClick={handleEventBoundary}
+                onPointerDown={handleEventBoundary}
+                className={cn(
+                    'clash-select-trigger inline-flex min-w-0 items-center gap-1.5 transition-colors',
+                    'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-warm-surface',
+                    'disabled:cursor-not-allowed disabled:opacity-45',
+                    triggerVariantClasses[variant],
+                    triggerSizeClasses[size],
+                    triggerClassName,
+                )}
+            >
+                {triggerPrefix}
+                <span className="min-w-0 flex-1 truncate text-left">{label}</span>
+                {triggerSuffix}
+                {showCaret ? <CaretDown className="h-3.5 w-3.5 flex-shrink-0 text-stone-500 dark:text-stone-400" aria-hidden="true" /> : null}
+            </button>
+        </DropdownMenuPrimitive.Trigger>
+    );
+
     return (
         <DropdownMenuPrimitive.Root
             open={controlledOpen}
             onOpenChange={handleOpenChange}
         >
             <div className={cn('relative inline-flex min-w-0', className)}>
-                <DropdownMenuPrimitive.Trigger asChild>
-                    <button
-                        type="button"
-                        aria-label={ariaLabel}
-                        disabled={isDisabled}
-                        title={title}
-                        onClick={handleEventBoundary}
-                        onPointerDown={handleEventBoundary}
-                        className={cn(
-                            'clash-select-trigger inline-flex min-w-0 items-center gap-1.5 transition-colors',
-                            'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-warm-surface',
-                            'disabled:cursor-not-allowed disabled:opacity-45',
-                            triggerVariantClasses[variant],
-                            triggerSizeClasses[size],
-                            triggerClassName,
-                        )}
-                    >
-                        {triggerPrefix}
-                        <span className="min-w-0 flex-1 truncate text-left">{label}</span>
-                        {triggerSuffix}
-                        {showCaret ? <CaretDown className="h-3.5 w-3.5 flex-shrink-0 text-stone-500 dark:text-stone-400" aria-hidden="true" /> : null}
-                    </button>
-                </DropdownMenuPrimitive.Trigger>
+                {title ? <Tooltip label={title}>{trigger}</Tooltip> : trigger}
             </div>
             <DropdownMenuPrimitive.Portal>
                 <DropdownMenuPrimitive.Content
@@ -290,6 +294,31 @@ function RadixSelectMenu<Value extends SelectValue = string>({
         if (stopPropagation) event.stopPropagation();
     };
 
+    const trigger = (
+        <SelectPrimitive.Trigger
+            aria-label={ariaLabel}
+            onClick={handleEventBoundary}
+            onPointerDown={handleEventBoundary}
+            className={cn(
+                'clash-select-trigger inline-flex min-w-0 items-center gap-1.5 transition-colors',
+                'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-warm-surface',
+                'disabled:cursor-not-allowed disabled:opacity-45',
+                triggerVariantClasses[variant],
+                triggerSizeClasses[size],
+                triggerClassName,
+            )}
+        >
+            {triggerPrefix}
+            <span className="min-w-0 flex-1 truncate text-left">{label}</span>
+            {triggerSuffix}
+            {showCaret ? (
+                <SelectPrimitive.Icon asChild>
+                    <CaretDown className="h-3.5 w-3.5 flex-shrink-0 text-stone-500 dark:text-stone-400" aria-hidden="true" />
+                </SelectPrimitive.Icon>
+            ) : null}
+        </SelectPrimitive.Trigger>
+    );
+
     return (
         <SelectPrimitive.Root
             value={selectedStringValue}
@@ -299,29 +328,7 @@ function RadixSelectMenu<Value extends SelectValue = string>({
             disabled={isDisabled}
         >
             <div className={cn('relative inline-flex min-w-0', className)}>
-                <SelectPrimitive.Trigger
-                    aria-label={ariaLabel}
-                    title={title}
-                    onClick={handleEventBoundary}
-                    onPointerDown={handleEventBoundary}
-                    className={cn(
-                        'clash-select-trigger inline-flex min-w-0 items-center gap-1.5 transition-colors',
-                        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-warm-surface',
-                        'disabled:cursor-not-allowed disabled:opacity-45',
-                        triggerVariantClasses[variant],
-                        triggerSizeClasses[size],
-                        triggerClassName,
-                    )}
-                >
-                    {triggerPrefix}
-                    <span className="min-w-0 flex-1 truncate text-left">{label}</span>
-                    {triggerSuffix}
-                    {showCaret ? (
-                        <SelectPrimitive.Icon asChild>
-                            <CaretDown className="h-3.5 w-3.5 flex-shrink-0 text-stone-500 dark:text-stone-400" aria-hidden="true" />
-                        </SelectPrimitive.Icon>
-                    ) : null}
-                </SelectPrimitive.Trigger>
+                {title ? <Tooltip label={title}>{trigger}</Tooltip> : trigger}
             </div>
             <SelectPrimitive.Portal>
                 <SelectPrimitive.Content
