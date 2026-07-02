@@ -33,6 +33,8 @@ import {
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '../ui/collapsible';
 import { Popover, PopoverContent, PopoverTrigger } from '../ui/popover';
 import { Tooltip } from '../ui/tooltip';
+import { Button } from '../ui/button';
+import { IconButton } from '../ui/icon-button';
 
 const ACP_EVENT_ICON_SLOT_CLASS =
   'flex h-5 w-5 shrink-0 items-center justify-center transition-colors group-hover:text-neutral-700';
@@ -393,9 +395,9 @@ function ShellCommandEntry({
       )}
     >
       <CollapsibleTrigger asChild>
-        <button
-          type="button"
-          className="group inline-flex max-w-full items-center gap-2 text-left text-[13px] leading-5 outline-none focus-visible:underline focus-visible:decoration-neutral-300 focus-visible:underline-offset-4"
+        <Button
+          size="sm"
+          className="group min-h-0 max-w-full justify-start gap-2 rounded-none border-transparent bg-transparent p-0 text-left text-[13px] leading-5 shadow-none hover:bg-transparent focus-visible:ring-0 focus-visible:underline focus-visible:decoration-neutral-300 focus-visible:underline-offset-4"
         >
           <ShellEventIcon failed={view.failed} />
           <Tooltip label={label}>
@@ -404,7 +406,7 @@ function ShellCommandEntry({
             </span>
           </Tooltip>
           <ChevronRight className={cn('h-3.5 w-3.5 shrink-0 text-stone-400 transition-transform', open && 'rotate-90')} />
-        </button>
+        </Button>
       </CollapsibleTrigger>
       <CollapsibleContent asChild>
         <div data-testid="acp-tool-details" className="mt-1 w-full">
@@ -442,16 +444,16 @@ function ShellCommandGroup({
       )}
     >
       <CollapsibleTrigger asChild>
-        <button
-          type="button"
-          className="group inline-flex max-w-full items-center gap-2 text-left text-[13px] leading-5 outline-none focus-visible:underline focus-visible:decoration-neutral-300 focus-visible:underline-offset-4"
+        <Button
+          size="sm"
+          className="group min-h-0 max-w-full justify-start gap-2 rounded-none border-transparent bg-transparent p-0 text-left text-[13px] leading-5 shadow-none hover:bg-transparent focus-visible:ring-0 focus-visible:underline focus-visible:decoration-neutral-300 focus-visible:underline-offset-4"
         >
           <ShellEventIcon failed={failed} />
           <span className="min-w-0 truncate font-medium text-neutral-500 dark:text-stone-300">
             {label}
           </span>
           <ChevronRight className={cn('h-3.5 w-3.5 shrink-0 text-stone-400 transition-transform', open && 'rotate-90')} />
-        </button>
+        </Button>
       </CollapsibleTrigger>
       <CollapsibleContent asChild>
         <div className="mt-1 space-y-1.5">
@@ -480,11 +482,11 @@ function ThoughtRow({ text, defaultOpen = false }: { text: string; defaultOpen?:
       className="not-prose my-1 w-full text-neutral-500"
     >
       <CollapsibleTrigger asChild>
-        <button
-          type="button"
+        <Button
+          size="sm"
           disabled={!hasBody}
           className={cn(
-            'group inline-flex max-w-full items-center gap-2 text-left text-[13px] leading-5 outline-none',
+            'group min-h-0 max-w-full justify-start gap-2 rounded-none border-transparent bg-transparent p-0 text-left text-[13px] leading-5 shadow-none hover:bg-transparent focus-visible:ring-0',
             hasBody ? 'cursor-pointer focus-visible:underline focus-visible:decoration-neutral-300 focus-visible:underline-offset-4' : 'cursor-default',
           )}
         >
@@ -495,7 +497,7 @@ function ThoughtRow({ text, defaultOpen = false }: { text: string; defaultOpen?:
           {hasBody ? (
             <ChevronRight className={cn('h-3.5 w-3.5 shrink-0 text-stone-400 transition-transform', open && 'rotate-90')} />
           ) : null}
-        </button>
+        </Button>
       </CollapsibleTrigger>
       <CollapsibleContent asChild>
         <div
@@ -536,11 +538,11 @@ function ToolRow({ tool, defaultOpen = false }: { tool: AcpToolCallPart; default
       )}
     >
       <CollapsibleTrigger asChild>
-        <button
-          type="button"
+        <Button
+          size="sm"
           disabled={!hasBody}
           className={cn(
-            'group inline-flex max-w-full items-center gap-2 text-left text-[13px] leading-5 outline-none',
+            'group min-h-0 max-w-full justify-start gap-2 rounded-none border-transparent bg-transparent p-0 text-left text-[13px] leading-5 shadow-none hover:bg-transparent focus-visible:ring-0',
             hasBody ? 'cursor-pointer focus-visible:underline focus-visible:decoration-neutral-300 focus-visible:underline-offset-4' : 'cursor-default',
           )}
         >
@@ -561,7 +563,7 @@ function ToolRow({ tool, defaultOpen = false }: { tool: AcpToolCallPart; default
           {hasBody ? (
             <ChevronRight className={cn('h-3.5 w-3.5 shrink-0 text-stone-400 transition-transform', open && 'rotate-90')} />
           ) : null}
-        </button>
+        </Button>
       </CollapsibleTrigger>
       <CollapsibleContent asChild>
         <div
@@ -661,13 +663,12 @@ export function AcpProgressPanel({
     <div className={cn('relative', className)}>
       <Popover open={open} onOpenChange={setOpen}>
         <PopoverTrigger asChild>
-          <button
-            type="button"
-            aria-label={open ? 'Hide progress' : 'Show progress'}
+          <IconButton
+            label={open ? 'Hide progress' : 'Show progress'}
+            icon={<ListChecks className="h-4 w-4" aria-hidden="true" />}
+            size="sm"
             className="flex h-8 w-8 items-center justify-center rounded-lg bg-transparent text-slate-800 transition-colors hover:bg-warm-muted focus:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-warm-surface dark:text-slate-200"
-          >
-            <ListChecks className="h-4 w-4" aria-hidden="true" />
-          </button>
+          />
         </PopoverTrigger>
         <PopoverContent
           side="bottom"

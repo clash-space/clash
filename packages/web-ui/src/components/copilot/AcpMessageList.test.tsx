@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ByoMessage } from "@clash/web-ui/lib/acpEvents";
 
@@ -50,7 +50,7 @@ describe("AcpMessageList", () => {
     expect(screen.getAllByTestId("acp-event-icon")[0].className).toContain("w-5");
     expect(screen.getAllByTestId("acp-event-icon")[0].className).toContain("justify-center");
     expect(screen.getByText("已列出")).toBeTruthy();
-    expect(screen.getByText("List canvas nodes")).toBeTruthy();
+    expect(within(screen.getByTestId("acp-tool-row")).getByText("List canvas nodes")).toBeTruthy();
     expect(screen.getByText(/画布上当前有 2 个节点/)).toBeTruthy();
     expect(screen.getByTestId("acp-tool-row").className).not.toContain("bg-neutral-100");
     expect(screen.getByTestId("acp-tool-row").className).not.toContain("radial-gradient");

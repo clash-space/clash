@@ -70,4 +70,17 @@ describe("AcpMessageList primitives", () => {
     expect(source).not.toContain("TooltipProvider");
     expect(source).not.toContain("TooltipAnchor");
   });
+
+  it("uses shared button primitives for ACP row and progress triggers", () => {
+    const source = readCopilotSource("AcpMessageList.tsx");
+
+    expect(source).toContain("../ui/button");
+    expect(source).toContain("../ui/icon-button");
+    expect(source).toMatch(/<Button[\s\S]*ShellEventIcon/);
+    expect(source).toMatch(/<Button[\s\S]*AcpEventIcon/);
+    expect(source).toMatch(/<IconButton[\s\S]*Hide progress/);
+    expect(source).not.toMatch(/<button[\s\S]*ShellEventIcon/);
+    expect(source).not.toMatch(/<button[\s\S]*AcpEventIcon/);
+    expect(source).not.toMatch(/<button[\s\S]*Hide progress/);
+  });
 });
