@@ -79,11 +79,9 @@ const actionMentionItemId = (nodeId: string): string => `action-mention-${nodeId
 
 function ActionMentionPicker({
     nodes,
-    onPick,
     store,
 }: {
     nodes: ActionMentionNode[];
-    onPick: (node: ActionMentionNode) => void;
     store: ComboboxStore;
 }) {
     return (
@@ -101,12 +99,8 @@ function ActionMentionPicker({
                             value={node.id}
                             focusOnHover
                             setValueOnClick={false}
-                            selectValueOnClick={false}
                             onMouseDown={(event) => {
                                 event.preventDefault();
-                            }}
-                            onClick={() => {
-                                onPick(node);
                             }}
                             className="flex w-full cursor-default items-center gap-2.5 px-3 py-2 text-left text-xs transition-colors outline-none hover:bg-warm-muted data-[active-item]:bg-warm-muted"
                         >
@@ -841,6 +835,10 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
     const mentionCombobox = useComboboxStore({
         value: mentionQuery,
         setValue: () => undefined,
+        setSelectedValue: (selectedValue) => {
+            const node = filteredMentionNodes.find((candidate) => candidate.id === selectedValue);
+            if (node) insertMention(node);
+        },
         focusLoop: true,
         focusWrap: true,
         orientation: 'vertical',
@@ -1804,7 +1802,6 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
                         {showMentionMenu && filteredMentionNodes.length > 0 && (
                             <ActionMentionPicker
                                 nodes={filteredMentionNodes}
-                                onPick={insertMention}
                                 store={mentionCombobox}
                             />
                         )}
