@@ -26,6 +26,7 @@ import { useConfirm } from '../ConfirmDialog';
 import { SelectMenu, type SelectOption, type SelectValue } from '../ui/select';
 import { Popover, PopoverContent, PopoverTrigger } from '../ui/popover';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '../ui/collapsible';
+import { Tooltip } from '../ui/tooltip';
 import { useSpawnPendingAsset } from './useSpawnPendingAsset';
 import ActionBadgePipelineMenu from './ActionBadgePipelineMenu';
 import AttributionLine from './AttributionLine';
@@ -330,6 +331,9 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
         ? (customDef?.name ?? customActionId ?? 'Custom action')
         : (selectedModel?.name || modelId);
     const countValue = Number(modelParams.count ?? 1);
+    const modelPickerLabel = customActionOffline ? RUNTIME_OFFLINE_TOOLTIP : modelDisplay;
+    const frozenRunLabel = customActionOffline ? RUNTIME_OFFLINE_TOOLTIP : 'Run again with current parameters';
+    const panelRunLabel = customActionOffline ? RUNTIME_OFFLINE_TOOLTIP : 'Run action';
 
     // Single derivation — all per-modality questions read fields off `cap`.
     // See packages/shared-types/src/model-capabilities.ts.
@@ -1819,53 +1823,56 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
                             className="relative"
                             style={customActionOffline ? { opacity: 0.5 } : undefined}
                         >
-                            <SelectMenu<string>
-                                className="relative"
-                                triggerClassName="px-2.5 py-1 text-xs"
-                                value={modelId}
-                                options={[...availableModels]
-                                    .sort((a, b) => {
-                                        // Compatible first, incompatible after — keeps the "broken" options
-                                        // discoverable without pushing the good choices offscreen.
-                                        const ca = refNodeIds.length === 0 || isModelCompatibleWithRefs(a) ? 0 : 1;
-                                        const cb = refNodeIds.length === 0 || isModelCompatibleWithRefs(b) ? 0 : 1;
-                                        return ca - cb;
-                                    })
-                                    .map((card) => {
-                                        const compat = refNodeIds.length === 0 || isModelCompatibleWithRefs(card);
-                                        return {
-                                            value: card.id,
-                                            label: card.name,
-                                            description: getModelDropdownSecondaryText(compat),
-                                        };
-                                    })}
-                                onValueChange={(nextModelId) => {
-                                    handleModelChange(nextModelId);
-                                    setShowModelDropdown(false);
-                                    setParamsPopoverOpen(false);
-                                    setBatchCountMenuOpen(false);
-                                }}
-                                ariaLabel="Model"
-                                triggerLabel={modelDisplay}
-                                triggerPrefix={<Icon size={12} weight="bold" className={colorClass} />}
-                                variant="pill"
-                                size="sm"
-                                placement="top"
-                                menuWidth={240}
-                                maxMenuHeight={192}
-                                open={showModelDropdown}
-                                onOpenChange={(nextOpen) => {
-                                    if (customActionOffline) return;
-                                    setShowModelDropdown(nextOpen);
-                                    if (nextOpen) {
-                                        setParamsPopoverOpen(false);
-                                        setBatchCountMenuOpen(false);
-                                    }
-                                }}
-                                disabled={customActionOffline}
-                                title={customActionOffline ? RUNTIME_OFFLINE_TOOLTIP : undefined}
-                                stopPropagation
-                            />
+                            <Tooltip label={modelPickerLabel}>
+                                <span className="inline-flex min-w-0">
+                                    <SelectMenu<string>
+                                        className="relative"
+                                        triggerClassName="px-2.5 py-1 text-xs"
+                                        value={modelId}
+                                        options={[...availableModels]
+                                            .sort((a, b) => {
+                                                // Compatible first, incompatible after — keeps the "broken" options
+                                                // discoverable without pushing the good choices offscreen.
+                                                const ca = refNodeIds.length === 0 || isModelCompatibleWithRefs(a) ? 0 : 1;
+                                                const cb = refNodeIds.length === 0 || isModelCompatibleWithRefs(b) ? 0 : 1;
+                                                return ca - cb;
+                                            })
+                                            .map((card) => {
+                                                const compat = refNodeIds.length === 0 || isModelCompatibleWithRefs(card);
+                                                return {
+                                                    value: card.id,
+                                                    label: card.name,
+                                                    description: getModelDropdownSecondaryText(compat),
+                                                };
+                                            })}
+                                        onValueChange={(nextModelId) => {
+                                            handleModelChange(nextModelId);
+                                            setShowModelDropdown(false);
+                                            setParamsPopoverOpen(false);
+                                            setBatchCountMenuOpen(false);
+                                        }}
+                                        ariaLabel="Model"
+                                        triggerLabel={modelDisplay}
+                                        triggerPrefix={<Icon size={12} weight="bold" className={colorClass} />}
+                                        variant="pill"
+                                        size="sm"
+                                        placement="top"
+                                        menuWidth={240}
+                                        maxMenuHeight={192}
+                                        open={showModelDropdown}
+                                        onOpenChange={(nextOpen) => {
+                                            if (customActionOffline) return;
+                                            setShowModelDropdown(nextOpen);
+                                            if (nextOpen) {
+                                                setParamsPopoverOpen(false);
+                                                setBatchCountMenuOpen(false);
+                                            }
+                                        }}
+                                        disabled={customActionOffline}
+                                        stopPropagation
+                                    />
+                                </span>
+                            </Tooltip>
                             {customActionOffline && (
                                 <span className="ml-2 text-[10px] text-slate-700 dark:text-slate-300 align-middle">
                                     {RUNTIME_OFFLINE_LABEL}
@@ -2032,31 +2039,37 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
                         {/* Frozen-only: Run (re-generate with current params) + Copy (clone into a fresh panel). */}
                         {isFrozen && (
                             <>
-                                <button
-                                    type="button"
-                                    onClick={(e) => { e.stopPropagation(); handleCopy(); }}
-                                    disabled={isExecuting}
-                                    className="flex items-center gap-1 h-7 px-2.5 rounded-full bg-warm-muted hover:bg-warm-hover text-stone-800 dark:text-stone-200 text-xs font-medium transition-colors flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
-                                    title="Duplicate this panel and open the copy"
-                                >
-                                    <Copy size={12} weight="bold" />
-                                    Copy & open
-                                </button>
-                                <button
-                                    type="button"
-                                    onClick={(e) => { e.stopPropagation(); if (customActionOffline) return; handleExecute(); }}
-                                    disabled={isExecuting || customActionOffline}
-                                    className="clash-node-primary flex items-center gap-1 px-3 h-7 rounded-full text-xs font-semibold flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
-                                    title={customActionOffline ? RUNTIME_OFFLINE_TOOLTIP : 'Run again with current parameters'}
-                                    aria-disabled={customActionOffline || undefined}
-                                >
-                                    {isExecuting ? (
-                                        <Spinner size={12} weight="bold" className="animate-spin" />
-                                    ) : (
-                                        <Play size={11} weight="fill" />
-                                    )}
-                                    Run
-                                </button>
+                                <Tooltip label="Duplicate this panel and open the copy">
+                                    <button
+                                        type="button"
+                                        onClick={(e) => { e.stopPropagation(); handleCopy(); }}
+                                        disabled={isExecuting}
+                                        className="flex items-center gap-1 h-7 px-2.5 rounded-full bg-warm-muted hover:bg-warm-hover text-stone-800 dark:text-stone-200 text-xs font-medium transition-colors flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
+                                        aria-label="Duplicate this panel and open the copy"
+                                    >
+                                        <Copy size={12} weight="bold" />
+                                        Copy & open
+                                    </button>
+                                </Tooltip>
+                                <Tooltip label={frozenRunLabel}>
+                                    <span className="inline-flex flex-shrink-0">
+                                        <button
+                                            type="button"
+                                            onClick={(e) => { e.stopPropagation(); if (customActionOffline) return; handleExecute(); }}
+                                            disabled={isExecuting || customActionOffline}
+                                            className="clash-node-primary flex items-center gap-1 px-3 h-7 rounded-full text-xs font-semibold flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
+                                            aria-label={frozenRunLabel}
+                                            aria-disabled={customActionOffline || undefined}
+                                        >
+                                            {isExecuting ? (
+                                                <Spinner size={12} weight="bold" className="animate-spin" />
+                                            ) : (
+                                                <Play size={11} weight="fill" />
+                                            )}
+                                            Run
+                                        </button>
+                                    </span>
+                                </Tooltip>
                             </>
                         )}
                     </div>
@@ -2115,21 +2128,25 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
                             </PopoverTrigger>
                             <div className="flex flex-shrink-0 items-center pr-3.5">
                                 {/* Run button — separate click target */}
-                                <button
-                                    className={`nodrag flex-shrink-0 flex h-7 items-center gap-1.5 px-3 rounded-lg text-xs font-semibold text-white transition-all hover:scale-[1.02] active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed ${btnClass}`}
-                                    onClick={(e) => { e.stopPropagation(); if (customActionOffline) return; handleExecute(); }}
-                                    disabled={isExecuting || customActionOffline}
-                                    title={customActionOffline ? RUNTIME_OFFLINE_TOOLTIP : undefined}
-                                    aria-disabled={customActionOffline || undefined}
-                                    type="button"
-                                >
-                                    {isExecuting ? (
-                                        <Spinner size={12} className="animate-spin" />
-                                    ) : (
-                                        <Play size={12} weight="fill" />
-                                    )}
-                                    {isExecuting ? 'Running' : 'Run'}
-                                </button>
+                                <Tooltip label={panelRunLabel}>
+                                    <span className="inline-flex flex-shrink-0">
+                                        <button
+                                            className={`nodrag flex-shrink-0 flex h-7 items-center gap-1.5 px-3 rounded-lg text-xs font-semibold text-white transition-all hover:scale-[1.02] active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed ${btnClass}`}
+                                            onClick={(e) => { e.stopPropagation(); if (customActionOffline) return; handleExecute(); }}
+                                            disabled={isExecuting || customActionOffline}
+                                            aria-label={panelRunLabel}
+                                            aria-disabled={customActionOffline || undefined}
+                                            type="button"
+                                        >
+                                            {isExecuting ? (
+                                                <Spinner size={12} className="animate-spin" />
+                                            ) : (
+                                                <Play size={12} weight="fill" />
+                                            )}
+                                            {isExecuting ? 'Running' : 'Run'}
+                                        </button>
+                                    </span>
+                                </Tooltip>
                             </div>
                         </div>
 

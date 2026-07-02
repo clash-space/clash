@@ -81,4 +81,19 @@ describe("ActionBadge popover primitives", () => {
         expect(source).not.toContain("setExpandedParam(isExpanded ? null : p.id)");
         expect(source).not.toContain("{isExpanded && (");
     });
+
+    it("uses shared tooltip primitives for action control buttons instead of browser title attributes", () => {
+        const source = readNodeSource("ActionBadge.tsx");
+
+        expect(source).toContain("../ui/tooltip");
+        expect(source).toContain("<Tooltip label={modelPickerLabel}>");
+        expect(source).toContain('<Tooltip label="Duplicate this panel and open the copy">');
+        expect(source).toContain("<Tooltip label={frozenRunLabel}>");
+        expect(source).toContain("<Tooltip label={panelRunLabel}>");
+        expect(source).not.toContain("title={customActionOffline ? RUNTIME_OFFLINE_TOOLTIP : undefined}");
+        expect(source).not.toContain('title="Duplicate this panel and open the copy"');
+        expect(source).not.toContain("title={customActionOffline ? RUNTIME_OFFLINE_TOOLTIP : 'Run again with current parameters'}");
+        expect(source).not.toContain("TooltipProvider");
+        expect(source).not.toContain("TooltipAnchor");
+    });
 });
