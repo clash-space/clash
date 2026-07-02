@@ -20,6 +20,7 @@ import { useEffect, useState } from 'react';
 import { useAllPeers } from '../PresenceAwarenessContext';
 import betterAuthClient from '@clash/web-ui/lib/betterAuthClient';
 import { runtimeApiUrl } from '@clash/web-ui/lib/runtimeConfig';
+import { Tooltip } from '../ui/tooltip';
 
 interface AgentLite {
     id: string;
@@ -81,9 +82,11 @@ export default function AttributionLine({ actorType, actorUserId, actorAgentId }
     if (actorType === 'user') {
         const name = resolveUserName(actorUserId);
         return (
-            <span className="text-[10px] text-slate-500 dark:text-slate-400" title={`actorUserId=${actorUserId}`}>
-                Made by {name}
-            </span>
+            <Tooltip label={`actorUserId=${actorUserId}`}>
+                <span className="text-[10px] text-slate-500 dark:text-slate-400">
+                    Made by {name}
+                </span>
+            </Tooltip>
         );
     }
 
@@ -94,8 +97,10 @@ export default function AttributionLine({ actorType, actorUserId, actorAgentId }
         ? ` (${resolveUserName(actorUserId)}'s)`
         : '';
     return (
-        <span className="text-[10px] text-slate-500 dark:text-slate-400" title={`actorAgentId=${actorAgentId} actorUserId=${actorUserId}`}>
-            Made by {agentName}{ownerSuffix}
-        </span>
+        <Tooltip label={`actorAgentId=${actorAgentId} actorUserId=${actorUserId}`}>
+            <span className="text-[10px] text-slate-500 dark:text-slate-400">
+                Made by {agentName}{ownerSuffix}
+            </span>
+        </Tooltip>
     );
 }
