@@ -28,6 +28,7 @@ import { AcpMessageList } from '@clash/web-ui/components/copilot/AcpMessageList'
 import { useChatScroll } from '@clash/web-ui/hooks/useChatScroll';
 import type { ByoMessage } from '@clash/web-ui/lib/acpEvents';
 import { PlanBar } from '../components/ai-elements';
+import { Button } from '../components/ui/button';
 
 interface AgentViewProps {
   messages: ByoMessage[];
@@ -115,14 +116,17 @@ export function AgentView({ messages, status, errorMessage, onRetry }: AgentView
           />
         </div>
         {!isAtBottom && (
-          <button
+          <Button
             onClick={scrollToBottom}
-            className="sticky bottom-2 mx-auto mt-2 flex items-center gap-1.5 min-h-[44px] px-4 py-2 text-xs font-medium rounded-full bg-brand text-brand-foreground shadow-md hover:bg-brand/90 transition-colors z-10 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand/60 focus-visible:ring-offset-1 focus-visible:ring-offset-warm-surface"
+            variant="primary"
+            size="md"
+            shape="pill"
+            leftIcon={<ArrowDown className="w-3.5 h-3.5" weight="bold" />}
+            className="sticky bottom-2 mx-auto mt-2 z-10 focus-visible:ring-offset-1"
             aria-label="Scroll to latest message"
           >
-            <ArrowDown className="w-3.5 h-3.5" weight="bold" aria-hidden="true" />
             New messages
-          </button>
+          </Button>
         )}
       </div>
       {latestPlan && (

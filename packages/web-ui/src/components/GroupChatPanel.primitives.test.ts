@@ -33,6 +33,18 @@ describe("GroupChatPanel primitives", () => {
     expect(pillSource).not.toContain(">×</button>");
   });
 
+  it("uses the shared button primitive for jump-to-latest controls", () => {
+    const agentViewSource = readSource("packages/web-ui/src/_group-chat/AgentView.tsx");
+    const roomViewSource = readSource("packages/web-ui/src/_group-chat/RoomView.tsx");
+
+    expect(agentViewSource).toContain("../components/ui/button");
+    expect(roomViewSource).toContain("../components/ui/button");
+    expect(agentViewSource).toContain("<Button");
+    expect(roomViewSource).toContain("<Button");
+    expect(agentViewSource).not.toMatch(/<button(?=[^>]*aria-label="Scroll to latest message")[^>]*>/);
+    expect(roomViewSource).not.toMatch(/<button(?=[^>]*aria-label="Scroll to latest message")[^>]*>/);
+  });
+
   it("does not keep the deprecated handwritten mention autocomplete path alive", () => {
     const panelSource = readSource("packages/web-ui/src/components/GroupChatPanel.tsx");
 
