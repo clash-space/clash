@@ -3366,6 +3366,51 @@ describe("SettingsClient model routing", () => {
     expect(within(editor).getByRole("combobox", { name: "Model to test" }).textContent).toContain("Mock Text Model");
   });
 
+  it("shows provider route details in the provider test model picker", async () => {
+    render(
+      <MemoryRouter>
+        <SettingsClient
+          initialTokens={[]}
+          initialVariables={[]}
+          initialActions={[]}
+          initialSkills={[]}
+          activeSection="providers"
+          embedded
+          initialModelProviders={[
+            {
+              id: "mock-primary",
+              label: "Mock primary",
+              providerId: "mock",
+              upstreamId: "mock",
+              enabled: true,
+              priority: 10,
+            },
+          ]}
+          initialModelCatalog={[]}
+        />
+      </MemoryRouter>,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Open Mock Provider BYOK settings" }));
+    const providerConfigs = screen.getByRole("list", { name: "Mock Provider prioritized keys" });
+    const providerConfig = within(providerConfigs).getByText("Mock primary").closest("li") as HTMLElement;
+    fireEvent.click(within(providerConfig).getByText("Mock primary"));
+
+    const editor = within(providerConfig).getByRole("group", { name: "Mock primary Mock Provider API key" });
+    fireEvent.click(within(editor).getByRole("combobox", { name: "Model to test" }));
+
+    const imageOption = screen.getByRole("option", { name: /Mock Image Model/ });
+    expect(within(imageOption).getByText("image")).toBeTruthy();
+    expect(imageOption.textContent).toContain("fal-ai/mock-image");
+    expect(imageOption.textContent).toContain("fal");
+
+    const search = screen.getByRole("combobox", { name: "Search test models" });
+    fireEvent.change(search, { target: { value: "fal-ai/mock-image" } });
+
+    expect(screen.getByRole("option", { name: /Mock Image Model/ })).toBeTruthy();
+    expect(screen.queryByRole("option", { name: /Mock Text Model/ })).toBeNull();
+  });
+
   it("opens provider test model choices from keyboard like a real select", async () => {
     render(
       <MemoryRouter>

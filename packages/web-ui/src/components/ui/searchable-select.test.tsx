@@ -83,4 +83,41 @@ describe("SearchableSelect", () => {
             expect.objectContaining({ value: "image-model" }),
         );
     });
+
+    it("indexes text from rich option labels and descriptions", () => {
+        const onValueChange = vi.fn();
+
+        render(
+            <SearchableSelect
+                ariaLabel="Model to test"
+                emptyMessage="No matching models."
+                listboxLabel="Model to test"
+                onValueChange={onValueChange}
+                options={[
+                    {
+                        value: "vision-model",
+                        label: (
+                            <span>
+                                <strong>Vision Model</strong>
+                                <span>image</span>
+                            </span>
+                        ),
+                        description: <span>fal-ai/vision</span>,
+                    },
+                    { value: "text-model", label: "Text Model", description: "openai/text" },
+                ]}
+                searchAriaLabel="Search test models"
+                searchPlaceholder="Search models..."
+                value="text-model"
+            />,
+        );
+
+        fireEvent.click(screen.getByRole("combobox", { name: "Model to test" }));
+        fireEvent.change(screen.getByRole("combobox", { name: "Search test models" }), {
+            target: { value: "fal-ai/vision" },
+        });
+
+        expect(screen.getByRole("option", { name: /Vision Model/ })).toBeTruthy();
+        expect(screen.queryByRole("option", { name: /Text Model/ })).toBeNull();
+    });
 });

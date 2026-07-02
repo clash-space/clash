@@ -1,4 +1,6 @@
 import {
+    Children,
+    isValidElement,
     useCallback,
     useEffect,
     useMemo,
@@ -22,6 +24,9 @@ import type { SelectOption, SelectValue } from './select';
 export function searchableSelectText(node: ReactNode): string {
     if (typeof node === 'string' || typeof node === 'number') return String(node);
     if (Array.isArray(node)) return node.map(searchableSelectText).join(' ');
+    if (isValidElement<{ children?: ReactNode }>(node)) {
+        return Children.toArray(node.props.children).map(searchableSelectText).join(' ');
+    }
     return '';
 }
 
@@ -175,13 +180,15 @@ export function SearchableSelect<Value extends SelectValue = string>({
                         ) : (
                             filteredOptions.map((option) => {
                                 const description = searchableSelectText(option.description);
+                                const optionLabel = searchableSelectText(option.label) || String(option.value);
+                                const optionAriaLabel = [optionLabel, description].filter(Boolean).join(' ');
                                 const selected = String(option.value) === String(value);
                                 return (
                                     <SelectItem
                                         key={String(option.value)}
                                         value={String(option.value)}
                                         role="option"
-                                        aria-label={searchableSelectText(option.label) || String(option.value)}
+                                        aria-label={optionAriaLabel}
                                         aria-selected={selected}
                                         disabled={option.disabled}
                                         className={cn(
@@ -201,7 +208,7 @@ export function SearchableSelect<Value extends SelectValue = string>({
                                             <span className="block truncate font-medium leading-5">{option.label}</span>
                                             {option.description ? (
                                                 <span className="block truncate text-xs font-normal leading-4 text-stone-600 dark:text-stone-400">
-                                                    {description || option.description}
+                                                    {option.description}
                                                 </span>
                                             ) : null}
                                         </span>

@@ -287,7 +287,8 @@ export function clickComposerSubmitButton(agentBrowser) {
 }
 
 export async function startVite({ webPort, logs }) {
-  const web = spawn("pnpm", ["--dir", webDir, "exec", "vite", "--host", "127.0.0.1", "--port", String(webPort)], {
+  const viteBin = path.join(repoRoot, "node_modules", ".bin", process.platform === "win32" ? "vite.cmd" : "vite");
+  const web = spawn(viteBin, ["--host", "127.0.0.1", "--port", String(webPort)], {
     cwd: webDir,
     env: process.env,
     stdio: ["ignore", "pipe", "pipe"],

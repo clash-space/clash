@@ -1561,27 +1561,74 @@ function SupportedModelPicker({
     );
 }
 
+type ProviderTestModelOption = SelectOption<string> & {
+    modelName: string;
+    modelKind: string;
+    upstreamModel: string;
+    apiShape: string;
+};
+
+function ModelKindIcon({ kind }: { kind: string }) {
+    const className = 'h-4 w-4';
+    if (kind === 'video') return <VideoCamera className={className} aria-hidden="true" />;
+    if (kind === 'audio') return <SpeakerHigh className={className} aria-hidden="true" />;
+    if (kind === 'text') return <TextT className={className} aria-hidden="true" />;
+    if (kind === 'asr') return <Microphone className={className} aria-hidden="true" />;
+    return <ImageSquare className={className} aria-hidden="true" />;
+}
+
+function providerTestModelOptionLabel(option: ProviderTestModelOption): ReactNode {
+    return (
+        <span className="flex min-w-0 items-center gap-2">
+            <span className="truncate font-medium">{option.modelName}</span>
+            <span className="inline-flex flex-shrink-0 items-center gap-1 rounded-md bg-warm-muted px-1.5 py-0.5 text-[11px] font-medium text-stone-700 dark:bg-slate-800 dark:text-stone-300">
+                <ModelKindIcon kind={option.modelKind} />
+                {option.modelKind}
+            </span>
+        </span>
+    );
+}
+
+function providerTestModelTriggerLabel(option: ProviderTestModelOption): ReactNode {
+    return (
+        <span className="flex min-w-0 items-center gap-2">
+            <span className="truncate">{option.modelName}</span>
+            <span className="inline-flex flex-shrink-0 items-center gap-1 rounded-md bg-warm-muted px-1.5 py-0.5 text-[11px] font-medium text-stone-700 dark:bg-slate-800 dark:text-stone-300">
+                <ModelKindIcon kind={option.modelKind} />
+                {option.modelKind}
+            </span>
+        </span>
+    );
+}
+
 function ProviderTestModelPicker({
     value,
     options,
     onValueChange,
 }: {
     value: string;
-    options: SelectOption<string>[];
-    onValueChange: (value: string, option: SelectOption<string>) => void;
+    options: ProviderTestModelOption[];
+    onValueChange: (value: string, option: ProviderTestModelOption) => void;
 }) {
+    const selectedOption = options.find((option) => String(option.value) === String(value));
+
     return (
         <SearchableSelect
             ariaLabel="Model to test"
             emptyMessage="No matching models."
             listboxLabel="Model to test"
-            onValueChange={(nextValue, option) => onValueChange(String(nextValue), option)}
+            matchTriggerWidth
+            onValueChange={(nextValue) => {
+                const option = options.find((item) => String(item.value) === String(nextValue));
+                if (option) onValueChange(String(nextValue), option);
+            }}
             options={options}
             placeholder="Select model"
             searchAriaLabel="Search test models"
             searchInputClassName={`${settingsSearchFieldClass} h-9 text-xs`}
             searchPlaceholder="Search models..."
             triggerClassName={`clash-settings-select-trigger ${settingsSelectTriggerClass}`}
+            triggerLabel={selectedOption ? providerTestModelTriggerLabel(selectedOption) : undefined}
             value={value}
         />
     );
@@ -2597,7 +2644,23 @@ function ModelRoutingSection({
             ? `${editingAccountLabel} ${row.title} ${accountNoun}`
             : `New ${row.title} ${accountNoun}`;
         const allProviderModels = [...new Map((row.support?.models ?? []).map((model) => [model.id, model])).values()];
-        const allProviderModelOptions = allProviderModels.map<SelectOption<string>>((model) => ({
+        const allProviderModelOptions = allProviderModels.map<ProviderTestModelOption>((model) => {
+            const description = [model.upstreamModel, model.apiShape].filter(Boolean).join(' · ');
+            const option: ProviderTestModelOption = {
+                value: model.id,
+                modelName: model.name,
+                modelKind: model.kind,
+                upstreamModel: model.upstreamModel,
+                apiShape: model.apiShape,
+                label: '',
+                description,
+            };
+            option.label = providerTestModelOptionLabel(option);
+            return option;
+        });
+        const supportedModelOptions = allProviderModels
+            .filter((model) => !selectedSupportedModelIds.has(model.id))
+            .map<SelectOption<string>>((model) => ({
             value: model.id,
             label: model.name,
             description: model.id,
@@ -2605,7 +2668,6 @@ function ModelRoutingSection({
         const providerTestOptions = allProviderModelOptions.filter((option) =>
             modelAccessMode !== 'specific' || selectedSupportedModelIds.has(option.value),
         );
-        const supportedModelOptions = allProviderModelOptions.filter((option) => !selectedSupportedModelIds.has(option.value));
         const selectedSupportedModels = draftSupportedModelIds
             .map((id) => allProviderModels.find((model) => model.id === id))
             .filter((model): model is NonNullable<typeof row.support>['models'][number] => !!model);
