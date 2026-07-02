@@ -20,4 +20,11 @@ describe("ActionBadge popover primitives", () => {
 
         expect(source).toContain("showRefPicker || refPickerTarget !== null");
     });
+
+    it("uses the shared node modal shell for the expanded prompt editor", () => {
+        const source = readNodeSource("ActionBadge.tsx");
+
+        expect(source).toContain("./NodeModalDialog");
+        expect(source).not.toContain("fixed inset-0 z-[9999] flex items-center justify-center p-8");
+    });
 });

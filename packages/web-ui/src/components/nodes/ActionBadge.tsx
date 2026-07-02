@@ -29,6 +29,7 @@ import { useSpawnPendingAsset } from './useSpawnPendingAsset';
 import ActionBadgePipelineMenu from './ActionBadgePipelineMenu';
 import AttributionLine from './AttributionLine';
 import { getModelDropdownSecondaryText } from './modelDisplay';
+import { NodeModalDialog } from './NodeModalDialog';
 
 type ModelParams = Record<string, string | number | boolean>;
 type BuiltInActionKind = 'image' | 'video' | 'audio' | 'text';
@@ -1269,26 +1270,12 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
 
     // Modal content (from PromptNode)
     const modalContent = showModal ? (
-        <AnimatePresence>
-            <div className="fixed inset-0 z-[9999] flex items-center justify-center p-8">
-                {/* Backdrop */}
-                <motion.div
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    exit={{ opacity: 0 }}
-                    className="absolute inset-0 bg-white/80 backdrop-blur-sm"
-                    onClick={handleCancel}
-                />
-
-                {/* Modal */}
-                <motion.div
-                    initial={{ opacity: 0, scale: 0.95, y: 20 }}
-                    animate={{ opacity: 1, scale: 1, y: 0 }}
-                    exit={{ opacity: 0, scale: 0.95, y: 20 }}
-                    transition={{ type: 'spring', damping: 30, stiffness: 300 }}
-                    className="relative z-10 w-full max-w-5xl h-[85vh] bg-warm-surface rounded-xl shadow-lg overflow-hidden flex flex-col border border-warm-border"
-                    onClick={(e) => e.stopPropagation()}
-                >
+        <NodeModalDialog
+            open={showModal}
+            onClose={handleCancel}
+            ariaLabel="Expanded prompt editor"
+            overlayClassName="bg-white/80"
+        >
                     {/* Header with Title Input */}
                     <div className="px-12 pt-8 pb-2 flex justify-between items-start">
                         <input
@@ -1456,9 +1443,7 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
                             connectedNodeIds={refNodeIds}
                         />
                     </div>
-                </motion.div>
-            </div>
-        </AnimatePresence>
+        </NodeModalDialog>
     ) : null;
 
     // Computed display name for the badge
@@ -2103,7 +2088,7 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
             </div>
 
             {/* Portalled panels */}
-            {typeof window !== 'undefined' && modalContent && createPortal(modalContent, document.body)}
+            {modalContent}
             {typeof window !== 'undefined' && configPanel && createPortal(configPanel, document.body)}
         </>
     );
