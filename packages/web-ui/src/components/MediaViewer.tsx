@@ -2,6 +2,7 @@
 
 import { X } from "@phosphor-icons/react";
 import { Dialog } from "./ui/dialog";
+import { IconButton } from "./ui/icon-button";
 
 interface MediaViewerProps {
   isOpen: boolean;
@@ -33,14 +34,14 @@ export default function MediaViewer({
       contentClassName="flex max-h-[90vh] max-w-[90vw] flex-col items-center justify-center rounded-2xl bg-transparent p-4"
     >
       {/* Close Button */}
-      <button
-        type="button"
+      <IconButton
+        label="Close media viewer"
         onClick={onClose}
-        aria-label="Close media viewer"
-        className="clash-media-viewer-chrome absolute -top-14 right-0 flex min-h-[44px] min-w-[44px] items-center justify-center rounded-full p-2 text-slate-900 transition-colors hover:text-brand focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-warm-page"
-      >
-        <X size={24} weight="bold" aria-hidden="true" />
-      </button>
+        icon={<X size={24} weight="bold" />}
+        size="lg"
+        shape="circle"
+        className="clash-media-viewer-chrome absolute -top-14 right-0 text-slate-900 hover:text-brand focus-visible:ring-offset-warm-page"
+      />
 
       {/* Title */}
       {title && (

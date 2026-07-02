@@ -18,9 +18,12 @@ describe("MediaViewer primitives", () => {
     const source = readSource("packages/web-ui/src/components/MediaViewer.tsx");
 
     expect(source).toContain("./ui/dialog");
+    expect(source).toContain("./ui/icon-button");
+    expect(source).toContain("<IconButton");
     expect(source).not.toContain("window.addEventListener('keydown'");
     expect(source).not.toContain('role="dialog"');
     expect(source).not.toContain('aria-modal="true"');
+    expect(source).not.toMatch(/<button[\s\S]*clash-media-viewer-chrome/);
   });
 
   it("renders media in a named dialog and closes through Dialog interactions", () => {
