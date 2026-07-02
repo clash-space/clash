@@ -104,4 +104,13 @@ describe("ActionBadge popover primitives", () => {
         expect(source).not.toContain('title="${label}"');
         expect(source).not.toContain("title={label}");
     });
+
+    it("uses ReactFlow interaction boundary classes for node form controls instead of mouse suppression", () => {
+        const source = readNodeSource("ActionBadge.tsx");
+
+        expect(source).toContain("NODE_INTERACTION_BOUNDARY_CLASS");
+        expect(source).toContain("nodrag nopan");
+        expect(source).not.toContain("onMouseDown={(e) => e.stopPropagation()}");
+        expect(source).not.toContain("onPointerDown={e => e.stopPropagation()}");
+    });
 });

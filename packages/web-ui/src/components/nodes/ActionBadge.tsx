@@ -62,6 +62,7 @@ const PARAM_BOOLEAN_OPTIONS: SelectOption<boolean>[] = [
     { value: true, label: 'On' },
     { value: false, label: 'Off' },
 ];
+const NODE_INTERACTION_BOUNDARY_CLASS = 'nodrag nopan';
 
 function paramOptionsToSelectOptions(param: ModelParameter): SelectOption<SelectValue>[] {
     return (param.options ?? []).map((option) => ({
@@ -1329,8 +1330,7 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
                         step={param.step}
                         value={currentValue as number | string}
                         onChange={(e) => updateModelParam(param.id, Number(e.target.value))}
-                        className="w-full rounded-xl border border-warm-border bg-warm-surface px-3 py-2 text-xs font-medium text-slate-900 dark:text-slate-50 focus:outline-none focus:border-brand/70 transition-colors"
-                        onMouseDown={(e) => e.stopPropagation()}
+                        className={`${NODE_INTERACTION_BOUNDARY_CLASS} w-full rounded-xl border border-warm-border bg-warm-surface px-3 py-2 text-xs font-medium text-slate-900 dark:text-slate-50 focus:outline-none focus:border-brand/70 transition-colors`}
                     />
                     {param.description && (
                         <p className="text-[10px] text-stone-700 dark:text-stone-300 leading-snug">{param.description}</p>
@@ -1350,8 +1350,7 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
                         value={String(currentValue)}
                         onChange={(e) => updateModelParam(param.id, e.target.value)}
                         placeholder={param.placeholder}
-                        className="w-full rounded-xl border border-warm-border bg-warm-surface px-3 py-2 text-xs font-medium text-slate-900 dark:text-slate-50 focus:outline-none focus:border-brand/70 resize-none transition-colors"
-                        onMouseDown={(e) => e.stopPropagation()}
+                        className={`${NODE_INTERACTION_BOUNDARY_CLASS} w-full rounded-xl border border-warm-border bg-warm-surface px-3 py-2 text-xs font-medium text-slate-900 dark:text-slate-50 focus:outline-none focus:border-brand/70 resize-none transition-colors`}
                     />
                     {param.description && (
                         <p className="text-[10px] text-stone-700 dark:text-stone-300 leading-snug">{param.description}</p>
@@ -1362,7 +1361,7 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
 
         if (param.type === 'boolean') {
             return (
-                <label key={param.id} className="flex items-center justify-between rounded-xl bg-warm-muted px-3 py-2 border border-warm-border cursor-pointer">
+                <label key={param.id} className={`${NODE_INTERACTION_BOUNDARY_CLASS} flex items-center justify-between rounded-xl bg-warm-muted px-3 py-2 border border-warm-border cursor-pointer`}>
                     <div className="flex flex-col">
                         <span className="text-xs font-medium text-slate-900 dark:text-slate-50">{param.label}</span>
                         {param.description && (
@@ -1373,7 +1372,6 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
                         type="checkbox"
                         checked={Boolean(currentValue)}
                         onChange={(e) => updateModelParam(param.id, e.target.checked)}
-                        onMouseDown={(e) => e.stopPropagation()}
                         className="h-4 w-4 accent-brand"
                     />
                 </label>
@@ -1478,8 +1476,7 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
                                             </span>
                                             {!isFrozen && (
                                                 <button
-                                                    className="clash-node-ref-remove absolute -top-1 -right-1 rounded-full w-4 h-4 hidden group-hover/thumb:flex items-center justify-center text-[11px] leading-none"
-                                                    onPointerDown={e => e.stopPropagation()}
+                                                    className={`${NODE_INTERACTION_BOUNDARY_CLASS} clash-node-ref-remove absolute -top-1 -right-1 rounded-full w-4 h-4 hidden group-hover/thumb:flex items-center justify-center text-[11px] leading-none`}
                                                     onClick={() => removeRefNode(nodeId)}
                                                 >×</button>
                                             )}
@@ -1633,8 +1630,7 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
                                                         />
                                                         {!isFrozen && (
                                                             <button
-                                                                className="clash-node-ref-remove absolute -top-1 -right-1 rounded-full w-4 h-4 hidden group-hover/thumb:flex items-center justify-center text-[11px] leading-none"
-                                                                onPointerDown={e => e.stopPropagation()}
+                                                                className={`${NODE_INTERACTION_BOUNDARY_CLASS} clash-node-ref-remove absolute -top-1 -right-1 rounded-full w-4 h-4 hidden group-hover/thumb:flex items-center justify-center text-[11px] leading-none`}
                                                                 onClick={() => removeRefNode(nodeId!)}
                                                                 aria-label={`Clear ${fullLabel} frame`}
                                                             >×</button>
@@ -1743,8 +1739,7 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
                                                 </span>
                                                 {!isFrozen && (
                                                     <button
-                                                        className="clash-node-ref-remove absolute -top-1 -right-1 rounded-full w-4 h-4 hidden group-hover/thumb:flex items-center justify-center text-[11px] leading-none"
-                                                        onPointerDown={e => e.stopPropagation()}
+                                                        className={`${NODE_INTERACTION_BOUNDARY_CLASS} clash-node-ref-remove absolute -top-1 -right-1 rounded-full w-4 h-4 hidden group-hover/thumb:flex items-center justify-center text-[11px] leading-none`}
                                                         onClick={() => removeRefNode(nodeId)}
                                                     >×</button>
                                                 )}
@@ -1803,14 +1798,13 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
                             ref={editorRef}
                             contentEditable={!isFrozen}
                             suppressContentEditableWarning
-                            className={`w-full max-h-[40vh] overflow-y-auto text-sm focus:outline-none leading-relaxed empty:before:content-[attr(data-placeholder)] empty:before:text-stone-400 ${
+                            className={`${NODE_INTERACTION_BOUNDARY_CLASS} w-full max-h-[40vh] overflow-y-auto text-sm focus:outline-none leading-relaxed empty:before:content-[attr(data-placeholder)] empty:before:text-stone-400 ${
                                 isFrozen ? 'text-stone-700 dark:text-stone-300 cursor-default select-text' : 'text-slate-900 dark:text-slate-50'
                             }`}
                             style={{ minHeight: '3em' }}
                             data-placeholder="Describe anything you want to generate... (@ to ref assets)"
                             onInput={isFrozen ? undefined : handleEditorInput}
                             onKeyDown={isFrozen ? undefined : handleEditorKeyDown}
-                            onMouseDown={(e) => e.stopPropagation()}
                         />
                         {showMentionMenu && filteredMentionNodes.length > 0 && (
                             <ActionMentionPicker
@@ -1988,8 +1982,8 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
                                                             <input type="number" min={p.min} max={p.max} step={p.step}
                                                                 value={currentVal as number}
                                                                 onChange={(e) => updateModelParam(p.id, Number(e.target.value))}
-                                                                className="w-full text-xs border border-warm-border rounded-lg px-3 py-2 focus:outline-none focus:border-brand/70"
-                                                                onClick={(e) => e.stopPropagation()} onMouseDown={(e) => e.stopPropagation()}
+                                                                className={`${NODE_INTERACTION_BOUNDARY_CLASS} w-full text-xs border border-warm-border rounded-lg px-3 py-2 focus:outline-none focus:border-brand/70`}
+                                                                onClick={(e) => e.stopPropagation()}
                                                             />
                                                         )}
                                                         {p.type === 'slider' && (
@@ -2000,8 +1994,7 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
                                                                 <input type="range" min={p.min} max={p.max} step={p.step}
                                                                     value={currentVal as number}
                                                                     onChange={(e) => updateModelParam(p.id, Number(e.target.value))}
-                                                                    className="w-full h-1.5 bg-warm-hover rounded-full appearance-none cursor-pointer accent-brand"
-                                                                    onMouseDown={(e) => e.stopPropagation()}
+                                                                    className={`${NODE_INTERACTION_BOUNDARY_CLASS} w-full h-1.5 bg-warm-hover rounded-full appearance-none cursor-pointer accent-brand`}
                                                                 />
                                                             </div>
                                                         )}
