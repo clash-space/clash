@@ -1982,6 +1982,7 @@ function ModelRoutingSection({
     const [modelProviderFilter, setModelProviderFilter] = useState<'all' | 'ready' | 'missing'>('all');
     const [localAudioConfig, setLocalAudioConfig] = useState<LocalAudioConfig | null>(null);
     const [localAsrBusyModelId, setLocalAsrBusyModelId] = useState<string | null>(null);
+    const providerKeyInputRef = useRef<HTMLInputElement | null>(null);
     const localAsrConfigVersionRef = useRef(0);
     const providerKeySensors = useSensors(
         useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
@@ -1993,6 +1994,10 @@ function ModelRoutingSection({
     const [searchParams] = useSearchParams();
     const focusedModelId = showModels ? searchParams.get('model') : null;
     const focusedProviderKey = showModels ? searchParams.get('provider') : null;
+    useEffect(() => {
+        if (!addingProviderKey) return;
+        providerKeyInputRef.current?.focus();
+    }, [addingProviderKey]);
     const providerAccountsByKey = useMemo(() => {
         const rows = new Map<string, ModelProviderAccountInfo[]>();
         for (const account of providerAccounts) {
@@ -2599,11 +2604,6 @@ function ModelRoutingSection({
                 [row.key]: oauthProviderId ? { accountId: createProviderAccountId(row.key) } : {},
             }));
             setAddingProviderKey(row.key);
-            if (credentialFields.length > 0) {
-                window.setTimeout(() => {
-                    document.querySelector<HTMLInputElement>('[data-provider-key-input="true"]')?.focus();
-                }, 0);
-            }
         };
         const openExistingKeyEditor = (account: ModelProviderAccountInfo) => {
             setAddingProviderKey(null);
@@ -2784,7 +2784,7 @@ function ModelRoutingSection({
                                     onChange={(e) => updateCredentialDraft(credential.key, e.target.value)}
                                     placeholder={editingAccount ? 'Saved credential' : credential.placeholder ?? (index === 0 && savedAccounts.length > 0 ? 'Paste another API key' : 'Paste API key')}
                                     autoComplete="new-password"
-                                    data-provider-key-input={index === 0 ? 'true' : undefined}
+                                    ref={index === 0 ? providerKeyInputRef : undefined}
                                     className={`${settingsFieldClass} pr-10`}
                                 />
                                 <Eye className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-stone-400" aria-hidden="true" />

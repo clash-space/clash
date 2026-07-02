@@ -38,4 +38,12 @@ describe("SettingsClient primitives", () => {
     expect(source).not.toContain("onClick={() => toggleRuntimeCollapsed(group.id)}");
     expect(source).not.toContain("const toggleRuntimeCollapsed");
   });
+
+  it("keeps provider key editor focus inside React refs instead of document queries", () => {
+    const source = readSource("packages/web-ui/src/components/SettingsClient.tsx");
+
+    expect(source).toContain("providerKeyInputRef");
+    expect(source).not.toContain("document.querySelector<HTMLInputElement>('[data-provider-key-input=\"true\"]')?.focus()");
+    expect(source).not.toContain('data-provider-key-input="true"');
+  });
 });
