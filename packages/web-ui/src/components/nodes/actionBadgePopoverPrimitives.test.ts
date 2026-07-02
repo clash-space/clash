@@ -96,4 +96,12 @@ describe("ActionBadge popover primitives", () => {
         expect(source).not.toContain("TooltipProvider");
         expect(source).not.toContain("TooltipAnchor");
     });
+
+    it("uses shared tooltip primitives for reference picker labels and keeps mention HTML title-free", () => {
+        const source = readNodeSource("ActionBadge.tsx");
+
+        expect(source).toContain("<Tooltip key={n.id} label={label}>");
+        expect(source).not.toContain('title="${label}"');
+        expect(source).not.toContain("title={label}");
+    });
 });

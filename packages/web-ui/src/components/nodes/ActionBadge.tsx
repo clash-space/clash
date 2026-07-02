@@ -78,6 +78,12 @@ type ActionMentionNode = {
 };
 
 const actionMentionItemId = (nodeId: string): string => `action-mention-${nodeId.replace(/[^a-zA-Z0-9_-]/g, '_')}`;
+const escapeHtmlAttribute = (value: string): string =>
+    value
+        .replace(/&/g, '&amp;')
+        .replace(/"/g, '&quot;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;');
 
 function ActionMentionPicker({
     nodes,
@@ -697,10 +703,12 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
             const node = mentionableNodes.find((n) => n.id === nodeId);
             const src = node?.thumbnail;
             const resolvedUrl = src ? signedUrlMap[src] : undefined;
+            const safeNodeId = escapeHtmlAttribute(nodeId);
+            const safeLabel = escapeHtmlAttribute(label);
             if (resolvedUrl) {
-                return `<span contenteditable="false" data-mention-id="${nodeId}" title="${label}" style="display:inline-block;vertical-align:middle;margin:0 2px;"><img src="${resolvedUrl}" style="height:20px;width:20px;border-radius:4px;object-fit:cover;display:block;" /></span>`;
+                return `<span contenteditable="false" data-mention-id="${safeNodeId}" data-mention-label="${safeLabel}" aria-label="${safeLabel}" style="display:inline-block;vertical-align:middle;margin:0 2px;"><img src="${resolvedUrl}" style="height:20px;width:20px;border-radius:4px;object-fit:cover;display:block;" /></span>`;
             }
-            return `<span contenteditable="false" data-mention-id="${nodeId}" title="${label}" style="display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;background:#f1f5f9;border:1px solid #e2e8f0;border-radius:4px;margin:0 2px;font-size:8px;color:#94a3b8;vertical-align:middle;">${node?.type?.charAt(0).toUpperCase() || '?'}</span>`;
+            return `<span contenteditable="false" data-mention-id="${safeNodeId}" data-mention-label="${safeLabel}" aria-label="${safeLabel}" style="display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;background:#f1f5f9;border:1px solid #e2e8f0;border-radius:4px;margin:0 2px;font-size:8px;color:#94a3b8;vertical-align:middle;">${node?.type?.charAt(0).toUpperCase() || '?'}</span>`;
         });
     }, [mentionableNodes, signedUrlMap]);
 
@@ -714,7 +722,7 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
                 const elem = node as HTMLElement;
                 const mentionId = elem.getAttribute('data-mention-id');
                 if (mentionId) {
-                    const label = elem.textContent || mentionId;
+                    const label = elem.getAttribute('data-mention-label') || elem.textContent || mentionId;
                     result += buildMention(label, mentionId);
                 } else if (elem.tagName === 'BR') {
                     result += '\n';
@@ -2244,28 +2252,29 @@ const RefPickerContent = ({
                             : (n.data?.src as string | undefined);
                         const label = (n.data?.label as string) || n.id;
                         return (
-                            <button
-                                key={n.id}
-                                type="button"
-                                onClick={() => onPick(n.id)}
-                                className="group relative rounded-lg overflow-hidden border border-warm-border hover:border-slate-900 hover:shadow-md transition-all"
-                                title={label}
-                            >
-                                {n.type === 'text' ? (
-                                    <div className="h-16 w-full bg-warm-muted flex items-center justify-center text-slate-700 dark:text-slate-300">
-                                        <TextT size={22} weight="bold" />
+                            <Tooltip key={n.id} label={label}>
+                                <button
+                                    type="button"
+                                    onClick={() => onPick(n.id)}
+                                    className="group relative rounded-lg overflow-hidden border border-warm-border hover:border-slate-900 hover:shadow-md transition-all"
+                                    aria-label={label}
+                                >
+                                    {n.type === 'text' ? (
+                                        <div className="h-16 w-full bg-warm-muted flex items-center justify-center text-slate-700 dark:text-slate-300">
+                                            <TextT size={22} weight="bold" />
+                                        </div>
+                                    ) : n.type === 'audio' || !thumb ? (
+                                        <div className={`h-16 w-full flex items-center justify-center text-xl ${n.type === 'audio' ? 'bg-audio/15 text-audio' : 'bg-warm-muted text-slate-500'}`}>
+                                            {n.type === 'audio' ? '♪' : '?'}
+                                        </div>
+                                    ) : (
+                                        <SignedImg src={thumb} alt={label} className="h-16 w-full object-cover" />
+                                    )}
+                                    <div className="absolute bottom-0 inset-x-0 bg-gradient-to-t from-black/70 to-transparent px-1.5 py-1 text-[10px] text-white truncate">
+                                        {label}
                                     </div>
-                                ) : n.type === 'audio' || !thumb ? (
-                                    <div className={`h-16 w-full flex items-center justify-center text-xl ${n.type === 'audio' ? 'bg-audio/15 text-audio' : 'bg-warm-muted text-slate-500'}`}>
-                                        {n.type === 'audio' ? '♪' : '?'}
-                                    </div>
-                                ) : (
-                                    <SignedImg src={thumb} alt={label} className="h-16 w-full object-cover" />
-                                )}
-                                <div className="absolute bottom-0 inset-x-0 bg-gradient-to-t from-black/70 to-transparent px-1.5 py-1 text-[10px] text-white truncate">
-                                    {label}
-                                </div>
-                            </button>
+                                </button>
+                            </Tooltip>
                         );
                     })}
                 </div>
