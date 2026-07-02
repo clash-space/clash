@@ -51,4 +51,15 @@ describe("ChatbotCopilot primitives", () => {
     expect(source).not.toContain("onMenuOpenChange");
     expect(source).not.toContain("absolute right-0 top-8 z-40");
   });
+
+  it("uses the shared collapsible primitive for auth manual fallback copy", () => {
+    const source = readComponentSource("ChatbotCopilot.tsx");
+
+    expect(source).toContain("./ui/collapsible");
+    expect(source).toContain("Collapsible");
+    expect(source).toContain("CollapsibleTrigger");
+    expect(source).toContain("CollapsibleContent");
+    expect(source).not.toContain("<details");
+    expect(source).not.toContain("<summary");
+  });
 });

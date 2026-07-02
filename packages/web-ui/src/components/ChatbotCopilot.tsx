@@ -41,6 +41,7 @@ import { Dialog } from './ui/dialog';
 import { IconButton } from './ui/icon-button';
 import { SelectMenu, type SelectSection } from './ui/select';
 import { Sheet, SheetContent, SheetOverlay } from './ui/sheet';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from './ui/collapsible';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from './ui/dropdown-menu';
 import { useAppFeedback } from './AppFeedback';
 import { useClashRuntime, type AcpSessionConfigOption, type AcpSessionModeState, type ClashRuntimeStatus, type Runtime, type RuntimePromptQueueMode, type RuntimeQueuedPrompt, type RuntimeSessionInfo } from '@clash/web-ui/hooks/useClashRuntime';
@@ -2151,12 +2152,16 @@ function RuntimeAuthNotice({
                     <span className="mt-0.5 block leading-5 text-amber-900/80 dark:text-amber-100/80">{message}</span>
                 ) : null}
                 {command ? (
-                    <details className="mt-1.5 text-xs text-amber-800/75 dark:text-amber-100/70">
-                        <summary className="cursor-pointer select-none font-medium">Manual fallback</summary>
-                        <span className="mt-1 block leading-5">
-                            If Sign in does not open, run <code className="rounded bg-amber-100 px-1 font-mono dark:bg-amber-300/10">{command}</code> and use <code className="rounded bg-amber-100 px-1 font-mono dark:bg-amber-300/10">/auth</code>.
-                        </span>
-                    </details>
+                    <Collapsible className="mt-1.5 text-xs text-amber-800/75 dark:text-amber-100/70">
+                        <CollapsibleTrigger className="cursor-pointer select-none font-medium outline-none focus-visible:underline focus-visible:underline-offset-4">
+                            Manual fallback
+                        </CollapsibleTrigger>
+                        <CollapsibleContent>
+                            <span className="mt-1 block leading-5">
+                                If Sign in does not open, run <code className="rounded bg-amber-100 px-1 font-mono dark:bg-amber-300/10">{command}</code> and use <code className="rounded bg-amber-100 px-1 font-mono dark:bg-amber-300/10">/auth</code>.
+                            </span>
+                        </CollapsibleContent>
+                    </Collapsible>
                 ) : null}
             </span>
             <span className="flex shrink-0 items-center gap-1.5">
