@@ -17,6 +17,7 @@ import {
     resolveInitialMediaSize,
 } from './assetNodeSizing';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '../ui/collapsible';
+import { Tooltip } from '../ui/tooltip';
 
 const VideoNode = ({ data, selected, id, width, height }: NodeProps<Node<Record<string, any>>>) => {
     const [label, setLabel] = useState(data.label || 'Video Node');
@@ -396,28 +397,31 @@ const VideoNode = ({ data, selected, id, width, height }: NodeProps<Node<Record<
 
                         {/* Top Right Controls */}
                         <div className="absolute top-2 right-2 flex gap-1 z-10">
-                            <CollapsibleTrigger asChild>
+                            <Tooltip label={descriptionOpen ? 'Hide description' : 'Show description'}>
+                                <CollapsibleTrigger asChild>
+                                    <button
+                                        type="button"
+                                        className="rounded-full bg-black/50 p-1 text-white backdrop-blur-sm hover:bg-black/70 transition-colors"
+                                        onClick={(e) => e.stopPropagation()}
+                                        aria-label={descriptionOpen ? 'Hide description' : 'Show description'}
+                                    >
+                                        <TextT size={12} weight="bold" />
+                                    </button>
+                                </CollapsibleTrigger>
+                            </Tooltip>
+                            <Tooltip label="Refresh thumbnail">
                                 <button
                                     type="button"
                                     className="rounded-full bg-black/50 p-1 text-white backdrop-blur-sm hover:bg-black/70 transition-colors"
-                                    onClick={(e) => e.stopPropagation()}
-                                    aria-label={descriptionOpen ? 'Hide description' : 'Show description'}
-                                    title={descriptionOpen ? 'Hide description' : 'Show description'}
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        refreshThumbnail();
+                                    }}
+                                    aria-label="Refresh thumbnail"
                                 >
-                                    <TextT size={12} weight="bold" />
+                                    <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/><path d="M16 16h5v5"/></svg>
                                 </button>
-                            </CollapsibleTrigger>
-                            <button
-                                type="button"
-                                className="rounded-full bg-black/50 p-1 text-white backdrop-blur-sm hover:bg-black/70 transition-colors"
-                                onClick={(e) => {
-                                    e.stopPropagation();
-                                    refreshThumbnail();
-                                }}
-                                title="Refresh Thumbnail"
-                            >
-                                <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/><path d="M16 16h5v5"/></svg>
-                            </button>
+                            </Tooltip>
                             <div className="rounded-full bg-black/50 px-2 py-0.5 text-[10px] text-white backdrop-blur-sm">
                                 Video
                             </div>

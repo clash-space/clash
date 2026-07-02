@@ -18,6 +18,7 @@ import {
     resolveInitialMediaSize,
 } from './assetNodeSizing';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '../ui/collapsible';
+import { Tooltip } from '../ui/tooltip';
 
 const ImageNode = ({ data, selected, id, width, height }: NodeProps<Node<Record<string, any>>>) => {
     const [label, setLabel] = useState(data.label || 'Image Node');
@@ -213,17 +214,18 @@ const ImageNode = ({ data, selected, id, width, height }: NodeProps<Node<Record<
                         )}
                         {/* Top Right Controls */}
                         <div className="absolute top-2 right-2 flex gap-1 z-10">
-                            <CollapsibleTrigger asChild>
-                                <button
-                                    type="button"
-                                    className="rounded-full bg-black/50 p-1 text-white backdrop-blur-sm hover:bg-black/70 transition-colors"
-                                    onClick={(e) => e.stopPropagation()}
-                                    aria-label={descriptionOpen ? 'Hide description' : 'Show description'}
-                                    title={descriptionOpen ? 'Hide description' : 'Show description'}
-                                >
-                                    <TextT size={12} weight="bold" />
-                                </button>
-                            </CollapsibleTrigger>
+                            <Tooltip label={descriptionOpen ? 'Hide description' : 'Show description'}>
+                                <CollapsibleTrigger asChild>
+                                    <button
+                                        type="button"
+                                        className="rounded-full bg-black/50 p-1 text-white backdrop-blur-sm hover:bg-black/70 transition-colors"
+                                        onClick={(e) => e.stopPropagation()}
+                                        aria-label={descriptionOpen ? 'Hide description' : 'Show description'}
+                                    >
+                                        <TextT size={12} weight="bold" />
+                                    </button>
+                                </CollapsibleTrigger>
+                            </Tooltip>
                         </div>
                     </div>
                 ) : status === 'uploading' && data.previewUrl ? (
