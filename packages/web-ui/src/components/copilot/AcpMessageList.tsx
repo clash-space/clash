@@ -30,6 +30,7 @@ import {
   SquareTerminal,
   XCircle,
 } from 'lucide-react';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '../ui/collapsible';
 import { Popover, PopoverContent, PopoverTrigger } from '../ui/popover';
 
 const ACP_EVENT_ICON_SLOT_CLASS =
@@ -795,16 +796,18 @@ export function AcpMessageList({
                   const ev = p.event as { update?: { sessionUpdate?: string; type?: string }; sessionUpdate?: string; type?: string; method?: string } | null | undefined;
                   const kind = ev?.update?.sessionUpdate ?? ev?.update?.type ?? ev?.sessionUpdate ?? ev?.type ?? ev?.method ?? 'unknown';
                   return (
-                    <details key={i} className="not-prose my-1 w-full text-neutral-500 group">
-                      <summary className="inline-flex max-w-full cursor-pointer list-none items-center gap-2 text-[13px] leading-5 outline-none transition-colors hover:text-neutral-700 focus-visible:underline focus-visible:decoration-neutral-300 focus-visible:underline-offset-4">
+                    <Collapsible key={i} className="not-prose group my-1 w-full text-neutral-500">
+                      <CollapsibleTrigger className="inline-flex max-w-full cursor-pointer items-center gap-2 text-left text-[13px] leading-5 outline-none transition-colors hover:text-neutral-700 focus-visible:underline focus-visible:decoration-neutral-300 focus-visible:underline-offset-4">
                         <AcpEventIcon />
                         <span className="min-w-0 truncate">event: {kind}</span>
-                        <ChevronRight className="h-3.5 w-3.5 shrink-0 text-stone-400 transition-transform group-open:rotate-90" aria-hidden="true" />
-                      </summary>
-                      <pre className="mt-1 max-h-[min(420px,45vh)] overflow-auto whitespace-pre-wrap bg-transparent p-0 font-mono text-[12px] leading-relaxed text-neutral-500">
-                        {JSON.stringify(p.event, null, 2)}
-                      </pre>
-                    </details>
+                        <ChevronRight className="h-3.5 w-3.5 shrink-0 text-stone-400 transition-transform group-data-[state=open]:rotate-90" aria-hidden="true" />
+                      </CollapsibleTrigger>
+                      <CollapsibleContent asChild>
+                        <pre className="mt-1 max-h-[min(420px,45vh)] overflow-auto whitespace-pre-wrap bg-transparent p-0 font-mono text-[12px] leading-relaxed text-neutral-500">
+                          {JSON.stringify(p.event, null, 2)}
+                        </pre>
+                      </CollapsibleContent>
+                    </Collapsible>
                   );
                 })}
               </MessageContent>

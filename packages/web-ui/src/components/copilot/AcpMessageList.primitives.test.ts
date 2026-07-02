@@ -15,4 +15,15 @@ describe("AcpMessageList primitives", () => {
     expect(source).toContain("PopoverContent");
     expect(source).not.toContain('role="dialog"');
   });
+
+  it("uses shared collapsible primitives for raw ACP event expansion", () => {
+    const source = readCopilotSource("AcpMessageList.tsx");
+
+    expect(source).toContain("../ui/collapsible");
+    expect(source).toContain("Collapsible");
+    expect(source).toContain("CollapsibleTrigger");
+    expect(source).toContain("CollapsibleContent");
+    expect(source).not.toContain("<details");
+    expect(source).not.toContain("<summary");
+  });
 });
