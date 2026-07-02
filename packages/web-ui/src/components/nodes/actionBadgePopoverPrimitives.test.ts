@@ -113,4 +113,15 @@ describe("ActionBadge popover primitives", () => {
         expect(source).not.toContain("onMouseDown={(e) => e.stopPropagation()}");
         expect(source).not.toContain("onPointerDown={e => e.stopPropagation()}");
     });
+
+    it("uses shared button primitives for action badge controls", () => {
+        const source = readNodeSource("ActionBadge.tsx");
+
+        expect(source).toContain("../ui/button");
+        expect(source).toContain("../ui/icon-button");
+        expect(source).toContain("<Button");
+        expect(source).toContain("<IconButton");
+        expect(source).not.toContain("<button");
+        expect(source).not.toContain("<motion.button");
+    });
 });

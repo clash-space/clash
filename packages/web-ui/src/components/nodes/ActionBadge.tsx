@@ -26,6 +26,8 @@ import { useConfirm } from '../ConfirmDialog';
 import { SelectMenu, type SelectOption, type SelectValue } from '../ui/select';
 import { Popover, PopoverContent, PopoverTrigger } from '../ui/popover';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '../ui/collapsible';
+import { Button } from '../ui/button';
+import { IconButton } from '../ui/icon-button';
 import { Tooltip } from '../ui/tooltip';
 import { useSpawnPendingAsset } from './useSpawnPendingAsset';
 import ActionBadgePipelineMenu from './ActionBadgePipelineMenu';
@@ -1410,30 +1412,34 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
                                         <Lock size={13} weight="bold" />
                                         Frozen
                                     </div>
-                                    <button
-                                        type="button"
+                                    <Button
                                         onClick={handleCopy}
-                                        className="clash-node-primary flex items-center gap-1.5 px-4 py-2 text-sm font-medium rounded-xl"
+                                        leftIcon={<Copy size={14} weight="bold" />}
+                                        size="sm"
+                                        shape="rounded"
+                                        className="clash-node-primary rounded-xl px-4 py-2 text-sm font-medium"
                                     >
-                                        <Copy size={14} weight="bold" />
                                         Copy to Edit
-                                    </button>
+                                    </Button>
                                 </>
                             ) : (
-                                <button
-                                    type="button"
+                                <Button
                                     onClick={handleSave}
-                                    className="clash-node-primary px-4 py-2 text-sm font-medium rounded-xl"
+                                    size="sm"
+                                    shape="rounded"
+                                    className="clash-node-primary rounded-xl px-4 py-2 text-sm font-medium"
                                 >
                                     Save
-                                </button>
+                                </Button>
                             )}
-                            <button
+                            <IconButton
+                                label="Close expanded prompt editor"
                                 onClick={handleCancel}
-                                className="p-2 text-stone-700 dark:text-stone-300 hover:text-stone-600 hover:bg-warm-muted rounded-lg transition-colors"
-                            >
-                                <X className="w-5 h-5" weight="bold" />
-                            </button>
+                                icon={<X className="w-5 h-5" weight="bold" />}
+                                size="md"
+                                shape="rounded"
+                                className="text-stone-700 hover:bg-warm-muted hover:text-stone-600 dark:text-stone-300"
+                            />
                         </div>
                     </div>
 
@@ -1475,10 +1481,14 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
                                                 {i + 1}
                                             </span>
                                             {!isFrozen && (
-                                                <button
-                                                    className={`${NODE_INTERACTION_BOUNDARY_CLASS} clash-node-ref-remove absolute -top-1 -right-1 rounded-full w-4 h-4 hidden group-hover/thumb:flex items-center justify-center text-[11px] leading-none`}
+                                                <IconButton
+                                                    label={`Remove reference ${i + 1}`}
+                                                    icon="×"
+                                                    size="sm"
+                                                    shape="circle"
                                                     onClick={() => removeRefNode(nodeId)}
-                                                >×</button>
+                                                    className={`${NODE_INTERACTION_BOUNDARY_CLASS} clash-node-ref-remove absolute -top-1 -right-1 hidden h-5 min-h-5 w-5 min-w-5 text-[11px] leading-none group-hover/thumb:flex`}
+                                                />
                                             )}
                                         </Reorder.Item>
                                     );
@@ -1487,13 +1497,13 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
                             {!isFrozen && (
                                 <Popover open={showRefPicker} onOpenChange={setShowRefPicker}>
                                     <PopoverTrigger asChild>
-                                        <button
-                                            type="button"
-                                            className="w-10 h-10 rounded-lg border border-dashed border-slate-300 flex items-center justify-center text-slate-700 dark:text-slate-300 hover:border-slate-500 hover:text-slate-600 transition-colors"
-                                            aria-label="Add reference from canvas"
-                                        >
-                                            <Plus size={16} weight="bold" />
-                                        </button>
+                                        <IconButton
+                                            label="Add reference from canvas"
+                                            icon={<Plus size={16} weight="bold" />}
+                                            size="lg"
+                                            shape="rounded"
+                                            className="h-10 min-h-10 w-10 min-w-10 rounded-lg border border-dashed border-slate-300 text-slate-700 hover:border-slate-500 hover:bg-transparent hover:text-slate-600 dark:text-slate-300"
+                                        />
                                     </PopoverTrigger>
                                     <PopoverContent
                                         side="bottom"
@@ -1516,10 +1526,11 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
                                                 const textRef = resolveTextRef(n);
                                                 if (!refSrc && !textRef) return null;
                                                 return (
-                                                    <button
+                                                    <Button
                                                         key={n.id}
-                                                        type="button"
-                                                        className="w-full flex items-center gap-2 px-3 py-2 hover:bg-warm-muted transition-colors text-left"
+                                                        size="sm"
+                                                        shape="rounded"
+                                                        className="w-full justify-start rounded-none border-0 bg-transparent px-3 py-2 text-left shadow-none hover:bg-warm-muted"
                                                         onClick={() => {
                                                             addRefNode(n.id);
                                                             setShowRefPicker(false);
@@ -1535,7 +1546,7 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
                                                             )}
                                                         </div>
                                                         <span className="text-xs text-slate-800 dark:text-slate-200 truncate">{(n.data.label as string) || n.id}</span>
-                                                    </button>
+                                                    </Button>
                                                 );
                                             });
                                         })()}
@@ -1629,11 +1640,14 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
                                                             className="h-10 w-10 rounded-lg object-cover border border-warm-border shadow-sm"
                                                         />
                                                         {!isFrozen && (
-                                                            <button
-                                                                className={`${NODE_INTERACTION_BOUNDARY_CLASS} clash-node-ref-remove absolute -top-1 -right-1 rounded-full w-4 h-4 hidden group-hover/thumb:flex items-center justify-center text-[11px] leading-none`}
+                                                            <IconButton
+                                                                label={`Clear ${fullLabel} frame`}
+                                                                icon="×"
+                                                                size="sm"
+                                                                shape="circle"
                                                                 onClick={() => removeRefNode(nodeId!)}
-                                                                aria-label={`Clear ${fullLabel} frame`}
-                                                            >×</button>
+                                                                className={`${NODE_INTERACTION_BOUNDARY_CLASS} clash-node-ref-remove absolute -top-1 -right-1 hidden h-5 min-h-5 w-5 min-w-5 text-[11px] leading-none group-hover/thumb:flex`}
+                                                            />
                                                         )}
                                                     </>
                                                 ) : (
@@ -1642,14 +1656,14 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
                                                         onOpenChange={(open) => setRefPickerTarget(open ? slot : null)}
                                                     >
                                                         <PopoverTrigger asChild>
-                                                            <button
-                                                                type="button"
+                                                            <IconButton
+                                                                label={`Pick ${fullLabel} frame`}
+                                                                icon={<Plus size={14} weight="bold" />}
+                                                                size="lg"
+                                                                shape="rounded"
                                                                 disabled={isFrozen}
-                                                                className="h-10 w-10 rounded-lg border border-dashed border-slate-300 bg-white/60 hover:bg-white hover:border-slate-400 transition-colors flex items-center justify-center text-slate-700 dark:text-slate-300 shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
-                                                                aria-label={`Pick ${fullLabel} frame`}
-                                                            >
-                                                                <Plus size={14} weight="bold" />
-                                                            </button>
+                                                                className="h-10 min-h-10 w-10 min-w-10 rounded-lg border border-dashed border-slate-300 bg-white/60 text-slate-700 shadow-sm hover:border-slate-400 hover:bg-white dark:text-slate-300"
+                                                            />
                                                         </PopoverTrigger>
                                                         <PopoverContent
                                                             side="top"
@@ -1738,10 +1752,14 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
                                                     {badge}
                                                 </span>
                                                 {!isFrozen && (
-                                                    <button
-                                                        className={`${NODE_INTERACTION_BOUNDARY_CLASS} clash-node-ref-remove absolute -top-1 -right-1 rounded-full w-4 h-4 hidden group-hover/thumb:flex items-center justify-center text-[11px] leading-none`}
+                                                    <IconButton
+                                                        label={`Remove reference ${i + 1}`}
+                                                        icon="×"
+                                                        size="sm"
+                                                        shape="circle"
                                                         onClick={() => removeRefNode(nodeId)}
-                                                    >×</button>
+                                                        className={`${NODE_INTERACTION_BOUNDARY_CLASS} clash-node-ref-remove absolute -top-1 -right-1 hidden h-5 min-h-5 w-5 min-w-5 text-[11px] leading-none group-hover/thumb:flex`}
+                                                    />
                                                 )}
                                             </Reorder.Item>
                                         );
@@ -1753,13 +1771,13 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
                                         onOpenChange={(open) => setRefPickerTarget(open ? 'append' : null)}
                                     >
                                         <PopoverTrigger asChild>
-                                            <button
-                                                type="button"
-                                                className="h-10 w-10 rounded-lg border border-dashed border-slate-300 bg-white/60 hover:bg-white hover:border-slate-400 transition-colors flex items-center justify-center text-slate-700 dark:text-slate-300 shadow-sm flex-shrink-0"
-                                                aria-label="Add reference from canvas"
-                                            >
-                                                <Plus size={14} weight="bold" />
-                                            </button>
+                                            <IconButton
+                                                label="Add reference from canvas"
+                                                icon={<Plus size={14} weight="bold" />}
+                                                size="lg"
+                                                shape="rounded"
+                                                className="h-10 min-h-10 w-10 min-w-10 flex-shrink-0 rounded-lg border border-dashed border-slate-300 bg-white/60 text-slate-700 shadow-sm hover:border-slate-400 hover:bg-white dark:text-slate-300"
+                                            />
                                         </PopoverTrigger>
                                         <PopoverContent
                                             side="top"
@@ -1897,18 +1915,17 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
                                 }}
                             >
                                 <PopoverTrigger asChild>
-                                    <button
-                                        type="button"
+                                    <Button
                                         className={`flex items-center gap-1 px-2.5 py-1 rounded-full text-xs transition-colors ${
                                             paramsPopoverOpen ? 'bg-warm-hover text-slate-900 dark:text-slate-50' : 'bg-warm-muted hover:bg-warm-hover text-stone-700 dark:text-stone-300'
-                                        }`}
+                                        } h-auto min-h-0 border-0 shadow-none`}
                                         onClick={(e) => e.stopPropagation()}
                                     >
                                         <span className="font-medium text-stone-800">
                                             {paramChips.map((c) => c.value).join(' · ')}
                                         </span>
                                         <CaretDown size={10} weight="bold" className="text-stone-700 dark:text-stone-300" />
-                                    </button>
+                                    </Button>
                                 </PopoverTrigger>
                                 <PopoverContent
                                     side="top"
@@ -1932,9 +1949,10 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
                                                 className={idx > 0 ? 'border-t border-warm-border' : ''}
                                             >
                                                 <CollapsibleTrigger asChild>
-                                                    <button
-                                                        type="button"
-                                                        className="w-full flex items-center justify-between px-4 py-2.5 hover:bg-warm-muted transition-colors"
+                                                    <Button
+                                                        size="sm"
+                                                        shape="rounded"
+                                                        className="w-full justify-between rounded-none border-0 bg-transparent px-4 py-2.5 shadow-none hover:bg-warm-muted"
                                                         onClick={(e) => e.stopPropagation()}
                                                     >
                                                         <span className="text-xs text-stone-700 dark:text-stone-300">{p.label}</span>
@@ -1942,7 +1960,7 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
                                                             {currentLabel}
                                                             <CaretDown size={10} weight="bold" className={`text-stone-700 dark:text-stone-300 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
                                                         </span>
-                                                    </button>
+                                                    </Button>
                                                 </CollapsibleTrigger>
                                                 <CollapsibleContent>
                                                     <div className="px-3 pb-3">
@@ -2041,34 +2059,36 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
                         {isFrozen && (
                             <>
                                 <Tooltip label="Duplicate this panel and open the copy">
-                                    <button
-                                        type="button"
+                                    <Button
                                         onClick={(e) => { e.stopPropagation(); handleCopy(); }}
                                         disabled={isExecuting}
-                                        className="flex items-center gap-1 h-7 px-2.5 rounded-full bg-warm-muted hover:bg-warm-hover text-stone-800 dark:text-stone-200 text-xs font-medium transition-colors flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
+                                        leftIcon={<Copy size={12} weight="bold" />}
+                                        size="sm"
+                                        shape="pill"
+                                        className="h-7 min-h-7 flex-shrink-0 border-0 bg-warm-muted px-2.5 text-xs font-medium text-stone-800 shadow-none hover:bg-warm-hover dark:text-stone-200"
                                         aria-label="Duplicate this panel and open the copy"
                                     >
-                                        <Copy size={12} weight="bold" />
                                         Copy & open
-                                    </button>
+                                    </Button>
                                 </Tooltip>
                                 <Tooltip label={frozenRunLabel}>
                                     <span className="inline-flex flex-shrink-0">
-                                        <button
-                                            type="button"
+                                        <Button
                                             onClick={(e) => { e.stopPropagation(); if (customActionOffline) return; handleExecute(); }}
                                             disabled={isExecuting || customActionOffline}
-                                            className="clash-node-primary flex items-center gap-1 px-3 h-7 rounded-full text-xs font-semibold flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
-                                            aria-label={frozenRunLabel}
-                                            aria-disabled={customActionOffline || undefined}
-                                        >
-                                            {isExecuting ? (
+                                            leftIcon={isExecuting ? (
                                                 <Spinner size={12} weight="bold" className="animate-spin" />
                                             ) : (
                                                 <Play size={11} weight="fill" />
                                             )}
+                                            size="sm"
+                                            shape="pill"
+                                            className="clash-node-primary h-7 min-h-7 flex-shrink-0 px-3 text-xs font-semibold"
+                                            aria-label={frozenRunLabel}
+                                            aria-disabled={customActionOffline || undefined}
+                                        >
                                             Run
-                                        </button>
+                                        </Button>
                                     </span>
                                 </Tooltip>
                             </>
@@ -2103,10 +2123,11 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
                     >
                         <div className="flex items-stretch">
                             <PopoverTrigger asChild>
-                                <button
-                                    type="button"
+                                <Button
                                     aria-label="Configure action"
-                                    className="flex min-w-0 flex-1 cursor-pointer items-center gap-2.5 bg-transparent px-3.5 py-4 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand"
+                                    size="sm"
+                                    shape="rounded"
+                                    className="h-auto min-h-0 min-w-0 flex-1 cursor-pointer justify-start gap-2.5 rounded-none border-0 bg-transparent px-3.5 py-4 text-left shadow-none focus-visible:ring-inset"
                                 >
                                     <div className={`flex-shrink-0 ${colorClass}`}>
                                         <Icon size={16} weight="fill" />
@@ -2125,27 +2146,28 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
                                             actorAgentId={data.actorAgentId as string | undefined}
                                         />
                                     </div>
-                                </button>
+                                </Button>
                             </PopoverTrigger>
                             <div className="flex flex-shrink-0 items-center pr-3.5">
                                 {/* Run button — separate click target */}
                                 <Tooltip label={panelRunLabel}>
                                     <span className="inline-flex flex-shrink-0">
-                                        <button
-                                            className={`nodrag flex-shrink-0 flex h-7 items-center gap-1.5 px-3 rounded-lg text-xs font-semibold text-white transition-all hover:scale-[1.02] active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed ${btnClass}`}
+                                        <Button
+                                            className={`nodrag h-7 min-h-7 flex-shrink-0 rounded-lg px-3 text-xs font-semibold text-white transition-transform hover:scale-[1.02] active:scale-95 ${btnClass}`}
                                             onClick={(e) => { e.stopPropagation(); if (customActionOffline) return; handleExecute(); }}
                                             disabled={isExecuting || customActionOffline}
                                             aria-label={panelRunLabel}
                                             aria-disabled={customActionOffline || undefined}
-                                            type="button"
-                                        >
-                                            {isExecuting ? (
+                                            leftIcon={isExecuting ? (
                                                 <Spinner size={12} className="animate-spin" />
                                             ) : (
                                                 <Play size={12} weight="fill" />
                                             )}
+                                            size="sm"
+                                            shape="rounded"
+                                        >
                                             {isExecuting ? 'Running' : 'Run'}
-                                        </button>
+                                        </Button>
                                     </span>
                                 </Tooltip>
                             </div>
@@ -2246,10 +2268,11 @@ const RefPickerContent = ({
                         const label = (n.data?.label as string) || n.id;
                         return (
                             <Tooltip key={n.id} label={label}>
-                                <button
-                                    type="button"
+                                <Button
                                     onClick={() => onPick(n.id)}
-                                    className="group relative rounded-lg overflow-hidden border border-warm-border hover:border-slate-900 hover:shadow-md transition-all"
+                                    size="sm"
+                                    shape="rounded"
+                                    className="group relative h-auto min-h-0 overflow-hidden rounded-lg border border-warm-border bg-transparent p-0 shadow-none hover:border-slate-900 hover:bg-transparent hover:shadow-md"
                                     aria-label={label}
                                 >
                                     {n.type === 'text' ? (
@@ -2266,7 +2289,7 @@ const RefPickerContent = ({
                                     <div className="absolute bottom-0 inset-x-0 bg-gradient-to-t from-black/70 to-transparent px-1.5 py-1 text-[10px] text-white truncate">
                                         {label}
                                     </div>
-                                </button>
+                                </Button>
                             </Tooltip>
                         );
                     })}
