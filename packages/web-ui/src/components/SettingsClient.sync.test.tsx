@@ -182,7 +182,10 @@ describe("SettingsSurface tab state", () => {
 
     expect(tooltipSource).toContain("@ariakit/react");
     expect(source).toContain("./ui/tooltip");
+    expect(source).toContain("./ui/icon-button");
     expect(source).toContain('<Tooltip label="Close settings">');
+    expect(source).toContain("<IconButton");
+    expect(source).not.toContain("onPointerDown={(event) => {");
     expect(source).not.toContain('title="Close (Esc)"');
     expect(source).not.toContain("TooltipProvider");
     expect(source).not.toContain("TooltipAnchor");

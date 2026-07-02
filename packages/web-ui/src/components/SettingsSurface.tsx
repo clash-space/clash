@@ -14,6 +14,7 @@ import {
 import betterAuthClient from '@clash/web-ui/lib/betterAuthClient';
 import SettingsClient, { type SettingsSection } from './SettingsClient';
 import { Tooltip } from './ui/tooltip';
+import { IconButton } from './ui/icon-button';
 import {
   listApiTokens,
   listVariables,
@@ -186,19 +187,14 @@ export function SettingsSurface({
         <div className="flex items-center justify-between px-4 py-4">
           {onClose ? (
             <Tooltip label="Close settings">
-              <button
-                type="button"
-                onPointerDown={(event) => {
-                  if (event.button !== 0) return;
-                  event.preventDefault();
-                  onClose();
-                }}
+              <IconButton
+                label="Close settings"
+                icon={<X className="h-4 w-4" weight="bold" />}
+                shape="circle"
+                size="md"
                 onClick={onClose}
-                className="flex h-9 min-h-[36px] w-9 min-w-[36px] items-center justify-center rounded-full text-stone-700 transition-colors hover:bg-warm-hover hover:text-stone-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand/60 dark:text-stone-300 dark:hover:text-stone-100"
-                aria-label="Close settings"
-              >
-                <X className="h-4 w-4" weight="bold" aria-hidden="true" />
-              </button>
+                className="text-stone-700 hover:bg-warm-hover hover:text-stone-900 focus-visible:ring-brand/60 dark:text-stone-300 dark:hover:text-stone-100"
+              />
             </Tooltip>
           ) : (
             <div>
