@@ -1,6 +1,7 @@
 
 import { motion, AnimatePresence } from 'framer-motion';
 import { Sparkle, Terminal } from '@phosphor-icons/react';
+import { Avatar as AvatarPrimitive } from 'radix-ui';
 import type { PresenceClient } from '@clash/shared-types';
 import { Tooltip } from './ui/tooltip';
 
@@ -36,9 +37,8 @@ export default function PresenceBar({ clients }: PresenceBarProps) {
             transition={{ type: 'spring', stiffness: 500, damping: 30 }}
           >
             <Tooltip label={client.name}>
-              <div
+              <AvatarPrimitive.Root
                 aria-label={client.name}
-                tabIndex={0}
                 className={`flex h-8 w-8 items-center justify-center rounded-full border-2 border-warm-surface shadow-sm ${
                   client.clientType === 'agent'
                     ? 'bg-brand'
@@ -52,27 +52,33 @@ export default function PresenceBar({ clients }: PresenceBarProps) {
                 ) : client.clientType === 'cli' ? (
                   <Terminal className="h-4 w-4 text-slate-700 dark:text-slate-300" weight="bold" aria-hidden="true" />
                 ) : client.avatar ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img
-                    src={client.avatar}
-                    alt={client.name}
-                    className="h-full w-full rounded-full object-cover"
-                  />
+                  <>
+                    <AvatarPrimitive.Image
+                      src={client.avatar}
+                      alt={client.name}
+                      className="h-full w-full rounded-full object-cover"
+                    />
+                    <AvatarPrimitive.Fallback className="text-xs font-bold text-brand">
+                      {getInitials(client.name)}
+                    </AvatarPrimitive.Fallback>
+                  </>
                 ) : (
-                  <span className="text-xs font-bold text-brand">
+                  <AvatarPrimitive.Fallback className="text-xs font-bold text-brand">
                     {getInitials(client.name)}
-                  </span>
+                  </AvatarPrimitive.Fallback>
                 )}
-              </div>
+              </AvatarPrimitive.Root>
             </Tooltip>
           </motion.div>
         ))}
       </AnimatePresence>
 
       {overflow > 0 && (
-        <div className="flex h-8 w-8 items-center justify-center rounded-full border-2 border-warm-surface bg-warm-muted text-xs font-bold text-slate-700 shadow-sm dark:text-slate-200" aria-label={`${overflow} more participants`}>
-          +{overflow}
-        </div>
+        <AvatarPrimitive.Root className="flex h-8 w-8 items-center justify-center rounded-full border-2 border-warm-surface bg-warm-muted text-xs font-bold text-slate-700 shadow-sm dark:text-slate-200" aria-label={`${overflow} more participants`}>
+          <AvatarPrimitive.Fallback>
+            +{overflow}
+          </AvatarPrimitive.Fallback>
+        </AvatarPrimitive.Root>
       )}
     </div>
   );

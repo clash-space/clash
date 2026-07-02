@@ -15,10 +15,15 @@ describe('PresenceBar tooltip primitives', () => {
     expect(tooltipSource).toContain('TooltipAnchor');
     expect(source).toContain('./ui/tooltip');
     expect(source).toContain('<Tooltip label={client.name}>');
+    expect(source).toContain("Avatar as AvatarPrimitive");
+    expect(source).toContain("AvatarPrimitive.Root");
+    expect(source).toContain("AvatarPrimitive.Image");
+    expect(source).toContain("AvatarPrimitive.Fallback");
     expect(source).not.toContain('@ariakit/react');
     expect(source).not.toContain('TooltipProvider');
     expect(source).not.toContain('TooltipAnchor');
-    expect(source).toContain('tabIndex={0}');
+    expect(source).not.toContain('tabIndex={0}');
+    expect(source).not.toContain('<img');
     expect(source).not.toContain('role="tooltip"');
     expect(source).not.toContain('group-hover:opacity-100');
   });
