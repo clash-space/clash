@@ -3,6 +3,7 @@ import { Copy, Check, CircleNotch } from '@phosphor-icons/react';
 import type { ByoStatus, BridgeAgentTemplate, BridgeSession } from '@clash/web-ui/hooks/useAgentByoBridge';
 import { getRuntimeConfig } from '@clash/web-ui/lib/runtimeConfig';
 import { Dialog } from '../ui/dialog';
+import { Button } from '../ui/button';
 import { SessionStartPicker } from './SessionStartPicker';
 
 /**
@@ -154,22 +155,20 @@ function PairingBlock({
         <code className="clash-copilot-code flex-1 min-w-0 overflow-x-auto whitespace-nowrap rounded-xl px-3 py-2.5 font-mono text-sm select-all">
           {command}
         </code>
-        <button
-          type="button"
+        <Button
           onClick={onCopy}
           aria-label={copied ? 'Copied' : 'Copy command'}
-          className="px-3 min-h-[44px] rounded-lg bg-warm-muted hover:bg-warm-hover text-slate-800 transition-colors flex items-center gap-1.5 text-sm font-medium dark:text-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-warm-surface"
+          className="min-h-[44px] rounded-lg border-transparent bg-warm-muted px-3 text-slate-800 shadow-none hover:bg-warm-hover dark:text-slate-100"
+          leftIcon={
+            copied ? (
+              <Check className="w-3.5 h-3.5" weight="bold" aria-hidden="true" />
+            ) : (
+              <Copy className="w-3.5 h-3.5" weight="regular" aria-hidden="true" />
+            )
+          }
         >
-          {copied ? (
-            <>
-              <Check className="w-3.5 h-3.5" weight="bold" aria-hidden="true" /> Copied
-            </>
-          ) : (
-            <>
-              <Copy className="w-3.5 h-3.5" weight="regular" aria-hidden="true" /> Copy
-            </>
-          )}
-        </button>
+          {copied ? 'Copied' : 'Copy'}
+        </Button>
       </div>
 
       <PairingStatus status={status} />
