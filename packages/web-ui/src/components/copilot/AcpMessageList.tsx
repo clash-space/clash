@@ -30,6 +30,7 @@ import {
   SquareTerminal,
   XCircle,
 } from 'lucide-react';
+import { Popover, PopoverContent, PopoverTrigger } from '../ui/popover';
 
 const ACP_EVENT_ICON_SLOT_CLASS =
   'flex h-5 w-5 shrink-0 items-center justify-center transition-colors group-hover:text-neutral-700';
@@ -639,20 +640,25 @@ export function AcpProgressPanel({
   const completed = planEntries.filter((entry) => entry.status === 'completed').length;
   return (
     <div className={cn('relative', className)}>
-      <button
-        type="button"
-        onClick={() => setOpen((value) => !value)}
-        aria-expanded={open}
-        aria-label={open ? 'Hide progress' : 'Show progress'}
-        className="flex h-8 w-8 items-center justify-center rounded-lg bg-transparent text-slate-800 transition-colors hover:bg-warm-muted focus:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-warm-surface dark:text-slate-200"
-      >
-        <ListChecks className="h-4 w-4" aria-hidden="true" />
-      </button>
-      {open ? (
-        <div
-          role="dialog"
+      <Popover open={open} onOpenChange={setOpen}>
+        <PopoverTrigger asChild>
+          <button
+            type="button"
+            aria-expanded={open}
+            aria-label={open ? 'Hide progress' : 'Show progress'}
+            className="flex h-8 w-8 items-center justify-center rounded-lg bg-transparent text-slate-800 transition-colors hover:bg-warm-muted focus:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-warm-surface dark:text-slate-200"
+          >
+            <ListChecks className="h-4 w-4" aria-hidden="true" />
+          </button>
+        </PopoverTrigger>
+        <PopoverContent
+          side="bottom"
+          align="end"
+          sideOffset={8}
+          collisionPadding={12}
           aria-label="Progress"
-          className="absolute right-0 top-10 w-[min(22rem,calc(100vw-3rem))] overflow-hidden rounded-2xl border border-warm-border/70 bg-background/95 shadow-xl backdrop-blur"
+          className="z-[90] w-[min(22rem,calc(100vw-3rem))] overflow-hidden rounded-2xl border-warm-border/70 bg-background/95 p-0 shadow-xl backdrop-blur"
+          onOpenAutoFocus={(event) => event.preventDefault()}
         >
           <div className="border-b border-warm-border/60 px-4 py-3">
             <div className="flex items-center justify-between gap-3">
@@ -687,8 +693,8 @@ export function AcpProgressPanel({
               <div className="mt-1 text-xs text-muted-foreground/75">No agent tasks yet</div>
             )}
           </div>
-        </div>
-      ) : null}
+        </PopoverContent>
+      </Popover>
     </div>
   );
 }
