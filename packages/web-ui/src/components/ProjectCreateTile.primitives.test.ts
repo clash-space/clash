@@ -8,9 +8,13 @@ describe("ProjectCreateTile primitive usage", () => {
     readFileSync(join(process.cwd(), `packages/web-ui/src/components/${name}`), "utf8");
 
   it("keeps the new-project tile in one shared component", () => {
+    const createTile = readComponent("ProjectCreateTile.tsx");
     const recentProjects = readComponent("RecentProjects.tsx");
     const projectsClient = readComponent("ProjectsClient.tsx");
 
+    expect(createTile).toContain("./ui/button");
+    expect(createTile).toMatch(/<Button[\s\S]*clash-project-create-tile/);
+    expect(createTile).not.toMatch(/<button[\s\S]*clash-project-create-tile/);
     expect(recentProjects).toContain("./ProjectCreateTile");
     expect(projectsClient).toContain("./ProjectCreateTile");
     expect(recentProjects).not.toMatch(/<button[\s\S]*clash-project-create-tile/);

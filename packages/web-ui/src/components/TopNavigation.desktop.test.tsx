@@ -82,6 +82,25 @@ describe("TopNavigation desktop chrome", () => {
     expect(desktopToolbarSource).not.toContain("<button");
   });
 
+  it("uses shared primitives for fixed desktop product shortcuts", () => {
+    const source = readFileSync(
+      resolve(process.cwd(), "packages/web-ui/src/components/TopNavigation.tsx"),
+      "utf8",
+    );
+    const start = source.indexOf('top-[calc(var(--clash-desktop-chrome-height)+0.5rem)]');
+    const end = source.indexOf("  return (\n    <header", start);
+    expect(start).toBeGreaterThan(0);
+    expect(end).toBeGreaterThan(start);
+    const productNavigationSource = source.slice(start, end);
+
+    expect(source).toContain("./ui/button");
+    expect(productNavigationSource).toContain("<IconButton");
+    expect(productNavigationSource).toContain('label="Clash home"');
+    expect(productNavigationSource).toMatch(/<Button[\s\S]*aria-label=\{item\.name\}/);
+    expect(productNavigationSource).not.toMatch(/<button[\s\S]*aria-label="Clash home"/);
+    expect(productNavigationSource).not.toMatch(/<button[\s\S]*aria-label=\{item\.name\}/);
+  });
+
   it("moves app shortcuts and account controls below the desktop tab strip", async () => {
     globalThis.__CLASH_DESKTOP__ = {
       isDesktop: true,

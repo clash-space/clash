@@ -13,6 +13,7 @@ import {
   X,
 } from '@phosphor-icons/react';
 import UserControls from './UserControls';
+import { Button } from './ui/button';
 import { IconButton } from './ui/icon-button';
 import { Tooltip } from './ui/tooltip';
 import {
@@ -293,19 +294,20 @@ export default function TopNavigation() {
           >
             <div className="relative flex w-full items-center justify-between pr-[max(2rem,env(safe-area-inset-right))] pl-[max(2rem,env(safe-area-inset-left))] md:px-12">
               <div className="desktop-no-drag pointer-events-auto z-10">
-                <button
-                  type="button"
+                <IconButton
                   onClick={() => openPathInDesktopTab('/')}
-                  aria-label="Clash home"
-                  className="group flex h-12 w-12 items-center justify-center"
-                >
-                  <img
-                    src="/brand/logo-mark.svg"
-                    alt=""
-                    className="h-11 w-11 object-contain transition-transform duration-150 group-hover:scale-105"
-                    draggable={false}
-                  />
-                </button>
+                  label="Clash home"
+                  size="lg"
+                  className="group h-12 min-h-12 w-12 min-w-12 bg-transparent p-0 text-current shadow-none hover:bg-transparent"
+                  icon={
+                    <img
+                      src="/brand/logo-mark.svg"
+                      alt=""
+                      className="h-11 w-11 object-contain transition-transform duration-150 group-hover:scale-105"
+                      draggable={false}
+                    />
+                  }
+                />
               </div>
 
               <nav aria-label="Primary" className="desktop-no-drag pointer-events-auto absolute left-1/2 top-1/2 flex -translate-x-1/2 -translate-y-1/2 items-center gap-1 rounded-2xl border border-warm-border bg-warm-surface px-2 py-2 shadow-md">
@@ -313,13 +315,13 @@ export default function TopNavigation() {
                   const isActive = pathname === item.href;
                   const Icon = item.icon;
                   return (
-                    <button
+                    <Button
                       key={item.name}
-                      type="button"
+                      size="sm"
                       onClick={() => openPathInDesktopTab(item.href)}
                       aria-label={item.name}
                       aria-current={isActive ? 'page' : undefined}
-                      className={`relative flex items-center gap-2.5 rounded-xl px-5 py-2.5 text-base font-display font-medium transition-colors ${
+                      className={`relative flex min-h-0 items-center gap-2.5 rounded-xl border-transparent bg-transparent px-5 py-2.5 text-base font-display font-medium shadow-none transition-colors hover:bg-transparent ${
                         isActive
                           ? 'text-slate-900 dark:text-slate-50'
                           : 'text-slate-700 hover:bg-warm-muted hover:text-slate-900 dark:text-slate-300 dark:hover:text-slate-100'
@@ -336,7 +338,7 @@ export default function TopNavigation() {
                         <Icon className={`h-5 w-5 ${isActive ? 'text-brand' : ''}`} weight={isActive ? 'fill' : 'regular'} />
                         {item.name}
                       </span>
-                    </button>
+                    </Button>
                   );
                 })}
               </nav>

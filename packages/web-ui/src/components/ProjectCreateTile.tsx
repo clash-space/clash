@@ -1,5 +1,7 @@
 import { Plus } from '@phosphor-icons/react';
 
+import { Button } from './ui/button';
+
 interface ProjectCreateTileProps {
     ariaLabel: string;
     empty?: boolean;
@@ -8,10 +10,9 @@ interface ProjectCreateTileProps {
 
 export default function ProjectCreateTile({ ariaLabel, empty = false, onActivate }: ProjectCreateTileProps) {
     return (
-        <button
-            type="button"
+        <Button
             aria-label={ariaLabel}
-            className={`${empty ? 'clash-project-create-tile--empty ' : ''}clash-project-create-tile group flex aspect-video flex-col items-center justify-center gap-4 rounded-2xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-warm-page`}
+            className={`${empty ? 'clash-project-create-tile--empty ' : ''}clash-project-create-tile group flex aspect-video min-h-0 flex-col items-center justify-center gap-4 rounded-2xl p-0 focus-visible:ring-offset-warm-page`}
             onClick={() => { void onActivate(); }}
         >
             <div className="clash-project-create-icon flex h-14 w-14 items-center justify-center rounded-xl">
@@ -24,6 +25,6 @@ export default function ProjectCreateTile({ ariaLabel, empty = false, onActivate
             <span className="text-base font-semibold text-stone-700 transition-colors group-hover:text-slate-950 dark:text-stone-300 dark:group-hover:text-slate-50">
                 New Project
             </span>
-        </button>
+        </Button>
     );
 }
