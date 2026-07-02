@@ -87,12 +87,6 @@ function ConfirmDialog({
                     event.preventDefault();
                     confirmBtnRef.current?.focus();
                 }}
-                onKeyDown={(event) => {
-                    if (event.key === 'Enter') {
-                        event.preventDefault();
-                        if (pending) onClose(true);
-                    }
-                }}
             >
                 {pending ? (
                     <>
