@@ -34,11 +34,15 @@ describe("SearchableSelect", () => {
 
         expect(source).toContain("@ariakit/react");
         expect(source).toContain("ComboboxProvider");
+        expect(source).toContain("ComboboxList");
+        expect(source).toContain("ComboboxItem");
         expect(source).toContain("SelectProvider");
         expect(source).toContain("SelectPopover");
-        expect(source).toContain("SelectItem");
         expect(source).not.toContain("cmdk");
         expect(source).not.toContain("PopoverPrimitive");
+        expect(source).not.toContain('role="listbox"');
+        expect(source).not.toContain('role="option"');
+        expect(source).not.toContain("aria-selected");
     });
 
     it("renders a select trigger with an in-popover searchable combobox", () => {

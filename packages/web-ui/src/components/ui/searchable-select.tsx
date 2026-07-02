@@ -10,10 +10,10 @@ import {
 import { CaretDown, Check, MagnifyingGlass } from '@phosphor-icons/react';
 import {
     Combobox,
+    ComboboxItem,
+    ComboboxList,
     ComboboxProvider,
     Select,
-    SelectItem,
-    SelectList,
     SelectPopover,
     SelectProvider,
 } from '@ariakit/react';
@@ -172,7 +172,7 @@ export function SearchableSelect<Value extends SelectValue = string>({
                             />
                         </div>
                     </div>
-                    <SelectList aria-label={listboxLabel ?? ariaLabel} role="listbox">
+                    <ComboboxList aria-label={listboxLabel ?? ariaLabel}>
                         {filteredOptions.length === 0 ? (
                             <div className="px-3 py-5 text-center text-xs font-medium text-stone-500 dark:text-stone-400">
                                 {emptyMessage}
@@ -184,12 +184,11 @@ export function SearchableSelect<Value extends SelectValue = string>({
                                 const optionAriaLabel = [optionLabel, description].filter(Boolean).join(' ');
                                 const selected = String(option.value) === String(value);
                                 return (
-                                    <SelectItem
+                                    <ComboboxItem
                                         key={String(option.value)}
-                                        value={String(option.value)}
-                                        role="option"
+                                        value={optionAriaLabel}
                                         aria-label={optionAriaLabel}
-                                        aria-selected={selected}
+                                        onClick={() => selectOption(option)}
                                         disabled={option.disabled}
                                         className={cn(
                                             'flex min-h-[42px] w-full cursor-default items-center gap-3 rounded-xl px-3 py-2 text-left text-sm transition-colors outline-none',
@@ -219,11 +218,11 @@ export function SearchableSelect<Value extends SelectValue = string>({
                                             )}
                                             aria-hidden="true"
                                         />
-                                    </SelectItem>
+                                    </ComboboxItem>
                                 );
                             })
                         )}
-                    </SelectList>
+                    </ComboboxList>
                 </SelectPopover>
             </SelectProvider>
         </ComboboxProvider>
