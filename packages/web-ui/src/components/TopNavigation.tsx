@@ -1,6 +1,6 @@
 
-import { useEffect, useRef, useState, type CSSProperties } from 'react';
-import { Tab, TabList, TabProvider } from '@ariakit/react';
+import { useEffect, useRef, useState, type CSSProperties, type ReactElement } from 'react';
+import { Tab, TabList, TabProvider, Tooltip, TooltipAnchor, TooltipProvider } from '@ariakit/react';
 import { motion } from 'framer-motion';
 import { Link, useLocation, useNavigate } from 'react-router';
 import { desktopChromeMetrics } from '@clash/shared-runtime';
@@ -44,6 +44,20 @@ const desktopChromeStyle = {
 } as CSSProperties;
 
 const HOME_DESKTOP_TAB_ID = 'tab-home';
+
+function DesktopChromeTooltip({ label, children }: { label: string; children: ReactElement }) {
+  return (
+    <TooltipProvider timeout={180}>
+      <TooltipAnchor render={children} />
+      <Tooltip
+        gutter={8}
+        className="z-50 whitespace-nowrap rounded-md bg-slate-900 px-2 py-1 text-xs font-medium text-white shadow-md dark:bg-slate-100 dark:text-slate-900"
+      >
+        {label}
+      </Tooltip>
+    </TooltipProvider>
+  );
+}
 
 function ensureHomeDesktopTab(tabs: DesktopTab[]): DesktopTab[] {
   const homeTab = tabs.find((tab) => tab.path === '/');
@@ -189,26 +203,28 @@ export default function TopNavigation() {
             data-desktop-toolbar="true"
             className="flex h-full items-center gap-1 pl-[max(var(--clash-desktop-toolbar-left-inset),env(safe-area-inset-left))] pr-[max(0.75rem,env(safe-area-inset-right))]"
           >
-            <button
-              type="button"
-              onClick={() => navigateDesktopHistory(-1)}
-              disabled={!canGoBack}
-              aria-label="Back"
-              title="Back"
-              className="desktop-no-drag inline-flex h-8 w-8 flex-none items-center justify-center rounded-lg text-stone-700 transition-colors hover:bg-black/[0.055] disabled:cursor-default disabled:text-stone-300 disabled:hover:bg-transparent"
-            >
-              <ArrowLeft className="h-4 w-4" aria-hidden="true" />
-            </button>
-            <button
-              type="button"
-              onClick={() => navigateDesktopHistory(1)}
-              disabled={!canGoForward}
-              aria-label="Forward"
-              title="Forward"
-              className="desktop-no-drag inline-flex h-8 w-8 flex-none items-center justify-center rounded-lg text-stone-700 transition-colors hover:bg-black/[0.055] disabled:cursor-default disabled:text-stone-300 disabled:hover:bg-transparent"
-            >
-              <ArrowRight className="h-4 w-4" aria-hidden="true" />
-            </button>
+            <DesktopChromeTooltip label="Back">
+              <button
+                type="button"
+                onClick={() => navigateDesktopHistory(-1)}
+                disabled={!canGoBack}
+                aria-label="Back"
+                className="desktop-no-drag inline-flex h-8 w-8 flex-none items-center justify-center rounded-lg text-stone-700 transition-colors hover:bg-black/[0.055] disabled:cursor-default disabled:text-stone-300 disabled:hover:bg-transparent"
+              >
+                <ArrowLeft className="h-4 w-4" aria-hidden="true" />
+              </button>
+            </DesktopChromeTooltip>
+            <DesktopChromeTooltip label="Forward">
+              <button
+                type="button"
+                onClick={() => navigateDesktopHistory(1)}
+                disabled={!canGoForward}
+                aria-label="Forward"
+                className="desktop-no-drag inline-flex h-8 w-8 flex-none items-center justify-center rounded-lg text-stone-700 transition-colors hover:bg-black/[0.055] disabled:cursor-default disabled:text-stone-300 disabled:hover:bg-transparent"
+              >
+                <ArrowRight className="h-4 w-4" aria-hidden="true" />
+              </button>
+            </DesktopChromeTooltip>
             <TabProvider
               selectedId={activeDesktopTabId ?? undefined}
               setSelectedId={selectDesktopTabId}
@@ -254,19 +270,20 @@ export default function TopNavigation() {
                         )}
                       </Tab>
                       {!isHomeTab && (
-                        <button
-                          type="button"
-                          onClick={() => closeTab(tab.id)}
-                          aria-label={`Close ${tab.title}`}
-                          title={`Close ${tab.title}`}
-                          className={`inline-flex h-5 w-5 flex-none items-center justify-center rounded-full transition-colors ${
-                            active
-                              ? 'text-stone-500 hover:bg-black/10 hover:text-stone-950'
-                              : 'text-stone-400 opacity-0 hover:bg-black/10 hover:text-stone-800 group-hover:opacity-100'
-                          }`}
-                        >
-                          <X className="h-3 w-3" weight="bold" />
-                        </button>
+                        <DesktopChromeTooltip label={`Close ${tab.title}`}>
+                          <button
+                            type="button"
+                            onClick={() => closeTab(tab.id)}
+                            aria-label={`Close ${tab.title}`}
+                            className={`inline-flex h-5 w-5 flex-none items-center justify-center rounded-full transition-colors ${
+                              active
+                                ? 'text-stone-500 hover:bg-black/10 hover:text-stone-950'
+                                : 'text-stone-400 opacity-0 hover:bg-black/10 hover:text-stone-800 group-hover:opacity-100'
+                            }`}
+                          >
+                            <X className="h-3 w-3" weight="bold" />
+                          </button>
+                        </DesktopChromeTooltip>
                       )}
                       {showInactiveSeparator && (
                         <span

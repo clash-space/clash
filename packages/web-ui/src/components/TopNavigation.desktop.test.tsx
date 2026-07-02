@@ -52,6 +52,24 @@ describe("TopNavigation desktop chrome", () => {
     expect(source).not.toContain("aria-selected={active}");
   });
 
+  it("uses Ariakit tooltip primitives for desktop icon controls instead of browser title attributes", () => {
+    const source = readFileSync(
+      resolve(process.cwd(), "packages/web-ui/src/components/TopNavigation.tsx"),
+      "utf8",
+    );
+    const start = source.indexOf('data-desktop-toolbar="true"');
+    const end = source.indexOf("</TabProvider>", start);
+    expect(start).toBeGreaterThan(0);
+    expect(end).toBeGreaterThan(start);
+    const desktopToolbarSource = source.slice(start, end);
+
+    expect(source).toContain("TooltipProvider");
+    expect(source).toContain("TooltipAnchor");
+    expect(source).toContain("Tooltip");
+    expect(desktopToolbarSource).toContain("DesktopChromeTooltip");
+    expect(desktopToolbarSource).not.toContain("title=");
+  });
+
   it("moves app shortcuts and account controls below the desktop tab strip", async () => {
     globalThis.__CLASH_DESKTOP__ = {
       isDesktop: true,
