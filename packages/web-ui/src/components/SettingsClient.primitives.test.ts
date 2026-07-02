@@ -14,4 +14,15 @@ describe("SettingsClient primitives", () => {
     expect(source).toContain("onSubmit={handleCreateTokenSubmit}");
     expect(source).toContain("onSubmit={handleAddVariableSubmit}");
   });
+
+  it("uses shared collapsible primitives for agent auth fallback copy", () => {
+    const source = readSource("packages/web-ui/src/components/SettingsClient.tsx");
+
+    expect(source).toContain("./ui/collapsible");
+    expect(source).toContain("Collapsible");
+    expect(source).toContain("CollapsibleTrigger");
+    expect(source).toContain("CollapsibleContent");
+    expect(source).not.toContain("<details");
+    expect(source).not.toContain("<summary");
+  });
 });

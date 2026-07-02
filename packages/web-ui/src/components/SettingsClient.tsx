@@ -4765,18 +4765,20 @@ function AgentsSection() {
                                                                         </span>
                                                                     )}
                                                                     {needsAuth && harness.auth?.command && (
-                                                                        <details className="mt-1 text-xs text-stone-500 dark:text-stone-400">
-                                                                            <summary className="cursor-pointer select-none font-medium text-stone-600 dark:text-stone-300">
+                                                                        <Collapsible className="mt-1 text-xs text-stone-500 dark:text-stone-400">
+                                                                            <CollapsibleTrigger className="cursor-pointer select-none font-medium text-stone-600 outline-none focus-visible:underline focus-visible:underline-offset-4 dark:text-stone-300">
                                                                                 Manual fallback
-                                                                            </summary>
-                                                                            <span className="mt-1 block leading-5">
-                                                                                {hasTerminalAuthMethod
-                                                                                    ? "Configure the required credentials in the agent terminal, settings, or environment, then click Check again."
-                                                                                    : hasEnvVarAuthMethod
-                                                                                        ? `Set ${envVarAuthNames.length > 0 ? envVarAuthNames.join(", ") : "the required environment variables"} in your agent environment, then click Check again.`
-                                                                                        : <>If Sign in does not open, run <code className="rounded bg-warm-muted px-1 font-mono">{harness.auth.command}</code> and follow the agent auth prompt.</>}
-                                                                            </span>
-                                                                        </details>
+                                                                            </CollapsibleTrigger>
+                                                                            <CollapsibleContent>
+                                                                                <span className="mt-1 block leading-5">
+                                                                                    {hasTerminalAuthMethod
+                                                                                        ? "Configure the required credentials in the agent terminal, settings, or environment, then click Check again."
+                                                                                        : hasEnvVarAuthMethod
+                                                                                            ? `Set ${envVarAuthNames.length > 0 ? envVarAuthNames.join(", ") : "the required environment variables"} in your agent environment, then click Check again.`
+                                                                                            : <>If Sign in does not open, run <code className="rounded bg-warm-muted px-1 font-mono">{harness.auth.command}</code> and follow the agent auth prompt.</>}
+                                                                                </span>
+                                                                            </CollapsibleContent>
+                                                                        </Collapsible>
                                                                     )}
                                                                     {!harness.available && !canInstall && harness.homepage && (
                                                                         <span className="mt-1 block break-all text-xs text-stone-500 dark:text-stone-400">
