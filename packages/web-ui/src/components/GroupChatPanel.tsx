@@ -36,6 +36,7 @@ import { motion } from 'framer-motion';
 import { CaretLeft, CaretRight, ArrowClockwise, Lightning } from '@phosphor-icons/react';
 import { Link, useNavigate } from 'react-router';
 import { TabList, TabPanel, TabProvider } from '@ariakit/react';
+import { useDrag } from '@use-gesture/react';
 import betterAuthClient from '@clash/web-ui/lib/betterAuthClient';
 import { useBillingBalance } from '@clash/web-ui/hooks/useBillingBalance';
 import { ChatInput, type UploadedAttachment } from './copilot/ChatInput';
@@ -325,38 +326,39 @@ export function GroupChatPanel({
     [userId, room, group, resolveMention, invitedAgentIdSet],
   );
 
+  const resizeStartWidthRef = useRef(width);
+  const resetResizeBodyStyles = useCallback(() => {
+    document.body.style.cursor = '';
+    document.body.style.userSelect = '';
+  }, []);
+
   // Resize handle on the LEFT edge of the panel. Drag left → wider,
-  // drag right → narrower. Installs a global mousemove only for the
-  // duration of the drag so we don't leak listeners on idle hover.
-  const handleResizeStart = useCallback(
-    (e: React.MouseEvent) => {
-      e.preventDefault();
-      const startX = e.clientX;
-      const startWidth = width;
-      const onMove = (moveEvent: MouseEvent) => {
-        // Handle is on the left edge of the panel, so dragging LEFT
-        // (negative delta) should INCREASE width.
-        const next = Math.max(
-          PANEL_MIN_WIDTH,
-          Math.min(PANEL_MAX_WIDTH, startWidth - (moveEvent.clientX - startX)),
-        );
-        onWidthChange(next);
-      };
-      const onUp = () => {
-        document.removeEventListener('mousemove', onMove);
-        document.removeEventListener('mouseup', onUp);
-        document.body.style.cursor = '';
-        document.body.style.userSelect = '';
-      };
-      document.addEventListener('mousemove', onMove);
-      document.addEventListener('mouseup', onUp);
-      // Make the cursor stick to ew-resize for the whole drag, even
-      // when the pointer briefly leaves the handle.
-      document.body.style.cursor = 'ew-resize';
-      document.body.style.userSelect = 'none';
+  // drag right → narrower. useDrag owns the pointer lifecycle instead
+  // of the component wiring document mousemove/mouseup listeners.
+  const resizeGestureBind = useDrag<PointerEvent>(
+    ({ first, last, movement: [movementX], event }) => {
+      event.preventDefault();
+      event.stopPropagation();
+      if (first) {
+        resizeStartWidthRef.current = width;
+        document.body.style.cursor = 'ew-resize';
+        document.body.style.userSelect = 'none';
+      }
+      const next = Math.max(
+        PANEL_MIN_WIDTH,
+        Math.min(PANEL_MAX_WIDTH, resizeStartWidthRef.current - movementX),
+      );
+      onWidthChange(next);
+      if (last) resetResizeBodyStyles();
     },
-    [width, onWidthChange],
+    {
+      preventDefault: true,
+      pointer: { capture: true },
+      eventOptions: { passive: false },
+    },
   );
+
+  useEffect(() => resetResizeBodyStyles, [resetResizeBodyStyles]);
 
   // After switching back to Room, drop focus into the composer so the
   // user can start typing without a second click. Skip on initial mount
@@ -606,8 +608,9 @@ export function GroupChatPanel({
           role="separator"
           aria-orientation="vertical"
           aria-label="Resize chat panel"
-          onMouseDown={handleResizeStart}
+          {...resizeGestureBind()}
           className="absolute left-0 top-0 bottom-0 w-1.5 cursor-ew-resize z-30 group/resize"
+          style={{ touchAction: 'none' }}
         >
           <div className="h-full w-full opacity-0 group-hover/resize:opacity-100 group-active/resize:opacity-100 bg-brand/40 transition-opacity" />
         </div>

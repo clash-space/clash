@@ -53,4 +53,14 @@ describe("GroupChatPanel primitives", () => {
     expect(pillSource).toContain("<Tooltip label=");
     expect(pillSource).not.toContain("title=");
   });
+
+  it("uses a mature gesture primitive for panel resizing instead of document mouse listeners", () => {
+    const panelSource = readSource("packages/web-ui/src/components/GroupChatPanel.tsx");
+
+    expect(panelSource).toContain("@use-gesture/react");
+    expect(panelSource).toContain("useDrag");
+    expect(panelSource).toContain("resizeGestureBind()");
+    expect(panelSource).not.toContain("document.addEventListener('mousemove'");
+    expect(panelSource).not.toContain("document.addEventListener('mouseup'");
+  });
 });
