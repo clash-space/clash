@@ -16,4 +16,15 @@ describe("ChatbotCopilot primitives", () => {
     expect(source).not.toContain('role="listbox"');
     expect(source).not.toContain('role="option"');
   });
+
+  it("uses the shared sheet primitive for the mobile copilot panel", () => {
+    const source = readComponentSource("ChatbotCopilot.tsx");
+
+    expect(source).toContain("./ui/sheet");
+    expect(source).toContain("Sheet");
+    expect(source).toContain("SheetContent");
+    expect(source).not.toContain("useFocusTrap");
+    expect(source).not.toContain("aria-modal=");
+    expect(source).not.toContain('role={isMobile && !isCollapsed ? \'dialog\' : undefined}');
+  });
 });

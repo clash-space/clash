@@ -22,6 +22,7 @@ import { RuntimePickerDialog } from './copilot/RuntimePickerDialog';
 import { Dialog } from './ui/dialog';
 import { IconButton } from './ui/icon-button';
 import { SelectMenu, type SelectSection } from './ui/select';
+import { Sheet, SheetContent, SheetOverlay } from './ui/sheet';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from './ui/dropdown-menu';
 import { useAppFeedback } from './AppFeedback';
 import { useClashRuntime, type AcpSessionConfigOption, type AcpSessionModeState, type ClashRuntimeStatus, type Runtime, type RuntimePromptQueueMode, type RuntimeQueuedPrompt, type RuntimeSessionInfo } from '@clash/web-ui/hooks/useClashRuntime';
@@ -32,7 +33,6 @@ import ReactMarkdown from 'react-markdown';
 import { useSignedUrl } from '@clash/web-ui/lib/hooks/useSignedUrl';
 import { useAsset, getAsset } from '@clash/web-ui/lib/hooks/useAsset';
 import { useIsBelowLg } from '@clash/web-ui/lib/hooks/useMediaQuery';
-import { useFocusTrap } from '@clash/web-ui/lib/hooks/useFocusTrap';
 import { useAgentCopilot, type CustomEvent } from '@clash/web-ui/hooks/useAgentCopilot';
 import { getRuntimeConfig, runtimeApiUrl } from '@clash/web-ui/lib/runtimeConfig';
 import { buildMention } from '@clash/shared-types';
@@ -890,10 +890,7 @@ export default function ChatbotCopilot({
     const panelRef = useRef<HTMLElement | null>(null);
     const appliedRuntimeCanvasNodesRef = useRef<Set<string>>(new Set());
 
-    // Focus trap on mobile: when the sheet covers the viewport it should
-    // behave like a true dialog — keep keyboard focus inside until close.
     const closeMobileSheet = useCallback(() => onCollapseChange(true), [onCollapseChange]);
-    useFocusTrap(panelRef, isMobile && !isCollapsed, closeMobileSheet);
 
     // ─── Agent Chat Hook ─────────────────────────────────────
     const {
@@ -1193,8 +1190,8 @@ export default function ChatbotCopilot({
         historyButtonRef.current?.focus();
     }, [clashRt.attachSession, effectiveSessionHarnessId, onSwitchSession, projectId, setSessionPermissionModeForAgent]);
 
-    // On mobile, the panel covers the canvas — lock body scroll while open.
-    // (Escape-to-close + focus trap are handled by useFocusTrap above.)
+    // On mobile, the panel covers the canvas. Sheet owns dialog semantics
+    // and focus behavior; this keeps the page behind it from scrolling.
     useEffect(() => {
         if (!isMobile || isCollapsed) return;
         const previous = document.body.style.overflow;
@@ -1486,50 +1483,63 @@ export default function ChatbotCopilot({
                 )}
             </AnimatePresence>
 
-            {/* Mobile backdrop — only visible below lg when panel is open. */}
-            <AnimatePresence>
-                {isMobile && !isCollapsed && (
-                    <motion.div
-                        initial={{ opacity: 0 }}
-                        animate={{ opacity: 1 }}
-                        exit={{ opacity: 0 }}
-                        transition={{ duration: 0.15 }}
-                        className="fixed inset-0 z-40 bg-slate-950/35 backdrop-blur-sm lg:hidden"
-                        onClick={() => onCollapseChange(true)}
-                        aria-hidden="true"
-                    />
-                )}
-            </AnimatePresence>
-
-            <motion.aside
-                ref={panelRef as React.RefObject<HTMLElement>}
-                id="clash-copilot-panel"
-                aria-label={t('copilot.panel.label')}
-                aria-hidden={isCollapsed}
-                aria-modal={isMobile && !isCollapsed ? 'true' : undefined}
-                role={isMobile && !isCollapsed ? 'dialog' : undefined}
-                tabIndex={isMobile && !isCollapsed ? -1 : undefined}
-                className={
-                    isMobile
-                        // Mobile: bg-warm-page extends to the unsafe areas so the system bars blend with the panel; padding shrinks the positioning context so absolute children land inside the safe zone. All four insets cover portrait (notch top, home indicator bottom) and landscape (notch on left or right).
-                        ? `fixed inset-0 z-50 flex flex-col bg-warm-page h-[100dvh] pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)] ${isCollapsed ? 'pointer-events-none' : ''}`
-                        : `clash-copilot-panel-shell fixed bottom-3 right-3 z-50 flex flex-col overflow-hidden rounded-matrix bg-warm-surface ${isCollapsed ? 'pointer-events-none' : 'pointer-events-auto'}`
-                }
-                style={isMobile ? undefined : {
-                    width: `${width}px`,
-                    height: 'calc(100dvh - var(--clash-desktop-chrome-height, 0px) - 1.5rem)',
-                    transformOrigin: COPILOT_PANEL_DESKTOP_TRANSFORM_ORIGIN,
+            <Sheet
+                open={isMobile && !isCollapsed}
+                onOpenChange={(nextOpen) => {
+                    if (!nextOpen && isMobile && !isCollapsed) closeMobileSheet();
                 }}
-                animate={
-                    isMobile
-                        ? { x: isCollapsed ? '100%' : 0 }
-                        : isCollapsed
-                            ? COPILOT_PANEL_COLLAPSED_DESKTOP_STATE
-                            : COPILOT_PANEL_EXPANDED_DESKTOP_STATE
-                }
-                initial={false}
-                transition={isResizing ? { duration: 0 } : isCollapsed && !isMobile ? COPILOT_PANEL_COLLAPSE_TRANSITION : COPILOT_PANEL_TRANSITION}
             >
+                <AnimatePresence>
+                    {isMobile && !isCollapsed && (
+                        <SheetOverlay active asChild>
+                            <motion.div
+                                initial={{ opacity: 0 }}
+                                animate={{ opacity: 1 }}
+                                exit={{ opacity: 0 }}
+                                transition={{ duration: 0.15 }}
+                                className="lg:hidden"
+                                onClick={closeMobileSheet}
+                            />
+                        </SheetOverlay>
+                    )}
+                </AnimatePresence>
+
+                <SheetContent
+                    active={isMobile && !isCollapsed}
+                    asChild
+                    aria-label={t('copilot.panel.label')}
+                    onOpenAutoFocus={(event) => {
+                        event.preventDefault();
+                        panelRef.current?.focus();
+                    }}
+                >
+                    <motion.aside
+                        ref={panelRef as React.RefObject<HTMLElement>}
+                        id="clash-copilot-panel"
+                        aria-label={t('copilot.panel.label')}
+                        aria-hidden={isCollapsed}
+                        tabIndex={isMobile && !isCollapsed ? -1 : undefined}
+                        className={
+                            isMobile
+                                // Mobile: bg-warm-page extends to the unsafe areas so the system bars blend with the panel; padding shrinks the positioning context so absolute children land inside the safe zone. All four insets cover portrait (notch top, home indicator bottom) and landscape (notch on left or right).
+                                ? `fixed inset-0 z-50 flex flex-col bg-warm-page h-[100dvh] pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)] ${isCollapsed ? 'pointer-events-none' : ''}`
+                                : `clash-copilot-panel-shell fixed bottom-3 right-3 z-50 flex flex-col overflow-hidden rounded-matrix bg-warm-surface ${isCollapsed ? 'pointer-events-none' : 'pointer-events-auto'}`
+                        }
+                        style={isMobile ? undefined : {
+                            width: `${width}px`,
+                            height: 'calc(100dvh - var(--clash-desktop-chrome-height, 0px) - 1.5rem)',
+                            transformOrigin: COPILOT_PANEL_DESKTOP_TRANSFORM_ORIGIN,
+                        }}
+                        animate={
+                            isMobile
+                                ? { x: isCollapsed ? '100%' : 0 }
+                                : isCollapsed
+                                    ? COPILOT_PANEL_COLLAPSED_DESKTOP_STATE
+                                    : COPILOT_PANEL_EXPANDED_DESKTOP_STATE
+                        }
+                        initial={false}
+                        transition={isResizing ? { duration: 0 } : isCollapsed && !isMobile ? COPILOT_PANEL_COLLAPSE_TRANSITION : COPILOT_PANEL_TRANSITION}
+                    >
                 {/* Screen-reader-only heading: gives heading-nav rotor users
                     a landmark to jump to. Hidden visually because the panel
                     already shows its purpose via design + the floating
@@ -1947,7 +1957,9 @@ export default function ChatbotCopilot({
                         </motion.div>
                     )}
                 </AnimatePresence>
-            </motion.aside>
+                    </motion.aside>
+                </SheetContent>
+            </Sheet>
 
             <AddMachineDialog open={addMachineOpen} onClose={() => setAddMachineOpen(false)} />
             <RuntimePickerDialog
