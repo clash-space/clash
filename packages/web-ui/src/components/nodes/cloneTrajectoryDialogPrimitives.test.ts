@@ -34,4 +34,18 @@ describe("CloneTrajectoryDialog primitives", () => {
     expect(source).not.toContain("TooltipProvider");
     expect(source).not.toContain("TooltipAnchor");
   });
+
+  it("uses shared button primitives for clone dialog actions", () => {
+    const source = readSource(
+      "packages/web-ui/src/components/nodes/CloneTrajectoryDialog.tsx",
+    );
+
+    expect(source).toContain("../ui/button");
+    expect(source).toContain("../ui/icon-button");
+    expect(source).toMatch(/<Button[\s\S]*onClick=\{\(e\) => \{ e\.stopPropagation\(\); onDelete\(props\.id\); \}\}[\s\S]*drop stage/);
+    expect(source).toMatch(/<IconButton[\s\S]*label="Close clone trajectory dialog"[\s\S]*onClick=\{onCancel\}/);
+    expect(source).toMatch(/<Button[\s\S]*onClick=\{onCancel\}[\s\S]*Cancel/);
+    expect(source).toMatch(/<Button[\s\S]*onClick=\{handleApply\}[\s\S]*Apply/);
+    expect(source).not.toContain("<button");
+  });
 });
