@@ -1,5 +1,5 @@
 
-import { useState, useCallback, useEffect, useMemo, useRef, type ReactNode } from 'react';
+import { useState, useCallback, useEffect, useMemo, useRef, type FormEvent, type ReactNode } from 'react';
 import {
     closestCenter,
     DndContext,
@@ -561,6 +561,11 @@ export default function SettingsClient({
         }
     }, [newTokenName]);
 
+    const handleCreateTokenSubmit = useCallback((event: FormEvent<HTMLFormElement>) => {
+        event.preventDefault();
+        void handleCreate();
+    }, [handleCreate]);
+
     const handleRevoke = useCallback(async (tokenId: string) => {
         try {
             await revokeApiToken(tokenId);
@@ -589,6 +594,11 @@ export default function SettingsClient({
             setIsAddingVar(false);
         }
     }, [newVarKey, newVarValue]);
+
+    const handleAddVariableSubmit = useCallback((event: FormEvent<HTMLFormElement>) => {
+        event.preventDefault();
+        void handleAddVariable();
+    }, [handleAddVariable]);
 
     const handleSetVariable = useCallback(async (key: string, value: string) => {
         const normalizedKey = key.trim().toUpperCase().replace(/[^A-Z0-9_]/g, '');
@@ -807,24 +817,23 @@ export default function SettingsClient({
                         </div>
                     </div>
 
-                    <div className="flex gap-2 mb-4">
+                    <form className="flex gap-2 mb-4" onSubmit={handleCreateTokenSubmit}>
                         <input
                             type="text"
                             value={newTokenName}
                             onChange={(e) => setNewTokenName(e.target.value)}
-                            onKeyDown={(e) => e.key === 'Enter' && handleCreate()}
                             placeholder="Token name"
                             className={`${settingsFieldClass} min-w-0 flex-1 px-4`}
                         />
                         <motion.button
-                            onClick={handleCreate}
+                            type="submit"
                             disabled={isCreating || !newTokenName.trim()}
                             className={settingsPrimaryButtonClass}
                             whileTap={{ scale: 0.97 }}
                         >
                             Create
                         </motion.button>
-                    </div>
+                    </form>
 
                     <AnimatePresence>
                         {revealedToken && (
@@ -952,7 +961,7 @@ export default function SettingsClient({
                         })}
                     </div>
 
-                    <div className="flex gap-2 mb-4">
+                    <form className="flex gap-2 mb-4" onSubmit={handleAddVariableSubmit}>
                         <input
                             type="text"
                             value={newVarKey}
@@ -966,7 +975,6 @@ export default function SettingsClient({
                                 type={showVarValue ? 'text' : 'password'}
                                 value={newVarValue}
                                 onChange={(e) => setNewVarValue(e.target.value)}
-                                onKeyDown={(e) => e.key === 'Enter' && handleAddVariable()}
                                 placeholder="Value"
                                 autoComplete="new-password"
                                 className={`${settingsFieldClass} px-4 pr-9`}
@@ -980,14 +988,14 @@ export default function SettingsClient({
                             </button>
                         </div>
                         <motion.button
-                            onClick={handleAddVariable}
+                            type="submit"
                             disabled={isAddingVar || !newVarKey.trim() || !newVarValue.trim()}
                             className={settingsPrimaryButtonClass}
                             whileTap={{ scale: 0.97 }}
                         >
                             Set
                         </motion.button>
-                    </div>
+                    </form>
 
                     {variables.length === 0 ? (
                         <div className="rounded-xl border border-dashed border-warm-border py-10 text-center">
