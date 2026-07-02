@@ -3805,6 +3805,14 @@ function AudioSection({ asrModels }: { asrModels: ModelCatalogEntryInfo[] }) {
                 message: 'The selected ASR model must be deployed before voice input can run locally.',
             });
     }, [hasSelectedAsrModel]);
+    const handleVoiceInputChange = useCallback((next: boolean) => {
+        if (next && blockingReason) {
+            openSetupDialog();
+            return;
+        }
+        setEnabled(next);
+        markDirty();
+    }, [blockingReason, markDirty, openSetupDialog]);
 
     return (
         <section>
@@ -3830,21 +3838,25 @@ function AudioSection({ asrModels }: { asrModels: ModelCatalogEntryInfo[] }) {
                                     Transcribe microphone clips before sending.
                                 </p>
                             </div>
-                            <Switch
-                                checked={enabled}
-                                onCheckedChange={(next) => {
-                                    if (next && blockingReason) {
-                                        openSetupDialog();
-                                        return;
-                                    }
-                                    setEnabled(next);
-                                    markDirty();
-                                }}
-                                disabled={switchDisabled}
-                                aria-label="Enable voice input"
-                                aria-describedby={switchReasonId}
-                                title={switchDisabledReason}
-                            />
+                            {switchDisabledReason ? (
+                                <Tooltip label={switchDisabledReason}>
+                                    <Switch
+                                        checked={enabled}
+                                        onCheckedChange={handleVoiceInputChange}
+                                        disabled={switchDisabled}
+                                        aria-label="Enable voice input"
+                                        aria-describedby={switchReasonId}
+                                    />
+                                </Tooltip>
+                            ) : (
+                                <Switch
+                                    checked={enabled}
+                                    onCheckedChange={handleVoiceInputChange}
+                                    disabled={switchDisabled}
+                                    aria-label="Enable voice input"
+                                    aria-describedby={switchReasonId}
+                                />
+                            )}
                             {switchDisabledReason && (
                                 <span id={switchReasonId} className="sr-only">
                                     {switchDisabledReason}

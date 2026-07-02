@@ -212,6 +212,27 @@ describe("SettingsSurface tab state", () => {
     expect(agentsSectionSource).not.toContain("TooltipProvider");
     expect(agentsSectionSource).not.toContain("TooltipAnchor");
   });
+
+  it("uses the shared tooltip primitive for audio controls instead of browser title attributes", () => {
+    const source = readFileSync(
+      resolve(process.cwd(), "packages/web-ui/src/components/SettingsClient.tsx"),
+      "utf8",
+    );
+    const tooltipSource = readFileSync(
+      resolve(process.cwd(), "packages/web-ui/src/components/ui/tooltip.tsx"),
+      "utf8",
+    );
+    const audioSectionStart = source.indexOf("function AudioSection(");
+    const nextSectionStart = source.indexOf("function AgentsSection()", audioSectionStart);
+    const audioSectionSource = source.slice(audioSectionStart, nextSectionStart);
+
+    expect(tooltipSource).toContain("@ariakit/react");
+    expect(source).toContain("./ui/tooltip");
+    expect(audioSectionSource).toContain("<Tooltip label={switchDisabledReason}>");
+    expect(audioSectionSource).not.toContain("title={switchDisabledReason}");
+    expect(audioSectionSource).not.toContain("TooltipProvider");
+    expect(audioSectionSource).not.toContain("TooltipAnchor");
+  });
 });
 
 describe("SettingsClient sync section", () => {
