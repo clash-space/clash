@@ -20,6 +20,16 @@ describe('GroupNode action primitives', () => {
     expect(source).not.toContain('TooltipAnchor');
   });
 
+  it('uses shared Button primitives for selected-group actions', () => {
+    const source = readSource('packages/web-ui/src/components/nodes/GroupNode.tsx');
+
+    expect(source).toContain('../ui/button');
+    expect(source).toMatch(/<Button[\s\S]*onClick=\{\(\) => ungroup\(id\)\}/);
+    expect(source).toMatch(/<Button[\s\S]*onClick=\{\(\) => relayoutParent\(id\)\}/);
+    expect(source).not.toMatch(/<button[\s\S]*onClick=\{\(\) => ungroup\(id\)\}/);
+    expect(source).not.toMatch(/<button[\s\S]*onClick=\{\(\) => relayoutParent\(id\)\}/);
+  });
+
   it('uses ReactFlow node interaction boundary classes for selected-group actions', () => {
     const source = readSource('packages/web-ui/src/components/nodes/GroupNode.tsx');
 

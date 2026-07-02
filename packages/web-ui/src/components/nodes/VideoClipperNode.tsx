@@ -16,6 +16,7 @@ import { useAsset } from '@clash/web-ui/lib/hooks/useAsset';
 import { SignedImg } from '../SignedMedia';
 import { useProject } from '../ProjectContext';
 import type { VideoClipParams } from '@clash/shared-types';
+import { Button } from '../ui/button';
 
 const VideoClipperNode = ({ id, data }: NodeProps<Node<Record<string, any>>>) => {
     const { openEditor } = useVideoClipper();
@@ -91,15 +92,15 @@ const VideoClipperNode = ({ id, data }: NodeProps<Node<Record<string, any>>>) =>
 
                 <div className="bg-warm-muted px-3 py-2 border-t border-warm-border flex items-center justify-between gap-2 h-10">
                     <span className="text-[11px] text-slate-700 dark:text-slate-300 truncate">{paramSummary}</span>
-                    <button
-                        type="button"
+                    <Button
+                        size="sm"
                         onClick={handleOpen}
                         disabled={!ready}
-                        className="clash-node-primary flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-xl disabled:opacity-50 disabled:cursor-not-allowed shadow-sm active:scale-95"
+                        className="clash-node-primary min-h-0 rounded-xl px-3 py-1.5 text-xs font-bold shadow-sm"
+                        leftIcon={<Camera className="w-3.5 h-3.5" weight="fill" />}
                     >
-                        <Camera className="w-3.5 h-3.5" weight="fill" />
                         Clip
-                    </button>
+                    </Button>
                 </div>
             </div>
 

@@ -13,6 +13,7 @@ import { buildPendingRenderVideoNodePayload, getTimelineDurationInFrames } from 
 import { hydrateAssetIdsFromNodes } from '@clash/web-ui/lib/timelineDsl';
 import { getAsset } from '@clash/web-ui/lib/hooks/useAsset';
 import { getItemSourceNodeId } from '@master-clash/remotion-core';
+import { Button } from '../ui/button';
 
 /**
  * Resolve a canvas node's authoritative R2 key + cover + dimensions + duration.
@@ -545,15 +546,15 @@ const VideoEditorNode = ({ data, id }: NodeProps<Node<Record<string, any>>>) => 
 
                 {/* Footer Actions */}
                 <div className="bg-warm-muted px-3 py-2 border-t border-warm-border flex items-center justify-end h-10">
-                    <button
-                        type="button"
+                    <Button
+                        size="sm"
                         onClick={handleRender}
                         disabled={rendering}
-                        className="clash-node-primary flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-xl disabled:opacity-50 disabled:cursor-not-allowed shadow-sm active:scale-95"
+                        className="clash-node-primary min-h-0 rounded-xl px-3 py-1.5 text-xs font-bold shadow-sm"
+                        leftIcon={<VideoCamera className="w-3.5 h-3.5" weight="fill" />}
                     >
-                        <VideoCamera className="w-3.5 h-3.5" weight="fill" />
                         {rendering ? 'Rendering...' : 'Render'}
-                    </button>
+                    </Button>
                 </div>
             </div>
 

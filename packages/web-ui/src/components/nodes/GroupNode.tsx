@@ -4,6 +4,7 @@ import { Node, NodeProps, NodeResizeControl, useNodes, useReactFlow, useViewport
 import { useOptionalLoroSyncContext } from '../LoroSyncContext';
 import { useLayoutActions } from '../LayoutActionsContext';
 import { MagicWand, FrameCorners } from '@phosphor-icons/react';
+import { Button } from '../ui/button';
 import { Tooltip } from '../ui/tooltip';
 
 const controlStyle = {
@@ -141,24 +142,24 @@ const GroupNode = ({ selected, data, id }: NodeProps<Node<Record<string, any>>>)
                         }}
                     >
                         <Tooltip label="Ungroup (release children to parent)">
-                            <button
-                                type="button"
-                                className="nodrag nopan flex h-7 items-center gap-1.5 rounded-md border border-warm-border bg-warm-surface/90 px-2.5 text-xs font-medium text-slate-700 dark:text-slate-300 shadow-sm backdrop-blur hover:bg-warm-surface hover:text-slate-900"
+                            <Button
+                                size="sm"
+                                className="nodrag nopan h-7 min-h-0 rounded-md bg-warm-surface/90 px-2.5 text-xs text-slate-700 backdrop-blur hover:bg-warm-surface hover:text-slate-900 dark:text-slate-300"
                                 onClick={() => ungroup(id)}
+                                leftIcon={<FrameCorners className="h-3.5 w-3.5" weight="regular" />}
                             >
-                                <FrameCorners className="h-3.5 w-3.5" weight="regular" />
                                 Ungroup
-                            </button>
+                            </Button>
                         </Tooltip>
                         <Tooltip label="Relayout inside group">
-                            <button
-                                type="button"
-                                className="nodrag nopan flex h-7 items-center gap-1.5 rounded-md border border-warm-border bg-warm-surface/90 px-2.5 text-xs font-medium text-slate-700 dark:text-slate-300 shadow-sm backdrop-blur hover:bg-warm-surface hover:text-slate-900"
+                            <Button
+                                size="sm"
+                                className="nodrag nopan h-7 min-h-0 rounded-md bg-warm-surface/90 px-2.5 text-xs text-slate-700 backdrop-blur hover:bg-warm-surface hover:text-slate-900 dark:text-slate-300"
                                 onClick={() => relayoutParent(id)}
+                                leftIcon={<MagicWand className="h-3.5 w-3.5" weight="regular" />}
                             >
-                                <MagicWand className="h-3.5 w-3.5" weight="regular" />
                                 Layout
-                            </button>
+                            </Button>
                         </Tooltip>
                     </div>
                 )}
