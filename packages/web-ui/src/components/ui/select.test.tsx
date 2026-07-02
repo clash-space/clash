@@ -23,6 +23,14 @@ describe("SelectMenu", () => {
         expect(source).not.toContain("TooltipAnchor");
     });
 
+    it("does not expose dead submenu mode props without a behavior contract", () => {
+        const source = readFileSync(join(process.cwd(), "packages/web-ui/src/components/ui/select.tsx"), "utf8");
+        const copilotSource = readFileSync(join(process.cwd(), "packages/web-ui/src/components/ChatbotCopilot.tsx"), "utf8");
+
+        expect(source).not.toContain("submenuMode");
+        expect(copilotSource).not.toContain("submenuMode");
+    });
+
     it("uses native select semantics for simple option lists", () => {
         const onValueChange = vi.fn();
 

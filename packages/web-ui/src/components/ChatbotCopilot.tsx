@@ -2225,7 +2225,6 @@ function SessionConfigSelector({
     );
     const hasModelSwitch = !!modelConfigOption && modelOptionCount > 0;
     const selectorDisabled = !!harnessLocked && !hasModelSwitch;
-    const submenuMode = modelOptionCount > 8 ? 'drilldown' : 'flyout';
     const hasStatusLabel = !!statusLabel;
     const menuLabel = t('copilot.sessionConfig.label');
     const comboHarnesses = harnessOptions.length > 0
@@ -2350,7 +2349,6 @@ function SessionConfigSelector({
             placement="top"
             menuWidth={280}
             maxMenuHeight={420}
-            submenuMode={submenuMode}
             submenuWidth={220}
             stopPropagation
             triggerPrefix={(

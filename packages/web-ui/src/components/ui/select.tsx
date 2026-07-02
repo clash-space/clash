@@ -53,7 +53,6 @@ export interface SelectMenuProps<Value extends SelectValue = string> {
     placement?: 'top' | 'bottom' | 'auto';
     menuWidth?: number | 'trigger' | 'auto';
     maxMenuHeight?: number;
-    submenuMode?: 'drilldown' | 'flyout';
     submenuWidth?: number;
     showCaret?: boolean;
     stopPropagation?: boolean;
