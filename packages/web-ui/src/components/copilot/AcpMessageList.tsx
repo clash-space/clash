@@ -470,33 +470,39 @@ function ThoughtRow({ text, defaultOpen = false }: { text: string; defaultOpen?:
   const [open, setOpen] = useState(defaultOpen);
   const hasBody = text.trim().length > 0;
   return (
-    <div data-testid="acp-thought-row" className="not-prose my-1 w-full text-neutral-500">
-      <button
-        type="button"
-        onClick={hasBody ? () => setOpen((value) => !value) : undefined}
-        aria-expanded={hasBody ? open : undefined}
-        className={cn(
-          'group inline-flex max-w-full items-center gap-2 text-left text-[13px] leading-5 outline-none',
-          hasBody ? 'cursor-pointer focus-visible:underline focus-visible:decoration-neutral-300 focus-visible:underline-offset-4' : 'cursor-default',
-        )}
-      >
-        <AcpEventIcon />
-        <span className="min-w-0 truncate font-medium text-neutral-500 dark:text-stone-300">
-          已思考
-        </span>
-        {hasBody ? (
-          <ChevronRight className={cn('h-3.5 w-3.5 shrink-0 text-stone-400 transition-transform', open && 'rotate-90')} />
-        ) : null}
-      </button>
-      {hasBody && open ? (
+    <Collapsible
+      open={hasBody && open}
+      onOpenChange={setOpen}
+      data-testid="acp-thought-row"
+      className="not-prose my-1 w-full text-neutral-500"
+    >
+      <CollapsibleTrigger asChild>
+        <button
+          type="button"
+          disabled={!hasBody}
+          className={cn(
+            'group inline-flex max-w-full items-center gap-2 text-left text-[13px] leading-5 outline-none',
+            hasBody ? 'cursor-pointer focus-visible:underline focus-visible:decoration-neutral-300 focus-visible:underline-offset-4' : 'cursor-default',
+          )}
+        >
+          <AcpEventIcon />
+          <span className="min-w-0 truncate font-medium text-neutral-500 dark:text-stone-300">
+            已思考
+          </span>
+          {hasBody ? (
+            <ChevronRight className={cn('h-3.5 w-3.5 shrink-0 text-stone-400 transition-transform', open && 'rotate-90')} />
+          ) : null}
+        </button>
+      </CollapsibleTrigger>
+      <CollapsibleContent asChild>
         <div
           data-testid="acp-thought-details"
           className="mt-1 max-h-[min(420px,45vh)] w-full overflow-y-auto bg-transparent text-[12px] leading-5 text-neutral-500"
         >
           {text}
         </div>
-      ) : null}
-    </div>
+      </CollapsibleContent>
+    </Collapsible>
   );
 }
 
@@ -516,7 +522,9 @@ function ToolRow({ tool, defaultOpen = false }: { tool: AcpToolCallPart; default
   const target = pickToolTarget(tool);
 
   return (
-    <div
+    <Collapsible
+      open={hasBody && open}
+      onOpenChange={setOpen}
       data-testid="acp-tool-row"
       className={cn(
         'not-prose my-1 w-full text-neutral-500',
@@ -524,32 +532,33 @@ function ToolRow({ tool, defaultOpen = false }: { tool: AcpToolCallPart; default
         failed && 'text-status-down',
       )}
     >
-      <button
-        type="button"
-        onClick={hasBody ? () => setOpen((value) => !value) : undefined}
-        aria-expanded={hasBody ? open : undefined}
-        className={cn(
-          'group inline-flex max-w-full items-center gap-2 text-left text-[13px] leading-5 outline-none',
-          hasBody ? 'cursor-pointer focus-visible:underline focus-visible:decoration-neutral-300 focus-visible:underline-offset-4' : 'cursor-default',
-        )}
-      >
-        <AcpEventIcon failed={failed} />
-        <span className="flex min-w-0 max-w-full items-baseline gap-2">
-          <span className={cn('shrink-0 font-medium', failed ? 'text-status-down' : 'text-neutral-500 dark:text-stone-300')}>
-            {pickToolVerb(tool.kind, status)}
-          </span>
-          {target ? (
-            <span className="min-w-0 truncate font-sans text-[13px] text-neutral-500 dark:text-stone-300" title={target}>
-              {target}
+      <CollapsibleTrigger asChild>
+        <button
+          type="button"
+          disabled={!hasBody}
+          className={cn(
+            'group inline-flex max-w-full items-center gap-2 text-left text-[13px] leading-5 outline-none',
+            hasBody ? 'cursor-pointer focus-visible:underline focus-visible:decoration-neutral-300 focus-visible:underline-offset-4' : 'cursor-default',
+          )}
+        >
+          <AcpEventIcon failed={failed} />
+          <span className="flex min-w-0 max-w-full items-baseline gap-2">
+            <span className={cn('shrink-0 font-medium', failed ? 'text-status-down' : 'text-neutral-500 dark:text-stone-300')}>
+              {pickToolVerb(tool.kind, status)}
             </span>
+            {target ? (
+              <span className="min-w-0 truncate font-sans text-[13px] text-neutral-500 dark:text-stone-300" title={target}>
+                {target}
+              </span>
+            ) : null}
+          </span>
+          {failed ? <XCircle className="h-3.5 w-3.5 shrink-0 text-status-down" /> : null}
+          {hasBody ? (
+            <ChevronRight className={cn('h-3.5 w-3.5 shrink-0 text-stone-400 transition-transform', open && 'rotate-90')} />
           ) : null}
-        </span>
-        {failed ? <XCircle className="h-3.5 w-3.5 shrink-0 text-status-down" /> : null}
-        {hasBody ? (
-          <ChevronRight className={cn('h-3.5 w-3.5 shrink-0 text-stone-400 transition-transform', open && 'rotate-90')} />
-        ) : null}
-      </button>
-      {hasBody && open ? (
+        </button>
+      </CollapsibleTrigger>
+      <CollapsibleContent asChild>
         <div
           data-testid="acp-tool-details"
           className="mt-1 max-h-[min(420px,45vh)] w-full space-y-1.5 overflow-y-auto bg-transparent text-[12px] text-neutral-500"
@@ -594,8 +603,8 @@ function ToolRow({ tool, defaultOpen = false }: { tool: AcpToolCallPart; default
             </>
           )}
         </div>
-      ) : null}
-    </div>
+      </CollapsibleContent>
+    </Collapsible>
   );
 }
 

@@ -38,4 +38,16 @@ describe("AcpMessageList primitives", () => {
     expect(source).not.toContain("{open ? (\n        <div data-testid=\"acp-tool-details\"");
     expect(source).not.toContain("{open ? (\n        <div className=\"mt-1 space-y-1.5\"");
   });
+
+  it("uses shared collapsible primitives for thought and generic tool detail expansion", () => {
+    const source = readCopilotSource("AcpMessageList.tsx");
+
+    expect(source).toMatch(/<Collapsible\s+[\s\S]*data-testid="acp-thought-row"/);
+    expect(source).toMatch(/<Collapsible\s+[\s\S]*data-testid="acp-tool-row"/);
+    expect(source).toContain('data-testid="acp-thought-details"');
+    expect(source).toContain('data-testid="acp-tool-details"');
+    expect(source).not.toContain("onClick={hasBody ? () => setOpen((value) => !value) : undefined}");
+    expect(source).not.toContain("aria-expanded={hasBody ? open : undefined}");
+    expect(source).not.toContain("{hasBody && open ? (");
+  });
 });
