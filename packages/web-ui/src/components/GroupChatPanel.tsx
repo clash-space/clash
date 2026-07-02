@@ -38,6 +38,7 @@ import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
 import { motion } from 'framer-motion';
 import { CaretLeft, CaretRight, ArrowClockwise, Lightning } from '@phosphor-icons/react';
 import { Link, useNavigate } from 'react-router';
+import { TabList, TabPanel, TabProvider } from '@ariakit/react';
 import betterAuthClient from '@clash/web-ui/lib/betterAuthClient';
 import { useBillingBalance } from '@clash/web-ui/hooks/useBillingBalance';
 import { ChatInput, type UploadedAttachment } from './copilot/ChatInput';
@@ -161,9 +162,7 @@ export function GroupChatPanel({
   const [showAddMenu, setShowAddMenu] = useState(false);
   const [draft, setDraft] = useState('');
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
-  const tablistRef = useRef<HTMLDivElement | null>(null);
-  // Stable id for the tabpanel — each tab's `aria-controls` references it
-  // and the panel's `aria-labelledby` references the active tab.
+  // Stable id for the active tabpanel. Ariakit wires it to the selected tab.
   const panelId = useId();
   const tabIdPrefix = useId();
   const tabIdFor = useCallback(
@@ -190,6 +189,24 @@ export function GroupChatPanel({
   const invitedAgent = useMemo(
     () => invitedIds.map(claimById).filter((c): c is AgentRow => !!c),
     [invitedIds, claimById],
+  );
+  const tabKeyForId = useCallback(
+    (selectedId: string | null | undefined) => {
+      if (!selectedId) return null;
+      if (selectedId === tabIdFor(ROOM_TAB)) return ROOM_TAB;
+      return invitedAgent.find((c) => tabIdFor(c.id) === selectedId)?.id ?? null;
+    },
+    [invitedAgent, tabIdFor],
+  );
+  const handleSelectedTabIdChange = useCallback(
+    (selectedId: string | null | undefined) => {
+      const nextTab = tabKeyForId(selectedId);
+      if (!nextTab) return;
+      setActiveTab(nextTab);
+      if (nextTab !== ROOM_TAB) group.focus(nextTab);
+      if (isCollapsed) onCollapseChange(false);
+    },
+    [group, isCollapsed, onCollapseChange, tabKeyForId],
   );
 
   // Auto-spawn sessions for invited agent that don't have one yet.
@@ -326,40 +343,6 @@ export function GroupChatPanel({
     void e;
   };
 
-  // Keyboard nav across the tablist: ←/→ cycles, Home/End jump to the
-  // ends. Roving tabindex on TabPill keeps Tab/Shift-Tab moving past the
-  // whole tablist instead of stepping through every chip.
-  const tabOrder = useMemo<string[]>(
-    () => [ROOM_TAB, ...invitedAgent.map((c) => c.id)],
-    [invitedAgent],
-  );
-  const focusTab = useCallback(
-    (key: string) => {
-      const root = tablistRef.current;
-      if (!root) return;
-      const el = root.querySelector<HTMLButtonElement>(`#${CSS.escape(tabIdFor(key))}`);
-      el?.focus();
-    },
-    [tabIdFor],
-  );
-  const onTabKeyDown = useCallback(
-    (e: React.KeyboardEvent<HTMLButtonElement>, key: string) => {
-      const i = tabOrder.indexOf(key);
-      if (i < 0) return;
-      let nextKey: string | null = null;
-      if (e.key === 'ArrowRight') nextKey = tabOrder[(i + 1) % tabOrder.length];
-      else if (e.key === 'ArrowLeft') nextKey = tabOrder[(i - 1 + tabOrder.length) % tabOrder.length];
-      else if (e.key === 'Home') nextKey = tabOrder[0];
-      else if (e.key === 'End') nextKey = tabOrder[tabOrder.length - 1];
-      if (nextKey === null) return;
-      e.preventDefault();
-      setActiveTab(nextKey);
-      if (nextKey !== ROOM_TAB) group.focus(nextKey);
-      focusTab(nextKey);
-    },
-    [tabOrder, focusTab, group],
-  );
-
   // Resize handle on the LEFT edge of the panel. Drag left → wider,
   // drag right → narrower. Installs a global mousemove only for the
   // duration of the drag so we don't leak listeners on idle hover.
@@ -441,6 +424,12 @@ export function GroupChatPanel({
   const syncIndicator = roomSyncIndicator(room.sync);
 
   return (
+    <TabProvider
+      selectedId={tabIdFor(activeTab)}
+      setSelectedId={handleSelectedTabIdChange}
+      orientation="vertical"
+      focusLoop
+    >
     <div className="h-full flex items-stretch gap-2">
       {/* ── Left rail — FLOATS OUTSIDE the panel card ────────────
           Bare transparent column with stacked avatar buttons. Sits
@@ -467,11 +456,8 @@ export function GroupChatPanel({
 
         <div className="my-1 h-px w-8 bg-warm-border" aria-hidden="true" />
 
-        <div
-          ref={tablistRef}
-          role="tablist"
+        <TabList
           aria-label="Chat tabs"
-          aria-orientation="vertical"
           className="flex flex-col items-center gap-1.5 overflow-y-auto scrollbar-thin flex-1 min-h-0 w-full"
         >
           {/* Tap on any rail action (tab, invite) implicitly expands
@@ -482,13 +468,10 @@ export function GroupChatPanel({
             label="Room"
             active={activeTab === ROOM_TAB}
             onClick={() => {
-              setActiveTab(ROOM_TAB);
               if (isCollapsed) onCollapseChange(false);
             }}
             kind="room"
-            controlsId={panelId}
             tabId={tabIdFor(ROOM_TAB)}
-            onKeyDown={(e) => onTabKeyDown(e, ROOM_TAB)}
             compact
           />
           {invitedAgent.map((c) => {
@@ -499,8 +482,6 @@ export function GroupChatPanel({
                 label={c.display_name}
                 active={activeTab === c.id}
                 onClick={() => {
-                  setActiveTab(c.id);
-                  group.focus(c.id);
                   if (isCollapsed) onCollapseChange(false);
                 }}
                 onClose={() => uninvite(c.id)}
@@ -508,9 +489,7 @@ export function GroupChatPanel({
                 pendingCount={live?.pendingPrompts.length ?? 0}
                 status={live?.status}
                 initials={agentInitials(c.display_name)}
-                controlsId={panelId}
                 tabId={tabIdFor(c.id)}
-                onKeyDown={(e) => onTabKeyDown(e, c.id)}
                 compact
               />
             );
@@ -542,7 +521,7 @@ export function GroupChatPanel({
           >
             <ArrowClockwise className="w-4 h-4" weight="bold" aria-hidden="true" />
           </motion.button>
-        </div>
+        </TabList>
 
         {/* Rail footer: avatar (opens Settings) + balance pill (hosted
             version only — hidden when billing is unavailable on a
@@ -661,13 +640,12 @@ export function GroupChatPanel({
         )}
 
         {/* Body */}
-        <div
-          id={panelId}
-          role="tabpanel"
-          aria-labelledby={tabIdFor(activeTab)}
-          aria-label={`${activeTabLabel} content`}
-          className="flex-1 px-5 min-h-0"
-        >
+         <TabPanel
+           id={panelId}
+           tabId={tabIdFor(activeTab)}
+           aria-label={`${activeTabLabel} content`}
+           className="flex-1 px-5 min-h-0"
+         >
           {activeTab === ROOM_TAB ? (
             <RoomView
               messages={room.messages}
@@ -686,7 +664,7 @@ export function GroupChatPanel({
               onRetry={focusedAgent ? () => group.retryAgent?.(focusedAgent.agentMemberId) : undefined}
             />
           )}
-        </div>
+         </TabPanel>
 
         {/* Input lives only on the Room tab. Agent tabs are read-only event
             streams — typing into them never made sense (the input always
@@ -713,5 +691,6 @@ export function GroupChatPanel({
       </div>
       </motion.div>
     </div>
+    </TabProvider>
   );
 }

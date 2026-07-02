@@ -1,12 +1,9 @@
 /**
  * Pill-shaped chip used for the tab row in GroupChatPanel.
  *
- * a11y: implements WAI-ARIA tab semantics so screen readers announce the
- * tab list and which tab is selected. The parent (`GroupChatPanel`) owns
- * arrow-key navigation across the tablist; this component is just a
- * single tab. Each tab carries `tabIndex={active ? 0 : -1}` (roving
- * tabindex) so Tab/Shift-Tab moves to the *next* widget, not between
- * tabs.
+ * a11y: renders Ariakit's Tab primitive so WAI-ARIA tab semantics,
+ * roving focus, and arrow-key navigation come from the shared component
+ * layer. `active` is visual state only.
  *
  * Active state is a solid brand fill (no gradient) — keeps a single
  * "this is the focus" cue across the panel instead of having every chip
@@ -14,6 +11,7 @@
  */
 
 import { motion } from 'framer-motion';
+import { Tab } from '@ariakit/react';
 import { forwardRef } from 'react';
 import { statusDotClass, statusDotLabel } from './statusDot';
 
@@ -30,13 +28,8 @@ export interface TabPillProps {
   /** Avatar initials. Required for `kind === 'agent'`. */
   initials?: string;
   kind?: 'room' | 'agent';
-  /** id of the panel this tab controls — pairs with the panel's
-   *  `aria-labelledby`. The parent generates and threads the same id. */
-  controlsId?: string;
-  /** id of this tab — used by the controlled panel's `aria-labelledby`. */
+  /** id of this tab — used by Ariakit's controlled tab state. */
   tabId?: string;
-  /** Forwarded to the inner <button>. Parent uses focus() for arrow-key nav. */
-  onKeyDown?: (e: React.KeyboardEvent<HTMLButtonElement>) => void;
   /** Compact (avatar-only) variant for the vertical left sidebar.
    *  Hides the text label and close button; full label moves to the
    *  tooltip. Status dot + unread/pending badges still render. */
@@ -54,9 +47,7 @@ export const TabPill = forwardRef<HTMLButtonElement, TabPillProps>(function TabP
     status,
     initials,
     kind = 'agent',
-    controlsId,
     tabId,
-    onKeyDown,
     compact = false,
   },
   ref,
@@ -71,15 +62,10 @@ export const TabPill = forwardRef<HTMLButtonElement, TabPillProps>(function TabP
     : 'min-h-[44px] py-1 pl-1.5 pr-3 rounded-matrix gap-2';
   return (
     <motion.div whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} className="shrink-0">
-      <button
+      <Tab
         ref={ref}
         id={tabId}
-        role="tab"
-        aria-selected={active}
-        aria-controls={controlsId}
-        tabIndex={active ? 0 : -1}
         onClick={onClick}
-        onKeyDown={onKeyDown}
         title={compact ? label : undefined}
         className={`group relative flex items-center text-xs font-medium transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-brand/60 focus-visible:ring-offset-1 focus-visible:ring-offset-warm-surface ${wrapperShape} ${
           active
@@ -148,7 +134,7 @@ export const TabPill = forwardRef<HTMLButtonElement, TabPillProps>(function TabP
           <span
             role="button"
             aria-label={`Remove ${label} from room`}
-            tabIndex={active ? 0 : -1}
+            tabIndex={0}
             onClick={(e) => {
               e.stopPropagation();
               onClose();
@@ -167,7 +153,7 @@ export const TabPill = forwardRef<HTMLButtonElement, TabPillProps>(function TabP
             ×
           </span>
         )}
-      </button>
+      </Tab>
     </motion.div>
   );
 });
