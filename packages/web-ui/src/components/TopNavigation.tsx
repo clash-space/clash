@@ -1,5 +1,6 @@
 
 import { useEffect, useRef, useState, type CSSProperties } from 'react';
+import { Tab, TabList, TabProvider } from '@ariakit/react';
 import { motion } from 'framer-motion';
 import { Link, useLocation, useNavigate } from 'react-router';
 import { desktopChromeMetrics } from '@clash/shared-runtime';
@@ -138,6 +139,12 @@ export default function TopNavigation() {
     if (tab.path !== pathname) navigate(tab.path);
   };
 
+  const selectDesktopTabId = (tabId: string | null | undefined) => {
+    const tab = desktopTabs.find((candidate) => candidate.id === tabId);
+    if (!tab) return;
+    selectDesktopTab(tab);
+  };
+
   const closeTab = (tabId: string) => {
     const tabToClose = desktopTabs.find((tab) => tab.id === tabId);
     if (!tabToClose || tabToClose.path === '/') return;
@@ -202,75 +209,77 @@ export default function TopNavigation() {
             >
               <ArrowRight className="h-4 w-4" aria-hidden="true" />
             </button>
-            <div
-              role="tablist"
-              aria-label="Open tabs"
-              className="desktop-drag-region flex min-w-0 flex-1 items-center gap-0.5 overflow-hidden"
+            <TabProvider
+              selectedId={activeDesktopTabId ?? undefined}
+              setSelectedId={selectDesktopTabId}
+              focusLoop
             >
-              {desktopTabs.map((tab, index) => {
-                const active = tab.id === activeDesktopTabId;
-                const isHomeTab = tab.path === '/';
-                const nextTab = desktopTabs[index + 1];
-                const nextActive = nextTab?.id === activeDesktopTabId;
-                const showInactiveSeparator = !active && !!nextTab && !nextActive;
-                return (
-                  <div
-                    key={tab.id}
-                    data-desktop-tab="true"
-                    className={`desktop-no-drag group relative flex h-8 items-center gap-1 rounded-lg border text-[13px] font-medium transition-colors ${
-                      isHomeTab ? 'w-10 flex-none justify-center px-0' : 'min-w-36 max-w-60 px-2.5'
-                    } ${
-                      active
-                        ? 'border-[#e1ddd5] bg-[#fffefd] text-slate-950 shadow-sm'
-                        : 'border-transparent bg-transparent text-stone-600 hover:bg-white/55 hover:text-stone-950'
-                    }`}
-                  >
-                    <button
-                      type="button"
-                      role="tab"
-                      aria-selected={active}
-                      aria-label={isHomeTab ? 'Home' : undefined}
-                      onClick={() => selectDesktopTab(tab)}
-                      className={`min-w-0 focus-visible:outline-none ${
-                        isHomeTab ? 'inline-flex h-full w-full items-center justify-center' : 'flex-1 truncate text-left'
+              <TabList
+                aria-label="Open tabs"
+                className="desktop-drag-region flex min-w-0 flex-1 items-center gap-0.5 overflow-hidden"
+              >
+                {desktopTabs.map((tab, index) => {
+                  const active = tab.id === activeDesktopTabId;
+                  const isHomeTab = tab.path === '/';
+                  const nextTab = desktopTabs[index + 1];
+                  const nextActive = nextTab?.id === activeDesktopTabId;
+                  const showInactiveSeparator = !active && !!nextTab && !nextActive;
+                  return (
+                    <div
+                      key={tab.id}
+                      data-desktop-tab="true"
+                      className={`desktop-no-drag group relative flex h-8 items-center gap-1 rounded-lg border text-[13px] font-medium transition-colors ${
+                        isHomeTab ? 'w-10 flex-none justify-center px-0' : 'min-w-36 max-w-60 px-2.5'
+                      } ${
+                        active
+                          ? 'border-[#e1ddd5] bg-[#fffefd] text-slate-950 shadow-sm'
+                          : 'border-transparent bg-transparent text-stone-600 hover:bg-white/55 hover:text-stone-950'
                       }`}
                     >
-                      {isHomeTab ? (
-                        <House
-                          className={`h-4 w-4 ${active ? 'text-brand' : ''}`}
-                          weight={active ? 'fill' : 'regular'}
-                          aria-hidden="true"
-                        />
-                      ) : (
-                        tab.title
-                      )}
-                    </button>
-                    {!isHomeTab && (
-                      <button
-                        type="button"
-                        onClick={() => closeTab(tab.id)}
-                        aria-label={`Close ${tab.title}`}
-                        title={`Close ${tab.title}`}
-                        className={`inline-flex h-5 w-5 flex-none items-center justify-center rounded-full transition-colors ${
-                          active
-                            ? 'text-stone-500 hover:bg-black/10 hover:text-stone-950'
-                            : 'text-stone-400 opacity-0 hover:bg-black/10 hover:text-stone-800 group-hover:opacity-100'
+                      <Tab
+                        id={tab.id}
+                        aria-label={isHomeTab ? 'Home' : undefined}
+                        className={`min-w-0 focus-visible:outline-none ${
+                          isHomeTab ? 'inline-flex h-full w-full items-center justify-center' : 'flex-1 truncate text-left'
                         }`}
                       >
-                        <X className="h-3 w-3" weight="bold" />
-                      </button>
-                    )}
-                    {showInactiveSeparator && (
-                      <span
-                        aria-hidden="true"
-                        data-desktop-tab-separator="true"
-                        className="pointer-events-none absolute right-0 top-1/2 h-5 w-px -translate-y-1/2 bg-[#d8d1c7]/90"
-                      />
-                    )}
-                  </div>
-                );
-              })}
-            </div>
+                        {isHomeTab ? (
+                          <House
+                            className={`h-4 w-4 ${active ? 'text-brand' : ''}`}
+                            weight={active ? 'fill' : 'regular'}
+                            aria-hidden="true"
+                          />
+                        ) : (
+                          tab.title
+                        )}
+                      </Tab>
+                      {!isHomeTab && (
+                        <button
+                          type="button"
+                          onClick={() => closeTab(tab.id)}
+                          aria-label={`Close ${tab.title}`}
+                          title={`Close ${tab.title}`}
+                          className={`inline-flex h-5 w-5 flex-none items-center justify-center rounded-full transition-colors ${
+                            active
+                              ? 'text-stone-500 hover:bg-black/10 hover:text-stone-950'
+                              : 'text-stone-400 opacity-0 hover:bg-black/10 hover:text-stone-800 group-hover:opacity-100'
+                          }`}
+                        >
+                          <X className="h-3 w-3" weight="bold" />
+                        </button>
+                      )}
+                      {showInactiveSeparator && (
+                        <span
+                          aria-hidden="true"
+                          data-desktop-tab-separator="true"
+                          className="pointer-events-none absolute right-0 top-1/2 h-5 w-px -translate-y-1/2 bg-[#d8d1c7]/90"
+                        />
+                      )}
+                    </div>
+                  );
+                })}
+              </TabList>
+            </TabProvider>
           </div>
         </header>
 

@@ -37,6 +37,21 @@ describe("TopNavigation desktop chrome", () => {
     delete globalThis.__CLASH_DESKTOP__;
   });
 
+  it("uses Ariakit tab primitives instead of handwritten desktop tab semantics", () => {
+    const source = readFileSync(
+      resolve(process.cwd(), "packages/web-ui/src/components/TopNavigation.tsx"),
+      "utf8",
+    );
+
+    expect(source).toContain("@ariakit/react");
+    expect(source).toContain("TabProvider");
+    expect(source).toContain("TabList");
+    expect(source).toContain("<Tab");
+    expect(source).not.toContain('role="tablist"');
+    expect(source).not.toContain('role="tab"');
+    expect(source).not.toContain("aria-selected={active}");
+  });
+
   it("moves app shortcuts and account controls below the desktop tab strip", async () => {
     globalThis.__CLASH_DESKTOP__ = {
       isDesktop: true,
