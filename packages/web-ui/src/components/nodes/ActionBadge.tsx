@@ -1,4 +1,5 @@
 import { memo, useState, useEffect, useCallback, useMemo, useRef, Fragment, type KeyboardEvent as ReactKeyboardEvent } from 'react';
+import { ComboboxItem, ComboboxList, ComboboxProvider } from '@ariakit/react';
 import { Handle, Position, type Node as RFNode, NodeProps, useReactFlow, useNodeConnections } from '@xyflow/react';
 import { VideoCamera, Image as ImageIcon, CaretDown, X, Play, Spinner, PuzzlePiece, Plus, Lock, Copy, SpeakerHigh, TextT } from '@phosphor-icons/react';
 import { motion, Reorder } from 'framer-motion';
@@ -47,6 +48,68 @@ const FALLBACK_MODEL_BY_KIND: Record<BuiltInActionKind, string> = {
     audio: 'gemini-3.1-flash-tts',
     text: 'gpt-5.4',
 };
+
+type ActionMentionNode = {
+    id: string;
+    type: string;
+    label: string;
+    thumbnail?: string;
+};
+
+function ActionMentionPicker({
+    activeIndex,
+    nodes,
+    onHover,
+    onPick,
+}: {
+    activeIndex: number;
+    nodes: ActionMentionNode[];
+    onHover: (index: number) => void;
+    onPick: (node: ActionMentionNode) => void;
+}) {
+    return (
+        <ComboboxProvider value="" setValue={() => undefined}>
+            <ComboboxList
+                aria-label="Reference asset matches"
+                alwaysVisible
+                className="clash-action-mention-menu absolute inset-x-4 bottom-full z-50 mb-1 max-h-48 overflow-y-auto rounded-xl border border-warm-border bg-warm-surface shadow-lg"
+            >
+                {nodes.map((node, idx) => {
+                    const selected = idx === activeIndex;
+                    return (
+                        <ComboboxItem
+                            key={node.id}
+                            value={node.label}
+                            setValueOnClick={false}
+                            selectValueOnClick={false}
+                            onMouseDown={(event) => {
+                                event.preventDefault();
+                                onPick(node);
+                            }}
+                            onMouseEnter={() => onHover(idx)}
+                            className={`flex w-full cursor-default items-center gap-2.5 px-3 py-2 text-left text-xs transition-colors outline-none ${
+                                selected ? 'bg-warm-muted' : 'hover:bg-warm-muted data-[active-item]:bg-warm-muted'
+                            }`}
+                        >
+                            {node.thumbnail ? (
+                                <SignedImg
+                                    src={node.thumbnail}
+                                    alt={node.label}
+                                    className="h-8 w-8 flex-shrink-0 rounded border border-warm-border object-cover"
+                                />
+                            ) : (
+                                <span className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded border border-warm-border bg-warm-muted">
+                                    <span className="text-[9px] uppercase text-stone-700 dark:text-stone-300">{node.type}</span>
+                                </span>
+                            )}
+                            <span className="truncate font-medium text-slate-900 dark:text-slate-50">{node.label}</span>
+                        </ComboboxItem>
+                    );
+                })}
+            </ComboboxList>
+        </ComboboxProvider>
+    );
+}
 
 // Helper to extract meaningful label from prompt content
 const extractLabelFromPrompt = (promptText: string, fallback: string): string => {
@@ -1707,32 +1770,13 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
                             }}
                             onMouseDown={(e) => e.stopPropagation()}
                         />
-                        {/* @ mention dropdown with thumbnails */}
                         {showMentionMenu && filteredMentionNodes.length > 0 && (
-                            <div className="absolute left-4 right-4 bottom-full mb-1 bg-warm-surface border border-warm-border rounded-xl shadow-lg z-50 max-h-48 overflow-y-auto">
-                                {filteredMentionNodes.map((node, idx) => (
-                                    <div
-                                        key={node.id}
-                                        className={`px-3 py-2 text-xs cursor-pointer flex items-center gap-2.5 transition-colors ${
-                                            idx === mentionIndex ? 'bg-warm-muted' : 'hover:bg-warm-muted'
-                                        }`}
-                                        onMouseDown={(e) => { e.preventDefault(); insertMention(node); }}
-                                    >
-                                        {node.thumbnail ? (
-                                            <SignedImg
-                                                src={node.thumbnail}
-                                                alt={node.label}
-                                                className="h-8 w-8 rounded object-cover flex-shrink-0 border border-warm-border"
-                                            />
-                                        ) : (
-                                            <div className="h-8 w-8 rounded bg-warm-muted flex-shrink-0 flex items-center justify-center border border-warm-border">
-                                                <span className="text-[9px] uppercase text-stone-700 dark:text-stone-300">{node.type}</span>
-                                            </div>
-                                        )}
-                                        <span className="font-medium text-slate-900 dark:text-slate-50 truncate">{node.label}</span>
-                                    </div>
-                                ))}
-                            </div>
+                            <ActionMentionPicker
+                                activeIndex={mentionIndex}
+                                nodes={filteredMentionNodes}
+                                onHover={setMentionIndex}
+                                onPick={insertMention}
+                            />
                         )}
                     </div>
 
