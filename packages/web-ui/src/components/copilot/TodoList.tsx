@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Check, CaretDown, CaretUp, ListChecks } from '@phosphor-icons/react';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '../ui/collapsible';
+import { Button } from '../ui/button';
 
 export interface TodoItem {
     id: string;
@@ -34,9 +35,8 @@ export const TodoList: React.FC<TodoListProps> = ({ items, title = "Plan" }) => 
                 className="bg-warm-surface border border-warm-border shadow-sm rounded-2xl overflow-hidden transition-shadow hover:shadow-md w-64"
             >
                 <CollapsibleTrigger asChild>
-                    <button
-                        type="button"
-                        className="w-full px-3 py-2 flex items-center justify-between bg-warm-muted text-left cursor-pointer transition-colors hover:bg-warm-muted/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand"
+                    <Button
+                        className="min-h-0 w-full cursor-pointer justify-between rounded-none border-transparent bg-warm-muted px-3 py-2 text-left shadow-none hover:bg-warm-muted/80 focus-visible:ring-inset"
                     >
                         <span className="flex items-center gap-2">
                             <ListChecks className="w-4 h-4 text-stone-700 dark:text-stone-300" aria-hidden="true" />
@@ -50,7 +50,7 @@ export const TodoList: React.FC<TodoListProps> = ({ items, title = "Plan" }) => 
                                 <CaretUp className="w-3 h-3 text-stone-700 dark:text-stone-300" aria-hidden="true" />
                             )}
                         </span>
-                    </button>
+                    </Button>
                 </CollapsibleTrigger>
 
                 <AnimatePresence>

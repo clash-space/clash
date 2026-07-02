@@ -7,6 +7,7 @@ import { ToolCall, ToolCallProps } from './ToolCall';
 import { ThinkingProcess } from './ThinkingProcess';
 import ReactMarkdown from 'react-markdown';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '../ui/collapsible';
+import { Button } from '../ui/button';
 
 export interface AgentLog {
     id: string;
@@ -64,9 +65,8 @@ export function AgentCard({ agentName, status, children, isExpanded: initialExpa
             className="w-full rounded-xl bg-warm-surface shadow-sm border border-warm-border overflow-hidden my-2"
         >
             <CollapsibleTrigger asChild>
-                <button
-                    type="button"
-                    className="w-full flex items-center justify-between px-4 py-3 cursor-pointer hover:bg-warm-muted transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand text-left"
+                <Button
+                    className="min-h-0 w-full cursor-pointer justify-between rounded-none border-transparent bg-transparent px-4 py-3 text-left shadow-none hover:bg-warm-muted focus-visible:ring-inset"
                 >
                     <span className="flex items-center gap-3">
                         <span className="p-2 rounded-xl bg-warm-muted relative flex items-center justify-center" aria-hidden="true">
@@ -92,7 +92,7 @@ export function AgentCard({ agentName, status, children, isExpanded: initialExpa
                             <CaretRight className="w-4 h-4 text-slate-700 dark:text-slate-300" aria-hidden="true" />
                         )}
                     </span>
-                </button>
+                </Button>
             </CollapsibleTrigger>
 
             <AnimatePresence>
