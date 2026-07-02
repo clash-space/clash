@@ -17,6 +17,7 @@ import {
     calculateScaledDimensions,
     resolveInitialMediaSize,
 } from './assetNodeSizing';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '../ui/collapsible';
 
 const ImageNode = ({ data, selected, id, width, height }: NodeProps<Node<Record<string, any>>>) => {
     const [label, setLabel] = useState(data.label || 'Image Node');
@@ -32,7 +33,7 @@ const ImageNode = ({ data, selected, id, width, height }: NodeProps<Node<Record<
     const imageR2Key = asset?.srcR2Key;
     const [imageUrl, setImageUrl] = useState<string | undefined>(imageR2Key);
     const [description, setDescription] = useState(data.description || '');
-    const [showDescription, setShowDescription] = useState(false);
+    const [descriptionOpen, setDescriptionOpen] = useState(false);
     const signedImageUrl = useSignedUrl(imageUrl);
 
     const aspectRatioDimensions = calculateDimensionsFromAspectRatio(data.aspectRatio);
@@ -160,7 +161,9 @@ const ImageNode = ({ data, selected, id, width, height }: NodeProps<Node<Record<
             <PeerSelectionRing peers={peersSelecting} />
 
             {/* Main Card */}
-            <div
+            <Collapsible
+                open={descriptionOpen}
+                onOpenChange={setDescriptionOpen}
                 className={`relative bg-warm-surface shadow-md rounded-matrix overflow-hidden transition-all duration-300 hover:shadow-lg ${selected ? 'ring-4 ring-brand ring-offset-2' : 'ring-1 ring-warm-border'
                     }`}
                 style={{
@@ -210,15 +213,17 @@ const ImageNode = ({ data, selected, id, width, height }: NodeProps<Node<Record<
                         )}
                         {/* Top Right Controls */}
                         <div className="absolute top-2 right-2 flex gap-1 z-10">
-                            <button
-                                className="rounded-full bg-black/50 p-1 text-white backdrop-blur-sm hover:bg-black/70 transition-colors"
-                                onClick={(e) => {
-                                    e.stopPropagation();
-                                    setShowDescription(!showDescription);
-                                }}
-                            >
-                                <TextT size={12} weight="bold" />
-                            </button>
+                            <CollapsibleTrigger asChild>
+                                <button
+                                    type="button"
+                                    className="rounded-full bg-black/50 p-1 text-white backdrop-blur-sm hover:bg-black/70 transition-colors"
+                                    onClick={(e) => e.stopPropagation()}
+                                    aria-label={descriptionOpen ? 'Hide description' : 'Show description'}
+                                    title={descriptionOpen ? 'Hide description' : 'Show description'}
+                                >
+                                    <TextT size={12} weight="bold" />
+                                </button>
+                            </CollapsibleTrigger>
                         </div>
                     </div>
                 ) : status === 'uploading' && data.previewUrl ? (
@@ -267,19 +272,17 @@ const ImageNode = ({ data, selected, id, width, height }: NodeProps<Node<Record<
                 )}
 
                 {/* Description Box */}
-                {showDescription && (
-                    <div
-                        className="absolute left-0 right-0 bottom-0 z-20 border-t border-warm-border bg-warm-surface/95 p-3 backdrop-blur"
-                        onDoubleClick={(e) => e.stopPropagation()}
-                    >
-                        <textarea
-                            className="w-full h-24 resize-none bg-transparent text-xs text-slate-700 dark:text-slate-300 focus:outline-none"
-                            value={description || ((status === 'completed') ? 'Generating description...' : 'No description available.')}
-                            readOnly
-                        />
-                    </div>
-                )}
-            </div>
+                <CollapsibleContent
+                    className="absolute left-0 right-0 bottom-0 z-20 border-t border-warm-border bg-warm-surface/95 p-3 backdrop-blur"
+                    onDoubleClick={(e) => e.stopPropagation()}
+                >
+                    <textarea
+                        className="w-full h-24 resize-none bg-transparent text-xs text-slate-700 dark:text-slate-300 focus:outline-none"
+                        value={description || ((status === 'completed') ? 'Generating description...' : 'No description available.')}
+                        readOnly
+                    />
+                </CollapsibleContent>
+            </Collapsible>
 
             {/* Asset nodes only have output (source) */}
             <Handle
