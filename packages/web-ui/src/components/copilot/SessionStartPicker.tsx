@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import type { BridgeSession } from '@clash/web-ui/hooks/useAgentByoBridge';
+import { Button } from '../ui/button';
 
 export interface AgentTemplate {
   id: string;
@@ -116,14 +117,14 @@ export function SessionStartPicker({
           </div>
           <div className="mt-2 flex flex-wrap items-center gap-2">
             {onRecheckAuth && (
-              <button
-                type="button"
+              <Button
                 onClick={onRecheckAuth}
                 disabled={busy}
-                className="rounded-lg border border-amber-300/70 bg-transparent px-2.5 py-1 text-xs font-semibold text-amber-900 transition hover:bg-amber-100 disabled:cursor-wait disabled:opacity-60 dark:border-amber-300/30 dark:text-amber-100"
+                size="sm"
+                className="min-h-0 rounded-lg border-amber-300/70 bg-transparent px-2.5 py-1 text-xs font-semibold text-amber-900 shadow-none hover:bg-amber-100 disabled:cursor-wait disabled:opacity-60 dark:border-amber-300/30 dark:text-amber-100"
               >
                 Check again
-              </button>
+              </Button>
             )}
             {selectedAgent.auth?.command && (
               <span className="min-w-0 truncate font-mono text-[11px] text-amber-800/75 dark:text-amber-100/70">
@@ -189,14 +190,13 @@ export function SessionStartPicker({
         </div>
       </div>
 
-      <button
-        type="button"
+      <Button
         onClick={() => onStart(null, resumeId ?? undefined, agentId ?? undefined)}
         disabled={busy || selectedAgentNeedsAuth}
-        className="clash-copilot-primary w-full rounded-xl py-2.5 min-h-[44px] text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-warm-surface"
+        className="clash-copilot-primary w-full rounded-xl border-transparent py-2.5 text-sm font-semibold shadow-none"
       >
         {busy ? 'Starting…' : startLabel}
-      </button>
+      </Button>
     </div>
   );
 }
