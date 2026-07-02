@@ -13,14 +13,16 @@
 import { motion } from 'framer-motion';
 import { Tab } from '@ariakit/react';
 import { forwardRef } from 'react';
+import { X } from '@phosphor-icons/react';
 import { statusDotClass, statusDotLabel } from './statusDot';
+import { IconButton } from '../components/ui/icon-button';
 import { Tooltip } from '../components/ui/tooltip';
 
 export interface TabPillProps {
   label: string;
   active: boolean;
   onClick: () => void;
-  /** Close handler; passing it adds the (× hover-revealed) close button. */
+  /** Close handler; passing it adds the hover-revealed remove button. */
   onClose?: () => void;
   unread?: boolean;
   pendingCount?: number;
@@ -60,7 +62,7 @@ export const TabPill = forwardRef<HTMLButtonElement, TabPillProps>(function TabP
   const avatarSize = compact ? 'h-9 w-9 text-xs' : 'h-5 w-5 text-[9px]';
   const wrapperShape = compact
     ? 'min-h-11 min-w-11 p-1 rounded-matrix justify-center'
-    : `min-h-[44px] py-1 pl-1.5 ${onClose ? 'pr-7' : 'pr-3'} rounded-matrix gap-2`;
+    : `min-h-[44px] py-1 pl-1.5 ${onClose ? 'pr-10' : 'pr-3'} rounded-matrix gap-2`;
   const tab = (
     <Tab
       ref={ref}
@@ -134,19 +136,20 @@ export const TabPill = forwardRef<HTMLButtonElement, TabPillProps>(function TabP
     <motion.div whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} className="group relative shrink-0">
       {compact ? <Tooltip label={label}>{tab}</Tooltip> : tab}
       {onClose && !compact && (
-        <button
-          type="button"
-          aria-label={`Remove ${label} from room`}
+        <IconButton
+          label={`Remove ${label} from room`}
+          icon={<X className="h-3.5 w-3.5" weight="bold" />}
+          size="sm"
           onClick={(e) => {
             e.stopPropagation();
             onClose();
           }}
-          className={`absolute right-2 top-1/2 -translate-y-1/2 rounded-sm px-0.5 text-[14px] leading-none opacity-0 transition-opacity focus:opacity-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand/60 group-hover:opacity-100 group-focus-within:opacity-100 ${
-            active ? 'text-white/80 hover:text-white' : 'text-stone-400 hover:text-brand'
+          className={`absolute right-1.5 top-1/2 -translate-y-1/2 opacity-0 transition-opacity focus:opacity-100 group-hover:opacity-100 group-focus-within:opacity-100 ${
+            active
+              ? 'text-white/80 hover:bg-white/15 hover:text-white focus-visible:ring-white/70'
+              : 'text-stone-400 hover:bg-brand/10 hover:text-brand'
           }`}
-        >
-          ×
-        </button>
+        />
       )}
     </motion.div>
   );

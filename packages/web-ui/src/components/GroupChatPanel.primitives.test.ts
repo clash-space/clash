@@ -24,6 +24,15 @@ describe("GroupChatPanel primitives", () => {
     expect(pillSource).not.toContain("aria-selected={active}");
   });
 
+  it("uses the shared icon button primitive for tab removal controls", () => {
+    const pillSource = readSource("packages/web-ui/src/_group-chat/TabPill.tsx");
+
+    expect(pillSource).toContain("../components/ui/icon-button");
+    expect(pillSource).toContain("<IconButton");
+    expect(pillSource).not.toMatch(/<button[\s\S]*Remove \$\{label\} from room/);
+    expect(pillSource).not.toContain(">×</button>");
+  });
+
   it("does not keep the deprecated handwritten mention autocomplete path alive", () => {
     const panelSource = readSource("packages/web-ui/src/components/GroupChatPanel.tsx");
 
