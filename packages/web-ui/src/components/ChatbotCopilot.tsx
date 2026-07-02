@@ -1478,27 +1478,27 @@ export default function ChatbotCopilot({
     // ─── Render ──────────────────────────────────────────────
     return (
         <MotionConfig reducedMotion="user">
-            <AnimatePresence>
-                {isCollapsed && (
-                    <motion.button
-                        type="button"
-                        initial={{ opacity: 0, scale: 0.86, y: 8 }}
-                        animate={{ opacity: 1, scale: 1, y: 0, transition: COPILOT_LAUNCHER_ENTER_TRANSITION }}
-                        exit={{ opacity: 0, scale: 0.92, y: 6, transition: COPILOT_LAUNCHER_EXIT_TRANSITION }}
-                        onClick={() => onCollapseChange(false)}
-                        aria-label={t('copilot.panel.expand')}
-                        aria-expanded={false}
-                        aria-controls="clash-copilot-panel"
-                        // Clears the iPhone home-indicator gesture zone with safe-area-inset-bottom
-                        // while keeping the same bottom-right launcher position on desktop.
-                        className="clash-copilot-launcher fixed bottom-[max(1rem,env(safe-area-inset-bottom))] right-[max(1rem,env(safe-area-inset-right))] z-50 flex h-20 w-20 items-center justify-center rounded-[26px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-warm-page"
-                        whileHover={{ scale: 1.035, y: -1 }}
-                        whileTap={{ scale: 0.965 }}
-                    >
-                        <AgentMotion state="idle" className="h-16 w-16" />
-                    </motion.button>
-                )}
-            </AnimatePresence>
+            <Collapsible open={!isCollapsed} onOpenChange={(nextOpen) => onCollapseChange(!nextOpen)}>
+                <AnimatePresence>
+                    {isCollapsed && (
+                        <CollapsibleTrigger asChild>
+                            <motion.button
+                                type="button"
+                                initial={{ opacity: 0, scale: 0.86, y: 8 }}
+                                animate={{ opacity: 1, scale: 1, y: 0, transition: COPILOT_LAUNCHER_ENTER_TRANSITION }}
+                                exit={{ opacity: 0, scale: 0.92, y: 6, transition: COPILOT_LAUNCHER_EXIT_TRANSITION }}
+                                aria-label={t('copilot.panel.expand')}
+                                // Clears the iPhone home-indicator gesture zone with safe-area-inset-bottom
+                                // while keeping the same bottom-right launcher position on desktop.
+                                className="clash-copilot-launcher fixed bottom-[max(1rem,env(safe-area-inset-bottom))] right-[max(1rem,env(safe-area-inset-right))] z-50 flex h-20 w-20 items-center justify-center rounded-[26px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-warm-page"
+                                whileHover={{ scale: 1.035, y: -1 }}
+                                whileTap={{ scale: 0.965 }}
+                            >
+                                <AgentMotion state="idle" className="h-16 w-16" />
+                            </motion.button>
+                        </CollapsibleTrigger>
+                    )}
+                </AnimatePresence>
 
             <Sheet
                 open={isMobile && !isCollapsed}
@@ -1583,15 +1583,14 @@ export default function ChatbotCopilot({
                         >
                             <div className="clash-copilot-panel-header relative z-20 flex shrink-0 items-center gap-2 px-6 py-3">
                                 <CopilotRailSlot ariaHidden={false}>
-                                    <IconButton
-                                        onClick={() => onCollapseChange(true)}
-                                        label={t('copilot.panel.collapse')}
-                                        aria-expanded={true}
-                                        aria-controls="clash-copilot-panel"
-                                        size="sm"
-                                        icon={<CaretRight className="w-4 h-4" weight="bold" />}
-                                        className="h-8 w-8 text-stone-700 dark:text-stone-300"
-                                    />
+                                    <CollapsibleTrigger asChild>
+                                        <IconButton
+                                            label={t('copilot.panel.collapse')}
+                                            size="sm"
+                                            icon={<CaretRight className="w-4 h-4" weight="bold" />}
+                                            className="h-8 w-8 text-stone-700 dark:text-stone-300"
+                                        />
+                                    </CollapsibleTrigger>
                                 </CopilotRailSlot>
 
                                 <div className="min-w-0 flex-1">
@@ -2009,6 +2008,7 @@ export default function ChatbotCopilot({
                 onClose={() => setRuntimePicker(null)}
                 busy={clashRt.status === 'connecting'}
             />
+            </Collapsible>
         </MotionConfig>
     );
 }

@@ -75,4 +75,13 @@ describe("ChatbotCopilot primitives", () => {
     expect(source).not.toContain("<details");
     expect(source).not.toContain("<summary");
   });
+
+  it("lets the shared collapsible primitive own copilot panel trigger aria state", () => {
+    const source = readComponentSource("ChatbotCopilot.tsx");
+
+    expect(source).toContain("Collapsible open={!isCollapsed}");
+    expect(source).toContain("CollapsibleTrigger asChild");
+    expect(source).not.toContain("aria-expanded={false}");
+    expect(source).not.toContain("aria-expanded={true}");
+  });
 });
