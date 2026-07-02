@@ -25,6 +25,7 @@ import MilkdownEditor from '../MilkdownEditor';
 import { useConfirm } from '../ConfirmDialog';
 import { SelectMenu, type SelectOption, type SelectValue } from '../ui/select';
 import { Popover, PopoverContent, PopoverTrigger } from '../ui/popover';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '../ui/collapsible';
 import { useSpawnPendingAsset } from './useSpawnPendingAsset';
 import ActionBadgePipelineMenu from './ActionBadgePipelineMenu';
 import AttributionLine from './AttributionLine';
@@ -1915,19 +1916,26 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
                                             : p.type === 'boolean' ? (currentVal ? 'On' : 'Off') : String(currentVal);
                                         const isExpanded = expandedParam === p.id;
                                         return (
-                                            <div key={p.id} className={idx > 0 ? 'border-t border-warm-border' : ''}>
-                                                <button
-                                                    type="button"
-                                                    className="w-full flex items-center justify-between px-4 py-2.5 hover:bg-warm-muted transition-colors"
-                                                    onClick={(e) => { e.stopPropagation(); setExpandedParam(isExpanded ? null : p.id); }}
-                                                >
-                                                    <span className="text-xs text-stone-700 dark:text-stone-300">{p.label}</span>
-                                                    <span className="flex items-center gap-1 text-xs font-semibold text-slate-900 dark:text-slate-50">
-                                                        {currentLabel}
-                                                        <CaretDown size={10} weight="bold" className={`text-stone-700 dark:text-stone-300 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
-                                                    </span>
-                                                </button>
-                                                {isExpanded && (
+                                            <Collapsible
+                                                key={p.id}
+                                                open={isExpanded}
+                                                onOpenChange={(nextOpen) => setExpandedParam(nextOpen ? p.id : null)}
+                                                className={idx > 0 ? 'border-t border-warm-border' : ''}
+                                            >
+                                                <CollapsibleTrigger asChild>
+                                                    <button
+                                                        type="button"
+                                                        className="w-full flex items-center justify-between px-4 py-2.5 hover:bg-warm-muted transition-colors"
+                                                        onClick={(e) => e.stopPropagation()}
+                                                    >
+                                                        <span className="text-xs text-stone-700 dark:text-stone-300">{p.label}</span>
+                                                        <span className="flex items-center gap-1 text-xs font-semibold text-slate-900 dark:text-slate-50">
+                                                            {currentLabel}
+                                                            <CaretDown size={10} weight="bold" className={`text-stone-700 dark:text-stone-300 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
+                                                        </span>
+                                                    </button>
+                                                </CollapsibleTrigger>
+                                                <CollapsibleContent>
                                                     <div className="px-3 pb-3">
                                                         {(p.type === 'select') && (
                                                             <SelectMenu<SelectValue>
@@ -1983,8 +1991,8 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
                                                             </div>
                                                         )}
                                                     </div>
-                                                )}
-                                            </div>
+                                                </CollapsibleContent>
+                                            </Collapsible>
                                         );
                                     })}
                                 </PopoverContent>

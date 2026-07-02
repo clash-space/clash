@@ -70,4 +70,15 @@ describe("ActionBadge popover primitives", () => {
         expect(source).not.toContain("p.options?.map((opt)");
         expect(source).not.toContain("[{ l: 'On', v: true }, { l: 'Off', v: false }].map");
     });
+
+    it("uses the shared collapsible primitive for expanded parameter rows", () => {
+        const source = readNodeSource("ActionBadge.tsx");
+
+        expect(source).toContain("../ui/collapsible");
+        expect(source).toContain("Collapsible");
+        expect(source).toContain("CollapsibleTrigger asChild");
+        expect(source).toContain("CollapsibleContent");
+        expect(source).not.toContain("setExpandedParam(isExpanded ? null : p.id)");
+        expect(source).not.toContain("{isExpanded && (");
+    });
 });
