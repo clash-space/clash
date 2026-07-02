@@ -113,7 +113,11 @@ const VideoNode = ({ data, selected, id, width, height }: NodeProps<Node<Record<
         }
     }, [videoUrl]);
 
-    const captureThumbnail = (video: HTMLVideoElement, url: string | undefined) => {
+    const captureThumbnail = (
+        video: HTMLVideoElement,
+        url: string | undefined,
+        options: { overwrite?: boolean } = {},
+    ) => {
         if (!url || !video.videoWidth) return;
         try {
             const canvas = document.createElement('canvas');
@@ -139,7 +143,7 @@ const VideoNode = ({ data, selected, id, width, height }: NodeProps<Node<Record<
             // to avoid stale closure values. This prevents overwriting good cached thumbnails
             // with white/black frames from accidental seeks.
             const existingThumbnail = thumbnailCache.get(url);
-            if (!existingThumbnail && avgBrightness > 20) {
+            if ((options.overwrite || !existingThumbnail) && avgBrightness > 20) {
                 thumbnailCache.set(url, thumbnail);
                 setLocalThumbnail(thumbnail);
 
@@ -154,6 +158,43 @@ const VideoNode = ({ data, selected, id, width, height }: NodeProps<Node<Record<
             }
         } catch (err) {
             console.warn('[VideoNode] Thumbnail capture failed:', err);
+        }
+    };
+
+    const captureThumbnailAfterFrame = (video: HTMLVideoElement, overwrite = false) => {
+        const doCapture = () => captureThumbnail(video, videoUrlRef.current, { overwrite });
+        if ('requestVideoFrameCallback' in video) {
+            // Use the modern API to wait for the next painted frame.
+            (video as any).requestVideoFrameCallback(doCapture);
+        } else {
+            // Fallback: allow the seeked frame to render before drawing.
+            setTimeout(doCapture, 100);
+        }
+    };
+
+    const refreshThumbnail = () => {
+        setLocalThumbnail(null);
+        const video = videoRef.current;
+        if (!video) return;
+
+        const duration = Number.isFinite(video.duration) ? video.duration : 0;
+        const maxSeek = Math.min(duration, 5);
+        if (maxSeek <= 0) {
+            captureThumbnailAfterFrame(video, true);
+            return;
+        }
+
+        const targetTime = maxSeek > 0.1
+            ? 0.1 + Math.random() * (maxSeek - 0.1)
+            : maxSeek;
+
+        const captureAfterSeek = () => captureThumbnailAfterFrame(video, true);
+        video.addEventListener('seeked', captureAfterSeek, { once: true });
+        if (Math.abs(video.currentTime - targetTime) < 0.01) {
+            video.removeEventListener('seeked', captureAfterSeek);
+            captureAfterSeek();
+        } else {
+            video.currentTime = targetTime;
         }
     };
 
@@ -348,18 +389,7 @@ const VideoNode = ({ data, selected, id, width, height }: NodeProps<Node<Record<
                                 if (video.videoWidth > 0 && Math.abs(video.currentTime - 1.0) < 0.1 && pendingThumbnailCaptureRef.current) {
                                     pendingThumbnailCaptureRef.current = false;
 
-                                    // Wait for the frame to actually render before capturing
-                                    // This fixes the issue where cached videos load too fast
-                                    // and the seeked event fires before the frame is rendered
-                                    const doCapture = () => captureThumbnail(video, videoUrlRef.current);
-
-                                    if ('requestVideoFrameCallback' in video) {
-                                        // Use the modern API to wait for the next painted frame
-                                        (video as any).requestVideoFrameCallback(doCapture);
-                                    } else {
-                                        // Fallback: use setTimeout to allow the frame to render
-                                        setTimeout(doCapture, 100);
-                                    }
+                                    captureThumbnailAfterFrame(video);
                                 }
                             }}
                         />
@@ -378,13 +408,11 @@ const VideoNode = ({ data, selected, id, width, height }: NodeProps<Node<Record<
                                 </button>
                             </CollapsibleTrigger>
                             <button
+                                type="button"
                                 className="rounded-full bg-black/50 p-1 text-white backdrop-blur-sm hover:bg-black/70 transition-colors"
                                 onClick={(e) => {
                                     e.stopPropagation();
-                                    setLocalThumbnail(null);
-                                    // The video element is already rendered, we need to trigger a seek to re-capture
-                                    const video = document.querySelector(`video[src*="${videoUrl}"]`) as HTMLVideoElement;
-                                    if (video) video.currentTime = Math.random() * Math.min(video.duration, 5);
+                                    refreshThumbnail();
                                 }}
                                 title="Refresh Thumbnail"
                             >
@@ -447,18 +475,7 @@ const VideoNode = ({ data, selected, id, width, height }: NodeProps<Node<Record<
                                 if (video.videoWidth > 0 && Math.abs(video.currentTime - 1.0) < 0.1 && pendingThumbnailCaptureRef.current) {
                                     pendingThumbnailCaptureRef.current = false;
 
-                                    // Wait for the frame to actually render before capturing
-                                    // This fixes the issue where cached videos load too fast
-                                    // and the seeked event fires before the frame is rendered
-                                    const doCapture = () => captureThumbnail(video, videoUrlRef.current);
-
-                                    if ('requestVideoFrameCallback' in video) {
-                                        // Use the modern API to wait for the next painted frame
-                                        (video as any).requestVideoFrameCallback(doCapture);
-                                    } else {
-                                        // Fallback: use setTimeout to allow the frame to render
-                                        setTimeout(doCapture, 100);
-                                    }
+                                    captureThumbnailAfterFrame(video);
                                 }
                             }}
                         />
