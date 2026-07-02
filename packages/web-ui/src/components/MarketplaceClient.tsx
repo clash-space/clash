@@ -9,6 +9,7 @@ import {
     marketplaceInstallSkill,
     marketplaceUninstallSkill,
 } from '@clash/web-ui/lib/clientActions';
+import { ToggleGroup, ToggleGroupItem } from './ui/toggle-group';
 
 type Filter = 'all' | 'action' | 'skill';
 
@@ -116,12 +117,21 @@ export default function MarketplaceClient({ items, installedActionIds, installed
                             className="w-full rounded-xl border border-warm-border bg-warm-surface pl-11 pr-4 py-2.5 text-sm text-slate-950 shadow-sm transition-colors placeholder:text-stone-400 focus:border-brand focus:outline-none dark:text-slate-50 dark:placeholder:text-stone-500"
                         />
                     </div>
-                    <div className="flex flex-wrap gap-1">
+                    <ToggleGroup
+                        type="single"
+                        value={filter}
+                        onValueChange={(value) => {
+                            if (value === 'all' || value === 'action' || value === 'skill') {
+                                setFilter(value);
+                            }
+                        }}
+                        className="flex flex-wrap gap-1"
+                        aria-label="Marketplace item type"
+                    >
                         {filterButtons.map((btn) => (
-                            <button
-                                type="button"
+                            <ToggleGroupItem
                                 key={btn.value}
-                                onClick={() => setFilter(btn.value)}
+                                value={btn.value}
                                 className={`rounded-xl px-4 py-2 text-sm font-medium transition-all ${
                                     filter === btn.value
                                         ? 'clash-marketplace-filter-active'
@@ -129,9 +139,9 @@ export default function MarketplaceClient({ items, installedActionIds, installed
                                 }`}
                             >
                                 {btn.label}
-                            </button>
+                            </ToggleGroupItem>
                         ))}
-                    </div>
+                    </ToggleGroup>
                 </div>
 
                 {/* Results */}
