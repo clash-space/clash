@@ -13,11 +13,14 @@ describe("NodeHandleDropdownMenu primitives", () => {
         const source = readNodeSource("NodeHandleDropdownMenu.tsx");
         const tooltipSource = readUiSource("tooltip.tsx");
 
+        expect(source).toContain("../ui/icon-button");
         expect(source).toContain("../ui/dropdown-menu");
         expect(tooltipSource).toContain("@ariakit/react");
         expect(source).toContain("../ui/tooltip");
         expect(source).toContain("<Tooltip label={triggerLabel}>");
         expect(source).toContain("DropdownMenuTrigger asChild");
+        expect(source).toMatch(/<IconButton[\s\S]*label=\{triggerLabel\}/);
+        expect(source).not.toMatch(/<button[\s\S]*aria-label=\{triggerLabel\}/);
         expect(source).not.toContain("TooltipProvider");
         expect(source).not.toContain("TooltipAnchor");
     });

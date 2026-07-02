@@ -8,6 +8,7 @@ import {
     DropdownMenuItem,
     DropdownMenuTrigger,
 } from '../ui/dropdown-menu';
+import { IconButton } from '../ui/icon-button';
 import { Tooltip } from '../ui/tooltip';
 
 interface NodeHandleDropdownMenuProps {
@@ -43,25 +44,27 @@ export function NodeHandleDropdownMenu({
             >
                 <Tooltip label={triggerLabel}>
                     <DropdownMenuTrigger asChild>
-                        <button
-                            type="button"
-                            aria-label={triggerLabel}
+                        <IconButton
+                            label={triggerLabel}
+                            shape="circle"
+                            size="sm"
                             className={cn(
-                                'relative flex h-4 w-4 items-center justify-center rounded-full border-0 bg-transparent p-0 outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-warm-surface',
+                                'relative h-4 min-h-4 w-4 min-w-4 border-0 bg-transparent p-0 text-current shadow-none hover:bg-transparent focus-visible:ring-offset-warm-surface',
                                 handleSurfaceClassName,
                             )}
-                        >
-                            <Handle
-                                type="source"
-                                position={Position.Right}
-                                style={{ position: 'relative', top: 0, right: 0, transform: 'none' }}
-                                className={cn(
-                                    '!h-4 !w-4 !border-4 transition-all duration-200 shadow-sm',
-                                    open ? '!bg-brand scale-[1.3]' : '!bg-stone-400 hover:!bg-brand hover:scale-125',
-                                    handleClassName,
-                                )}
-                            />
-                        </button>
+                            icon={
+                                <Handle
+                                    type="source"
+                                    position={Position.Right}
+                                    style={{ position: 'relative', top: 0, right: 0, transform: 'none' }}
+                                    className={cn(
+                                        '!h-4 !w-4 !border-4 transition-all duration-200 shadow-sm',
+                                        open ? '!bg-brand scale-[1.3]' : '!bg-stone-400 hover:!bg-brand hover:scale-125',
+                                        handleClassName,
+                                    )}
+                                />
+                            }
+                        />
                     </DropdownMenuTrigger>
                 </Tooltip>
             </div>

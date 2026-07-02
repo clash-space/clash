@@ -8,6 +8,7 @@ import { Link } from 'react-router';
 import betterAuthClient from '@clash/web-ui/lib/betterAuthClient';
 import { useBillingBalance } from '@clash/web-ui/hooks/useBillingBalance';
 import { getRuntimeConfig } from '@clash/web-ui/lib/runtimeConfig';
+import { Button } from './ui/button';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from './ui/dropdown-menu';
 import { Tooltip } from './ui/tooltip';
 
@@ -122,15 +123,15 @@ function AccountUserControls({ compact = false, projectChrome = false }: UserCon
           )}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <button
-                type="button"
+              <Button
+                size="sm"
                 aria-label={`Account menu — ${user.name}`}
                 className={
                   projectChrome
-                    ? 'clash-project-top-avatar flex h-10 w-10 items-center justify-center rounded-xl transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-warm-page'
+                    ? 'clash-project-top-avatar flex h-10 min-h-0 w-10 items-center justify-center rounded-xl border-transparent bg-transparent p-0 shadow-none transition-all focus-visible:ring-offset-warm-page'
                     : compact
-                    ? 'flex h-8 items-center rounded-lg px-1 text-stone-700 transition-colors hover:bg-stone-200/70 hover:text-stone-950 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand'
-                    : 'flex items-center gap-3 rounded-2xl bg-warm-surface border border-warm-border pl-1.5 pr-4 py-1.5 shadow-sm cursor-pointer hover:shadow-md transition-shadow focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-warm-page'
+                    ? 'flex h-8 min-h-0 items-center rounded-lg border-transparent bg-transparent px-1 text-stone-700 shadow-none transition-colors hover:bg-stone-200/70 hover:text-stone-950'
+                    : 'flex min-h-0 items-center gap-3 rounded-2xl border border-warm-border bg-warm-surface pl-1.5 pr-4 py-1.5 text-sm shadow-sm cursor-pointer hover:shadow-md transition-shadow focus-visible:ring-offset-warm-page'
                 }
               >
                 {user.image && !avatarFailed ? (
@@ -150,7 +151,7 @@ function AccountUserControls({ compact = false, projectChrome = false }: UserCon
                     {user.name}
                   </span>
                 )}
-              </button>
+              </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent aria-label="Account" align="end" side="bottom" className="w-[208px]">
               <DropdownMenuItem asChild>
