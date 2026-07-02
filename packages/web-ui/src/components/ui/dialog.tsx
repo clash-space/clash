@@ -17,8 +17,8 @@ export interface DialogProps {
   /** Optional supporting copy below the title. Wired to aria-describedby. */
   description?: ReactNode;
   children: ReactNode;
-  /** Max width preset. sm=420, md=520, lg=640, xl=full-content. Default md. */
-  size?: "sm" | "md" | "lg" | "xl";
+  /** Max width preset. sm=420, md=520, lg=640, xl=full-content, auto=caller-owned. Default md. */
+  size?: "sm" | "md" | "lg" | "xl" | "auto";
   /** Hide the top-right close X. Default false (shown). */
   hideCloseButton?: boolean;
   /** Disable backdrop-click-to-close (Escape still works). Default false. */
@@ -33,6 +33,7 @@ export interface DialogProps {
 }
 
 const sizeClasses = {
+  auto: "",
   sm: "w-[420px]",
   md: "w-[520px]",
   lg: "w-[640px]",
