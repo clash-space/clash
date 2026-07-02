@@ -13,4 +13,11 @@ describe("UserControls primitive contracts", () => {
     expect(source).toMatch(/<Button[\s\S]*aria-label=\{`Account menu/);
     expect(source).not.toMatch(/<button[\s\S]*aria-label=\{`Account menu/);
   });
+
+  it("uses the shared Button primitive for the hosted sign-in action", () => {
+    const source = readSource();
+
+    expect(source).toMatch(/<Button[\s\S]*onClick=\{handleSignIn\}/);
+    expect(source).not.toMatch(/<motion\.button[\s\S]*onClick=\{handleSignIn\}/);
+  });
 });

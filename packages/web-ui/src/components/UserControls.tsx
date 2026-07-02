@@ -2,7 +2,6 @@
 /* eslint-disable @next/next/no-img-element */
 
 import { useState } from 'react';
-import { motion } from 'framer-motion';
 import { GoogleLogo, Gear, SignOut, CreditCard, Lightning } from '@phosphor-icons/react';
 import { Link } from 'react-router';
 import betterAuthClient from '@clash/web-ui/lib/betterAuthClient';
@@ -186,22 +185,19 @@ function AccountUserControls({ compact = false, projectChrome = false }: UserCon
           </DropdownMenu>
         </div>
       ) : (
-        <motion.button
-          type="button"
+        <Button
           onClick={handleSignIn}
           className={
             projectChrome
-              ? 'clash-project-top-action flex h-10 items-center gap-1.5 rounded-xl px-3 text-sm font-display font-semibold text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-warm-page'
+              ? 'clash-project-top-action flex h-10 min-h-0 items-center gap-1.5 rounded-xl border-transparent bg-transparent px-3 text-sm font-display font-semibold text-slate-900 shadow-none focus-visible:ring-offset-warm-page'
               : compact
-              ? 'clash-user-primary flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-[13px] font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand'
-              : 'clash-user-primary flex items-center gap-2 rounded-xl px-6 py-3 min-h-[44px] text-base font-display font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-warm-page'
+              ? 'clash-user-primary flex h-8 min-h-0 items-center gap-1.5 rounded-lg px-2.5 text-[13px] font-medium'
+              : 'clash-user-primary flex items-center gap-2 rounded-xl px-6 py-3 text-base font-display font-medium focus-visible:ring-offset-warm-page'
           }
-          whileHover={{ scale: 1.05 }}
-          whileTap={{ scale: 0.95 }}
         >
           <GoogleLogo weight="bold" className={compact ? 'h-4 w-4' : 'h-5 w-5'} aria-hidden="true" />
           {compact || projectChrome ? 'Sign in' : 'Sign in with Google'}
-        </motion.button>
+        </Button>
       )}
     </div>
   );
