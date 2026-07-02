@@ -98,14 +98,15 @@ export function AgentView({ messages, status, errorMessage, onRetry }: AgentView
               )}
             </div>
             {onRetry && (
-              <button
+              <Button
                 onClick={onRetry}
-                className="flex items-center gap-1.5 min-h-[44px] px-3 py-2 text-xs font-medium rounded-md bg-warm-surface hover:bg-warm-hover text-stone-800 dark:text-stone-100 border border-warm-border transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-brand/60"
+                size="md"
+                leftIcon={<ArrowClockwise className="w-3.5 h-3.5" weight="bold" />}
+                className="text-xs"
                 aria-label="Retry agent session"
               >
-                <ArrowClockwise className="w-3.5 h-3.5" weight="bold" aria-hidden="true" />
                 Retry
-              </button>
+              </Button>
             )}
           </div>
         )}

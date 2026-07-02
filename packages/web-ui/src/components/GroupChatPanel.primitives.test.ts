@@ -45,6 +45,13 @@ describe("GroupChatPanel primitives", () => {
     expect(roomViewSource).not.toMatch(/<button(?=[^>]*aria-label="Scroll to latest message")[^>]*>/);
   });
 
+  it("uses the shared button primitive for retry controls", () => {
+    const agentViewSource = readSource("packages/web-ui/src/_group-chat/AgentView.tsx");
+
+    expect(agentViewSource).toMatch(/<Button(?=[\s\S]*aria-label="Retry agent session")[\s\S]*>/);
+    expect(agentViewSource).not.toMatch(/<button(?=[^>]*aria-label="Retry agent session")[^>]*>/);
+  });
+
   it("does not keep the deprecated handwritten mention autocomplete path alive", () => {
     const panelSource = readSource("packages/web-ui/src/components/GroupChatPanel.tsx");
 
