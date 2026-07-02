@@ -4,6 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { ArrowUp, Plus, Microphone, X, Check, CircleNotch } from '@phosphor-icons/react';
 import { lazy } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useDropzone, type Accept } from 'react-dropzone';
 import { getSignedUrl } from '@clash/web-ui/lib/hooks/useSignedUrl';
 import { runtimeApiUrl } from '@clash/web-ui/lib/runtimeConfig';
 import { IconButton } from '../ui/icon-button';
@@ -272,7 +273,15 @@ function restoreMentions(markdown: string): string {
     });
 }
 
-const ACCEPT = 'image/*,video/*,audio/*,.pdf,.txt,.md,.markdown,.json,.csv,.srt,.vtt';
+const DROPZONE_ACCEPT = {
+    'image/*': [],
+    'video/*': [],
+    'audio/*': [],
+    'application/pdf': ['.pdf'],
+    'application/json': ['.json'],
+    'text/csv': ['.csv'],
+    'text/plain': ['.txt', '.md', '.markdown', '.srt', '.vtt'],
+} satisfies Accept;
 
 // ─── Component ───────────────────────────────────────────────
 
@@ -298,7 +307,6 @@ function ChatInputInner({
     onCaretTargetChange,
 }: ChatInputProps, ref: ForwardedRef<ChatInputHandle>) {
     const { t } = useTranslation();
-    const fileInputRef = useRef<HTMLInputElement>(null);
     const editorRef = useRef<MilkdownEditorHandle>(null);
     const editorHostRef = useRef<HTMLDivElement | null>(null);
     const [uploading, setUploading] = useState(0);
@@ -522,13 +530,18 @@ function ChatInputInner({
 
     useEffect(() => () => cleanup(), [cleanup]);
 
-    // ─── Drop ────────────────────────────────────────────────
-    const handleDrop = useCallback((e: React.DragEvent) => {
-        e.preventDefault();
-        if (e.dataTransfer.files.length) handleFiles(e.dataTransfer.files);
-    }, [handleFiles]);
-
     const actionLocked = isCreatingSession || disabled;
+    const handleDropAccepted = useCallback((files: File[]) => {
+        if (files.length > 0) handleFiles(files);
+    }, [handleFiles]);
+    const { getRootProps, getInputProps, open, isDragActive } = useDropzone({
+        accept: DROPZONE_ACCEPT,
+        disabled: actionLocked,
+        multiple: true,
+        noClick: true,
+        noKeyboard: true,
+        onDropAccepted: handleDropAccepted,
+    });
     const submitLocked = actionLocked || (isProcessing && !allowSubmitWhileProcessing);
     const canSend = input.trim() && !submitLocked && uploading === 0;
     const showQueuedSend = isProcessing && allowSubmitWhileProcessing && canSend;
@@ -540,14 +553,11 @@ function ChatInputInner({
     return (
         <div className={isHero ? '' : 'px-4 pb-4'}>
             <input
-                ref={fileInputRef}
-                type="file"
-                multiple
-                accept={ACCEPT}
+                {...getInputProps({
+                    'aria-hidden': true,
+                    tabIndex: -1,
+                })}
                 className="hidden"
-                aria-hidden="true"
-                tabIndex={-1}
-                onChange={(e) => { if (e.target.files?.length) handleFiles(e.target.files); e.target.value = ''; }}
             />
 
             {/* Error banner */}
@@ -588,9 +598,9 @@ function ChatInputInner({
 
             {/* Main input card */}
             <div
-                className={`clash-chat-input-surface ${isHero ? 'rounded-[2rem] p-2' : 'rounded-[18px]'}`}
-                onDrop={handleDrop}
-                onDragOver={(e) => e.preventDefault()}
+                {...getRootProps({
+                    className: `clash-chat-input-surface ${isHero ? 'rounded-[2rem] p-2' : 'rounded-[18px]'} ${isDragActive ? 'ring-2 ring-brand/40 ring-offset-2 ring-offset-warm-surface' : ''}`,
+                })}
             >
                 {isListening ? (
                     /* ─── Voice recording ─── */
@@ -669,7 +679,7 @@ function ChatInputInner({
                         <div className={`clash-chat-input-actions flex items-center justify-between pb-2.5 pt-1.5 ${isHero ? 'px-5' : 'px-4'}`}>
                             <div className="flex min-w-0 items-center gap-2">
                                 <IconButton
-                                    onClick={() => fileInputRef.current?.click()}
+                                    onClick={open}
                                     disabled={actionLocked}
                                     label={t('copilot.chatInput.attach')}
                                     shape="rounded"
