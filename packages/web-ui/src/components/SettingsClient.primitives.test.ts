@@ -64,4 +64,18 @@ describe("SettingsClient primitives", () => {
     expect(source).not.toMatch(/<button[\s\S]{0,180}handleUninstallAction\(action\.actionId\)/);
     expect(source).not.toMatch(/<button[\s\S]{0,180}handleUninstallSkill\(skill\.skillId\)/);
   });
+
+  it("uses shared button primitives for provider and model routing controls", () => {
+    const source = readSource("packages/web-ui/src/components/SettingsClient.tsx");
+
+    expect(source).not.toMatch(/<button[\s\S]{0,240}aria-label=\{`Drag \$\{accountLabel\}`\}/);
+    expect(source).not.toMatch(/<button[\s\S]{0,220}onClick=\{onOpen\}/);
+    expect(source).not.toMatch(/<button[\s\S]{0,240}onMoveUp\(\)/);
+    expect(source).not.toMatch(/<button[\s\S]{0,240}onMoveDown\(\)/);
+    expect(source).not.toMatch(/<button[\s\S]{0,260}setExpandedModelProviderOrderId/);
+    expect(source).not.toMatch(/<button[\s\S]{0,220}moveModelProvider\(index, index - 1\)/);
+    expect(source).not.toMatch(/<button[\s\S]{0,220}moveModelProvider\(index, index \+ 1\)/);
+    expect(source).not.toMatch(/<button[\s\S]{0,220}deployLocalAsrModel\(entry\)/);
+    expect(source).not.toMatch(/<button[\s\S]{0,220}setSelectedProviderKey\(row\.key\)/);
+  });
 });

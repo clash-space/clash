@@ -1751,21 +1751,23 @@ function SortableProviderKeyRow({
             <Collapsible open={expanded}>
                 <div className="grid gap-3 px-3 py-2.5 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
                     <div className="flex min-w-0 items-center gap-3">
-                        <button
-                            type="button"
-                            aria-label={`Drag ${accountLabel}`}
-                            className="flex h-7 w-5 shrink-0 cursor-grab flex-col items-center justify-center gap-1 rounded-md text-stone-400 transition-colors hover:bg-warm-muted hover:text-stone-600 active:cursor-grabbing dark:text-stone-500 dark:hover:text-stone-200"
+                        <IconButton
+                            label={`Drag ${accountLabel}`}
+                            size="sm"
+                            icon={(
+                                <span className="flex flex-col items-center justify-center gap-1">
+                                    <span className="h-px w-4 rounded-full bg-current" />
+                                    <span className="h-px w-4 rounded-full bg-current" />
+                                </span>
+                            )}
+                            className="h-7 min-h-7 w-5 min-w-5 shrink-0 cursor-grab rounded-md text-stone-400 hover:bg-warm-muted hover:text-stone-600 active:cursor-grabbing dark:text-stone-500 dark:hover:text-stone-200"
                             {...attributes}
                             {...listeners}
-                        >
-                            <span className="h-px w-4 rounded-full bg-current" aria-hidden="true" />
-                            <span className="h-px w-4 rounded-full bg-current" aria-hidden="true" />
-                        </button>
+                        />
                         <CollapsibleTrigger asChild>
-                            <button
-                                type="button"
+                            <Button
                                 onClick={onOpen}
-                                className="flex min-w-0 flex-1 items-center gap-3 rounded-lg text-left outline-none transition-colors focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-warm-surface"
+                                className="flex h-auto min-h-0 min-w-0 flex-1 items-center justify-start gap-3 rounded-lg border-transparent bg-transparent px-0 py-0 text-left shadow-none hover:bg-transparent focus-visible:ring-offset-warm-surface"
                             >
                                 <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-warm-muted text-xs font-semibold text-stone-500 dark:text-stone-300">
                                     {index + 1}
@@ -1778,34 +1780,32 @@ function SortableProviderKeyRow({
                                         {accountMeta}
                                     </code>
                                 </span>
-                            </button>
+                            </Button>
                         </CollapsibleTrigger>
                     </div>
                     <div className="flex items-center justify-end gap-1 pl-10 sm:pl-0">
-                        <button
-                            type="button"
-                            aria-label={`Move ${accountLabel} up`}
+                        <IconButton
+                            label={`Move ${accountLabel} up`}
                             disabled={!canMoveUp}
                             onClick={(event) => {
                                 event.stopPropagation();
                                 onMoveUp();
                             }}
-                            className="rounded-md p-1 text-stone-400 transition-colors hover:bg-warm-muted hover:text-stone-700 disabled:cursor-not-allowed disabled:opacity-35 dark:hover:text-stone-200"
-                        >
-                            <ArrowUp className="h-4 w-4" aria-hidden="true" />
-                        </button>
-                        <button
-                            type="button"
-                            aria-label={`Move ${accountLabel} down`}
+                            size="sm"
+                            icon={<ArrowUp className="h-4 w-4" />}
+                            className="h-7 min-h-7 w-7 min-w-7 rounded-md text-stone-400 hover:bg-warm-muted hover:text-stone-700 disabled:opacity-35 dark:hover:text-stone-200"
+                        />
+                        <IconButton
+                            label={`Move ${accountLabel} down`}
                             disabled={!canMoveDown}
                             onClick={(event) => {
                                 event.stopPropagation();
                                 onMoveDown();
                             }}
-                            className="rounded-md p-1 text-stone-400 transition-colors hover:bg-warm-muted hover:text-stone-700 disabled:cursor-not-allowed disabled:opacity-35 dark:hover:text-stone-200"
-                        >
-                            <ArrowDown className="h-4 w-4" aria-hidden="true" />
-                        </button>
+                            size="sm"
+                            icon={<ArrowDown className="h-4 w-4" />}
+                            className="h-7 min-h-7 w-7 min-w-7 rounded-md text-stone-400 hover:bg-warm-muted hover:text-stone-700 disabled:opacity-35 dark:hover:text-stone-200"
+                        />
                         <Switch
                             aria-label={`Provider enabled for ${accountLabel}`}
                             checked={account.enabled !== false}
@@ -1813,18 +1813,13 @@ function SortableProviderKeyRow({
                             onCheckedChange={onEnabledChange}
                         />
                         <CollapsibleTrigger asChild>
-                            <button
-                                type="button"
-                                aria-label={`${expanded ? 'Collapse' : 'Expand'} ${accountLabel}`}
+                            <IconButton
+                                label={`${expanded ? 'Collapse' : 'Expand'} ${accountLabel}`}
                                 onClick={onOpen}
-                                className="rounded-md p-1 text-stone-400 transition-colors hover:bg-warm-muted hover:text-stone-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand dark:hover:text-stone-200"
-                            >
-                                {expanded ? (
-                                    <CaretDown className="h-4 w-4" aria-hidden="true" />
-                                ) : (
-                                    <CaretRight className="h-4 w-4" aria-hidden="true" />
-                                )}
-                            </button>
+                                size="sm"
+                                icon={expanded ? <CaretDown className="h-4 w-4" /> : <CaretRight className="h-4 w-4" />}
+                                className="h-7 min-h-7 w-7 min-w-7 rounded-md text-stone-400 hover:bg-warm-muted hover:text-stone-700 dark:hover:text-stone-200"
+                            />
                         </CollapsibleTrigger>
                     </div>
                 </div>
@@ -2340,11 +2335,10 @@ function ModelRoutingSection({
                 </div>
                 {providerOrderRows.length > 1 && (
                     <div className="mt-3 border-t border-warm-border pt-3">
-                        <button
-                            type="button"
+                        <Button
                             aria-label={`Edit provider order for ${entry.model.name}`}
                             onClick={() => setExpandedModelProviderOrderId((current) => current === entry.model.id ? null : entry.model.id)}
-                            className="flex w-full items-center justify-between gap-3 rounded-lg px-2 py-1.5 text-left transition-colors hover:bg-warm-muted/55 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+                            className="flex h-auto min-h-0 w-full items-center justify-between gap-3 rounded-lg border-transparent bg-transparent px-2 py-1.5 text-left shadow-none hover:bg-warm-muted/55"
                         >
                             <span className="text-xs font-semibold text-slate-900 dark:text-slate-50">Provider order</span>
                             <span className="flex min-w-0 items-center gap-2 text-xs text-stone-500 dark:text-stone-400">
@@ -2355,7 +2349,7 @@ function ModelRoutingSection({
                                     <CaretRight className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
                                 )}
                             </span>
-                        </button>
+                        </Button>
                         {providerOrderOpen && (
                             <ul aria-label={`${entry.model.name} provider order`} className="mt-2 overflow-hidden rounded-xl border border-warm-border bg-warm-muted/20">
                                 {providerOrderRows.map((providerRow, index) => {
@@ -2391,24 +2385,22 @@ function ModelRoutingSection({
                                                 </div>
                                             </div>
                                             <div className="flex justify-end gap-1 pl-9 sm:pl-0">
-                                                <button
-                                                    type="button"
-                                                    aria-label={`Move ${providerRow.title} up for ${entry.model.name}`}
+                                                <IconButton
+                                                    label={`Move ${providerRow.title} up for ${entry.model.name}`}
                                                     disabled={saving || index === 0}
                                                     onClick={() => moveModelProvider(index, index - 1)}
-                                                    className="rounded-lg p-1.5 text-stone-500 transition-colors hover:bg-warm-surface hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-35 dark:text-stone-300 dark:hover:text-slate-50"
-                                                >
-                                                    <ArrowUp className="h-4 w-4" aria-hidden="true" />
-                                                </button>
-                                                <button
-                                                    type="button"
-                                                    aria-label={`Move ${providerRow.title} down for ${entry.model.name}`}
+                                                    size="sm"
+                                                    icon={<ArrowUp className="h-4 w-4" />}
+                                                    className="rounded-lg text-stone-500 hover:bg-warm-surface hover:text-slate-900 disabled:opacity-35 dark:text-stone-300 dark:hover:text-slate-50"
+                                                />
+                                                <IconButton
+                                                    label={`Move ${providerRow.title} down for ${entry.model.name}`}
                                                     disabled={saving || index === providerOrderRows.length - 1}
                                                     onClick={() => moveModelProvider(index, index + 1)}
-                                                    className="rounded-lg p-1.5 text-stone-500 transition-colors hover:bg-warm-surface hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-35 dark:text-stone-300 dark:hover:text-slate-50"
-                                                >
-                                                    <ArrowDown className="h-4 w-4" aria-hidden="true" />
-                                                </button>
+                                                    size="sm"
+                                                    icon={<ArrowDown className="h-4 w-4" />}
+                                                    className="rounded-lg text-stone-500 hover:bg-warm-surface hover:text-slate-900 disabled:opacity-35 dark:text-stone-300 dark:hover:text-slate-50"
+                                                />
                                             </div>
                                         </li>
                                     );
@@ -2435,15 +2427,14 @@ function ModelRoutingSection({
                             <p className="mt-1 text-xs text-stone-500 dark:text-stone-400">Uses local model cache.</p>
                         </div>
                         {!localAsrDeployed && (
-                            <button
-                                type="button"
+                            <Button
                                 aria-label="Deploy local ASR model"
                                 disabled={localAsrBusy}
                                 onClick={() => { void deployLocalAsrModel(entry); }}
                                 className={settingsCompactSecondaryButtonClass}
                             >
                                 {localAsrBusy ? 'Deploying...' : 'Deploy'}
-                            </button>
+                            </Button>
                         )}
                     </div>
                 )}
@@ -2503,11 +2494,10 @@ function ModelRoutingSection({
         const statusLabel = providerStatusLabel(row);
         return (
             <li key={row.key} className="border-b border-warm-border last:border-b-0">
-                <button
-                    type="button"
+                <Button
                     aria-label={`Open ${row.title} BYOK settings`}
                     onClick={() => setSelectedProviderKey(row.key)}
-                    className="grid w-full gap-3 px-3 py-3 text-left transition-colors hover:bg-warm-muted/55 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-inset sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center"
+                    className="grid h-auto min-h-0 w-full gap-3 rounded-none border-transparent bg-transparent px-3 py-3 text-left shadow-none hover:bg-warm-muted/55 focus-visible:ring-inset sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center"
                 >
                     <span className="flex min-w-0 items-center gap-3">
                         {renderProviderIcon(row.provider, row.title)}
@@ -2517,7 +2507,7 @@ function ModelRoutingSection({
                         <span>{statusLabel}</span>
                         <CaretRight className="h-4 w-4 text-stone-400" aria-hidden="true" />
                     </span>
-                </button>
+                </Button>
             </li>
         );
     };
