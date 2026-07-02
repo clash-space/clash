@@ -380,6 +380,7 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
     // The handler ref is set by usePresenceAwareness below; useLoroSync
     // forwards every `awareness.broadcast` frame into it.
     const awarenessSinkRef = useRef<((msg: AwarenessBroadcastMessage) => void) | null>(null);
+    const flowBoundsRef = useRef<HTMLDivElement | null>(null);
     const registerOnAwareness = useCallback(
         (handler: ((msg: AwarenessBroadcastMessage) => void) | null) => {
             awarenessSinkRef.current = handler;
@@ -2409,7 +2410,10 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
                                 <UserControls projectChrome />
                             </motion.div>
 
-                            <div className={`absolute inset-0 z-0 ${canvasMode === 'hand' ? '[&_.react-flow__pane]:cursor-grab [&_.react-flow__pane:active]:cursor-grabbing' : ''}`}>
+                            <div
+                                ref={flowBoundsRef}
+                                className={`absolute inset-0 z-0 ${canvasMode === 'hand' ? '[&_.react-flow__pane]:cursor-grab [&_.react-flow__pane:active]:cursor-grabbing' : ''}`}
+                            >
                                 <ReactFlow
                                     nodes={sanitizedNodes}
                                     edges={edges}
@@ -2463,6 +2467,7 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
                                     <AwarenessLayer
                                         peers={awareness.peers}
                                         setLocalCursor={awareness.setLocalCursor}
+                                        flowBoundsRef={flowBoundsRef}
                                     />
 
                                     {/* Unix-pipe cascade dispatcher: adopts drafts on run

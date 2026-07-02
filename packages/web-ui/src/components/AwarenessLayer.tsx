@@ -10,7 +10,7 @@
  * window pixels into the canvas coordinate space and respects every
  * transform ReactFlow applies (pan, zoom, devicePixelRatio).
  */
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, type RefObject } from 'react';
 import { useReactFlow } from '@xyflow/react';
 import { useMove } from '@use-gesture/react';
 import CursorOverlay from './CursorOverlay';
@@ -19,9 +19,10 @@ import type { Peer } from '@clash/web-ui/hooks/usePresenceAwareness';
 interface AwarenessLayerProps {
   peers: Peer[];
   setLocalCursor: (cursor: { x: number; y: number } | null) => void;
+  flowBoundsRef: RefObject<HTMLDivElement | null>;
 }
 
-export default function AwarenessLayer({ peers, setLocalCursor }: AwarenessLayerProps) {
+export default function AwarenessLayer({ peers, setLocalCursor, flowBoundsRef }: AwarenessLayerProps) {
   const { screenToFlowPosition } = useReactFlow();
   const moveTargetRef = useRef<EventTarget | null>(null);
   if (typeof window !== 'undefined') moveTargetRef.current = window;
@@ -32,7 +33,7 @@ export default function AwarenessLayer({ peers, setLocalCursor }: AwarenessLayer
   useMove<MouseEvent>(({ event }) => {
     // Filter out events outside the canvas viewport so the cursor doesn't
     // drift into UI chrome (toolbars, sidebars, modals).
-    const flow = document.querySelector('.react-flow');
+    const flow = flowBoundsRef.current;
     if (!flow) return;
     const rect = flow.getBoundingClientRect();
     if (

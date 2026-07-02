@@ -12,6 +12,8 @@ describe("AwarenessLayer primitives", () => {
     expect(source).toContain("@use-gesture/react");
     expect(source).toContain("useMove");
     expect(source).toContain("moveTargetRef");
+    expect(source).toContain("flowBoundsRef");
+    expect(source).not.toContain("document.querySelector('.react-flow')");
     expect(source).not.toContain("window.addEventListener('mousemove'");
     expect(source).not.toContain("window.removeEventListener('mousemove'");
   });
