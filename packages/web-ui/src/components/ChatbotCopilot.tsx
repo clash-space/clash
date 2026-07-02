@@ -38,6 +38,7 @@ import { CopilotRailSlot } from './copilot/CopilotRail';
 import { MessageErrorBoundary } from './copilot/MessageErrorBoundary';
 import { RuntimePickerDialog } from './copilot/RuntimePickerDialog';
 import { Dialog } from './ui/dialog';
+import { Button } from './ui/button';
 import { IconButton } from './ui/icon-button';
 import { SelectMenu, type SelectSection } from './ui/select';
 import { Sheet, SheetContent, SheetOverlay } from './ui/sheet';
@@ -1474,22 +1475,27 @@ export default function ChatbotCopilot({
             <Collapsible open={!isCollapsed} onOpenChange={(nextOpen) => onCollapseChange(!nextOpen)}>
                 <AnimatePresence>
                     {isCollapsed && (
-                        <CollapsibleTrigger asChild>
-                            <motion.button
-                                type="button"
-                                initial={{ opacity: 0, scale: 0.86, y: 8 }}
-                                animate={{ opacity: 1, scale: 1, y: 0, transition: COPILOT_LAUNCHER_ENTER_TRANSITION }}
-                                exit={{ opacity: 0, scale: 0.92, y: 6, transition: COPILOT_LAUNCHER_EXIT_TRANSITION }}
-                                aria-label={t('copilot.panel.expand')}
-                                // Clears the iPhone home-indicator gesture zone with safe-area-inset-bottom
-                                // while keeping the same bottom-right launcher position on desktop.
-                                className="clash-copilot-launcher fixed bottom-[max(1rem,env(safe-area-inset-bottom))] right-[max(1rem,env(safe-area-inset-right))] z-50 flex h-20 w-20 items-center justify-center rounded-[26px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-warm-page"
-                                whileHover={{ scale: 1.035, y: -1 }}
-                                whileTap={{ scale: 0.965 }}
-                            >
-                                <AgentMotion state="idle" className="h-16 w-16" />
-                            </motion.button>
-                        </CollapsibleTrigger>
+                        <motion.div
+                            key="copilot-launcher"
+                            className="fixed bottom-[max(1rem,env(safe-area-inset-bottom))] right-[max(1rem,env(safe-area-inset-right))] z-50"
+                            initial={{ opacity: 0, scale: 0.86, y: 8 }}
+                            animate={{ opacity: 1, scale: 1, y: 0, transition: COPILOT_LAUNCHER_ENTER_TRANSITION }}
+                            exit={{ opacity: 0, scale: 0.92, y: 6, transition: COPILOT_LAUNCHER_EXIT_TRANSITION }}
+                            whileHover={{ scale: 1.035, y: -1 }}
+                            whileTap={{ scale: 0.965 }}
+                        >
+                            <CollapsibleTrigger asChild>
+                                <IconButton
+                                    label={t('copilot.panel.expand')}
+                                    size="lg"
+                                    shape="rounded"
+                                    icon={<AgentMotion state="idle" className="h-16 w-16" />}
+                                    // Clears the iPhone home-indicator gesture zone with safe-area-inset-bottom
+                                    // while keeping the same bottom-right launcher position on desktop.
+                                    className="clash-copilot-launcher h-20 min-h-20 w-20 min-w-20 rounded-[26px] bg-transparent hover:bg-transparent focus-visible:ring-offset-warm-page"
+                                />
+                            </CollapsibleTrigger>
+                        </motion.div>
                     )}
                 </AnimatePresence>
 
@@ -1811,17 +1817,14 @@ export default function ChatbotCopilot({
                                             className="flex flex-wrap gap-2 px-1"
                                         >
                                             {suggestions.map((s, i) => (
-                                                <motion.button
-                                                    type="button"
+                                                <Button
                                                     key={i}
                                                     onClick={() => handleSubmit(s.message)}
-	                                                    className="px-4 py-2 min-h-[36px] text-sm font-medium text-slate-800 bg-warm-surface border border-warm-border rounded-xl shadow-sm hover:bg-warm-muted hover:border-brand/30 transition-all dark:text-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-warm-page"
-                                                    whileHover={{ scale: 1.03 }}
-                                                    whileTap={{ scale: 0.97 }}
-                                                    transition={{ duration: 0.15, ease: [0.25, 1, 0.5, 1] }}
+                                                    size="sm"
+                                                    className="min-h-[36px] rounded-xl px-4 py-2 text-sm font-medium text-slate-800 hover:border-brand/30 hover:bg-warm-muted dark:text-slate-100 focus-visible:ring-offset-warm-page"
                                                 >
                                                     {s.label}
-                                                </motion.button>
+                                                </Button>
                                             ))}
                                         </motion.div>
                                     )}
@@ -2042,14 +2045,13 @@ function AddMachineDialog({ open, onClose }: { open: boolean; onClose: () => voi
                 <code className="clash-copilot-code flex-1 min-w-0 overflow-x-auto whitespace-nowrap rounded-xl px-3 py-2.5 font-mono text-sm select-all">
                     {cmd}
                 </code>
-                <button
-                    type="button"
+                <Button
                     onClick={onCopy}
                     aria-label={t('copilot.addMachine.copy')}
-                    className="px-3 min-h-[44px] rounded-lg bg-warm-muted hover:bg-warm-hover text-slate-800 transition-colors text-sm font-medium dark:text-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-warm-surface"
+                    className="min-h-[44px] rounded-lg border-transparent bg-warm-muted px-3 text-sm font-medium text-slate-800 shadow-none hover:bg-warm-hover dark:text-slate-100"
                 >
                     {copied ? t('copilot.addMachine.copied') : t('copilot.addMachine.copy')}
-                </button>
+                </Button>
             </div>
             <p className="text-xs text-stone-600 leading-relaxed dark:text-stone-400">
                 {t('copilot.addMachine.footnote')}{' '}
@@ -2160,22 +2162,22 @@ function RuntimeAuthNotice({
                 ) : null}
             </span>
             <span className="flex shrink-0 items-center gap-1.5">
-                <button
-                    type="button"
+                <Button
                     onClick={onRecheck}
                     disabled={busy}
-                    className="rounded-lg border border-amber-300/70 bg-transparent px-3 py-1.5 text-xs font-semibold text-amber-900 transition hover:bg-amber-100 disabled:cursor-wait disabled:opacity-60 dark:border-amber-300/30 dark:text-amber-100"
+                    size="sm"
+                    className="rounded-lg border-amber-300/70 bg-transparent px-3 py-1.5 text-xs font-semibold text-amber-900 shadow-none hover:bg-amber-100 disabled:cursor-wait disabled:opacity-60 dark:border-amber-300/30 dark:text-amber-100"
                 >
                     Check again
-                </button>
-                <button
-                    type="button"
+                </Button>
+                <Button
                     onClick={onAuthenticate}
                     disabled={busy}
-                    className="rounded-lg border border-amber-300 bg-white px-3 py-1.5 text-xs font-semibold text-amber-900 transition hover:bg-amber-100 disabled:cursor-wait disabled:opacity-60 dark:border-amber-300/30 dark:bg-amber-300/10 dark:text-amber-100"
+                    size="sm"
+                    className="rounded-lg border-amber-300 bg-white px-3 py-1.5 text-xs font-semibold text-amber-900 shadow-none hover:bg-amber-100 disabled:cursor-wait disabled:opacity-60 dark:border-amber-300/30 dark:bg-amber-300/10 dark:text-amber-100"
                 >
                     {busy ? "Opening..." : "Sign in"}
-                </button>
+                </Button>
             </span>
         </div>
     );
@@ -2725,45 +2727,44 @@ function RuntimePromptQueueItem({
             style={style}
             className={`relative flex min-w-0 items-center gap-2 rounded-lg px-1.5 py-1 transition-colors ${isDragging ? 'bg-warm-muted/70 opacity-60 shadow-md ring-1 ring-brand/20 dark:bg-stone-900' : ''}`}
         >
-            <button
-                type="button"
-                aria-label={`Drag queued message ${index + 1}`}
-                className="flex h-5 w-5 shrink-0 cursor-grab items-center justify-center text-stone-500 opacity-100 transition-colors hover:text-stone-600 active:cursor-grabbing dark:text-stone-400 dark:hover:text-stone-300"
+            <IconButton
+                label={`Drag queued message ${index + 1}`}
+                size="sm"
+                icon={<DotsSixVertical className="h-4 w-4" weight="bold" />}
+                className="h-5 min-h-5 w-5 min-w-5 shrink-0 cursor-grab rounded-md text-stone-500 opacity-100 hover:bg-transparent hover:text-stone-600 active:cursor-grabbing dark:text-stone-400 dark:hover:text-stone-300"
                 {...attributes}
                 {...listeners}
-            >
-                <DotsSixVertical className="h-4 w-4" weight="bold" aria-hidden="true" />
-            </button>
+            />
             <ArrowBendDownRight className="h-3.5 w-3.5 shrink-0 text-stone-500/70 dark:text-stone-400/70" aria-hidden="true" />
             <span className="min-w-0 flex-1 truncate text-[13px] font-medium leading-5 text-stone-700 dark:text-stone-200">
                 {item.text}
             </span>
-            <button
-                type="button"
+            <Button
                 aria-label={`Steer queued message ${index + 1}`}
                 onClick={() => onSteer(item.turnId)}
-                className="inline-flex shrink-0 items-center gap-1 rounded-md px-1.5 py-px text-[13px] font-medium text-stone-500 opacity-70 transition hover:bg-warm-muted/70 hover:text-slate-900 hover:opacity-100 dark:text-stone-400 dark:hover:bg-stone-900/70 dark:hover:text-slate-50"
+                size="sm"
+                leftIcon={<ArrowBendDownRight className="h-3.5 w-3.5" />}
+                className="min-h-5 shrink-0 gap-1 rounded-md border-transparent bg-transparent px-1.5 py-px text-[13px] font-medium text-stone-500 opacity-70 shadow-none hover:bg-warm-muted/70 hover:text-slate-900 hover:opacity-100 dark:text-stone-400 dark:hover:bg-stone-900/70 dark:hover:text-slate-50"
             >
-                <ArrowBendDownRight className="h-3.5 w-3.5" aria-hidden="true" />
                 Steer
-            </button>
-            <button
-                type="button"
-                aria-label={`Remove queued message ${index + 1}`}
+            </Button>
+            <IconButton
+                label={`Remove queued message ${index + 1}`}
                 onClick={() => onRemove(item.turnId)}
-                className="flex h-5 w-5 shrink-0 items-center justify-center rounded-md text-stone-500 opacity-70 transition hover:bg-red-50 hover:text-red-600 hover:opacity-100 dark:text-stone-400 dark:hover:bg-red-950/30 dark:hover:text-red-300"
-            >
-                <Trash className="h-4 w-4" aria-hidden="true" />
-            </button>
+                variant="destructive"
+                size="sm"
+                icon={<Trash className="h-4 w-4" />}
+                className="h-5 min-h-5 w-5 min-w-5 shrink-0 rounded-md text-stone-500 opacity-70 hover:bg-red-50 hover:text-red-600 hover:opacity-100 dark:text-stone-400 dark:hover:bg-red-950/30 dark:hover:text-red-300"
+            />
             <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                    <button
-                        type="button"
-                        aria-label={`Queued message options ${index + 1}`}
-                        className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-stone-500 opacity-70 transition hover:bg-warm-muted hover:text-slate-800 hover:opacity-100 dark:text-stone-400 dark:hover:bg-stone-900 dark:hover:text-slate-100"
-                    >
-                        <DotsThree className="h-4 w-4" weight="bold" aria-hidden="true" />
-                    </button>
+                    <IconButton
+                        label={`Queued message options ${index + 1}`}
+                        size="sm"
+                        shape="circle"
+                        icon={<DotsThree className="h-4 w-4" weight="bold" />}
+                        className="h-5 min-h-5 w-5 min-w-5 shrink-0 text-stone-500 opacity-70 hover:bg-warm-muted hover:text-slate-800 hover:opacity-100 dark:text-stone-400 dark:hover:bg-stone-900 dark:hover:text-slate-100"
+                    />
                 </DropdownMenuTrigger>
                 <DropdownMenuContent
                     align="end"

@@ -102,4 +102,15 @@ describe("ChatbotCopilot primitives", () => {
     expect(source).not.toContain("aria-expanded={false}");
     expect(source).not.toContain("aria-expanded={true}");
   });
+
+  it("uses shared button primitives for copilot launcher, prompts, auth, and queue controls", () => {
+    const source = readComponentSource("ChatbotCopilot.tsx");
+
+    expect(source).toContain("./ui/button");
+    expect(source).toContain("./ui/icon-button");
+    expect(source).toContain("<Button");
+    expect(source).toContain("<IconButton");
+    expect(source).not.toContain("<motion.button");
+    expect(source).not.toContain("<button");
+  });
 });

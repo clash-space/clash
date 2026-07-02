@@ -1826,9 +1826,10 @@ describe("ChatbotCopilot desktop local mode", () => {
 
     fireEvent.change(screen.getByLabelText("chat draft"), { target: { value: "/" } });
 
-    expect(screen.getByRole("listbox", { name: "Slash commands" })).toBeTruthy();
-    expect(screen.getByText("/review")).toBeTruthy();
-    expect(screen.getByText("Review unstaged changes")).toBeTruthy();
+    const commandList = screen.getByRole("listbox", { name: "Slash commands" });
+    expect(commandList).toBeTruthy();
+    expect(within(commandList).getByText("/review")).toBeTruthy();
+    expect(within(commandList).getByText("Review unstaged changes")).toBeTruthy();
 
     fireEvent.change(screen.getByLabelText("chat draft"), { target: { value: "hello" } });
 
