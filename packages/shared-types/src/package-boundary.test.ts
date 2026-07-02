@@ -1,4 +1,5 @@
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
+import { dirname, join, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
 interface PackageJson {
@@ -8,8 +9,24 @@ interface PackageJson {
   exports?: Record<string, string | Record<string, string>>;
 }
 
+function findRepoRoot(startDirectory: string): string {
+  let directory = resolve(startDirectory);
+
+  while (!existsSync(join(directory, "pnpm-workspace.yaml"))) {
+    const parent = dirname(directory);
+    if (parent === directory) {
+      throw new Error("Could not find repository root");
+    }
+    directory = parent;
+  }
+
+  return directory;
+}
+
+const repoRoot = findRepoRoot(process.cwd());
+
 function readPackage(relativePath: string): PackageJson {
-  return JSON.parse(readFileSync(new URL(relativePath, import.meta.url), "utf8")) as PackageJson;
+  return JSON.parse(readFileSync(join(repoRoot, relativePath), "utf8")) as PackageJson;
 }
 
 function runtimeExportTargets(pkg: PackageJson): string[] {
@@ -30,8 +47,8 @@ function runtimeExportTargets(pkg: PackageJson): string[] {
 describe("package runtime boundaries", () => {
   it("does not expose TypeScript source files through runtime entrypoints", () => {
     const packages = [
-      readPackage("../package.json"),
-      readPackage("../../shared-layout/package.json"),
+      readPackage("packages/shared-types/package.json"),
+      readPackage("packages/shared-layout/package.json"),
     ];
 
     for (const pkg of packages) {
