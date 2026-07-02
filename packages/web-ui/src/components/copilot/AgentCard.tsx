@@ -1,11 +1,12 @@
 import { motion, AnimatePresence } from 'framer-motion';
 import { CaretDown, CaretRight, CheckCircle, CircleNotch, PauseCircle, Robot, Crown, FilmStrip, Scroll, MagicWand, VideoCamera } from '@phosphor-icons/react';
+import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useDisclosure } from '@clash/web-ui/lib/hooks/useDisclosure';
 
 import { ToolCall, ToolCallProps } from './ToolCall';
 import { ThinkingProcess } from './ThinkingProcess';
 import ReactMarkdown from 'react-markdown';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '../ui/collapsible';
 
 export interface AgentLog {
     id: string;
@@ -26,7 +27,7 @@ interface AgentCardProps {
 
 export function AgentCard({ agentName, status, children, isExpanded: initialExpanded = true, persona = 'default', logs = [] }: AgentCardProps) {
     const { t } = useTranslation();
-    const { isOpen, triggerProps, panelProps } = useDisclosure(initialExpanded);
+    const [isOpen, setIsOpen] = useState(initialExpanded);
 
     // Working is the agent "alive" state, so it uses brand coral. Other
     // states stay semantic and subdued so the panel does not turn into a
@@ -57,74 +58,81 @@ export function AgentCard({ agentName, status, children, isExpanded: initialExpa
     const statusLabel = t(`copilot.agentCard.status.${displayStatus}` as const);
 
     return (
-        <div className="w-full rounded-xl bg-warm-surface shadow-sm border border-warm-border overflow-hidden my-2">
-            <button
-                {...triggerProps}
-                className="w-full flex items-center justify-between px-4 py-3 cursor-pointer hover:bg-warm-muted transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand text-left"
-            >
-                <span className="flex items-center gap-3">
-                    <span className="p-2 rounded-xl bg-warm-muted relative flex items-center justify-center" aria-hidden="true">
-                        <PersonaIcon className="w-4 h-4 text-slate-700 dark:text-slate-300" weight="duotone" />
-                        {config.animate && (
-                            <span className="absolute -bottom-1 -right-1 bg-warm-surface rounded-full p-0.5 shadow-sm">
-                                <StatusIcon className="w-3 h-3 text-brand animate-spin motion-reduce:animate-none" weight="bold" />
-                            </span>
+        <Collapsible
+            open={isOpen}
+            onOpenChange={setIsOpen}
+            className="w-full rounded-xl bg-warm-surface shadow-sm border border-warm-border overflow-hidden my-2"
+        >
+            <CollapsibleTrigger asChild>
+                <button
+                    type="button"
+                    className="w-full flex items-center justify-between px-4 py-3 cursor-pointer hover:bg-warm-muted transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand text-left"
+                >
+                    <span className="flex items-center gap-3">
+                        <span className="p-2 rounded-xl bg-warm-muted relative flex items-center justify-center" aria-hidden="true">
+                            <PersonaIcon className="w-4 h-4 text-slate-700 dark:text-slate-300" weight="duotone" />
+                            {config.animate && (
+                                <span className="absolute -bottom-1 -right-1 bg-warm-surface rounded-full p-0.5 shadow-sm">
+                                    <StatusIcon className="w-3 h-3 text-brand animate-spin motion-reduce:animate-none" weight="bold" />
+                                </span>
+                            )}
+                        </span>
+                        <span className="font-semibold text-sm text-slate-800 dark:text-slate-100">
+                            {agentName}
+                        </span>
+                    </span>
+
+                    <span className="flex items-center gap-2">
+                        <span className={`text-xs px-2 py-0.5 rounded-full ${config.bg} ${config.color} font-medium`}>
+                            {statusLabel}
+                        </span>
+                        {isOpen ? (
+                            <CaretDown className="w-4 h-4 text-slate-700 dark:text-slate-300" aria-hidden="true" />
+                        ) : (
+                            <CaretRight className="w-4 h-4 text-slate-700 dark:text-slate-300" aria-hidden="true" />
                         )}
                     </span>
-                    <span className="font-semibold text-sm text-slate-800 dark:text-slate-100">
-                        {agentName}
-                    </span>
-                </span>
-
-                <span className="flex items-center gap-2">
-                    <span className={`text-xs px-2 py-0.5 rounded-full ${config.bg} ${config.color} font-medium`}>
-                        {statusLabel}
-                    </span>
-                    {isOpen ? (
-                        <CaretDown className="w-4 h-4 text-slate-700 dark:text-slate-300" aria-hidden="true" />
-                    ) : (
-                        <CaretRight className="w-4 h-4 text-slate-700 dark:text-slate-300" aria-hidden="true" />
-                    )}
-                </span>
-            </button>
+                </button>
+            </CollapsibleTrigger>
 
             <AnimatePresence>
                 {isOpen && (
-                    <motion.div
-                        {...panelProps}
-                        aria-label={`${agentName} — ${statusLabel}`}
-                        initial={{ height: 0, opacity: 0 }}
-                        animate={{ height: 'auto', opacity: 1 }}
-                        exit={{ height: 0, opacity: 0 }}
-                        transition={{ duration: 0.2 }}
-                    >
-                        <div className="px-4 pb-4 pt-0 border-t border-warm-border">
-                            <div className="pt-3 space-y-2">
-                                {logs && logs.map(log => (
-                                    <div key={log.id} className="mb-2 last:mb-0">
+                    <CollapsibleContent asChild forceMount>
+                        <motion.div
+                            aria-label={`${agentName} — ${statusLabel}`}
+                            initial={{ height: 0, opacity: 0 }}
+                            animate={{ height: 'auto', opacity: 1 }}
+                            exit={{ height: 0, opacity: 0 }}
+                            transition={{ duration: 0.2 }}
+                        >
+                            <div className="px-4 pb-4 pt-0 border-t border-warm-border">
+                                <div className="pt-3 space-y-2">
+                                    {logs && logs.map(log => (
+                                        <div key={log.id} className="mb-2 last:mb-0">
 
-                                        {log.type === 'text' && (
-                                            typeof log.content === 'string' ? (
-                                                <div className="text-sm text-slate-700 prose prose-sm max-w-none dark:text-slate-300 dark:prose-invert">
-                                                    <ReactMarkdown>{log.content}</ReactMarkdown>
-                                                </div>
-                                            ) : log.content
-                                        )}
-                                        {log.type === 'thinking' && typeof log.content === 'string' && (
-                                            <ThinkingProcess content={log.content} />
-                                        )}
-                                        {log.type === 'tool_call' && log.toolProps && (
-                                            <ToolCall {...log.toolProps} />
-                                        )}
-                                    </div>
+                                            {log.type === 'text' && (
+                                                typeof log.content === 'string' ? (
+                                                    <div className="text-sm text-slate-700 prose prose-sm max-w-none dark:text-slate-300 dark:prose-invert">
+                                                        <ReactMarkdown>{log.content}</ReactMarkdown>
+                                                    </div>
+                                                ) : log.content
+                                            )}
+                                            {log.type === 'thinking' && typeof log.content === 'string' && (
+                                                <ThinkingProcess content={log.content} />
+                                            )}
+                                            {log.type === 'tool_call' && log.toolProps && (
+                                                <ToolCall {...log.toolProps} />
+                                            )}
+                                        </div>
 
-                                ))}
-                                {children}
+                                    ))}
+                                    {children}
+                                </div>
                             </div>
-                        </div>
-                    </motion.div>
+                        </motion.div>
+                    </CollapsibleContent>
                 )}
             </AnimatePresence>
-        </div >
+        </Collapsible>
     );
 }
