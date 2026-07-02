@@ -19,6 +19,7 @@ import {
   type AssetStatus,
 } from "@clash/web-ui/lib/assetStatus";
 import { NodeModalDialog } from "./NodeModalDialog";
+import { Slider, SliderRange, SliderThumb, SliderTrack } from "../ui/slider";
 
 const WAVEFORM_BARS = 128;
 const SKIP_SECONDS = 10;
@@ -107,7 +108,6 @@ const AudioNode = ({
   const [decoding, setDecoding] = useState(false);
 
   const audioRef = useRef<HTMLAudioElement>(null);
-  const waveformRef = useRef<HTMLDivElement>(null);
 
   // Sync status + audioUrl from Loro changes.
   useEffect(() => {
@@ -256,20 +256,6 @@ const AudioNode = ({
     seekTo(audio.currentTime + SKIP_SECONDS);
   }, [seekTo]);
 
-  const handleWaveformClick = useCallback(
-    (e: React.MouseEvent<HTMLDivElement>) => {
-      const el = waveformRef.current;
-      if (!el || !duration) return;
-      const rect = el.getBoundingClientRect();
-      const percentage = Math.max(
-        0,
-        Math.min(1, (e.clientX - rect.left) / rect.width),
-      );
-      seekTo(percentage * duration);
-    },
-    [duration, seekTo],
-  );
-
   const progress = duration > 0 ? (currentTime / duration) * 100 : 0;
 
   const waveformBars = useMemo(() => {
@@ -312,28 +298,42 @@ const AudioNode = ({
             <span>{formatTime(currentTime)}</span>
             <span>{formatTime(duration)}</span>
           </div>
-          <div
-            ref={waveformRef}
-            className="relative flex items-center gap-[2px] h-12 w-full justify-center cursor-pointer group/waveform"
-            onClick={handleWaveformClick}
+          <Slider
+            aria-label="Audio seek"
+            value={[duration > 0 ? Math.max(0, Math.min(currentTime, duration)) : 0]}
+            min={0}
+            max={Math.max(0.001, duration)}
+            step={0.01}
+            disabled={!duration}
+            onValueChange={(value) => seekTo(value[0] ?? 0)}
+            className="relative h-12 w-full cursor-pointer group/waveform disabled:cursor-not-allowed disabled:opacity-70"
           >
             {decoding && !peaks && (
               <div className="absolute inset-0 flex items-center justify-center text-slate-700 dark:text-slate-300">
                 <Spinner size={20} className="animate-spin" />
               </div>
             )}
-            {waveformBars.map((p, index) => {
-              const barPercent = ((index + 0.5) / waveformBars.length) * 100;
-              const isPlayed = barPercent <= progress;
-              return (
-                <div
-                  key={index}
-                  className={`w-1.5 rounded-full transition-all duration-150 ${isPlayed ? "bg-slate-900" : "bg-slate-200 group-hover/waveform:bg-slate-300"}`}
-                  style={{ height: `${Math.max(6, p * 100)}%` }}
-                />
-              );
-            })}
-          </div>
+            <div className="pointer-events-none absolute inset-0 flex items-center justify-center gap-[2px]">
+              {waveformBars.map((p, index) => {
+                const barPercent = ((index + 0.5) / waveformBars.length) * 100;
+                const isPlayed = barPercent <= progress;
+                return (
+                  <div
+                    key={index}
+                    className={`w-1.5 rounded-full transition-all duration-150 ${isPlayed ? "bg-slate-900" : "bg-slate-200 group-hover/waveform:bg-slate-300"}`}
+                    style={{ height: `${Math.max(6, p * 100)}%` }}
+                  />
+                );
+              })}
+            </div>
+            <SliderTrack className="absolute inset-0 h-full w-full bg-transparent">
+              <SliderRange className="top-0 bottom-0 bg-transparent" />
+            </SliderTrack>
+            <SliderThumb
+              aria-label="Audio playhead"
+              className="h-5 w-1.5 rounded-full bg-slate-900 opacity-0 transition-opacity focus-visible:opacity-100 group-hover/waveform:opacity-100 data-[disabled]:hidden"
+            />
+          </Slider>
         </div>
 
         <div className="flex items-center justify-center gap-6">
