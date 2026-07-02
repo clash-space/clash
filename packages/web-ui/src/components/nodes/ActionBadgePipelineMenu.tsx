@@ -1,7 +1,6 @@
 import { memo, useState, useCallback, useRef } from 'react';
-import { Handle, Position, useReactFlow, type Node as RFNode } from '@xyflow/react';
+import { useReactFlow, type Node as RFNode } from '@xyflow/react';
 import { Plus, Image as ImageIcon, VideoCamera, TextT, SpeakerHigh } from '@phosphor-icons/react';
-import { motion, AnimatePresence } from 'framer-motion';
 import { useOptionalLoroSyncContext } from '../LoroSyncContext';
 import { useProject } from '../ProjectContext';
 import { useLayoutManager } from '@clash/web-ui/lib/layout';
@@ -9,6 +8,12 @@ import { generateSemanticId } from '@clash/web-ui/lib/utils/semanticId';
 import { collectLayoutNodePatches, applyLayoutPatchesToLoro } from '@clash/web-ui/lib/loroNodeSync';
 import { PIPELINE_MENU_OPTIONS, type PipelineMenuOption } from './pipelineMenuOptions';
 import type { UseSpawnPendingAssetResult } from './useSpawnPendingAsset';
+import {
+    NodeHandleDropdownMenu,
+    NodeHandleDropdownMenuHeader,
+    NodeHandleDropdownMenuItem,
+    NodeHandleDropdownMenuSeparator,
+} from './NodeHandleDropdownMenu';
 
 interface ActionBadgePipelineMenuProps {
     nodeId: string;
@@ -37,10 +42,8 @@ const OUTPUT_ICON = {
  * Run concern and intentionally ignored.
  */
 const ActionBadgePipelineMenu = ({ spawnDraft, canSpawn, disabledReason, outputKind }: ActionBadgePipelineMenuProps) => {
-    const [isOpen, setIsOpen] = useState(false);
     const [isBusy, setIsBusy] = useState(false);
     const busyRef = useRef(false);
-    const leaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const { projectId } = useProject();
     const { addEdges } = useReactFlow();
     const loroSync = useOptionalLoroSyncContext();
@@ -55,31 +58,6 @@ const ActionBadgePipelineMenu = ({ spawnDraft, canSpawn, disabledReason, outputK
     );
     const { addNodeWithAutoLayout } = useLayoutManager({ onNodesMutated });
 
-    const cancelLeave = useCallback(() => {
-        if (leaveTimerRef.current) {
-            clearTimeout(leaveTimerRef.current);
-            leaveTimerRef.current = null;
-        }
-    }, []);
-
-    const handleMouseEnter = useCallback(() => {
-        cancelLeave();
-        setIsOpen(true);
-    }, [cancelLeave]);
-
-    const handleMouseLeave = useCallback(() => {
-        leaveTimerRef.current = setTimeout(() => {
-            setIsOpen(false);
-        }, 200);
-    }, []);
-
-    // Drag starting from the handle should dismiss the flyout so React Flow's
-    // drag-to-connect gesture takes over cleanly. Same pattern as SourceHandleMenu.
-    const handleDragStart = useCallback(() => {
-        cancelLeave();
-        setIsOpen(false);
-    }, [cancelLeave]);
-
     const runLocked = useCallback(async (fn: () => Promise<void>) => {
         if (busyRef.current) return;
         busyRef.current = true;
@@ -93,11 +71,8 @@ const ActionBadgePipelineMenu = ({ spawnDraft, canSpawn, disabledReason, outputK
     }, []);
 
     const handlePrimaryClick = useCallback(
-        (e: React.MouseEvent) => {
-            e.stopPropagation();
-            e.preventDefault();
+        () => {
             if (!canSpawn) return;
-            setIsOpen(false);
             void runLocked(async () => {
                 try {
                     await spawnDraft();
@@ -110,11 +85,8 @@ const ActionBadgePipelineMenu = ({ spawnDraft, canSpawn, disabledReason, outputK
     );
 
     const handleChainClick = useCallback(
-        (option: PipelineMenuOption, e: React.MouseEvent) => {
-            e.stopPropagation();
-            e.preventDefault();
+        (option: PipelineMenuOption) => {
             if (!canSpawn) return;
-            setIsOpen(false);
             void runLocked(async () => {
                 try {
                     const draftNode = await spawnDraft();
@@ -169,112 +141,54 @@ const ActionBadgePipelineMenu = ({ spawnDraft, canSpawn, disabledReason, outputK
     const primaryTitle = disabled ? (disabledReason ?? 'Busy…') : `Add draft ${outputKind}`;
 
     return (
-        <div
-            className="absolute"
-            style={{ top: '50%', right: '-8px', transform: 'translateY(-50%)' }}
-            onMouseEnter={handleMouseEnter}
-            onMouseLeave={handleMouseLeave}
-            onMouseDown={handleDragStart}
+        <NodeHandleDropdownMenu
+            ariaLabel="Extend pipeline"
+            triggerLabel="Open pipeline actions"
+            contentClassName="min-w-[220px]"
+            handleClassName="!border-white"
         >
-            <Handle
-                type="source"
-                position={Position.Right}
-                style={{ position: 'relative', top: 0, right: 0, transform: 'none' }}
-                className={`!h-4 !w-4 !border-4 !border-white transition-all duration-200 shadow-sm ${
-                    isOpen
-                        ? '!bg-brand scale-[1.3]'
-                        : '!bg-stone-400 hover:!bg-brand hover:scale-125'
+            <NodeHandleDropdownMenuHeader>Extend pipeline</NodeHandleDropdownMenuHeader>
+
+            <NodeHandleDropdownMenuItem
+                disabled={disabled}
+                title={primaryTitle}
+                aria-label={primaryTitle}
+                onSelect={handlePrimaryClick}
+                className={`font-semibold ${
+                    disabled
+                        ? 'bg-warm-muted text-slate-700 dark:text-slate-300'
+                        : 'clash-node-primary'
                 }`}
-            />
+            >
+                <Plus className="h-4 w-4 shrink-0" weight="bold" aria-hidden="true" />
+                <PrimaryIcon className="h-4 w-4 shrink-0" weight="regular" aria-hidden="true" />
+                <span>Draft {outputKind}</span>
+            </NodeHandleDropdownMenuItem>
 
-            <AnimatePresence>
-                {isOpen && (
-                    <motion.div
-                        initial={{ opacity: 0, x: -6, scale: 0.95 }}
-                        animate={{ opacity: 1, x: 0, scale: 1 }}
-                        exit={{ opacity: 0, x: -6, scale: 0.95 }}
-                        transition={{ type: 'spring', stiffness: 500, damping: 30 }}
-                        className="absolute z-50 motion-reduce:transition-none"
-                        style={{ top: '50%', left: 'calc(100% + 16px)', transform: 'translateY(-50%)' }}
-                        onMouseEnter={handleMouseEnter}
-                        onMouseLeave={handleMouseLeave}
-                        role="menu"
-                        aria-label="Extend pipeline"
-                    >
-                        <div className="flex flex-col gap-1.5 rounded-2xl border border-warm-border bg-warm-surface/95 p-2.5 shadow-[0_18px_48px_rgba(35,31,25,0.12)] min-w-[220px]">
-                            <div className="px-2 py-1 text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider" aria-hidden="true">
-                                Extend pipeline
-                            </div>
+            <NodeHandleDropdownMenuSeparator>then chain</NodeHandleDropdownMenuSeparator>
 
-                            {/* A-row — primary, spawns one draft output */}
-                            <motion.button
-                                type="button"
-                                role="menuitem"
-                                initial={{ opacity: 0, x: -8 }}
-                                animate={{ opacity: 1, x: 0 }}
-                                transition={{ delay: 0 }}
-                                onClick={handlePrimaryClick}
-                                disabled={disabled}
-                                title={primaryTitle}
-                                aria-label={primaryTitle}
-                                whileHover={disabled ? undefined : { x: 2 }}
-                                whileTap={disabled ? undefined : { scale: 0.97 }}
-                                className={`flex items-center gap-3 rounded-xl min-h-11 px-3 py-2.5 text-sm font-semibold text-left transition-colors motion-reduce:transition-none focus:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-1 ${
-                                    disabled
-                                        ? 'bg-warm-muted text-slate-700 dark:text-slate-300 cursor-not-allowed'
-                                        : 'clash-node-primary cursor-pointer'
-                                }`}
-                            >
-                                <Plus className="h-4 w-4 shrink-0" weight="bold" aria-hidden="true" />
-                                <PrimaryIcon className="h-4 w-4 shrink-0" weight="regular" aria-hidden="true" />
-                                <span>Draft {outputKind}</span>
-                            </motion.button>
-
-                            {/* Divider */}
-                            <div className="flex items-center gap-2 px-2 pt-1 pb-0.5 text-[10px] font-semibold text-slate-700 dark:text-slate-300 uppercase tracking-wider" role="separator">
-                                <div className="h-px flex-1 bg-warm-border" aria-hidden="true" />
-                                then chain
-                                <div className="h-px flex-1 bg-warm-border" aria-hidden="true" />
-                            </div>
-
-                            {/* B-rows — spawn draft + downstream action */}
-                            {PIPELINE_MENU_OPTIONS
-                                .filter((opt) => opt.isCompatibleWithSource(outputKind === 'text' ? undefined : outputKind))
-                                .map((option, index) => {
-                                const Icon = option.icon;
-                                const rowDisabled = disabled;
-                                const rowTitle = rowDisabled ? (disabledReason ?? 'Busy…') : `Draft → ${option.label}`;
-                                return (
-                                    <motion.button
-                                        key={option.id}
-                                        type="button"
-                                        role="menuitem"
-                                        initial={{ opacity: 0, x: -8 }}
-                                        animate={{ opacity: 1, x: 0 }}
-                                        transition={{ delay: (index + 1) * 0.03 }}
-                                        onClick={(e) => handleChainClick(option, e)}
-                                        disabled={rowDisabled}
-                                        title={rowTitle}
-                                        aria-label={rowTitle}
-                                        whileHover={rowDisabled ? undefined : { x: 2 }}
-                                        whileTap={rowDisabled ? undefined : { scale: 0.97 }}
-                                        className={`flex items-center gap-2.5 rounded-xl min-h-11 px-3 py-2.5 text-sm text-left transition-colors motion-reduce:transition-none focus:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-1 ${
-                                            rowDisabled
-                                                ? 'text-slate-700 dark:text-slate-300 opacity-60 cursor-not-allowed'
-                                                : 'text-slate-800 dark:text-slate-200 hover:bg-warm-muted hover:text-slate-900 cursor-pointer'
-                                        }`}
-                                    >
-                                        <Plus className="h-3.5 w-3.5 shrink-0 text-slate-700 dark:text-slate-300" weight="bold" aria-hidden="true" />
-                                        <Icon className="h-4 w-4 shrink-0" weight="regular" aria-hidden="true" />
-                                        <span className="font-medium">Draft → {option.label}</span>
-                                    </motion.button>
-                                );
-                            })}
-                        </div>
-                    </motion.div>
-                )}
-            </AnimatePresence>
-        </div>
+            {PIPELINE_MENU_OPTIONS
+                .filter((opt) => opt.isCompatibleWithSource(outputKind === 'text' ? undefined : outputKind))
+                .map((option) => {
+                    const Icon = option.icon;
+                    const rowDisabled = disabled;
+                    const rowTitle = rowDisabled ? (disabledReason ?? 'Busy…') : `Draft -> ${option.label}`;
+                    return (
+                        <NodeHandleDropdownMenuItem
+                            key={option.id}
+                            disabled={rowDisabled}
+                            title={rowTitle}
+                            aria-label={rowTitle}
+                            onSelect={() => handleChainClick(option)}
+                            className={rowDisabled ? 'text-slate-700 opacity-60 dark:text-slate-300' : 'text-slate-800 hover:bg-warm-muted hover:text-slate-900 dark:text-slate-200'}
+                        >
+                            <Plus className="h-3.5 w-3.5 shrink-0 text-slate-700 dark:text-slate-300" weight="bold" aria-hidden="true" />
+                            <Icon className="h-4 w-4 shrink-0" weight="regular" aria-hidden="true" />
+                            <span className="font-medium">Draft -&gt; {option.label}</span>
+                        </NodeHandleDropdownMenuItem>
+                    );
+                })}
+        </NodeHandleDropdownMenu>
     );
 };
 

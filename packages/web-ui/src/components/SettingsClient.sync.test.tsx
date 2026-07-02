@@ -3315,7 +3315,7 @@ describe("SettingsClient model routing", () => {
     fireEvent.click(within(providerConfig).getByText("Mock primary"));
 
     const editor = within(providerConfig).getByRole("group", { name: "Mock primary Mock Provider API key" });
-    expect((within(editor).getByRole("combobox", { name: "Model to test" }) as HTMLInputElement).value).toContain("GPT Image 2");
+    expect(within(editor).getByRole("combobox", { name: "Model to test" }).textContent).toContain("GPT Image 2");
 
     fireEvent.click(within(editor).getByRole("combobox", { name: "Model to test" }));
 
@@ -3357,13 +3357,13 @@ describe("SettingsClient model routing", () => {
     const editor = within(providerConfig).getByRole("group", { name: "Mock primary Mock Provider API key" });
     fireEvent.click(within(editor).getByRole("combobox", { name: "Model to test" }));
 
-    const search = within(editor).getByRole("combobox", { name: "Model to test" });
+    const search = screen.getByRole("combobox", { name: "Search test models" });
     fireEvent.change(search, { target: { value: "text" } });
 
+    expect(screen.queryByRole("option", { name: /Mock Image Model/ })).toBeNull();
     fireEvent.click(screen.getByRole("option", { name: /Mock Text Model/ }));
 
-    expect((within(editor).getByRole("combobox", { name: "Model to test" }) as HTMLInputElement).value).toContain("Mock Text Model");
-    expect(screen.queryByRole("option", { name: /Mock Image Model/ })).toBeNull();
+    expect(within(editor).getByRole("combobox", { name: "Model to test" }).textContent).toContain("Mock Text Model");
   });
 
   it("opens provider test model choices from keyboard like a real select", async () => {
@@ -3400,9 +3400,10 @@ describe("SettingsClient model routing", () => {
     const modelPicker = within(editor).getByRole("combobox", { name: "Model to test" });
     modelPicker.focus();
     fireEvent.keyDown(modelPicker, { key: "ArrowDown" });
+    fireEvent.keyUp(modelPicker, { key: "ArrowDown" });
 
     expect(screen.getByRole("listbox", { name: "Model to test" })).toBeTruthy();
-    expect(modelPicker).toBe(document.activeElement);
+    expect(screen.getByRole("combobox", { name: "Search test models" })).toBe(document.activeElement);
   });
 
   it("runs a saved live provider configuration check from the provider config editor", async () => {
@@ -3611,7 +3612,7 @@ describe("SettingsClient model routing", () => {
     fireEvent.click(screen.getByRole("option", { name: /Specific models/ }));
     fireEvent.click(within(editor).getByRole("combobox", { name: "Add supported model" }));
     expect(screen.queryByRole("menu", { name: "Add supported model" })).toBeNull();
-    const search = within(editor).getByRole("combobox", { name: "Add supported model" });
+    const search = screen.getByRole("combobox", { name: "Search supported models" });
     fireEvent.change(search, { target: { value: "gpt image" } });
     expect(screen.queryByRole("option", { name: /Nano Banana 2/ })).toBeNull();
     fireEvent.click(screen.getByRole("option", { name: /GPT Image 2/ }));
@@ -3673,7 +3674,7 @@ describe("SettingsClient model routing", () => {
     fireEvent.click(screen.getByRole("option", { name: /Specific models/ }));
     fireEvent.click(within(editor).getByRole("combobox", { name: "Add supported model" }));
     expect(screen.queryByRole("menu", { name: "Add supported model" })).toBeNull();
-    fireEvent.change(within(editor).getByRole("combobox", { name: "Add supported model" }), {
+    fireEvent.change(screen.getByRole("combobox", { name: "Search supported models" }), {
       target: { value: "Gemini Flash Image 2" },
     });
 

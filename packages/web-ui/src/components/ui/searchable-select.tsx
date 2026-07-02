@@ -8,10 +8,12 @@ import {
 import { CaretDown, Check, MagnifyingGlass } from '@phosphor-icons/react';
 import {
     Combobox,
-    ComboboxDisclosure,
-    ComboboxItem,
-    ComboboxPopover,
     ComboboxProvider,
+    Select,
+    SelectItem,
+    SelectList,
+    SelectPopover,
+    SelectProvider,
 } from '@ariakit/react';
 
 import { cn } from '../ai-elements/utils';
@@ -30,6 +32,7 @@ export interface SearchableSelectProps<Value extends SelectValue = string> {
     onValueChange: (value: Value, option: SelectOption<Value>) => void;
     options: SelectOption<Value>[];
     placeholder?: string;
+    searchAriaLabel?: string;
     searchPlaceholder?: string;
     value?: Value;
     contentClassName?: string;
@@ -64,6 +67,7 @@ export function SearchableSelect<Value extends SelectValue = string>({
     onValueChange,
     options,
     placeholder = 'Select option',
+    searchAriaLabel,
     searchInputClassName,
     searchPlaceholder = 'Search...',
     triggerClassName,
@@ -80,9 +84,8 @@ export function SearchableSelect<Value extends SelectValue = string>({
             ? searchableSelectText(selectedOption.label) || String(selectedOption.value)
             : ''
     );
-    const selectedText = searchableSelectText(selectedLabel);
     const selectedStringValue = selectedOption ? String(selectedOption.value) : '';
-    const [inputValue, setInputValue] = useState(selectedOption ? selectedText : '');
+    const [inputValue, setInputValue] = useState('');
     const filteredOptions = useMemo(() => {
         const query = normalizeSearchText(inputValue);
         if (!query) return options;
@@ -90,131 +93,132 @@ export function SearchableSelect<Value extends SelectValue = string>({
     }, [inputValue, options]);
 
     useEffect(() => {
-        if (!open) setInputValue(selectedOption ? selectedText : '');
-    }, [open, selectedOption, selectedText]);
+        if (!open) setInputValue('');
+    }, [open]);
 
     const selectOption = useCallback((option: SelectOption<Value>) => {
         if (option.disabled) return;
         onValueChange(option.value, option);
-        setInputValue(searchableSelectText(option.label) || String(option.value));
         setOpen(false);
     }, [onValueChange]);
 
-    const handleSelectedValueChange = useCallback((nextValue: string | string[] | undefined) => {
-        const candidate = Array.isArray(nextValue) ? nextValue[0] : nextValue;
-        if (candidate == null) return;
+    const handleSelectedValueChange = useCallback((candidate: string) => {
         const option = options.find((item) => String(item.value) === String(candidate));
         if (!option) return;
         selectOption(option);
     }, [options, selectOption]);
 
-    const openForSearch = useCallback(() => {
-        if (!open) setInputValue('');
-        setOpen(true);
-    }, [open]);
-
     return (
         <ComboboxProvider
-            open={open}
-            setOpen={setOpen}
             value={inputValue}
             setValue={setInputValue}
-            selectedValue={selectedStringValue}
-            setSelectedValue={handleSelectedValueChange}
         >
-            <div className="relative min-w-0">
-                <MagnifyingGlass
-                    className="pointer-events-none absolute left-3 top-1/2 z-[1] h-4 w-4 -translate-y-1/2 text-stone-400"
-                    aria-hidden="true"
-                />
-                <Combobox
+            <SelectProvider
+                open={open}
+                setOpen={setOpen}
+                value={selectedStringValue}
+                setValue={handleSelectedValueChange}
+            >
+                <Select
                     aria-label={ariaLabel}
                     disabled={options.length === 0}
-                    placeholder={selectedOption ? searchPlaceholder : placeholder}
-                    autoComplete="list"
-                    showOnClick
-                    showOnChange
-                    showOnKeyPress
-                    onClick={openForSearch}
-                    onFocus={openForSearch}
                     className={cn(
-                        'clash-select-trigger w-full min-w-0 rounded-xl border border-warm-border bg-warm-surface px-9 py-2 text-sm font-medium text-slate-900 shadow-[inset_0_1px_0_rgba(255,255,255,0.76)] transition-colors placeholder:text-stone-400 hover:bg-warm-muted/45 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-warm-surface disabled:cursor-not-allowed disabled:opacity-45 dark:text-slate-50 dark:placeholder:text-stone-500 dark:hover:bg-slate-800',
-                        searchInputClassName,
+                        'clash-select-trigger flex w-full min-w-0 items-center justify-between gap-2 rounded-xl border border-warm-border bg-warm-surface px-3 py-2 text-sm font-medium text-slate-900 shadow-[inset_0_1px_0_rgba(255,255,255,0.76)] transition-colors hover:bg-warm-muted/45 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-warm-surface disabled:cursor-not-allowed disabled:opacity-45 dark:text-slate-50 dark:hover:bg-slate-800',
                         triggerClassName,
-                        'pr-9',
                     )}
-                />
-                <ComboboxDisclosure
-                    aria-label={`${ariaLabel} options`}
-                    disabled={options.length === 0}
-                    onClick={openForSearch}
-                    className="absolute right-2 top-1/2 z-[1] inline-flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-lg text-stone-500 transition-colors hover:bg-warm-muted/70 hover:text-stone-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-warm-surface disabled:cursor-not-allowed disabled:opacity-45 dark:text-stone-400 dark:hover:bg-slate-800 dark:hover:text-slate-100"
                 >
-                    <CaretDown className="h-3.5 w-3.5" aria-hidden="true" />
-                </ComboboxDisclosure>
-            </div>
-            <ComboboxPopover
-                aria-label={listboxLabel ?? ariaLabel}
-                gutter={8}
-                overflowPadding={12}
-                sameWidth={matchTriggerWidth}
-                fitViewport
-                portal
-                className={cn(
-                    'z-[90] max-h-[min(var(--popover-available-height),18rem)] overflow-y-auto rounded-2xl border border-warm-border/90 bg-warm-surface p-1.5 shadow-[0_18px_48px_rgba(35,31,25,0.14)] outline-none dark:border-slate-700 dark:bg-slate-900 dark:shadow-[0_18px_48px_rgba(0,0,0,0.36)]',
-                    contentClassName,
-                    listClassName,
-                )}
-                style={matchTriggerWidth ? undefined : { width: contentWidth }}
-            >
-                {filteredOptions.length === 0 ? (
-                    <div className="px-3 py-5 text-center text-xs font-medium text-stone-500 dark:text-stone-400">
-                        {emptyMessage}
-                    </div>
-                ) : (
-                    filteredOptions.map((option) => {
-                        const description = searchableSelectText(option.description);
-                        const selected = String(option.value) === String(value);
-                        return (
-                            <ComboboxItem
-                                key={String(option.value)}
-                                value={String(option.value)}
-                                aria-label={searchableSelectText(option.label) || String(option.value)}
-                                disabled={option.disabled}
-                                setValueOnClick={false}
+                    <span className={cn(
+                        'min-w-0 flex-1 truncate text-left',
+                        !selectedOption && 'text-stone-400 dark:text-stone-500',
+                    )}>
+                        {selectedOption ? selectedLabel : placeholder}
+                    </span>
+                    <CaretDown className="h-3.5 w-3.5 flex-shrink-0 text-stone-500" aria-hidden="true" />
+                </Select>
+                <SelectPopover
+                    aria-label={listboxLabel ?? ariaLabel}
+                    gutter={8}
+                    overflowPadding={12}
+                    sameWidth={matchTriggerWidth}
+                    fitViewport
+                    portal
+                    className={cn(
+                        'z-[90] max-h-[min(var(--popover-available-height),18rem)] overflow-y-auto rounded-2xl border border-warm-border/90 bg-warm-surface p-1.5 shadow-[0_18px_48px_rgba(35,31,25,0.14)] outline-none dark:border-slate-700 dark:bg-slate-900 dark:shadow-[0_18px_48px_rgba(0,0,0,0.36)]',
+                        contentClassName,
+                        listClassName,
+                    )}
+                    style={matchTriggerWidth ? undefined : { width: contentWidth }}
+                >
+                    <div className="sticky top-0 z-[1] bg-warm-surface p-1 dark:bg-slate-900">
+                        <div className="relative min-w-0">
+                            <MagnifyingGlass
+                                className="pointer-events-none absolute left-3 top-1/2 z-[1] h-4 w-4 -translate-y-1/2 text-stone-400"
+                                aria-hidden="true"
+                            />
+                            <Combobox
+                                aria-label={searchAriaLabel ?? `Search ${ariaLabel.toLowerCase()}`}
+                                autoComplete="list"
+                                autoFocus
+                                placeholder={searchPlaceholder}
                                 className={cn(
-                                    'flex min-h-[42px] w-full cursor-default items-center gap-3 rounded-xl px-3 py-2 text-left text-sm transition-colors outline-none',
-                                    selected
-                                        ? 'bg-warm-muted/80 text-slate-950 dark:bg-slate-800 dark:text-slate-50'
-                                        : 'text-slate-900 hover:bg-warm-muted/75 data-[active-item]:bg-warm-muted/75 dark:text-slate-100 dark:hover:bg-slate-800/80 dark:data-[active-item]:bg-slate-800/80',
-                                    option.disabled && 'opacity-45',
+                                    'w-full min-w-0 rounded-xl border border-warm-border bg-warm-surface px-9 py-2 text-sm font-medium text-slate-900 shadow-[inset_0_1px_0_rgba(255,255,255,0.76)] transition-colors placeholder:text-stone-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-warm-surface dark:text-slate-50 dark:placeholder:text-stone-500',
+                                    searchInputClassName,
                                 )}
-                            >
-                                {option.icon ? (
-                                    <span className="flex h-5 w-5 flex-shrink-0 items-center justify-center text-slate-700 dark:text-slate-300" aria-hidden="true">
-                                        {option.icon}
-                                    </span>
-                                ) : null}
-                                <span className="min-w-0 flex-1">
-                                    <span className="block truncate font-medium leading-5">{option.label}</span>
-                                    {option.description ? (
-                                        <span className="block truncate text-xs font-normal leading-4 text-stone-600 dark:text-stone-400">
-                                            {description || option.description}
+                            />
+                        </div>
+                    </div>
+                    <SelectList aria-label={listboxLabel ?? ariaLabel} role="listbox">
+                        {filteredOptions.length === 0 ? (
+                            <div className="px-3 py-5 text-center text-xs font-medium text-stone-500 dark:text-stone-400">
+                                {emptyMessage}
+                            </div>
+                        ) : (
+                            filteredOptions.map((option) => {
+                                const description = searchableSelectText(option.description);
+                                const selected = String(option.value) === String(value);
+                                return (
+                                    <SelectItem
+                                        key={String(option.value)}
+                                        value={String(option.value)}
+                                        role="option"
+                                        aria-label={searchableSelectText(option.label) || String(option.value)}
+                                        aria-selected={selected}
+                                        disabled={option.disabled}
+                                        className={cn(
+                                            'flex min-h-[42px] w-full cursor-default items-center gap-3 rounded-xl px-3 py-2 text-left text-sm transition-colors outline-none',
+                                            selected
+                                                ? 'bg-warm-muted/80 text-slate-950 dark:bg-slate-800 dark:text-slate-50'
+                                                : 'text-slate-900 hover:bg-warm-muted/75 data-[active-item]:bg-warm-muted/75 dark:text-slate-100 dark:hover:bg-slate-800/80 dark:data-[active-item]:bg-slate-800/80',
+                                            option.disabled && 'opacity-45',
+                                        )}
+                                    >
+                                        {option.icon ? (
+                                            <span className="flex h-5 w-5 flex-shrink-0 items-center justify-center text-slate-700 dark:text-slate-300" aria-hidden="true">
+                                                {option.icon}
+                                            </span>
+                                        ) : null}
+                                        <span className="min-w-0 flex-1">
+                                            <span className="block truncate font-medium leading-5">{option.label}</span>
+                                            {option.description ? (
+                                                <span className="block truncate text-xs font-normal leading-4 text-stone-600 dark:text-stone-400">
+                                                    {description || option.description}
+                                                </span>
+                                            ) : null}
                                         </span>
-                                    ) : null}
-                                </span>
-                                <Check
-                                    className={cn(
-                                        'h-4 w-4 flex-shrink-0 text-slate-700 transition-opacity dark:text-slate-200',
-                                        selected ? 'opacity-100' : 'opacity-0',
-                                    )}
-                                    aria-hidden="true"
-                                />
-                            </ComboboxItem>
-                        );
-                    })
-                )}
-            </ComboboxPopover>
+                                        <Check
+                                            className={cn(
+                                                'h-4 w-4 flex-shrink-0 text-slate-700 transition-opacity dark:text-slate-200',
+                                                selected ? 'opacity-100' : 'opacity-0',
+                                            )}
+                                            aria-hidden="true"
+                                        />
+                                    </SelectItem>
+                                );
+                            })
+                        )}
+                    </SelectList>
+                </SelectPopover>
+            </SelectProvider>
         </ComboboxProvider>
     );
 }

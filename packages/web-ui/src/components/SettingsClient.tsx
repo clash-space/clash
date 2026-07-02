@@ -1553,6 +1553,7 @@ function SupportedModelPicker({
             onValueChange={(value) => onSelect(String(value))}
             options={options}
             placeholder="Add model"
+            searchAriaLabel="Search supported models"
             searchInputClassName={`${settingsSearchFieldClass} h-9 text-xs`}
             searchPlaceholder="Search models..."
             triggerClassName={`min-h-[34px] justify-between ${settingsSelectTriggerClass}`}
@@ -1577,6 +1578,7 @@ function ProviderTestModelPicker({
             onValueChange={(nextValue, option) => onValueChange(String(nextValue), option)}
             options={options}
             placeholder="Select model"
+            searchAriaLabel="Search test models"
             searchInputClassName={`${settingsSearchFieldClass} h-9 text-xs`}
             searchPlaceholder="Search models..."
             triggerClassName={`clash-settings-select-trigger ${settingsSelectTriggerClass}`}

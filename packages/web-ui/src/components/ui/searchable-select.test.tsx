@@ -26,7 +26,7 @@ afterEach(() => {
 });
 
 describe("SearchableSelect", () => {
-    it("is backed by Ariakit combobox primitives instead of a hand-assembled popover command menu", () => {
+    it("is backed by Ariakit select and combobox primitives instead of a hand-assembled popover command menu", () => {
         const source = readFileSync(
             join(process.cwd(), "packages/web-ui/src/components/ui/searchable-select.tsx"),
             "utf8",
@@ -34,13 +34,14 @@ describe("SearchableSelect", () => {
 
         expect(source).toContain("@ariakit/react");
         expect(source).toContain("ComboboxProvider");
-        expect(source).toContain("ComboboxPopover");
-        expect(source).toContain("ComboboxItem");
+        expect(source).toContain("SelectProvider");
+        expect(source).toContain("SelectPopover");
+        expect(source).toContain("SelectItem");
         expect(source).not.toContain("cmdk");
         expect(source).not.toContain("PopoverPrimitive");
     });
 
-    it("renders one editable combobox and filters model options", () => {
+    it("renders a select trigger with an in-popover searchable combobox", () => {
         const onValueChange = vi.fn();
 
         render(
@@ -53,21 +54,25 @@ describe("SearchableSelect", () => {
                     { value: "text-model", label: "Mock Text Model" },
                     { value: "image-model", label: "Mock Image Model" },
                 ]}
+                searchAriaLabel="Search test models"
                 searchPlaceholder="Search models..."
                 value="text-model"
             />,
         );
 
-        const combobox = screen.getByRole("combobox", { name: "Model to test" }) as HTMLInputElement;
-        expect(combobox.tagName).toBe("INPUT");
-        expect(combobox.value).toBe("Mock Text Model");
+        const trigger = screen.getByRole("combobox", { name: "Model to test" });
+        expect(trigger.tagName).toBe("BUTTON");
+        expect(trigger.textContent).toContain("Mock Text Model");
 
-        fireEvent.click(combobox);
+        fireEvent.click(trigger);
 
         expect(document.querySelector('[data-radix-popper-content-wrapper]')).toBeNull();
         expect(screen.getByRole("listbox", { name: "Model to test" })).toBeTruthy();
 
-        fireEvent.change(combobox, {
+        const search = screen.getByRole("combobox", { name: "Search test models" }) as HTMLInputElement;
+        expect(search.tagName).toBe("INPUT");
+
+        fireEvent.change(search, {
             target: { value: "image" },
         });
         expect(screen.queryByRole("option", { name: "Mock Text Model" })).toBeNull();
