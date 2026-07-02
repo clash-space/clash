@@ -228,12 +228,8 @@ function SelectionGroupButton({
                     animate={{ opacity: 1, y: 0 }}
                     exit={{ opacity: 0, y: 4 }}
                     transition={{ duration: 0.12 }}
-                    onMouseDown={(e) => e.stopPropagation()}
-                    onClick={(e) => {
-                        e.stopPropagation();
-                        onGroup();
-                    }}
-                    className="pointer-events-auto absolute flex h-7 items-center gap-1.5 rounded-md border border-warm-border bg-white/90 px-2.5 text-xs font-medium text-slate-700 shadow-sm backdrop-blur hover:bg-white hover:text-slate-900"
+                    onClick={onGroup}
+                    className="nodrag nopan pointer-events-auto absolute flex h-7 items-center gap-1.5 rounded-md border border-warm-border bg-white/90 px-2.5 text-xs font-medium text-slate-700 shadow-sm backdrop-blur hover:bg-white hover:text-slate-900"
                     style={{
                         left: screenLeft + screenWidth / 2,
                         top: screenTop - 36,

@@ -13,6 +13,15 @@ function readCanvasToolbarSource() {
   return source.slice(start, end);
 }
 
+function readSelectionGroupButtonSource() {
+  const source = readSource("packages/web-ui/src/components/ProjectEditor.tsx");
+  const start = source.indexOf("function SelectionGroupButton");
+  const end = source.indexOf("export default function ProjectEditor", start);
+  expect(start).toBeGreaterThan(0);
+  expect(end).toBeGreaterThan(start);
+  return source.slice(start, end);
+}
+
 describe("ProjectEditor toolbar primitives", () => {
   it("uses the shared Radix toggle primitive for canvas mode instead of a hand-rolled toggle button", () => {
     const editorSource = readSource("packages/web-ui/src/components/ProjectEditor.tsx");
@@ -50,5 +59,13 @@ describe("ProjectEditor toolbar primitives", () => {
     expect(editorSource).toContain('<Tooltip label="Return to projects">');
     expect(editorSource).not.toContain('title="Wrap selected nodes in a new Group"');
     expect(editorSource).not.toContain('title="Return to projects"');
+  });
+
+  it("lets ReactFlow own the group action event boundary instead of hand-rolled mouse suppression", () => {
+    const buttonSource = readSelectionGroupButtonSource();
+
+    expect(buttonSource).toContain("nodrag");
+    expect(buttonSource).toContain("nopan");
+    expect(buttonSource).not.toContain("onMouseDown={(e) => e.stopPropagation()}");
   });
 });
