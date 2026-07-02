@@ -88,6 +88,39 @@ describe("SearchableSelect", () => {
         );
     });
 
+    it("selects the active filtered option from the keyboard", () => {
+        const onValueChange = vi.fn();
+
+        render(
+            <SearchableSelect
+                ariaLabel="Model to test"
+                emptyMessage="No matching models."
+                listboxLabel="Model to test"
+                onValueChange={onValueChange}
+                options={[
+                    { value: "text-model", label: "Mock Text Model" },
+                    { value: "image-model", label: "Mock Image Model" },
+                ]}
+                searchAriaLabel="Search test models"
+                searchPlaceholder="Search models..."
+                value="text-model"
+            />,
+        );
+
+        fireEvent.click(screen.getByRole("combobox", { name: "Model to test" }));
+        const search = screen.getByRole("combobox", { name: "Search test models" });
+        fireEvent.change(search, { target: { value: "image" } });
+        fireEvent.keyDown(search, { key: "ArrowDown" });
+        fireEvent.keyUp(search, { key: "ArrowDown" });
+        fireEvent.keyDown(search, { key: "Enter" });
+        fireEvent.keyUp(search, { key: "Enter" });
+
+        expect(onValueChange).toHaveBeenCalledWith(
+            "image-model",
+            expect.objectContaining({ value: "image-model" }),
+        );
+    });
+
     it("indexes text from rich option labels and descriptions", () => {
         const onValueChange = vi.fn();
 
