@@ -13,6 +13,7 @@ describe("AcpMessageList primitives", () => {
     expect(source).toContain("Popover");
     expect(source).toContain("PopoverTrigger");
     expect(source).toContain("PopoverContent");
+    expect(source).not.toContain("aria-expanded={open}");
     expect(source).not.toContain('role="dialog"');
   });
 

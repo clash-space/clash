@@ -105,7 +105,6 @@ export function PlanBar({ entries, className }: PlanBarProps) {
               "group/planbar flex h-8 w-full items-center gap-1.5 rounded-full bg-warm-muted/70 px-2.5 text-xs text-foreground transition-colors hover:bg-warm-muted",
               "focus:outline-none focus-visible:ring-2 focus-visible:ring-ring/50",
             )}
-            aria-expanded={open}
             aria-label={open ? "Hide plan" : "Show plan"}
           >
             <span className="shrink-0 font-semibold text-[10px] uppercase tracking-wide text-muted-foreground">

@@ -658,7 +658,6 @@ export function AcpProgressPanel({
         <PopoverTrigger asChild>
           <button
             type="button"
-            aria-expanded={open}
             aria-label={open ? 'Hide progress' : 'Show progress'}
             className="flex h-8 w-8 items-center justify-center rounded-lg bg-transparent text-slate-800 transition-colors hover:bg-warm-muted focus:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-warm-surface dark:text-slate-200"
           >
