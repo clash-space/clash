@@ -8,6 +8,7 @@ import { Trash } from '@phosphor-icons/react';
 import { deleteProject } from '@clash/web-ui/lib/clientActions';
 import { runtimeApiUrl, runtimeAssetFallbackUrl } from '@clash/web-ui/lib/runtimeConfig';
 import { useConfirm } from './ConfirmDialog';
+import { IconButton } from './ui/icon-button';
 
 interface Asset {
   id: string;
@@ -186,10 +187,13 @@ export default function ProjectCard({ project }: ProjectCardProps) {
 
       {/* Delete Button (Hover) */}
       <div className="absolute right-3 top-3 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100 z-10">
-        <button
-          type="button"
-          onClick={async (e) => {
-            e.stopPropagation();
+        <IconButton
+          label={`Delete project ${project.name || 'Untitled'}`}
+          icon={<Trash className="h-4 w-4" weight="bold" />}
+          variant="destructive"
+          size="md"
+          className="clash-project-card-delete backdrop-blur-sm focus-visible:ring-offset-warm-page"
+          onClick={async () => {
             const ok = await confirm({
               title: 'Delete project?',
               message: `${project.name || 'Untitled'} will be removed from this workspace. Its canvas preview and generated assets will no longer show here.`,
@@ -201,11 +205,7 @@ export default function ProjectCard({ project }: ProjectCardProps) {
               await deleteProject(project.id);
             }
           }}
-          aria-label={`Delete project ${project.name || 'Untitled'}`}
-          className="clash-project-card-delete rounded-xl p-2 min-h-[36px] min-w-[36px] backdrop-blur-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-warm-page"
-        >
-          <Trash className="h-4 w-4" weight="bold" aria-hidden="true" />
-        </button>
+        />
       </div>
     </article>
   );
