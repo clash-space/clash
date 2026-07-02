@@ -1,8 +1,7 @@
 import { memo, useState, useEffect, useCallback, useMemo, useRef, Fragment, type KeyboardEvent as ReactKeyboardEvent } from 'react';
 import { Handle, Position, type Node as RFNode, NodeProps, useReactFlow, useNodeConnections } from '@xyflow/react';
 import { VideoCamera, Image as ImageIcon, CaretDown, X, Play, Spinner, PuzzlePiece, Plus, Lock, Copy, SpeakerHigh, TextT } from '@phosphor-icons/react';
-import { motion, AnimatePresence, Reorder } from 'framer-motion';
-import { createPortal } from 'react-dom';
+import { motion, Reorder } from 'framer-motion';
 import { useProject } from '../ProjectContext';
 import { useOptionalLoroSyncContext } from '../LoroSyncContext';
 import { usePeersSelectingNode } from '../PresenceAwarenessContext';
@@ -1473,35 +1472,23 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
     }, [isCustom, customDef, selectedModel, modelParams]);
 
     const [expandedParam, setExpandedParam] = useState<string | null>(null);
-    const panelRef = useRef<HTMLDivElement>(null);
+    const closeConfigPanelControls = useCallback(() => {
+        setShowModelDropdown(false);
+        setParamsPopoverOpen(false);
+        setCountPopoverOpen(false);
+        setExpandedParam(null);
+        setRefPickerTarget(null);
+    }, []);
 
-    // Click outside → close panel (capture phase to beat React Flow's stopPropagation)
-    useEffect(() => {
-        if (!showPanel) return;
-        const handleClickOutside = (e: MouseEvent) => {
-            if (panelRef.current && !panelRef.current.contains(e.target as globalThis.Node)) {
-                setShowPanel(false);
-                setShowModelDropdown(false);
-                setParamsPopoverOpen(false);
-                setCountPopoverOpen(false);
-                setExpandedParam(null);
-            }
-        };
-        document.addEventListener('mousedown', handleClickOutside, true);
-        return () => document.removeEventListener('mousedown', handleClickOutside, true);
-    }, [showPanel]);
-
-    // Bottom chat-style config panel (portalled)
-    const configPanel = showPanel ? (
-        <AnimatePresence>
-            <motion.div
-                initial={{ y: 40, opacity: 0 }}
-                animate={{ y: 0, opacity: 1 }}
-                exit={{ y: 40, opacity: 0 }}
-                transition={{ type: 'spring', damping: 30, stiffness: 400 }}
-                className="fixed bottom-0 left-0 right-0 z-[9998] flex justify-center pointer-events-none pb-5 px-4"
-            >
-                <div ref={panelRef} className="w-full max-w-2xl flex flex-col items-start">
+    // Chat-style config panel. The surrounding Popover owns portal, Escape,
+    // outside interaction, and focus restoration.
+    const configPanel = (
+        <motion.div
+            initial={{ y: 16, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            transition={{ type: 'spring', damping: 30, stiffness: 400 }}
+            className="w-full max-w-2xl flex flex-col items-start"
+        >
                     {/* Reference images strip above the prompt panel.
                         - startEnd models: two labeled Start/End slots joined by ⇌, always visible.
                         - Other models: Reorder.Group of numbered thumbs (drag to reorder, × to detach). */}
@@ -2006,90 +1993,116 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
                         )}
                     </div>
                 </div>
-                </div>
-            </motion.div>
-        </AnimatePresence>
-    ) : null;
+        </motion.div>
+    );
 
     return (
         <>
-            {/* Outer width matches the capsule so left/right handles snap to
-                the visible edges. Without `w-[260px]`, the wrapper inherits
-                the wider React Flow bounding rect and the handle floats. */}
-            <div className="group relative w-[260px]">
-                {/* Peer selection rings — drawn behind the capsule. Local
-                    blue ring is inset on the capsule itself, so peer rings
-                    on the outside don't visually fight it. */}
-                <PeerSelectionRing peers={peersSelecting} />
+            <Popover
+                open={showPanel}
+                onOpenChange={(nextOpen) => {
+                    setShowPanel(nextOpen);
+                    if (!nextOpen) closeConfigPanelControls();
+                }}
+            >
+                {/* Outer width matches the capsule so left/right handles snap to
+                    the visible edges. Without `w-[260px]`, the wrapper inherits
+                    the wider React Flow bounding rect and the handle floats. */}
+                <div className="group relative w-[260px]">
+                    {/* Peer selection rings — drawn behind the capsule. Local
+                        blue ring is inset on the capsule itself, so peer rings
+                        on the outside don't visually fight it. */}
+                    <PeerSelectionRing peers={peersSelecting} />
 
-                {/* Compact Badge — click opens config panel */}
-                <div
-                    className={`w-[260px] ${bgClass} rounded-xl overflow-hidden transition-all duration-300 hover:shadow-lg cursor-pointer ${
-                        selected ? `ring-4 ${ringClass} ring-offset-2` : 'ring-1 ring-slate-200'
-                    }`}
-                    onClick={() => setShowPanel(!showPanel)}
-                >
-                    <div className="flex items-center gap-2.5 px-3.5 py-4">
-                        <div className={`flex-shrink-0 ${colorClass}`}>
-                            <Icon size={16} weight="fill" />
-                        </div>
-                        <div className="flex flex-col min-w-0 flex-1">
-                            <span className={`text-xs font-bold font-display ${colorClass} truncate`}>
-                                {label || 'Action'}
-                            </span>
-                            <span className="text-[10px] text-slate-700 dark:text-slate-300 truncate leading-none">
-                                {badgeDisplayName}
-                            </span>
-                            {/* Phase 0 attribution — only renders when actor info is populated. */}
-                            <AttributionLine
-                                actorType={data.actorType as 'user' | 'agent' | undefined}
-                                actorUserId={data.actorUserId as string | undefined}
-                                actorAgentId={data.actorAgentId as string | undefined}
-                            />
-                        </div>
-                        {/* Run button — separate click target */}
-                        <button
-                            className={`nodrag flex-shrink-0 flex h-7 items-center gap-1.5 px-3 rounded-lg text-xs font-semibold text-white transition-all hover:scale-[1.02] active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed ${btnClass}`}
-                            onClick={(e) => { e.stopPropagation(); if (customActionOffline) return; handleExecute(); }}
-                            disabled={isExecuting || customActionOffline}
-                            title={customActionOffline ? RUNTIME_OFFLINE_TOOLTIP : undefined}
-                            aria-disabled={customActionOffline || undefined}
+                    {/* Compact Badge — click opens config panel */}
+                    <PopoverTrigger asChild>
+                        <div
+                            role="button"
+                            tabIndex={0}
+                            aria-label="Configure action"
+                            className={`w-[260px] ${bgClass} rounded-xl overflow-hidden transition-all duration-300 hover:shadow-lg cursor-pointer ${
+                                selected ? `ring-4 ${ringClass} ring-offset-2` : 'ring-1 ring-slate-200'
+                            }`}
+                            onKeyDown={(event) => {
+                                if (event.key === 'Enter' || event.key === ' ') {
+                                    event.preventDefault();
+                                    setShowPanel((open) => !open);
+                                }
+                            }}
                         >
-                            {isExecuting ? (
-                                <Spinner size={12} className="animate-spin" />
-                            ) : (
-                                <Play size={12} weight="fill" />
+                            <div className="flex items-center gap-2.5 px-3.5 py-4">
+                                <div className={`flex-shrink-0 ${colorClass}`}>
+                                    <Icon size={16} weight="fill" />
+                                </div>
+                                <div className="flex flex-col min-w-0 flex-1">
+                                    <span className={`text-xs font-bold font-display ${colorClass} truncate`}>
+                                        {label || 'Action'}
+                                    </span>
+                                    <span className="text-[10px] text-slate-700 dark:text-slate-300 truncate leading-none">
+                                        {badgeDisplayName}
+                                    </span>
+                                    {/* Phase 0 attribution — only renders when actor info is populated. */}
+                                    <AttributionLine
+                                        actorType={data.actorType as 'user' | 'agent' | undefined}
+                                        actorUserId={data.actorUserId as string | undefined}
+                                        actorAgentId={data.actorAgentId as string | undefined}
+                                    />
+                                </div>
+                                {/* Run button — separate click target */}
+                                <button
+                                    className={`nodrag flex-shrink-0 flex h-7 items-center gap-1.5 px-3 rounded-lg text-xs font-semibold text-white transition-all hover:scale-[1.02] active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed ${btnClass}`}
+                                    onClick={(e) => { e.stopPropagation(); if (customActionOffline) return; handleExecute(); }}
+                                    disabled={isExecuting || customActionOffline}
+                                    title={customActionOffline ? RUNTIME_OFFLINE_TOOLTIP : undefined}
+                                    aria-disabled={customActionOffline || undefined}
+                                >
+                                    {isExecuting ? (
+                                        <Spinner size={12} className="animate-spin" />
+                                    ) : (
+                                        <Play size={12} weight="fill" />
+                                    )}
+                                    {isExecuting ? 'Running' : 'Run'}
+                                </button>
+                            </div>
+
+                            {error && (
+                                <div className="px-3 pb-1.5 text-[10px] text-red-500 truncate">
+                                    {error}
+                                </div>
                             )}
-                            {isExecuting ? 'Running' : 'Run'}
-                        </button>
-                    </div>
-
-                    {error && (
-                        <div className="px-3 pb-1.5 text-[10px] text-red-500 truncate">
-                            {error}
                         </div>
-                    )}
+                    </PopoverTrigger>
+
+                    {/* Handles */}
+                    <Handle
+                        type="target"
+                        position={Position.Left}
+                        style={{ left: -8, top: '50%', transform: 'translateY(-50%)', zIndex: 100 }}
+                        className="!h-4 !w-4 !border-4 !border-warm-surface !bg-stone-400 transition-all hover:scale-125 shadow-sm hover:!bg-brand"
+                    />
+                    <ActionBadgePipelineMenu
+                        nodeId={id}
+                        spawnDraft={spawnDraft}
+                        canSpawn={canSpawn}
+                        disabledReason={disabledReason}
+                        outputKind={outputKind}
+                    />
                 </div>
+                <PopoverContent
+                    side="bottom"
+                    align="center"
+                    sideOffset={12}
+                    collisionPadding={16}
+                    className="z-[9998] w-[min(42rem,calc(100vw-2rem))] overflow-visible border-none bg-transparent p-0 shadow-none"
+                    onOpenAutoFocus={(event) => event.preventDefault()}
+                    onPointerDown={(event) => event.stopPropagation()}
+                    onClick={(event) => event.stopPropagation()}
+                >
+                    {configPanel}
+                </PopoverContent>
+            </Popover>
 
-                {/* Handles */}
-                <Handle
-                    type="target"
-                    position={Position.Left}
-                    style={{ left: -8, top: '50%', transform: 'translateY(-50%)', zIndex: 100 }}
-                    className="!h-4 !w-4 !border-4 !border-warm-surface !bg-stone-400 transition-all hover:scale-125 shadow-sm hover:!bg-brand"
-                />
-                <ActionBadgePipelineMenu
-                    nodeId={id}
-                    spawnDraft={spawnDraft}
-                    canSpawn={canSpawn}
-                    disabledReason={disabledReason}
-                    outputKind={outputKind}
-                />
-            </div>
-
-            {/* Portalled panels */}
             {modalContent}
-            {typeof window !== 'undefined' && configPanel && createPortal(configPanel, document.body)}
         </>
     );
 };

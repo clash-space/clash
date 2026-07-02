@@ -11,6 +11,11 @@ describe("ActionBadge popover primitives", () => {
 
         expect(source).toContain("../ui/popover");
         expect(source).toContain("PopoverContent");
+        expect(source).toContain("open={showPanel}");
+        expect(source).toContain("PopoverTrigger asChild");
+        expect(source).not.toContain("createPortal");
+        expect(source).not.toContain("document.addEventListener('mousedown'");
+        expect(source).not.toContain("document.removeEventListener('mousedown'");
         expect(source).not.toContain("document.addEventListener('pointerdown'");
         expect(source).not.toContain("document.addEventListener('keydown', onEsc");
     });
