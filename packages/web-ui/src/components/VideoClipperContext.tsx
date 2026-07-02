@@ -33,6 +33,7 @@ import { generateSemanticId } from '@clash/web-ui/lib/utils/semanticId';
 import { autoInsertNode } from '@clash/web-ui/lib/layout';
 import { applyVideoScreenshot } from '@clash/web-ui/lib/editPipeline';
 import type { VideoClipParams } from '@clash/shared-types';
+import { Slider, SliderRange, SliderThumb, SliderTrack } from './ui/slider';
 
 interface OpenVideoClipperInput {
     editorNodeId: string;
@@ -349,88 +350,40 @@ function Timeline({
     duration, mode, frameTimeSec, setFrameTimeSec,
     startSec, setStartSec, endSec, setEndSec, frames,
 }: TimelineProps) {
-    const trackRef = useRef<HTMLDivElement>(null);
-    const [drag, setDrag] = useState<null | 'playhead' | 'start' | 'end' | 'range'>(null);
-    const dragOffsetRef = useRef<number>(0);
+    const max = Math.max(0.001, duration);
+    const step = max > 1 ? 0.01 : Math.max(0.001, max / 100);
+    const minClipLength = Math.min(0.05, Math.max(0, max - step));
+    const minStepsBetweenThumbs = Math.max(0, Math.round(minClipLength / step));
 
-    const pctOf = useCallback((sec: number) => {
-        if (duration <= 0) return 0;
-        return Math.max(0, Math.min(100, (sec / duration) * 100));
-    }, [duration]);
+    const clampSec = useCallback((sec: number) => Math.max(0, Math.min(max, sec)), [max]);
 
-    const secFromClientX = useCallback((clientX: number): number => {
-        const rect = trackRef.current?.getBoundingClientRect();
-        if (!rect || rect.width === 0) return 0;
-        const ratio = (clientX - rect.left) / rect.width;
-        return Math.max(0, Math.min(duration, ratio * duration));
-    }, [duration]);
+    const timelineValue = mode === 'screenshot'
+        ? [clampSec(frameTimeSec)]
+        : [clampSec(Math.min(startSec, endSec)), clampSec(Math.max(startSec, endSec))];
 
-    // Click anywhere on the empty track → seek (screenshot) / nothing (crop:
-    // the range stays put, only handle drags move it).
-    const onTrackMouseDown = useCallback((e: React.MouseEvent) => {
-        // If clicking on a draggable element, its own mousedown handles it.
-        const target = e.target as HTMLElement;
-        if (target.dataset.handle) return;
-        const sec = secFromClientX(e.clientX);
+    const handleValueChange = useCallback((value: number[]) => {
         if (mode === 'screenshot') {
-            setFrameTimeSec(sec);
-            setDrag('playhead');
-        } else {
-            // In crop mode, decide which handle is closer and start dragging it.
-            // A click between the handles inside the range moves the entire
-            // range; outside, it snaps the nearer handle.
-            if (sec >= startSec && sec <= endSec) {
-                dragOffsetRef.current = sec - startSec;
-                setDrag('range');
-            } else {
-                const closer = Math.abs(sec - startSec) < Math.abs(sec - endSec) ? 'start' : 'end';
-                if (closer === 'start') setStartSec(sec);
-                else setEndSec(sec);
-                setDrag(closer);
-            }
+            setFrameTimeSec(clampSec(value[0] ?? 0));
+            return;
         }
-    }, [mode, startSec, endSec, secFromClientX, setFrameTimeSec, setStartSec, setEndSec]);
 
-    useEffect(() => {
-        if (!drag) return;
-        const onMove = (e: MouseEvent) => {
-            const sec = secFromClientX(e.clientX);
-            if (drag === 'playhead') {
-                setFrameTimeSec(sec);
-            } else if (drag === 'start') {
-                // Don't let start cross end — leave at least 0.05s of crop length
-                // so the value object remains meaningful.
-                setStartSec(Math.min(sec, endSec - 0.05));
-            } else if (drag === 'end') {
-                setEndSec(Math.max(sec, startSec + 0.05));
-            } else if (drag === 'range') {
-                const length = endSec - startSec;
-                const newStart = Math.max(0, Math.min(duration - length, sec - dragOffsetRef.current));
-                setStartSec(newStart);
-                setEndSec(newStart + length);
-            }
-        };
-        const onUp = () => setDrag(null);
-        window.addEventListener('mousemove', onMove);
-        window.addEventListener('mouseup', onUp);
-        return () => {
-            window.removeEventListener('mousemove', onMove);
-            window.removeEventListener('mouseup', onUp);
-        };
-    }, [drag, secFromClientX, setFrameTimeSec, setStartSec, setEndSec, startSec, endSec, duration]);
+        const nextStart = clampSec(value[0] ?? 0);
+        const nextEnd = clampSec(value[1] ?? max);
+        setStartSec(Math.min(nextStart, nextEnd));
+        setEndSec(Math.max(nextStart, nextEnd));
+    }, [clampSec, max, mode, setEndSec, setFrameTimeSec, setStartSec]);
 
     return (
         <div className="select-none">
-            {/* Track */}
-            <div
-                ref={trackRef}
-                onMouseDown={onTrackMouseDown}
-                className="relative h-16 rounded-md bg-slate-200 overflow-hidden cursor-pointer"
-                role="slider"
+            <Slider
                 aria-label="Video timeline"
-                aria-valuemin={0}
-                aria-valuemax={duration}
-                aria-valuenow={mode === 'screenshot' ? frameTimeSec : startSec}
+                value={timelineValue}
+                onValueChange={handleValueChange}
+                min={0}
+                max={max}
+                step={step}
+                minStepsBetweenThumbs={mode === 'crop' ? minStepsBetweenThumbs : 0}
+                className="relative h-16 rounded-md bg-slate-200 overflow-hidden cursor-pointer"
             >
                 {/* Filmstrip — evenly spaced thumbnails. Falls back to a flat
                     bg if frames haven't been captured yet (still scrubbable). */}
@@ -450,60 +403,35 @@ function Timeline({
                     </div>
                 )}
 
-                {/* Crop range overlay */}
+                <SliderTrack className="absolute inset-0 h-full w-full rounded-md bg-transparent">
+                    <SliderRange
+                        className={
+                            mode === 'crop'
+                                ? 'top-0 bottom-0 border-y-2 border-brand bg-slate-900/0'
+                                : 'top-0 bottom-0 bg-slate-900/15'
+                        }
+                    />
+                </SliderTrack>
+                <SliderThumb
+                    aria-label={mode === 'screenshot' ? 'Frame time' : 'Clip start'}
+                    className={[
+                        'h-16 w-[3px] cursor-col-resize rounded-none transition-transform hover:scale-x-[2]',
+                        'after:absolute after:-top-1 after:left-1/2 after:h-3 after:w-3 after:-translate-x-1/2 after:rounded-full after:ring-2',
+                        mode === 'screenshot'
+                            ? 'bg-slate-800 after:bg-slate-800 after:ring-warm-border dark:bg-slate-200 dark:after:bg-slate-200 dark:after:ring-slate-500'
+                            : 'bg-brand after:bg-brand after:ring-brand/30',
+                    ].join(' ')}
+                />
                 {mode === 'crop' && (
-                    <>
-                        {/* Outside-of-range dimmer (left of start) */}
-                        <div
-                            className="absolute top-0 bottom-0 left-0 bg-slate-900/55 pointer-events-none"
-                            style={{ width: `${pctOf(startSec)}%` }}
-                        />
-                        {/* Outside-of-range dimmer (right of end) */}
-                        <div
-                            className="absolute top-0 bottom-0 right-0 bg-slate-900/55 pointer-events-none"
-                            style={{ width: `${100 - pctOf(endSec)}%` }}
-                        />
-                        {/* Selection box outline */}
-                        <div
-                            className="absolute top-0 bottom-0 border-y-2 border-brand pointer-events-none"
-                            style={{ left: `${pctOf(startSec)}%`, right: `${100 - pctOf(endSec)}%` }}
-                        />
-                        {/* Start handle */}
-                        <Handle
-                            position={pctOf(startSec)}
-                            variant="range"
-                            data-handle="start"
-                            onMouseDown={(e) => {
-                                e.stopPropagation();
-                                setDrag('start');
-                            }}
-                        />
-                        {/* End handle */}
-                        <Handle
-                            position={pctOf(endSec)}
-                            variant="range"
-                            data-handle="end"
-                            onMouseDown={(e) => {
-                                e.stopPropagation();
-                                setDrag('end');
-                            }}
-                        />
-                    </>
-                )}
-
-                {/* Screenshot playhead */}
-                {mode === 'screenshot' && (
-                    <Handle
-                        position={pctOf(frameTimeSec)}
-                        variant="playhead"
-                        data-handle="playhead"
-                        onMouseDown={(e) => {
-                            e.stopPropagation();
-                            setDrag('playhead');
-                        }}
+                    <SliderThumb
+                        aria-label="Clip end"
+                        className={[
+                            'h-16 w-[3px] cursor-col-resize rounded-none bg-brand transition-transform hover:scale-x-[2]',
+                            'after:absolute after:-top-1 after:left-1/2 after:h-3 after:w-3 after:-translate-x-1/2 after:rounded-full after:bg-brand after:ring-2 after:ring-brand/30',
+                        ].join(' ')}
                     />
                 )}
-            </div>
+            </Slider>
 
             {/* Time ruler */}
             <div className="relative h-4 mt-1 text-[10px] font-mono text-slate-700 dark:text-slate-300 tabular-nums">
@@ -513,36 +441,6 @@ function Timeline({
                 <span className="absolute left-3/4 -translate-x-1/2">{formatTime(duration * 0.75)}</span>
                 <span className="absolute right-0">{formatTime(duration)}</span>
             </div>
-        </div>
-    );
-}
-
-interface HandleProps {
-    position: number;
-    variant: 'playhead' | 'range';
-    'data-handle': string;
-    onMouseDown: (e: React.MouseEvent) => void;
-}
-
-function Handle({ position, variant, onMouseDown, ...rest }: HandleProps) {
-    const classes = variant === 'playhead'
-        ? {
-            line: 'bg-slate-800 dark:bg-slate-200',
-            ring: 'ring-warm-border dark:ring-slate-500',
-        }
-        : {
-            line: 'bg-brand',
-            ring: 'ring-brand/30',
-        };
-    return (
-        <div
-            {...rest}
-            onMouseDown={onMouseDown}
-            className={`absolute top-0 bottom-0 w-[3px] cursor-col-resize ${classes.line} hover:scale-x-[2] transition-transform`}
-            style={{ left: `${position}%`, transform: `translateX(-50%)` }}
-        >
-            {/* Bigger hit-target circle on top */}
-            <div className={`absolute -top-1 left-1/2 -translate-x-1/2 w-3 h-3 rounded-full ${classes.line} ring-2 ${classes.ring}`} />
         </div>
     );
 }
