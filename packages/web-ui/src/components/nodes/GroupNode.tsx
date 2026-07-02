@@ -4,6 +4,7 @@ import { Node, NodeProps, NodeResizeControl, useNodes, useReactFlow, useViewport
 import { useOptionalLoroSyncContext } from '../LoroSyncContext';
 import { useLayoutActions } from '../LayoutActionsContext';
 import { MagicWand, FrameCorners } from '@phosphor-icons/react';
+import { Tooltip } from '../ui/tooltip';
 
 const controlStyle = {
     background: 'var(--brand)',
@@ -139,32 +140,34 @@ const GroupNode = ({ selected, data, id }: NodeProps<Node<Record<string, any>>>)
                             transformOrigin: '100% 100%',
                         }}
                     >
-                        <button
-                            type="button"
-                            className="flex h-7 items-center gap-1.5 rounded-md border border-warm-border bg-warm-surface/90 px-2.5 text-xs font-medium text-slate-700 dark:text-slate-300 shadow-sm backdrop-blur hover:bg-warm-surface hover:text-slate-900"
-                            onMouseDown={(e) => e.stopPropagation()}
-                            onClick={(e) => {
-                                e.stopPropagation();
-                                ungroup(id);
-                            }}
-                            title="Ungroup (release children to parent)"
-                        >
-                            <FrameCorners className="h-3.5 w-3.5" weight="regular" />
-                            Ungroup
-                        </button>
-                        <button
-                            type="button"
-                            className="flex h-7 items-center gap-1.5 rounded-md border border-warm-border bg-warm-surface/90 px-2.5 text-xs font-medium text-slate-700 dark:text-slate-300 shadow-sm backdrop-blur hover:bg-warm-surface hover:text-slate-900"
-                            onMouseDown={(e) => e.stopPropagation()}
-                            onClick={(e) => {
-                                e.stopPropagation();
-                                relayoutParent(id);
-                            }}
-                            title="Relayout inside group"
-                        >
-                            <MagicWand className="h-3.5 w-3.5" weight="regular" />
-                            Layout
-                        </button>
+                        <Tooltip label="Ungroup (release children to parent)">
+                            <button
+                                type="button"
+                                className="flex h-7 items-center gap-1.5 rounded-md border border-warm-border bg-warm-surface/90 px-2.5 text-xs font-medium text-slate-700 dark:text-slate-300 shadow-sm backdrop-blur hover:bg-warm-surface hover:text-slate-900"
+                                onMouseDown={(e) => e.stopPropagation()}
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    ungroup(id);
+                                }}
+                            >
+                                <FrameCorners className="h-3.5 w-3.5" weight="regular" />
+                                Ungroup
+                            </button>
+                        </Tooltip>
+                        <Tooltip label="Relayout inside group">
+                            <button
+                                type="button"
+                                className="flex h-7 items-center gap-1.5 rounded-md border border-warm-border bg-warm-surface/90 px-2.5 text-xs font-medium text-slate-700 dark:text-slate-300 shadow-sm backdrop-blur hover:bg-warm-surface hover:text-slate-900"
+                                onMouseDown={(e) => e.stopPropagation()}
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    relayoutParent(id);
+                                }}
+                            >
+                                <MagicWand className="h-3.5 w-3.5" weight="regular" />
+                                Layout
+                            </button>
+                        </Tooltip>
                     </div>
                 )}
             </div>
