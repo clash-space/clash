@@ -1,8 +1,8 @@
 
 import { motion, AnimatePresence } from 'framer-motion';
-import { Tooltip, TooltipAnchor, TooltipProvider } from '@ariakit/react';
 import { Sparkle, Terminal } from '@phosphor-icons/react';
 import type { PresenceClient } from '@clash/shared-types';
+import { Tooltip } from './ui/tooltip';
 
 interface PresenceBarProps {
   clients: PresenceClient[];
@@ -35,8 +35,8 @@ export default function PresenceBar({ clients }: PresenceBarProps) {
             exit={{ scale: 0, opacity: 0 }}
             transition={{ type: 'spring', stiffness: 500, damping: 30 }}
           >
-            <TooltipProvider timeout={200}>
-              <TooltipAnchor
+            <Tooltip label={client.name}>
+              <div
                 aria-label={client.name}
                 tabIndex={0}
                 className={`flex h-8 w-8 items-center justify-center rounded-full border-2 border-warm-surface shadow-sm ${
@@ -63,14 +63,8 @@ export default function PresenceBar({ clients }: PresenceBarProps) {
                     {getInitials(client.name)}
                   </span>
                 )}
-              </TooltipAnchor>
-              <Tooltip
-                gutter={8}
-                className="z-50 whitespace-nowrap rounded-md bg-slate-900 px-2 py-1 text-xs font-medium text-white shadow-md dark:bg-slate-100 dark:text-slate-900"
-              >
-                {client.name}
-              </Tooltip>
-            </TooltipProvider>
+              </div>
+            </Tooltip>
           </motion.div>
         ))}
       </AnimatePresence>
