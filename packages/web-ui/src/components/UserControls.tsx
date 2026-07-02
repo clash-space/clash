@@ -1,7 +1,8 @@
 
 /* eslint-disable @next/next/no-img-element */
 
-import { useState } from 'react';
+import { useState, type ReactElement } from 'react';
+import { Tooltip, TooltipAnchor, TooltipProvider } from '@ariakit/react';
 import { motion } from 'framer-motion';
 import { GoogleLogo, Gear, SignOut, CreditCard, Lightning } from '@phosphor-icons/react';
 import { Link } from 'react-router';
@@ -15,6 +16,20 @@ interface UserControlsProps {
   projectChrome?: boolean;
 }
 
+function UserControlTooltip({ label, children }: { label: string; children: ReactElement }) {
+  return (
+    <TooltipProvider timeout={180}>
+      <TooltipAnchor render={children} />
+      <Tooltip
+        gutter={8}
+        className="z-50 whitespace-nowrap rounded-md border border-warm-border bg-warm-surface px-2 py-1 text-xs font-medium text-stone-800 shadow-md"
+      >
+        {label}
+      </Tooltip>
+    </TooltipProvider>
+  );
+}
+
 function localLoginUrl(): string | null {
   if (typeof window === 'undefined') return null;
   if (window.location.protocol !== 'http:') return null;
@@ -24,20 +39,21 @@ function localLoginUrl(): string | null {
 
 function SettingsOnlyControl({ compact = false, projectChrome = false }: UserControlsProps) {
   return (
-    <Link
-      to="/settings"
-      aria-label="Settings"
-      title="Settings"
-      className={
-        projectChrome
-          ? 'clash-project-top-action inline-flex h-10 w-10 items-center justify-center rounded-xl text-slate-900 transition-colors hover:bg-black/[0.055] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-warm-page'
-          : compact
-          ? 'inline-flex h-8 w-8 items-center justify-center rounded-lg text-stone-700 transition-colors hover:bg-stone-200/70 hover:text-stone-950 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand'
-          : 'inline-flex h-12 w-12 items-center justify-center rounded-2xl border border-warm-border bg-warm-surface text-stone-800 shadow-sm transition-all hover:border-brand/35 hover:bg-warm-muted hover:text-slate-950 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-warm-page'
-      }
-    >
-      <Gear className={compact ? 'h-4 w-4' : 'h-5 w-5'} aria-hidden="true" />
-    </Link>
+    <UserControlTooltip label="Settings">
+      <Link
+        to="/settings"
+        aria-label="Settings"
+        className={
+          projectChrome
+            ? 'clash-project-top-action inline-flex h-10 w-10 items-center justify-center rounded-xl text-slate-900 transition-colors hover:bg-black/[0.055] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-warm-page'
+            : compact
+            ? 'inline-flex h-8 w-8 items-center justify-center rounded-lg text-stone-700 transition-colors hover:bg-stone-200/70 hover:text-stone-950 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand'
+            : 'inline-flex h-12 w-12 items-center justify-center rounded-2xl border border-warm-border bg-warm-surface text-stone-800 shadow-sm transition-all hover:border-brand/35 hover:bg-warm-muted hover:text-slate-950 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-warm-page'
+        }
+      >
+        <Gear className={compact ? 'h-4 w-4' : 'h-5 w-5'} aria-hidden="true" />
+      </Link>
+    </UserControlTooltip>
   );
 }
 
@@ -89,31 +105,34 @@ function AccountUserControls({ compact = false, projectChrome = false }: UserCon
       {user ? (
         <div className="relative flex items-center gap-2">
           {(balance.status === 'ready' || balance.status === 'loading') && (
-            <Link
-              to="/billing"
-              className={
-                projectChrome
-                  ? 'clash-project-top-balance flex h-10 items-center gap-1.5 rounded-xl px-3 text-sm font-display font-semibold text-slate-900 transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-warm-page'
-                  : compact
-                  ? 'flex h-8 w-8 items-center justify-center rounded-lg text-stone-600 transition-colors hover:bg-stone-200/70 hover:text-stone-950 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand'
-                  : 'flex items-center gap-1.5 rounded-xl bg-warm-surface border border-warm-border px-3 py-1.5 shadow-sm hover:shadow-md hover:border-brand/40 transition-all text-sm font-display font-medium text-stone-800 dark:text-stone-200'
-              }
-              aria-label="Credits balance — click to manage billing"
-              title={
+            <UserControlTooltip
+              label={
                 balance.status === 'ready'
                   ? `${balance.balance.available.toLocaleString()} credits`
                   : 'Credits balance'
               }
             >
-              <Lightning weight="fill" className="h-3.5 w-3.5 text-brand" />
-              {(!compact || projectChrome) && (
-                balance.status === 'ready' ? (
-                  <span className="tabular-nums">{balance.balance.available.toLocaleString()}</span>
-                ) : (
-                  <span className="inline-block h-3 w-8 rounded bg-warm-muted animate-pulse" />
-                )
-              )}
-            </Link>
+              <Link
+                to="/billing"
+                className={
+                  projectChrome
+                    ? 'clash-project-top-balance flex h-10 items-center gap-1.5 rounded-xl px-3 text-sm font-display font-semibold text-slate-900 transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-warm-page'
+                    : compact
+                    ? 'flex h-8 w-8 items-center justify-center rounded-lg text-stone-600 transition-colors hover:bg-stone-200/70 hover:text-stone-950 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand'
+                    : 'flex items-center gap-1.5 rounded-xl bg-warm-surface border border-warm-border px-3 py-1.5 shadow-sm hover:shadow-md hover:border-brand/40 transition-all text-sm font-display font-medium text-stone-800 dark:text-stone-200'
+                }
+                aria-label="Credits balance — click to manage billing"
+              >
+                <Lightning weight="fill" className="h-3.5 w-3.5 text-brand" />
+                {(!compact || projectChrome) && (
+                  balance.status === 'ready' ? (
+                    <span className="tabular-nums">{balance.balance.available.toLocaleString()}</span>
+                  ) : (
+                    <span className="inline-block h-3 w-8 rounded bg-warm-muted animate-pulse" />
+                  )
+                )}
+              </Link>
+            </UserControlTooltip>
           )}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>

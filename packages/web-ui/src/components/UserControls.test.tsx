@@ -1,5 +1,7 @@
 // @vitest-environment jsdom
 import type { ReactNode } from "react";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -75,6 +77,19 @@ describe("UserControls", () => {
     expect(screen.queryByText("Local User")).toBeNull();
     expect(screen.queryByRole("button", { name: /Account menu/i })).toBeNull();
     expect(authClientMock.useSession).not.toHaveBeenCalled();
+  });
+
+  it("uses Ariakit tooltip primitives for icon controls instead of browser title attributes", () => {
+    const source = readFileSync(
+      resolve(process.cwd(), "packages/web-ui/src/components/UserControls.tsx"),
+      "utf8",
+    );
+
+    expect(source).toContain("TooltipProvider");
+    expect(source).toContain("TooltipAnchor");
+    expect(source).toContain("Tooltip");
+    expect(source).toContain("UserControlTooltip");
+    expect(source).not.toContain("title=");
   });
 
   it("keeps the account menu in hosted mode", () => {
