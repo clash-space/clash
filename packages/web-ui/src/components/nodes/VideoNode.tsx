@@ -3,7 +3,7 @@ import { memo, useEffect, useMemo, useRef, useState } from 'react';
 import { Handle, Position, NodeProps, Node, useReactFlow } from '@xyflow/react';
 import SourceHandleMenu from './SourceHandleMenu';
 import DraftPlaceholder from './DraftPlaceholder';
-import { FilmSlate, TextT } from '@phosphor-icons/react';
+import { ArrowClockwise, FilmSlate, TextT } from '@phosphor-icons/react';
 import { useMediaViewer } from '../MediaViewerContext';
 import { useOptionalLoroSyncContext } from '../LoroSyncContext';
 import { normalizeStatus, isActiveStatus, type AssetStatus } from '@clash/web-ui/lib/assetStatus';
@@ -417,7 +417,7 @@ const VideoNode = ({ data, selected, id, width, height }: NodeProps<Node<Record<
                                     onClick={refreshThumbnail}
                                     aria-label="Refresh thumbnail"
                                 >
-                                    <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/><path d="M16 16h5v5"/></svg>
+                                    <ArrowClockwise className="h-4 w-4" weight="bold" aria-hidden="true" />
                                 </button>
                             </Tooltip>
                             <div className="rounded-full bg-black/50 px-2 py-0.5 text-[10px] text-white backdrop-blur-sm">

@@ -38,7 +38,9 @@ describe("media node description disclosure primitives", () => {
         const source = readNodeSource("VideoNode.tsx");
 
         expect(source).toContain("<Tooltip label=\"Refresh thumbnail\">");
+        expect(source).toContain("ArrowClockwise");
         expect(source).toContain('aria-label="Refresh thumbnail"');
+        expect(source).not.toContain("<svg xmlns=\"http://www.w3.org/2000/svg\"");
         expect(source).not.toContain('title="Refresh Thumbnail"');
     });
 
