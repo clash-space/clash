@@ -1,5 +1,5 @@
 import { memo, useState, useEffect, useCallback, useMemo, useRef, Fragment, type KeyboardEvent as ReactKeyboardEvent } from 'react';
-import { ComboboxItem, ComboboxList, ComboboxProvider } from '@ariakit/react';
+import { ComboboxItem, ComboboxList, ComboboxProvider, useComboboxStore, type ComboboxStore } from '@ariakit/react';
 import { Handle, Position, type Node as RFNode, NodeProps, useReactFlow, useNodeConnections } from '@xyflow/react';
 import { VideoCamera, Image as ImageIcon, CaretDown, X, Play, Spinner, PuzzlePiece, Plus, Lock, Copy, SpeakerHigh, TextT } from '@phosphor-icons/react';
 import { motion, Reorder } from 'framer-motion';
@@ -75,40 +75,40 @@ type ActionMentionNode = {
     thumbnail?: string;
 };
 
+const actionMentionItemId = (nodeId: string): string => `action-mention-${nodeId.replace(/[^a-zA-Z0-9_-]/g, '_')}`;
+
 function ActionMentionPicker({
-    activeIndex,
     nodes,
-    onHover,
     onPick,
+    store,
 }: {
-    activeIndex: number;
     nodes: ActionMentionNode[];
-    onHover: (index: number) => void;
     onPick: (node: ActionMentionNode) => void;
+    store: ComboboxStore;
 }) {
     return (
-        <ComboboxProvider value="" setValue={() => undefined}>
+        <ComboboxProvider store={store}>
             <ComboboxList
                 aria-label="Reference asset matches"
                 alwaysVisible
                 className="clash-action-mention-menu absolute inset-x-4 bottom-full z-50 mb-1 max-h-48 overflow-y-auto rounded-xl border border-warm-border bg-warm-surface shadow-lg"
             >
-                {nodes.map((node, idx) => {
-                    const selected = idx === activeIndex;
+                {nodes.map((node) => {
                     return (
                         <ComboboxItem
+                            id={actionMentionItemId(node.id)}
                             key={node.id}
-                            value={node.label}
+                            value={node.id}
+                            focusOnHover
                             setValueOnClick={false}
                             selectValueOnClick={false}
                             onMouseDown={(event) => {
                                 event.preventDefault();
+                            }}
+                            onClick={() => {
                                 onPick(node);
                             }}
-                            onMouseEnter={() => onHover(idx)}
-                            className={`flex w-full cursor-default items-center gap-2.5 px-3 py-2 text-left text-xs transition-colors outline-none ${
-                                selected ? 'bg-warm-muted' : 'hover:bg-warm-muted data-[active-item]:bg-warm-muted'
-                            }`}
+                            className="flex w-full cursor-default items-center gap-2.5 px-3 py-2 text-left text-xs transition-colors outline-none hover:bg-warm-muted data-[active-item]:bg-warm-muted"
                         >
                             {node.thumbnail ? (
                                 <SignedImg
@@ -163,11 +163,8 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
     const [error, setError] = useState<string | null>(null);
 
     // @ mention state
-    const textareaRef = useRef<HTMLTextAreaElement>(null);
     const [showMentionMenu, setShowMentionMenu] = useState(false);
     const [mentionQuery, setMentionQuery] = useState('');
-    const [mentionCursor, setMentionCursor] = useState(0);
-    const [mentionIndex, setMentionIndex] = useState(0);
 
     // Canvas-node ref picker (click + to attach). Value is slot target:
     // 'append' for non-startEnd strip, 'start' | 'end' for startEnd slots.
@@ -792,28 +789,10 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
         if (atMatch) {
             setMentionQuery(atMatch[1].toLowerCase());
             setShowMentionMenu(true);
-            setMentionIndex(0);
         } else {
             setShowMentionMenu(false);
         }
     }, [htmlToContent, id, setNodes, loroSync]);
-
-    const handleEditorKeyDown = useCallback((e: ReactKeyboardEvent<HTMLDivElement>) => {
-        if (showMentionMenu && filteredMentionNodes.length > 0) {
-            if (e.key === 'ArrowDown') {
-                e.preventDefault();
-                setMentionIndex((prev) => Math.min(prev + 1, filteredMentionNodes.length - 1));
-            } else if (e.key === 'ArrowUp') {
-                e.preventDefault();
-                setMentionIndex((prev) => Math.max(prev - 1, 0));
-            } else if (e.key === 'Enter' || e.key === 'Tab') {
-                e.preventDefault();
-                insertMention(filteredMentionNodes[mentionIndex]);
-            } else if (e.key === 'Escape') {
-                setShowMentionMenu(false);
-            }
-        }
-    }, [showMentionMenu, filteredMentionNodes, mentionIndex]);
 
     const insertMention = useCallback((node: { id: string; label: string; src?: string }) => {
         const el = editorRef.current;
@@ -852,13 +831,57 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
         lastContentRef.current = raw;
         setContent(raw);
         setShowMentionMenu(false);
-        setMentionIndex(0);
         const edgeId = `${node.id}-${id}`;
         addEdges({ id: edgeId, source: node.id, target: id, type: 'default' });
         if (loroSync?.connected) {
             loroSync.addEdge(edgeId, { id: edgeId, source: node.id, target: id, type: 'default' });
         }
     }, [contentToHtml, htmlToContent, id, addEdges, loroSync]);
+
+    const mentionCombobox = useComboboxStore({
+        value: mentionQuery,
+        setValue: () => undefined,
+        focusLoop: true,
+        focusWrap: true,
+        orientation: 'vertical',
+    });
+
+    useEffect(() => {
+        if (!showMentionMenu || filteredMentionNodes.length === 0) {
+            mentionCombobox.setActiveId(undefined);
+            return;
+        }
+        mentionCombobox.setActiveId(actionMentionItemId(filteredMentionNodes[0].id));
+    }, [mentionCombobox, showMentionMenu, filteredMentionNodes]);
+
+    const handleEditorKeyDown = useCallback((e: ReactKeyboardEvent<HTMLDivElement>) => {
+        if (!showMentionMenu || filteredMentionNodes.length === 0) return;
+
+        if (e.key === 'ArrowDown') {
+            e.preventDefault();
+            mentionCombobox.setActiveId(mentionCombobox.next() ?? actionMentionItemId(filteredMentionNodes[0].id));
+            return;
+        }
+
+        if (e.key === 'ArrowUp') {
+            e.preventDefault();
+            mentionCombobox.setActiveId(mentionCombobox.previous() ?? actionMentionItemId(filteredMentionNodes[filteredMentionNodes.length - 1].id));
+            return;
+        }
+
+        if (e.key === 'Enter' || e.key === 'Tab') {
+            e.preventDefault();
+            const activeId = mentionCombobox.getState().activeId;
+            const node = filteredMentionNodes.find((candidate) => actionMentionItemId(candidate.id) === activeId) ?? filteredMentionNodes[0];
+            insertMention(node);
+            return;
+        }
+
+        if (e.key === 'Escape') {
+            e.preventDefault();
+            setShowMentionMenu(false);
+        }
+    }, [filteredMentionNodes, insertMention, mentionCombobox, showMentionMenu]);
 
     const syncModelState = useCallback(
         (nextModelId: string, nextParams: ModelParams) => {
@@ -1780,10 +1803,9 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
                         />
                         {showMentionMenu && filteredMentionNodes.length > 0 && (
                             <ActionMentionPicker
-                                activeIndex={mentionIndex}
                                 nodes={filteredMentionNodes}
-                                onHover={setMentionIndex}
                                 onPick={insertMention}
+                                store={mentionCombobox}
                             />
                         )}
                     </div>

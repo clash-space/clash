@@ -43,6 +43,10 @@ describe("ActionBadge popover primitives", () => {
         expect(source).toContain("ComboboxList");
         expect(source).toContain("ComboboxItem");
         expect(source).not.toContain("onKeyDown={isFrozen ? undefined : (e) =>");
+        expect(source).not.toContain("mentionIndex");
+        expect(source).not.toContain("setMentionIndex");
+        expect(source).not.toContain("activeIndex");
+        expect(source).not.toContain("onMouseEnter={() => onHover(idx)}");
         expect(source).not.toContain("@ mention dropdown with thumbnails");
         expect(source).not.toContain("absolute left-4 right-4 bottom-full mb-1 bg-warm-surface border border-warm-border rounded-xl shadow-lg z-50 max-h-48 overflow-y-auto");
     });
