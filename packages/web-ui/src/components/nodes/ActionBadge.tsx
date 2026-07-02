@@ -24,6 +24,7 @@ import {
 import MilkdownEditor from '../MilkdownEditor';
 import { useConfirm } from '../ConfirmDialog';
 import { SelectMenu, type SelectValue } from '../ui/select';
+import { Popover, PopoverContent, PopoverTrigger } from '../ui/popover';
 import { useSpawnPendingAsset } from './useSpawnPendingAsset';
 import ActionBadgePipelineMenu from './ActionBadgePipelineMenu';
 import AttributionLine from './AttributionLine';
@@ -126,6 +127,8 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
     const [content, setContent] = useState(cleanContent(data.content));
     const isFrozen = !!data.hasRun;
     const [showRefPicker, setShowRefPicker] = useState(false);
+    const [paramsPopoverOpen, setParamsPopoverOpen] = useState(false);
+    const [countPopoverOpen, setCountPopoverOpen] = useState(false);
 
     // Collapse retired -edit variants into their base card (backend auto-switches to /edit when refs present).
     const LEGACY_MODEL_REMAP: Record<string, string> = {
@@ -489,8 +492,9 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
     // Drafts qualify (src empty for now — cascade runner waits for them before
     // adopting this action). Cycle guard: exclude anything that transitively
     // depends on this action so users can't pick a descendant.
+    const shouldComputeRefPickerCandidates = showRefPicker || refPickerTarget !== null;
     const refPickerCandidates = useMemo(() => {
-        if (!showRefPicker) return [];
+        if (!shouldComputeRefPickerCandidates) return [];
         const attached = new Set(refNodeIds);
         const downstream = new Set<string>([id]);
         {
@@ -516,7 +520,7 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
             if (t !== 'text' && t !== 'image' && t !== 'video' && t !== 'audio') return false;
             return true;
         });
-    }, [showRefPicker, refNodeIds, getNodes, getEdges, connectedEdges, id, acceptsTextRef, acceptsImageRef, acceptsVideoRef, acceptsAudioRef]);
+    }, [shouldComputeRefPickerCandidates, refNodeIds, getNodes, getEdges, connectedEdges, id, acceptsTextRef, acceptsImageRef, acceptsVideoRef, acceptsAudioRef]);
 
     // Attach a picked canvas node into the target slot. For startEnd, pad the
     // order array so slot 0/1 are stable even when the other slot is empty.
@@ -1382,53 +1386,62 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
                                 })}
                             </Reorder.Group>
                             {!isFrozen && (
-                                <div className="relative flex-shrink-0">
-                                    <button
-                                        className="w-10 h-10 rounded-lg border border-dashed border-slate-300 flex items-center justify-center text-slate-700 dark:text-slate-300 hover:border-slate-500 hover:text-slate-600 transition-colors"
-                                        onClick={() => setShowRefPicker(p => !p)}
+                                <Popover open={showRefPicker} onOpenChange={setShowRefPicker}>
+                                    <PopoverTrigger asChild>
+                                        <button
+                                            type="button"
+                                            className="w-10 h-10 rounded-lg border border-dashed border-slate-300 flex items-center justify-center text-slate-700 dark:text-slate-300 hover:border-slate-500 hover:text-slate-600 transition-colors"
+                                            aria-label="Add reference from canvas"
+                                        >
+                                            <Plus size={16} weight="bold" />
+                                        </button>
+                                    </PopoverTrigger>
+                                    <PopoverContent
+                                        side="bottom"
+                                        align="start"
+                                        sideOffset={4}
+                                        className="z-[9999] w-56 overflow-hidden rounded-xl p-0"
+                                        onPointerDown={(e) => e.stopPropagation()}
+                                        onClick={(e) => e.stopPropagation()}
                                     >
-                                        <Plus size={16} weight="bold" />
-                                    </button>
-                                    {showRefPicker && (
-                                        <div className="absolute left-0 top-full mt-1 w-56 bg-warm-surface border border-warm-border rounded-xl shadow-lg z-50 overflow-hidden">
-                                            {(() => {
-                                                const available = getNodes().filter(n => {
-                                                    if (refNodeIds.includes(n.id)) return false;
-                                                    return !!resolveRefSrc(n) || !!resolveTextRef(n);
-                                                });
-                                                if (available.length === 0) {
-                                                    return <div className="px-3 py-3 text-xs text-slate-700 dark:text-slate-300">No references available</div>;
-                                                }
-                                                return available.map(n => {
-                                                    const refSrc = resolveRefSrc(n);
-                                                    const textRef = resolveTextRef(n);
-                                                    if (!refSrc && !textRef) return null;
-                                                    return (
-                                                        <button
-                                                            key={n.id}
-                                                            className="w-full flex items-center gap-2 px-3 py-2 hover:bg-slate-50 transition-colors text-left"
-                                                            onClick={() => {
-                                                                addRefNode(n.id);
-                                                                setShowRefPicker(false);
-                                                            }}
-                                                        >
-                                                            <div className="w-7 h-7 rounded overflow-hidden border border-warm-border flex-shrink-0">
-                                                                {refSrc ? (
-                                                                    <SignedImg src={refSrc} className="w-full h-full object-cover" />
-                                                                ) : (
-                                                                    <div className="w-full h-full bg-warm-muted flex items-center justify-center text-slate-700 dark:text-slate-300">
-                                                                        <TextT size={14} weight="bold" />
-                                                                    </div>
-                                                                )}
-                                                            </div>
-                                                            <span className="text-xs text-slate-800 dark:text-slate-200 truncate">{(n.data.label as string) || n.id}</span>
-                                                        </button>
-                                                    );
-                                                });
-                                            })()}
-                                        </div>
-                                    )}
-                                </div>
+                                        {(() => {
+                                            const available = getNodes().filter(n => {
+                                                if (refNodeIds.includes(n.id)) return false;
+                                                return !!resolveRefSrc(n) || !!resolveTextRef(n);
+                                            });
+                                            if (available.length === 0) {
+                                                return <div className="px-3 py-3 text-xs text-slate-700 dark:text-slate-300">No references available</div>;
+                                            }
+                                            return available.map(n => {
+                                                const refSrc = resolveRefSrc(n);
+                                                const textRef = resolveTextRef(n);
+                                                if (!refSrc && !textRef) return null;
+                                                return (
+                                                    <button
+                                                        key={n.id}
+                                                        type="button"
+                                                        className="w-full flex items-center gap-2 px-3 py-2 hover:bg-warm-muted transition-colors text-left"
+                                                        onClick={() => {
+                                                            addRefNode(n.id);
+                                                            setShowRefPicker(false);
+                                                        }}
+                                                    >
+                                                        <div className="w-7 h-7 rounded overflow-hidden border border-warm-border flex-shrink-0">
+                                                            {refSrc ? (
+                                                                <SignedImg src={refSrc} className="w-full h-full object-cover" />
+                                                            ) : (
+                                                                <div className="w-full h-full bg-warm-muted flex items-center justify-center text-slate-700 dark:text-slate-300">
+                                                                    <TextT size={14} weight="bold" />
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                        <span className="text-xs text-slate-800 dark:text-slate-200 truncate">{(n.data.label as string) || n.id}</span>
+                                                    </button>
+                                                );
+                                            });
+                                        })()}
+                                    </PopoverContent>
+                                </Popover>
                             )}
                         </div>
                     )}
@@ -1474,8 +1487,6 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
         return chips;
     }, [isCustom, customDef, selectedModel, modelParams]);
 
-    // Track which param chip has an open dropdown
-    const [activeParamDropdown, setActiveParamDropdown] = useState<string | null>(null);
     const [expandedParam, setExpandedParam] = useState<string | null>(null);
     const panelRef = useRef<HTMLDivElement>(null);
 
@@ -1486,7 +1497,8 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
             if (panelRef.current && !panelRef.current.contains(e.target as globalThis.Node)) {
                 setShowPanel(false);
                 setShowModelDropdown(false);
-                setActiveParamDropdown(null);
+                setParamsPopoverOpen(false);
+                setCountPopoverOpen(false);
                 setExpandedParam(null);
             }
         };
@@ -1541,15 +1553,36 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
                                                         )}
                                                     </>
                                                 ) : (
-                                                    <button
-                                                        type="button"
-                                                        disabled={isFrozen}
-                                                        onClick={() => setRefPickerTarget(slot)}
-                                                        className="h-10 w-10 rounded-lg border border-dashed border-slate-300 bg-white/60 hover:bg-white hover:border-slate-400 transition-colors flex items-center justify-center text-slate-700 dark:text-slate-300 shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
-                                                        aria-label={`Pick ${fullLabel} frame`}
+                                                    <Popover
+                                                        open={refPickerTarget === slot}
+                                                        onOpenChange={(open) => setRefPickerTarget(open ? slot : null)}
                                                     >
-                                                        <Plus size={14} weight="bold" />
-                                                    </button>
+                                                        <PopoverTrigger asChild>
+                                                            <button
+                                                                type="button"
+                                                                disabled={isFrozen}
+                                                                className="h-10 w-10 rounded-lg border border-dashed border-slate-300 bg-white/60 hover:bg-white hover:border-slate-400 transition-colors flex items-center justify-center text-slate-700 dark:text-slate-300 shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                                                                aria-label={`Pick ${fullLabel} frame`}
+                                                            >
+                                                                <Plus size={14} weight="bold" />
+                                                            </button>
+                                                        </PopoverTrigger>
+                                                        <PopoverContent
+                                                            side="top"
+                                                            align="start"
+                                                            className="z-[9999] w-[320px] overflow-hidden rounded-xl p-0"
+                                                            onPointerDown={(e) => e.stopPropagation()}
+                                                            onClick={(e) => e.stopPropagation()}
+                                                        >
+                                                            <RefPickerContent
+                                                                candidates={refPickerCandidates}
+                                                                onPick={(nid) => {
+                                                                    attachRefToSlot(nid, slot);
+                                                                    setRefPickerTarget(null);
+                                                                }}
+                                                            />
+                                                        </PopoverContent>
+                                                    </Popover>
                                                 )}
                                                 <span className="clash-node-ref-index absolute -top-1 -left-1 text-[9px] font-bold rounded px-1 min-w-[14px] text-center leading-[14px] pointer-events-none">
                                                     {badge}
@@ -1563,13 +1596,6 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
                                 <p className="mt-1.5 text-[10px] text-amber-600 leading-tight">
                                     Start and end frames have different aspect ratios ({formatRatio(startEndMismatch.s.w, startEndMismatch.s.h)} vs {formatRatio(startEndMismatch.e.w, startEndMismatch.e.h)}). Output will likely be distorted — use frames with matching dimensions.
                                 </p>
-                            )}
-                            {refPickerTarget && (
-                                <RefPickerPopover
-                                    candidates={refPickerCandidates}
-                                    onPick={(nid) => { attachRefToSlot(nid, refPickerTarget); setRefPickerTarget(null); }}
-                                    onClose={() => setRefPickerTarget(null)}
-                                />
                             )}
                         </div>
                     ) : acceptsAnyRef && (
@@ -1639,29 +1665,47 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
                                     })}
                                 </Reorder.Group>
                                 {!isFrozen && (
-                                    <button
-                                        type="button"
-                                        onClick={() => setRefPickerTarget('append')}
-                                        className="h-10 w-10 rounded-lg border border-dashed border-slate-300 bg-white/60 hover:bg-white hover:border-slate-400 transition-colors flex items-center justify-center text-slate-700 dark:text-slate-300 shadow-sm flex-shrink-0"
-                                        aria-label="Add reference from canvas"
+                                    <Popover
+                                        open={refPickerTarget === 'append'}
+                                        onOpenChange={(open) => setRefPickerTarget(open ? 'append' : null)}
                                     >
-                                        <Plus size={14} weight="bold" />
-                                    </button>
+                                        <PopoverTrigger asChild>
+                                            <button
+                                                type="button"
+                                                className="h-10 w-10 rounded-lg border border-dashed border-slate-300 bg-white/60 hover:bg-white hover:border-slate-400 transition-colors flex items-center justify-center text-slate-700 dark:text-slate-300 shadow-sm flex-shrink-0"
+                                                aria-label="Add reference from canvas"
+                                            >
+                                                <Plus size={14} weight="bold" />
+                                            </button>
+                                        </PopoverTrigger>
+                                        <PopoverContent
+                                            side="top"
+                                            align="start"
+                                            className="z-[9999] w-[320px] overflow-hidden rounded-xl p-0"
+                                            onPointerDown={(e) => e.stopPropagation()}
+                                            onClick={(e) => e.stopPropagation()}
+                                        >
+                                            <RefPickerContent
+                                                candidates={refPickerCandidates}
+                                                onPick={(nid) => {
+                                                    attachRefToSlot(nid, 'append');
+                                                    setRefPickerTarget(null);
+                                                }}
+                                            />
+                                        </PopoverContent>
+                                    </Popover>
                                 )}
                             </div>
-                            {refPickerTarget && (
-                                <RefPickerPopover
-                                    candidates={refPickerCandidates}
-                                    onPick={(nid) => { attachRefToSlot(nid, refPickerTarget); setRefPickerTarget(null); }}
-                                    onClose={() => setRefPickerTarget(null)}
-                                />
-                            )}
                         </div>
                     )}
 
                 <div
                     className="pointer-events-auto w-full rounded-2xl bg-warm-surface shadow-2xl border border-warm-border overflow-visible"
-                    onClick={() => { setShowModelDropdown(false); setActiveParamDropdown(null); }}
+                    onClick={() => {
+                        setShowModelDropdown(false);
+                        setParamsPopoverOpen(false);
+                        setCountPopoverOpen(false);
+                    }}
                 >
                     {/* Prompt editor with inline @ mention chips.
                         Frozen (post-run) panels render the prompt read-only —
@@ -1754,7 +1798,8 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
                                 onValueChange={(nextModelId) => {
                                     handleModelChange(nextModelId);
                                     setShowModelDropdown(false);
-                                    setActiveParamDropdown(null);
+                                    setParamsPopoverOpen(false);
+                                    setCountPopoverOpen(false);
                                 }}
                                 ariaLabel="Model"
                                 triggerLabel={modelDisplay}
@@ -1768,7 +1813,10 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
                                 onOpenChange={(nextOpen) => {
                                     if (customActionOffline) return;
                                     setShowModelDropdown(nextOpen);
-                                    if (nextOpen) setActiveParamDropdown(null);
+                                    if (nextOpen) {
+                                        setParamsPopoverOpen(false);
+                                        setCountPopoverOpen(false);
+                                    }
                                 }}
                                 disabled={customActionOffline}
                                 title={customActionOffline ? RUNTIME_OFFLINE_TOOLTIP : undefined}
@@ -1783,90 +1831,111 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
 
                         {/* Combined params chip → opens single popover with all params */}
                         {paramChips.length > 0 && (
-                            <div className="relative flex-shrink-0">
-                                <button
-                                    className={`flex items-center gap-1 px-2.5 py-1 rounded-full text-xs transition-colors ${
-                                        activeParamDropdown === '_params' ? 'bg-warm-hover text-slate-900 dark:text-slate-50' : 'bg-warm-muted hover:bg-warm-hover text-stone-700 dark:text-stone-300'
-                                    }`}
-                                    onClick={(e) => { e.stopPropagation(); setActiveParamDropdown(activeParamDropdown === '_params' ? null : '_params'); setShowModelDropdown(false); }}
+                            <Popover
+                                open={paramsPopoverOpen}
+                                onOpenChange={(nextOpen) => {
+                                    setParamsPopoverOpen(nextOpen);
+                                    if (nextOpen) {
+                                        setShowModelDropdown(false);
+                                        setCountPopoverOpen(false);
+                                    } else {
+                                        setExpandedParam(null);
+                                    }
+                                }}
+                            >
+                                <PopoverTrigger asChild>
+                                    <button
+                                        type="button"
+                                        className={`flex items-center gap-1 px-2.5 py-1 rounded-full text-xs transition-colors ${
+                                            paramsPopoverOpen ? 'bg-warm-hover text-slate-900 dark:text-slate-50' : 'bg-warm-muted hover:bg-warm-hover text-stone-700 dark:text-stone-300'
+                                        }`}
+                                        onClick={(e) => e.stopPropagation()}
+                                    >
+                                        <span className="font-medium text-stone-800">
+                                            {paramChips.map((c) => c.value).join(' · ')}
+                                        </span>
+                                        <CaretDown size={10} weight="bold" className="text-stone-700 dark:text-stone-300" />
+                                    </button>
+                                </PopoverTrigger>
+                                <PopoverContent
+                                    side="top"
+                                    align="start"
+                                    className="z-[9999] min-w-[240px] overflow-hidden rounded-2xl p-0"
+                                    onPointerDown={(e) => e.stopPropagation()}
+                                    onClick={(e) => e.stopPropagation()}
                                 >
-                                    <span className="font-medium text-stone-800">
-                                        {paramChips.map((c) => c.value).join(' · ')}
-                                    </span>
-                                    <CaretDown size={10} weight="bold" className="text-stone-700 dark:text-stone-300" />
-                                </button>
-                                {activeParamDropdown === '_params' && (
-                                    <div className="absolute left-0 bottom-full mb-2 bg-warm-surface border border-warm-border rounded-2xl shadow-xl z-50 min-w-[240px] overflow-hidden">
-                                        {((isCustom ? customDef?.parameters : selectedModel?.parameters) ?? []).map((param: any, idx: number) => {
-                                            const p = param as ModelParameter;
-                                            const currentVal = modelParams[p.id] ?? p.defaultValue;
-                                            const currentLabel = p.type === 'select'
-                                                ? (p.options?.find((o) => String(o.value) === String(currentVal))?.label ?? String(currentVal))
-                                                : p.type === 'boolean' ? (currentVal ? 'On' : 'Off') : String(currentVal);
-                                            const isExpanded = expandedParam === p.id;
-                                            return (
-                                                <div key={p.id} className={idx > 0 ? 'border-t border-warm-border' : ''}>
-                                                    <button
-                                                        className="w-full flex items-center justify-between px-4 py-2.5 hover:bg-warm-muted transition-colors"
-                                                        onClick={(e) => { e.stopPropagation(); setExpandedParam(isExpanded ? null : p.id); }}
-                                                    >
-                                                        <span className="text-xs text-stone-700 dark:text-stone-300">{p.label}</span>
-                                                        <span className="flex items-center gap-1 text-xs font-semibold text-slate-900 dark:text-slate-50">
-                                                            {currentLabel}
-                                                            <CaretDown size={10} weight="bold" className={`text-stone-700 dark:text-stone-300 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
-                                                        </span>
-                                                    </button>
-                                                    {isExpanded && (
-                                                        <div className="px-3 pb-3">
-                                                            {(p.type === 'select') && (
-                                                                <div className="flex flex-wrap gap-1.5">
-                                                                    {p.options?.map((opt) => (
-                                                                        <button key={String(opt.value)}
-                                                                            className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${String(currentVal) === String(opt.value) ? 'clash-node-choice-active' : 'bg-warm-muted text-stone-800 dark:text-stone-200 hover:bg-warm-hover'}`}
-                                                                            onClick={(e) => { e.stopPropagation(); updateModelParam(p.id, opt.value); setExpandedParam(null); }}
-                                                                        >{opt.label}</button>
-                                                                    ))}
+                                    {((isCustom ? customDef?.parameters : selectedModel?.parameters) ?? []).map((param: any, idx: number) => {
+                                        const p = param as ModelParameter;
+                                        const currentVal = modelParams[p.id] ?? p.defaultValue;
+                                        const currentLabel = p.type === 'select'
+                                            ? (p.options?.find((o) => String(o.value) === String(currentVal))?.label ?? String(currentVal))
+                                            : p.type === 'boolean' ? (currentVal ? 'On' : 'Off') : String(currentVal);
+                                        const isExpanded = expandedParam === p.id;
+                                        return (
+                                            <div key={p.id} className={idx > 0 ? 'border-t border-warm-border' : ''}>
+                                                <button
+                                                    type="button"
+                                                    className="w-full flex items-center justify-between px-4 py-2.5 hover:bg-warm-muted transition-colors"
+                                                    onClick={(e) => { e.stopPropagation(); setExpandedParam(isExpanded ? null : p.id); }}
+                                                >
+                                                    <span className="text-xs text-stone-700 dark:text-stone-300">{p.label}</span>
+                                                    <span className="flex items-center gap-1 text-xs font-semibold text-slate-900 dark:text-slate-50">
+                                                        {currentLabel}
+                                                        <CaretDown size={10} weight="bold" className={`text-stone-700 dark:text-stone-300 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
+                                                    </span>
+                                                </button>
+                                                {isExpanded && (
+                                                    <div className="px-3 pb-3">
+                                                        {(p.type === 'select') && (
+                                                            <div className="flex flex-wrap gap-1.5">
+                                                                {p.options?.map((opt) => (
+                                                                    <button key={String(opt.value)}
+                                                                        type="button"
+                                                                        className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${String(currentVal) === String(opt.value) ? 'clash-node-choice-active' : 'bg-warm-muted text-stone-800 dark:text-stone-200 hover:bg-warm-hover'}`}
+                                                                        onClick={(e) => { e.stopPropagation(); updateModelParam(p.id, opt.value); setExpandedParam(null); }}
+                                                                    >{opt.label}</button>
+                                                                ))}
+                                                            </div>
+                                                        )}
+                                                        {p.type === 'boolean' && (
+                                                            <div className="flex gap-1.5">
+                                                                {[{ l: 'On', v: true }, { l: 'Off', v: false }].map((o) => (
+                                                                    <button key={o.l}
+                                                                        type="button"
+                                                                        className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${Boolean(currentVal) === o.v ? 'clash-node-choice-active' : 'bg-warm-muted text-stone-800 dark:text-stone-200 hover:bg-warm-hover'}`}
+                                                                        onClick={(e) => { e.stopPropagation(); updateModelParam(p.id, o.v); setExpandedParam(null); }}
+                                                                    >{o.l}</button>
+                                                                ))}
+                                                            </div>
+                                                        )}
+                                                        {p.type === 'number' && (
+                                                            <input type="number" min={p.min} max={p.max} step={p.step}
+                                                                value={currentVal as number}
+                                                                onChange={(e) => updateModelParam(p.id, Number(e.target.value))}
+                                                                className="w-full text-xs border border-warm-border rounded-lg px-3 py-2 focus:outline-none focus:border-brand/70"
+                                                                onClick={(e) => e.stopPropagation()} onMouseDown={(e) => e.stopPropagation()}
+                                                            />
+                                                        )}
+                                                        {p.type === 'slider' && (
+                                                            <div className="space-y-1.5" onClick={(e) => e.stopPropagation()}>
+                                                                <div className="flex justify-between text-[10px] text-stone-700 dark:text-stone-300">
+                                                                    <span>{p.min}</span><span className="font-semibold text-slate-900 dark:text-slate-50">{currentVal}</span><span>{p.max}</span>
                                                                 </div>
-                                                            )}
-                                                            {p.type === 'boolean' && (
-                                                                <div className="flex gap-1.5">
-                                                                    {[{ l: 'On', v: true }, { l: 'Off', v: false }].map((o) => (
-                                                                        <button key={o.l}
-                                                                            className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${Boolean(currentVal) === o.v ? 'clash-node-choice-active' : 'bg-warm-muted text-stone-800 dark:text-stone-200 hover:bg-warm-hover'}`}
-                                                                            onClick={(e) => { e.stopPropagation(); updateModelParam(p.id, o.v); setExpandedParam(null); }}
-                                                                        >{o.l}</button>
-                                                                    ))}
-                                                                </div>
-                                                            )}
-                                                            {p.type === 'number' && (
-                                                                <input type="number" min={p.min} max={p.max} step={p.step}
+                                                                <input type="range" min={p.min} max={p.max} step={p.step}
                                                                     value={currentVal as number}
                                                                     onChange={(e) => updateModelParam(p.id, Number(e.target.value))}
-                                                                    className="w-full text-xs border border-warm-border rounded-lg px-3 py-2 focus:outline-none focus:border-brand/70"
-                                                                    onClick={(e) => e.stopPropagation()} onMouseDown={(e) => e.stopPropagation()}
+                                                                    className="w-full h-1.5 bg-warm-hover rounded-full appearance-none cursor-pointer accent-brand"
+                                                                    onMouseDown={(e) => e.stopPropagation()}
                                                                 />
-                                                            )}
-                                                            {p.type === 'slider' && (
-                                                                <div className="space-y-1.5" onClick={(e) => e.stopPropagation()}>
-                                                                    <div className="flex justify-between text-[10px] text-stone-700 dark:text-stone-300">
-                                                                        <span>{p.min}</span><span className="font-semibold text-slate-900 dark:text-slate-50">{currentVal}</span><span>{p.max}</span>
-                                                                    </div>
-                                                                    <input type="range" min={p.min} max={p.max} step={p.step}
-                                                                        value={currentVal as number}
-                                                                        onChange={(e) => updateModelParam(p.id, Number(e.target.value))}
-                                                                        className="w-full h-1.5 bg-warm-hover rounded-full appearance-none cursor-pointer accent-brand"
-                                                                        onMouseDown={(e) => e.stopPropagation()}
-                                                                    />
-                                                                </div>
-                                                            )}
-                                                        </div>
-                                                    )}
-                                                </div>
-                                            );
-                                        })}
-                                    </div>
-                                )}
-                            </div>
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                )}
+                                            </div>
+                                        );
+                                    })}
+                                </PopoverContent>
+                            </Popover>
                         )}
 
                         {/* Spacer */}
@@ -1874,33 +1943,51 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
 
                         {/* Batch count chip (xN). Stays interactive even when frozen —
                             user can bump the count and then Run to spawn more siblings. */}
-                        <div className="relative flex-shrink-0">
-                            <button
-                                className="flex items-center gap-1 px-2.5 py-1 rounded-full bg-warm-muted hover:bg-warm-hover text-xs font-medium text-stone-800 dark:text-stone-200 transition-colors"
-                                onClick={(e) => { e.stopPropagation(); setActiveParamDropdown(activeParamDropdown === '_count' ? null : '_count'); setShowModelDropdown(false); }}
+                        <Popover
+                            open={countPopoverOpen}
+                            onOpenChange={(nextOpen) => {
+                                setCountPopoverOpen(nextOpen);
+                                if (nextOpen) {
+                                    setShowModelDropdown(false);
+                                    setParamsPopoverOpen(false);
+                                }
+                            }}
+                        >
+                            <PopoverTrigger asChild>
+                                <button
+                                    type="button"
+                                    className="flex items-center gap-1 px-2.5 py-1 rounded-full bg-warm-muted hover:bg-warm-hover text-xs font-medium text-stone-800 dark:text-stone-200 transition-colors"
+                                    onClick={(e) => e.stopPropagation()}
+                                >
+                                    x{countValue}
+                                    <CaretDown size={10} weight="bold" className="text-stone-700 dark:text-stone-300" />
+                                </button>
+                            </PopoverTrigger>
+                            <PopoverContent
+                                side="top"
+                                align="end"
+                                sideOffset={4}
+                                className="z-[9999] min-w-[80px] overflow-hidden rounded-xl p-0"
+                                onPointerDown={(e) => e.stopPropagation()}
+                                onClick={(e) => e.stopPropagation()}
                             >
-                                x{countValue}
-                                <CaretDown size={10} weight="bold" className="text-stone-700 dark:text-stone-300" />
-                            </button>
-                            {activeParamDropdown === '_count' && (
-                                <div className="absolute right-0 bottom-full mb-1 min-w-[80px] bg-warm-surface border border-warm-border rounded-xl shadow-lg overflow-hidden z-50">
-                                    {[1, 2, 3, 4].map((n) => (
-                                        <div
-                                            key={n}
-                                            className={`px-3 py-2 text-xs cursor-pointer text-center transition-colors ${
-                                                countValue === n ? 'clash-node-choice-active' : 'text-stone-800 dark:text-stone-200 hover:bg-warm-muted'
-                                            }`}
-                                            onClick={() => {
-                                                updateModelParam('count', n);
-                                                setActiveParamDropdown(null);
-                                            }}
-                                        >
-                                            x{n}
-                                        </div>
-                                    ))}
-                                </div>
-                            )}
-                        </div>
+                                {[1, 2, 3, 4].map((n) => (
+                                    <button
+                                        key={n}
+                                        type="button"
+                                        className={`block w-full px-3 py-2 text-xs text-center transition-colors ${
+                                            countValue === n ? 'clash-node-choice-active' : 'text-stone-800 dark:text-stone-200 hover:bg-warm-muted'
+                                        }`}
+                                        onClick={() => {
+                                            updateModelParam('count', n);
+                                            setCountPopoverOpen(false);
+                                        }}
+                                    >
+                                        x{n}
+                                    </button>
+                                ))}
+                            </PopoverContent>
+                        </Popover>
 
                         {/* Frozen-only: Run (re-generate with current params) + Copy (clone into a fresh panel). */}
                         {isFrozen && (
@@ -2051,41 +2138,15 @@ function formatRatio(w: number, h: number): string {
     return `${a / g}:${b / g}`;
 }
 
-// Popover grid for picking an existing canvas node as a reference.
-// Anchors to the nearest relative parent (the strip container sets `relative`).
-const RefPickerPopover = ({
+const RefPickerContent = ({
     candidates,
     onPick,
-    onClose,
 }: {
     candidates: RFNode[];
     onPick: (nodeId: string) => void;
-    onClose: () => void;
 }) => {
-    const ref = useRef<HTMLDivElement>(null);
-    useEffect(() => {
-        // Capture phase on document so React Flow's pointer handlers can't
-        // stopPropagation before we see the click.
-        const onDown = (e: Event) => {
-            if (ref.current && !ref.current.contains(e.target as Node)) onClose();
-        };
-        const onEsc = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
-        document.addEventListener('mousedown', onDown, true);
-        document.addEventListener('pointerdown', onDown, true);
-        document.addEventListener('keydown', onEsc);
-        return () => {
-            document.removeEventListener('mousedown', onDown, true);
-            document.removeEventListener('pointerdown', onDown, true);
-            document.removeEventListener('keydown', onEsc);
-        };
-    }, [onClose]);
-
     return (
-        <div
-            ref={ref}
-            className="absolute bottom-full left-0 mb-2 z-[9999] w-[320px] rounded-xl bg-warm-surface shadow-2xl border border-warm-border overflow-hidden"
-            onPointerDown={(e) => e.stopPropagation()}
-        >
+        <>
             <div className="px-3 py-2 text-[11px] font-semibold text-slate-700 dark:text-slate-300 uppercase tracking-wide border-b border-warm-border">
                 Pick a canvas asset
             </div>
@@ -2127,7 +2188,7 @@ const RefPickerPopover = ({
                     })}
                 </div>
             )}
-        </div>
+        </>
     );
 };
 
