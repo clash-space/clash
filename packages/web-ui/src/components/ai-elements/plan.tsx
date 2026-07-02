@@ -12,6 +12,7 @@
 import * as React from "react";
 import { CheckCircle2, Circle, Loader2 } from "lucide-react";
 import type { PlanEntry } from "../../lib/acpEvents";
+import { Popover, PopoverContent, PopoverTrigger } from "../ui/popover";
 import { cn } from "./utils";
 
 function statusIcon(status: string, size = "size-3.5") {
@@ -85,38 +86,43 @@ export function PlanBar({ entries, className }: PlanBarProps) {
   const isDone = completed === entries.length;
   return (
     <div className={cn("relative", className)}>
-      {open && (
-        <div
-          className="absolute bottom-full left-0 right-0 mb-1 max-h-[60vh] overflow-y-auto rounded-xl border border-warm-border/60 bg-background/95 p-2 shadow-lg backdrop-blur"
-          role="dialog"
+      <Popover open={open} onOpenChange={setOpen}>
+        <PopoverContent
+          side="top"
+          align="start"
+          sideOffset={4}
+          collisionPadding={12}
           aria-label="Agent plan"
+          className="max-h-[60vh] w-[var(--radix-popover-trigger-width)] overflow-y-auto rounded-xl border-warm-border/60 bg-background/95 p-2 shadow-lg backdrop-blur"
+          onOpenAutoFocus={(event) => event.preventDefault()}
         >
           <Plan entries={entries} className="my-0 border-0 bg-transparent p-0" />
-        </div>
-      )}
-      <button
-        type="button"
-        onClick={() => setOpen((v) => !v)}
-        className={cn(
-          "group/planbar flex h-8 w-full items-center gap-1.5 rounded-full bg-warm-muted/70 px-2.5 text-xs text-foreground transition-colors hover:bg-warm-muted",
-          "focus:outline-none focus-visible:ring-2 focus-visible:ring-ring/50",
-        )}
-        aria-expanded={open}
-        aria-label={open ? "Hide plan" : "Show plan"}
-      >
-        <span className="shrink-0 font-semibold text-[10px] uppercase tracking-wide text-muted-foreground">
-          Plan
-        </span>
-        <span className="shrink-0 text-muted-foreground tabular-nums">
-          {completed}/{entries.length}
-        </span>
-        {!isDone && inProgress && (
-          <Loader2 className="size-3 shrink-0 text-status-busy animate-spin" aria-hidden="true" />
-        )}
-        <span className="truncate text-muted-foreground min-w-0 flex-1 text-left">
-          {current}
-        </span>
-      </button>
+        </PopoverContent>
+        <PopoverTrigger asChild>
+          <button
+            type="button"
+            className={cn(
+              "group/planbar flex h-8 w-full items-center gap-1.5 rounded-full bg-warm-muted/70 px-2.5 text-xs text-foreground transition-colors hover:bg-warm-muted",
+              "focus:outline-none focus-visible:ring-2 focus-visible:ring-ring/50",
+            )}
+            aria-expanded={open}
+            aria-label={open ? "Hide plan" : "Show plan"}
+          >
+            <span className="shrink-0 font-semibold text-[10px] uppercase tracking-wide text-muted-foreground">
+              Plan
+            </span>
+            <span className="shrink-0 text-muted-foreground tabular-nums">
+              {completed}/{entries.length}
+            </span>
+            {!isDone && inProgress && (
+              <Loader2 className="size-3 shrink-0 text-status-busy animate-spin" aria-hidden="true" />
+            )}
+            <span className="truncate text-muted-foreground min-w-0 flex-1 text-left">
+              {current}
+            </span>
+          </button>
+        </PopoverTrigger>
+      </Popover>
     </div>
   );
 }
