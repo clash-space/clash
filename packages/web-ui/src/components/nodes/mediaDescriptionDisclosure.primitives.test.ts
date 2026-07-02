@@ -41,4 +41,12 @@ describe("media node description disclosure primitives", () => {
         expect(source).toContain('aria-label="Refresh thumbnail"');
         expect(source).not.toContain('title="Refresh Thumbnail"');
     });
+
+    it.each(["ImageNode.tsx", "VideoNode.tsx"])("%s lets ReactFlow own media control event boundaries", (file) => {
+        const source = readNodeSource(file);
+
+        expect(source).toContain("MEDIA_NODE_CONTROL_CLASS");
+        expect(source).toContain("nodrag nopan");
+        expect(source).not.toContain("onClick={(e) => e.stopPropagation()}");
+    });
 });

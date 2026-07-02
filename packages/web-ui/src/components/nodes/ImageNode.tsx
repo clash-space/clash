@@ -20,6 +20,8 @@ import {
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '../ui/collapsible';
 import { Tooltip } from '../ui/tooltip';
 
+const MEDIA_NODE_CONTROL_CLASS = 'nodrag nopan rounded-full bg-black/50 p-1 text-white backdrop-blur-sm hover:bg-black/70 transition-colors';
+
 const ImageNode = ({ data, selected, id, width, height }: NodeProps<Node<Record<string, any>>>) => {
     const [label, setLabel] = useState(data.label || 'Image Node');
     const { openViewer } = useMediaViewer();
@@ -218,8 +220,7 @@ const ImageNode = ({ data, selected, id, width, height }: NodeProps<Node<Record<
                                 <CollapsibleTrigger asChild>
                                     <button
                                         type="button"
-                                        className="rounded-full bg-black/50 p-1 text-white backdrop-blur-sm hover:bg-black/70 transition-colors"
-                                        onClick={(e) => e.stopPropagation()}
+                                        className={MEDIA_NODE_CONTROL_CLASS}
                                         aria-label={descriptionOpen ? 'Hide description' : 'Show description'}
                                     >
                                         <TextT size={12} weight="bold" />

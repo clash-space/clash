@@ -19,6 +19,8 @@ import {
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '../ui/collapsible';
 import { Tooltip } from '../ui/tooltip';
 
+const MEDIA_NODE_CONTROL_CLASS = 'nodrag nopan rounded-full bg-black/50 p-1 text-white backdrop-blur-sm hover:bg-black/70 transition-colors';
+
 const VideoNode = ({ data, selected, id, width, height }: NodeProps<Node<Record<string, any>>>) => {
     const [label, setLabel] = useState(data.label || 'Video Node');
     const { openViewer } = useMediaViewer();
@@ -401,8 +403,7 @@ const VideoNode = ({ data, selected, id, width, height }: NodeProps<Node<Record<
                                 <CollapsibleTrigger asChild>
                                     <button
                                         type="button"
-                                        className="rounded-full bg-black/50 p-1 text-white backdrop-blur-sm hover:bg-black/70 transition-colors"
-                                        onClick={(e) => e.stopPropagation()}
+                                        className={MEDIA_NODE_CONTROL_CLASS}
                                         aria-label={descriptionOpen ? 'Hide description' : 'Show description'}
                                     >
                                         <TextT size={12} weight="bold" />
@@ -412,11 +413,8 @@ const VideoNode = ({ data, selected, id, width, height }: NodeProps<Node<Record<
                             <Tooltip label="Refresh thumbnail">
                                 <button
                                     type="button"
-                                    className="rounded-full bg-black/50 p-1 text-white backdrop-blur-sm hover:bg-black/70 transition-colors"
-                                    onClick={(e) => {
-                                        e.stopPropagation();
-                                        refreshThumbnail();
-                                    }}
+                                    className={MEDIA_NODE_CONTROL_CLASS}
+                                    onClick={refreshThumbnail}
                                     aria-label="Refresh thumbnail"
                                 >
                                     <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/><path d="M16 16h5v5"/></svg>
