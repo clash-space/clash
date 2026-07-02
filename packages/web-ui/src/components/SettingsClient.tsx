@@ -1660,7 +1660,7 @@ function ProviderTestModelPicker({
                             event.preventDefault();
                             setOpen(true);
                         }}
-                        className={`clash-settings-test-model-picker ${settingsSelectTriggerClass} flex min-w-0 items-center justify-between gap-2 rounded-xl border border-warm-border bg-warm-surface px-3 py-2 text-sm font-medium text-slate-900 shadow-[inset_0_1px_0_rgba(255,255,255,0.76)] transition-colors hover:bg-warm-muted/45 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-warm-surface disabled:cursor-not-allowed disabled:opacity-45 dark:text-slate-50 dark:hover:bg-slate-800`}
+                        className={`clash-settings-test-model-picker ${settingsSelectTriggerClass} flex min-w-0 items-center justify-between gap-2 rounded-xl border border-warm-border bg-warm-surface px-3 py-2 text-sm font-medium text-slate-900 shadow-[inset_0_1px_0_rgba(255,255,255,0.76)] transition-colors hover:bg-warm-muted/45 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-warm-surface disabled:cursor-not-allowed disabled:opacity-45 dark:text-slate-50 dark:hover:bg-warm-muted/35`}
                     >
                         <span className={selectedOption ? 'min-w-0 flex-1 truncate text-left' : 'min-w-0 flex-1 truncate text-left text-stone-400 dark:text-stone-500'}>
                             {selectedOption ? providerTestModelTriggerLabel(selectedOption) : 'Select model'}
@@ -1722,7 +1722,7 @@ function ProviderTestModelPicker({
                                             'flex min-h-[52px] w-full cursor-default items-center gap-3 rounded-xl px-3 py-2 text-left text-sm transition-colors outline-none',
                                             selected
                                                 ? 'bg-warm-muted/80 text-slate-950 dark:bg-slate-800 dark:text-slate-50'
-                                                : 'text-slate-900 hover:bg-warm-muted/75 data-[active-item]:bg-warm-muted/75 dark:text-slate-100 dark:hover:bg-slate-800/80 dark:data-[active-item]:bg-slate-800/80',
+                                                : 'text-slate-900 hover:bg-warm-muted/75 data-[active-item]:bg-warm-muted/75 dark:text-slate-100 dark:hover:bg-warm-muted/35 dark:data-[active-item]:bg-warm-muted/35',
                                         )}
                                     >
                                         <span className="flex h-5 w-5 flex-shrink-0 items-center justify-center text-slate-700 dark:text-slate-300" aria-hidden="true">
@@ -3995,7 +3995,7 @@ function AudioSection({ asrModels }: { asrModels: ModelCatalogEntryInfo[] }) {
                                     type="button"
                                     aria-label="ASR model"
                                     onClick={openSetupDialog}
-                                    className={`${settingsSelectTriggerClass} clash-settings-select-trigger inline-flex min-w-0 items-center gap-1.5 rounded-xl border border-warm-border bg-warm-surface px-3 py-2 text-sm font-medium text-stone-500 shadow-[inset_0_1px_0_rgba(255,255,255,0.76)] transition-colors hover:bg-warm-muted/45 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-warm-surface dark:text-stone-400 dark:hover:bg-slate-800`}
+                                    className={`${settingsSelectTriggerClass} clash-settings-select-trigger inline-flex min-w-0 items-center gap-1.5 rounded-xl border border-warm-border bg-warm-surface px-3 py-2 text-sm font-medium text-stone-500 shadow-[inset_0_1px_0_rgba(255,255,255,0.76)] transition-colors hover:bg-warm-muted/45 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-warm-surface dark:text-stone-400 dark:hover:bg-warm-muted/35`}
                                 >
                                     <span className="min-w-0 flex-1 truncate text-left">
                                         {hasSelectedAsrModel ? selectedModelValue : 'Select'}

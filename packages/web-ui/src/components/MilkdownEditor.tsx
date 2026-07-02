@@ -1,6 +1,5 @@
 
 import { useRef, useCallback, useState, useEffect, useImperativeHandle, forwardRef } from 'react';
-import { createPortal } from 'react-dom';
 import { Editor, rootCtx, defaultValueCtx } from '@milkdown/core';
 import { commonmark } from '@milkdown/preset-commonmark';
 import { nord } from '@milkdown/theme-nord';
@@ -14,6 +13,7 @@ import { Plugin, PluginKey } from '@milkdown/prose/state';
 import type { EditorView } from '@milkdown/prose/view';
 import { SignedImg } from './SignedMedia';
 import { getSignedUrl } from '@clash/web-ui/lib/hooks/useSignedUrl';
+import { Popover, PopoverAnchor, PopoverContent } from './ui/popover';
 
 import '@milkdown/theme-nord/style.css';
 import 'prismjs/themes/prism.css';
@@ -225,7 +225,8 @@ function AssetMentionMenu({
         return () => document.removeEventListener('keydown', handleKeyDown, true);
     }, [active, sorted, selectedIndex, onSelect, onClose]);
 
-    if (!active || !coords || sorted.length === 0) return null;
+    const open = active && !!coords && sorted.length > 0;
+    if (!open || !coords) return null;
 
     const typeIcon = (type: string) => {
         if (type === 'image') return '🖼';
@@ -278,23 +279,47 @@ function AssetMentionMenu({
     );
 
     return (
-        <div
-            className="fixed z-[9999] w-64 max-h-60 overflow-y-auto bg-warm-surface rounded-xl border border-warm-border shadow-lg"
-            style={{ left: coords.left, bottom: window.innerHeight - coords.top + 4 }}
+        <Popover
+            open={open}
+            onOpenChange={(nextOpen) => {
+                if (!nextOpen) onClose();
+            }}
         >
-            {agentEntries.length > 0 && (
-                <div className="px-3 py-1 text-[10px] font-medium text-stone-600 dark:text-stone-300 uppercase tracking-wider bg-warm-muted border-b border-warm-border">
-                    Agent
-                </div>
-            )}
-            {agentEntries.map((node, j) => renderRow(node, j))}
-            {sortedAssets.length > 0 && (
-                <div className={`px-3 py-1 text-[10px] font-medium text-stone-600 dark:text-stone-300 uppercase tracking-wider bg-warm-muted ${agentEntries.length > 0 ? 'border-t border-warm-border' : ''}`}>
-                    Canvas
-                </div>
-            )}
-            {sortedAssets.map((node, j) => renderRow(node, agentEntries.length + j))}
-        </div>
+            <PopoverAnchor asChild>
+                <span
+                    aria-hidden="true"
+                    style={{
+                        position: 'fixed',
+                        left: coords.left,
+                        top: coords.bottom,
+                        width: 1,
+                        height: 1,
+                        pointerEvents: 'none',
+                    }}
+                />
+            </PopoverAnchor>
+            <PopoverContent
+                side="bottom"
+                align="start"
+                sideOffset={4}
+                collisionPadding={8}
+                onOpenAutoFocus={(event) => event.preventDefault()}
+                className="w-64 max-h-60 overflow-y-auto rounded-xl p-0"
+            >
+                {agentEntries.length > 0 && (
+                    <div className="px-3 py-1 text-[10px] font-medium text-stone-600 dark:text-stone-300 uppercase tracking-wider bg-warm-muted border-b border-warm-border">
+                        Agent
+                    </div>
+                )}
+                {agentEntries.map((node, j) => renderRow(node, j))}
+                {sortedAssets.length > 0 && (
+                    <div className={`px-3 py-1 text-[10px] font-medium text-stone-600 dark:text-stone-300 uppercase tracking-wider bg-warm-muted ${agentEntries.length > 0 ? 'border-t border-warm-border' : ''}`}>
+                        Canvas
+                    </div>
+                )}
+                {sortedAssets.map((node, j) => renderRow(node, agentEntries.length + j))}
+            </PopoverContent>
+        </Popover>
     );
 }
 
@@ -511,13 +536,6 @@ const MilkdownEditorInner = forwardRef<MilkdownEditorHandle, MilkdownEditorProps
         }
     };
 
-    // Compute menu position based on wrapper element
-    const menuCoords = (() => {
-        if (!mentionState.active || !wrapperRef.current) return mentionState.cursorCoords;
-        const rect = wrapperRef.current.getBoundingClientRect();
-        return { left: rect.left, top: rect.top, bottom: rect.bottom };
-    })();
-
     return (
         <>
             <div
@@ -527,18 +545,17 @@ const MilkdownEditorInner = forwardRef<MilkdownEditorHandle, MilkdownEditorProps
             >
                 <Milkdown />
             </div>
-            {showMentions && typeof document !== 'undefined' && createPortal(
+            {showMentions && (
                 <AssetMentionMenu
                     active={mentionState.active}
                     query={mentionState.query}
-                    coords={menuCoords}
+                    coords={mentionState.cursorCoords}
                     nodes={mentionableNodes}
                     connectedIds={connectedSet}
                     promptModalities={promptModalities}
                     onSelect={handleMentionSelect}
                     onClose={handleMentionClose}
-                />,
-                document.body
+                />
             )}
         </>
     );

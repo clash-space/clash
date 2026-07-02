@@ -825,7 +825,7 @@ describe("visual language surfaces", () => {
 
   it.each([
     ["tokens", "API Tokens"],
-    ["providers", "Providers"],
+    ["providers", "BYOK"],
     ["actions", "Installed Actions"],
     ["skills", "Installed Skills"],
     ["cli", "CLI"],
