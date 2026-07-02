@@ -52,9 +52,13 @@ describe("TopNavigation desktop chrome", () => {
     expect(source).not.toContain("aria-selected={active}");
   });
 
-  it("uses Ariakit tooltip primitives for desktop icon controls instead of browser title attributes", () => {
+  it("uses the shared tooltip primitive for desktop icon controls instead of browser title attributes", () => {
     const source = readFileSync(
       resolve(process.cwd(), "packages/web-ui/src/components/TopNavigation.tsx"),
+      "utf8",
+    );
+    const tooltipSource = readFileSync(
+      resolve(process.cwd(), "packages/web-ui/src/components/ui/tooltip.tsx"),
       "utf8",
     );
     const start = source.indexOf('data-desktop-toolbar="true"');
@@ -63,10 +67,15 @@ describe("TopNavigation desktop chrome", () => {
     expect(end).toBeGreaterThan(start);
     const desktopToolbarSource = source.slice(start, end);
 
-    expect(source).toContain("TooltipProvider");
-    expect(source).toContain("TooltipAnchor");
-    expect(source).toContain("Tooltip");
-    expect(desktopToolbarSource).toContain("DesktopChromeTooltip");
+    expect(tooltipSource).toContain("@ariakit/react");
+    expect(tooltipSource).toContain("TooltipProvider");
+    expect(tooltipSource).toContain("TooltipAnchor");
+    expect(tooltipSource).toContain("Tooltip");
+    expect(source).toContain("./ui/tooltip");
+    expect(desktopToolbarSource).toContain("<Tooltip label=");
+    expect(source).not.toContain("DesktopChromeTooltip");
+    expect(source).not.toContain("TooltipProvider");
+    expect(source).not.toContain("TooltipAnchor");
     expect(desktopToolbarSource).not.toContain("title=");
   });
 

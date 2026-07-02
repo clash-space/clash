@@ -1,8 +1,7 @@
 
 /* eslint-disable @next/next/no-img-element */
 
-import { useState, type ReactElement } from 'react';
-import { Tooltip, TooltipAnchor, TooltipProvider } from '@ariakit/react';
+import { useState } from 'react';
 import { motion } from 'framer-motion';
 import { GoogleLogo, Gear, SignOut, CreditCard, Lightning } from '@phosphor-icons/react';
 import { Link } from 'react-router';
@@ -10,24 +9,11 @@ import betterAuthClient from '@clash/web-ui/lib/betterAuthClient';
 import { useBillingBalance } from '@clash/web-ui/hooks/useBillingBalance';
 import { getRuntimeConfig } from '@clash/web-ui/lib/runtimeConfig';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from './ui/dropdown-menu';
+import { Tooltip } from './ui/tooltip';
 
 interface UserControlsProps {
   compact?: boolean;
   projectChrome?: boolean;
-}
-
-function UserControlTooltip({ label, children }: { label: string; children: ReactElement }) {
-  return (
-    <TooltipProvider timeout={180}>
-      <TooltipAnchor render={children} />
-      <Tooltip
-        gutter={8}
-        className="z-50 whitespace-nowrap rounded-md border border-warm-border bg-warm-surface px-2 py-1 text-xs font-medium text-stone-800 shadow-md"
-      >
-        {label}
-      </Tooltip>
-    </TooltipProvider>
-  );
 }
 
 function localLoginUrl(): string | null {
@@ -39,7 +25,7 @@ function localLoginUrl(): string | null {
 
 function SettingsOnlyControl({ compact = false, projectChrome = false }: UserControlsProps) {
   return (
-    <UserControlTooltip label="Settings">
+    <Tooltip label="Settings">
       <Link
         to="/settings"
         aria-label="Settings"
@@ -53,7 +39,7 @@ function SettingsOnlyControl({ compact = false, projectChrome = false }: UserCon
       >
         <Gear className={compact ? 'h-4 w-4' : 'h-5 w-5'} aria-hidden="true" />
       </Link>
-    </UserControlTooltip>
+    </Tooltip>
   );
 }
 
@@ -105,7 +91,7 @@ function AccountUserControls({ compact = false, projectChrome = false }: UserCon
       {user ? (
         <div className="relative flex items-center gap-2">
           {(balance.status === 'ready' || balance.status === 'loading') && (
-            <UserControlTooltip
+            <Tooltip
               label={
                 balance.status === 'ready'
                   ? `${balance.balance.available.toLocaleString()} credits`
@@ -132,7 +118,7 @@ function AccountUserControls({ compact = false, projectChrome = false }: UserCon
                   )
                 )}
               </Link>
-            </UserControlTooltip>
+            </Tooltip>
           )}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>

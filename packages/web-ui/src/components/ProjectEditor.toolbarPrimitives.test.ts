@@ -26,15 +26,29 @@ describe("ProjectEditor toolbar primitives", () => {
     expect(editorSource).not.toContain("onClick={() => setCanvasMode(prev => prev === 'select' ? 'hand' : 'select')}");
   });
 
-  it("uses Ariakit tooltip primitives for canvas toolbar icon buttons instead of browser title attributes", () => {
+  it("uses the shared tooltip primitive for canvas toolbar icon buttons instead of browser title attributes", () => {
     const editorSource = readSource("packages/web-ui/src/components/ProjectEditor.tsx");
     const toolbarSource = readCanvasToolbarSource();
+    const tooltipSource = readSource("packages/web-ui/src/components/ui/tooltip.tsx");
 
-    expect(editorSource).toContain("@ariakit/react");
-    expect(editorSource).toContain("TooltipProvider");
-    expect(editorSource).toContain("TooltipAnchor");
-    expect(editorSource).toContain("Tooltip");
-    expect(toolbarSource).toContain("CanvasToolbarTooltip");
+    expect(tooltipSource).toContain("@ariakit/react");
+    expect(tooltipSource).toContain("TooltipProvider");
+    expect(tooltipSource).toContain("TooltipAnchor");
+    expect(tooltipSource).toContain("Tooltip");
+    expect(editorSource).toContain("./ui/tooltip");
+    expect(toolbarSource).toContain("<Tooltip label=");
+    expect(editorSource).not.toContain("CanvasToolbarTooltip");
+    expect(editorSource).not.toContain("TooltipProvider");
+    expect(editorSource).not.toContain("TooltipAnchor");
     expect(toolbarSource).not.toContain("title=");
+  });
+
+  it("uses the shared tooltip primitive for project editor icon actions outside the canvas toolbar", () => {
+    const editorSource = readSource("packages/web-ui/src/components/ProjectEditor.tsx");
+
+    expect(editorSource).toContain('<Tooltip label="Wrap selected nodes in a new Group">');
+    expect(editorSource).toContain('<Tooltip label="Return to projects">');
+    expect(editorSource).not.toContain('title="Wrap selected nodes in a new Group"');
+    expect(editorSource).not.toContain('title="Return to projects"');
   });
 });

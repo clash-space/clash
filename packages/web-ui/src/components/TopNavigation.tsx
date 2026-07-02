@@ -1,6 +1,6 @@
 
-import { useEffect, useRef, useState, type CSSProperties, type ReactElement } from 'react';
-import { Tab, TabList, TabProvider, Tooltip, TooltipAnchor, TooltipProvider } from '@ariakit/react';
+import { useEffect, useRef, useState, type CSSProperties } from 'react';
+import { Tab, TabList, TabProvider } from '@ariakit/react';
 import { motion } from 'framer-motion';
 import { Link, useLocation, useNavigate } from 'react-router';
 import { desktopChromeMetrics } from '@clash/shared-runtime';
@@ -13,6 +13,7 @@ import {
   X,
 } from '@phosphor-icons/react';
 import UserControls from './UserControls';
+import { Tooltip } from './ui/tooltip';
 import {
   activateOrAppendDesktopTab,
   closeDesktopTab,
@@ -44,20 +45,6 @@ const desktopChromeStyle = {
 } as CSSProperties;
 
 const HOME_DESKTOP_TAB_ID = 'tab-home';
-
-function DesktopChromeTooltip({ label, children }: { label: string; children: ReactElement }) {
-  return (
-    <TooltipProvider timeout={180}>
-      <TooltipAnchor render={children} />
-      <Tooltip
-        gutter={8}
-        className="z-50 whitespace-nowrap rounded-md bg-slate-900 px-2 py-1 text-xs font-medium text-white shadow-md dark:bg-slate-100 dark:text-slate-900"
-      >
-        {label}
-      </Tooltip>
-    </TooltipProvider>
-  );
-}
 
 function ensureHomeDesktopTab(tabs: DesktopTab[]): DesktopTab[] {
   const homeTab = tabs.find((tab) => tab.path === '/');
@@ -203,7 +190,7 @@ export default function TopNavigation() {
             data-desktop-toolbar="true"
             className="flex h-full items-center gap-1 pl-[max(var(--clash-desktop-toolbar-left-inset),env(safe-area-inset-left))] pr-[max(0.75rem,env(safe-area-inset-right))]"
           >
-            <DesktopChromeTooltip label="Back">
+            <Tooltip label="Back">
               <button
                 type="button"
                 onClick={() => navigateDesktopHistory(-1)}
@@ -213,8 +200,8 @@ export default function TopNavigation() {
               >
                 <ArrowLeft className="h-4 w-4" aria-hidden="true" />
               </button>
-            </DesktopChromeTooltip>
-            <DesktopChromeTooltip label="Forward">
+            </Tooltip>
+            <Tooltip label="Forward">
               <button
                 type="button"
                 onClick={() => navigateDesktopHistory(1)}
@@ -224,7 +211,7 @@ export default function TopNavigation() {
               >
                 <ArrowRight className="h-4 w-4" aria-hidden="true" />
               </button>
-            </DesktopChromeTooltip>
+            </Tooltip>
             <TabProvider
               selectedId={activeDesktopTabId ?? undefined}
               setSelectedId={selectDesktopTabId}
@@ -270,7 +257,7 @@ export default function TopNavigation() {
                         )}
                       </Tab>
                       {!isHomeTab && (
-                        <DesktopChromeTooltip label={`Close ${tab.title}`}>
+                        <Tooltip label={`Close ${tab.title}`}>
                           <button
                             type="button"
                             onClick={() => closeTab(tab.id)}
@@ -283,7 +270,7 @@ export default function TopNavigation() {
                           >
                             <X className="h-3 w-3" weight="bold" />
                           </button>
-                        </DesktopChromeTooltip>
+                        </Tooltip>
                       )}
                       {showInactiveSeparator && (
                         <span

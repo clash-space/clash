@@ -1,7 +1,6 @@
 
-import { useCallback, useState, useEffect, useRef, useMemo, type FormEvent, type ReactElement } from 'react';
+import { useCallback, useState, useEffect, useRef, useMemo, type FormEvent } from 'react';
 import { flushSync } from 'react-dom';
-import { Tooltip, TooltipAnchor, TooltipProvider } from '@ariakit/react';
 import {
     ReactFlow,
     Background,
@@ -106,6 +105,7 @@ import { sanitizeNodesForReactFlow } from '@clash/web-ui/lib/canvasNodeOrder';
 import UserControls from './UserControls';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from './ui/dropdown-menu';
 import { Toggle } from './ui/toggle';
+import { Tooltip } from './ui/tooltip';
 
 const CHILD_NODE_Z_INDEX_BASE = 1000;
 const DEFAULT_COPILOT_PANEL_FRACTION = 1 / 3;
@@ -121,20 +121,6 @@ function clampCopilotPanelWidth(width: number) {
 function defaultCopilotPanelWidth() {
     if (typeof window === 'undefined') return 720;
     return clampCopilotPanelWidth(Math.round(window.innerWidth * DEFAULT_COPILOT_PANEL_FRACTION));
-}
-
-function CanvasToolbarTooltip({ label, children }: { label: string; children: ReactElement }) {
-    return (
-        <TooltipProvider timeout={180}>
-            <TooltipAnchor render={children} />
-            <Tooltip
-                gutter={8}
-                className="z-50 whitespace-nowrap rounded-md bg-slate-900 px-2 py-1 text-xs font-medium text-white shadow-md dark:bg-slate-100 dark:text-slate-900"
-            >
-                {label}
-            </Tooltip>
-        </TooltipProvider>
-    );
 }
 
 interface ProjectEditorProps {
@@ -224,28 +210,29 @@ function SelectionGroupButton({
 
     return (
         <div className="pointer-events-none absolute inset-0 overflow-visible" style={{ zIndex: 10000 }}>
-            <motion.button
-                type="button"
-                initial={{ opacity: 0, y: 4 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: 4 }}
-                transition={{ duration: 0.12 }}
-                onMouseDown={(e) => e.stopPropagation()}
-                onClick={(e) => {
-                    e.stopPropagation();
-                    onGroup();
-                }}
-                className="pointer-events-auto absolute flex h-7 items-center gap-1.5 rounded-md border border-warm-border bg-white/90 px-2.5 text-xs font-medium text-slate-700 shadow-sm backdrop-blur hover:bg-white hover:text-slate-900"
-                style={{
-                    left: screenLeft + screenWidth / 2,
-                    top: screenTop - 36,
-                    transform: 'translateX(-50%)',
-                }}
-                title="Wrap selected nodes in a new Group"
-            >
-                <Square className="h-3.5 w-3.5" weight="regular" />
-                Group
-            </motion.button>
+            <Tooltip label="Wrap selected nodes in a new Group">
+                <motion.button
+                    type="button"
+                    initial={{ opacity: 0, y: 4 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: 4 }}
+                    transition={{ duration: 0.12 }}
+                    onMouseDown={(e) => e.stopPropagation()}
+                    onClick={(e) => {
+                        e.stopPropagation();
+                        onGroup();
+                    }}
+                    className="pointer-events-auto absolute flex h-7 items-center gap-1.5 rounded-md border border-warm-border bg-white/90 px-2.5 text-xs font-medium text-slate-700 shadow-sm backdrop-blur hover:bg-white hover:text-slate-900"
+                    style={{
+                        left: screenLeft + screenWidth / 2,
+                        top: screenTop - 36,
+                        transform: 'translateX(-50%)',
+                    }}
+                >
+                    <Square className="h-3.5 w-3.5" weight="regular" />
+                    Group
+                </motion.button>
+            </Tooltip>
         </div>
     );
 }
@@ -2359,17 +2346,18 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
                                 z-10 — same stacking band as toolbar / chatbot panel
                                 so modal dialogs cover it cleanly without backdrop tricks. */}
                             <div id="editor-header" className="absolute left-9 top-4 z-20 flex items-center gap-2 pointer-events-auto">
-                                <motion.button
-                                    type="button"
-                                    onClick={handleReturnToProjects}
-                                    aria-label="Return to projects"
-                                    title="Return to projects"
-                                    className="clash-project-return-button flex h-10 w-10 items-center justify-center rounded-xl text-slate-800 transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-warm-page"
-                                    whileHover={{ scale: 1.035, x: -1 }}
-                                    whileTap={{ scale: 0.965 }}
-                                >
-                                    <ArrowLeft className="h-5 w-5" weight="bold" aria-hidden="true" />
-                                </motion.button>
+                                <Tooltip label="Return to projects">
+                                    <motion.button
+                                        type="button"
+                                        onClick={handleReturnToProjects}
+                                        aria-label="Return to projects"
+                                        className="clash-project-return-button flex h-10 w-10 items-center justify-center rounded-xl text-slate-800 transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-warm-page"
+                                        whileHover={{ scale: 1.035, x: -1 }}
+                                        whileTap={{ scale: 0.965 }}
+                                    >
+                                        <ArrowLeft className="h-5 w-5" weight="bold" aria-hidden="true" />
+                                    </motion.button>
+                                </Tooltip>
                                 {/* Project Name Input */}
                                 <form onSubmit={handleProjectNameSubmit}>
                                     <input
@@ -2490,7 +2478,7 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
                             >
                                  <div className="clash-canvas-toolbar-surface pointer-events-auto flex w-16 flex-none flex-col items-center gap-3 rounded-2xl py-6 px-3 transition-all">
                                     {/* Canvas Mode Toggle: select off, hand on. */}
-                                    <CanvasToolbarTooltip label={canvasMode === 'select' ? 'Select mode (V)' : 'Hand mode (H)'}>
+                                    <Tooltip label={canvasMode === 'select' ? 'Select mode (V)' : 'Hand mode (H)'}>
                                         <Toggle
                                             asChild
                                             pressed={canvasMode === 'hand'}
@@ -2509,7 +2497,7 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
                                                 }
                                             </motion.button>
                                         </Toggle>
-                                    </CanvasToolbarTooltip>
+                                    </Tooltip>
 
                                     {/* Divider */}
                                     <div className="clash-control-divider w-8 h-px" />
@@ -2526,7 +2514,7 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
                                                     open={isActive}
                                                     onOpenChange={(open) => setActiveMenu(open ? item.id : null)}
                                                 >
-                                                    <CanvasToolbarTooltip label={item.label}>
+                                                    <Tooltip label={item.label}>
                                                         <DropdownMenuTrigger asChild>
                                                             <motion.button
                                                                 className={`clash-toolbar-button flex h-10 w-10 items-center justify-center rounded-xl transition-all ${
@@ -2541,7 +2529,7 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
                                                                 <Icon className="h-5 w-5" weight={isActive ? "fill" : "regular"} />
                                                             </motion.button>
                                                         </DropdownMenuTrigger>
-                                                    </CanvasToolbarTooltip>
+                                                    </Tooltip>
                                                     <DropdownMenuContent
                                                         aria-label={`${item.label} tools`}
                                                         side="right"
@@ -2573,7 +2561,7 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
                                         }
 
                                         return (
-                                            <CanvasToolbarTooltip key={item.id} label={item.label}>
+                                            <Tooltip key={item.id} label={item.label}>
                                                 <motion.button
                                                     onClick={() => {
                                                         handleToolClick(item.id);
@@ -2590,7 +2578,7 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
                                                 >
                                                     <Icon className="h-5 w-5" weight={isActive ? "fill" : "regular"} />
                                                 </motion.button>
-                                            </CanvasToolbarTooltip>
+                                            </Tooltip>
                                         );
                                     })}
 
@@ -2598,7 +2586,7 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
                                     <div className="clash-control-divider w-8 h-px" />
 
                                     {/* Helper Tools (Undo/Redo/Layout) */}
-                                    <CanvasToolbarTooltip label="Auto Layout">
+                                    <Tooltip label="Auto Layout">
                                         <motion.button
                                              onClick={onLayout}
                                              className="clash-toolbar-button flex h-10 w-10 items-center justify-center rounded-xl bg-transparent text-stone-500 transition-all hover:text-slate-950"
@@ -2608,9 +2596,9 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
                                          >
                                              <MagicWand className="h-5 w-5" weight="regular" />
                                          </motion.button>
-                                     </CanvasToolbarTooltip>
+                                     </Tooltip>
 
-                                     <CanvasToolbarTooltip label="Undo">
+                                     <Tooltip label="Undo">
                                          <motion.button
                                              onClick={() => loroSync.undo()}
                                              disabled={!loroSync.canUndo}
@@ -2625,8 +2613,8 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
                                          >
                                              <ArrowCounterClockwise className="h-5 w-5" weight="bold" />
                                          </motion.button>
-                                     </CanvasToolbarTooltip>
-                                     <CanvasToolbarTooltip label="Redo">
+                                     </Tooltip>
+                                     <Tooltip label="Redo">
                                          <motion.button
                                              onClick={() => loroSync.redo()}
                                              disabled={!loroSync.canRedo}
@@ -2641,13 +2629,13 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
                                          >
                                              <ArrowClockwise className="h-5 w-5" weight="bold" />
                                          </motion.button>
-                                     </CanvasToolbarTooltip>
+                                     </Tooltip>
 
                                      {/* Debug: toggle node IDs (dev only) */}
                                      {process.env.NODE_ENV === 'development' && (
                                          <>
                                          <div className="clash-control-divider w-8 h-px" />
-                                         <CanvasToolbarTooltip label="Toggle Node IDs">
+                                         <Tooltip label="Toggle Node IDs">
                                              <motion.button
                                                  onClick={() => setShowDebugIds(v => !v)}
                                                  className={`flex h-10 w-10 items-center justify-center rounded-xl transition-all ${
@@ -2661,7 +2649,7 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
                                              >
                                                   <span className="font-mono text-xs font-bold">ID</span>
                                               </motion.button>
-                                          </CanvasToolbarTooltip>
+                                          </Tooltip>
                                           </>
                                       )}
                                   </div>

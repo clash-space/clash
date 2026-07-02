@@ -79,16 +79,25 @@ describe("UserControls", () => {
     expect(authClientMock.useSession).not.toHaveBeenCalled();
   });
 
-  it("uses Ariakit tooltip primitives for icon controls instead of browser title attributes", () => {
+  it("uses the shared tooltip primitive for icon controls instead of browser title attributes", () => {
     const source = readFileSync(
       resolve(process.cwd(), "packages/web-ui/src/components/UserControls.tsx"),
       "utf8",
     );
+    const tooltipSource = readFileSync(
+      resolve(process.cwd(), "packages/web-ui/src/components/ui/tooltip.tsx"),
+      "utf8",
+    );
 
-    expect(source).toContain("TooltipProvider");
-    expect(source).toContain("TooltipAnchor");
-    expect(source).toContain("Tooltip");
-    expect(source).toContain("UserControlTooltip");
+    expect(tooltipSource).toContain("@ariakit/react");
+    expect(tooltipSource).toContain("TooltipProvider");
+    expect(tooltipSource).toContain("TooltipAnchor");
+    expect(tooltipSource).toContain("Tooltip");
+    expect(source).toContain("./ui/tooltip");
+    expect(source).toContain("<Tooltip label=");
+    expect(source).not.toContain("UserControlTooltip");
+    expect(source).not.toContain("TooltipProvider");
+    expect(source).not.toContain("TooltipAnchor");
     expect(source).not.toContain("title=");
   });
 
