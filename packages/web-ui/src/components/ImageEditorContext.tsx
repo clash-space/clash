@@ -27,6 +27,7 @@ import { generateSemanticId } from '@clash/web-ui/lib/utils/semanticId';
 import { autoInsertNode } from '@clash/web-ui/lib/layout';
 import { applyImageEdit } from '@clash/web-ui/lib/editPipeline';
 import type { CropRect, ImageEditParams } from '@clash/shared-types';
+import { Button } from './ui/button';
 
 interface OpenImageEditorInput {
     editorNodeId: string;
@@ -197,10 +198,14 @@ function ImageEditorPanel({
         <>
             <div className="flex items-center justify-between px-5 py-3 border-b border-warm-border bg-warm-surface">
                 <h2 className="text-base font-semibold text-slate-800">Image Editor</h2>
-                <button onClick={onClose} disabled={busy}
-                    className="px-3 py-1.5 text-sm text-slate-800 dark:text-slate-200 dark:text-slate-300 hover:bg-slate-100 rounded-md">
+                <Button
+                    size="sm"
+                    onClick={onClose}
+                    disabled={busy}
+                    className="rounded-md px-3 py-1.5 text-sm text-slate-800 hover:bg-slate-100 dark:text-slate-200"
+                >
                     Cancel
-                </button>
+                </Button>
             </div>
 
             <div className="flex-1 flex overflow-hidden">
@@ -225,15 +230,16 @@ function ImageEditorPanel({
                         <h3 className="text-xs font-bold text-slate-800 dark:text-slate-200 dark:text-slate-300 uppercase tracking-wider mb-2">Aspect</h3>
                         <div className="grid grid-cols-3 gap-1.5">
                             {ASPECT_OPTIONS.map((id) => (
-                                <button
+                                <Button
                                     key={id}
+                                    size="sm"
                                     onClick={() => applyAspect(id)}
-                                    className={`py-1.5 text-xs rounded-md border ${
+                                    className={`min-h-0 rounded-md px-2 py-1.5 text-xs ${
                                         aspect === id
-                                            ? 'bg-slate-900 text-white border-slate-900'
+                                            ? 'border-slate-900 bg-slate-900 text-white hover:bg-slate-900'
                                             : 'bg-warm-surface text-slate-800 dark:text-slate-200 border-slate-300 hover:bg-slate-50'
                                     }`}
-                                >{id}</button>
+                                >{id}</Button>
                             ))}
                         </div>
                     </section>
@@ -256,25 +262,27 @@ function ImageEditorPanel({
                                 </label>
                             ))}
                         </div>
-                        <button
+                        <Button
+                            size="sm"
                             onClick={resetCrop}
-                            className="mt-2 text-xs text-slate-800 dark:text-slate-200 dark:text-slate-300 hover:text-slate-800 underline"
-                        >Reset crop</button>
+                            className="mt-2 min-h-0 justify-start border-transparent bg-transparent px-0 py-0 text-xs text-slate-800 shadow-none underline hover:bg-transparent hover:text-slate-800 dark:text-slate-200"
+                        >Reset crop</Button>
                     </section>
 
                     <section>
                         <h3 className="text-xs font-bold text-slate-800 dark:text-slate-200 dark:text-slate-300 uppercase tracking-wider mb-2">Rotation</h3>
                         <div className="flex gap-1">
                             {([0, 90, 180, 270] as const).map((d) => (
-                                <button
+                                <Button
                                     key={d}
+                                    size="sm"
                                     onClick={() => setRotation(d)}
-                                    className={`flex-1 py-1.5 text-xs rounded-md border ${
+                                    className={`min-h-0 flex-1 rounded-md px-2 py-1.5 text-xs ${
                                         rotation === d
-                                            ? 'bg-slate-900 text-white border-slate-900'
+                                            ? 'border-slate-900 bg-slate-900 text-white hover:bg-slate-900'
                                             : 'bg-warm-surface text-slate-800 dark:text-slate-200 border-slate-300 hover:bg-slate-50'
                                     }`}
-                                >{d}°</button>
+                                >{d}°</Button>
                             ))}
                         </div>
                     </section>
@@ -286,10 +294,14 @@ function ImageEditorPanel({
                     )}
 
                     <div className="mt-auto pt-2">
-                        <button onClick={handleApply} disabled={busy}
-                            className="w-full px-4 py-2 text-sm font-medium bg-slate-900 text-white rounded-md hover:bg-slate-700 disabled:opacity-50">
+                        <Button
+                            variant="primary"
+                            onClick={handleApply}
+                            disabled={busy}
+                            className="w-full rounded-md px-4 py-2 text-sm"
+                        >
                             {busy ? 'Applying…' : 'Apply'}
-                        </button>
+                        </Button>
                     </div>
                 </div>
             </div>
