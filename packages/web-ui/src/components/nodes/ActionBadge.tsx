@@ -2066,40 +2066,38 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
                         on the outside don't visually fight it. */}
                     <PeerSelectionRing peers={peersSelecting} />
 
-                    {/* Compact Badge — click opens config panel */}
-                    <PopoverTrigger asChild>
-                        <div
-                            role="button"
-                            tabIndex={0}
-                            aria-label="Configure action"
-                            className={`w-[260px] ${bgClass} rounded-xl overflow-hidden transition-all duration-300 hover:shadow-lg cursor-pointer ${
-                                selected ? `ring-4 ${ringClass} ring-offset-2` : 'ring-1 ring-slate-200'
-                            }`}
-                            onKeyDown={(event) => {
-                                if (event.key === 'Enter' || event.key === ' ') {
-                                    event.preventDefault();
-                                    setShowPanel((open) => !open);
-                                }
-                            }}
-                        >
-                            <div className="flex items-center gap-2.5 px-3.5 py-4">
-                                <div className={`flex-shrink-0 ${colorClass}`}>
-                                    <Icon size={16} weight="fill" />
-                                </div>
-                                <div className="flex flex-col min-w-0 flex-1">
-                                    <span className={`text-xs font-bold font-display ${colorClass} truncate`}>
-                                        {label || 'Action'}
-                                    </span>
-                                    <span className="text-[10px] text-slate-700 dark:text-slate-300 truncate leading-none">
-                                        {badgeDisplayName}
-                                    </span>
-                                    {/* Phase 0 attribution — only renders when actor info is populated. */}
-                                    <AttributionLine
-                                        actorType={data.actorType as 'user' | 'agent' | undefined}
-                                        actorUserId={data.actorUserId as string | undefined}
-                                        actorAgentId={data.actorAgentId as string | undefined}
-                                    />
-                                </div>
+                    <div
+                        className={`w-[260px] ${bgClass} rounded-xl overflow-hidden transition-all duration-300 hover:shadow-lg ${
+                            selected ? `ring-4 ${ringClass} ring-offset-2` : 'ring-1 ring-slate-200'
+                        }`}
+                    >
+                        <div className="flex items-stretch">
+                            <PopoverTrigger asChild>
+                                <button
+                                    type="button"
+                                    aria-label="Configure action"
+                                    className="flex min-w-0 flex-1 cursor-pointer items-center gap-2.5 bg-transparent px-3.5 py-4 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand"
+                                >
+                                    <div className={`flex-shrink-0 ${colorClass}`}>
+                                        <Icon size={16} weight="fill" />
+                                    </div>
+                                    <div className="flex flex-col min-w-0 flex-1">
+                                        <span className={`text-xs font-bold font-display ${colorClass} truncate`}>
+                                            {label || 'Action'}
+                                        </span>
+                                        <span className="text-[10px] text-slate-700 dark:text-slate-300 truncate leading-none">
+                                            {badgeDisplayName}
+                                        </span>
+                                        {/* Phase 0 attribution — only renders when actor info is populated. */}
+                                        <AttributionLine
+                                            actorType={data.actorType as 'user' | 'agent' | undefined}
+                                            actorUserId={data.actorUserId as string | undefined}
+                                            actorAgentId={data.actorAgentId as string | undefined}
+                                        />
+                                    </div>
+                                </button>
+                            </PopoverTrigger>
+                            <div className="flex flex-shrink-0 items-center pr-3.5">
                                 {/* Run button — separate click target */}
                                 <button
                                     className={`nodrag flex-shrink-0 flex h-7 items-center gap-1.5 px-3 rounded-lg text-xs font-semibold text-white transition-all hover:scale-[1.02] active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed ${btnClass}`}
@@ -2107,6 +2105,7 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
                                     disabled={isExecuting || customActionOffline}
                                     title={customActionOffline ? RUNTIME_OFFLINE_TOOLTIP : undefined}
                                     aria-disabled={customActionOffline || undefined}
+                                    type="button"
                                 >
                                     {isExecuting ? (
                                         <Spinner size={12} className="animate-spin" />
@@ -2116,14 +2115,14 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
                                     {isExecuting ? 'Running' : 'Run'}
                                 </button>
                             </div>
-
-                            {error && (
-                                <div className="px-3 pb-1.5 text-[10px] text-red-500 truncate">
-                                    {error}
-                                </div>
-                            )}
                         </div>
-                    </PopoverTrigger>
+
+                        {error && (
+                            <div className="px-3 pb-1.5 text-[10px] text-red-500 truncate">
+                                {error}
+                            </div>
+                        )}
+                    </div>
 
                     {/* Handles */}
                     <Handle
