@@ -54,6 +54,7 @@ import { TabPill } from '../_group-chat/TabPill';
 import { RoomView } from '../_group-chat/RoomView';
 import { AgentView } from '../_group-chat/AgentView';
 import { InviteAgentMenu } from '../_group-chat/InviteAgentMenu';
+import { IconButton } from './ui/icon-button';
 import { Tooltip } from './ui/tooltip';
 
 const ROOM_TAB = '__room__';
@@ -497,15 +498,13 @@ export function GroupChatPanel({
               size + shape so they read as a paired tool cluster
               ("add agent" / "reload room"). */}
           <Tooltip label="Refresh room">
-            <motion.button
+            <IconButton
+              label="Refresh room"
+              icon={<ArrowClockwise className="w-4 h-4" weight="bold" />}
+              size="lg"
               onClick={() => void room.refetch()}
-              whileHover={{ scale: 1.05 }}
-              whileTap={{ scale: 0.95 }}
-              className="h-11 w-11 rounded-matrix bg-warm-muted hover:bg-warm-hover hover:text-brand text-stone-700 dark:text-stone-300 dark:text-stone-400 flex items-center justify-center transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-brand/60 focus-visible:ring-offset-1 focus-visible:ring-offset-warm-surface"
-              aria-label="Refresh room"
-            >
-              <ArrowClockwise className="w-4 h-4" weight="bold" aria-hidden="true" />
-            </motion.button>
+              className="rounded-matrix bg-warm-muted text-stone-700 hover:bg-warm-hover hover:text-brand dark:text-stone-300 focus-visible:ring-brand/60 focus-visible:ring-offset-1"
+            />
           </Tooltip>
         </TabList>
 

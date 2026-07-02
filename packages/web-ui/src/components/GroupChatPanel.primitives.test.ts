@@ -41,6 +41,14 @@ describe("GroupChatPanel primitives", () => {
     expect(inviteMenuSource).not.toMatch(/<motion\.button(?=[^>]*aria-label="Invite agent member")[^>]*>/);
   });
 
+  it("uses the shared icon button primitive for refresh controls", () => {
+    const panelSource = readSource("packages/web-ui/src/components/GroupChatPanel.tsx");
+
+    expect(panelSource).toContain("./ui/icon-button");
+    expect(panelSource).toMatch(/<IconButton(?=[\s\S]*label="Refresh room")[\s\S]*\/>/);
+    expect(panelSource).not.toMatch(/<motion\.button(?=[^>]*aria-label="Refresh room")[^>]*>/);
+  });
+
   it("uses the shared button primitive for jump-to-latest controls", () => {
     const agentViewSource = readSource("packages/web-ui/src/_group-chat/AgentView.tsx");
     const roomViewSource = readSource("packages/web-ui/src/_group-chat/RoomView.tsx");
