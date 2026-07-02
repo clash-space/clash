@@ -22,6 +22,7 @@ import ActionBadgeNode from './ActionBadge';
 import VideoEditorNode from './VideoEditorNode';
 import { applyTrajectory, type TrajectorySubgraph } from './trajectoryPlan';
 import { Dialog } from '../ui/dialog';
+import { Tooltip } from '../ui/tooltip';
 
 interface CloneTrajectoryDialogProps {
     open: boolean;
@@ -60,35 +61,38 @@ function wrapPreviewNode<T extends Record<string, unknown>>(Inner: ComponentType
             <>
                 {canDelete && (
                     <NodeToolbar isVisible position={Position.Top} offset={6}>
-                        <button
-                            type="button"
-                            onClick={(e) => { e.stopPropagation(); onDelete(props.id); }}
-                            aria-label="Drop this action and everything upstream that only feeds it"
-                            className="clash-node-danger-ghost flex items-center gap-1 min-h-9 h-9 px-3 rounded-lg text-[11px] font-semibold shadow-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-brand"
-                            title="Drop this action and everything upstream that only feeds it — its output becomes a reused head"
-                        >
-                            <X size={11} weight="bold" aria-hidden="true" />
-                            drop stage
-                        </button>
+                        <Tooltip label="Drop this action and everything upstream that only feeds it - its output becomes a reused head">
+                            <button
+                                type="button"
+                                onClick={(e) => { e.stopPropagation(); onDelete(props.id); }}
+                                aria-label="Drop this action and everything upstream that only feeds it"
+                                className="clash-node-danger-ghost flex items-center gap-1 min-h-9 h-9 px-3 rounded-lg text-[11px] font-semibold shadow-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+                            >
+                                <X size={11} weight="bold" aria-hidden="true" />
+                                drop stage
+                            </button>
+                        </Tooltip>
                     </NodeToolbar>
                 )}
                 <NodeToolbar isVisible position={Position.Bottom} offset={6}>
                     {isRoot ? (
-                        <span
-                            className="flex items-center gap-1 px-2 py-0.5 rounded-lg bg-emerald-50 border border-emerald-200 text-[10px] uppercase tracking-wider font-bold text-emerald-800"
-                            title="Copied into the new trajectory with completed content preserved"
-                        >
-                            <CheckCircle size={10} weight="fill" aria-hidden="true" />
-                            head copy · completed
-                        </span>
+                        <Tooltip label="Copied into the new trajectory with completed content preserved">
+                            <span
+                                className="flex items-center gap-1 px-2 py-0.5 rounded-lg bg-emerald-50 border border-emerald-200 text-[10px] uppercase tracking-wider font-bold text-emerald-800"
+                            >
+                                <CheckCircle size={10} weight="fill" aria-hidden="true" />
+                                head copy · completed
+                            </span>
+                        </Tooltip>
                     ) : (
-                        <span
-                            className="clash-node-badge-draft flex items-center gap-1 px-2 py-0.5 rounded-lg text-[10px] uppercase tracking-wider font-bold"
-                            title="Cloned as an empty draft placeholder — Build to fill"
-                        >
-                            <FilePlus size={10} weight="bold" aria-hidden="true" />
-                            cloned · draft
-                        </span>
+                        <Tooltip label="Cloned as an empty draft placeholder - Build to fill">
+                            <span
+                                className="clash-node-badge-draft flex items-center gap-1 px-2 py-0.5 rounded-lg text-[10px] uppercase tracking-wider font-bold"
+                            >
+                                <FilePlus size={10} weight="bold" aria-hidden="true" />
+                                cloned · draft
+                            </span>
+                        </Tooltip>
                     )}
                 </NodeToolbar>
                 <div className="pointer-events-none">
@@ -423,6 +427,8 @@ const CloneTrajectoryDialog = ({
         }
     }, [previewNodes, previewEdges, originalNodeById, projectId, onApply]);
 
+    const applyLabel = stats.clones === 0 ? 'Nothing to clone' : 'Apply to canvas';
+
     return (
         <Dialog
             open={open}
@@ -490,7 +496,7 @@ const CloneTrajectoryDialog = ({
                             onClick={handleApply}
                             disabled={stats.clones === 0 || applying}
                             className="clash-node-primary flex items-center justify-center gap-1.5 w-full sm:w-auto min-h-11 px-4 py-2 text-sm font-semibold rounded-lg disabled:opacity-40 disabled:cursor-not-allowed focus:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-warm-surface"
-                            title={stats.clones === 0 ? 'Nothing to clone' : 'Apply to canvas'}
+                            aria-label={applyLabel}
                             aria-busy={applying || undefined}
                         >
                             <Copy size={12} weight="bold" aria-hidden="true" />
