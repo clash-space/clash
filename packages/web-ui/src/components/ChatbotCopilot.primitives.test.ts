@@ -15,6 +15,8 @@ describe("ChatbotCopilot primitives", () => {
     expect(source).toContain("ComboboxItem");
     expect(source).not.toContain('role="listbox"');
     expect(source).not.toContain('role="option"');
+    expect(source).not.toContain("selectValueOnClick={false}");
+    expect(source).not.toContain("onClick={() => onPick(command)}");
   });
 
   it("uses the shared sheet primitive for the mobile copilot panel", () => {

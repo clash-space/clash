@@ -1,6 +1,6 @@
 
 import { memo, useState, useRef, useEffect, useCallback, useMemo } from 'react';
-import { ComboboxItem, ComboboxList, ComboboxProvider } from '@ariakit/react';
+import { ComboboxItem, ComboboxList, ComboboxProvider, useComboboxStore } from '@ariakit/react';
 import {
     closestCenter,
     DndContext,
@@ -2079,8 +2079,20 @@ function SlashCommandPalette({
     commands: AvailableCommand[];
     onPick: (command: AvailableCommand) => void;
 }) {
+    const commandStore = useComboboxStore({
+        value: '',
+        setValue: () => undefined,
+        setSelectedValue: (selectedValue) => {
+            const command = commands.find((candidate) => candidate.name === selectedValue);
+            if (command) onPick(command);
+        },
+        focusLoop: true,
+        focusWrap: true,
+        orientation: 'vertical',
+    });
+
     return (
-        <ComboboxProvider value="" setValue={() => undefined}>
+        <ComboboxProvider store={commandStore}>
             <ComboboxList
                 aria-label="Slash commands"
                 alwaysVisible
@@ -2092,11 +2104,10 @@ function SlashCommandPalette({
                     return (
                         <ComboboxItem
                             key={command.name}
-                            value={name}
+                            value={command.name}
+                            focusOnHover
                             setValueOnClick={false}
-                            selectValueOnClick={false}
                             onMouseDown={(event) => event.preventDefault()}
-                            onClick={() => onPick(command)}
                             title={description ?? `/${name}`}
                             aria-label={description ? `/${name} ${description}` : `/${name}`}
                             className="grid w-full cursor-default grid-cols-[minmax(8rem,auto)_1fr] items-baseline gap-4 rounded-xl px-3 py-2 text-left transition-colors outline-none hover:bg-warm-muted data-[active-item]:bg-warm-muted focus-visible:bg-warm-muted"
