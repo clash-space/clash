@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Check, CaretDown, CaretUp, ListChecks } from '@phosphor-icons/react';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '../ui/collapsible';
 
 export interface TodoItem {
     id: string;
@@ -27,59 +28,67 @@ export const TodoList: React.FC<TodoListProps> = ({ items, title = "Plan" }) => 
             animate={{ opacity: 1, x: 0 }}
             className="absolute left-6 bottom-[88px] z-10"
         >
-            <div
-                className="bg-warm-surface border border-warm-border shadow-sm rounded-2xl overflow-hidden cursor-pointer transition-all hover:shadow-md w-64"
-                onClick={() => setIsExpanded(!isExpanded)}
+            <Collapsible
+                open={isExpanded}
+                onOpenChange={setIsExpanded}
+                className="bg-warm-surface border border-warm-border shadow-sm rounded-2xl overflow-hidden transition-shadow hover:shadow-md w-64"
             >
-                <div className="px-3 py-2 flex items-center justify-between bg-warm-muted">
-                    <div className="flex items-center gap-2">
-                        <ListChecks className="w-4 h-4 text-stone-700 dark:text-stone-300" />
-                        <span className="text-xs font-semibold text-stone-700 dark:text-stone-300 uppercase tracking-wider">{title}</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                        <span className="text-xs text-stone-700 dark:text-stone-300 font-medium">{completedCount}/{totalCount}</span>
-                        {isExpanded ? (
-                            <CaretDown className="w-3 h-3 text-stone-700 dark:text-stone-300" />
-                        ) : (
-                            <CaretUp className="w-3 h-3 text-stone-700 dark:text-stone-300" />
-                        )}
-                    </div>
-                </div>
+                <CollapsibleTrigger asChild>
+                    <button
+                        type="button"
+                        className="w-full px-3 py-2 flex items-center justify-between bg-warm-muted text-left cursor-pointer transition-colors hover:bg-warm-muted/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand"
+                    >
+                        <span className="flex items-center gap-2">
+                            <ListChecks className="w-4 h-4 text-stone-700 dark:text-stone-300" aria-hidden="true" />
+                            <span className="text-xs font-semibold text-stone-700 dark:text-stone-300 uppercase tracking-wider">{title}</span>
+                        </span>
+                        <span className="flex items-center gap-2">
+                            <span className="text-xs text-stone-700 dark:text-stone-300 font-medium">{completedCount}/{totalCount}</span>
+                            {isExpanded ? (
+                                <CaretDown className="w-3 h-3 text-stone-700 dark:text-stone-300" aria-hidden="true" />
+                            ) : (
+                                <CaretUp className="w-3 h-3 text-stone-700 dark:text-stone-300" aria-hidden="true" />
+                            )}
+                        </span>
+                    </button>
+                </CollapsibleTrigger>
 
                 <AnimatePresence>
                     {isExpanded && (
-                        <motion.div
-                            initial={{ height: 0, opacity: 0 }}
-                            animate={{ height: 'auto', opacity: 1 }}
-                            exit={{ height: 0, opacity: 0 }}
-                            className="border-t border-warm-border"
-                        >
-                            <div className="p-2 max-h-64 overflow-y-auto bg-warm-surface">
-                                {items.map((item) => (
-                                    <div
-                                        key={item.id}
-                                        className="flex items-start gap-2 p-1.5 rounded-lg hover:bg-warm-muted transition-colors"
-                                    >
-                                        <div className="mt-0.5 shrink-0">
-                                            {item.status === 'completed' ? (
-                                                <div className="w-3.5 h-3.5 rounded-full bg-emerald-500 flex items-center justify-center">
-                                                    <Check className="w-2 h-2 text-white" weight="bold" />
-                                                </div>
-                                            ) : (
-                                                <div className="w-3.5 h-3.5 rounded-full border border-warm-border bg-warm-surface" />
-                                            )}
+                        <CollapsibleContent asChild forceMount>
+                            <motion.div
+                                initial={{ height: 0, opacity: 0 }}
+                                animate={{ height: 'auto', opacity: 1 }}
+                                exit={{ height: 0, opacity: 0 }}
+                                className="border-t border-warm-border"
+                            >
+                                <div className="p-2 max-h-64 overflow-y-auto bg-warm-surface">
+                                    {items.map((item) => (
+                                        <div
+                                            key={item.id}
+                                            className="flex items-start gap-2 p-1.5 rounded-lg hover:bg-warm-muted transition-colors"
+                                        >
+                                            <div className="mt-0.5 shrink-0">
+                                                {item.status === 'completed' ? (
+                                                    <div className="w-3.5 h-3.5 rounded-full bg-emerald-500 flex items-center justify-center">
+                                                        <Check className="w-2 h-2 text-white" weight="bold" />
+                                                    </div>
+                                                ) : (
+                                                    <div className="w-3.5 h-3.5 rounded-full border border-warm-border bg-warm-surface" />
+                                                )}
+                                            </div>
+                                            <span className={`text-sm leading-tight ${item.status === 'completed' ? 'text-stone-600 dark:text-stone-300 line-through' : 'text-stone-800 dark:text-stone-200'
+                                                }`}>
+                                                {item.text}
+                                            </span>
                                         </div>
-                                        <span className={`text-sm leading-tight ${item.status === 'completed' ? 'text-stone-600 dark:text-stone-300 line-through' : 'text-stone-800 dark:text-stone-200'
-                                            }`}>
-                                            {item.text}
-                                        </span>
-                                    </div>
-                                ))}
-                            </div>
-                        </motion.div>
+                                    ))}
+                                </div>
+                            </motion.div>
+                        </CollapsibleContent>
                     )}
                 </AnimatePresence>
-            </div>
+            </Collapsible>
         </motion.div>
     );
 };
