@@ -40,6 +40,7 @@ import {
     ShareFat,
 } from '@phosphor-icons/react';
 import { useLocation, useNavigate } from 'react-router';
+import { useHotkeys } from 'react-hotkeys-hook';
 import type { Project } from '@clash/web-ui/lib/types';
 import ChatbotCopilot from './ChatbotCopilot';
 import { useSessionHistory } from '@clash/web-ui/hooks/useSessionHistory';
@@ -108,6 +109,16 @@ import { Toggle } from './ui/toggle';
 import { Tooltip } from './ui/tooltip';
 
 const CHILD_NODE_Z_INDEX_BASE = 1000;
+
+function isEditableKeyboardTarget(target: EventTarget | null): boolean {
+    if (!(target instanceof HTMLElement)) return false;
+    return (
+        target.tagName === 'INPUT' ||
+        target.tagName === 'TEXTAREA' ||
+        target.isContentEditable ||
+        !!target.closest('[contenteditable="true"]')
+    );
+}
 const DEFAULT_COPILOT_PANEL_FRACTION = 1 / 3;
 const MAX_COPILOT_PANEL_FRACTION = 3 / 7;
 const MIN_COPILOT_PANEL_WIDTH = 420;
@@ -1179,23 +1190,15 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
             if (isInsideCanvas(e.target)) return;
             e.preventDefault();
         };
-        const onKeyZoom = (e: KeyboardEvent) => {
-            if (!(e.ctrlKey || e.metaKey)) return;
-            if (e.key === '+' || e.key === '-' || e.key === '=') {
-                e.preventDefault();
-            }
-        };
         window.addEventListener('wheel', onWheel, { passive: false });
         window.addEventListener('gesturestart', onGesture as EventListener, { passive: false });
         window.addEventListener('gesturechange', onGesture as EventListener, { passive: false });
         window.addEventListener('gestureend', onGesture as EventListener, { passive: false });
-        window.addEventListener('keydown', onKeyZoom);
         return () => {
             window.removeEventListener('wheel', onWheel);
             window.removeEventListener('gesturestart', onGesture as EventListener);
             window.removeEventListener('gesturechange', onGesture as EventListener);
             window.removeEventListener('gestureend', onGesture as EventListener);
-            window.removeEventListener('keydown', onKeyZoom);
         };
     }, []);
 
@@ -1260,83 +1263,87 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
         [nodes, setEdges, loroSync]
     );
 
-    // Keyboard shortcuts for Undo/Redo
-    useEffect(() => {
-        const handleKeyDown = (e: KeyboardEvent) => {
-            // Check if focus is in an input/textarea to avoid triggering undo when typing
-            const activeElement = document.activeElement;
-            const isInput = activeElement?.tagName === 'INPUT' || activeElement?.tagName === 'TEXTAREA' || (activeElement as HTMLElement)?.contentEditable === 'true';
+    const handleGlobalHotkey = useCallback((e: KeyboardEvent) => {
+        if ((e.ctrlKey || e.metaKey) && (e.key === '+' || e.key === '-' || e.key === '=')) {
+            e.preventDefault();
+            return;
+        }
 
-            if (isInput) return;
+        // Avoid triggering editor shortcuts while the user is typing.
+        if (isEditableKeyboardTarget(e.target)) return;
 
-            if ((e.metaKey || e.ctrlKey) && e.key === 'z') {
-                if (e.shiftKey) {
-                    if (loroSync.canRedo) {
-                        e.preventDefault();
-                        loroSync.redo();
-                    }
-                } else {
-                    if (loroSync.canUndo) {
-                        e.preventDefault();
-                        loroSync.undo();
-                    }
-                }
-            }
-
-            // Ctrl/Cmd+Shift+D: toggle debug node IDs (dev only)
-            if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key === 'D' && process.env.NODE_ENV === 'development') {
-                e.preventDefault();
-                setShowDebugIds(v => !v);
-            }
-
-            // Del/Backspace: delete selected edges (ReactFlow's deleteKeyCode isn't firing reliably).
-            // Honor the same freeze guard as `onBeforeDelete` — edges into a frozen
-            // ActionBadge are part of a shipped lineage and can't be detached.
-            if (e.key === 'Delete' || e.key === 'Backspace') {
-                const frozenActionIds = new Set(
-                    nodes
-                        .filter(n => n.type === 'action-badge' && (n.data as Record<string, unknown>)?.hasRun)
-                        .map(n => n.id),
-                );
-                const selectedEdgeIds = edges
-                    .filter(ed => ed.selected && !frozenActionIds.has(ed.target))
-                    .map(ed => ed.id);
-                if (selectedEdgeIds.length > 0) {
+        if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'z') {
+            if (e.shiftKey) {
+                if (loroSync.canRedo) {
                     e.preventDefault();
-                    setEdges(eds => eds.filter(ed => !selectedEdgeIds.includes(ed.id)));
-                    selectedEdgeIds.forEach(eid => loroSync.removeEdge(eid));
+                    loroSync.redo();
                 }
-            }
-
-            // V: select mode, H: hand mode (Figma-style)
-            if (!e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey) {
-                if (e.key === 'v') setCanvasMode('select');
-                if (e.key === 'h') setCanvasMode('hand');
-            }
-
-            // Space: temporary hand mode
-            if (e.key === ' ' && !e.repeat) {
+            } else if (loroSync.canUndo) {
                 e.preventDefault();
-                setCanvasMode(prev => {
-                    canvasModeBeforeSpace.current = prev;
-                    return 'hand';
-                });
+                loroSync.undo();
             }
-        };
+        }
 
-        const handleKeyUp = (e: KeyboardEvent) => {
-            if (e.key === ' ') {
-                setCanvasMode(canvasModeBeforeSpace.current);
+        // Ctrl/Cmd+Shift+D: toggle debug node IDs (dev only)
+        if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key === 'D' && process.env.NODE_ENV === 'development') {
+            e.preventDefault();
+            setShowDebugIds(v => !v);
+        }
+
+        // Del/Backspace: delete selected edges (ReactFlow's deleteKeyCode isn't firing reliably).
+        // Honor the same freeze guard as `onBeforeDelete` — edges into a frozen
+        // ActionBadge are part of a shipped lineage and can't be detached.
+        if (e.key === 'Delete' || e.key === 'Backspace') {
+            const frozenActionIds = new Set(
+                nodes
+                    .filter(n => n.type === 'action-badge' && (n.data as Record<string, unknown>)?.hasRun)
+                    .map(n => n.id),
+            );
+            const selectedEdgeIds = edges
+                .filter(ed => ed.selected && !frozenActionIds.has(ed.target))
+                .map(ed => ed.id);
+            if (selectedEdgeIds.length > 0) {
+                e.preventDefault();
+                setEdges(eds => eds.filter(ed => !selectedEdgeIds.includes(ed.id)));
+                selectedEdgeIds.forEach(eid => loroSync.removeEdge(eid));
             }
-        };
+        }
 
-        window.addEventListener('keydown', handleKeyDown);
-        window.addEventListener('keyup', handleKeyUp);
-        return () => {
-            window.removeEventListener('keydown', handleKeyDown);
-            window.removeEventListener('keyup', handleKeyUp);
-        };
-    }, [loroSync, edges, setEdges]);
+        // V: select mode, H: hand mode (Figma-style)
+        if (!e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey) {
+            if (e.key === 'v') setCanvasMode('select');
+            if (e.key === 'h') setCanvasMode('hand');
+        }
+
+        // Space: temporary hand mode
+        if (e.key === ' ' && !e.repeat) {
+            e.preventDefault();
+            setCanvasMode(prev => {
+                canvasModeBeforeSpace.current = prev;
+                return 'hand';
+            });
+        }
+    }, [edges, loroSync, nodes, setEdges]);
+
+    const handleSpaceKeyUp = useCallback((e: KeyboardEvent) => {
+        if (isEditableKeyboardTarget(e.target)) return;
+        if (e.key === ' ') {
+            setCanvasMode(canvasModeBeforeSpace.current);
+        }
+    }, []);
+
+    useHotkeys('*', handleGlobalHotkey, {
+        enableOnContentEditable: true,
+        enableOnFormTags: true,
+        keydown: true,
+        keyup: false,
+    }, [handleGlobalHotkey]);
+    useHotkeys('*', handleSpaceKeyUp, {
+        enableOnContentEditable: true,
+        enableOnFormTags: true,
+        keydown: false,
+        keyup: true,
+    }, [handleSpaceKeyUp]);
 
     // Merge local (Loro) + global (D1) custom actions, deduplicate by ID
     const loroActions = useCustomActions(loroSync.doc);

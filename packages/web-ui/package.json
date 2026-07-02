@@ -60,6 +60,7 @@
     "lucide-react": "^1.16.0",
     "prismjs": "^1.30.0",
     "radix-ui": "^1.4.3",
+    "react-hotkeys-hook": "^5.3.3",
     "react-i18next": "^17.0.8",
     "react-markdown": "^10.1.0",
     "react-moveable": "^0.56.0",

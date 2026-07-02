@@ -904,6 +904,9 @@ importers:
       react-dom:
         specifier: 19.2.5
         version: 19.2.5(react@19.2.5)
+      react-hotkeys-hook:
+        specifier: ^5.3.3
+        version: 5.3.3(react-dom@19.2.5)(react@19.2.5)
       react-i18next:
         specifier: ^17.0.8
         version: 17.0.8(i18next@26.2.0)(react-dom@19.2.5)(react@19.2.5)(typescript@5.9.3)
@@ -16187,6 +16190,16 @@ packages:
     dependencies:
       react: 19.2.5
       scheduler: 0.27.0
+
+  /react-hotkeys-hook@5.3.3(react-dom@19.2.5)(react@19.2.5):
+    resolution: {integrity: sha512-aswgyWUnE25hmhzHTfKDmKzsaSE5DJ4LKaU/o6rQSXkDd/1Bh9TfAFQbHkf6fLy11HvlYkp+cDDarGdhmCDhoQ==}
+    peerDependencies:
+      react: 19.2.5
+      react-dom: 19.2.5
+    dependencies:
+      react: 19.2.5
+      react-dom: 19.2.5(react@19.2.5)
+    dev: false
 
   /react-i18next@17.0.8(i18next@26.2.0)(react-dom@19.2.5)(react@19.2.5)(typescript@5.9.3):
     resolution: {integrity: sha512-0ooKbGLU8JXhe1zwpQUWIeXSgLPOfwJmgheWRIUpcoA0CpyabpGhayjdG+/eA5esC1AQ8h2jWpXjJfzQzeDOCw==}
