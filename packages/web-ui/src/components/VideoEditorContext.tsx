@@ -5,6 +5,7 @@ import { getEditorAssetKey, normalizeEditorAsset } from '@master-clash/remotion-
 import type { Asset, EditorAssetInput, EditorState, TimelineDsl, Track } from '@master-clash/remotion-core';
 import type { Node, Edge } from '@xyflow/react';
 import { useOptionalLoroSyncContext } from './LoroSyncContext';
+import { EditorModalDialog } from './EditorModalDialog';
 import { autoInsertNode } from '@clash/web-ui/lib/layout';
 import { buildPendingRenderVideoNodePayload, getTimelineDurationInFrames } from '@clash/web-ui/lib/pendingRenderVideo';
 import { stripSrcFromTracks } from '@clash/web-ui/lib/timelineDsl';
@@ -28,25 +29,6 @@ function tracksForPersistence(tracks: Track[]): Track[] {
 const Editor = lazy(() =>
     import('@master-clash/remotion-ui').then(mod => ({ default: mod.Editor }))
 );
-
-function VideoEditorOverlay({ children }: { children: ReactNode }) {
-    return (
-        <div
-            data-testid="video-editor-overlay"
-            role="dialog"
-            aria-modal="true"
-            aria-label="Video editor"
-            className="clash-editor-modal-backdrop fixed inset-0 z-[100] flex items-center justify-center px-5 py-4 sm:px-8 sm:py-7"
-        >
-            <div
-                data-testid="video-editor-panel"
-                className="clash-editor-modal-surface relative h-[min(920px,calc(100vh-48px))] w-[min(1480px,calc(100vw-48px))] overflow-hidden rounded-2xl"
-            >
-                {children}
-            </div>
-        </div>
-    );
-}
 
 // Use TimelineDsl from remotion-core
 type TimelineDslType = Pick<
@@ -340,7 +322,14 @@ export function VideoEditorProvider({
         <VideoEditorContext.Provider value={{ isOpen, openEditor, closeEditor, exportVideo }}>
             {children}
             {isOpen && (
-                <VideoEditorOverlay>
+                <EditorModalDialog
+                    open={isOpen}
+                    onClose={closeEditor}
+                    ariaLabel="Video editor"
+                    panelTestId="video-editor-panel"
+                    panelClassName="h-[min(920px,calc(100vh-48px))] w-[min(1480px,calc(100vw-48px))]"
+                    closeOnInteractOutside={false}
+                >
                     <Suspense
                         fallback={
                             <div className="flex h-full w-full items-center justify-center bg-[#fffdfb] text-sm font-medium text-slate-700 dark:text-slate-300">
@@ -361,7 +350,7 @@ export function VideoEditorProvider({
                             onExport={exportVideo}
                         />
                     </Suspense>
-                </VideoEditorOverlay>
+                </EditorModalDialog>
             )}
         </VideoEditorContext.Provider>
     );

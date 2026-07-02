@@ -100,6 +100,8 @@ export function Dialog({
         >
           <DialogPrimitive.Content
             asChild
+            aria-modal="true"
+            {...(!description ? { "aria-describedby": undefined } : undefined)}
             onInteractOutside={(event) => {
               if (disableBackdropClose) event.preventDefault();
             }}

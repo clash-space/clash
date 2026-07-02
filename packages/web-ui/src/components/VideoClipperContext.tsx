@@ -26,6 +26,7 @@
 
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import type { Edge, Node } from '@xyflow/react';
+import { EditorModalDialog } from './EditorModalDialog';
 import { useOptionalLoroSyncContext } from './LoroSyncContext';
 import { useSignedUrl } from '@clash/web-ui/lib/hooks/useSignedUrl';
 import { generateSemanticId } from '@clash/web-ui/lib/utils/semanticId';
@@ -54,23 +55,6 @@ interface VideoClipperContextType {
 
 const Ctx = createContext<VideoClipperContextType | undefined>(undefined);
 
-function Overlay({ children, onClose }: { children: ReactNode; onClose: () => void }) {
-    return (
-        <div
-            data-testid="video-clipper-overlay"
-            role="dialog"
-            aria-modal="true"
-            aria-label="Video clipper"
-            className="clash-editor-modal-backdrop fixed inset-0 z-[100] flex items-center justify-center px-5 py-4"
-            onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
-        >
-            <div className="clash-editor-modal-surface relative h-[min(820px,calc(100vh-48px))] w-[min(1200px,calc(100vw-48px))] overflow-hidden rounded-2xl flex flex-col">
-                {children}
-            </div>
-        </div>
-    );
-}
-
 export function VideoClipperProvider({ children }: { children: ReactNode }) {
     const loroSync = useOptionalLoroSyncContext();
     const [open, setOpen] = useState(false);
@@ -89,9 +73,14 @@ export function VideoClipperProvider({ children }: { children: ReactNode }) {
         <Ctx.Provider value={{ isOpen: open, openEditor, closeEditor }}>
             {children}
             {open && input && (
-                <Overlay onClose={closeEditor}>
+                <EditorModalDialog
+                    open={open}
+                    onClose={closeEditor}
+                    ariaLabel="Video clipper"
+                    panelClassName="h-[min(820px,calc(100vh-48px))] w-[min(1200px,calc(100vw-48px))] flex flex-col"
+                >
                     <VideoClipperPanel input={input} loroSync={loroSync} onClose={closeEditor} />
-                </Overlay>
+                </EditorModalDialog>
             )}
         </Ctx.Provider>
     );
