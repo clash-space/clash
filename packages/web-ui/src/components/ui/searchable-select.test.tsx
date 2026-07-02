@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -43,6 +43,8 @@ describe("SearchableSelect", () => {
         expect(source).not.toContain('role="listbox"');
         expect(source).not.toContain('role="option"');
         expect(source).not.toContain("aria-selected");
+        expect(source).not.toContain("onKeyDown={(event) =>");
+        expect(source).not.toContain("selectActiveComboboxOption");
     });
 
     it("renders a select trigger with an in-popover searchable combobox", () => {
@@ -88,7 +90,7 @@ describe("SearchableSelect", () => {
         );
     });
 
-    it("selects the active filtered option from the keyboard", () => {
+    it("selects the active filtered option from the keyboard", async () => {
         const onValueChange = vi.fn();
 
         render(
@@ -110,15 +112,20 @@ describe("SearchableSelect", () => {
         fireEvent.click(screen.getByRole("combobox", { name: "Model to test" }));
         const search = screen.getByRole("combobox", { name: "Search test models" });
         fireEvent.change(search, { target: { value: "image" } });
+        await waitFor(() => {
+            expect(screen.getByRole("option", { name: "Mock Image Model" })).toBeTruthy();
+        });
         fireEvent.keyDown(search, { key: "ArrowDown" });
         fireEvent.keyUp(search, { key: "ArrowDown" });
         fireEvent.keyDown(search, { key: "Enter" });
         fireEvent.keyUp(search, { key: "Enter" });
 
-        expect(onValueChange).toHaveBeenCalledWith(
-            "image-model",
-            expect.objectContaining({ value: "image-model" }),
-        );
+        await waitFor(() => {
+            expect(onValueChange).toHaveBeenCalledWith(
+                "image-model",
+                expect.objectContaining({ value: "image-model" }),
+            );
+        });
     });
 
     it("indexes text from rich option labels and descriptions", () => {

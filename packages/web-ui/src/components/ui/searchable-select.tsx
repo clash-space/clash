@@ -14,9 +14,9 @@ import {
     ComboboxList,
     ComboboxProvider,
     Select,
+    SelectItem,
     SelectPopover,
     SelectProvider,
-    useComboboxStore,
 } from '@ariakit/react';
 
 import { cn } from '../ai-elements/utils';
@@ -108,45 +108,17 @@ export function SearchableSelect<Value extends SelectValue = string>({
         setOpen(false);
     }, [onValueChange]);
 
-    const handleComboboxSelectedValueChange = useCallback((candidate: string | string[]) => {
-        const valueToSelect = Array.isArray(candidate) ? candidate[0] : candidate;
-        const option = options.find((item) => String(item.value) === String(valueToSelect));
-        if (!option) return;
-        selectOption(option);
-    }, [options, selectOption]);
-    const combobox = useComboboxStore({
-        value: inputValue,
-        setValue: setInputValue,
-        selectedValue: selectedStringValue,
-        setSelectedValue: handleComboboxSelectedValueChange,
-    });
-
     const handleSelectedValueChange = useCallback((candidate: string) => {
         const option = options.find((item) => String(item.value) === String(candidate));
         if (!option) return;
         selectOption(option);
     }, [options, selectOption]);
 
-    const selectActiveComboboxOption = useCallback(() => {
-        const comboboxState = combobox.getState() as {
-            activeId?: string | null;
-            items?: Array<{ id?: string | null; value?: string | null; disabled?: boolean }>;
-            renderedItems?: Array<{ id?: string | null; value?: string | null; disabled?: boolean }>;
-        };
-        const activeItem = [
-            ...(comboboxState.renderedItems ?? []),
-            ...(comboboxState.items ?? []),
-        ].find((item) => item.id === comboboxState.activeId && !item.disabled);
-        const valueToSelect = activeItem?.value ?? filteredOptions.find((option) => !option.disabled)?.value;
-        const option = options.find((item) => String(item.value) === String(valueToSelect));
-        if (!option) return false;
-        selectOption(option);
-        return true;
-    }, [combobox, filteredOptions, options, selectOption]);
-
     return (
         <ComboboxProvider
-            store={combobox}
+            resetValueOnHide
+            value={inputValue}
+            setValue={setInputValue}
         >
             <SelectProvider
                 open={open}
@@ -193,13 +165,8 @@ export function SearchableSelect<Value extends SelectValue = string>({
                             <Combobox
                                 aria-label={searchAriaLabel ?? `Search ${ariaLabel.toLowerCase()}`}
                                 autoComplete="list"
-                                autoSelect="always"
+                                autoSelect
                                 autoFocus
-                                onKeyDown={(event) => {
-                                    if (event.key !== 'Enter') return;
-                                    if (!selectActiveComboboxOption()) return;
-                                    event.preventDefault();
-                                }}
                                 placeholder={searchPlaceholder}
                                 className={cn(
                                     'w-full min-w-0 rounded-xl border border-warm-border bg-warm-surface px-9 py-2 text-sm font-medium text-slate-900 shadow-[inset_0_1px_0_rgba(255,255,255,0.76)] transition-colors placeholder:text-stone-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-warm-surface dark:text-slate-50 dark:placeholder:text-stone-500',
@@ -220,9 +187,10 @@ export function SearchableSelect<Value extends SelectValue = string>({
                                 const optionAriaLabel = [optionLabel, description].filter(Boolean).join(' ');
                                 const selected = String(option.value) === String(value);
                                 return (
-                                    <ComboboxItem
+                                    <SelectItem
                                         key={String(option.value)}
                                         value={String(option.value)}
+                                        render={<ComboboxItem />}
                                         aria-label={optionAriaLabel}
                                         disabled={option.disabled}
                                         className={cn(
@@ -253,7 +221,7 @@ export function SearchableSelect<Value extends SelectValue = string>({
                                             )}
                                             aria-hidden="true"
                                         />
-                                    </ComboboxItem>
+                                    </SelectItem>
                                 );
                             })
                         )}
