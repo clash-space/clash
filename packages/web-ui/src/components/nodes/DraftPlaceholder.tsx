@@ -1,10 +1,10 @@
 import { memo, useCallback, useState } from 'react';
 import { useReactFlow, useStore, type ReactFlowState } from '@xyflow/react';
 import { Play, Image as ImageIcon, VideoCamera, TextT, SpeakerHigh } from '@phosphor-icons/react';
-import { motion } from 'framer-motion';
 import { useOptionalLoroSyncContext } from '../LoroSyncContext';
 import { computeBuildPlanFromGraph, type BuildPlan, type PlanEntry } from './buildPlan';
 import BuildPlanDialog from './BuildPlanDialog';
+import { Button } from '../ui/button';
 import { Tooltip } from '../ui/tooltip';
 
 type Modality = 'image' | 'video' | 'audio' | 'text';
@@ -174,13 +174,13 @@ const DraftPlaceholder = ({ nodeId, modality, width, height }: DraftPlaceholderP
                 </div>
                 <div className="flex flex-col gap-1.5 w-full max-w-[200px]">
                     <Tooltip label={buttonLabel}>
-                        <motion.button
-                            type="button"
+                        <Button
                             onClick={openDialog}
                             disabled={buttonDisabled}
-                            whileHover={buttonDisabled ? undefined : { x: 1 }}
-                            whileTap={buttonDisabled ? undefined : { scale: 0.97 }}
-                            className="clash-node-primary flex items-center justify-center gap-1.5 min-h-11 rounded-lg disabled:opacity-40 disabled:cursor-not-allowed text-sm font-semibold px-4 py-2.5 cursor-pointer motion-reduce:transition-none focus:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-warm-muted"
+                            size="md"
+                            shape="rounded"
+                            leftIcon={<Play size={12} weight="fill" />}
+                            className="clash-node-primary w-full rounded-lg px-4 py-2.5 text-sm font-semibold motion-reduce:transition-none focus-visible:ring-offset-warm-muted"
                             aria-label={
                                 buttonDisabled
                                     ? buttonLabel
@@ -189,9 +189,8 @@ const DraftPlaceholder = ({ nodeId, modality, width, height }: DraftPlaceholderP
                                         : `Build this draft`
                             }
                         >
-                            <Play size={12} weight="fill" aria-hidden="true" />
                             <span aria-hidden="true">Build{suffix}</span>
-                        </motion.button>
+                        </Button>
                     </Tooltip>
                 </div>
             </div>

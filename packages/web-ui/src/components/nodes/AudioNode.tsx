@@ -19,6 +19,7 @@ import {
   type AssetStatus,
 } from "@clash/web-ui/lib/assetStatus";
 import { NodeModalDialog } from "./NodeModalDialog";
+import { IconButton } from "../ui/icon-button";
 import { Slider, SliderRange, SliderThumb, SliderTrack } from "../ui/slider";
 
 const WAVEFORM_BARS = 128;
@@ -277,13 +278,14 @@ const AudioNode = ({
     >
       <div className="flex items-center justify-between">
         <h3 className="text-lg font-bold text-slate-900">Audio Player</h3>
-        <button
-          type="button"
+        <IconButton
+          label="Close audio player"
           onClick={() => setShowModal(false)}
-          className="text-slate-700 dark:text-slate-300 hover:text-slate-600"
-        >
-          <X size={20} />
-        </button>
+          icon={<X size={20} />}
+          size="sm"
+          shape="circle"
+          className="text-slate-700 hover:bg-warm-muted hover:text-slate-900 dark:text-slate-300"
+        />
       </div>
 
       <div className="flex flex-col gap-6">
@@ -337,34 +339,37 @@ const AudioNode = ({
         </div>
 
         <div className="flex items-center justify-center gap-6">
-          <button
+          <IconButton
             onClick={handleSkipBack}
-            className="text-slate-700 dark:text-slate-300 hover:text-slate-900 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
             disabled={!duration}
-            aria-label={`Skip back ${SKIP_SECONDS}s`}
-          >
-            <SkipBack size={24} weight="fill" />
-          </button>
-          <button
+            label={`Skip back ${SKIP_SECONDS}s`}
+            icon={<SkipBack size={24} weight="fill" />}
+            size="md"
+            shape="circle"
+            className="text-slate-700 hover:bg-transparent hover:text-slate-900 disabled:opacity-30 dark:text-slate-300"
+          />
+          <IconButton
             onClick={togglePlay}
-            className="flex h-16 w-16 items-center justify-center rounded-full bg-slate-900 text-white hover:bg-slate-800 transition-all shadow-lg hover:scale-105 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
             disabled={!signedAudioUrl}
-            aria-label={isPlaying ? "Pause" : "Play"}
-          >
-            {isPlaying ? (
+            label={isPlaying ? "Pause" : "Play"}
+            icon={isPlaying ? (
               <Pause size={28} weight="fill" />
             ) : (
               <Play size={28} weight="fill" className="ml-1" />
             )}
-          </button>
-          <button
+            size="lg"
+            shape="circle"
+            className="h-16 min-h-16 w-16 min-w-16 bg-slate-900 text-white shadow-lg transition-transform hover:scale-105 hover:bg-slate-800 active:scale-95 disabled:opacity-50 disabled:hover:scale-100"
+          />
+          <IconButton
             onClick={handleSkipForward}
-            className="text-slate-700 dark:text-slate-300 hover:text-slate-900 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
             disabled={!duration}
-            aria-label={`Skip forward ${SKIP_SECONDS}s`}
-          >
-            <SkipForward size={24} weight="fill" />
-          </button>
+            label={`Skip forward ${SKIP_SECONDS}s`}
+            icon={<SkipForward size={24} weight="fill" />}
+            size="md"
+            shape="circle"
+            className="text-slate-700 hover:bg-transparent hover:text-slate-900 disabled:opacity-30 dark:text-slate-300"
+          />
         </div>
       </div>
     </NodeModalDialog>

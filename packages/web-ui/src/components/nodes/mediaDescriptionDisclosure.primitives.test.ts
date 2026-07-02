@@ -39,7 +39,7 @@ describe("media node description disclosure primitives", () => {
 
         expect(source).toContain("<Tooltip label=\"Refresh thumbnail\">");
         expect(source).toContain("ArrowClockwise");
-        expect(source).toContain('aria-label="Refresh thumbnail"');
+        expect(source).toContain('label="Refresh thumbnail"');
         expect(source).not.toContain("<svg xmlns=\"http://www.w3.org/2000/svg\"");
         expect(source).not.toContain('title="Refresh Thumbnail"');
     });
@@ -50,5 +50,13 @@ describe("media node description disclosure primitives", () => {
         expect(source).toContain("MEDIA_NODE_CONTROL_CLASS");
         expect(source).toContain("nodrag nopan");
         expect(source).not.toContain("onClick={(e) => e.stopPropagation()}");
+    });
+
+    it.each(["ImageNode.tsx", "VideoNode.tsx"])("%s uses shared IconButton primitives for media overlay controls", (file) => {
+        const source = readNodeSource(file);
+
+        expect(source).toContain("../ui/icon-button");
+        expect(source).toContain("<IconButton");
+        expect(source).not.toMatch(/<button[\s\S]*MEDIA_NODE_CONTROL_CLASS/);
     });
 });

@@ -17,9 +17,10 @@ import {
     resolveInitialMediaSize,
 } from './assetNodeSizing';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '../ui/collapsible';
+import { IconButton } from '../ui/icon-button';
 import { Tooltip } from '../ui/tooltip';
 
-const MEDIA_NODE_CONTROL_CLASS = 'nodrag nopan rounded-full bg-black/50 p-1 text-white backdrop-blur-sm hover:bg-black/70 transition-colors';
+const MEDIA_NODE_CONTROL_CLASS = 'nodrag nopan bg-black/50 text-white backdrop-blur-sm hover:bg-black/70 focus-visible:ring-white/80 focus-visible:ring-offset-black/20';
 
 const VideoNode = ({ data, selected, id, width, height }: NodeProps<Node<Record<string, any>>>) => {
     const [label, setLabel] = useState(data.label || 'Video Node');
@@ -401,24 +402,24 @@ const VideoNode = ({ data, selected, id, width, height }: NodeProps<Node<Record<
                         <div className="absolute top-2 right-2 flex gap-1 z-10">
                             <Tooltip label={descriptionOpen ? 'Hide description' : 'Show description'}>
                                 <CollapsibleTrigger asChild>
-                                    <button
-                                        type="button"
+                                    <IconButton
+                                        label={descriptionOpen ? 'Hide description' : 'Show description'}
+                                        icon={<TextT size={12} weight="bold" />}
+                                        size="sm"
+                                        shape="circle"
                                         className={MEDIA_NODE_CONTROL_CLASS}
-                                        aria-label={descriptionOpen ? 'Hide description' : 'Show description'}
-                                    >
-                                        <TextT size={12} weight="bold" />
-                                    </button>
+                                    />
                                 </CollapsibleTrigger>
                             </Tooltip>
                             <Tooltip label="Refresh thumbnail">
-                                <button
-                                    type="button"
+                                <IconButton
+                                    label="Refresh thumbnail"
+                                    icon={<ArrowClockwise className="h-4 w-4" weight="bold" />}
+                                    size="sm"
+                                    shape="circle"
                                     className={MEDIA_NODE_CONTROL_CLASS}
                                     onClick={refreshThumbnail}
-                                    aria-label="Refresh thumbnail"
-                                >
-                                    <ArrowClockwise className="h-4 w-4" weight="bold" aria-hidden="true" />
-                                </button>
+                                />
                             </Tooltip>
                             <div className="rounded-full bg-black/50 px-2 py-0.5 text-[10px] text-white backdrop-blur-sm">
                                 Video
