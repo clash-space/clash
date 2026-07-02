@@ -1,5 +1,6 @@
 
 import { motion, AnimatePresence } from 'framer-motion';
+import { Tooltip, TooltipAnchor, TooltipProvider } from '@ariakit/react';
 import { Sparkle, Terminal } from '@phosphor-icons/react';
 import type { PresenceClient } from '@clash/shared-types';
 
@@ -33,39 +34,43 @@ export default function PresenceBar({ clients }: PresenceBarProps) {
             animate={{ scale: 1, opacity: 1 }}
             exit={{ scale: 0, opacity: 0 }}
             transition={{ type: 'spring', stiffness: 500, damping: 30 }}
-            className="relative group"
           >
-            <div
-              className={`flex h-8 w-8 items-center justify-center rounded-full border-2 border-warm-surface shadow-sm ${
-                client.clientType === 'agent'
-                  ? 'bg-brand'
-                  : client.clientType === 'cli'
-                    ? 'bg-warm-surface ring-1 ring-warm-border'
-                    : 'bg-brand-light text-brand ring-1 ring-brand/20'
-              }`}
-            >
-              {client.clientType === 'agent' ? (
-                <Sparkle className="h-4 w-4 text-white" weight="fill" aria-hidden="true" />
-              ) : client.clientType === 'cli' ? (
-                <Terminal className="h-4 w-4 text-slate-700 dark:text-slate-300" weight="bold" aria-hidden="true" />
-              ) : client.avatar ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  src={client.avatar}
-                  alt={client.name}
-                  className="h-full w-full rounded-full object-cover"
-                />
-              ) : (
-                <span className="text-xs font-bold text-brand">
-                  {getInitials(client.name)}
-                </span>
-              )}
-            </div>
-
-            {/* Tooltip */}
-            <div role="tooltip" className="absolute top-full left-1/2 -translate-x-1/2 mt-2 px-2 py-1 rounded-md bg-slate-900 text-white text-xs font-medium whitespace-nowrap opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity pointer-events-none z-50 dark:bg-slate-100 dark:text-slate-900">
-              {client.name}
-            </div>
+            <TooltipProvider timeout={200}>
+              <TooltipAnchor
+                aria-label={client.name}
+                tabIndex={0}
+                className={`flex h-8 w-8 items-center justify-center rounded-full border-2 border-warm-surface shadow-sm ${
+                  client.clientType === 'agent'
+                    ? 'bg-brand'
+                    : client.clientType === 'cli'
+                      ? 'bg-warm-surface ring-1 ring-warm-border'
+                      : 'bg-brand-light text-brand ring-1 ring-brand/20'
+                }`}
+              >
+                {client.clientType === 'agent' ? (
+                  <Sparkle className="h-4 w-4 text-white" weight="fill" aria-hidden="true" />
+                ) : client.clientType === 'cli' ? (
+                  <Terminal className="h-4 w-4 text-slate-700 dark:text-slate-300" weight="bold" aria-hidden="true" />
+                ) : client.avatar ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={client.avatar}
+                    alt={client.name}
+                    className="h-full w-full rounded-full object-cover"
+                  />
+                ) : (
+                  <span className="text-xs font-bold text-brand">
+                    {getInitials(client.name)}
+                  </span>
+                )}
+              </TooltipAnchor>
+              <Tooltip
+                gutter={8}
+                className="z-50 whitespace-nowrap rounded-md bg-slate-900 px-2 py-1 text-xs font-medium text-white shadow-md dark:bg-slate-100 dark:text-slate-900"
+              >
+                {client.name}
+              </Tooltip>
+            </TooltipProvider>
           </motion.div>
         ))}
       </AnimatePresence>
