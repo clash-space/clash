@@ -3,6 +3,8 @@ import { Warning, WarningCircle, X, Play } from "@phosphor-icons/react";
 import { summarizeModelCounts, type BuildPlan } from "./buildPlan";
 import { Dialog } from "../ui/dialog";
 import { Tooltip } from "../ui/tooltip";
+import { IconButton } from "../ui/icon-button";
+import { Button } from "../ui/button";
 
 interface BuildPlanDialogProps {
   open: boolean;
@@ -71,14 +73,12 @@ const BuildPlanDialog = ({
             </h2>
           </Tooltip>
         </div>
-        <button
-          type="button"
+        <IconButton
+          label="Close build plan dialog"
+          icon={<X className="w-4 h-4" weight="bold" aria-hidden="true" />}
           onClick={onCancel}
-          aria-label="Close build plan dialog"
-          className="shrink-0 p-2.5 text-slate-700 dark:text-slate-300 hover:text-slate-950 hover:bg-warm-hover rounded-lg transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-brand"
-        >
-          <X className="w-4 h-4" weight="bold" aria-hidden="true" />
-        </button>
+          className="shrink-0 text-slate-700 hover:bg-warm-hover hover:text-slate-950 dark:text-slate-300"
+        />
       </div>
 
       <div className="px-4 sm:px-6 py-4 sm:py-5 flex-1 overflow-y-auto space-y-4 sm:space-y-5">
@@ -209,26 +209,24 @@ const BuildPlanDialog = ({
 
       {/* Footer */}
       <div className="px-4 sm:px-6 py-3 sm:py-4 flex flex-col-reverse sm:flex-row sm:items-center sm:justify-end gap-2 border-t border-warm-border bg-warm-muted shrink-0">
-        <button
-          type="button"
+        <Button
           onClick={onCancel}
-          className="w-full sm:w-auto min-h-11 px-4 py-2 text-sm font-medium text-slate-800 dark:text-slate-200 hover:bg-warm-hover rounded-lg transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+          className="w-full rounded-lg border-transparent bg-transparent px-4 py-2 text-sm text-slate-800 shadow-none hover:bg-warm-hover dark:text-slate-200 sm:w-auto"
         >
           Cancel
-        </button>
-        <button
-          type="button"
+        </Button>
+        <Button
           onClick={onConfirm}
           disabled={!canBuild}
-          className="clash-node-primary flex items-center justify-center gap-1.5 w-full sm:w-auto min-h-11 px-4 py-2 text-sm font-semibold rounded-lg disabled:opacity-40 disabled:cursor-not-allowed focus:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-warm-surface"
+          className="clash-node-primary w-full rounded-lg border-transparent px-4 py-2 text-sm font-semibold shadow-none sm:w-auto"
           aria-describedby={
             !canBuild ? `${headerId}-disabled-reason` : undefined
           }
           aria-label={confirmLabel}
+          leftIcon={<Play size={11} weight="fill" aria-hidden="true" />}
         >
-          <Play size={11} weight="fill" aria-hidden="true" />
           Build {totalCalls > 0 ? `(${totalCalls})` : ""}
-        </button>
+        </Button>
         {!canBuild && (
           <span id={`${headerId}-disabled-reason`} className="sr-only">
             {disabledReason}
