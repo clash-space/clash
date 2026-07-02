@@ -33,6 +33,14 @@ describe("GroupChatPanel primitives", () => {
     expect(pillSource).not.toContain(">×</button>");
   });
 
+  it("uses the shared icon button primitive for invite controls", () => {
+    const inviteMenuSource = readSource("packages/web-ui/src/_group-chat/InviteAgentMenu.tsx");
+
+    expect(inviteMenuSource).toContain("../components/ui/icon-button");
+    expect(inviteMenuSource).toContain("<IconButton");
+    expect(inviteMenuSource).not.toMatch(/<motion\.button(?=[^>]*aria-label="Invite agent member")[^>]*>/);
+  });
+
   it("uses the shared button primitive for jump-to-latest controls", () => {
     const agentViewSource = readSource("packages/web-ui/src/_group-chat/AgentView.tsx");
     const roomViewSource = readSource("packages/web-ui/src/_group-chat/RoomView.tsx");

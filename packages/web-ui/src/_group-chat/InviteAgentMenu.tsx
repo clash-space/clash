@@ -7,7 +7,6 @@
  * shared Radix-backed dropdown primitives.
  */
 
-import { motion } from 'framer-motion';
 import { Plus, Gear } from '@phosphor-icons/react';
 import type { AgentRow } from './panel-types';
 import { EmptyState } from './EmptyState';
@@ -17,6 +16,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '../components/ui/dropdown-menu';
+import { IconButton } from '../components/ui/icon-button';
 import { Tooltip } from '../components/ui/tooltip';
 
 interface InviteAgentMenuProps {
@@ -47,14 +47,12 @@ export function InviteAgentMenu({
       <DropdownMenu open={open} onOpenChange={handleOpenChange}>
         <Tooltip label="Invite agent">
           <DropdownMenuTrigger asChild>
-            <motion.button
-              whileHover={{ scale: 1.05 }}
-              whileTap={{ scale: 0.95 }}
-              className="h-11 w-11 rounded-matrix bg-warm-muted hover:bg-warm-hover hover:text-brand text-stone-500 dark:text-stone-400 flex items-center justify-center transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-brand/60 focus-visible:ring-offset-1 focus-visible:ring-offset-warm-surface"
-              aria-label="Invite agent member"
-            >
-              <Plus className="w-4 h-4" weight="bold" aria-hidden="true" />
-            </motion.button>
+            <IconButton
+              label="Invite agent member"
+              icon={<Plus className="w-4 h-4" weight="bold" />}
+              size="lg"
+              className="rounded-matrix bg-warm-muted text-stone-500 hover:bg-warm-hover hover:text-brand dark:text-stone-400 focus-visible:ring-brand/60 focus-visible:ring-offset-1"
+            />
           </DropdownMenuTrigger>
         </Tooltip>
         <DropdownMenuContent
