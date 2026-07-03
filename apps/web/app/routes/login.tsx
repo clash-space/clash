@@ -4,6 +4,8 @@ import { motion } from "framer-motion";
 import { GoogleLogo } from "@phosphor-icons/react";
 import betterAuthClient from "@clash/web-ui/lib/betterAuthClient";
 import Background from "@clash/web-ui/components/Background";
+import { Button } from "@clash/web-ui/components/ui/button";
+import { Input } from "@clash/web-ui/components/ui/input";
 
 type Stage = "email" | "otp" | "password";
 type PwAction = "signin" | "signup";
@@ -218,7 +220,7 @@ export default function LoginRoute() {
 
         {stage === "email" ? (
           <form onSubmit={handleEmailSubmit} className="space-y-3">
-            <input
+            <Input
               type="email"
               placeholder="you@example.com"
               value={email}
@@ -227,33 +229,31 @@ export default function LoginRoute() {
               required
               className={authInputClass}
             />
-            <motion.button
+            <Button
               type="submit"
+              variant="primary"
               disabled={isLoading || !email}
               className={authPrimaryClass}
-              whileHover={!isLoading ? { scale: 1.02 } : {}}
-              whileTap={!isLoading ? { scale: 0.98 } : {}}
             >
               {isLoading && (
                 <div className="h-5 w-5 animate-spin rounded-full border-2 border-white border-t-transparent" />
               )}
               <span>{isLoading ? "Sending code..." : "Send code"}</span>
-            </motion.button>
-            <button
-              type="button"
+            </Button>
+            <Button
               onClick={() => {
                 setStage("password");
                 setError(null);
                 setInfo(null);
               }}
-              className={`${authTextButtonClass} block w-full pt-2 text-center text-sm`}
+              className={`${authTextButtonClass} min-h-0 w-full border-0 bg-transparent px-0 pb-0 pt-2 text-center text-sm shadow-none hover:bg-transparent`}
             >
               Use password instead →
-            </button>
+            </Button>
           </form>
         ) : stage === "password" ? (
           <form onSubmit={handlePassword} className="space-y-3">
-            <input
+            <Input
               type="email"
               placeholder="you@example.com"
               value={email}
@@ -263,7 +263,7 @@ export default function LoginRoute() {
               className={authInputClass}
             />
             {pwAction === "signup" && (
-              <input
+              <Input
                 type="text"
                 placeholder="Display name (optional)"
                 value={name}
@@ -272,7 +272,7 @@ export default function LoginRoute() {
                 className={authInputClass}
               />
             )}
-            <input
+            <Input
               type="password"
               placeholder="Password (min 8 chars)"
               value={password}
@@ -282,12 +282,11 @@ export default function LoginRoute() {
               required
               className={authInputClass}
             />
-            <motion.button
+            <Button
               type="submit"
+              variant="primary"
               disabled={isLoading || !email || password.length < 8}
               className={authPrimaryClass}
-              whileHover={!isLoading ? { scale: 1.02 } : {}}
-              whileTap={!isLoading ? { scale: 0.98 } : {}}
             >
               {isLoading && (
                 <div className="h-5 w-5 animate-spin rounded-full border-2 border-white border-t-transparent" />
@@ -297,11 +296,10 @@ export default function LoginRoute() {
                   ? pwAction === "signin" ? "Signing in..." : "Creating..."
                   : pwAction === "signin" ? "Sign in" : "Create account"}
               </span>
-            </motion.button>
+            </Button>
 
             <div className="flex items-center justify-between pt-2 text-sm">
-              <button
-                type="button"
+              <Button
                 onClick={() => {
                   setStage("email");
                   setPassword("");
@@ -309,25 +307,24 @@ export default function LoginRoute() {
                   setError(null);
                   setInfo(null);
                 }}
-                className={authTextButtonClass}
+                className={`${authTextButtonClass} min-h-0 border-0 bg-transparent p-0 shadow-none hover:bg-transparent`}
               >
                 ← Use email code
-              </button>
-              <button
-                type="button"
+              </Button>
+              <Button
                 onClick={() => {
                   setPwAction((a) => (a === "signin" ? "signup" : "signin"));
                   setError(null);
                 }}
-                className={authInlineLinkClass}
+                className={`${authInlineLinkClass} min-h-0 border-0 bg-transparent p-0 shadow-none hover:bg-transparent`}
               >
                 {pwAction === "signin" ? "Create account" : "Have an account?"}
-              </button>
+              </Button>
             </div>
           </form>
         ) : (
           <form onSubmit={handleVerify} className="space-y-3">
-            <input
+            <Input
               ref={otpInputRef}
               inputMode="numeric"
               pattern="[0-9]*"
@@ -339,42 +336,39 @@ export default function LoginRoute() {
               required
               className={`${authInputClass} text-center font-mono text-xl tracking-[0.4em]`}
             />
-            <motion.button
+            <Button
               type="submit"
+              variant="primary"
               disabled={isLoading || otp.length !== 6}
               className={authPrimaryClass}
-              whileHover={!isLoading && otp.length === 6 ? { scale: 1.02 } : {}}
-              whileTap={!isLoading && otp.length === 6 ? { scale: 0.98 } : {}}
             >
               {isLoading && (
                 <div className="h-5 w-5 animate-spin rounded-full border-2 border-white border-t-transparent" />
               )}
               <span>{isLoading ? "Verifying..." : "Verify & continue"}</span>
-            </motion.button>
+            </Button>
 
             <div className="flex items-center justify-between pt-2 text-sm">
-              <button
-                type="button"
+              <Button
                 onClick={() => {
                   setStage("email");
                   setOtp("");
                   setError(null);
                   setInfo(null);
                 }}
-                className={authTextButtonClass}
+                className={`${authTextButtonClass} min-h-0 border-0 bg-transparent p-0 shadow-none hover:bg-transparent`}
               >
                 ← Change email
-              </button>
-              <button
-                type="button"
+              </Button>
+              <Button
                 disabled={isLoading || secondsUntilResend > 0}
                 onClick={() => sendCode(true)}
-                className={`${authInlineLinkClass} disabled:cursor-not-allowed disabled:text-stone-400`}
+                className={`${authInlineLinkClass} min-h-0 border-0 bg-transparent p-0 shadow-none hover:bg-transparent disabled:cursor-not-allowed disabled:text-stone-400`}
               >
                 {secondsUntilResend > 0
                   ? `Resend in ${secondsUntilResend}s`
                   : "Resend code"}
-              </button>
+              </Button>
             </div>
           </form>
         )}
@@ -387,17 +381,14 @@ export default function LoginRoute() {
           <div className="h-px flex-1 bg-warm-border" />
         </div>
 
-        <motion.button
-          type="button"
+        <Button
           onClick={handleGoogleSignIn}
           disabled={isLoading}
           className={authSecondaryClass}
-          whileHover={!isLoading ? { scale: 1.02 } : {}}
-          whileTap={!isLoading ? { scale: 0.98 } : {}}
         >
           <GoogleLogo weight="bold" className="h-5 w-5" />
           <span>Continue with Google</span>
-        </motion.button>
+        </Button>
 
         <p className="mt-6 text-center text-xs text-stone-500">
           By continuing, you agree to our{" "}
