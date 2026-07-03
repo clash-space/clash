@@ -30,6 +30,7 @@ import { Button } from '../ui/button';
 import { IconButton } from '../ui/icon-button';
 import { Tooltip } from '../ui/tooltip';
 import { Switch } from '../ui/switch';
+import { Slider, SliderRange, SliderThumb, SliderTrack } from '../ui/slider';
 import { replaceContentEditableHtmlPreservingFocus } from '../contentEditableSync';
 import { handleMentionComboboxKeyDown } from '../mentionComboboxKeyboard';
 import { useSpawnPendingAsset } from './useSpawnPendingAsset';
@@ -74,6 +75,48 @@ function paramOptionsToSelectOptions(param: ModelParameter): SelectOption<Select
         value: option.value as SelectValue,
         label: option.label,
     }));
+}
+
+function normalizeSliderValue(value: unknown, fallback: number): number {
+    const numericValue = typeof value === 'number' ? value : Number(value ?? fallback);
+    return Number.isFinite(numericValue) ? numericValue : fallback;
+}
+
+function ModelParamSlider({
+    ariaLabel,
+    className = `${NODE_INTERACTION_BOUNDARY_CLASS} h-4 w-full`,
+    max,
+    min,
+    onChange,
+    step,
+    trackClassName,
+    value,
+}: {
+    ariaLabel: string;
+    className?: string;
+    max?: number;
+    min?: number;
+    onChange: (value: number) => void;
+    step?: number;
+    trackClassName: string;
+    value: number;
+}) {
+    return (
+        <Slider
+            aria-label={ariaLabel}
+            min={min}
+            max={max}
+            step={step}
+            value={[value]}
+            onValueChange={(nextValue) => onChange(nextValue[0] ?? value)}
+            className={className}
+        >
+            <SliderTrack className={`h-1.5 rounded-full ${trackClassName}`}>
+                <SliderRange className="inset-y-0 rounded-full bg-brand" />
+            </SliderTrack>
+            <SliderThumb className="h-4 w-4 rounded-full border border-brand bg-warm-surface shadow-sm" />
+        </Slider>
+    );
 }
 
 type ActionMentionNode = {
@@ -1240,21 +1283,21 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
         const currentValue = modelParams[param.id] ?? param.defaultValue ?? (param.type === 'boolean' ? false : '');
 
         if (param.type === 'slider') {
-            const numericValue = typeof currentValue === 'number' ? currentValue : Number(currentValue ?? 0);
+            const numericValue = normalizeSliderValue(currentValue, param.min ?? 0);
             return (
                 <div key={param.id} className="space-y-1">
                     <div className="flex justify-between text-[10px] font-medium text-stone-700 dark:text-stone-300">
                         <span>{param.label}</span>
                         <span>{numericValue}</span>
                     </div>
-                    <input
-                        type="range"
+                    <ModelParamSlider
+                        ariaLabel={param.label}
                         min={param.min ?? 0}
                         max={param.max ?? 1}
                         step={param.step ?? 1}
                         value={numericValue}
-                        onChange={(e) => updateModelParam(param.id, Number(e.target.value))}
-                        className="w-full h-1 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-brand"
+                        onChange={(nextValue) => updateModelParam(param.id, nextValue)}
+                        trackClassName="bg-slate-200"
                     />
                     {param.description && (
                         <p className="text-[10px] text-stone-700 dark:text-stone-300 leading-snug">{param.description}</p>
@@ -1917,6 +1960,9 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
                                             ? (p.options?.find((o) => String(o.value) === String(currentVal))?.label ?? String(currentVal))
                                             : p.type === 'boolean' ? (currentVal ? 'On' : 'Off') : String(currentVal);
                                         const isExpanded = expandedParam === p.id;
+                                        const sliderValue = p.type === 'slider'
+                                            ? normalizeSliderValue(currentVal, p.min ?? 0)
+                                            : 0;
                                         return (
                                             <Collapsible
                                                 key={p.id}
@@ -1983,12 +2029,16 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
                                                         {p.type === 'slider' && (
                                                             <div className="space-y-1.5" onClick={(e) => e.stopPropagation()}>
                                                                 <div className="flex justify-between text-[10px] text-stone-700 dark:text-stone-300">
-                                                                    <span>{p.min}</span><span className="font-semibold text-slate-900 dark:text-slate-50">{currentVal}</span><span>{p.max}</span>
+                                                                    <span>{p.min}</span><span className="font-semibold text-slate-900 dark:text-slate-50">{sliderValue}</span><span>{p.max}</span>
                                                                 </div>
-                                                                <input type="range" min={p.min} max={p.max} step={p.step}
-                                                                    value={currentVal as number}
-                                                                    onChange={(e) => updateModelParam(p.id, Number(e.target.value))}
-                                                                    className={`${NODE_INTERACTION_BOUNDARY_CLASS} w-full h-1.5 bg-warm-hover rounded-full appearance-none cursor-pointer accent-brand`}
+                                                                <ModelParamSlider
+                                                                    ariaLabel={p.label}
+                                                                    min={p.min}
+                                                                    max={p.max}
+                                                                    step={p.step}
+                                                                    value={sliderValue}
+                                                                    onChange={(nextValue) => updateModelParam(p.id, nextValue)}
+                                                                    trackClassName="bg-warm-hover"
                                                                 />
                                                             </div>
                                                         )}

@@ -83,6 +83,17 @@ describe("ActionBadge popover primitives", () => {
         expect(source).not.toContain('type="checkbox"');
     });
 
+    it("uses the shared slider primitive for model slider parameters", () => {
+        const source = readNodeSource("ActionBadge.tsx");
+
+        expect(source).toContain("../ui/slider");
+        expect(source).toContain("<Slider");
+        expect(source).toContain("<SliderTrack");
+        expect(source).toContain("<SliderRange");
+        expect(source).toContain("<SliderThumb");
+        expect(source).not.toContain('type="range"');
+    });
+
     it("uses the shared collapsible primitive for expanded parameter rows", () => {
         const source = readNodeSource("ActionBadge.tsx");
 
