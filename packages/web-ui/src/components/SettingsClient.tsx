@@ -2684,6 +2684,7 @@ function ModelRoutingSection({
                 const result = await testModelProvider({
                     provider: editingAccount,
                     modelId: selectedProviderTestModelId,
+                    live: true,
                 });
                 setProviderTestResults((prev) => ({ ...prev, [providerTestKey]: result }));
             } catch (err) {

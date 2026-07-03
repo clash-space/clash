@@ -256,6 +256,7 @@ export interface ModelProviderTestResult {
 export async function testModelProvider(input: {
   provider: ModelProviderAccountInfo;
   modelId: string;
+  live?: boolean;
 }): Promise<ModelProviderTestResult> {
   return jsonFetch("/api/v1/model-providers/test", {
     method: "POST",

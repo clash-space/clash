@@ -717,6 +717,131 @@ describe("local API app", () => {
     });
   });
 
+  it("runs a live provider test and records the upstream exchange when requested", async () => {
+    const recordingPath = join(dataDir, "provider-recordings", "openai-image.jsonl");
+    const calls: Array<{ url: string; init?: RequestInit }> = [];
+    const app = createLocalApiApp({
+      dataDir,
+      userId: "local-user",
+      providerTestRecordingPath: recordingPath,
+      providerTestOpenAiBaseUrl: "https://openai.test/v1",
+      providerTestFetch: async (input: string | URL | Request, init?: RequestInit) => {
+        const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+        calls.push({ url, init });
+        return Response.json({
+          id: "img_live_provider_test",
+          data: [{ b64_json: Buffer.from("live-provider-image").toString("base64") }],
+          providerRaw: { keep: "all response fields" },
+        }, {
+          headers: {
+            "x-provider-request-id": "upstream-live-1",
+          },
+        });
+      },
+    } as never);
+
+    await app.request("/api/v1/model-providers", {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        providers: [
+          {
+            id: "openai-live",
+            providerId: "official",
+            upstreamId: "openai",
+            region: "global",
+            enabled: true,
+            priority: 1,
+            credentials: { apiKey: "sk-live-test" },
+          },
+        ],
+      }),
+    });
+
+    const response = await app.request("/api/v1/model-providers/test", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        live: true,
+        provider: {
+          id: "openai-live",
+          providerId: "official",
+          upstreamId: "openai",
+          region: "global",
+          enabled: true,
+        },
+        modelId: "gpt-image-2",
+      }),
+    });
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      ok: true,
+      providerId: "official",
+      upstreamId: "openai",
+      region: "global",
+      modelId: "gpt-image-2",
+      provider: "openai",
+      requestId: "img_live_provider_test",
+      modelEndpoint: "gpt-image-2",
+      input: {
+        shape: "image",
+        model: "gpt-image-2",
+        prompt: "Provider test for GPT Image 2",
+        aspectRatio: "16:9",
+      },
+      output: {
+        shape: "image",
+        provider: "openai",
+        endpoint: "gpt-image-2",
+        requestId: "img_live_provider_test",
+        contentType: "image/png",
+      },
+    });
+    expect(calls).toHaveLength(1);
+    const rawRecording = await readFile(recordingPath, "utf8");
+    const events = rawRecording.trim().split("\n").map((line) => JSON.parse(line));
+    expect(events).toEqual([
+      expect.objectContaining({
+        type: "request",
+        stub: expect.objectContaining({
+          providerId: "official",
+          upstreamId: "openai",
+          modelId: "gpt-image-2",
+          shape: "image",
+          apiShape: "openai-images",
+        }),
+        request: {
+          url: "https://openai.test/v1/images/generations",
+          method: "POST",
+          headers: {
+            authorization: "[redacted]",
+            "content-type": "application/json",
+          },
+          body: expect.objectContaining({
+            model: "gpt-image-2",
+            prompt: "Provider test for GPT Image 2",
+          }),
+        },
+      }),
+      expect.objectContaining({
+        type: "response",
+        response: {
+          status: 200,
+          headers: expect.objectContaining({
+            "content-type": "application/json",
+            "x-provider-request-id": "upstream-live-1",
+          }),
+          body: {
+            id: "img_live_provider_test",
+            data: [{ b64_json: Buffer.from("live-provider-image").toString("base64") }],
+            providerRaw: { keep: "all response fields" },
+          },
+        },
+      }),
+    ]);
+  });
+
   it("tests Google AI Studio models with only the API key credential", async () => {
     const app = createLocalApiApp({ dataDir, userId: "local-user" });
 

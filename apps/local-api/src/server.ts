@@ -347,6 +347,13 @@ export function startLocalApiServer(options: LocalApiServerOptions) {
     providerOAuth: {
       dreamina: createDreaminaCliOAuthDriver(),
     },
+    providerTestRecordingPath: process.env.CLASH_PROVIDER_TEST_RECORDING_PATH,
+    providerTestOpenAiBaseUrl: process.env.OPENAI_BASE_URL,
+    providerTestAnthropicBaseUrl: process.env.ANTHROPIC_BASE_URL,
+    providerTestFalQueueBaseUrl: process.env.CLASH_FAL_QUEUE_URL,
+    providerTestGoogleAiStudioBaseUrl: process.env.CLASH_GOOGLE_AI_STUDIO_URL,
+    providerTestKieBaseUrl: process.env.CLASH_KIE_URL,
+    providerTestReplicateBaseUrl: process.env.CLASH_REPLICATE_URL,
   });
   const workflowProcessor = createLocalWorkflowProcessor({
     dataDir: options.dataDir,

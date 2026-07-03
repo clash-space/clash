@@ -1,9 +1,16 @@
 import { describe, expect, it } from "vitest";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
 
 import {
+  createProviderTestRecordingFetch,
+  createProviderTestReplayFetch,
+  createProviderTestReplayFixtures,
   createProviderConformanceStubs,
   createProviderTestRecorder,
   providerTestRecordingEventToJsonl,
+  readJsonlProviderTestRecording,
 } from "./provider-test-recorder.js";
 
 describe("provider test recorder", () => {
@@ -39,7 +46,7 @@ describe("provider test recorder", () => {
         },
       }),
     ]));
-    expect([...new Set(stubs.map((stub) => stub.shape))]).toEqual(expect.arrayContaining(["image", "video", "audio", "text"]));
+    expect([...new Set(stubs.map((stub) => stub.shape))]).toEqual(expect.arrayContaining(["asr", "image", "video", "audio", "text"]));
   });
 
   it("records request, response, and callback payloads with every field preserved", async () => {
@@ -134,5 +141,210 @@ describe("provider test recorder", () => {
       },
     });
     expect(providerTestRecordingEventToJsonl(events[0])).toContain('"type":"request"');
+  });
+
+  it("wraps live provider fetches with request and response recording", async () => {
+    const events: unknown[] = [];
+    const stub = createProviderConformanceStubs({ includeMock: true })
+      .find((candidate) => candidate.providerId === "official" && candidate.upstreamId === "openai" && candidate.shape === "image");
+    expect(stub).toBeTruthy();
+    const recorder = createProviderTestRecorder({
+      requestId: () => "provider-test-live-openai-image",
+      write: async (event) => {
+        events.push(event);
+      },
+    });
+    const fetchImpl = createProviderTestRecordingFetch({
+      fetch: async () => Response.json({
+        id: "img_123",
+        data: [{ b64_json: Buffer.from("provider-image").toString("base64") }],
+        provider_extra: { kept: true },
+      }, {
+        headers: { "x-provider-request-id": "upstream-123" },
+      }),
+      recorder,
+      stub: stub!,
+    });
+
+    const response = await fetchImpl("https://api.openai.test/v1/images/generations", {
+      method: "POST",
+      headers: {
+        authorization: "Bearer real-key",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        model: "gpt-image-2",
+        prompt: "record me",
+      }),
+    });
+
+    expect(await response.json()).toMatchObject({ id: "img_123" });
+    expect(events).toEqual([
+      expect.objectContaining({
+        type: "request",
+        requestId: "provider-test-live-openai-image",
+        stub: stub!,
+        request: {
+          url: "https://api.openai.test/v1/images/generations",
+          method: "POST",
+          headers: {
+            authorization: "[redacted]",
+            "content-type": "application/json",
+          },
+          body: {
+            model: "gpt-image-2",
+            prompt: "record me",
+          },
+        },
+      }),
+      expect.objectContaining({
+        type: "response",
+        requestId: "provider-test-live-openai-image",
+        response: {
+          status: 200,
+          headers: expect.objectContaining({
+            "content-type": "application/json",
+            "x-provider-request-id": "upstream-123",
+          }),
+          body: {
+            id: "img_123",
+            data: [{ b64_json: Buffer.from("provider-image").toString("base64") }],
+            provider_extra: { kept: true },
+          },
+        },
+      }),
+    ]);
+  });
+
+  it("loads JSONL recordings into replay fixtures keyed by provider/model request", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "provider-test-recorder-"));
+    const filePath = join(dir, "recording.jsonl");
+    const stub = createProviderConformanceStubs({ includeMock: true })
+      .find((candidate) => candidate.providerId === "mock" && candidate.shape === "video");
+    expect(stub).toBeTruthy();
+    const events = [
+      {
+        schemaVersion: 1,
+        type: "request",
+        timestamp: "2026-07-03T00:00:00.000Z",
+        requestId: "provider-test-video",
+        stub: stub!,
+        request: {
+          url: "https://provider.example/video",
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: {
+            input: stub!.input,
+            extraProviderField: { keep: "everything" },
+          },
+        },
+      },
+      {
+        schemaVersion: 1,
+        type: "callback",
+        timestamp: "2026-07-03T00:00:01.000Z",
+        requestId: "provider-test-video",
+        callback: {
+          url: "https://callback.example/provider-test-video",
+          method: "POST",
+          headers: { "x-provider-event": "completed" },
+          body: {
+            status: "processing",
+            progress: 0.5,
+          },
+        },
+      },
+      {
+        schemaVersion: 1,
+        type: "response",
+        timestamp: "2026-07-03T00:00:02.000Z",
+        requestId: "provider-test-video",
+        response: {
+          status: 200,
+          headers: { "content-type": "application/json" },
+          body: {
+            id: "upstream-video-1",
+            video: { url: "https://provider.example/result.mp4" },
+          },
+        },
+      },
+    ];
+
+    try {
+      await writeFile(filePath, events.map(providerTestRecordingEventToJsonl).join(""), "utf8");
+
+      const loadedEvents = await readJsonlProviderTestRecording(filePath);
+      const fixtures = createProviderTestReplayFixtures(loadedEvents);
+
+      expect(fixtures).toEqual([
+        {
+          schemaVersion: 1,
+          requestId: "provider-test-video",
+          stub: stub!,
+          request: events[0].request,
+          response: events[2].response,
+          callbacks: [events[1].callback],
+        },
+      ]);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("replays recorded provider fixtures through a fetch-compatible stub", async () => {
+    const stub = createProviderConformanceStubs({ includeMock: true })
+      .find((candidate) => candidate.providerId === "official" && candidate.upstreamId === "openai" && candidate.shape === "image");
+    expect(stub).toBeTruthy();
+    const replayFetch = createProviderTestReplayFetch([
+      {
+        schemaVersion: 1,
+        requestId: "provider-test-replay-openai-image",
+        stub: stub!,
+        request: {
+          url: "https://api.openai.test/v1/images/generations",
+          method: "POST",
+          headers: {
+            authorization: "[redacted]",
+            "content-type": "application/json",
+          },
+          body: {
+            model: "gpt-image-2",
+            prompt: "Replay this image",
+          },
+        },
+        response: {
+          status: 200,
+          headers: { "content-type": "application/json", "x-provider-request-id": "replay-1" },
+          body: {
+            id: "img_replay_1",
+            data: [{ b64_json: Buffer.from("replayed-image").toString("base64") }],
+          },
+        },
+        callbacks: [],
+      },
+    ]);
+
+    const response = await replayFetch("https://api.openai.test/v1/images/generations", {
+      method: "POST",
+      headers: {
+        authorization: "Bearer different-real-key",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        model: "gpt-image-2",
+        prompt: "Replay this image",
+      }),
+    });
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("x-provider-request-id")).toBe("replay-1");
+    expect(await response.json()).toEqual({
+      id: "img_replay_1",
+      data: [{ b64_json: Buffer.from("replayed-image").toString("base64") }],
+    });
+    await expect(replayFetch("https://api.openai.test/v1/images/generations", {
+      method: "POST",
+      body: JSON.stringify({ model: "gpt-image-2", prompt: "Replay this image" }),
+    })).rejects.toThrow(/No provider test replay fixture/);
   });
 });

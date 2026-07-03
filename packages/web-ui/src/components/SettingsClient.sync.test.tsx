@@ -3386,6 +3386,7 @@ describe("SettingsClient model routing", () => {
           upstreamId: "mock",
         }),
         modelId: "mock-image-model",
+        live: true,
       });
     });
     expect(await within(editor).findByText("Mock provider ran Mock Image Model through fal-ai/mock-image.")).toBeTruthy();
@@ -3626,6 +3627,7 @@ describe("SettingsClient model routing", () => {
           upstreamId: "replicate",
         }),
         modelId: "nano-banana-2",
+        live: true,
       });
     });
     expect(await within(editor).findByText("Replicate configuration is ready for Nano Banana 2.")).toBeTruthy();

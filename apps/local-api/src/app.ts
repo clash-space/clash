@@ -23,6 +23,12 @@ import {
 } from "./fal-mock.js";
 import { createMockExternalAigcService } from "./local-aigc.js";
 import {
+  createJsonlProviderTestRecorder,
+  createProviderConformanceStubs,
+  createProviderTestRecordingFetch,
+  type ProviderConformanceStub,
+} from "./provider-test-recorder.js";
+import {
   createLocalAudioConfigStore,
   LocalAudioConfigError,
   type LocalAudioConfigStore,
@@ -73,6 +79,14 @@ export interface LocalApiOptions {
   syncConfig?: LocalSyncConfigStore;
   syncEnv?: RemoteLoroPersistenceEnv;
   providerOAuth?: Partial<Record<ProviderOAuthId, ProviderOAuthDriver>>;
+  providerTestFetch?: typeof fetch;
+  providerTestRecordingPath?: string;
+  providerTestOpenAiBaseUrl?: string;
+  providerTestAnthropicBaseUrl?: string;
+  providerTestFalQueueBaseUrl?: string;
+  providerTestGoogleAiStudioBaseUrl?: string;
+  providerTestKieBaseUrl?: string;
+  providerTestReplicateBaseUrl?: string;
 }
 
 export type LocalAcpRuntimeStatus = "online" | "offline";
@@ -1152,6 +1166,20 @@ function modelRoutesForProviderAccount(
   );
 }
 
+function providerTestStubForAccount(
+  account: Pick<LocalProviderAccountConfig, "providerId" | "upstreamId" | "region">,
+  modelId: string,
+  route?: ModelUpstreamRoute,
+): ProviderConformanceStub | undefined {
+  return createProviderConformanceStubs({ includeMock: account.providerId === "mock" }).find((stub) =>
+    stub.providerId === account.providerId &&
+    (!account.upstreamId || stub.upstreamId === account.upstreamId) &&
+    (stub.region ?? "") === (account.region ?? "") &&
+    stub.modelId === modelId &&
+    (!route || stub.apiShape === route.apiShape)
+  );
+}
+
 export function createLocalApiApp(options: LocalApiOptions): Hono {
   const userId = options.userId ?? "local-user";
   const db = createDb(options.dataDir);
@@ -1329,7 +1357,7 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
     return new Response(null, { status: 204 });
   });
   app.post("/api/v1/model-providers/test", async (c) => {
-    const body = (await c.req.json().catch(() => ({}))) as { provider?: unknown; modelId?: unknown };
+    const body = (await c.req.json().catch(() => ({}))) as { provider?: unknown; modelId?: unknown; live?: unknown };
     const provider = normalizeProviderAccountInput(body.provider);
     const rawProvider = body.provider && typeof body.provider === "object"
       ? body.provider as Record<string, unknown>
@@ -1359,6 +1387,7 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
       (row.region ?? "") === (account.region ?? "")
     );
     const modelName = displayModelName(modelId);
+    const live = body.live === true;
     const baseResult = {
       providerId: account.providerId,
       ...(account.upstreamId ? { upstreamId: account.upstreamId } : {}),
@@ -1437,11 +1466,19 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
       } satisfies ModelProviderTestResult);
     }
 
-    if (account.providerId === "mock") {
+    if (account.providerId === "mock" || live) {
       const model = [...MODEL_CARDS, ...MOCK_MODEL_CARDS].find((candidate) => candidate.id === modelId);
       const taskId = `provider-test-${modelId}`;
       const prompt = `Provider test for ${modelName}`;
       const shape = model?.kind ?? supportedModelEntries[0]?.kind ?? "image";
+      if (shape === "asr") {
+        return c.json({
+          ok: false,
+          ...baseResult,
+          unsupported: true,
+          message: `${displayProviderName(account)} live tests do not support ASR models yet.`,
+        } satisfies ModelProviderTestResult);
+      }
       const testInput = providerTestInputSummary({
         shape,
         model: modelId,
@@ -1449,9 +1486,46 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
         ...(shape === "image" || shape === "video" ? { aspectRatio: "16:9" } : {}),
         ...(shape === "video" || shape === "audio" ? { duration: shape === "video" ? 4 : 5 } : {}),
       });
+      const readyRoute = routeRequirements.find((route) =>
+        (route.requiredCredentials ?? []).every((credential) => credentialKeys.has(credential)) &&
+        (route.requiredOAuth ?? []).every((providerId) => availableOAuth.has(providerId))
+      );
+      const recorder = options.providerTestRecordingPath
+        ? await createJsonlProviderTestRecorder(options.providerTestRecordingPath)
+        : undefined;
+      const recordingStub = recorder
+        ? providerTestStubForAccount(account, modelId, readyRoute)
+        : undefined;
+      const liveFetch = recorder && recordingStub
+        ? createProviderTestRecordingFetch({
+          fetch: options.providerTestFetch ?? fetch,
+          recorder,
+          stub: recordingStub,
+        })
+        : options.providerTestFetch ?? fetch;
+      const testAigc = account.providerId === "mock"
+        ? providerTestAigc
+        : createMockExternalAigcService({
+          fal: falMock,
+          origin: "http://local-provider-test",
+          providerAccounts: async () => [{
+            ...account,
+            configuredCredentials: [...credentialKeys],
+            availableOAuth: [...availableOAuth],
+            weight: account.weight ?? 10_000,
+          }],
+          fetch: liveFetch,
+          openAiBaseUrl: options.providerTestOpenAiBaseUrl ?? process.env.OPENAI_BASE_URL,
+          anthropicBaseUrl: options.providerTestAnthropicBaseUrl ?? process.env.ANTHROPIC_BASE_URL,
+          falQueueBaseUrl: options.providerTestFalQueueBaseUrl ?? process.env.CLASH_FAL_QUEUE_URL,
+          googleAiStudioBaseUrl: options.providerTestGoogleAiStudioBaseUrl,
+          kieBaseUrl: options.providerTestKieBaseUrl,
+          replicateBaseUrl: options.providerTestReplicateBaseUrl,
+        });
+      const providerName = displayProviderName(account);
       try {
         if (shape === "text") {
-          const result = await providerTestAigc.generateText({ taskId, prompt, model: modelId });
+          const result = await testAigc.generateText({ taskId, prompt, model: modelId });
           const output: ModelProviderTestOutputSummary = {
             shape: "text",
             ...(result.provider ? { provider: result.provider } : {}),
@@ -1466,17 +1540,17 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
             input: testInput,
             output,
             message: result.modelEndpoint
-              ? `Mock provider ran ${modelName} through ${result.modelEndpoint}.`
-              : `Mock provider ran ${modelName}.`,
+              ? `${providerName} ran ${modelName} through ${result.modelEndpoint}.`
+              : `${providerName} ran ${modelName}.`,
           } satisfies ModelProviderTestResult);
         }
 
         const mediaShape = shape === "video" || shape === "audio" ? shape : "image";
         const result = mediaShape === "video"
-          ? await providerTestAigc.generateVideo({ taskId, prompt, model: modelId, aspectRatio: testInput.aspectRatio, duration: testInput.duration })
+          ? await testAigc.generateVideo({ taskId, prompt, model: modelId, aspectRatio: testInput.aspectRatio, duration: testInput.duration })
           : mediaShape === "audio"
-            ? await providerTestAigc.generateAudio({ taskId, prompt, model: modelId, duration: testInput.duration })
-            : await providerTestAigc.generateImage({ taskId, prompt, model: modelId, aspectRatio: testInput.aspectRatio });
+            ? await testAigc.generateAudio({ taskId, prompt, model: modelId, duration: testInput.duration })
+            : await testAigc.generateImage({ taskId, prompt, model: modelId, aspectRatio: testInput.aspectRatio });
         const output = providerTestMediaOutput(mediaShape, result);
         return c.json({
           ok: true,
@@ -1487,14 +1561,14 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
           input: testInput,
           output,
           message: result.modelEndpoint
-            ? `Mock provider ran ${modelName} through ${result.modelEndpoint}.`
-            : `Mock provider ran ${modelName}.`,
+            ? `${providerName} ran ${modelName} through ${result.modelEndpoint}.`
+            : `${providerName} ran ${modelName}.`,
         } satisfies ModelProviderTestResult);
       } catch (err) {
         return c.json({
           ok: false,
           ...baseResult,
-          message: `Mock provider test failed for ${modelName}: ${err instanceof Error ? err.message : String(err)}`,
+          message: `${providerName} test failed for ${modelName}: ${err instanceof Error ? err.message : String(err)}`,
         } satisfies ModelProviderTestResult);
       }
     }
