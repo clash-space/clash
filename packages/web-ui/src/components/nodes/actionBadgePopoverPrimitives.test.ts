@@ -62,8 +62,19 @@ describe("ActionBadge popover primitives", () => {
 
         expect(source).toContain("BATCH_COUNT_OPTIONS");
         expect(source).toContain('ariaLabel="Batch count"');
+        expect(source).not.toContain("const [batchCountMenuOpen, setBatchCountMenuOpen]");
+        expect(source).not.toContain("open={batchCountMenuOpen}");
+        expect(source).not.toContain("setBatchCountMenuOpen");
         expect(source).not.toContain("countPopoverOpen");
         expect(source).not.toContain("[1, 2, 3, 4].map");
+    });
+
+    it("lets the shared select primitive own model picker disclosure state", () => {
+        const source = readNodeSource("ActionBadge.tsx");
+
+        expect(source).not.toContain("const [showModelDropdown, setShowModelDropdown]");
+        expect(source).not.toContain("open={showModelDropdown}");
+        expect(source).not.toContain("setShowModelDropdown");
     });
 
     it("uses shared select primitives for expanded select and boolean parameter choices", () => {

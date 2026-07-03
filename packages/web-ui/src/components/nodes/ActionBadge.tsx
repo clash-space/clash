@@ -209,7 +209,6 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
     const [showModal, setShowModal] = useState(false);
     // Peers (other connected users) who currently have this node selected.
     const peersSelecting = usePeersSelectingNode(id);
-    const [showModelDropdown, setShowModelDropdown] = useState(false);
     const [isExecuting, setIsExecuting] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
@@ -258,7 +257,6 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
     const isFrozen = !!data.hasRun;
     const [showRefPicker, setShowRefPicker] = useState(false);
     const [paramsPopoverOpen, setParamsPopoverOpen] = useState(false);
-    const [batchCountMenuOpen, setBatchCountMenuOpen] = useState(false);
 
     // Collapse retired -edit variants into their base card (backend auto-switches to /edit when refs present).
     const LEGACY_MODEL_REMAP: Record<string, string> = {
@@ -1616,9 +1614,7 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
 
     const [expandedParam, setExpandedParam] = useState<string | null>(null);
     const closeConfigPanelControls = useCallback(() => {
-        setShowModelDropdown(false);
         setParamsPopoverOpen(false);
-        setBatchCountMenuOpen(false);
         setExpandedParam(null);
         setRefPickerTarget(null);
     }, []);
@@ -1822,9 +1818,7 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
                 <div
                     className="pointer-events-auto w-full rounded-2xl bg-warm-surface shadow-2xl border border-warm-border overflow-visible"
                     onClick={() => {
-                        setShowModelDropdown(false);
                         setParamsPopoverOpen(false);
-                        setBatchCountMenuOpen(false);
                     }}
                 >
                     {/* Prompt editor with inline @ mention chips.
@@ -1886,9 +1880,7 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
                                             })}
                                         onValueChange={(nextModelId) => {
                                             handleModelChange(nextModelId);
-                                            setShowModelDropdown(false);
                                             setParamsPopoverOpen(false);
-                                            setBatchCountMenuOpen(false);
                                         }}
                                         ariaLabel="Model"
                                         triggerLabel={modelDisplay}
@@ -1898,15 +1890,6 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
                                         placement="top"
                                         menuWidth={240}
                                         maxMenuHeight={192}
-                                        open={showModelDropdown}
-                                        onOpenChange={(nextOpen) => {
-                                            if (customActionOffline) return;
-                                            setShowModelDropdown(nextOpen);
-                                            if (nextOpen) {
-                                                setParamsPopoverOpen(false);
-                                                setBatchCountMenuOpen(false);
-                                            }
-                                        }}
                                         disabled={customActionOffline}
                                         stopPropagation
                                     />
@@ -1925,10 +1908,7 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
                                 open={paramsPopoverOpen}
                                 onOpenChange={(nextOpen) => {
                                     setParamsPopoverOpen(nextOpen);
-                                    if (nextOpen) {
-                                        setShowModelDropdown(false);
-                                        setBatchCountMenuOpen(false);
-                                    } else {
+                                    if (!nextOpen) {
                                         setExpandedParam(null);
                                     }
                                 }}
@@ -2068,14 +2048,6 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
                             placement="top"
                             menuWidth={80}
                             maxMenuHeight={176}
-                            open={batchCountMenuOpen}
-                            onOpenChange={(nextOpen) => {
-                                setBatchCountMenuOpen(nextOpen);
-                                if (nextOpen) {
-                                    setShowModelDropdown(false);
-                                    setParamsPopoverOpen(false);
-                                }
-                            }}
                             showCaret
                             stopPropagation
                             triggerClassName="h-auto min-h-0 px-2.5 py-1 text-xs"
