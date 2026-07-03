@@ -585,7 +585,6 @@ export default function ChatbotCopilot({
     //   - 'cloud'   : useAgentCopilot (hosted Clash agent, temporarily disabled)
     //   - 'runtime' : useClashRuntime (registered local daemon / clashd)
     const [chatMode, setChatMode] = useState<'cloud' | 'runtime'>('runtime');
-    const [runtimeMenuOpen, setRuntimeMenuOpen] = useState(false);
     const [sessionConfigOpen, setSessionConfigOpen] = useState(false);
     const [sessionHarnessId, setSessionHarnessId] = useState<string | null>(null);
     const [sessionPermissionModeByAgentId, setSessionPermissionModeByAgentId] = useState<Record<string, string>>({});
@@ -1674,10 +1673,8 @@ export default function ChatbotCopilot({
                                     {!isDesktopLocalMode && (
                                         <div className="relative">
                                             <DropdownMenu
-                                                open={runtimeMenuOpen}
                                                 onOpenChange={(open) => {
                                                     if (open) void clashRt.refresh();
-                                                    setRuntimeMenuOpen(open);
                                                 }}
                                             >
                                                 <DropdownMenuTrigger asChild>
@@ -1702,7 +1699,6 @@ export default function ChatbotCopilot({
                                                             sub={t('copilot.runtime.cloud.sub')}
                                                             active={chatMode === 'cloud'}
                                                             disabled
-                                                            onSelect={() => setRuntimeMenuOpen(false)}
                                                         />
                                                         {clashRt.runtimes.length > 0 && (
                                                             <div role="presentation" className="px-3 pt-1.5 text-xs font-medium text-stone-500 dark:text-stone-400">
@@ -1724,7 +1720,6 @@ export default function ChatbotCopilot({
                                                                     onSelect={() => {
                                                                         // Open the daemon picker so runtime sessions keep
                                                                         // the same agent + resume-session UX.
-                                                                        setRuntimeMenuOpen(false);
                                                                         setRuntimePicker(rt);
                                                                     }}
                                                                 />
@@ -1735,7 +1730,6 @@ export default function ChatbotCopilot({
                                                             label={t('copilot.runtime.addMachine.label')}
                                                             sub={t('copilot.runtime.addMachine.sub')}
                                                             onSelect={() => {
-                                                                setRuntimeMenuOpen(false);
                                                                 setAddMachineOpen(true);
                                                             }}
                                                         />
@@ -2484,7 +2478,7 @@ function RuntimeMenuRow({
     sub?: string;
     active?: boolean;
     disabled?: boolean;
-    onSelect: () => void;
+    onSelect?: () => void;
 }) {
     return (
         <DropdownMenuItem

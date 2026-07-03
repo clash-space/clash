@@ -87,6 +87,20 @@ describe("ChatbotCopilot primitives", () => {
     expect(historySource).not.toContain("onOpenChange={setShowHistory}");
   });
 
+  it("lets the runtime dropdown primitive own open state", () => {
+    const source = readComponentSource("ChatbotCopilot.tsx");
+    const runOnStart = source.indexOf("label={t('copilot.header.runOn')}");
+    const runtimeStart = source.lastIndexOf("\n                                            <DropdownMenu", runOnStart);
+    const runtimeEnd = source.indexOf("</DropdownMenu>", runOnStart);
+    const runtimeSource = source.slice(runtimeStart, runtimeEnd);
+
+    expect(runtimeStart).toBeGreaterThan(-1);
+    expect(source).not.toContain("const [runtimeMenuOpen, setRuntimeMenuOpen]");
+    expect(source).not.toContain("setRuntimeMenuOpen(false)");
+    expect(runtimeSource).not.toContain("open={runtimeMenuOpen}");
+    expect(runtimeSource).not.toContain("setRuntimeMenuOpen(open)");
+  });
+
   it("lets the shared dropdown primitive own trigger aria state", () => {
     const source = readComponentSource("ChatbotCopilot.tsx");
 
