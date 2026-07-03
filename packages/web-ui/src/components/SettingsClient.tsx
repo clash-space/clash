@@ -3949,7 +3949,6 @@ function AgentsSection() {
     const [customAgentArgsText, setCustomAgentArgsText] = useState(formatArgsText(CUSTOM_AGENT_SERVER_STARTERS[0].args));
     const [customAgentEnvText, setCustomAgentEnvText] = useState(formatEnvText(CUSTOM_AGENT_SERVER_STARTERS[0].env));
     const [customAgentError, setCustomAgentError] = useState<string | null>(null);
-    const [collapsedRuntimeIds, setCollapsedRuntimeIds] = useState<Set<string>>(() => new Set());
 
     const clearAuthTimers = useCallback((harnessId: string) => {
         const openingTimer = authOpeningTimersRef.current[harnessId];
@@ -4578,14 +4577,6 @@ function AgentsSection() {
         });
     }, [harnessLoading, harnesses, localRuntimeId, rt.runtimes]);
 
-    const setRuntimeCollapsed = useCallback((runtimeId: string, collapsed: boolean) => {
-        setCollapsedRuntimeIds((current) => {
-            const next = new Set(current);
-            if (collapsed) next.add(runtimeId);
-            else next.delete(runtimeId);
-            return next;
-        });
-    }, []);
     const harnessCheckTooltip = harnessLoading ? harnessLoadingMessage : "Check installed agents, auth, and model options again.";
 
     return (
@@ -4612,22 +4603,20 @@ function AgentsSection() {
 
             <div className="space-y-3">
                 {runtimeGroups.map((group) => {
-                    const collapsed = collapsedRuntimeIds.has(group.id);
                     const agentCountLabel = `${group.agentCount} configured agent${group.agentCount === 1 ? "" : "s"}`;
                     return (
                         <Collapsible
                             key={group.id}
-                            open={!collapsed}
-                            onOpenChange={(open) => setRuntimeCollapsed(group.id, !open)}
-                            className="overflow-hidden rounded-xl border border-warm-border bg-warm-surface"
+                            defaultOpen
+                            className="group/runtime-group overflow-hidden rounded-xl border border-warm-border bg-warm-surface"
                         >
                             <CollapsibleTrigger asChild>
                                 <Button
-                                    aria-label={`${collapsed ? "Expand" : "Collapse"} ${group.label} runtime`}
+                                    aria-label={`Toggle ${group.label} runtime`}
                                     className="grid h-auto min-h-[4.25rem] w-full grid-cols-[1rem_0.5rem_minmax(0,1fr)] items-center gap-3 rounded-none border-0 bg-transparent px-4 py-3 text-left shadow-none transition-colors hover:bg-warm-muted"
                                 >
                                     <CaretRight
-                                        className={`h-4 w-4 shrink-0 text-stone-500 transition-transform ${collapsed ? "" : "rotate-90"}`}
+                                        className="h-4 w-4 shrink-0 text-stone-500 transition-transform group-data-[state=open]/runtime-group:rotate-90"
                                         weight="bold"
                                     />
                                     <span className={`h-2 w-2 shrink-0 rounded-full ${group.online ? "bg-emerald-500" : "bg-stone-300"}`} />

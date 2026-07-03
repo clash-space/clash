@@ -43,9 +43,13 @@ describe("SettingsClient primitives", () => {
   it("uses shared collapsible primitives for agent runtime groups", () => {
     const source = readSource("packages/web-ui/src/components/SettingsClient.tsx");
 
-    expect(source).toMatch(/<Collapsible\s+[\s\S]*open=\{!collapsed\}[\s\S]*onOpenChange=\{\(open\) => setRuntimeCollapsed\(group\.id, !open\)\}/);
+    expect(source).toContain("<Collapsible");
     expect(source).toContain("CollapsibleTrigger asChild");
     expect(source).toContain("CollapsibleContent asChild");
+    expect(source).toContain("group-data-[state=open]/runtime-group:rotate-90");
+    expect(source).not.toContain("const [collapsedRuntimeIds, setCollapsedRuntimeIds]");
+    expect(source).not.toContain("setRuntimeCollapsed");
+    expect(source).not.toContain("open={!collapsed}");
     expect(source).not.toContain("aria-expanded={!collapsed}");
     expect(source).not.toContain("onClick={() => toggleRuntimeCollapsed(group.id)}");
     expect(source).not.toContain("const toggleRuntimeCollapsed");
