@@ -1,5 +1,6 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React from 'react';
 import { TimelineIconButton, TimelineRangeInput } from '../ui/controls';
+import { Tooltip } from '../ui/tooltip';
 import { colors } from './styles';
 
 // Hoisted CSS — built once per module rather than re-templated on every render.
@@ -96,51 +97,8 @@ export const ZoomControl: React.FC<ZoomControlProps> = ({
   onZoomIn,
   onZoomOut,
 }) => {
-  const [showTooltip, setShowTooltip] = useState(false);
-  const [isDragging, setIsDragging] = useState(false);
-  const sliderRef = useRef<HTMLInputElement>(null);
-  const [tooltipX, setTooltipX] = useState(0);
-  const [tooltipY, setTooltipY] = useState(0);
-
   const canZoomIn = zoom < max;
   const canZoomOut = zoom > min;
-
-  const updateTooltipPosition = () => {
-    if (!sliderRef.current) return;
-    const rect = sliderRef.current.getBoundingClientRect();
-    const percentage = (zoom - min) / (max - min);
-    const thumbX = rect.left + percentage * rect.width;
-    setTooltipX(thumbX);
-    setTooltipY(rect.top);
-  };
-
-  const handleMouseDown = () => {
-    setIsDragging(true);
-    setShowTooltip(true);
-    updateTooltipPosition();
-  };
-
-  const handleMouseUp = () => {
-    setIsDragging(false);
-    setShowTooltip(false);
-  };
-
-  const handleMouseMove = () => {
-    if (showTooltip || isDragging) {
-      updateTooltipPosition();
-    }
-  };
-
-  useEffect(() => {
-    if (isDragging) {
-      window.addEventListener('mouseup', handleMouseUp);
-      window.addEventListener('mousemove', updateTooltipPosition);
-      return () => {
-        window.removeEventListener('mouseup', handleMouseUp);
-        window.removeEventListener('mousemove', updateTooltipPosition);
-      };
-    }
-  }, [isDragging]);
 
   return (
     <div style={{ 
@@ -196,34 +154,28 @@ export const ZoomControl: React.FC<ZoomControlProps> = ({
         display: 'flex',
         alignItems: 'center', // 垂直居中对齐
       }}>
-        <TimelineRangeInput
-          ref={sliderRef}
-          min={min}
-          max={max}
-          step={0.01}
-          value={zoom}
-          onChange={(e) => onZoomChange(parseFloat(e.target.value))}
-          onMouseDown={handleMouseDown}
-          onMouseMove={handleMouseMove}
-          onMouseEnter={() => {
-            setShowTooltip(true);
-            updateTooltipPosition();
-          }}
-          onMouseLeave={() => !isDragging && setShowTooltip(false)}
-          aria-label="Timeline zoom"
-          aria-valuetext={`${zoom.toFixed(2)} times`}
-          className="zoom-slider"
-          style={{
-            width: '100%',
-            height: 4,
-            outline: 'none',
-            WebkitAppearance: 'none',
-            appearance: 'none',
-            background: 'transparent',
-            cursor: 'pointer',
-            margin: 0, // 移除默认margin
-          }}
-        />
+        <Tooltip label={`${zoom.toFixed(2)}×`}>
+          <TimelineRangeInput
+            min={min}
+            max={max}
+            step={0.01}
+            value={zoom}
+            onChange={(e) => onZoomChange(parseFloat(e.target.value))}
+            aria-label="Timeline zoom"
+            aria-valuetext={`${zoom.toFixed(2)} times`}
+            className="zoom-slider"
+            style={{
+              width: '100%',
+              height: 4,
+              outline: 'none',
+              WebkitAppearance: 'none',
+              appearance: 'none',
+              background: 'transparent',
+              cursor: 'pointer',
+              margin: 0, // 移除默认margin
+            }}
+          />
+        </Tooltip>
 
         <style>{ZOOM_SLIDER_STYLES}</style>
       </div>
@@ -267,42 +219,6 @@ export const ZoomControl: React.FC<ZoomControlProps> = ({
         +
       </TimelineIconButton>
 
-      {/* Tooltip */}
-      {showTooltip && (
-        <div
-          style={{
-            position: 'fixed',
-            left: tooltipX,
-            top: tooltipY - 50,
-            transform: 'translateX(-50%)',
-            backgroundColor: '#000',
-            color: '#fff',
-            padding: '8px 14px',
-            borderRadius: '6px',
-            fontSize: '14px',
-            fontWeight: 700,
-            whiteSpace: 'nowrap',
-            pointerEvents: 'none',
-            boxShadow: '0 4px 16px rgba(0, 0, 0, 0.8)',
-            zIndex: 999999,
-          }}
-        >
-          {zoom.toFixed(2)}×
-          <div
-            style={{
-              position: 'absolute',
-              bottom: -6,
-              left: '50%',
-              transform: 'translateX(-50%)',
-              width: 0,
-              height: 0,
-              borderLeft: '6px solid transparent',
-              borderRight: '6px solid transparent',
-              borderTop: '6px solid #000',
-            }}
-          />
-        </div>
-      )}
     </div>
   );
 };
@@ -313,105 +229,46 @@ interface SnapButtonProps {
 }
 
 export const SnapButton: React.FC<SnapButtonProps> = ({ enabled, onToggle }) => {
-  const [showTooltip, setShowTooltip] = useState(false);
-  const buttonRef = useRef<HTMLButtonElement>(null);
-  const [tooltipX, setTooltipX] = useState(0);
-  const [tooltipY, setTooltipY] = useState(0);
-
-  const updateTooltipPosition = () => {
-    if (!buttonRef.current) return;
-    const rect = buttonRef.current.getBoundingClientRect();
-    setTooltipX(rect.left + rect.width / 2);
-    setTooltipY(rect.top);
-  };
-
   return (
     <div style={{ position: 'relative' }}>
-      <TimelineIconButton
-        ref={buttonRef}
-        onClick={onToggle}
-        aria-label={enabled ? 'Disable snapping' : 'Enable snapping'}
-        title={enabled ? 'Snapping on' : 'Snapping off'}
-        aria-pressed={enabled}
-        className="timeline-icon-btn"
-        onMouseEnter={(e) => {
-          setShowTooltip(true);
-          updateTooltipPosition();
-          e.currentTarget.style.backgroundColor = colors.bg.hover;
-          e.currentTarget.style.borderColor = colors.accent.primary;
-        }}
-        onMouseLeave={(e) => {
-          setShowTooltip(false);
-          e.currentTarget.style.backgroundColor = 'transparent';
-          e.currentTarget.style.borderColor = colors.border.default;
-        }}
-        onMouseMove={(e) => {
-          if (showTooltip) {
-            const rect = e.currentTarget.getBoundingClientRect();
-            setTooltipX(rect.left + rect.width / 2);
-            setTooltipY(rect.top);
-          }
-        }}
-        style={{
-          width: 28,
-          height: 28,
-          padding: 0,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          backgroundColor: 'transparent',
-          border: `1px solid ${colors.border.default}`,
-          borderRadius: '6px',
-          cursor: 'pointer',
-          opacity: enabled ? 1 : 0.3,
-          transition: 'all 0.15s ease',
-        }}
-      >
-        {/* Bootstrap Icons Magnet - Professional Design */}
-        <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-          <path 
-            d="M8 1a7 7 0 0 0-7 7v3h4V8a3 3 0 0 1 6 0v3h4V8a7 7 0 0 0-7-7m7 11h-4v3h4zM5 12H1v3h4zM0 8a8 8 0 1 1 16 0v8h-6V8a2 2 0 1 0-4 0v8H0z"
-            fill={enabled ? colors.accent.primary : colors.text.primary}
-          />
-        </svg>
-      </TimelineIconButton>
-
-      {/* Tooltip */}
-      {showTooltip && (
-        <div
+      <Tooltip label={`Snapping ${enabled ? 'on' : 'off'}`}>
+        <TimelineIconButton
+          onClick={onToggle}
+          aria-label={enabled ? 'Disable snapping' : 'Enable snapping'}
+          aria-pressed={enabled}
+          className="timeline-icon-btn"
+          onMouseEnter={(e) => {
+            e.currentTarget.style.backgroundColor = colors.bg.hover;
+            e.currentTarget.style.borderColor = colors.accent.primary;
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.backgroundColor = 'transparent';
+            e.currentTarget.style.borderColor = colors.border.default;
+          }}
           style={{
-            position: 'fixed',
-            left: tooltipX,
-            top: tooltipY - 40,
-            transform: 'translateX(-50%)',
-            backgroundColor: '#000',
-            color: '#fff',
-            padding: '8px 14px',
+            width: 28,
+            height: 28,
+            padding: 0,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            backgroundColor: 'transparent',
+            border: `1px solid ${colors.border.default}`,
             borderRadius: '6px',
-            fontSize: '13px',
-            fontWeight: 700,
-            whiteSpace: 'nowrap',
-            pointerEvents: 'none',
-            boxShadow: '0 4px 16px rgba(0, 0, 0, 0.8)',
-            zIndex: 999999,
+            cursor: 'pointer',
+            opacity: enabled ? 1 : 0.3,
+            transition: 'all 0.15s ease',
           }}
         >
-          磁吸 {enabled ? '开启' : '关闭'}
-          <div
-            style={{
-              position: 'absolute',
-              bottom: -6,
-              left: '50%',
-              transform: 'translateX(-50%)',
-              width: 0,
-              height: 0,
-              borderLeft: '6px solid transparent',
-              borderRight: '6px solid transparent',
-              borderTop: '6px solid #000',
-            }}
-          />
-        </div>
-      )}
+          {/* Bootstrap Icons Magnet - Professional Design */}
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+            <path
+              d="M8 1a7 7 0 0 0-7 7v3h4V8a3 3 0 0 1 6 0v3h4V8a7 7 0 0 0-7-7m7 11h-4v3h4zM5 12H1v3h4zM0 8a8 8 0 1 1 16 0v8h-6V8a2 2 0 1 0-4 0v8H0z"
+              fill={enabled ? colors.accent.primary : colors.text.primary}
+            />
+          </svg>
+        </TimelineIconButton>
+      </Tooltip>
     </div>
   );
 };

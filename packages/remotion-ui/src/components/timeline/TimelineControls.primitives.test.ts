@@ -15,4 +15,22 @@ describe('TimelineControls primitives', () => {
     expect(source).not.toContain('<button');
     expect(source).not.toContain('<input');
   });
+
+  it('routes timeline tooltips through the shared tooltip primitive', () => {
+    const source = readFileSync(
+      join(process.cwd(), 'packages/remotion-ui/src/components/timeline/TimelineControls.tsx'),
+      'utf8',
+    );
+    const tooltipSource = readFileSync(
+      join(process.cwd(), 'packages/remotion-ui/src/components/ui/tooltip.tsx'),
+      'utf8',
+    );
+
+    expect(tooltipSource).toContain('@ariakit/react');
+    expect(source).toContain('../ui/tooltip');
+    expect(source).toContain('<Tooltip label=');
+    expect(source).not.toContain('window.addEventListener');
+    expect(source).not.toContain('showTooltip');
+    expect(source).not.toContain('title=');
+  });
 });
