@@ -12,6 +12,7 @@
 import * as React from "react";
 import { CheckCircle2, Circle, Loader2 } from "lucide-react";
 import type { PlanEntry } from "../../lib/acpEvents";
+import { Button } from "../ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "../ui/popover";
 import { cn } from "./utils";
 
@@ -99,10 +100,10 @@ export function PlanBar({ entries, className }: PlanBarProps) {
           <Plan entries={entries} className="my-0 border-0 bg-transparent p-0" />
         </PopoverContent>
         <PopoverTrigger asChild>
-          <button
-            type="button"
+          <Button
+            size="sm"
             className={cn(
-              "group/planbar flex h-8 w-full items-center gap-1.5 rounded-full bg-warm-muted/70 px-2.5 text-xs text-foreground transition-colors hover:bg-warm-muted",
+              "group/planbar h-8 min-h-0 w-full rounded-full border-0 bg-warm-muted/70 px-2.5 text-xs text-foreground shadow-none transition-colors hover:bg-warm-muted",
               "focus:outline-none focus-visible:ring-2 focus-visible:ring-ring/50",
             )}
             aria-label={open ? "Hide plan" : "Show plan"}
@@ -119,7 +120,7 @@ export function PlanBar({ entries, className }: PlanBarProps) {
             <span className="truncate text-muted-foreground min-w-0 flex-1 text-left">
               {current}
             </span>
-          </button>
+          </Button>
         </PopoverTrigger>
       </Popover>
     </div>

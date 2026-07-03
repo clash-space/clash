@@ -10,10 +10,12 @@ describe("PlanBar primitives", () => {
     const source = readAiElementSource("plan.tsx");
 
     expect(source).toContain("../ui/popover");
+    expect(source).toContain("../ui/button");
     expect(source).toContain("Popover");
     expect(source).toContain("PopoverTrigger");
     expect(source).toContain("PopoverContent");
     expect(source).not.toContain("aria-expanded={open}");
     expect(source).not.toContain('role="dialog"');
+    expect(source).not.toContain("<button");
   });
 });
