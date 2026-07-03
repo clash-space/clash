@@ -14,11 +14,14 @@ describe('PresenceBar tooltip primitives', () => {
     expect(tooltipSource).toContain('TooltipProvider');
     expect(tooltipSource).toContain('TooltipAnchor');
     expect(source).toContain('./ui/tooltip');
+    expect(source).toContain('./ui/avatar');
     expect(source).toContain('<Tooltip label={client.name}>');
-    expect(source).toContain("Avatar as AvatarPrimitive");
-    expect(source).toContain("AvatarPrimitive.Root");
-    expect(source).toContain("AvatarPrimitive.Image");
-    expect(source).toContain("AvatarPrimitive.Fallback");
+    expect(source).toContain('<AvatarRoot');
+    expect(source).toContain('<AvatarImage');
+    expect(source).toContain('<AvatarFallback');
+    expect(source).not.toContain("Avatar as AvatarPrimitive");
+    expect(source).not.toContain('AvatarPrimitive.');
+    expect(source).not.toContain("from 'radix-ui'");
     expect(source).not.toContain('@ariakit/react');
     expect(source).not.toContain('TooltipProvider');
     expect(source).not.toContain('TooltipAnchor');

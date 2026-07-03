@@ -885,6 +885,6 @@ describe("visual language surfaces", () => {
     await waitFor(() => expect(screen.getByLabelText("Remote Loro URL")).toBeTruthy());
     expect(screen.getByRole("heading", { name: "Sync" })).toBeTruthy();
     expect(container.innerHTML).not.toMatch(oldVisualTokens);
-    expect(container.querySelector('[class*="border-brand/55"][class*="bg-brand-light/45"]')).toBeTruthy();
+    expect(container.querySelector('[class*="data-[state=checked]:border-brand"][class*="data-[state=checked]:bg-brand/10"]')).toBeTruthy();
   });
 });
