@@ -48,7 +48,7 @@ const TIMELINE_ROOT_STYLES = `
     outline: 2px solid ${colors.accent.primary};
     outline-offset: 2px;
   }
-  [data-timeline-container] [role="slider"]:focus-visible {
+  [data-timeline-container] .timeline-slider:focus-visible {
     outline: 2px solid ${colors.accent.primary};
     outline-offset: 2px;
   }

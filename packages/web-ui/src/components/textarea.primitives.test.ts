@@ -7,7 +7,6 @@ const readSource = (path: string) => readFileSync(join(process.cwd(), path), "ut
 describe("Textarea primitives", () => {
   it.each([
     "packages/web-ui/src/components/SettingsClient.tsx",
-    "packages/web-ui/src/components/nodes/ActionBadge.tsx",
     "packages/web-ui/src/components/nodes/ImageNode.tsx",
     "packages/web-ui/src/components/nodes/VideoNode.tsx",
     "packages/web-ui/src/components/nodes/StoryboardNode.tsx",

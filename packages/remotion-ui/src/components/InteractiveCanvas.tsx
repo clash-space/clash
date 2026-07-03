@@ -613,9 +613,7 @@ export const InteractiveCanvas: React.FC<InteractiveCanvasProps> = ({
           cursor: isPanning ? 'grabbing' : 'default',
         }}
         {...canvasPanGestureBind()}
-        onMouseDown={(e) => {
-          handlePointerDown(e);
-        }}
+        onMouseDown={handlePointerDown}
       >
         <div
           style={{

@@ -91,11 +91,14 @@ describe("ActionBadge popover primitives", () => {
         expect(source).not.toContain("[{ l: 'On', v: true }, { l: 'Off', v: false }].map");
     });
 
-    it("uses the shared switch primitive for inline boolean parameter controls", () => {
+    it("does not keep an unused inline boolean or text parameter fallback", () => {
         const source = readNodeSource("ActionBadge.tsx");
 
-        expect(source).toContain("../ui/switch");
-        expect(source).toContain("<Switch");
+        expect(source).not.toContain("renderParamControl");
+        expect(source).not.toContain("../ui/switch");
+        expect(source).not.toContain("<Switch");
+        expect(source).not.toContain("../ui/textarea");
+        expect(source).not.toContain("<Textarea");
         expect(source).not.toContain('type="checkbox"');
     });
 
@@ -145,7 +148,9 @@ describe("ActionBadge popover primitives", () => {
     it("uses shared tooltip primitives for reference picker labels and keeps mention HTML title-free", () => {
         const source = readNodeSource("ActionBadge.tsx");
 
-        expect(source).toContain("<Tooltip key={n.id} label={label}>");
+        expect(source).toContain("<Tooltip label={label}>");
+        expect(source).toContain("<RefPickerOptionButton");
+        expect(source).not.toContain("onClick={() => onPick(n.id)}");
         expect(source).not.toContain('title="${label}"');
         expect(source).not.toContain("title={label}");
     });

@@ -26,4 +26,13 @@ describe('timeline drag-and-drop primitives', () => {
     expect(timelineSource).not.toContain('querySelector');
     expect(tracksContainerSource).not.toContain('querySelector');
   });
+
+  it('targets timeline sliders through the slider primitive class instead of ARIA role selectors', () => {
+    const timelineSource = readSource('packages/remotion-ui/src/components/Timeline.tsx');
+    const sliderSource = readSource('packages/remotion-ui/src/components/ui/timeline-slider.tsx');
+
+    expect(sliderSource).toContain('timeline-slider');
+    expect(timelineSource).toContain('.timeline-slider:focus-visible');
+    expect(timelineSource).not.toContain('[role="slider"]');
+  });
 });

@@ -25,6 +25,7 @@ describe('InteractiveCanvas primitives', () => {
     expect(source).toContain('useDragGesture');
     expect(source).not.toContain("window.addEventListener('mousemove', handlePanMove");
     expect(source).not.toContain("window.removeEventListener('mousemove', handlePanMove");
+    expect(source).not.toContain('onMouseDown={(e) =>');
   });
 
   it('routes v2 canvas pan gestures through the gesture primitive', () => {

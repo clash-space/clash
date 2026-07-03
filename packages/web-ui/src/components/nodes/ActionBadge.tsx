@@ -29,10 +29,8 @@ import { Button } from '../ui/button';
 import { IconButton } from '../ui/icon-button';
 import { Input } from '../ui/input';
 import { Tooltip } from '../ui/tooltip';
-import { Switch } from '../ui/switch';
 import { Slider, SliderRange, SliderThumb, SliderTrack } from '../ui/slider';
 import { ComboboxItem, ComboboxList, ComboboxProvider, useComboboxStore, type ComboboxStore } from '../ui/combobox';
-import { Textarea } from '../ui/textarea';
 import { replaceContentEditableHtmlPreservingFocus } from '../contentEditableSync';
 import { handleMentionComboboxKeyDown } from '../mentionComboboxKeyboard';
 import { useSpawnPendingAsset } from './useSpawnPendingAsset';
@@ -302,7 +300,7 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
     const customActionOffline = !customActionOnline;
 
     // Custom action params state
-    const [customActionParams, setCustomActionParams] = useState<ModelParams>(
+    const [customActionParams, _setCustomActionParams] = useState<ModelParams>(
         (data.customActionParams as ModelParams) ?? {}
     );
 
@@ -402,7 +400,6 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
     const acceptsAudioRef = cap?.ref.audio.accepts ?? false;
     const acceptsAnyRef = acceptsTextRef || acceptsImageRef || acceptsVideoRef || acceptsAudioRef;
     const isStartEnd = cap?.ref.image.isStartEnd ?? false;
-    const maxRefs = cap?.ref.image.max ?? 0;
 
     // Resolve a node's ref source if its kind is accepted by the current model.
     // Returns the raw R2 key — renderers use cover for video, placeholder for audio.
@@ -523,7 +520,6 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
         syncModelState(modelId, next);
     // Only re-run when the start ref itself changes (or model switches), not on
     // every modelParams update — otherwise user overrides would be clobbered.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [startRefId, modelId]);
 
     // startEnd mismatch warning: flag when start and end frames have different
@@ -620,7 +616,6 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
                 stale.forEach(eid => loroSync.removeEdge(eid));
             }
         }
-        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
     // Drafts qualify (src empty for now — cascade runner waits for them before
     // adopting this action). Cycle guard: exclude anything that transitively
@@ -1002,7 +997,6 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
             loroSync.updateNode(id, { data: { openPanel: undefined } });
         }
     // Run once on mount if the flag is present; deps intentionally minimal.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
     useEffect(() => {
@@ -1057,11 +1051,6 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
             syncModelState(fallback.id, nextParams);
         }
     }, [availableModels, selectedModel, syncModelState, isCustom]);
-
-    // Prompt editing handlers (from PromptNode)
-    const handleDoubleClick = useCallback(() => {
-        setShowModal(true);
-    }, []);
 
     const handleSave = useCallback(() => {
         setShowModal(false);
@@ -1278,129 +1267,6 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
             }, 500);
         }
     }, [data, data.autoRun, connectedEdges, data.upstreamNodeIds, id, isExecuting, handleExecute]);
-
-    const renderParamControl = (param: ModelParameter) => {
-        const currentValue = modelParams[param.id] ?? param.defaultValue ?? (param.type === 'boolean' ? false : '');
-
-        if (param.type === 'slider') {
-            const numericValue = normalizeSliderValue(currentValue, param.min ?? 0);
-            return (
-                <div key={param.id} className="space-y-1">
-                    <div className="flex justify-between text-[10px] font-medium text-stone-700 dark:text-stone-300">
-                        <span>{param.label}</span>
-                        <span>{numericValue}</span>
-                    </div>
-                    <ModelParamSlider
-                        ariaLabel={param.label}
-                        min={param.min ?? 0}
-                        max={param.max ?? 1}
-                        step={param.step ?? 1}
-                        value={numericValue}
-                        onChange={(nextValue) => updateModelParam(param.id, nextValue)}
-                        trackClassName="bg-slate-200"
-                    />
-                    {param.description && (
-                        <p className="text-[10px] text-stone-700 dark:text-stone-300 leading-snug">{param.description}</p>
-                    )}
-                </div>
-            );
-        }
-
-        if (param.type === 'select') {
-            const options = param.options ?? [];
-            const selectedOption = options.find((opt) => String(opt.value) === String(currentValue)) ?? options[0];
-            const selected = (selectedOption?.value ?? '') as SelectValue;
-            return (
-                <div key={param.id} className="space-y-1">
-                    <div className="flex justify-between text-[10px] font-medium text-stone-700 dark:text-stone-300">
-                        <span>{param.label}</span>
-                    </div>
-                    <SelectMenu<SelectValue>
-                        value={selected}
-                        options={options.map((opt) => ({
-                            value: opt.value as SelectValue,
-                            label: opt.label,
-                        }))}
-                        onValueChange={(nextValue) => {
-                            const next = options.find((opt) => String(opt.value) === String(nextValue));
-                            updateModelParam(param.id, next ? next.value : nextValue);
-                        }}
-                        ariaLabel={param.label}
-                        triggerLabel={selectedOption?.label ?? String(selected)}
-                        variant="field"
-                        placement="bottom"
-                        menuWidth="trigger"
-                        stopPropagation
-                    />
-                    {param.description && (
-                        <p className="text-[10px] text-stone-700 dark:text-stone-300 leading-snug">{param.description}</p>
-                    )}
-                </div>
-            );
-        }
-
-        if (param.type === 'number') {
-            return (
-                <div key={param.id} className="space-y-1">
-                    <div className="flex justify-between text-[10px] font-medium text-stone-700 dark:text-stone-300">
-                        <span>{param.label}</span>
-                    </div>
-                    <Input
-                        type="number"
-                        min={param.min}
-                        max={param.max}
-                        step={param.step}
-                        value={currentValue as number | string}
-                        onChange={(e) => updateModelParam(param.id, Number(e.target.value))}
-                        className={`${NODE_INTERACTION_BOUNDARY_CLASS} w-full rounded-xl border border-warm-border bg-warm-surface px-3 py-2 text-xs font-medium text-slate-900 dark:text-slate-50 focus:outline-none focus:border-brand/70 transition-colors`}
-                    />
-                    {param.description && (
-                        <p className="text-[10px] text-stone-700 dark:text-stone-300 leading-snug">{param.description}</p>
-                    )}
-                </div>
-            );
-        }
-
-        if (param.type === 'text') {
-            return (
-                <div key={param.id} className="space-y-1">
-                    <div className="flex justify-between text-[10px] font-medium text-stone-700 dark:text-stone-300">
-                        <span>{param.label}</span>
-                    </div>
-                    <Textarea
-                        rows={2}
-                        value={String(currentValue)}
-                        onChange={(e) => updateModelParam(param.id, e.target.value)}
-                        placeholder={param.placeholder}
-                        className={`${NODE_INTERACTION_BOUNDARY_CLASS} w-full rounded-xl border border-warm-border bg-warm-surface px-3 py-2 text-xs font-medium text-slate-900 dark:text-slate-50 focus:outline-none focus:border-brand/70 resize-none transition-colors`}
-                    />
-                    {param.description && (
-                        <p className="text-[10px] text-stone-700 dark:text-stone-300 leading-snug">{param.description}</p>
-                    )}
-                </div>
-            );
-        }
-
-        if (param.type === 'boolean') {
-            return (
-                <div key={param.id} className={`${NODE_INTERACTION_BOUNDARY_CLASS} flex items-center justify-between gap-3 rounded-xl border border-warm-border bg-warm-muted px-3 py-2`}>
-                    <div className="flex flex-col">
-                        <span className="text-xs font-medium text-slate-900 dark:text-slate-50">{param.label}</span>
-                        {param.description && (
-                            <span className="text-[10px] text-stone-700 dark:text-stone-300">{param.description}</span>
-                        )}
-                    </div>
-                    <Switch
-                        aria-label={param.label}
-                        checked={Boolean(currentValue)}
-                        onCheckedChange={(checked) => updateModelParam(param.id, checked)}
-                    />
-                </div>
-            );
-        }
-
-        return null;
-    };
 
     // Modal content (from PromptNode)
     const modalContent = showModal ? (
@@ -2203,24 +2069,6 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
     );
 };
 
-// Simple markdown preview component (from PromptNode)
-const MarkdownPreview = ({ content }: { content: string }) => {
-    return (
-        <div
-            className="prose prose-sm max-w-none prose-slate prose-headings:font-bold prose-headings:text-slate-950 prose-p:text-stone-700 prose-a:text-slate-950 prose-a:underline prose-code:text-stone-700 prose-code:bg-warm-muted prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded"
-            dangerouslySetInnerHTML={{
-                __html: content
-                    .replace(/^### (.*$)/gim, '<h3>$1</h3>')
-                    .replace(/^## (.*$)/gim, '<h2>$1</h2>')
-                    .replace(/^# (.*$)/gim, '<h1>$1</h1>')
-                    .replace(/\*\*(.*)\*\*/gim, '<strong>$1</strong>')
-                    .replace(/\*(.*)\*/gim, '<em>$1</em>')
-                    .replace(/\n/gim, '<br />')
-            }}
-        />
-    );
-};
-
 // Reduce raw W/H dimensions to a simplest-form "W:H" label via GCD. Works
 // because image/video natural dims are integers, so common ratios collapse
 // cleanly (1920×1080 → 16:9) without any hardcoded table of "known" ratios.
@@ -2250,42 +2098,56 @@ const RefPickerContent = ({
                 </div>
             ) : (
                 <div className="max-h-60 overflow-y-auto p-2 grid grid-cols-4 gap-2">
-                    {candidates.map((n) => {
-                        const thumb = n.type === 'video'
-                            ? (n.data?.coverUrl as string | undefined) ?? (n.data?.src as string | undefined)
-                            : (n.data?.src as string | undefined);
-                        const label = (n.data?.label as string) || n.id;
-                        return (
-                            <Tooltip key={n.id} label={label}>
-                                <Button
-                                    onClick={() => onPick(n.id)}
-                                    size="sm"
-                                    shape="rounded"
-                                    className="group relative h-auto min-h-0 overflow-hidden rounded-lg border border-warm-border bg-transparent p-0 shadow-none hover:border-slate-900 hover:bg-transparent hover:shadow-md"
-                                    aria-label={label}
-                                >
-                                    {n.type === 'text' ? (
-                                        <div className="h-16 w-full bg-warm-muted flex items-center justify-center text-slate-700 dark:text-slate-300">
-                                            <TextT size={22} weight="bold" />
-                                        </div>
-                                    ) : n.type === 'audio' || !thumb ? (
-                                        <div className={`h-16 w-full flex items-center justify-center text-xl ${n.type === 'audio' ? 'bg-audio/15 text-audio' : 'bg-warm-muted text-slate-500'}`}>
-                                            {n.type === 'audio' ? '♪' : '?'}
-                                        </div>
-                                    ) : (
-                                        <SignedImg src={thumb} alt={label} className="h-16 w-full object-cover" />
-                                    )}
-                                    <div className="absolute bottom-0 inset-x-0 bg-gradient-to-t from-black/70 to-transparent px-1.5 py-1 text-[10px] text-white truncate">
-                                        {label}
-                                    </div>
-                                </Button>
-                            </Tooltip>
-                        );
-                    })}
+                    {candidates.map((n) => (
+                        <RefPickerOptionButton key={n.id} node={n} onPick={onPick} />
+                    ))}
                 </div>
             )}
         </>
     );
 };
+
+function RefPickerOptionButton({
+    node,
+    onPick,
+}: {
+    node: RFNode;
+    onPick: (nodeId: string) => void;
+}) {
+    const thumb = node.type === 'video'
+        ? (node.data?.coverUrl as string | undefined) ?? (node.data?.src as string | undefined)
+        : (node.data?.src as string | undefined);
+    const label = (node.data?.label as string) || node.id;
+    const handlePick = useCallback(() => {
+        onPick(node.id);
+    }, [node.id, onPick]);
+
+    return (
+        <Tooltip label={label}>
+            <Button
+                onClick={handlePick}
+                size="sm"
+                shape="rounded"
+                className="group relative h-auto min-h-0 overflow-hidden rounded-lg border border-warm-border bg-transparent p-0 shadow-none hover:border-slate-900 hover:bg-transparent hover:shadow-md"
+                aria-label={label}
+            >
+                {node.type === 'text' ? (
+                    <div className="h-16 w-full bg-warm-muted flex items-center justify-center text-slate-700 dark:text-slate-300">
+                        <TextT size={22} weight="bold" />
+                    </div>
+                ) : node.type === 'audio' || !thumb ? (
+                    <div className={`h-16 w-full flex items-center justify-center text-xl ${node.type === 'audio' ? 'bg-audio/15 text-audio' : 'bg-warm-muted text-slate-500'}`}>
+                        {node.type === 'audio' ? '♪' : '?'}
+                    </div>
+                ) : (
+                    <SignedImg src={thumb} alt={label} className="h-16 w-full object-cover" />
+                )}
+                <div className="absolute bottom-0 inset-x-0 bg-gradient-to-t from-black/70 to-transparent px-1.5 py-1 text-[10px] text-white truncate">
+                    {label}
+                </div>
+            </Button>
+        </Tooltip>
+    );
+}
 
 export default memo(PromptActionNode);
