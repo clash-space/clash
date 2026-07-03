@@ -344,6 +344,7 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
     }, [setNodesInternal]);
     const [activeMenu, setActiveMenu] = useState<string | null>(null);
     const [projectName, setProjectName] = useState(project.name);
+    const projectTitleInputRef = useRef<HTMLInputElement>(null);
     const location = useLocation();
     const [showDebugIds, setShowDebugIds] = useState(false);
     const [canvasMode, setCanvasMode] = useState<'select' | 'hand'>('select');
@@ -352,7 +353,7 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
     const projectTitleInputWidthCh = Math.min(Math.max(Array.from(projectName || 'Untitled').length + 1, 5), 30);
     const handleProjectNameSubmit = (event: FormEvent<HTMLFormElement>) => {
         event.preventDefault();
-        event.currentTarget.querySelector<HTMLInputElement>('input')?.blur();
+        projectTitleInputRef.current?.blur();
     };
 
     useEffect(() => {
@@ -2362,6 +2363,7 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
                                 {/* Project Name Input */}
                                 <form onSubmit={handleProjectNameSubmit}>
                                     <input
+                                        ref={projectTitleInputRef}
                                         className="clash-project-name-input h-10 min-w-[5ch] bg-transparent px-1 text-xl font-display font-semibold text-slate-950 placeholder-stone-400 focus:outline-none focus:ring-0"
                                         style={{
                                             width: `${projectTitleInputWidthCh}ch`,

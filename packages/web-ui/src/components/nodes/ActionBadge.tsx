@@ -29,6 +29,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '../ui/colla
 import { Button } from '../ui/button';
 import { IconButton } from '../ui/icon-button';
 import { Tooltip } from '../ui/tooltip';
+import { replaceContentEditableHtmlPreservingFocus } from '../contentEditableSync';
 import { handleMentionComboboxKeyDown } from '../mentionComboboxKeyboard';
 import { useSpawnPendingAsset } from './useSpawnPendingAsset';
 import ActionBadgePipelineMenu from './ActionBadgePipelineMenu';
@@ -744,17 +745,8 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
     const lastContentRef = useRef(content);
     useEffect(() => {
         if (editorRef.current && content !== lastContentRef.current) {
-            const sel = window.getSelection();
-            const hadFocus = editorRef.current === document.activeElement;
-            editorRef.current.innerHTML = contentToHtml(content);
+            replaceContentEditableHtmlPreservingFocus(editorRef.current, contentToHtml(content));
             lastContentRef.current = content;
-            if (hadFocus && sel) {
-                const range = document.createRange();
-                range.selectNodeContents(editorRef.current);
-                range.collapse(false);
-                sel.removeAllRanges();
-                sel.addRange(range);
-            }
         }
     }, [content, contentToHtml]);
 

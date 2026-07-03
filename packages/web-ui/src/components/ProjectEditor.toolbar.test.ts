@@ -50,5 +50,6 @@ describe("ProjectEditor toolbar surface", () => {
   it("uses native form submission for the inline project title editor", () => {
     expect(projectEditorSource).toContain("onSubmit={handleProjectNameSubmit}");
     expect(projectEditorSource).not.toContain("onKeyDown={(e) => {\n                                        if (e.key === 'Enter')");
+    expect(projectEditorSource).not.toContain("querySelector<HTMLInputElement>('input')");
   });
 });

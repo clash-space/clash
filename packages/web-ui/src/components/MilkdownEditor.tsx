@@ -372,7 +372,6 @@ const MilkdownEditorInner = forwardRef<MilkdownEditorHandle, MilkdownEditorProps
     connectedNodeIds = [],
     onMentionAdded,
 }, ref) {
-    const wrapperRef = useRef<HTMLDivElement>(null);
     const [mentionState, setMentionState] = useState<MentionPluginState>({
         active: false, query: '', from: 0, cursorCoords: null,
     });
@@ -576,16 +575,12 @@ const MilkdownEditorInner = forwardRef<MilkdownEditorHandle, MilkdownEditorProps
     }, []);
 
     const handleClick = () => {
-        const editorElement = wrapperRef.current?.querySelector('.ProseMirror') as HTMLElement;
-        if (editorElement) {
-            editorElement.focus();
-        }
+        editorViewRef.current?.focus();
     };
 
     return (
         <>
             <div
-                ref={wrapperRef}
                 className="milkdown-editor-wrapper px-3 py-2"
                 onClick={handleClick}
             >

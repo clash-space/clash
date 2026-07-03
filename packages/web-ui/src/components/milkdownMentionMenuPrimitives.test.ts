@@ -28,6 +28,7 @@ describe("Milkdown mention menu primitives", () => {
     expect(source).not.toContain("setSelectedIndex");
     expect(source).not.toContain("createPortal");
     expect(source).not.toContain("getBoundingClientRect");
+    expect(source).not.toContain("querySelector('.ProseMirror')");
     expect(source).not.toContain("<button\n            key={node.id}");
 
     expect(popover).toContain("PopoverPrimitive.Root");

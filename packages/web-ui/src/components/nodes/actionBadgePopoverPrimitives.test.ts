@@ -128,4 +128,11 @@ describe("ActionBadge popover primitives", () => {
         expect(source).not.toContain("<button");
         expect(source).not.toContain("<motion.button");
     });
+
+    it("keeps contentEditable focus sync behind a tested helper", () => {
+        const source = readNodeSource("ActionBadge.tsx");
+
+        expect(source).toContain("replaceContentEditableHtmlPreservingFocus");
+        expect(source).not.toContain("document.activeElement");
+    });
 });
