@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useSearchParams } from "react-router";
 import betterAuthClient from "@clash/web-ui/lib/betterAuthClient";
 import Background from "@clash/web-ui/components/Background";
+import { Button } from "@clash/web-ui/components/ui/button";
 import { createApiToken } from "@clash/web-ui/lib/clientActions";
 
 const authPanelClass =
@@ -52,7 +53,8 @@ export default function AuthCliRoute() {
           </h1>
           {status === "loading" && <p className="text-sm text-stone-500">Loading…</p>}
           {status === "signin" && (
-            <button
+            <Button
+              variant="primary"
               className={authPrimaryClass}
               onClick={() =>
                 betterAuthClient.signIn.social({
@@ -62,7 +64,7 @@ export default function AuthCliRoute() {
               }
             >
               Sign in to authorize CLI
-            </button>
+            </Button>
           )}
           {status === "authorizing" && <p className="text-sm text-stone-500">Creating token…</p>}
           {status === "done" && (

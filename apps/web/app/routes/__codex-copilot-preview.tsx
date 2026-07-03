@@ -244,7 +244,6 @@ export default function CodexCopilotPreview() {
                   placement="top"
                   menuWidth={280}
                   maxMenuHeight={420}
-                  submenuMode="flyout"
                   submenuWidth={220}
                   stopPropagation
                   triggerPrefix={(

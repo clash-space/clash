@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router";
 import betterAuthClient from "@clash/web-ui/lib/betterAuthClient";
 import Background from "@clash/web-ui/components/Background";
+import { Button } from "@clash/web-ui/components/ui/button";
 import { runtimeApiUrl } from "@clash/web-ui/lib/runtimeConfig";
 
 /**
@@ -125,13 +126,12 @@ export default function ConnectDaemonRoute() {
                 <code className="clash-auth-code min-w-0 flex-1 select-all overflow-x-auto whitespace-nowrap rounded-2xl px-4 py-3 font-mono text-sm">
                   {setupCmd}
                 </code>
-                <button
-                  type="button"
+                <Button
                   onClick={onCopySetup}
                   className={authSecondaryClass}
                 >
                   {copied ? "Copied" : "Copy"}
-                </button>
+                </Button>
               </div>
               <p className="text-xs text-stone-400 pt-1">
                 The CLI opens this page automatically with the right parameters once you run that command.
@@ -140,7 +140,8 @@ export default function ConnectDaemonRoute() {
           )}
 
           {status === "signin" && (
-            <button
+            <Button
+              variant="primary"
               className={authPrimaryClass}
               onClick={() =>
                 betterAuthClient.signIn.social({
@@ -150,7 +151,7 @@ export default function ConnectDaemonRoute() {
               }
             >
               Sign in to continue
-            </button>
+            </Button>
           )}
 
           {status === "ready" && (
@@ -158,12 +159,13 @@ export default function ConnectDaemonRoute() {
               <p className="text-xs text-stone-400">
                 Signed in as {session.data?.user?.email ?? "?"}
               </p>
-              <button
+              <Button
+                variant="primary"
                 className={authPrimaryClass}
                 onClick={onAllow}
               >
                 Allow this machine
-              </button>
+              </Button>
             </div>
           )}
 
