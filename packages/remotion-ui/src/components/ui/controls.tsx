@@ -8,6 +8,8 @@ export const TimelineIconButton = React.forwardRef<HTMLButtonElement, TimelineIc
   },
 );
 
+export const RemotionIconButton = TimelineIconButton;
+
 export type TimelineRangeInputProps = Omit<React.InputHTMLAttributes<HTMLInputElement>, 'type'>;
 
 export const TimelineRangeInput = React.forwardRef<HTMLInputElement, TimelineRangeInputProps>(

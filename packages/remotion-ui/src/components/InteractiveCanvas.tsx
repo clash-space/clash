@@ -4,6 +4,7 @@ import { Player, PlayerRef } from '@remotion/player';
 import { VideoComposition } from '@master-clash/remotion-components';
 import { getItemLookupIds, type Track, type Item, type ItemProperties } from '@master-clash/remotion-core';
 import { findTopItemAtPoint } from './canvas/hitTest';
+import { RemotionIconButton } from './ui/controls';
 
 interface InteractiveCanvasProps {
   tracks: Track[];
@@ -601,16 +602,16 @@ export const InteractiveCanvas: React.FC<InteractiveCanvasProps> = ({
     <div style={styles.container}>
       {/* 缩放控制按钮 */}
       <div className="zoom-controls" style={styles.zoomControls}>
-        <button onClick={handleZoomOut} style={styles.zoomButton} title="缩小 (Cmd/Ctrl + 滚轮)">
+        <RemotionIconButton onClick={handleZoomOut} style={styles.zoomButton} title="缩小 (Cmd/Ctrl + 滚轮)">
           −
-        </button>
+        </RemotionIconButton>
         <span style={styles.zoomLabel}>{Math.round(zoom * 100)}%</span>
-        <button onClick={handleZoomIn} style={styles.zoomButton} title="放大 (Cmd/Ctrl + 滚轮)">
+        <RemotionIconButton onClick={handleZoomIn} style={styles.zoomButton} title="放大 (Cmd/Ctrl + 滚轮)">
           +
-        </button>
-        <button onClick={handleResetZoom} style={styles.resetButton} title="重置">
+        </RemotionIconButton>
+        <RemotionIconButton onClick={handleResetZoom} style={styles.resetButton} title="重置">
           ⟲
-        </button>
+        </RemotionIconButton>
       </div>
 
       {/* Remotion Player - 底层渲染 */}
