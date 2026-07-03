@@ -29,6 +29,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '../ui/colla
 import { Button } from '../ui/button';
 import { IconButton } from '../ui/icon-button';
 import { Tooltip } from '../ui/tooltip';
+import { Switch } from '../ui/switch';
 import { replaceContentEditableHtmlPreservingFocus } from '../contentEditableSync';
 import { handleMentionComboboxKeyDown } from '../mentionComboboxKeyboard';
 import { useSpawnPendingAsset } from './useSpawnPendingAsset';
@@ -1339,20 +1340,19 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
 
         if (param.type === 'boolean') {
             return (
-                <label key={param.id} className={`${NODE_INTERACTION_BOUNDARY_CLASS} flex items-center justify-between rounded-xl bg-warm-muted px-3 py-2 border border-warm-border cursor-pointer`}>
+                <div key={param.id} className={`${NODE_INTERACTION_BOUNDARY_CLASS} flex items-center justify-between gap-3 rounded-xl border border-warm-border bg-warm-muted px-3 py-2`}>
                     <div className="flex flex-col">
                         <span className="text-xs font-medium text-slate-900 dark:text-slate-50">{param.label}</span>
                         {param.description && (
                             <span className="text-[10px] text-stone-700 dark:text-stone-300">{param.description}</span>
                         )}
                     </div>
-                    <input
-                        type="checkbox"
+                    <Switch
+                        aria-label={param.label}
                         checked={Boolean(currentValue)}
-                        onChange={(e) => updateModelParam(param.id, e.target.checked)}
-                        className="h-4 w-4 accent-brand"
+                        onCheckedChange={(checked) => updateModelParam(param.id, checked)}
                     />
-                </label>
+                </div>
             );
         }
 

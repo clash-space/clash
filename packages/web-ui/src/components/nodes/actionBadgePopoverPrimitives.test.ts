@@ -75,6 +75,14 @@ describe("ActionBadge popover primitives", () => {
         expect(source).not.toContain("[{ l: 'On', v: true }, { l: 'Off', v: false }].map");
     });
 
+    it("uses the shared switch primitive for inline boolean parameter controls", () => {
+        const source = readNodeSource("ActionBadge.tsx");
+
+        expect(source).toContain("../ui/switch");
+        expect(source).toContain("<Switch");
+        expect(source).not.toContain('type="checkbox"');
+    });
+
     it("uses the shared collapsible primitive for expanded parameter rows", () => {
         const source = readNodeSource("ActionBadge.tsx");
 
