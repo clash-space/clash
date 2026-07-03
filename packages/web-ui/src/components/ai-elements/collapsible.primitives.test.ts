@@ -15,4 +15,12 @@ describe("AI element collapsible triggers", () => {
     expect(source).toContain("<Button");
     expect(source).not.toContain("<CollapsibleTrigger\n      className=");
   });
+
+  it("lets Radix collapsible trigger state rotate the reasoning chevron", () => {
+    const source = readAiElementSource("reasoning.tsx");
+
+    expect(source).toContain("group/reasoning-trigger");
+    expect(source).toContain("group-data-[state=open]/reasoning-trigger:rotate-180");
+    expect(source).not.toContain('isOpen ? "rotate-180" : "rotate-0"');
+  });
 });

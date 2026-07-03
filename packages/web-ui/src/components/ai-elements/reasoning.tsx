@@ -177,7 +177,7 @@ export const ReasoningTrigger = memo(
     getThinkingMessage = defaultGetThinkingMessage,
     ...props
   }: ReasoningTriggerProps) => {
-    const { isStreaming, isOpen, duration } = useReasoning();
+    const { isStreaming, duration } = useReasoning();
 
     return (
       <CollapsibleTrigger asChild {...props}>
@@ -185,7 +185,7 @@ export const ReasoningTrigger = memo(
           size="sm"
           shape="rounded"
           className={cn(
-            "min-h-0 w-full justify-start gap-2 border-transparent bg-transparent px-0 py-0 text-sm text-muted-foreground shadow-none transition-colors hover:bg-transparent hover:text-foreground focus-visible:ring-1 focus-visible:ring-ring focus-visible:ring-offset-0",
+            "group/reasoning-trigger min-h-0 w-full justify-start gap-2 border-transparent bg-transparent px-0 py-0 text-sm text-muted-foreground shadow-none transition-colors hover:bg-transparent hover:text-foreground focus-visible:ring-1 focus-visible:ring-ring focus-visible:ring-offset-0",
             className,
           )}
         >
@@ -194,10 +194,7 @@ export const ReasoningTrigger = memo(
               <BrainIcon className="size-4" />
               {getThinkingMessage(isStreaming, duration)}
               <ChevronDownIcon
-                className={cn(
-                  "size-4 transition-transform",
-                  isOpen ? "rotate-180" : "rotate-0",
-                )}
+                className="size-4 transition-transform group-data-[state=open]/reasoning-trigger:rotate-180"
               />
             </>
           )}
