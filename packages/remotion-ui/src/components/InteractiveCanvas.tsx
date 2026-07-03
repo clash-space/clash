@@ -5,6 +5,7 @@ import { VideoComposition } from '@master-clash/remotion-components';
 import { getItemLookupIds, type Track, type Item, type ItemProperties } from '@master-clash/remotion-core';
 import { findTopItemAtPoint } from './canvas/hitTest';
 import { RemotionIconButton } from './ui/controls';
+import { useDragGesture } from './ui/gesture';
 
 interface InteractiveCanvasProps {
   tracks: Track[];
@@ -56,7 +57,6 @@ export const InteractiveCanvas: React.FC<InteractiveCanvasProps> = ({
   const [zoom, setZoom] = useState(1);
   const [isPanning, setIsPanning] = useState(false);
   const [panOffset, setPanOffset] = useState({ x: 0, y: 0 });
-  const [panStart, setPanStart] = useState({ x: 0, y: 0 });
   const [, forceUpdate] = useState({});
   const prevPlayingRef = useRef(playing);
   const mediaAspectRatioRef = useRef<Map<string, number>>(new Map());
@@ -295,48 +295,39 @@ export const InteractiveCanvas: React.FC<InteractiveCanvasProps> = ({
     };
   }, [handleWheel]);
 
-  // 处理画布平移
-  const handleCanvasPan = useCallback(
-    (e: React.MouseEvent) => {
-      // 空格键 + 拖拽：平移画布
-      if (e.buttons === 1 && e.currentTarget === e.target) {
-        if (e.metaKey || e.ctrlKey || e.shiftKey) {
-          e.preventDefault();
-          setIsPanning(true);
-          setPanStart({ x: e.clientX - panOffset.x, y: e.clientY - panOffset.y });
-        }
+  const canvasPanGestureBind = useDragGesture<PointerEvent>(
+    ({ first, last, movement: [movementX, movementY], memo, event }) => {
+      const target = event.target as EventTarget | null;
+      const currentTarget = event.currentTarget as EventTarget | null;
+      const shouldPan =
+        currentTarget === target &&
+        (event.metaKey || event.ctrlKey || event.shiftKey);
+      if (!memo && !shouldPan) {
+        return undefined;
       }
-    },
-    [panOffset]
-  );
 
-  const handlePanMove = useCallback(
-    (e: MouseEvent) => {
-      if (isPanning) {
-        setPanOffset({
-          x: e.clientX - panStart.x,
-          y: e.clientY - panStart.y,
-        });
+      event.preventDefault();
+      event.stopPropagation();
+
+      const startOffset = (memo as typeof panOffset | undefined) ?? panOffset;
+      if (first) {
+        setIsPanning(true);
       }
+      setPanOffset({
+        x: startOffset.x + movementX,
+        y: startOffset.y + movementY,
+      });
+      if (last) {
+        setIsPanning(false);
+      }
+      return startOffset;
     },
-    [isPanning, panStart]
+    {
+      preventDefault: true,
+      pointer: { capture: true },
+      eventOptions: { passive: false },
+    },
   );
-
-  const handlePanEnd = useCallback(() => {
-    setIsPanning(false);
-  }, []);
-
-  // 绑定平移事件
-  useEffect(() => {
-    if (isPanning) {
-      window.addEventListener('mousemove', handlePanMove);
-      window.addEventListener('mouseup', handlePanEnd);
-      return () => {
-        window.removeEventListener('mousemove', handlePanMove);
-        window.removeEventListener('mouseup', handlePanEnd);
-      };
-    }
-  }, [isPanning, handlePanMove, handlePanEnd]);
 
   useEffect(() => {
     forceUpdate({});
@@ -621,8 +612,8 @@ export const InteractiveCanvas: React.FC<InteractiveCanvasProps> = ({
           ...styles.playerWrapper,
           cursor: isPanning ? 'grabbing' : 'default',
         }}
+        {...canvasPanGestureBind()}
         onMouseDown={(e) => {
-          handleCanvasPan(e);
           handlePointerDown(e);
         }}
       >
