@@ -138,8 +138,8 @@ describe("AcpMessageList", () => {
 
     const globalState = getAcpGlobalState(messages);
     render(<AcpProgressPanel planEntries={globalState.planEntries} outputs={globalState.outputs} />);
-    expect(screen.getByRole("button", { name: /show progress/i })).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: /show progress/i }));
+    expect(screen.getByRole("button", { name: /toggle progress/i })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: /toggle progress/i }));
     expect(screen.getByText("Progress")).toBeTruthy();
     expect(screen.getByText("Summarize nodes")).toBeTruthy();
     expect(screen.getByText("Outputs")).toBeTruthy();

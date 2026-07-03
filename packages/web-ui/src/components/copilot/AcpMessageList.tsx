@@ -656,15 +656,14 @@ export function AcpProgressPanel({
   defaultOpen?: boolean;
   className?: string;
 }) {
-  const [open, setOpen] = useState(defaultOpen);
   if (planEntries.length === 0 && outputs.length === 0) return null;
   const completed = planEntries.filter((entry) => entry.status === 'completed').length;
   return (
     <div className={cn('relative', className)}>
-      <Popover open={open} onOpenChange={setOpen}>
+      <Popover defaultOpen={defaultOpen}>
         <PopoverTrigger asChild>
           <IconButton
-            label={open ? 'Hide progress' : 'Show progress'}
+            label="Toggle progress"
             icon={<ListChecks className="h-4 w-4" aria-hidden="true" />}
             size="sm"
             className="flex h-8 w-8 items-center justify-center rounded-lg bg-transparent text-slate-800 transition-colors hover:bg-warm-muted focus:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-warm-surface dark:text-slate-200"

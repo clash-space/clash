@@ -17,6 +17,21 @@ describe("AcpMessageList primitives", () => {
     expect(source).not.toContain('role="dialog"');
   });
 
+  it("lets the progress popover primitive own disclosure state", () => {
+    const source = readCopilotSource("AcpMessageList.tsx");
+    const panelStart = source.indexOf("export function AcpProgressPanel");
+    const panelEnd = source.indexOf("\nexport function AcpMessageList", panelStart);
+    const panelSource = source.slice(panelStart, panelEnd);
+
+    expect(panelSource).toContain("<Popover");
+    expect(panelSource).toContain("defaultOpen={defaultOpen}");
+    expect(panelSource).toContain('label="Toggle progress"');
+    expect(panelSource).not.toContain("const [open, setOpen]");
+    expect(panelSource).not.toContain("<Popover open=");
+    expect(panelSource).not.toContain("onOpenChange={setOpen}");
+    expect(panelSource).not.toContain("label={open ?");
+  });
+
   it("uses shared collapsible primitives for raw ACP event expansion", () => {
     const source = readCopilotSource("AcpMessageList.tsx");
 
@@ -98,9 +113,9 @@ describe("AcpMessageList primitives", () => {
     expect(source).toContain("../ui/icon-button");
     expect(source).toMatch(/<Button[\s\S]*ShellEventIcon/);
     expect(source).toMatch(/<Button[\s\S]*AcpEventIcon/);
-    expect(source).toMatch(/<IconButton[\s\S]*Hide progress/);
+    expect(source).toMatch(/<IconButton[\s\S]*Toggle progress/);
     expect(source).not.toMatch(/<button[\s\S]*ShellEventIcon/);
     expect(source).not.toMatch(/<button[\s\S]*AcpEventIcon/);
-    expect(source).not.toMatch(/<button[\s\S]*Hide progress/);
+    expect(source).not.toMatch(/<button[\s\S]*Toggle progress/);
   });
 });
