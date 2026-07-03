@@ -815,10 +815,16 @@ export function AcpMessageList({
                   const kind = ev?.update?.sessionUpdate ?? ev?.update?.type ?? ev?.sessionUpdate ?? ev?.type ?? ev?.method ?? 'unknown';
                   return (
                     <Collapsible key={i} className="not-prose group my-1 w-full text-neutral-500">
-                      <CollapsibleTrigger className="inline-flex max-w-full cursor-pointer items-center gap-2 text-left text-[13px] leading-5 outline-none transition-colors hover:text-neutral-700 focus-visible:underline focus-visible:decoration-neutral-300 focus-visible:underline-offset-4">
-                        <AcpEventIcon />
-                        <span className="min-w-0 truncate">event: {kind}</span>
-                        <ChevronRight className="h-3.5 w-3.5 shrink-0 text-stone-400 transition-transform group-data-[state=open]:rotate-90" aria-hidden="true" />
+                      <CollapsibleTrigger asChild>
+                        <Button
+                          size="sm"
+                          shape="rounded"
+                          className="min-h-0 max-w-full cursor-pointer justify-start gap-2 rounded-none border-transparent bg-transparent px-0 py-0 text-left text-[13px] leading-5 text-neutral-500 shadow-none transition-colors hover:bg-transparent hover:text-neutral-700 focus-visible:ring-0 focus-visible:ring-offset-0 focus-visible:underline focus-visible:decoration-neutral-300 focus-visible:underline-offset-4"
+                        >
+                          <AcpEventIcon />
+                          <span className="min-w-0 truncate">event: {kind}</span>
+                          <ChevronRight className="h-3.5 w-3.5 shrink-0 text-stone-400 transition-transform group-data-[state=open]:rotate-90" aria-hidden="true" />
+                        </Button>
                       </CollapsibleTrigger>
                       <CollapsibleContent asChild>
                         <pre className="mt-1 max-h-[min(420px,45vh)] overflow-auto whitespace-pre-wrap bg-transparent p-0 font-mono text-[12px] leading-relaxed text-neutral-500">

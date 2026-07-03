@@ -28,6 +28,18 @@ describe("AcpMessageList primitives", () => {
     expect(source).not.toContain("<summary");
   });
 
+  it("uses the shared button primitive for raw ACP event expansion triggers", () => {
+    const source = readCopilotSource("AcpMessageList.tsx");
+    const rawEventStart = source.indexOf("// raw_event fallback");
+    const rawEventEnd = source.indexOf("</Collapsible>", rawEventStart);
+    const rawEventSource = source.slice(rawEventStart, rawEventEnd);
+
+    expect(rawEventSource).toContain("CollapsibleTrigger asChild");
+    expect(rawEventSource).toContain("<Button");
+    expect(rawEventSource).toContain("<AcpEventIcon");
+    expect(rawEventSource).not.toContain("<CollapsibleTrigger className=");
+  });
+
   it("uses shared collapsible primitives for shell command detail expansion", () => {
     const source = readCopilotSource("AcpMessageList.tsx");
 
