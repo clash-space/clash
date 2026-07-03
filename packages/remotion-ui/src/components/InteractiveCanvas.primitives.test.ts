@@ -26,4 +26,13 @@ describe('InteractiveCanvas primitives', () => {
     expect(source).not.toContain("window.addEventListener('mousemove', handlePanMove");
     expect(source).not.toContain("window.removeEventListener('mousemove', handlePanMove");
   });
+
+  it('routes v2 canvas pan gestures through the gesture primitive', () => {
+    const source = readComponent('InteractiveCanvasV2.tsx');
+
+    expect(source).toContain('./ui/gesture');
+    expect(source).toContain('useDragGesture');
+    expect(source).not.toContain("window.addEventListener('mousemove', handlePanMove");
+    expect(source).not.toContain("window.removeEventListener('mousemove', handlePanMove");
+  });
 });
