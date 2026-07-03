@@ -37,7 +37,6 @@ const ImageNode = ({ data, selected, id, width, height }: NodeProps<Node<Record<
     const imageR2Key = asset?.srcR2Key;
     const [imageUrl, setImageUrl] = useState<string | undefined>(imageR2Key);
     const [description, setDescription] = useState(data.description || '');
-    const [descriptionOpen, setDescriptionOpen] = useState(false);
     const signedImageUrl = useSignedUrl(imageUrl);
 
     const aspectRatioDimensions = calculateDimensionsFromAspectRatio(data.aspectRatio);
@@ -166,9 +165,7 @@ const ImageNode = ({ data, selected, id, width, height }: NodeProps<Node<Record<
 
             {/* Main Card */}
             <Collapsible
-                open={descriptionOpen}
-                onOpenChange={setDescriptionOpen}
-                className={`relative bg-warm-surface shadow-md rounded-matrix overflow-hidden transition-all duration-300 hover:shadow-lg ${selected ? 'ring-4 ring-brand ring-offset-2' : 'ring-1 ring-warm-border'
+                className={`group/description relative bg-warm-surface shadow-md rounded-matrix overflow-hidden transition-all duration-300 hover:shadow-lg ${selected ? 'ring-4 ring-brand ring-offset-2' : 'ring-1 ring-warm-border'
                     }`}
                 style={{
                     width: nodeWidth,
@@ -217,14 +214,14 @@ const ImageNode = ({ data, selected, id, width, height }: NodeProps<Node<Record<
                         )}
                         {/* Top Right Controls */}
                         <div className="absolute top-2 right-2 flex gap-1 z-10">
-                            <Tooltip label={descriptionOpen ? 'Hide description' : 'Show description'}>
+                            <Tooltip label="Toggle description">
                                 <CollapsibleTrigger asChild>
                                     <IconButton
-                                        label={descriptionOpen ? 'Hide description' : 'Show description'}
+                                        label="Toggle description"
                                         icon={<TextT size={12} weight="bold" />}
                                         size="sm"
                                         shape="circle"
-                                        className={MEDIA_NODE_CONTROL_CLASS}
+                                        className={`${MEDIA_NODE_CONTROL_CLASS} group-data-[state=open]/description:bg-black/80`}
                                     />
                                 </CollapsibleTrigger>
                             </Tooltip>

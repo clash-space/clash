@@ -72,7 +72,6 @@ const VideoNode = ({ data, selected, id, width, height }: NodeProps<Node<Record<
             if (cached) setLocalThumbnail(cached);
         }
     }, [videoUrl]);
-    const [descriptionOpen, setDescriptionOpen] = useState(false);
 
     // Sync status and videoUrl from Loro data changes (resolved via assetId when present).
     useEffect(() => {
@@ -308,9 +307,7 @@ const VideoNode = ({ data, selected, id, width, height }: NodeProps<Node<Record<
 
             {/* Main Card */}
             <Collapsible
-                open={descriptionOpen}
-                onOpenChange={setDescriptionOpen}
-                className={`relative bg-warm-surface shadow-md rounded-matrix overflow-hidden transition-all duration-300 hover:shadow-lg ${selected ? 'ring-4 ring-brand ring-offset-2' : 'ring-1 ring-warm-border'
+                className={`group/description relative bg-warm-surface shadow-md rounded-matrix overflow-hidden transition-all duration-300 hover:shadow-lg ${selected ? 'ring-4 ring-brand ring-offset-2' : 'ring-1 ring-warm-border'
                     }`}
                 style={{
                     width: nodeWidth,
@@ -400,14 +397,14 @@ const VideoNode = ({ data, selected, id, width, height }: NodeProps<Node<Record<
 
                         {/* Top Right Controls */}
                         <div className="absolute top-2 right-2 flex gap-1 z-10">
-                            <Tooltip label={descriptionOpen ? 'Hide description' : 'Show description'}>
+                            <Tooltip label="Toggle description">
                                 <CollapsibleTrigger asChild>
                                     <IconButton
-                                        label={descriptionOpen ? 'Hide description' : 'Show description'}
+                                        label="Toggle description"
                                         icon={<TextT size={12} weight="bold" />}
                                         size="sm"
                                         shape="circle"
-                                        className={MEDIA_NODE_CONTROL_CLASS}
+                                        className={`${MEDIA_NODE_CONTROL_CLASS} group-data-[state=open]/description:bg-black/80`}
                                     />
                                 </CollapsibleTrigger>
                             </Tooltip>

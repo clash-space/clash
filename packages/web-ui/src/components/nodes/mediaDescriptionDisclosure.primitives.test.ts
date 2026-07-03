@@ -28,10 +28,21 @@ describe("media node description disclosure primitives", () => {
         expect(tooltipSource).toContain("TooltipProvider");
         expect(tooltipSource).toContain("TooltipAnchor");
         expect(source).toContain("../ui/tooltip");
-        expect(source).toContain("<Tooltip label={descriptionOpen ? 'Hide description' : 'Show description'}>");
+        expect(source).toContain('<Tooltip label="Toggle description">');
+        expect(source).toContain('label="Toggle description"');
+        expect(source).not.toContain("descriptionOpen ? 'Hide description' : 'Show description'");
         expect(source).not.toContain("title={descriptionOpen ? 'Hide description' : 'Show description'}");
         expect(source).not.toContain("TooltipProvider");
         expect(source).not.toContain("TooltipAnchor");
+    });
+
+    it.each(["ImageNode.tsx", "VideoNode.tsx"])("%s lets the collapsible primitive own description disclosure state", (file) => {
+        const source = readNodeSource(file);
+
+        expect(source).not.toContain("const [descriptionOpen, setDescriptionOpen]");
+        expect(source).not.toContain("open={descriptionOpen}");
+        expect(source).not.toContain("onOpenChange={setDescriptionOpen}");
+        expect(source).toContain("group-data-[state=open]/description:");
     });
 
     it("VideoNode uses the shared tooltip primitive for thumbnail refresh", () => {
