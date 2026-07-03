@@ -1,7 +1,7 @@
 "use client";
 
 // Verbatim port of vercel/ai-elements packages/elements/src/reasoning.tsx,
-// with three changes:
+// with four changes:
 //   1. `@repo/shadcn-ui/*` imports rewritten to local copies.
 //   2. The `@streamdown/cjk|code|math|mermaid` plugins are dropped —
 //      they add ~2MB of katex/mermaid/shiki to the bundle and we only
@@ -10,14 +10,15 @@
 //      diagrams or math formulas.
 //   3. Trigger chrome is routed through the shared Button primitive so
 //      focus and disabled behavior stay consistent with local controls.
+//   4. Controllable state is routed through the shared primitive boundary.
 
-import { useControllableState } from "@radix-ui/react-use-controllable-state";
 import {
   Collapsible,
   CollapsibleContent,
   CollapsibleTrigger,
 } from "../ui/collapsible";
 import { Button } from "../ui/button";
+import { useControllableState } from "../ui/controllable-state";
 import { cn } from "./utils";
 import { BrainIcon, ChevronDownIcon } from "lucide-react";
 import type { ComponentProps, ReactNode } from "react";
