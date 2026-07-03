@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect, CSSProperties } from 'react';
+import React, { useState, useCallback, CSSProperties } from 'react';
 import { useDraggable } from '../ui/dnd';
 import type { Item, BaseItem, Asset, Track } from '@master-clash/remotion-core';
 import {
@@ -24,6 +24,7 @@ import {
   renderFilmstripToCanvas,
 } from './videoThumbnailUtils';
 import { TimelineColorInput, TimelineIconButton, TimelineTextInput } from '../ui/controls';
+import { TimelineSlider } from '../ui/timeline-slider';
 
 // Store dragged item globally on window object for cross-module access
 declare global {
@@ -90,7 +91,6 @@ export const TimelineItem: React.FC<TimelineItemProps> = ({
   const [isHovered, setIsHovered] = useState(false);
   const [resizingEdge, setResizingEdge] = useState<'left' | 'right' | null>(null);
   const [draggingFade, setDraggingFade] = useState<{ type: 'in' | 'out' } | null>(null);
-  const [draggingVolume, setDraggingVolume] = useState(false);
   const [isEditingText, setIsEditingText] = useState(false);
   const [tempText, setTempText] = useState('');
   const waveformContainerRef = React.useRef<HTMLDivElement | null>(null);
@@ -488,6 +488,8 @@ export const TimelineItem: React.FC<TimelineItemProps> = ({
     ? (item as any).audioFadeOut || 0 : 0;
   const itemVolume = ((resolvedItemType === 'video' || resolvedItemType === 'audio') && 'volume' in item)
     ? (item as any).volume ?? 1 : 1;
+  const maxFadeFrames = Math.floor((item.durationInFrames * 2) / 3);
+  const fadeSliderWidth = Math.max(12, maxFadeFrames * pixelsPerFrame);
 
   // Get display label (use resolved type and src)
   const getItemLabel = () => {
@@ -615,65 +617,15 @@ export const TimelineItem: React.FC<TimelineItemProps> = ({
     );
   };
 
-  // Fade drag handlers
-  const handleFadeMouseDown = (e: React.MouseEvent, type: 'in' | 'out') => {
-    e.stopPropagation();
-    e.preventDefault();
-    setDraggingFade({ type });
-  };
+  const updateFade = useCallback((type: 'in' | 'out', value: number) => {
+    const frames = Math.max(0, Math.min(maxFadeFrames, Math.round(value)));
+    onUpdate(item.id, type === 'in' ? { audioFadeIn: frames } : { audioFadeOut: frames });
+  }, [item.id, maxFadeFrames, onUpdate]);
 
-  const handleFadeDrag = useCallback((e: MouseEvent) => {
-    if (!draggingFade) return;
-
-    const container = document.querySelector('[data-timeline-container]');
-    if (!container) return;
-    const rect = container.getBoundingClientRect();
-
-    const x = e.clientX - rect.left - 200; // Account for track label width
-    const relativeX = x - (item.from * pixelsPerFrame);
-    const frames = Math.max(0, Math.floor(relativeX / pixelsPerFrame));
-
-    if (draggingFade.type === 'in') {
-      const maxFade = Math.floor((item.durationInFrames * 2) / 3);
-      const newFadeIn = Math.max(0, Math.min(maxFade, frames));
-      onUpdate(item.id, { audioFadeIn: newFadeIn });
-    } else {
-      const distanceFromEnd = item.durationInFrames - frames;
-      const maxFade = Math.floor((item.durationInFrames * 2) / 3);
-      const newFadeOut = Math.max(0, Math.min(maxFade, distanceFromEnd));
-      onUpdate(item.id, { audioFadeOut: newFadeOut });
-    }
-  }, [draggingFade, item, pixelsPerFrame, onUpdate]);
-
-  const handleFadeMouseUp = useCallback(() => {
-    setDraggingFade(null);
-  }, []);
-
-  // Volume drag handlers
-  const handleVolumeMouseDown = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    e.preventDefault();
-    setDraggingVolume(true);
-  };
-
-  const handleVolumeDrag = useCallback((e: MouseEvent) => {
-    if (!draggingVolume) return;
-
-    const waveformElement = waveformContainerRef.current;
-    if (!waveformElement) return;
-
-    const rect = waveformElement.getBoundingClientRect();
-    const rawY = e.clientY - rect.top;
-    const y = Math.max(0, Math.min(rect.height, rawY));
-    const normalizedY = y / rect.height;
-    const volume = Math.max(0, Math.min(2, (1 - normalizedY) * 2));
-
+  const updateVolume = useCallback((value: number) => {
+    const volume = Math.max(0, Math.min(2, value));
     onUpdate(item.id, { volume });
-  }, [draggingVolume, item.id, onUpdate]);
-
-  const handleVolumeMouseUp = useCallback(() => {
-    setDraggingVolume(false);
-  }, []);
+  }, [item.id, onUpdate]);
 
   // Text editing handlers (use resolved type)
   const handleTextEdit = () => {
@@ -694,29 +646,6 @@ export const TimelineItem: React.FC<TimelineItemProps> = ({
     setIsEditingText(false);
     setTempText('');
   };
-
-  // Setup drag listeners
-  useEffect(() => {
-    if (draggingFade) {
-      window.addEventListener('mousemove', handleFadeDrag);
-      window.addEventListener('mouseup', handleFadeMouseUp);
-      return () => {
-        window.removeEventListener('mousemove', handleFadeDrag);
-        window.removeEventListener('mouseup', handleFadeMouseUp);
-      };
-    }
-  }, [draggingFade, handleFadeDrag, handleFadeMouseUp]);
-
-  useEffect(() => {
-    if (draggingVolume) {
-      window.addEventListener('mousemove', handleVolumeDrag);
-      window.addEventListener('mouseup', handleVolumeMouseUp);
-      return () => {
-        window.removeEventListener('mousemove', handleVolumeDrag);
-        window.removeEventListener('mouseup', handleVolumeMouseUp);
-      };
-    }
-  }, [draggingVolume, handleVolumeDrag, handleVolumeMouseUp]);
 
   const handleClick = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();
@@ -990,21 +919,48 @@ export const TimelineItem: React.FC<TimelineItemProps> = ({
             const clampedLineY = Math.max(0, Math.min(waveformHeight - 1, lineY));
 
             return (
-              <div
-                onMouseDown={isHovered ? handleVolumeMouseDown : undefined}
-                style={{
-                  position: 'absolute',
-                  top: `${clampedLineY}px`,
-                  left: 0,
-                  width: '100%',
-                  height: '1px',
-                  backgroundColor: isHovered ? 'rgba(255, 255, 255, 0.5)' : 'transparent',
-                  cursor: isHovered ? 'ns-resize' : 'default',
-                  zIndex: 3,
-                  pointerEvents: isHovered ? 'auto' : 'none',
-                }}
-                title={isHovered ? `Volume: ${Math.round(itemVolume * 100)}%` : ''}
-              />
+              <>
+                <div
+                  aria-hidden="true"
+                  style={{
+                    position: 'absolute',
+                    top: `${clampedLineY}px`,
+                    left: 0,
+                    width: '100%',
+                    height: '1px',
+                    backgroundColor: isHovered ? 'rgba(255, 255, 255, 0.5)' : 'transparent',
+                    zIndex: 3,
+                    pointerEvents: 'none',
+                  }}
+                />
+                <TimelineSlider
+                  min={0}
+                  max={2}
+                  step={0.01}
+                  value={itemVolume}
+                  aria-label="Volume"
+                  aria-orientation="vertical"
+                  aria-valuetext={`${Math.round(itemVolume * 100)}%`}
+                  title={isHovered ? `Volume: ${Math.round(itemVolume * 100)}%` : ''}
+                  onPointerDown={(e) => e.stopPropagation()}
+                  onClick={(e) => e.stopPropagation()}
+                  onChange={(event) => updateVolume(Number(event.currentTarget.value))}
+                  style={{
+                    position: 'absolute',
+                    inset: 0,
+                    width: '100%',
+                    height: '100%',
+                    margin: 0,
+                    opacity: 0,
+                    cursor: isHovered ? 'ns-resize' : 'default',
+                    pointerEvents: isHovered ? 'auto' : 'none',
+                    zIndex: 4,
+                    writingMode: 'vertical-lr',
+                    direction: 'rtl',
+                    WebkitAppearance: 'slider-vertical',
+                  }}
+                />
+              </>
             );
           })()}
         </div>
@@ -1021,19 +977,41 @@ export const TimelineItem: React.FC<TimelineItemProps> = ({
       )}
 
       {/* Fade handles */}
-      {hasWaveform && isHovered && (
+      {hasWaveform && (isHovered || draggingFade) && (
         <>
           {/* Fade In Handle */}
-          <div
-            role="slider"
+          <TimelineSlider
+            min={0}
+            max={maxFadeFrames}
+            step={1}
+            value={audioFadeIn}
             aria-label="Fade in duration"
-            aria-valuemin={0}
-            aria-valuemax={Math.floor((item.durationInFrames * 2) / 3)}
-            aria-valuenow={audioFadeIn}
             aria-valuetext={`${(audioFadeIn / fps).toFixed(2)} seconds`}
-            tabIndex={0}
-            onMouseDown={(e) => handleFadeMouseDown(e, 'in')}
-            onDragStart={(e) => e.preventDefault()}
+            title={`Fade In: ${(audioFadeIn / fps).toFixed(1)}s`}
+            onPointerDown={(e) => {
+              e.stopPropagation();
+              setDraggingFade({ type: 'in' });
+            }}
+            onPointerUp={() => setDraggingFade(null)}
+            onPointerCancel={() => setDraggingFade(null)}
+            onBlur={() => setDraggingFade(null)}
+            onClick={(e) => e.stopPropagation()}
+            onChange={(event) => updateFade('in', Number(event.currentTarget.value))}
+            style={{
+              position: 'absolute',
+              left: 0,
+              top: hasVideoWithThumbnail ? `${thumbnailHeight - 12}px` : (hasWaveform ? `${thumbnailHeight - 12}px` : '-12px'),
+              width: `${fadeSliderWidth}px`,
+              height: '24px',
+              margin: 0,
+              opacity: 0,
+              cursor: 'ew-resize',
+              zIndex: 31,
+              pointerEvents: 'auto',
+            }}
+          />
+          <div
+            aria-hidden="true"
             style={{
               position: 'absolute',
               left: `${audioFadeIn * pixelsPerFrame - 6}px`,
@@ -1043,12 +1021,10 @@ export const TimelineItem: React.FC<TimelineItemProps> = ({
               borderRadius: '50%',
               backgroundColor: '#fff',
               border: '2px solid #FF6B50',
-              cursor: 'ew-resize',
               zIndex: 30,
               boxShadow: '0 2px 4px rgba(0,0,0,0.3)',
-              pointerEvents: 'auto',
+              pointerEvents: 'none',
             }}
-            title={`Fade In: ${(audioFadeIn / fps).toFixed(1)}s`}
           >
             {draggingFade?.type === 'in' && (
               <div style={{
@@ -1070,16 +1046,39 @@ export const TimelineItem: React.FC<TimelineItemProps> = ({
           </div>
 
           {/* Fade Out Handle */}
-          <div
-            role="slider"
+          <TimelineSlider
+            min={0}
+            max={maxFadeFrames}
+            step={1}
+            value={audioFadeOut}
+            dir="rtl"
             aria-label="Fade out duration"
-            aria-valuemin={0}
-            aria-valuemax={Math.floor((item.durationInFrames * 2) / 3)}
-            aria-valuenow={audioFadeOut}
             aria-valuetext={`${(audioFadeOut / fps).toFixed(2)} seconds`}
-            tabIndex={0}
-            onMouseDown={(e) => handleFadeMouseDown(e, 'out')}
-            onDragStart={(e) => e.preventDefault()}
+            title={`Fade Out: ${(audioFadeOut / fps).toFixed(1)}s`}
+            onPointerDown={(e) => {
+              e.stopPropagation();
+              setDraggingFade({ type: 'out' });
+            }}
+            onPointerUp={() => setDraggingFade(null)}
+            onPointerCancel={() => setDraggingFade(null)}
+            onBlur={() => setDraggingFade(null)}
+            onClick={(e) => e.stopPropagation()}
+            onChange={(event) => updateFade('out', Number(event.currentTarget.value))}
+            style={{
+              position: 'absolute',
+              right: 0,
+              top: hasVideoWithThumbnail ? `${thumbnailHeight - 12}px` : (hasWaveform ? `${thumbnailHeight - 12}px` : '-12px'),
+              width: `${fadeSliderWidth}px`,
+              height: '24px',
+              margin: 0,
+              opacity: 0,
+              cursor: 'ew-resize',
+              zIndex: 31,
+              pointerEvents: 'auto',
+            }}
+          />
+          <div
+            aria-hidden="true"
             style={{
               position: 'absolute',
               right: `${audioFadeOut * pixelsPerFrame - 6}px`,
@@ -1089,12 +1088,10 @@ export const TimelineItem: React.FC<TimelineItemProps> = ({
               borderRadius: '50%',
               backgroundColor: '#fff',
               border: '2px solid #FF6B50',
-              cursor: 'ew-resize',
               zIndex: 30,
               boxShadow: '0 2px 4px rgba(0,0,0,0.3)',
-              pointerEvents: 'auto',
+              pointerEvents: 'none',
             }}
-            title={`Fade Out: ${(audioFadeOut / fps).toFixed(1)}s`}
           >
             {draggingFade?.type === 'out' && (
               <div style={{

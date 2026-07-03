@@ -16,4 +16,17 @@ describe('TimelineItem primitives', () => {
     expect(source).not.toContain('<input');
     expect(source).not.toContain('<motion.button');
   });
+
+  it('routes fade and volume sliders through the timeline slider primitive', () => {
+    const source = readFileSync(
+      join(process.cwd(), 'packages/remotion-ui/src/components/timeline/TimelineItem.tsx'),
+      'utf8',
+    );
+
+    expect(source).toContain('../ui/timeline-slider');
+    expect(source).toContain('<TimelineSlider');
+    expect(source).not.toContain('role="slider"');
+    expect(source).not.toContain("window.addEventListener('mousemove', handleFadeDrag");
+    expect(source).not.toContain("window.addEventListener('mousemove', handleVolumeDrag");
+  });
 });
