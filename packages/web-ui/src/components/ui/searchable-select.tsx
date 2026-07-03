@@ -2,7 +2,6 @@ import {
     Children,
     isValidElement,
     useCallback,
-    useEffect,
     useMemo,
     useState,
     type ReactNode,
@@ -80,7 +79,6 @@ export function SearchableSelect<Value extends SelectValue = string>({
     triggerLabel,
     value,
 }: SearchableSelectProps<Value>) {
-    const [open, setOpen] = useState(false);
     const selectedOption = useMemo(
         () => options.find((option) => String(option.value) === String(value)),
         [options, value],
@@ -98,21 +96,11 @@ export function SearchableSelect<Value extends SelectValue = string>({
         return options.filter((option) => normalizeSearchText(optionSearchText(option)).includes(query));
     }, [inputValue, options]);
 
-    useEffect(() => {
-        if (!open) setInputValue('');
-    }, [open]);
-
-    const selectOption = useCallback((option: SelectOption<Value>) => {
-        if (option.disabled) return;
-        onValueChange(option.value, option);
-        setOpen(false);
-    }, [onValueChange]);
-
     const handleSelectedValueChange = useCallback((candidate: string) => {
         const option = options.find((item) => String(item.value) === String(candidate));
-        if (!option) return;
-        selectOption(option);
-    }, [options, selectOption]);
+        if (!option || option.disabled) return;
+        onValueChange(option.value, option);
+    }, [onValueChange, options]);
 
     return (
         <ComboboxProvider
@@ -121,8 +109,6 @@ export function SearchableSelect<Value extends SelectValue = string>({
             setValue={setInputValue}
         >
             <SelectProvider
-                open={open}
-                setOpen={setOpen}
                 value={selectedStringValue}
                 setValue={handleSelectedValueChange}
             >

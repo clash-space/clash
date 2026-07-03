@@ -47,6 +47,19 @@ describe("SearchableSelect", () => {
         expect(source).not.toContain("selectActiveComboboxOption");
     });
 
+    it("lets Ariakit own select disclosure state instead of mirroring it locally", () => {
+        const source = readFileSync(
+            join(process.cwd(), "packages/web-ui/src/components/ui/searchable-select.tsx"),
+            "utf8",
+        );
+
+        expect(source).toContain("<SelectProvider");
+        expect(source).not.toContain("const [open, setOpen]");
+        expect(source).not.toContain("open={open}");
+        expect(source).not.toContain("setOpen={setOpen}");
+        expect(source).not.toContain("setOpen(false)");
+    });
+
     it("renders a select trigger with an in-popover searchable combobox", () => {
         const onValueChange = vi.fn();
 
