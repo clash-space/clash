@@ -120,6 +120,7 @@
     "toolCall": {
       "input": "输入",
       "output": "输出",
+      "toggle": "切换工具调用详情",
       "expand": "展开工具调用详情",
       "collapse": "收起工具调用详情"
     }

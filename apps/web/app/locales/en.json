@@ -120,6 +120,7 @@
     "toolCall": {
       "input": "Input",
       "output": "Output",
+      "toggle": "Toggle tool call details",
       "expand": "Expand tool call details",
       "collapse": "Collapse tool call details"
     }
