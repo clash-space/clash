@@ -19,6 +19,7 @@ import {
 } from './assetNodeSizing';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '../ui/collapsible';
 import { IconButton } from '../ui/icon-button';
+import { Input } from '../ui/input';
 import { Textarea } from '../ui/textarea';
 import { Tooltip } from '../ui/tooltip';
 
@@ -129,7 +130,7 @@ const ImageNode = ({ data, selected, id, width, height }: NodeProps<Node<Record<
                 className="absolute -top-8 left-4 z-10"
                 onDoubleClick={(e) => e.stopPropagation()}
             >
-                <input
+                <Input
                     className="bg-transparent text-lg font-bold font-display text-slate-700 dark:text-slate-300 focus:text-slate-900 focus:outline-none"
                     value={label}
                     onChange={(evt) => {

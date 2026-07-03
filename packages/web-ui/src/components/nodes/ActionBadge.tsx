@@ -27,6 +27,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '../ui/popover';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '../ui/accordion';
 import { Button } from '../ui/button';
 import { IconButton } from '../ui/icon-button';
+import { Input } from '../ui/input';
 import { Tooltip } from '../ui/tooltip';
 import { Switch } from '../ui/switch';
 import { Slider, SliderRange, SliderThumb, SliderTrack } from '../ui/slider';
@@ -1344,7 +1345,7 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
                     <div className="flex justify-between text-[10px] font-medium text-stone-700 dark:text-stone-300">
                         <span>{param.label}</span>
                     </div>
-                    <input
+                    <Input
                         type="number"
                         min={param.min}
                         max={param.max}
@@ -1411,7 +1412,7 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
         >
                     {/* Header with Title Input */}
                     <div className="px-12 pt-8 pb-2 flex justify-between items-start">
-                        <input
+                        <Input
                             type="text"
                             value={label}
                             onChange={handleLabelChange}
@@ -1988,7 +1989,7 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
                                                                 />
                                                             )}
                                                             {p.type === 'number' && (
-                                                                <input type="number" min={p.min} max={p.max} step={p.step}
+                                                                <Input type="number" min={p.min} max={p.max} step={p.step}
                                                                     value={currentVal as number}
                                                                     onChange={(e) => updateModelParam(p.id, Number(e.target.value))}
                                                                     className={`${NODE_INTERACTION_BOUNDARY_CLASS} w-full text-xs border border-warm-border rounded-lg px-3 py-2 focus:outline-none focus:border-brand/70`}

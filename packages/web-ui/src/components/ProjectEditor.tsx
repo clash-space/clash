@@ -108,6 +108,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { Toggle } from './ui/toggle';
 import { Button } from './ui/button';
 import { IconButton } from './ui/icon-button';
+import { Input } from './ui/input';
 import { Tooltip } from './ui/tooltip';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from './ui/accordion';
 
@@ -2337,7 +2338,7 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
                             style={{ height: 'var(--clash-project-editor-height, 100vh)' }}
                         >
                         {/* Hidden File Input */}
-                        <input
+                        <Input
                             type="file"
                             ref={fileInputRef}
                             className="hidden"
@@ -2373,7 +2374,7 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
                                 </Tooltip>
                                 {/* Project Name Input */}
                                 <form onSubmit={handleProjectNameSubmit}>
-                                    <input
+                                    <Input
                                         ref={projectTitleInputRef}
                                         className="clash-project-name-input h-10 min-w-[5ch] bg-transparent px-1 text-xl font-display font-semibold text-slate-950 placeholder-stone-400 focus:outline-none focus:ring-0"
                                         style={{

@@ -28,6 +28,7 @@ import { autoInsertNode } from '@clash/web-ui/lib/layout';
 import { applyImageEdit } from '@clash/web-ui/lib/editPipeline';
 import type { CropRect, ImageEditParams } from '@clash/shared-types';
 import { Button } from './ui/button';
+import { Input } from './ui/input';
 
 interface OpenImageEditorInput {
     editorNodeId: string;
@@ -250,7 +251,7 @@ function ImageEditorPanel({
                             {(['x', 'y', 'width', 'height'] as const).map((k) => (
                                 <label key={k} className="text-xs text-slate-800 dark:text-slate-200 dark:text-slate-300 flex flex-col gap-1">
                                     <span className="capitalize">{k}</span>
-                                    <input
+                                    <Input
                                         type="number"
                                         value={crop[k]}
                                         onChange={(e) => {

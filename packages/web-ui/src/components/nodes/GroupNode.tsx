@@ -5,6 +5,7 @@ import { useOptionalLoroSyncContext } from '../LoroSyncContext';
 import { useLayoutActions } from '../LayoutActionsContext';
 import { MagicWand, FrameCorners } from '@phosphor-icons/react';
 import { Button } from '../ui/button';
+import { Input } from '../ui/input';
 import { Tooltip } from '../ui/tooltip';
 
 const controlStyle = {
@@ -101,7 +102,7 @@ const GroupNode = ({ selected, data, id }: NodeProps<Node<Record<string, any>>>)
                     className="absolute -top-8 left-4 z-10"
                     onDoubleClick={(e) => e.stopPropagation()}
                 >
-                    <input
+                    <Input
                         className="bg-transparent text-lg font-bold font-display text-slate-700 dark:text-slate-300 focus:text-slate-900 focus:outline-none"
                         value={label}
                         onChange={(evt) => {

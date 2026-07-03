@@ -10,6 +10,7 @@ import { normalizeStatus } from "@clash/web-ui/lib/assetStatus";
 import { NodeModalDialog } from "./NodeModalDialog";
 import { Button } from "../ui/button";
 import { IconButton } from "../ui/icon-button";
+import { Input } from "../ui/input";
 
 const TextNode = ({
   data,
@@ -88,7 +89,7 @@ const TextNode = ({
     >
       {/* Header with Title Input */}
       <div className="px-12 pt-8 pb-2 flex justify-between items-start">
-        <input
+        <Input
           type="text"
           value={label}
           onChange={handleLabelChange}
@@ -130,7 +131,7 @@ const TextNode = ({
           className="absolute -top-8 left-4 z-10"
           onDoubleClick={(e) => e.stopPropagation()}
         >
-          <input
+          <Input
             className="bg-transparent text-lg font-bold font-display text-slate-700 dark:text-slate-300 focus:text-slate-900 focus:outline-none"
             value={label}
             onChange={handleLabelChange}

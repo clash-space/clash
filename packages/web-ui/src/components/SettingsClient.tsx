@@ -36,6 +36,7 @@ import { cn } from './ai-elements/utils';
 import { Dialog } from './ui/dialog';
 import { Button } from './ui/button';
 import { IconButton } from './ui/icon-button';
+import { Input } from './ui/input';
 import { SelectMenu, type SelectOption } from './ui/select';
 import { SearchableSelect } from './ui/searchable-select';
 import { Switch } from './ui/switch';
@@ -845,7 +846,7 @@ export default function SettingsClient({
                     </div>
 
                     <form className="flex gap-2 mb-4" onSubmit={handleCreateTokenSubmit}>
-                        <input
+                        <Input
                             type="text"
                             value={newTokenName}
                             onChange={(e) => setNewTokenName(e.target.value)}
@@ -994,7 +995,7 @@ export default function SettingsClient({
                     </div>
 
                     <form className="flex gap-2 mb-4" onSubmit={handleAddVariableSubmit}>
-                        <input
+                        <Input
                             type="text"
                             value={newVarKey}
                             onChange={(e) => setNewVarKey(e.target.value.toUpperCase().replace(/[^A-Z0-9_]/g, ''))}
@@ -1003,7 +1004,7 @@ export default function SettingsClient({
                             className={`${settingsMonoFieldClass} w-36 px-4`}
                         />
                         <div className="flex-1 relative">
-                            <input
+                            <Input
                                 type={showVarValue ? 'text' : 'password'}
                                 value={newVarValue}
                                 onChange={(e) => setNewVarValue(e.target.value)}
@@ -2785,7 +2786,7 @@ function ModelRoutingSection({
                 <form onSubmit={handleProviderKeyEditorSubmit} className="space-y-4 px-4 py-4">
                     <label className="block">
                         <span className="mb-1 block text-xs font-medium text-stone-500 dark:text-stone-400">Name (optional)</span>
-                        <input
+                        <Input
                             aria-label={`${row.title} ${oauthProviderId ? 'account' : 'key'} name`}
                             type="text"
                             value={draft.label ?? ''}
@@ -2798,7 +2799,7 @@ function ModelRoutingSection({
                         <label key={credential.key} className="block">
                             <span className="mb-1 block text-xs font-medium text-stone-500 dark:text-stone-400">{credential.label}</span>
                             <span className="relative block">
-                                <input
+                                <Input
                                     aria-label={credential.ariaLabel ?? `${setup.title} ${credential.label}`}
                                     type="password"
                                     value={draft.apiKeys?.[credential.key] ?? ''}
@@ -2815,7 +2816,7 @@ function ModelRoutingSection({
                     {setup.baseUrlKey && (
                         <label className="block">
                             <span className="mb-1 block text-xs font-medium text-stone-500 dark:text-stone-400">Base URL</span>
-                            <input
+                            <Input
                                 aria-label={`${setup.title} base URL`}
                                 type="url"
                                 value={draft.baseUrl ?? ''}
@@ -3248,7 +3249,7 @@ function ModelRoutingSection({
                                 </p>
                                 <div className="relative sm:w-80">
                                     <MagnifyingGlass className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-stone-400" />
-                                    <input
+                                    <Input
                                         aria-label="Search providers"
                                         type="search"
                                         value={providerQuery}
@@ -3298,7 +3299,7 @@ function ModelRoutingSection({
                         <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_180px_180px]">
                             <label className="relative block">
                                 <MagnifyingGlass className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-stone-400" />
-                                <input
+                                <Input
                                     aria-label="Search models"
                                     type="search"
                                     value={modelQuery}
@@ -3535,7 +3536,7 @@ function SyncSection() {
                     <div className="space-y-3 rounded-xl border border-warm-border bg-warm-surface p-4">
                         <label className="block">
                             <span className="mb-1.5 block text-xs font-medium text-stone-600 dark:text-stone-300">Remote Loro URL</span>
-                            <input
+                            <Input
                                 aria-label="Remote Loro URL"
                                 type="url"
                                 value={remoteUrl}
@@ -3550,7 +3551,7 @@ function SyncSection() {
                         </label>
                         <label className="block">
                             <span className="mb-1.5 block text-xs font-medium text-stone-600 dark:text-stone-300">Remote Loro token</span>
-                            <input
+                            <Input
                                 aria-label="Remote Loro token"
                                 type="password"
                                 value={remoteToken}
@@ -5241,7 +5242,7 @@ function CustomAgentServerDialog({
                                         <span className="mb-1.5 block text-xs font-medium text-stone-600 dark:text-stone-300">
                                             Name
                                         </span>
-                                        <input
+                                        <Input
                                             aria-label="Agent server name"
                                             value={name}
                                             onChange={(event) => onNameChange(event.target.value)}
@@ -5252,7 +5253,7 @@ function CustomAgentServerDialog({
                                         <span className="mb-1.5 block text-xs font-medium text-stone-600 dark:text-stone-300">
                                             Command
                                         </span>
-                                        <input
+                                        <Input
                                             aria-label="Command"
                                             value={command}
                                             onChange={(event) => onCommandChange(event.target.value)}

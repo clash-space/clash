@@ -9,6 +9,7 @@ import { getSignedUrl } from '@clash/web-ui/lib/hooks/useSignedUrl';
 import { runtimeApiUrl } from '@clash/web-ui/lib/runtimeConfig';
 import { Button } from '../ui/button';
 import { IconButton } from '../ui/icon-button';
+import { Input } from '../ui/input';
 import type { MilkdownEditorHandle, MentionableNode } from '../MilkdownEditor';
 
 // Lazy load MilkdownEditor to avoid SSR issues
@@ -553,7 +554,7 @@ function ChatInputInner({
 
     return (
         <div className={isHero ? '' : 'px-4 pb-4'}>
-            <input
+            <Input
                 {...getInputProps({
                     'aria-hidden': true,
                     tabIndex: -1,

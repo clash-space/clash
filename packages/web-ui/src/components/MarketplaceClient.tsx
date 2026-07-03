@@ -10,6 +10,7 @@ import {
     marketplaceUninstallSkill,
 } from '@clash/web-ui/lib/clientActions';
 import { Button } from './ui/button';
+import { Input } from './ui/input';
 import { ToggleGroup, ToggleGroupItem } from './ui/toggle-group';
 
 type Filter = 'all' | 'action' | 'skill';
@@ -110,7 +111,7 @@ export default function MarketplaceClient({ items, installedActionIds, installed
                 <div className="mb-8 flex flex-col items-stretch gap-3 sm:flex-row sm:items-center">
                     <div className="flex-1 relative">
                         <MagnifyingGlass className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-stone-500 dark:text-stone-400" aria-hidden="true" />
-                        <input
+                        <Input
                             type="text"
                             value={query}
                             onChange={(e) => setQuery(e.target.value)}
