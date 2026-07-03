@@ -578,7 +578,6 @@ export default function ChatbotCopilot({
     // ─── UI State ──────────────────────────────────────────────
     const [input, setInput] = useState(() => initialPrompt ?? '');
     const [isResizing, setIsResizing] = useState(false);
-    const [showHistory, setShowHistory] = useState(false);
     const [todoItems, setTodoItems] = useState<TodoItem[]>([]);
     const [suggestions, setSuggestions] = useState<Array<{ label: string; message: string }>>([]);
 
@@ -1207,7 +1206,6 @@ export default function ChatbotCopilot({
         } else {
             onSwitchSession?.(item.threadId);
         }
-        setShowHistory(false);
         historyButtonRef.current?.focus();
     }, [clashRt.attachSession, effectiveSessionHarnessId, onSwitchSession, projectId, setSessionPermissionModeForAgent]);
 
@@ -1611,7 +1609,7 @@ export default function ChatbotCopilot({
                                         size="sm"
                                         icon={<Plus className="w-4 h-4" weight="bold" />}
                                     />
-                                    <DropdownMenu open={showHistory} onOpenChange={setShowHistory}>
+                                    <DropdownMenu>
                                         <DropdownMenuTrigger asChild>
                                             <IconButton
                                                 ref={historyButtonRef}

@@ -72,6 +72,21 @@ describe("ChatbotCopilot primitives", () => {
     expect(source).not.toContain("absolute right-0 top-8 z-40");
   });
 
+  it("lets the history dropdown primitive own open state", () => {
+    const source = readComponentSource("ChatbotCopilot.tsx");
+    const historyFallbackStart = source.indexOf("label={t('copilot.header.history')}");
+    const historyStart = source.lastIndexOf("\n                                    <DropdownMenu", historyFallbackStart);
+    const historyEnd = source.indexOf("{!isDesktopLocalMode", historyFallbackStart);
+    const historySource = source.slice(historyStart, historyEnd);
+
+    expect(historyStart).toBeGreaterThan(-1);
+    expect(source).not.toContain("const [showHistory, setShowHistory]");
+    expect(source).not.toContain("setShowHistory(false)");
+    expect(historySource).toContain("<DropdownMenu>");
+    expect(historySource).not.toContain("<DropdownMenu open=");
+    expect(historySource).not.toContain("onOpenChange={setShowHistory}");
+  });
+
   it("lets the shared dropdown primitive own trigger aria state", () => {
     const source = readComponentSource("ChatbotCopilot.tsx");
 
