@@ -9,6 +9,7 @@ import { CaretDown, CaretRight, Check } from '@phosphor-icons/react';
 import { DropdownMenu as DropdownMenuPrimitive, Select as SelectPrimitive } from 'radix-ui';
 
 import { cn } from '../ai-elements/utils';
+import { Button } from './button';
 import { Tooltip } from './tooltip';
 
 export type SelectValue = string | number | boolean;
@@ -161,8 +162,10 @@ function DropdownSelectMenu<Value extends SelectValue = string>({
 
     const trigger = (
         <DropdownMenuPrimitive.Trigger asChild>
-            <button
-                type="button"
+            <Button
+                variant={null}
+                size={null}
+                shape={null}
                 aria-label={ariaLabel}
                 disabled={isDisabled}
                 onClick={handleEventBoundary}
@@ -180,7 +183,7 @@ function DropdownSelectMenu<Value extends SelectValue = string>({
                 <span className="min-w-0 flex-1 truncate text-left">{label}</span>
                 {triggerSuffix}
                 {showCaret ? <CaretDown className="h-3.5 w-3.5 flex-shrink-0 text-stone-500 dark:text-stone-400" aria-hidden="true" /> : null}
-            </button>
+            </Button>
         </DropdownMenuPrimitive.Trigger>
     );
 
