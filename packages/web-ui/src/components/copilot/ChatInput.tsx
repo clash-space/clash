@@ -7,6 +7,7 @@ import { useTranslation } from 'react-i18next';
 import { useDropzone, type Accept } from 'react-dropzone';
 import { getSignedUrl } from '@clash/web-ui/lib/hooks/useSignedUrl';
 import { runtimeApiUrl } from '@clash/web-ui/lib/runtimeConfig';
+import { Button } from '../ui/button';
 import { IconButton } from '../ui/icon-button';
 import type { MilkdownEditorHandle, MentionableNode } from '../MilkdownEditor';
 
@@ -569,10 +570,16 @@ function ChatInputInner({
                             initial={{ opacity: 0, y: 4 }}
                             animate={{ opacity: 1, y: 0 }}
                             exit={{ opacity: 0, y: 4 }}
-                            className="clash-chat-input-alert-error mb-2 px-3 py-1.5 text-xs rounded-lg text-center cursor-pointer"
-                            onClick={onDismissError}
+                            className="mb-2"
                         >
-                            {error}
+                            <Button
+                                onClick={onDismissError}
+                                size="sm"
+                                shape="rounded"
+                                className="clash-chat-input-alert-error min-h-0 w-full justify-center rounded-lg border-transparent px-3 py-1.5 text-center text-xs font-normal shadow-none focus-visible:ring-brand focus-visible:ring-offset-1"
+                            >
+                                {error}
+                            </Button>
                         </motion.div>
                     )}
                     {voiceSetupError && (

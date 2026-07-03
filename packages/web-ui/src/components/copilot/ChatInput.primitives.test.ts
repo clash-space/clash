@@ -29,4 +29,16 @@ describe("ChatInput primitives", () => {
     expect(source).not.toMatch(/<button[\s\S]*copilot\.chatInput\.send/);
     expect(source).not.toMatch(/<button[\s\S]*copilot\.chatInput\.stop/);
   });
+
+  it("uses a shared button for dismissible error alerts instead of clickable alert divs", () => {
+    const source = readSource("packages/web-ui/src/components/copilot/ChatInput.tsx");
+    const errorAlertStart = source.indexOf("clash-chat-input-alert-error");
+    const errorAlertEnd = source.indexOf("{voiceSetupError", errorAlertStart);
+    const errorAlertSource = source.slice(errorAlertStart - 260, errorAlertEnd);
+
+    expect(source).toContain("../ui/button");
+    expect(errorAlertSource).toContain("<Button");
+    expect(errorAlertSource).toContain("onClick={onDismissError}");
+    expect(errorAlertSource).not.toMatch(/<motion\.div[\s\S]{0,500}onClick=\{onDismissError\}/);
+  });
 });
