@@ -40,4 +40,16 @@ describe('TimelineItem primitives', () => {
     expect(source).not.toContain("window.addEventListener('mousemove', handleFadeDrag");
     expect(source).not.toContain("window.addEventListener('mousemove', handleVolumeDrag");
   });
+
+  it('routes resize handle drags through the gesture primitive', () => {
+    const source = readFileSync(
+      join(process.cwd(), 'packages/remotion-ui/src/components/timeline/TimelineItem.tsx'),
+      'utf8',
+    );
+
+    expect(source).toContain('../ui/gesture');
+    expect(source).toContain('useDragGesture');
+    expect(source).not.toContain("document.addEventListener('mousemove', handleMouseMove");
+    expect(source).not.toContain("document.removeEventListener('mousemove', handleMouseMove");
+  });
 });

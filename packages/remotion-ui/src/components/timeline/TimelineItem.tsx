@@ -24,6 +24,7 @@ import {
   renderFilmstripToCanvas,
 } from './videoThumbnailUtils';
 import { TimelineColorInput, TimelineIconButton, TimelineTextInput } from '../ui/controls';
+import { useDragGesture } from '../ui/gesture';
 import { TimelineSlider } from '../ui/timeline-slider';
 
 // Store dragged item globally on window object for cross-module access
@@ -657,60 +658,53 @@ export const TimelineItem: React.FC<TimelineItemProps> = ({
     onDelete();
   }, [onDelete]);
 
-  // Handle resize
-  const handleResizeMouseDown = useCallback(
-    (edge: 'left' | 'right', e: React.MouseEvent, isRollEdit = false) => {
-      e.stopPropagation();
-      e.preventDefault();
+  const resizeGestureBind = useDragGesture<PointerEvent>(
+    ({ first, last, movement: [movementX], args: [edge, isRollEdit], event }) => {
+      event.preventDefault();
+      event.stopPropagation();
 
-      setResizingEdge(edge);
-      onResizeStart?.(edge);
+      if (first) {
+        setResizingEdge(edge);
+        onResizeStart?.(edge);
+      }
 
-      const startX = e.clientX;
-      // Auto-scroll support when resizing towards edges
-      // Find the horizontal scroll container (tracks viewport)
-      const viewportEl = (e.currentTarget as HTMLElement).closest('.tracks-viewport') as HTMLDivElement | null;
-      const SCROLL_EDGE = 40; // px from edge to start autoscroll
-      const MAX_STEP = 40; // px per mousemove tick (capped)
+      const deltaFrames = Math.round(movementX / pixelsPerFrame);
 
-      const handleMouseMove = (moveEvent: MouseEvent) => {
-        const deltaX = moveEvent.clientX - startX;
-        const deltaFrames = Math.round(deltaX / pixelsPerFrame);
+      if (isRollEdit && onRollEdit) {
+        onRollEdit(edge, deltaFrames);
+      } else {
+        onResize?.(edge, deltaFrames);
+      }
 
-        // Roll Edit 模式使用 onRollEdit，普通模式使用 onResize
-        if (isRollEdit && onRollEdit) {
-          onRollEdit(edge, deltaFrames);
-        } else {
-          onResize?.(edge, deltaFrames);
+      const viewportEl = (event.currentTarget as HTMLElement | null)?.closest('.tracks-viewport') as HTMLDivElement | null;
+      if (viewportEl) {
+        const SCROLL_EDGE = 40;
+        const MAX_STEP = 40;
+        const viewportRect = viewportEl.getBoundingClientRect();
+        const pointerX = event.clientX;
+        let step = 0;
+
+        if (pointerX > viewportRect.right - SCROLL_EDGE) {
+          step = Math.min(MAX_STEP, (pointerX - (viewportRect.right - SCROLL_EDGE)) * 0.5);
+        } else if (pointerX < viewportRect.left + SCROLL_EDGE) {
+          step = -Math.min(MAX_STEP, ((viewportRect.left + SCROLL_EDGE) - pointerX) * 0.5);
         }
 
-        // Auto-scroll horizontally if cursor nears viewport edges
-        if (viewportEl) {
-          const vr = viewportEl.getBoundingClientRect();
-          const x = moveEvent.clientX;
-          let step = 0;
-          if (x > vr.right - SCROLL_EDGE) {
-            step = Math.min(MAX_STEP, (x - (vr.right - SCROLL_EDGE)) * 0.5);
-          } else if (x < vr.left + SCROLL_EDGE) {
-            step = -Math.min(MAX_STEP, ((vr.left + SCROLL_EDGE) - x) * 0.5);
-          }
-          if (step !== 0) {
-            viewportEl.scrollLeft += step;
-          }
+        if (step !== 0) {
+          viewportEl.scrollLeft += step;
         }
-      };
+      }
 
-      const handleMouseUp = () => {
+      if (last) {
         setResizingEdge(null);
         onResizeEnd?.();
-        document.removeEventListener('mousemove', handleMouseMove);
-        document.removeEventListener('mouseup', handleMouseUp);
-      };
-
-      document.addEventListener('mousemove', handleMouseMove);
-      document.addEventListener('mouseup', handleMouseUp);
+      }
     },
-    [pixelsPerFrame, onResizeStart, onResize, onResizeEnd, onRollEdit]
+    {
+      preventDefault: true,
+      pointer: { capture: true },
+      eventOptions: { passive: false },
+    },
   );
 
   // dnd-kit draggable (overlay-only integration; does not alter static layout)
@@ -1191,17 +1185,7 @@ export const TimelineItem: React.FC<TimelineItemProps> = ({
         <>
           {/* 左边缘手柄 - 向左延伸,覆盖边界 */}
           <div
-            onMouseDown={(e) => {
-              e.stopPropagation(); // 阻止事件冒泡,防止触发 dnd-kit 拖动
-              if (hasAdjacentItemOnLeft && onRollEdit) {
-                // Roll Edit 模式
-                handleResizeMouseDown('left', e, true);
-              } else {
-                // 普通 trim 模式
-                handleResizeMouseDown('left', e);
-              }
-            }}
-            onPointerDown={(e) => e.stopPropagation()} // 阻止 dnd-kit 的 pointer 事件
+            {...resizeGestureBind('left', Boolean(hasAdjacentItemOnLeft && onRollEdit))}
             style={{
               position: 'absolute',
               left: -6,  // 向左延伸 6px,覆盖边界
@@ -1218,17 +1202,7 @@ export const TimelineItem: React.FC<TimelineItemProps> = ({
           />
           {/* 右边缘手柄 - 向右延伸,覆盖边界 */}
           <div
-            onMouseDown={(e) => {
-              e.stopPropagation(); // 阻止事件冒泡,防止触发 dnd-kit 拖动
-              if (hasAdjacentItemOnRight && onRollEdit) {
-                // Roll Edit 模式
-                handleResizeMouseDown('right', e, true);
-              } else {
-                // 普通 trim 模式
-                handleResizeMouseDown('right', e);
-              }
-            }}
-            onPointerDown={(e) => e.stopPropagation()} // 阻止 dnd-kit 的 pointer 事件
+            {...resizeGestureBind('right', Boolean(hasAdjacentItemOnRight && onRollEdit))}
             style={{
               position: 'absolute',
               right: -6,  // 向右延伸 6px,覆盖边界
