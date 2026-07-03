@@ -105,6 +105,20 @@ describe("SettingsClient primitives", () => {
     expect(source).not.toMatch(/<button[\s\S]{0,220}setSelectedProviderKey\(row\.key\)/);
   });
 
+  it("lets a shared accordion primitive own model provider order disclosure", () => {
+    const source = readSource("packages/web-ui/src/components/SettingsClient.tsx");
+
+    expect(source).toContain("./ui/accordion");
+    expect(source).toContain("<Accordion");
+    expect(source).toContain('type="single"');
+    expect(source).toContain("AccordionItem");
+    expect(source).toContain("AccordionTrigger asChild");
+    expect(source).toContain("AccordionContent");
+    expect(source).not.toContain("expandedModelProviderOrderId");
+    expect(source).not.toContain("setExpandedModelProviderOrderId");
+    expect(source).not.toContain("providerOrderOpen");
+  });
+
   it("uses shared button primitives for provider key editor controls", () => {
     const source = readSource("packages/web-ui/src/components/SettingsClient.tsx");
 

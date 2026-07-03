@@ -41,6 +41,7 @@ import { SearchableSelect } from './ui/searchable-select';
 import { Switch } from './ui/switch';
 import { Tooltip } from './ui/tooltip';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from './ui/collapsible';
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from './ui/accordion';
 import { RadioGroup, RadioGroupItem } from './ui/radio-group';
 import { useAppFeedback } from './AppFeedback';
 
@@ -168,6 +169,27 @@ function SettingsFieldSkeleton({ wide = false }: { wide?: boolean }) {
             <SettingsSkeletonLine className={wide ? "h-2.5 w-40" : "h-2.5 w-28"} />
             <SettingsSkeletonLine className="h-9 w-full rounded-lg" />
         </div>
+    );
+}
+
+function RuntimeGroupCollapsible({
+    children,
+    groupId,
+}: {
+    children: (open: boolean) => ReactNode;
+    groupId: string;
+}) {
+    const [open, setOpen] = useState(true);
+
+    return (
+        <Collapsible
+            open={open}
+            onOpenChange={setOpen}
+            className="group/runtime-group overflow-hidden rounded-xl border border-warm-border bg-warm-surface"
+            data-runtime-group-id={groupId}
+        >
+            {children(open)}
+        </Collapsible>
     );
 }
 
@@ -1984,7 +2006,6 @@ function ModelRoutingSection({
     const [selectedProviderKey, setSelectedProviderKey] = useState<string | null>(null);
     const [addingProviderKey, setAddingProviderKey] = useState<string | null>(null);
     const [editingProviderAccountKey, setEditingProviderAccountKey] = useState<{ providerKey: string; accountKey: string } | null>(null);
-    const [expandedModelProviderOrderId, setExpandedModelProviderOrderId] = useState<string | null>(null);
     const [modelQuery, setModelQuery] = useState('');
     const [modelKindFilter, setModelKindFilter] = useState<'all' | string>('all');
     const [modelProviderFilter, setModelProviderFilter] = useState<'all' | 'ready' | 'missing'>('all');
@@ -2278,7 +2299,6 @@ function ModelRoutingSection({
                 if (aWeight !== bWeight) return bWeight - aWeight;
                 return (a.provider.priority ?? 999) - (b.provider.priority ?? 999);
             });
-        const providerOrderOpen = expandedModelProviderOrderId === entry.model.id;
         const moveModelProvider = (fromIndex: number, toIndex: number) => {
             if (saving) return;
             if (toIndex < 0 || toIndex >= providerOrderRows.length) return;
@@ -2309,8 +2329,9 @@ function ModelRoutingSection({
                 ? entry.candidateProviders.join(', ')
                 : 'No provider';
         return (
-            <div
+            <AccordionItem
                 key={entry.model.id}
+                value={entry.model.id}
                 id={`model-card-${entry.model.id}`}
                 className={`rounded-xl border bg-warm-surface p-4 transition-colors ${
                     focused
@@ -2336,22 +2357,19 @@ function ModelRoutingSection({
                 </div>
                 {providerOrderRows.length > 1 && (
                     <div className="mt-3 border-t border-warm-border pt-3">
-                        <Button
-                            aria-label={`Edit provider order for ${entry.model.name}`}
-                            onClick={() => setExpandedModelProviderOrderId((current) => current === entry.model.id ? null : entry.model.id)}
-                            className="flex h-auto min-h-0 w-full items-center justify-between gap-3 rounded-lg border-transparent bg-transparent px-2 py-1.5 text-left shadow-none hover:bg-warm-muted/55"
-                        >
-                            <span className="text-xs font-semibold text-slate-900 dark:text-slate-50">Provider order</span>
-                            <span className="flex min-w-0 items-center gap-2 text-xs text-stone-500 dark:text-stone-400">
-                                <span className="truncate">{providerOrderRows.map((row) => row.title).join(', ')}</span>
-                                {providerOrderOpen ? (
-                                    <CaretDown className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-                                ) : (
-                                    <CaretRight className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-                                )}
-                            </span>
-                        </Button>
-                        {providerOrderOpen && (
+                        <AccordionTrigger asChild>
+                            <Button
+                                aria-label={`Edit provider order for ${entry.model.name}`}
+                                className="group/provider-order flex h-auto min-h-0 w-full items-center justify-between gap-3 rounded-lg border-transparent bg-transparent px-2 py-1.5 text-left shadow-none hover:bg-warm-muted/55"
+                            >
+                                <span className="text-xs font-semibold text-slate-900 dark:text-slate-50">Provider order</span>
+                                <span className="flex min-w-0 items-center gap-2 text-xs text-stone-500 dark:text-stone-400">
+                                    <span className="truncate">{providerOrderRows.map((row) => row.title).join(', ')}</span>
+                                    <CaretDown className="h-3.5 w-3.5 shrink-0 transition-transform group-data-[state=open]/provider-order:rotate-180" aria-hidden="true" />
+                                </span>
+                            </Button>
+                        </AccordionTrigger>
+                        <AccordionContent>
                             <ul aria-label={`${entry.model.name} provider order`} className="mt-2 overflow-hidden rounded-xl border border-warm-border bg-warm-muted/20">
                                 {providerOrderRows.map((providerRow, index) => {
                                     const isCurrent = providerRow.key === selectedRouteKey;
@@ -2407,7 +2425,7 @@ function ModelRoutingSection({
                                     );
                                 })}
                             </ul>
-                        )}
+                        </AccordionContent>
                     </div>
                 )}
                 {localAsr && (
@@ -2439,7 +2457,7 @@ function ModelRoutingSection({
                         )}
                     </div>
                 )}
-            </div>
+            </AccordionItem>
         );
     };
     const renderProviderIcon = (provider: Pick<ModelProviderAccountInfo, 'providerId' | 'upstreamId'>, title: string) => {
@@ -3318,9 +3336,9 @@ function ModelRoutingSection({
                                 No model cards match these filters.
                             </div>
                         ) : (
-                            <div className="grid gap-3 lg:grid-cols-2">
+                            <Accordion type="single" collapsible className="grid gap-3 lg:grid-cols-2">
                                 {filteredModelCatalog.map((entry) => renderModelCard(entry))}
-                            </div>
+                            </Accordion>
                         )}
                     </div>
                 </div>}
@@ -4605,14 +4623,15 @@ function AgentsSection() {
                 {runtimeGroups.map((group) => {
                     const agentCountLabel = `${group.agentCount} configured agent${group.agentCount === 1 ? "" : "s"}`;
                     return (
-                        <Collapsible
+                        <RuntimeGroupCollapsible
                             key={group.id}
-                            defaultOpen
-                            className="group/runtime-group overflow-hidden rounded-xl border border-warm-border bg-warm-surface"
+                            groupId={group.id}
                         >
+                            {(runtimeGroupOpen) => (
+                            <>
                             <CollapsibleTrigger asChild>
                                 <Button
-                                    aria-label={`Toggle ${group.label} runtime`}
+                                    aria-label={`${runtimeGroupOpen ? "Collapse" : "Expand"} ${group.label} runtime`}
                                     className="grid h-auto min-h-[4.25rem] w-full grid-cols-[1rem_0.5rem_minmax(0,1fr)] items-center gap-3 rounded-none border-0 bg-transparent px-4 py-3 text-left shadow-none transition-colors hover:bg-warm-muted"
                                 >
                                     <CaretRight
@@ -4945,7 +4964,9 @@ function AgentsSection() {
                                     )}
                                 </div>
                             </CollapsibleContent>
-                        </Collapsible>
+                            </>
+                            )}
+                        </RuntimeGroupCollapsible>
                     );
                 })}
             </div>
