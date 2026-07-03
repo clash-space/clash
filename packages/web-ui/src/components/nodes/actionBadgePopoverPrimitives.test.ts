@@ -42,6 +42,10 @@ describe("ActionBadge popover primitives", () => {
         expect(source).toContain("ComboboxProvider");
         expect(source).toContain("ComboboxList");
         expect(source).toContain("ComboboxItem");
+        expect(source).toContain("handleMentionComboboxKeyDown");
+        expect(source).not.toContain("e.key === 'ArrowDown'");
+        expect(source).not.toContain("e.key === 'ArrowUp'");
+        expect(source).not.toContain("e.key === 'Escape'");
         expect(source).not.toContain("onKeyDown={isFrozen ? undefined : (e) =>");
         expect(source).not.toContain("mentionIndex");
         expect(source).not.toContain("setMentionIndex");

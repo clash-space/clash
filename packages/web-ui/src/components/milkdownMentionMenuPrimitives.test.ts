@@ -18,6 +18,10 @@ describe("Milkdown mention menu primitives", () => {
     expect(source).toContain("ComboboxProvider");
     expect(source).toContain("ComboboxList");
     expect(source).toContain("ComboboxItem");
+    expect(source).toContain("handleMentionComboboxKeyDown");
+    expect(source).not.toContain("event.key === 'ArrowDown'");
+    expect(source).not.toContain("event.key === 'ArrowUp'");
+    expect(source).not.toContain("event.key === 'Escape'");
     expect(source).not.toContain("document.addEventListener('keydown'");
     expect(source).not.toContain("document.removeEventListener('keydown'");
     expect(source).not.toContain("selectedIndex");

@@ -15,6 +15,7 @@ import { ComboboxItem, ComboboxList, ComboboxProvider, useComboboxStore } from '
 import { SignedImg } from './SignedMedia';
 import { getSignedUrl } from '@clash/web-ui/lib/hooks/useSignedUrl';
 import { Popover, PopoverAnchor, PopoverContent } from './ui/popover';
+import { handleMentionComboboxKeyDown } from './mentionComboboxKeyboard';
 
 import '@milkdown/theme-nord/style.css';
 import 'prismjs/themes/prism.css';
@@ -247,32 +248,13 @@ function AssetMentionMenu({
         const firstItemId = sorted[0] ? mentionItemId(sorted[0].id) : undefined;
         combobox.setActiveId(firstItemId);
 
-        onKeyboardHandlerChange((event) => {
-            if (event.key === 'ArrowDown') {
-                event.preventDefault();
-                combobox.setActiveId(combobox.next() ?? firstItemId);
-                return true;
-            }
-            if (event.key === 'ArrowUp') {
-                event.preventDefault();
-                combobox.setActiveId(combobox.previous() ?? firstItemId);
-                return true;
-            }
-            if (event.key === 'Enter' || event.key === 'Tab') {
-                const activeValue = combobox.getState().activeValue;
-                const node = sorted.find((candidate) => candidate.id === activeValue) ?? sorted[0];
-                if (!node) return false;
-                event.preventDefault();
-                onSelect(node);
-                return true;
-            }
-            if (event.key === 'Escape') {
-                event.preventDefault();
-                onClose();
-                return true;
-            }
-            return false;
-        });
+        onKeyboardHandlerChange((event) => handleMentionComboboxKeyDown(event, {
+            store: combobox,
+            items: sorted,
+            getItemId: (node) => mentionItemId(node.id),
+            onSelect,
+            onClose,
+        }));
 
         return () => onKeyboardHandlerChange(null);
     }, [combobox, onClose, onKeyboardHandlerChange, onSelect, open, sorted]);

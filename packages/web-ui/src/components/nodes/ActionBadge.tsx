@@ -29,6 +29,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '../ui/colla
 import { Button } from '../ui/button';
 import { IconButton } from '../ui/icon-button';
 import { Tooltip } from '../ui/tooltip';
+import { handleMentionComboboxKeyDown } from '../mentionComboboxKeyboard';
 import { useSpawnPendingAsset } from './useSpawnPendingAsset';
 import ActionBadgePipelineMenu from './ActionBadgePipelineMenu';
 import AttributionLine from './AttributionLine';
@@ -871,30 +872,13 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
     const handleEditorKeyDown = useCallback((e: ReactKeyboardEvent<HTMLDivElement>) => {
         if (!showMentionMenu || filteredMentionNodes.length === 0) return;
 
-        if (e.key === 'ArrowDown') {
-            e.preventDefault();
-            mentionCombobox.setActiveId(mentionCombobox.next() ?? actionMentionItemId(filteredMentionNodes[0].id));
-            return;
-        }
-
-        if (e.key === 'ArrowUp') {
-            e.preventDefault();
-            mentionCombobox.setActiveId(mentionCombobox.previous() ?? actionMentionItemId(filteredMentionNodes[filteredMentionNodes.length - 1].id));
-            return;
-        }
-
-        if (e.key === 'Enter' || e.key === 'Tab') {
-            e.preventDefault();
-            const activeId = mentionCombobox.getState().activeId;
-            const node = filteredMentionNodes.find((candidate) => actionMentionItemId(candidate.id) === activeId) ?? filteredMentionNodes[0];
-            insertMention(node);
-            return;
-        }
-
-        if (e.key === 'Escape') {
-            e.preventDefault();
-            setShowMentionMenu(false);
-        }
+        handleMentionComboboxKeyDown(e, {
+            store: mentionCombobox,
+            items: filteredMentionNodes,
+            getItemId: (node) => actionMentionItemId(node.id),
+            onSelect: insertMention,
+            onClose: () => setShowMentionMenu(false),
+        });
     }, [filteredMentionNodes, insertMention, mentionCombobox, showMentionMenu]);
 
     const syncModelState = useCallback(
