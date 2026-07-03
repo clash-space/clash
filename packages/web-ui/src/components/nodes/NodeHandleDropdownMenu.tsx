@@ -1,4 +1,4 @@
-import { useState, type ComponentPropsWithoutRef, type ReactNode } from 'react';
+import { type ComponentPropsWithoutRef, type ReactNode } from 'react';
 import { Handle, Position } from '@xyflow/react';
 
 import { cn } from '../ai-elements/utils';
@@ -30,14 +30,8 @@ export function NodeHandleDropdownMenu({
     onOpenChange,
     triggerLabel = ariaLabel,
 }: NodeHandleDropdownMenuProps) {
-    const [open, setOpen] = useState(false);
-    const handleOpenChange = (nextOpen: boolean) => {
-        setOpen(nextOpen);
-        onOpenChange?.(nextOpen);
-    };
-
     return (
-        <DropdownMenu open={open} onOpenChange={handleOpenChange}>
+        <DropdownMenu onOpenChange={onOpenChange}>
             <div
                 className="absolute"
                 style={{ top: '50%', right: '-8px', transform: 'translateY(-50%)' }}
@@ -49,7 +43,7 @@ export function NodeHandleDropdownMenu({
                             shape="circle"
                             size="sm"
                             className={cn(
-                                'relative h-4 min-h-4 w-4 min-w-4 border-0 bg-transparent p-0 text-current shadow-none hover:bg-transparent focus-visible:ring-offset-warm-surface',
+                                'group/handle-trigger relative h-4 min-h-4 w-4 min-w-4 border-0 bg-transparent p-0 text-current shadow-none hover:bg-transparent focus-visible:ring-offset-warm-surface',
                                 handleSurfaceClassName,
                             )}
                             icon={
@@ -58,8 +52,7 @@ export function NodeHandleDropdownMenu({
                                     position={Position.Right}
                                     style={{ position: 'relative', top: 0, right: 0, transform: 'none' }}
                                     className={cn(
-                                        '!h-4 !w-4 !border-4 transition-all duration-200 shadow-sm',
-                                        open ? '!bg-brand scale-[1.3]' : '!bg-stone-400 hover:!bg-brand hover:scale-125',
+                                        '!h-4 !w-4 !border-4 !bg-stone-400 transition-all duration-200 shadow-sm hover:!bg-brand hover:scale-125 group-data-[state=open]/handle-trigger:!bg-brand group-data-[state=open]/handle-trigger:scale-[1.3]',
                                         handleClassName,
                                     )}
                                 />

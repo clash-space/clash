@@ -32,4 +32,14 @@ describe("NodeHandleDropdownMenu primitives", () => {
         expect(pipelineSource).not.toContain("title=");
         expect(sourceHandleSource).not.toContain("title=");
     });
+
+    it("lets Radix trigger state drive the handle open styling", () => {
+        const source = readNodeSource("NodeHandleDropdownMenu.tsx");
+
+        expect(source).toContain("group/handle-trigger");
+        expect(source).toContain("group-data-[state=open]/handle-trigger:!bg-brand");
+        expect(source).not.toContain("useState");
+        expect(source).not.toContain("open ? ");
+        expect(source).not.toContain("setOpen(nextOpen)");
+    });
 });
