@@ -26,6 +26,30 @@ export const RemotionFileInput = React.forwardRef<HTMLInputElement, RemotionFile
   },
 );
 
+export type RemotionInputProps = React.InputHTMLAttributes<HTMLInputElement>;
+
+export const RemotionInput = React.forwardRef<HTMLInputElement, RemotionInputProps>(
+  function RemotionInput(props, ref) {
+    return <input ref={ref} {...props} />;
+  },
+);
+
+export type RemotionSelectProps = React.SelectHTMLAttributes<HTMLSelectElement>;
+
+export const RemotionSelect = React.forwardRef<HTMLSelectElement, RemotionSelectProps>(
+  function RemotionSelect(props, ref) {
+    return <select ref={ref} {...props} />;
+  },
+);
+
+export type RemotionTextareaProps = React.TextareaHTMLAttributes<HTMLTextAreaElement>;
+
+export const RemotionTextarea = React.forwardRef<HTMLTextAreaElement, RemotionTextareaProps>(
+  function RemotionTextarea(props, ref) {
+    return <textarea ref={ref} {...props} />;
+  },
+);
+
 export type TimelineRangeInputProps = Omit<React.InputHTMLAttributes<HTMLInputElement>, 'type'>;
 
 export const TimelineRangeInput = React.forwardRef<HTMLInputElement, TimelineRangeInputProps>(

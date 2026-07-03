@@ -5,6 +5,12 @@ import {
   useEditorStaticState,
 } from '@master-clash/remotion-core';
 import type { TextItem, SolidItem, TransitionItem, TransitionType } from '@master-clash/remotion-core';
+import {
+  RemotionButton,
+  RemotionInput,
+  RemotionSelect,
+  RemotionTextarea,
+} from './ui/controls';
 
 const TRANSITION_TYPES: TransitionType[] = [
   'crossfade',
@@ -52,7 +58,7 @@ const SplitButton: React.FC<{
     });
   };
   return (
-    <button
+    <RemotionButton
       onClick={splitItem}
       disabled={!canSplit}
       className={`rounded-md border px-3 py-1.5 text-xs font-medium transition-colors ${
@@ -63,7 +69,7 @@ const SplitButton: React.FC<{
       title={canSplit ? `Split at frame ${currentFrame}` : 'Move playhead onto the selected item to split'}
     >
       Split
-    </button>
+    </RemotionButton>
   );
 });
 
@@ -126,7 +132,7 @@ export const PropertiesPanel: React.FC = () => {
                   { label: '21:9', w: 2560, h: 1080 },
                   { label: '4:5', w: 1080, h: 1350 },
                 ].map(preset => (
-                  <button
+                  <RemotionButton
                     key={preset.label}
                     onClick={() => dispatch({
                       type: 'SET_COMPOSITION_SIZE',
@@ -138,7 +144,7 @@ export const PropertiesPanel: React.FC = () => {
                       }`}
                   >
                     {preset.label}
-                  </button>
+                  </RemotionButton>
                 ))}
               </div>
             </div>
@@ -152,7 +158,7 @@ export const PropertiesPanel: React.FC = () => {
             </div>
             <div className="mb-3">
               <label className={labelClassName}>Duration (frames)</label>
-              <input
+              <RemotionInput
                 type="number"
                 value={durationInFrames}
                 onChange={(e) => dispatch({
@@ -174,12 +180,12 @@ export const PropertiesPanel: React.FC = () => {
             <div className="mb-3">
               <div className="rounded-md border border-slate-200 bg-slate-100 px-3 py-2 text-center text-sm font-medium text-slate-700">MP4 (H.264)</div>
             </div>
-            <button
+            <RemotionButton
               onClick={() => setShowExportModal(true)}
               className="w-full rounded-md bg-[#ff6b50] py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-[#e85f47] active:scale-95"
             >
               Render video
-            </button>
+            </RemotionButton>
           </div>
         </div>
 
@@ -214,12 +220,12 @@ export const PropertiesPanel: React.FC = () => {
                 </p>
               </div>
 
-              <button
+              <RemotionButton
                 onClick={() => setShowExportModal(false)}
                 className="w-full rounded-md border border-slate-200 bg-slate-100 py-2.5 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-200 hover:text-slate-900"
               >
                 Close
-              </button>
+              </RemotionButton>
             </div>
           </div>
         )}
@@ -254,12 +260,12 @@ export const PropertiesPanel: React.FC = () => {
             trackId={trackId}
             itemId={item.id}
           />
-          <button
+          <RemotionButton
             onClick={deleteItem}
             className="rounded-md border border-red-200 bg-white px-3 py-1.5 text-xs font-medium text-red-600 transition-colors hover:border-red-300 hover:bg-red-50"
           >
             Delete
-          </button>
+          </RemotionButton>
         </div>
       </div>
 
@@ -271,7 +277,7 @@ export const PropertiesPanel: React.FC = () => {
           <div className="grid grid-cols-2 gap-2">
             <div className="mb-3">
               <label className={labelClassName}>X Position (px)</label>
-              <input
+              <RemotionInput
                 type="number"
                 step="1"
                 value={item.properties?.x ?? 0}
@@ -289,7 +295,7 @@ export const PropertiesPanel: React.FC = () => {
             </div>
             <div className="mb-3">
               <label className={labelClassName}>Y Position (px)</label>
-              <input
+              <RemotionInput
                 type="number"
                 step="1"
                 value={item.properties?.y ?? 0}
@@ -307,7 +313,7 @@ export const PropertiesPanel: React.FC = () => {
             </div>
             <div className="mb-3">
               <label className={labelClassName}>Width Scale (1=100%)</label>
-              <input
+              <RemotionInput
                 type="number"
                 step="0.01"
                 min="0"
@@ -326,7 +332,7 @@ export const PropertiesPanel: React.FC = () => {
             </div>
             <div className="mb-3">
               <label className={labelClassName}>Height Scale (1=100%)</label>
-              <input
+              <RemotionInput
                 type="number"
                 step="0.01"
                 min="0"
@@ -346,7 +352,7 @@ export const PropertiesPanel: React.FC = () => {
           </div>
           <div className="mb-3">
             <label className={labelClassName}>Rotation (degrees)</label>
-            <input
+            <RemotionInput
               type="number"
               step="1"
               value={item.properties?.rotation ?? 0}
@@ -365,7 +371,7 @@ export const PropertiesPanel: React.FC = () => {
           </div>
           <div className="mb-3">
             <label className={labelClassName}>Opacity (0-1)</label>
-            <input
+            <RemotionInput
               type="number"
               step="0.1"
               min="0"
@@ -397,7 +403,7 @@ export const PropertiesPanel: React.FC = () => {
           <h3 className={sectionTitleClassName}>Timing</h3>
           <div className="mb-3">
             <label className={labelClassName}>Start Frame</label>
-            <input
+            <RemotionInput
               type="number"
               value={item.from}
               onChange={(e) => updateItem({ from: parseInt(e.target.value) || 0 })}
@@ -406,7 +412,7 @@ export const PropertiesPanel: React.FC = () => {
           </div>
           <div className="mb-3">
             <label className={labelClassName}>Duration (frames)</label>
-            <input
+            <RemotionInput
               type="number"
               value={item.durationInFrames}
               onChange={(e) =>
@@ -423,7 +429,7 @@ export const PropertiesPanel: React.FC = () => {
             <h3 className={sectionTitleClassName}>Transition</h3>
             <div className="mb-3">
               <label className={labelClassName}>Type</label>
-              <select
+              <RemotionSelect
                 value={(item as TransitionItem).transitionType}
                 onChange={(e) =>
                   updateItem({ transitionType: e.target.value as TransitionType } as Partial<typeof item>)
@@ -435,12 +441,12 @@ export const PropertiesPanel: React.FC = () => {
                     {t}
                   </option>
                 ))}
-              </select>
+              </RemotionSelect>
             </div>
             <div className="mb-3 grid grid-cols-2 gap-2">
               <div>
                 <label className={labelClassName}>From item ID</label>
-                <input
+                <RemotionInput
                   type="text"
                   value={(item as TransitionItem).fromItemId ?? ''}
                   onChange={(e) =>
@@ -452,7 +458,7 @@ export const PropertiesPanel: React.FC = () => {
               </div>
               <div>
                 <label className={labelClassName}>To item ID</label>
-                <input
+                <RemotionInput
                   type="text"
                   value={(item as TransitionItem).toItemId ?? ''}
                   onChange={(e) =>
@@ -479,7 +485,7 @@ export const PropertiesPanel: React.FC = () => {
                 <div className="mb-3 grid grid-cols-2 gap-2">
                   <div>
                     <label className={labelClassName}>Video fade in (frames)</label>
-                    <input
+                    <RemotionInput
                       type="number"
                       min={0}
                       value={(item as { videoFadeIn?: number }).videoFadeIn ?? 0}
@@ -491,7 +497,7 @@ export const PropertiesPanel: React.FC = () => {
                   </div>
                   <div>
                     <label className={labelClassName}>Video fade out (frames)</label>
-                    <input
+                    <RemotionInput
                       type="number"
                       min={0}
                       value={(item as { videoFadeOut?: number }).videoFadeOut ?? 0}
@@ -505,7 +511,7 @@ export const PropertiesPanel: React.FC = () => {
                 <div className="mb-3 grid grid-cols-2 gap-2">
                   <div>
                     <label className={labelClassName}>Fade-in color (optional)</label>
-                    <input
+                    <RemotionInput
                       type="text"
                       placeholder="e.g. white, #000"
                       value={(item as { videoFadeInColor?: string }).videoFadeInColor ?? ''}
@@ -517,7 +523,7 @@ export const PropertiesPanel: React.FC = () => {
                   </div>
                   <div>
                     <label className={labelClassName}>Fade-out color (optional)</label>
-                    <input
+                    <RemotionInput
                       type="text"
                       placeholder="e.g. white, #000"
                       value={(item as { videoFadeOutColor?: string }).videoFadeOutColor ?? ''}
@@ -534,7 +540,7 @@ export const PropertiesPanel: React.FC = () => {
             <div className="mb-3 grid grid-cols-2 gap-2">
               <div>
                 <label className={labelClassName}>Audio fade in (frames)</label>
-                <input
+                <RemotionInput
                   type="number"
                   min={0}
                   value={(item as { audioFadeIn?: number }).audioFadeIn ?? 0}
@@ -547,7 +553,7 @@ export const PropertiesPanel: React.FC = () => {
               </div>
               <div>
                 <label className={labelClassName}>Audio fade out (frames)</label>
-                <input
+                <RemotionInput
                   type="number"
                   min={0}
                   value={(item as { audioFadeOut?: number }).audioFadeOut ?? 0}
@@ -564,7 +570,7 @@ export const PropertiesPanel: React.FC = () => {
               <div className="mb-3 grid grid-cols-2 gap-2">
                 <div>
                   <label className={labelClassName}>Image fade in (frames)</label>
-                  <input
+                  <RemotionInput
                     type="number"
                     min={0}
                     value={(item as { imageFadeIn?: number }).imageFadeIn ?? 0}
@@ -576,7 +582,7 @@ export const PropertiesPanel: React.FC = () => {
                 </div>
                 <div>
                   <label className={labelClassName}>Image fade out (frames)</label>
-                  <input
+                  <RemotionInput
                     type="number"
                     min={0}
                     value={(item as { imageFadeOut?: number }).imageFadeOut ?? 0}
@@ -597,7 +603,7 @@ export const PropertiesPanel: React.FC = () => {
             <h3 className={sectionTitleClassName}>Text</h3>
             <div className="mb-3">
               <label className={labelClassName}>Content</label>
-              <textarea
+              <RemotionTextarea
                 value={(item as TextItem).text}
                 onChange={(e) => updateItem({ text: e.target.value })}
                 className={`${fieldClassName} min-h-[80px] resize-y`}
@@ -606,13 +612,13 @@ export const PropertiesPanel: React.FC = () => {
             <div className="mb-3">
               <label className={labelClassName}>Color</label>
               <div className="flex gap-2 items-center">
-                <input
+                <RemotionInput
                   type="color"
                   value={(item as TextItem).color}
                   onChange={(e) => updateItem({ color: e.target.value })}
                   className="h-9 w-12 cursor-pointer rounded-md border border-slate-200 bg-white p-0.5"
                 />
-                <input
+                <RemotionInput
                   type="text"
                   value={(item as TextItem).color}
                   onChange={(e) => updateItem({ color: e.target.value })}
@@ -622,7 +628,7 @@ export const PropertiesPanel: React.FC = () => {
             </div>
             <div className="mb-3">
               <label className={labelClassName}>Font Size</label>
-              <input
+              <RemotionInput
                 type="number"
                 value={(item as TextItem).fontSize || 60}
                 onChange={(e) =>
@@ -633,7 +639,7 @@ export const PropertiesPanel: React.FC = () => {
             </div>
             <div className="mb-3">
               <label className={labelClassName}>Font Family</label>
-              <select
+              <RemotionSelect
                 value={(item as TextItem).fontFamily || 'Arial'}
                 onChange={(e) => updateItem({ fontFamily: e.target.value })}
                 className={fieldClassName}
@@ -644,11 +650,11 @@ export const PropertiesPanel: React.FC = () => {
                 <option value="Georgia">Georgia</option>
                 <option value="Courier New">Courier New</option>
                 <option value="Verdana">Verdana</option>
-              </select>
+              </RemotionSelect>
             </div>
             <div className="mb-3">
               <label className={labelClassName}>Font Weight</label>
-              <select
+              <RemotionSelect
                 value={(item as TextItem).fontWeight || 'bold'}
                 onChange={(e) => updateItem({ fontWeight: e.target.value })}
                 className={fieldClassName}
@@ -657,7 +663,7 @@ export const PropertiesPanel: React.FC = () => {
                 <option value="bold">Bold</option>
                 <option value="lighter">Lighter</option>
                 <option value="bolder">Bolder</option>
-              </select>
+              </RemotionSelect>
             </div>
           </div>
         )}
@@ -669,13 +675,13 @@ export const PropertiesPanel: React.FC = () => {
             <div className="mb-3">
               <label className={labelClassName}>Background Color</label>
               <div className="flex gap-2 items-center">
-                <input
+                <RemotionInput
                   type="color"
                   value={(item as SolidItem).color}
                   onChange={(e) => updateItem({ color: e.target.value })}
                   className="h-9 w-12 cursor-pointer rounded-md border border-slate-200 bg-white p-0.5"
                 />
-                <input
+                <RemotionInput
                   type="text"
                   value={(item as SolidItem).color}
                   onChange={(e) => updateItem({ color: e.target.value })}
@@ -692,7 +698,7 @@ export const PropertiesPanel: React.FC = () => {
             <h3 className={sectionTitleClassName}>Source</h3>
             <div className="mb-3">
               <label className={labelClassName}>File Path</label>
-              <input
+              <RemotionInput
                 type="text"
                 value={item.src}
                 readOnly
