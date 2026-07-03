@@ -91,4 +91,18 @@ describe("SettingsClient primitives", () => {
     expect(source).not.toMatch(/<button[\s\S]{0,260}setSelectedProviderKey\(null\)/);
     expect(source).not.toMatch(/<button[\s\S]{0,220}openPrioritizedKeyEditor/);
   });
+
+  it("uses shared button primitives for runtime machine and audio setup controls", () => {
+    const source = readSource("packages/web-ui/src/components/SettingsClient.tsx");
+
+    expect(source).not.toMatch(/<button[\s\S]{0,220}onRemoveRuntime\(runtime\.id, label\)/);
+    expect(source).not.toMatch(/<button[\s\S]{0,220}onClick=\{openSetupDialog\}/);
+    expect(source).not.toMatch(/<button[\s\S]{0,180}setSetupDialog\(null\)/);
+  });
+
+  it("does not render native buttons directly in SettingsClient", () => {
+    const source = readSource("packages/web-ui/src/components/SettingsClient.tsx");
+
+    expect(source).not.toContain("<button");
+  });
 });

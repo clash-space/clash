@@ -3604,15 +3604,16 @@ function SyncSection() {
                                                     Last seen: {lastBeat}
                                                 </div>
                                             </div>
-                                            <button
-                                                type="button"
+                                            <Button
                                                 aria-label={`Remove ${label} runtime`}
                                                 onClick={() => { void onRemoveRuntime(runtime.id, label); }}
                                                 disabled={removingRuntimeId === runtime.id}
-                                                className="text-xs text-stone-500 transition-colors hover:text-red-600 disabled:opacity-50 dark:text-stone-400 dark:hover:text-red-400"
+                                                size="sm"
+                                                variant="destructive"
+                                                className="h-auto min-h-0 border-transparent bg-transparent px-0 py-0 text-xs text-stone-500 shadow-none hover:bg-transparent hover:text-red-600 disabled:opacity-50 dark:text-stone-400 dark:hover:text-red-400"
                                             >
                                                 {removingRuntimeId === runtime.id ? "Removing..." : "Remove"}
-                                            </button>
+                                            </Button>
                                         </div>
                                     );
                                 })}
@@ -3876,8 +3877,7 @@ function AudioSection({ asrModels }: { asrModels: ModelCatalogEntryInfo[] }) {
                                     triggerClassName={settingsSelectTriggerClass}
                                 />
                             ) : (
-                                <button
-                                    type="button"
+                                <Button
                                     aria-label="ASR model"
                                     onClick={openSetupDialog}
                                     className={`${settingsSelectTriggerClass} clash-settings-select-trigger inline-flex min-w-0 items-center gap-1.5 rounded-xl border border-warm-border bg-warm-surface px-3 py-2 text-sm font-medium text-stone-500 shadow-[inset_0_1px_0_rgba(255,255,255,0.76)] transition-colors hover:bg-warm-muted/45 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-warm-surface dark:text-stone-400 dark:hover:bg-warm-muted/35`}
@@ -3886,7 +3886,7 @@ function AudioSection({ asrModels }: { asrModels: ModelCatalogEntryInfo[] }) {
                                         {hasSelectedAsrModel ? selectedModelValue : 'Select'}
                                     </span>
                                     <CaretDown className="h-3.5 w-3.5 flex-shrink-0 text-stone-500 dark:text-stone-400" aria-hidden="true" />
-                                </button>
+                                </Button>
                             )}
                         </label>
                         {switchDisabledReason && (
@@ -3911,13 +3911,12 @@ function AudioSection({ asrModels }: { asrModels: ModelCatalogEntryInfo[] }) {
                 size="sm"
             >
                 <div className="flex flex-col-reverse gap-2 pt-2 sm:flex-row sm:justify-end">
-                    <button
-                        type="button"
+                    <Button
                         onClick={() => setSetupDialog(null)}
                         className={settingsCompactSecondaryButtonClass}
                     >
                         Cancel
-                    </button>
+                    </Button>
                     <Link
                         to="/settings?section=models"
                         onClick={() => setSetupDialog(null)}
@@ -4605,14 +4604,14 @@ function AgentsSection() {
                     </p>
                 </div>
                 <Tooltip label={harnessCheckTooltip}>
-                    <button
-                        type="button"
+                    <Button
+                        size="sm"
                         onClick={() => { void onRecheckHarnesses(); }}
                         disabled={harnessLoading}
                         className={`${settingsCompactSecondaryButtonClass} min-w-[6.75rem]`}
                     >
                         {harnessLoading ? "Checking..." : "Check again"}
-                    </button>
+                    </Button>
                 </Tooltip>
             </div>
 
@@ -4628,10 +4627,9 @@ function AgentsSection() {
                             className="overflow-hidden rounded-xl border border-warm-border bg-warm-surface"
                         >
                             <CollapsibleTrigger asChild>
-                                <button
-                                    type="button"
+                                <Button
                                     aria-label={`${collapsed ? "Expand" : "Collapse"} ${group.label} runtime`}
-                                    className="grid min-h-[4.25rem] w-full grid-cols-[1rem_0.5rem_minmax(0,1fr)] items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-warm-muted"
+                                    className="grid h-auto min-h-[4.25rem] w-full grid-cols-[1rem_0.5rem_minmax(0,1fr)] items-center gap-3 rounded-none border-0 bg-transparent px-4 py-3 text-left shadow-none transition-colors hover:bg-warm-muted"
                                 >
                                     <CaretRight
                                         className={`h-4 w-4 shrink-0 text-stone-500 transition-transform ${collapsed ? "" : "rotate-90"}`}
@@ -4649,7 +4647,7 @@ function AgentsSection() {
                                             {agentCountLabel}
                                         </span>
                                     </span>
-                                </button>
+                                </Button>
                             </CollapsibleTrigger>
 
                             <CollapsibleContent asChild>
@@ -4801,49 +4799,50 @@ function AgentsSection() {
                                                                 </div>
                                                                 <span className="flex min-w-0 flex-wrap items-center justify-end gap-2">
                                                                     {canInstall && (
-                                                                        <button
-                                                                            type="button"
+                                                                        <Button
+                                                                            size="sm"
                                                                             aria-label={`Install ${harness.label}`}
                                                                             disabled={busy}
                                                                             onClick={() => onInstallHarness(harness.id)}
                                                                             className={settingsCompactSecondaryButtonClass}
                                                                         >
                                                                             {savingAction === "install" ? "Installing…" : "Install"}
-                                                                        </button>
+                                                                        </Button>
                                                                     )}
                                                                     {canUpgrade && (
-                                                                        <button
-                                                                            type="button"
+                                                                        <Button
+                                                                            size="sm"
                                                                             aria-label={`Upgrade ${harness.label}`}
                                                                             disabled={busy}
                                                                             onClick={() => { void onUpgradeHarness(harness.id); }}
                                                                             className="rounded-lg border border-brand/30 bg-brand-light px-3 py-1.5 text-xs font-medium text-brand shadow-sm transition-colors hover:bg-brand-light/80 disabled:cursor-not-allowed disabled:opacity-60"
                                                                         >
                                                                             {savingAction === "upgrade" ? "Upgrading…" : "Upgrade"}
-                                                                        </button>
+                                                                        </Button>
                                                                     )}
                                                                     {canUninstall && (
-                                                                        <button
-                                                                            type="button"
+                                                                        <Button
+                                                                            size="sm"
+                                                                            variant="destructive"
                                                                             aria-label={`Uninstall ${harness.label}`}
                                                                             disabled={busy}
                                                                             onClick={() => setUninstallHarnessTarget(harness)}
                                                                             className="rounded-lg border border-rose-200 bg-white px-3 py-1.5 text-xs font-medium text-rose-700 shadow-sm transition-colors hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-rose-500/40 dark:bg-stone-900 dark:text-rose-300 dark:hover:bg-rose-500/10"
                                                                         >
                                                                             {savingAction === "uninstall" ? "Uninstalling…" : "Uninstall"}
-                                                                        </button>
+                                                                        </Button>
                                                                     )}
                                                                     {authBlocked && (
                                                                         <Tooltip label={authRetryTooltip}>
-                                                                            <button
-                                                                                type="button"
+                                                                            <Button
+                                                                                size="sm"
                                                                                 aria-label={`Check ${harness.label} auth again`}
                                                                                 disabled={busy || harnessLoading}
                                                                                 onClick={() => { void onRecheckHarnesses(harness.id); }}
                                                                                 className={settingsCompactSecondaryButtonClass}
                                                                             >
                                                                                 {savingAction === "probe" ? "Checking auth…" : "Check again"}
-                                                                            </button>
+                                                                            </Button>
                                                                         </Tooltip>
                                                                     )}
                                                                     {needsAuth && authMethods.length > 1 && authMethods.map((method) => {
@@ -4854,21 +4853,21 @@ function AgentsSection() {
                                                                         const methodWaiting = (authWaiting || authAttention) && methodActive;
                                                                         const methodOpeningLabel = authMethodIsTerminal(method) ? "Opening setup…" : "Opening sign in…";
                                                                         return (
-                                                                            <button
+                                                                            <Button
                                                                                 key={method.id}
-                                                                                type="button"
+                                                                                size="sm"
                                                                                 aria-label={authActionAriaLabel(harness.label, method, true)}
                                                                                 disabled={busy && !methodWaiting}
                                                                                 onClick={() => onAuthenticateHarness(harness.id, method.id)}
                                                                                 className="rounded-lg border border-brand/30 bg-brand-light px-3 py-1.5 text-xs font-medium text-brand shadow-sm transition-colors hover:bg-brand-light/80 disabled:cursor-not-allowed disabled:opacity-60"
                                                                             >
                                                                                 {methodOpening ? methodOpeningLabel : methodWaiting ? `Open ${methodLabel} again` : buttonLabel}
-                                                                            </button>
+                                                                            </Button>
                                                                         );
                                                                     })}
                                                                     {needsAuth && authMethods.length === 1 && (
-                                                                        <button
-                                                                            type="button"
+                                                                        <Button
+                                                                            size="sm"
                                                                             aria-label={authActionAriaLabel(harness.label, authMethods[0], false)}
                                                                             disabled={busy && !(authWaiting || authAttention)}
                                                                             onClick={() => onAuthenticateHarness(harness.id, authMethods[0]?.id)}
@@ -4877,7 +4876,7 @@ function AgentsSection() {
                                                                             {authOpening
                                                                                 ? (authMethodIsTerminal(authMethods[0]) ? "Opening setup…" : "Opening sign in…")
                                                                                 : (authWaiting || authAttention) ? "Open again" : authActionLabel(authMethods[0], false)}
-                                                                        </button>
+                                                                        </Button>
                                                                     )}
                                                                     {showEnableSwitch && (
                                                                         <>
@@ -4971,14 +4970,14 @@ function AgentsSection() {
                                 : "Add command-backed ACP agent servers."}
                         </p>
                     </div>
-                    <button
-                        type="button"
+                    <Button
+                        size="sm"
                         onClick={openAddCustomAgentDialog}
-                        className={`${settingsCompactSecondaryButtonClass} gap-1.5`}
+                        leftIcon={<Plus className="h-3.5 w-3.5" weight="bold" />}
+                        className={settingsCompactSecondaryButtonClass}
                     >
-                        <Plus className="h-3.5 w-3.5" weight="bold" />
                         Add custom agent server
-                    </button>
+                    </Button>
                 </div>
                 {Object.entries(agentServers).length > 0 && (
                     <div className="overflow-hidden rounded-xl border border-warm-border bg-warm-surface">
@@ -4994,21 +4993,22 @@ function AgentsSection() {
                                     </div>
                                 </div>
                                 <div className="flex items-center justify-end gap-2">
-                                    <button
-                                        type="button"
+                                    <Button
+                                        size="sm"
                                         onClick={() => openEditCustomAgentDialog(name, server)}
                                         className={settingsCompactSecondaryButtonClass}
                                     >
                                         Edit
-                                    </button>
-                                    <button
-                                        type="button"
+                                    </Button>
+                                    <Button
+                                        size="sm"
+                                        variant="destructive"
                                         onClick={() => { void onRemoveCustomAgentServer(name); }}
                                         disabled={agentServersSaving}
                                         className="rounded-lg border border-rose-200 bg-white px-3 py-1.5 text-xs font-medium text-rose-700 shadow-sm transition-colors hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-rose-500/40 dark:bg-stone-900 dark:text-rose-300"
                                     >
                                         Remove
-                                    </button>
+                                    </Button>
                                 </div>
                             </div>
                         ))}
@@ -5088,23 +5088,22 @@ function UninstallHarnessDialog({
             disableBackdropClose={busy}
         >
             <div className="flex justify-end gap-2">
-                <button
-                    type="button"
+                <Button
                     onClick={onClose}
                     disabled={busy}
                     className={settingsSecondaryButtonClass}
                 >
                     Cancel
-                </button>
-                <button
-                    type="button"
+                </Button>
+                <Button
+                    variant="destructive"
                     aria-label={harness ? `Confirm uninstall ${harness.label}` : "Confirm uninstall agent"}
                     onClick={() => harness && onConfirm(harness.id)}
                     disabled={!harness || busy}
                     className="inline-flex items-center justify-center rounded-lg border border-rose-200 bg-rose-50 px-4 py-2 text-sm font-semibold text-rose-700 shadow-sm transition-colors hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-60 dark:border-rose-500/40 dark:bg-rose-500/10 dark:text-rose-300"
                 >
                     {busy ? "Uninstalling…" : "Uninstall"}
-                </button>
+                </Button>
             </div>
         </Dialog>
     );
@@ -5191,18 +5190,18 @@ function CustomAgentServerDialog({
                             {CUSTOM_AGENT_SERVER_STARTERS.map((starter) => {
                                 const selected = starterId === starter.id;
                                 return (
-                                    <button
+                                    <Button
                                         key={starter.id}
-                                        type="button"
+                                        size="sm"
                                         onClick={() => onStarterChange(starter.id)}
-                                        className={`w-full truncate rounded-lg px-2.5 py-2 text-left text-sm font-medium transition-colors ${
+                                        className={`h-auto min-h-0 w-full truncate rounded-lg border-0 px-2.5 py-2 text-left text-sm font-medium shadow-none transition-colors ${
                                             selected
                                                 ? "bg-white text-brand shadow-sm ring-1 ring-brand/25 dark:bg-stone-950"
-                                                : "text-slate-700 hover:bg-white/70 dark:text-stone-200 dark:hover:bg-stone-800"
+                                                : "bg-transparent text-slate-700 hover:bg-white/70 dark:bg-transparent dark:text-stone-200 dark:hover:bg-stone-800"
                                         }`}
                                     >
                                         {starter.label}
-                                    </button>
+                                    </Button>
                                 );
                             })}
                         </div>
@@ -5215,14 +5214,12 @@ function CustomAgentServerDialog({
                                     {title}
                                 </h2>
                             </div>
-                            <button
-                                type="button"
-                                aria-label="Close"
+                            <IconButton
+                                label="Close"
                                 onClick={onClose}
+                                icon={<X className="h-4 w-4" weight="bold" />}
                                 className="rounded-md p-1.5 text-stone-500 transition-colors hover:bg-warm-muted hover:text-stone-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand dark:text-stone-300 dark:hover:text-stone-100"
-                            >
-                                <X className="h-4 w-4" weight="bold" aria-hidden="true" />
-                            </button>
+                            />
                         </header>
 
                         <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
@@ -5300,21 +5297,20 @@ function CustomAgentServerDialog({
                         </div>
 
                         <footer className="flex justify-end gap-2 border-t border-warm-border bg-warm-muted/40 px-5 py-3 dark:bg-stone-900/60">
-                            <button
-                                type="button"
+                            <Button
                                 onClick={onClose}
                                 className={settingsSecondaryButtonClass}
                             >
                                 Cancel
-                            </button>
-                            <button
-                                type="button"
+                            </Button>
+                            <Button
+                                variant="primary"
                                 onClick={onSave}
                                 disabled={saving}
                                 className="clash-settings-primary inline-flex items-center justify-center rounded-lg px-4 py-2 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-60"
                             >
                                 {saving ? "Saving…" : "Save agent server"}
-                            </button>
+                            </Button>
                         </footer>
                     </div>
                 </div>
