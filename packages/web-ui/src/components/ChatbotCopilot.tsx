@@ -2150,8 +2150,14 @@ function RuntimeAuthNotice({
                 ) : null}
                 {command ? (
                     <Collapsible className="mt-1.5 text-xs text-amber-800/75 dark:text-amber-100/70">
-                        <CollapsibleTrigger className="cursor-pointer select-none font-medium outline-none focus-visible:underline focus-visible:underline-offset-4">
-                            Manual fallback
+                        <CollapsibleTrigger asChild>
+                            <Button
+                                size="sm"
+                                shape="rounded"
+                                className="min-h-0 cursor-pointer rounded-none border-transparent bg-transparent px-0 py-0 text-xs font-medium text-amber-800/75 shadow-none hover:bg-transparent hover:text-amber-950 focus-visible:ring-0 focus-visible:ring-offset-0 focus-visible:underline focus-visible:underline-offset-4 dark:text-amber-100/70 dark:hover:text-amber-100"
+                            >
+                                Manual fallback
+                            </Button>
                         </CollapsibleTrigger>
                         <CollapsibleContent>
                             <span className="mt-1 block leading-5">

@@ -4772,8 +4772,14 @@ function AgentsSection() {
                                                                     )}
                                                                     {needsAuth && harness.auth?.command && (
                                                                         <Collapsible className="mt-1 text-xs text-stone-500 dark:text-stone-400">
-                                                                            <CollapsibleTrigger className="cursor-pointer select-none font-medium text-stone-600 outline-none focus-visible:underline focus-visible:underline-offset-4 dark:text-stone-300">
-                                                                                Manual fallback
+                                                                            <CollapsibleTrigger asChild>
+                                                                                <Button
+                                                                                    size="sm"
+                                                                                    shape="rounded"
+                                                                                    className="min-h-0 cursor-pointer rounded-none border-transparent bg-transparent px-0 py-0 text-xs font-medium text-stone-600 shadow-none hover:bg-transparent hover:text-stone-700 focus-visible:ring-0 focus-visible:ring-offset-0 focus-visible:underline focus-visible:underline-offset-4 dark:text-stone-300 dark:hover:text-stone-200"
+                                                                                >
+                                                                                    Manual fallback
+                                                                                </Button>
                                                                             </CollapsibleTrigger>
                                                                             <CollapsibleContent>
                                                                                 <span className="mt-1 block leading-5">

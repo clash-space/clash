@@ -94,6 +94,20 @@ describe("ChatbotCopilot primitives", () => {
     expect(source).not.toContain("<summary");
   });
 
+  it("uses the shared button primitive for auth manual fallback triggers", () => {
+    const source = readComponentSource("ChatbotCopilot.tsx");
+    const noticeStart = source.indexOf("function RuntimeAuthNotice");
+    const fallbackStart = source.indexOf("Manual fallback", noticeStart);
+    const triggerStart = source.lastIndexOf("<CollapsibleTrigger", fallbackStart);
+    const fallbackEnd = source.indexOf("</Collapsible>", fallbackStart);
+    const fallbackSource = source.slice(triggerStart, fallbackEnd);
+
+    expect(fallbackSource).toContain("CollapsibleTrigger asChild");
+    expect(fallbackSource).toContain("<Button");
+    expect(fallbackSource).toContain("Manual fallback");
+    expect(fallbackSource).not.toContain("<CollapsibleTrigger className=");
+  });
+
   it("lets the shared collapsible primitive own copilot panel trigger aria state", () => {
     const source = readComponentSource("ChatbotCopilot.tsx");
 

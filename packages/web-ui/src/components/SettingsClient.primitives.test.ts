@@ -28,6 +28,18 @@ describe("SettingsClient primitives", () => {
     expect(source).not.toContain("<summary");
   });
 
+  it("uses the shared button primitive for agent auth fallback triggers", () => {
+    const source = readSource("packages/web-ui/src/components/SettingsClient.tsx");
+    const fallbackStart = source.indexOf("needsAuth && harness.auth?.command");
+    const fallbackEnd = source.indexOf("</Collapsible>", fallbackStart);
+    const fallbackSource = source.slice(fallbackStart, fallbackEnd);
+
+    expect(fallbackSource).toContain("CollapsibleTrigger asChild");
+    expect(fallbackSource).toContain("<Button");
+    expect(fallbackSource).toContain("Manual fallback");
+    expect(fallbackSource).not.toContain("<CollapsibleTrigger className=");
+  });
+
   it("uses shared collapsible primitives for agent runtime groups", () => {
     const source = readSource("packages/web-ui/src/components/SettingsClient.tsx");
 
