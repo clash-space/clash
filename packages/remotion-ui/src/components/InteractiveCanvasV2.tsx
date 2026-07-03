@@ -34,6 +34,8 @@ interface DragState {
   trackId: string;
 }
 
+type CanvasTransformMode = Exclude<DragMode, null>;
+
 export const InteractiveCanvas: React.FC<InteractiveCanvasProps> = ({
   tracks,
   allNodesMap,
@@ -54,7 +56,6 @@ export const InteractiveCanvas: React.FC<InteractiveCanvasProps> = ({
   const containerRef = useRef<HTMLDivElement>(null);
   const selectionBoxRef = useRef<HTMLDivElement>(null);
   const itemsDomMapRef = useRef<Map<string, HTMLElement>>(new Map());
-  const [dragState, setDragState] = useState<DragState | null>(null);
   const [zoom, setZoom] = useState(1);
   const [isPanning, setIsPanning] = useState(false);
   const [panOffset, setPanOffset] = useState({ x: 0, y: 0 });
@@ -544,69 +545,59 @@ export const InteractiveCanvas: React.FC<InteractiveCanvasProps> = ({
     },
   );
 
-  // 处理鼠标按下
-  const handleMouseDown = useCallback(
-    (e: React.MouseEvent, mode: DragMode) => {
-      if (!selectedItemData) return;
+  const createTransformDragSession = useCallback(
+    (item: Item, trackId: string, mode: CanvasTransformMode, clientX: number, clientY: number): DragState => {
+      const startPoint = screenToPropertySpace(clientX, clientY);
 
-      e.preventDefault();
-      e.stopPropagation();
+      let startWidth = item.properties?.width ?? 1;
+      let startHeight = item.properties?.height ?? 1;
 
-      const startPoint = screenToPropertySpace(e.clientX, e.clientY);
-
-      let startWidth = selectedItemData.item.properties?.width ?? 1;
-      let startHeight = selectedItemData.item.properties?.height ?? 1;
-
-      // Handle Contain Fit special case for scaling
-      // If we are about to scale, and we are in "Contain Fit" mode (1,1),
-      // we need to calculate the effective scale so resizing is continuous.
-      if (mode?.startsWith('scale') && startWidth === 1 && startHeight === 1) {
-        const { naturalWidth, naturalHeight } = getNaturalDimensions(selectedItemData.item);
+      // Handle Contain Fit special case for scaling. If we are about to scale
+      // from the default fitted state (1, 1), calculate the effective scale so
+      // resizing continues from the rendered dimensions.
+      if (mode.startsWith('scale') && startWidth === 1 && startHeight === 1) {
+        const { naturalWidth, naturalHeight } = getNaturalDimensions(item);
         const scaleX = compositionWidth / naturalWidth;
         const scaleY = compositionHeight / naturalHeight;
         const scale = Math.min(scaleX, scaleY);
 
         startWidth = scale;
         startHeight = scale;
-
       }
 
-      setDragState({
+      return {
         mode,
         startX: startPoint.x, // Composition Pixels (Center Relative)
         startY: startPoint.y,
         startProperties: {
-          x: selectedItemData.item.properties?.x ?? 0,
-          y: selectedItemData.item.properties?.y ?? 0,
+          x: item.properties?.x ?? 0,
+          y: item.properties?.y ?? 0,
           width: startWidth,
           height: startHeight,
-          rotation: selectedItemData.item.properties?.rotation ?? 0,
-          opacity: selectedItemData.item.properties?.opacity ?? 1,
+          rotation: item.properties?.rotation ?? 0,
+          opacity: item.properties?.opacity ?? 1,
         },
-        item: selectedItemData.item,
-        trackId: selectedItemData.trackId,
-      });
+        item,
+        trackId,
+      };
     },
-    [selectedItemData, screenToPropertySpace]
+    [compositionWidth, compositionHeight, getNaturalDimensions, screenToPropertySpace],
   );
 
-  // 处理鼠标移动
-  const handleMouseMove = useCallback(
-    (e: MouseEvent) => {
-      if (!dragState) return;
-
-      const currentPoint = screenToPropertySpace(e.clientX, e.clientY);
+  const applyTransformDrag = useCallback(
+    (session: DragState, clientX: number, clientY: number) => {
+      const currentPoint = screenToPropertySpace(clientX, clientY);
       // Delta in Composition Pixels
-      const deltaX = currentPoint.x - dragState.startX;
-      const deltaY = currentPoint.y - dragState.startY;
+      const deltaX = currentPoint.x - session.startX;
+      const deltaY = currentPoint.y - session.startY;
 
-      const newProperties: Partial<ItemProperties> = { ...dragState.startProperties };
+      const newProperties: Partial<ItemProperties> = { ...session.startProperties };
 
       // 旋转相关计算
-      const startX = dragState.startProperties.x ?? 0;
-      const startY = dragState.startProperties.y ?? 0;
+      const startX = session.startProperties.x ?? 0;
+      const startY = session.startProperties.y ?? 0;
 
-      switch (dragState.mode) {
+      switch (session.mode) {
         case 'move': {
           // 移动：直接加 Delta (因为 x,y 也是 Composition Pixels)
           let nextX = startX + deltaX;
@@ -628,10 +619,10 @@ export const InteractiveCanvas: React.FC<InteractiveCanvasProps> = ({
 
           // 获取元素的宽高（在属性空间中，单位是 composition pixels）
           // width=1, height=1 means 100% of media's natural size
-          const { naturalWidth, naturalHeight } = getNaturalDimensions(dragState.item);
+          const { naturalWidth, naturalHeight } = getNaturalDimensions(session.item);
 
-          const itemWidth = (dragState.startProperties.width ?? 1) * naturalWidth;
-          const itemHeight = (dragState.startProperties.height ?? 1) * naturalHeight;
+          const itemWidth = (session.startProperties.width ?? 1) * naturalWidth;
+          const itemHeight = (session.startProperties.height ?? 1) * naturalHeight;
 
           // 计算元素的边界位置（相对于中心）
           const leftEdge = nextX - itemWidth / 2;
@@ -699,7 +690,7 @@ export const InteractiveCanvas: React.FC<InteractiveCanvasProps> = ({
           // 计算鼠标相对于中心的距离变化
           // 这种方式在旋转后也基本可用，但不是最精确的角落拖拽
 
-          const startDist = Math.hypot(dragState.startX - startX, dragState.startY - startY);
+          const startDist = Math.hypot(session.startX - startX, session.startY - startY);
           const curDist = Math.hypot(currentPoint.x - startX, currentPoint.y - startY);
 
           // 避免除零
@@ -708,8 +699,8 @@ export const InteractiveCanvas: React.FC<InteractiveCanvasProps> = ({
           const scale = curDist / startDist;
 
           // 基于初始宽高缩放
-          newProperties.width = Math.max(0.01, dragState.startProperties.width * scale);
-          newProperties.height = Math.max(0.01, dragState.startProperties.height * scale);
+          newProperties.width = Math.max(0.01, session.startProperties.width * scale);
+          newProperties.height = Math.max(0.01, session.startProperties.height * scale);
           break;
         }
 
@@ -719,10 +710,10 @@ export const InteractiveCanvas: React.FC<InteractiveCanvasProps> = ({
           const angle = Math.atan2(currentPoint.y - startY, currentPoint.x - startX) * (180 / Math.PI);
           // 此时 angle 是鼠标相对于中心的角度
           // 我们需要 delta angle
-          const startAngle = Math.atan2(dragState.startY - startY, dragState.startX - startX) * (180 / Math.PI);
+          const startAngle = Math.atan2(session.startY - startY, session.startX - startX) * (180 / Math.PI);
           const deltaAngle = angle - startAngle;
 
-          let nextRotation = (dragState.startProperties.rotation ?? 0) + deltaAngle;
+          let nextRotation = (session.startProperties.rotation ?? 0) + deltaAngle;
 
           // 旋转吸附：每 90 度吸附（0°, 90°, 180°, 270°, 360°）
           const snapRotationThreshold = 5; // 5度内吸附
@@ -742,30 +733,46 @@ export const InteractiveCanvas: React.FC<InteractiveCanvasProps> = ({
       }
 
       // 更新 item properties
-      onUpdateItem(dragState.trackId, dragState.item.id, {
+      onUpdateItem(session.trackId, session.item.id, {
         properties: newProperties as ItemProperties,
       });
     },
-    [dragState, screenToPropertySpace, onUpdateItem, getBaseMetrics, zoom, allNodesMap, compositionWidth, compositionHeight]
+    [screenToPropertySpace, onUpdateItem, getBaseMetrics, zoom, getNaturalDimensions, compositionWidth, compositionHeight]
   );
 
-  // 处理鼠标释放
-  const handleMouseUp = useCallback(() => {
-    setDragState(null);
-    setSnapLines(null);
-  }, []);
+  const canvasTransformGestureBind = useDragGesture<PointerEvent>(
+    ({ first, last, args: [mode, item, trackId, selectOnStart], event, memo }) => {
+      event.preventDefault();
+      event.stopPropagation();
 
-  // 绑定全局鼠标事件
-  useEffect(() => {
-    if (dragState) {
-      window.addEventListener('mousemove', handleMouseMove);
-      window.addEventListener('mouseup', handleMouseUp);
-      return () => {
-        window.removeEventListener('mousemove', handleMouseMove);
-        window.removeEventListener('mouseup', handleMouseUp);
-      };
-    }
-  }, [dragState, handleMouseMove, handleMouseUp]);
+      let session = memo as DragState | undefined;
+      if (first) {
+        if (selectOnStart && onSelectItem && selectedItemId !== item.id) {
+          onSelectItem(item.id);
+        }
+        session = createTransformDragSession(item, trackId, mode, event.clientX, event.clientY);
+      }
+
+      if (session && !first) {
+        applyTransformDrag(session, event.clientX, event.clientY);
+      }
+
+      if (last) {
+        setSnapLines(null);
+      }
+
+      return session;
+    },
+    {
+      preventDefault: true,
+      pointer: { capture: true },
+      eventOptions: { passive: false },
+    },
+  );
+
+  const stopTransformMouseDown = useCallback((event: React.MouseEvent<SVGElement>) => {
+    event.stopPropagation();
+  }, []);
 
   // 获取 Item 在屏幕上的渲染信息 (替换原来的 getItemBounds/getItemScreenPosition)
   // width=1, height=1 means 100% of media's natural size (not composition size)
@@ -1158,33 +1165,8 @@ export const InteractiveCanvas: React.FC<InteractiveCanvasProps> = ({
                 transform: `rotate(${itemBounds.rotation}deg)`,
                 transformOrigin: `${itemBounds.centerX}px ${itemBounds.centerY}px`,
               }}
-              onMouseDown={(e) => {
-                e.stopPropagation();
-                e.preventDefault();
-
-                // 选中该元素（如果未选中）
-                if (onSelectItem && selectedItemId !== item.id) {
-                  onSelectItem(item.id);
-                }
-
-                // 准备拖动
-                const point = screenToPropertySpace(e.clientX, e.clientY);
-                setDragState({
-                  mode: 'move',
-                  startX: point.x,
-                  startY: point.y,
-                  startProperties: {
-                    x: item.properties?.x ?? 0,
-                    y: item.properties?.y ?? 0,
-                    width: item.properties?.width ?? 1,
-                    height: item.properties?.height ?? 1,
-                    rotation: item.properties?.rotation ?? 0,
-                    opacity: item.properties?.opacity ?? 1,
-                  },
-                  item,
-                  trackId,
-                });
-              }}
+              {...canvasTransformGestureBind('move', item, trackId, true)}
+              onMouseDown={stopTransformMouseDown}
             />
           ))}
         </svg>
@@ -1234,11 +1216,8 @@ export const InteractiveCanvas: React.FC<InteractiveCanvasProps> = ({
               cursor: 'move',
               pointerEvents: 'all',
             }}
-            onMouseDown={(e) => {
-              e.stopPropagation();
-              e.preventDefault();
-              handleMouseDown(e as any, 'move');
-            }}
+            {...canvasTransformGestureBind('move', selectedItemData.item, selectedItemData.trackId, false)}
+            onMouseDown={stopTransformMouseDown}
           />
 
             {/* 四个角的缩放手柄 */}
@@ -1263,10 +1242,8 @@ export const InteractiveCanvas: React.FC<InteractiveCanvasProps> = ({
                   transform: `rotate(${bounds.rotation}deg)`,
                   transformOrigin: `${bounds.centerX}px ${bounds.centerY}px`,
                 }}
-                onMouseDown={(e) => {
-                  e.stopPropagation();
-                  handleMouseDown(e as any, `scale-${pos}` as DragMode);
-                }}
+                {...canvasTransformGestureBind(`scale-${pos}` as CanvasTransformMode, selectedItemData.item, selectedItemData.trackId, false)}
+                onMouseDown={stopTransformMouseDown}
               />
             ))}
 
@@ -1285,10 +1262,8 @@ export const InteractiveCanvas: React.FC<InteractiveCanvasProps> = ({
                 transform: `rotate(${bounds.rotation}deg)`,
                 transformOrigin: `${bounds.centerX}px ${bounds.centerY}px`,
               }}
-              onMouseDown={(e) => {
-                e.stopPropagation();
-                handleMouseDown(e as any, 'rotate');
-              }}
+              {...canvasTransformGestureBind('rotate', selectedItemData.item, selectedItemData.trackId, false)}
+              onMouseDown={stopTransformMouseDown}
             />
             <line
               className="control-handle"
