@@ -99,6 +99,16 @@ describe("SelectMenu", () => {
         expect(screen.getByRole("menuitem", { name: "Model" })).toBeTruthy();
     });
 
+    it("lets Radix own nested submenu open state and pointer behavior", () => {
+        const source = readFileSync(join(process.cwd(), "packages/web-ui/src/components/ui/select.tsx"), "utf8");
+
+        expect(source).toContain("<DropdownMenuPrimitive.Sub");
+        expect(source).not.toContain("openSubmenu");
+        expect(source).not.toContain("setOpenSubmenu");
+        expect(source).not.toContain("onMouseEnter");
+        expect(source).not.toContain("event.preventDefault()");
+    });
+
     it("preserves explicit checked state in nested dropdown sections", () => {
         const onValueChange = vi.fn();
 

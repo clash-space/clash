@@ -1,7 +1,6 @@
 import {
     useCallback,
     useMemo,
-    useState,
     type MouseEvent as ReactMouseEvent,
     type PointerEvent as ReactPointerEvent,
     type ReactNode,
@@ -94,6 +93,7 @@ function menuItemClassName({
     return cn(
         'flex min-h-[40px] w-full items-center gap-3 rounded-xl px-3 py-2 text-left text-sm transition-colors',
         'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand',
+        'data-[state=open]:bg-warm-muted/75 dark:data-[state=open]:bg-slate-800/80',
         selected
             ? 'text-slate-950 hover:bg-warm-muted/75 dark:text-slate-50 dark:hover:bg-slate-800/80'
             : 'text-slate-900 hover:bg-warm-muted/75 dark:text-slate-100 dark:hover:bg-slate-800/80',
@@ -129,7 +129,6 @@ function DropdownSelectMenu<Value extends SelectValue = string>({
     triggerClassName,
     menuClassName,
 }: SelectMenuProps<Value>) {
-    const [openSubmenu, setOpenSubmenu] = useState<string | null>(null);
     const normalizedSections = useMemo<SelectSection<Value>[]>(() => {
         if (sections) return sections;
         return [{ id: 'options', options: options ?? [] }];
@@ -154,11 +153,6 @@ function DropdownSelectMenu<Value extends SelectValue = string>({
     const handleEventBoundary = (event: ReactMouseEvent<HTMLElement> | ReactPointerEvent<HTMLElement>) => {
         if (stopPropagation) event.stopPropagation();
     };
-
-    const handleOpenChange = useCallback((nextOpen: boolean) => {
-        if (!nextOpen) setOpenSubmenu(null);
-        onOpenChange?.(nextOpen);
-    }, [onOpenChange]);
 
     const selectOption = useCallback((option: SelectOption<Value>) => {
         if (option.disabled) return;
@@ -193,7 +187,7 @@ function DropdownSelectMenu<Value extends SelectValue = string>({
     return (
         <DropdownMenuPrimitive.Root
             open={controlledOpen}
-            onOpenChange={handleOpenChange}
+            onOpenChange={onOpenChange}
         >
             <div className={cn('relative inline-flex min-w-0', className)}>
                 {title ? <Tooltip label={title}>{trigger}</Tooltip> : trigger}
@@ -226,8 +220,6 @@ function DropdownSelectMenu<Value extends SelectValue = string>({
                                 sectionIndex={sectionIndex}
                                 value={value}
                                 selectOption={selectOption}
-                                openSubmenu={openSubmenu}
-                                setOpenSubmenu={setOpenSubmenu}
                                 submenuWidth={submenuWidth}
                             />
                         ))}
@@ -413,16 +405,12 @@ function DropdownSelectMenuSection<Value extends SelectValue>({
     sectionIndex,
     value,
     selectOption,
-    openSubmenu,
-    setOpenSubmenu,
     submenuWidth,
 }: {
     section: SelectSection<Value>;
     sectionIndex: number;
     value: Value;
     selectOption: (option: SelectOption<Value>) => void;
-    openSubmenu: string | null;
-    setOpenSubmenu: (value: string | null) => void;
     submenuWidth: number;
 }) {
     const selectedSectionValue = section.options.find((option) => option.selected ?? sameValue(option.value, value))?.value;
@@ -446,21 +434,10 @@ function DropdownSelectMenuSection<Value extends SelectValue>({
                     const submenuKey = String(option.value);
                     if (opensSubmenu) {
                         return (
-                            <DropdownMenuPrimitive.Sub
-                                key={submenuKey}
-                                open={openSubmenu === submenuKey}
-                                onOpenChange={(open) => setOpenSubmenu(open ? submenuKey : null)}
-                            >
+                            <DropdownMenuPrimitive.Sub key={submenuKey}>
                                 <DropdownMenuPrimitive.SubTrigger
                                     disabled={option.disabled}
-                                    onClick={(event) => {
-                                        event.preventDefault();
-                                        if (!option.disabled) setOpenSubmenu(submenuKey);
-                                    }}
-                                    onMouseEnter={() => {
-                                        if (!option.disabled) setOpenSubmenu(submenuKey);
-                                    }}
-                                    className={menuItemClassName({ selected: selected || openSubmenu === submenuKey, disabled: option.disabled })}
+                                    className={menuItemClassName({ selected, disabled: option.disabled })}
                                 >
                                     {option.icon ? (
                                         <span className="flex h-5 w-5 flex-shrink-0 items-center justify-center text-slate-700 dark:text-slate-300" aria-hidden="true">
@@ -495,8 +472,6 @@ function DropdownSelectMenuSection<Value extends SelectValue>({
                                                     sectionIndex={submenuIndex}
                                                     value={value}
                                                     selectOption={selectOption}
-                                                    openSubmenu={openSubmenu}
-                                                    setOpenSubmenu={setOpenSubmenu}
                                                     submenuWidth={submenuWidth}
                                                 />
                                             ))}
