@@ -1,4 +1,5 @@
 import { ArrowClockwise, House, Warning } from "@phosphor-icons/react";
+import { Button } from "@clash/web-ui/components/ui/button";
 import { Link, isRouteErrorResponse, useRouteError } from "react-router";
 
 type RouteErrorDetails = {
@@ -112,14 +113,14 @@ export function ErrorBoundary() {
           </dl>
 
           <div className="mt-5 flex flex-col gap-2 sm:flex-row">
-            <button
-              type="button"
+            <Button
+              variant="primary"
               onClick={() => window.location.reload()}
               className="clash-route-error-primary inline-flex min-h-11 flex-1 items-center justify-center gap-2 rounded-2xl px-4 py-2 text-sm font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-warm-surface"
             >
               <ArrowClockwise className="h-4 w-4" weight="bold" aria-hidden="true" />
               Reload
-            </button>
+            </Button>
             <Link
               to="/"
               className="clash-route-error-secondary inline-flex min-h-11 flex-1 items-center justify-center gap-2 rounded-2xl px-4 py-2 text-sm font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-warm-surface"
