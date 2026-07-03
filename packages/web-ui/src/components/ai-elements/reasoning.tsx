@@ -1,13 +1,15 @@
 "use client";
 
 // Verbatim port of vercel/ai-elements packages/elements/src/reasoning.tsx,
-// with two changes:
+// with three changes:
 //   1. `@repo/shadcn-ui/*` imports rewritten to local copies.
 //   2. The `@streamdown/cjk|code|math|mermaid` plugins are dropped —
 //      they add ~2MB of katex/mermaid/shiki to the bundle and we only
 //      need basic GFM markdown for agent thoughts. Plain Streamdown
 //      still handles tables/code blocks/lists; just no live mermaid
 //      diagrams or math formulas.
+//   3. Trigger chrome is routed through the shared Button primitive so
+//      focus and disabled behavior stay consistent with local controls.
 
 import { useControllableState } from "@radix-ui/react-use-controllable-state";
 import {
@@ -15,6 +17,7 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from "../ui/collapsible";
+import { Button } from "../ui/button";
 import { cn } from "./utils";
 import { BrainIcon, ChevronDownIcon } from "lucide-react";
 import type { ComponentProps, ReactNode } from "react";
@@ -149,9 +152,11 @@ export const Reasoning = memo(
   },
 );
 
-export type ReasoningTriggerProps = ComponentProps<
-  typeof CollapsibleTrigger
+export type ReasoningTriggerProps = Omit<
+  ComponentProps<typeof CollapsibleTrigger>,
+  "asChild" | "className"
 > & {
+  className?: string;
   getThinkingMessage?: (isStreaming: boolean, duration?: number) => ReactNode;
 };
 
@@ -175,25 +180,28 @@ export const ReasoningTrigger = memo(
     const { isStreaming, isOpen, duration } = useReasoning();
 
     return (
-      <CollapsibleTrigger
-        className={cn(
-          "flex w-full items-center gap-2 text-muted-foreground text-sm transition-colors hover:text-foreground",
-          className,
-        )}
-        {...props}
-      >
-        {children ?? (
-          <>
-            <BrainIcon className="size-4" />
-            {getThinkingMessage(isStreaming, duration)}
-            <ChevronDownIcon
-              className={cn(
-                "size-4 transition-transform",
-                isOpen ? "rotate-180" : "rotate-0",
-              )}
-            />
-          </>
-        )}
+      <CollapsibleTrigger asChild {...props}>
+        <Button
+          size="sm"
+          shape="rounded"
+          className={cn(
+            "min-h-0 w-full justify-start gap-2 border-transparent bg-transparent px-0 py-0 text-sm text-muted-foreground shadow-none transition-colors hover:bg-transparent hover:text-foreground focus-visible:ring-1 focus-visible:ring-ring focus-visible:ring-offset-0",
+            className,
+          )}
+        >
+          {children ?? (
+            <>
+              <BrainIcon className="size-4" />
+              {getThinkingMessage(isStreaming, duration)}
+              <ChevronDownIcon
+                className={cn(
+                  "size-4 transition-transform",
+                  isOpen ? "rotate-180" : "rotate-0",
+                )}
+              />
+            </>
+          )}
+        </Button>
       </CollapsibleTrigger>
     );
   },

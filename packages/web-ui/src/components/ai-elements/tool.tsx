@@ -21,6 +21,7 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from "../ui/collapsible";
+import { Button } from "../ui/button";
 import { cn } from "./utils";
 import type { DynamicToolUIPart, ToolUIPart } from "ai";
 import { ChevronDownIcon } from "lucide-react";
@@ -119,31 +120,34 @@ export const ToolHeader = ({
   const preview = inputPreview(previewInput as ToolPart["input"]);
 
   return (
-    <CollapsibleTrigger
-      className={cn(
-        "flex w-full items-center gap-2 px-2.5 py-1.5 text-xs",
-        "hover:bg-muted/40 transition-colors rounded-md",
-        "focus:outline-none focus-visible:ring-1 focus-visible:ring-ring",
-        className,
-      )}
-      {...props}
-    >
-      <span
-        aria-label={STATUS_LABEL[state]}
-        className={cn("size-1.5 shrink-0 rounded-full", STATUS_DOT[state])}
-      />
-      <span className="font-medium text-foreground shrink-0">{headerLabel}</span>
-      {preview && (
-        <span className="truncate text-muted-foreground font-mono text-[11px] flex-1 text-left min-w-0">
-          {preview}
-        </span>
-      )}
-      {!preview && (
-        <span className="flex-1 text-left text-muted-foreground text-[10px] uppercase tracking-wide">
-          {STATUS_LABEL[state]}
-        </span>
-      )}
-      <ChevronDownIcon className="size-3 shrink-0 text-muted-foreground transition-transform group-data-[state=open]:rotate-180" />
+    <CollapsibleTrigger asChild {...props}>
+      <Button
+        size="sm"
+        shape="rounded"
+        className={cn(
+          "min-h-0 w-full justify-start gap-2 border-transparent bg-transparent px-2.5 py-1.5 text-xs shadow-none",
+          "rounded-md transition-colors hover:bg-muted/40",
+          "focus-visible:ring-1 focus-visible:ring-ring focus-visible:ring-offset-0",
+          className,
+        )}
+      >
+        <span
+          aria-label={STATUS_LABEL[state]}
+          className={cn("size-1.5 shrink-0 rounded-full", STATUS_DOT[state])}
+        />
+        <span className="font-medium text-foreground shrink-0">{headerLabel}</span>
+        {preview && (
+          <span className="truncate text-muted-foreground font-mono text-[11px] flex-1 text-left min-w-0">
+            {preview}
+          </span>
+        )}
+        {!preview && (
+          <span className="flex-1 text-left text-muted-foreground text-[10px] uppercase tracking-wide">
+            {STATUS_LABEL[state]}
+          </span>
+        )}
+        <ChevronDownIcon className="size-3 shrink-0 text-muted-foreground transition-transform group-data-[state=open]:rotate-180" />
+      </Button>
     </CollapsibleTrigger>
   );
 };
