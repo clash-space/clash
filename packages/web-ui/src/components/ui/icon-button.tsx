@@ -2,6 +2,7 @@ import { forwardRef, type ButtonHTMLAttributes, type ReactNode } from 'react';
 import { cva, type VariantProps } from 'class-variance-authority';
 
 import { cn } from '../ai-elements/utils';
+import { Button } from './button';
 
 /**
  * Icon-only button primitive. Enforces the a11y wiring that callers
@@ -62,9 +63,12 @@ export interface IconButtonProps
 export const IconButton = forwardRef<HTMLButtonElement, IconButtonProps>(
     ({ icon, label, variant, size, shape, className, type = 'button', ...rest }, ref) => {
         return (
-            <button
+            <Button
                 ref={ref}
                 type={type}
+                variant={null}
+                size={null}
+                shape={null}
                 aria-label={label}
                 className={cn(iconButtonVariants({ variant, size, shape }), className)}
                 {...rest}
@@ -72,7 +76,7 @@ export const IconButton = forwardRef<HTMLButtonElement, IconButtonProps>(
                 <span aria-hidden="true" className="flex">
                     {icon}
                 </span>
-            </button>
+            </Button>
         );
     },
 );
