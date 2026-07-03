@@ -45,4 +45,16 @@ describe("copilot collapsible trigger buttons", () => {
     expect(source).not.toContain("copilot.toolCall.expand");
     expect(source).not.toContain("copilot.toolCall.collapse");
   });
+
+  it("lets Radix own AgentCard disclosure state", () => {
+    const source = readCopilotSource("AgentCard.tsx");
+
+    expect(source).toContain("<Collapsible");
+    expect(source).toContain("defaultOpen={initialExpanded}");
+    expect(source).not.toContain("useState");
+    expect(source).not.toContain("isOpen");
+    expect(source).not.toContain("setIsOpen");
+    expect(source).not.toContain("open={");
+    expect(source).not.toContain("onOpenChange");
+  });
 });

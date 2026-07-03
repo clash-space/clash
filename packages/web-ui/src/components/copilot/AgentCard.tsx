@@ -1,6 +1,6 @@
-import { motion, AnimatePresence } from 'framer-motion';
-import { CaretDown, CaretRight, CheckCircle, CircleNotch, PauseCircle, Robot, Crown, FilmStrip, Scroll, MagicWand, VideoCamera } from '@phosphor-icons/react';
-import { useState } from 'react';
+import { motion } from 'framer-motion';
+import { CaretRight, CheckCircle, CircleNotch, PauseCircle, Robot, Crown, FilmStrip, Scroll, MagicWand, VideoCamera } from '@phosphor-icons/react';
+import type { ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { ToolCall, ToolCallProps } from './ToolCall';
@@ -12,7 +12,7 @@ import { Button } from '../ui/button';
 export interface AgentLog {
     id: string;
     type: 'text' | 'tool_call' | 'thinking';
-    content?: React.ReactNode;
+    content?: ReactNode;
     toolProps?: ToolCallProps;
     taskName?: string;
 }
@@ -20,7 +20,7 @@ export interface AgentLog {
 interface AgentCardProps {
     agentName: string;
     status: 'working' | 'done' | 'waiting' | 'failed';
-    children?: React.ReactNode;
+    children?: ReactNode;
     isExpanded?: boolean;
     persona?: 'masterClash' | 'scriptwriter' | 'videoproducer' | 'conceptartist' | 'storyboardartist' | 'default';
     logs?: AgentLog[];
@@ -28,7 +28,6 @@ interface AgentCardProps {
 
 export function AgentCard({ agentName, status, children, isExpanded: initialExpanded = true, persona = 'default', logs = [] }: AgentCardProps) {
     const { t } = useTranslation();
-    const [isOpen, setIsOpen] = useState(initialExpanded);
 
     // Working is the agent "alive" state, so it uses brand coral. Other
     // states stay semantic and subdued so the panel does not turn into a
@@ -60,13 +59,12 @@ export function AgentCard({ agentName, status, children, isExpanded: initialExpa
 
     return (
         <Collapsible
-            open={isOpen}
-            onOpenChange={setIsOpen}
+            defaultOpen={initialExpanded}
             className="w-full rounded-xl bg-warm-surface shadow-sm border border-warm-border overflow-hidden my-2"
         >
             <CollapsibleTrigger asChild>
                 <Button
-                    className="min-h-0 w-full cursor-pointer justify-between rounded-none border-transparent bg-transparent px-4 py-3 text-left shadow-none hover:bg-warm-muted focus-visible:ring-inset"
+                    className="group/agent-card min-h-0 w-full cursor-pointer justify-between rounded-none border-transparent bg-transparent px-4 py-3 text-left shadow-none hover:bg-warm-muted focus-visible:ring-inset"
                 >
                     <span className="flex items-center gap-3">
                         <span className="p-2 rounded-xl bg-warm-muted relative flex items-center justify-center" aria-hidden="true">
@@ -86,53 +84,44 @@ export function AgentCard({ agentName, status, children, isExpanded: initialExpa
                         <span className={`text-xs px-2 py-0.5 rounded-full ${config.bg} ${config.color} font-medium`}>
                             {statusLabel}
                         </span>
-                        {isOpen ? (
-                            <CaretDown className="w-4 h-4 text-slate-700 dark:text-slate-300" aria-hidden="true" />
-                        ) : (
-                            <CaretRight className="w-4 h-4 text-slate-700 dark:text-slate-300" aria-hidden="true" />
-                        )}
+                        <CaretRight className="w-4 h-4 text-slate-700 transition-transform group-data-[state=open]/agent-card:rotate-90 dark:text-slate-300" aria-hidden="true" />
                     </span>
                 </Button>
             </CollapsibleTrigger>
 
-            <AnimatePresence>
-                {isOpen && (
-                    <CollapsibleContent asChild forceMount>
-                        <motion.div
-                            aria-label={`${agentName} — ${statusLabel}`}
-                            initial={{ height: 0, opacity: 0 }}
-                            animate={{ height: 'auto', opacity: 1 }}
-                            exit={{ height: 0, opacity: 0 }}
-                            transition={{ duration: 0.2 }}
-                        >
-                            <div className="px-4 pb-4 pt-0 border-t border-warm-border">
-                                <div className="pt-3 space-y-2">
-                                    {logs && logs.map(log => (
-                                        <div key={log.id} className="mb-2 last:mb-0">
+            <CollapsibleContent asChild>
+                <motion.div
+                    aria-label={`${agentName} — ${statusLabel}`}
+                    initial={{ height: 0, opacity: 0 }}
+                    animate={{ height: 'auto', opacity: 1 }}
+                    transition={{ duration: 0.2 }}
+                >
+                    <div className="px-4 pb-4 pt-0 border-t border-warm-border">
+                        <div className="pt-3 space-y-2">
+                            {logs && logs.map(log => (
+                                <div key={log.id} className="mb-2 last:mb-0">
 
-                                            {log.type === 'text' && (
-                                                typeof log.content === 'string' ? (
-                                                    <div className="text-sm text-slate-700 prose prose-sm max-w-none dark:text-slate-300 dark:prose-invert">
-                                                        <ReactMarkdown>{log.content}</ReactMarkdown>
-                                                    </div>
-                                                ) : log.content
-                                            )}
-                                            {log.type === 'thinking' && typeof log.content === 'string' && (
-                                                <ThinkingProcess content={log.content} />
-                                            )}
-                                            {log.type === 'tool_call' && log.toolProps && (
-                                                <ToolCall {...log.toolProps} />
-                                            )}
-                                        </div>
-
-                                    ))}
-                                    {children}
+                                    {log.type === 'text' && (
+                                        typeof log.content === 'string' ? (
+                                            <div className="text-sm text-slate-700 prose prose-sm max-w-none dark:text-slate-300 dark:prose-invert">
+                                                <ReactMarkdown>{log.content}</ReactMarkdown>
+                                            </div>
+                                        ) : log.content
+                                    )}
+                                    {log.type === 'thinking' && typeof log.content === 'string' && (
+                                        <ThinkingProcess content={log.content} />
+                                    )}
+                                    {log.type === 'tool_call' && log.toolProps && (
+                                        <ToolCall {...log.toolProps} />
+                                    )}
                                 </div>
-                            </div>
-                        </motion.div>
-                    </CollapsibleContent>
-                )}
-            </AnimatePresence>
+
+                            ))}
+                            {children}
+                        </div>
+                    </div>
+                </motion.div>
+            </CollapsibleContent>
         </Collapsible>
     );
 }
