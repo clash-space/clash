@@ -39,6 +39,7 @@ import { IconButton } from './ui/icon-button';
 import { SelectMenu, type SelectOption } from './ui/select';
 import { SearchableSelect } from './ui/searchable-select';
 import { Switch } from './ui/switch';
+import { Textarea } from './ui/textarea';
 import { Tooltip } from './ui/tooltip';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from './ui/collapsible';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from './ui/accordion';
@@ -5265,7 +5266,7 @@ function CustomAgentServerDialog({
                                         <span className="mb-1.5 block text-xs font-medium text-stone-600 dark:text-stone-300">
                                             Arguments
                                         </span>
-                                        <textarea
+                                        <Textarea
                                             aria-label="Arguments"
                                             value={argsText}
                                             onChange={(event) => onArgsTextChange(event.target.value)}
@@ -5279,7 +5280,7 @@ function CustomAgentServerDialog({
                                         <span className="mb-1.5 block text-xs font-medium text-stone-600 dark:text-stone-300">
                                             Environment
                                         </span>
-                                        <textarea
+                                        <Textarea
                                             aria-label="Environment"
                                             value={envText}
                                             onChange={(event) => onEnvTextChange(event.target.value)}

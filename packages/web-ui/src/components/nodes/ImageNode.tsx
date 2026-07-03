@@ -19,6 +19,7 @@ import {
 } from './assetNodeSizing';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '../ui/collapsible';
 import { IconButton } from '../ui/icon-button';
+import { Textarea } from '../ui/textarea';
 import { Tooltip } from '../ui/tooltip';
 
 const MEDIA_NODE_CONTROL_CLASS = 'nodrag nopan bg-black/50 text-white backdrop-blur-sm hover:bg-black/70 focus-visible:ring-white/80 focus-visible:ring-offset-black/20';
@@ -277,7 +278,7 @@ const ImageNode = ({ data, selected, id, width, height }: NodeProps<Node<Record<
                     className="absolute left-0 right-0 bottom-0 z-20 border-t border-warm-border bg-warm-surface/95 p-3 backdrop-blur"
                     onDoubleClick={(e) => e.stopPropagation()}
                 >
-                    <textarea
+                    <Textarea
                         className="w-full h-24 resize-none bg-transparent text-xs text-slate-700 dark:text-slate-300 focus:outline-none"
                         value={description || ((status === 'completed') ? 'Generating description...' : 'No description available.')}
                         readOnly

@@ -31,6 +31,7 @@ import { Tooltip } from '../ui/tooltip';
 import { Switch } from '../ui/switch';
 import { Slider, SliderRange, SliderThumb, SliderTrack } from '../ui/slider';
 import { ComboboxItem, ComboboxList, ComboboxProvider, useComboboxStore, type ComboboxStore } from '../ui/combobox';
+import { Textarea } from '../ui/textarea';
 import { replaceContentEditableHtmlPreservingFocus } from '../contentEditableSync';
 import { handleMentionComboboxKeyDown } from '../mentionComboboxKeyboard';
 import { useSpawnPendingAsset } from './useSpawnPendingAsset';
@@ -1365,7 +1366,7 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
                     <div className="flex justify-between text-[10px] font-medium text-stone-700 dark:text-stone-300">
                         <span>{param.label}</span>
                     </div>
-                    <textarea
+                    <Textarea
                         rows={2}
                         value={String(currentValue)}
                         onChange={(e) => updateModelParam(param.id, e.target.value)}

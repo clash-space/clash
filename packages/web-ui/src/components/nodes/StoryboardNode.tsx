@@ -3,6 +3,7 @@ import { Handle, Position, NodeProps, Node, useNodes, useEdges } from '@xyflow/r
 import { PaintBrush, Link as LinkIcon, Warning } from '@phosphor-icons/react';
 import { Shot } from './ScriptNode';
 import { SelectMenu } from '../ui/select';
+import { Textarea } from '../ui/textarea';
 
 const StoryboardNode = ({ id, data: _data, selected }: NodeProps<Node<Record<string, any>>>) => {
     // React Flow v11 compatible approach
@@ -102,7 +103,7 @@ const StoryboardNode = ({ id, data: _data, selected }: NodeProps<Node<Record<str
                     <div className="mb-1 flex items-center justify-between">
                         <label className="text-[10px] font-bold uppercase text-slate-700 dark:text-slate-300">Visual Prompt</label>
                     </div>
-                    <textarea
+                    <Textarea
                         className="w-full h-24 rounded-lg border border-warm-border bg-warm-muted p-2 text-xs text-slate-800 dark:text-slate-200 focus:border-brand focus:ring-1 focus:ring-brand outline-none resize-none"
                         value={visualPrompt}
                         onChange={(e) => setVisualPrompt(e.target.value)}
