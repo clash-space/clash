@@ -20,4 +20,14 @@ describe("VideoClipper timeline primitives", () => {
         expect(source).not.toContain("setDrag('start'");
         expect(source).not.toContain("setDrag('end'");
     });
+
+    it("uses the shared Radix-backed toggle group for mode selection", () => {
+        const source = readSource("packages/web-ui/src/components/VideoClipperContext.tsx");
+
+        expect(source).toContain("./ui/toggle-group");
+        expect(source).toContain("ToggleGroup");
+        expect(source).toContain("ToggleGroupItem");
+        expect(source).not.toContain("function ModeButton");
+        expect(source).not.toContain("aria-pressed={active}");
+    });
 });

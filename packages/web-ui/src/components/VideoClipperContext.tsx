@@ -35,6 +35,7 @@ import { applyVideoScreenshot } from '@clash/web-ui/lib/editPipeline';
 import type { VideoClipParams } from '@clash/shared-types';
 import { Button } from './ui/button';
 import { Slider, SliderRange, SliderThumb, SliderTrack } from './ui/slider';
+import { ToggleGroup, ToggleGroupItem } from './ui/toggle-group';
 
 interface OpenVideoClipperInput {
     editorNodeId: string;
@@ -232,14 +233,30 @@ function VideoClipperPanel({
                 <div className="w-72 border-l border-warm-border bg-warm-surface p-4 flex flex-col gap-4 overflow-y-auto">
                     <section>
                         <h3 className="text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-2">Mode</h3>
-                        <div className="flex gap-1">
-                            <ModeButton active={mode === 'screenshot'} onClick={() => setMode('screenshot')}>
+                        <ToggleGroup
+                            type="single"
+                            value={mode}
+                            onValueChange={(nextMode) => {
+                                if (nextMode === 'screenshot' || nextMode === 'crop') {
+                                    setMode(nextMode);
+                                }
+                            }}
+                            className="flex gap-1"
+                            aria-label="Video clip mode"
+                        >
+                            <ToggleGroupItem
+                                value="screenshot"
+                                className="min-h-0 flex-1 rounded-md border border-slate-300 bg-warm-surface px-2 py-1.5 text-xs font-medium text-slate-800 hover:bg-slate-50 data-[state=on]:border-slate-900 data-[state=on]:bg-slate-900 data-[state=on]:text-white data-[state=on]:hover:bg-slate-900 dark:text-slate-200"
+                            >
                                 Screenshot
-                            </ModeButton>
-                            <ModeButton active={mode === 'crop'} onClick={() => setMode('crop')}>
+                            </ToggleGroupItem>
+                            <ToggleGroupItem
+                                value="crop"
+                                className="min-h-0 flex-1 rounded-md border border-slate-300 bg-warm-surface px-2 py-1.5 text-xs font-medium text-slate-800 hover:bg-slate-50 data-[state=on]:border-slate-900 data-[state=on]:bg-slate-900 data-[state=on]:text-white data-[state=on]:hover:bg-slate-900 dark:text-slate-200"
+                            >
                                 Crop
-                            </ModeButton>
-                        </div>
+                            </ToggleGroupItem>
+                        </ToggleGroup>
                     </section>
 
                     {mode === 'screenshot' ? (
@@ -316,22 +333,6 @@ function VideoClipperPanel({
                 />
             )}
         </>
-    );
-}
-
-function ModeButton({ active, onClick, children }: { active: boolean; onClick: () => void; children: ReactNode }) {
-    return (
-        <Button
-            size="sm"
-            onClick={onClick}
-            className={`min-h-0 flex-1 rounded-md px-2 py-1.5 text-xs ${
-                active
-                    ? 'border-slate-900 bg-slate-900 text-white hover:bg-slate-900'
-                    : 'bg-warm-surface text-slate-800 dark:text-slate-200 border-slate-300 hover:bg-slate-50'
-            }`}
-        >
-            {children}
-        </Button>
     );
 }
 
