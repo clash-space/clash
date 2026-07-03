@@ -1,6 +1,8 @@
 import type { ByoMessage } from "@clash/web-ui/lib/acpEvents";
 import { AcpMessageList, AcpProgressPanel, getAcpGlobalState } from "@clash/web-ui/components/copilot/AcpMessageList";
 import { AcpAgentLogo } from "@clash/web-ui/components/copilot/AcpAgentLogo";
+import { Button } from "@clash/web-ui/components/ui/button";
+import { IconButton } from "@clash/web-ui/components/ui/icon-button";
 import { SelectMenu, type SelectSection } from "@clash/web-ui/components/ui/select";
 import { useMemo, useState } from "react";
 import { useSearchParams } from "react-router";
@@ -206,14 +208,24 @@ export default function CodexCopilotPreview() {
             <div className="mb-3 min-h-10 px-2 text-sm text-muted-foreground">Ask anything about the canvas...</div>
             <div className="flex items-center justify-between gap-3">
               <div className="flex min-w-0 items-center gap-2">
-                <button className="flex h-8 w-8 items-center justify-center rounded-xl text-muted-foreground hover:bg-warm-muted" aria-label="Attach">
-                  <Plus className="h-4 w-4" />
-                </button>
-                <button className="inline-flex h-8 items-center gap-1.5 rounded-full px-2.5 text-sm font-medium text-status-down hover:bg-status-down/10" aria-label="Permission mode">
+                <IconButton
+                  label="Attach"
+                  icon={<Plus className="h-4 w-4" />}
+                  size="sm"
+                  shape="rounded"
+                  className="rounded-xl text-muted-foreground hover:bg-warm-muted"
+                />
+                <Button
+                  variant={null}
+                  size={null}
+                  shape={null}
+                  className="inline-flex h-8 min-h-8 items-center gap-1.5 rounded-full border-0 bg-transparent px-2.5 text-sm font-medium text-status-down shadow-none hover:bg-status-down/10"
+                  aria-label="Permission mode"
+                >
                   <ShieldWarning className="h-4 w-4" />
                   <span>Full access</span>
                   <CaretDown className="h-3.5 w-3.5" />
-                </button>
+                </Button>
               </div>
               <div className="flex items-center gap-2">
                 <SelectMenu
@@ -256,12 +268,20 @@ export default function CodexCopilotPreview() {
                     : selectedModelLabel}
                 />
                 <span className="h-2.5 w-2.5 rounded-full bg-emerald-500" />
-                <button className="flex h-8 w-8 items-center justify-center rounded-xl text-muted-foreground hover:bg-warm-muted" aria-label="Voice">
-                  <Microphone className="h-4 w-4" />
-                </button>
-                <button className="flex h-9 w-9 items-center justify-center rounded-xl bg-status-down text-white" aria-label="Send">
-                  <ArrowUp className="h-4 w-4" weight="bold" />
-                </button>
+                <IconButton
+                  label="Voice"
+                  icon={<Microphone className="h-4 w-4" />}
+                  size="sm"
+                  shape="rounded"
+                  className="rounded-xl text-muted-foreground hover:bg-warm-muted"
+                />
+                <IconButton
+                  label="Send"
+                  icon={<ArrowUp className="h-4 w-4" weight="bold" />}
+                  size="md"
+                  shape="rounded"
+                  className="rounded-xl bg-status-down text-white hover:bg-status-down/90"
+                />
               </div>
             </div>
           </div>
