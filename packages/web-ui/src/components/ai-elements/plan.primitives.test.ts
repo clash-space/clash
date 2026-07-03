@@ -18,4 +18,14 @@ describe("PlanBar primitives", () => {
     expect(source).not.toContain('role="dialog"');
     expect(source).not.toContain("<button");
   });
+
+  it("lets Radix own PlanBar popover state instead of mirroring it locally", () => {
+    const source = readAiElementSource("plan.tsx");
+
+    expect(source).toContain("<Popover>");
+    expect(source).not.toContain("React.useState");
+    expect(source).not.toContain("<Popover open=");
+    expect(source).not.toContain("onOpenChange={setOpen}");
+    expect(source).not.toContain('aria-label={open ? "Hide plan" : "Show plan"}');
+  });
 });

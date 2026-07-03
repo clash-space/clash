@@ -9,7 +9,6 @@
 //                  the bar lives at the agent tab footer instead and
 //                  reflects the *latest* plan snapshot from the agent.
 
-import * as React from "react";
 import { CheckCircle2, Circle, Loader2 } from "lucide-react";
 import type { PlanEntry } from "../../lib/acpEvents";
 import { Button } from "../ui/button";
@@ -78,7 +77,6 @@ export interface PlanBarProps {
  * intact.
  */
 export function PlanBar({ entries, className }: PlanBarProps) {
-  const [open, setOpen] = React.useState(false);
   if (!entries || entries.length === 0) return null;
   const completed = entries.filter((e) => e.status === "completed").length;
   const inProgress = entries.find((e) => e.status === "in_progress");
@@ -87,7 +85,7 @@ export function PlanBar({ entries, className }: PlanBarProps) {
   const isDone = completed === entries.length;
   return (
     <div className={cn("relative", className)}>
-      <Popover open={open} onOpenChange={setOpen}>
+      <Popover>
         <PopoverContent
           side="top"
           align="start"
@@ -106,7 +104,7 @@ export function PlanBar({ entries, className }: PlanBarProps) {
               "group/planbar h-8 min-h-0 w-full rounded-full border-0 bg-warm-muted/70 px-2.5 text-xs text-foreground shadow-none transition-colors hover:bg-warm-muted",
               "focus:outline-none focus-visible:ring-2 focus-visible:ring-ring/50",
             )}
-            aria-label={open ? "Hide plan" : "Show plan"}
+            aria-label="Toggle plan"
           >
             <span className="shrink-0 font-semibold text-[10px] uppercase tracking-wide text-muted-foreground">
               Plan
