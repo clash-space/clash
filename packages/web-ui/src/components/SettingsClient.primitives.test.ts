@@ -39,6 +39,16 @@ describe("SettingsClient primitives", () => {
     expect(source).not.toContain("const toggleRuntimeCollapsed");
   });
 
+  it("uses the shared radio group primitive for sync mode selection", () => {
+    const source = readSource("packages/web-ui/src/components/SettingsClient.tsx");
+
+    expect(source).toContain("./ui/radio-group");
+    expect(source).toContain("RadioGroup");
+    expect(source).toContain("RadioGroupItem");
+    expect(source).not.toContain('name="sync-mode"');
+    expect(source).not.toContain('type="radio"');
+  });
+
   it("keeps provider key editor focus inside React refs instead of document queries", () => {
     const source = readSource("packages/web-ui/src/components/SettingsClient.tsx");
 

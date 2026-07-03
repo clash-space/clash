@@ -41,6 +41,7 @@ import { SearchableSelect } from './ui/searchable-select';
 import { Switch } from './ui/switch';
 import { Tooltip } from './ui/tooltip';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from './ui/collapsible';
+import { RadioGroup, RadioGroupItem } from './ui/radio-group';
 import { useAppFeedback } from './AppFeedback';
 
 /** Stable identifiers for each section pane — shared between the legacy
@@ -3481,42 +3482,36 @@ function SyncSection() {
                 <SettingsFormSkeleton ariaLabel="Loading sync settings" variant="sync" />
             ) : (
                 <SettingsAnimatedBody>
-                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                        <label className={`rounded-xl border p-4 transition-colors ${mode === 'local-only' ? 'border-brand/55 bg-brand-light/45' : 'border-warm-border bg-warm-surface hover:border-brand/35'}`}>
-                            <input
-                                type="radio"
-                                name="sync-mode"
-                                value="local-only"
-                                checked={mode === 'local-only'}
-                                onChange={() => {
-                                    setMode('local-only');
-                                    markDirty();
-                                }}
-                                className="sr-only"
-                            />
+                    <RadioGroup
+                        aria-label="Sync mode"
+                        value={mode}
+                        onValueChange={(nextMode) => {
+                            if (nextMode === 'local-only' || nextMode === 'cloud-sync') {
+                                setMode(nextMode);
+                                markDirty();
+                            }
+                        }}
+                        className="grid grid-cols-1 gap-2 sm:grid-cols-2"
+                    >
+                        <RadioGroupItem
+                            value="local-only"
+                            className="rounded-xl p-4"
+                        >
                             <span className="block text-sm font-semibold text-slate-900 dark:text-slate-50">Local only</span>
                             <span className="mt-1 block text-xs text-stone-600 dark:text-stone-300">
                                 Stores projects on this machine.
                             </span>
-                        </label>
-                        <label className={`rounded-xl border p-4 transition-colors ${mode === 'cloud-sync' ? 'border-brand/55 bg-brand-light/45' : 'border-warm-border bg-warm-surface hover:border-brand/35'}`}>
-                            <input
-                                type="radio"
-                                name="sync-mode"
-                                value="cloud-sync"
-                                checked={mode === 'cloud-sync'}
-                                onChange={() => {
-                                    setMode('cloud-sync');
-                                    markDirty();
-                                }}
-                                className="sr-only"
-                            />
+                        </RadioGroupItem>
+                        <RadioGroupItem
+                            value="cloud-sync"
+                            className="rounded-xl p-4"
+                        >
                             <span className="block text-sm font-semibold text-slate-900 dark:text-slate-50">Cloud sync</span>
                             <span className="mt-1 block text-xs text-stone-600 dark:text-stone-300">
                                 Mirrors Loro snapshots and updates.
                             </span>
-                        </label>
-                    </div>
+                        </RadioGroupItem>
+                    </RadioGroup>
 
                     <div className="space-y-3 rounded-xl border border-warm-border bg-warm-surface p-4">
                         <label className="block">
