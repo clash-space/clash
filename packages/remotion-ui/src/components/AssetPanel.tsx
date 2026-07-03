@@ -7,6 +7,7 @@ import {
   useEditorStaticState,
 } from '@master-clash/remotion-core';
 import type { Asset, EditorAssetInput, TextItem } from '@master-clash/remotion-core';
+import { RemotionButton, RemotionFileInput } from './ui/controls';
 
 // Export for TimelineTracksContainer to use
 export let currentDraggedAsset: any = null;
@@ -204,7 +205,7 @@ export const AssetPanel: React.FC<AssetPanelProps> = ({
       <div className="border-b border-slate-200/80 bg-white/95 px-4 py-3">
         <div className="flex items-center justify-between">
           {onBack ? (
-            <button
+            <RemotionButton
               type="button"
               onClick={onBack}
               className="flex h-9 w-9 items-center justify-center rounded-md border border-slate-200 bg-white text-slate-600 shadow-sm transition-colors hover:border-slate-300 hover:bg-slate-50 hover:text-slate-950"
@@ -225,18 +226,18 @@ export const AssetPanel: React.FC<AssetPanelProps> = ({
                   strokeLinejoin="round"
                 />
               </svg>
-            </button>
+            </RemotionButton>
           ) : (
             <h2 className="m-0 text-sm font-bold text-slate-900">Assets</h2>
           )}
           {onExport && (
-            <button
+            <RemotionButton
               type="button"
               onClick={() => onExport()}
               className="flex h-9 items-center justify-center rounded-md border border-[#ff6b50] bg-[#ff6b50] px-3 text-sm font-semibold text-white shadow-sm transition-colors hover:border-[#e85f47] hover:bg-[#e85f47]"
             >
               Export
-            </button>
+            </RemotionButton>
           )}
         </div>
       </div>
@@ -246,7 +247,7 @@ export const AssetPanel: React.FC<AssetPanelProps> = ({
         <div className="mb-6">
           <h3 className="m-0 mb-3 text-xs font-bold uppercase tracking-wide text-slate-500">Quick Add</h3>
           <div className="flex gap-2">
-            <button
+            <RemotionButton
               onClick={handleAddTextToTrack}
               className="flex-1 cursor-grab rounded-md border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 shadow-sm transition-all hover:border-[#ffb6a8] hover:bg-[#fff3f0] hover:text-[#d94f38] active:cursor-grabbing"
               draggable
@@ -254,8 +255,8 @@ export const AssetPanel: React.FC<AssetPanelProps> = ({
               title="Click to add or drag to timeline"
             >
               + Text
-            </button>
-            <button
+            </RemotionButton>
+            <RemotionButton
               onClick={() => {
                 const newItemDuration = 30; // 1 second at 30fps (smaller initial size)
                 const newItemFrom = currentFrameRef.current;
@@ -338,35 +339,34 @@ export const AssetPanel: React.FC<AssetPanelProps> = ({
               title="Click to add or drag to timeline"
             >
               + Color
-            </button>
+            </RemotionButton>
           </div>
         </div>
 
         {/* Upload Section */}
         <div className="mb-6">
           <h3 className="m-0 mb-3 text-xs font-bold uppercase tracking-wide text-slate-500">Media Files</h3>
-          <input
+          <RemotionFileInput
             ref={fileInputRef}
-            type="file"
             accept="image/*,video/*,audio/*"
             multiple
             className="hidden"
             onChange={handleFileUpload}
           />
-          <button
+          <RemotionButton
             onClick={() => fileInputRef.current?.click()}
             className="w-full rounded-md bg-[#ff6b50] px-4 py-3 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-[#e85f47] active:scale-95 disabled:cursor-not-allowed disabled:opacity-50"
             disabled={!onAssetUpload}
           >
             Upload Files
-          </button>
-          <button
+          </RemotionButton>
+          <RemotionButton
             onClick={() => setIsPickerOpen(true)}
             className="mt-2 w-full rounded-md border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition-colors hover:border-slate-300 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
             disabled={availableAssets.length === 0}
           >
             Add From Canvas
-          </button>
+          </RemotionButton>
         </div>
 
         {/* Assets List */}
@@ -417,12 +417,12 @@ export const AssetPanel: React.FC<AssetPanelProps> = ({
                   <div className="text-xs text-slate-500 capitalize mt-0.5">{asset.type}</div>
                 </div>
                 {!asset.readOnly && (
-                  <button
+                  <RemotionButton
                     onClick={() => dispatch({ type: 'REMOVE_ASSET', payload: asset.id })}
                     className="flex h-6 w-6 items-center justify-center rounded text-slate-400 opacity-0 transition-colors hover:bg-[#fff3f0] hover:text-[#d94f38] group-hover:opacity-100"
                   >
                     ×
-                  </button>
+                  </RemotionButton>
                 )}
               </div>
             ))
@@ -434,12 +434,12 @@ export const AssetPanel: React.FC<AssetPanelProps> = ({
         <div className="absolute inset-0 z-20 bg-white/95">
           <div className="flex items-center justify-between border-b border-slate-200 bg-white px-4 py-3">
             <div className="text-sm font-bold text-slate-900">Add From Canvas</div>
-            <button
+            <RemotionButton
               onClick={() => setIsPickerOpen(false)}
               className="text-xs font-semibold text-slate-500 hover:text-slate-700"
             >
               Close
-            </button>
+            </RemotionButton>
           </div>
           <div className="p-4 space-y-2 overflow-auto h-[calc(100%-52px)]">
             {availableAssets.length === 0 ? (
@@ -448,7 +448,7 @@ export const AssetPanel: React.FC<AssetPanelProps> = ({
               </div>
             ) : (
               availableAssets.map((asset) => (
-                <button
+                <RemotionButton
                   key={asset.id}
                   onClick={() => handlePickAsset(asset)}
                   className="flex w-full items-center gap-3 rounded-md border border-slate-200 bg-white p-2 text-left transition-colors hover:border-[#ffb6a8] hover:bg-[#fff3f0]"
@@ -486,7 +486,7 @@ export const AssetPanel: React.FC<AssetPanelProps> = ({
                     </div>
                     <div className="text-xs text-slate-500 capitalize">{asset.type}</div>
                   </div>
-                </button>
+                </RemotionButton>
               ))
             )}
           </div>

@@ -10,6 +10,22 @@ export const TimelineIconButton = React.forwardRef<HTMLButtonElement, TimelineIc
 
 export const RemotionIconButton = TimelineIconButton;
 
+export type RemotionButtonProps = React.ButtonHTMLAttributes<HTMLButtonElement>;
+
+export const RemotionButton = React.forwardRef<HTMLButtonElement, RemotionButtonProps>(
+  function RemotionButton({ type = 'button', ...props }, ref) {
+    return <button ref={ref} type={type} {...props} />;
+  },
+);
+
+export type RemotionFileInputProps = Omit<React.InputHTMLAttributes<HTMLInputElement>, 'type'>;
+
+export const RemotionFileInput = React.forwardRef<HTMLInputElement, RemotionFileInputProps>(
+  function RemotionFileInput(props, ref) {
+    return <input ref={ref} type="file" {...props} />;
+  },
+);
+
 export type TimelineRangeInputProps = Omit<React.InputHTMLAttributes<HTMLInputElement>, 'type'>;
 
 export const TimelineRangeInput = React.forwardRef<HTMLInputElement, TimelineRangeInputProps>(
