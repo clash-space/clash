@@ -10,7 +10,6 @@
  * the visual language people expect.
  */
 
-import { useState } from 'react';
 import { motion } from 'framer-motion';
 import type { AcpToolCallContent, AcpToolCallPart, ByoMessage, PlanEntry } from '@clash/web-ui/lib/acpEvents';
 import { EmptyState } from '../../_group-chat/EmptyState';
@@ -468,12 +467,11 @@ function ShellCommandGroup({
 }
 
 function ThoughtRow({ text, defaultOpen = false }: { text: string; defaultOpen?: boolean }) {
-  const [open, setOpen] = useState(defaultOpen);
   const hasBody = text.trim().length > 0;
   return (
     <Collapsible
-      open={hasBody && open}
-      onOpenChange={setOpen}
+      key={hasBody ? 'with-body' : 'empty'}
+      defaultOpen={hasBody && defaultOpen}
       data-testid="acp-thought-row"
       className="not-prose my-1 w-full text-neutral-500"
     >
@@ -508,7 +506,6 @@ function ThoughtRow({ text, defaultOpen = false }: { text: string; defaultOpen?:
 }
 
 function ToolRow({ tool, defaultOpen = false }: { tool: AcpToolCallPart; defaultOpen?: boolean }) {
-  const [open, setOpen] = useState(defaultOpen);
   const status = tool.status ?? 'pending';
   const running = status === 'pending' || status === 'in_progress';
   const failed = status === 'failed';
@@ -524,8 +521,8 @@ function ToolRow({ tool, defaultOpen = false }: { tool: AcpToolCallPart; default
 
   return (
     <Collapsible
-      open={hasBody && open}
-      onOpenChange={setOpen}
+      key={hasBody ? 'with-body' : 'empty'}
+      defaultOpen={hasBody && defaultOpen}
       data-testid="acp-tool-row"
       className={cn(
         'not-prose my-1 w-full text-neutral-500',

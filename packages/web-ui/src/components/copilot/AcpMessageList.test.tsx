@@ -188,6 +188,43 @@ describe("AcpMessageList", () => {
     expect(details.textContent).not.toContain("unified_exec_startup");
   });
 
+  it("auto-opens tool details when streaming output arrives after an empty pending tool", () => {
+    const pendingMessages: ByoMessage[] = [{
+      id: "asst-streaming-tool",
+      role: "assistant",
+      parts: [{
+        type: "tool_call",
+        toolCallId: "tool-streaming",
+        title: "List models",
+        kind: "list",
+        status: "pending",
+      }],
+    }];
+    const completedMessages: ByoMessage[] = [{
+      id: "asst-streaming-tool",
+      role: "assistant",
+      parts: [{
+        type: "tool_call",
+        toolCallId: "tool-streaming",
+        title: "List models",
+        kind: "list",
+        status: "completed",
+        rawOutput: ["nano-banana", "flux-schnell"],
+      }],
+    }];
+
+    const { rerender } = render(
+      <AcpMessageList messages={pendingMessages} defaultOpenTools />,
+    );
+
+    expect(screen.queryByTestId("acp-tool-details")).toBeNull();
+
+    rerender(<AcpMessageList messages={completedMessages} defaultOpenTools />);
+
+    expect(screen.getByTestId("acp-tool-details").textContent).toContain("nano-banana");
+    expect(screen.getByTestId("acp-tool-details").textContent).toContain("flux-schnell");
+  });
+
   it("deduplicates Codex exec_command shell echoes into one Backchat-style command row", () => {
     const cwd = "/Users/xiaoyang/.clash/projects/dcf4f3a0-dbc0-4482-9a15-5cfad33a4716";
     const messages: ByoMessage[] = [{

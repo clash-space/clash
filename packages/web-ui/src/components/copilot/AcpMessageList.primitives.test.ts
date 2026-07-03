@@ -95,6 +95,22 @@ describe("AcpMessageList primitives", () => {
     expect(source).not.toContain("{hasBody && open ? (");
   });
 
+  it("lets Radix own thought and generic tool row disclosure state", () => {
+    const source = readCopilotSource("AcpMessageList.tsx");
+
+    for (const functionName of ["ThoughtRow", "ToolRow"]) {
+      const start = source.indexOf(`function ${functionName}`);
+      const nextFunction = source.indexOf("\nfunction ", start + 1);
+      const end = nextFunction === -1 ? source.length : nextFunction;
+      const functionSource = source.slice(start, end);
+
+      expect(functionSource).toContain("defaultOpen={hasBody && defaultOpen}");
+      expect(functionSource).not.toContain("const [open, setOpen]");
+      expect(functionSource).not.toContain("open={hasBody && open}");
+      expect(functionSource).not.toContain("onOpenChange={setOpen}");
+    }
+  });
+
   it("lets Radix collapsible trigger state rotate ACP row chevrons", () => {
     const source = readCopilotSource("AcpMessageList.tsx");
     const stateDrivenRotations = source.match(/group-data-\[state=open\]:rotate-90/g) ?? [];
