@@ -178,9 +178,14 @@ export const Timeline: React.FC = () => {
 
   const containerRef = useRef<HTMLDivElement>(null);
   const workspaceRef = useRef<HTMLDivElement>(null);
+  const tracksViewportRef = useRef<HTMLDivElement | null>(null);
   // Mount point for labels (left column) when externalized from tracks container
   const labelsPortalRef = useRef<HTMLDivElement>(null);
   const [labelsPortalEl, setLabelsPortalEl] = useState<HTMLDivElement | null>(null);
+
+  const handleTracksViewportElementChange = useCallback((element: HTMLDivElement | null) => {
+    tracksViewportRef.current = element;
+  }, []);
 
   useEffect(() => {
     // Mount once so TracksContainer receives a stable portal target
@@ -236,12 +241,7 @@ export const Timeline: React.FC = () => {
     if (!draggedItem || !dragPreview) return;
 
     const container = containerRef.current;
-    // Query fresh each call — the ref-cached lookup bug (captured a detached
-    // DOM node after the first portal-triggered re-render) produced rect.top
-    // and height of 0 and made band routing math land in imaginary bands.
-    const viewportEl =
-      (container?.querySelector('.tracks-viewport') as HTMLDivElement | null) ??
-      (document.querySelector('.tracks-viewport') as HTMLDivElement | null);
+    const viewportEl = tracksViewportRef.current;
     if (!container || !viewportEl) return;
 
     const containerRect = container.getBoundingClientRect();
@@ -564,7 +564,7 @@ export const Timeline: React.FC = () => {
     }
     
     // 计算鼠标位置和目标位置
-    const viewportEl = document.querySelector('.tracks-viewport') as HTMLDivElement | null;
+    const viewportEl = tracksViewportRef.current;
     if (!viewportEl) return;
 
     const rect = viewportEl.getBoundingClientRect();
@@ -1151,6 +1151,7 @@ export const Timeline: React.FC = () => {
               dragPreview={dragPreview}
               assetDragPreview={assetDragPreview}
               onScrollXChange={setScrollLeft}
+              onViewportElementChange={handleTracksViewportElementChange}
               viewportWidth={viewportContentWidth}
               labelsPortal={labelsPortalEl}
               contentInsetLeftPx={contentInsetLeftPx}

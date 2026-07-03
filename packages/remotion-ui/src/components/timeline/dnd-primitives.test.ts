@@ -16,4 +16,14 @@ describe('timeline drag-and-drop primitives', () => {
     expect(timelineSource).not.toContain('@dnd-kit/');
     expect(itemSource).not.toContain('@dnd-kit/');
   });
+
+  it('passes the tracks viewport through React refs instead of DOM queries', () => {
+    const timelineSource = readSource('packages/remotion-ui/src/components/Timeline.tsx');
+    const tracksContainerSource = readSource('packages/remotion-ui/src/components/timeline/TimelineTracksContainer.tsx');
+
+    expect(timelineSource).toContain('tracksViewportRef');
+    expect(tracksContainerSource).toContain('onViewportElementChange');
+    expect(timelineSource).not.toContain('querySelector');
+    expect(tracksContainerSource).not.toContain('querySelector');
+  });
 });

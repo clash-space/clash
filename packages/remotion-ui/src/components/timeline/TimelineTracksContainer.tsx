@@ -67,6 +67,7 @@ interface TimelineTracksContainerProps {
   } | null;
   // Horizontal scroll sync – report viewport scrollLeft to parent
   onScrollXChange?: (scrollLeft: number) => void;
+  onViewportElementChange?: (viewport: HTMLDivElement | null) => void;
   // Available viewport content width (without labels), used to clamp min width
   viewportWidth?: number;
   // If provided, render labels panel into this element via portal
@@ -105,6 +106,7 @@ export const TimelineTracksContainer: React.FC<TimelineTracksContainerProps> = (
   dragPreview,
   assetDragPreview,
   onScrollXChange,
+  onViewportElementChange,
   viewportWidth,
   labelsPortal,
   contentInsetLeftPx,
@@ -128,6 +130,11 @@ export const TimelineTracksContainer: React.FC<TimelineTracksContainerProps> = (
   const labelsRef = useRef<HTMLDivElement>(null);
   const viewportRef = useRef<HTMLDivElement>(null);
   const handleInsertDropRef = useRef<((e: React.DragEvent, position: number) => void) | null>(null);
+
+  const setViewportElement = useCallback((node: HTMLDivElement | null) => {
+    viewportRef.current = node;
+    onViewportElementChange?.(node);
+  }, [onViewportElementChange]);
 
   const [, setScrollSync] = useState({ x: 0, y: 0 });
   const [isDraggingOver, setIsDraggingOver] = useState(false);
@@ -630,7 +637,7 @@ export const TimelineTracksContainer: React.FC<TimelineTracksContainerProps> = (
 
       {/* 右侧轨道视口 */}
       <div
-        ref={viewportRef}
+        ref={setViewportElement}
         className="tracks-viewport"
         style={{
           flex: 1,
