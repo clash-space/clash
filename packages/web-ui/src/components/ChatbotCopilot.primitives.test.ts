@@ -43,14 +43,16 @@ describe("ChatbotCopilot primitives", () => {
     expect(source).not.toContain('role={isMobile && !isCollapsed ? \'dialog\' : undefined}');
   });
 
-  it("uses dnd-kit primitives for queued prompt reordering", () => {
+  it("routes queued prompt reordering through the shared sortable primitive", () => {
     const source = readComponentSource("ChatbotCopilot.tsx");
 
-    expect(source).toContain("@dnd-kit/core");
-    expect(source).toContain("@dnd-kit/sortable");
-    expect(source).toContain("DndContext");
-    expect(source).toContain("SortableContext");
-    expect(source).toContain("useSortable");
+    expect(source).toContain("./ui/sortable");
+    expect(source).toContain("SortableList");
+    expect(source).toContain("useSortableItem");
+    expect(source).not.toContain("@dnd-kit/");
+    expect(source).not.toContain("DndContext");
+    expect(source).not.toContain("SortableContext");
+    expect(source).not.toMatch(/\buseSortable\b/);
     expect(source).not.toContain("dataTransfer");
     expect(source).not.toContain("draggable");
   });

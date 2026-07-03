@@ -1,23 +1,5 @@
 
 import { useState, useCallback, useEffect, useMemo, useRef, type FormEvent, type ReactNode } from 'react';
-import {
-    closestCenter,
-    DndContext,
-    KeyboardSensor,
-    PointerSensor,
-    useSensor,
-    useSensors,
-    type DragEndEvent,
-} from '@dnd-kit/core';
-import { restrictToVerticalAxis } from '@dnd-kit/modifiers';
-import {
-    arrayMove,
-    SortableContext,
-    sortableKeyboardCoordinates,
-    useSortable,
-    verticalListSortingStrategy,
-} from '@dnd-kit/sortable';
-import { CSS } from '@dnd-kit/utilities';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Key, Plus, Trash, Copy, Check, ArrowLeft, ArrowUp, ArrowDown, Lock, Eye, EyeSlash, PuzzlePiece, BookOpen, Terminal, Plug, CloudArrowUp, MagnifyingGlass, CaretDown, CaretRight, Microphone, X, ImageSquare, VideoCamera, SpeakerHigh, TextT } from '@phosphor-icons/react';
 import { useClashRuntime } from '@clash/web-ui/hooks/useClashRuntime';
@@ -39,6 +21,7 @@ import { IconButton } from './ui/icon-button';
 import { Input } from './ui/input';
 import { SelectMenu, type SelectOption } from './ui/select';
 import { SearchableSelect } from './ui/searchable-select';
+import { SortableList, moveItem, useSortableItem } from './ui/sortable';
 import { Switch } from './ui/switch';
 import { Textarea } from './ui/textarea';
 import { Tooltip } from './ui/tooltip';
@@ -1751,19 +1734,7 @@ function SortableProviderKeyRow({
     canMoveUp,
     canMoveDown,
 }: SortableProviderKeyRowProps) {
-    const {
-        attributes,
-        listeners,
-        setNodeRef,
-        transform,
-        transition,
-        isDragging,
-    } = useSortable({ id });
-    const style = {
-        transform: CSS.Transform.toString(transform),
-        transition,
-        zIndex: isDragging ? 20 : undefined,
-    };
+    const { setNodeRef, style, isDragging, dragHandleProps } = useSortableItem(id, { draggingZIndex: 20 });
 
     return (
         <li
@@ -1786,8 +1757,7 @@ function SortableProviderKeyRow({
                                 </span>
                             )}
                             className="h-7 min-h-7 w-5 min-w-5 shrink-0 cursor-grab rounded-md text-stone-400 hover:bg-warm-muted hover:text-stone-600 active:cursor-grabbing dark:text-stone-500 dark:hover:text-stone-200"
-                            {...attributes}
-                            {...listeners}
+                            {...dragHandleProps}
                         />
                         <CollapsibleTrigger asChild>
                             <Button
@@ -2015,10 +1985,6 @@ function ModelRoutingSection({
     const [localAsrBusyModelId, setLocalAsrBusyModelId] = useState<string | null>(null);
     const providerKeyInputRef = useRef<HTMLInputElement | null>(null);
     const localAsrConfigVersionRef = useRef(0);
-    const providerKeySensors = useSensors(
-        useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
-        useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
-    );
     const providerSupports = useMemo(() => listProviderModelSupport({ includeMock: true }), []);
     const showProviders = mode === 'providers';
     const showModels = mode === 'models';
@@ -2084,15 +2050,13 @@ function ModelRoutingSection({
     const reorderProviderAccounts = useCallback((
         key: string,
         accounts: ModelProviderAccountInfo[],
-        event: DragEndEvent,
+        orderedAccountIds: string[],
     ) => {
-        const { active, over } = event;
-        if (!over || active.id === over.id) return;
-        const accountIds = accounts.map(modelProviderAccountIdentity);
-        const oldIndex = accountIds.indexOf(String(active.id));
-        const newIndex = accountIds.indexOf(String(over.id));
-        if (oldIndex < 0 || newIndex < 0) return;
-        const ordered = arrayMove(accounts, oldIndex, newIndex);
+        const accountById = new Map(accounts.map((account) => [modelProviderAccountIdentity(account), account]));
+        const ordered = orderedAccountIds
+            .map((accountId) => accountById.get(accountId))
+            .filter((account): account is ModelProviderAccountInfo => !!account);
+        if (ordered.length !== accounts.length) return;
         void onPatchProviders(ordered.map((account, index) => ({
             key,
             patch: {
@@ -2303,8 +2267,8 @@ function ModelRoutingSection({
             });
         const moveModelProvider = (fromIndex: number, toIndex: number) => {
             if (saving) return;
-            if (toIndex < 0 || toIndex >= providerOrderRows.length) return;
-            const ordered = arrayMove(providerOrderRows, fromIndex, toIndex);
+            const ordered = moveItem(providerOrderRows, fromIndex, toIndex);
+            if (!ordered) return;
             void onPatchProviders(ordered.flatMap((providerRow, index) => {
                 const priority = (index + 1) * 10;
                 const targets = modelOrderAccounts(providerRow);
@@ -2656,8 +2620,8 @@ function ModelRoutingSection({
             return saved;
         };
         const moveSavedAccount = (fromIndex: number, toIndex: number) => {
-            if (toIndex < 0 || toIndex >= savedAccounts.length) return;
-            const ordered = arrayMove(savedAccounts, fromIndex, toIndex);
+            const ordered = moveItem(savedAccounts, fromIndex, toIndex);
+            if (!ordered) return;
             void onPatchProviders(ordered.map((account, index) => ({
                 key: row.key,
                 patch: {
@@ -3122,57 +3086,50 @@ function ModelRoutingSection({
                                 </div>
                             <div className="space-y-3">
                                 {savedAccounts.length > 0 && (
-                                    <DndContext
-                                        sensors={providerKeySensors}
-                                        collisionDetection={closestCenter}
-                                        modifiers={[restrictToVerticalAxis]}
-                                        onDragEnd={(event) => reorderProviderAccounts(row.key, savedAccounts, event)}
+                                    <SortableList
+                                        items={savedAccounts.map(modelProviderAccountIdentity)}
+                                        onReorder={(orderedAccountIds) => reorderProviderAccounts(row.key, savedAccounts, orderedAccountIds)}
                                     >
-                                        <SortableContext
-                                            items={savedAccounts.map(modelProviderAccountIdentity)}
-                                            strategy={verticalListSortingStrategy}
-                                        >
-                                            <ul aria-label={`${row.title} prioritized ${oauthProviderId ? 'accounts' : 'keys'}`} className="space-y-2">
-                                                {savedAccounts.map((account, index) => {
-                                                    const accountKey = modelProviderAccountIdentity(account);
-                                                    const accountLabel = account.label ?? `${oauthProviderId ? 'Account' : 'API key'} ${index + 1}`;
-                                                    const accountOAuth = oauthProviderId
-                                                        ? oauthForProviderAccount(providerOAuth, oauthProviderId, account)
-                                                        : undefined;
-                                                    const accountMeta = oauthProviderId ? providerOAuthStatusText(accountOAuth) : HIDDEN_CREDENTIAL_MASK;
-                                                    const expanded = editingAccountKey === accountKey;
-                                                    return (
-                                                        <SortableProviderKeyRow
-                                                            key={accountKey}
-                                                            id={accountKey}
-                                                            index={index}
-                                                            account={account}
-                                                            accountLabel={accountLabel}
-                                                            accountMeta={accountMeta}
-                                                            expanded={expanded}
-                                                            expandedPanel={expanded ? renderProviderKeyEditor({ includeHeader: false }) : undefined}
-                                                            disabled={saving}
-                                                            onOpen={() => {
-                                                                if (expanded) closeProviderKeyEditor();
-                                                                else openExistingKeyEditor(account);
-                                                            }}
-                                                            onEnabledChange={(checked) => {
-                                                                void onPatchProvider(row.key, {
-                                                                    ...(account.id ? { id: account.id } : {}),
-                                                                    ...(account.label ? { label: account.label } : {}),
-                                                                    enabled: checked,
-                                                                });
-                                                            }}
-                                                            onMoveUp={() => moveSavedAccount(index, index - 1)}
-                                                            onMoveDown={() => moveSavedAccount(index, index + 1)}
-                                                            canMoveUp={index > 0}
-                                                            canMoveDown={index < savedAccounts.length - 1}
-                                                        />
-                                                    );
-                                                })}
-                                            </ul>
-                                        </SortableContext>
-                                    </DndContext>
+                                        <ul aria-label={`${row.title} prioritized ${oauthProviderId ? 'accounts' : 'keys'}`} className="space-y-2">
+                                            {savedAccounts.map((account, index) => {
+                                                const accountKey = modelProviderAccountIdentity(account);
+                                                const accountLabel = account.label ?? `${oauthProviderId ? 'Account' : 'API key'} ${index + 1}`;
+                                                const accountOAuth = oauthProviderId
+                                                    ? oauthForProviderAccount(providerOAuth, oauthProviderId, account)
+                                                    : undefined;
+                                                const accountMeta = oauthProviderId ? providerOAuthStatusText(accountOAuth) : HIDDEN_CREDENTIAL_MASK;
+                                                const expanded = editingAccountKey === accountKey;
+                                                return (
+                                                    <SortableProviderKeyRow
+                                                        key={accountKey}
+                                                        id={accountKey}
+                                                        index={index}
+                                                        account={account}
+                                                        accountLabel={accountLabel}
+                                                        accountMeta={accountMeta}
+                                                        expanded={expanded}
+                                                        expandedPanel={expanded ? renderProviderKeyEditor({ includeHeader: false }) : undefined}
+                                                        disabled={saving}
+                                                        onOpen={() => {
+                                                            if (expanded) closeProviderKeyEditor();
+                                                            else openExistingKeyEditor(account);
+                                                        }}
+                                                        onEnabledChange={(checked) => {
+                                                            void onPatchProvider(row.key, {
+                                                                ...(account.id ? { id: account.id } : {}),
+                                                                ...(account.label ? { label: account.label } : {}),
+                                                                enabled: checked,
+                                                            });
+                                                        }}
+                                                        onMoveUp={() => moveSavedAccount(index, index - 1)}
+                                                        onMoveDown={() => moveSavedAccount(index, index + 1)}
+                                                        canMoveUp={index > 0}
+                                                        canMoveDown={index < savedAccounts.length - 1}
+                                                    />
+                                                );
+                                            })}
+                                        </ul>
+                                    </SortableList>
                                 )}
 
                                 {savedAccounts.length === 0 && !isAddingPrioritizedKey && (

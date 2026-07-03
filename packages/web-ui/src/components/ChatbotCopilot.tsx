@@ -1,23 +1,5 @@
 
 import { memo, useState, useRef, useEffect, useCallback, useMemo } from 'react';
-import {
-    closestCenter,
-    DndContext,
-    KeyboardSensor,
-    PointerSensor,
-    useSensor,
-    useSensors,
-    type DragEndEvent,
-} from '@dnd-kit/core';
-import { restrictToVerticalAxis } from '@dnd-kit/modifiers';
-import {
-    arrayMove,
-    SortableContext,
-    sortableKeyboardCoordinates,
-    useSortable,
-    verticalListSortingStrategy,
-} from '@dnd-kit/sortable';
-import { CSS } from '@dnd-kit/utilities';
 import { motion, AnimatePresence, MotionConfig } from 'framer-motion';
 import { ArrowBendDownRight, CaretRight, DotsSixVertical, DotsThree, PencilSimple, Plus, ClockCounterClockwise, Trash, Plug, ShieldWarning } from '@phosphor-icons/react';
 import { useTranslation } from 'react-i18next';
@@ -45,6 +27,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from './ui/collap
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from './ui/dropdown-menu';
 import { Tooltip } from './ui/tooltip';
 import { ComboboxItem, ComboboxList, ComboboxProvider, useComboboxStore } from './ui/combobox';
+import { SortableList, useSortableItem } from './ui/sortable';
 import { useAppFeedback } from './AppFeedback';
 import { useDrag } from '@use-gesture/react';
 import { useClashRuntime, type AcpSessionConfigOption, type AcpSessionModeState, type ClashRuntimeStatus, type Runtime, type RuntimePromptQueueMode, type RuntimeQueuedPrompt, type RuntimeSessionInfo } from '@clash/web-ui/hooks/useClashRuntime';
@@ -2650,44 +2633,23 @@ function RuntimePromptQueueBar({
     onReorder: (turnIds: string[]) => void;
 }) {
     const itemIds = useMemo(() => items.map((item) => item.turnId), [items]);
-    const sensors = useSensors(
-        useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
-        useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
-    );
-    const handleDragEnd = useCallback((event: DragEndEvent) => {
-        const { active, over } = event;
-        if (!over || active.id === over.id) return;
-        const activeId = String(active.id);
-        const overId = String(over.id);
-        const fromIndex = itemIds.indexOf(activeId);
-        const toIndex = itemIds.indexOf(overId);
-        if (fromIndex < 0 || toIndex < 0) return;
-        onReorder(arrayMove(itemIds, fromIndex, toIndex));
-    }, [itemIds, onReorder]);
 
     return (
         <div className="clash-runtime-prompt-queue relative z-0 mx-auto -mb-10 w-[calc(100%-6rem)] max-w-[940px] overflow-visible rounded-t-[20px] px-3 pb-[3.25rem] pt-2.5 text-xs">
-            <DndContext
-                sensors={sensors}
-                collisionDetection={closestCenter}
-                modifiers={[restrictToVerticalAxis]}
-                onDragEnd={handleDragEnd}
-            >
-                <SortableContext items={itemIds} strategy={verticalListSortingStrategy}>
-                    <div className="flex flex-col gap-1">
-                        {items.map((item, index) => (
-                            <RuntimePromptQueueItem
-                                key={item.turnId}
-                                item={item}
-                                index={index}
-                                onSteer={onSteer}
-                                onEdit={onEdit}
-                                onRemove={onRemove}
-                            />
-                        ))}
-                    </div>
-                </SortableContext>
-            </DndContext>
+            <SortableList items={itemIds} onReorder={onReorder}>
+                <div className="flex flex-col gap-1">
+                    {items.map((item, index) => (
+                        <RuntimePromptQueueItem
+                            key={item.turnId}
+                            item={item}
+                            index={index}
+                            onSteer={onSteer}
+                            onEdit={onEdit}
+                            onRemove={onRemove}
+                        />
+                    ))}
+                </div>
+            </SortableList>
         </div>
     );
 }
@@ -2705,19 +2667,7 @@ function RuntimePromptQueueItem({
     onEdit: (item: RuntimeQueuedPrompt) => void;
     onRemove: (turnId: string) => void;
 }) {
-    const {
-        attributes,
-        listeners,
-        setNodeRef,
-        transform,
-        transition,
-        isDragging,
-    } = useSortable({ id: item.turnId });
-    const style = {
-        transform: CSS.Transform.toString(transform),
-        transition,
-        zIndex: isDragging ? 30 : undefined,
-    };
+    const { setNodeRef, style, isDragging, dragHandleProps } = useSortableItem(item.turnId, { draggingZIndex: 30 });
 
     return (
         <div
@@ -2730,8 +2680,7 @@ function RuntimePromptQueueItem({
                 size="sm"
                 icon={<DotsSixVertical className="h-4 w-4" weight="bold" />}
                 className="h-5 min-h-5 w-5 min-w-5 shrink-0 cursor-grab rounded-md text-stone-500 opacity-100 hover:bg-transparent hover:text-stone-600 active:cursor-grabbing dark:text-stone-400 dark:hover:text-stone-300"
-                {...attributes}
-                {...listeners}
+                {...dragHandleProps}
             />
             <ArrowBendDownRight className="h-3.5 w-3.5 shrink-0 text-stone-500/70 dark:text-stone-400/70" aria-hidden="true" />
             <span className="min-w-0 flex-1 truncate text-[13px] font-medium leading-5 text-stone-700 dark:text-stone-200">
