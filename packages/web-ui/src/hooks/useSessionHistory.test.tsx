@@ -50,4 +50,39 @@ describe("useSessionHistory", () => {
     ]);
     expect(fetchMock.mock.calls.filter(([, init]) => init?.method === "POST")).toHaveLength(0);
   });
+
+  it("keeps locally upserted runtime sessions when the initial fetch returns later", async () => {
+    let resolveFetch: (response: Response) => void = () => undefined;
+    const fetchMock = vi.fn(() => new Promise<Response>((resolve) => {
+      resolveFetch = resolve;
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { result } = renderHook(() => useSessionHistory("project-one"));
+
+    act(() => {
+      result.current.upsertSession({
+        threadId: "runtime-session-one",
+        type: "runtime",
+        title: "Run pwd",
+        projectId: "project-one",
+        runtimeId: "desktop-local",
+        agentMemberId: "codex-acp",
+      });
+    });
+
+    expect(result.current.sessions.map((session) => session.threadId)).toEqual([
+      "runtime-session-one",
+    ]);
+
+    await act(async () => {
+      resolveFetch(new Response(JSON.stringify({ sessions: [] }), {
+        headers: { "content-type": "application/json" },
+      }));
+    });
+
+    expect(result.current.sessions.map((session) => session.threadId)).toEqual([
+      "runtime-session-one",
+    ]);
+  });
 });

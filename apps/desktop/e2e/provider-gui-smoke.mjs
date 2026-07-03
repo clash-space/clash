@@ -282,7 +282,7 @@ async function runProviderFlow(agentBrowser, apiOrigin) {
       const searchRect = search.getBoundingClientRect();
       return menu.getAttribute("role") === "listbox" &&
         trigger.tagName === "BUTTON" &&
-        trigger.getAttribute("role") !== "combobox" &&
+        trigger.getAttribute("role") === "combobox" &&
         (menu.innerText || menu.textContent || "").includes("fal-ai/mock-image") &&
         (menu.innerText || menu.textContent || "").includes("image") &&
         menuRect.width >= Math.min(triggerRect.width, 160) &&

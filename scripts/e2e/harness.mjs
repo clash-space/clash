@@ -263,7 +263,9 @@ export async function typeText(cdp, selector, text) {
       return (el.innerText || el.textContent || "").includes(${JSON.stringify(text)});
     }
     if ("value" in el) {
-      el.value = ${JSON.stringify(text)};
+      const valueSetter = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(el), "value")?.set;
+      if (valueSetter) valueSetter.call(el, ${JSON.stringify(text)});
+      else el.value = ${JSON.stringify(text)};
       el.dispatchEvent(new InputEvent("input", {
         bubbles: true,
         inputType: "insertText",

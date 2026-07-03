@@ -17,6 +17,10 @@ files:
 extraResources:
   - from: ../web/dist/client
     to: web-dist
+  - from: build/acp-bin
+    to: acp-bin
+    filter:
+      - "**/*"
   - from: build/acp-node
     to: acp-node
     filter:

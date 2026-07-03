@@ -58,6 +58,7 @@ export interface SelectMenuProps<Value extends SelectValue = string> {
     stopPropagation?: boolean;
     className?: string;
     triggerClassName?: string;
+    triggerTestId?: string;
     menuClassName?: string;
 }
 
@@ -128,6 +129,7 @@ function DropdownSelectMenu<Value extends SelectValue = string>({
     stopPropagation = false,
     className,
     triggerClassName,
+    triggerTestId,
     menuClassName,
 }: SelectMenuProps<Value>) {
     const normalizedSections = useMemo<SelectSection<Value>[]>(() => {
@@ -167,6 +169,7 @@ function DropdownSelectMenu<Value extends SelectValue = string>({
                 size={null}
                 shape={null}
                 aria-label={ariaLabel}
+                data-testid={triggerTestId}
                 disabled={isDisabled}
                 onClick={handleEventBoundary}
                 onPointerDown={handleEventBoundary}
@@ -257,6 +260,7 @@ function RadixSelectMenu<Value extends SelectValue = string>({
     stopPropagation = false,
     className,
     triggerClassName,
+    triggerTestId,
     menuClassName,
 }: SelectMenuProps<Value>) {
     const normalizedSections = useMemo<SelectSection<Value>[]>(() => {
@@ -291,6 +295,7 @@ function RadixSelectMenu<Value extends SelectValue = string>({
     const trigger = (
         <SelectPrimitive.Trigger
             aria-label={ariaLabel}
+            data-testid={triggerTestId}
             onClick={handleEventBoundary}
             onPointerDown={handleEventBoundary}
             className={cn(

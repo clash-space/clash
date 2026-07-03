@@ -770,6 +770,22 @@ export default function ChatbotCopilot({
         clashRt.setConfigOption(configId, value);
     }, [clashRt.setConfigOption]);
 
+    const handleSessionConfigOpenChange = useCallback((open: boolean) => {
+        setSessionConfigOpen(open);
+        if (open && chatMode === 'runtime') {
+            void Promise.resolve(clashRt.refresh({ probe: 'config', refresh: true })).catch((error) => {
+                setSessionConfigOpen(false);
+                feedback.notify({
+                    variant: 'error',
+                    title: 'Could not refresh local agents',
+                    message: displayErrorMessage(error),
+                    actionLabel: 'Open Runtimes',
+                    actionHref: '/settings?section=runtimes',
+                });
+            });
+        }
+    }, [chatMode, clashRt.refresh, feedback]);
+
     const handleAuthenticateSessionHarness = useCallback(async () => {
         if (!effectiveSessionHarnessId) return;
         const label = selectedSessionHarness?.label ?? agentDisplayName(effectiveSessionHarnessId);
@@ -1128,6 +1144,9 @@ export default function ChatbotCopilot({
 
     // ─── Session Actions (delegated to parent) ───────────────
     const handleNewSession = useCallback(() => {
+        if (runtimeHistoryItem && onUpsertSession) {
+            onUpsertSession(runtimeHistoryItem);
+        }
         setTodoItems([]);
         clearCustomEvents();
         const runtime = selectedRuntimeForSession ?? desktopLocalRuntime;
@@ -1148,7 +1167,9 @@ export default function ChatbotCopilot({
         desktopLocalRuntime,
         effectiveSessionHarnessId,
         onNewSession,
+        onUpsertSession,
         projectId,
+        runtimeHistoryItem,
         selectedRuntimeForSession,
         sessionPermissionModeId,
     ]);
@@ -1918,7 +1939,7 @@ export default function ChatbotCopilot({
                                             rightToolbarAccessory={(
                                                 <SessionConfigSelector
                                                     open={sessionConfigOpen}
-                                                    onOpenChange={setSessionConfigOpen}
+                                                    onOpenChange={handleSessionConfigOpenChange}
                                                     embedded
                                                     selectedHarnessId={effectiveSessionHarnessId}
                                                     statusLabel={null}
@@ -2309,6 +2330,7 @@ function SessionConfigSelector({
         <SelectMenu
             className={embedded ? 'relative flex justify-start' : 'relative flex justify-start px-4 pb-2'}
             triggerClassName="clash-session-config-trigger max-w-full text-left"
+            triggerTestId="session-harness-config-trigger"
             open={open}
             onOpenChange={onOpenChange}
             value={modelConfigOption && selectedModel
@@ -2424,7 +2446,8 @@ function HarnessPermissionSelector({
     return (
         <SelectMenu
             className="relative flex justify-start"
-            triggerClassName="clash-session-config-trigger max-w-full text-left text-status-down"
+            triggerClassName="clash-session-permission-trigger max-w-full text-left text-status-down"
+            triggerTestId="session-permission-mode-trigger"
             value={selectedMode.value}
             sections={sections}
             onValueChange={onSelectPermissionMode}

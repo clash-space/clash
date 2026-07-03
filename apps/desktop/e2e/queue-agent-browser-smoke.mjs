@@ -25,8 +25,8 @@ const sessionName = `clash-queue-smoke-${Date.now().toString(36)}`;
 const failureScreenshot = path.join(captureDir, "failure.png");
 const queuedScreenshot = path.join(captureDir, "01-queued.png");
 const drainScreenshot = path.join(captureDir, "02-after-first-drain.png");
-const steeredScreenshot = path.join(captureDir, "03-steered.png");
-const clearedScreenshot = path.join(captureDir, "04-cleared.png");
+const clearedScreenshot = path.join(captureDir, "03-removed.png");
+const steeredScreenshot = path.join(captureDir, "04-steered.png");
 
 async function waitForProjectComposer(agentBrowser) {
   await waitForEval(
@@ -132,35 +132,67 @@ async function main() {
     );
     agentBrowser(["screenshot", drainScreenshot]);
 
+    await submitPrompt(agentBrowser, "queue smoke queued fourth");
+    await waitForEval(
+      agentBrowser,
+      `(() => {
+        const text = document.body.innerText;
+        return text.includes("queue smoke queued third") &&
+          text.includes("queue smoke queued fourth") &&
+          !text.includes("Mock ACP reply: queue smoke queued third") &&
+          !text.includes("Mock ACP reply: queue smoke queued fourth") &&
+          !!Array.from(document.querySelectorAll("button"))
+            .find((el) => el.getAttribute("aria-label") === "Remove queued message 2");
+      })()`,
+      "second queued prompt added while second turn is running",
+      10000,
+    );
+    if (!clickButtonByLabel(agentBrowser, "Remove queued message 2")) {
+      throw new Error("Could not remove the extra queued prompt");
+    }
+    await waitForEval(
+      agentBrowser,
+      `(() => {
+        const text = document.body.innerText;
+        return text.includes("queue smoke queued third") &&
+          !text.includes("queue smoke queued fourth") &&
+          !!Array.from(document.querySelectorAll("button"))
+            .find((el) => el.getAttribute("aria-label") === "Steer queued message 1");
+      })()`,
+      "extra queued prompt removed",
+      10000,
+    );
+    agentBrowser(["screenshot", clearedScreenshot]);
+
     if (!clickButtonByLabel(agentBrowser, "Steer queued message 1")) {
       throw new Error("Could not steer the remaining queued prompt");
     }
     await waitForEval(
       agentBrowser,
       `(() => {
+        const text = document.body.innerText;
         const button = Array.from(document.querySelectorAll("button"))
           .find((el) => el.getAttribute("aria-label") === "Steer queued message 1");
-        return Boolean(button?.disabled) && document.body.innerText.includes("queue smoke queued third");
+        return !button &&
+          text.includes("queue smoke queued third") &&
+          !text.includes("queue smoke queued fourth");
       })()`,
-      "queued prompt converted to steer",
+      "queued prompt converted to an in-flight steer",
       10000,
     );
     agentBrowser(["screenshot", steeredScreenshot]);
 
-    if (!clickButtonByLabel(agentBrowser, "Remove queued message 1")) {
-      throw new Error("Could not clear queued prompts");
-    }
     await waitForEval(
       agentBrowser,
       `(() => {
         const text = document.body.innerText;
-        return !text.includes("queue smoke queued third") &&
-          text.includes("Mock ACP reply: queue smoke queued second");
+        return text.includes("Mock ACP reply: queue smoke queued second") &&
+          text.includes("Mock ACP reply: queue smoke queued third") &&
+          !text.includes("queue smoke queued fourth");
       })()`,
-      "remaining steer queue cleared while second turn completes",
-      20000,
+      "steered prompt completes while removed prompt stays absent",
+      25000,
     );
-    agentBrowser(["screenshot", clearedScreenshot]);
 
     const state = {
       text: bodyText(agentBrowser).slice(0, 1800),

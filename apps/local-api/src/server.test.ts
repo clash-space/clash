@@ -1,5 +1,5 @@
 import { createServer } from "node:net";
-import { mkdtemp, readFile, stat } from "node:fs/promises";
+import { chmod, mkdtemp, readFile, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
@@ -317,5 +317,32 @@ describe("local API server configuration", () => {
     const runtimes = await adapter.listRuntimes();
 
     expect(runtimes.runtimes[0]?.agents.some((agent) => agent.id === "mock-acp")).toBe(false);
+  });
+
+  it("preserves explicit ACP binary directories when composing the local agent spawn env", async () => {
+    const dataDir = await mkdtemp(join(tmpdir(), "clash-local-api-data-"));
+    const acpBinDir = await mkdtemp(join(tmpdir(), "clash-local-api-acp-bin-"));
+    const codexShim = join(acpBinDir, "codex-acp");
+    await writeFile(codexShim, "#!/bin/sh\nexit 0\n", "utf8");
+    await chmod(codexShim, 0o755);
+
+    const adapter = createConfiguredLocalAcpAdapter({
+      CLASH_LOCAL_DATA_DIR: dataDir,
+      CLASH_ACP_BIN_DIR: acpBinDir,
+      PATH: "",
+    });
+
+    await expect(adapter.listRuntimes()).resolves.toMatchObject({
+      runtimes: [
+        {
+          agents: expect.arrayContaining([
+            expect.objectContaining({
+              id: "codex-acp",
+              binary: codexShim,
+            }),
+          ]),
+        },
+      ],
+    });
   });
 });

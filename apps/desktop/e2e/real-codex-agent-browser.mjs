@@ -62,6 +62,155 @@ async function captureRetryStatus(agentBrowser, screenshotPath, shouldStop) {
   return null;
 }
 
+async function selectCodexHarness(agentBrowser) {
+  const triggerExpression = `document.querySelector("[data-testid='session-harness-config-trigger']")`;
+  const selectedHarnessExpression = `(() => {
+    const trigger = ${triggerExpression};
+    const logo = trigger?.querySelector("[data-acp-agent-logo]");
+    return {
+      text: trigger?.innerText || "",
+      logoLabel: logo?.getAttribute("aria-label") || "",
+    };
+  })()`;
+  const currentSelection = evalJson(agentBrowser, selectedHarnessExpression);
+  if (currentSelection.logoLabel.includes("Codex") || currentSelection.text.includes("Codex")) return;
+
+  const opened = evalJson(agentBrowser, `(() => {
+    const trigger = ${triggerExpression};
+    if (!trigger) return false;
+    trigger.scrollIntoView({ block: "center", inline: "center" });
+    trigger.click();
+    return true;
+  })()`);
+  if (!opened) throw new Error("Could not open session harness selector");
+
+  await waitForEval(
+    agentBrowser,
+    `(() => {
+      const menuText = [...document.querySelectorAll("[role='menu'], [role='listbox'], [data-radix-popper-content-wrapper]")]
+        .map((el) => el.innerText || el.textContent || "")
+        .join("\\n");
+      return menuText.includes("Codex");
+    })()`,
+    "Codex harness option",
+    10000,
+  );
+  const picked = evalJson(agentBrowser, `(() => {
+    const candidates = [...document.querySelectorAll("[role='option'], [role='menuitemradio'], button, [data-value]")]
+      .filter((el) => {
+        const rect = el.getBoundingClientRect();
+        const style = getComputedStyle(el);
+        return rect.width > 0 && rect.height > 0 &&
+          style.display !== "none" && style.visibility !== "hidden";
+      });
+    const option = candidates.find((el) => {
+      const text = (el.innerText || el.textContent || "").trim();
+      const aria = el.getAttribute("aria-label") || "";
+      return text === "Codex" || text.startsWith("Codex\\n") || aria === "Codex";
+    });
+    if (!option) return false;
+    option.scrollIntoView({ block: "center", inline: "center" });
+    option.click();
+    return true;
+  })()`);
+  if (!picked) throw new Error("Could not select Codex harness");
+  await waitForEval(
+    agentBrowser,
+    `(() => {
+      const selection = ${selectedHarnessExpression};
+      return selection.logoLabel.includes("Codex") || selection.text.includes("Codex");
+    })()`,
+    "Codex harness selected",
+    10000,
+  );
+}
+
+async function logRuntimeSnapshot(apiPort, label) {
+  const url = `http://127.0.0.1:${apiPort}/api/v1/runtimes?probe=config&refresh=1`;
+  try {
+    const res = await fetch(url);
+    const text = await res.text();
+    console.log(`[startup-real-codex] ${label} ${res.status} ${text.slice(0, 4000)}`);
+  } catch (error) {
+    console.error(`[startup-real-codex] ${label} failed`, error instanceof Error ? error.message : error);
+  }
+}
+
+async function waitForPersistedPwdOutput(apiPort, projectId) {
+  const expectedPathFragment = `/.clash/projects/${projectId}`;
+  const deadline = Date.now() + 60000;
+  let lastState = null;
+  while (Date.now() < deadline) {
+    try {
+      const sessionsRes = await fetch(`http://127.0.0.1:${apiPort}/api/v1/sessions?projectId=${encodeURIComponent(projectId)}`);
+      const sessionsJson = sessionsRes.ok ? await sessionsRes.json() : { sessions: [] };
+      const sessions = Array.isArray(sessionsJson.sessions) ? sessionsJson.sessions : [];
+      for (const session of sessions) {
+        const sessionId = session?.id ?? session?.threadId;
+        if (!sessionId || session?.type !== "runtime") continue;
+        const messagesRes = await fetch(`http://127.0.0.1:${apiPort}/api/v1/local-sessions/${encodeURIComponent(sessionId)}/messages`);
+        const messagesJson = messagesRes.ok ? await messagesRes.json() : null;
+        const serialized = JSON.stringify(messagesJson);
+        if (serialized.includes(expectedPathFragment) && serialized.includes("\"stdout\"")) {
+          return {
+            sessionId,
+            expectedPathFragment,
+            messages: messagesJson?.messages?.length ?? 0,
+          };
+        }
+        lastState = { sessionId, messagesStatus: messagesRes.status, serialized: serialized.slice(0, 1000) };
+      }
+      lastState = { sessionsStatus: sessionsRes.status, sessions: sessions.map((session) => ({
+        id: session?.id,
+        threadId: session?.threadId,
+        type: session?.type,
+        title: session?.title,
+      })) };
+    } catch (error) {
+      lastState = { error: error instanceof Error ? error.message : String(error) };
+    }
+    await sleep(500);
+  }
+  throw new Error(`Timed out waiting for persisted pwd output: ${JSON.stringify(lastState)}`);
+}
+
+function clickPwdToolRow(agentBrowser) {
+  return evalJson(agentBrowser, `(() => {
+    const exactLabels = new Set(["Ran pwd", "Run pwd", "已运行 pwd", "已运行  pwd"]);
+    const labelFor = (el) => (el.innerText || el.textContent || "").replace(/\\s+/g, " ").trim();
+    const isVisible = (el) => {
+      const rect = el.getBoundingClientRect();
+      const style = getComputedStyle(el);
+      return rect.width > 0 && rect.height > 0 &&
+        style.display !== "none" && style.visibility !== "hidden" &&
+        !el.disabled;
+    };
+    const direct = [...document.querySelectorAll("button, [role='button'], summary")]
+      .find((el) => exactLabels.has(labelFor(el)) && isVisible(el));
+    if (direct) {
+      direct.scrollIntoView({ block: "center", inline: "center" });
+      direct.click();
+      return true;
+    }
+    const textOwner = [...document.querySelectorAll("body *")]
+      .find((el) => exactLabels.has(labelFor(el)) && isVisible(el));
+    const target = textOwner?.closest("button, [role='button'], summary") ?? textOwner;
+    if (!target || !isVisible(target)) return false;
+    target.scrollIntoView({ block: "center", inline: "center" });
+    target.click();
+    return true;
+  })()`);
+}
+
+async function waitAndClickPwdToolRow(agentBrowser) {
+  const deadline = Date.now() + 30000;
+  while (Date.now() < deadline) {
+    if (clickPwdToolRow(agentBrowser)) return;
+    await sleep(300);
+  }
+  throw new Error("Could not expand the Codex pwd tool output");
+}
+
 async function main() {
   ensureAgentBrowser();
   await resetDirs(captureDir, dataDir);
@@ -91,7 +240,7 @@ async function main() {
       captureDir,
       logs: electronLogs,
       env: {
-        CLASH_ACP_BIN_DIR: path.join(desktopDir, "build", "acp-bin"),
+        CLASH_ACP_TEST_BIN_DIR: path.join(desktopDir, "build", "acp-bin"),
       },
     });
     await waitForHttp(`http://127.0.0.1:${cdpPort}/json/version`, "Electron CDP");
@@ -109,6 +258,8 @@ async function main() {
       "project editor route",
       20000,
     );
+    const projectId = evalJson(agentBrowser, `location.pathname.split("/").filter(Boolean).pop()`);
+    if (!projectId) throw new Error("Could not read project id from editor route");
     await waitForEval(
       agentBrowser,
       `!!document.querySelector(".milkdown-chat-input [contenteditable='true']") &&
@@ -116,8 +267,10 @@ async function main() {
       "copilot composer",
       30000,
     );
+    await logRuntimeSnapshot(apiPort, "runtime snapshot before harness select");
+    await selectCodexHarness(agentBrowser);
 
-    const prompt = "Run `pwd` with your shell tool, then answer with only the path.";
+    const prompt = "Run pwd with your shell tool. After it finishes, reply exactly DONE.";
     if (!typeComposer(agentBrowser, prompt)) throw new Error("Could not type into composer");
     stopRetryStatusCapture = false;
     retryStatusCapture = captureRetryStatus(
@@ -136,20 +289,13 @@ async function main() {
       10000,
     );
 
+    const persistedToolOutput = await waitForPersistedPwdOutput(apiPort, projectId);
+    await waitAndClickPwdToolRow(agentBrowser);
     await waitForEval(
       agentBrowser,
-      `(() => {
-        const text = document.body.innerText;
-        return text.includes("Ran pwd") || text.includes("已运行  pwd") || text.includes("已运行 pwd");
-      })()`,
-      "Codex shell tool call",
-      180000,
-    );
-    await waitForEval(
-      agentBrowser,
-      `(() => /\\/Users\\/[^\\n]+\\.clash\\/projects\\//.test(document.body.innerText))()`,
-      "Codex final project cwd path",
-      180000,
+      `(() => document.body.innerText.includes(${JSON.stringify(`/.clash/projects/${projectId}`)}))()`,
+      "Codex tool output project cwd path",
+      10000,
     );
     await waitForEval(
       agentBrowser,
@@ -196,7 +342,7 @@ async function main() {
       agentBrowser,
       `(() => {
         const text = document.body.innerText;
-        return text.includes("Run \`pwd\`") || text.includes("Run pwd");
+        return text.includes("Run pwd");
       })()`,
       "runtime session history keeps the prompt title",
       30000,
@@ -213,10 +359,12 @@ async function main() {
       retryStatusScreenshot: retryStatus?.screenshot ?? null,
       retryStatusText: retryStatus?.text ?? null,
       transportDiagnosticObserved,
+      persistedToolOutput,
       state,
     }));
   } catch (error) {
     stopRetryStatusCapture = true;
+    await logRuntimeSnapshot(apiPort, "runtime snapshot after failure");
     try {
       agentBrowser(["screenshot", failureScreenshot], { allowFailure: true });
       console.error(`[startup-real-codex] failure screenshot ${failureScreenshot}`);

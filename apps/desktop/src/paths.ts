@@ -27,6 +27,12 @@ export function resolveWebDistDir(input: WebDistPathInput): string {
 }
 
 export function resolveAcpBinDirs(input: AcpBinDirsInput): string[] {
+  if (input.isPackaged) {
+    return [
+      join(input.resourcesPath, "acp-bin"),
+      join(input.dataDir, "acp-bin"),
+    ];
+  }
   return [join(input.dataDir, "acp-bin")];
 }
 

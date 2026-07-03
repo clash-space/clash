@@ -57,6 +57,87 @@ function clickFirstHistoryItem(agentBrowser) {
   })()`);
 }
 
+async function waitForPersistedPwdOutput(apiPort, projectId, minimumOutputs) {
+  const expectedPathFragment = `/.clash/projects/${projectId}`;
+  const deadline = Date.now() + 60000;
+  let lastState = null;
+  while (Date.now() < deadline) {
+    try {
+      const sessionsRes = await fetch(`http://127.0.0.1:${apiPort}/api/v1/sessions?projectId=${encodeURIComponent(projectId)}`);
+      const sessionsJson = sessionsRes.ok ? await sessionsRes.json() : { sessions: [] };
+      const sessions = Array.isArray(sessionsJson.sessions) ? sessionsJson.sessions : [];
+      for (const session of sessions) {
+        const sessionId = session?.id ?? session?.threadId;
+        if (!sessionId || session?.type !== "runtime") continue;
+        const messagesRes = await fetch(`http://127.0.0.1:${apiPort}/api/v1/local-sessions/${encodeURIComponent(sessionId)}/messages`);
+        const messagesJson = messagesRes.ok ? await messagesRes.json() : null;
+        const serialized = JSON.stringify(messagesJson);
+        const pathCount = serialized.split(expectedPathFragment).length - 1;
+        const stdoutCount = serialized.split('"stdout"').length - 1;
+        if (pathCount >= minimumOutputs && stdoutCount >= minimumOutputs) {
+          return { sessionId, expectedPathFragment, pathCount, stdoutCount };
+        }
+        lastState = { sessionId, messagesStatus: messagesRes.status, pathCount, stdoutCount };
+      }
+      lastState = { sessionsStatus: sessionsRes.status, sessions: sessions.map((session) => ({
+        id: session?.id,
+        threadId: session?.threadId,
+        type: session?.type,
+        title: session?.title,
+      })) };
+    } catch (error) {
+      lastState = { error: error instanceof Error ? error.message : String(error) };
+    }
+    await sleep(500);
+  }
+  throw new Error(`Timed out waiting for persisted pwd output count ${minimumOutputs}: ${JSON.stringify(lastState)}`);
+}
+
+function visibleProjectPathCount(agentBrowser, projectId) {
+  return evalJson(agentBrowser, `(() => {
+    const expected = ${JSON.stringify(`/.clash/projects/${projectId}`)};
+    return (document.body.innerText.split(expected).length - 1);
+  })()`);
+}
+
+function clickCollapsedPwdToolRow(agentBrowser) {
+  return evalJson(agentBrowser, `(() => {
+    const exactLabels = new Set(["Ran pwd", "Run pwd", "已运行 pwd", "已运行  pwd"]);
+    const labelFor = (el) => (el.innerText || el.textContent || "").replace(/\\s+/g, " ").trim();
+    const isVisible = (el) => {
+      const rect = el.getBoundingClientRect();
+      const style = getComputedStyle(el);
+      return rect.width > 0 && rect.height > 0 &&
+        style.display !== "none" && style.visibility !== "hidden" &&
+        !el.disabled;
+    };
+    const row = [...document.querySelectorAll("button, [role='button'], summary")]
+      .find((el) => exactLabels.has(labelFor(el)) && el.getAttribute("aria-expanded") !== "true" && isVisible(el));
+    if (!row) return false;
+    row.scrollIntoView({ block: "center", inline: "center" });
+    row.dispatchEvent(new PointerEvent("pointerdown", {
+      bubbles: true,
+      cancelable: true,
+      button: 0,
+      pointerId: 1,
+      pointerType: "mouse",
+      isPrimary: true,
+    }));
+    row.click();
+    return true;
+  })()`);
+}
+
+async function ensurePwdToolOutputVisible(agentBrowser, projectId, minimumPathRows) {
+  const deadline = Date.now() + 30000;
+  while (Date.now() < deadline) {
+    if (visibleProjectPathCount(agentBrowser, projectId) >= minimumPathRows) return;
+    clickCollapsedPwdToolRow(agentBrowser);
+    await sleep(300);
+  }
+  throw new Error(`Timed out waiting for visible expanded pwd output count ${minimumPathRows}`);
+}
+
 async function launchElectron({ cdpPort, webOrigin, apiPort, dataDir, captureDir, electronLogs }) {
   const electron = await startElectron({
     cdpPort,
@@ -66,7 +147,7 @@ async function launchElectron({ cdpPort, webOrigin, apiPort, dataDir, captureDir
     captureDir,
     logs: electronLogs,
     env: {
-      CLASH_ACP_BIN_DIR: path.join(desktopDir, "build", "acp-bin"),
+      CLASH_ACP_TEST_BIN_DIR: path.join(desktopDir, "build", "acp-bin"),
     },
   });
   await waitForHttp(`http://127.0.0.1:${cdpPort}/json/version`, "Electron CDP");
@@ -83,7 +164,7 @@ async function waitForProjectComposer(agentBrowser) {
   );
 }
 
-async function submitAndWaitForPwd(agentBrowser, prompt, minimumToolRows, minimumPathRows) {
+async function submitAndWaitForPwd(agentBrowser, prompt, apiPort, projectId, minimumOutputs) {
   if (!typeComposer(agentBrowser, prompt)) throw new Error(`Could not type prompt: ${prompt}`);
   if (!clickComposerSubmitButton(agentBrowser)) throw new Error("Could not click composer submit button");
   await waitForEval(
@@ -95,21 +176,8 @@ async function submitAndWaitForPwd(agentBrowser, prompt, minimumToolRows, minimu
     "composer cleared after submit",
     10000,
   );
-  await waitForEval(
-    agentBrowser,
-    `(() => {
-      const text = document.body.innerText;
-      return (text.match(/Ran pwd|已运行\\s+pwd|已运行 pwd/g) || []).length >= ${minimumToolRows};
-    })()`,
-    `Codex shell tool call count ${minimumToolRows}`,
-    180000,
-  );
-  await waitForEval(
-    agentBrowser,
-    `(() => (document.body.innerText.match(/\\/Users\\/[^\\n]+\\.clash\\/projects\\/?/g) || []).length >= ${minimumPathRows})()`,
-    `Codex final project cwd path count ${minimumPathRows}`,
-    180000,
-  );
+  await waitForPersistedPwdOutput(apiPort, projectId, minimumOutputs);
+  await ensurePwdToolOutputVisible(agentBrowser, projectId, minimumOutputs);
   await waitForEval(
     agentBrowser,
     `!document.querySelector(".clash-chat-input-stop")`,
@@ -161,10 +229,12 @@ async function main() {
       20000,
     );
     const projectUrl = evalJson(agentBrowser, `location.href`);
+    const projectId = new URL(projectUrl).pathname.split("/").filter(Boolean).pop();
+    if (!projectId) throw new Error(`Could not determine project id from ${projectUrl}`);
     await waitForProjectComposer(agentBrowser);
 
-    const firstPrompt = "Run `pwd` with your shell tool, then answer with only the path.";
-    await submitAndWaitForPwd(agentBrowser, firstPrompt, 1, 1);
+    const firstPrompt = "Run pwd with your shell tool. After it finishes, reply exactly DONE.";
+    await submitAndWaitForPwd(agentBrowser, firstPrompt, apiPort, projectId, 1);
     agentBrowser(["screenshot", firstFinalScreenshot]);
 
     agentBrowser(["close"], { allowFailure: true });
@@ -200,7 +270,7 @@ async function main() {
         const menu = document.querySelector('[role="menu"][aria-label="Session history"], [role="menu"][aria-label="历史会话"]');
         return !!menu &&
           !menu.innerText.toLowerCase().includes("no history yet") &&
-          (menu.innerText.includes("Run \`pwd\`") || menu.innerText.includes("Run pwd"));
+          menu.innerText.includes("Run pwd");
       })()`,
       "reopened persisted session history",
       30000,
@@ -212,17 +282,17 @@ async function main() {
       agentBrowser,
       `(() => {
         const text = document.body.innerText;
-        return (text.includes("Run \`pwd\`") || text.includes("Run pwd")) &&
-          /\\/Users\\/[^\\n]+\\.clash\\/projects\\/?/.test(text) &&
-          (text.match(/Ran pwd|已运行\\s+pwd|已运行 pwd/g) || []).length >= 1;
+        return text.includes("Run pwd") &&
+          (text.match(/Ran pwd|Run pwd|已运行\\s+pwd|已运行 pwd/g) || []).length >= 1;
       })()`,
       "resumed transcript loaded",
       30000,
     );
+    await ensurePwdToolOutputVisible(agentBrowser, projectId, 1);
     agentBrowser(["screenshot", resumedScreenshot]);
 
-    const secondPrompt = "Run `pwd` again with your shell tool, then answer with only the path.";
-    await submitAndWaitForPwd(agentBrowser, secondPrompt, 2, 2);
+    const secondPrompt = "Run pwd again with your shell tool. After it finishes, reply exactly DONE.";
+    await submitAndWaitForPwd(agentBrowser, secondPrompt, apiPort, projectId, 2);
     agentBrowser(["screenshot", secondFinalScreenshot]);
 
     const state = evalJson(agentBrowser, `(() => ({

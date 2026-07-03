@@ -43,6 +43,7 @@ describe("desktop paths", () => {
         dataDir: "/Users/me/Library/Application Support/Clash/local-api",
       }),
     ).toEqual([
+      join("/app/resources", "acp-bin"),
       join("/Users/me/Library/Application Support/Clash/local-api", "acp-bin"),
     ]);
   });

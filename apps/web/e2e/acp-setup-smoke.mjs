@@ -14,6 +14,7 @@ import {
   findFreePort,
   stopProcess,
   tail,
+  typeText,
   waitFor,
   waitForHttp,
   waitForTarget,
@@ -321,9 +322,18 @@ async function clickAgentAction(cdp, label, action) {
 }
 
 async function exerciseAcpSetupUi(cdp, webOrigin) {
-  await cdp.send("Page.navigate", { url: `${webOrigin}/settings?section=runtimes` });
-  await waitFor(cdp, `document.body.innerText.includes("Runtimes")`, "settings runtimes");
-  await waitFor(cdp, `document.body.innerText.includes("Agents")`, "agents section", 15000);
+  await cdp.send("Page.navigate", { url: `${webOrigin}/settings?section=agents` });
+  await waitFor(
+    cdp,
+    `location.pathname === "/settings" && location.search.includes("section=agents") && document.body.innerText.includes("Agents")`,
+    "settings agents",
+  );
+  await waitFor(
+    cdp,
+    `document.body.innerText.includes("Install, authenticate, and enable local agents for Copilot.")`,
+    "agents section",
+    15000,
+  );
 
   await waitForAgentText(cdp, "Gemini", "Auth configured", "Gemini auth configured row");
   const gemini = await agentRowText(cdp, "Gemini");
@@ -334,22 +344,28 @@ async function exerciseAcpSetupUi(cdp, webOrigin) {
 
   await waitForAgentText(cdp, "Cursor", "Auth needed", "Cursor auth-needed row");
   const cursorBefore = await agentRowText(cdp, "Cursor");
-  assert(cursorBefore.includes("Click Auth to sign in"), "Cursor row gives direct GUI auth path", { cursorBefore });
-  assert(cursorBefore.includes("/auth"), "Cursor row keeps fallback CLI auth hint", { cursorBefore });
+  assert(cursorBefore.includes("Cursor requires ACP authentication (Cursor Login)."), "Cursor row shows probe auth result", { cursorBefore });
+  assert(cursorBefore.includes("Manual fallback"), "Cursor row exposes the manual fallback path", { cursorBefore });
+  assert(cursorBefore.includes("Check again"), "Cursor row exposes an explicit re-probe action", { cursorBefore });
+  assert(!cursorBefore.includes("Click Auth to sign in"), "Cursor row must not depend on the removed Auth action copy", { cursorBefore });
 
   await waitForAgentText(cdp, smokeAgentLabel, "Install", "dynamic registry agent row");
   await clickAgentAction(cdp, smokeAgentLabel, "Install");
   await waitForAgentText(cdp, smokeAgentLabel, "Uninstall", "registry agent installed row");
+  await waitForAgentText(cdp, smokeAgentLabel, "Ready", "registry agent ready after install");
   const smokeAfterInstall = await agentRowText(cdp, smokeAgentLabel);
   assert(smokeAfterInstall.includes("Ready"), "installed registry agent becomes ready", { smokeAfterInstall });
 
-  await clickAgentAction(cdp, "Cursor", "Auth");
-  await waitForAgentText(cdp, "Cursor", "Auth configured", "Cursor auth configured after auth button");
-  const cursorAfterAuth = await agentRowText(cdp, "Cursor");
-  assert(!cursorAfterAuth.includes("/auth"), "configured Cursor row removes /auth fallback", { cursorAfterAuth });
+  await clickAgentAction(cdp, "Cursor", "Check again");
+  await waitForAgentText(cdp, "Cursor", "Auth needed", "Cursor stays auth-needed after explicit re-probe");
+  const cursorAfterProbe = await agentRowText(cdp, "Cursor");
+  assert(cursorAfterProbe.includes("Manual fallback"), "auth-needed Cursor row keeps manual fallback after re-probe", {
+    cursorAfterProbe,
+  });
 
   await clickByText(cdp, "Check again", "Check again agents");
-  await waitForAgentText(cdp, "Cursor", "Auth configured", "Cursor stays configured after re-probe");
+  await waitForAgentText(cdp, "Gemini", "Auth configured", "Gemini stays configured after global re-probe");
+  await waitForAgentText(cdp, "Cursor", "Auth needed", "Cursor stays auth-needed after global re-probe");
   await evaluate(cdp, `(() => {
     const row = (${agentRowExpression("Gemini")});
     row?.scrollIntoView({ block: "start", inline: "nearest" });
@@ -362,15 +378,35 @@ async function exerciseAcpSetupUi(cdp, webOrigin) {
   await waitFor(
     cdp,
     `(() => {
-      const text = document.querySelector('[role="dialog"]')?.innerText || "";
-      return text.includes("OpenClaw") && text.includes("Hermes") && text.includes("OpenClaw Gateway");
+      const dialog = document.querySelector('[role="dialog"]');
+      if (!dialog) return false;
+      const text = dialog.innerText || "";
+      const buttons = [...dialog.querySelectorAll("button")].map((button) =>
+        (button.innerText || button.textContent || "").trim()
+      );
+      return text.toLowerCase().includes("starter") &&
+        buttons.includes("Blank") &&
+        buttons.includes("Node script") &&
+        buttons.includes("Package");
     })()`,
-    "custom agent server templates",
+    "custom agent server starters",
   );
+  await clickByText(cdp, "Node script", "Node script custom agent starter");
+  const openclawCommand = path.join(dataDir, "acp-bin", "openclaw");
+  await typeText(cdp, `input[aria-label="Agent server name"]`, "OpenClaw ACP");
+  await typeText(cdp, `input[aria-label="Command"]`, openclawCommand);
+  await typeText(cdp, `textarea[aria-label="Arguments"]`, "acp");
   await clickByText(cdp, "Save agent server", "Save custom agent server");
   await waitFor(cdp, `!document.querySelector('[role="dialog"]')`, "custom agent dialog closes", 15000);
-  await waitFor(cdp, `document.body.innerText.includes("OpenClaw ACP") && document.body.innerText.includes("openclaw acp")`, "custom OpenClaw server saved");
-  await waitForAgentText(cdp, "OpenClaw ACP", "Ready", "custom OpenClaw detected");
+  await waitFor(
+    cdp,
+    `document.body.innerText.includes("OpenClaw ACP") && document.body.innerText.includes(${JSON.stringify(openclawCommand)})`,
+    "custom OpenClaw server saved",
+    15000,
+  );
+  const openclaw = await agentRowText(cdp, "OpenClaw ACP");
+  assert(openclaw?.includes("OpenClaw ACP"), "custom OpenClaw row appears after saving", { openclaw });
+  assert(openclaw.includes(openclawCommand), "custom OpenClaw row uses saved command", { openclaw });
   await evaluate(cdp, `(() => {
     const customHeading = [...document.querySelectorAll("h4")].find((el) =>
       (el.innerText || el.textContent || "").trim() === "Custom agent servers"

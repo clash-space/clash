@@ -159,6 +159,16 @@ export function clickByText(agentBrowser, text) {
 export function clickButtonByLabel(agentBrowser, label) {
   return evalJson(agentBrowser, `(() => {
     const wanted = ${JSON.stringify(label)};
+    const activate = (el) => {
+      el.scrollIntoView({ block: "center", inline: "center" });
+      const pointerInit = { bubbles: true, cancelable: true, button: 0, pointerId: 1, pointerType: "mouse", isPrimary: true };
+      const mouseInit = { bubbles: true, cancelable: true, button: 0 };
+      el.dispatchEvent(new PointerEvent("pointerdown", pointerInit));
+      el.dispatchEvent(new MouseEvent("mousedown", mouseInit));
+      el.dispatchEvent(new PointerEvent("pointerup", pointerInit));
+      el.dispatchEvent(new MouseEvent("mouseup", mouseInit));
+      el.click();
+    };
     const button = [...document.querySelectorAll("button")].find((el) => {
       const text = (el.innerText || el.textContent || "").trim();
       const aria = el.getAttribute("aria-label") || "";
@@ -170,8 +180,7 @@ export function clickButtonByLabel(agentBrowser, label) {
         !el.disabled;
     });
     if (!button) return false;
-    button.scrollIntoView({ block: "center", inline: "center" });
-    button.click();
+    activate(button);
     return true;
   })()`);
 }

@@ -1321,6 +1321,12 @@ export class LocalAcpRuntimeAdapter implements LocalAcpAdapter {
     return enabledAgents.filter((agent) => !authBlocksAgent(agent.auth));
   }
 
+  private async detectRuntimeListAgents(opts: DetectedAgentListOptions = {}): Promise<DetectedAcpAgent[]> {
+    const agents = await this.getDetectedAgents(opts);
+    const enabled = (await this.enabledHarnessSet()) ?? defaultEnabledHarnessSet(agents);
+    return enabled ? agents.filter((agent) => enabled.has(agent.id)) : agents;
+  }
+
   private async managedInstallInfo(entry: KnownAgentEntry): Promise<{
     installed: boolean;
     installedVersion?: string;
@@ -1540,7 +1546,7 @@ export class LocalAcpRuntimeAdapter implements LocalAcpAdapter {
   async listRuntimes(opts: LocalAcpRuntimeListOptions = {}) {
     const probeAuth = opts.probe === true || opts.probe === "auth" || opts.probe === "config";
     const probeConfigOptions = opts.probe === true || opts.probe === "config";
-    const agents = await this.detectEnabledAgents({
+    const agents = await this.detectRuntimeListAgents({
       probeAuth,
       probeConfigOptions,
       probeScope: probeConfigOptions ? "installed" : "enabled",

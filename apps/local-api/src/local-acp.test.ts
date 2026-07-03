@@ -480,7 +480,7 @@ describe("local ACP adapter", () => {
     expect(saveEnabledHarnessIds).not.toHaveBeenCalled();
   });
 
-  it("keeps auth-blocked enabled harnesses out of runtime agents", async () => {
+  it("surfaces auth-blocked enabled harnesses in runtime agents so the UI can explain the failure", async () => {
     const adapter = createLocalAcpAdapter({
       detectAgents: async () => [
         {
@@ -510,13 +510,24 @@ describe("local ACP adapter", () => {
     await expect(adapter.listRuntimes({ probe: "auth", refresh: true })).resolves.toMatchObject({
       runtimes: [
         {
-          agents: [],
+          agents: [
+            {
+              id: "devin",
+              label: "Devin",
+              binary: "clash-acp-devin",
+              auth: {
+                status: "needs-auth",
+                message: "Devin requires ACP authentication (API Key). Creating session without credentials - agent may not work",
+                command: "clash-acp-devin",
+              },
+            },
+          ],
         },
       ],
     });
   });
 
-  it("keeps auth-blocked default harnesses out of runtime agents", async () => {
+  it("surfaces auth-blocked default harnesses in runtime agents so the picker does not silently fall back", async () => {
     const adapter = createLocalAcpAdapter({
       detectAgents: async () => [
         {
@@ -546,7 +557,18 @@ describe("local ACP adapter", () => {
     await expect(adapter.listRuntimes({ probe: "auth", refresh: true })).resolves.toMatchObject({
       runtimes: [
         {
-          agents: [],
+          agents: [
+            {
+              id: "devin",
+              label: "Devin",
+              binary: "clash-acp-devin",
+              auth: {
+                status: "needs-auth",
+                message: "Devin requires ACP authentication (API Key).",
+                command: "clash-acp-devin",
+              },
+            },
+          ],
         },
       ],
     });

@@ -292,7 +292,9 @@ export function createConfiguredLocalAcpAdapter(
   }
   const localDataDir = env.CLASH_LOCAL_DATA_DIR ?? dataDir;
   const harnessDownloadDir = join(localDataDir, "acp-bin");
-  const acpBinDir = [env.CLASH_ACP_TEST_BIN_DIR, harnessDownloadDir].filter(Boolean).join(delimiter);
+  const acpBinDir = [env.CLASH_ACP_TEST_BIN_DIR, env.CLASH_ACP_BIN_DIR, harnessDownloadDir]
+    .filter(Boolean)
+    .join(delimiter);
   return createLocalAcpAdapter({
     harnessConfig: createLocalHarnessConfigStore(localDataDir),
     harnessDownloadDir,

@@ -20,6 +20,30 @@ type SessionsResponse = {
   sessions?: SessionInfo[];
 };
 
+function normalizeSession(session: SessionInfo): SessionInfo {
+  return {
+    ...session,
+    id: session.id ?? session.threadId,
+  };
+}
+
+function mergeFetchedSessions(previous: SessionInfo[], fetched: SessionInfo[]): SessionInfo[] {
+  const previousByThreadId = new Map(previous.map((session) => [session.threadId, session]));
+  const normalizedFetched = fetched.map((session) => {
+    const normalized = normalizeSession(session);
+    const existing = previousByThreadId.get(normalized.threadId);
+    if (!existing) return normalized;
+    return {
+      ...existing,
+      ...normalized,
+      title: normalized.title?.trim() ? normalized.title : existing.title,
+    };
+  });
+  const fetchedThreadIds = new Set(normalizedFetched.map((session) => session.threadId));
+  const localOnlySessions = previous.filter((session) => !fetchedThreadIds.has(session.threadId));
+  return [...localOnlySessions, ...normalizedFetched];
+}
+
 export function useSessionHistory(projectId: string) {
   const [sessions, setSessions] = useState<SessionInfo[]>([]);
 
@@ -29,14 +53,9 @@ export function useSessionHistory(projectId: string) {
     })
       .then(async (res): Promise<SessionsResponse> => res.ok ? await res.json() as SessionsResponse : { sessions: [] })
       .then((data) => {
-        setSessions((data.sessions || []).map((session) => ({
-          ...session,
-          id: session.id ?? session.threadId,
-        })));
+        setSessions((previous) => mergeFetchedSessions(previous, data.sessions || []));
       })
-      .catch(() => {
-        setSessions([]);
-      });
+      .catch(() => undefined);
   }, [projectId]);
 
   // Upsert: the session was already persisted by the create/attach path.

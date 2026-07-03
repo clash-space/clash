@@ -241,7 +241,7 @@ async function exerciseProviderModelRouting(cdp, { webOrigin, apiOrigin }) {
   );
   await click(
     cdp,
-    `([...document.querySelectorAll("[role='menuitemradio']")].find((item) => (item.innerText || item.textContent || "").includes("Specific models")))`,
+    `([...document.querySelectorAll("[role='menuitemradio'], [role='option']")].find((item) => (item.innerText || item.textContent || "").includes("Specific models")))`,
     "Select specific model access",
   );
   await waitFor(

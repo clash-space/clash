@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import type { ComponentProps, ReactNode } from "react";
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { MemoryRouter } from "react-router";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import ChatbotCopilot from "./ChatbotCopilot";
@@ -255,18 +256,20 @@ function renderDesktopCopilot(props: Partial<ComponentProps<typeof ChatbotCopilo
 
 function renderDesktopCopilotWithFeedback(props: Partial<ComponentProps<typeof ChatbotCopilot>> = {}) {
   return render(
-    <AppFeedbackProvider>
-      <ChatbotCopilot
-        projectId="project-one"
-        threadId="thread-one"
-        initialMessages={[]}
-        width={420}
-        onWidthChange={() => undefined}
-        isCollapsed={false}
-        onCollapseChange={() => undefined}
-        {...props}
-      />
-    </AppFeedbackProvider>,
+    <MemoryRouter>
+      <AppFeedbackProvider>
+        <ChatbotCopilot
+          projectId="project-one"
+          threadId="thread-one"
+          initialMessages={[]}
+          width={420}
+          onWidthChange={() => undefined}
+          isCollapsed={false}
+          onCollapseChange={() => undefined}
+          {...props}
+        />
+      </AppFeedbackProvider>
+    </MemoryRouter>,
   );
 }
 
@@ -429,6 +432,9 @@ describe("ChatbotCopilot desktop local mode", () => {
       }),
     );
     Element.prototype.scrollIntoView = vi.fn();
+    HTMLElement.prototype.hasPointerCapture = vi.fn(() => false);
+    HTMLElement.prototype.setPointerCapture = vi.fn();
+    HTMLElement.prototype.releasePointerCapture = vi.fn();
     const refresh = vi.fn().mockResolvedValue(undefined);
     const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
@@ -521,7 +527,7 @@ describe("ChatbotCopilot desktop local mode", () => {
     }));
     mocks.useAgentCopilot.mockReturnValue(cloudState());
 
-    renderDesktopCopilot();
+    renderDesktopCopilotWithFeedback();
 
     const trigger = screen.getByRole("combobox", { name: "Session runtime, harness, and model" });
     fireEvent.click(trigger);
@@ -713,7 +719,7 @@ describe("ChatbotCopilot desktop local mode", () => {
     }));
     mocks.useAgentCopilot.mockReturnValue(cloudState());
 
-    renderDesktopCopilot();
+    renderDesktopCopilotWithFeedback();
 
     expect(screen.getByTestId("chat-input").getAttribute("data-processing")).toBe("true");
     fireEvent.click(screen.getByTestId("submit-chat-input"));
@@ -1277,6 +1283,66 @@ describe("ChatbotCopilot desktop local mode", () => {
     expect(onNewSession).not.toHaveBeenCalled();
   });
 
+  it("keeps the completed runtime session in history before opening a fresh draft", () => {
+    globalThis.__CLASH_RUNTIME_CONFIG__ = { mode: "desktop" };
+    vi.stubGlobal(
+      "IntersectionObserver",
+      vi.fn(function IntersectionObserver() {
+        return {
+          observe: vi.fn(),
+          disconnect: vi.fn(),
+        };
+      }),
+    );
+    Element.prototype.scrollIntoView = vi.fn();
+    const startDraft = vi.fn();
+    const onUpsertSession = vi.fn();
+    mocks.useClashRuntime.mockReturnValue(runtimeState({
+      selectedRuntimeId: "desktop-local",
+      selectedAgentId: "codex-acp",
+      sessionId: "runtime-session-one",
+      currentSession: {
+        id: "runtime-session-one",
+        threadId: "runtime-session-one",
+        type: "runtime",
+        title: "New session",
+        projectId: "project-one",
+        runtimeId: "desktop-local",
+        agentId: "codex-acp",
+        status: "active",
+      },
+      status: "connected",
+      ready: true,
+      startDraft,
+      messages: [
+        {
+          id: "runtime-user-one",
+          role: "user",
+          parts: [{ type: "text", text: "Run pwd" }],
+        },
+      ] as any,
+    }));
+    mocks.useAgentCopilot.mockReturnValue(cloudState());
+
+    renderDesktopCopilot({ onUpsertSession });
+    onUpsertSession.mockClear();
+
+    fireEvent.click(screen.getByRole("button", { name: "New session" }));
+
+    expect(onUpsertSession).toHaveBeenCalledWith(expect.objectContaining({
+      threadId: "runtime-session-one",
+      title: "Run pwd",
+      type: "runtime",
+      runtimeId: "desktop-local",
+      agentId: "codex-acp",
+    }));
+    expect(startDraft).toHaveBeenCalledWith("desktop-local", undefined, expect.objectContaining({
+      projectId: "project-one",
+      agentId: "codex-acp",
+      freshSession: true,
+    }));
+  });
+
   it("sends the first prompt from a desktop runtime draft instead of creating an empty session first", () => {
     globalThis.__CLASH_RUNTIME_CONFIG__ = { mode: "desktop" };
     vi.stubGlobal(
@@ -1336,6 +1402,9 @@ describe("ChatbotCopilot desktop local mode", () => {
     const { container } = renderDesktopCopilot();
 
     const trigger = screen.getByRole("button", { name: "Session runtime, harness, and model" });
+    expect(screen.getByTestId("session-harness-config-trigger")).toBe(trigger);
+    expect(screen.getByTestId("session-permission-mode-trigger").getAttribute("aria-label")).toBe("Harness permission mode");
+    expect(screen.getByTestId("session-permission-mode-trigger")).not.toBe(trigger);
     expect(trigger.querySelector("[data-acp-agent-logo]")).toBeTruthy();
     expect(trigger.querySelector("[data-session-config-status-slot]")).toBeTruthy();
     expect(trigger.textContent).toContain("GPT-5.5");
@@ -1453,6 +1522,56 @@ describe("ChatbotCopilot desktop local mode", () => {
     fireEvent.click(screen.getByRole("menuitemradio", { name: "GPT-5.4" }));
 
     expect(setConfigOption).toHaveBeenCalledWith("model", "gpt-5.4");
+  });
+
+  it("refreshes runtime metadata when opening the session config selector", async () => {
+    globalThis.__CLASH_RUNTIME_CONFIG__ = { mode: "desktop" };
+    vi.stubGlobal(
+      "IntersectionObserver",
+      vi.fn(function IntersectionObserver() {
+        return {
+          observe: vi.fn(),
+          disconnect: vi.fn(),
+        };
+      }),
+    );
+    Element.prototype.scrollIntoView = vi.fn();
+    const refresh = vi.fn().mockResolvedValue(undefined);
+    mocks.useClashRuntime.mockReturnValue(runtimeState({ refresh }));
+    mocks.useAgentCopilot.mockReturnValue(cloudState());
+
+    renderDesktopCopilot();
+
+    fireEvent.click(screen.getByRole("combobox", { name: "Session runtime, harness, and model" }));
+
+    await waitFor(() => {
+      expect(refresh).toHaveBeenCalledWith({ probe: "config", refresh: true });
+    });
+  });
+
+  it("notifies the user when session config refresh fails", async () => {
+    globalThis.__CLASH_RUNTIME_CONFIG__ = { mode: "desktop" };
+    vi.stubGlobal(
+      "IntersectionObserver",
+      vi.fn(function IntersectionObserver() {
+        return {
+          observe: vi.fn(),
+          disconnect: vi.fn(),
+        };
+      }),
+    );
+    Element.prototype.scrollIntoView = vi.fn();
+    const refresh = vi.fn().mockRejectedValue(new Error("runtime probe failed"));
+    mocks.useClashRuntime.mockReturnValue(runtimeState({ refresh }));
+    mocks.useAgentCopilot.mockReturnValue(cloudState());
+
+    renderDesktopCopilotWithFeedback();
+
+    fireEvent.click(screen.getByRole("combobox", { name: "Session runtime, harness, and model" }));
+
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toContain("Could not refresh local agents");
+    expect(alert.textContent).toContain("runtime probe failed");
   });
 
   it("disables session config for an existing session when the harness exposes no model switch", () => {

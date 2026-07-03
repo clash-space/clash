@@ -37,6 +37,15 @@ describe("desktop Electron runtime", () => {
     expect(builderConfig).toMatch(/target:\n(?:\s+-\s+\w+\n)*\s+-\s+dmg/m);
   });
 
+  it("packages built-in ACP harness wrappers as desktop resources", () => {
+    const builderConfig = readFileSync(
+      new URL("../electron-builder.yml", import.meta.url),
+      "utf8",
+    );
+
+    expect(builderConfig).toMatch(/-\s+from:\s+build\/acp-bin\n\s+to:\s+acp-bin/m);
+  });
+
   it("ships a Clash desktop app icon instead of the Electron default", () => {
     const iconUrl = new URL("../build/icon.icns", import.meta.url);
     expect(existsSync(iconUrl)).toBe(true);
