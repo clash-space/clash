@@ -16,4 +16,15 @@ describe("TodoList primitives", () => {
         expect(source).not.toContain("onClick={() => setIsExpanded(!isExpanded)}");
         expect(source).not.toContain("cursor-pointer transition-all hover:shadow-md w-64");
     });
+
+    it("lets Radix own the disclosure state instead of mirroring it locally", () => {
+        const source = readSource();
+
+        expect(source).toContain("<Collapsible");
+        expect(source).not.toContain("useState");
+        expect(source).not.toContain("isExpanded");
+        expect(source).not.toContain("setIsExpanded");
+        expect(source).not.toContain("open={");
+        expect(source).not.toContain("onOpenChange");
+    });
 });
