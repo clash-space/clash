@@ -405,7 +405,7 @@ function ShellCommandEntry({
               {label}
             </span>
           </Tooltip>
-          <ChevronRight className={cn('h-3.5 w-3.5 shrink-0 text-stone-400 transition-transform', open && 'rotate-90')} />
+          <ChevronRight className="h-3.5 w-3.5 shrink-0 text-stone-400 transition-transform group-data-[state=open]:rotate-90" />
         </Button>
       </CollapsibleTrigger>
       <CollapsibleContent asChild>
@@ -452,7 +452,7 @@ function ShellCommandGroup({
           <span className="min-w-0 truncate font-medium text-neutral-500 dark:text-stone-300">
             {label}
           </span>
-          <ChevronRight className={cn('h-3.5 w-3.5 shrink-0 text-stone-400 transition-transform', open && 'rotate-90')} />
+          <ChevronRight className="h-3.5 w-3.5 shrink-0 text-stone-400 transition-transform group-data-[state=open]:rotate-90" />
         </Button>
       </CollapsibleTrigger>
       <CollapsibleContent asChild>
@@ -495,7 +495,7 @@ function ThoughtRow({ text, defaultOpen = false }: { text: string; defaultOpen?:
             已思考
           </span>
           {hasBody ? (
-            <ChevronRight className={cn('h-3.5 w-3.5 shrink-0 text-stone-400 transition-transform', open && 'rotate-90')} />
+            <ChevronRight className="h-3.5 w-3.5 shrink-0 text-stone-400 transition-transform group-data-[state=open]:rotate-90" />
           ) : null}
         </Button>
       </CollapsibleTrigger>
@@ -561,7 +561,7 @@ function ToolRow({ tool, defaultOpen = false }: { tool: AcpToolCallPart; default
           </span>
           {failed ? <XCircle className="h-3.5 w-3.5 shrink-0 text-status-down" /> : null}
           {hasBody ? (
-            <ChevronRight className={cn('h-3.5 w-3.5 shrink-0 text-stone-400 transition-transform', open && 'rotate-90')} />
+            <ChevronRight className="h-3.5 w-3.5 shrink-0 text-stone-400 transition-transform group-data-[state=open]:rotate-90" />
           ) : null}
         </Button>
       </CollapsibleTrigger>

@@ -64,6 +64,14 @@ describe("AcpMessageList primitives", () => {
     expect(source).not.toContain("{hasBody && open ? (");
   });
 
+  it("lets Radix collapsible trigger state rotate ACP row chevrons", () => {
+    const source = readCopilotSource("AcpMessageList.tsx");
+    const stateDrivenRotations = source.match(/group-data-\[state=open\]:rotate-90/g) ?? [];
+
+    expect(stateDrivenRotations.length).toBeGreaterThanOrEqual(5);
+    expect(source).not.toContain("open && 'rotate-90'");
+  });
+
   it("uses the shared tooltip primitive for truncated ACP labels instead of browser title attributes", () => {
     const source = readCopilotSource("AcpMessageList.tsx");
     const tooltipSource = readFileSync(
