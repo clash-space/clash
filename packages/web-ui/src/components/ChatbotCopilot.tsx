@@ -1,6 +1,5 @@
 
 import { memo, useState, useRef, useEffect, useCallback, useMemo } from 'react';
-import { ComboboxItem, ComboboxList, ComboboxProvider, useComboboxStore } from '@ariakit/react';
 import {
     closestCenter,
     DndContext,
@@ -45,6 +44,7 @@ import { Sheet, SheetContent, SheetOverlay } from './ui/sheet';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from './ui/collapsible';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from './ui/dropdown-menu';
 import { Tooltip } from './ui/tooltip';
+import { ComboboxItem, ComboboxList, ComboboxProvider, useComboboxStore } from './ui/combobox';
 import { useAppFeedback } from './AppFeedback';
 import { useDrag } from '@use-gesture/react';
 import { useClashRuntime, type AcpSessionConfigOption, type AcpSessionModeState, type ClashRuntimeStatus, type Runtime, type RuntimePromptQueueMode, type RuntimeQueuedPrompt, type RuntimeSessionInfo } from '@clash/web-ui/hooks/useClashRuntime';

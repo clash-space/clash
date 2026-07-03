@@ -11,9 +11,9 @@ import { history } from '@milkdown/plugin-history';
 import { $prose } from '@milkdown/utils';
 import { Plugin, PluginKey } from '@milkdown/prose/state';
 import type { EditorView } from '@milkdown/prose/view';
-import { ComboboxItem, ComboboxList, ComboboxProvider, useComboboxStore } from '@ariakit/react';
 import { SignedImg } from './SignedMedia';
 import { getSignedUrl } from '@clash/web-ui/lib/hooks/useSignedUrl';
+import { ComboboxItem, ComboboxList, ComboboxProvider, useComboboxStore } from './ui/combobox';
 import { Popover, PopoverAnchor, PopoverContent } from './ui/popover';
 import { handleMentionComboboxKeyDown } from './mentionComboboxKeyboard';
 

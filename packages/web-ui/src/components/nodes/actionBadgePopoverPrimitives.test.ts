@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
@@ -35,13 +35,18 @@ describe("ActionBadge popover primitives", () => {
         expect(source).not.toContain("fixed inset-0 z-[9999] flex items-center justify-center p-8");
     });
 
-    it("uses Ariakit combobox primitives for the inline asset mention picker", () => {
+    it("uses the shared combobox primitive for the inline asset mention picker", () => {
         const source = readNodeSource("ActionBadge.tsx");
+        const comboboxPath = join(process.cwd(), "packages/web-ui/src/components/ui/combobox.tsx");
+        const comboboxSource = existsSync(comboboxPath) ? readFileSync(comboboxPath, "utf8") : "";
 
-        expect(source).toContain("@ariakit/react");
+        expect(existsSync(comboboxPath)).toBe(true);
+        expect(comboboxSource).toContain("@ariakit/react");
+        expect(source).toContain("../ui/combobox");
         expect(source).toContain("ComboboxProvider");
         expect(source).toContain("ComboboxList");
         expect(source).toContain("ComboboxItem");
+        expect(source).not.toContain("@ariakit/react");
         expect(source).toContain("handleMentionComboboxKeyDown");
         expect(source).not.toContain("e.key === 'ArrowDown'");
         expect(source).not.toContain("e.key === 'ArrowUp'");

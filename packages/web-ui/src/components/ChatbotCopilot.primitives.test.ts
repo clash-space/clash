@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
@@ -6,13 +6,18 @@ const readComponentSource = (file: string) =>
   readFileSync(join(process.cwd(), "packages/web-ui/src/components", file), "utf8");
 
 describe("ChatbotCopilot primitives", () => {
-  it("uses Ariakit combobox primitives for the slash command palette", () => {
+  it("uses the shared combobox primitive for the slash command palette", () => {
     const source = readComponentSource("ChatbotCopilot.tsx");
+    const comboboxPath = join(process.cwd(), "packages/web-ui/src/components/ui/combobox.tsx");
+    const comboboxSource = existsSync(comboboxPath) ? readFileSync(comboboxPath, "utf8") : "";
 
-    expect(source).toContain("@ariakit/react");
+    expect(existsSync(comboboxPath)).toBe(true);
+    expect(comboboxSource).toContain("@ariakit/react");
+    expect(source).toContain("./ui/combobox");
     expect(source).toContain("ComboboxProvider");
     expect(source).toContain("ComboboxList");
     expect(source).toContain("ComboboxItem");
+    expect(source).not.toContain("@ariakit/react");
     expect(source).not.toContain('role="listbox"');
     expect(source).not.toContain('role="option"');
     expect(source).not.toContain("selectValueOnClick={false}");
