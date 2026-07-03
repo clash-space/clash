@@ -58,13 +58,29 @@ describe("AcpMessageList primitives", () => {
   it("uses shared collapsible primitives for shell command detail expansion", () => {
     const source = readCopilotSource("AcpMessageList.tsx");
 
-    expect(source).toMatch(/<Collapsible\s+[\s\S]*open=\{open\}[\s\S]*onOpenChange=\{setOpen\}/);
+    expect(source).toMatch(/<Collapsible\s+[\s\S]*defaultOpen=\{defaultOpen\}/);
     expect(source).toContain("CollapsibleTrigger asChild");
     expect(source).toContain('data-testid="acp-tool-details"');
     expect(source).toContain("CollapsibleContent");
     expect(source).not.toContain("onClick={() => setOpen((value) => !value)}");
     expect(source).not.toContain("{open ? (\n        <div data-testid=\"acp-tool-details\"");
     expect(source).not.toContain("{open ? (\n        <div className=\"mt-1 space-y-1.5\"");
+  });
+
+  it("lets Radix own shell command row disclosure state", () => {
+    const source = readCopilotSource("AcpMessageList.tsx");
+
+    for (const functionName of ["ShellCommandEntry", "ShellCommandGroup"]) {
+      const start = source.indexOf(`function ${functionName}`);
+      const nextFunction = source.indexOf("\nfunction ", start + 1);
+      const end = nextFunction === -1 ? source.length : nextFunction;
+      const functionSource = source.slice(start, end);
+
+      expect(functionSource).toContain("defaultOpen={defaultOpen}");
+      expect(functionSource).not.toContain("const [open, setOpen]");
+      expect(functionSource).not.toContain("open={open}");
+      expect(functionSource).not.toContain("onOpenChange={setOpen}");
+    }
   });
 
   it("uses shared collapsible primitives for thought and generic tool detail expansion", () => {

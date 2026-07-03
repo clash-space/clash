@@ -379,13 +379,11 @@ function ShellCommandEntry({
   defaultOpen?: boolean;
   nested?: boolean;
 }) {
-  const [open, setOpen] = useState(defaultOpen);
   const label = `${view.running ? 'Running' : 'Ran'} ${view.summary.command}`;
 
   return (
     <Collapsible
-      open={open}
-      onOpenChange={setOpen}
+      defaultOpen={defaultOpen}
       data-testid="acp-shell-row"
       className={cn(
         'not-prose w-full text-neutral-500',
@@ -424,7 +422,6 @@ function ShellCommandGroup({
   tools: ShellToolView[];
   defaultOpen?: boolean;
 }) {
-  const [open, setOpen] = useState(defaultOpen);
   if (tools.length === 1) {
     return <ShellCommandEntry view={tools[0]} defaultOpen={defaultOpen} />;
   }
@@ -434,8 +431,7 @@ function ShellCommandGroup({
   const label = `${running ? 'Running' : 'Ran'} ${tools.length} commands`;
   return (
     <Collapsible
-      open={open}
-      onOpenChange={setOpen}
+      defaultOpen={defaultOpen}
       data-testid="acp-shell-group"
       className={cn(
         'not-prose my-1 w-full text-neutral-500',
