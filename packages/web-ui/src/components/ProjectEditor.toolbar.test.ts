@@ -42,6 +42,15 @@ describe("ProjectEditor toolbar surface", () => {
     expect(projectEditorSource).not.toContain("shouldDismissToolbarMenu");
   });
 
+  it("lets Radix own toolbar submenu open state", () => {
+    expect(projectEditorSource).not.toContain("const [activeMenu, setActiveMenu]");
+    expect(projectEditorSource).not.toContain("open={isActive}");
+    expect(projectEditorSource).not.toContain("onOpenChange={(open) => setActiveMenu");
+    expect(projectEditorSource).not.toContain("setActiveMenu(null)");
+    expect(projectEditorSource).toContain("data-[state=open]:bg-brand");
+    expect(projectEditorSource).toContain("data-[state=open]:text-white");
+  });
+
   it("does not let the menu surface override fixed flyout positioning", () => {
     const menuSurfaceRule = globalCss.match(/\.clash-canvas-menu-surface\s*\{[\s\S]*?\}/)?.[0] ?? "";
     expect(menuSurfaceRule).not.toContain("position:");

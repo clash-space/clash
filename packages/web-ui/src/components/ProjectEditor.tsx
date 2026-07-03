@@ -342,7 +342,6 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
             return sanitizeNodes(newNodes);
         });
     }, [setNodesInternal]);
-    const [activeMenu, setActiveMenu] = useState<string | null>(null);
     const [projectName, setProjectName] = useState(project.name);
     const projectTitleInputRef = useRef<HTMLInputElement>(null);
     const location = useLocation();
@@ -2508,28 +2507,19 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
 
                                     {toolbarMenu.map((item) => {
                                         const Icon = item.icon;
-                                        const isActive = activeMenu === item.id;
                                         const submenuItems = 'items' in item ? item.items : undefined;
 
                                         if (submenuItems) {
                                             return (
-                                                <DropdownMenu
-                                                    key={item.id}
-                                                    open={isActive}
-                                                    onOpenChange={(open) => setActiveMenu(open ? item.id : null)}
-                                                >
+                                                <DropdownMenu key={item.id}>
                                                     <Tooltip label={item.label}>
                                                         <DropdownMenuTrigger asChild>
                                                             <IconButton
                                                                 label={item.label}
-                                                                icon={<Icon className="h-5 w-5" weight={isActive ? "fill" : "regular"} />}
+                                                                icon={<Icon className="h-5 w-5" weight="regular" />}
                                                                 size="lg"
                                                                 shape="rounded"
-                                                                className={`clash-toolbar-button h-10 min-h-10 w-10 min-w-10 rounded-xl ${
-                                                                    isActive
-                                                                        ? "clash-toolbar-button-active text-white"
-                                                                        : "bg-transparent text-stone-500 hover:text-slate-950"
-                                                                }`}
+                                                                className="clash-toolbar-button h-10 min-h-10 w-10 min-w-10 rounded-xl bg-transparent text-stone-500 hover:text-slate-950 data-[state=open]:bg-brand data-[state=open]:text-white data-[state=open]:shadow-md"
                                                             />
                                                         </DropdownMenuTrigger>
                                                     </Tooltip>
@@ -2567,18 +2557,11 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
                                             <Tooltip key={item.id} label={item.label}>
                                                 <IconButton
                                                     label={item.label}
-                                                    icon={<Icon className="h-5 w-5" weight={isActive ? "fill" : "regular"} />}
+                                                    icon={<Icon className="h-5 w-5" weight="regular" />}
                                                     size="lg"
                                                     shape="rounded"
-                                                    onClick={() => {
-                                                        handleToolClick(item.id);
-                                                        setActiveMenu(null);
-                                                    }}
-                                                    className={`clash-toolbar-button h-10 min-h-10 w-10 min-w-10 rounded-xl ${
-                                                        isActive
-                                                        ? "clash-toolbar-button-active text-white"
-                                                        : "bg-transparent text-stone-500 hover:text-slate-950"
-                                                    }`}
+                                                    onClick={() => handleToolClick(item.id)}
+                                                    className="clash-toolbar-button h-10 min-h-10 w-10 min-w-10 rounded-xl bg-transparent text-stone-500 hover:text-slate-950"
                                                 />
                                             </Tooltip>
                                         );
