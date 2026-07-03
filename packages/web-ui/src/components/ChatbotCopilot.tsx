@@ -28,8 +28,8 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { Tooltip } from './ui/tooltip';
 import { ComboboxItem, ComboboxList, ComboboxProvider, useComboboxStore } from './ui/combobox';
 import { SortableList, useSortableItem } from './ui/sortable';
+import { useDragGesture } from './ui/gesture';
 import { useAppFeedback } from './AppFeedback';
-import { useDrag } from '@use-gesture/react';
 import { useClashRuntime, type AcpSessionConfigOption, type AcpSessionModeState, type ClashRuntimeStatus, type Runtime, type RuntimePromptQueueMode, type RuntimeQueuedPrompt, type RuntimeSessionInfo } from '@clash/web-ui/hooks/useClashRuntime';
 import type { AvailableCommand, ByoMessage as RuntimeMessage } from '@clash/web-ui/lib/acpEvents';
 import { applyAgentAttribution, parseAgentCanvasPatch } from '@clash/web-ui/lib/agentCanvasPatch';
@@ -1421,7 +1421,7 @@ export default function ChatbotCopilot({
     }, []);
 
     // ─── Resize ──────────────────────────────────────────────
-    const resizeGestureBind = useDrag(({ active, first, movement: [movementX] }) => {
+    const resizeGestureBind = useDragGesture(({ active, first, movement: [movementX] }) => {
         if (first) resizeStartWidthRef.current = width;
         setIsResizing((current) => (current === active ? current : active));
         const maxWidth = Math.max(

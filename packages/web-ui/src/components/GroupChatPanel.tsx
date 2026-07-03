@@ -35,7 +35,6 @@ import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
 import { motion } from 'framer-motion';
 import { CaretLeft, CaretRight, ArrowClockwise, Lightning } from '@phosphor-icons/react';
 import { Link, useNavigate } from 'react-router';
-import { useDrag } from '@use-gesture/react';
 import betterAuthClient from '@clash/web-ui/lib/betterAuthClient';
 import { useBillingBalance } from '@clash/web-ui/hooks/useBillingBalance';
 import { ChatInput, type UploadedAttachment } from './copilot/ChatInput';
@@ -54,6 +53,7 @@ import { RoomView } from '../_group-chat/RoomView';
 import { AgentView } from '../_group-chat/AgentView';
 import { InviteAgentMenu } from '../_group-chat/InviteAgentMenu';
 import { IconButton } from './ui/icon-button';
+import { useDragGesture } from './ui/gesture';
 import { TabList, TabPanel, TabProvider } from './ui/tabs';
 import { Tooltip } from './ui/tooltip';
 
@@ -332,9 +332,9 @@ export function GroupChatPanel({
   }, []);
 
   // Resize handle on the LEFT edge of the panel. Drag left → wider,
-  // drag right → narrower. useDrag owns the pointer lifecycle instead
+  // drag right → narrower. The shared gesture primitive owns the pointer lifecycle instead
   // of the component wiring document mousemove/mouseup listeners.
-  const resizeGestureBind = useDrag<PointerEvent>(
+  const resizeGestureBind = useDragGesture<PointerEvent>(
     ({ first, last, movement: [movementX], event }) => {
       event.preventDefault();
       event.stopPropagation();

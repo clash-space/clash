@@ -9,10 +9,12 @@ describe("AwarenessLayer primitives", () => {
   it("uses a mature movement primitive for cursor awareness instead of window mousemove listeners", () => {
     const source = readSource("packages/web-ui/src/components/AwarenessLayer.tsx");
 
-    expect(source).toContain("@use-gesture/react");
-    expect(source).toContain("useMove");
+    expect(source).toContain("./ui/gesture");
+    expect(source).toContain("useMoveGesture");
     expect(source).toContain("moveTargetRef");
     expect(source).toContain("flowBoundsRef");
+    expect(source).not.toContain("@use-gesture/react");
+    expect(source).not.toMatch(/\buseMove\b/);
     expect(source).not.toContain("document.querySelector('.react-flow')");
     expect(source).not.toContain("window.addEventListener('mousemove'");
     expect(source).not.toContain("window.removeEventListener('mousemove'");

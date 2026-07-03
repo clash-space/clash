@@ -34,9 +34,11 @@ describe("editor modal primitives", () => {
       "packages/web-ui/src/components/ImageEditorContext.tsx",
     );
 
-    expect(source).toContain("@use-gesture/react");
-    expect(source).toContain("useDrag");
+    expect(source).toContain("./ui/gesture");
+    expect(source).toContain("useDragGesture");
     expect(source).toContain("cropDragBind(");
+    expect(source).not.toContain("@use-gesture/react");
+    expect(source).not.toMatch(/\buseDrag\b/);
     expect(source).not.toContain("window.addEventListener('mousemove'");
     expect(source).not.toContain("window.addEventListener('mouseup'");
   });

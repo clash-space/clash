@@ -18,7 +18,6 @@
  */
 
 import React, { createContext, useCallback, useContext, useMemo, useRef, useState, type ReactNode } from 'react';
-import { useDrag } from '@use-gesture/react';
 import type { Edge, Node } from '@xyflow/react';
 import { EditorModalDialog } from './EditorModalDialog';
 import { useOptionalLoroSyncContext } from './LoroSyncContext';
@@ -28,6 +27,7 @@ import { autoInsertNode } from '@clash/web-ui/lib/layout';
 import { applyImageEdit } from '@clash/web-ui/lib/editPipeline';
 import type { CropRect, ImageEditParams } from '@clash/shared-types';
 import { Button } from './ui/button';
+import { useDragGesture } from './ui/gesture';
 import { Input } from './ui/input';
 
 interface OpenImageEditorInput {
@@ -341,7 +341,7 @@ function CropEditor({
     const dispW = naturalWidth * scale;
     const dispH = naturalHeight * scale;
 
-    const cropDragBind = useDrag<PointerEvent>(
+    const cropDragBind = useDragGesture<PointerEvent>(
         ({ first, movement: [movementX, movementY], args: [kind], event }) => {
             event.stopPropagation();
             if (first) dragOriginRef.current = { ...crop };

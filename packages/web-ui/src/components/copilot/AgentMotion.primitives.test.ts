@@ -9,10 +9,12 @@ describe("AgentMotion primitives", () => {
   it("uses a movement primitive for pointer-reactive eyes instead of window pointer listeners", () => {
     const source = readSource("packages/web-ui/src/components/copilot/AgentMotion.tsx");
 
-    expect(source).toContain("@use-gesture/react");
-    expect(source).toContain("useMove");
+    expect(source).toContain("../ui/gesture");
+    expect(source).toContain("useMoveGesture");
     expect(source).toContain("bindAgentGaze");
     expect(source).toContain("{...bindAgentGaze()}");
+    expect(source).not.toContain("@use-gesture/react");
+    expect(source).not.toMatch(/\buseMove\b/);
     expect(source).not.toContain("window.addEventListener('pointermove'");
     expect(source).not.toContain("window.removeEventListener('pointermove'");
   });

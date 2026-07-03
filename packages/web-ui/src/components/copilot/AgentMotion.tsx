@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef } from 'react';
-import { useMove } from '@use-gesture/react';
+import { useMoveGesture } from '../ui/gesture';
 
 export type AgentMotionState = 'idle' | 'connecting' | 'working' | 'waiting' | 'failed' | 'review';
 
@@ -79,7 +79,7 @@ export function AgentMotion({
         });
     }, [updateEyes]);
 
-    const bindAgentGaze = useMove<PointerEvent>(({ event }) => {
+    const bindAgentGaze = useMoveGesture<PointerEvent>(({ event }) => {
         if (prefersReducedMotion()) return;
         schedulePointerUpdate({ x: event.clientX, y: event.clientY });
     }, {

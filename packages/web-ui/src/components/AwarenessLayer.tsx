@@ -12,9 +12,9 @@
  */
 import { useEffect, useRef, type RefObject } from 'react';
 import { useReactFlow } from '@xyflow/react';
-import { useMove } from '@use-gesture/react';
 import CursorOverlay from './CursorOverlay';
 import type { Peer } from '@clash/web-ui/hooks/usePresenceAwareness';
+import { useMoveGesture } from './ui/gesture';
 
 interface AwarenessLayerProps {
   peers: Peer[];
@@ -30,7 +30,7 @@ export default function AwarenessLayer({ peers, setLocalCursor, flowBoundsRef }:
   // Bind to window, not the canvas pane. Pane-only binding misses movement over
   // nodes (which stop the event before it reaches the pane), and the result is
   // a cursor that vanishes while hovering an existing node.
-  useMove<MouseEvent>(({ event }) => {
+  useMoveGesture<MouseEvent>(({ event }) => {
     // Filter out events outside the canvas viewport so the cursor doesn't
     // drift into UI chrome (toolbars, sidebars, modals).
     const flow = flowBoundsRef.current;
