@@ -156,7 +156,6 @@ export function GroupChatPanel({
   const { agents: claimedAgent, loading: agentLoading } = useClaimedAgents();
   const [invitedIds, setInvitedIds] = useState<string[]>(() => loadInvited(projectId));
   const [activeTab, setActiveTab] = useState<string>(ROOM_TAB);
-  const [showAddMenu, setShowAddMenu] = useState(false);
   const [draft, setDraft] = useState('');
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   // Stable id for the active tabpanel. Ariakit wires it to the selected tab.
@@ -224,7 +223,6 @@ export function GroupChatPanel({
 
   const invite = useCallback((row: AgentRow) => {
     setInvitedIds((prev) => (prev.includes(row.id) ? prev : [...prev, row.id]));
-    setShowAddMenu(false);
     setActiveTab(row.id);
   }, []);
 
@@ -480,9 +478,7 @@ export function GroupChatPanel({
           })}
 
           <InviteAgentMenu
-            open={showAddMenu}
-            onToggle={() => {
-              setShowAddMenu((v) => !v);
+            onOpen={() => {
               if (isCollapsed) onCollapseChange(false);
             }}
             uninvitedClaimed={uninvitedClaimed}

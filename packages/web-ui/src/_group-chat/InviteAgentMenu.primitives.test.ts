@@ -35,4 +35,17 @@ describe("InviteAgentMenu primitives", () => {
     expect(source).not.toContain('title="Invite agent"');
     expect(source).not.toContain("title={offline ? 'Runtime offline' : ''}");
   });
+
+  it("lets the dropdown primitive own open state instead of proxying parent state", () => {
+    const menuSource = readSource("packages/web-ui/src/_group-chat/InviteAgentMenu.tsx");
+    const panelSource = readSource("packages/web-ui/src/components/GroupChatPanel.tsx");
+
+    expect(menuSource).toContain("<DropdownMenu>");
+    expect(menuSource).not.toContain("open:");
+    expect(menuSource).not.toContain("onToggle:");
+    expect(menuSource).not.toContain("handleOpenChange");
+    expect(menuSource).not.toContain("<DropdownMenu open=");
+    expect(panelSource).not.toContain("showAddMenu");
+    expect(panelSource).not.toContain("setShowAddMenu");
+  });
 });

@@ -20,8 +20,7 @@ import { IconButton } from '../components/ui/icon-button';
 import { Tooltip } from '../components/ui/tooltip';
 
 interface InviteAgentMenuProps {
-  open: boolean;
-  onToggle: () => void;
+  onOpen?: () => void;
   uninvitedClaimed: AgentRow[];
   totalClaimed: number;
   loading: boolean;
@@ -30,26 +29,22 @@ interface InviteAgentMenuProps {
 }
 
 export function InviteAgentMenu({
-  open,
-  onToggle,
+  onOpen,
   uninvitedClaimed,
   totalClaimed,
   loading,
   onInvite,
   onOpenSettings,
 }: InviteAgentMenuProps) {
-  const handleOpenChange = (nextOpen: boolean) => {
-    if (nextOpen !== open) onToggle();
-  };
-
   return (
     <div className="shrink-0">
-      <DropdownMenu open={open} onOpenChange={handleOpenChange}>
+      <DropdownMenu>
         <Tooltip label="Invite agent">
           <DropdownMenuTrigger asChild>
             <IconButton
               label="Invite agent member"
               icon={<Plus className="w-4 h-4" weight="bold" />}
+              onClick={onOpen}
               size="lg"
               className="rounded-matrix bg-warm-muted text-stone-500 hover:bg-warm-hover hover:text-brand dark:text-stone-400 focus-visible:ring-brand/60 focus-visible:ring-offset-1"
             />
