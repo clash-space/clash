@@ -4,6 +4,7 @@ import { useMediaViewer } from '../MediaViewerContext';
 import { useCanvasFocus } from '../CanvasFocusContext';
 import { useSignedUrl } from '@clash/web-ui/lib/hooks/useSignedUrl';
 import type { MentionableNode } from '../MilkdownEditor';
+import { Button } from '../ui/button';
 import { Tooltip } from '../ui/tooltip';
 
 /** Inline thumbnail for a `@[label](node:<id>)` mention. Single click
@@ -30,12 +31,11 @@ function InlineThumbnail({
     return (
         signedUrl ? (
             <Tooltip label={tooltipLabel}>
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                    src={signedUrl}
-                    alt={alt}
-                    className="inline-block rounded object-cover align-text-bottom mx-0.5 cursor-pointer hover:ring-2 hover:ring-slate-400 dark:hover:ring-slate-500"
-                    style={{ height: '1.2em', width: '1.2em' }}
+                <Button
+                    aria-label={tooltipLabel}
+                    size="sm"
+                    shape="rounded"
+                    className="mx-0.5 inline-flex h-[1.2em] min-h-0 w-[1.2em] align-text-bottom rounded border-transparent bg-transparent p-0 shadow-none hover:bg-transparent hover:ring-2 hover:ring-slate-400 focus-visible:ring-slate-400 focus-visible:ring-offset-1 dark:hover:ring-slate-500"
                     onClick={(e) => {
                         // Single click → pan the canvas to this node. Skipped
                         // when no nodeId (the chip came from a non-canvas
@@ -50,7 +50,14 @@ function InlineThumbnail({
                         e.stopPropagation();
                         openViewer('image', signedUrl, title);
                     }}
-                />
+                >
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                        src={signedUrl}
+                        alt={alt}
+                        className="h-full w-full rounded object-cover"
+                    />
+                </Button>
             </Tooltip>
         ) : null
     );
