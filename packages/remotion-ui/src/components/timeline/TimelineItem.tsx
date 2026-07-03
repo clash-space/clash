@@ -1137,10 +1137,8 @@ export const TimelineItem: React.FC<TimelineItemProps> = ({
             value={tempText}
             onChange={(e) => setTempText(e.target.value)}
             onBlur={handleTextSave}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') handleTextSave();
-              if (e.key === 'Escape') handleTextCancel();
-            }}
+            onCommit={handleTextSave}
+            onCancel={handleTextCancel}
             style={{
               background: 'transparent',
               border: 'none',

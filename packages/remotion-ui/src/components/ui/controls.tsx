@@ -58,11 +58,31 @@ export const TimelineRangeInput = React.forwardRef<HTMLInputElement, TimelineRan
   },
 );
 
-export type TimelineTextInputProps = Omit<React.InputHTMLAttributes<HTMLInputElement>, 'type'>;
+export type TimelineTextInputProps = Omit<React.InputHTMLAttributes<HTMLInputElement>, 'type'> & {
+  onCommit?: () => void;
+  onCancel?: () => void;
+};
 
 export const TimelineTextInput = React.forwardRef<HTMLInputElement, TimelineTextInputProps>(
-  function TimelineTextInput(props, ref) {
-    return <input ref={ref} type="text" {...props} />;
+  function TimelineTextInput({ onCommit, onCancel, onKeyDown, ...props }, ref) {
+    return (
+      <input
+        ref={ref}
+        type="text"
+        onKeyDown={(event) => {
+          onKeyDown?.(event);
+          if (event.defaultPrevented) {
+            return;
+          }
+          if (event.key === 'Enter') {
+            onCommit?.();
+          } else if (event.key === 'Escape') {
+            onCancel?.();
+          }
+        }}
+        {...props}
+      />
+    );
   },
 );
 

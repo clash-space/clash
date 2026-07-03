@@ -17,6 +17,17 @@ describe('TimelineItem primitives', () => {
     expect(source).not.toContain('<motion.button');
   });
 
+  it('routes text edit keyboard commit and cancel through the text input primitive', () => {
+    const source = readFileSync(
+      join(process.cwd(), 'packages/remotion-ui/src/components/timeline/TimelineItem.tsx'),
+      'utf8',
+    );
+
+    expect(source).toContain('onCommit={handleTextSave}');
+    expect(source).toContain('onCancel={handleTextCancel}');
+    expect(source).not.toContain('onKeyDown={(e) =>');
+  });
+
   it('routes fade and volume sliders through the timeline slider primitive', () => {
     const source = readFileSync(
       join(process.cwd(), 'packages/remotion-ui/src/components/timeline/TimelineItem.tsx'),
