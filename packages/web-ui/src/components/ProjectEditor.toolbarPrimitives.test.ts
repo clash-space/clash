@@ -81,4 +81,21 @@ describe("ProjectEditor toolbar primitives", () => {
     expect(toolbarSource).not.toContain("<motion.button");
     expect(selectionButtonSource).not.toContain("<motion.button");
   });
+
+  it("lets the shared accordion primitive own debug node log disclosure", () => {
+    const editorSource = readSource("packages/web-ui/src/components/ProjectEditor.tsx");
+    const debugOverlayStart = editorSource.indexOf("function DebugNodeIds");
+    const debugOverlayEnd = editorSource.indexOf("export default function ProjectEditor", debugOverlayStart);
+    const debugOverlaySource = editorSource.slice(debugOverlayStart, debugOverlayEnd);
+
+    expect(editorSource).toContain("./ui/accordion");
+    expect(debugOverlaySource).toContain("<Accordion");
+    expect(debugOverlaySource).toContain('type="single"');
+    expect(debugOverlaySource).toContain("AccordionItem");
+    expect(debugOverlaySource).toContain("AccordionTrigger asChild");
+    expect(debugOverlaySource).toContain("AccordionContent");
+    expect(debugOverlaySource).not.toContain("expandedNode");
+    expect(debugOverlaySource).not.toContain("setExpandedNode");
+    expect(debugOverlaySource).not.toContain("isExpanded &&");
+  });
 });

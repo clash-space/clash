@@ -109,6 +109,7 @@ import { Toggle } from './ui/toggle';
 import { Button } from './ui/button';
 import { IconButton } from './ui/icon-button';
 import { Tooltip } from './ui/tooltip';
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from './ui/accordion';
 
 const CHILD_NODE_Z_INDEX_BASE = 1000;
 
@@ -245,7 +246,6 @@ function SelectionGroupButton({
 
 function DebugNodeIds({ nodes }: { nodes: AppNode[] }) {
     const { x, y, zoom } = useViewport();
-    const [expandedNode, setExpandedNode] = useState<string | null>(null);
 
     // Build absolute positions by traversing parent chain
     const posById = useMemo(() => {
@@ -267,7 +267,11 @@ function DebugNodeIds({ nodes }: { nodes: AppNode[] }) {
 
     return (
         <div className="pointer-events-none absolute inset-0 overflow-hidden" style={{ zIndex: 9999 }}>
-            <div style={{ transform: `translate(${x}px, ${y}px) scale(${zoom})`, transformOrigin: '0 0' }}>
+            <Accordion
+                type="single"
+                collapsible
+                style={{ transform: `translate(${x}px, ${y}px) scale(${zoom})`, transformOrigin: '0 0' }}
+            >
                 {nodes.map(node => {
                     const d = node.data ?? {};
                     const parts = [node.id];
@@ -278,32 +282,40 @@ function DebugNodeIds({ nodes }: { nodes: AppNode[] }) {
                     if (d.error) parts.push(`err:${d.error.slice(0, 20)}`);
                     if (d.modelId) parts.push(d.modelId);
                     if (d._log?.length) parts.push(`log:${d._log.length}`);
-                    const isExpanded = expandedNode === node.id;
                     const abs = posById.get(node.id) ?? node.position;
                     return (
-                        <div
+                        <AccordionItem
                             key={`dbg-${node.id}`}
+                            value={node.id}
                             className="pointer-events-auto absolute cursor-pointer"
                             style={{
                                 left: abs.x,
                                 top: abs.y - 20,
                             }}
-                            onClick={() => setExpandedNode(isExpanded ? null : node.id)}
                         >
-                            <span className="rounded bg-black/85 px-1.5 py-0.5 font-mono text-[10px] text-green-400 whitespace-nowrap select-all">
-                                {parts.join(' | ')}
-                            </span>
-                            {isExpanded && d._log?.length > 0 && (
+                            <AccordionTrigger asChild>
+                                <Button
+                                    aria-label={`Toggle debug details for ${node.id}`}
+                                    className="h-auto min-h-0 rounded border-0 bg-black/85 px-1.5 py-0.5 font-mono text-[10px] text-green-400 shadow-none hover:bg-black/85 hover:text-green-300"
+                                >
+                                    <span className="whitespace-nowrap select-all">
+                                        {parts.join(' | ')}
+                                    </span>
+                                </Button>
+                            </AccordionTrigger>
+                            {d._log?.length > 0 && (
+                                <AccordionContent>
                                 <div className="mt-1 rounded bg-black/90 p-2 font-mono text-[10px] text-gray-300 max-w-[400px] max-h-[200px] overflow-auto">
                                     {d._log.map((entry: string, i: number) => (
                                         <div key={i} className={entry.includes('FAILED') ? 'text-red-400' : ''}>{entry}</div>
                                     ))}
                                 </div>
+                                </AccordionContent>
                             )}
-                        </div>
+                        </AccordionItem>
                     );
                 })}
-            </div>
+            </Accordion>
         </div>
     );
 }
