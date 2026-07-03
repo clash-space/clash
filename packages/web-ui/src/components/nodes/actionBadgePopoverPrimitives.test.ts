@@ -105,13 +105,19 @@ describe("ActionBadge popover primitives", () => {
         expect(source).not.toContain('type="range"');
     });
 
-    it("uses the shared collapsible primitive for expanded parameter rows", () => {
+    it("lets the shared accordion primitive own expanded parameter rows", () => {
         const source = readNodeSource("ActionBadge.tsx");
 
-        expect(source).toContain("../ui/collapsible");
-        expect(source).toContain("Collapsible");
-        expect(source).toContain("CollapsibleTrigger asChild");
-        expect(source).toContain("CollapsibleContent");
+        expect(source).toContain("../ui/accordion");
+        expect(source).toContain("<Accordion");
+        expect(source).toContain('type="single"');
+        expect(source).toContain("collapsible");
+        expect(source).toContain("AccordionItem");
+        expect(source).toContain("AccordionTrigger asChild");
+        expect(source).toContain("AccordionContent");
+        expect(source).not.toContain("../ui/collapsible");
+        expect(source).not.toContain("const [expandedParam, setExpandedParam]");
+        expect(source).not.toContain("setExpandedParam");
         expect(source).not.toContain("setExpandedParam(isExpanded ? null : p.id)");
         expect(source).not.toContain("{isExpanded && (");
     });

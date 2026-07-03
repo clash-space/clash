@@ -25,7 +25,7 @@ import MilkdownEditor from '../MilkdownEditor';
 import { useConfirm } from '../ConfirmDialog';
 import { SelectMenu, type SelectOption, type SelectValue } from '../ui/select';
 import { Popover, PopoverContent, PopoverTrigger } from '../ui/popover';
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '../ui/collapsible';
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '../ui/accordion';
 import { Button } from '../ui/button';
 import { IconButton } from '../ui/icon-button';
 import { Tooltip } from '../ui/tooltip';
@@ -1612,10 +1612,8 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
         return chips;
     }, [isCustom, customDef, selectedModel, modelParams]);
 
-    const [expandedParam, setExpandedParam] = useState<string | null>(null);
     const closeConfigPanelControls = useCallback(() => {
         setParamsPopoverOpen(false);
-        setExpandedParam(null);
         setRefPickerTarget(null);
     }, []);
 
@@ -1908,9 +1906,6 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
                                 open={paramsPopoverOpen}
                                 onOpenChange={(nextOpen) => {
                                     setParamsPopoverOpen(nextOpen);
-                                    if (!nextOpen) {
-                                        setExpandedParam(null);
-                                    }
                                 }}
                             >
                                 <PopoverTrigger asChild>
@@ -1933,100 +1928,94 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
                                     onPointerDown={(e) => e.stopPropagation()}
                                     onClick={(e) => e.stopPropagation()}
                                 >
-                                    {((isCustom ? customDef?.parameters : selectedModel?.parameters) ?? []).map((param: any, idx: number) => {
-                                        const p = param as ModelParameter;
-                                        const currentVal = modelParams[p.id] ?? p.defaultValue;
-                                        const currentLabel = p.type === 'select'
-                                            ? (p.options?.find((o) => String(o.value) === String(currentVal))?.label ?? String(currentVal))
-                                            : p.type === 'boolean' ? (currentVal ? 'On' : 'Off') : String(currentVal);
-                                        const isExpanded = expandedParam === p.id;
-                                        const sliderValue = p.type === 'slider'
-                                            ? normalizeSliderValue(currentVal, p.min ?? 0)
-                                            : 0;
-                                        return (
-                                            <Collapsible
-                                                key={p.id}
-                                                open={isExpanded}
-                                                onOpenChange={(nextOpen) => setExpandedParam(nextOpen ? p.id : null)}
-                                                className={idx > 0 ? 'border-t border-warm-border' : ''}
-                                            >
-                                                <CollapsibleTrigger asChild>
-                                                    <Button
-                                                        size="sm"
-                                                        shape="rounded"
-                                                        className="w-full justify-between rounded-none border-0 bg-transparent px-4 py-2.5 shadow-none hover:bg-warm-muted"
-                                                        onClick={(e) => e.stopPropagation()}
-                                                    >
-                                                        <span className="text-xs text-stone-700 dark:text-stone-300">{p.label}</span>
-                                                        <span className="flex items-center gap-1 text-xs font-semibold text-slate-900 dark:text-slate-50">
-                                                            {currentLabel}
-                                                            <CaretDown size={10} weight="bold" className={`text-stone-700 dark:text-stone-300 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
-                                                        </span>
-                                                    </Button>
-                                                </CollapsibleTrigger>
-                                                <CollapsibleContent>
-                                                    <div className="px-3 pb-3">
-                                                        {(p.type === 'select') && (
-                                                            <SelectMenu<SelectValue>
-                                                                ariaLabel={p.label}
-                                                                value={currentVal as SelectValue}
-                                                                options={paramOptionsToSelectOptions(p)}
-                                                                onValueChange={(nextValue) => {
-                                                                    updateModelParam(p.id, nextValue);
-                                                                    setExpandedParam(null);
-                                                                }}
-                                                                triggerLabel={currentLabel}
-                                                                variant="field"
-                                                                placement="bottom"
-                                                                menuWidth="trigger"
-                                                                stopPropagation
-                                                            />
-                                                        )}
-                                                        {p.type === 'boolean' && (
-                                                            <SelectMenu<boolean>
-                                                                ariaLabel={p.label}
-                                                                value={Boolean(currentVal)}
-                                                                options={PARAM_BOOLEAN_OPTIONS}
-                                                                onValueChange={(nextValue) => {
-                                                                    updateModelParam(p.id, nextValue);
-                                                                    setExpandedParam(null);
-                                                                }}
-                                                                triggerLabel={currentLabel}
-                                                                variant="field"
-                                                                placement="bottom"
-                                                                menuWidth="trigger"
-                                                                stopPropagation
-                                                            />
-                                                        )}
-                                                        {p.type === 'number' && (
-                                                            <input type="number" min={p.min} max={p.max} step={p.step}
-                                                                value={currentVal as number}
-                                                                onChange={(e) => updateModelParam(p.id, Number(e.target.value))}
-                                                                className={`${NODE_INTERACTION_BOUNDARY_CLASS} w-full text-xs border border-warm-border rounded-lg px-3 py-2 focus:outline-none focus:border-brand/70`}
-                                                                onClick={(e) => e.stopPropagation()}
-                                                            />
-                                                        )}
-                                                        {p.type === 'slider' && (
-                                                            <div className="space-y-1.5" onClick={(e) => e.stopPropagation()}>
-                                                                <div className="flex justify-between text-[10px] text-stone-700 dark:text-stone-300">
-                                                                    <span>{p.min}</span><span className="font-semibold text-slate-900 dark:text-slate-50">{sliderValue}</span><span>{p.max}</span>
-                                                                </div>
-                                                                <ModelParamSlider
+                                    <Accordion type="single" collapsible>
+                                        {((isCustom ? customDef?.parameters : selectedModel?.parameters) ?? []).map((param: any, idx: number) => {
+                                            const p = param as ModelParameter;
+                                            const currentVal = modelParams[p.id] ?? p.defaultValue;
+                                            const currentLabel = p.type === 'select'
+                                                ? (p.options?.find((o) => String(o.value) === String(currentVal))?.label ?? String(currentVal))
+                                                : p.type === 'boolean' ? (currentVal ? 'On' : 'Off') : String(currentVal);
+                                            const sliderValue = p.type === 'slider'
+                                                ? normalizeSliderValue(currentVal, p.min ?? 0)
+                                                : 0;
+                                            return (
+                                                <AccordionItem
+                                                    key={p.id}
+                                                    value={p.id}
+                                                    className={idx > 0 ? 'border-t border-warm-border' : ''}
+                                                >
+                                                    <AccordionTrigger asChild>
+                                                        <Button
+                                                            size="sm"
+                                                            shape="rounded"
+                                                            className="group w-full justify-between rounded-none border-0 bg-transparent px-4 py-2.5 shadow-none hover:bg-warm-muted"
+                                                            onClick={(e) => e.stopPropagation()}
+                                                        >
+                                                            <span className="text-xs text-stone-700 dark:text-stone-300">{p.label}</span>
+                                                            <span className="flex items-center gap-1 text-xs font-semibold text-slate-900 dark:text-slate-50">
+                                                                {currentLabel}
+                                                                <CaretDown size={10} weight="bold" className="text-stone-700 transition-transform group-data-[state=open]:rotate-180 dark:text-stone-300" />
+                                                            </span>
+                                                        </Button>
+                                                    </AccordionTrigger>
+                                                    <AccordionContent>
+                                                        <div className="px-3 pb-3">
+                                                            {(p.type === 'select') && (
+                                                                <SelectMenu<SelectValue>
                                                                     ariaLabel={p.label}
-                                                                    min={p.min}
-                                                                    max={p.max}
-                                                                    step={p.step}
-                                                                    value={sliderValue}
-                                                                    onChange={(nextValue) => updateModelParam(p.id, nextValue)}
-                                                                    trackClassName="bg-warm-hover"
+                                                                    value={currentVal as SelectValue}
+                                                                    options={paramOptionsToSelectOptions(p)}
+                                                                    onValueChange={(nextValue) => updateModelParam(p.id, nextValue)}
+                                                                    triggerLabel={currentLabel}
+                                                                    variant="field"
+                                                                    placement="bottom"
+                                                                    menuWidth="trigger"
+                                                                    stopPropagation
                                                                 />
-                                                            </div>
-                                                        )}
-                                                    </div>
-                                                </CollapsibleContent>
-                                            </Collapsible>
-                                        );
-                                    })}
+                                                            )}
+                                                            {p.type === 'boolean' && (
+                                                                <SelectMenu<boolean>
+                                                                    ariaLabel={p.label}
+                                                                    value={Boolean(currentVal)}
+                                                                    options={PARAM_BOOLEAN_OPTIONS}
+                                                                    onValueChange={(nextValue) => updateModelParam(p.id, nextValue)}
+                                                                    triggerLabel={currentLabel}
+                                                                    variant="field"
+                                                                    placement="bottom"
+                                                                    menuWidth="trigger"
+                                                                    stopPropagation
+                                                                />
+                                                            )}
+                                                            {p.type === 'number' && (
+                                                                <input type="number" min={p.min} max={p.max} step={p.step}
+                                                                    value={currentVal as number}
+                                                                    onChange={(e) => updateModelParam(p.id, Number(e.target.value))}
+                                                                    className={`${NODE_INTERACTION_BOUNDARY_CLASS} w-full text-xs border border-warm-border rounded-lg px-3 py-2 focus:outline-none focus:border-brand/70`}
+                                                                    onClick={(e) => e.stopPropagation()}
+                                                                />
+                                                            )}
+                                                            {p.type === 'slider' && (
+                                                                <div className="space-y-1.5" onClick={(e) => e.stopPropagation()}>
+                                                                    <div className="flex justify-between text-[10px] text-stone-700 dark:text-stone-300">
+                                                                        <span>{p.min}</span><span className="font-semibold text-slate-900 dark:text-slate-50">{sliderValue}</span><span>{p.max}</span>
+                                                                    </div>
+                                                                    <ModelParamSlider
+                                                                        ariaLabel={p.label}
+                                                                        min={p.min}
+                                                                        max={p.max}
+                                                                        step={p.step}
+                                                                        value={sliderValue}
+                                                                        onChange={(nextValue) => updateModelParam(p.id, nextValue)}
+                                                                        trackClassName="bg-warm-hover"
+                                                                    />
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    </AccordionContent>
+                                                </AccordionItem>
+                                            );
+                                        })}
+                                    </Accordion>
                                 </PopoverContent>
                             </Popover>
                         )}
