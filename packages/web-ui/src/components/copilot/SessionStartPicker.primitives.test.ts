@@ -16,4 +16,18 @@ describe("SessionStartPicker primitives", () => {
     expect(source).not.toMatch(/<button[\s\S]*onClick=\{onRecheckAuth\}/);
     expect(source).not.toMatch(/<button[\s\S]*onClick=\{\(\) => onStart/);
   });
+
+  it("uses the shared Radix-backed radio group primitive for agent and resume choices", () => {
+    const source = readFileSync(
+      join(process.cwd(), "packages/web-ui/src/components/copilot/SessionStartPicker.tsx"),
+      "utf8",
+    );
+
+    expect(source).toContain("../ui/radio-group");
+    expect(source).toContain("RadioGroup");
+    expect(source).toContain("RadioGroupItem");
+    expect(source).not.toContain('type="radio"');
+    expect(source).not.toContain('name="picker-agent"');
+    expect(source).not.toContain('name="picker-session"');
+  });
 });

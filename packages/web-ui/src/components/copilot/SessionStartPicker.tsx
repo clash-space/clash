@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { BridgeSession } from '@clash/web-ui/hooks/useAgentByoBridge';
 import { Button } from '../ui/button';
+import { RadioGroup, RadioGroupItem } from '../ui/radio-group';
 
 export interface AgentTemplate {
   id: string;
@@ -29,6 +30,8 @@ function preferredAgentId(agents: RuntimeAgentOption[]): string | null {
   }
   return agents[0]?.id ?? null;
 }
+
+const START_FRESH_SESSION_VALUE = '__start-fresh__';
 
 /**
  * Shared local-agent + resume picker for Quick connect and registered
@@ -74,23 +77,16 @@ export function SessionStartPicker({
       {agents.length > 1 && (
         <div>
           <div className="text-xs uppercase tracking-wider text-stone-700 dark:text-stone-300 mb-2">Agent</div>
-          <div className="grid grid-cols-1 gap-1.5">
+          <RadioGroup
+            aria-label="Agent"
+            value={agentId ?? ''}
+            onValueChange={setAgentId}
+          >
             {agents.map((agent) => (
-              <label
+              <RadioGroupItem
                 key={agent.id}
-                className={`flex items-start gap-2.5 px-3 py-2 rounded-lg cursor-pointer border transition-colors ${
-                  agentId === agent.id
-                    ? 'border-brand bg-brand/10 dark:bg-brand/15'
-                    : 'border-warm-border hover:bg-warm-muted'
-                }`}
+                value={agent.id}
               >
-                <input
-                  type="radio"
-                  name="picker-agent"
-                  className="accent-[var(--brand)] mt-0.5"
-                  checked={agentId === agent.id}
-                  onChange={() => setAgentId(agent.id)}
-                />
                 <div className="min-w-0 flex-1">
                   <div className="text-sm font-medium text-slate-800 dark:text-slate-200">{agent.label ?? agent.id}</div>
                   {agent.auth?.status === 'needs-auth' && (
@@ -100,9 +96,9 @@ export function SessionStartPicker({
                     <div className="text-[11px] text-stone-700 dark:text-stone-300 truncate">{agent.binary}</div>
                   )}
                 </div>
-              </label>
+              </RadioGroupItem>
             ))}
-          </div>
+          </RadioGroup>
         </div>
       )}
 
@@ -139,39 +135,25 @@ export function SessionStartPicker({
           consistent regardless of state. */}
       <div>
         <div className="text-xs uppercase tracking-wider text-stone-700 dark:text-stone-300 mb-2">Resume a session</div>
-        <div className="grid grid-cols-1 gap-1.5 max-h-56 overflow-y-auto">
-          <label
-            className={`flex items-center gap-2.5 px-3 py-2 rounded-lg cursor-pointer border transition-colors ${
-              resumeId === null
-                ? 'border-brand bg-brand/10 dark:bg-brand/15'
-                : 'border-warm-border hover:bg-warm-muted'
-            }`}
+        <RadioGroup
+          aria-label="Resume a session"
+          value={resumeId ?? START_FRESH_SESSION_VALUE}
+          onValueChange={(nextResumeId) => {
+            setResumeId(nextResumeId === START_FRESH_SESSION_VALUE ? null : nextResumeId);
+          }}
+          className="max-h-56 overflow-y-auto"
+        >
+          <RadioGroupItem
+            value={START_FRESH_SESSION_VALUE}
+            className="items-center"
           >
-            <input
-              type="radio"
-              name="picker-session"
-              className="accent-[var(--brand)]"
-              checked={resumeId === null}
-              onChange={() => setResumeId(null)}
-            />
             <span className="text-sm text-slate-800 dark:text-slate-200">Start fresh</span>
-          </label>
+          </RadioGroupItem>
           {sessions.map((s) => (
-            <label
+            <RadioGroupItem
               key={s.id}
-              className={`flex items-start gap-2.5 px-3 py-2 rounded-lg cursor-pointer border transition-colors ${
-                resumeId === s.id
-                  ? 'border-brand bg-brand/10 dark:bg-brand/15'
-                  : 'border-warm-border hover:bg-warm-muted'
-              }`}
+              value={s.id}
             >
-              <input
-                type="radio"
-                name="picker-session"
-                className="accent-[var(--brand)] mt-0.5"
-                checked={resumeId === s.id}
-                onChange={() => setResumeId(s.id)}
-              />
               <div className="min-w-0 flex-1">
                 <div className="text-sm text-slate-800 dark:text-slate-200 truncate">
                   {s.title || <span className="text-stone-700 dark:text-stone-300 italic">untitled</span>}
@@ -180,14 +162,14 @@ export function SessionStartPicker({
                   {s.cwd} · {new Date(s.modifiedAt * 1000).toLocaleString()}
                 </div>
               </div>
-            </label>
+            </RadioGroupItem>
           ))}
           {sessions.length === 0 && (
             <div className="text-[11px] text-stone-700 dark:text-stone-300 italic px-3 py-1">
               No previous sessions on this machine yet — start fresh.
             </div>
           )}
-        </div>
+        </RadioGroup>
       </div>
 
       <Button
