@@ -1,9 +1,8 @@
-import React, { useState, useCallback } from 'react';
-import { motion } from 'framer-motion';
+import React, { useCallback } from 'react';
 import type { Track, Asset, Item } from '@master-clash/remotion-core';
 import { getItemAssetDurationInFrames, useEditorStaticState } from '@master-clash/remotion-core';
 import { TimelineItem } from './TimelineItem';
-import { colors, timeline, typography, borderRadius } from './styles';
+import { colors, timeline, typography } from './styles';
 
 interface TimelineTrackProps {
   track: Track;
@@ -36,45 +35,10 @@ export const TimelineTrack: React.FC<TimelineTrackProps> = ({
 }) => {
   // Use global editor state for fps so we never assume 30fps in calculations
   const { fps } = useEditorStaticState();
-  const [isHovered, setIsHovered] = useState(false);
-  const [isEditingName, setIsEditingName] = useState(false);
-  const [editedName, setEditedName] = useState(track.name);
-
 
   const handleTrackClick = useCallback(() => {
     onSelectTrack();
   }, [onSelectTrack]);
-
-  const handleNameDoubleClick = useCallback(
-    (e: React.MouseEvent) => {
-      e.stopPropagation();
-      setIsEditingName(true);
-      setEditedName(track.name);
-    },
-    [track.name]
-  );
-
-  const handleNameChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    setEditedName(e.target.value);
-  }, []);
-
-  const handleNameBlur = useCallback(() => {
-    setIsEditingName(false);
-    // TODO: dispatch action to update track name
-    // For now, just close the editor
-  }, []);
-
-  const handleNameKeyDown = useCallback(
-    (e: React.KeyboardEvent<HTMLInputElement>) => {
-      if (e.key === 'Enter') {
-        handleNameBlur();
-      } else if (e.key === 'Escape') {
-        setEditedName(track.name);
-        setIsEditingName(false);
-      }
-    },
-    [track.name, handleNameBlur]
-  );
 
   const handleItemResize = useCallback(
     (itemId: string, edge: 'left' | 'right', deltaFrames: number) => {
@@ -140,8 +104,6 @@ export const TimelineTrack: React.FC<TimelineTrackProps> = ({
         transition: 'background-color 0.15s ease',
         opacity: track.hidden ? 0.3 : 1,
       }}
-      onMouseEnter={() => setIsHovered(true)}
-      onMouseLeave={() => setIsHovered(false)}
     >
       {/* 轨道标签区域 */}
       <div
@@ -153,146 +115,24 @@ export const TimelineTrack: React.FC<TimelineTrackProps> = ({
           padding: '12px',
           display: 'flex',
           flexDirection: 'column',
-          justifyContent: 'space-between',
           cursor: 'pointer',
         }}
         onClick={handleTrackClick}
       >
         {/* 轨道名称 */}
-        <div>
-          {isEditingName ? (
-            <input
-              type="text"
-              value={editedName}
-              onChange={handleNameChange}
-              onBlur={handleNameBlur}
-              onKeyDown={handleNameKeyDown}
-              aria-label="Track name"
-              maxLength={80}
-              autoFocus
-              style={{
-                width: '100%',
-                backgroundColor: colors.bg.elevated,
-                border: `1px solid ${colors.accent.primary}`,
-                borderRadius: borderRadius.sm,
-                color: colors.text.primary,
-                fontSize: typography.fontSize.sm,
-                fontWeight: typography.fontWeight.medium,
-                padding: '4px 6px',
-                outline: 'none',
-              }}
-              onClick={(e) => e.stopPropagation()}
-            />
-          ) : (
-            <div
-              onDoubleClick={handleNameDoubleClick}
-              style={{
-                color: colors.text.primary,
-                fontSize: typography.fontSize.sm,
-                fontWeight: typography.fontWeight.medium,
-                whiteSpace: 'nowrap',
-                overflow: 'hidden',
-                textOverflow: 'ellipsis',
-                userSelect: 'none',
-              }}
-            >
-              {track.name}
-            </div>
-          )}
+        <div
+          style={{
+            color: colors.text.primary,
+            fontSize: typography.fontSize.sm,
+            fontWeight: typography.fontWeight.medium,
+            whiteSpace: 'nowrap',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            userSelect: 'none',
+          }}
+        >
+          {track.name}
         </div>
-
-        {/* 轨道控制按钮 */}
-        {isHovered && !isEditingName && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.15 }}
-            style={{
-              display: 'flex',
-              gap: 4,
-              marginTop: 8,
-            }}
-          >
-            {/* 静音按钮 */}
-            <button
-              aria-label="Mute track"
-              aria-pressed={false}
-              style={{
-                width: 24,
-                height: 24,
-                backgroundColor: colors.bg.elevated,
-                border: `1px solid ${colors.border.default}`,
-                borderRadius: borderRadius.sm,
-                color: colors.text.secondary,
-                fontSize: typography.fontSize.xs,
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-              }}
-              onClick={(e) => {
-                e.stopPropagation();
-                // TODO: toggle mute
-              }}
-              title="静音 (M)"
-            >
-              M
-            </button>
-
-            {/* 独奏按钮 */}
-            <button
-              aria-label="Solo track"
-              aria-pressed={false}
-              style={{
-                width: 24,
-                height: 24,
-                backgroundColor: colors.bg.elevated,
-                border: `1px solid ${colors.border.default}`,
-                borderRadius: borderRadius.sm,
-                color: colors.text.secondary,
-                fontSize: typography.fontSize.xs,
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-              }}
-              onClick={(e) => {
-                e.stopPropagation();
-                // TODO: toggle solo
-              }}
-              title="独奏 (S)"
-            >
-              S
-            </button>
-
-            {/* 锁定按钮 */}
-            <button
-              aria-label={track.locked ? 'Unlock track' : 'Lock track'}
-              aria-pressed={!!track.locked}
-              style={{
-                width: 24,
-                height: 24,
-                backgroundColor: track.locked ? colors.accent.warning : colors.bg.elevated,
-                border: `1px solid ${colors.border.default}`,
-                borderRadius: borderRadius.sm,
-                color: track.locked ? colors.text.primary : colors.text.secondary,
-                fontSize: typography.fontSize.xs,
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-              }}
-              onClick={(e) => {
-                e.stopPropagation();
-                // TODO: toggle lock
-              }}
-              title="锁定 (L)"
-            >
-              {track.locked ? '🔒' : 'L'}
-            </button>
-          </motion.div>
-        )}
       </div>
 
       {/* 轨道内容区域 */}

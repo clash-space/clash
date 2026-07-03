@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
+import { TimelineIconButton, TimelineRangeInput } from '../ui/controls';
 import { colors } from './styles';
 
 // Hoisted CSS — built once per module rather than re-templated on every render.
@@ -149,7 +150,7 @@ export const ZoomControl: React.FC<ZoomControlProps> = ({
       height: 32, // 固定容器高度确保对齐
     }}>
       {/* Zoom Out Button */}
-      <button
+      <TimelineIconButton
         onClick={onZoomOut}
         disabled={!canZoomOut}
         aria-label="Zoom out"
@@ -185,7 +186,7 @@ export const ZoomControl: React.FC<ZoomControlProps> = ({
         }}
       >
         −
-      </button>
+      </TimelineIconButton>
 
       {/* Slider */}
       <div style={{ 
@@ -195,9 +196,8 @@ export const ZoomControl: React.FC<ZoomControlProps> = ({
         display: 'flex',
         alignItems: 'center', // 垂直居中对齐
       }}>
-        <input
+        <TimelineRangeInput
           ref={sliderRef}
-          type="range"
           min={min}
           max={max}
           step={0.01}
@@ -229,7 +229,7 @@ export const ZoomControl: React.FC<ZoomControlProps> = ({
       </div>
 
       {/* Zoom In Button */}
-      <button
+      <TimelineIconButton
         onClick={onZoomIn}
         disabled={!canZoomIn}
         aria-label="Zoom in"
@@ -265,7 +265,7 @@ export const ZoomControl: React.FC<ZoomControlProps> = ({
         }}
       >
         +
-      </button>
+      </TimelineIconButton>
 
       {/* Tooltip */}
       {showTooltip && (
@@ -327,7 +327,7 @@ export const SnapButton: React.FC<SnapButtonProps> = ({ enabled, onToggle }) => 
 
   return (
     <div style={{ position: 'relative' }}>
-      <button
+      <TimelineIconButton
         ref={buttonRef}
         onClick={onToggle}
         aria-label={enabled ? 'Disable snapping' : 'Enable snapping'}
@@ -374,7 +374,7 @@ export const SnapButton: React.FC<SnapButtonProps> = ({ enabled, onToggle }) => 
             fill={enabled ? colors.accent.primary : colors.text.primary}
           />
         </svg>
-      </button>
+      </TimelineIconButton>
 
       {/* Tooltip */}
       {showTooltip && (

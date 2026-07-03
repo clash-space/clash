@@ -7,12 +7,14 @@ import {
   KeyboardSensor,
   useSensor,
   useSensors,
+  restrictToWindowEdges,
+} from './ui/dnd';
+import type {
   DragStartEvent,
   DragOverEvent,
   DragEndEvent,
   DragMoveEvent,
-} from '@dnd-kit/core';
-import { restrictToWindowEdges } from '@dnd-kit/modifiers';
+} from './ui/dnd';
 import {
   useEditorDispatch,
   useEditorPlayback,

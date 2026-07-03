@@ -1,4 +1,5 @@
 import React from 'react';
+import { TimelineIconButton } from '../ui/controls';
 import { colors, timeline, typography, borderRadius, shadows } from './styles';
 import { formatTime } from './utils/timeFormatter';
 import { ZoomControl, SnapButton } from './TimelineControls';
@@ -93,7 +94,7 @@ export const TimelineHeader: React.FC<TimelineHeaderProps> = ({
 
       {/* 中间：播放按钮 */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', flex: 1 }}>
-        <button
+        <TimelineIconButton
           onClick={onTogglePlay}
           aria-label={playing ? 'Pause' : 'Play'}
           style={{
@@ -119,7 +120,7 @@ export const TimelineHeader: React.FC<TimelineHeaderProps> = ({
               <path d="M8 5v14l11-7z" />
             </svg>
           )}
-        </button>
+        </TimelineIconButton>
       </div>
 
       {/* 右侧：控制按钮 */}

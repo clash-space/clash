@@ -1,7 +1,5 @@
 import React, { useState, useCallback, useEffect, CSSProperties } from 'react';
-import { useDraggable } from '@dnd-kit/core';
-import { CSS as _DndCSS } from '@dnd-kit/utilities';
-import { motion } from 'framer-motion';
+import { useDraggable } from '../ui/dnd';
 import type { Item, BaseItem, Asset, Track } from '@master-clash/remotion-core';
 import {
   findAssetForItem,
@@ -25,6 +23,7 @@ import {
   getPersistentVideoCacheId,
   renderFilmstripToCanvas,
 } from './videoThumbnailUtils';
+import { TimelineColorInput, TimelineIconButton, TimelineTextInput } from '../ui/controls';
 
 // Store dragged item globally on window object for cross-module access
 declare global {
@@ -1137,8 +1136,7 @@ export const TimelineItem: React.FC<TimelineItemProps> = ({
         pointerEvents: 'none',
       }}>
         {isEditingText && resolvedItemType === 'text' ? (
-          <input
-            type="text"
+          <TimelineTextInput
             value={tempText}
             onChange={(e) => setTempText(e.target.value)}
             onBlur={handleTextSave}
@@ -1164,11 +1162,7 @@ export const TimelineItem: React.FC<TimelineItemProps> = ({
 
       {/* Delete button - only on hover */}
       {isHovered && (
-        <motion.button
-          initial={{ opacity: 0, scale: 0.8 }}
-          animate={{ opacity: 1, scale: 1 }}
-          exit={{ opacity: 0, scale: 0.8 }}
-          transition={{ duration: 0.15 }}
+        <TimelineIconButton
           onClick={handleDeleteClick}
           aria-label={`Delete ${getItemLabel()}`}
           style={{
@@ -1191,7 +1185,7 @@ export const TimelineItem: React.FC<TimelineItemProps> = ({
           }}
         >
           ×
-        </motion.button>
+        </TimelineIconButton>
       )}
 
       {/* Resize handles */}
@@ -1259,8 +1253,7 @@ export const TimelineItem: React.FC<TimelineItemProps> = ({
 
       {/* Color picker for solid items - use resolved type */}
       {resolvedItemType === 'solid' && isHovered && (
-        <input
-          type="color"
+        <TimelineColorInput
           value={(item as any).color}
           onChange={(e) => onUpdate(item.id, { color: e.target.value })}
           style={{
