@@ -1,7 +1,8 @@
-import React, { useCallback, useState, useRef } from 'react';
+import React, { useState, useRef } from 'react';
 import { motion } from 'framer-motion';
 import { colors, timeline, zIndex, shadows, animations } from './styles';
 import { formatTime, frameToPixels } from './utils/timeFormatter';
+import { TimelineSlider } from '../ui/timeline-slider';
 
 interface TimelinePlayheadProps {
   currentFrame: number;
@@ -34,6 +35,10 @@ export const TimelinePlayhead: React.FC<TimelinePlayheadProps> = React.memo(({
 }) => {
   const [isDragging, setIsDragging] = useState(false);
   const [isHovered, setIsHovered] = useState(false);
+  const maxFrame = Number.isFinite(_durationInFrames)
+    ? Math.max(1, Math.round(_durationInFrames))
+    : Math.max(1, currentFrame + 1);
+  const sliderWidth = maxFrame * pixelsPerFrame;
 
   // ONE absolutely-positioned wrapper holds both the playhead line and the
   // triangle handle. Movement is applied as a `transform: translate3d` on
@@ -60,46 +65,6 @@ export const TimelinePlayhead: React.FC<TimelinePlayheadProps> = React.memo(({
     }
   }, [currentFrame, pixelsPerFrame, leftOffset, scrollLeft]);
 
-  const handleMouseDown = useCallback(
-    (e: React.MouseEvent) => {
-      e.preventDefault();
-      e.stopPropagation();
-
-      setIsDragging(true);
-      onDragStart?.();
-
-      // Resolve the drag container ONCE at drag start — querySelector on every
-      // mousemove was walking the DOM tree at pointer-event rate.
-      const rightPane = document.querySelector('[data-playhead-container]') as HTMLElement | null;
-      const timelineContainer =
-        rightPane || (document.querySelector('[data-timeline-container]') as HTMLElement | null);
-      const useRightPane = !!rightPane;
-
-      const handleMouseMove = (moveEvent: MouseEvent) => {
-        if (!timelineContainer) return;
-        const rect = timelineContainer.getBoundingClientRect();
-        const xFromContainer = moveEvent.clientX - rect.left;
-        const xRelativeToContent = useRightPane
-          ? xFromContainer - leftOffset
-          : xFromContainer - timeline.trackLabelWidth - leftOffset;
-        const x = xRelativeToContent + scrollLeft;
-        const frame = Math.max(0, Math.round(x / pixelsPerFrame));
-        onSeek(frame);
-      };
-
-      const handleMouseUp = () => {
-        setIsDragging(false);
-        onDragEnd?.();
-        document.removeEventListener('mousemove', handleMouseMove);
-        document.removeEventListener('mouseup', handleMouseUp);
-      };
-
-      document.addEventListener('mousemove', handleMouseMove);
-      document.addEventListener('mouseup', handleMouseUp);
-    },
-    [pixelsPerFrame, onSeek, onDragStart, onDragEnd, leftOffset]
-  );
-
   return (
     <div
       style={{
@@ -112,6 +77,45 @@ export const TimelinePlayhead: React.FC<TimelinePlayheadProps> = React.memo(({
         pointerEvents: 'none',
       }}
     >
+      <TimelineSlider
+        min={0}
+        max={maxFrame}
+        step={1}
+        value={Math.min(currentFrame, maxFrame)}
+        aria-label="Playhead"
+        aria-valuetext={formatTime(currentFrame, fps)}
+        onPointerDown={() => {
+          setIsDragging(true);
+          onDragStart?.();
+        }}
+        onPointerUp={() => {
+          setIsDragging(false);
+          onDragEnd?.();
+        }}
+        onPointerCancel={() => {
+          setIsDragging(false);
+          onDragEnd?.();
+        }}
+        onBlur={() => {
+          setIsDragging(false);
+          onDragEnd?.();
+        }}
+        onMouseEnter={() => setIsHovered(true)}
+        onMouseLeave={() => setIsHovered(false)}
+        onChange={(event) => onSeek(Number(event.currentTarget.value))}
+        style={{
+          position: 'absolute',
+          top: 0,
+          left: leftOffset - scrollLeft,
+          width: Math.max(1, sliderWidth),
+          height: Math.max(28, timeline.playheadTriangleSize + 8),
+          margin: 0,
+          opacity: 0,
+          cursor: 'ew-resize',
+          pointerEvents: 'auto',
+          zIndex: zIndex.playhead + 1,
+        }}
+      />
       <div
         ref={wrapperRef}
         style={{
@@ -143,33 +147,7 @@ export const TimelinePlayhead: React.FC<TimelinePlayheadProps> = React.memo(({
 
         {/* 顶部三角形拖拽手柄 */}
         <motion.div
-          role="slider"
-          aria-label="Playhead"
-          aria-valuemin={0}
-          aria-valuemax={Number.isFinite(_durationInFrames) ? _durationInFrames : undefined}
-          aria-valuenow={currentFrame}
-          aria-valuetext={formatTime(currentFrame, fps)}
-          tabIndex={0}
-          onMouseDown={handleMouseDown}
-          onMouseEnter={() => setIsHovered(true)}
-          onMouseLeave={() => setIsHovered(false)}
-          onKeyDown={(e) => {
-            const step = e.shiftKey ? 10 : 1;
-            if (e.key === 'ArrowLeft') {
-              e.preventDefault();
-              onSeek(Math.max(0, currentFrame - step));
-            } else if (e.key === 'ArrowRight') {
-              e.preventDefault();
-              const max = Number.isFinite(_durationInFrames) ? _durationInFrames : currentFrame + step;
-              onSeek(Math.min(max, currentFrame + step));
-            } else if (e.key === 'Home') {
-              e.preventDefault();
-              onSeek(0);
-            } else if (e.key === 'End' && Number.isFinite(_durationInFrames)) {
-              e.preventDefault();
-              onSeek(_durationInFrames);
-            }
-          }}
+          aria-hidden="true"
           animate={{
             scale: isDragging ? 1.3 : isHovered ? 1.2 : 1,
           }}
@@ -183,8 +161,7 @@ export const TimelinePlayhead: React.FC<TimelinePlayheadProps> = React.memo(({
             borderLeft: `${timeline.playheadTriangleSize / 2}px solid transparent`,
             borderRight: `${timeline.playheadTriangleSize / 2}px solid transparent`,
             borderTop: `${timeline.playheadTriangleSize}px solid ${colors.accent.primary}`,
-            cursor: 'ew-resize',
-            pointerEvents: 'auto',
+            pointerEvents: 'none',
             filter: isDragging ? 'drop-shadow(0 0 4px rgba(74, 158, 255, 0.8))' : 'none',
             display: 'block',
           }}
