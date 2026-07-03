@@ -19,4 +19,16 @@ describe("copilot collapsible trigger buttons", () => {
     expect(source).toMatch(triggerPattern);
     expect(source).not.toMatch(/<button[\s\S]*CollapsibleTrigger/);
   });
+
+  it("lets Radix own ThinkingProcess disclosure state", () => {
+    const source = readCopilotSource("ThinkingProcess.tsx");
+
+    expect(source).toContain("<Collapsible");
+    expect(source).toContain("defaultOpen={initialExpanded}");
+    expect(source).not.toContain("useState");
+    expect(source).not.toContain("isOpen");
+    expect(source).not.toContain("setIsOpen");
+    expect(source).not.toContain("open={");
+    expect(source).not.toContain("onOpenChange");
+  });
 });
