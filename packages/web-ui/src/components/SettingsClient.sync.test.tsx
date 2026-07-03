@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import type { ReactNode } from "react";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router";
@@ -170,16 +170,21 @@ describe("SettingsSurface tab state", () => {
     expect(screen.queryByRole("tab", { name: "Runtimes" })).toBeNull();
   });
 
-  it("uses Ariakit tabs for the settings section selector instead of handwritten sidebar tab buttons", () => {
+  it("uses the shared tab primitive for the settings section selector instead of direct Ariakit or handwritten sidebar tab buttons", () => {
     const source = readFileSync(
       resolve(process.cwd(), "packages/web-ui/src/components/SettingsSurface.tsx"),
       "utf8",
     );
+    const tabsPath = resolve(process.cwd(), "packages/web-ui/src/components/ui/tabs.tsx");
+    const tabsSource = existsSync(tabsPath) ? readFileSync(tabsPath, "utf8") : "";
 
-    expect(source).toContain("@ariakit/react");
+    expect(existsSync(tabsPath)).toBe(true);
+    expect(tabsSource).toContain("@ariakit/react");
+    expect(source).toContain("./ui/tabs");
     expect(source).toContain("TabProvider");
     expect(source).toContain("TabList");
     expect(source).toContain("<Tab");
+    expect(source).not.toContain("@ariakit/react");
     expect(source).not.toContain("aria-current={isActive ? 'page' : undefined}");
   });
 

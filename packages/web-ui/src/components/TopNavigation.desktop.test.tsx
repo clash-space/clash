@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import type { ReactNode } from "react";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { Link, MemoryRouter, useLocation } from "react-router";
@@ -37,16 +37,21 @@ describe("TopNavigation desktop chrome", () => {
     delete globalThis.__CLASH_DESKTOP__;
   });
 
-  it("uses Ariakit tab primitives instead of handwritten desktop tab semantics", () => {
+  it("uses the shared tab primitive instead of direct Ariakit or handwritten desktop tab semantics", () => {
     const source = readFileSync(
       resolve(process.cwd(), "packages/web-ui/src/components/TopNavigation.tsx"),
       "utf8",
     );
+    const tabsPath = resolve(process.cwd(), "packages/web-ui/src/components/ui/tabs.tsx");
+    const tabsSource = existsSync(tabsPath) ? readFileSync(tabsPath, "utf8") : "";
 
-    expect(source).toContain("@ariakit/react");
+    expect(existsSync(tabsPath)).toBe(true);
+    expect(tabsSource).toContain("@ariakit/react");
+    expect(source).toContain("./ui/tabs");
     expect(source).toContain("TabProvider");
     expect(source).toContain("TabList");
     expect(source).toContain("<Tab");
+    expect(source).not.toContain("@ariakit/react");
     expect(source).not.toContain('role="tablist"');
     expect(source).not.toContain('role="tab"');
     expect(source).not.toContain("aria-selected={active}");

@@ -5,19 +5,25 @@ import { describe, expect, it } from "vitest";
 const readSource = (path: string) => readFileSync(join(process.cwd(), path), "utf8");
 
 describe("GroupChatPanel primitives", () => {
-  it("uses Ariakit tab primitives instead of handwritten tab semantics", () => {
+  it("uses the shared tab primitive instead of direct Ariakit or handwritten tab semantics", () => {
     const panelSource = readSource("packages/web-ui/src/components/GroupChatPanel.tsx");
     const pillSource = readSource("packages/web-ui/src/_group-chat/TabPill.tsx");
+    const tabsPath = join(process.cwd(), "packages/web-ui/src/components/ui/tabs.tsx");
+    const tabsSource = existsSync(tabsPath) ? readFileSync(tabsPath, "utf8") : "";
 
-    expect(panelSource).toContain("@ariakit/react");
+    expect(existsSync(tabsPath)).toBe(true);
+    expect(tabsSource).toContain("@ariakit/react");
+    expect(panelSource).toContain("./ui/tabs");
     expect(panelSource).toContain("TabProvider");
     expect(panelSource).toContain("TabList");
     expect(panelSource).toContain("TabPanel");
+    expect(panelSource).not.toContain("@ariakit/react");
     expect(panelSource).not.toContain('role="tablist"');
     expect(panelSource).not.toContain("onTabKeyDown");
 
-    expect(pillSource).toContain("@ariakit/react");
+    expect(pillSource).toContain("../components/ui/tabs");
     expect(pillSource).toContain("<Tab");
+    expect(pillSource).not.toContain("@ariakit/react");
     expect(pillSource).not.toContain('role="tab"');
     expect(pillSource).not.toContain('role="button"');
     expect(pillSource).not.toContain("tabIndex={active ? 0 : -1}");

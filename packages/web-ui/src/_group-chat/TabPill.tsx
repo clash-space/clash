@@ -11,11 +11,11 @@
  */
 
 import { motion } from 'framer-motion';
-import { Tab } from '@ariakit/react';
 import { forwardRef } from 'react';
 import { X } from '@phosphor-icons/react';
 import { statusDotClass, statusDotLabel } from './statusDot';
 import { IconButton } from '../components/ui/icon-button';
+import { Tab } from '../components/ui/tabs';
 import { Tooltip } from '../components/ui/tooltip';
 
 export interface TabPillProps {

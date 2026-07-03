@@ -35,7 +35,6 @@ import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
 import { motion } from 'framer-motion';
 import { CaretLeft, CaretRight, ArrowClockwise, Lightning } from '@phosphor-icons/react';
 import { Link, useNavigate } from 'react-router';
-import { TabList, TabPanel, TabProvider } from '@ariakit/react';
 import { useDrag } from '@use-gesture/react';
 import betterAuthClient from '@clash/web-ui/lib/betterAuthClient';
 import { useBillingBalance } from '@clash/web-ui/hooks/useBillingBalance';
@@ -55,6 +54,7 @@ import { RoomView } from '../_group-chat/RoomView';
 import { AgentView } from '../_group-chat/AgentView';
 import { InviteAgentMenu } from '../_group-chat/InviteAgentMenu';
 import { IconButton } from './ui/icon-button';
+import { TabList, TabPanel, TabProvider } from './ui/tabs';
 import { Tooltip } from './ui/tooltip';
 
 const ROOM_TAB = '__room__';

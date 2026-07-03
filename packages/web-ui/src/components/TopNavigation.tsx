@@ -1,6 +1,5 @@
 
 import { useEffect, useRef, useState, type CSSProperties } from 'react';
-import { Tab, TabList, TabProvider } from '@ariakit/react';
 import { motion } from 'framer-motion';
 import { Link, useLocation, useNavigate } from 'react-router';
 import { desktopChromeMetrics } from '@clash/shared-runtime';
@@ -15,6 +14,7 @@ import {
 import UserControls from './UserControls';
 import { Button } from './ui/button';
 import { IconButton } from './ui/icon-button';
+import { Tab, TabList, TabProvider } from './ui/tabs';
 import { Tooltip } from './ui/tooltip';
 import {
   activateOrAppendDesktopTab,

@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { ComponentType } from 'react';
-import { Tab, TabList, TabProvider } from '@ariakit/react';
 import {
   X,
   Plug,
@@ -17,6 +16,7 @@ import SettingsClient, { type SettingsSection } from './SettingsClient';
 import { Tooltip } from './ui/tooltip';
 import { IconButton } from './ui/icon-button';
 import { Button } from './ui/button';
+import { Tab, TabList, TabProvider } from './ui/tabs';
 import {
   listApiTokens,
   listVariables,
