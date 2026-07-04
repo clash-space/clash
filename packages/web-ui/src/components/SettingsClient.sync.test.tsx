@@ -2538,6 +2538,67 @@ describe("SettingsClient model routing", () => {
     expect(screen.queryByRole("button", { name: /Add custom provider/i })).toBeNull();
   });
 
+  it("renders Google AI Studio and Google Cloud Agent Platform as separate BYOK providers", () => {
+    render(
+      <MemoryRouter>
+        <SettingsClient
+          initialTokens={[]}
+          initialVariables={[]}
+          initialActions={[]}
+          initialSkills={[]}
+          activeSection="providers"
+          embedded
+          initialModelProviders={[
+            {
+              id: "google-ai-studio-primary",
+              label: "AI Studio primary",
+              providerId: "official",
+              upstreamId: "google-ai-studio",
+              region: "global",
+              enabled: true,
+              configuredCredentials: ["apiKey"],
+            },
+            {
+              id: "google-agent-platform-primary",
+              label: "Cloud primary",
+              providerId: "official",
+              upstreamId: "google-agent-platform",
+              region: "global",
+              enabled: true,
+              configuredCredentials: ["vertexCredentials"],
+            },
+          ]}
+          initialModelCatalog={[]}
+        />
+      </MemoryRouter>,
+    );
+
+    const configuredProviders = screen.getByRole("list", { name: "Configured BYOK providers" });
+    expect(within(configuredProviders).getByText("Google AI Studio")).toBeTruthy();
+    expect(within(configuredProviders).getByText("Google Cloud Agent Platform")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Open Google BYOK settings" })).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "Open Google AI Studio BYOK settings" }));
+    expect(screen.getByRole("heading", { name: "Google AI Studio" })).toBeTruthy();
+    expect(screen.getByRole("link", { name: "View supported models" }).getAttribute("href"))
+      .toBe("/settings?section=models&provider=official%3Agoogle-ai-studio%3Aglobal");
+    fireEvent.click(screen.getByText("AI Studio primary"));
+    expect(screen.getByLabelText("Google AI Studio API key")).toBeTruthy();
+    expect(screen.queryByLabelText("Google Cloud service account JSON")).toBeNull();
+    expect(screen.queryByText(/Vertex/i)).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "Back to BYOK" }));
+    fireEvent.click(screen.getByRole("button", { name: "Open Google Cloud Agent Platform BYOK settings" }));
+    expect(screen.getByRole("heading", { name: "Google Cloud Agent Platform" })).toBeTruthy();
+    expect(screen.getByRole("link", { name: "View supported models" }).getAttribute("href"))
+      .toBe("/settings?section=models&provider=official%3Agoogle-agent-platform%3Aglobal");
+    fireEvent.click(screen.getByText("Cloud primary"));
+    expect(screen.getByLabelText("Google Cloud service account JSON")).toBeTruthy();
+    expect(screen.queryByLabelText("Google AI Studio API key")).toBeNull();
+    expect(screen.queryByText(/Model Garden/i)).toBeNull();
+    expect(screen.queryByText(/MaaS/i)).toBeNull();
+  });
+
   it("renders providers as a compact directory before revealing setup forms", () => {
     render(
       <MemoryRouter>
@@ -3820,9 +3881,9 @@ describe("SettingsClient model routing", () => {
           initialModelProviders={[
             {
               id: "google-primary",
-              label: "Google primary",
+              label: "Google AI Studio primary",
               providerId: "official",
-              upstreamId: "google",
+              upstreamId: "google-ai-studio",
               region: "global",
               enabled: true,
               priority: 10,
@@ -3834,12 +3895,12 @@ describe("SettingsClient model routing", () => {
       </MemoryRouter>,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "Open Google BYOK settings" }));
-    const providerConfigs = screen.getByRole("list", { name: "Google prioritized keys" });
-    const providerConfig = within(providerConfigs).getByText("Google primary").closest("li") as HTMLElement;
-    fireEvent.click(within(providerConfig).getByText("Google primary"));
+    fireEvent.click(screen.getByRole("button", { name: "Open Google AI Studio BYOK settings" }));
+    const providerConfigs = screen.getByRole("list", { name: "Google AI Studio prioritized keys" });
+    const providerConfig = within(providerConfigs).getByText("Google AI Studio primary").closest("li") as HTMLElement;
+    fireEvent.click(within(providerConfig).getByText("Google AI Studio primary"));
 
-    const editor = screen.getByRole("group", { name: "Google primary Google API key" });
+    const editor = screen.getByRole("group", { name: "Google AI Studio primary Google AI Studio API key" });
     fireEvent.click(within(editor).getByRole("combobox", { name: "Model access" }));
     fireEvent.click(screen.getByRole("option", { name: /Specific models/ }));
     fireEvent.click(within(editor).getByRole("combobox", { name: "Add supported model" }));
@@ -4004,7 +4065,7 @@ describe("SettingsClient model routing", () => {
     });
   });
 
-  it("treats Google Vertex credentials as a configured Google provider", () => {
+  it("treats Google Cloud service account credentials as a configured Google Cloud Agent Platform provider", () => {
     render(
       <MemoryRouter>
         <SettingsClient
@@ -4017,7 +4078,7 @@ describe("SettingsClient model routing", () => {
           initialModelProviders={[
             {
               providerId: "official",
-              upstreamId: "google",
+              upstreamId: "google-agent-platform",
               region: "global",
               enabled: true,
               configuredCredentials: ["vertexCredentials"],
@@ -4029,10 +4090,10 @@ describe("SettingsClient model routing", () => {
     );
 
     const configuredProviders = screen.getByRole("list", { name: "Configured BYOK providers" });
-    expect(within(configuredProviders).getByText("Google")).toBeTruthy();
+    expect(within(configuredProviders).getByText("Google Cloud Agent Platform")).toBeTruthy();
     expect(within(configuredProviders).getByText("1 key")).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Open Google BYOK settings" })).toBeTruthy();
-    expect(screen.queryByRole("switch", { name: "Provider enabled for Google" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Open Google Cloud Agent Platform BYOK settings" })).toBeTruthy();
+    expect(screen.queryByRole("switch", { name: "Provider enabled for Google Cloud Agent Platform" })).toBeNull();
   });
 
   it("hides legacy provider rows that do not map to a configurable provider", () => {

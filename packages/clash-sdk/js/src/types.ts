@@ -12,7 +12,7 @@ export type ProviderApiShape =
   | 'fal'
   | 'openai-compatible'
   | 'openai-images'
-  | 'google-vertex'
+  | 'google-agent-platform'
   | 'google-ai-studio'
   | 'replicate'
   | 'kie'
@@ -25,7 +25,8 @@ export type ActionProvider =
   | 'kie'
   | 'official'
   | 'openai'
-  | 'google'
+  | 'google-ai-studio'
+  | 'google-agent-platform'
   | 'anthropic'
   | 'elevenlabs';
 

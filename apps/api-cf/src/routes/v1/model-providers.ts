@@ -41,12 +41,13 @@ function displayModelName(modelId: string): string {
   return MODEL_CARDS.find((model) => model.id === modelId)?.name ?? modelId;
 }
 
-function displayProviderName(provider: Pick<ProviderAccountInput, "providerId" | "upstreamId">): string {
+function displayProviderName(provider: Pick<ProviderAccountInput, "providerId" | "upstreamId" | "region">): string {
   if (provider.providerId === "mock") return "Mock provider";
   if (provider.providerId === "official" && provider.upstreamId) {
     if (provider.upstreamId === "openai") return "OpenAI";
     if (provider.upstreamId === "anthropic") return "Anthropic";
-    if (provider.upstreamId === "google") return "Google";
+    if (provider.upstreamId === "google-ai-studio") return "Google AI Studio";
+    if (provider.upstreamId === "google-agent-platform") return "Google Cloud Agent Platform";
     return provider.upstreamId;
   }
   const names: Record<string, string> = {
@@ -77,7 +78,12 @@ function stringField(value: unknown): string | undefined {
 function routeProviderId(route: ModelUpstreamRoute): string {
   if (route.providerId) return route.providerId;
   if (route.upstreamId === "local") return "local";
-  if (route.upstreamId === "openai" || route.upstreamId === "google" || route.upstreamId === "anthropic") {
+  if (
+    route.upstreamId === "openai" ||
+    route.upstreamId === "google-ai-studio" ||
+    route.upstreamId === "google-agent-platform" ||
+    route.upstreamId === "anthropic"
+  ) {
     return "official";
   }
   if (route.upstreamId === "fal" || route.upstreamId === "kie" || route.upstreamId === "replicate" || route.upstreamId === "mock") {

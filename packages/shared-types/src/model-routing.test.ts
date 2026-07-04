@@ -278,7 +278,7 @@ describe("model upstream routing", () => {
   it("skips configured upstreams without required variables and falls back", () => {
     const upstreams: UpstreamAvailability[] = [
       { upstreamId: "fal", enabled: true, configuredCredentials: [] },
-      { upstreamId: "google", enabled: true, configuredCredentials: ["vertexCredentials"] },
+      { upstreamId: "google-agent-platform", enabled: true, configuredCredentials: ["vertexCredentials"] },
     ];
 
     const route = resolveModelUpstreamRoute({
@@ -288,7 +288,7 @@ describe("model upstream routing", () => {
     });
 
     expect(route).toMatchObject({
-      upstreamId: "google",
+      upstreamId: "google-agent-platform",
       upstreamModel: "gemini-3.1-flash-image-preview",
     });
   });
@@ -299,11 +299,11 @@ describe("model upstream routing", () => {
       kind: "image",
       configuredUpstreams: [
         { upstreamId: "fal", enabled: true, configuredCredentials: ["apiKey"] },
-        { upstreamId: "google", enabled: true, configuredCredentials: ["vertexCredentials"] },
+        { upstreamId: "google-agent-platform", enabled: true, configuredCredentials: ["vertexCredentials"] },
       ],
     });
 
-    expect(routes.map((route) => route.upstreamId)).toEqual(["fal", "google"]);
+    expect(routes.map((route) => route.upstreamId)).toEqual(["fal", "google-agent-platform"]);
   });
 
   it("keeps mock routes out of hosted resolution unless explicitly allowed", () => {
@@ -363,7 +363,7 @@ describe("model upstream routing", () => {
       configuredProviders: [
         {
           providerId: "official",
-          upstreamId: "google",
+          upstreamId: "google-ai-studio",
           region: "global",
           enabled: true,
           configuredCredentials: ["apiKey"],
@@ -373,7 +373,7 @@ describe("model upstream routing", () => {
 
     expect(route).toMatchObject({
       providerId: "official",
-      upstreamId: "google",
+      upstreamId: "google-ai-studio",
       upstreamModel: "gemini-3.1-flash-image",
       apiShape: "google-ai-studio",
       requiredCredentials: ["apiKey"],
@@ -622,27 +622,39 @@ describe("model upstream routing", () => {
     ]);
   });
 
-  it("keeps route-specific requirements for providers with multiple implementations", () => {
-    const google = listProviderModelSupport().find((support) =>
+  it("separates Google AI Studio from Google Cloud Agent Platform provider accounts", () => {
+    const aiStudio = listProviderModelSupport().find((support) =>
       support.providerId === "official" &&
-      support.upstreamId === "google" &&
+      support.upstreamId === "google-ai-studio" &&
       support.region === "global"
     );
-    const flashRoutes = google?.models.filter((model) => model.id === "gemini-flash-image-2");
+    const agentPlatform = listProviderModelSupport().find((support) =>
+      support.providerId === "official" &&
+      support.upstreamId === "google-agent-platform" &&
+      support.region === "global"
+    );
+    const aiStudioFlashRoutes = aiStudio?.models.filter((model) => model.id === "gemini-flash-image-2");
+    const agentPlatformFlashRoutes = agentPlatform?.models.filter((model) => model.id === "gemini-flash-image-2");
 
-    expect(flashRoutes).toEqual(expect.arrayContaining([
+    expect(aiStudioFlashRoutes).toEqual([
       expect.objectContaining({
         apiShape: "google-ai-studio",
         requiredCredentials: ["apiKey"],
         requiredOAuth: [],
       }),
+    ]);
+    expect(aiStudio?.requiredCredentials).toEqual(["apiKey"]);
+    expect(aiStudio?.models.some((model) => model.apiShape === "google-agent-platform")).toBe(false);
+
+    expect(agentPlatformFlashRoutes).toEqual([
       expect.objectContaining({
-        apiShape: "google-vertex",
+        apiShape: "google-agent-platform",
         requiredCredentials: ["vertexCredentials"],
         requiredOAuth: [],
       }),
-    ]));
-    expect(google?.requiredCredentials).toEqual(["apiKey", "vertexCredentials"]);
+    ]);
+    expect(agentPlatform?.requiredCredentials).toEqual(["vertexCredentials"]);
+    expect(agentPlatform?.models.some((model) => model.apiShape === "google-ai-studio")).toBe(false);
   });
 
   it("keeps provider definitions free of per-model support declarations", () => {
@@ -676,7 +688,7 @@ describe("model upstream routing", () => {
       configuredProviders: [
         {
           providerId: "official",
-          upstreamId: "google",
+          upstreamId: "google-agent-platform",
           region: "global",
           enabled: true,
           configuredCredentials: ["vertexCredentials"],
@@ -917,7 +929,7 @@ describe("model upstream routing", () => {
       configuredProviders: [
         {
           providerId: "official",
-          upstreamId: "google",
+          upstreamId: "google-ai-studio",
           region: "global",
           enabled: false,
           priority: 1,
@@ -925,7 +937,7 @@ describe("model upstream routing", () => {
         },
         {
           providerId: "official",
-          upstreamId: "google",
+          upstreamId: "google-ai-studio",
           region: "global",
           enabled: true,
           priority: 20,
@@ -936,42 +948,29 @@ describe("model upstream routing", () => {
 
     expect(route).toMatchObject({
       providerId: "official",
-      upstreamId: "google",
+      upstreamId: "google-ai-studio",
       apiShape: "google-ai-studio",
       upstreamModel: "gemini-3.1-flash-tts-preview",
     });
   });
 
-  it("uses the credential set that satisfies the route when official provider accounts share an upstream", () => {
+  it("does not use Google Cloud Agent Platform credentials for Google AI Studio routes", () => {
     const route = resolveModelUpstreamRoute({
       modelCode: "gemini-3.1-flash-tts",
       kind: "audio",
       configuredProviders: [
         {
           providerId: "official",
-          upstreamId: "google",
+          upstreamId: "google-agent-platform",
           region: "global",
           enabled: true,
           priority: 1,
           configuredCredentials: ["vertexCredentials"],
         },
-        {
-          providerId: "official",
-          upstreamId: "google",
-          region: "global",
-          enabled: true,
-          priority: 20,
-          configuredCredentials: ["apiKey"],
-        },
       ],
     });
 
-    expect(route).toMatchObject({
-      providerId: "official",
-      upstreamId: "google",
-      apiShape: "google-ai-studio",
-      upstreamModel: "gemini-3.1-flash-tts-preview",
-    });
+    expect(route).toBeNull();
   });
 
   it("marks a model available when any configured key for its provider satisfies required credentials", () => {

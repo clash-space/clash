@@ -33,7 +33,7 @@ export const veoProvider: GenerationProvider = {
     const { params } = ctx;
     const creds = vertexCredentialsFromProvider(
       await credentialsForProvider(ctx, "official", ["vertexCredentials"], {
-        upstreamId: "google",
+        upstreamId: "google-agent-platform",
         region: "global",
         modelCode: params.videoModel ?? params.modelName,
       }),

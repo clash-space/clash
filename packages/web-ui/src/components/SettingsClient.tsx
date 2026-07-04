@@ -1244,7 +1244,8 @@ export default function SettingsClient({
 const MODEL_PROVIDER_PRESETS: ModelProviderAccountInfo[] = [
     { providerId: 'official', upstreamId: 'openai', region: 'global', enabled: false, priority: 10 },
     { providerId: 'official', upstreamId: 'anthropic', region: 'global', enabled: false, priority: 15 },
-    { providerId: 'official', upstreamId: 'google', region: 'global', enabled: false, priority: 20 },
+    { providerId: 'official', upstreamId: 'google-ai-studio', region: 'global', enabled: false, priority: 20 },
+    { providerId: 'official', upstreamId: 'google-agent-platform', region: 'global', enabled: false, priority: 25 },
     { providerId: 'fal', upstreamId: 'fal', enabled: false, priority: 30 },
     { providerId: 'kie', upstreamId: 'kie', enabled: false, priority: 40 },
     { providerId: 'replicate', upstreamId: 'replicate', enabled: false, priority: 50 },
@@ -1271,7 +1272,15 @@ function modelProviderLabel(provider: Pick<ModelProviderAccountInfo, 'providerId
     ].filter(Boolean).join('/');
 }
 
-function requiredModelProviderCredentials(provider: Pick<ModelProviderAccountInfo, 'providerId' | 'upstreamId'>): string[] {
+function isGoogleCloudAgentPlatform(provider: Pick<ModelProviderAccountInfo, 'providerId' | 'upstreamId' | 'region'>): boolean {
+    return provider.providerId === 'official' && provider.upstreamId === 'google-agent-platform';
+}
+
+function isGoogleAiStudio(provider: Pick<ModelProviderAccountInfo, 'providerId' | 'upstreamId' | 'region'>): boolean {
+    return provider.providerId === 'official' && provider.upstreamId === 'google-ai-studio';
+}
+
+function requiredModelProviderCredentials(provider: Pick<ModelProviderAccountInfo, 'providerId' | 'upstreamId' | 'region'>): string[] {
     if (provider.providerId === 'fal') return ['apiKey'];
     if (provider.providerId === 'kie') return ['apiKey'];
     if (provider.providerId === 'replicate') return ['apiKey'];
@@ -1282,7 +1291,8 @@ function requiredModelProviderCredentials(provider: Pick<ModelProviderAccountInf
     if (provider.providerId === 'elevenlabs') return ['apiKey'];
     if (provider.providerId === 'official' && provider.upstreamId === 'openai') return ['apiKey'];
     if (provider.providerId === 'official' && provider.upstreamId === 'anthropic') return ['apiKey'];
-    if (provider.providerId === 'official' && provider.upstreamId === 'google') return ['apiKey', 'vertexCredentials'];
+    if (isGoogleAiStudio(provider)) return ['apiKey'];
+    if (isGoogleCloudAgentPlatform(provider)) return ['vertexCredentials'];
     return [];
 }
 
@@ -1316,7 +1326,7 @@ function modelProviderCredentialFields(setup: ModelProviderSetup): ModelProvider
     ];
 }
 
-function modelProviderSetup(provider: Pick<ModelProviderAccountInfo, 'providerId' | 'upstreamId'>): ModelProviderSetup | null {
+function modelProviderSetup(provider: Pick<ModelProviderAccountInfo, 'providerId' | 'upstreamId' | 'region'>): ModelProviderSetup | null {
     if (provider.providerId === 'mock') {
         return {
             title: 'Mock Provider',
@@ -1420,23 +1430,32 @@ function modelProviderSetup(provider: Pick<ModelProviderAccountInfo, 'providerId
             baseUrlPlaceholder: 'https://api.anthropic.com',
         };
     }
-    if (provider.providerId === 'official' && provider.upstreamId === 'google') {
+    if (isGoogleAiStudio(provider)) {
         return {
-            title: 'Google',
-            description: 'Google AI Studio and Vertex for supported image, video, audio, and text models.',
+            title: 'Google AI Studio',
+            description: 'Gemini API models through an AI Studio API key.',
             apiKey: 'apiKey',
             credentials: [
                 {
                     key: 'apiKey',
-                    label: 'AI Studio API key',
+                    label: 'API key',
                     ariaLabel: 'Google AI Studio API key',
                     placeholder: 'Paste API key',
                     allowMultiple: false,
                 },
+            ],
+        };
+    }
+    if (isGoogleCloudAgentPlatform(provider)) {
+        return {
+            title: 'Google Cloud Agent Platform',
+            description: 'Google Cloud-hosted Gemini, Veo, image, video, and text models through service account credentials.',
+            apiKey: 'vertexCredentials',
+            credentials: [
                 {
                     key: 'vertexCredentials',
-                    label: 'Vertex service account JSON',
-                    ariaLabel: 'Google Vertex service account JSON',
+                    label: 'Service account JSON',
+                    ariaLabel: 'Google Cloud service account JSON',
                     placeholder: 'Paste service account JSON',
                     allowMultiple: false,
                 },
@@ -1859,7 +1878,12 @@ function supportForProvider(
 
 function providerIdForModelRoute(route: NonNullable<ModelCatalogEntryInfo['selectedRoute']>): ModelProviderAccountInfo['providerId'] {
     if (route.providerId) return route.providerId;
-    if (route.upstreamId === 'openai' || route.upstreamId === 'google' || route.upstreamId === 'anthropic') return 'official';
+    if (
+        route.upstreamId === 'openai' ||
+        route.upstreamId === 'google-ai-studio' ||
+        route.upstreamId === 'google-agent-platform' ||
+        route.upstreamId === 'anthropic'
+    ) return 'official';
     if (
         route.upstreamId === 'local' ||
         route.upstreamId === 'mock' ||
@@ -1905,7 +1929,10 @@ function modelProviderLogo(provider: Pick<ModelProviderAccountInfo, 'providerId'
     if (provider.providerId === 'official' && provider.upstreamId === 'anthropic') {
         return { id: 'anthropic', src: '/brand/providers/anthropic.svg' };
     }
-    if (provider.providerId === 'official' && provider.upstreamId === 'google') {
+    if (
+        provider.providerId === 'official' &&
+        (provider.upstreamId === 'google-ai-studio' || provider.upstreamId === 'google-agent-platform')
+    ) {
         return { id: 'google', src: '/brand/providers/google.svg' };
     }
     if (provider.providerId === 'fal') {

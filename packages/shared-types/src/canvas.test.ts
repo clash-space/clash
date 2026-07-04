@@ -395,5 +395,10 @@ describe("CustomActionDefinitionSchema", () => {
     expect(ACTION_PROVIDER_PRESETS.replicate.defaultSecretId).toBe("REPLICATE_API_TOKEN");
     expect(ACTION_PROVIDER_PRESETS.kie.defaultSecretId).toBe("KIE_API_KEY");
     expect(ACTION_PROVIDER_PRESETS.official.defaultSecretId).toBe("OFFICIAL_API_KEY");
+    expect(normalizeActionProviderId("google")).toBeNull();
+    expect(normalizeActionProviderId("google-ai-studio")).toBe("google-ai-studio");
+    expect(normalizeActionProviderId("google-agent-platform")).toBe("google-agent-platform");
+    expect(ACTION_PROVIDER_PRESETS["google-ai-studio"].defaultSecretId).toBe("GOOGLE_AI_STUDIO_API_KEY");
+    expect(ACTION_PROVIDER_PRESETS["google-agent-platform"].defaultSecretId).toBe("GOOGLE_CLOUD_SERVICE_ACCOUNT_JSON");
   });
 });

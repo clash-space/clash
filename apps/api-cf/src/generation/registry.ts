@@ -20,13 +20,14 @@ import { understandProvider } from "./providers/understand";
 import { describeProvider } from "./providers/describe";
 
 const HOSTED_UPSTREAM_AVAILABILITY: UpstreamAvailability[] = [
-  { upstreamId: "google", enabled: true },
-  { upstreamId: "volcengine", enabled: true },
-  { upstreamId: "kling", enabled: true },
-  { upstreamId: "minimax", enabled: true },
-  { upstreamId: "elevenlabs", enabled: true },
-  { upstreamId: "fal", enabled: true },
-  { upstreamId: "openai", enabled: true },
+  { upstreamId: "google-agent-platform", enabled: true, configuredCredentials: ["vertexCredentials"] },
+  { upstreamId: "google-ai-studio", enabled: true, configuredCredentials: ["apiKey"] },
+  { upstreamId: "volcengine", enabled: true, configuredCredentials: ["apiKey"] },
+  { upstreamId: "kling", enabled: true, configuredCredentials: ["accessKey", "secretKey"] },
+  { upstreamId: "minimax", enabled: true, configuredCredentials: ["apiKey"] },
+  { upstreamId: "elevenlabs", enabled: true, configuredCredentials: ["apiKey"] },
+  { upstreamId: "fal", enabled: true, configuredCredentials: ["apiKey"] },
+  { upstreamId: "openai", enabled: true, configuredCredentials: ["apiKey"] },
 ];
 
 function resolveRoute(kind: ModelKind, modelCode: string | undefined) {
@@ -43,7 +44,7 @@ export function resolveProvider(params: GenerationParams): GenerationProvider {
     case "video_gen": {
       const model = params.videoModel ?? params.modelName;
       const route = resolveRoute("video", model);
-      if (route?.upstreamId === "google") return veoProvider;
+      if (route?.upstreamId === "google-agent-platform") return veoProvider;
       if (route?.upstreamId === "kling") return klingVideoProvider;
       if (route?.apiShape === "dreamina-cli") {
         throw new Error("Dreamina CLI generation is only available in the local desktop runtime.");
@@ -54,12 +55,12 @@ export function resolveProvider(params: GenerationParams): GenerationProvider {
     case "image_gen": {
       const route = resolveRoute("image", params.modelName);
       if (route?.upstreamId === "openai") return openaiImageProvider;
-      return route?.upstreamId === "google" ? googleImageProvider : falImageProvider;
+      return route?.upstreamId === "google-agent-platform" ? googleImageProvider : falImageProvider;
     }
     case "audio_gen": {
       const model = params.modelName ?? "gemini-3.1-flash-tts";
       const route = resolveRoute("audio", model);
-      if (route?.upstreamId === "google") return geminiTtsProvider;
+      if (route?.upstreamId === "google-ai-studio") return geminiTtsProvider;
       if (route?.upstreamId === "minimax") return minimaxAudioProvider;
       if (route?.upstreamId === "elevenlabs") return elevenLabsTtsProvider;
       throw new Error(`Unsupported audio model: ${params.modelName}`);
@@ -69,7 +70,7 @@ export function resolveProvider(params: GenerationParams): GenerationProvider {
     case "custom_action":
       return customActionProvider;
     case "text_gen":
-      return resolveRoute("text", params.modelName)?.upstreamId === "google"
+      return resolveRoute("text", params.modelName)?.upstreamId === "google-agent-platform"
         ? googleTextProvider
         : textGenProvider;
     case "understand":

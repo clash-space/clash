@@ -1115,7 +1115,8 @@ function displayProviderName(account: Pick<LocalProviderAccountConfig, "provider
   if (account.providerId === "official" && account.upstreamId) {
     if (account.upstreamId === "openai") return "OpenAI";
     if (account.upstreamId === "anthropic") return "Anthropic";
-    if (account.upstreamId === "google") return "Google";
+    if (account.upstreamId === "google-ai-studio") return "Google AI Studio";
+    if (account.upstreamId === "google-agent-platform") return "Google Cloud Agent Platform";
     return account.upstreamId;
   }
   const names: Record<string, string> = {
@@ -1145,7 +1146,12 @@ function configuredCredentialKeys(account: Pick<LocalProviderAccountConfig, "cre
 function routeProviderId(route: ModelUpstreamRoute): string {
   if (route.providerId) return route.providerId;
   if (route.upstreamId === "local") return "local";
-  if (route.upstreamId === "openai" || route.upstreamId === "google" || route.upstreamId === "anthropic") {
+  if (
+    route.upstreamId === "openai" ||
+    route.upstreamId === "google-ai-studio" ||
+    route.upstreamId === "google-agent-platform" ||
+    route.upstreamId === "anthropic"
+  ) {
     return "official";
   }
   if (route.upstreamId === "fal" || route.upstreamId === "kie" || route.upstreamId === "replicate" || route.upstreamId === "mock") {

@@ -22,7 +22,7 @@ export const googleTextProvider: GenerationProvider = {
       async () => {
         const creds = vertexCredentialsFromProvider(
           await credentialsForProvider(ctx, "official", ["vertexCredentials"], {
-            upstreamId: "google",
+            upstreamId: "google-agent-platform",
             region: "global",
             modelCode: params.modelName,
           }),

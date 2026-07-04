@@ -579,7 +579,7 @@ function vertexBaseHost(location: string): string {
 function vertexModelUrl(creds: VertexCredentials, modelId: string, action: string): string {
   const project = creds.project ?? "";
   const location = creds.location ?? "global";
-  if (!project) throw new Error("Google Vertex provider account is missing project.");
+  if (!project) throw new Error("Google Cloud Agent Platform provider account is missing project.");
   return `https://${vertexBaseHost(location)}/v1/projects/${project}/locations/${location}/publishers/google/models/${modelId}:${action}`;
 }
 

@@ -165,7 +165,7 @@ describe("local mock AIGC", () => {
       providerAccounts: async () => [
         {
           providerId: "official",
-          upstreamId: "google",
+          upstreamId: "google-ai-studio",
           region: "global",
           enabled: true,
           configuredCredentials: ["apiKey"],
@@ -228,7 +228,7 @@ describe("local mock AIGC", () => {
       providerAccounts: async () => [
         {
           providerId: "official",
-          upstreamId: "google",
+          upstreamId: "google-ai-studio",
           region: "global",
           enabled: true,
           configuredCredentials: ["apiKey"],

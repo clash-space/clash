@@ -55,7 +55,7 @@ const falImageProvider: ImageProvider = {
 
 const googleImageProvider: ImageProvider = {
   async generate(_env, params) {
-    if (!params.vertexCredentials) throw new Error("Google provider account is missing vertexCredentials.");
+    if (!params.vertexCredentials) throw new Error("Google Cloud Agent Platform provider account is missing service account credentials.");
     const result = await generateGoogleImage(params.vertexCredentials, {
       prompt: params.prompt,
       aspectRatio: params.aspectRatio,

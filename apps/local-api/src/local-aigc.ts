@@ -681,7 +681,12 @@ export function createMockExternalAigcService(
 
   const providerIdForRoute = (route: ModelUpstreamRoute) => {
     if (route.providerId) return route.providerId;
-    if (route.upstreamId === "openai" || route.upstreamId === "google" || route.upstreamId === "anthropic") return "official";
+    if (
+      route.upstreamId === "openai" ||
+      route.upstreamId === "google-ai-studio" ||
+      route.upstreamId === "google-agent-platform" ||
+      route.upstreamId === "anthropic"
+    ) return "official";
     return route.upstreamId;
   };
 

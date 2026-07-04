@@ -33,12 +33,12 @@ export async function credentialsForProvider(
 
 export function vertexCredentialsFromProvider(credentials: Record<string, string>): VertexCredentials {
   const raw = credentials.vertexCredentials?.trim();
-  if (!raw) throw new Error("Google Vertex provider account is missing vertexCredentials.");
+  if (!raw) throw new Error("Google Cloud Agent Platform provider account is missing service account credentials.");
   let parsed: Record<string, unknown>;
   try {
     parsed = JSON.parse(raw) as Record<string, unknown>;
   } catch {
-    throw new Error("Google Vertex vertexCredentials must be a service account JSON object.");
+    throw new Error("Google Cloud Agent Platform credentials must be a service account JSON object.");
   }
   const clientEmail = typeof parsed.clientEmail === "string"
     ? parsed.clientEmail
@@ -59,7 +59,7 @@ export function vertexCredentialsFromProvider(credentials: Record<string, string
     ? parsed.location.trim()
     : "global";
   if (!clientEmail || !privateKey || !project) {
-    throw new Error("Google Vertex vertexCredentials must include clientEmail/privateKey/project.");
+    throw new Error("Google Cloud Agent Platform credentials must include clientEmail/privateKey/project.");
   }
   return { clientEmail, privateKey, project, location };
 }

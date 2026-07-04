@@ -853,7 +853,7 @@ describe("local API app", () => {
           {
             id: "google-ai-studio",
             providerId: "official",
-            upstreamId: "google",
+            upstreamId: "google-ai-studio",
             region: "global",
             enabled: true,
             priority: 1,
@@ -870,7 +870,7 @@ describe("local API app", () => {
         provider: {
           id: "google-ai-studio",
           providerId: "official",
-          upstreamId: "google",
+          upstreamId: "google-ai-studio",
           region: "global",
           enabled: true,
         },
@@ -882,10 +882,57 @@ describe("local API app", () => {
     expect(await ok.json()).toEqual({
       ok: true,
       providerId: "official",
-      upstreamId: "google",
+      upstreamId: "google-ai-studio",
       region: "global",
       modelId: "gemini-flash-image-2",
-      message: "Google configuration is ready for Gemini Flash Image 2.",
+      message: "Google AI Studio configuration is ready for Gemini Flash Image 2.",
+    });
+  });
+
+  it("tests Google Cloud Agent Platform models with only service account credentials", async () => {
+    const app = createLocalApiApp({ dataDir, userId: "local-user" });
+
+    await app.request("/api/v1/model-providers", {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        providers: [
+          {
+            id: "google-agent-platform",
+            providerId: "official",
+            upstreamId: "google-agent-platform",
+            region: "global",
+            enabled: true,
+            priority: 1,
+            credentials: { vertexCredentials: "{\"project\":\"demo\",\"clientEmail\":\"svc@example.com\",\"privateKey\":\"key\"}" },
+          },
+        ],
+      }),
+    });
+
+    const ok = await app.request("/api/v1/model-providers/test", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        provider: {
+          id: "google-agent-platform",
+          providerId: "official",
+          upstreamId: "google-agent-platform",
+          region: "global",
+          enabled: true,
+        },
+        modelId: "veo-3.1",
+      }),
+    });
+
+    expect(ok.status).toBe(200);
+    expect(await ok.json()).toEqual({
+      ok: true,
+      providerId: "official",
+      upstreamId: "google-agent-platform",
+      region: "global",
+      modelId: "veo-3.1",
+      message: "Google Cloud Agent Platform configuration is ready for Veo 3.1.",
     });
   });
 

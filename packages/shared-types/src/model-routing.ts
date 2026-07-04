@@ -6,7 +6,8 @@ export const ModelUpstreamIdSchema = z.enum([
   "local",
   "mock",
   "fal",
-  "google",
+  "google-ai-studio",
+  "google-agent-platform",
   "openai",
   "anthropic",
   "openrouter",
@@ -23,7 +24,7 @@ export type ModelUpstreamId = z.infer<typeof ModelUpstreamIdSchema>;
 export const ModelUpstreamApiShapeSchema = z.enum([
   "local-asr",
   "fal",
-  "google-vertex",
+  "google-agent-platform",
   "google-ai-studio",
   "openai-images",
   "openai-compatible",
@@ -265,7 +266,7 @@ export const MODEL_PROVIDER_DEFINITIONS: ModelProviderDefinition[] = [
   },
   {
     providerId: "official",
-    upstreamId: "google",
+    upstreamId: "google-ai-studio",
     region: "global",
     apiShape: "google-ai-studio",
     priority: 10,
@@ -273,9 +274,9 @@ export const MODEL_PROVIDER_DEFINITIONS: ModelProviderDefinition[] = [
   },
   {
     providerId: "official",
-    upstreamId: "google",
+    upstreamId: "google-agent-platform",
     region: "global",
-    apiShape: "google-vertex",
+    apiShape: "google-agent-platform",
     priority: 10,
     requiredCredentials: [VERTEX_CREDENTIAL],
   },
@@ -381,7 +382,12 @@ function directFalRoute(query: ModelUpstreamRouteQuery): ModelUpstreamRoute | nu
 function providerIdForRoute(route: ModelUpstreamRoute): ProviderAccountId {
   if (route.providerId) return route.providerId;
   if (route.upstreamId === "local") return "local";
-  if (route.upstreamId === "openai" || route.upstreamId === "google" || route.upstreamId === "anthropic") return "official";
+  if (
+    route.upstreamId === "openai" ||
+    route.upstreamId === "google-ai-studio" ||
+    route.upstreamId === "google-agent-platform" ||
+    route.upstreamId === "anthropic"
+  ) return "official";
   if (route.upstreamId === "fal" || route.upstreamId === "kie" || route.upstreamId === "replicate" || route.upstreamId === "mock") {
     return route.upstreamId;
   }

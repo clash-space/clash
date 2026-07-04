@@ -120,7 +120,7 @@ const falVideoProvider: VideoProvider = {
 const googleVideoProvider: VideoProvider = {
   async generate(env, params) {
     const creds = params.vertexCredentials;
-    if (!creds) throw new Error("Google provider account is missing vertexCredentials.");
+    if (!creds) throw new Error("Google Cloud Agent Platform provider account is missing service account credentials.");
 
     // Vertex wants base64 in-body — read R2 directly, no third party.
     const toBase64 = (k?: string) =>

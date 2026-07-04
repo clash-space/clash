@@ -20,7 +20,7 @@ export const geminiTtsProvider: GenerationProvider = {
       async () => {
         log.info("Gemini TTS started", { ...ctx.tag, model: modelName });
         const credentials = await credentialsForProvider(ctx, "official", ["apiKey"], {
-          upstreamId: "google",
+          upstreamId: "google-ai-studio",
           region: "global",
           modelCode: modelName,
         });

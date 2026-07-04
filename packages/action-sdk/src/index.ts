@@ -37,7 +37,8 @@ export type ActionProvider =
   | "kie"
   | "official"
   | "openai"
-  | "google"
+  | "google-ai-studio"
+  | "google-agent-platform"
   | "anthropic"
   | "elevenlabs"
   | string;

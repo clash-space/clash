@@ -24,7 +24,7 @@ ProviderApiShape = Literal[
     "fal",
     "openai-compatible",
     "openai-images",
-    "google-vertex",
+    "google-agent-platform",
     "google-ai-studio",
     "replicate",
     "kie",
