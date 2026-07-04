@@ -2,6 +2,22 @@ import { describe, expect, it } from "vitest";
 
 import { createMockExternalAigcService } from "./local-aigc";
 
+async function createTestPrivateKeyPem(): Promise<string> {
+  const keyPair = await crypto.subtle.generateKey(
+    {
+      name: "RSASSA-PKCS1-v1_5",
+      modulusLength: 2048,
+      publicExponent: new Uint8Array([1, 0, 1]),
+      hash: "SHA-256",
+    },
+    true,
+    ["sign", "verify"],
+  );
+  const pkcs8 = await crypto.subtle.exportKey("pkcs8", keyPair.privateKey);
+  const body = Buffer.from(pkcs8).toString("base64").match(/.{1,64}/g)?.join("\n") ?? "";
+  return `-----BEGIN PRIVATE KEY-----\n${body}\n-----END PRIVATE KEY-----\n`;
+}
+
 describe("local mock AIGC", () => {
   it("maps GPT Image 2 to the fal-shaped local mock provider", async () => {
     const service = createMockExternalAigcService({ origin: "http://local.test" });
@@ -281,6 +297,72 @@ describe("local mock AIGC", () => {
           },
         },
       },
+    });
+  });
+
+  it("uses provider account Google Cloud Agent Platform credentials for text models", async () => {
+    const privateKey = await createTestPrivateKeyPem();
+    const calls: Array<{ url: string; init?: RequestInit }> = [];
+    const service = createMockExternalAigcService({
+      providerAccounts: async () => [
+        {
+          providerId: "official",
+          upstreamId: "google-agent-platform",
+          region: "global",
+          enabled: true,
+          configuredCredentials: ["vertexCredentials"],
+          credentials: {
+            vertexCredentials: JSON.stringify({
+              project_id: "vertex-project",
+              client_email: "svc@vertex-project.iam.gserviceaccount.com",
+              private_key: privateKey,
+            }),
+          },
+        },
+      ],
+      fetch: async (input: string | URL | Request, init?: RequestInit) => {
+        const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+        calls.push({ url, init });
+        if (url === "https://oauth2.googleapis.com/token") {
+          return Response.json({ access_token: "vertex-access-token", expires_in: 3600 });
+        }
+        if (url === "https://aiplatform.googleapis.com/v1/projects/vertex-project/locations/global/publishers/google/models/gemini-3-flash-preview:generateContent") {
+          return Response.json({
+            candidates: [
+              {
+                content: {
+                  parts: [{ text: "vertex text result" }],
+                },
+              },
+            ],
+          });
+        }
+        return new Response("not found", { status: 404 });
+      },
+    } as never);
+
+    const result = await service.generateText({
+      taskId: "task-google-agent-platform-text",
+      prompt: "write a probe",
+      model: "gemini-3-flash",
+      modelParams: { system_prompt: "Be exact" },
+    });
+
+    expect(result).toEqual({
+      text: "vertex text result",
+      provider: "google-agent-platform",
+      modelEndpoint: "gemini-3-flash-preview",
+    });
+    expect(calls[0].url).toBe("https://oauth2.googleapis.com/token");
+    expect(String(calls[0].init?.body)).toContain("grant_type=urn%3Aietf%3Aparams%3Aoauth%3Agrant-type%3Ajwt-bearer");
+    expect(String(calls[0].init?.body)).toContain("assertion=");
+    expect(calls[1].init?.headers).toMatchObject({
+      authorization: "Bearer vertex-access-token",
+      "content-type": "application/json",
+    });
+    expect(JSON.parse(String(calls[1].init?.body))).toEqual({
+      contents: [{ role: "user", parts: [{ text: "write a probe" }] }],
+      systemInstruction: { parts: [{ text: "Be exact" }] },
     });
   });
 

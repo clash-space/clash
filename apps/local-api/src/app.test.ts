@@ -17,6 +17,22 @@ afterEach(async () => {
   if (dataDir) await rm(dataDir, { recursive: true, force: true });
 });
 
+async function createTestPrivateKeyPem(): Promise<string> {
+  const keyPair = await crypto.subtle.generateKey(
+    {
+      name: "RSASSA-PKCS1-v1_5",
+      modulusLength: 2048,
+      publicExponent: new Uint8Array([1, 0, 1]),
+      hash: "SHA-256",
+    },
+    true,
+    ["sign", "verify"],
+  );
+  const pkcs8 = await crypto.subtle.exportKey("pkcs8", keyPair.privateKey);
+  const body = Buffer.from(pkcs8).toString("base64").match(/.{1,64}/g)?.join("\n") ?? "";
+  return `-----BEGIN PRIVATE KEY-----\n${body}\n-----END PRIVATE KEY-----\n`;
+}
+
 describe("local API app", () => {
   it("reports local health and a synthetic local session", async () => {
     const app = createLocalApiApp({ dataDir, userId: "local-user" });
@@ -762,6 +778,96 @@ describe("local API app", () => {
       upstreamId: "replicate",
       modelId: "nano-banana-2",
       message: "Replicate configuration is ready for Nano Banana 2.",
+    });
+  });
+
+  it("runs a live Google Cloud Agent Platform text provider test", async () => {
+    const privateKey = await createTestPrivateKeyPem();
+    const calls: Array<{ url: string; init?: RequestInit }> = [];
+    const app = createLocalApiApp({
+      dataDir,
+      userId: "local-user",
+      providerTestFetch: async (input: string | URL | Request, init?: RequestInit) => {
+        const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+        calls.push({ url, init });
+        if (url === "https://oauth2.googleapis.com/token") {
+          return Response.json({ access_token: "vertex-access-token", expires_in: 3600 });
+        }
+        if (url === "https://aiplatform.googleapis.com/v1/projects/vertex-project/locations/global/publishers/google/models/gemini-3-flash-preview:generateContent") {
+          return Response.json({
+            candidates: [{ content: { parts: [{ text: "vertex test output" }] } }],
+          });
+        }
+        return new Response("not found", { status: 404 });
+      },
+    } as never);
+
+    await app.request("/api/v1/model-providers", {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        providers: [
+          {
+            id: "google-agent-platform-live",
+            providerId: "official",
+            upstreamId: "google-agent-platform",
+            region: "global",
+            enabled: true,
+            priority: 1,
+            credentials: {
+              vertexCredentials: JSON.stringify({
+                project_id: "vertex-project",
+                client_email: "svc@vertex-project.iam.gserviceaccount.com",
+                private_key: privateKey,
+              }),
+            },
+          },
+        ],
+      }),
+    });
+
+    const response = await app.request("/api/v1/model-providers/test", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        live: true,
+        provider: {
+          id: "google-agent-platform-live",
+          providerId: "official",
+          upstreamId: "google-agent-platform",
+          region: "global",
+          enabled: true,
+        },
+        modelId: "gemini-3-flash",
+      }),
+    });
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      ok: true,
+      providerId: "official",
+      upstreamId: "google-agent-platform",
+      region: "global",
+      modelId: "gemini-3-flash",
+      provider: "google-agent-platform",
+      modelEndpoint: "gemini-3-flash-preview",
+      input: {
+        shape: "text",
+        model: "gemini-3-flash",
+        prompt: "Provider test for Gemini 3 Flash",
+      },
+      output: {
+        shape: "text",
+        provider: "google-agent-platform",
+        endpoint: "gemini-3-flash-preview",
+        text: "vertex test output",
+      },
+      message: "Google Cloud Agent Platform ran Gemini 3 Flash through gemini-3-flash-preview.",
+    });
+    expect(calls[0].url).toBe("https://oauth2.googleapis.com/token");
+    expect(calls[1].init?.headers).toMatchObject({
+      authorization: "Bearer vertex-access-token",
+      "content-type": "application/json",
     });
   });
 

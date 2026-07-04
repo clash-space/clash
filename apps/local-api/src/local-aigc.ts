@@ -300,6 +300,155 @@ async function generateGoogleAiStudioMedia(
   };
 }
 
+interface GoogleAgentPlatformCredentials {
+  clientEmail: string;
+  privateKey: string;
+  project: string;
+  location?: string;
+}
+
+const GOOGLE_VERTEX_TOKEN_URL = "https://oauth2.googleapis.com/token";
+const GOOGLE_VERTEX_SCOPE = "https://www.googleapis.com/auth/cloud-platform";
+
+function parseGoogleAgentPlatformCredentials(raw: string): GoogleAgentPlatformCredentials {
+  let parsed: Record<string, unknown>;
+  try {
+    parsed = JSON.parse(raw) as Record<string, unknown>;
+  } catch {
+    throw new Error("Google Cloud Agent Platform credentials must be a service account JSON object.");
+  }
+  const clientEmail = stringParam(parsed, "clientEmail") || stringParam(parsed, "client_email");
+  const privateKey = stringParam(parsed, "privateKey") || stringParam(parsed, "private_key");
+  const project = stringParam(parsed, "project") || stringParam(parsed, "project_id");
+  const location = stringParam(parsed, "location");
+  if (!clientEmail || !privateKey || !project) {
+    throw new Error("Google Cloud Agent Platform credentials must include clientEmail/privateKey/project.");
+  }
+  return { clientEmail, privateKey, project, ...(location ? { location } : {}) };
+}
+
+function base64Url(value: string | ArrayBuffer): string {
+  const bytes = typeof value === "string" ? Buffer.from(value, "utf8") : Buffer.from(value);
+  return bytes.toString("base64").replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+
+async function importGooglePrivateKey(privateKey: string): Promise<CryptoKey> {
+  const normalized = privateKey.replace(/\\n/g, "\n");
+  const body = normalized
+    .replace(/-----BEGIN PRIVATE KEY-----/, "")
+    .replace(/-----END PRIVATE KEY-----/, "")
+    .replace(/\s+/g, "");
+  const der = Buffer.from(body, "base64");
+  return crypto.subtle.importKey(
+    "pkcs8",
+    der,
+    { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" },
+    false,
+    ["sign"],
+  );
+}
+
+async function signedGoogleJwt(credentials: GoogleAgentPlatformCredentials): Promise<string> {
+  const now = Math.floor(Date.now() / 1000);
+  const header = { alg: "RS256", typ: "JWT" };
+  const claim = {
+    iss: credentials.clientEmail,
+    scope: GOOGLE_VERTEX_SCOPE,
+    aud: GOOGLE_VERTEX_TOKEN_URL,
+    exp: now + 3600,
+    iat: now,
+  };
+  const signingInput = `${base64Url(JSON.stringify(header))}.${base64Url(JSON.stringify(claim))}`;
+  const privateKey = await importGooglePrivateKey(credentials.privateKey);
+  const signature = await crypto.subtle.sign(
+    "RSASSA-PKCS1-v1_5",
+    privateKey,
+    new TextEncoder().encode(signingInput),
+  );
+  return `${signingInput}.${base64Url(signature)}`;
+}
+
+async function googleVertexAccessToken(
+  credentials: GoogleAgentPlatformCredentials,
+  fetchImpl: typeof fetch,
+): Promise<string> {
+  const jwt = await signedGoogleJwt(credentials);
+  const response = await fetchImpl(GOOGLE_VERTEX_TOKEN_URL, {
+    method: "POST",
+    headers: { "content-type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      grant_type: "urn:ietf:params:oauth:grant-type:jwt-bearer",
+      assertion: jwt,
+    }).toString(),
+  });
+  const json = await responseJson(response);
+  if (!response.ok) {
+    throw new Error(`Google Cloud Agent Platform token exchange failed: ${json?.error_description ?? json?.error ?? response.statusText}`);
+  }
+  if (typeof json.access_token !== "string" || !json.access_token) {
+    throw new Error("Google Cloud Agent Platform token exchange returned no access_token.");
+  }
+  return json.access_token;
+}
+
+function vertexBaseHost(location: string): string {
+  return location === "global" ? "aiplatform.googleapis.com" : `${location}-aiplatform.googleapis.com`;
+}
+
+function googleAgentPlatformTextBody(input: MockMediaGenerationInput): Record<string, unknown> {
+  const body: Record<string, unknown> = {
+    contents: [{ role: "user", parts: [{ text: input.prompt }] }],
+  };
+  const systemPrompt = stringParam(input.modelParams, "system_prompt");
+  if (systemPrompt) body.systemInstruction = { parts: [{ text: systemPrompt }] };
+  return body;
+}
+
+function googleText(json: any): string | null {
+  const parts = json?.candidates?.flatMap((candidate: any) => candidate?.content?.parts ?? []) ?? [];
+  const text = parts
+    .map((part: any) => typeof part?.text === "string" ? part.text : "")
+    .join("");
+  return text ? text : null;
+}
+
+async function generateGoogleAgentPlatformText(
+  input: MockMediaGenerationInput,
+  route: ModelUpstreamRoute,
+  fetchImpl: typeof fetch,
+  rawCredentials: string,
+): Promise<MockMediaGenerationResult> {
+  const credentials = parseGoogleAgentPlatformCredentials(rawCredentials);
+  const location = credentials.location || route.region || "global";
+  const token = await googleVertexAccessToken(credentials, fetchImpl);
+  const response = await fetchImpl(
+    `https://${vertexBaseHost(location)}/v1/projects/${credentials.project}/locations/${location}/publishers/google/models/${route.upstreamModel}:generateContent`,
+    {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${token}`,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify(googleAgentPlatformTextBody(input)),
+    },
+  );
+  const json = await responseJson(response);
+  if (!response.ok) {
+    throw new Error(`Google Cloud Agent Platform text request failed: ${json?.error?.message ?? response.statusText}`);
+  }
+  const text = googleText(json);
+  if (!text) {
+    throw new Error(`Google Cloud Agent Platform response returned no text for ${route.upstreamModel}.`);
+  }
+  return {
+    bytes: new TextEncoder().encode(text),
+    contentType: "text/plain; charset=utf-8",
+    requestId: input.taskId,
+    provider: "google-agent-platform",
+    modelEndpoint: route.upstreamModel,
+  };
+}
+
 function falInput(input: MockMediaGenerationInput, kind: ModelKind): Record<string, unknown> {
   if (kind === "image") {
     const params = input.modelParams ?? {};
@@ -802,6 +951,12 @@ export function createMockExternalAigcService(
         fetch: fetchImpl,
         googleAiStudioBaseUrl: options.googleAiStudioBaseUrl,
       }, apiKey);
+    }
+
+    if (route.apiShape === "google-agent-platform" && kind === "text") {
+      const vertexCredentials = credential(route, providerAccounts, "vertexCredentials");
+      if (!vertexCredentials) return fallback();
+      return generateGoogleAgentPlatformText(input, route, fetchImpl, vertexCredentials);
     }
 
     if (route.apiShape === "fal") {
