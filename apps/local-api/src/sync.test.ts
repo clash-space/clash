@@ -144,7 +144,7 @@ describe("LocalLoroRoom", () => {
         status: "pending",
         actionType: "image-gen",
         prompt: "小狗一只",
-        modelId: "gemini-flash-image-2",
+        modelId: "gemini-3.1-flash-image",
         modelParams: { aspect_ratio: "16:9" },
         actorType: "user",
         actorUserId: "local-user",
@@ -165,7 +165,7 @@ describe("LocalLoroRoom", () => {
     expect(db.assets[0]).toMatchObject({
       id: imageNode.data.assetId,
       kind: "image",
-      sourceModel: "gemini-flash-image-2",
+      sourceModel: "gemini-3.1-flash-image",
       sourcePrompt: "小狗一只",
       sourceTaskId: expect.stringMatching(/^fal-mock-/),
       metadata: expect.objectContaining({

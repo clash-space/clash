@@ -197,8 +197,8 @@ const FAL_VIDEO_ROUTES: Array<[string, string]> = [
 ];
 
 const GOOGLE_IMAGE_ROUTES: Array<[string, string]> = [
-  ["gemini-flash-image-2", "gemini-3.1-flash-image-preview"],
-  ["gemini-pro-image", "gemini-3-pro-image-preview"],
+  ["gemini-3.1-flash-image", "gemini-3.1-flash-image"],
+  ["gemini-3-pro-image", "gemini-3-pro-image"],
 ];
 
 const GOOGLE_VIDEO_ROUTES: Array<[string, string]> = [

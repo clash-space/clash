@@ -25,7 +25,7 @@ describe("generation provider registry", () => {
   });
 
   it("routes Google image model codes to the Google image provider", () => {
-    expect(resolveProvider(params("image_gen", "gemini-flash-image-2")).name).toBe("google-image");
+    expect(resolveProvider(params("image_gen", "gemini-3.1-flash-image")).name).toBe("google-image");
   });
 
   it("routes GPT Image 2 model codes to the OpenAI image provider", () => {

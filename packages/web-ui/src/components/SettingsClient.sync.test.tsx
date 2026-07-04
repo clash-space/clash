@@ -3906,10 +3906,10 @@ describe("SettingsClient model routing", () => {
     fireEvent.click(within(editor).getByRole("combobox", { name: "Add supported model" }));
     expect(screen.queryByRole("menu", { name: "Add supported model" })).toBeNull();
     fireEvent.change(screen.getByRole("combobox", { name: "Search supported models" }), {
-      target: { value: "Gemini Flash Image 2" },
+      target: { value: "Gemini 3.1 Flash Image" },
     });
 
-    expect(screen.getAllByRole("option", { name: /Gemini Flash Image 2/ })).toHaveLength(1);
+    expect(screen.getAllByRole("option", { name: /Gemini 3.1 Flash Image/ })).toHaveLength(1);
   });
 
   it("configures multiple OpenAI provider keys inline", async () => {

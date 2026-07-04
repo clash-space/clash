@@ -216,7 +216,7 @@ describe("local mock AIGC", () => {
     const result = await service.generateImage({
       taskId: "task-google-image",
       prompt: "real google image",
-      model: "gemini-flash-image-2",
+      model: "gemini-3.1-flash-image",
       aspectRatio: "16:9",
       modelParams: { resolution: "1K" },
     });

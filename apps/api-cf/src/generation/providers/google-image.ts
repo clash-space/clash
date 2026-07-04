@@ -1,8 +1,7 @@
 /**
- * Google Gemini image generation (gemini-flash-image-2, gemini-pro-image, ...).
- * Reference images go through the Gemini `:generateContent` multimodal path
- * (image-in + image-out); plain text-to-image keeps the Imagen-style
- * `:predict` route for richer aspectRatio/resolution plumbing.
+ * Google Gemini image generation (gemini-3.1-flash-image, gemini-3-pro-image, ...).
+ * Gemini 3 Image models use the Gemini `:generateContent` multimodal path
+ * for both text-to-image and image-in/image-out requests.
  */
 import { log } from "../../logger";
 import {

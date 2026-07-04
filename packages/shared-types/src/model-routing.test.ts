@@ -282,20 +282,20 @@ describe("model upstream routing", () => {
     ];
 
     const route = resolveModelUpstreamRoute({
-      modelCode: "gemini-flash-image-2",
+      modelCode: "gemini-3.1-flash-image",
       kind: "image",
       configuredUpstreams: upstreams,
     });
 
     expect(route).toMatchObject({
       upstreamId: "google-agent-platform",
-      upstreamModel: "gemini-3.1-flash-image-preview",
+      upstreamModel: "gemini-3.1-flash-image",
     });
   });
 
   it("orders fallback candidates by user upstream order before route defaults", () => {
     const routes = listModelUpstreamRoutes({
-      modelCode: "gemini-flash-image-2",
+      modelCode: "gemini-3.1-flash-image",
       kind: "image",
       configuredUpstreams: [
         { upstreamId: "fal", enabled: true, configuredCredentials: ["apiKey"] },
@@ -358,7 +358,7 @@ describe("model upstream routing", () => {
 
   it("routes official Google AI Studio image models when a Gemini API key is configured", () => {
     const route = resolveModelUpstreamRoute({
-      modelCode: "gemini-flash-image-2",
+      modelCode: "gemini-3.1-flash-image",
       kind: "image",
       configuredProviders: [
         {
@@ -633,8 +633,8 @@ describe("model upstream routing", () => {
       support.upstreamId === "google-agent-platform" &&
       support.region === "global"
     );
-    const aiStudioFlashRoutes = aiStudio?.models.filter((model) => model.id === "gemini-flash-image-2");
-    const agentPlatformFlashRoutes = agentPlatform?.models.filter((model) => model.id === "gemini-flash-image-2");
+    const aiStudioFlashRoutes = aiStudio?.models.filter((model) => model.id === "gemini-3.1-flash-image");
+    const agentPlatformFlashRoutes = agentPlatform?.models.filter((model) => model.id === "gemini-3.1-flash-image");
 
     expect(aiStudioFlashRoutes).toEqual([
       expect.objectContaining({
@@ -683,7 +683,7 @@ describe("model upstream routing", () => {
 
   it("resolves weighted provider accounts before static route priority", () => {
     const route = resolveModelUpstreamRoute({
-      modelCode: "gemini-flash-image-2",
+      modelCode: "gemini-3.1-flash-image",
       kind: "image",
       configuredProviders: [
         {

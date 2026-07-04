@@ -261,8 +261,8 @@ export interface GoogleImageResult {
 // scheduled for shutdown on 2026-06-24; Google recommends the Gemini Image
 // "nano-banana" models as the replacement.
 export const GOOGLE_IMAGE_MODELS = new Set([
-  "gemini-flash-image-2",
-  "gemini-pro-image",
+  "gemini-3.1-flash-image",
+  "gemini-3-pro-image",
 ]);
 
 export function isGoogleImageModel(modelName: string | undefined): boolean {
@@ -270,8 +270,8 @@ export function isGoogleImageModel(modelName: string | undefined): boolean {
 }
 
 const GOOGLE_IMAGE_MODEL_MAP: Record<string, string> = {
-  "gemini-flash-image-2": "gemini-3.1-flash-image-preview",
-  "gemini-pro-image": "gemini-3-pro-image-preview",
+  "gemini-3.1-flash-image": "gemini-3.1-flash-image",
+  "gemini-3-pro-image": "gemini-3-pro-image",
 };
 
 // Which Vertex model IDs must be called via the Gemini `generateContent`
@@ -285,12 +285,12 @@ const GOOGLE_IMAGE_MODEL_MAP: Record<string, string> = {
 //
 // - `gemini-2.5-flash-image` (GA) registers both predict and generateContent,
 //   so it keeps the Imagen-style path with richer aspectRatio plumbing.
-// - The 3.x previews only expose `:generateContent`; calling `:predict`
+// - The 3.x Gemini Image models expose `:generateContent`; calling `:predict`
 //   returns a misleading "model not found or your project does not have
 //   access" 404 because there's no predict handler for them.
 const GEMINI_GENERATE_CONTENT_MODELS = new Set([
-  "gemini-3.1-flash-image-preview",
-  "gemini-3-pro-image-preview",
+  "gemini-3.1-flash-image",
+  "gemini-3-pro-image",
 ]);
 
 /**
@@ -319,8 +319,8 @@ export async function generateGoogleImage(
   params: GoogleImageParams,
 ): Promise<GoogleImageResult> {
   const modelId =
-    GOOGLE_IMAGE_MODEL_MAP[params.modelName ?? "gemini-flash-image-2"] ??
-    "gemini-3.1-flash-image-preview";
+    GOOGLE_IMAGE_MODEL_MAP[params.modelName ?? "gemini-3.1-flash-image"] ??
+    "gemini-3.1-flash-image";
   const vertex = makeVertex(creds);
 
   // Force the Gemini `:generateContent` (multimodal) path when references
