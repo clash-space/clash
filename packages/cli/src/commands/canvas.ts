@@ -337,7 +337,7 @@ const ACTION_TYPE_BY_NODE_TYPE: Record<string, string> = {
   text_gen: "text-gen",
 };
 const DEFAULT_MODEL_BY_NODE_TYPE: Record<string, string> = {
-  image_gen: "gemini-3.1-flash-image",
+  image_gen: "nano-banana-2",
   video_gen: "veo-3.1-fast",
   audio_gen: "gemini-3.1-flash-tts",
   text_gen: "gemini-3-flash",
@@ -430,7 +430,7 @@ canvasCommand
   .option("--parent <id>", "Parent group ID")
   .option(
     "--model <id>",
-    "Generation model id (e.g. gemini-3.1-flash-image, gpt-image-2, veo-3.1-fast). Stored as data.modelId. Required for *_gen action nodes when no marketplace action is installed.",
+    "Generation model id (e.g. nano-banana-2, gpt-image-2, veo-3.1-fast). Stored as data.modelId. Required for *_gen action nodes when no marketplace action is installed.",
   )
   .option(
     "--ref <id...>",

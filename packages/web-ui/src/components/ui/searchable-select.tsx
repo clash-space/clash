@@ -49,15 +49,25 @@ export interface SearchableSelectProps<Value extends SelectValue = string> {
     matchTriggerWidth?: boolean;
 }
 
+type SearchableSelectOption<Value extends SelectValue> = SelectOption<Value> & {
+    searchText?: string;
+};
+
 function normalizeSearchText(value: string): string {
-    return value.trim().toLowerCase();
+    return value
+        .trim()
+        .toLowerCase()
+        .replace(/[^\p{L}\p{N}]+/gu, ' ')
+        .replace(/\s+/g, ' ');
 }
 
 function optionSearchText<Value extends SelectValue>(option: SelectOption<Value>): string {
+    const searchableOption = option as SearchableSelectOption<Value>;
     return [
         searchableSelectText(option.label),
         searchableSelectText(option.description),
         String(option.value),
+        searchableOption.searchText,
     ].filter(Boolean).join(' ');
 }
 

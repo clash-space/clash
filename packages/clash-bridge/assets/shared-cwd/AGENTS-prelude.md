@@ -50,7 +50,7 @@ with exactly one `clash room say` call** carrying:
 - The substantive answer if the task is small enough to finish in one turn.
 - A clear status if longer ("on it — generating the storyboard now, ~30s").
 - A concrete blocker if you can't proceed ("can't generate — no image
-  action installed; want me to add one with `--model gemini-flash-image-2`?").
+  action installed; want me to add one with `--model nano-banana-2`?").
 
 No `clash room say` at the end of a `[room from …]` turn = the user
 sees silence in the room and assumes you crashed. There is no other

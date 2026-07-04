@@ -10,6 +10,7 @@ import {
   MOCK_MODEL_CARDS,
   MODEL_CARDS,
   MODEL_UPSTREAM_ROUTES,
+  normalizeModelId,
   ProviderOAuthIdSchema,
   type ProviderOAuthId,
   type ModelUpstreamRoute,
@@ -1368,7 +1369,8 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
     const rawProvider = body.provider && typeof body.provider === "object"
       ? body.provider as Record<string, unknown>
       : {};
-    const modelId = typeof body.modelId === "string" && body.modelId.trim() ? body.modelId.trim() : "";
+    const rawModelId = typeof body.modelId === "string" && body.modelId.trim() ? body.modelId.trim() : "";
+    const modelId = normalizeModelId(rawModelId) ?? rawModelId;
     if (!provider || !modelId) return c.json({ error: "provider and modelId are required" }, 400);
 
     const state = await db.load();
@@ -1417,7 +1419,10 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
         message: `${displayProviderName(account)} does not support ${modelName}.`,
       } satisfies ModelProviderTestResult);
     }
-    if (account.supportedModelIds?.length && !account.supportedModelIds.includes(modelId)) {
+    if (
+      account.supportedModelIds?.length &&
+      !account.supportedModelIds.map((id) => normalizeModelId(id) ?? id.trim()).includes(modelId)
+    ) {
       return c.json({
         ok: false,
         ...baseResult,

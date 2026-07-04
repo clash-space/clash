@@ -277,7 +277,7 @@ export function validateGenerationInput(input: ValidateGenerationInput): string 
 export interface BuildPendingAssetNodeInput {
   nodeId: string;
   prompt: string;
-  /** For built-in models: the modelId (`gemini-3.1-flash-image`, etc.).
+  /** For built-in models: the Clash modelId (`nano-banana-2`, etc.).
    *  For custom actions: empty string (the action id lives in
    *  `customActionId` instead). NodeProcessor switches by
    *  `actionType.startsWith('custom:')`. */

@@ -260,6 +260,7 @@ export type ModelInputRule = z.infer<typeof ModelInputRuleSchema>;
 
 export const ModelCardSchema = z.object({
   id: z.string(),
+  aliases: z.array(z.string()).default([]),
   name: z.string(),
   provider: z.string(),
   kind: ModelKindSchema,
@@ -401,9 +402,10 @@ const MODEL_CARD_DEFINITIONS = [
   {
     id: 'nano-banana-2',
     name: 'Nano Banana 2',
-    provider: 'fal.ai',
-    availableProviders: ['fal', 'kie', 'replicate'],
-    defaultProvider: 'fal',
+    aliases: ['gemini-3.1-flash-image'],
+    provider: 'Google',
+    availableProviders: ['official', 'fal', 'kie', 'replicate'],
+    defaultProvider: 'official',
     kind: 'image',
     defaultAspectRatio: '16:9',
     description: 'State-of-the-art fast image generation and editing.',
@@ -1045,39 +1047,17 @@ const MODEL_CARD_DEFINITIONS = [
     input: { requiresPrompt: true, inputMode: { images: { min: 1, max: 8 } }, promptModalities: ['text', 'image'] },
   },
 
-  // ─── Image: Gemini Image (Google Vertex) ────────────────────
+  // ─── Image: Nano Banana Pro (Google) ────────────────────────
   {
-    id: 'gemini-3.1-flash-image',
-    name: 'Gemini 3.1 Flash Image',
-    provider: 'Google',
-    availableProviders: ['official', 'fal'],
-    defaultProvider: 'official',
-    kind: 'image',
-    defaultAspectRatio: '16:9',
-    description: 'Gemini 3.1 Flash Image — latest fast image generation and editing.',
-    parameters: [
-      {
-        id: 'aspect_ratio',
-        label: 'Aspect Ratio',
-        type: 'select',
-        options: IMAGEN_ASPECT_RATIOS.map(r => ({ label: r.label, value: r.value })),
-        defaultValue: '16:9',
-      },
-    ],
-    defaultParams: {
-      aspect_ratio: '16:9',
-    },
-    input: { requiresPrompt: true, inputMode: { images: { max: 8 } }, promptModalities: ['text', 'image'] },
-  },
-  {
-    id: 'gemini-3-pro-image',
-    name: 'Gemini 3 Pro Image',
+    id: 'nano-banana-pro',
+    name: 'Nano Banana Pro',
+    aliases: ['gemini-3-pro-image'],
     provider: 'Google',
     availableProviders: ['official'],
     defaultProvider: 'official',
     kind: 'image',
     defaultAspectRatio: '16:9',
-    description: 'Gemini 3 Pro Image — highest quality image generation.',
+    description: 'Highest quality Google image generation and editing.',
     parameters: [
       {
         id: 'aspect_ratio',
@@ -1682,7 +1662,6 @@ const MODEL_PROVIDER_IMPLEMENTATION_ROWS: ModelProviderImplementationRow[] = [
   ['seedance-2-text', 'fal', 'fal', 'fal', 'bytedance/seedance-2.0/text-to-video', 20, { credentials: ['apiKey'] }],
   ['seedance-2-startend', 'fal', 'fal', 'fal', 'bytedance/seedance-2.0/image-to-video', 20, { credentials: ['apiKey'] }],
   ['seedance-2-ref', 'fal', 'fal', 'fal', 'bytedance/seedance-2.0/reference-to-video', 20, { credentials: ['apiKey'] }],
-  ['gemini-3.1-flash-image', 'fal', 'fal', 'fal', 'fal-ai/nano-banana-2', 30, { credentials: ['apiKey'] }],
   ['gemini-3.1-flash-tts', 'fal', 'fal', 'fal', 'fal-ai/minimax/speech-02-hd', 30, { credentials: ['apiKey'] }],
   ['gemini-2.5-pro-tts', 'fal', 'fal', 'fal', 'fal-ai/minimax/speech-02-hd', 30, { credentials: ['apiKey'] }],
   ['minimax-tts', 'fal', 'fal', 'fal', 'fal-ai/minimax/speech-02-hd', 20, { credentials: ['apiKey'] }],
@@ -1704,12 +1683,12 @@ const MODEL_PROVIDER_IMPLEMENTATION_ROWS: ModelProviderImplementationRow[] = [
   ['seedance-2-startend', 'replicate', 'replicate', 'replicate', 'bytedance/seedance-2.0', 25, { credentials: ['apiKey'] }],
   ['seedance-2-ref', 'replicate', 'replicate', 'replicate', 'bytedance/seedance-2.0', 25, { credentials: ['apiKey'] }],
 
-  ['gemini-3.1-flash-image', 'official', 'google-ai-studio', 'google-ai-studio', 'gemini-3.1-flash-image', 12, { region: 'global', credentials: ['apiKey'] }],
-  ['gemini-3-pro-image', 'official', 'google-ai-studio', 'google-ai-studio', 'gemini-3-pro-image', 12, { region: 'global', credentials: ['apiKey'] }],
+  ['nano-banana-2', 'official', 'google-ai-studio', 'google-ai-studio', 'gemini-3.1-flash-image', 12, { region: 'global', credentials: ['apiKey'] }],
+  ['nano-banana-pro', 'official', 'google-ai-studio', 'google-ai-studio', 'gemini-3-pro-image', 12, { region: 'global', credentials: ['apiKey'] }],
   ['gemini-3.1-flash-tts', 'official', 'google-ai-studio', 'google-ai-studio', 'gemini-3.1-flash-tts-preview', 10, { region: 'global', credentials: ['apiKey'] }],
   ['gemini-2.5-pro-tts', 'official', 'google-ai-studio', 'google-ai-studio', 'gemini-2.5-pro-tts', 10, { region: 'global', credentials: ['apiKey'] }],
-  ['gemini-3.1-flash-image', 'official', 'google-agent-platform', 'google-agent-platform', 'gemini-3.1-flash-image', 10, { region: 'global', credentials: ['vertexCredentials'] }],
-  ['gemini-3-pro-image', 'official', 'google-agent-platform', 'google-agent-platform', 'gemini-3-pro-image', 10, { region: 'global', credentials: ['vertexCredentials'] }],
+  ['nano-banana-2', 'official', 'google-agent-platform', 'google-agent-platform', 'gemini-3.1-flash-image', 10, { region: 'global', credentials: ['vertexCredentials'] }],
+  ['nano-banana-pro', 'official', 'google-agent-platform', 'google-agent-platform', 'gemini-3-pro-image', 10, { region: 'global', credentials: ['vertexCredentials'] }],
   ['veo-3.1', 'official', 'google-agent-platform', 'google-agent-platform', 'veo-3.1-generate-001', 10, { region: 'global', credentials: ['vertexCredentials'] }],
   ['veo-3.1-startend', 'official', 'google-agent-platform', 'google-agent-platform', 'veo-3.1-generate-001', 10, { region: 'global', credentials: ['vertexCredentials'] }],
   ['veo-3.1-lite', 'official', 'google-agent-platform', 'google-agent-platform', 'veo-3.1-lite-generate-001', 10, { region: 'global', credentials: ['vertexCredentials'] }],
@@ -1768,6 +1747,21 @@ const MODEL_CARD_DEFINITIONS_WITH_PROVIDER_IMPLEMENTATIONS = MODEL_CARD_DEFINITI
 }));
 
 export const MODEL_CARDS: ModelCard[] = z.array(ModelCardSchema).parse(MODEL_CARD_DEFINITIONS_WITH_PROVIDER_IMPLEMENTATIONS);
+
+const MODEL_IDS = new Set(MODEL_CARDS.map((model) => model.id));
+const MODEL_ALIAS_TO_ID = new Map<string, string>();
+for (const model of MODEL_CARDS) {
+  for (const alias of model.aliases) {
+    MODEL_ALIAS_TO_ID.set(alias, model.id);
+  }
+}
+
+export function normalizeModelId(modelId: string | null | undefined): string | null {
+  const trimmed = typeof modelId === 'string' ? modelId.trim() : '';
+  if (!trimmed) return null;
+  if (MODEL_IDS.has(trimmed)) return trimmed;
+  return MODEL_ALIAS_TO_ID.get(trimmed) ?? null;
+}
 
 export const MOCK_MODEL_CARDS: ModelCard[] = z.array(ModelCardSchema).parse([
   {

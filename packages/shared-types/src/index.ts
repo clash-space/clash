@@ -135,6 +135,7 @@ export {
   ModelCardSchema,
   MODEL_CARDS,
   MOCK_MODEL_CARDS,
+  normalizeModelId,
   resolveAspectRatio,
   snapAspectRatio,
   type ModelInputMode,

@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { MOCK_MODEL_CARDS, MODEL_CARDS, type ModelCard, type ModelKind } from "./models";
+import { MOCK_MODEL_CARDS, MODEL_CARDS, normalizeModelId, type ModelCard, type ModelKind } from "./models";
 
 export const ModelUpstreamIdSchema = z.enum([
   "local",
@@ -197,8 +197,8 @@ const FAL_VIDEO_ROUTES: Array<[string, string]> = [
 ];
 
 const GOOGLE_IMAGE_ROUTES: Array<[string, string]> = [
-  ["gemini-3.1-flash-image", "gemini-3.1-flash-image"],
-  ["gemini-3-pro-image", "gemini-3-pro-image"],
+  ["nano-banana-2", "gemini-3.1-flash-image"],
+  ["nano-banana-pro", "gemini-3-pro-image"],
 ];
 
 const GOOGLE_VIDEO_ROUTES: Array<[string, string]> = [
@@ -400,6 +400,7 @@ export interface ProviderModelSupport {
   region?: string;
   models: Array<{
     id: string;
+    aliases: string[];
     name: string;
     kind: ModelKind;
     upstreamModel: string;
@@ -448,6 +449,7 @@ export function listProviderModelSupport(options: {
     };
     row.models.push({
       id: model.id,
+      aliases: [...model.aliases],
       name: model.name,
       kind: route.kind,
       upstreamModel: route.upstreamModel,
@@ -479,7 +481,7 @@ export function unsupportedProviderModelFilterIds(
   );
   if (!support) return [...provider.supportedModelIds];
   const supported = new Set(support.models.map((model) => model.id));
-  return provider.supportedModelIds.filter((id) => !supported.has(id));
+  return provider.supportedModelIds.filter((id) => !supported.has(normalizeModelId(id) ?? id.trim()));
 }
 
 export function invalidProviderModelFilters(
@@ -515,7 +517,12 @@ function matchesProviderAccount(route: ModelUpstreamRoute, provider: ProviderAcc
   if (provider.providerId !== providerIdForRoute(route)) return false;
   if (provider.upstreamId && provider.upstreamId !== route.upstreamId) return false;
   if (provider.region && route.region && provider.region !== route.region) return false;
-  if (provider.supportedModelIds?.length && !provider.supportedModelIds.includes(route.modelCode)) return false;
+  if (
+    provider.supportedModelIds?.length &&
+    !provider.supportedModelIds
+      .map((modelId) => normalizeModelId(modelId) ?? modelId.trim())
+      .includes(route.modelCode)
+  ) return false;
   return true;
 }
 
@@ -578,7 +585,9 @@ function modelPriority(
   modelCode: string,
 ): number | undefined {
   if (!config || !("modelPriorities" in config)) return undefined;
-  const priority = config.modelPriorities?.[modelCode];
+  const priorities = config.modelPriorities ?? {};
+  const priority = priorities[modelCode] ?? Object.entries(priorities)
+    .find(([candidate]) => (normalizeModelId(candidate) ?? candidate.trim()) === modelCode)?.[1];
   return typeof priority === "number" && Number.isFinite(priority) ? priority : undefined;
 }
 
@@ -653,25 +662,27 @@ function isEnabled(route: ModelUpstreamRoute, query: ModelUpstreamRouteQuery): b
 
 function candidateRoutes(query: ModelUpstreamRouteQuery): ModelUpstreamRoute[] {
   const direct = directFalRoute(query);
+  const modelCode = normalizeModelId(query.modelCode) ?? query.modelCode.trim();
   return direct
     ? [direct]
     : MODEL_UPSTREAM_ROUTES.filter(
         (route) =>
-          route.modelCode === query.modelCode &&
+          route.modelCode === modelCode &&
           (!query.kind || route.kind === query.kind),
       );
 }
 
 export function listModelUpstreamRoutes(query: ModelUpstreamRouteQuery): ModelUpstreamRoute[] {
   const candidates = candidateRoutes(query);
+  const modelCode = normalizeModelId(query.modelCode) ?? query.modelCode.trim();
 
   return candidates
     .filter((route) => isEnabled(route, query))
     .sort((a, b) => {
       const aConfig = configForRoute(query, a);
       const bConfig = configForRoute(query, b);
-      const aModelPriority = modelPriorityForRoute(query, a, query.modelCode);
-      const bModelPriority = modelPriorityForRoute(query, b, query.modelCode);
+      const aModelPriority = modelPriorityForRoute(query, a, modelCode);
+      const bModelPriority = modelPriorityForRoute(query, b, modelCode);
       if (aModelPriority !== undefined || bModelPriority !== undefined) {
         const priority = (aModelPriority ?? Number.POSITIVE_INFINITY) - (bModelPriority ?? Number.POSITIVE_INFINITY);
         if (priority !== 0) return priority;

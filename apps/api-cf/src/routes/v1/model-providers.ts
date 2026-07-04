@@ -4,6 +4,7 @@ import {
   listProviderModelSupport,
   MODEL_CARDS,
   MODEL_UPSTREAM_ROUTES,
+  normalizeModelId,
   ProviderOAuthIdSchema,
   type ProviderOAuthId,
   type ModelUpstreamRoute,
@@ -157,7 +158,8 @@ modelProviderRoutes.post("/model-providers/test", async (c) => {
   const rawProvider = body.provider && typeof body.provider === "object"
     ? body.provider as Record<string, unknown>
     : {};
-  const modelId = typeof body.modelId === "string" && body.modelId.trim() ? body.modelId.trim() : "";
+  const rawModelId = typeof body.modelId === "string" && body.modelId.trim() ? body.modelId.trim() : "";
+  const modelId = normalizeModelId(rawModelId) ?? rawModelId;
   if (!provider || !modelId) return c.json({ error: "provider and modelId are required" }, 400);
 
   const accounts = await listProviderAccountsWithOAuth(c.env, userId);
@@ -197,7 +199,10 @@ modelProviderRoutes.post("/model-providers/test", async (c) => {
     });
   }
   const supportedModelIds = provider.supportedModelIds ?? stored?.supportedModelIds;
-  if (supportedModelIds?.length && !supportedModelIds.includes(modelId)) {
+  if (
+    supportedModelIds?.length &&
+    !supportedModelIds.map((id) => normalizeModelId(id) ?? id.trim()).includes(modelId)
+  ) {
     return c.json({
       ok: false,
       ...baseResult,

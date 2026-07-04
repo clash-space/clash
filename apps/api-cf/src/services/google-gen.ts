@@ -7,6 +7,7 @@
  */
 import { generateImage, generateText, experimental_generateVideo } from "ai";
 import { createVertex } from "@ai-sdk/google-vertex/edge";
+import { normalizeModelId } from "@clash/shared-types";
 import { getVertexAccessTokenForCredentials } from "./vertex-auth";
 
 // ─── Shared ─────────────────────────────────────────────
@@ -261,16 +262,21 @@ export interface GoogleImageResult {
 // scheduled for shutdown on 2026-06-24; Google recommends the Gemini Image
 // "nano-banana" models as the replacement.
 export const GOOGLE_IMAGE_MODELS = new Set([
+  "nano-banana-2",
+  "nano-banana-pro",
   "gemini-3.1-flash-image",
   "gemini-3-pro-image",
 ]);
 
 export function isGoogleImageModel(modelName: string | undefined): boolean {
-  return !!modelName && GOOGLE_IMAGE_MODELS.has(modelName);
+  if (!modelName) return false;
+  return GOOGLE_IMAGE_MODELS.has(modelName) || GOOGLE_IMAGE_MODELS.has(normalizeModelId(modelName) ?? "");
 }
 
 const GOOGLE_IMAGE_MODEL_MAP: Record<string, string> = {
+  "nano-banana-2": "gemini-3.1-flash-image",
   "gemini-3.1-flash-image": "gemini-3.1-flash-image",
+  "nano-banana-pro": "gemini-3-pro-image",
   "gemini-3-pro-image": "gemini-3-pro-image",
 };
 
@@ -318,8 +324,11 @@ export async function generateGoogleImage(
   creds: VertexCredentials,
   params: GoogleImageParams,
 ): Promise<GoogleImageResult> {
+  const requestedModel = params.modelName
+    ? normalizeModelId(params.modelName) ?? params.modelName
+    : "nano-banana-2";
   const modelId =
-    GOOGLE_IMAGE_MODEL_MAP[params.modelName ?? "gemini-3.1-flash-image"] ??
+    GOOGLE_IMAGE_MODEL_MAP[requestedModel] ??
     "gemini-3.1-flash-image";
   const vertex = makeVertex(creds);
 

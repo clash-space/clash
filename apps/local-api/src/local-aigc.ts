@@ -1,4 +1,5 @@
 import {
+  normalizeModelId,
   resolveModelUpstreamRoute,
   type ModelKind,
   type ModelUpstreamRoute,
@@ -843,17 +844,23 @@ export function createMockExternalAigcService(
     route: ModelUpstreamRoute,
     accounts: RuntimeProviderAccountAvailability[] | undefined,
   ) => {
+    const configuredModelPriority = (account: RuntimeProviderAccountAvailability) =>
+      account.modelPriorities?.[route.modelCode] ?? Object.entries(account.modelPriorities ?? {})
+        .find(([modelId]) => (normalizeModelId(modelId) ?? modelId.trim()) === route.modelCode)?.[1];
     const candidates = (accounts ?? [])
       .map((account, index) => ({ account, index }))
       .filter(({ account }) =>
         account.providerId === providerIdForRoute(route) &&
         (!account.upstreamId || account.upstreamId === route.upstreamId) &&
         (!account.region || !route.region || account.region === route.region) &&
-        (!account.supportedModelIds?.length || account.supportedModelIds.includes(route.modelCode))
+        (!account.supportedModelIds?.length ||
+          account.supportedModelIds
+            .map((modelId) => normalizeModelId(modelId) ?? modelId.trim())
+            .includes(route.modelCode))
       )
       .sort((a, b) => {
-        const aModelPriority = a.account.modelPriorities?.[route.modelCode];
-        const bModelPriority = b.account.modelPriorities?.[route.modelCode];
+        const aModelPriority = configuredModelPriority(a.account);
+        const bModelPriority = configuredModelPriority(b.account);
         if (aModelPriority !== undefined || bModelPriority !== undefined) {
           const priority = (aModelPriority ?? Number.POSITIVE_INFINITY) - (bModelPriority ?? Number.POSITIVE_INFINITY);
           if (priority !== 0) return priority;

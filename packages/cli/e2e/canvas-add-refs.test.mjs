@@ -118,7 +118,7 @@ test("canvas add: @-mention in --prompt wires the source as a canvas reference",
     "--type", "image_gen",
     "--label", "e2e-refs-prompt-mention",
     "--prompt", `make @[Source](node:${ref.nodeId}) wear sunglasses`,
-    "--model", "gemini-flash-image-2",
+    "--model", "nano-banana-2",
     "--param", "aspectRatio=16:9",
     "--param", "seed=42",
   ]);
@@ -129,7 +129,7 @@ test("canvas add: @-mention in --prompt wires the source as a canvas reference",
 
   // Spec fields that drive both the UI editor + the executor.
   assert.equal(node.data.actionType, "image-gen", "actionType is the dash form");
-  assert.equal(node.data.modelId, "gemini-flash-image-2", "modelId persists");
+  assert.equal(node.data.modelId, "nano-banana-2", "modelId persists");
   assert.deepEqual(
     node.data.modelParams,
     { aspectRatio: "16:9", seed: 42 },
@@ -184,7 +184,7 @@ test("canvas add: --ref accepts both node ids and asset ids", { skip: skipReason
     "--type", "image_gen",
     "--label", "e2e-refs-ref-node",
     "--prompt", "a portrait",
-    "--model", "gemini-flash-image-2",
+    "--model", "nano-banana-2",
     "--ref", ref.nodeId,
   ]);
   assert.deepEqual(getRefNodeIdsFor(created.node_id), [ref.nodeId], "--ref <nodeId> uses the id directly");
@@ -199,7 +199,7 @@ test("canvas add: --ref accepts both node ids and asset ids", { skip: skipReason
     "--type", "image_gen",
     "--label", "e2e-refs-ref-asset",
     "--prompt", "a portrait",
-    "--model", "gemini-flash-image-2",
+    "--model", "nano-banana-2",
     "--ref", ref.assetId,
   ]);
   assert.deepEqual(
@@ -223,7 +223,7 @@ test("canvas add: prompt mention + explicit --ref dedupe", { skip: skipReason },
     "--label", "e2e-refs-dedupe",
     "--prompt", `redraw @[X](node:${ref.nodeId})`,
     "--ref", ref.nodeId,
-    "--model", "gemini-flash-image-2",
+    "--model", "nano-banana-2",
   ]);
   const order = getRefNodeIdsFor(created.node_id);
   assert.equal(order.length, 1, "duplicate ref via prompt + --ref should collapse to one");

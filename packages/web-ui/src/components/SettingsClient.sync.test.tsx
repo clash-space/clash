@@ -2416,6 +2416,7 @@ describe("SettingsClient model routing", () => {
             {
               model: {
                 id: "nano-banana-2",
+                aliases: [],
                 name: "Nano Banana 2",
                 provider: "fal",
                 kind: "image",
@@ -3909,7 +3910,7 @@ describe("SettingsClient model routing", () => {
       target: { value: "Gemini 3.1 Flash Image" },
     });
 
-    expect(screen.getAllByRole("option", { name: /Gemini 3.1 Flash Image/ })).toHaveLength(1);
+    expect(screen.getAllByRole("option", { name: /Nano Banana 2/ })).toHaveLength(1);
   });
 
   it("configures multiple OpenAI provider keys inline", async () => {
@@ -4136,6 +4137,7 @@ describe("SettingsClient model routing", () => {
             {
               model: {
                 id: "nano-banana-2",
+                aliases: [],
                 name: "Nano Banana 2",
                 provider: "fal",
                 kind: "image",
@@ -4196,6 +4198,7 @@ describe("SettingsClient model routing", () => {
             {
               model: {
                 id: "nano-banana-2",
+                aliases: [],
                 name: "Nano Banana 2",
                 provider: "Replicate",
                 kind: "image",
@@ -4214,6 +4217,7 @@ describe("SettingsClient model routing", () => {
             {
               model: {
                 id: "claude-sonnet-4",
+                aliases: [],
                 name: "Claude Sonnet 4",
                 provider: "Anthropic",
                 kind: "text",
@@ -4254,6 +4258,7 @@ describe("SettingsClient model routing", () => {
             {
               model: {
                 id: "nano-banana-2",
+                aliases: [],
                 name: "Nano Banana 2",
                 provider: "fal",
                 kind: "image",
@@ -4318,6 +4323,7 @@ describe("SettingsClient model routing", () => {
             {
               model: {
                 id: "gpt-image-2",
+                aliases: [],
                 name: "GPT Image 2",
                 provider: "OpenAI",
                 kind: "image",
@@ -4524,6 +4530,7 @@ describe("SettingsClient model routing", () => {
             {
               model: {
                 id: "gpt-image-2",
+                aliases: [],
                 name: "GPT Image 2",
                 provider: "OpenAI",
                 kind: "image",

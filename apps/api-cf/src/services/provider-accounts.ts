@@ -5,6 +5,7 @@ import type {
 } from "@clash/shared-types";
 import {
   ModelUpstreamIdSchema,
+  normalizeModelId,
   ProviderAccountIdSchema,
 } from "@clash/shared-types";
 
@@ -429,18 +430,23 @@ export async function getProviderCredentials(
     .all<ProviderAccountRow>();
 
   const required = query.requiredCredentials ?? [];
-  const modelCode = trimString(query.modelCode);
+  const rawModelCode = trimString(query.modelCode);
+  const modelCode = normalizeModelId(rawModelCode) ?? rawModelCode;
   const rows = (result.results ?? [])
     .filter((row) => !query.region || !row.region || row.region === query.region)
     .filter((row) => {
       if (!modelCode) return true;
       const supportedModelIds = parseSupportedModelIds(row.supported_model_ids);
-      return !supportedModelIds?.length || supportedModelIds.includes(modelCode);
+      return !supportedModelIds?.length ||
+        supportedModelIds.map((id) => normalizeModelId(id) ?? id.trim()).includes(modelCode);
     })
     .sort((a, b) => {
       if (modelCode) {
-        const aPriority = parseModelPriorities(a.model_priorities)?.[modelCode];
-        const bPriority = parseModelPriorities(b.model_priorities)?.[modelCode];
+        const priorityForModel = (priorities: Record<string, number> | undefined) =>
+          priorities?.[modelCode] ?? Object.entries(priorities ?? {})
+            .find(([candidate]) => (normalizeModelId(candidate) ?? candidate.trim()) === modelCode)?.[1];
+        const aPriority = priorityForModel(parseModelPriorities(a.model_priorities));
+        const bPriority = priorityForModel(parseModelPriorities(b.model_priorities));
         if (aPriority !== undefined || bPriority !== undefined) {
           const priority = (aPriority ?? Number.POSITIVE_INFINITY) - (bPriority ?? Number.POSITIVE_INFINITY);
           if (priority !== 0) return priority;

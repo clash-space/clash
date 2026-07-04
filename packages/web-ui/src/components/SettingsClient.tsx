@@ -2675,6 +2675,7 @@ function ModelRoutingSection({
                 icon: <ModelKindIcon kind={model.kind} />,
                 label: model.name,
                 description: '',
+                searchText: [model.id, ...(model.aliases ?? [])].join(' '),
             };
             option.description = providerTestModelOptionDescription(option);
             return option;
@@ -2685,6 +2686,7 @@ function ModelRoutingSection({
             value: model.id,
             label: model.name,
             description: model.id,
+            searchText: (model.aliases ?? []).join(' '),
         }));
         const providerTestOptions = allProviderModelOptions.filter((option) =>
             modelAccessMode !== 'specific' || selectedSupportedModelIds.has(option.value),

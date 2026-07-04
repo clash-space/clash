@@ -608,6 +608,7 @@ describe("model upstream routing", () => {
         models: [
           {
             id: "custom-model",
+            aliases: [],
             name: "Custom Model",
             kind: "image",
             upstreamModel: "team/custom-model",
@@ -633,8 +634,8 @@ describe("model upstream routing", () => {
       support.upstreamId === "google-agent-platform" &&
       support.region === "global"
     );
-    const aiStudioFlashRoutes = aiStudio?.models.filter((model) => model.id === "gemini-3.1-flash-image");
-    const agentPlatformFlashRoutes = agentPlatform?.models.filter((model) => model.id === "gemini-3.1-flash-image");
+    const aiStudioFlashRoutes = aiStudio?.models.filter((model) => model.id === "nano-banana-2");
+    const agentPlatformFlashRoutes = agentPlatform?.models.filter((model) => model.id === "nano-banana-2");
 
     expect(aiStudioFlashRoutes).toEqual([
       expect.objectContaining({
@@ -821,6 +822,38 @@ describe("model upstream routing", () => {
 
     expect(nanoRoute?.providerId).toBe("replicate");
     expect(fluxRoute?.providerId).toBe("fal");
+  });
+
+  it("normalizes model aliases before applying configured provider scopes and priorities", () => {
+    const route = resolveModelUpstreamRoute({
+      modelCode: "gemini-3.1-flash-image",
+      kind: "image",
+      configuredProviders: [
+        {
+          providerId: "fal",
+          upstreamId: "fal",
+          enabled: true,
+          configuredCredentials: ["apiKey"],
+          supportedModelIds: ["gemini-3.1-flash-image"],
+          modelPriorities: { "gemini-3.1-flash-image": 20 },
+        },
+        {
+          providerId: "replicate",
+          upstreamId: "replicate",
+          enabled: true,
+          configuredCredentials: ["apiKey"],
+          supportedModelIds: ["nano-banana-2"],
+          modelPriorities: { "nano-banana-2": 10 },
+        },
+      ],
+    });
+
+    expect(route).toMatchObject({
+      modelCode: "nano-banana-2",
+      providerId: "replicate",
+      upstreamId: "replicate",
+      upstreamModel: "google/nano-banana-2",
+    });
   });
 
   it("uses a provider model priority even when another key in that provider has higher key priority", () => {
@@ -1060,6 +1093,68 @@ describe("model upstream routing", () => {
       apiShape: "replicate",
       requiredCredentials: ["apiKey"],
     });
+  });
+
+  it("treats Google image model names as aliases for Clash canonical model ids", () => {
+    const proRoute = resolveModelUpstreamRoute({
+      modelCode: "gemini-3-pro-image",
+      kind: "image",
+      configuredProviders: [
+        {
+          providerId: "official",
+          upstreamId: "google-agent-platform",
+          region: "global",
+          enabled: true,
+          configuredCredentials: ["vertexCredentials"],
+        },
+      ],
+    });
+    const fakeProRoute = resolveModelUpstreamRoute({
+      modelCode: "not-a-real-google-image-model",
+      kind: "image",
+      configuredProviders: [
+        {
+          providerId: "official",
+          upstreamId: "google-agent-platform",
+          region: "global",
+          enabled: true,
+          configuredCredentials: ["vertexCredentials"],
+        },
+      ],
+    });
+    const flashRoute = resolveModelUpstreamRoute({
+      modelCode: "gemini-3.1-flash-image",
+      kind: "image",
+      configuredProviders: [
+        {
+          providerId: "official",
+          upstreamId: "google-agent-platform",
+          region: "global",
+          enabled: true,
+          configuredCredentials: ["vertexCredentials"],
+        },
+      ],
+    });
+
+    expect(proRoute).toMatchObject({
+      modelCode: "nano-banana-pro",
+      upstreamModel: "gemini-3-pro-image",
+    });
+    expect(fakeProRoute).toBeNull();
+    expect(flashRoute).toMatchObject({
+      modelCode: "nano-banana-2",
+      upstreamModel: "gemini-3.1-flash-image",
+    });
+  });
+
+  it("lists Clash canonical image models instead of provider model aliases", () => {
+    const entries = listModelCatalogEntries();
+    const ids = entries.map((entry) => entry.model.id);
+
+    expect(ids).toContain("nano-banana-2");
+    expect(ids).toContain("nano-banana-pro");
+    expect(ids).not.toContain("gemini-3.1-flash-image");
+    expect(ids).not.toContain("gemini-3-pro-image");
   });
 
   it("keeps official provider accounts separate from internal upstream adapters and regions", () => {

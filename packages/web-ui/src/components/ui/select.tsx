@@ -18,6 +18,7 @@ export interface SelectOption<Value extends SelectValue = string> {
     value: Value;
     label: ReactNode;
     description?: ReactNode;
+    searchText?: string;
     icon?: ReactNode;
     disabled?: boolean;
     selected?: boolean;

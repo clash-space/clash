@@ -1038,8 +1038,8 @@ describe("local API app", () => {
       providerId: "official",
       upstreamId: "google-ai-studio",
       region: "global",
-      modelId: "gemini-3.1-flash-image",
-      message: "Google AI Studio configuration is ready for Gemini 3.1 Flash Image.",
+      modelId: "nano-banana-2",
+      message: "Google AI Studio configuration is ready for Nano Banana 2.",
     });
   });
 
