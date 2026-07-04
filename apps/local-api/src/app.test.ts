@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -387,6 +387,54 @@ describe("local API app", () => {
       candidateProviders: ["official"],
       missingCredentials: ["apiKey"],
     });
+  });
+
+  it("does not expose legacy or incomplete official provider accounts from persisted state", async () => {
+    await writeFile(
+      join(dataDir, "db.json"),
+      JSON.stringify({
+        providerAccounts: [
+          {
+            userId: "local-user",
+            providerId: "official",
+            upstreamId: "google",
+            region: "global",
+            enabled: true,
+            priority: 20,
+          },
+          {
+            userId: "local-user",
+            providerId: "official",
+            region: "global",
+            enabled: true,
+            priority: 15,
+          },
+          {
+            userId: "local-user",
+            providerId: "official",
+            upstreamId: "google-agent-platform",
+            region: "global",
+            enabled: true,
+            priority: 25,
+            credentials: { vertexCredentials: "{}" },
+          },
+        ],
+      }),
+      "utf8",
+    );
+
+    const app = createLocalApiApp({ dataDir, userId: "local-user" });
+    const response = await app.request("/api/v1/model-providers");
+    const body = (await response.json()) as { providers: Array<Record<string, unknown>> };
+
+    expect(body.providers).toEqual([
+      expect.objectContaining({
+        providerId: "official",
+        upstreamId: "google-agent-platform",
+        region: "global",
+        configuredCredentials: ["vertexCredentials"],
+      }),
+    ]);
   });
 
   it("appends a second provider key without replacing an existing id-less account", async () => {

@@ -234,6 +234,14 @@ function oauthForAccount(account: Pick<LocalProviderAccountConfig, "id" | "provi
   return hasDreamina ? ["dreamina"] : [];
 }
 
+function isRuntimeProviderAccount(account: LocalProviderAccountConfig): boolean {
+  if (!PROVIDER_IDS.has(account.providerId)) return false;
+  if (account.providerId === "official") {
+    return Boolean(account.upstreamId && UPSTREAM_IDS.has(account.upstreamId));
+  }
+  return !account.upstreamId || UPSTREAM_IDS.has(account.upstreamId);
+}
+
 export function publicProviderAccounts(
   stored: LocalProviderAccountConfig[],
   userId: string,
@@ -252,6 +260,7 @@ export function providerAccountsForRuntime(
   for (const account of oauthAccounts(oauthRecords, userId)) merged.set(providerAccountKey(account), account);
   for (const account of stored) {
     if ((account.userId ?? userId) !== userId) continue;
+    if (!isRuntimeProviderAccount(account)) continue;
     merged.set(providerAccountKey(account), account);
   }
   return [...merged.values()]
