@@ -1,5 +1,5 @@
 import { spawn, spawnSync } from "node:child_process";
-import { mkdirSync, symlinkSync } from "node:fs";
+import { mkdirSync, symlinkSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { copyFile, mkdir, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -609,8 +609,22 @@ function runDirectCanvasReadTokenCas() {
 
 function runProjectionPathGuards() {
   const symlinkTarget = path.join(artifactRoot, "outside-projection-target");
+  const lockSymlinkTarget = path.join(artifactRoot, "outside-lock-target");
   mkdirSync(path.join(symlinkTarget, "text"), { recursive: true });
+  mkdirSync(lockSymlinkTarget, { recursive: true });
   symlinkSync(symlinkTarget, path.join(workspace, "symlinked-projections"), "dir");
+  mkdirSync(path.join(workspace, "projections", "text"), { recursive: true });
+  mkdirSync(path.join(workspace, "timelines"), { recursive: true });
+  writeFileSync(path.join(lockSymlinkTarget, "script.lock.json"), "{}\n", "utf8");
+  writeFileSync(path.join(lockSymlinkTarget, "main.timeline.lock.json"), "{}\n", "utf8");
+  symlinkSync(
+    path.join(lockSymlinkTarget, "script.lock.json"),
+    path.join(workspace, "projections", "text", "script.lock.json"),
+  );
+  symlinkSync(
+    path.join(lockSymlinkTarget, "main.timeline.lock.json"),
+    path.join(workspace, "timelines", "main.timeline.lock.json"),
+  );
 
   const textPull = runText([
     "pull",
@@ -664,6 +678,24 @@ function runProjectionPathGuards() {
       /Projection file path must not traverse a symlink outside the current project cwd/i.test(textSymlinkPull.stderr),
     textSymlinkPull.stderr || textSymlinkPull.stdout,
     { command: textSymlinkPull.command },
+  );
+
+  const textLockSidecarPull = runText([
+    "pull",
+    "--project",
+    "project-agent-first-path-guards",
+    "--node",
+    "text-1",
+    "--file",
+    "projections/text/script.md",
+    "--json",
+  ]);
+  recordCheck(
+    "text pull rejects symlinked lock sidecar outside cwd",
+    textLockSidecarPull.status === 1 &&
+      /Projection lock sidecar path must not traverse a symlink outside the current project cwd/i.test(textLockSidecarPull.stderr),
+    textLockSidecarPull.stderr || textLockSidecarPull.stdout,
+    { command: textLockSidecarPull.command },
   );
 
   const timelinePull = runTimeline([
@@ -722,13 +754,33 @@ function runProjectionPathGuards() {
     { command: timelineSymlinkForcedApply.command },
   );
 
+  const timelineLockSidecarPull = runTimeline([
+    "pull",
+    "--project",
+    "project-agent-first-path-guards",
+    "--node",
+    "timeline-1",
+    "--file",
+    "timelines/main.timeline.yaml",
+    "--json",
+  ]);
+  recordCheck(
+    "timeline pull rejects symlinked lock sidecar outside cwd",
+    timelineLockSidecarPull.status === 1 &&
+      /Projection lock sidecar path must not traverse a symlink outside the current project cwd/i.test(timelineLockSidecarPull.stderr),
+    timelineLockSidecarPull.stderr || timelineLockSidecarPull.stdout,
+    { command: timelineLockSidecarPull.command },
+  );
+
   return {
     textPull: { status: textPull.status, stderr: textPull.stderr },
     textForcedApply: { status: textForcedApply.status, stderr: textForcedApply.stderr },
     textSymlinkPull: { status: textSymlinkPull.status, stderr: textSymlinkPull.stderr },
+    textLockSidecarPull: { status: textLockSidecarPull.status, stderr: textLockSidecarPull.stderr },
     timelinePull: { status: timelinePull.status, stderr: timelinePull.stderr },
     timelineForcedApply: { status: timelineForcedApply.status, stderr: timelineForcedApply.stderr },
     timelineSymlinkForcedApply: { status: timelineSymlinkForcedApply.status, stderr: timelineSymlinkForcedApply.stderr },
+    timelineLockSidecarPull: { status: timelineLockSidecarPull.status, stderr: timelineLockSidecarPull.stderr },
   };
 }
 
@@ -968,9 +1020,11 @@ async function main() {
           "text pull rejects projection path outside cwd",
           "text forced apply rejects projection path outside cwd",
           "text pull rejects symlinked projection path outside cwd",
+          "text pull rejects symlinked lock sidecar outside cwd",
           "timeline pull rejects projection path outside cwd",
           "timeline forced apply rejects projection path outside cwd",
           "timeline forced apply rejects symlinked projection path outside cwd",
+          "timeline pull rejects symlinked lock sidecar outside cwd",
         ].every((name) =>
           checks.some((check) => check.name === name && check.status === "pass"),
       ),

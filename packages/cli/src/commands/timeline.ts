@@ -104,6 +104,11 @@ timelineCommand
       file: options.file,
       timeline: options.timeline,
     });
+    const lockPath = resolveTimelineLockPath({
+      cwd: process.cwd(),
+      file: options.file,
+      timeline: options.timeline,
+    });
     const node = await readNode(projectId, options.node);
     if (!node) {
       console.error(`Node not found: ${options.node}`);
@@ -117,11 +122,6 @@ timelineCommand
 
     const yaml = timelineYamlFromNode(node);
     const currentDsl = normalizeTimelineDslForYaml(node.data?.timelineDsl);
-    const lockPath = resolveTimelineLockPath({
-      cwd: process.cwd(),
-      file: options.file,
-      timeline: options.timeline,
-    });
     const lock = createTimelineLock({
       projectId,
       nodeId: options.node,
@@ -161,9 +161,10 @@ timelineCommand
       process.exit(1);
     }
 
-    const lockPath = options.lock ?? resolveTimelineLockPath({
+    const lockPath = resolveTimelineLockPath({
       cwd: process.cwd(),
       file: options.file,
+      lock: options.lock,
       timeline: options.timeline,
     });
     let result: ApplyTimelineDslResult;
@@ -235,9 +236,10 @@ timelineCommand
       process.exit(1);
     }
 
-    const lockPath = options.lock ?? resolveTimelineLockPath({
+    const lockPath = resolveTimelineLockPath({
       cwd: process.cwd(),
       file: options.file,
+      lock: options.lock,
       timeline: options.timeline,
     });
     let result: ReplaceTimelineDslResult;

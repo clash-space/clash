@@ -11,7 +11,8 @@ import {
   parseProjectionLock,
   type ProjectionLockEntity,
   resolveProjectionFilePathInsideCwd,
-  resolveProjectionLockPath,
+  resolveProjectionLockPathInsideCwd,
+  resolveProjectionLockSidecarPathInsideCwd,
 } from "./projection-cas";
 
 export type TextNodeLike = {
@@ -57,9 +58,19 @@ export function resolveTextFilePath(options: {
 export function resolveTextLockPath(options: {
   cwd: string;
   file?: string;
+  lock?: string;
   nodeId: string;
 }): string {
-  return resolveProjectionLockPath(resolveTextFilePath(options));
+  if (options.lock) {
+    return resolveProjectionLockSidecarPathInsideCwd({
+      lockPath: options.lock,
+      cwd: options.cwd,
+    });
+  }
+  return resolveProjectionLockPathInsideCwd({
+    filePath: resolveTextFilePath(options),
+    cwd: options.cwd,
+  });
 }
 
 export function textContentFromNode(node: TextNodeLike): string {

@@ -1,7 +1,7 @@
 import { Command } from "commander";
 import WebSocket from "ws";
 import { chmodSync, writeFileSync, mkdirSync, readdirSync, readFileSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
+import { dirname, join } from "node:path";
 import {
   LoroSyncClient, Canvas,
   parsePromptParts, extractAssetRefs,
@@ -1282,7 +1282,7 @@ function readBody(input?: string): string {
 }
 
 function resolveTimelineApplyLockPath(input?: string, lock?: string): string | null {
-  if (lock) return resolve(process.cwd(), lock);
+  if (lock) return resolveTimelineLockPath({ cwd: process.cwd(), lock });
   if (!input || input === "-") return null;
   return resolveTimelineLockPath({ cwd: process.cwd(), file: input });
 }

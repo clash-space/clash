@@ -14,7 +14,8 @@ import {
   parseProjectionLock,
   type ProjectionLockEntity,
   resolveProjectionFilePathInsideCwd,
-  resolveProjectionLockPath,
+  resolveProjectionLockPathInsideCwd,
+  resolveProjectionLockSidecarPathInsideCwd,
 } from "./projection-cas";
 
 export type TimelineNodeLike = {
@@ -137,9 +138,19 @@ export function resolveTimelineFilePath(options: {
 export function resolveTimelineLockPath(options: {
   cwd: string;
   file?: string;
+  lock?: string;
   timeline?: string;
 }): string {
-  return resolveProjectionLockPath(resolveTimelineFilePath(options));
+  if (options.lock) {
+    return resolveProjectionLockSidecarPathInsideCwd({
+      lockPath: options.lock,
+      cwd: options.cwd,
+    });
+  }
+  return resolveProjectionLockPathInsideCwd({
+    filePath: resolveTimelineFilePath(options),
+    cwd: options.cwd,
+  });
 }
 
 export function timelineProjectionCasApply(options: {

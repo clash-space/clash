@@ -127,8 +127,35 @@ export function assertProjectionFilePathInsideCwd(options: {
   cwd: string;
   writeVerb: string;
 }): ProjectionCasResult {
+  return assertProjectionPathInsideCwd({
+    path: options.filePath,
+    cwd: options.cwd,
+    subject: "Projection file path",
+    valueLabel: `${options.writeVerb} file`,
+  });
+}
+
+export function assertProjectionLockSidecarPathInsideCwd(options: {
+  lockPath: string;
+  cwd: string;
+  writeVerb: string;
+}): ProjectionCasResult {
+  return assertProjectionPathInsideCwd({
+    path: options.lockPath,
+    cwd: options.cwd,
+    subject: "Projection lock sidecar path",
+    valueLabel: `${options.writeVerb} lock`,
+  });
+}
+
+function assertProjectionPathInsideCwd(options: {
+  path: string;
+  cwd: string;
+  subject: string;
+  valueLabel: string;
+}): ProjectionCasResult {
   const cwd = resolve(options.cwd);
-  const filePath = normalizeProjectionPathForCompare(options.filePath, cwd);
+  const filePath = normalizeProjectionPathForCompare(options.path, cwd);
   const relativePath = relative(cwd, filePath);
   const escapes = relativePath === ".." || relativePath.startsWith(`..${sep}`) || isAbsolute(relativePath);
   const inside = relativePath === "" || !escapes;
@@ -136,16 +163,17 @@ export function assertProjectionFilePathInsideCwd(options: {
     return {
       ok: false,
       error:
-        `Projection file path must stay inside the current project cwd. ` +
-        `${options.writeVerb} file is ${options.filePath}, cwd is ${options.cwd}.`,
+        `${options.subject} must stay inside the current project cwd. ` +
+        `${options.valueLabel} is ${options.path}, cwd is ${options.cwd}.`,
     };
   }
   const realPathResult = assertExistingProjectionPathRealpathInsideCwd({
     filePath,
     cwd,
-    originalFilePath: options.filePath,
+    originalPath: options.path,
     originalCwd: options.cwd,
-    writeVerb: options.writeVerb,
+    subject: options.subject,
+    valueLabel: options.valueLabel,
   });
   if (!realPathResult.ok) return realPathResult;
   return { ok: true };
@@ -154,9 +182,10 @@ export function assertProjectionFilePathInsideCwd(options: {
 function assertExistingProjectionPathRealpathInsideCwd(options: {
   filePath: string;
   cwd: string;
-  originalFilePath: string;
+  originalPath: string;
   originalCwd: string;
-  writeVerb: string;
+  subject: string;
+  valueLabel: string;
 }): ProjectionCasResult {
   let cwdRealPath: string;
   try {
@@ -181,8 +210,8 @@ function assertExistingProjectionPathRealpathInsideCwd(options: {
   return {
     ok: false,
     error:
-      `Projection file path must not traverse a symlink outside the current project cwd. ` +
-      `${options.writeVerb} file is ${options.originalFilePath}, cwd is ${options.originalCwd}.`,
+      `${options.subject} must not traverse a symlink outside the current project cwd. ` +
+      `${options.valueLabel} is ${options.originalPath}, cwd is ${options.originalCwd}.`,
   };
 }
 
@@ -208,6 +237,30 @@ export function resolveProjectionFilePathInsideCwd(options: {
   });
   if (!result.ok) throw new Error(result.error);
   return filePath;
+}
+
+export function resolveProjectionLockPathInsideCwd(options: {
+  filePath: string;
+  cwd: string;
+}): string {
+  return resolveProjectionLockSidecarPathInsideCwd({
+    lockPath: resolveProjectionLockPath(options.filePath),
+    cwd: options.cwd,
+  });
+}
+
+export function resolveProjectionLockSidecarPathInsideCwd(options: {
+  lockPath: string;
+  cwd: string;
+}): string {
+  const lockPath = normalizeProjectionPathForCompare(options.lockPath, options.cwd);
+  const result = assertProjectionLockSidecarPathInsideCwd({
+    lockPath,
+    cwd: options.cwd,
+    writeVerb: "Projection",
+  });
+  if (!result.ok) throw new Error(result.error);
+  return lockPath;
 }
 
 export function normalizeProjectionPathForCompare(path: string, cwd?: string): string {

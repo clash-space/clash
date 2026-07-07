@@ -223,19 +223,21 @@ Assertions:
   current cwd,
 - public text/timeline projection commands reject symlinked projection parents
   that resolve outside the current cwd,
+- public text/timeline projection commands reject symlinked lock sidecars that
+  resolve outside the current cwd,
 - storyboard prompt-pack COW replacement writes a versioned projection while
   the managed projection remains unchanged.
 
 Latest deterministic report:
 
 ```text
-.tmp/agent-first-cas/2026-07-07T14-24-25-473Z/agent-first-cas-report.json
+.tmp/agent-first-cas/2026-07-07T14-39-33-360Z/agent-first-cas-report.json
 ```
 
 Result:
 
 - `status: pass`
-- 29 checks passed,
+- 31 checks passed,
 - `projectionPathOutsideCwdRejected: true`.
 
 ### Suite C3: Local API Receipt CAS Smoke
@@ -746,7 +748,8 @@ Current status:
 - `apps/desktop/e2e/agent-first-cas-smoke.mjs` now covers public CLI
   read-proof rejection for missing/stale/wrong-file locks, text/timeline
   outside-cwd and symlink-outside-cwd projection path rejection including
-  forced apply, daemon direct canvas read-token rejection/acceptance, public
+  forced apply, text/timeline symlinked lock-sidecar rejection, daemon direct
+  canvas read-token rejection/acceptance, public
   `clash canvas get/update/delete` read-token and mutation-envelope enforcement
   through a daemon socket, and prompt-pack COW preservation; QA agent reports
   must include `cas.*` evidence from that smoke.

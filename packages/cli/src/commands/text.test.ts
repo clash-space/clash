@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, symlinkSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
@@ -138,6 +139,22 @@ test("resolves the default agent-editable text file path under the cwd", () => {
   assert.throws(
     () => resolveTextFilePath({ cwd: "/tmp/project", file: "/tmp/other-project/script.md", nodeId: "text_node" }),
     /Projection file path must stay inside the current project cwd/,
+  );
+});
+
+test("rejects symlinked text lock sidecars that resolve outside cwd", () => {
+  const root = mkdtempSync(join(tmpdir(), "clash-text-lock-"));
+  const cwd = join(root, "project");
+  const outside = join(root, "outside");
+  const textDir = join(cwd, "projections", "text");
+  mkdirSync(textDir, { recursive: true });
+  mkdirSync(outside, { recursive: true });
+  writeFileSync(join(outside, "script.lock.json"), "{}\n", "utf8");
+  symlinkSync(join(outside, "script.lock.json"), join(textDir, "script.lock.json"));
+
+  assert.throws(
+    () => resolveTextLockPath({ cwd, file: join(textDir, "script.md"), nodeId: "script" }),
+    /Projection lock sidecar path must not traverse a symlink outside the current project cwd/,
   );
 });
 

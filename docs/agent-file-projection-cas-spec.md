@@ -467,6 +467,8 @@ Projection commands must reject unsafe paths:
   into the canonical project root,
 - symlink traversal into outside/protected directories after realpath
   resolution,
+- lock sidecar paths that resolve outside cwd or traverse symlinks outside
+  cwd,
 - lock file whose `filePath` does not resolve to the applied file,
 - lock/project mismatch,
 - lock/entity mismatch,
@@ -800,6 +802,8 @@ Errors should be explicit and recoverable:
 - `Projection file path does not match lock path.`
 - `Projection file path must stay inside the current project cwd.`
 - `Projection file path must not traverse a symlink outside the current project cwd.`
+- `Projection lock sidecar path must stay inside the current project cwd.`
+- `Projection lock sidecar path must not traverse a symlink outside the current project cwd.`
 - `This node has downstream references. Use copy-on-write or explicit replace.`
 - `Projection contains a non-editable field.`
 - `Projection would expose a secret.`
@@ -813,6 +817,7 @@ Errors should be explicit and recoverable:
 - path traversal/outside-cwd rejection, including `--force` not bypassing the
   cwd boundary,
 - symlink-to-protected-dir rejection,
+- lock sidecar path and symlink escape rejection,
 - stale hash rejection,
 - force bypass reporting,
 - legacy timeline lock compatibility,

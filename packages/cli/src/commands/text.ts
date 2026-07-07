@@ -125,9 +125,10 @@ textCommand
       file: options.file,
       nodeId: options.node,
     });
-    const lockPath = options.lock ?? resolveTextLockPath({
+    const lockPath = resolveTextLockPath({
       cwd: process.cwd(),
       file: options.file,
+      lock: options.lock,
       nodeId: options.node,
     });
     let result: ApplyTextContentResult;
@@ -184,9 +185,10 @@ textCommand
       file: options.file,
       nodeId: options.node,
     });
-    const lockPath = options.lock ?? resolveTextLockPath({
+    const lockPath = resolveTextLockPath({
       cwd: process.cwd(),
       file: options.file,
+      lock: options.lock,
       nodeId: options.node,
     });
     let result: ReplaceTextContentResult;

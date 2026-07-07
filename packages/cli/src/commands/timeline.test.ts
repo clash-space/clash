@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { mkdtemp } from "node:fs/promises";
-import { readFileSync } from "node:fs";
+import { mkdirSync, readFileSync, symlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { timelineDslHash } from "@clash/shared-types";
@@ -95,6 +95,22 @@ test("resolves the default agent-editable timeline YAML path under the cwd", asy
   assert.throws(
     () => resolveTimelineFilePath({ cwd: "/tmp/project", file: "/tmp/other-project/main.timeline.yaml" }),
     /Projection file path must stay inside the current project cwd/,
+  );
+});
+
+test("rejects symlinked timeline lock sidecars that resolve outside cwd", async () => {
+  const root = await mkdtemp(join(tmpdir(), "clash-timeline-lock-"));
+  const cwd = join(root, "project");
+  const outside = join(root, "outside");
+  const timelinesDir = join(cwd, "timelines");
+  mkdirSync(timelinesDir, { recursive: true });
+  mkdirSync(outside, { recursive: true });
+  writeFileSync(join(outside, "main.timeline.lock.json"), "{}\n", "utf8");
+  symlinkSync(join(outside, "main.timeline.lock.json"), join(timelinesDir, "main.timeline.lock.json"));
+
+  assert.throws(
+    () => resolveTimelineLockPath({ cwd }),
+    /Projection lock sidecar path must not traverse a symlink outside the current project cwd/,
   );
 });
 
