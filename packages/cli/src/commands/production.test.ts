@@ -232,7 +232,20 @@ test("applies MV beat metadata to an audio asset and writes timeline edit hints"
 
   assert.equal(result.targetAssetId, "asset-song");
   assert.equal(result.metadataPath, join(cwd, "projections", "metadata", "asset-song.audio.beat-analysis.json"));
+  assert.equal(result.metadataLockPath, join(cwd, "projections", "metadata", "asset-song.audio.beat-analysis.lock.json"));
   assert.equal(result.timelineProjectionPath, join(cwd, "projections", "timeline-hints", "asset-song.beat-hints.json"));
+  const metadataLock = JSON.parse(
+    await readFile(result.metadataLockPath, "utf8"),
+  );
+  assert.equal(metadataLock.kind, "clash.asset.metadata.lock");
+  assert.equal(metadataLock.projectionKind, "asset-metadata");
+  assert.deepEqual(metadataLock.entity, { kind: "asset", id: "asset-song" });
+  assert.equal(metadataLock.metadataKind, "audio.beat-analysis");
+  assert.equal(metadataLock.filePath, "projections/metadata/asset-song.audio.beat-analysis.json");
+  assert.equal(metadataLock.contentHash.length, 16);
+  assert.equal(metadataLock.contentHash, metadataLock.metadataHash);
+  assert.equal(metadataLock.sourceActionPath, "actions/beat-fill.json");
+  assert.match(metadataLock.sourceActionHash, /^[a-f0-9]{16}$/);
   const assets = JSON.parse(await readFile(assetsPath, "utf8"));
   assert.equal(assets.assets[0].metadata["audio.beat-analysis"].bpm, 128);
   const hints = JSON.parse(await readFile(result.timelineProjectionPath!, "utf8"));

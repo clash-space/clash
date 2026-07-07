@@ -19,6 +19,11 @@ import {
   type SemanticReferenceRole,
   timelineDslToYaml,
 } from "@clash/shared-types";
+import {
+  createProjectionLock,
+  hashProjectionContent,
+  resolveProjectionLockPath,
+} from "./projection-cas";
 
 type ProductionAssetManifestAsset = {
   id: string;
@@ -45,6 +50,7 @@ export type ApplyProductionMetadataActionResult = {
   metadataKind: string;
   assetsPath: string;
   metadataPath: string;
+  metadataLockPath: string;
   timelineProjectionPath?: string;
   transcriptCutPlanPath?: string;
   transcriptProjectionPath?: string;
@@ -83,6 +89,16 @@ export async function applyProductionMetadataAction(
     `${targetAssetFileStem}.${metadataKindFileStem}.json`,
   );
   await writeJson(metadataPath, action.metadata);
+  const metadataLockPath = resolveProjectionLockPath(metadataPath);
+  await writeJson(metadataLockPath, createAssetMetadataLock({
+    cwd,
+    targetAssetId: action.targetAssetId,
+    metadataKind: action.metadataKind,
+    metadata: action.metadata,
+    metadataPath,
+    actionPath,
+    action,
+  }));
 
   const result: ApplyProductionMetadataActionResult = {
     applied: true,
@@ -90,6 +106,7 @@ export async function applyProductionMetadataAction(
     metadataKind: action.metadataKind,
     assetsPath,
     metadataPath,
+    metadataLockPath,
   };
 
   switch (action.metadata.kind) {
@@ -830,6 +847,36 @@ function preflightProductionMetadataGeneratedAssetPaths(metadata: ProductionMeta
   }
 }
 
+function createAssetMetadataLock(options: {
+  cwd: string;
+  targetAssetId: string;
+  metadataKind: string;
+  metadata: ProductionMetadata;
+  metadataPath: string;
+  actionPath: string;
+  action: unknown;
+}) {
+  const metadataHash = productionMetadataHash(options.metadata);
+  return createProjectionLock({
+    kind: "clash.asset.metadata.lock",
+    projectionKind: "asset-metadata",
+    entity: { kind: "asset", id: options.targetAssetId },
+    filePath: toProjectPath(options.cwd, options.metadataPath),
+    contentHash: metadataHash,
+    extra: {
+      targetAssetId: options.targetAssetId,
+      metadataKind: options.metadataKind,
+      metadataHash,
+      sourceActionPath: toProjectPath(options.cwd, options.actionPath),
+      sourceActionHash: productionMetadataHash(options.action),
+    },
+  });
+}
+
+function productionMetadataHash(value: unknown): string {
+  return hashProjectionContent(stableJson(value));
+}
+
 function parseAssetManifest(raw: string, path: string): ProductionAssetManifest {
   const parsed = JSON.parse(raw) as Partial<ProductionAssetManifest>;
   if (!Array.isArray(parsed.assets)) {
@@ -860,6 +907,19 @@ function resolveLocalPath(cwd: string, path: string, label: string): string {
     return resolved;
   }
   throw new Error(`${label} path must stay inside the current project cwd`);
+}
+
+function toProjectPath(cwd: string, absolutePath: string): string {
+  return relative(resolve(cwd), absolutePath).split(/[\\/]+/).join("/");
+}
+
+function stableJson(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(stableJson).join(",")}]`;
+  if (value && typeof value === "object") {
+    const keys = Object.keys(value as object).sort();
+    return `{${keys.map((key) => `${JSON.stringify(key)}:${stableJson((value as Record<string, unknown>)[key])}`).join(",")}}`;
+  }
+  return JSON.stringify(value);
 }
 
 async function writeJson(path: string, value: unknown): Promise<void> {

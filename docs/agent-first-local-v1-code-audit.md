@@ -68,11 +68,12 @@ The main v1 gaps are:
   `clash canvas replace-asset` COW path; storyboard prompt-pack replacement now
   has a first-pass explicit `clash production replace-storyboard-prompt-pack`
   path. Prompt-pack locks now require source action path/hash proof and reject
-  locks with stripped source proof. Text, timeline, and storyboard prompt-pack
-  locks share a generic projection identity envelope while keeping legacy
-  sidecar parsing. Broader storyboard host/UI integration, recovery/rewire
-  flows, and adoption of the generic lock envelope by remaining storyboard and
-  asset metadata projections remain pending.
+  locks with stripped source proof. Text, timeline, storyboard prompt-pack, and
+  primary asset metadata locks share a generic projection identity envelope
+  while keeping legacy sidecar parsing where applicable. Broader storyboard
+  host/UI integration, recovery/rewire flows, and adoption of the generic lock
+  envelope by remaining storyboard and derived metadata projections remain
+  pending.
 
 ## Evidence Snapshot
 
@@ -209,11 +210,11 @@ validates the expected timeline hash in the running daemon path.
 Conclusion:
 
 - Timeline has the right v1 pattern.
-- Text, timeline, and storyboard prompt-pack now use a generic projection lock
-  identity shape (`projectionKind`, `entity`, `contentHash`) instead of only
-  projection-specific fields.
-- Remaining storyboard and asset metadata projection families should adopt that
-  envelope rather than copying one-off lock formats.
+- Text, timeline, storyboard prompt-pack, and primary asset metadata now use a
+  generic projection lock identity shape (`projectionKind`, `entity`,
+  `contentHash`) instead of only projection-specific fields.
+- Remaining storyboard and derived metadata projection families should adopt
+  that envelope rather than copying one-off lock formats.
 
 Spec: `agent-file-projection-cas-spec.md`.
 

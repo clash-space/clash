@@ -78,6 +78,7 @@ productionCommand
       }
       console.log(`applied ${result.metadataKind} to ${result.targetAssetId}`);
       console.log(`metadata: ${result.metadataPath}`);
+      console.log(`metadata lock: ${result.metadataLockPath}`);
       if (result.timelineProjectionPath) console.log(`projection: ${result.timelineProjectionPath}`);
       if (result.blockedReason) console.log(`blocked: ${result.blockedReason}`);
     } catch (error) {

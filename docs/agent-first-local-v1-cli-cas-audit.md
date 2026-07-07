@@ -114,6 +114,7 @@ Examples:
 | `clash tasks status/wait` | Read-only/polling | Not needed | Safe inspection |
 | `clash models provider set` | Provider account config mutation | Read-token CAS for agents | Use `clash models providers --json` then `clash models provider set <PROVIDER> --if-match <readToken>`; `--force` is the explicit overwrite escape hatch |
 | `clash production plan-review-gate/approve-review-gate` | Writes local review gate JSON plus lock; approval checks lock file path and hash | OK | Keep as read-proof CAS for review decisions; durable DB/multi-user review UI is separate |
+| `clash production apply-metadata` | Applies action metadata to an asset manifest and writes the primary metadata projection plus generic lock sidecar | Partial | Keep the generic lock envelope and source-action hash; future editable metadata apply must use the lock/read-proof instead of blind overwrite |
 | `clash production apply-storyboard-prompt-pack` | Applies edited prompt-pack JSON through a generic projection lock envelope plus source-action proof | OK | Keep hash, entity, source-action, and file-path mismatch rejection; host-issued receipt remains separate |
 | `clash production replace-storyboard-prompt-pack` | Creates a versioned COW prompt-pack projection from a locked prompt-pack JSON file | OK | Same generic lock as read proof; source managed prompt-pack stale rejection; does not move existing downstream references |
 | `clash vars set/delete` | Remote variable compatibility | Not local CAS | Remote-only compatibility; not local v1 auth path |
@@ -149,11 +150,12 @@ Text now has:
   text node.
 
 The direct read-token primitive is now shared in
-`packages/shared-types/src/agent-read-proof.ts`. Text, timeline, and storyboard
-prompt-pack projections now also share the projection lock identity envelope
-through `packages/cli/src/lib/projection-cas.ts`. The remaining duplication is
-in the other storyboard, prompt, and asset metadata projections that still need
-to adopt that envelope instead of growing one-off lock formats.
+`packages/shared-types/src/agent-read-proof.ts`. Text, timeline, storyboard
+prompt-pack, and primary asset metadata projections now also share the
+projection lock identity envelope through
+`packages/cli/src/lib/projection-cas.ts`. The remaining duplication is in the
+other storyboard, prompt, and derived metadata projections that still need to
+adopt that envelope instead of growing one-off lock formats.
 
 ### Direct node patch is the main bypass risk
 
