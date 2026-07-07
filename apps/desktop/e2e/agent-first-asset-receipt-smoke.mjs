@@ -1399,6 +1399,49 @@ async function main() {
     await rm(escapedUploadTarget, { recursive: true, force: true });
   }
 
+  const rootSymlinkDataDir = path.join(artifactRoot, "local-api-root-symlink-data");
+  const escapedAssetRootTarget = path.join(artifactRoot, "outside-asset-root-target");
+  const symlinkedAssetRoot = path.join(rootSymlinkDataDir, "assets");
+  await mkdir(rootSymlinkDataDir, { recursive: true });
+  await mkdir(escapedAssetRootTarget, { recursive: true });
+  await symlink(escapedAssetRootTarget, symlinkedAssetRoot);
+  try {
+    const rootSymlinkApp = createLocalApiApp({
+      dataDir: rootSymlinkDataDir,
+      userId: "asset-receipt-root-symlink-user",
+    });
+    const rootSymlinkRequest = appRequest(rootSymlinkApp);
+    const rootSymlinkForm = new FormData();
+    rootSymlinkForm.append("file", new File(["root-escape"], "root escape.txt", { type: "text/plain" }));
+    const rootSymlinkUploadResponse = await rootSymlinkRequest("/upload", {
+      method: "POST",
+      body: rootSymlinkForm,
+    });
+    const rootSymlinkUpload = await parseJsonResponse(rootSymlinkUploadResponse);
+    recordCheck(
+      "asset upload rejects symlinked root outside local asset storage",
+      rootSymlinkUploadResponse.status === 400 &&
+        rootSymlinkUpload.error === "Asset path escapes local asset storage" &&
+        rootSymlinkUpload.mutation?.accepted === false &&
+        (await readdir(escapedAssetRootTarget)).length === 0,
+      JSON.stringify(rootSymlinkUpload),
+      { mutation: rootSymlinkUpload.mutation },
+    );
+
+    await mkdir(path.join(escapedAssetRootTarget, "uploads"), { recursive: true });
+    await writeFile(path.join(escapedAssetRootTarget, "uploads", "outside.txt"), "outside", "utf8");
+    const rootSymlinkReadResponse = await rootSymlinkRequest("/assets/uploads/outside.txt");
+    recordCheck(
+      "asset reads reject symlinked root outside local asset storage",
+      rootSymlinkReadResponse.status === 404 && await rootSymlinkReadResponse.text() !== "outside",
+      `status=${rootSymlinkReadResponse.status}`,
+    );
+  } finally {
+    await rm(symlinkedAssetRoot, { force: true });
+    await rm(escapedAssetRootTarget, { recursive: true, force: true });
+    await rm(rootSymlinkDataDir, { recursive: true, force: true });
+  }
+
   const escapedGeneratedTarget = path.join(artifactRoot, "outside-generated-target");
   const symlinkedGeneratedParent = path.join(dataDir, "assets", "generated");
   await mkdir(escapedGeneratedTarget, { recursive: true });
@@ -2543,7 +2586,9 @@ async function main() {
       customActionCheckpointOverwriteRejected: checks.some((check) => check.name === "custom action upload rejects checkpoint overwrite" && check.status === "pass"),
       customActionCheckpointFilePreserved: checks.some((check) => check.name === "custom action checkpoint file remains first output after rejected overwrite" && check.status === "pass"),
       assetUploadSymlinkParentRejected: checks.some((check) => check.name === "asset upload rejects symlinked parent outside local asset storage" && check.status === "pass"),
+      assetUploadSymlinkRootRejected: checks.some((check) => check.name === "asset upload rejects symlinked root outside local asset storage" && check.status === "pass"),
       assetReadSymlinkParentRejected: checks.some((check) => check.name === "asset reads reject symlinked parent outside local asset storage" && check.status === "pass"),
+      assetReadSymlinkRootRejected: checks.some((check) => check.name === "asset reads reject symlinked root outside local asset storage" && check.status === "pass"),
       workflowGeneratedAssetSymlinkParentRejected: checks.some((check) => check.name === "workflow generated asset writes reject symlinked parent outside local asset storage" && check.status === "pass"),
       assetCreateInvalidStorageKeyRejected: checks.some((check) => check.name === "asset create rejects storage keys outside local asset storage" && check.status === "pass"),
       assetCoverInvalidStorageKeyRejected: checks.some((check) => check.name === "asset cover update rejects storage keys outside local asset storage" && check.status === "pass"),

@@ -540,7 +540,7 @@ Latest direct real Codex ACP resume layout run:
 Latest local-api receipt smoke:
 
 ```text
-.tmp/agent-first-asset-receipts/2026-07-07T16-08-30-689Z/agent-first-asset-receipt-report.json
+.tmp/agent-first-asset-receipts/2026-07-07T16-18-46-276Z/agent-first-asset-receipt-report.json
 ```
 
 Conclusion:
@@ -561,8 +561,8 @@ Conclusion:
 - Session rows and local transcript messages now store in `local.sqlite`;
   direct real Codex layout runs remain the end-to-end evidence for cwd shape.
 - Timeline create/restore smoke is passing in both QA harness targets.
-- Local-api package tests are passing with 288 tests, and the receipt smoke is
-  passing with 133 checks, including read-only
+- Local-api package tests are passing with 290 tests, and the receipt smoke is
+  passing with 135 checks, including read-only
   derived agent views, provider model test action mutation records, local audio
   model install, local audio transcription action mutation records, local harness
   install, provider OAuth restart/complete
@@ -572,8 +572,9 @@ Conclusion:
   read receipt before invoking the local ACP attach hook. Asset reference-index
   refresh now records an accepted host metadata mutation. It also covers immutable
   asset import: same-id different content is rejected and must use a new asset id
-  plus COW replacement. Asset blob upload/read plus workflow-generated asset
-  writes reject symlinked parents outside local asset storage. Custom action
+  plus COW replacement. Asset blob upload/read reject symlinked roots and
+  parents, and workflow-generated asset writes reject symlinked parents outside
+  local asset storage. Custom action
   binary checkpoint outputs now reject same
   task/output reruns with different content before overwriting the checkpoint
   file. Focused Web/CLI/shared-type tests now cover graph/edge read-token CAS

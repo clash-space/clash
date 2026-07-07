@@ -8862,6 +8862,35 @@ describe("local API app", () => {
     }
   });
 
+  it("rejects local asset uploads when the storage root escapes through a symlink", async () => {
+    const outsideDir = await mkdtemp(join(tmpdir(), "clash-local-api-outside-asset-root-"));
+    const assetRootPath = join(dataDir, "assets");
+    try {
+      await symlink(outsideDir, assetRootPath);
+      const app = createLocalApiApp({ dataDir, userId: "local-user" });
+
+      const form = new FormData();
+      form.append("file", new File(["root-escape"], "root escape.txt", { type: "text/plain" }));
+      const upload = await app.request("/upload", { method: "POST", body: form });
+
+      expect(upload.status).toBe(400);
+      expect(await upload.json()).toMatchObject({
+        error: "Asset path escapes local asset storage",
+        mutation: {
+          operation: "asset_blob_upload",
+          entity: { kind: "asset-blob", id: expect.stringMatching(/^uploads\/.+-root_escape\.txt$/) },
+          forced: false,
+          accepted: false,
+          error: "Asset path escapes local asset storage",
+        },
+      });
+      await expect(readdir(outsideDir)).resolves.toEqual([]);
+    } finally {
+      await rm(assetRootPath, { force: true });
+      await rm(outsideDir, { recursive: true, force: true });
+    }
+  });
+
   it("does not serve local assets through a symlinked storage parent outside the asset root", async () => {
     const outsideDir = await mkdtemp(join(tmpdir(), "clash-local-api-outside-read-"));
     try {
@@ -8875,6 +8904,25 @@ describe("local API app", () => {
       expect(served.status).toBe(404);
       expect(await served.text()).not.toBe("outside");
     } finally {
+      await rm(outsideDir, { recursive: true, force: true });
+    }
+  });
+
+  it("does not serve local assets when the storage root escapes through a symlink", async () => {
+    const outsideDir = await mkdtemp(join(tmpdir(), "clash-local-api-outside-root-read-"));
+    const assetRootPath = join(dataDir, "assets");
+    try {
+      await mkdir(join(outsideDir, "uploads"), { recursive: true });
+      await writeFile(join(outsideDir, "uploads", "outside.txt"), "outside");
+      await symlink(outsideDir, assetRootPath);
+      const app = createLocalApiApp({ dataDir, userId: "local-user" });
+
+      const served = await app.request("/assets/uploads/outside.txt");
+
+      expect(served.status).toBe(404);
+      expect(await served.text()).not.toBe("outside");
+    } finally {
+      await rm(assetRootPath, { force: true });
       await rm(outsideDir, { recursive: true, force: true });
     }
   });

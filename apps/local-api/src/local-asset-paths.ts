@@ -50,6 +50,7 @@ function assetPath(dataDir: string, storageKey: string, clashRoot?: string): str
 }
 
 type AssetPathCandidate = {
+  ownerRoot: string;
   root: string;
   path: string;
 };
@@ -57,10 +58,12 @@ type AssetPathCandidate = {
 function localAssetPathCandidate(dataDir: string, storageKey: string, clashRoot?: string): AssetPathCandidate {
   const normalizedKey = normalizeAssetStorageKey(storageKey);
   if (normalizedKey.startsWith("local-blobs/")) {
-    const root = join(inferClashRoot(dataDir, clashRoot), "assets", "blobs");
-    return { root, path: localBlobAssetPath(inferClashRoot(dataDir, clashRoot), normalizedKey) };
+    const ownerRoot = inferClashRoot(dataDir, clashRoot);
+    const root = join(ownerRoot, "assets", "blobs");
+    return { ownerRoot, root, path: localBlobAssetPath(ownerRoot, normalizedKey) };
   }
-  return { root: assetRoot(dataDir), path: assetPath(dataDir, normalizedKey, clashRoot) };
+  const ownerRoot = resolve(dataDir);
+  return { ownerRoot, root: assetRoot(dataDir), path: assetPath(dataDir, normalizedKey, clashRoot) };
 }
 
 function assertRealAssetPathInsideRoot(rootRealPath: string, targetRealPath: string): void {
@@ -81,7 +84,9 @@ async function realpathOrNull(path: string): Promise<string | null> {
 
 export async function assetPathForRead(dataDir: string, storageKey: string, clashRoot?: string): Promise<string> {
   const candidate = localAssetPathCandidate(dataDir, storageKey, clashRoot);
+  const ownerRootRealPath = await realpath(candidate.ownerRoot);
   const rootRealPath = await realpath(candidate.root);
+  assertRealAssetPathInsideRoot(ownerRootRealPath, rootRealPath);
   const targetRealPath = await realpath(candidate.path);
   assertRealAssetPathInsideRoot(rootRealPath, targetRealPath);
   return candidate.path;
@@ -89,9 +94,12 @@ export async function assetPathForRead(dataDir: string, storageKey: string, clas
 
 export async function assetPathForWrite(dataDir: string, storageKey: string, clashRoot?: string): Promise<string> {
   const candidate = localAssetPathCandidate(dataDir, storageKey, clashRoot);
+  await mkdir(candidate.ownerRoot, { recursive: true });
   await mkdir(candidate.root, { recursive: true });
-  await mkdir(dirname(candidate.path), { recursive: true });
+  const ownerRootRealPath = await realpath(candidate.ownerRoot);
   const rootRealPath = await realpath(candidate.root);
+  assertRealAssetPathInsideRoot(ownerRootRealPath, rootRealPath);
+  await mkdir(dirname(candidate.path), { recursive: true });
   const parentRealPath = await realpath(dirname(candidate.path));
   assertRealAssetPathInsideRoot(rootRealPath, parentRealPath);
   const existingTargetRealPath = await realpathOrNull(candidate.path);
@@ -103,8 +111,12 @@ export async function assetPathForWrite(dataDir: string, storageKey: string, cla
 
 export async function assetPathForDelete(dataDir: string, storageKey: string, clashRoot?: string): Promise<string> {
   const candidate = localAssetPathCandidate(dataDir, storageKey, clashRoot);
+  const ownerRootRealPath = await realpathOrNull(candidate.ownerRoot);
   const rootRealPath = await realpathOrNull(candidate.root);
   const parentRealPath = await realpathOrNull(dirname(candidate.path));
+  if (ownerRootRealPath && rootRealPath) {
+    assertRealAssetPathInsideRoot(ownerRootRealPath, rootRealPath);
+  }
   if (rootRealPath && parentRealPath) {
     assertRealAssetPathInsideRoot(rootRealPath, parentRealPath);
   }

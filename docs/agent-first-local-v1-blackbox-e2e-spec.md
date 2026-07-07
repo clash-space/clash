@@ -238,7 +238,7 @@ Assertions:
 - public timeline handoff export rejects symlinked CSV and provenance manifest
   outputs that resolve outside the current cwd,
 - local-api asset blob upload and `/assets/*` reads reject symlinked storage
-  parents that resolve outside local asset storage,
+  roots or parents that resolve outside local asset storage,
 - local workflow generated asset writes reject symlinked `generated/` parents
   that resolve outside local asset storage,
 - storyboard prompt-pack COW replacement writes a versioned projection while
@@ -634,17 +634,18 @@ Result:
 Latest verified asset receipt CAS smoke:
 
 ```text
-.tmp/agent-first-asset-receipts/2026-07-07T16-08-30-689Z/agent-first-asset-receipt-report.json
+.tmp/agent-first-asset-receipts/2026-07-07T16-18-46-276Z/agent-first-asset-receipt-report.json
 ```
 
 Result:
 
 - `status: pass`,
-- 133 checks passed through `npm --prefix apps/desktop run test:e2e:asset-receipts`,
+- 135 checks passed through `npm --prefix apps/desktop run test:e2e:asset-receipts`,
 - derived agent reads stayed read-only, provider model tests and local audio
   transcription actions recorded host mutation envelopes, and local sync, audio,
   harness, custom agent-server, provider account, provider OAuth, asset
-  upload/read plus workflow-generated asset symlinked-parent rejection,
+  upload/read symlinked-root/parent rejection plus workflow-generated asset
+  symlinked-parent rejection,
   metadata/ref/GC, project delete/restore/purge, and session delete agent writes
   rejected missing or bare read proofs; asset create/cover rejected invalid
   storage keys before metadata persistence; the same run also proved the restore
