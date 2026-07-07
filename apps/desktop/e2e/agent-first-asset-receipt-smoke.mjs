@@ -1,7 +1,8 @@
 import { mkdir, readdir, rm, stat, symlink, writeFile } from "node:fs/promises";
+import { createRequire } from "node:module";
 import { DatabaseSync } from "node:sqlite";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const desktopDir = path.resolve(__dirname, "..");
@@ -110,6 +111,9 @@ async function main() {
   const { createLocalApiApp } = await import("../../local-api/src/app.ts");
   const { createLocalAudioConfigStore } = await import("../../local-api/src/audio-config.ts");
   const { FileReplicaStore } = await import("../../local-api/src/loro/file-replica-store.ts");
+  const { LocalLoroRoom } = await import("../../local-api/src/sync.ts");
+  const localApiRequire = createRequire(path.join(repoRoot, "apps/local-api/package.json"));
+  const { LoroDoc } = await import(pathToFileURL(localApiRequire.resolve("loro-crdt")).href);
   const {
     deleteAssetProjectRef,
     fetchAssetProjectRef,
@@ -1395,6 +1399,47 @@ async function main() {
     await rm(escapedUploadTarget, { recursive: true, force: true });
   }
 
+  const escapedGeneratedTarget = path.join(artifactRoot, "outside-generated-target");
+  const symlinkedGeneratedParent = path.join(dataDir, "assets", "generated");
+  await mkdir(escapedGeneratedTarget, { recursive: true });
+  await mkdir(path.dirname(symlinkedGeneratedParent), { recursive: true });
+  await symlink(escapedGeneratedTarget, symlinkedGeneratedParent);
+  try {
+    const workflowProjectId = "project-workflow-generated-symlink";
+    const workflowRoom = await LocalLoroRoom.open({ dataDir, projectId: workflowProjectId });
+    const workflowPeer = workflowRoom.addPeer(() => {});
+    const workflowDoc = new LoroDoc();
+    workflowDoc.getMap("nodes").set("workflow-symlink-image", {
+      id: "workflow-symlink-image",
+      type: "image",
+      position: { x: 0, y: 0 },
+      data: {
+        status: "pending",
+        actionType: "image-gen",
+        prompt: "workflow generated asset must not escape",
+        modelId: "gemini-3.1-flash-image",
+      },
+    });
+    await workflowRoom.receive(workflowPeer, workflowDoc.export({ mode: "snapshot" }));
+    const workflowFinal = new LoroDoc();
+    workflowFinal.import(workflowRoom.snapshot());
+    const workflowNode = workflowFinal.getMap("nodes").get("workflow-symlink-image");
+    const workflowData = workflowNode?.data ?? {};
+    const escapedGeneratedEntries = await readdir(escapedGeneratedTarget);
+    recordCheck(
+      "workflow generated asset writes reject symlinked parent outside local asset storage",
+      workflowData.status === "failed" &&
+        workflowData.assetId == null &&
+        workflowData.error === "Asset path escapes local asset storage" &&
+        escapedGeneratedEntries.length === 0 &&
+        sqliteCount("select count(*) as count from assets where project_id = ?", [workflowProjectId]) === 0,
+      JSON.stringify({ workflowData, escapedGeneratedEntries }),
+    );
+  } finally {
+    await rm(symlinkedGeneratedParent, { force: true });
+    await rm(escapedGeneratedTarget, { recursive: true, force: true });
+  }
+
   const assetRowsBeforeInvalidCreate = sqliteCount("select count(*) as count from assets");
   const invalidAssetCreateResponse = await request("/api/v1/assets", {
     method: "POST",
@@ -2499,6 +2544,7 @@ async function main() {
       customActionCheckpointFilePreserved: checks.some((check) => check.name === "custom action checkpoint file remains first output after rejected overwrite" && check.status === "pass"),
       assetUploadSymlinkParentRejected: checks.some((check) => check.name === "asset upload rejects symlinked parent outside local asset storage" && check.status === "pass"),
       assetReadSymlinkParentRejected: checks.some((check) => check.name === "asset reads reject symlinked parent outside local asset storage" && check.status === "pass"),
+      workflowGeneratedAssetSymlinkParentRejected: checks.some((check) => check.name === "workflow generated asset writes reject symlinked parent outside local asset storage" && check.status === "pass"),
       assetCreateInvalidStorageKeyRejected: checks.some((check) => check.name === "asset create rejects storage keys outside local asset storage" && check.status === "pass"),
       assetCoverInvalidStorageKeyRejected: checks.some((check) => check.name === "asset cover update rejects storage keys outside local asset storage" && check.status === "pass"),
       sessionListReceiptReturned: checks.some((check) => check.name === "session list returns receipt read token" && check.status === "pass"),

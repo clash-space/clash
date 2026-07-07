@@ -58,6 +58,9 @@ The main v1 gaps are:
   resolve outside it, and applies the same cwd/realpath guard to generated
   lock sidecars and explicit `--lock` paths; `--force` does not bypass that
   boundary,
+- local asset storage paths now share a local-api realpath guard for blob
+  upload/read, workflow-generated asset writes, local blob imports, and GC
+  deletion,
 - local room POST/GET now persists to SQLite, keeps raw ACP traces separate,
   and dispatches mentions best-effort to local ACP sessions,
 - CLI keeps `clash vars` for remote worker compatibility; current copy scopes
@@ -537,7 +540,7 @@ Latest direct real Codex ACP resume layout run:
 Latest local-api receipt smoke:
 
 ```text
-.tmp/agent-first-asset-receipts/2026-07-07T04-22-16-630Z/agent-first-asset-receipt-report.json
+.tmp/agent-first-asset-receipts/2026-07-07T16-08-30-689Z/agent-first-asset-receipt-report.json
 ```
 
 Conclusion:
@@ -558,8 +561,8 @@ Conclusion:
 - Session rows and local transcript messages now store in `local.sqlite`;
   direct real Codex layout runs remain the end-to-end evidence for cwd shape.
 - Timeline create/restore smoke is passing in both QA harness targets.
-- Local-api package tests are passing with 268 tests, and the receipt smoke is
-  passing with 108 checks, including read-only
+- Local-api package tests are passing with 288 tests, and the receipt smoke is
+  passing with 133 checks, including read-only
   derived agent views, provider model test action mutation records, local audio
   model install, local audio transcription action mutation records, local harness
   install, provider OAuth restart/complete
@@ -569,7 +572,9 @@ Conclusion:
   read receipt before invoking the local ACP attach hook. Asset reference-index
   refresh now records an accepted host metadata mutation. It also covers immutable
   asset import: same-id different content is rejected and must use a new asset id
-  plus COW replacement. Custom action binary checkpoint outputs now reject same
+  plus COW replacement. Asset blob upload/read plus workflow-generated asset
+  writes reject symlinked parents outside local asset storage. Custom action
+  binary checkpoint outputs now reject same
   task/output reruns with different content before overwriting the checkpoint
   file. Focused Web/CLI/shared-type tests now cover graph/edge read-token CAS
   for runtime ACP edge add/update/delete plus `clash canvas edges --json`.

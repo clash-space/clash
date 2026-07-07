@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm, stat } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, readdir, rm, stat, symlink } from "node:fs/promises";
 import { createServer, type Server } from "node:http";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
@@ -218,6 +218,42 @@ describe("LocalLoroRoom", () => {
     expect(generated).toContain("小狗一只");
     expect(generated).toContain("Mock fal");
     expect(peerUpdates.length).toBeGreaterThan(0);
+  });
+
+  it("rejects generated asset writes when the generated storage parent escapes through a symlink", async () => {
+    const outsideDir = await mkdtemp(join(tmpdir(), "clash-local-sync-outside-generated-"));
+    try {
+      await mkdir(join(dataDir, "assets"), { recursive: true });
+      await symlink(outsideDir, join(dataDir, "assets", "generated"));
+      const room = await LocalLoroRoom.open({ dataDir, projectId: "project/local-gen-symlink" });
+      const peer = room.addPeer(() => {});
+
+      const clientDoc = new LoroDoc();
+      clientDoc.getMap("nodes").set("image-node-symlink", {
+        id: "image-node-symlink",
+        type: "image",
+        position: { x: 0, y: 0 },
+        data: {
+          status: "pending",
+          actionType: "image-gen",
+          prompt: "must not escape",
+          modelId: "gemini-3.1-flash-image",
+        },
+      });
+
+      await room.receive(peer, clientDoc.export({ mode: "snapshot" }));
+
+      const finalDoc = new LoroDoc();
+      finalDoc.import(room.snapshot());
+      const imageNode = finalDoc.getMap("nodes").get("image-node-symlink") as any;
+      expect(imageNode.data.status).toBe("failed");
+      expect(imageNode.data.assetId).toBeUndefined();
+      expect(imageNode.data.error).toBe("Asset path escapes local asset storage");
+      await expect(readdir(outsideDir)).resolves.toEqual([]);
+      await expect(stat(join(dataDir, "local.sqlite"))).rejects.toMatchObject({ code: "ENOENT" });
+    } finally {
+      await rm(outsideDir, { recursive: true, force: true });
+    }
   });
 
   it("processes pending video and audio generation nodes with media-aware mock outputs", async () => {

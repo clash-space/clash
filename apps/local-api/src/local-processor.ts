@@ -1,9 +1,9 @@
-import { mkdir, writeFile } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { writeFile } from "node:fs/promises";
 import type { LoroDoc } from "loro-crdt";
 import type { Asset, AssetKind } from "@clash/shared-types/assets";
 import { createMockExternalAigcService, type ExternalAigcService } from "./local-aigc.js";
 import { createLocalMetadataStore } from "./local-metadata-store.js";
+import { assetPathForWrite } from "./local-asset-paths.js";
 
 export interface LocalWorkflowProcessorInput {
   doc: LoroDoc;
@@ -155,8 +155,7 @@ async function saveAsset(
 ): Promise<Asset> {
   const extension = extensionForContentType(options.contentType);
   const storageKey = `generated/${sanitizeStorageSegment(options.taskId)}${extension}`;
-  const assetPath = join(options.dataDir, "assets", storageKey);
-  await mkdir(dirname(assetPath), { recursive: true });
+  const assetPath = await assetPathForWrite(options.dataDir, storageKey);
   await writeFile(assetPath, options.bytes);
 
   const now = Math.floor(Date.now() / 1000);

@@ -1,6 +1,6 @@
-import { mkdir, readFile, readdir, realpath, rm, stat, writeFile } from "node:fs/promises";
+import { mkdir, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
 import { createHash, createHmac, randomBytes, randomUUID } from "node:crypto";
-import { basename, dirname, extname, isAbsolute, join, normalize, relative, resolve } from "node:path";
+import { basename, dirname, extname, join, resolve } from "node:path";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import type { LoroDoc } from "loro-crdt";
@@ -83,6 +83,14 @@ import {
   type LocalProviderAccountConfig,
   type LocalProviderOAuthRecord,
 } from "./provider-accounts.js";
+import {
+  assetPathForDelete,
+  assetPathForRead,
+  assetPathForWrite,
+  isLocalBlobStorageKey,
+  normalizeAssetStorageKey,
+  normalizeLocalBlobStorageKey,
+} from "./local-asset-paths.js";
 import { createLocalProviderStore } from "./local-provider-store.js";
 import {
   createLocalMetadataStore,
@@ -846,134 +854,12 @@ function createLocalSessionMessageStore(
   };
 }
 
-function assetRoot(dataDir: string): string {
-  return join(dataDir, "assets");
-}
-
-function normalizeAssetStorageKey(storageKey: string): string {
-  const raw = storageKey.trim();
-  if (!raw || raw.includes("\0") || raw.startsWith("/") || /^[a-zA-Z]:/.test(raw)) {
-    throw new Error("Invalid asset storage key");
-  }
-  const slashKey = raw.replace(/\\/g, "/");
-  const segments = slashKey.split("/");
-  if (segments.some((segment) => !segment || segment === "." || segment === "..")) {
-    throw new Error("Invalid asset storage key");
-  }
-  return normalize(slashKey).replace(/\\/g, "/");
-}
-
-function assetPath(dataDir: string, storageKey: string, clashRoot?: string): string {
-  const normalizedKey = normalizeAssetStorageKey(storageKey);
-  if (normalizedKey.startsWith("local-blobs/")) {
-    return localBlobAssetPath(clashRoot ?? inferClashRoot(dataDir), normalizedKey);
-  }
-  const root = assetRoot(dataDir);
-  const resolved = normalize(join(root, normalizedKey));
-  const rel = relative(root, resolved);
-  if (rel.startsWith("..") || rel === "..") {
-    throw new Error("Invalid asset path");
-  }
-  return resolved;
-}
-
-type AssetPathCandidate = {
-  root: string;
-  path: string;
-};
-
-function localAssetPathCandidate(dataDir: string, storageKey: string, clashRoot?: string): AssetPathCandidate {
-  const normalizedKey = normalizeAssetStorageKey(storageKey);
-  if (normalizedKey.startsWith("local-blobs/")) {
-    const root = join(clashRoot ?? inferClashRoot(dataDir), "assets", "blobs");
-    return { root, path: localBlobAssetPath(clashRoot ?? inferClashRoot(dataDir), normalizedKey) };
-  }
-  return { root: assetRoot(dataDir), path: assetPath(dataDir, normalizedKey, clashRoot) };
-}
-
-function assertRealAssetPathInsideRoot(rootRealPath: string, targetRealPath: string): void {
-  const rel = relative(rootRealPath, targetRealPath);
-  if (rel.startsWith("..") || rel === ".." || isAbsolute(rel)) {
-    throw new Error("Asset path escapes local asset storage");
-  }
-}
-
-async function realpathOrNull(path: string): Promise<string | null> {
-  try {
-    return await realpath(path);
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
-    throw error;
-  }
-}
-
-async function assetPathForRead(dataDir: string, storageKey: string, clashRoot?: string): Promise<string> {
-  const candidate = localAssetPathCandidate(dataDir, storageKey, clashRoot);
-  const rootRealPath = await realpath(candidate.root);
-  const targetRealPath = await realpath(candidate.path);
-  assertRealAssetPathInsideRoot(rootRealPath, targetRealPath);
-  return candidate.path;
-}
-
-async function assetPathForWrite(dataDir: string, storageKey: string, clashRoot?: string): Promise<string> {
-  const candidate = localAssetPathCandidate(dataDir, storageKey, clashRoot);
-  await mkdir(candidate.root, { recursive: true });
-  await mkdir(dirname(candidate.path), { recursive: true });
-  const rootRealPath = await realpath(candidate.root);
-  const parentRealPath = await realpath(dirname(candidate.path));
-  assertRealAssetPathInsideRoot(rootRealPath, parentRealPath);
-  const existingTargetRealPath = await realpathOrNull(candidate.path);
-  if (existingTargetRealPath) {
-    assertRealAssetPathInsideRoot(rootRealPath, existingTargetRealPath);
-  }
-  return candidate.path;
-}
-
-async function assetPathForDelete(dataDir: string, storageKey: string, clashRoot?: string): Promise<string> {
-  const candidate = localAssetPathCandidate(dataDir, storageKey, clashRoot);
-  const rootRealPath = await realpathOrNull(candidate.root);
-  const parentRealPath = await realpathOrNull(dirname(candidate.path));
-  if (rootRealPath && parentRealPath) {
-    assertRealAssetPathInsideRoot(rootRealPath, parentRealPath);
-  }
-  return candidate.path;
-}
-
-function localBlobAssetPath(clashRoot: string, storageKey: string): string {
-  const root = join(clashRoot, "assets", "blobs");
-  const blobKey = storageKey.slice("local-blobs/".length);
-  const resolved = normalize(join(root, blobKey));
-  const rel = relative(root, resolved);
-  if (!blobKey || rel.startsWith("..") || rel === "..") {
-    throw new Error("Invalid local blob path");
-  }
-  return resolved;
-}
-
-function normalizeLocalBlobStorageKey(localBlobKey: string): string {
-  const normalized = localBlobKey.replace(/\\/g, "/").replace(/^\/+/, "");
-  if (!normalized.startsWith("blobs/")) {
-    throw new Error("localBlobKey must start with blobs/");
-  }
-  const root = "blobs";
-  const resolved = normalize(join(root, normalized.slice("blobs/".length)));
-  const rel = relative(root, resolved);
-  if (!rel || rel.startsWith("..") || rel === "..") {
-    throw new Error("Invalid local blob path");
-  }
-  return `local-blobs/${rel.replace(/\\/g, "/")}`;
-}
-
 function isAssetKind(value: unknown): value is AssetKind {
   return value === "image" || value === "video" || value === "audio";
 }
 
 function optionalBodyString(value: unknown): string | undefined {
   return typeof value === "string" && value.trim().length > 0 ? value.trim() : undefined;
-}
-
-function isLocalBlobStorageKey(storageKey: string): boolean {
-  return storageKey.startsWith("local-blobs/");
 }
 
 function stringArray(value: unknown): string[] {
