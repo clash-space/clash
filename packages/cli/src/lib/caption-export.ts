@@ -7,6 +7,7 @@ import {
   type ResolvedTrack,
 } from "@clash/shared-types";
 import { createTimelineSourceProvenance } from "./timeline-projection";
+import { resolveAgentFilePathInsideCwd } from "./projection-cas";
 
 export type CaptionExportFormat = "srt" | "vtt" | "ass";
 
@@ -54,12 +55,12 @@ type CaptionSource = {
 export async function exportCaptionFile(options: ExportCaptionFileOptions): Promise<CaptionExportResult> {
   const cwd = resolve(options.cwd);
   const timelinePath = resolveProjectPath(cwd, options.timelinePath, "timeline");
-  const outputPath = resolveProjectPath(cwd, options.outPath, "caption output");
+  const outputPath = resolveAgentOutputPath(cwd, options.outPath, "Caption output");
   const format = options.format ?? inferCaptionFormat(outputPath);
-  const manifestPath = resolveProjectPath(
+  const manifestPath = resolveAgentOutputPath(
     cwd,
     options.manifestPath ?? defaultManifestPath(outputPath),
-    "caption manifest",
+    "Caption export manifest",
   );
   const parsed = timelineDslFromYaml(await readFile(timelinePath, "utf8"));
   if (!parsed.ok) {
@@ -290,6 +291,14 @@ function resolveProjectPath(cwd: string, rawPath: string, label: string): string
     throw new Error(`${label} path must stay inside the current project cwd`);
   }
   return resolved;
+}
+
+function resolveAgentOutputPath(cwd: string, rawPath: string, writeVerb: string): string {
+  return resolveAgentFilePathInsideCwd({
+    cwd,
+    filePath: resolveProjectPath(cwd, rawPath, writeVerb),
+    writeVerb,
+  });
 }
 
 function isInsideOrEqual(parent: string, child: string): boolean {

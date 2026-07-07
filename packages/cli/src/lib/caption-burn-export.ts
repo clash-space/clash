@@ -13,6 +13,7 @@ import {
   timelineHash,
   type TimelineAppliedRevision,
 } from "./timeline-projection";
+import { resolveAgentFilePathInsideCwd } from "./projection-cas";
 
 type ProductionAssetManifestAsset = {
   id: string;
@@ -74,7 +75,11 @@ export async function exportCaptionBurn(
   options: ExportCaptionBurnOptions,
 ): Promise<ExportCaptionBurnResult> {
   const cwd = resolve(options.cwd);
-  const assetsPath = resolveProjectPath(cwd, options.assetsPath ?? join("assets", "manifest.json"), "asset manifest");
+  const assetsPath = resolveAgentOutputPath(
+    cwd,
+    options.assetsPath ?? join("assets", "manifest.json"),
+    "Caption burn asset manifest",
+  );
   const sourceTimelinePath = resolveProjectPath(cwd, options.timelinePath, "caption timeline");
   const manifest = parseAssetManifest(await readFile(assetsPath, "utf8"), assetsPath);
   const sourceAsset = requireAsset(manifest, options.sourceAssetId, assetsPath);
@@ -116,7 +121,10 @@ export async function exportCaptionBurn(
     appliedRevision,
   });
 
-  const captionSidecarPath = resolveProjectPath(cwd, captionSidecarRelativePath, "caption burn sidecar");
+  const captionSidecarPath = resolveAgentOutputPath(cwd, captionSidecarRelativePath, "Caption burn sidecar");
+  const outputPath = resolveAgentOutputPath(cwd, outputRelativePath, "Caption burn output");
+  const ffmpegPlanPath = resolveAgentOutputPath(cwd, ffmpegPlanRelativePath, "Caption burn ffmpeg plan");
+  const packagePath = resolveAgentOutputPath(cwd, packageRelativePath, "Caption burn package");
   await exportCaptionFile({
     cwd,
     timelinePath: toProjectRelativePath(cwd, sourceTimelinePath),
@@ -124,9 +132,6 @@ export async function exportCaptionBurn(
     format: "ass",
   });
 
-  const outputPath = resolveProjectPath(cwd, outputRelativePath, "caption burn output");
-  const ffmpegPlanPath = resolveProjectPath(cwd, ffmpegPlanRelativePath, "caption burn ffmpeg plan");
-  const packagePath = resolveProjectPath(cwd, packageRelativePath, "caption burn package");
   const sourceAbsolutePath = resolveProjectPath(cwd, sourceAssetPath, `source asset ${sourceAsset.id} path`);
   const filtergraph = `ass=${escapeFfmpegFilterPath(captionSidecarPath)}`;
   const ffmpeg = options.ffmpegPath ?? process.env.CLASH_FFMPEG_PATH ?? process.env.FFMPEG_PATH ?? "ffmpeg";
@@ -386,6 +391,14 @@ function resolveProjectPath(cwd: string, rawPath: string, label: string): string
     throw new Error(`${label} path must stay inside the current project cwd`);
   }
   return resolved;
+}
+
+function resolveAgentOutputPath(cwd: string, rawPath: string, writeVerb: string): string {
+  return resolveAgentFilePathInsideCwd({
+    cwd,
+    filePath: resolveProjectPath(cwd, rawPath, writeVerb),
+    writeVerb,
+  });
 }
 
 function isInsideOrEqual(parent: string, child: string): boolean {

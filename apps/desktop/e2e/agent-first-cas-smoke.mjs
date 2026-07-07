@@ -614,10 +614,43 @@ function runProjectionPathGuards() {
   mkdirSync(lockSymlinkTarget, { recursive: true });
   symlinkSync(symlinkTarget, path.join(workspace, "symlinked-projections"), "dir");
   mkdirSync(path.join(workspace, "projections", "text"), { recursive: true });
+  mkdirSync(path.join(workspace, "projections", "timelines"), { recursive: true });
   mkdirSync(path.join(workspace, "timelines"), { recursive: true });
   mkdirSync(path.join(workspace, "reviews", "gates"), { recursive: true });
   mkdirSync(path.join(workspace, "qa", "pipeline"), { recursive: true });
+  mkdirSync(path.join(workspace, "exports", "captions"), { recursive: true });
   mkdirSync(path.join(workspace, "references"), { recursive: true });
+  writeFileSync(path.join(workspace, "projections", "timelines", "captions.timeline.yaml"), [
+    "fps: 30",
+    "durationInFrames: 60",
+    "tracks:",
+    "  - id: captions",
+    "    role: subtitle",
+    "    items:",
+    "      - id: clean-caption",
+    "        type: caption",
+    "        from: 0",
+    "        durationInFrames: 30",
+    "        cues:",
+    "          - id: cue-1",
+    "            startFrame: 0",
+    "            durationInFrames: 30",
+    "            text: 大家好",
+    "            wordIds: [w1]",
+    "            sourceStartFrame: 0",
+    "            sourceEndFrame: 30",
+    "        wordRefs:",
+    "          - id: w1",
+    "            text: 大家好",
+    "            sourceStartFrame: 0",
+    "            sourceEndFrame: 30",
+    "        sourceToOutputMap:",
+    "          - sourceStartFrame: 0",
+    "            sourceEndFrame: 30",
+    "            outputStartFrame: 0",
+    "            outputEndFrame: 30",
+    "",
+  ].join("\n"), "utf8");
   writeFileSync(path.join(workspace, "references", "roles.json"), `${JSON.stringify([
     {
       roleId: "hero-front",
@@ -643,6 +676,7 @@ function runProjectionPathGuards() {
   writeFileSync(path.join(lockSymlinkTarget, "unsafe.review-gate.lock.json"), "{}\n", "utf8");
   writeFileSync(path.join(lockSymlinkTarget, "unsafe.pipeline-validation.json"), "{}\n", "utf8");
   writeFileSync(path.join(lockSymlinkTarget, "unsafe.reference-roles.json"), "{}\n", "utf8");
+  writeFileSync(path.join(lockSymlinkTarget, "unsafe.captions.srt"), "outside\n", "utf8");
   symlinkSync(
     path.join(lockSymlinkTarget, "script.lock.json"),
     path.join(workspace, "projections", "text", "script.lock.json"),
@@ -666,6 +700,10 @@ function runProjectionPathGuards() {
   symlinkSync(
     path.join(lockSymlinkTarget, "unsafe.reference-roles.json"),
     path.join(workspace, "actions", "unsafe.reference-roles.json"),
+  );
+  symlinkSync(
+    path.join(lockSymlinkTarget, "unsafe.captions.srt"),
+    path.join(workspace, "exports", "captions", "unsafe.srt"),
   );
 
   const textPull = runText([
@@ -884,6 +922,22 @@ function runProjectionPathGuards() {
     { command: referenceRolesAction.command },
   );
 
+  const captionExport = runProduction([
+    "export-captions",
+    "--timeline",
+    "projections/timelines/captions.timeline.yaml",
+    "--out",
+    "exports/captions/unsafe.srt",
+    "--json",
+  ]);
+  recordCheck(
+    "caption export rejects symlinked output path outside cwd",
+    captionExport.status === 1 &&
+      /Agent file path must not traverse a symlink outside the current project cwd/i.test(captionExport.stderr),
+    captionExport.stderr || captionExport.stdout,
+    { command: captionExport.command },
+  );
+
   return {
     textPull: { status: textPull.status, stderr: textPull.stderr },
     textForcedApply: { status: textForcedApply.status, stderr: textForcedApply.stderr },
@@ -908,6 +962,10 @@ function runProjectionPathGuards() {
     referenceRolesAction: {
       status: referenceRolesAction.status,
       stderr: referenceRolesAction.stderr,
+    },
+    captionExport: {
+      status: captionExport.status,
+      stderr: captionExport.stderr,
     },
   };
 }
@@ -1157,6 +1215,7 @@ async function main() {
           "review gate plan rejects symlinked lock sidecar outside cwd",
           "pipeline validation rejects symlinked report path outside cwd",
           "reference roles plan rejects symlinked action path outside cwd",
+          "caption export rejects symlinked output path outside cwd",
         ].every((name) =>
           checks.some((check) => check.name === name && check.status === "pass"),
       ),

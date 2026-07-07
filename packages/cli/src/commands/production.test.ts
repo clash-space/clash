@@ -3379,6 +3379,75 @@ test("runs production export-captions from structured caption timeline to SRT, V
   assert.equal(assManifest.outputPath, "exports/captions/talk.ass");
 });
 
+test("caption export rejects symlinked output paths that resolve outside cwd", async () => {
+  const cwd = await mkdtemp(join(tmpdir(), "clash-production-caption-export-path-"));
+  const timelinePath = join(cwd, "projections", "timelines", "asset-talk.caption.timeline.yaml");
+  await mkdir(join(cwd, "projections", "timelines"), { recursive: true });
+  await writeFile(timelinePath, [
+    "fps: 30",
+    "durationInFrames: 60",
+    "tracks:",
+    "  - id: captions",
+    "    role: subtitle",
+    "    items:",
+    "      - id: clean-caption",
+    "        type: caption",
+    "        from: 0",
+    "        durationInFrames: 30",
+    "        cues:",
+    "          - id: cue-1",
+    "            startFrame: 0",
+    "            durationInFrames: 30",
+    "            text: 大家好",
+    "            wordIds: [w1]",
+    "            sourceStartFrame: 0",
+    "            sourceEndFrame: 30",
+    "        wordRefs:",
+    "          - id: w1",
+    "            text: 大家好",
+    "            sourceStartFrame: 0",
+    "            sourceEndFrame: 30",
+    "        sourceToOutputMap:",
+    "          - sourceStartFrame: 0",
+    "            sourceEndFrame: 30",
+    "            outputStartFrame: 0",
+    "            outputEndFrame: 30",
+    "",
+  ].join("\n"), "utf8");
+
+  const outside = join(cwd, "..", "outside-caption-export-output");
+  await mkdir(outside, { recursive: true });
+  await mkdir(join(cwd, "exports", "captions"), { recursive: true });
+  const outsideOutput = join(outside, "talk.srt");
+  await writeFile(outsideOutput, "outside\n", "utf8");
+  await symlink(outsideOutput, join(cwd, "exports", "captions", "talk.srt"));
+
+  const cliEntry = new URL("../index.ts", import.meta.url);
+  const require = createRequire(import.meta.url);
+  const tsxLoader = require.resolve("tsx");
+  const child = spawnSync(
+    process.execPath,
+    [
+      "--import",
+      tsxLoader,
+      cliEntry.pathname,
+      "production",
+      "export-captions",
+      "--timeline",
+      "projections/timelines/asset-talk.caption.timeline.yaml",
+      "--out",
+      "exports/captions/talk.srt",
+      "--json",
+    ],
+    { cwd, encoding: "utf8" },
+  );
+
+  assert.equal(child.status, 1);
+  assert.match(child.stderr, /Agent file path must not traverse a symlink outside the current project cwd/);
+  assert.equal(await readFile(outsideOutput, "utf8"), "outside\n");
+  assert.equal(existsSync(join(cwd, "exports", "captions", "talk.caption-export.json")), false);
+});
+
 test("runs production verify-caption-lineage and blocks plain text captions", async () => {
   const cwd = await mkdtemp(join(tmpdir(), "clash-production-caption-lineage-"));
   const structuredTimelinePath = join(cwd, "projections", "timelines", "asset-talk.caption.timeline.yaml");
@@ -3910,6 +3979,96 @@ test("exports structured captions as a non-destructive caption-burn derived asse
   assert.equal(appliedPackage.sourceTimelineRevisionId, appliedRevision.revisionId);
   assert.equal(appliedPackage.sourceTimelineRevisionStatus, "applied");
   assert.deepEqual(appliedPackage.sourceTimelineFrontiers, [{ peer: "1", counter: 8 }]);
+});
+
+test("caption-burn export rejects symlinked sidecar paths that resolve outside cwd", async () => {
+  const cwd = await mkdtemp(join(tmpdir(), "clash-production-caption-burn-path-"));
+  const timelinePath = join(cwd, "projections", "timelines", "asset-talk.caption.timeline.yaml");
+  await mkdir(join(cwd, "projections", "timelines"), { recursive: true });
+  await mkdir(join(cwd, "assets", "video"), { recursive: true });
+  await writeFile(join(cwd, "assets", "video", "source.mp4"), "fixture", "utf8");
+  await writeJson(join(cwd, "assets", "manifest.json"), {
+    assets: [
+      {
+        id: "asset-talk-source",
+        type: "video",
+        path: "assets/video/source.mp4",
+        metadata: {},
+      },
+    ],
+  });
+  await writeFile(timelinePath, [
+    "compositionWidth: 1080",
+    "compositionHeight: 1920",
+    "fps: 30",
+    "durationInFrames: 60",
+    "tracks:",
+    "  - id: captions",
+    "    role: subtitle",
+    "    items:",
+    "      - id: clean-caption",
+    "        type: caption",
+    "        from: 0",
+    "        durationInFrames: 30",
+    "        language: zh-CN",
+    "        cues:",
+    "          - id: cue-1",
+    "            startFrame: 0",
+    "            durationInFrames: 30",
+    "            text: 大家好",
+    "            wordIds: [w1]",
+    "            sourceStartFrame: 0",
+    "            sourceEndFrame: 30",
+    "        wordRefs:",
+    "          - id: w1",
+    "            text: 大家好",
+    "            sourceStartFrame: 0",
+    "            sourceEndFrame: 30",
+    "        sourceToOutputMap:",
+    "          - sourceStartFrame: 0",
+    "            sourceEndFrame: 30",
+    "            outputStartFrame: 0",
+    "            outputEndFrame: 30",
+    "",
+  ].join("\n"), "utf8");
+
+  const outside = join(cwd, "..", "outside-caption-burn-sidecar");
+  await mkdir(outside, { recursive: true });
+  await mkdir(join(cwd, "exports", "captions"), { recursive: true });
+  const outsideSidecar = join(outside, "unsafe.ass");
+  await writeFile(outsideSidecar, "outside\n", "utf8");
+  await symlink(outsideSidecar, join(cwd, "exports", "captions", "unsafe.ass"));
+
+  const cliEntry = new URL("../index.ts", import.meta.url);
+  const require = createRequire(import.meta.url);
+  const tsxLoader = require.resolve("tsx");
+  const child = spawnSync(
+    process.execPath,
+    [
+      "--import",
+      tsxLoader,
+      cliEntry.pathname,
+      "production",
+      "export-caption-burn",
+      "--timeline",
+      "projections/timelines/asset-talk.caption.timeline.yaml",
+      "--source-asset",
+      "asset-talk-source",
+      "--output-asset",
+      "asset-talk-caption-burn",
+      "--caption-sidecar",
+      "exports/captions/unsafe.ass",
+      "--out",
+      "assets/video/asset-talk-caption-burn.mp4",
+      "--json",
+    ],
+    { cwd, encoding: "utf8" },
+  );
+
+  assert.equal(child.status, 1);
+  assert.match(child.stderr, /Agent file path must not traverse a symlink outside the current project cwd/);
+  assert.equal(await readFile(outsideSidecar, "utf8"), "outside\n");
+  assert.equal(existsSync(join(cwd, "projections", "caption-burn", "asset-talk-caption-burn.ffmpeg-plan.json")), false);
 });
 
 test("runs production export-timeline-handoff as CSV for external NLE review", async () => {
