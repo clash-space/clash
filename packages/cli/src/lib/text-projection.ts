@@ -1,4 +1,4 @@
-import { isAbsolute, join, resolve } from "node:path";
+import { join } from "node:path";
 import { agentReadToken } from "@clash/shared-types";
 import {
   validateCanvasContentPatch,
@@ -10,6 +10,7 @@ import {
   hashProjectionContent,
   parseProjectionLock,
   type ProjectionLockEntity,
+  resolveProjectionFilePathInsideCwd,
   resolveProjectionLockPath,
 } from "./projection-cas";
 
@@ -44,10 +45,13 @@ export function resolveTextFilePath(options: {
   file?: string;
   nodeId: string;
 }): string {
-  if (options.file) {
-    return isAbsolute(options.file) ? options.file : resolve(options.cwd, options.file);
-  }
-  return join(options.cwd, "projections", "text", `${textFileSlug(options.nodeId)}.md`);
+  const filePath = options.file
+    ? options.file
+    : join(options.cwd, "projections", "text", `${textFileSlug(options.nodeId)}.md`);
+  return resolveProjectionFilePathInsideCwd({
+    filePath,
+    cwd: options.cwd,
+  });
 }
 
 export function resolveTextLockPath(options: {

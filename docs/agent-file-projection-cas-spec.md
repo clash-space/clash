@@ -343,8 +343,8 @@ Agent-editable paths:
 
 - `projections/**` through pull/edit/apply workflows,
 - `drafts/**` as scratch space,
-- explicit user-selected files in a normal cwd, if the lock points back to the
-  project and the apply command validates it.
+- explicit user-selected files only when they resolve inside the current
+  agent/project cwd; the lock must still point back to the project and entity.
 
 If v1 keeps agent cwd as `${CLASH_HOME:-~/.clash}/projects/<encodedProjectId>`,
 commands must clearly document protected vs editable subdirectories.
@@ -385,7 +385,8 @@ Rules:
 - `projectId` must match resolved project context.
 - `projectionType` determines parser, validator, and apply target.
 - `entity` must identify the product entity, not just the file path.
-- `filePath` must be absolute in lock files.
+- `filePath` must be absolute in lock files and resolve inside the current
+  agent/project cwd for local v1 projection commands.
 - `contentHash` is the semantic hash of the canonical entity at pull time.
 - `hashAlgorithm` should be full `sha256` for new projections.
 - `source` can carry Loro frontier, SQLite version, or other version hints, but
@@ -416,9 +417,11 @@ Every projection pull command must:
 3. Read canonical state through local-api or host commands.
 4. Normalize canonical state into an editable DTO.
 5. Validate the DTO against the projection schema.
-6. Write the projection file atomically.
-7. Write the lock file atomically.
-8. Print both paths in text mode and include both paths in JSON mode.
+6. Reject projection output paths that resolve outside the current
+   agent/project cwd.
+7. Write the projection file atomically.
+8. Write the lock file atomically.
+9. Print both paths in text mode and include both paths in JSON mode.
 
 Atomic write means:
 
@@ -439,7 +442,8 @@ Every projection apply command must:
 2. Read the projection file.
 3. Parse and validate the projection format.
 4. Read the lock unless `--force` is present.
-5. Verify lock kind, project id, projection type, entity id, and file path.
+5. Verify lock kind, project id, projection type, entity id, file path, and
+   cwd-contained projection path.
 6. Read current canonical state from the host.
 7. Normalize and hash current canonical state.
 8. Reject if current hash differs from lock hash.
@@ -458,6 +462,7 @@ continue without guessing.
 
 Projection commands must reject unsafe paths:
 
+- projection files that resolve outside the current agent/project cwd,
 - path traversal outside the selected projection root when the command writes
   into the canonical project root,
 - symlink traversal into protected directories,
@@ -468,8 +473,10 @@ Projection commands must reject unsafe paths:
 - absolute output paths under another project root unless explicitly allowed
   and validated.
 
-Explicit `--file /some/path` can be supported for draft work, but the lock must
-still bind the path, project id, and entity id.
+In local v1, explicit `--file /some/path` is supported only when the resolved
+path stays inside the current agent/project cwd. `--force` bypasses stale CAS
+or lock-path mismatch only where documented; it must not bypass the cwd path
+boundary.
 
 Do not rely only on OS file permissions. Permissions are a useful second layer,
 not the product safety model.
@@ -790,6 +797,7 @@ Errors should be explicit and recoverable:
 - `Lock belongs to project A, current project is B.`
 - `Lock belongs to entity A, command targeted entity B.`
 - `Projection file path does not match lock path.`
+- `Projection file path must stay inside the current project cwd.`
 - `This node has downstream references. Use copy-on-write or explicit replace.`
 - `Projection contains a non-editable field.`
 - `Projection would expose a secret.`
@@ -800,7 +808,8 @@ Errors should be explicit and recoverable:
 
 - generic lock parse/serialize,
 - stable semantic hash,
-- path traversal rejection,
+- path traversal/outside-cwd rejection, including `--force` not bypassing the
+  cwd boundary,
 - symlink-to-protected-dir rejection,
 - stale hash rejection,
 - force bypass reporting,

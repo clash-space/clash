@@ -13,6 +13,7 @@ import {
   hashProjectionContent,
   parseProjectionLock,
   type ProjectionLockEntity,
+  resolveProjectionFilePathInsideCwd,
   resolveProjectionLockPath,
 } from "./projection-cas";
 
@@ -124,10 +125,13 @@ export function resolveTimelineFilePath(options: {
   file?: string;
   timeline?: string;
 }): string {
-  if (options.file) {
-    return isAbsolute(options.file) ? options.file : resolve(options.cwd, options.file);
-  }
-  return join(options.cwd, "timelines", `${timelineFileSlug(options.timeline ?? "main")}.timeline.yaml`);
+  const filePath = options.file
+    ? options.file
+    : join(options.cwd, "timelines", `${timelineFileSlug(options.timeline ?? "main")}.timeline.yaml`);
+  return resolveProjectionFilePathInsideCwd({
+    filePath,
+    cwd: options.cwd,
+  });
 }
 
 export function resolveTimelineLockPath(options: {

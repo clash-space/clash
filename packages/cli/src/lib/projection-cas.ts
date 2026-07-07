@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { basename, dirname, extname, isAbsolute, join, resolve } from "node:path";
+import { basename, dirname, extname, isAbsolute, join, relative, resolve, sep } from "node:path";
 
 export type ProjectionCasResult =
   | { ok: true }
@@ -100,6 +100,14 @@ export function assertProjectionLockFilePath(options: {
   readCommand: string;
   writeVerb: string;
 }): ProjectionCasResult {
+  if (options.filePath && options.cwd) {
+    const cwdResult = assertProjectionFilePathInsideCwd({
+      filePath: options.filePath,
+      cwd: options.cwd,
+      writeVerb: options.writeVerb,
+    });
+    if (!cwdResult.ok) return cwdResult;
+  }
   if (options.force || !options.lockFilePath || !options.filePath) return { ok: true };
   const lockPath = normalizeProjectionPathForCompare(options.lockFilePath, options.cwd);
   const applyPath = normalizeProjectionPathForCompare(options.filePath, options.cwd);
@@ -111,6 +119,39 @@ export function assertProjectionLockFilePath(options: {
       `${options.writeVerb} file is ${options.filePath}, but lock was pulled for ${options.lockFilePath}. ` +
       `Run \`${options.readCommand}\` for this file, or pass --force to intentionally overwrite.`,
   };
+}
+
+export function assertProjectionFilePathInsideCwd(options: {
+  filePath: string;
+  cwd: string;
+  writeVerb: string;
+}): ProjectionCasResult {
+  const cwd = resolve(options.cwd);
+  const filePath = normalizeProjectionPathForCompare(options.filePath, cwd);
+  const relativePath = relative(cwd, filePath);
+  const escapes = relativePath === ".." || relativePath.startsWith(`..${sep}`) || isAbsolute(relativePath);
+  const inside = relativePath === "" || !escapes;
+  if (inside) return { ok: true };
+  return {
+    ok: false,
+    error:
+      `Projection file path must stay inside the current project cwd. ` +
+      `${options.writeVerb} file is ${options.filePath}, cwd is ${options.cwd}.`,
+  };
+}
+
+export function resolveProjectionFilePathInsideCwd(options: {
+  filePath: string;
+  cwd: string;
+}): string {
+  const filePath = normalizeProjectionPathForCompare(options.filePath, options.cwd);
+  const result = assertProjectionFilePathInsideCwd({
+    filePath,
+    cwd: options.cwd,
+    writeVerb: "Projection",
+  });
+  if (!result.ok) throw new Error(result.error);
+  return filePath;
 }
 
 export function normalizeProjectionPathForCompare(path: string, cwd?: string): string {

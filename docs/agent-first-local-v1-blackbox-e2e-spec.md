@@ -190,8 +190,8 @@ Assertions:
 
 Goal:
 
-- Verify public CLI projection writes reject missing, stale, or wrong-file read
-  proofs.
+- Verify public CLI projection writes reject missing, stale, wrong-file, or
+  outside-cwd read/apply paths.
 - Verify direct agent canvas mutations require a fresh read-token before write.
 - Verify COW replacement does not overwrite existing downstream-facing
   projections.
@@ -218,8 +218,23 @@ Assertions:
 - direct canvas delete without a read-token is rejected,
 - public `clash canvas get/update/delete` commands enforce the same read-token
   behavior and mutation envelope through a daemon socket,
+- public `clash text pull`, `clash text apply --force`, `clash timeline pull`,
+  and `clash timeline apply --force` reject projection files outside the
+  current cwd,
 - storyboard prompt-pack COW replacement writes a versioned projection while
   the managed projection remains unchanged.
+
+Latest deterministic report:
+
+```text
+.tmp/agent-first-cas/2026-07-07T14-19-23-090Z/agent-first-cas-report.json
+```
+
+Result:
+
+- `status: pass`
+- 27 checks passed,
+- `projectionPathOutsideCwdRejected: true`.
 
 ### Suite C3: Local API Receipt CAS Smoke
 
@@ -727,8 +742,9 @@ Current status:
   work is admission-controlled remote sync loop wiring, conflict recovery UI,
   and broader live UI parity.
 - `apps/desktop/e2e/agent-first-cas-smoke.mjs` now covers public CLI
-  read-proof rejection for missing/stale/wrong-file locks, daemon direct canvas
-  read-token rejection/acceptance, public `clash canvas get/update/delete`
+  read-proof rejection for missing/stale/wrong-file locks, text/timeline
+  outside-cwd projection path rejection including forced apply, daemon direct
+  canvas read-token rejection/acceptance, public `clash canvas get/update/delete`
   read-token and mutation-envelope enforcement through a daemon socket, and
   prompt-pack COW preservation; QA agent reports must include `cas.*` evidence
   from that smoke.

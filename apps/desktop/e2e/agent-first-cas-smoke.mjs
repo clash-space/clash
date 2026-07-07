@@ -62,6 +62,42 @@ function runCanvas(args, env = {}) {
   };
 }
 
+function runText(args, env = {}) {
+  const result = spawnSync(
+    process.execPath,
+    ["--import", tsxLoader, cliEntry, "text", ...args],
+    {
+      cwd: workspace,
+      encoding: "utf8",
+      env: { ...process.env, ...env },
+    },
+  );
+  return {
+    command: `clash text ${args.join(" ")}`,
+    status: result.status,
+    stdout: result.stdout,
+    stderr: result.stderr,
+  };
+}
+
+function runTimeline(args, env = {}) {
+  const result = spawnSync(
+    process.execPath,
+    ["--import", tsxLoader, cliEntry, "timeline", ...args],
+    {
+      cwd: workspace,
+      encoding: "utf8",
+      env: { ...process.env, ...env },
+    },
+  );
+  return {
+    command: `clash timeline ${args.join(" ")}`,
+    status: result.status,
+    stdout: result.stdout,
+    stderr: result.stderr,
+  };
+}
+
 function recordCheck(name, pass, evidence, extra = {}) {
   checks.push({
     name,
@@ -570,6 +606,88 @@ function runDirectCanvasReadTokenCas() {
   return result;
 }
 
+function runProjectionPathGuards() {
+  const textPull = runText([
+    "pull",
+    "--project",
+    "project-agent-first-path-guards",
+    "--node",
+    "text-1",
+    "--file",
+    "../outside-text.md",
+    "--json",
+  ]);
+  recordCheck(
+    "text pull rejects projection path outside cwd",
+    textPull.status === 1 && /Projection file path must stay inside the current project cwd/i.test(textPull.stderr),
+    textPull.stderr || textPull.stdout,
+    { command: textPull.command },
+  );
+
+  const textForcedApply = runText([
+    "apply",
+    "--project",
+    "project-agent-first-path-guards",
+    "--node",
+    "text-1",
+    "--file",
+    "../outside-text.md",
+    "--force",
+    "--json",
+  ]);
+  recordCheck(
+    "text forced apply rejects projection path outside cwd",
+    textForcedApply.status === 1 &&
+      /Projection file path must stay inside the current project cwd/i.test(textForcedApply.stderr),
+    textForcedApply.stderr || textForcedApply.stdout,
+    { command: textForcedApply.command },
+  );
+
+  const timelinePull = runTimeline([
+    "pull",
+    "--project",
+    "project-agent-first-path-guards",
+    "--node",
+    "timeline-1",
+    "--file",
+    "../outside.timeline.yaml",
+    "--json",
+  ]);
+  recordCheck(
+    "timeline pull rejects projection path outside cwd",
+    timelinePull.status === 1 &&
+      /Projection file path must stay inside the current project cwd/i.test(timelinePull.stderr),
+    timelinePull.stderr || timelinePull.stdout,
+    { command: timelinePull.command },
+  );
+
+  const timelineForcedApply = runTimeline([
+    "apply",
+    "--project",
+    "project-agent-first-path-guards",
+    "--node",
+    "timeline-1",
+    "--file",
+    "../outside.timeline.yaml",
+    "--force",
+    "--json",
+  ]);
+  recordCheck(
+    "timeline forced apply rejects projection path outside cwd",
+    timelineForcedApply.status === 1 &&
+      /Projection file path must stay inside the current project cwd/i.test(timelineForcedApply.stderr),
+    timelineForcedApply.stderr || timelineForcedApply.stdout,
+    { command: timelineForcedApply.command },
+  );
+
+  return {
+    textPull: { status: textPull.status, stderr: textPull.stderr },
+    textForcedApply: { status: textForcedApply.status, stderr: textForcedApply.stderr },
+    timelinePull: { status: timelinePull.status, stderr: timelinePull.stderr },
+    timelineForcedApply: { status: timelineForcedApply.status, stderr: timelineForcedApply.stderr },
+  };
+}
+
 async function runDirectCanvasCliReadTokenCas() {
   const publicCliCanvasUpdateCommand = "clash canvas update";
   const projectId = "project-agent-first-cas-cli";
@@ -758,12 +876,14 @@ async function main() {
   let summary = "Agent-first CAS smoke passed";
   let promptPack = null;
   let reviewGate = null;
+  let projectionPathGuards = null;
   let directCanvas = null;
   let directCanvasCli = null;
   try {
     await seedWorkspace();
     promptPack = await runStoryboardPromptPackCas();
     reviewGate = await runReviewGateCas();
+    projectionPathGuards = runProjectionPathGuards();
     directCanvas = runDirectCanvasReadTokenCas();
     directCanvasCli = await runDirectCanvasCliReadTokenCas();
   } catch (error) {
@@ -800,10 +920,19 @@ async function main() {
       directCanvasCliFreshReadTokenAccepted: checks.some((check) => check.name === "direct canvas CLI fresh read token accepted" && check.status === "pass"),
       directCanvasCliMutationEnvelopeRecorded: checks.some((check) => check.name === "direct canvas CLI mutation envelope recorded" && check.status === "pass"),
       directCanvasCliDeleteReadTokenRequired: checks.some((check) => check.name === "direct canvas CLI delete read token required" && check.status === "pass"),
+      projectionPathOutsideCwdRejected: [
+          "text pull rejects projection path outside cwd",
+          "text forced apply rejects projection path outside cwd",
+          "timeline pull rejects projection path outside cwd",
+          "timeline forced apply rejects projection path outside cwd",
+        ].every((name) =>
+          checks.some((check) => check.name === name && check.status === "pass"),
+      ),
     },
     artifacts: {
       promptPack,
       reviewGate,
+      projectionPathGuards,
       directCanvas,
       directCanvasCli,
     },

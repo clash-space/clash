@@ -88,6 +88,14 @@ test("resolves the default agent-editable timeline YAML path under the cwd", asy
   );
   assert.equal(resolveTimelineFilePath({ cwd, file: "cuts/main.yaml" }), join(cwd, "cuts", "main.yaml"));
   assert.equal(resolveTimelineLockPath({ cwd, file: "cuts/main.yaml" }), join(cwd, "cuts", "main.lock.json"));
+  assert.throws(
+    () => resolveTimelineFilePath({ cwd: "/tmp/project", file: "../outside.timeline.yaml" }),
+    /Projection file path must stay inside the current project cwd/,
+  );
+  assert.throws(
+    () => resolveTimelineFilePath({ cwd: "/tmp/project", file: "/tmp/other-project/main.timeline.yaml" }),
+    /Projection file path must stay inside the current project cwd/,
+  );
 });
 
 test("serializes a video-editor node timelineDsl as YAML without legacy timing keys", () => {

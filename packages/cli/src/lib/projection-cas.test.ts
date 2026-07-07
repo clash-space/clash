@@ -63,6 +63,62 @@ test("projection CAS helper enforces lock file path binding", () => {
     }),
     { ok: true },
   );
+
+  assert.deepEqual(
+    assertProjectionLockFilePath({
+      label: "text",
+      lockFilePath: "/tmp/project/..drafts/script.md",
+      filePath: "/tmp/project/..drafts/script.md",
+      cwd: "/tmp/project",
+      readCommand: "clash text pull",
+      writeVerb: "Apply",
+    }),
+    { ok: true },
+  );
+});
+
+test("projection CAS helper keeps projection files inside the current project cwd", () => {
+  const outside = assertProjectionLockFilePath({
+    label: "text",
+    lockFilePath: "/tmp/other-project/projections/text/script.md",
+    filePath: "/tmp/other-project/projections/text/script.md",
+    cwd: "/tmp/project",
+    readCommand: "clash text pull",
+    writeVerb: "Apply",
+  });
+
+  assert.equal(outside.ok, false);
+  if (!outside.ok) {
+    assert.match(outside.error, /Projection file path must stay inside the current project cwd/);
+  }
+
+  const traversal = assertProjectionLockFilePath({
+    label: "timeline",
+    lockFilePath: "../other-project/timelines/main.timeline.yaml",
+    filePath: "../other-project/timelines/main.timeline.yaml",
+    cwd: "/tmp/project",
+    readCommand: "clash timeline pull",
+    writeVerb: "Apply",
+  });
+
+  assert.equal(traversal.ok, false);
+  if (!traversal.ok) {
+    assert.match(traversal.error, /Projection file path must stay inside the current project cwd/);
+  }
+
+  const forced = assertProjectionLockFilePath({
+    label: "timeline",
+    filePath: "/tmp/other-project/timelines/main.timeline.yaml",
+    cwd: "/tmp/project",
+    readCommand: "clash timeline pull",
+    writeVerb: "Apply",
+    force: true,
+  });
+
+  assert.equal(forced.ok, false);
+  if (!forced.ok) {
+    assert.match(forced.error, /Projection file path must stay inside the current project cwd/);
+  }
 });
 
 test("projection CAS helper creates and parses generic lock identity", () => {

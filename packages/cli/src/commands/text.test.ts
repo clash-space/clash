@@ -131,6 +131,14 @@ test("resolves the default agent-editable text file path under the cwd", () => {
     resolveTextLockPath({ cwd: "/tmp/project", nodeId: "Node 1/Script" }),
     "/tmp/project/projections/text/node-1-script.lock.json",
   );
+  assert.throws(
+    () => resolveTextFilePath({ cwd: "/tmp/project", file: "../outside.md", nodeId: "text_node" }),
+    /Projection file path must stay inside the current project cwd/,
+  );
+  assert.throws(
+    () => resolveTextFilePath({ cwd: "/tmp/project", file: "/tmp/other-project/script.md", nodeId: "text_node" }),
+    /Projection file path must stay inside the current project cwd/,
+  );
 });
 
 test("extracts text content from a canvas node", () => {
