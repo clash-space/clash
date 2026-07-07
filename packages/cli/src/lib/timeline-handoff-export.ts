@@ -2,6 +2,7 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { basename, dirname, extname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { timelineDslFromYaml, type ResolvedItem, type ResolvedTimelineDsl } from "@clash/shared-types";
 import { createTimelineSourceProvenance } from "./timeline-projection";
+import { resolveAgentFilePathInsideCwd } from "./projection-cas";
 
 export type TimelineHandoffFormat = "csv";
 
@@ -41,12 +42,12 @@ export async function exportTimelineHandoff(
 ): Promise<TimelineHandoffResult> {
   const cwd = resolve(options.cwd);
   const timelinePath = resolveProjectPath(cwd, options.timelinePath, "timeline");
-  const outputPath = resolveProjectPath(cwd, options.outPath, "timeline handoff output");
+  const outputPath = resolveAgentOutputPath(cwd, options.outPath, "Timeline handoff output");
   const format = options.format ?? inferTimelineHandoffFormat(outputPath);
-  const manifestPath = resolveProjectPath(
+  const manifestPath = resolveAgentOutputPath(
     cwd,
     options.manifestPath ?? defaultManifestPath(outputPath),
-    "timeline handoff manifest",
+    "Timeline handoff manifest",
   );
   const parsed = timelineDslFromYaml(await readFile(timelinePath, "utf8"));
   if (!parsed.ok) {
@@ -221,6 +222,14 @@ function resolveProjectPath(cwd: string, rawPath: string, label: string): string
     throw new Error(`${label} path must stay inside the current project cwd`);
   }
   return resolved;
+}
+
+function resolveAgentOutputPath(cwd: string, rawPath: string, writeVerb: string): string {
+  return resolveAgentFilePathInsideCwd({
+    cwd,
+    filePath: resolveProjectPath(cwd, rawPath, writeVerb),
+    writeVerb,
+  });
 }
 
 function isInsideOrEqual(parent: string, child: string): boolean {

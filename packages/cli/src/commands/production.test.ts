@@ -4192,6 +4192,112 @@ test("runs production export-timeline-handoff as CSV for external NLE review", a
   assert.deepEqual(manifest.outputs, ["exports/handoff/episode.timeline.csv"]);
 });
 
+test("timeline handoff export rejects symlinked output paths that resolve outside cwd", async () => {
+  const cwd = await mkdtemp(join(tmpdir(), "clash-production-timeline-handoff-path-"));
+  const timelinePath = join(cwd, "projections", "timelines", "episode.timeline.yaml");
+  await mkdir(join(cwd, "projections", "timelines"), { recursive: true });
+  await writeFile(timelinePath, [
+    "fps: 30",
+    "durationInFrames: 60",
+    "tracks:",
+    "  - id: video",
+    "    items:",
+    "      - id: shot-1",
+    "        type: video",
+    "        from: 0",
+    "        durationInFrames: 60",
+    "        assetId: asset-shot-1",
+    "        src: assets/video/shot-1.mp4",
+    "",
+  ].join("\n"), "utf8");
+
+  const outside = join(cwd, "..", "outside-timeline-handoff-output");
+  await mkdir(outside, { recursive: true });
+  await mkdir(join(cwd, "exports", "handoff"), { recursive: true });
+  const outsideOutput = join(outside, "episode.timeline.csv");
+  await writeFile(outsideOutput, "outside\n", "utf8");
+  await symlink(outsideOutput, join(cwd, "exports", "handoff", "episode.timeline.csv"));
+
+  const cliEntry = new URL("../index.ts", import.meta.url);
+  const require = createRequire(import.meta.url);
+  const tsxLoader = require.resolve("tsx");
+  const child = spawnSync(
+    process.execPath,
+    [
+      "--import",
+      tsxLoader,
+      cliEntry.pathname,
+      "production",
+      "export-timeline-handoff",
+      "--timeline",
+      "projections/timelines/episode.timeline.yaml",
+      "--out",
+      "exports/handoff/episode.timeline.csv",
+      "--json",
+    ],
+    { cwd, encoding: "utf8" },
+  );
+
+  assert.equal(child.status, 1);
+  assert.match(child.stderr, /Agent file path must not traverse a symlink outside the current project cwd/);
+  assert.equal(await readFile(outsideOutput, "utf8"), "outside\n");
+  assert.equal(existsSync(join(cwd, "exports", "handoff", "episode.timeline.handoff.json")), false);
+});
+
+test("timeline handoff export rejects symlinked manifest paths that resolve outside cwd", async () => {
+  const cwd = await mkdtemp(join(tmpdir(), "clash-production-timeline-handoff-manifest-path-"));
+  const timelinePath = join(cwd, "projections", "timelines", "episode.timeline.yaml");
+  await mkdir(join(cwd, "projections", "timelines"), { recursive: true });
+  await writeFile(timelinePath, [
+    "fps: 30",
+    "durationInFrames: 60",
+    "tracks:",
+    "  - id: video",
+    "    items:",
+    "      - id: shot-1",
+    "        type: video",
+    "        from: 0",
+    "        durationInFrames: 60",
+    "        assetId: asset-shot-1",
+    "        src: assets/video/shot-1.mp4",
+    "",
+  ].join("\n"), "utf8");
+
+  const outside = join(cwd, "..", "outside-timeline-handoff-manifest");
+  await mkdir(outside, { recursive: true });
+  await mkdir(join(cwd, "exports", "handoff"), { recursive: true });
+  const outsideManifest = join(outside, "episode.timeline.handoff.json");
+  await writeFile(outsideManifest, "{}\n", "utf8");
+  await symlink(outsideManifest, join(cwd, "exports", "handoff", "episode.timeline.handoff.json"));
+
+  const cliEntry = new URL("../index.ts", import.meta.url);
+  const require = createRequire(import.meta.url);
+  const tsxLoader = require.resolve("tsx");
+  const child = spawnSync(
+    process.execPath,
+    [
+      "--import",
+      tsxLoader,
+      cliEntry.pathname,
+      "production",
+      "export-timeline-handoff",
+      "--timeline",
+      "projections/timelines/episode.timeline.yaml",
+      "--out",
+      "exports/handoff/episode.timeline.csv",
+      "--manifest",
+      "exports/handoff/episode.timeline.handoff.json",
+      "--json",
+    ],
+    { cwd, encoding: "utf8" },
+  );
+
+  assert.equal(child.status, 1);
+  assert.match(child.stderr, /Agent file path must not traverse a symlink outside the current project cwd/);
+  assert.equal(await readFile(outsideManifest, "utf8"), "{}\n");
+  assert.equal(existsSync(join(cwd, "exports", "handoff", "episode.timeline.csv")), false);
+});
+
 test("runs production export-text-cut-media as a non-destructive talking-head cut asset", async () => {
   const ffmpeg = resolveExecutable("ffmpeg");
   const ffprobe = resolveExecutable("ffprobe");

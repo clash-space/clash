@@ -235,19 +235,21 @@ Assertions:
   resolve outside the current cwd,
 - public caption sidecar export rejects symlinked caption outputs that resolve
   outside the current cwd,
+- public timeline handoff export rejects symlinked CSV and provenance manifest
+  outputs that resolve outside the current cwd,
 - storyboard prompt-pack COW replacement writes a versioned projection while
   the managed projection remains unchanged.
 
 Latest deterministic report:
 
 ```text
-.tmp/agent-first-cas/2026-07-07T15-30-16-325Z/agent-first-cas-report.json
+.tmp/agent-first-cas/2026-07-07T15-38-17-601Z/agent-first-cas-report.json
 ```
 
 Result:
 
 - `status: pass`
-- 36 checks passed,
+- 38 checks passed,
 - `projectionPathOutsideCwdRejected: true`.
 
 ### Suite C3: Local API Receipt CAS Smoke

@@ -619,6 +619,7 @@ function runProjectionPathGuards() {
   mkdirSync(path.join(workspace, "reviews", "gates"), { recursive: true });
   mkdirSync(path.join(workspace, "qa", "pipeline"), { recursive: true });
   mkdirSync(path.join(workspace, "exports", "captions"), { recursive: true });
+  mkdirSync(path.join(workspace, "exports", "handoff"), { recursive: true });
   mkdirSync(path.join(workspace, "references"), { recursive: true });
   writeFileSync(path.join(workspace, "projections", "timelines", "captions.timeline.yaml"), [
     "fps: 30",
@@ -677,6 +678,8 @@ function runProjectionPathGuards() {
   writeFileSync(path.join(lockSymlinkTarget, "unsafe.pipeline-validation.json"), "{}\n", "utf8");
   writeFileSync(path.join(lockSymlinkTarget, "unsafe.reference-roles.json"), "{}\n", "utf8");
   writeFileSync(path.join(lockSymlinkTarget, "unsafe.captions.srt"), "outside\n", "utf8");
+  writeFileSync(path.join(lockSymlinkTarget, "unsafe.timeline.csv"), "outside\n", "utf8");
+  writeFileSync(path.join(lockSymlinkTarget, "unsafe.timeline.handoff.json"), "{}\n", "utf8");
   symlinkSync(
     path.join(lockSymlinkTarget, "script.lock.json"),
     path.join(workspace, "projections", "text", "script.lock.json"),
@@ -704,6 +707,14 @@ function runProjectionPathGuards() {
   symlinkSync(
     path.join(lockSymlinkTarget, "unsafe.captions.srt"),
     path.join(workspace, "exports", "captions", "unsafe.srt"),
+  );
+  symlinkSync(
+    path.join(lockSymlinkTarget, "unsafe.timeline.csv"),
+    path.join(workspace, "exports", "handoff", "unsafe.timeline.csv"),
+  );
+  symlinkSync(
+    path.join(lockSymlinkTarget, "unsafe.timeline.handoff.json"),
+    path.join(workspace, "exports", "handoff", "unsafe.timeline.handoff.json"),
   );
 
   const textPull = runText([
@@ -938,6 +949,40 @@ function runProjectionPathGuards() {
     { command: captionExport.command },
   );
 
+  const timelineHandoff = runProduction([
+    "export-timeline-handoff",
+    "--timeline",
+    "projections/timelines/captions.timeline.yaml",
+    "--out",
+    "exports/handoff/unsafe.timeline.csv",
+    "--json",
+  ]);
+  recordCheck(
+    "timeline handoff export rejects symlinked output path outside cwd",
+    timelineHandoff.status === 1 &&
+      /Agent file path must not traverse a symlink outside the current project cwd/i.test(timelineHandoff.stderr),
+    timelineHandoff.stderr || timelineHandoff.stdout,
+    { command: timelineHandoff.command },
+  );
+
+  const timelineHandoffManifest = runProduction([
+    "export-timeline-handoff",
+    "--timeline",
+    "projections/timelines/captions.timeline.yaml",
+    "--out",
+    "exports/handoff/manifest-safe.timeline.csv",
+    "--manifest",
+    "exports/handoff/unsafe.timeline.handoff.json",
+    "--json",
+  ]);
+  recordCheck(
+    "timeline handoff export rejects symlinked manifest path outside cwd",
+    timelineHandoffManifest.status === 1 &&
+      /Agent file path must not traverse a symlink outside the current project cwd/i.test(timelineHandoffManifest.stderr),
+    timelineHandoffManifest.stderr || timelineHandoffManifest.stdout,
+    { command: timelineHandoffManifest.command },
+  );
+
   return {
     textPull: { status: textPull.status, stderr: textPull.stderr },
     textForcedApply: { status: textForcedApply.status, stderr: textForcedApply.stderr },
@@ -966,6 +1011,14 @@ function runProjectionPathGuards() {
     captionExport: {
       status: captionExport.status,
       stderr: captionExport.stderr,
+    },
+    timelineHandoff: {
+      status: timelineHandoff.status,
+      stderr: timelineHandoff.stderr,
+    },
+    timelineHandoffManifest: {
+      status: timelineHandoffManifest.status,
+      stderr: timelineHandoffManifest.stderr,
     },
   };
 }
@@ -1216,6 +1269,8 @@ async function main() {
           "pipeline validation rejects symlinked report path outside cwd",
           "reference roles plan rejects symlinked action path outside cwd",
           "caption export rejects symlinked output path outside cwd",
+          "timeline handoff export rejects symlinked output path outside cwd",
+          "timeline handoff export rejects symlinked manifest path outside cwd",
         ].every((name) =>
           checks.some((check) => check.name === name && check.status === "pass"),
       ),
