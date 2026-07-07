@@ -44,6 +44,7 @@ import {
   assertTimelineNotMaterializedReferenced,
   createTimelineAppliedRevision,
   createTimelineCowNodeData,
+  createTimelineLockFromHash,
   normalizeTimelineDslForYaml,
   readLoroRevisionMetadata,
   timelineHash,
@@ -55,6 +56,7 @@ import {
   assertTextCas,
   assertTextNotReferenced,
   createTextCowNodeData,
+  createTextLockFromHash,
   textHash,
   textReadToken,
   textContentFromNode,
@@ -603,17 +605,14 @@ function handleCommand(client: LoroSyncClient, cmd: any): object {
       });
       const lock: TimelineLock | null =
         typeof cmd.expectedTimelineHash === "string"
-          ? {
-              schemaVersion: 1,
-              kind: "clash.timeline.lock",
+          ? createTimelineLockFromHash({
               projectId: cmd.projectId,
               nodeId: cmd.nodeId,
               filePath: typeof cmd.expectedTimelineFilePath === "string" ? cmd.expectedTimelineFilePath : "",
               timelineHash: cmd.expectedTimelineHash,
               ...(typeof cmd.expectedReadToken === "string" ? { readToken: cmd.expectedReadToken } : {}),
-              hashAlgorithm: "sha256-64",
               pulledAt: "",
-            }
+            })
           : null;
       const cas = assertTimelineCas({
         projectId: cmd.projectId,
@@ -707,17 +706,14 @@ function handleCommand(client: LoroSyncClient, cmd: any): object {
       });
       const lock: TimelineLock | null =
         typeof cmd.expectedTimelineHash === "string"
-          ? {
-              schemaVersion: 1,
-              kind: "clash.timeline.lock",
+          ? createTimelineLockFromHash({
               projectId: cmd.projectId,
               nodeId: cmd.nodeId,
               filePath: typeof cmd.expectedTimelineFilePath === "string" ? cmd.expectedTimelineFilePath : "",
               timelineHash: cmd.expectedTimelineHash,
               ...(typeof cmd.expectedReadToken === "string" ? { readToken: cmd.expectedReadToken } : {}),
-              hashAlgorithm: "sha256-64",
               pulledAt: "",
-            }
+            })
           : null;
       const cas = assertTimelineCas({
         projectId: cmd.projectId,
@@ -836,17 +832,14 @@ function handleCommand(client: LoroSyncClient, cmd: any): object {
       });
       const lock: TextLock | null =
         typeof cmd.expectedContentHash === "string"
-          ? {
-              schemaVersion: 1,
-              kind: "clash.text.lock",
+          ? createTextLockFromHash({
               projectId: cmd.projectId,
               nodeId: cmd.nodeId,
               filePath: typeof cmd.expectedTextFilePath === "string" ? cmd.expectedTextFilePath : "",
               contentHash: cmd.expectedContentHash,
               ...(typeof cmd.expectedReadToken === "string" ? { readToken: cmd.expectedReadToken } : {}),
-              hashAlgorithm: "sha256-64",
               pulledAt: "",
-            }
+            })
           : null;
       const cas = assertTextCas({
         projectId: cmd.projectId,
@@ -927,17 +920,14 @@ function handleCommand(client: LoroSyncClient, cmd: any): object {
       });
       const lock: TextLock | null =
         typeof cmd.expectedContentHash === "string"
-          ? {
-              schemaVersion: 1,
-              kind: "clash.text.lock",
+          ? createTextLockFromHash({
               projectId: cmd.projectId,
               nodeId: cmd.nodeId,
               filePath: typeof cmd.expectedTextFilePath === "string" ? cmd.expectedTextFilePath : "",
               contentHash: cmd.expectedContentHash,
               ...(typeof cmd.expectedReadToken === "string" ? { readToken: cmd.expectedReadToken } : {}),
-              hashAlgorithm: "sha256-64",
               pulledAt: "",
-            }
+            })
           : null;
       const cas = assertTextCas({
         projectId: cmd.projectId,

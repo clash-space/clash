@@ -6,7 +6,10 @@ import {
 } from "./canvas-update-guardrails";
 import {
   assertProjectionLockFilePath,
+  createProjectionLock,
   hashProjectionContent,
+  parseProjectionLock,
+  type ProjectionLockEntity,
   resolveProjectionLockPath,
 } from "./projection-cas";
 
@@ -18,7 +21,9 @@ export type TextNodeLike = {
 export type TextLock = {
   schemaVersion: 1;
   kind: "clash.text.lock";
+  projectionKind: "text";
   projectId: string;
+  entity: ProjectionLockEntity;
   nodeId: string;
   filePath: string;
   contentHash: string;
@@ -111,22 +116,35 @@ export function createTextLock(options: {
   readToken?: string;
   pulledAt?: string;
 }): TextLock {
-  const contentHash = textHash(options.content);
-  return {
-    schemaVersion: 1,
+  return createTextLockFromHash({
+    ...options,
+    contentHash: textHash(options.content),
+  });
+}
+
+export function createTextLockFromHash(options: {
+  projectId: string;
+  nodeId: string;
+  filePath: string;
+  contentHash: string;
+  readToken?: string;
+  pulledAt?: string;
+}): TextLock {
+  return createProjectionLock({
     kind: "clash.text.lock",
+    projectionKind: "text",
     projectId: options.projectId,
-    nodeId: options.nodeId,
+    entity: { kind: "text-node", id: options.nodeId },
     filePath: options.filePath,
-    contentHash,
+    contentHash: options.contentHash,
     readToken: options.readToken ?? textReadToken({
       projectId: options.projectId,
       nodeId: options.nodeId,
-      contentHash,
+      contentHash: options.contentHash,
     }),
-    hashAlgorithm: "sha256-64",
     pulledAt: options.pulledAt ?? new Date().toISOString(),
-  };
+    extra: { nodeId: options.nodeId },
+  }) as TextLock;
 }
 
 export function parseTextLock(raw: string): TextLock {
@@ -144,7 +162,19 @@ export function parseTextLock(raw: string): TextLock {
   ) {
     throw new Error("Invalid text lock file");
   }
-  return value as TextLock;
+  if (value.projectionKind !== undefined || value.entity !== undefined) {
+    parseProjectionLock(value, {
+      kind: "clash.text.lock",
+      projectionKind: "text",
+      entityKind: "text-node",
+      entityId: value.nodeId,
+    });
+  }
+  return {
+    ...value,
+    projectionKind: "text",
+    entity: { kind: "text-node", id: value.nodeId },
+  } as TextLock;
 }
 
 export function assertTextCas(options: {

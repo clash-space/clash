@@ -2,7 +2,9 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   assertProjectionLockFilePath,
+  createProjectionLock,
   hashProjectionContent,
+  parseProjectionLock,
   resolveProjectionLockPath,
 } from "./projection-cas";
 
@@ -60,5 +62,50 @@ test("projection CAS helper enforces lock file path binding", () => {
       force: true,
     }),
     { ok: true },
+  );
+});
+
+test("projection CAS helper creates and parses generic lock identity", () => {
+  const lock = createProjectionLock({
+    kind: "clash.text.lock",
+    projectionKind: "text",
+    projectId: "project-1",
+    entity: { kind: "text-node", id: "text-1" },
+    filePath: "projections/text/text-1.md",
+    contentHash: "1234567890abcdef",
+    readToken: "text-v1:1234567890abcdef:receipt:host",
+    pulledAt: "2026-07-07T00:00:00.000Z",
+    extra: { nodeId: "text-1" },
+  });
+
+  assert.deepEqual(lock, {
+    schemaVersion: 1,
+    kind: "clash.text.lock",
+    projectionKind: "text",
+    projectId: "project-1",
+    entity: { kind: "text-node", id: "text-1" },
+    nodeId: "text-1",
+    filePath: "projections/text/text-1.md",
+    contentHash: "1234567890abcdef",
+    readToken: "text-v1:1234567890abcdef:receipt:host",
+    hashAlgorithm: "sha256-64",
+    pulledAt: "2026-07-07T00:00:00.000Z",
+  });
+
+  assert.deepEqual(parseProjectionLock(lock, {
+    kind: "clash.text.lock",
+    projectionKind: "text",
+    entityKind: "text-node",
+    entityId: "text-1",
+  }), lock);
+
+  assert.throws(
+    () => parseProjectionLock(lock, {
+      kind: "clash.text.lock",
+      projectionKind: "text",
+      entityKind: "text-node",
+      entityId: "other-text",
+    }),
+    /Invalid projection lock file/,
   );
 });

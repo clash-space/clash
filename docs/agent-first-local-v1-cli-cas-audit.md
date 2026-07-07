@@ -90,9 +90,9 @@ Examples:
 
 | Command | Current behavior | CAS status | v1 decision |
 | --- | --- | --- | --- |
-| `clash timeline pull/apply` | Writes YAML + lock, apply checks hash and lock file path | OK | Keep, adapt to generic projection lock |
+| `clash timeline pull/apply` | Writes YAML + generic projection lock envelope, apply checks hash and lock file path, parser normalizes legacy locks | OK | Keep; use the same lock envelope for adjacent timeline/editor projections |
 | `clash timeline replace` | Creates a COW video-editor node/revision from a locked YAML projection and refreshes the lock to the new node | OK | Keep explicit; do not make `apply` silently fork |
-| `clash text pull/apply` | Writes Markdown + lock, apply checks hash and lock file path | OK | Keep, adapt to generic projection lock |
+| `clash text pull/apply` | Writes Markdown + generic projection lock envelope, apply checks hash and lock file path, parser normalizes legacy locks | OK | Keep; use the same lock envelope for durable text asset projections |
 | `clash text replace` | Creates a COW text node from a locked Markdown projection and refreshes the lock to the new node | OK | Keep explicit; do not make `apply` silently fork |
 | `clash canvas timeline pull/push` | Legacy timeline YAML + lock, stale and file-path mismatch reject | OK | Keep as compatibility, prefer `clash timeline` |
 | `clash canvas update` | Direct node data patch with field guardrails, materialized-reference text content rejection, and agent `--if-match <readToken>` stale-read guard | Read-token CAS for agents | Not projection apply; keep blocking projection/runtime-owned fields and materialized-checkpoint semantic fields |
@@ -149,9 +149,11 @@ Text now has:
   text node.
 
 The direct read-token primitive is now shared in
-`packages/shared-types/src/agent-read-proof.ts`. The remaining duplication is
-the projection lock envelope itself, which should be generalized rather than
-copied again for storyboard, prompt, and asset metadata projections.
+`packages/shared-types/src/agent-read-proof.ts`. Text and timeline now also
+share the projection lock identity envelope through
+`packages/cli/src/lib/projection-cas.ts`. The remaining duplication is in
+storyboard, prompt, and asset metadata projections that still need to adopt that
+envelope instead of growing one-off lock formats.
 
 ### Direct node patch is the main bypass risk
 

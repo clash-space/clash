@@ -9,7 +9,10 @@ import {
 } from "@clash/shared-types";
 import {
   assertProjectionLockFilePath,
+  createProjectionLock,
   hashProjectionContent,
+  parseProjectionLock,
+  type ProjectionLockEntity,
   resolveProjectionLockPath,
 } from "./projection-cas";
 
@@ -33,9 +36,12 @@ export type TimelineReferenceEdge = {
 export type TimelineLock = {
   schemaVersion: 1;
   kind: "clash.timeline.lock";
+  projectionKind: "timeline";
   projectId: string;
+  entity: ProjectionLockEntity;
   nodeId: string;
   filePath: string;
+  contentHash: string;
   timelineHash: string;
   readToken?: string;
   hashAlgorithm: "sha256-64";
@@ -349,23 +355,40 @@ export function createTimelineLock(options: {
   pulledAt?: string;
   appliedRevision?: TimelineAppliedRevision;
 }): TimelineLock {
-  const hash = timelineHash(options.dsl);
-  return {
-    schemaVersion: 1,
+  return createTimelineLockFromHash({
+    ...options,
+    timelineHash: timelineHash(options.dsl),
+  });
+}
+
+export function createTimelineLockFromHash(options: {
+  projectId: string;
+  nodeId: string;
+  filePath: string;
+  timelineHash: string;
+  readToken?: string;
+  pulledAt?: string;
+  appliedRevision?: TimelineAppliedRevision;
+}): TimelineLock {
+  return createProjectionLock({
     kind: "clash.timeline.lock",
+    projectionKind: "timeline",
     projectId: options.projectId,
-    nodeId: options.nodeId,
+    entity: { kind: "video-editor-node", id: options.nodeId },
     filePath: options.filePath,
-    timelineHash: hash,
+    contentHash: options.timelineHash,
     readToken: options.readToken ?? timelineReadToken({
       projectId: options.projectId,
       nodeId: options.nodeId,
-      timelineHash: hash,
+      timelineHash: options.timelineHash,
     }),
-    hashAlgorithm: "sha256-64",
     pulledAt: options.pulledAt ?? new Date().toISOString(),
-    ...(options.appliedRevision ? { appliedRevision: options.appliedRevision } : {}),
-  };
+    extra: {
+      nodeId: options.nodeId,
+      timelineHash: options.timelineHash,
+      ...(options.appliedRevision ? { appliedRevision: options.appliedRevision } : {}),
+    },
+  }) as TimelineLock;
 }
 
 export function parseTimelineLock(raw: string): TimelineLock {
@@ -386,7 +409,19 @@ export function parseTimelineLock(raw: string): TimelineLock {
   if (value.appliedRevision !== undefined) {
     parseTimelineAppliedRevision(value.appliedRevision);
   }
-  return value as TimelineLock;
+  const normalized = {
+    ...value,
+    projectionKind: value.projectionKind ?? "timeline",
+    entity: value.entity ?? { kind: "video-editor-node", id: value.nodeId },
+    contentHash: value.contentHash ?? value.timelineHash,
+  } as TimelineLock;
+  parseProjectionLock(normalized, {
+    kind: "clash.timeline.lock",
+    projectionKind: "timeline",
+    entityKind: "video-editor-node",
+    entityId: value.nodeId,
+  });
+  return normalized;
 }
 
 export function assertTimelineCas(options: {

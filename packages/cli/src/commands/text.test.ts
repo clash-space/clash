@@ -155,6 +155,8 @@ test("creates and parses a text CAS lock", () => {
 
   assert.equal(lock.schemaVersion, 1);
   assert.equal(lock.kind, "clash.text.lock");
+  assert.equal(lock.projectionKind, "text");
+  assert.deepEqual(lock.entity, { kind: "text-node", id: "text_node" });
   assert.equal(lock.hashAlgorithm, "sha256-64");
   assert.equal(lock.contentHash.length, 16);
   assert.match(lock.readToken ?? "", /^text-v1:[a-f0-9]{16}$/);
@@ -174,6 +176,43 @@ test("text CAS lock preserves a host-issued read receipt when pull came through 
 
   assert.equal(lock.readToken, readToken);
   assert.deepEqual(parseTextLock(JSON.stringify(lock)), lock);
+});
+
+test("parses legacy text CAS locks into the generic projection envelope", () => {
+  const legacyLock = {
+    schemaVersion: 1,
+    kind: "clash.text.lock",
+    projectId: "project_text",
+    nodeId: "text_node",
+    filePath: "/tmp/project/projections/text/text-node.md",
+    contentHash: "1234567890abcdef",
+    hashAlgorithm: "sha256-64",
+    pulledAt: "2026-07-05T00:00:00.000Z",
+  };
+
+  assert.deepEqual(parseTextLock(JSON.stringify(legacyLock)), {
+    ...legacyLock,
+    projectionKind: "text",
+    entity: { kind: "text-node", id: "text_node" },
+  });
+});
+
+test("rejects text CAS locks with mismatched generic entity identity", () => {
+  const lock = createTextLock({
+    projectId: "project_text",
+    nodeId: "text_node",
+    filePath: "/tmp/project/projections/text/text-node.md",
+    content: "first draft",
+    pulledAt: "2026-07-05T00:00:00.000Z",
+  });
+
+  assert.throws(
+    () => parseTextLock(JSON.stringify({
+      ...lock,
+      entity: { kind: "text-node", id: "other_text_node" },
+    })),
+    /Invalid projection lock file/,
+  );
 });
 
 test("text apply refreshes the lock sidecar after a successful apply", () => {

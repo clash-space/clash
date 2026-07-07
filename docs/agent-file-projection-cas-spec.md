@@ -52,7 +52,10 @@ Existing behavior:
 
 - `clash timeline pull` writes `timelines/main.timeline.yaml`.
 - Pull also writes `timelines/main.timeline.lock.json`.
-- The lock contains project id, node id, file path, and timeline hash.
+- The lock contains the generic projection envelope plus timeline-specific
+  compatibility fields: project id, `projectionKind: "timeline"`, entity id,
+  file path, `contentHash`, `timelineHash`, optional read token, hash algorithm,
+  and pull timestamp.
 - `clash timeline apply` refuses stale writes unless `--force` is used.
 - If a canvas daemon is running, daemon command `timeline_cas_update` also
   validates the expected hash before mutating the node. For agent callers, the
@@ -75,6 +78,9 @@ Existing text behavior:
 
 - `clash text pull` writes `projections/text/<node-id>.md`.
 - Pull also writes `projections/text/<node-id>.lock.json`.
+- Text locks use the same generic projection envelope with
+  `projectionKind: "text"`, entity id, file path, content hash, optional read
+  token, hash algorithm, and pull timestamp.
 - `clash text apply` refuses stale writes unless `--force` is used.
 - The daemon validates the expected text hash before mutating. For agent
   callers, the daemon now requires the receipt-bearing `readToken` written by
@@ -99,11 +105,35 @@ Storyboard prompt packs now have a first-pass JSON projection:
   `projections/storyboards/<asset>.prompt-pack.<hash>.cow.json` without moving
   existing downstream references.
 
-The remaining v1 gap is that timeline, text, and storyboard prompt packs still
-use separate helper modules, storyboard prompt packs are still a file-only CAS
-path rather than a host-issued receipt path, and the mechanism does not yet
-cover remaining storyboard files, asset metadata, or future editor timeline
-projections.
+The remaining v1 gap is that storyboard prompt packs still use a separate
+file-only CAS path rather than the generic text/timeline lock envelope or a
+host-issued receipt path, and the mechanism does not yet cover remaining
+storyboard files, asset metadata, or future editor timeline projections.
+
+## Lock Envelope
+
+New projection sidecar locks should share this identity shape:
+
+```json
+{
+  "schemaVersion": 1,
+  "kind": "clash.<projection>.lock",
+  "projectionKind": "<projection-kind>",
+  "projectId": "<project-id>",
+  "entity": { "kind": "<canonical-entity-kind>", "id": "<entity-id>" },
+  "filePath": "<projection-path>",
+  "contentHash": "<semantic-hash>",
+  "readToken": "<optional-host-issued-read-proof>",
+  "hashAlgorithm": "sha256-64",
+  "pulledAt": "<iso-timestamp>"
+}
+```
+
+Projection families may keep compatibility aliases such as `nodeId` or
+`timelineHash`, but `projectionKind`, `entity`, and `contentHash` are the
+generic agent-facing identity. Text and timeline parsers normalize legacy
+sidecars that do not yet contain those fields, so existing local draft folders
+do not fail solely because the lock shape was upgraded.
 
 ## Required Invariants
 

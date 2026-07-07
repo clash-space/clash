@@ -1,6 +1,6 @@
 # Agent-First Local v1 Code Audit
 
-Last updated: 2026-07-05
+Last updated: 2026-07-07
 
 ## Purpose
 
@@ -68,8 +68,10 @@ The main v1 gaps are:
   `clash canvas replace-asset` COW path; storyboard prompt-pack replacement now
   has a first-pass explicit `clash production replace-storyboard-prompt-pack`
   path. Prompt-pack locks now require source action path/hash proof and reject
-  locks with stripped source proof. Broader storyboard host/UI integration,
-  recovery/rewire flows, and generic projection-lock extraction remain pending.
+  locks with stripped source proof. Text and timeline locks share a generic
+  projection identity envelope while keeping legacy sidecar parsing. Broader
+  storyboard host/UI integration, recovery/rewire flows, and adoption of the
+  generic lock envelope by storyboard/asset metadata projections remain pending.
 
 ## Evidence Snapshot
 
@@ -206,8 +208,11 @@ validates the expected timeline hash in the running daemon path.
 Conclusion:
 
 - Timeline has the right v1 pattern.
-- Extract it into a generic projection CAS framework instead of copying
-  timeline-specific helpers into every new command.
+- Text and timeline now use a generic projection lock identity shape
+  (`projectionKind`, `entity`, `contentHash`) instead of only
+  timeline-specific fields.
+- Remaining projection families should adopt that envelope rather than copying
+  one-off lock formats.
 
 Spec: `agent-file-projection-cas-spec.md`.
 

@@ -272,9 +272,13 @@ tracks:
   });
 
   assert.equal(lock.schemaVersion, 1);
+  assert.equal(lock.kind, "clash.timeline.lock");
+  assert.equal(lock.projectionKind, "timeline");
+  assert.deepEqual(lock.entity, { kind: "video-editor-node", id: "editor-1" });
   assert.equal(lock.projectId, "project-1");
   assert.equal(lock.nodeId, "editor-1");
   assert.equal(lock.filePath, "/tmp/project/timelines/main.timeline.yaml");
+  assert.equal(lock.contentHash, lock.timelineHash);
   assert.match(lock.timelineHash, /^[a-f0-9]{16}$/);
   assert.match(lock.readToken ?? "", /^timeline-v1:[a-f0-9]{16}$/);
 });
@@ -300,6 +304,52 @@ tracks:
 
   assert.equal(lock.readToken, readToken);
   assert.deepEqual(parseTimelineLock(JSON.stringify(lock)), lock);
+});
+
+test("parses legacy timeline CAS locks into the generic projection envelope", () => {
+  const legacyLock = {
+    schemaVersion: 1,
+    kind: "clash.timeline.lock",
+    projectId: "project-1",
+    nodeId: "editor-1",
+    filePath: "/tmp/project/timelines/main.timeline.yaml",
+    timelineHash: "1234567890abcdef",
+    hashAlgorithm: "sha256-64",
+    pulledAt: "2026-07-05T00:00:00.000Z",
+  };
+
+  assert.deepEqual(parseTimelineLock(JSON.stringify(legacyLock)), {
+    ...legacyLock,
+    projectionKind: "timeline",
+    entity: { kind: "video-editor-node", id: "editor-1" },
+    contentHash: "1234567890abcdef",
+  });
+});
+
+test("rejects timeline CAS locks with mismatched generic entity identity", () => {
+  const parsed = parseTimelineFileForApply(`
+tracks:
+  - id: main
+    items: []
+`);
+  assert.equal(parsed.ok, true);
+  if (!parsed.ok) return;
+
+  const lock = createTimelineLock({
+    projectId: "project-1",
+    nodeId: "editor-1",
+    filePath: "/tmp/project/timelines/main.timeline.yaml",
+    dsl: parsed.dsl,
+    pulledAt: "2026-07-05T00:00:00.000Z",
+  });
+
+  assert.throws(
+    () => parseTimelineLock(JSON.stringify({
+      ...lock,
+      entity: { kind: "video-editor-node", id: "editor-2" },
+    })),
+    /Invalid projection lock file/,
+  );
 });
 
 test("rejects timeline apply when the projection file does not match the lock", () => {
