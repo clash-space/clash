@@ -310,6 +310,8 @@ Evidence:
 - Local-api tests cover SQLite room persistence, same-second pagination,
   duplicate-id protection, same-project same-id content conflict rejection,
   accepted/rejected mutation records, and local ACP mention dispatch.
+- Cloud route tests now reject same-project room-message id replays with
+  different normalized content, matching the local idempotency/conflict rule.
 - `apps/local-api/src/room-cli.e2e.test.ts` drives `clash room say/read`
   through a spawned CLI process against a real local-api loopback server and
   asserts `sync.remote_room.enabled=false`.
@@ -320,7 +322,7 @@ Conclusion:
 
 - Do not remove room.
 - Local room persistence/routing baseline is implemented; cloud sync policy is
-  the remaining gap.
+  narrowed to mirror sequencing, conflict recovery, and live UI parity.
 
 ## Restriction Matrix
 

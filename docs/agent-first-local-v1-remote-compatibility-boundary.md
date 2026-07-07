@@ -246,13 +246,16 @@ Current evidence:
 - local-api tests cover SQLite-backed local room persistence, pagination,
   idempotency, and mention dispatch.
 - CLI `clash room say/read` already exists and expects room endpoints.
+- cloud route tests now keep client-provided room ids idempotent only for the
+  same normalized sender/text/mentions payload, matching local conflict
+  semantics.
 
 v1 decision:
 
 - Keep local room as project-visible SQLite rows.
 - Keep cloud room routes compatible.
 - Treat cloud sync as a separate boundary with explicit conflict/idempotency
-  tests before exposing it as synced.
+  and mirror-sequencing tests before exposing it as synced.
 
 Reason:
 

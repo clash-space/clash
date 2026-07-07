@@ -117,6 +117,49 @@ function normalizeRoomMentions(value: unknown): RoomMention[] {
   });
 }
 
+function parseRoomMentionsJson(value: string): RoomMention[] {
+  try {
+    return normalizeRoomMentions(JSON.parse(value));
+  } catch {
+    return [];
+  }
+}
+
+function roomMentionKey(mention: RoomMention): string {
+  return JSON.stringify({
+    agent_member_id: mention.agent_member_id ?? "",
+    user_id: mention.user_id ?? "",
+  });
+}
+
+function roomMentionsContentKey(mentions: RoomMention[]): string {
+  return JSON.stringify(mentions.map(roomMentionKey).sort());
+}
+
+function roomMessageCreateMatchesExisting(
+  existing: {
+    sender_kind: string;
+    sender_id: string;
+    sender_user_id: string;
+    mentions_json: string;
+    text: string;
+  },
+  incoming: {
+    sender_kind: "user" | "agent";
+    sender_id: string;
+    sender_user_id: string;
+    mentions: RoomMention[];
+    text: string;
+  },
+): boolean {
+  return existing.sender_kind === incoming.sender_kind &&
+    existing.sender_id === incoming.sender_id &&
+    existing.sender_user_id === incoming.sender_user_id &&
+    existing.text === incoming.text &&
+    roomMentionsContentKey(parseRoomMentionsJson(existing.mentions_json)) ===
+      roomMentionsContentKey(incoming.mentions);
+}
+
 // Membership check — for v1, "in the project" means owner. When
 // project_member lands, change this single function and the rest of
 // the room layer is unchanged.
@@ -251,13 +294,23 @@ projectRoutes.post("/:pid/room/messages", async (c) => {
     if (existing.project_id !== projectId) {
       return c.json({ error: "room message id already exists" }, 409);
     }
+    const existingMentions = parseRoomMentionsJson(existing.mentions_json);
+    if (!roomMessageCreateMatchesExisting(existing, {
+      sender_kind: senderKind,
+      sender_id: senderId,
+      sender_user_id: userId,
+      mentions,
+      text,
+    })) {
+      return c.json({ error: "room message id already exists with different content" }, 409);
+    }
     return c.json({
       id: existing.id,
       project_id: existing.project_id,
       sender_kind: existing.sender_kind,
       sender_id: existing.sender_id,
       sender_user_id: existing.sender_user_id,
-      mentions: JSON.parse(existing.mentions_json) as RoomMention[],
+      mentions: existingMentions,
       text: existing.text,
       at: existing.created_at,
     });

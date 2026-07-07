@@ -522,6 +522,8 @@ Current status:
 - Same project/id room replays are idempotent only when normalized sender, text,
   and mentions match; conflicting content is rejected before the original row can
   be overwritten.
+- Cloud room POST now uses the same same-project/id replay rule, so local-to-cloud
+  mirroring cannot silently turn a client id into an overwrite handle.
 - Room responses include `sync.remote_room.enabled=false` until remote room
   sync is explicitly implemented.
 - CLI maps 404 to a generic missing-room-API message for older local-api/cloud
@@ -533,7 +535,8 @@ Current status:
 
 Remaining gap:
 
-- Remote/local room sync policy and conflict behavior still need deeper tests.
+- Remote/local room import/export sequencing, mirror admission, and live room UI
+  parity still need deeper tests.
 
 Minimum tests:
 
@@ -542,6 +545,7 @@ Minimum tests:
 - restart persistence
 - local ACP mention dispatch
 - same-second pagination and duplicate-id idempotency/conflict rejection
+- cloud route duplicate-id idempotency/conflict parity
 - spawned CLI `room say/read` against a real local-api loopback server
 
 ### P1-02: Real Codex ACP cwd verification

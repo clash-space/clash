@@ -593,11 +593,13 @@ Rules:
 - SQLite persistence,
 - accepted/rejected host mutation records on POST,
 - no raw trace dumps.
+- Cloud room POST matches the same same-project/id idempotency rule and rejects
+  changed content instead of returning the old row as a silent success.
 
 Remaining:
 
 - cloud sync import/export policy,
-- remote sync conflict/idempotency policy across local and remote,
+- remote mirror sequencing and conflict recovery policy across local and remote,
 - live room UI parity in local desktop.
 
 ### Projection apply endpoints/commands
