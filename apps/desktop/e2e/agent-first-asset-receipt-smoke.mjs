@@ -1775,6 +1775,25 @@ async function main() {
     { mutation: acceptedProjectRestoreJson.mutation },
   );
 
+  const restoreAuditResponse = await request(`/api/v1/mutation-audit?operation=project_restore&entityId=${encodeURIComponent(restoreProject.id)}`);
+  const restoreAudit = await parseJsonResponse(restoreAuditResponse);
+  const restoreAuditRecord = restoreAudit.records?.[0];
+  recordCheck(
+    "project restore writes sanitized local mutation audit evidence",
+    restoreAuditResponse.status === 200 &&
+      restoreAudit.records?.length === 1 &&
+      restoreAuditRecord.operation === "project_restore" &&
+      restoreAuditRecord.entity?.id === restoreProject.id &&
+      restoreAuditRecord.accepted === true &&
+      restoreAuditRecord.actorClientType === "agent" &&
+      restoreAuditRecord.reason === "project restore" &&
+      !JSON.stringify(restoreAuditRecord.mutation ?? {}).includes("receipt") &&
+      restoreAuditRecord.mutation?.expectedReadToken == null &&
+      restoreAuditRecord.mutation?.beforeReadToken == null &&
+      restoreAuditRecord.mutation?.afterReadToken == null,
+    JSON.stringify(restoreAudit),
+  );
+
   const purgeProjectResponse = await request("/api/v1/projects", {
     method: "POST",
     body: JSON.stringify({ name: "Project Purge Receipt Smoke" }),
@@ -2249,6 +2268,7 @@ async function main() {
       projectRestoreBareCasRejected: checks.some((check) => check.name === "project restore with bare CAS token is rejected" && check.status === "pass"),
       projectRestoreStaleReceiptRejected: checks.some((check) => check.name === "project restore with stale active receipt is rejected" && check.status === "pass"),
       projectRestoreReceiptAccepted: checks.some((check) => check.name === "project restore with deleted-project receipt is accepted" && check.status === "pass"),
+      projectRestoreAuditRecorded: checks.some((check) => check.name === "project restore writes sanitized local mutation audit evidence" && check.status === "pass"),
       projectPurgeGetReceiptReturned: checks.some((check) => check.name === "project purge deleted get returns purge receipt" && check.status === "pass"),
       projectPurgeMissingReadRejected: checks.some((check) => check.name === "project purge without prior deleted read is rejected" && check.status === "pass"),
       projectPurgeDelayedByDefault: checks.some((check) => check.name === "project purge with receipt is delayed by default" && check.status === "pass"),
