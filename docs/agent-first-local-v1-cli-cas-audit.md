@@ -237,8 +237,10 @@ Remaining guardrails:
   `--force` as the explicit admin purge override. v1 project create/delete/restore/purge,
   legacy project create/update/delete, asset create/ref-delete/cover-update, and
   session create/delete responses include accepted/rejected mutation records.
-  Accepted project delete/restore/purge writes first-pass sanitized local audit
-  records readable through `clash audit mutations --operation project_restore
+  Accepted v1/legacy project delete plus accepted project restore/purge writes
+  first-pass sanitized local audit records readable through `clash audit
+  mutations --operation project_delete --entity <projectId> --json`,
+  `clash audit mutations --operation project_restore
   --entity <projectId> --json` or `clash audit mutations --operation
   project_purge --entity <projectId> --json` without exposing receipt-bearing
   read tokens or raw SQLite.

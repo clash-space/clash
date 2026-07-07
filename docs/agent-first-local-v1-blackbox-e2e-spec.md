@@ -597,19 +597,20 @@ Result:
 Latest verified asset receipt CAS smoke:
 
 ```text
-.tmp/agent-first-asset-receipts/2026-07-07T13-28-15-065Z/agent-first-asset-receipt-report.json
+.tmp/agent-first-asset-receipts/2026-07-07T13-36-22-931Z/agent-first-asset-receipt-report.json
 ```
 
 Result:
 
 - `status: pass`,
-- 124 checks passed through `npm --prefix apps/desktop run test:e2e:asset-receipts`,
+- 125 checks passed through `npm --prefix apps/desktop run test:e2e:asset-receipts`,
 - derived agent reads stayed read-only, provider model tests and local audio
   transcription actions recorded host mutation envelopes, and local sync, audio,
   harness, custom agent-server, provider account, provider OAuth, asset
-  metadata/ref/GC, project restore/purge, and session delete agent writes
+  metadata/ref/GC, project delete/restore/purge, and session delete agent writes
   rejected missing or bare read proofs; the same run also proved the restore
-  path's sanitized audit evidence, project purge's default delayed purge window,
+  path's sanitized audit evidence, legacy project delete audit evidence,
+  project purge's default delayed purge window,
   explicit force override, deleted recovery point removal,
   canonical project replica deletion, and sanitized local mutation audit
   evidence without reusable read receipts; session delete, asset GC delete, and

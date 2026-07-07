@@ -5005,6 +5005,16 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
         },
       };
     });
+    if (result.status === 200) {
+      const mutation = result.body.mutation as HostMutationRecord | undefined;
+      if (mutation?.accepted === true) {
+        await db.appendMutationAudit(mutationAuditRecord({
+          mutation,
+          actorClientType: preconditions.actorClientType,
+          reason: "legacy project soft delete",
+        }));
+      }
+    }
     return c.json(result.body, result.status);
   });
 

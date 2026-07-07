@@ -7313,6 +7313,21 @@ describe("local API app", () => {
       forced: false,
       accepted: true,
     });
+    const audit = await app.request(`/api/v1/mutation-audit?operation=project_delete&entityId=${id}`);
+    expect(audit.status).toBe(200);
+    const auditJson = await audit.json() as { records: Array<any> };
+    expect(auditJson.records).toHaveLength(1);
+    expect(auditJson.records[0]).toMatchObject({
+      operation: "project_delete",
+      entity: { kind: "project", id },
+      accepted: true,
+      actorClientType: null,
+      reason: "legacy project soft delete",
+    });
+    expect(JSON.stringify(auditJson.records[0].mutation ?? {})).not.toContain("receipt");
+    expect(auditJson.records[0].mutation.expectedReadToken).toBeUndefined();
+    expect(auditJson.records[0].mutation.beforeReadToken).toBeUndefined();
+    expect(auditJson.records[0].mutation.afterReadToken).toBeUndefined();
     expect(await (await app.request("/api/projects")).json()).toEqual([]);
   });
 
