@@ -1451,6 +1451,24 @@ async function main() {
 	    { mutation: deletedRef.mutation },
 	  );
 
+	  const assetRefDeleteAuditResponse = await request(`/api/v1/mutation-audit?operation=asset_ref_delete&entityId=${encodeURIComponent(`${assetId}:${projectId}`)}`);
+	  const assetRefDeleteAudit = await parseJsonResponse(assetRefDeleteAuditResponse);
+	  const assetRefDeleteAuditRecord = assetRefDeleteAudit.records?.[0];
+	  recordCheck(
+	    "asset ref delete writes sanitized local mutation audit evidence",
+	    assetRefDeleteAuditResponse.status === 200 &&
+	      assetRefDeleteAudit.records?.length === 1 &&
+	      assetRefDeleteAuditRecord.operation === "asset_ref_delete" &&
+	      assetRefDeleteAuditRecord.entity?.id === `${assetId}:${projectId}` &&
+	      assetRefDeleteAuditRecord.accepted === true &&
+	      assetRefDeleteAuditRecord.actorClientType === "agent" &&
+	      assetRefDeleteAuditRecord.reason === "asset ref delete" &&
+	      assetRefDeleteAuditRecord.mutation?.expectedReadToken == null &&
+	      assetRefDeleteAuditRecord.mutation?.beforeReadToken == null &&
+	      assetRefDeleteAuditRecord.mutation?.afterReadToken == null,
+	    JSON.stringify(assetRefDeleteAudit),
+	  );
+
 	  const refreshedAssetReferencesResponse = await request(`/api/v1/assets/${encodeURIComponent(assetId)}/references/refresh`, {
 	    method: "POST",
 	    body: JSON.stringify({ projectIds: [projectId] }),
@@ -2285,6 +2303,7 @@ async function main() {
 	      assetRefMissingReadRejected: checks.some((check) => check.name === "asset ref delete without prior read is rejected" && check.status === "pass"),
 	      assetRefBareCasRejected: checks.some((check) => check.name === "asset ref delete with bare CAS token is rejected" && check.status === "pass"),
 	      assetRefReceiptAccepted: checks.some((check) => check.name === "asset ref delete with receipt read token is accepted" && check.status === "pass"),
+	      assetRefDeleteAuditRecorded: checks.some((check) => check.name === "asset ref delete writes sanitized local mutation audit evidence" && check.status === "pass"),
 	      assetReferenceRefreshMutationRecorded: checks.some((check) => check.name === "asset reference refresh returns host mutation record" && check.status === "pass"),
 	      assetGcDryRunReceiptReturned: checks.some((check) => check.name === "asset GC dry-run returns receipt read token" && check.status === "pass"),
       assetGcMissingDryRunRejected: checks.some((check) => check.name === "asset GC delete without prior dry-run is rejected" && check.status === "pass"),

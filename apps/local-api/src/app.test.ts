@@ -1289,6 +1289,21 @@ describe("local API app", () => {
         accepted: true,
       },
     });
+    const audit = await app.request(`/api/v1/mutation-audit?operation=asset_ref_delete&entityId=${encodeURIComponent(`${assetId}:project-a`)}`);
+    expect(audit.status).toBe(200);
+    const auditJson = await audit.json() as { records: Array<any> };
+    expect(auditJson.records).toHaveLength(1);
+    expect(auditJson.records[0]).toMatchObject({
+      operation: "asset_ref_delete",
+      entity: { kind: "asset-ref", id: `${assetId}:project-a` },
+      accepted: true,
+      actorClientType: "agent",
+      reason: "asset ref delete",
+    });
+    expect(JSON.stringify(auditJson.records[0].mutation ?? {})).not.toContain("receipt");
+    expect(auditJson.records[0].mutation.expectedReadToken).toBeUndefined();
+    expect(auditJson.records[0].mutation.beforeReadToken).toBeUndefined();
+    expect(auditJson.records[0].mutation.afterReadToken).toBeUndefined();
 
     const check = openSqlite();
     try {
