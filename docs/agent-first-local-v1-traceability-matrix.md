@@ -310,6 +310,9 @@ Evidence:
 - Local-api tests cover SQLite room persistence, same-second pagination,
   duplicate-id protection, same-project same-id content conflict rejection,
   accepted/rejected mutation records, and local ACP mention dispatch.
+- `apps/local-api/src/room-cli.e2e.test.ts` drives `clash room say/read`
+  through a spawned CLI process against a real local-api loopback server and
+  asserts `sync.remote_room.enabled=false`.
 - CLI reports a generic missing-room-API message on 404 for older targets.
 - Local ACP can dispatch room mentions into sessions.
 

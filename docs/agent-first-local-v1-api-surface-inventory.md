@@ -678,6 +678,9 @@ local API contract.
   bare synthesized text CAS tokens.
 - `clash room say/read` works against current local-api/cloud APIs and reports
   a generic missing-room-API message for older targets.
+- A focused local-api e2e starts a real loopback server and drives
+  `clash room say/read` through a spawned CLI process, including local-only
+  sync metadata assertions.
 - `clash vars` does not claim to be local auth default.
 - `clash asset get -> clash asset cover set --if-match` and
   `clash asset ref get -> clash asset ref delete --if-match` reject missing or

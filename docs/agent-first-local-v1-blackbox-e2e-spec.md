@@ -711,8 +711,10 @@ Current status:
 - Direct real Codex E2E now asserts the happy-path workspace roots; the broader
   black-box runner still needs to assert doctor warnings/errors for protected
   cwd, missing replica, and legacy `db.json`.
-- Local room endpoints now exist as a SQLite local-only baseline; remaining work
-  is remote sync conflict policy and broader live UI parity.
+- Local room endpoints now exist as a SQLite local-only baseline, and
+  `apps/local-api/src/room-cli.e2e.test.ts` starts a real local-api HTTP server
+  while driving `clash room say/read` through a spawned CLI process. Remaining
+  work is remote sync conflict policy and broader live UI parity.
 - `apps/desktop/e2e/agent-first-cas-smoke.mjs` now covers public CLI
   read-proof rejection for missing/stale/wrong-file locks, daemon direct canvas
   read-token rejection/acceptance, public `clash canvas get/update/delete`

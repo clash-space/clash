@@ -526,6 +526,10 @@ Current status:
   sync is explicitly implemented.
 - CLI maps 404 to a generic missing-room-API message for older local-api/cloud
   targets.
+- `apps/local-api/src/room-cli.e2e.test.ts` now starts a real local-api HTTP
+  server and drives `clash room say/read` through a spawned CLI process, proving
+  the agent-facing command path can post/read local-only room messages and see
+  the response-level sync metadata.
 
 Remaining gap:
 
@@ -538,6 +542,7 @@ Minimum tests:
 - restart persistence
 - local ACP mention dispatch
 - same-second pagination and duplicate-id idempotency/conflict rejection
+- spawned CLI `room say/read` against a real local-api loopback server
 
 ### P1-02: Real Codex ACP cwd verification
 
