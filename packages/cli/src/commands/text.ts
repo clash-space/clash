@@ -8,11 +8,12 @@ import { requireApiKey, getServerUrl } from "../lib/config";
 import { isJsonMode, printJson } from "../lib/output";
 import { isDaemonRunning, sendCommand } from "../lib/daemon";
 import { assertAgentHostWritePath } from "../lib/agent-host-write";
-import { resolveCanvasPresenceOptions, resolveCanvasProjectId } from "./canvas";
+import { resolveCanvasActor, resolveCanvasPresenceOptions, resolveCanvasProjectId } from "./canvas";
 import {
   assertTextCas,
   assertTextLockFilePath,
   assertTextNotReferenced,
+  createTextAppliedRevision,
   createTextCowNodeData,
   createTextLock,
   parseTextLock,
@@ -21,18 +22,22 @@ import {
   textHash,
   textReadToken,
   textContentFromNode,
+  type TextAppliedRevision,
   type TextLock,
   type TextNodeLike,
+  type TextRevisionActor,
 } from "../lib/text-projection";
 
 export {
   assertTextCas,
   assertTextLockFilePath,
   assertTextNotReferenced,
+  createTextAppliedRevision,
   createTextLock,
   parseTextLock,
   resolveTextFilePath,
   resolveTextLockPath,
+  textHash,
   textReadToken,
   textContentFromNode,
 };
@@ -133,25 +138,38 @@ textCommand
     });
     let result: ApplyTextContentResult;
     let content = "";
+    let lock: TextLock | null = null;
+    const actor = await resolveCanvasActor();
     try {
       content = readFileSync(filePath, "utf8");
-      const lock = options.force ? null : readTextLockFile(lockPath);
+      lock = options.force ? null : readTextLockFile(lockPath);
       result = await applyTextContent(projectId, options.node, content, {
         force: options.force === true,
         lock,
         filePath,
         cwd: process.cwd(),
+        actor,
       });
     } catch (error) {
       console.error(error instanceof Error ? error.message : String(error));
       process.exit(1);
     }
+    const textRevision = result.textRevision ?? createTextAppliedRevision({
+      projectId,
+      nodeId: options.node,
+      cwd: process.cwd(),
+      filePath,
+      content,
+      parentRevisionId: lock?.appliedRevision?.revisionId,
+      actor,
+    });
     const refreshedLock = createTextLock({
       projectId,
       nodeId: options.node,
       filePath,
       content,
       readToken: result.readToken,
+      appliedRevision: textRevision,
     });
     mkdirSync(dirname(lockPath), { recursive: true });
     writeFileSync(lockPath, JSON.stringify(refreshedLock, null, 2) + "\n", "utf8");
@@ -160,6 +178,7 @@ textCommand
       projectId,
       filePath,
       lockPath,
+      textRevision,
       contentHash: refreshedLock.contentHash,
       readToken: refreshedLock.readToken,
     };
@@ -193,14 +212,17 @@ textCommand
     });
     let result: ReplaceTextContentResult;
     let content = "";
+    let lock: TextLock | null = null;
+    const actor = await resolveCanvasActor();
     try {
       content = readFileSync(filePath, "utf8");
-      const lock = options.force ? null : readTextLockFile(lockPath);
+      lock = options.force ? null : readTextLockFile(lockPath);
       result = await replaceTextContent(projectId, options.node, content, {
         force: options.force === true,
         lock,
         filePath,
         cwd: process.cwd(),
+        actor,
         label: options.label,
         newNodeId: options.newNode,
       });
@@ -208,12 +230,22 @@ textCommand
       console.error(error instanceof Error ? error.message : String(error));
       process.exit(1);
     }
+    const textRevision = result.textRevision ?? createTextAppliedRevision({
+      projectId,
+      nodeId: result.newNodeId,
+      cwd: process.cwd(),
+      filePath,
+      content,
+      parentRevisionId: lock?.appliedRevision?.revisionId,
+      actor,
+    });
     const refreshedLock = createTextLock({
       projectId,
       nodeId: result.newNodeId,
       filePath,
       content,
       readToken: result.readToken,
+      appliedRevision: textRevision,
     });
     mkdirSync(dirname(lockPath), { recursive: true });
     writeFileSync(lockPath, JSON.stringify(refreshedLock, null, 2) + "\n", "utf8");
@@ -222,6 +254,7 @@ textCommand
       projectId,
       filePath,
       lockPath,
+      textRevision,
       contentHash: refreshedLock.contentHash,
       readToken: refreshedLock.readToken,
     };
@@ -292,7 +325,7 @@ async function applyTextContent(
   projectId: string,
   nodeId: string,
   content: string,
-  cas: { lock: TextLock | null; force: boolean; filePath: string; cwd: string },
+  cas: { lock: TextLock | null; force: boolean; filePath: string; cwd: string; actor?: TextRevisionActor },
 ): Promise<ApplyTextContentResult> {
   const filePathCas = assertTextLockFilePath({
     lock: cas.lock,
@@ -310,8 +343,10 @@ async function applyTextContent(
     expectedContentHash: cas.lock?.contentHash,
     expectedReadToken: cas.lock?.readToken,
     expectedTextFilePath: cas.lock?.filePath,
+    parentRevisionId: cas.lock?.appliedRevision?.revisionId,
     filePath: cas.filePath,
     cwd: cas.cwd,
+    actor: cas.actor,
     actorClientType: resolveCanvasPresenceOptions().clientType,
     force: cas.force,
   });
@@ -320,6 +355,7 @@ async function applyTextContent(
     return {
       updated: true,
       nodeId,
+      textRevision: daemonResult.textRevision,
       readToken: daemonResult.readToken,
       ...(cas.force || daemonResult.forced === true ? { forced: true } : {}),
     };
@@ -358,9 +394,19 @@ async function applyTextContent(
     if (!referenceResult.ok) throw new Error(referenceResult.error);
     const ok = client.updateNode(nodeId, { content });
     if (!ok) throw new Error(`Node not found: ${nodeId}`);
+    const textRevision = createTextAppliedRevision({
+      projectId,
+      nodeId,
+      cwd: cas.cwd,
+      filePath: cas.filePath,
+      content,
+      parentRevisionId: cas.lock?.appliedRevision?.revisionId,
+      actor: cas.actor,
+    });
     return {
       updated: true,
       nodeId,
+      textRevision,
       readToken: textReadToken({ projectId, nodeId, content }),
       ...(cas.force ? { forced: true } : {}),
     };
@@ -371,6 +417,7 @@ async function applyTextContent(
 type ApplyTextContentResult = {
   updated: true;
   nodeId: string;
+  textRevision?: TextAppliedRevision;
   readToken?: string;
   forced?: true;
 };
@@ -384,6 +431,7 @@ async function replaceTextContent(
     force: boolean;
     filePath: string;
     cwd: string;
+    actor?: TextRevisionActor;
     label?: string;
     newNodeId?: string;
   },
@@ -404,8 +452,10 @@ async function replaceTextContent(
     expectedContentHash: cas.lock?.contentHash,
     expectedReadToken: cas.lock?.readToken,
     expectedTextFilePath: cas.lock?.filePath,
+    parentRevisionId: cas.lock?.appliedRevision?.revisionId,
     filePath: cas.filePath,
     cwd: cas.cwd,
+    actor: cas.actor,
     label: cas.label,
     newNodeId: cas.newNodeId,
     actorClientType: resolveCanvasPresenceOptions().clientType,
@@ -420,6 +470,7 @@ async function replaceTextContent(
       newNodeId: daemonResult.newNodeId ?? daemonResult.nodeId,
       sourceContentHash: daemonResult.sourceContentHash,
       contentHash: daemonResult.contentHash,
+      textRevision: daemonResult.textRevision,
       lineageEdge: daemonResult.lineageEdge,
       readToken: daemonResult.readToken,
       ...(cas.force || daemonResult.forced === true ? { forced: true } : {}),
@@ -453,6 +504,15 @@ async function replaceTextContent(
     });
     if (!casResult.ok) throw new Error(casResult.error);
     const newNodeId = cas.newNodeId?.trim() || randomUUID().slice(0, 8);
+    const textRevision = createTextAppliedRevision({
+      projectId,
+      nodeId: newNodeId,
+      cwd: cas.cwd,
+      filePath: cas.filePath,
+      content,
+      parentRevisionId: cas.lock?.appliedRevision?.revisionId,
+      actor: cas.actor,
+    });
     const data = createTextCowNodeData({
       sourceNodeId: nodeId,
       sourceLabel: typeof current.data?.label === "string" ? current.data.label : undefined,
@@ -460,6 +520,7 @@ async function replaceTextContent(
       content,
       label: cas.label,
       filePath: cas.filePath,
+      textRevision,
     });
     client.canvas.createLinkedNode({
       nodeId: newNodeId,
@@ -477,6 +538,7 @@ async function replaceTextContent(
       newNodeId,
       sourceContentHash: textHash(currentContent),
       contentHash: textHash(content),
+      textRevision,
       lineageEdge: { source: nodeId, target: newNodeId, type: "copy-on-write" },
       readToken: textReadToken({ projectId, nodeId: newNodeId, content }),
       ...(cas.force ? { forced: true } : {}),
@@ -493,6 +555,7 @@ type ReplaceTextContentResult = {
   newNodeId: string;
   sourceContentHash?: string;
   contentHash?: string;
+  textRevision?: TextAppliedRevision;
   lineageEdge?: unknown;
   readToken?: string;
   forced?: true;

@@ -7,10 +7,12 @@ import { fileURLToPath } from "node:url";
 import {
   assertTextCas,
   assertTextNotReferenced,
+  createTextAppliedRevision,
   createTextLock,
   parseTextLock,
   resolveTextFilePath,
   resolveTextLockPath,
+  textHash,
   textCommand,
   textContentFromNode,
 } from "./text";
@@ -201,6 +203,41 @@ test("text CAS lock preserves a host-issued read receipt when pull came through 
 
   assert.equal(lock.readToken, readToken);
   assert.deepEqual(parseTextLock(JSON.stringify(lock)), lock);
+});
+
+test("creates text applied revision milestones for file-backed text edits", () => {
+  const revision = createTextAppliedRevision({
+    projectId: "project_text",
+    nodeId: "text_node",
+    cwd: "/tmp/project",
+    filePath: "/tmp/project/projections/text/text-node.md",
+    content: "versioned copy",
+    parentRevisionId: "txrev-parent",
+    createdAt: "2026-07-07T00:00:00.000Z",
+    actor: { actorType: "agent", actorUserId: "user-1", actorAgentId: "agent-1" },
+  });
+
+  assert.equal(revision.schemaVersion, 1);
+  assert.equal(revision.kind, "clash.text.revision");
+  assert.equal(revision.textId, "text:project_text:text_node");
+  assert.match(revision.revisionId, /^txrev-[a-f0-9]{16}-[a-f0-9]{12}$/);
+  assert.equal(revision.parentRevisionId, "txrev-parent");
+  assert.equal(revision.projectId, "project_text");
+  assert.equal(revision.nodeId, "text_node");
+  assert.equal(revision.contentHash, textHash("versioned copy"));
+  assert.equal(revision.sourceFilePath, "projections/text/text-node.md");
+  assert.equal(revision.sourceFileHash, textHash("versioned copy"));
+  assert.deepEqual(revision.actor, { actorType: "agent", actorUserId: "user-1", actorAgentId: "agent-1" });
+
+  const lock = createTextLock({
+    projectId: "project_text",
+    nodeId: "text_node",
+    filePath: "/tmp/project/projections/text/text-node.md",
+    content: "versioned copy",
+    appliedRevision: revision,
+    pulledAt: "2026-07-07T00:00:00.000Z",
+  });
+  assert.deepEqual(parseTextLock(JSON.stringify(lock)).appliedRevision, revision);
 });
 
 test("parses legacy text CAS locks into the generic projection envelope", () => {

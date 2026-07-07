@@ -86,6 +86,12 @@ Existing text behavior:
   callers, the daemon now requires the receipt-bearing `readToken` written by
   `clash text pull`; a bare synthesized text CAS token is rejected unless the
   caller explicitly forces the write.
+- Successful `clash text apply` and `clash text replace` create a
+  `clash.text.revision` milestone. The revision records the source projection
+  path, content hash, parent revision id when present, and actor attribution;
+  refreshed lock sidecars store the applied revision so the next apply has a
+  stable parent. Copy-on-write replacement nodes also store the same text
+  revision in node data.
 - In-place apply is rejected by default when the text node feeds materialized
   downstream state; text feeding only unmaterialized action drafts remains
   editable. `clash text replace` creates a copy-on-write text node from the
@@ -545,20 +551,23 @@ Non-editable fields:
 
 ### Text Copy-On-Write
 
-Text content should be versioned like other assets.
+Text content should be versioned like other assets, but it should not be
+forced into the existing image/video/audio `assets` row shape. The v1 path is a
+text/content revision milestone created by apply/replace; a future SQLite index
+can query those milestones without making SQLite or JSON logs agent-editable.
 
 If a text node has no downstream references:
 
-- apply creates a new text content version,
-- updates the node's `contentAssetId`,
+- apply creates a new `clash.text.revision` milestone,
+- refreshes the projection lock with that applied revision,
 - keeps the same node id.
 
 If a text node has downstream references:
 
 - default apply must not mutate the existing node in place,
-- command should create a copied text node or copied content asset according
-  to the finalized graph model,
-- copied entity records `derivedFrom`,
+- `clash text replace` creates a copied text node from the locked projection,
+- copied entity records source node/content hashes and the applied text
+  revision,
 - downstream references remain attached to the original unless the user passes
   an explicit replace flag.
 

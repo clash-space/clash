@@ -51,8 +51,10 @@ The main v1 gaps are:
 - timeline has projection CAS plus explicit first-pass COW replacement through
   `clash timeline pull/apply/replace`,
 - text nodes now have first-pass Markdown projection CAS plus explicit COW
-  replacement through `clash text pull/apply/replace`, but are not yet durable
-  text assets,
+  replacement through `clash text pull/apply/replace`; successful apply/replace
+  records `clash.text.revision` milestones with source path, content hash,
+  parent revision, and actor attribution, but SQLite text/content revision
+  indexing and richer history UI are still future work,
 - shared projection path resolution now keeps text/timeline projection files
   inside the current agent/project cwd and rejects symlinked parents that
   resolve outside it, and applies the same cwd/realpath guard to generated

@@ -1,4 +1,5 @@
-import { join } from "node:path";
+import { createHash } from "node:crypto";
+import { isAbsolute, join, relative, resolve, sep } from "node:path";
 import { agentReadToken } from "@clash/shared-types";
 import {
   validateCanvasContentPatch,
@@ -32,9 +33,32 @@ export type TextLock = {
   readToken?: string;
   hashAlgorithm: "sha256-64";
   pulledAt: string;
+  appliedRevision?: TextAppliedRevision;
 };
 
 export type TextCasResult = { ok: true } | { ok: false; error: string };
+
+export type TextRevisionActor = {
+  actorType: "user" | "agent";
+  actorUserId: string;
+  actorAgentId?: string;
+};
+
+export type TextAppliedRevision = {
+  schemaVersion: 1;
+  kind: "clash.text.revision";
+  textId: string;
+  revisionId: string;
+  parentRevisionId?: string;
+  projectId: string;
+  nodeId: string;
+  createdAt: string;
+  contentHash: string;
+  hashAlgorithm: "sha256-64";
+  sourceFilePath: string;
+  sourceFileHash: string;
+  actor?: TextRevisionActor;
+};
 
 export type TextReferenceEdge = {
   source: string;
@@ -106,6 +130,7 @@ export function createTextCowNodeData(options: {
   content: string;
   label?: string;
   filePath?: string;
+  textRevision?: TextAppliedRevision;
 }): Record<string, unknown> {
   const sourceContentHash = textHash(options.sourceContent);
   const contentHash = textHash(options.content);
@@ -120,6 +145,51 @@ export function createTextCowNodeData(options: {
     sourceContentHash,
     contentHash,
     ...(options.filePath ? { sourceTextFilePath: options.filePath } : {}),
+    ...(options.textRevision ? { textRevision: options.textRevision } : {}),
+  };
+}
+
+export function createTextAppliedRevision(options: {
+  projectId: string;
+  nodeId: string;
+  cwd: string;
+  filePath: string;
+  content: string;
+  parentRevisionId?: string | null;
+  createdAt?: string;
+  textId?: string;
+  actor?: TextRevisionActor;
+}): TextAppliedRevision {
+  const cwd = resolve(options.cwd);
+  const absolutePath = isAbsolute(options.filePath) ? resolve(options.filePath) : resolve(cwd, options.filePath);
+  if (!isInsideOrEqual(cwd, absolutePath)) {
+    throw new Error("Text revision source path must stay inside the current project cwd");
+  }
+  const textId = options.textId ?? `text:${options.projectId}:${options.nodeId}`;
+  const contentHash = textHash(options.content);
+  const createdAt = options.createdAt ?? new Date().toISOString();
+  const revisionSeed = {
+    textId,
+    contentHash,
+    parentRevisionId: options.parentRevisionId ?? null,
+    createdAt,
+    actor: options.actor ?? null,
+  };
+  const revisionSuffix = createHash("sha256").update(stableJsonForHash(revisionSeed)).digest("hex").slice(0, 12);
+  return {
+    schemaVersion: 1,
+    kind: "clash.text.revision",
+    textId,
+    revisionId: `txrev-${contentHash}-${revisionSuffix}`,
+    ...(options.parentRevisionId ? { parentRevisionId: options.parentRevisionId } : {}),
+    projectId: options.projectId,
+    nodeId: options.nodeId,
+    createdAt,
+    contentHash,
+    hashAlgorithm: "sha256-64",
+    sourceFilePath: toProjectPath(cwd, absolutePath),
+    sourceFileHash: contentHash,
+    ...(options.actor ? { actor: options.actor } : {}),
   };
 }
 
@@ -130,6 +200,7 @@ export function createTextLock(options: {
   content: string;
   readToken?: string;
   pulledAt?: string;
+  appliedRevision?: TextAppliedRevision;
 }): TextLock {
   return createTextLockFromHash({
     ...options,
@@ -144,6 +215,7 @@ export function createTextLockFromHash(options: {
   contentHash: string;
   readToken?: string;
   pulledAt?: string;
+  appliedRevision?: TextAppliedRevision;
 }): TextLock {
   return createProjectionLock({
     kind: "clash.text.lock",
@@ -158,7 +230,10 @@ export function createTextLockFromHash(options: {
       contentHash: options.contentHash,
     }),
     pulledAt: options.pulledAt ?? new Date().toISOString(),
-    extra: { nodeId: options.nodeId },
+    extra: {
+      nodeId: options.nodeId,
+      ...(options.appliedRevision ? { appliedRevision: options.appliedRevision } : {}),
+    },
   }) as TextLock;
 }
 
@@ -177,6 +252,9 @@ export function parseTextLock(raw: string): TextLock {
   ) {
     throw new Error("Invalid text lock file");
   }
+  if (value.appliedRevision !== undefined) {
+    parseTextAppliedRevision(value.appliedRevision);
+  }
   if (value.projectionKind !== undefined || value.entity !== undefined) {
     parseProjectionLock(value, {
       kind: "clash.text.lock",
@@ -190,6 +268,40 @@ export function parseTextLock(raw: string): TextLock {
     projectionKind: "text",
     entity: { kind: "text-node", id: value.nodeId },
   } as TextLock;
+}
+
+function parseTextAppliedRevision(value: unknown): TextAppliedRevision {
+  const revision = value as Partial<TextAppliedRevision>;
+  if (
+    !revision ||
+    typeof revision !== "object" ||
+    revision.schemaVersion !== 1 ||
+    revision.kind !== "clash.text.revision" ||
+    typeof revision.textId !== "string" ||
+    typeof revision.revisionId !== "string" ||
+    (revision.parentRevisionId !== undefined && typeof revision.parentRevisionId !== "string") ||
+    typeof revision.projectId !== "string" ||
+    typeof revision.nodeId !== "string" ||
+    typeof revision.createdAt !== "string" ||
+    typeof revision.contentHash !== "string" ||
+    revision.hashAlgorithm !== "sha256-64" ||
+    typeof revision.sourceFilePath !== "string" ||
+    typeof revision.sourceFileHash !== "string" ||
+    (revision.actor !== undefined && !isTextRevisionActor(revision.actor))
+  ) {
+    throw new Error("Invalid text applied revision");
+  }
+  return revision as TextAppliedRevision;
+}
+
+export function isTextRevisionActor(value: unknown): value is TextRevisionActor {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const actor = value as Partial<TextRevisionActor>;
+  return (
+    (actor.actorType === "user" || actor.actorType === "agent") &&
+    typeof actor.actorUserId === "string" &&
+    (actor.actorAgentId === undefined || typeof actor.actorAgentId === "string")
+  );
 }
 
 export function assertTextCas(options: {
@@ -285,4 +397,22 @@ function textFileSlug(raw: string): string {
     .replace(/[^a-z0-9._-]+/g, "-")
     .replace(/^-+|-+$/g, "");
   return slug || "text";
+}
+
+function isInsideOrEqual(root: string, target: string): boolean {
+  const rel = relative(root, target);
+  return rel === "" || (!rel.startsWith(`..${sep}`) && rel !== ".." && !isAbsolute(rel));
+}
+
+function toProjectPath(cwd: string, absolutePath: string): string {
+  return relative(cwd, absolutePath).split(sep).join("/");
+}
+
+function stableJsonForHash(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(stableJsonForHash).join(",")}]`;
+  if (value && typeof value === "object") {
+    const record = value as Record<string, unknown>;
+    return `{${Object.keys(record).sort().map((key) => `${JSON.stringify(key)}:${stableJsonForHash(record[key])}`).join(",")}}`;
+  }
+  return JSON.stringify(value);
 }

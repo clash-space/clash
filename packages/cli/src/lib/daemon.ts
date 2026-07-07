@@ -55,12 +55,14 @@ import {
 import {
   assertTextCas,
   assertTextNotReferenced,
+  createTextAppliedRevision,
   createTextCowNodeData,
   createTextLockFromHash,
   textHash,
   textReadToken,
   textContentFromNode,
   type TextLock,
+  type TextRevisionActor,
 } from "./text-projection";
 import {
   hostMutationRejected,
@@ -888,9 +890,21 @@ function handleCommand(client: LoroSyncClient, cmd: any): object {
         nodeId: cmd.nodeId,
         content: cmd.content,
       });
+      const textRevision = typeof cmd.cwd === "string" && typeof cmd.filePath === "string"
+        ? createTextAppliedRevision({
+            projectId: cmd.projectId,
+            nodeId: cmd.nodeId,
+            cwd: cmd.cwd,
+            filePath: cmd.filePath,
+            content: cmd.content,
+            parentRevisionId: typeof cmd.parentRevisionId === "string" ? cmd.parentRevisionId : undefined,
+            actor: readTextRevisionActor(cmd.actor),
+          })
+        : undefined;
       return {
         updated: true,
         nodeId: cmd.nodeId,
+        textRevision,
         readToken: afterReadToken,
         mutation: hostMutationSucceeded(hostMutation.envelope, {
           resultEntityId: cmd.nodeId,
@@ -964,6 +978,17 @@ function handleCommand(client: LoroSyncClient, cmd: any): object {
       const newNodeId = typeof cmd.newNodeId === "string" && cmd.newNodeId.length > 0
         ? cmd.newNodeId
         : crypto.randomUUID().slice(0, 8);
+      const textRevision = typeof cmd.cwd === "string" && typeof cmd.filePath === "string"
+        ? createTextAppliedRevision({
+            projectId: cmd.projectId,
+            nodeId: newNodeId,
+            cwd: cmd.cwd,
+            filePath: cmd.filePath,
+            content: cmd.content,
+            parentRevisionId: typeof cmd.parentRevisionId === "string" ? cmd.parentRevisionId : undefined,
+            actor: readTextRevisionActor(cmd.actor),
+          })
+        : undefined;
       const data = createTextCowNodeData({
         sourceNodeId: cmd.nodeId,
         sourceLabel: typeof node.data?.label === "string" ? node.data.label : undefined,
@@ -971,6 +996,7 @@ function handleCommand(client: LoroSyncClient, cmd: any): object {
         content: cmd.content,
         label: typeof cmd.label === "string" ? cmd.label : undefined,
         filePath: typeof cmd.filePath === "string" ? cmd.filePath : undefined,
+        textRevision,
       });
       try {
         client.canvas.createLinkedNode({
@@ -1000,6 +1026,7 @@ function handleCommand(client: LoroSyncClient, cmd: any): object {
         nodeId: newNodeId,
         sourceContentHash: beforeHash,
         contentHash: afterHash,
+        textRevision,
         lineageEdge: { source: cmd.nodeId, target: newNodeId, type: "copy-on-write" },
         readToken: afterReadToken,
         mutation: hostMutationSucceeded(hostMutation.envelope, {
@@ -1232,6 +1259,22 @@ function handleCommand(client: LoroSyncClient, cmd: any): object {
 function readTimelineRevisionActor(value: unknown): TimelineRevisionActor | undefined {
   if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
   const actor = value as Partial<TimelineRevisionActor>;
+  if (
+    (actor.actorType !== "user" && actor.actorType !== "agent") ||
+    typeof actor.actorUserId !== "string"
+  ) {
+    return undefined;
+  }
+  return {
+    actorType: actor.actorType,
+    actorUserId: actor.actorUserId,
+    ...(typeof actor.actorAgentId === "string" ? { actorAgentId: actor.actorAgentId } : {}),
+  };
+}
+
+function readTextRevisionActor(value: unknown): TextRevisionActor | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+  const actor = value as Partial<TextRevisionActor>;
   if (
     (actor.actorType !== "user" && actor.actorType !== "agent") ||
     typeof actor.actorUserId !== "string"

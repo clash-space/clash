@@ -302,6 +302,10 @@ Current status:
   connection writes.
 - daemon `text_cow_replace` enforces the same CAS lock before creating a new
   text node with source node/content-hash lineage.
+- Successful text apply/replace records a `clash.text.revision` milestone with
+  source file path, content hash, parent revision, and actor attribution;
+  refreshed locks carry the applied revision, and COW replacement nodes keep the
+  same revision in node data.
 - Text apply rejects materialized downstream checkpoint rewrites by default,
   allows unmaterialized action-draft references, and permits explicit
   `--force` checkpoint rewrites.
@@ -313,7 +317,7 @@ Current status:
 Remaining gap:
 
 - Text nodes are still canvas `data.content`; they are not yet durable text
-  asset rows in SQLite.
+  asset/content revision rows in SQLite.
 - No text frontmatter metadata is projected yet.
 
 ### P0-05: Copy-on-write for referenced text/content
@@ -851,7 +855,9 @@ Remaining gap:
   materialized downstream refs attached to the old node. `clash text apply`
   still rejects in-place mutation by default; unmaterialized action-draft
   references can still be edited in place, and explicit `--force` can rewrite a
-  checkpoint.
+  checkpoint. Successful apply/replace now also creates an applied text revision
+  milestone; the remaining gap is durable SQLite indexing/UI history, not basic
+  revision evidence.
 - Timeline COW/versioned replacement has a first-pass explicit
   `clash timeline replace` implementation. Current `apply` still detects
   materialized downstream render/checkpoint references and rejects the in-place

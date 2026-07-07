@@ -766,12 +766,34 @@ test("daemon text force response is explicit", () => {
     projectId: "project-1",
     nodeId: "text-1",
     content: "after",
+    cwd: "/tmp/project",
+    filePath: "/tmp/project/projections/text/text-1.md",
+    parentRevisionId: "txrev-parent",
+    actor: { actorType: "agent", actorUserId: "user-1", actorAgentId: "agent-1" },
     force: true,
-  });
+  }) as {
+    updated?: boolean;
+    forced?: boolean;
+    textRevision?: {
+      kind?: string;
+      nodeId?: string;
+      parentRevisionId?: string;
+      contentHash?: string;
+      sourceFilePath?: string;
+      actor?: unknown;
+    };
+    mutation?: { beforeReadToken?: string; afterReadToken?: string };
+  };
 
-  assert.equal((result as { updated?: boolean }).updated, true);
-  assert.equal((result as { forced?: boolean }).forced, true);
-  const mutation = (result as { mutation?: { beforeReadToken?: string; afterReadToken?: string } }).mutation;
+  assert.equal(result.updated, true);
+  assert.equal(result.forced, true);
+  assert.equal(result.textRevision?.kind, "clash.text.revision");
+  assert.equal(result.textRevision?.nodeId, "text-1");
+  assert.equal(result.textRevision?.parentRevisionId, "txrev-parent");
+  assert.equal(result.textRevision?.contentHash, textHash("after"));
+  assert.equal(result.textRevision?.sourceFilePath, "projections/text/text-1.md");
+  assert.deepEqual(result.textRevision?.actor, { actorType: "agent", actorUserId: "user-1", actorAgentId: "agent-1" });
+  const mutation = result.mutation;
   assert.match(mutation?.beforeReadToken ?? "", /^text-v1:[a-f0-9]{16}$/);
   assert.match(mutation?.afterReadToken ?? "", /^text-v1:[a-f0-9]{16}:receipt:[A-Za-z0-9._~-]+$/);
   assert.deepEqual(
@@ -817,7 +839,10 @@ test("daemon text copy-on-write replace preserves materialized references", () =
     expectedContentHash,
     expectedReadToken,
     expectedTextFilePath: "/tmp/project/projections/text/script.md",
+    cwd: "/tmp/project",
     filePath: "/tmp/project/projections/text/script.md",
+    parentRevisionId: "txrev-parent",
+    actor: { actorType: "agent", actorUserId: "user-1", actorAgentId: "agent-1" },
     newNodeId: "script-v2",
   }) as {
     copyOnWrite?: boolean;
@@ -825,6 +850,14 @@ test("daemon text copy-on-write replace preserves materialized references", () =
     newNodeId?: string;
     sourceContentHash?: string;
     contentHash?: string;
+    textRevision?: {
+      kind?: string;
+      nodeId?: string;
+      parentRevisionId?: string;
+      contentHash?: string;
+      sourceFilePath?: string;
+      actor?: unknown;
+    };
   };
 
   assert.equal(result.copyOnWrite, true);
@@ -832,6 +865,12 @@ test("daemon text copy-on-write replace preserves materialized references", () =
   assert.equal(result.newNodeId, "script-v2");
   assert.equal(result.sourceContentHash, expectedContentHash);
   assert.equal(result.contentHash, textHash("after"));
+  assert.equal(result.textRevision?.kind, "clash.text.revision");
+  assert.equal(result.textRevision?.nodeId, "script-v2");
+  assert.equal(result.textRevision?.parentRevisionId, "txrev-parent");
+  assert.equal(result.textRevision?.contentHash, textHash("after"));
+  assert.equal(result.textRevision?.sourceFilePath, "projections/text/script.md");
+  assert.deepEqual(result.textRevision?.actor, { actorType: "agent", actorUserId: "user-1", actorAgentId: "agent-1" });
   assert.deepEqual((result as { mutation?: unknown }).mutation, {
     operation: "text_cow_replace",
     entity: { kind: "text", id: "script" },
@@ -854,6 +893,7 @@ test("daemon text copy-on-write replace preserves materialized references", () =
   assert.equal(replacement?.data.sourceTextNodeId, "script");
   assert.equal(replacement?.data.sourceContentHash, textHash("before"));
   assert.equal(replacement?.data.contentHash, textHash("after"));
+  assert.deepEqual(replacement?.data.textRevision, result.textRevision);
   assert.equal(
     client.canvas.listEdges().some((edge) => edge.source === "script" && edge.target === "action-1"),
     true,
