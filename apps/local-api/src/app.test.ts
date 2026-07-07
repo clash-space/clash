@@ -4183,6 +4183,21 @@ describe("local API app", () => {
         accepted: true,
       },
     });
+    const audit = await app.request("/api/v1/mutation-audit?operation=provider_account_delete&entityId=replicate-primary");
+    expect(audit.status).toBe(200);
+    const auditJson = await audit.json() as { records: Array<any> };
+    expect(auditJson.records).toHaveLength(1);
+    expect(auditJson.records[0]).toMatchObject({
+      operation: "provider_account_delete",
+      entity: { kind: "provider-account", id: "replicate-primary" },
+      accepted: true,
+      actorClientType: "agent",
+      reason: "provider account delete",
+    });
+    expect(JSON.stringify(auditJson.records[0].mutation ?? {})).not.toContain("receipt");
+    expect(auditJson.records[0].mutation.expectedReadToken).toBeUndefined();
+    expect(auditJson.records[0].mutation.beforeReadToken).toBeUndefined();
+    expect(auditJson.records[0].mutation.afterReadToken).toBeUndefined();
 
     const providers = await app.request("/api/v1/model-providers");
     const providersJson = (await providers.json()) as { providers: Array<{ id?: string }> };

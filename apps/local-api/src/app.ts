@@ -2585,15 +2585,21 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
         }, "Provider account not found"),
       }, 404);
     }
+    const mutation = hostMutationSucceeded(hostMutation?.envelope ?? {
+      operation: "provider_account_delete",
+      entity: { kind: "provider-account", id: accountId },
+      forced: false,
+    }, {
+      resultEntityId: accountId,
+    });
+    await db.appendMutationAudit(mutationAuditRecord({
+      mutation,
+      actorClientType: preconditions.actorClientType,
+      reason: "provider account delete",
+    }));
     return c.json({
       ok: true,
-      mutation: hostMutationSucceeded(hostMutation?.envelope ?? {
-        operation: "provider_account_delete",
-        entity: { kind: "provider-account", id: accountId },
-        forced: false,
-      }, {
-        resultEntityId: accountId,
-      }),
+      mutation,
     });
   });
   app.post("/api/v1/model-providers/test", async (c) => {

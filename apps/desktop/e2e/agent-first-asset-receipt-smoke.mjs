@@ -960,6 +960,23 @@ async function main() {
     JSON.stringify(acceptedProviderDeleteJson),
     { mutation: acceptedProviderDeleteJson.mutation },
   );
+  const providerAccountDeleteAuditResponse = await request("/api/v1/mutation-audit?operation=provider_account_delete&entityId=replicate-primary");
+  const providerAccountDeleteAudit = await parseJsonResponse(providerAccountDeleteAuditResponse);
+  const providerAccountDeleteAuditRecord = providerAccountDeleteAudit.records?.[0];
+  recordCheck(
+    "provider account delete writes sanitized local mutation audit evidence",
+    providerAccountDeleteAuditResponse.status === 200 &&
+      providerAccountDeleteAudit.records?.length === 1 &&
+      providerAccountDeleteAuditRecord.operation === "provider_account_delete" &&
+      providerAccountDeleteAuditRecord.entity?.id === "replicate-primary" &&
+      providerAccountDeleteAuditRecord.accepted === true &&
+      providerAccountDeleteAuditRecord.actorClientType === "agent" &&
+      providerAccountDeleteAuditRecord.reason === "provider account delete" &&
+      providerAccountDeleteAuditRecord.mutation?.expectedReadToken == null &&
+      providerAccountDeleteAuditRecord.mutation?.beforeReadToken == null &&
+      providerAccountDeleteAuditRecord.mutation?.afterReadToken == null,
+    JSON.stringify(providerAccountDeleteAudit),
+  );
   const providersAfterDeleteResponse = await request("/api/v1/model-providers");
   const providersAfterDelete = await parseJsonResponse(providersAfterDeleteResponse);
   const providerIdsAfterDelete = providersAfterDelete.providers?.map((provider) => provider.id).filter(Boolean) ?? [];
@@ -2368,6 +2385,7 @@ async function main() {
       providerAccountDeleteStaleReceiptRejected: checks.some((check) => check.name === "provider account delete with stale receipt is rejected" && check.status === "pass"),
       providerAccountDeleteBareCasRejected: checks.some((check) => check.name === "provider account delete with bare CAS token is rejected" && check.status === "pass"),
       providerAccountDeleteReceiptAccepted: checks.some((check) => check.name === "provider account delete with receipt read token is accepted" && check.status === "pass"),
+      providerAccountDeleteAuditRecorded: checks.some((check) => check.name === "provider account delete writes sanitized local mutation audit evidence" && check.status === "pass"),
       providerAccountDeletePersisted: checks.some((check) => check.name === "provider account delete persists in host state" && check.status === "pass"),
       providerOAuthGetReceiptReturned: checks.some((check) => check.name === "provider OAuth get returns receipt read token" && check.status === "pass"),
       providerOAuthStartMissingReadRejected: checks.some((check) => check.name === "provider OAuth start without prior read is rejected" && check.status === "pass"),
