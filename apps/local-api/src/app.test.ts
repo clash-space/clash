@@ -1923,6 +1923,30 @@ describe("local API app", () => {
       resultEntityId: "edge-bc",
     });
 
+    const audit = await app.request(`/api/v1/mutation-audit?operation=canvas_delete_edge&entityId=edge-bc`);
+    expect(audit.status).toBe(200);
+    const auditJson = await audit.json() as { records: Array<{ mutation?: unknown }> };
+    expect(auditJson.records).toHaveLength(1);
+    expect(auditJson.records[0]).toMatchObject({
+      operation: "canvas_delete_edge",
+      entity: { kind: "canvas-edge", id: "edge-bc" },
+      accepted: true,
+      forced: false,
+      actorClientType: "agent",
+      reason: "canvas edge delete",
+      mutation: {
+        operation: "canvas_delete_edge",
+        entity: { kind: "canvas-edge", id: "edge-bc" },
+        resultEntityId: "edge-bc",
+        forced: false,
+        accepted: true,
+      },
+    });
+    expect(JSON.stringify(auditJson.records[0].mutation)).not.toContain("receipt");
+    expect(auditJson.records[0].mutation).not.toHaveProperty("expectedReadToken");
+    expect(auditJson.records[0].mutation).not.toHaveProperty("beforeReadToken");
+    expect(auditJson.records[0].mutation).not.toHaveProperty("afterReadToken");
+
     const recovered = await new FileReplicaStore(join(dataDir, "projects")).recover(projectId);
     expect(recovered.getMap("edges").get("edge-ab")).toMatchObject({
       source: "node-a",

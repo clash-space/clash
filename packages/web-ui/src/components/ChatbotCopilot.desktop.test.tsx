@@ -2480,6 +2480,89 @@ describe("ChatbotCopilot desktop local mode", () => {
     expect(screen.queryByRole("status", { name: "Streaming activity" })).toBeNull();
   });
 
+  it("treats runtime edge update and delete after same-patch edge creation as new-edge operations", async () => {
+    vi.useFakeTimers();
+    globalThis.__CLASH_RUNTIME_CONFIG__ = { mode: "desktop" };
+    vi.stubGlobal(
+      "IntersectionObserver",
+      vi.fn(function IntersectionObserver() {
+        return {
+          observe: vi.fn(),
+          disconnect: vi.fn(),
+        };
+      }),
+    );
+    Element.prototype.scrollIntoView = vi.fn();
+    const onAddNode = vi.fn();
+    const onAddEdge = vi.fn();
+    const onUpdateEdge = vi.fn();
+    const onRemoveEdge = vi.fn();
+    mocks.useClashRuntime.mockReturnValue(runtimeState({
+      selectedRuntimeId: "desktop-local",
+      selectedAgentId: "codex-acp",
+      status: "streaming",
+      ready: true,
+      messages: [{
+        id: "runtime-patch-one",
+        role: "assistant",
+        parts: [{
+          type: "raw_event",
+          event: {
+            sessionUpdate: "clash.canvas.patch",
+            operations: [
+              { op: "add_node", node: { id: "agent-source", type: "text", data: { label: "Source" } } },
+              { op: "add_node", node: { id: "agent-target", type: "image", data: { label: "Target" } } },
+              {
+                op: "add_edge",
+                edge: {
+                  id: "agent-source-agent-target",
+                  source: "agent-source",
+                  target: "agent-target",
+                  type: "default",
+                },
+              },
+              {
+                op: "update_edge",
+                edge: {
+                  id: "agent-source-agent-target",
+                  patch: { label: "reviewed", animated: true },
+                },
+              },
+              {
+                op: "delete_edge",
+                edge: { id: "agent-source-agent-target" },
+              },
+            ],
+          },
+        }],
+      }] as any,
+    }));
+    mocks.useAgentCopilot.mockReturnValue(cloudState());
+
+    renderDesktopCopilot({ onAddNode, onAddEdge, onUpdateEdge, onRemoveEdge });
+
+    await act(async () => {
+      await vi.runOnlyPendingTimersAsync();
+    });
+
+    expect(onAddEdge).toHaveBeenCalledWith(
+      {
+        id: "agent-source-agent-target",
+        source: "agent-source",
+        target: "agent-target",
+        type: "default",
+      },
+      undefined,
+    );
+    expect(onUpdateEdge).toHaveBeenCalledWith(
+      "agent-source-agent-target",
+      { label: "reviewed", animated: true },
+      undefined,
+    );
+    expect(onRemoveEdge).toHaveBeenCalledWith("agent-source-agent-target", undefined);
+    vi.useRealTimers();
+  });
+
   it("keeps runtime output pinned to the bottom while the user is already at the bottom", () => {
     globalThis.__CLASH_RUNTIME_CONFIG__ = { mode: "desktop" };
     let intersectionCallback: IntersectionObserverCallback | null = null;

@@ -597,13 +597,13 @@ Result:
 Latest verified asset receipt CAS smoke:
 
 ```text
-.tmp/agent-first-asset-receipts/2026-07-07T13-04-37-512Z/agent-first-asset-receipt-report.json
+.tmp/agent-first-asset-receipts/2026-07-07T13-20-54-716Z/agent-first-asset-receipt-report.json
 ```
 
 Result:
 
 - `status: pass`,
-- 120 checks passed through `npm --prefix apps/desktop run test:e2e:asset-receipts`,
+- 123 checks passed through `npm --prefix apps/desktop run test:e2e:asset-receipts`,
 - derived agent reads stayed read-only, provider model tests and local audio
   transcription actions recorded host mutation envelopes, and local sync, audio,
   harness, custom agent-server, provider account, provider OAuth, asset
@@ -611,8 +611,9 @@ Result:
   rejected missing or bare read proofs; project purge also proved the default
   delayed purge window, explicit force override, deleted recovery point removal,
   canonical project replica deletion, and sanitized local mutation audit
-  evidence without reusable read receipts; session delete and asset GC delete
-  also write sanitized local mutation audit evidence after accepted agent writes,
+  evidence without reusable read receipts; session delete, asset GC delete, and
+  local-api canvas edge delete also write sanitized local mutation audit
+  evidence after accepted agent writes,
 - stale provider, OAuth, asset GC, project restore, and session receipts were
   rejected,
 - fresh host-issued receipts were accepted and reported mutation envelopes.
@@ -731,7 +732,8 @@ Current status:
   `asset get -> asset cover set`, `asset ref get -> asset ref delete`, and
   `session list -> session delete` receipt enforcement against missing, bare,
   stale, and accepted tokens where each entity supports the state transition,
-  plus sanitized audit evidence for accepted asset GC and session deletion;
+  plus local-api canvas edge list/delete receipt enforcement and sanitized audit
+  evidence for accepted asset GC, session deletion, and edge deletion;
   broader live UI asset/session/settings editing still needs product fixture
   coverage.
 - `clash text pull/apply/replace` exists; Suite D still needs real project

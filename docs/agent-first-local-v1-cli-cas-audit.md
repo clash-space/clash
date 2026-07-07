@@ -360,8 +360,8 @@ Required behavior:
 
 - Add admin/debug commands for explicit low-level patching.
 - Extend first-pass local mutation audit beyond project delete/purge, session
-  delete, and asset GC delete to the remaining force/destructive mutation
-  surfaces.
+  delete, asset GC delete, and local-api canvas edge delete to the remaining
+  force/destructive mutation surfaces.
 - Promote direct canvas patch/read-token rejection from deterministic daemon
   and public CLI daemon-socket smoke into a live desktop/API project fixture.
 

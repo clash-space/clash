@@ -109,6 +109,7 @@ async function main() {
   const startedAt = now();
   const { createLocalApiApp } = await import("../../local-api/src/app.ts");
   const { createLocalAudioConfigStore } = await import("../../local-api/src/audio-config.ts");
+  const { FileReplicaStore } = await import("../../local-api/src/loro/file-replica-store.ts");
   const {
     deleteAssetProjectRef,
     fetchAssetProjectRef,
@@ -1602,6 +1603,67 @@ async function main() {
     (error) => recordCheck("asset GC smoke data dir remains intact", false, String(error)),
   );
 
+  const edgeAuditProjectId = "project-edge-audit-smoke";
+  await new FileReplicaStore(path.join(dataDir, "projects")).updateSnapshotAtomic(edgeAuditProjectId, (doc) => {
+    doc.getMap("nodes").set("edge-source", { type: "text", data: { label: "Edge source" } });
+    doc.getMap("nodes").set("edge-target", { type: "text", data: { label: "Edge target" } });
+    doc.getMap("edges").set("edge-source-edge-target", {
+      source: "edge-source",
+      target: "edge-target",
+      type: "default",
+    });
+    return { value: null };
+  });
+
+  const edgeListResponse = await request(`/api/v1/projects/${edgeAuditProjectId}/canvas/edges`);
+  const edgeList = await parseJsonResponse(edgeListResponse);
+  const edgeToDelete = edgeList.edges?.find((edge) => edge.id === "edge-source-edge-target");
+  recordCheck(
+    "canvas edge list returns graph and edge receipt read tokens",
+    edgeListResponse.status === 200 &&
+      hasReceipt(edgeList.readToken, "edges") &&
+      hasReceipt(edgeToDelete?.readToken, "edge"),
+    JSON.stringify(edgeList),
+    { readToken: edgeList.readToken, edgeReadToken: edgeToDelete?.readToken },
+  );
+
+  const edgeDeleteResponse = await request(`/api/v1/projects/${edgeAuditProjectId}/canvas/edges/edge-source-edge-target`, {
+    method: "DELETE",
+    body: JSON.stringify({
+      actorClientType: "agent",
+      ifMatch: edgeToDelete?.readToken,
+    }),
+  });
+  const edgeDelete = await parseJsonResponse(edgeDeleteResponse);
+  recordCheck(
+    "canvas edge delete with receipt is accepted",
+    edgeDeleteResponse.status === 200 &&
+      edgeDelete.mutation?.accepted === true &&
+      edgeDelete.mutation?.operation === "canvas_delete_edge" &&
+      edgeDelete.mutation?.expectedReadToken === edgeToDelete?.readToken &&
+      edgeDelete.mutation?.beforeReadToken === baseReadToken(edgeToDelete?.readToken),
+    JSON.stringify(edgeDelete),
+    { mutation: edgeDelete.mutation },
+  );
+
+  const edgeDeleteAuditResponse = await request("/api/v1/mutation-audit?operation=canvas_delete_edge&entityId=edge-source-edge-target");
+  const edgeDeleteAudit = await parseJsonResponse(edgeDeleteAuditResponse);
+  const edgeDeleteAuditRecord = edgeDeleteAudit.records?.[0];
+  recordCheck(
+    "canvas edge delete writes sanitized local mutation audit evidence",
+    edgeDeleteAuditResponse.status === 200 &&
+      edgeDeleteAudit.records?.length === 1 &&
+      edgeDeleteAuditRecord.operation === "canvas_delete_edge" &&
+      edgeDeleteAuditRecord.entity?.id === "edge-source-edge-target" &&
+      edgeDeleteAuditRecord.accepted === true &&
+      edgeDeleteAuditRecord.reason === "canvas edge delete" &&
+      !JSON.stringify(edgeDeleteAuditRecord.mutation ?? {}).includes("receipt") &&
+      edgeDeleteAuditRecord.mutation?.expectedReadToken == null &&
+      edgeDeleteAuditRecord.mutation?.beforeReadToken == null &&
+      edgeDeleteAuditRecord.mutation?.afterReadToken == null,
+    JSON.stringify(edgeDeleteAudit),
+  );
+
   const restoreProjectResponse = await request("/api/v1/projects", {
     method: "POST",
     body: JSON.stringify({ name: "Project Restore Receipt Smoke" }),
@@ -2178,6 +2240,9 @@ async function main() {
       assetGcFreshPlanReturned: checks.some((check) => check.name === "asset GC fresh dry-run sees current orphan plan" && check.status === "pass"),
       assetGcReceiptAccepted: checks.some((check) => check.name === "asset GC delete with dry-run receipt is accepted" && check.status === "pass"),
       assetGcAuditRecorded: checks.some((check) => check.name === "asset GC delete writes sanitized local mutation audit evidence" && check.status === "pass"),
+      canvasEdgeListReceiptReturned: checks.some((check) => check.name === "canvas edge list returns graph and edge receipt read tokens" && check.status === "pass"),
+      canvasEdgeDeleteReceiptAccepted: checks.some((check) => check.name === "canvas edge delete with receipt is accepted" && check.status === "pass"),
+      canvasEdgeDeleteAuditRecorded: checks.some((check) => check.name === "canvas edge delete writes sanitized local mutation audit evidence" && check.status === "pass"),
       projectRestoreDeletedGetHidden: checks.some((check) => check.name === "deleted project is hidden from normal project get" && check.status === "pass"),
       projectRestoreGetReceiptReturned: checks.some((check) => check.name === "deleted project get returns restore receipt" && check.status === "pass"),
       projectRestoreMissingReadRejected: checks.some((check) => check.name === "project restore without prior deleted read is rejected" && check.status === "pass"),

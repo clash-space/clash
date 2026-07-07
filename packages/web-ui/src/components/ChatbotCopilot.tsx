@@ -1096,8 +1096,8 @@ export default function ChatbotCopilot({
 
         const pendingNodeDeletes: Array<{ nodeId: string; ifMatch?: string; force?: boolean; requiresReadProof: boolean }> = [];
         const pendingEdges: Array<{ id: string; source: string; target: string; type?: string; ifMatch?: string; force?: boolean; requiresReadProof: boolean }> = [];
-        const pendingEdgeUpdates: Array<{ id: string; patch: Record<string, unknown>; ifMatch?: string; force?: boolean }> = [];
-        const pendingEdgeDeletes: Array<{ id: string; ifMatch?: string; force?: boolean }> = [];
+        const pendingEdgeUpdates: Array<{ id: string; patch: Record<string, unknown>; ifMatch?: string; force?: boolean; requiresReadProof: boolean }> = [];
+        const pendingEdgeDeletes: Array<{ id: string; ifMatch?: string; force?: boolean; requiresReadProof: boolean }> = [];
         const pendingTimelineApplies: Array<{ nodeId: string; dsl: unknown; ifMatch?: string; force?: boolean; requiresReadProof: boolean }> = [];
 
         for (const message of clashRt.messages) {
@@ -1105,12 +1105,14 @@ export default function ChatbotCopilot({
                 if (part.type !== 'raw_event') continue;
                 const operations = parseAgentCanvasPatch(part.event);
                 const createdNodeIdsInPatch = new Set<string>();
+                const createdEdgeIdsInPatch = new Set<string>();
                 for (const operation of operations) {
                     if (operation.op === 'add_edge') {
                         if (!onAddEdge) continue;
                         const patchEdge = operation.edge;
                         if (appliedRuntimeCanvasEdgesRef.current.has(patchEdge.id)) continue;
                         appliedRuntimeCanvasEdgesRef.current.add(patchEdge.id);
+                        createdEdgeIdsInPatch.add(patchEdge.id);
                         pendingEdges.push({
                             ...patchEdge,
                             ifMatch: operation.ifMatch,
@@ -1129,6 +1131,7 @@ export default function ChatbotCopilot({
                             ...operation.edge,
                             ifMatch: operation.ifMatch,
                             force: operation.force,
+                            requiresReadProof: !createdEdgeIdsInPatch.has(operation.edge.id),
                         });
                         continue;
                     }
@@ -1142,6 +1145,7 @@ export default function ChatbotCopilot({
                             id: edgeId,
                             ifMatch: operation.ifMatch,
                             force: operation.force,
+                            requiresReadProof: !createdEdgeIdsInPatch.has(edgeId),
                         });
                         continue;
                     }
@@ -1240,20 +1244,35 @@ export default function ChatbotCopilot({
                 }
                 if (onUpdateEdge) {
                     for (const edgeUpdate of pendingEdgeUpdates) {
-                        onUpdateEdge(edgeUpdate.id, edgeUpdate.patch, {
-                            actorClientType: 'agent',
-                            ifMatch: edgeUpdate.ifMatch,
-                            force: edgeUpdate.force,
-                        });
+                        onUpdateEdge(
+                            edgeUpdate.id,
+                            edgeUpdate.patch,
+                            edgeUpdate.requiresReadProof
+                                ? {
+                                    actorClientType: 'agent',
+                                    ifMatch: edgeUpdate.ifMatch,
+                                    force: edgeUpdate.force,
+                                }
+                                : edgeUpdate.force
+                                    ? { force: true }
+                                    : undefined,
+                        );
                     }
                 }
                 if (onRemoveEdge) {
                     for (const edgeDelete of pendingEdgeDeletes) {
-                        onRemoveEdge(edgeDelete.id, {
-                            actorClientType: 'agent',
-                            ifMatch: edgeDelete.ifMatch,
-                            force: edgeDelete.force,
-                        });
+                        onRemoveEdge(
+                            edgeDelete.id,
+                            edgeDelete.requiresReadProof
+                                ? {
+                                    actorClientType: 'agent',
+                                    ifMatch: edgeDelete.ifMatch,
+                                    force: edgeDelete.force,
+                                }
+                                : edgeDelete.force
+                                    ? { force: true }
+                                    : undefined,
+                        );
                     }
                 }
                 if (onApplyTimeline) {
