@@ -10,7 +10,7 @@ import { createRequire } from "node:module";
 import { timelineDslFromYaml, timelineDslHash } from "@clash/shared-types";
 import { productionCommand } from "./production";
 import { assertTimelineCas, createTimelineAppliedRevision, createTimelineLock, parseTimelineFileForApply } from "./timeline";
-import { applyProductionMetadataAction } from "../lib/production-actions";
+import { applyProductionMetadataAction, applyProductionMetadataProjection } from "../lib/production-actions";
 import { renderMgProductionProjection } from "../lib/mg-production";
 import { exportMgSnapshotAsset } from "../lib/mg-snapshot-export";
 import { planTalkingHeadTextCutAction } from "../lib/talking-head-plan";
@@ -43,6 +43,7 @@ test("registers a top-level production command for action-driven media workflows
   assert.equal(productionCommand.name(), "production");
   assert.deepEqual(productionCommand.commands.map((command) => command.name()), [
     "apply-metadata",
+    "apply-metadata-projection",
     "validate-pipeline-manifest",
     "render-mg",
     "verify-mg-preview",
@@ -280,6 +281,94 @@ test("applies MV beat metadata to an audio asset and writes timeline edit hints"
       anchorFrames: [0],
     },
   ]);
+});
+
+test("applies edited asset metadata projection through CAS and refreshes the lock", async () => {
+  const cwd = await mkdtemp(join(tmpdir(), "clash-production-metadata-apply-"));
+  const assetsPath = join(cwd, "assets", "manifest.json");
+  const actionPath = join(cwd, "actions", "beat-fill.json");
+  await writeJson(assetsPath, {
+    assets: [{ id: "asset-song", type: "audio", metadata: {} }],
+  });
+  await writeJson(actionPath, {
+    actionId: "action-beat-fill",
+    targetAssetId: "asset-song",
+    metadataKind: "audio.beat-analysis",
+    producer: "qa-fixture",
+    metadata: {
+      kind: "audio.beat-analysis",
+      bpm: 128,
+      fps: 30,
+      beats: [{ frame: 0, timeSeconds: 0, confidence: 0.99, downbeat: true }],
+      sections: [{ id: "intro", startFrame: 0, endFrame: 30, label: "intro" }],
+    },
+  });
+  const initial = await applyProductionMetadataAction({ cwd, actionPath, assetsPath });
+  const beforeLock = JSON.parse(await readFile(initial.metadataLockPath, "utf8"));
+  await writeJson(initial.metadataPath, {
+    kind: "audio.beat-analysis",
+    bpm: 132,
+    fps: 30,
+    beats: [{ frame: 0, timeSeconds: 0, confidence: 0.99, downbeat: true }],
+    sections: [{ id: "intro", startFrame: 0, endFrame: 30, label: "intro" }],
+  });
+
+  const applied = await applyProductionMetadataProjection({
+    cwd,
+    filePath: initial.metadataPath,
+    assetsPath,
+  });
+
+  assert.equal(applied.targetAssetId, "asset-song");
+  assert.equal(applied.metadataKind, "audio.beat-analysis");
+  assert.equal(applied.beforeMetadataHash, beforeLock.contentHash);
+  assert.notEqual(applied.afterMetadataHash, applied.beforeMetadataHash);
+  assert.equal(applied.lockPath, initial.metadataLockPath);
+  const assets = JSON.parse(await readFile(assetsPath, "utf8"));
+  assert.equal(assets.assets[0].metadata["audio.beat-analysis"].bpm, 132);
+  const afterLock = JSON.parse(await readFile(initial.metadataLockPath, "utf8"));
+  assert.equal(afterLock.contentHash, applied.afterMetadataHash);
+  assert.equal(afterLock.metadataHash, applied.afterMetadataHash);
+});
+
+test("rejects edited asset metadata projection when the manifest changed after pull", async () => {
+  const cwd = await mkdtemp(join(tmpdir(), "clash-production-metadata-stale-"));
+  const assetsPath = join(cwd, "assets", "manifest.json");
+  const actionPath = join(cwd, "actions", "beat-fill.json");
+  await writeJson(assetsPath, {
+    assets: [{ id: "asset-song", type: "audio", metadata: {} }],
+  });
+  await writeJson(actionPath, {
+    actionId: "action-beat-fill",
+    targetAssetId: "asset-song",
+    metadataKind: "audio.beat-analysis",
+    producer: "qa-fixture",
+    metadata: {
+      kind: "audio.beat-analysis",
+      bpm: 128,
+      fps: 30,
+      beats: [{ frame: 0, timeSeconds: 0, confidence: 0.99, downbeat: true }],
+      sections: [{ id: "intro", startFrame: 0, endFrame: 30, label: "intro" }],
+    },
+  });
+  const initial = await applyProductionMetadataAction({ cwd, actionPath, assetsPath });
+  await writeJson(initial.metadataPath, {
+    kind: "audio.beat-analysis",
+    bpm: 132,
+    fps: 30,
+    beats: [{ frame: 0, timeSeconds: 0, confidence: 0.99, downbeat: true }],
+    sections: [{ id: "intro", startFrame: 0, endFrame: 30, label: "intro" }],
+  });
+  const manifest = JSON.parse(await readFile(assetsPath, "utf8"));
+  manifest.assets[0].metadata["audio.beat-analysis"].bpm = 140;
+  await writeJson(assetsPath, manifest);
+
+  await assert.rejects(
+    () => applyProductionMetadataProjection({ cwd, filePath: initial.metadataPath, assetsPath }),
+    /stale asset metadata apply rejected/i,
+  );
+  const assets = JSON.parse(await readFile(assetsPath, "utf8"));
+  assert.equal(assets.assets[0].metadata["audio.beat-analysis"].bpm, 140);
 });
 
 test("rejects production metadata action files outside the project cwd", async () => {
@@ -619,6 +708,34 @@ test("runs production apply-metadata as a black-box CLI command over fixtures", 
   for (const lockPath of payload.projectionLockPaths) {
     assert.ok(existsSync(lockPath), `expected projection lock to exist: ${lockPath}`);
   }
+
+  const metadata = JSON.parse(await readFile(payload.metadataPath, "utf8"));
+  metadata.words.push({ id: "w3", text: "again", startFrame: 28, endFrame: 40 });
+  await writeJson(payload.metadataPath, metadata);
+  const applyEdited = spawnSync(
+    process.execPath,
+    [
+      "--import",
+      tsxLoader,
+      cliEntry.pathname,
+      "production",
+      "apply-metadata-projection",
+      "--file",
+      "projections/metadata/asset-talk.talking-head.analysis.json",
+      "--assets",
+      "assets/manifest.json",
+      "--json",
+    ],
+    { cwd, encoding: "utf8" },
+  );
+  assert.equal(applyEdited.status, 0, applyEdited.stderr);
+  const appliedPayload = JSON.parse(applyEdited.stdout);
+  assert.equal(appliedPayload.applied, true);
+  assert.equal(appliedPayload.targetAssetId, "asset-talk");
+  assert.notEqual(appliedPayload.afterMetadataHash, appliedPayload.beforeMetadataHash);
+  const editedAssets = JSON.parse(await readFile(join(cwd, "assets", "manifest.json"), "utf8"));
+  const editedTalkAsset = editedAssets.assets.find((asset: any) => asset.id === "asset-talk");
+  assert.equal(editedTalkAsset.metadata["talking-head.analysis"].words.at(-1).text, "again");
 });
 
 test("renders an MG spec into self-contained HTML, manifest, and timeline YAML projection", async () => {

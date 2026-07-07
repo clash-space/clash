@@ -121,10 +121,17 @@ reviews, QA reports, and provenance reports, write
 `projectionKind`, `contentHash`, source metadata path/hash, and source action
 path/hash.
 
+Agents can edit the primary metadata projection JSON with native file tools and
+then run `clash production apply-metadata-projection --file ...`. The command
+uses the `clash.asset.metadata.lock` sidecar as CAS proof: the lock hash must
+match the current asset metadata in `assets/manifest.json`, the lock path must
+match the edited file, and a successful apply refreshes the lock to the new
+metadata hash.
+
 The remaining v1 gap is that storyboard prompt packs and asset metadata still
 run as file-only CAS paths rather than host-issued receipt paths, and the
-mechanism does not yet cover non-JSON storyboard files, future editable
-metadata apply commands, or future editor timeline projections.
+mechanism does not yet cover non-JSON storyboard files or future editor
+timeline projections.
 
 ## Lock Envelope
 

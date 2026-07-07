@@ -3,7 +3,7 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { Command } from "commander";
 import { AssetMetadataFillActionSchema } from "@clash/shared-types";
-import { applyProductionMetadataAction } from "../lib/production-actions";
+import { applyProductionMetadataAction, applyProductionMetadataProjection } from "../lib/production-actions";
 import { validatePipelineManifest } from "../lib/pipeline-manifest-validation";
 import { renderMgProductionProjection } from "../lib/mg-production";
 import { verifyMgPreview } from "../lib/mg-preview-verification";
@@ -84,6 +84,39 @@ productionCommand
         console.log(`projection lock: ${lockPath}`);
       }
       if (result.blockedReason) console.log(`blocked: ${result.blockedReason}`);
+    } catch (error) {
+      console.error(error instanceof Error ? error.message : String(error));
+      process.exit(1);
+    }
+  });
+
+productionCommand
+  .command("apply-metadata-projection")
+  .description("Apply an edited asset metadata projection JSON back to assets/manifest.json with CAS.")
+  .requiredOption("--file <path>", "Asset metadata projection JSON file")
+  .option("--lock <path>", "Asset metadata projection lock path")
+  .option("--assets <path>", "Asset manifest path", "assets/manifest.json")
+  .option("--force", "Apply even when the asset metadata lock is stale")
+  .option("--json", "Output result as JSON")
+  .action(async (options) => {
+    try {
+      const result = await applyProductionMetadataProjection({
+        cwd: process.cwd(),
+        filePath: options.file,
+        lockPath: options.lock,
+        assetsPath: options.assets,
+        force: Boolean(options.force),
+      });
+      if (isJsonMode(options)) {
+        printJson(result);
+        return;
+      }
+      console.log(`applied ${result.metadataKind} to ${result.targetAssetId}`);
+      console.log(`metadata: ${result.metadataPath}`);
+      console.log(`metadata lock: ${result.lockPath}`);
+      console.log(`before hash: ${result.beforeMetadataHash}`);
+      console.log(`after hash: ${result.afterMetadataHash}`);
+      if (result.forced) console.log("forced: true");
     } catch (error) {
       console.error(error instanceof Error ? error.message : String(error));
       process.exit(1);
