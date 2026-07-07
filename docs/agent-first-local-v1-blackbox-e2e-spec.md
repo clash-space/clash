@@ -229,19 +229,21 @@ Assertions:
   sidecars that resolve outside the current cwd,
 - public review gate planning rejects symlinked lock sidecars that resolve
   outside the current cwd,
+- public pipeline validation rejects symlinked QA report outputs that resolve
+  outside the current cwd,
 - storyboard prompt-pack COW replacement writes a versioned projection while
   the managed projection remains unchanged.
 
 Latest deterministic report:
 
 ```text
-.tmp/agent-first-cas/2026-07-07T14-58-08-592Z/agent-first-cas-report.json
+.tmp/agent-first-cas/2026-07-07T15-10-50-779Z/agent-first-cas-report.json
 ```
 
 Result:
 
 - `status: pass`
-- 33 checks passed,
+- 34 checks passed,
 - `projectionPathOutsideCwdRejected: true`.
 
 ### Suite C3: Local API Receipt CAS Smoke
@@ -753,7 +755,8 @@ Current status:
   read-proof rejection for missing/stale/wrong-file locks, text/timeline
   outside-cwd and symlink-outside-cwd projection path rejection including
   forced apply, text/timeline/storyboard prompt-pack/review-gate symlinked
-  lock-sidecar rejection, daemon direct canvas read-token
+  lock-sidecar rejection, pipeline validation symlinked QA report rejection,
+  daemon direct canvas read-token
   rejection/acceptance, public
   `clash canvas get/update/delete` read-token and mutation-envelope enforcement
   through a daemon socket, and prompt-pack COW preservation; QA agent reports

@@ -10,6 +10,7 @@ import {
   type ImageEmbeddingBaselineFor,
   type ImageEmbeddingStoreItem,
 } from "@clash/shared-types";
+import { resolveAgentFilePathInsideCwd } from "./projection-cas";
 
 export type ImageEmbeddingStoreReport = {
   schemaVersion: 1;
@@ -105,16 +106,24 @@ export async function planImageEmbeddingStoreAction(
       "did not execute image embedding backends",
     ],
   };
-  const actionPath = resolveProjectPath(
+  const actionPath = resolveAgentFilePathInsideCwd({
     cwd,
-    options.outPath ?? join("actions", `${safeSlug(metadata.embeddingSetId)}.image-embedding-store.json`),
-    "image embedding store action",
-  );
-  const reportPath = resolveProjectPath(
+    filePath: resolveProjectPath(
+      cwd,
+      options.outPath ?? join("actions", `${safeSlug(metadata.embeddingSetId)}.image-embedding-store.json`),
+      "image embedding store action",
+    ),
+    writeVerb: "Image embedding store action",
+  });
+  const reportPath = resolveAgentFilePathInsideCwd({
     cwd,
-    options.reportPath ?? join("qa", "image", `${safeSlug(metadata.embeddingSetId)}.embedding-store.json`),
-    "image embedding store report",
-  );
+    filePath: resolveProjectPath(
+      cwd,
+      options.reportPath ?? join("qa", "image", `${safeSlug(metadata.embeddingSetId)}.embedding-store.json`),
+      "image embedding store report",
+    ),
+    writeVerb: "Image embedding store report",
+  });
   await writeJson(actionPath, action);
   await writeJson(reportPath, report);
   return {

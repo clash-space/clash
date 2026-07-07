@@ -4,6 +4,7 @@ import {
   AssetMetadataFillActionSchema,
   type AudioBeatMetadata,
 } from "@clash/shared-types";
+import { resolveAgentFilePathInsideCwd } from "./projection-cas";
 
 export type MvBeatSyncVerificationOptions = {
   cwd: string;
@@ -102,11 +103,15 @@ export async function verifyMvBeatSync(
   const blockedReasons = checks
     .filter((check) => check.status === "fail")
     .map((check) => `${check.id}: ${check.actual}`);
-  const reportPath = resolveProjectPath(
+  const reportPath = resolveAgentFilePathInsideCwd({
     cwd,
-    options.outPath ?? join("qa", "mv", `${safeSlug(action.targetAssetId)}.beat-sync-verification.json`),
-    "MV beat sync verification report",
-  );
+    filePath: resolveProjectPath(
+      cwd,
+      options.outPath ?? join("qa", "mv", `${safeSlug(action.targetAssetId)}.beat-sync-verification.json`),
+      "MV beat sync verification report",
+    ),
+    writeVerb: "MV beat sync verification report",
+  });
   const report: MvBeatSyncVerificationReport = {
     schemaVersion: 1,
     kind: "clash.mv.beat-sync-verification",

@@ -205,6 +205,51 @@ test("runs production validate-pipeline-manifest over action metadata asset proj
   ]);
 });
 
+test("pipeline validation rejects symlinked report paths that resolve outside cwd", async () => {
+  const cwd = await mkdtemp(join(tmpdir(), "clash-production-pipeline-report-path-"));
+  await writeJson(join(cwd, "pipeline.manifest.json"), {
+    schemaVersion: 1,
+    projectKind: "short-drama",
+    stages: ["analysis"],
+    artifacts: [
+      { kind: "action", stage: "analysis", path: "actions/storyboard-review.json" },
+      { kind: "metadata", stage: "analysis", path: "projections/metadata/storyboard.json" },
+      { kind: "asset", stage: "analysis", path: "assets/manifest.json" },
+      { kind: "projection", stage: "analysis", path: "projections/timelines/storyboard.yaml", casRequired: true },
+    ],
+  });
+  const outside = join(cwd, "..", "outside-pipeline-report-path");
+  await mkdir(outside, { recursive: true });
+  await mkdir(join(cwd, "qa", "pipeline"), { recursive: true });
+  const outsideReportPath = join(outside, "pipeline-validation.json");
+  await writeFile(outsideReportPath, "outside\n", "utf8");
+  await symlink(outsideReportPath, join(cwd, "qa", "pipeline", "pipeline-validation.json"));
+
+  const cliEntry = new URL("../index.ts", import.meta.url);
+  const require = createRequire(import.meta.url);
+  const tsxLoader = require.resolve("tsx");
+  const validated = spawnSync(
+    process.execPath,
+    [
+      "--import",
+      tsxLoader,
+      cliEntry.pathname,
+      "production",
+      "validate-pipeline-manifest",
+      "--pipeline",
+      "pipeline.manifest.json",
+      "--out",
+      "qa/pipeline/pipeline-validation.json",
+      "--json",
+    ],
+    { cwd, encoding: "utf8" },
+  );
+
+  assert.equal(validated.status, 1);
+  assert.match(validated.stderr, /Agent file path must not traverse a symlink outside the current project cwd/);
+  assert.equal(await readFile(outsideReportPath, "utf8"), "outside\n");
+});
+
 test("applies MV beat metadata to an audio asset and writes timeline edit hints", async () => {
   const cwd = await mkdtemp(join(tmpdir(), "clash-production-mv-"));
   const assetsPath = join(cwd, "assets", "manifest.json");
@@ -1599,6 +1644,58 @@ test("runs production dry-run cost gates without executing generation or silent 
   ]);
   assert.match(blockedGate.decisionLog.join("\n"), /did not execute generation/);
   assert.equal(existsSync(join(cwd, "assets", "video", "cloud-backup-shot.mp4")), false);
+});
+
+test("dry-run cost gate rejects symlinked output paths that resolve outside cwd", async () => {
+  const cwd = await mkdtemp(join(tmpdir(), "clash-production-dry-run-gate-path-"));
+  await writeJson(join(cwd, "plans", "dry-run.json"), {
+    workflowId: "mv-launch",
+    stage: "generate",
+    maxCostUsd: 1,
+    operations: [
+      {
+        id: "local-audio",
+        capability: "audio.beat-analysis",
+        provider: "local",
+        runtime: "ffmpeg",
+        mode: "local",
+        availability: "available",
+        estimatedCostUsd: 0,
+        requiresByoKey: false,
+      },
+    ],
+    fallbackOptions: [],
+  });
+  const outside = join(cwd, "..", "outside-dry-run-gate-path");
+  await mkdir(outside, { recursive: true });
+  await mkdir(join(cwd, "reviews", "gates"), { recursive: true });
+  const outsideGatePath = join(outside, "dry-run-cost-gate.json");
+  await writeFile(outsideGatePath, "outside\n", "utf8");
+  await symlink(outsideGatePath, join(cwd, "reviews", "gates", "dry-run-cost-gate.json"));
+
+  const cliEntry = new URL("../index.ts", import.meta.url);
+  const require = createRequire(import.meta.url);
+  const tsxLoader = require.resolve("tsx");
+  const planned = spawnSync(
+    process.execPath,
+    [
+      "--import",
+      tsxLoader,
+      cliEntry.pathname,
+      "production",
+      "plan-dry-run-cost-gate",
+      "--request",
+      "plans/dry-run.json",
+      "--out",
+      "reviews/gates/dry-run-cost-gate.json",
+      "--json",
+    ],
+    { cwd, encoding: "utf8" },
+  );
+
+  assert.equal(planned.status, 1);
+  assert.match(planned.stderr, /Agent file path must not traverse a symlink outside the current project cwd/);
+  assert.equal(await readFile(outsideGatePath, "utf8"), "outside\n");
 });
 
 test("runs production semantic reference roles and applies them to individual asset metadata", async () => {

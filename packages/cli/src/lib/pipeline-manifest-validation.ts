@@ -1,6 +1,7 @@
 import { existsSync } from "node:fs";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, isAbsolute, join, relative, resolve } from "node:path";
+import { resolveAgentFilePathInsideCwd } from "./projection-cas";
 
 type PipelineArtifactKind = "action" | "metadata" | "asset" | "projection" | "review-gate" | "export";
 type CoverageKey = "action" | "metadata" | "asset" | "projection" | "reviewGate" | "export";
@@ -94,11 +95,15 @@ export async function validatePipelineManifest(
       .map((artifact) => `projection artifact must declare casRequired: true: ${artifact.projectPath}`),
   ];
   const status: PipelineValidationStatus = blockedReasons.length > 0 ? "blocked" : "pass";
-  const reportPath = resolveProjectPath(
+  const reportPath = resolveAgentFilePathInsideCwd({
     cwd,
-    options.outPath ?? join("qa", "pipeline", `${safeFileStem(manifest.projectKind)}.pipeline-validation.json`),
-    "pipeline validation report",
-  );
+    filePath: resolveProjectPath(
+      cwd,
+      options.outPath ?? join("qa", "pipeline", `${safeFileStem(manifest.projectKind)}.pipeline-validation.json`),
+      "pipeline validation report",
+    ),
+    writeVerb: "Pipeline validation report",
+  });
   const report: PipelineValidationReport = {
     schemaVersion: 1,
     kind: "clash.production.pipeline-validation",

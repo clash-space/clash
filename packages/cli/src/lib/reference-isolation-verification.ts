@@ -1,6 +1,7 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { timelineDslFromYaml } from "@clash/shared-types";
+import { resolveAgentFilePathInsideCwd } from "./projection-cas";
 
 export type ReferenceIsolationVerificationOptions = {
   cwd: string;
@@ -96,11 +97,15 @@ export async function verifyReferenceIsolation(
   const blockedReasons = checks
     .filter((check) => check.status === "fail")
     .map((check) => `${check.id}: ${check.actual}`);
-  const reportPath = resolveProjectPath(
+  const reportPath = resolveAgentFilePathInsideCwd({
     cwd,
-    options.outPath ?? join("qa", "reference", `${basenameWithoutYaml(timelinePath)}.reference-isolation.json`),
-    "reference isolation report",
-  );
+    filePath: resolveProjectPath(
+      cwd,
+      options.outPath ?? join("qa", "reference", `${basenameWithoutYaml(timelinePath)}.reference-isolation.json`),
+      "reference isolation report",
+    ),
+    writeVerb: "Reference isolation report",
+  });
   const report: ReferenceIsolationVerificationReport = {
     schemaVersion: 1,
     kind: "clash.reference.isolation-verification",

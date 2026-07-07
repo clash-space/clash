@@ -6,6 +6,7 @@ import {
   type MgCompositionSpec,
   type MgEvaluatedLayerStyle,
 } from "@clash/shared-types";
+import { resolveAgentFilePathInsideCwd } from "./projection-cas";
 
 export type MgPreviewVerificationOptions = {
   cwd: string;
@@ -82,11 +83,15 @@ export async function verifyMgPreview(
     frameEvaluations,
     blockedReasons,
   };
-  const reportPath = resolveProjectPath(
+  const reportPath = resolveAgentFilePathInsideCwd({
     cwd,
-    options.outPath ?? join("qa", "mg", `${report.overlayId}.preview-verification.json`),
-    "preview verification output",
-  );
+    filePath: resolveProjectPath(
+      cwd,
+      options.outPath ?? join("qa", "mg", `${report.overlayId}.preview-verification.json`),
+      "preview verification output",
+    ),
+    writeVerb: "MG preview verification report",
+  });
   await writeJson(reportPath, report);
   return {
     status: report.status,

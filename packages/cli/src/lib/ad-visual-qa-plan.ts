@@ -10,6 +10,7 @@ import {
   type AdVisualQaMetadata,
   type AssetMetadataFillAction,
 } from "@clash/shared-types";
+import { resolveAgentFilePathInsideCwd } from "./projection-cas";
 
 export type AdVisualQaReport = {
   schemaVersion: 1;
@@ -122,16 +123,24 @@ export async function planAdVisualQaAction(
     visualQa: metadata.visualQa,
     decisionLog,
   };
-  const actionPath = resolveProjectPath(
+  const actionPath = resolveAgentFilePathInsideCwd({
     cwd,
-    options.outPath ?? join("actions", `${safeSlug(metadata.variantId)}.ad-visual-qa.json`),
-    "ad visual QA action",
-  );
-  const reportPath = resolveProjectPath(
+    filePath: resolveProjectPath(
+      cwd,
+      options.outPath ?? join("actions", `${safeSlug(metadata.variantId)}.ad-visual-qa.json`),
+      "ad visual QA action",
+    ),
+    writeVerb: "Ad visual QA action",
+  });
+  const reportPath = resolveAgentFilePathInsideCwd({
     cwd,
-    options.reportPath ?? join("qa", "visual", `${safeSlug(metadata.variantId)}.visual-qa.json`),
-    "ad visual QA report",
-  );
+    filePath: resolveProjectPath(
+      cwd,
+      options.reportPath ?? join("qa", "visual", `${safeSlug(metadata.variantId)}.visual-qa.json`),
+      "ad visual QA report",
+    ),
+    writeVerb: "Ad visual QA report",
+  });
   await writeJson(actionPath, action);
   await writeJson(reportPath, report);
   return {

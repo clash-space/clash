@@ -9,6 +9,7 @@ import {
   type AdDeliveryExportProbe,
   type AdDeliveryExportValidationReceipt,
 } from "@clash/shared-types";
+import { resolveAgentFilePathInsideCwd } from "./projection-cas";
 
 export type ValidateAdDeliveryExportOptions = {
   cwd: string;
@@ -61,11 +62,15 @@ export async function validateAdDeliveryExport(
     probe,
     visualQa,
   });
-  const receiptPath = resolveProjectPath(
+  const receiptPath = resolveAgentFilePathInsideCwd({
     cwd,
-    options.outPath ?? join("qa", "delivery", `${safeFileStem(options.variantId)}.validation.json`),
-    "output",
-  );
+    filePath: resolveProjectPath(
+      cwd,
+      options.outPath ?? join("qa", "delivery", `${safeFileStem(options.variantId)}.validation.json`),
+      "output",
+    ),
+    writeVerb: "Ad delivery validation receipt",
+  });
   await writeJson(receiptPath, receipt);
   return {
     validated: true,

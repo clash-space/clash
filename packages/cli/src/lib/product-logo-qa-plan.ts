@@ -11,6 +11,7 @@ import {
   type ProductLogoQaReference,
   type SemanticReferenceRole,
 } from "@clash/shared-types";
+import { resolveAgentFilePathInsideCwd } from "./projection-cas";
 
 export type ProductLogoQaReport = {
   schemaVersion: 1;
@@ -118,16 +119,24 @@ export async function planProductLogoQaAction(
     blockedReasons: metadata.blockedReasons,
     copyOnWriteRequired: metadata.copyOnWriteRequired,
   };
-  const actionPath = resolveProjectPath(
+  const actionPath = resolveAgentFilePathInsideCwd({
     cwd,
-    options.outPath ?? join("actions", `${safeSlug(targetAssetId)}.product-logo-qa.json`),
-    "product/logo QA action",
-  );
-  const reportPath = resolveProjectPath(
+    filePath: resolveProjectPath(
+      cwd,
+      options.outPath ?? join("actions", `${safeSlug(targetAssetId)}.product-logo-qa.json`),
+      "product/logo QA action",
+    ),
+    writeVerb: "Product/logo QA action",
+  });
+  const reportPath = resolveAgentFilePathInsideCwd({
     cwd,
-    options.reportPath ?? join("qa", "image", `${safeSlug(targetAssetId)}.product-logo-qa.json`),
-    "product/logo QA report",
-  );
+    filePath: resolveProjectPath(
+      cwd,
+      options.reportPath ?? join("qa", "image", `${safeSlug(targetAssetId)}.product-logo-qa.json`),
+      "product/logo QA report",
+    ),
+    writeVerb: "Product/logo QA report",
+  });
   await writeJson(actionPath, action);
   await writeJson(reportPath, report);
   return {

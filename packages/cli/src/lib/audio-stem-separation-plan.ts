@@ -9,6 +9,7 @@ import {
   type AudioStemAsset,
   type AudioStemType,
 } from "@clash/shared-types";
+import { resolveAgentFilePathInsideCwd } from "./projection-cas";
 
 export type AudioStemSeparationReport = {
   schemaVersion: 1;
@@ -112,16 +113,24 @@ export async function planAudioStemSeparationAction(
     vocalStemAssetId: metadata.vocalStemAssetId,
     decisionLog,
   };
-  const actionPath = resolveProjectPath(
+  const actionPath = resolveAgentFilePathInsideCwd({
     cwd,
-    options.outPath ?? join("actions", `${safeSlug(metadata.separationId)}.audio-stem-separation.json`),
-    "audio stem separation action",
-  );
-  const reportPath = resolveProjectPath(
+    filePath: resolveProjectPath(
+      cwd,
+      options.outPath ?? join("actions", `${safeSlug(metadata.separationId)}.audio-stem-separation.json`),
+      "audio stem separation action",
+    ),
+    writeVerb: "Audio stem separation action",
+  });
+  const reportPath = resolveAgentFilePathInsideCwd({
     cwd,
-    options.reportPath ?? join("qa", "audio", `${safeSlug(metadata.separationId)}.stem-separation.json`),
-    "audio stem separation report",
-  );
+    filePath: resolveProjectPath(
+      cwd,
+      options.reportPath ?? join("qa", "audio", `${safeSlug(metadata.separationId)}.stem-separation.json`),
+      "audio stem separation report",
+    ),
+    writeVerb: "Audio stem separation report",
+  });
   await writeJson(actionPath, action);
   await writeJson(reportPath, report);
   return {

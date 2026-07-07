@@ -6,6 +6,7 @@ import {
   type ResolvedTimelineDsl,
   type ResolvedTrack,
 } from "@clash/shared-types";
+import { resolveAgentFilePathInsideCwd } from "./projection-cas";
 
 export type CaptionLineageVerificationOptions = {
   cwd: string;
@@ -68,11 +69,15 @@ export async function verifyCaptionLineage(
 ): Promise<CaptionLineageVerificationResult> {
   const cwd = resolve(options.cwd);
   const timelinePath = resolveProjectPath(cwd, options.timelinePath, "caption timeline");
-  const reportPath = resolveProjectPath(
+  const reportPath = resolveAgentFilePathInsideCwd({
     cwd,
-    options.outPath ?? join("qa", "captions", `${basenameWithoutTimeline(timelinePath)}.caption-lineage.json`),
-    "caption lineage verification report",
-  );
+    filePath: resolveProjectPath(
+      cwd,
+      options.outPath ?? join("qa", "captions", `${basenameWithoutTimeline(timelinePath)}.caption-lineage.json`),
+      "caption lineage verification report",
+    ),
+    writeVerb: "Caption lineage verification report",
+  });
   const parsed = timelineDslFromYaml(await readFile(timelinePath, "utf8"));
   const stats = parsed.ok ? collectCaptionStats(parsed.dsl) : emptyStats();
   const checks = buildChecks(parsed, stats);

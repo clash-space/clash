@@ -9,6 +9,7 @@ import {
   type ReferenceDownloadMetadata,
 } from "@clash/shared-types";
 import type { ReferenceDownloadPlan } from "./reference-download-plan";
+import { resolveAgentFilePathInsideCwd } from "./projection-cas";
 
 export type ExecuteReferenceDownloadOptions = {
   cwd: string;
@@ -146,11 +147,15 @@ export async function executeReferenceDownload(
     decisionLog,
     executedAt: new Date().toISOString(),
   };
-  const receiptPath = resolveProjectPath(
+  const receiptPath = resolveAgentFilePathInsideCwd({
     cwd,
-    options.outPath ?? join("references", "downloads", `${safeSlug(plan.targetAssetId)}.download-receipt.json`),
-    "reference download receipt",
-  );
+    filePath: resolveProjectPath(
+      cwd,
+      options.outPath ?? join("references", "downloads", `${safeSlug(plan.targetAssetId)}.download-receipt.json`),
+      "reference download receipt",
+    ),
+    writeVerb: "Reference download receipt",
+  });
   await writeJson(receiptPath, receipt);
   return {
     executed: true,

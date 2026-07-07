@@ -8,6 +8,7 @@ import {
   type AnalysisBackendBenchmarkMetric,
   type AssetMetadataFillAction,
 } from "@clash/shared-types";
+import { resolveAgentFilePathInsideCwd } from "./projection-cas";
 
 export type AnalysisBenchmarkReport = {
   schemaVersion: 1;
@@ -118,16 +119,24 @@ export async function planAnalysisBenchmarkAction(
     blockedReasons: metadata.blockedReasons,
     decisionLog: metadata.decisionLog,
   };
-  const actionPath = resolveProjectPath(
+  const actionPath = resolveAgentFilePathInsideCwd({
     cwd,
-    options.outPath ?? join("actions", `${safeSlug(request.benchmarkId)}.analysis-benchmark.json`),
-    "analysis benchmark action",
-  );
-  const reportPath = resolveProjectPath(
+    filePath: resolveProjectPath(
+      cwd,
+      options.outPath ?? join("actions", `${safeSlug(request.benchmarkId)}.analysis-benchmark.json`),
+      "analysis benchmark action",
+    ),
+    writeVerb: "Analysis benchmark action",
+  });
+  const reportPath = resolveAgentFilePathInsideCwd({
     cwd,
-    options.reportPath ?? join("qa", "analysis", `${safeSlug(request.benchmarkId)}.backend-benchmark.json`),
-    "analysis benchmark report",
-  );
+    filePath: resolveProjectPath(
+      cwd,
+      options.reportPath ?? join("qa", "analysis", `${safeSlug(request.benchmarkId)}.backend-benchmark.json`),
+      "analysis benchmark report",
+    ),
+    writeVerb: "Analysis benchmark report",
+  });
   await writeJson(actionPath, action);
   await writeJson(reportPath, report);
   return {

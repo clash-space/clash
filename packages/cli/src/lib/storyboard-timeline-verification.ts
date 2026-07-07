@@ -1,6 +1,7 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { AssetMetadataFillActionSchema } from "@clash/shared-types";
+import { resolveAgentFilePathInsideCwd } from "./projection-cas";
 
 export type StoryboardTimelineVerificationOptions = {
   cwd: string;
@@ -113,11 +114,15 @@ export async function verifyStoryboardTimeline(
     .filter((check) => check.status === "fail")
     .map((check) => `${check.id}: ${check.actual}`);
   const casApply = readRecord(manifest.casApply);
-  const reportPath = resolveProjectPath(
+  const reportPath = resolveAgentFilePathInsideCwd({
     cwd,
-    options.outPath ?? join("qa", "storyboards", `${safeSlug(action.targetAssetId)}.timeline-verification.json`),
-    "storyboard timeline verification report",
-  );
+    filePath: resolveProjectPath(
+      cwd,
+      options.outPath ?? join("qa", "storyboards", `${safeSlug(action.targetAssetId)}.timeline-verification.json`),
+      "storyboard timeline verification report",
+    ),
+    writeVerb: "Storyboard timeline verification report",
+  });
   const report: StoryboardTimelineVerificationReport = {
     schemaVersion: 1,
     kind: "clash.storyboard.timeline-verification",

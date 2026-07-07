@@ -15,6 +15,7 @@ import {
   type ContentCredentialMode,
   type ContentCredentialSignatureStatus,
 } from "@clash/shared-types";
+import { resolveAgentFilePathInsideCwd } from "./projection-cas";
 
 export type ContentCredentialsReport = {
   schemaVersion: 1;
@@ -134,16 +135,24 @@ export async function planContentCredentialsAction(
     assertions: metadata.assertions,
     decisionLog,
   };
-  const actionPath = resolveProjectPath(
+  const actionPath = resolveAgentFilePathInsideCwd({
     cwd,
-    options.outPath ?? join("actions", `${safeSlug(metadata.credentialId)}.content-credentials.json`),
-    "content credentials action",
-  );
-  const reportPath = resolveProjectPath(
+    filePath: resolveProjectPath(
+      cwd,
+      options.outPath ?? join("actions", `${safeSlug(metadata.credentialId)}.content-credentials.json`),
+      "content credentials action",
+    ),
+    writeVerb: "Content credentials action",
+  });
+  const reportPath = resolveAgentFilePathInsideCwd({
     cwd,
-    options.reportPath ?? join("qa", "provenance", `${safeSlug(metadata.credentialId)}.content-credentials.json`),
-    "content credentials report",
-  );
+    filePath: resolveProjectPath(
+      cwd,
+      options.reportPath ?? join("qa", "provenance", `${safeSlug(metadata.credentialId)}.content-credentials.json`),
+      "content credentials report",
+    ),
+    writeVerb: "Content credentials report",
+  });
   await writeJson(actionPath, action);
   await writeJson(reportPath, report);
   return {

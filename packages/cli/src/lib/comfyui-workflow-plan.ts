@@ -17,6 +17,7 @@ import {
   type ImageComfyuiOutput,
   type ImageComfyuiRunnerMetadata,
 } from "@clash/shared-types";
+import { resolveAgentFilePathInsideCwd } from "./projection-cas";
 
 export type ImageComfyuiRunnerReport = {
   schemaVersion: 1;
@@ -129,16 +130,24 @@ export async function planComfyuiWorkflowAction(
     execution: metadata.execution,
     decisionLog,
   };
-  const actionPath = resolveProjectPath(
+  const actionPath = resolveAgentFilePathInsideCwd({
     cwd,
-    options.outPath ?? join("actions", `${safeSlug(metadata.workflowId)}.comfyui-runner.json`),
-    "ComfyUI workflow action",
-  );
-  const reportPath = resolveProjectPath(
+    filePath: resolveProjectPath(
+      cwd,
+      options.outPath ?? join("actions", `${safeSlug(metadata.workflowId)}.comfyui-runner.json`),
+      "ComfyUI workflow action",
+    ),
+    writeVerb: "ComfyUI workflow action",
+  });
+  const reportPath = resolveAgentFilePathInsideCwd({
     cwd,
-    options.reportPath ?? join("qa", "image", `${safeSlug(metadata.workflowId)}.comfyui-runner.json`),
-    "ComfyUI workflow report",
-  );
+    filePath: resolveProjectPath(
+      cwd,
+      options.reportPath ?? join("qa", "image", `${safeSlug(metadata.workflowId)}.comfyui-runner.json`),
+      "ComfyUI workflow report",
+    ),
+    writeVerb: "ComfyUI workflow report",
+  });
   await writeJson(actionPath, action);
   await writeJson(reportPath, report);
   return {

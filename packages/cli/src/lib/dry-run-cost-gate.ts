@@ -1,5 +1,6 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
+import { resolveAgentFilePathInsideCwd } from "./projection-cas";
 
 export type DryRunGateStatus = "planned" | "blocked";
 export type DryRunOperationAvailability = "available" | "unavailable" | "missing-credentials";
@@ -77,15 +78,19 @@ export async function planDryRunCostGate(
   const cwd = resolve(options.cwd);
   const requestPath = resolveProjectPath(cwd, options.requestPath, "dry-run cost gate request");
   const request = parseDryRunCostGateRequest(JSON.parse(await readFile(requestPath, "utf8")));
-  const gatePath = resolveProjectPath(
+  const gatePath = resolveAgentFilePathInsideCwd({
     cwd,
-    options.outPath ?? join(
-      "reviews",
-      "gates",
-      `${safeSlug(request.workflowId)}.${safeSlug(request.stage)}.dry-run-cost-gate.json`,
+    filePath: resolveProjectPath(
+      cwd,
+      options.outPath ?? join(
+        "reviews",
+        "gates",
+        `${safeSlug(request.workflowId)}.${safeSlug(request.stage)}.dry-run-cost-gate.json`,
+      ),
+      "dry-run cost gate",
     ),
-    "dry-run cost gate",
-  );
+    writeVerb: "Dry-run cost gate",
+  });
   const gate = buildDryRunCostGate(request);
   await writeJson(gatePath, gate);
   return {
