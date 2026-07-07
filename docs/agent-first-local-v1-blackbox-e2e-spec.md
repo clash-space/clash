@@ -221,19 +221,21 @@ Assertions:
 - public `clash text pull`, `clash text apply --force`, `clash timeline pull`,
   and `clash timeline apply --force` reject projection files outside the
   current cwd,
+- public text/timeline projection commands reject symlinked projection parents
+  that resolve outside the current cwd,
 - storyboard prompt-pack COW replacement writes a versioned projection while
   the managed projection remains unchanged.
 
 Latest deterministic report:
 
 ```text
-.tmp/agent-first-cas/2026-07-07T14-19-23-090Z/agent-first-cas-report.json
+.tmp/agent-first-cas/2026-07-07T14-24-25-473Z/agent-first-cas-report.json
 ```
 
 Result:
 
 - `status: pass`
-- 27 checks passed,
+- 29 checks passed,
 - `projectionPathOutsideCwdRejected: true`.
 
 ### Suite C3: Local API Receipt CAS Smoke
@@ -743,11 +745,11 @@ Current status:
   and broader live UI parity.
 - `apps/desktop/e2e/agent-first-cas-smoke.mjs` now covers public CLI
   read-proof rejection for missing/stale/wrong-file locks, text/timeline
-  outside-cwd projection path rejection including forced apply, daemon direct
-  canvas read-token rejection/acceptance, public `clash canvas get/update/delete`
-  read-token and mutation-envelope enforcement through a daemon socket, and
-  prompt-pack COW preservation; QA agent reports must include `cas.*` evidence
-  from that smoke.
+  outside-cwd and symlink-outside-cwd projection path rejection including
+  forced apply, daemon direct canvas read-token rejection/acceptance, public
+  `clash canvas get/update/delete` read-token and mutation-envelope enforcement
+  through a daemon socket, and prompt-pack COW preservation; QA agent reports
+  must include `cas.*` evidence from that smoke.
 - `apps/desktop/e2e/agent-first-asset-receipt-smoke.mjs` now covers
   `local sync get -> local sync patch`, `local audio get -> local audio patch`,
   `asset get -> asset cover set`, `asset ref get -> asset ref delete`, and

@@ -1,5 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { mkdirSync, mkdtempSync, symlinkSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import {
   assertProjectionLockFilePath,
   createProjectionLock,
@@ -118,6 +121,30 @@ test("projection CAS helper keeps projection files inside the current project cw
   assert.equal(forced.ok, false);
   if (!forced.ok) {
     assert.match(forced.error, /Projection file path must stay inside the current project cwd/);
+  }
+});
+
+test("projection CAS helper rejects symlinked projection parents that resolve outside cwd", () => {
+  const root = mkdtempSync(join(tmpdir(), "clash-projection-cas-"));
+  const cwd = join(root, "project");
+  const outside = join(root, "outside");
+  mkdirSync(cwd, { recursive: true });
+  mkdirSync(outside, { recursive: true });
+  symlinkSync(outside, join(cwd, "projections"), "dir");
+
+  const filePath = join(cwd, "projections", "text", "script.md");
+  const result = assertProjectionLockFilePath({
+    label: "text",
+    lockFilePath: filePath,
+    filePath,
+    cwd,
+    readCommand: "clash text pull",
+    writeVerb: "Apply",
+  });
+
+  assert.equal(result.ok, false);
+  if (!result.ok) {
+    assert.match(result.error, /Projection file path must not traverse a symlink outside the current project cwd/);
   }
 });
 

@@ -1,4 +1,5 @@
 import { spawn, spawnSync } from "node:child_process";
+import { mkdirSync, symlinkSync } from "node:fs";
 import { createRequire } from "node:module";
 import { copyFile, mkdir, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -607,6 +608,10 @@ function runDirectCanvasReadTokenCas() {
 }
 
 function runProjectionPathGuards() {
+  const symlinkTarget = path.join(artifactRoot, "outside-projection-target");
+  mkdirSync(path.join(symlinkTarget, "text"), { recursive: true });
+  symlinkSync(symlinkTarget, path.join(workspace, "symlinked-projections"), "dir");
+
   const textPull = runText([
     "pull",
     "--project",
@@ -641,6 +646,24 @@ function runProjectionPathGuards() {
       /Projection file path must stay inside the current project cwd/i.test(textForcedApply.stderr),
     textForcedApply.stderr || textForcedApply.stdout,
     { command: textForcedApply.command },
+  );
+
+  const textSymlinkPull = runText([
+    "pull",
+    "--project",
+    "project-agent-first-path-guards",
+    "--node",
+    "text-1",
+    "--file",
+    "symlinked-projections/text/script.md",
+    "--json",
+  ]);
+  recordCheck(
+    "text pull rejects symlinked projection path outside cwd",
+    textSymlinkPull.status === 1 &&
+      /Projection file path must not traverse a symlink outside the current project cwd/i.test(textSymlinkPull.stderr),
+    textSymlinkPull.stderr || textSymlinkPull.stdout,
+    { command: textSymlinkPull.command },
   );
 
   const timelinePull = runTimeline([
@@ -680,11 +703,32 @@ function runProjectionPathGuards() {
     { command: timelineForcedApply.command },
   );
 
+  const timelineSymlinkForcedApply = runTimeline([
+    "apply",
+    "--project",
+    "project-agent-first-path-guards",
+    "--node",
+    "timeline-1",
+    "--file",
+    "symlinked-projections/main.timeline.yaml",
+    "--force",
+    "--json",
+  ]);
+  recordCheck(
+    "timeline forced apply rejects symlinked projection path outside cwd",
+    timelineSymlinkForcedApply.status === 1 &&
+      /Projection file path must not traverse a symlink outside the current project cwd/i.test(timelineSymlinkForcedApply.stderr),
+    timelineSymlinkForcedApply.stderr || timelineSymlinkForcedApply.stdout,
+    { command: timelineSymlinkForcedApply.command },
+  );
+
   return {
     textPull: { status: textPull.status, stderr: textPull.stderr },
     textForcedApply: { status: textForcedApply.status, stderr: textForcedApply.stderr },
+    textSymlinkPull: { status: textSymlinkPull.status, stderr: textSymlinkPull.stderr },
     timelinePull: { status: timelinePull.status, stderr: timelinePull.stderr },
     timelineForcedApply: { status: timelineForcedApply.status, stderr: timelineForcedApply.stderr },
+    timelineSymlinkForcedApply: { status: timelineSymlinkForcedApply.status, stderr: timelineSymlinkForcedApply.stderr },
   };
 }
 
@@ -923,8 +967,10 @@ async function main() {
       projectionPathOutsideCwdRejected: [
           "text pull rejects projection path outside cwd",
           "text forced apply rejects projection path outside cwd",
+          "text pull rejects symlinked projection path outside cwd",
           "timeline pull rejects projection path outside cwd",
           "timeline forced apply rejects projection path outside cwd",
+          "timeline forced apply rejects symlinked projection path outside cwd",
         ].every((name) =>
           checks.some((check) => check.name === name && check.status === "pass"),
       ),

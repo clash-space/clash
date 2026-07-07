@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { existsSync, realpathSync } from "node:fs";
 import { basename, dirname, extname, isAbsolute, join, relative, resolve, sep } from "node:path";
 
 export type ProjectionCasResult =
@@ -131,13 +132,68 @@ export function assertProjectionFilePathInsideCwd(options: {
   const relativePath = relative(cwd, filePath);
   const escapes = relativePath === ".." || relativePath.startsWith(`..${sep}`) || isAbsolute(relativePath);
   const inside = relativePath === "" || !escapes;
-  if (inside) return { ok: true };
+  if (!inside) {
+    return {
+      ok: false,
+      error:
+        `Projection file path must stay inside the current project cwd. ` +
+        `${options.writeVerb} file is ${options.filePath}, cwd is ${options.cwd}.`,
+    };
+  }
+  const realPathResult = assertExistingProjectionPathRealpathInsideCwd({
+    filePath,
+    cwd,
+    originalFilePath: options.filePath,
+    originalCwd: options.cwd,
+    writeVerb: options.writeVerb,
+  });
+  if (!realPathResult.ok) return realPathResult;
+  return { ok: true };
+}
+
+function assertExistingProjectionPathRealpathInsideCwd(options: {
+  filePath: string;
+  cwd: string;
+  originalFilePath: string;
+  originalCwd: string;
+  writeVerb: string;
+}): ProjectionCasResult {
+  let cwdRealPath: string;
+  try {
+    cwdRealPath = realpathSync.native(options.cwd);
+  } catch {
+    return { ok: true };
+  }
+  const existingPath = nearestExistingPath(options.filePath);
+  if (!existingPath) return { ok: true };
+  let existingRealPath: string;
+  try {
+    existingRealPath = realpathSync.native(existingPath);
+  } catch {
+    return { ok: true };
+  }
+  const realRelativePath = relative(cwdRealPath, existingRealPath);
+  const escapes =
+    realRelativePath === ".." ||
+    realRelativePath.startsWith(`..${sep}`) ||
+    isAbsolute(realRelativePath);
+  if (!escapes) return { ok: true };
   return {
     ok: false,
     error:
-      `Projection file path must stay inside the current project cwd. ` +
-      `${options.writeVerb} file is ${options.filePath}, cwd is ${options.cwd}.`,
+      `Projection file path must not traverse a symlink outside the current project cwd. ` +
+      `${options.writeVerb} file is ${options.originalFilePath}, cwd is ${options.originalCwd}.`,
   };
+}
+
+function nearestExistingPath(filePath: string): string | null {
+  let candidate = filePath;
+  while (!existsSync(candidate)) {
+    const parent = dirname(candidate);
+    if (parent === candidate) return null;
+    candidate = parent;
+  }
+  return candidate;
 }
 
 export function resolveProjectionFilePathInsideCwd(options: {

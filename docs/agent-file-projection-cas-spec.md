@@ -465,7 +465,8 @@ Projection commands must reject unsafe paths:
 - projection files that resolve outside the current agent/project cwd,
 - path traversal outside the selected projection root when the command writes
   into the canonical project root,
-- symlink traversal into protected directories,
+- symlink traversal into outside/protected directories after realpath
+  resolution,
 - lock file whose `filePath` does not resolve to the applied file,
 - lock/project mismatch,
 - lock/entity mismatch,
@@ -798,6 +799,7 @@ Errors should be explicit and recoverable:
 - `Lock belongs to entity A, command targeted entity B.`
 - `Projection file path does not match lock path.`
 - `Projection file path must stay inside the current project cwd.`
+- `Projection file path must not traverse a symlink outside the current project cwd.`
 - `This node has downstream references. Use copy-on-write or explicit replace.`
 - `Projection contains a non-editable field.`
 - `Projection would expose a secret.`

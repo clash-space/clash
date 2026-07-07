@@ -54,7 +54,8 @@ The main v1 gaps are:
   replacement through `clash text pull/apply/replace`, but are not yet durable
   text assets,
 - shared projection path resolution now keeps text/timeline projection files
-  inside the current agent/project cwd; `--force` does not bypass that boundary,
+  inside the current agent/project cwd and rejects symlinked parents that
+  resolve outside it; `--force` does not bypass that boundary,
 - local room POST/GET now persists to SQLite, keeps raw ACP traces separate,
   and dispatches mentions best-effort to local ACP sessions,
 - CLI keeps `clash vars` for remote worker compatibility; current copy scopes
