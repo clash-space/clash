@@ -215,8 +215,9 @@ GET /api/v1/provider-oauth -> POST /api/v1/provider-oauth/:providerId/start
 GET /api/v1/provider-oauth -> POST /api/v1/provider-oauth/:providerId/complete
 ```
 
-The same rule should later apply to remaining storyboard files, style sheets,
-asset metadata, and any future editor timeline projection.
+The same rule applies to `apply-metadata` JSON asset metadata projections and
+should later apply to remaining non-JSON storyboard files, style sheets, future
+editable metadata apply commands, and any future editor timeline projection.
 
 ### 7. Mutable files are product projections, not separate truth
 

@@ -51,6 +51,7 @@ export type ApplyProductionMetadataActionResult = {
   assetsPath: string;
   metadataPath: string;
   metadataLockPath: string;
+  projectionLockPaths: string[];
   timelineProjectionPath?: string;
   transcriptCutPlanPath?: string;
   transcriptProjectionPath?: string;
@@ -107,12 +108,35 @@ export async function applyProductionMetadataAction(
     assetsPath,
     metadataPath,
     metadataLockPath,
+    projectionLockPaths: [metadataLockPath],
+  };
+
+  const writeDerivedProjectionJson = async (
+    projectionPath: string,
+    projectionKind: string,
+    value: Record<string, unknown>,
+  ): Promise<void> => {
+    await writeJson(projectionPath, value);
+    const lockPath = resolveProjectionLockPath(projectionPath);
+    await writeJson(lockPath, createAssetMetadataProjectionLock({
+      cwd,
+      targetAssetId: action.targetAssetId,
+      metadataKind: action.metadataKind,
+      metadata: action.metadata,
+      metadataPath,
+      projectionKind,
+      projection: value,
+      projectionPath,
+      actionPath,
+      action,
+    }));
+    result.projectionLockPaths.push(lockPath);
   };
 
   switch (action.metadata.kind) {
     case "audio.beat-analysis": {
       const hintsPath = join(cwd, "projections", "timeline-hints", `${targetAssetFileStem}.beat-hints.json`);
-      await writeJson(hintsPath, {
+      await writeDerivedProjectionJson(hintsPath, "audio-beat-hints", {
         assetId: action.targetAssetId,
         metadataKind: action.metadataKind,
         hints: buildBeatEditHints(action.metadata),
@@ -125,7 +149,7 @@ export async function applyProductionMetadataAction(
     }
     case "audio.lyrics-alignment": {
       const lyricsProjectionPath = join(cwd, "projections", "lyrics", `${targetAssetFileStem}.lyrics-alignment.json`);
-      await writeJson(lyricsProjectionPath, {
+      await writeDerivedProjectionJson(lyricsProjectionPath, "audio-lyrics-alignment", {
         schemaVersion: 1,
         kind: "clash.audio.lyrics-alignment.projection",
         targetAssetId: action.targetAssetId,
@@ -167,7 +191,7 @@ export async function applyProductionMetadataAction(
         "audio",
         `${targetAssetFileStem}.${branchFileStems.separationId}.stem-separation.json`,
       );
-      await writeJson(stemProjectionPath, {
+      await writeDerivedProjectionJson(stemProjectionPath, "audio-stem-separation", {
         schemaVersion: 1,
         kind: "clash.audio.stem-separation.projection",
         targetAssetId: action.targetAssetId,
@@ -193,7 +217,7 @@ export async function applyProductionMetadataAction(
           "transcripts",
           `${targetAssetFileStem}.asr-transcript.json`,
         );
-        await writeJson(transcriptProjectionPath, {
+        await writeDerivedProjectionJson(transcriptProjectionPath, "talking-head-asr-transcript", {
           schemaVersion: 1,
           targetAssetId: action.targetAssetId,
           ...action.metadata.asr,
@@ -214,7 +238,7 @@ export async function applyProductionMetadataAction(
         "media-cuts",
         `${targetAssetFileStem}.transcript-cut-plan.json`,
       );
-      await writeJson(transcriptCutPlanPath, {
+      await writeDerivedProjectionJson(transcriptCutPlanPath, "talking-head-transcript-cut-plan", {
         schemaVersion: 1,
         kind: "clash.talking-head.transcript-cut-plan.projection",
         sourceAssetId: action.targetAssetId,
@@ -255,9 +279,9 @@ export async function applyProductionMetadataAction(
       }
       const rightsLedger = buildReferenceRightsLedger(action.targetAssetId, action.metadata);
       const rightsLedgerPath = join(cwd, "projections", "rights", `${targetAssetFileStem}.rights-ledger.json`);
-      await writeJson(rightsLedgerPath, rightsLedger);
+      await writeDerivedProjectionJson(rightsLedgerPath, "reference-rights-ledger", rightsLedger);
       const shotAnalysisPath = join(cwd, "projections", "references", `${targetAssetFileStem}.shot-analysis.json`);
-      await writeJson(shotAnalysisPath, {
+      await writeDerivedProjectionJson(shotAnalysisPath, "reference-shot-analysis", {
         schemaVersion: 1,
         kind: "clash.reference.shot-analysis.projection",
         targetAssetId: action.targetAssetId,
@@ -271,7 +295,7 @@ export async function applyProductionMetadataAction(
         shots: action.metadata.shots,
       });
       const reviewPath = join(cwd, "projections", "references", `${targetAssetFileStem}.reference-review.json`);
-      await writeJson(reviewPath, {
+      await writeDerivedProjectionJson(reviewPath, "reference-review", {
         assetId: action.targetAssetId,
         remixAllowed: !blockedReason,
         blockedReason,
@@ -293,7 +317,7 @@ export async function applyProductionMetadataAction(
         "visual-moments",
         `${targetAssetFileStem}.visual-moments.json`,
       );
-      await writeJson(visualMomentsPath, {
+      await writeDerivedProjectionJson(visualMomentsPath, "video-visual-moments", {
         schemaVersion: 1,
         kind: "clash.video.visual-moments.projection",
         sourceVideoAssetId: action.metadata.sourceVideoAssetId,
@@ -307,7 +331,7 @@ export async function applyProductionMetadataAction(
     }
     case "image.storyboard-consistency": {
       const storyboardPath = join(cwd, "projections", "storyboards", `${targetAssetFileStem}.storyboard.json`);
-      await writeJson(storyboardPath, {
+      await writeDerivedProjectionJson(storyboardPath, "image-storyboard", {
         assetId: action.targetAssetId,
         characters: action.metadata.characters,
         scenes: action.metadata.scenes,
@@ -325,7 +349,7 @@ export async function applyProductionMetadataAction(
         "references",
         `${targetAssetFileStem}.semantic-reference-roles.json`,
       );
-      await writeJson(projectionPath, {
+      await writeDerivedProjectionJson(projectionPath, "image-semantic-reference-roles", {
         schemaVersion: 1,
         kind: "clash.image.semantic-reference-roles.projection",
         targetAssetId: action.targetAssetId,
@@ -338,7 +362,7 @@ export async function applyProductionMetadataAction(
     }
     case "image.product-logo-qa": {
       const qaPath = join(cwd, "projections", "qa", `${targetAssetFileStem}.product-logo-qa.json`);
-      await writeJson(qaPath, {
+      await writeDerivedProjectionJson(qaPath, "image-product-logo-qa", {
         schemaVersion: 1,
         kind: "clash.image.product-logo-qa.projection",
         targetAssetId: action.targetAssetId,
@@ -359,7 +383,7 @@ export async function applyProductionMetadataAction(
         "analysis",
         `${targetAssetFileStem}.${branchFileStems.benchmarkId}.backend-benchmark.json`,
       );
-      await writeJson(analysisPath, {
+      await writeDerivedProjectionJson(analysisPath, "analysis-backend-benchmark", {
         schemaVersion: 1,
         kind: "clash.analysis.backend-benchmark.projection",
         targetAssetId: action.targetAssetId,
@@ -381,7 +405,7 @@ export async function applyProductionMetadataAction(
         "embeddings",
         `${targetAssetFileStem}.${branchFileStems.embeddingSetId}.embedding-store.json`,
       );
-      await writeJson(embeddingPath, {
+      await writeDerivedProjectionJson(embeddingPath, "image-embedding-store", {
         schemaVersion: 1,
         kind: "clash.image.embedding-store.projection",
         targetAssetId: action.targetAssetId,
@@ -403,7 +427,7 @@ export async function applyProductionMetadataAction(
         "image",
         `${targetAssetFileStem}.${branchFileStems.workflowId}.comfyui-runner.json`,
       );
-      await writeJson(comfyuiPath, {
+      await writeDerivedProjectionJson(comfyuiPath, "image-comfyui-runner", {
         schemaVersion: 1,
         kind: "clash.image.comfyui-runner.projection",
         targetAssetId: action.targetAssetId,
@@ -426,7 +450,7 @@ export async function applyProductionMetadataAction(
     }
     case "ad.delivery-spec": {
       const deliveryPath = join(cwd, "projections", "delivery", `${targetAssetFileStem}.delivery-spec.json`);
-      await writeJson(deliveryPath, {
+      await writeDerivedProjectionJson(deliveryPath, "ad-delivery-spec", {
         schemaVersion: 1,
         kind: "clash.ad.delivery-spec.projection",
         targetAssetId: action.targetAssetId,
@@ -448,7 +472,7 @@ export async function applyProductionMetadataAction(
         "qa",
         `${targetAssetFileStem}.${branchFileStems.variantId}.ad-visual-qa.json`,
       );
-      await writeJson(qaPath, {
+      await writeDerivedProjectionJson(qaPath, "ad-visual-qa", {
         schemaVersion: 1,
         kind: "clash.ad.visual-qa.projection",
         targetAssetId: action.targetAssetId,
@@ -471,7 +495,7 @@ export async function applyProductionMetadataAction(
         "provenance",
         `${targetAssetFileStem}.${branchFileStems.credentialId}.content-credentials.json`,
       );
-      await writeJson(provenancePath, {
+      await writeDerivedProjectionJson(provenancePath, "provenance-content-credentials", {
         schemaVersion: 1,
         kind: "clash.provenance.content-credentials.projection",
         targetAssetId: action.targetAssetId,
@@ -873,6 +897,37 @@ function createAssetMetadataLock(options: {
   });
 }
 
+function createAssetMetadataProjectionLock(options: {
+  cwd: string;
+  targetAssetId: string;
+  metadataKind: string;
+  metadata: ProductionMetadata;
+  metadataPath: string;
+  projectionKind: string;
+  projection: Record<string, unknown>;
+  projectionPath: string;
+  actionPath: string;
+  action: unknown;
+}) {
+  const projectionHash = productionMetadataHash(options.projection);
+  return createProjectionLock({
+    kind: "clash.asset.metadata.projection.lock",
+    projectionKind: options.projectionKind,
+    entity: { kind: "asset", id: options.targetAssetId },
+    filePath: toProjectPath(options.cwd, options.projectionPath),
+    contentHash: projectionHash,
+    extra: {
+      targetAssetId: options.targetAssetId,
+      metadataKind: options.metadataKind,
+      projectionHash,
+      sourceMetadataPath: toProjectPath(options.cwd, options.metadataPath),
+      sourceMetadataHash: productionMetadataHash(options.metadata),
+      sourceActionPath: toProjectPath(options.cwd, options.actionPath),
+      sourceActionHash: productionMetadataHash(options.action),
+    },
+  });
+}
+
 function productionMetadataHash(value: unknown): string {
   return hashProjectionContent(stableJson(value));
 }
@@ -914,12 +969,15 @@ function toProjectPath(cwd: string, absolutePath: string): string {
 }
 
 function stableJson(value: unknown): string {
-  if (Array.isArray(value)) return `[${value.map(stableJson).join(",")}]`;
+  if (Array.isArray(value)) {
+    return `[${value.map((item) => item === undefined ? "null" : stableJson(item)).join(",")}]`;
+  }
   if (value && typeof value === "object") {
-    const keys = Object.keys(value as object).sort();
+    const record = value as Record<string, unknown>;
+    const keys = Object.keys(record).filter((key) => record[key] !== undefined).sort();
     return `{${keys.map((key) => `${JSON.stringify(key)}:${stableJson((value as Record<string, unknown>)[key])}`).join(",")}}`;
   }
-  return JSON.stringify(value);
+  return JSON.stringify(value) ?? "null";
 }
 
 async function writeJson(path: string, value: unknown): Promise<void> {

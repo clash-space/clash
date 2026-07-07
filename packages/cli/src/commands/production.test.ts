@@ -234,6 +234,10 @@ test("applies MV beat metadata to an audio asset and writes timeline edit hints"
   assert.equal(result.metadataPath, join(cwd, "projections", "metadata", "asset-song.audio.beat-analysis.json"));
   assert.equal(result.metadataLockPath, join(cwd, "projections", "metadata", "asset-song.audio.beat-analysis.lock.json"));
   assert.equal(result.timelineProjectionPath, join(cwd, "projections", "timeline-hints", "asset-song.beat-hints.json"));
+  assert.deepEqual(result.projectionLockPaths, [
+    join(cwd, "projections", "metadata", "asset-song.audio.beat-analysis.lock.json"),
+    join(cwd, "projections", "timeline-hints", "asset-song.beat-hints.lock.json"),
+  ]);
   const metadataLock = JSON.parse(
     await readFile(result.metadataLockPath, "utf8"),
   );
@@ -246,6 +250,17 @@ test("applies MV beat metadata to an audio asset and writes timeline edit hints"
   assert.equal(metadataLock.contentHash, metadataLock.metadataHash);
   assert.equal(metadataLock.sourceActionPath, "actions/beat-fill.json");
   assert.match(metadataLock.sourceActionHash, /^[a-f0-9]{16}$/);
+  const hintsLock = JSON.parse(
+    await readFile(join(cwd, "projections", "timeline-hints", "asset-song.beat-hints.lock.json"), "utf8"),
+  );
+  assert.equal(hintsLock.kind, "clash.asset.metadata.projection.lock");
+  assert.equal(hintsLock.projectionKind, "audio-beat-hints");
+  assert.deepEqual(hintsLock.entity, { kind: "asset", id: "asset-song" });
+  assert.equal(hintsLock.metadataKind, "audio.beat-analysis");
+  assert.equal(hintsLock.filePath, "projections/timeline-hints/asset-song.beat-hints.json");
+  assert.equal(hintsLock.sourceMetadataPath, "projections/metadata/asset-song.audio.beat-analysis.json");
+  assert.match(hintsLock.sourceMetadataHash, /^[a-f0-9]{16}$/);
+  assert.match(hintsLock.sourceActionHash, /^[a-f0-9]{16}$/);
   const assets = JSON.parse(await readFile(assetsPath, "utf8"));
   assert.equal(assets.assets[0].metadata["audio.beat-analysis"].bpm, 128);
   const hints = JSON.parse(await readFile(result.timelineProjectionPath!, "utf8"));
@@ -534,9 +549,20 @@ test("writes short-drama/image storyboard metadata as an agent-readable projecti
   const result = await applyProductionMetadataAction({ cwd, actionPath, assetsPath });
 
   assert.equal(result.timelineProjectionPath, undefined);
+  assert.ok(result.projectionLockPaths.includes(
+    join(cwd, "projections", "storyboards", "asset-storyboard.storyboard.lock.json"),
+  ));
   const storyboard = JSON.parse(
     await readFile(join(cwd, "projections", "storyboards", "asset-storyboard.storyboard.json"), "utf8"),
   );
+  const storyboardLock = JSON.parse(
+    await readFile(join(cwd, "projections", "storyboards", "asset-storyboard.storyboard.lock.json"), "utf8"),
+  );
+  assert.equal(storyboardLock.kind, "clash.asset.metadata.projection.lock");
+  assert.equal(storyboardLock.projectionKind, "image-storyboard");
+  assert.deepEqual(storyboardLock.entity, { kind: "asset", id: "asset-storyboard" });
+  assert.equal(storyboardLock.filePath, "projections/storyboards/asset-storyboard.storyboard.json");
+  assert.equal(storyboardLock.metadataKind, "image.storyboard-consistency");
   assert.deepEqual(storyboard.characters[0].requiredViews, ["front", "side", "back"]);
   assert.equal(storyboard.panels[0].assetId, "asset-panel-1");
   assert.equal(storyboard.panels[0].path, "assets/storyboards/panel-1.png");
@@ -582,7 +608,17 @@ test("runs production apply-metadata as a black-box CLI command over fixtures", 
   const payload = JSON.parse(child.stdout);
   assert.equal(payload.metadataKind, "talking-head.analysis");
   assert.match(payload.timelineProjectionPath, /projections\/timelines\/asset-talk\.caption\.timeline\.yaml$/);
+  assert.deepEqual(
+    payload.projectionLockPaths.map((path: string) => path.slice(path.indexOf("projections/"))),
+    [
+      "projections/metadata/asset-talk.talking-head.analysis.lock.json",
+      "projections/media-cuts/asset-talk.transcript-cut-plan.lock.json",
+    ],
+  );
   assert.ok(existsSync(payload.timelineProjectionPath));
+  for (const lockPath of payload.projectionLockPaths) {
+    assert.ok(existsSync(lockPath), `expected projection lock to exist: ${lockPath}`);
+  }
 });
 
 test("renders an MG spec into self-contained HTML, manifest, and timeline YAML projection", async () => {

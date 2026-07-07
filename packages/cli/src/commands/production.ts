@@ -80,6 +80,9 @@ productionCommand
       console.log(`metadata: ${result.metadataPath}`);
       console.log(`metadata lock: ${result.metadataLockPath}`);
       if (result.timelineProjectionPath) console.log(`projection: ${result.timelineProjectionPath}`);
+      for (const lockPath of result.projectionLockPaths.filter((lockPath) => lockPath !== result.metadataLockPath)) {
+        console.log(`projection lock: ${lockPath}`);
+      }
       if (result.blockedReason) console.log(`blocked: ${result.blockedReason}`);
     } catch (error) {
       console.error(error instanceof Error ? error.message : String(error));
