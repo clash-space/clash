@@ -481,6 +481,12 @@ path stays inside the current agent/project cwd. `--force` bypasses stale CAS
 or lock-path mismatch only where documented; it must not bypass the cwd path
 boundary.
 
+The same path rule applies to default sidecars generated from a projection path
+and explicit `--lock` arguments. Production projections such as storyboard
+prompt packs and asset metadata must use the same guard before mutating managed
+state; a rejected lock sidecar must not leave a partially applied manifest
+change behind.
+
 Do not rely only on OS file permissions. Permissions are a useful second layer,
 not the product safety model.
 

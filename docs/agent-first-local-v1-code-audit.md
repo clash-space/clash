@@ -76,7 +76,10 @@ The main v1 gaps are:
   locks with stripped source proof. Text, timeline, storyboard prompt-pack,
   primary asset metadata, editable metadata apply, and `apply-metadata`
   JSON-derived projection locks share a generic projection identity envelope
-  while keeping legacy sidecar parsing where applicable. Broader storyboard
+  while keeping legacy sidecar parsing where applicable. Generated and
+  explicit production projection lock sidecars now use the shared cwd/realpath
+  guard, and asset metadata projection lock rejection happens before manifest
+  mutation. Broader storyboard
   host/UI integration, recovery/rewire flows, host-issued receipt paths, and
   adoption of the generic lock envelope by future non-JSON/editor projections
   remain pending.
@@ -219,7 +222,9 @@ Conclusion:
 - Text, timeline, storyboard prompt-pack, primary asset metadata, editable
   metadata apply, and `apply-metadata` JSON-derived projections now use a
   generic projection lock identity shape (`projectionKind`, `entity`,
-  `contentHash`) instead of only projection-specific fields.
+  `contentHash`) instead of only projection-specific fields, and production
+  projection lock sidecars share the same cwd/realpath guard used by
+  text/timeline sidecars.
 - Remaining non-JSON storyboard/editor projection families should adopt that
   envelope rather than copying one-off lock formats.
 

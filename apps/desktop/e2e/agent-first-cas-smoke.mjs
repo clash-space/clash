@@ -617,6 +617,7 @@ function runProjectionPathGuards() {
   mkdirSync(path.join(workspace, "timelines"), { recursive: true });
   writeFileSync(path.join(lockSymlinkTarget, "script.lock.json"), "{}\n", "utf8");
   writeFileSync(path.join(lockSymlinkTarget, "main.timeline.lock.json"), "{}\n", "utf8");
+  writeFileSync(path.join(lockSymlinkTarget, "unsafe-prompt-pack.lock.json"), "{}\n", "utf8");
   symlinkSync(
     path.join(lockSymlinkTarget, "script.lock.json"),
     path.join(workspace, "projections", "text", "script.lock.json"),
@@ -624,6 +625,10 @@ function runProjectionPathGuards() {
   symlinkSync(
     path.join(lockSymlinkTarget, "main.timeline.lock.json"),
     path.join(workspace, "timelines", "main.timeline.lock.json"),
+  );
+  symlinkSync(
+    path.join(lockSymlinkTarget, "unsafe-prompt-pack.lock.json"),
+    path.join(workspace, "plans", "unsafe-prompt-pack.lock.json"),
   );
 
   const textPull = runText([
@@ -772,6 +777,22 @@ function runProjectionPathGuards() {
     { command: timelineLockSidecarPull.command },
   );
 
+  const storyboardPromptPackLockSidecar = runProduction([
+    "project-storyboard-prompt-pack",
+    "--action",
+    "actions/storyboard-review.json",
+    "--out",
+    "plans/unsafe-prompt-pack.json",
+    "--json",
+  ]);
+  recordCheck(
+    "storyboard prompt-pack project rejects symlinked lock sidecar outside cwd",
+    storyboardPromptPackLockSidecar.status === 1 &&
+      /Projection lock sidecar path must not traverse a symlink outside the current project cwd/i.test(storyboardPromptPackLockSidecar.stderr),
+    storyboardPromptPackLockSidecar.stderr || storyboardPromptPackLockSidecar.stdout,
+    { command: storyboardPromptPackLockSidecar.command },
+  );
+
   return {
     textPull: { status: textPull.status, stderr: textPull.stderr },
     textForcedApply: { status: textForcedApply.status, stderr: textForcedApply.stderr },
@@ -781,6 +802,10 @@ function runProjectionPathGuards() {
     timelineForcedApply: { status: timelineForcedApply.status, stderr: timelineForcedApply.stderr },
     timelineSymlinkForcedApply: { status: timelineSymlinkForcedApply.status, stderr: timelineSymlinkForcedApply.stderr },
     timelineLockSidecarPull: { status: timelineLockSidecarPull.status, stderr: timelineLockSidecarPull.stderr },
+    storyboardPromptPackLockSidecar: {
+      status: storyboardPromptPackLockSidecar.status,
+      stderr: storyboardPromptPackLockSidecar.stderr,
+    },
   };
 }
 
@@ -1025,6 +1050,7 @@ async function main() {
           "timeline forced apply rejects projection path outside cwd",
           "timeline forced apply rejects symlinked projection path outside cwd",
           "timeline pull rejects symlinked lock sidecar outside cwd",
+          "storyboard prompt-pack project rejects symlinked lock sidecar outside cwd",
         ].every((name) =>
           checks.some((check) => check.name === name && check.status === "pass"),
       ),

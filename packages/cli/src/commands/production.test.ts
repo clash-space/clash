@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { chmod, copyFile, mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { chmod, copyFile, mkdir, mkdtemp, readFile, symlink, writeFile } from "node:fs/promises";
 import { existsSync, readFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { basename, join } from "node:path";
@@ -281,6 +281,43 @@ test("applies MV beat metadata to an audio asset and writes timeline edit hints"
       anchorFrames: [0],
     },
   ]);
+});
+
+test("rejects symlinked asset metadata lock sidecars that resolve outside cwd", async () => {
+  const cwd = await mkdtemp(join(tmpdir(), "clash-production-metadata-lock-"));
+  const assetsPath = join(cwd, "assets", "manifest.json");
+  const actionPath = join(cwd, "actions", "beat-fill.json");
+  await writeJson(assetsPath, {
+    assets: [{ id: "asset-song", type: "audio", metadata: {} }],
+  });
+  await writeJson(actionPath, {
+    actionId: "action-beat-fill",
+    targetAssetId: "asset-song",
+    metadataKind: "audio.beat-analysis",
+    producer: "qa-fixture",
+    metadata: {
+      kind: "audio.beat-analysis",
+      bpm: 128,
+      fps: 30,
+      beats: [{ frame: 0, timeSeconds: 0, confidence: 0.99, downbeat: true }],
+      sections: [{ id: "intro", startFrame: 0, endFrame: 30, label: "intro" }],
+    },
+  });
+  const outside = join(cwd, "..", "outside-metadata-lock");
+  await mkdir(outside, { recursive: true });
+  await mkdir(join(cwd, "projections", "metadata"), { recursive: true });
+  await writeFile(join(outside, "asset-song.audio.beat-analysis.lock.json"), "{}\n", "utf8");
+  await symlink(
+    join(outside, "asset-song.audio.beat-analysis.lock.json"),
+    join(cwd, "projections", "metadata", "asset-song.audio.beat-analysis.lock.json"),
+  );
+
+  await assert.rejects(
+    () => applyProductionMetadataAction({ cwd, actionPath, assetsPath }),
+    /Projection lock sidecar path must not traverse a symlink outside the current project cwd/,
+  );
+  const assets = JSON.parse(await readFile(assetsPath, "utf8"));
+  assert.deepEqual(assets.assets[0].metadata, {});
 });
 
 test("applies edited asset metadata projection through CAS and refreshes the lock", async () => {
@@ -6469,6 +6506,57 @@ test("projects and applies storyboard prompt packs with CAS stale-write protecti
   );
   assert.equal(staleReplace.status, 1);
   assert.match(staleReplace.stderr, /Stale storyboard prompt-pack replace rejected/);
+});
+
+test("rejects symlinked storyboard prompt-pack lock sidecars that resolve outside cwd", async () => {
+  const cwd = await mkdtemp(join(tmpdir(), "clash-production-storyboard-lock-"));
+  await writeJson(join(cwd, "actions", "storyboard-review.json"), {
+    actionId: "action-storyboard-fill",
+    targetAssetId: "asset-storyboard",
+    metadataKind: "image.storyboard-consistency",
+    producer: "qa-fixture",
+    metadata: {
+      kind: "image.storyboard-consistency",
+      characters: [
+        {
+          id: "hero",
+          name: "便利店店员",
+          referenceAssetIds: ["asset-hero-front"],
+          requiredViews: ["front"],
+        },
+      ],
+      scenes: [{ id: "store-night", referenceAssetIds: ["asset-store"], prompt: "night convenience store aisle" }],
+      panels: [{ id: "panel-1", sceneId: "store-night", characterIds: ["hero"], assetId: "asset-panel-1" }],
+    },
+  });
+  const outside = join(cwd, "..", "outside-storyboard-lock");
+  await mkdir(outside, { recursive: true });
+  await mkdir(join(cwd, "plans"), { recursive: true });
+  await writeFile(join(outside, "prompt-pack.lock.json"), "{}\n", "utf8");
+  await symlink(join(outside, "prompt-pack.lock.json"), join(cwd, "plans", "prompt-pack.lock.json"));
+
+  const cliEntry = new URL("../index.ts", import.meta.url);
+  const require = createRequire(import.meta.url);
+  const tsxLoader = require.resolve("tsx");
+  const project = spawnSync(
+    process.execPath,
+    [
+      "--import",
+      tsxLoader,
+      cliEntry.pathname,
+      "production",
+      "project-storyboard-prompt-pack",
+      "--action",
+      "actions/storyboard-review.json",
+      "--out",
+      "plans/prompt-pack.json",
+      "--json",
+    ],
+    { cwd, encoding: "utf8" },
+  );
+
+  assert.equal(project.status, 1);
+  assert.match(project.stderr, /Projection lock sidecar path must not traverse a symlink outside the current project cwd/);
 });
 
 test("storyboard prompt-pack apply rejects when the source action changed after projection", async () => {

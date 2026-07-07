@@ -26,7 +26,9 @@ import {
   hashProjectionContent,
   parseProjectionLock,
   type ProjectionLock,
-  resolveProjectionLockPath,
+  resolveProjectionFilePathInsideCwd,
+  resolveProjectionLockPathInsideCwd,
+  resolveProjectionLockSidecarPathInsideCwd,
 } from "./projection-cas";
 
 type ProductionAssetManifestAsset = {
@@ -107,6 +109,16 @@ export async function applyProductionMetadataAction(
   const metadataKindFileStem = safeProjectionFileSegment(action.metadataKind, "metadataKind");
   const branchFileStems = productionMetadataFileStems(action.metadata);
   preflightProductionMetadataGeneratedAssetPaths(action.metadata);
+  const metadataPath = resolveProjectionFilePathInsideCwd({
+    cwd,
+    filePath: join(
+      cwd,
+      "projections",
+      "metadata",
+      `${targetAssetFileStem}.${metadataKindFileStem}.json`,
+    ),
+  });
+  const metadataLockPath = resolveProjectionLockPathInsideCwd({ filePath: metadataPath, cwd });
   const manifest = parseAssetManifest(await readFile(assetsPath, "utf8"), assetsPath);
   const assetIndex = manifest.assets.findIndex((asset) => asset.id === action.targetAssetId);
   if (assetIndex < 0) {
@@ -117,14 +129,7 @@ export async function applyProductionMetadataAction(
   manifest.assets[assetIndex] = updatedAsset;
   await writeJson(assetsPath, manifest);
 
-  const metadataPath = join(
-    cwd,
-    "projections",
-    "metadata",
-    `${targetAssetFileStem}.${metadataKindFileStem}.json`,
-  );
   await writeJson(metadataPath, action.metadata);
-  const metadataLockPath = resolveProjectionLockPath(metadataPath);
   await writeJson(metadataLockPath, createAssetMetadataLock({
     cwd,
     targetAssetId: action.targetAssetId,
@@ -150,8 +155,9 @@ export async function applyProductionMetadataAction(
     projectionKind: string,
     value: Record<string, unknown>,
   ): Promise<void> => {
-    await writeJson(projectionPath, value);
-    const lockPath = resolveProjectionLockPath(projectionPath);
+    const safeProjectionPath = resolveProjectionFilePathInsideCwd({ filePath: projectionPath, cwd });
+    await writeJson(safeProjectionPath, value);
+    const lockPath = resolveProjectionLockPathInsideCwd({ filePath: safeProjectionPath, cwd });
     await writeJson(lockPath, createAssetMetadataProjectionLock({
       cwd,
       targetAssetId: action.targetAssetId,
@@ -160,7 +166,7 @@ export async function applyProductionMetadataAction(
       metadataPath,
       projectionKind,
       projection: value,
-      projectionPath,
+      projectionPath: safeProjectionPath,
       actionPath,
       action,
     }));
@@ -560,8 +566,8 @@ export async function applyProductionMetadataProjection(
   const cwd = options.cwd;
   const metadataPath = resolveLocalPath(cwd, options.filePath, "metadata projection");
   const lockPath = options.lockPath
-    ? resolveLocalPath(cwd, options.lockPath, "metadata projection lock")
-    : resolveProjectionLockPath(metadataPath);
+    ? resolveProjectionLockSidecarPathInsideCwd({ lockPath: options.lockPath, cwd })
+    : resolveProjectionLockPathInsideCwd({ filePath: metadataPath, cwd });
   const assetsPath = resolveLocalPath(cwd, options.assetsPath ?? join("assets", "manifest.json"), "asset manifest");
   const lock = parseAssetMetadataProjectionLock(await readFile(lockPath, "utf8"));
   const filePathResult = assertProjectionLockFilePath({

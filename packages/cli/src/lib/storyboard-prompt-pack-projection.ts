@@ -13,7 +13,8 @@ import {
   hashProjectionContent,
   parseProjectionLock,
   type ProjectionLockEntity,
-  resolveProjectionLockPath,
+  resolveProjectionLockPathInsideCwd,
+  resolveProjectionLockSidecarPathInsideCwd,
 } from "./projection-cas";
 
 export type StoryboardPromptPackLock = {
@@ -98,7 +99,7 @@ export async function projectStoryboardPromptPack(
     options.outPath ?? join("plans", `${safeSlug(action.targetAssetId)}.prompt-pack.json`),
     "prompt pack",
   );
-  const lockPath = resolvePromptPackLockPath(promptPackPath);
+  const lockPath = resolvePromptPackLockPath(cwd, promptPackPath);
   const projectionPath = managedPromptPackProjectionPath(cwd, action.targetAssetId);
   const promptPack = await readManagedPromptPack(projectionPath) ?? buildStoryboardPromptPackFromMetadata(
     action.targetAssetId,
@@ -153,8 +154,8 @@ export async function applyStoryboardPromptPack(
   const promptPackPath = resolveProjectPath(cwd, options.filePath, "prompt pack");
   const promptPack = StoryboardPromptPackSchema.parse(JSON.parse(await readFile(promptPackPath, "utf8")));
   const lockPath = options.lockPath
-    ? resolveProjectPath(cwd, options.lockPath, "prompt pack lock")
-    : resolvePromptPackLockPath(promptPackPath);
+    ? resolveProjectionLockSidecarPathInsideCwd({ lockPath: options.lockPath, cwd })
+    : resolvePromptPackLockPath(cwd, promptPackPath);
   const lock = options.force ? null : parsePromptPackLock(await readLockFile(lockPath));
   if (!options.force) {
     if (!lock) {
@@ -216,8 +217,8 @@ export async function replaceStoryboardPromptPack(
   const promptPackPath = resolveProjectPath(cwd, options.filePath, "prompt pack");
   const promptPack = StoryboardPromptPackSchema.parse(JSON.parse(await readFile(promptPackPath, "utf8")));
   const lockPath = options.lockPath
-    ? resolveProjectPath(cwd, options.lockPath, "prompt pack lock")
-    : resolvePromptPackLockPath(promptPackPath);
+    ? resolveProjectionLockSidecarPathInsideCwd({ lockPath: options.lockPath, cwd })
+    : resolvePromptPackLockPath(cwd, promptPackPath);
   const lock = options.force ? null : parsePromptPackLock(await readLockFile(lockPath));
   if (!options.force) {
     if (!lock) {
@@ -392,8 +393,8 @@ function cowPromptPackProjectionPath(cwd: string, storyboardAssetId: string, pro
   return join(cwd, "projections", "storyboards", `${safeSlug(storyboardAssetId)}.prompt-pack.${promptPackHash}.cow.json`);
 }
 
-function resolvePromptPackLockPath(promptPackPath: string): string {
-  return resolveProjectionLockPath(promptPackPath);
+function resolvePromptPackLockPath(cwd: string, promptPackPath: string): string {
+  return resolveProjectionLockPathInsideCwd({ filePath: promptPackPath, cwd });
 }
 
 function casApplyDescriptor(cwd: string, promptPackPath: string, lockPath: string) {

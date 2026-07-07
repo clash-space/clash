@@ -225,19 +225,21 @@ Assertions:
   that resolve outside the current cwd,
 - public text/timeline projection commands reject symlinked lock sidecars that
   resolve outside the current cwd,
+- public storyboard prompt-pack production projection rejects symlinked lock
+  sidecars that resolve outside the current cwd,
 - storyboard prompt-pack COW replacement writes a versioned projection while
   the managed projection remains unchanged.
 
 Latest deterministic report:
 
 ```text
-.tmp/agent-first-cas/2026-07-07T14-39-33-360Z/agent-first-cas-report.json
+.tmp/agent-first-cas/2026-07-07T14-48-03-599Z/agent-first-cas-report.json
 ```
 
 Result:
 
 - `status: pass`
-- 31 checks passed,
+- 32 checks passed,
 - `projectionPathOutsideCwdRejected: true`.
 
 ### Suite C3: Local API Receipt CAS Smoke
