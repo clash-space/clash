@@ -7847,6 +7847,241 @@ describe("local API app", () => {
     });
   });
 
+  it("purges deleted project recovery points only after explicit confirmation", async () => {
+    const app = createLocalApiApp({ dataDir, userId: "local-user" });
+
+    const created = await app.request("/api/v1/projects", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ name: "Project to purge" }),
+    });
+    expect(created.status).toBe(201);
+    const project = await created.json() as { id: string; readToken: string };
+
+    const session = await app.request("/api/v1/sessions", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ projectId: project.id, title: "Session to purge" }),
+    });
+    expect(session.status).toBe(200);
+    const sessionJson = await session.json() as { threadId: string };
+
+    const replica = new FileReplicaStore(join(dataDir, "projects"));
+    const doc = new LoroDoc();
+    doc.getMap("nodes").set("purge-node", { type: "text", data: { label: "Delete me" } });
+    await replica.saveSnapshotAtomic(project.id, doc.export({ mode: "snapshot" }));
+    await expect(stat(join(dataDir, "projects", encodeURIComponent(project.id), "loro", "snapshot.bin"))).resolves.toMatchObject({
+      size: expect.any(Number),
+    });
+
+    const sqlite = openSqlite();
+    try {
+      const now = Date.now();
+      sqlite.prepare(`
+        INSERT INTO chat_message (session_id, id, sender_kind, sender_id, turn_id, events_json, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+      `).run(sessionJson.threadId, "purge-chat-message", "agent", "agent-1", null, "[]", now);
+      sqlite.prepare(`
+        INSERT INTO room_message (id, project_id, sender_kind, sender_id, sender_user_id, mentions_json, text, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      `).run("purge-room-message", project.id, "agent", "agent-1", "local-user", "[]", "purge me", now);
+      sqlite.prepare(`
+        INSERT INTO assets (
+          id, user_id, kind, src_r2_key, cover_r2_key, metadata, source_model, source_prompt,
+          source_task_id, sources, signed_url, signed_url_exp, created_at, updated_at, project_id
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        "purge-asset",
+        "local-user",
+        "image",
+        "blobs/purge-asset.png",
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        now,
+        now,
+        project.id,
+      );
+      sqlite.prepare("INSERT OR REPLACE INTO asset_refs (asset_id, project_id, imported_at) VALUES (?, ?, ?)")
+        .run("purge-asset", project.id, now);
+      sqlite.prepare(`
+        INSERT OR REPLACE INTO asset_node_refs (
+          asset_id, project_id, node_id, node_type, field_path, reference_role, observed_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?)
+      `).run("purge-asset", project.id, "purge-node", "image", "data.assetId", "asset", now);
+      sqlite.prepare(`
+        INSERT INTO project_preview_asset (project_id, asset_id, url, type, storage_key, created_at, position)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+      `).run(project.id, "purge-asset", "file:///purge-asset.png", "image", "blobs/purge-asset.png", new Date(now).toISOString(), 0);
+    } finally {
+      sqlite.close();
+    }
+
+    const activePurge = await app.request(`/api/v1/projects/${project.id}/purge`, {
+      method: "DELETE",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ confirm: "purge", force: true }),
+    });
+    expect(activePurge.status).toBe(409);
+    expect(await activePurge.json()).toMatchObject({
+      error: "Project must be deleted before purge",
+      mutation: {
+        operation: "project_purge",
+        entity: { kind: "project", id: project.id },
+        accepted: false,
+      },
+    });
+
+    const deleted = await app.request(`/api/v1/projects/${project.id}`, { method: "DELETE" });
+    expect(deleted.status).toBe(200);
+    const deletedJson = await deleted.json() as { deletedAt: string; readToken: string };
+    expect(deletedJson.readToken).toMatch(PROJECT_RECEIPT_READ_TOKEN_RE);
+
+    const missingConfirm = await app.request(`/api/v1/projects/${project.id}/purge`, {
+      method: "DELETE",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ force: true }),
+    });
+    expect(missingConfirm.status).toBe(400);
+    expect(await missingConfirm.json()).toMatchObject({
+      error: "confirm must be \"purge\"",
+      mutation: {
+        operation: "project_purge",
+        entity: { kind: "project", id: project.id },
+        accepted: false,
+      },
+    });
+
+    const missingReadProof = await app.request(`/api/v1/projects/${project.id}/purge`, {
+      method: "DELETE",
+      headers: {
+        "content-type": "application/json",
+        "x-clash-client-type": "agent",
+      },
+      body: JSON.stringify({ confirm: "purge" }),
+    });
+    expect(missingReadProof.status).toBe(409);
+    expect(await missingReadProof.json()).toMatchObject({
+      error: expect.stringContaining("Missing project purge read proof for agent"),
+      mutation: {
+        operation: "project_purge",
+        entity: { kind: "project", id: project.id },
+        accepted: false,
+      },
+    });
+
+    const bareReadToken = await app.request(`/api/v1/projects/${project.id}/purge`, {
+      method: "DELETE",
+      headers: {
+        "content-type": "application/json",
+        "x-clash-client-type": "agent",
+        "x-clash-if-match": baseReadToken(deletedJson.readToken),
+      },
+      body: JSON.stringify({ confirm: "purge" }),
+    });
+    expect(bareReadToken.status).toBe(409);
+    expect(await bareReadToken.json()).toMatchObject({
+      error: expect.stringContaining("Missing project purge read receipt for agent"),
+      mutation: {
+        operation: "project_purge",
+        entity: { kind: "project", id: project.id },
+        expectedReadToken: baseReadToken(deletedJson.readToken),
+        beforeReadToken: baseReadToken(deletedJson.readToken),
+        accepted: false,
+      },
+    });
+
+    const delayed = await app.request(`/api/v1/projects/${project.id}/purge`, {
+      method: "DELETE",
+      headers: {
+        "content-type": "application/json",
+        "x-clash-client-type": "agent",
+        "x-clash-if-match": deletedJson.readToken,
+      },
+      body: JSON.stringify({ confirm: "purge" }),
+    });
+    expect(delayed.status).toBe(409);
+    const delayedJson = await delayed.json() as any;
+    expect(delayedJson).toMatchObject({
+      recoverable: true,
+      purgeAfter: expect.any(String),
+      mutation: {
+        operation: "project_purge",
+        entity: { kind: "project", id: project.id },
+        expectedReadToken: deletedJson.readToken,
+        beforeReadToken: baseReadToken(deletedJson.readToken),
+        accepted: false,
+      },
+    });
+    expect(Date.parse(delayedJson.purgeAfter)).toBeGreaterThan(Date.parse(deletedJson.deletedAt));
+
+    const purged = await app.request(`/api/v1/projects/${project.id}/purge`, {
+      method: "DELETE",
+      headers: {
+        "content-type": "application/json",
+        "x-clash-client-type": "agent",
+        "x-clash-if-match": deletedJson.readToken,
+        "x-clash-force": "true",
+      },
+      body: JSON.stringify({ confirm: "purge" }),
+    });
+    expect(purged.status).toBe(200);
+    expect(await purged.json()).toMatchObject({
+      purged: true,
+      recoverable: false,
+      id: project.id,
+      deletedAt: deletedJson.deletedAt,
+      purgeAfter: delayedJson.purgeAfter,
+      replicaDeleted: true,
+      removed: {
+        projects: 1,
+        projectPreviewAssets: 1,
+        sessions: 1,
+        sessionMessages: 1,
+        roomMessages: 1,
+        assetRowsUnlinked: 1,
+        assetRefs: 1,
+        assetNodeRefs: 1,
+      },
+      mutation: {
+        operation: "project_purge",
+        entity: { kind: "project", id: project.id },
+        expectedReadToken: deletedJson.readToken,
+        beforeReadToken: baseReadToken(deletedJson.readToken),
+        resultEntityId: project.id,
+        forced: true,
+        accepted: true,
+      },
+    });
+
+    await expect(stat(join(dataDir, "projects", encodeURIComponent(project.id)))).rejects.toMatchObject({ code: "ENOENT" });
+
+    const hidden = await app.request(`/api/v1/projects/${project.id}?includeDeleted=true`);
+    expect(hidden.status).toBe(404);
+    const restore = await app.request(`/api/v1/projects/${project.id}/restore`, { method: "POST" });
+    expect(restore.status).toBe(404);
+
+    const check = openSqlite();
+    try {
+      expect(check.prepare("select count(*) as count from project where id = ?").get(project.id)).toEqual({ count: 0 });
+      expect(check.prepare("select count(*) as count from project_preview_asset where project_id = ?").get(project.id)).toEqual({ count: 0 });
+      expect(check.prepare("select count(*) as count from runtime_session where project_id = ?").get(project.id)).toEqual({ count: 0 });
+      expect(check.prepare("select count(*) as count from chat_message where session_id = ?").get(sessionJson.threadId)).toEqual({ count: 0 });
+      expect(check.prepare("select count(*) as count from room_message where project_id = ?").get(project.id)).toEqual({ count: 0 });
+      expect(check.prepare("select count(*) as count from asset_refs where project_id = ?").get(project.id)).toEqual({ count: 0 });
+      expect(check.prepare("select count(*) as count from asset_node_refs where project_id = ?").get(project.id)).toEqual({ count: 0 });
+      expect(check.prepare("select count(*) as count from assets where id = ?").get("purge-asset")).toEqual({ count: 1 });
+      expect(check.prepare("select project_id from assets where id = ?").get("purge-asset")).toEqual({ project_id: null });
+    } finally {
+      check.close();
+    }
+  });
+
   it("persists local project room messages in SQLite", async () => {
     const app = createLocalApiApp({ dataDir, userId: "local-user" });
 

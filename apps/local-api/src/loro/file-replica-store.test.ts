@@ -78,6 +78,23 @@ describe("FileReplicaStore", () => {
     expect((nodes.get("second") as any).data.label).toBe("Second");
   });
 
+  it("deletes the encoded project replica directory", async () => {
+    const store = new FileReplicaStore(rootDir);
+    const projectId = "project/delete";
+    const doc = new LoroDoc();
+    doc.getMap("nodes").set("base", { type: "text", data: { label: "Base" } });
+    await store.saveSnapshotAtomic(projectId, doc.export({ mode: "snapshot" }));
+    await store.appendUpdate(projectId, new Uint8Array([1, 2, 3]));
+
+    expect(await readdir(projectDir(projectId))).toEqual(expect.arrayContaining(["snapshot.bin", "updates.log"]));
+
+    await store.deleteReplica(projectId);
+
+    await expect(readdir(join(rootDir, encodeURIComponent(projectId)))).rejects.toMatchObject({ code: "ENOENT" });
+    expect(await store.loadSnapshot(projectId)).toBeNull();
+    expect(await store.loadUpdateLog(projectId)).toEqual([]);
+  });
+
   it("serializes recover-mutate-save updates for a project", async () => {
     const store = new FileReplicaStore(rootDir);
     const projectId = "project/serialized-update";

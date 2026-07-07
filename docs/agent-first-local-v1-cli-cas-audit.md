@@ -107,8 +107,9 @@ Examples:
 | `clash action uninstall` | Removes local action package | Not CAS | Confirmation/`--yes` already exists |
 | `clash projects init/link` | Writes `.clash/project.toml` marker | Not CAS | Marker write is allowed; project identity changes should be explicit |
 | `clash projects create` | API create | Not CAS | Store in SQLite; response should expose project store/status |
-| `clash projects delete` | Local API soft-delete, preserves project sessions/messages, and requires `--yes` in CLI | Read-token CAS for agents | Use `clash project get --json` then `clash project delete --if-match <readToken> --yes`; keep delayed purge/admin hard-delete policy separate |
+| `clash projects delete` | Local API soft-delete, preserves project sessions/messages, and requires `--yes` in CLI | Read-token CAS for agents | Use `clash project get --json` then `clash project delete --if-match <readToken> --yes`; permanent removal is a separate purge action |
 | `clash projects restore` | Restores a soft-deleted local project through the local recovery endpoint | Read-token CAS for agents | Use `clash project get --include-deleted --json` then `clash project restore --if-match <readToken>`; keep cloud/shared-project recovery parity separate |
+| `clash projects purge` | Permanently removes a deleted local recovery point after explicit confirmation | Deleted-project read-token CAS for agents | Use `clash project get --include-deleted --json` then `clash project purge <projectId> --if-match <readToken> --yes`; defaults to delayed purge unless `--force` is explicit |
 | `clash room say` | Append-only project chat | Not CAS | Store locally in SQLite and cloud D1; validate sender |
 | `clash room read` | Read-only | Not needed | Safe inspection |
 | `clash tasks status/wait` | Read-only/polling | Not needed | Safe inspection |
@@ -230,7 +231,10 @@ Remaining guardrails:
   agent callers while still requiring `--yes`. `clash project get
   --include-deleted --json` exposes a deleted-project restore receipt, and
   `clash project restore --if-match <readToken>` passes that proof for agent
-  callers. v1 project create/delete/restore,
+  callers. The same deleted-project receipt gates
+  `clash project purge <projectId> --if-match <readToken> --yes`; the host
+  rejects active projects, defaults to a 7-day purge delay, and treats
+  `--force` as the explicit admin purge override. v1 project create/delete/restore/purge,
   legacy project create/update/delete, asset create/ref-delete/cover-update, and
   session create/delete responses include accepted/rejected mutation records.
   Local room message POST responses also include accepted/rejected mutation
@@ -343,8 +347,6 @@ Required behavior:
 
 ### P1
 
-- Add delayed purge/admin hard-delete policy for recoverable project deletes;
-  CLI `--yes` confirmation is already required.
 - Add local room SQLite persistence.
 - Add project-level action version/conflict semantics.
 - Move CLI auth token storage to a safer local store if/when keychain support is

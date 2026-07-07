@@ -45,10 +45,26 @@ test("canvas and project delete commands expose --yes confirmation", () => {
   assert.match(projectDeleteSource, /recoverable/);
 });
 
+test("project purge command exposes confirmation and deleted-project CAS", () => {
+  const projectsSource = commandSource("projects.ts");
+  const projectPurgeSource = commandBlock(projectsSource, "purge");
+
+  assert.match(projectsSource, /\.command\("purge"\)/);
+  assert.match(projectPurgeSource, /\/api\/v1\/projects\/\$\{encodeURIComponent\(projectId\)\}\/purge/);
+  assert.match(projectPurgeSource, /\.option\("--yes"/);
+  assert.match(projectPurgeSource, /\.option\("--if-match <readToken>"/);
+  assert.match(projectPurgeSource, /\.option\("--force"/);
+  assert.match(projectPurgeSource, /requireDestructiveConfirmation\([\s\S]+project recovery point \$\{projectId\}/);
+  assert.match(projectPurgeSource, /confirm: "purge"/);
+  assert.match(projectPurgeSource, /projectWriteHeaders\(\{/);
+  assert.match(projectPurgeSource, /ifMatch: options\.ifMatch/);
+  assert.match(projectPurgeSource, /force: options\.force === true/);
+});
+
 test("project restore command exposes the local recovery endpoint", () => {
   const projectsSource = commandSource("projects.ts");
   const projectGetSource = commandBlock(projectsSource, "get", "delete");
-  const projectRestoreSource = commandBlock(projectsSource, "restore");
+  const projectRestoreSource = commandBlock(projectsSource, "restore", "purge");
 
   assert.match(projectsSource, /\.command\("restore"\)/);
   assert.match(projectGetSource, /\.option\("--include-deleted"/);

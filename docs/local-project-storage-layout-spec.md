@@ -559,6 +559,12 @@ or apply recovered Loro bytes automatically.
      canonical state,
    - do not delete `db.json`, canonical asset blobs, canonical `snapshot.bin`,
      or broken links without a separate explicit destructive command.
+     Deleted-project recovery points use `clash project purge <projectId>
+     --yes --if-match <deletedReadToken>` / `DELETE
+     /api/v1/projects/:id/purge`, which rejects active projects, defaults to a
+     7-day delay unless `--force` is explicit, removes project-scoped SQLite
+     rows and the canonical Loro replica, clears project ownership from retained
+     immutable asset rows, and leaves retained asset blobs/rows for asset GC.
 10. Move default agent session cwd to workspace/session draft dirs after alpha,
    if protected-root incidents become common.
 

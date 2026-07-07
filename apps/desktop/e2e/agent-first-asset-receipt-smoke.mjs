@@ -63,12 +63,21 @@ function appRequest(app) {
   };
 }
 
-function sqliteCount(sql) {
+function sqliteCount(sql, params = []) {
   const db = new DatabaseSync(path.join(dataDir, "local.sqlite"));
   try {
-    return db.prepare(sql).get()?.count ?? 0;
+    return db.prepare(sql).get(...params)?.count ?? 0;
   } finally {
     db.close();
+  }
+}
+
+async function pathIsMissing(filePath) {
+  try {
+    await stat(filePath);
+    return false;
+  } catch (error) {
+    return error?.code === "ENOENT";
   }
 }
 
@@ -1685,6 +1694,133 @@ async function main() {
     { mutation: acceptedProjectRestoreJson.mutation },
   );
 
+  const purgeProjectResponse = await request("/api/v1/projects", {
+    method: "POST",
+    body: JSON.stringify({ name: "Project Purge Receipt Smoke" }),
+  });
+  const purgeProject = await parseJsonResponse(purgeProjectResponse);
+  recordCheck(
+    "project purge source project create accepted",
+    purgeProjectResponse.status === 201 && hasReceipt(purgeProject.readToken, "project"),
+    `status=${purgeProjectResponse.status} id=${purgeProject.id ?? ""} readToken=${purgeProject.readToken ?? ""}`,
+    { mutation: purgeProject.mutation },
+  );
+
+  const purgeSessionResponse = await request("/api/v1/sessions", {
+    method: "POST",
+    body: JSON.stringify({ projectId: purgeProject.id, title: "Purge guarded session" }),
+  });
+  const purgeSession = await parseJsonResponse(purgeSessionResponse);
+  recordCheck(
+    "project purge source session create accepted",
+    purgeSessionResponse.status === 200 && typeof purgeSession.threadId === "string",
+    JSON.stringify(purgeSession),
+    { mutation: purgeSession.mutation },
+  );
+
+  const purgeReplicaRoot = path.join(dataDir, "projects", encodeURIComponent(purgeProject.id));
+  await mkdir(path.join(purgeReplicaRoot, "loro"), { recursive: true });
+  await writeFile(path.join(purgeReplicaRoot, "loro", "snapshot.bin"), new Uint8Array([1, 2, 3]));
+  recordCheck(
+    "project purge source Loro replica exists before purge",
+    !(await pathIsMissing(path.join(purgeReplicaRoot, "loro", "snapshot.bin"))),
+    purgeReplicaRoot,
+  );
+
+  const deletePurgeProjectResponse = await request(`/api/v1/projects/${encodeURIComponent(purgeProject.id)}`, {
+    method: "DELETE",
+  });
+  const deletedPurgeProject = await parseJsonResponse(deletePurgeProjectResponse);
+  recordCheck(
+    "project purge delete returns deleted-project receipt",
+    deletePurgeProjectResponse.status === 200 &&
+      deletedPurgeProject.deleted === true &&
+      hasReceipt(deletedPurgeProject.readToken, "project"),
+    JSON.stringify(deletedPurgeProject),
+    { mutation: deletedPurgeProject.mutation },
+  );
+
+  const purgeReadResponse = await request(`/api/v1/projects/${encodeURIComponent(purgeProject.id)}?includeDeleted=true`);
+  const purgeRead = await parseJsonResponse(purgeReadResponse);
+  recordCheck(
+    "project purge deleted get returns purge receipt",
+    purgeReadResponse.status === 200 &&
+      purgeRead.id === purgeProject.id &&
+      purgeRead.readToken === deletedPurgeProject.readToken &&
+      hasReceipt(purgeRead.readToken, "project"),
+    JSON.stringify(purgeRead),
+  );
+
+  const missingProjectPurge = await request(`/api/v1/projects/${encodeURIComponent(purgeProject.id)}/purge`, {
+    method: "DELETE",
+    headers: { "x-clash-client-type": "agent" },
+    body: JSON.stringify({ confirm: "purge" }),
+  });
+  const missingProjectPurgeJson = await parseJsonResponse(missingProjectPurge);
+  recordCheck(
+    "project purge without prior deleted read is rejected",
+    missingProjectPurge.status === 409 &&
+      /Missing project purge read proof for agent/.test(missingProjectPurgeJson.error ?? ""),
+    JSON.stringify(missingProjectPurgeJson),
+    { mutation: missingProjectPurgeJson.mutation },
+  );
+
+  const delayedProjectPurge = await request(`/api/v1/projects/${encodeURIComponent(purgeProject.id)}/purge`, {
+    method: "DELETE",
+    headers: {
+      "x-clash-client-type": "agent",
+      "x-clash-if-match": purgeRead.readToken,
+    },
+    body: JSON.stringify({ confirm: "purge" }),
+  });
+  const delayedProjectPurgeJson = await parseJsonResponse(delayedProjectPurge);
+  recordCheck(
+    "project purge with receipt is delayed by default",
+    delayedProjectPurge.status === 409 &&
+      delayedProjectPurgeJson.recoverable === true &&
+      typeof delayedProjectPurgeJson.purgeAfter === "string" &&
+      delayedProjectPurgeJson.mutation?.accepted === false &&
+      delayedProjectPurgeJson.mutation?.expectedReadToken === purgeRead.readToken,
+    JSON.stringify(delayedProjectPurgeJson),
+    { mutation: delayedProjectPurgeJson.mutation },
+  );
+
+  const acceptedProjectPurge = await request(`/api/v1/projects/${encodeURIComponent(purgeProject.id)}/purge`, {
+    method: "DELETE",
+    headers: {
+      "x-clash-client-type": "agent",
+      "x-clash-if-match": purgeRead.readToken,
+      "x-clash-force": "true",
+    },
+    body: JSON.stringify({ confirm: "purge" }),
+  });
+  const acceptedProjectPurgeJson = await parseJsonResponse(acceptedProjectPurge);
+  recordCheck(
+    "project purge with deleted-project receipt and force is accepted",
+    acceptedProjectPurge.status === 200 &&
+      acceptedProjectPurgeJson.purged === true &&
+      acceptedProjectPurgeJson.id === purgeProject.id &&
+      acceptedProjectPurgeJson.replicaDeleted === true &&
+      acceptedProjectPurgeJson.removed?.projects === 1 &&
+      acceptedProjectPurgeJson.removed?.sessions === 1 &&
+      acceptedProjectPurgeJson.mutation?.accepted === true &&
+      acceptedProjectPurgeJson.mutation?.forced === true &&
+      acceptedProjectPurgeJson.mutation?.expectedReadToken === purgeRead.readToken &&
+      acceptedProjectPurgeJson.mutation?.beforeReadToken === baseReadToken(purgeRead.readToken),
+    JSON.stringify(acceptedProjectPurgeJson),
+    { mutation: acceptedProjectPurgeJson.mutation },
+  );
+
+  const purgedProjectGet = await request(`/api/v1/projects/${encodeURIComponent(purgeProject.id)}?includeDeleted=true`);
+  recordCheck(
+    "project purge removes deleted recovery point",
+    purgedProjectGet.status === 404 &&
+      sqliteCount("select count(*) as count from project where id = ?", [purgeProject.id]) === 0 &&
+      sqliteCount("select count(*) as count from runtime_session where project_id = ?", [purgeProject.id]) === 0 &&
+      (await pathIsMissing(purgeReplicaRoot)),
+    `status=${purgedProjectGet.status} projectRows=${sqliteCount("select count(*) as count from project where id = ?", [purgeProject.id])} sessionRows=${sqliteCount("select count(*) as count from runtime_session where project_id = ?", [purgeProject.id])} replicaRoot=${purgeReplicaRoot}`,
+  );
+
   const sessionProjectResponse = await request("/api/v1/projects", {
     method: "POST",
     body: JSON.stringify({ name: "Session Receipt Smoke" }),
@@ -1892,7 +2028,7 @@ async function main() {
 	  const report = {
 	    schemaVersion: 1,
 	    status: "pass",
-	    summary: "Local sync/audio/runtime/provider config, derived agent read views, provider model test actions, local audio transcription actions, asset metadata/ref/GC, asset reference metadata refresh, project restore, local session agent writes/attach, and local room id replays require host-side read/idempotency proofs, read-only metadata views, or host mutation records.",
+	    summary: "Local sync/audio/runtime/provider config, derived agent read views, provider model test actions, local audio transcription actions, asset metadata/ref/GC, asset reference metadata refresh, project restore/purge, local session agent writes/attach, and local room id replays require host-side read/idempotency proofs, read-only metadata views, or host mutation records.",
     run: {
       artifactRoot,
       dataDir,
@@ -1957,6 +2093,13 @@ async function main() {
       deletedReadToken: deletedProjectRead.readToken,
       restoredReadToken: acceptedProjectRestoreJson.readToken,
     },
+    projectPurge: {
+      projectId: purgeProject.id,
+      deletedReadToken: purgeRead.readToken,
+      purgeAfter: delayedProjectPurgeJson.purgeAfter,
+      removed: acceptedProjectPurgeJson.removed,
+      replicaRoot: purgeReplicaRoot,
+    },
     checks,
     booleans: {
       agentsReadDerivedMembersReturned: checks.some((check) => check.name === "agents read returns derived built-in members" && check.status === "pass"),
@@ -1983,6 +2126,11 @@ async function main() {
       projectRestoreBareCasRejected: checks.some((check) => check.name === "project restore with bare CAS token is rejected" && check.status === "pass"),
       projectRestoreStaleReceiptRejected: checks.some((check) => check.name === "project restore with stale active receipt is rejected" && check.status === "pass"),
       projectRestoreReceiptAccepted: checks.some((check) => check.name === "project restore with deleted-project receipt is accepted" && check.status === "pass"),
+      projectPurgeGetReceiptReturned: checks.some((check) => check.name === "project purge deleted get returns purge receipt" && check.status === "pass"),
+      projectPurgeMissingReadRejected: checks.some((check) => check.name === "project purge without prior deleted read is rejected" && check.status === "pass"),
+      projectPurgeDelayedByDefault: checks.some((check) => check.name === "project purge with receipt is delayed by default" && check.status === "pass"),
+      projectPurgeForceAccepted: checks.some((check) => check.name === "project purge with deleted-project receipt and force is accepted" && check.status === "pass"),
+      projectPurgeRecoveryPointRemoved: checks.some((check) => check.name === "project purge removes deleted recovery point" && check.status === "pass"),
       syncConfigGetReceiptReturned: checks.some((check) => check.name === "sync config get returns receipt read token" && check.status === "pass"),
       syncConfigMissingReadRejected: checks.some((check) => check.name === "sync config update without prior read is rejected" && check.status === "pass"),
       syncConfigBareCasRejected: checks.some((check) => check.name === "sync config update with bare CAS token is rejected" && check.status === "pass"),

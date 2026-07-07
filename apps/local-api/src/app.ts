@@ -324,6 +324,7 @@ type LocalDb = LocalMetadataDb & {
 };
 
 const LOCAL_API_READ_RECEIPT_SECRET = randomBytes(32).toString("hex");
+const PROJECT_PURGE_DELAY_MS = 7 * 24 * 60 * 60 * 1000;
 
 type ProjectCanvasAssetNodeRef = Pick<
   LocalMetadataAssetNodeRef,
@@ -1103,6 +1104,46 @@ function restoreProjectInState(state: LocalDb, projectId: string): LocalProject 
   return project;
 }
 
+function projectPurgeAfter(project: LocalProject): string {
+  const deletedAtMs = Date.parse(project.deletedAt ?? "");
+  const base = Number.isFinite(deletedAtMs) ? deletedAtMs : Date.now();
+  return new Date(base + PROJECT_PURGE_DELAY_MS).toISOString();
+}
+
+function canPurgeProject(project: LocalProject, nowMs = Date.now()): boolean {
+  return Date.parse(projectPurgeAfter(project)) <= nowMs;
+}
+
+function purgeProjectFromState(state: LocalDb, projectId: string) {
+  const project = state.projects.find((candidate) => candidate.id === projectId && isDeletedProject(candidate));
+  if (!project) return null;
+  const sessionIds = new Set(
+    state.sessions
+      .filter((session) => session.projectId === projectId)
+      .map((session) => session.id),
+  );
+  const counts = {
+    projects: 1,
+    projectPreviewAssets: project.assets.length,
+    sessions: sessionIds.size,
+    sessionMessages: state.sessionMessages.filter((message) => sessionIds.has(message.session_id)).length,
+    roomMessages: state.roomMessages.filter((message) => message.project_id === projectId).length,
+    assetRowsUnlinked: state.assets.filter((asset) => asset.projectId === projectId).length,
+    assetRefs: state.assetRefs.filter((ref) => ref.projectId === projectId).length,
+    assetNodeRefs: state.assetNodeRefs.filter((ref) => ref.projectId === projectId).length,
+  };
+  state.projects = state.projects.filter((candidate) => candidate.id !== projectId);
+  state.sessions = state.sessions.filter((session) => session.projectId !== projectId);
+  state.sessionMessages = state.sessionMessages.filter((message) => !sessionIds.has(message.session_id));
+  state.roomMessages = state.roomMessages.filter((message) => message.project_id !== projectId);
+  state.assets = state.assets.map((asset) =>
+    asset.projectId === projectId ? { ...asset, projectId: undefined } : asset,
+  );
+  state.assetRefs = state.assetRefs.filter((ref) => ref.projectId !== projectId);
+  state.assetNodeRefs = state.assetNodeRefs.filter((ref) => ref.projectId !== projectId);
+  return { project, counts };
+}
+
 function toV1Project(project: LocalProject) {
   return {
     id: project.id,
@@ -1643,11 +1684,11 @@ function validateAssetGarbageCollectionMutation(options: {
 
 function validateProjectReadMutation(options: {
   project: LocalProject;
-  operation: "update" | "delete" | "restore";
+  operation: "update" | "delete" | "restore" | "purge";
   preconditions: ProjectWritePreconditions;
 }) {
   const currentReadToken = projectReadToken(options.project);
-  const readCommand = options.operation === "restore"
+  const readCommand = options.operation === "restore" || options.operation === "purge"
     ? `clash project get --id ${options.project.id} --include-deleted --json`
     : `clash project get --id ${options.project.id} --json`;
   const guard = validateAgentReadProof({
@@ -4587,6 +4628,108 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
         },
       };
     });
+    return c.json(result.body, result.status);
+  });
+
+  app.delete("/api/v1/projects/:id/purge", async (c) => {
+    const projectId = c.req.param("id");
+    const body = (await c.req.json().catch(() => ({}))) as ProjectWriteBody & { confirm?: unknown };
+    const preconditions = requestProjectWritePreconditions(c, body);
+    if (body.confirm !== "purge") {
+      return c.json({
+        error: "confirm must be \"purge\"",
+        mutation: hostMutationRejected({
+          operation: "project_purge",
+          entity: { kind: "project", id: projectId },
+          expectedReadToken: preconditions.expectedReadToken,
+          forced: preconditions.force,
+        }, "confirm must be \"purge\""),
+      }, 400);
+    }
+
+    const result = await db.update((state) => {
+      const project = state.projects.find((candidate) => candidate.id === projectId);
+      if (!project) {
+        return {
+          status: 404 as const,
+          body: {
+            error: "Project recovery point not found",
+            mutation: hostMutationRejected({
+              operation: "project_purge",
+              entity: { kind: "project", id: projectId },
+              expectedReadToken: preconditions.expectedReadToken,
+              forced: preconditions.force,
+            }, "Project recovery point not found"),
+          },
+        };
+      }
+      if (!isDeletedProject(project)) {
+        return {
+          status: 409 as const,
+          body: {
+            error: "Project must be deleted before purge",
+            mutation: hostMutationRejected({
+              operation: "project_purge",
+              entity: { kind: "project", id: projectId },
+              expectedReadToken: preconditions.expectedReadToken,
+              forced: preconditions.force,
+            }, "Project must be deleted before purge"),
+          },
+        };
+      }
+      const hostMutation = validateProjectReadMutation({
+        project,
+        operation: "purge",
+        preconditions,
+      });
+      if (!hostMutation.ok) {
+        return {
+          status: 409 as const,
+          body: { error: hostMutation.error, mutation: hostMutation.mutation },
+        };
+      }
+      const purgeAfter = projectPurgeAfter(project);
+      if (!preconditions.force && !canPurgeProject(project)) {
+        const message = `Project purge is delayed until ${purgeAfter}; pass force for an explicit admin purge.`;
+        return {
+          status: 409 as const,
+          body: {
+            error: message,
+            recoverable: true,
+            purgeAfter,
+            mutation: hostMutationRejected(hostMutation.envelope, message),
+          },
+        };
+      }
+      const purged = purgeProjectFromState(state, projectId);
+      if (!purged) {
+        return {
+          status: 404 as const,
+          body: {
+            error: "Project recovery point not found",
+            mutation: hostMutationRejected(hostMutation.envelope, "Project recovery point not found"),
+          },
+        };
+      }
+      return {
+        status: 200 as const,
+        body: {
+          purged: true,
+          recoverable: false,
+          id: purged.project.id,
+          deletedAt: purged.project.deletedAt,
+          purgeAfter,
+          removed: purged.counts,
+          mutation: hostMutationSucceeded(hostMutation.envelope, {
+            resultEntityId: purged.project.id,
+          }),
+        },
+      };
+    });
+    if (result.status === 200) {
+      await replicaStore.deleteReplica(projectId);
+      return c.json({ ...result.body, replicaDeleted: true }, result.status);
+    }
     return c.json(result.body, result.status);
   });
 

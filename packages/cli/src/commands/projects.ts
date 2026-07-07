@@ -303,3 +303,49 @@ projectsCommand
       console.log(`Restored project: ${restored.id}`);
     }
   });
+
+projectsCommand
+  .command("purge")
+  .description("Permanently purge a soft-deleted local project recovery point")
+  .argument("<projectId>", "Project ID")
+  .option("--yes", "Confirm permanent purge without an interactive prompt")
+  .option("--if-match <readToken>", "Require the deleted project read token from `clash project get --include-deleted --json` before purging")
+  .option("--force", "Bypass the delayed purge window and agent read-token check")
+  .option("--json", "Output as JSON")
+  .action(async (projectId, options) => {
+    const confirmation = requireDestructiveConfirmation(
+      options,
+      `project recovery point ${projectId}`,
+    );
+    if (!confirmation.ok) {
+      console.error(`Error: ${confirmation.error}`);
+      process.exit(1);
+    }
+
+    const purged = await apiJson<{
+      purged: boolean;
+      id: string;
+      recoverable?: boolean;
+      purgeAfter?: string;
+      removed?: Record<string, number>;
+    }>(`/api/v1/projects/${encodeURIComponent(projectId)}/purge`, {
+      method: "DELETE",
+      headers: projectWriteHeaders({
+        ifMatch: options.ifMatch,
+        force: options.force === true,
+      }),
+      body: JSON.stringify({ confirm: "purge" }),
+    });
+
+    if (isJsonMode(options)) {
+      printJson(purged);
+    } else {
+      const removed = purged.removed
+        ? ` (${Object.entries(purged.removed)
+          .filter(([, count]) => count > 0)
+          .map(([key, count]) => `${key}: ${count}`)
+          .join(", ")})`
+        : "";
+      console.log(`Purged project recovery point: ${purged.id}${removed}`);
+    }
+  });

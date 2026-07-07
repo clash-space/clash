@@ -142,6 +142,12 @@ export class FileReplicaStore {
     return this.recoverUnsafe(projectId);
   }
 
+  async deleteReplica(projectId: string): Promise<void> {
+    await this.enqueueProjectWrite(projectId, async () => {
+      await rm(this.projectDir(projectId), { recursive: true, force: true });
+    });
+  }
+
   private async recoverUnsafe(projectId: string): Promise<LoroDoc> {
     const doc = new LoroDoc();
     const updates = await this.loadUpdateLog(projectId);
@@ -155,7 +161,11 @@ export class FileReplicaStore {
   }
 
   private loroDir(projectId: string): string {
-    return join(this.rootDir, encodeURIComponent(projectId), "loro");
+    return join(this.projectDir(projectId), "loro");
+  }
+
+  private projectDir(projectId: string): string {
+    return join(this.rootDir, encodeURIComponent(projectId));
   }
 
   private snapshotPath(projectId: string): string {

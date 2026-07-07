@@ -885,6 +885,8 @@ Implementation:
 - Add downstream/reference checks for canvas node deletion.
 - Soft-delete local projects so persisted sessions/messages survive deletion.
 - Expose explicit restore through local-api and CLI.
+- Add a separate delayed/admin hard purge for deleted local project recovery
+  points.
 - Keep API compatibility, but do not let local CLI delete look like a harmless
   patch.
 
@@ -902,6 +904,16 @@ Current status:
 - CLI `clash project get --include-deleted --json` exposes the deleted-project
   restore receipt, and `clash project restore --if-match <readToken>` passes it
   for agent read-before-write CAS.
+- local-api `DELETE /api/v1/projects/:id/purge` permanently removes only a
+  deleted local recovery point after `confirm: "purge"`; it rejects active
+  projects, defaults to a 7-day purge delay, accepts explicit `--force` admin
+  purge, requires a deleted-project receipt for agent callers, removes
+  project-scoped sessions/messages/room rows/asset refs and the canonical Loro
+  replica, clears project ownership from retained immutable asset rows, and
+  leaves retained asset blobs/rows for asset GC.
+- CLI `clash project purge <projectId> --yes --if-match <readToken>` exposes the
+  same deleted-project receipt flow; `--force` is the explicit delayed-purge
+  override.
 - Covered by `packages/cli/src/lib/destructive-guardrails.test.ts`.
 - Recoverable project deletion is covered by `apps/local-api/src/app.test.ts`
   and SQLite persistence coverage in
@@ -911,10 +923,8 @@ Current status:
 
 Remaining gap:
 
-- Delayed purge/admin hard-delete policy is not implemented.
 - Cloud/shared-project delete recovery semantics are not specified.
-- Deeper project-store reference checks beyond preserved local sessions/messages
-  remain.
+- Cloud/shared-project purge parity and conflict recovery remain unspecified.
 
 ### P1-05: Agent workspace migration
 
