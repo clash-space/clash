@@ -1821,6 +1821,25 @@ async function main() {
     `status=${purgedProjectGet.status} projectRows=${sqliteCount("select count(*) as count from project where id = ?", [purgeProject.id])} sessionRows=${sqliteCount("select count(*) as count from runtime_session where project_id = ?", [purgeProject.id])} replicaRoot=${purgeReplicaRoot}`,
   );
 
+  const purgeAuditResponse = await request(`/api/v1/mutation-audit?operation=project_purge&entityId=${encodeURIComponent(purgeProject.id)}`);
+  const purgeAudit = await parseJsonResponse(purgeAuditResponse);
+  const purgeAuditRecord = purgeAudit.records?.[0];
+  recordCheck(
+    "project purge writes sanitized local mutation audit evidence",
+    purgeAuditResponse.status === 200 &&
+      purgeAudit.records?.length === 1 &&
+      purgeAuditRecord.operation === "project_purge" &&
+      purgeAuditRecord.entity?.id === purgeProject.id &&
+      purgeAuditRecord.forced === true &&
+      purgeAuditRecord.accepted === true &&
+      purgeAuditRecord.actorClientType === "agent" &&
+      purgeAuditRecord.reason === "project purge" &&
+      !JSON.stringify(purgeAuditRecord.mutation ?? {}).includes("receipt") &&
+      purgeAuditRecord.mutation?.expectedReadToken == null &&
+      purgeAuditRecord.mutation?.beforeReadToken == null,
+    JSON.stringify(purgeAudit),
+  );
+
   const sessionProjectResponse = await request("/api/v1/projects", {
     method: "POST",
     body: JSON.stringify({ name: "Session Receipt Smoke" }),
@@ -2131,6 +2150,7 @@ async function main() {
       projectPurgeDelayedByDefault: checks.some((check) => check.name === "project purge with receipt is delayed by default" && check.status === "pass"),
       projectPurgeForceAccepted: checks.some((check) => check.name === "project purge with deleted-project receipt and force is accepted" && check.status === "pass"),
       projectPurgeRecoveryPointRemoved: checks.some((check) => check.name === "project purge removes deleted recovery point" && check.status === "pass"),
+      projectPurgeAuditRecorded: checks.some((check) => check.name === "project purge writes sanitized local mutation audit evidence" && check.status === "pass"),
       syncConfigGetReceiptReturned: checks.some((check) => check.name === "sync config get returns receipt read token" && check.status === "pass"),
       syncConfigMissingReadRejected: checks.some((check) => check.name === "sync config update without prior read is rejected" && check.status === "pass"),
       syncConfigBareCasRejected: checks.some((check) => check.name === "sync config update with bare CAS token is rejected" && check.status === "pass"),

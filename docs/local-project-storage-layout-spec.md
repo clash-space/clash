@@ -316,6 +316,14 @@ SQLite owns the metadata:
 - project id,
 - imported timestamp.
 
+`mutation_audit` owns bounded local destructive/forced mutation evidence:
+
+- operation and entity id,
+- actor client type,
+- forced/accepted flags,
+- reason/result/error summary,
+- sanitized mutation JSON without receipt-bearing read tokens.
+
 This avoids copying the same blob for every project or session.
 
 Alpha CLI behavior:
@@ -580,4 +588,6 @@ This layout is implemented when:
 - symlinks are optional read conveniences, not write semantics,
 - copy-on-write protects referenced content,
 - storage/debug commands can diagnose path drift,
+- `clash audit mutations` can inspect sanitized destructive/forced mutation
+  evidence without reading SQLite directly,
 - local-only/synced/shared project modes do not blur storage ownership.

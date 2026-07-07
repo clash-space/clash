@@ -557,7 +557,11 @@ Not allowed:
 
 Every projection apply must require a lock unless `--force` is present.
 
-`--force` should be explicit and logged as intentional overwrite. In shared
+`--force` should be explicit and logged as intentional overwrite. The local
+API now has first-pass sanitized mutation audit evidence for project lifecycle
+destructive exits, readable through `GET /api/v1/mutation-audit` and `clash
+audit mutations`; broader forced projection/daemon writes should join the same
+audit model instead of generating unbounded generic edit logs. In shared
 projects it may need stronger permission or UI confirmation.
 
 ### Restrict in-place mutation of referenced content
@@ -634,7 +638,7 @@ Do not silently run them as cloud workers.
 | Restriction | Why | Allowed escape hatch |
 | --- | --- | --- |
 | Agents cannot edit `snapshot.bin` | Opaque CRDT binary has no product validation or attribution | Debug/recovery tools only |
-| Projection apply requires CAS lock | Prevents overwriting human/collaborator changes | Explicit `--force`, logged |
+| Projection apply requires CAS lock | Prevents overwriting human/collaborator changes | Explicit `--force`; destructive/forced host exits should leave sanitized local audit evidence |
 | Materialized checkpoints are protected | Downstream generations need stable inputs once outputs have materialized | Copy-on-write/versioned replacement and optional replace refs; custom action output reruns must use a new task/output id or explicit replacement |
 | Secrets never appear in projections | Prevents accidental agent/file exfiltration | Local-only encrypted config store |
 | Local-only projects are not web-openable | Web needs cloud copy and assets | Enable Sync |

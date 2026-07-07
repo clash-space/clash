@@ -13,6 +13,7 @@ import { doctorCommand } from "./commands/doctor";
 import { textCommand } from "./commands/text";
 import { productionCommand } from "./commands/production";
 import { assetsCommand } from "./commands/assets";
+import { auditCommand } from "./commands/audit";
 
 const program = new Command();
 
@@ -48,5 +49,6 @@ program.addCommand(doctorCommand);
 program.addCommand(textCommand);
 program.addCommand(productionCommand);
 program.addCommand(assetsCommand);
+program.addCommand(auditCommand);
 
 program.parse();

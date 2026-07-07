@@ -1,5 +1,5 @@
 import { mkdir, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
-import { createHash, createHmac, randomBytes } from "node:crypto";
+import { createHash, createHmac, randomBytes, randomUUID } from "node:crypto";
 import { basename, dirname, extname, join, normalize, relative, resolve } from "node:path";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
@@ -48,6 +48,7 @@ import {
   type ProviderOAuthId,
   type ModelUpstreamRoute,
   type ModelKind,
+  type HostMutationRecord,
 } from "@clash/shared-types";
 import type { Asset, AssetKind } from "@clash/shared-types/assets";
 import {
@@ -88,6 +89,8 @@ import {
   type LocalMetadataAssetNodeRef,
   type LocalMetadataAgentMember as LocalAgentMember,
   type LocalMetadataDb,
+  type LocalMutationAuditFilter,
+  type LocalMutationAuditRecord,
   type LocalMetadataProject as LocalProject,
   type LocalMetadataProjectAsset as LocalProjectAsset,
   type LocalMetadataRoomMention as LocalRoomMention,
@@ -641,7 +644,51 @@ function createDb(dataDir: string) {
     return task;
   }
 
-  return { load, update };
+  async function appendMutationAudit(record: LocalMutationAuditRecord): Promise<void> {
+    const task = writeQueue.catch(() => undefined).then(() => metadataStore.appendMutationAudit(record));
+    writeQueue = task.then(() => undefined, () => undefined);
+    return task;
+  }
+
+  async function listMutationAudit(filter: LocalMutationAuditFilter = {}): Promise<LocalMutationAuditRecord[]> {
+    await writeQueue.catch(() => undefined);
+    return metadataStore.listMutationAudit(filter);
+  }
+
+  return { load, update, appendMutationAudit, listMutationAudit };
+}
+
+function sanitizeMutationForAudit(mutation: HostMutationRecord): Record<string, unknown> {
+  const {
+    expectedReadToken: _expectedReadToken,
+    beforeReadToken: _beforeReadToken,
+    afterReadToken: _afterReadToken,
+    expectedHash: _expectedHash,
+    beforeHash: _beforeHash,
+    afterHash: _afterHash,
+    ...safeMutation
+  } = mutation;
+  return safeMutation as Record<string, unknown>;
+}
+
+function mutationAuditRecord(options: {
+  mutation: HostMutationRecord;
+  actorClientType?: string;
+  reason: string;
+}): LocalMutationAuditRecord {
+  return {
+    id: randomUUID(),
+    createdAt: Date.now(),
+    operation: options.mutation.operation,
+    entity: options.mutation.entity,
+    actorClientType: options.actorClientType ?? null,
+    forced: options.mutation.forced,
+    accepted: options.mutation.accepted,
+    reason: options.reason,
+    resultEntityId: options.mutation.resultEntityId ?? null,
+    error: options.mutation.error ?? null,
+    mutation: sanitizeMutationForAudit(options.mutation),
+  };
 }
 
 function eventKey(event: unknown): string {
@@ -4570,6 +4617,16 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
         },
       };
     });
+    if (result.status === 200) {
+      const mutation = result.body.mutation as HostMutationRecord | undefined;
+      if (mutation?.accepted === true) {
+        await db.appendMutationAudit(mutationAuditRecord({
+          mutation,
+          actorClientType: preconditions.actorClientType,
+          reason: "project soft delete",
+        }));
+      }
+    }
     return c.json(result.body, result.status);
   });
 
@@ -4728,9 +4785,27 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
     });
     if (result.status === 200) {
       await replicaStore.deleteReplica(projectId);
+      const mutation = result.body.mutation as HostMutationRecord | undefined;
+      if (mutation?.accepted === true) {
+        await db.appendMutationAudit(mutationAuditRecord({
+          mutation,
+          actorClientType: preconditions.actorClientType,
+          reason: "project purge",
+        }));
+      }
       return c.json({ ...result.body, replicaDeleted: true }, result.status);
     }
     return c.json(result.body, result.status);
+  });
+
+  app.get("/api/v1/mutation-audit", async (c) => {
+    const limit = Number(c.req.query("limit"));
+    const records = await db.listMutationAudit({
+      operation: normalizeString(c.req.query("operation")),
+      entityId: normalizeString(c.req.query("entityId")),
+      limit: Number.isFinite(limit) ? limit : undefined,
+    });
+    return c.json({ records });
   });
 
   app.get("/api/projects", async (c) => {

@@ -119,4 +119,62 @@ describe("local metadata store", () => {
     ]);
     await expect(store.resolveStorageKeys("project-b", ["asset-shared-id"])).resolves.toEqual([]);
   });
+
+  it("persists sanitized local mutation audit records outside metadata rewrites", async () => {
+    const dataDir = await tempDir();
+    const store = createLocalMetadataStore(dataDir);
+
+    await store.appendMutationAudit({
+      id: "audit-project-purge",
+      createdAt: 1783428000000,
+      operation: "project_purge",
+      entity: { kind: "project", id: "project-audit" },
+      actorClientType: "agent",
+      forced: true,
+      accepted: true,
+      reason: "project purge",
+      resultEntityId: "project-audit",
+      error: null,
+      mutation: {
+        operation: "project_purge",
+        entity: { kind: "project", id: "project-audit" },
+        forced: true,
+        accepted: true,
+        resultEntityId: "project-audit",
+      },
+    });
+
+    await store.save({
+      projects: [],
+      assets: [],
+      assetRefs: [],
+      assetNodeRefs: [],
+      sessions: [],
+      agentMembers: [],
+      sessionMessages: [],
+      roomMessages: [],
+    });
+
+    await expect(store.listMutationAudit({ operation: "project_purge", limit: 10 })).resolves.toEqual([
+      {
+        id: "audit-project-purge",
+        createdAt: 1783428000000,
+        operation: "project_purge",
+        entity: { kind: "project", id: "project-audit" },
+        actorClientType: "agent",
+        forced: true,
+        accepted: true,
+        reason: "project purge",
+        resultEntityId: "project-audit",
+        error: null,
+        mutation: {
+          operation: "project_purge",
+          entity: { kind: "project", id: "project-audit" },
+          forced: true,
+          accepted: true,
+          resultEntityId: "project-audit",
+        },
+      },
+    ]);
+  });
 });

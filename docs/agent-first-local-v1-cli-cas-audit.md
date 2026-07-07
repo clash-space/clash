@@ -237,6 +237,10 @@ Remaining guardrails:
   `--force` as the explicit admin purge override. v1 project create/delete/restore/purge,
   legacy project create/update/delete, asset create/ref-delete/cover-update, and
   session create/delete responses include accepted/rejected mutation records.
+  Accepted project delete/purge writes first-pass sanitized local audit records
+  readable through `clash audit mutations --operation project_purge --entity
+  <projectId> --json` without exposing receipt-bearing read tokens or raw
+  SQLite.
   Local room message POST responses also include accepted/rejected mutation
   records while keeping `sync.remote_room.enabled=false` until remote sync is
   implemented.
@@ -355,7 +359,8 @@ Required behavior:
 ### P2
 
 - Add admin/debug commands for explicit low-level patching.
-- Add audit log for force/destructive mutations.
+- Extend first-pass local mutation audit beyond project delete/purge to the
+  remaining force/destructive mutation surfaces.
 - Promote direct canvas patch/read-token rejection from deterministic daemon
   and public CLI daemon-socket smoke into a live desktop/API project fixture.
 

@@ -8080,6 +8080,39 @@ describe("local API app", () => {
     } finally {
       check.close();
     }
+
+    const audit = await app.request(`/api/v1/mutation-audit?operation=project_purge&entityId=${project.id}`);
+    expect(audit.status).toBe(200);
+    const auditJson = await audit.json() as {
+      records: Array<{
+        operation: string;
+        entity: { kind: string; id: string };
+        forced: boolean;
+        accepted: boolean;
+        actorClientType?: string;
+        reason?: string;
+        mutation: Record<string, unknown>;
+      }>;
+    };
+    expect(auditJson.records).toHaveLength(1);
+    expect(auditJson.records[0]).toMatchObject({
+      operation: "project_purge",
+      entity: { kind: "project", id: project.id },
+      forced: true,
+      accepted: true,
+      actorClientType: "agent",
+      reason: "project purge",
+      mutation: {
+        operation: "project_purge",
+        entity: { kind: "project", id: project.id },
+        forced: true,
+        accepted: true,
+        resultEntityId: project.id,
+      },
+    });
+    expect(JSON.stringify(auditJson.records[0].mutation)).not.toContain("receipt");
+    expect(auditJson.records[0].mutation).not.toHaveProperty("expectedReadToken");
+    expect(auditJson.records[0].mutation).not.toHaveProperty("beforeReadToken");
   });
 
   it("persists local project room messages in SQLite", async () => {

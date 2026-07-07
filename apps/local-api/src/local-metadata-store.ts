@@ -101,6 +101,26 @@ export interface LocalMetadataAssetNodeRef {
   observedAt: number;
 }
 
+export interface LocalMutationAuditRecord {
+  id: string;
+  createdAt: number;
+  operation: string;
+  entity: { kind: string; id: string };
+  actorClientType: string | null;
+  forced: boolean;
+  accepted: boolean;
+  reason: string | null;
+  resultEntityId: string | null;
+  error: string | null;
+  mutation: Record<string, unknown>;
+}
+
+export interface LocalMutationAuditFilter {
+  operation?: string;
+  entityId?: string;
+  limit?: number;
+}
+
 export interface LocalMetadataDb {
   projects: LocalMetadataProject[];
   assets: Array<Asset & { projectId?: string }>;
@@ -271,6 +291,24 @@ function applySchema(db: SqliteDatabase): void {
       created_at INTEGER NOT NULL
     );
     CREATE INDEX IF NOT EXISTS room_message_project_idx ON room_message(project_id, created_at);
+
+    CREATE TABLE IF NOT EXISTS mutation_audit (
+      id TEXT PRIMARY KEY NOT NULL,
+      created_at INTEGER NOT NULL,
+      operation TEXT NOT NULL,
+      entity_kind TEXT NOT NULL,
+      entity_id TEXT NOT NULL,
+      actor_client_type TEXT,
+      forced INTEGER NOT NULL,
+      accepted INTEGER NOT NULL,
+      reason TEXT,
+      result_entity_id TEXT,
+      error TEXT,
+      mutation_json TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS mutation_audit_created_idx ON mutation_audit(created_at DESC, id DESC);
+    CREATE INDEX IF NOT EXISTS mutation_audit_operation_idx ON mutation_audit(operation, created_at DESC);
+    CREATE INDEX IF NOT EXISTS mutation_audit_entity_idx ON mutation_audit(entity_kind, entity_id, created_at DESC);
     COMMIT;
   `);
   try {
@@ -311,6 +349,11 @@ function rowOptionalNumber(row: Record<string, unknown>, key: string): number | 
   return optionalNumber(row[key]);
 }
 
+function rowBoolean(row: Record<string, unknown>, key: string): boolean {
+  const value = row[key];
+  return value === true || value === 1;
+}
+
 function jsonOrNull(value: unknown): string | null {
   return value === undefined || value === null ? null : JSON.stringify(value);
 }
@@ -322,6 +365,11 @@ function parseJson<T>(value: unknown, fallback: T): T {
   } catch {
     return fallback;
   }
+}
+
+function mutationAuditLimit(limit: number | undefined): number {
+  if (!Number.isFinite(limit)) return 50;
+  return Math.max(1, Math.min(200, Math.floor(limit ?? 50)));
 }
 
 function hasRows(db: SqliteDatabase): boolean {
@@ -771,11 +819,75 @@ export function createLocalMetadataStore(dataDir: string) {
     return keys;
   }
 
+  async function appendMutationAudit(record: LocalMutationAuditRecord): Promise<void> {
+    await withDb((db) => {
+      db.prepare(`
+        INSERT INTO mutation_audit (
+          id, created_at, operation, entity_kind, entity_id, actor_client_type,
+          forced, accepted, reason, result_entity_id, error, mutation_json
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        record.id,
+        record.createdAt,
+        record.operation,
+        record.entity.kind,
+        record.entity.id,
+        record.actorClientType ?? null,
+        record.forced ? 1 : 0,
+        record.accepted ? 1 : 0,
+        record.reason ?? null,
+        record.resultEntityId ?? null,
+        record.error ?? null,
+        JSON.stringify(record.mutation),
+      );
+    });
+  }
+
+  async function listMutationAudit(filter: LocalMutationAuditFilter = {}): Promise<LocalMutationAuditRecord[]> {
+    const clauses: string[] = [];
+    const params: SqlitePrimitive[] = [];
+    if (filter.operation?.trim()) {
+      clauses.push("operation = ?");
+      params.push(filter.operation.trim());
+    }
+    if (filter.entityId?.trim()) {
+      clauses.push("entity_id = ?");
+      params.push(filter.entityId.trim());
+    }
+    params.push(mutationAuditLimit(filter.limit));
+    const where = clauses.length > 0 ? `WHERE ${clauses.join(" AND ")}` : "";
+    return withDb((db) => db.prepare(`
+      SELECT id, created_at, operation, entity_kind, entity_id, actor_client_type,
+             forced, accepted, reason, result_entity_id, error, mutation_json
+        FROM mutation_audit
+        ${where}
+       ORDER BY created_at DESC, id DESC
+       LIMIT ?
+    `).all(...params).map((row) => ({
+      id: rowString(row, "id"),
+      createdAt: rowNumber(row, "created_at"),
+      operation: rowString(row, "operation"),
+      entity: {
+        kind: rowString(row, "entity_kind"),
+        id: rowString(row, "entity_id"),
+      },
+      actorClientType: rowOptionalString(row, "actor_client_type") ?? null,
+      forced: rowBoolean(row, "forced"),
+      accepted: rowBoolean(row, "accepted"),
+      reason: rowOptionalString(row, "reason") ?? null,
+      resultEntityId: rowOptionalString(row, "result_entity_id") ?? null,
+      error: rowOptionalString(row, "error") ?? null,
+      mutation: parseJson<Record<string, unknown>>(row.mutation_json, {}),
+    })));
+  }
+
   return {
     path,
     load,
     save,
     upsertAsset,
     resolveStorageKeys,
+    appendMutationAudit,
+    listMutationAudit,
   };
 }
