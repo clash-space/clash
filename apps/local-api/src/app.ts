@@ -3125,15 +3125,21 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
     await db.update((state) => {
       state.providerOAuth = state.providerOAuth.filter((record) => !providerOAuthMatches(record, userId, providerId, accountId));
     });
+    const mutation = hostMutationSucceeded(hostMutation?.envelope ?? {
+      operation: "provider_oauth_delete",
+      entity: { kind: "provider-oauth", id: providerOAuthEntityId(providerId, accountId) },
+      forced: false,
+    }, {
+      resultEntityId: providerOAuthEntityId(providerId, accountId),
+    });
+    await db.appendMutationAudit(mutationAuditRecord({
+      mutation,
+      actorClientType: preconditions.actorClientType,
+      reason: "provider OAuth delete",
+    }));
     return c.json({
       ok: true,
-      mutation: hostMutationSucceeded(hostMutation?.envelope ?? {
-        operation: "provider_oauth_delete",
-        entity: { kind: "provider-oauth", id: providerOAuthEntityId(providerId, accountId) },
-        forced: false,
-      }, {
-        resultEntityId: providerOAuthEntityId(providerId, accountId),
-      }),
+      mutation,
     });
   });
   app.get("/api/v1/models/catalog", async (c) => {

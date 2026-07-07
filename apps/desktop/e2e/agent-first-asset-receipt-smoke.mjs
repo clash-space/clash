@@ -1217,6 +1217,23 @@ async function main() {
     JSON.stringify(acceptedOAuthDeleteJson),
     { mutation: acceptedOAuthDeleteJson.mutation },
   );
+  const providerOAuthDeleteAuditResponse = await request("/api/v1/mutation-audit?operation=provider_oauth_delete&entityId=dreamina%3Ajimeng-smoke");
+  const providerOAuthDeleteAudit = await parseJsonResponse(providerOAuthDeleteAuditResponse);
+  const providerOAuthDeleteAuditRecord = providerOAuthDeleteAudit.records?.[0];
+  recordCheck(
+    "provider OAuth delete writes sanitized local mutation audit evidence",
+    providerOAuthDeleteAuditResponse.status === 200 &&
+      providerOAuthDeleteAudit.records?.length === 1 &&
+      providerOAuthDeleteAuditRecord.operation === "provider_oauth_delete" &&
+      providerOAuthDeleteAuditRecord.entity?.id === "dreamina:jimeng-smoke" &&
+      providerOAuthDeleteAuditRecord.accepted === true &&
+      providerOAuthDeleteAuditRecord.actorClientType === "agent" &&
+      providerOAuthDeleteAuditRecord.reason === "provider OAuth delete" &&
+      providerOAuthDeleteAuditRecord.mutation?.expectedReadToken == null &&
+      providerOAuthDeleteAuditRecord.mutation?.beforeReadToken == null &&
+      providerOAuthDeleteAuditRecord.mutation?.afterReadToken == null,
+    JSON.stringify(providerOAuthDeleteAudit),
+  );
 
   const deletedRowOAuthStart = await request("/api/v1/provider-oauth/dreamina/start", {
     method: "POST",
@@ -2402,6 +2419,7 @@ async function main() {
       providerOAuthDeleteStaleReceiptRejected: checks.some((check) => check.name === "provider OAuth delete with stale receipt is rejected" && check.status === "pass"),
       providerOAuthAuthorizedFreshReceiptReturned: checks.some((check) => check.name === "provider OAuth authorized get returns fresh receipt read token" && check.status === "pass"),
       providerOAuthDeleteReceiptAccepted: checks.some((check) => check.name === "provider OAuth delete with receipt read token is accepted" && check.status === "pass"),
+      providerOAuthDeleteAuditRecorded: checks.some((check) => check.name === "provider OAuth delete writes sanitized local mutation audit evidence" && check.status === "pass"),
       providerOAuthDeletePersisted: checks.some((check) => check.name === "provider OAuth delete persists in host state" && check.status === "pass"),
       assetImportImmutableCreateAccepted: checks.some((check) => check.name === "asset import accepts new immutable local blob" && check.status === "pass"),
       assetImportImmutableConflictRejected: checks.some((check) => check.name === "asset import rejects existing asset id with different immutable content" && check.status === "pass"),

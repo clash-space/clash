@@ -4503,6 +4503,21 @@ describe("local API app", () => {
         accepted: true,
       },
     });
+    const audit = await app.request("/api/v1/mutation-audit?operation=provider_oauth_delete&entityId=dreamina%3Ajimeng-primary");
+    expect(audit.status).toBe(200);
+    const auditJson = await audit.json() as { records: Array<any> };
+    expect(auditJson.records).toHaveLength(1);
+    expect(auditJson.records[0]).toMatchObject({
+      operation: "provider_oauth_delete",
+      entity: { kind: "provider-oauth", id: "dreamina:jimeng-primary" },
+      accepted: true,
+      actorClientType: "agent",
+      reason: "provider OAuth delete",
+    });
+    expect(JSON.stringify(auditJson.records[0].mutation ?? {})).not.toContain("receipt");
+    expect(auditJson.records[0].mutation.expectedReadToken).toBeUndefined();
+    expect(auditJson.records[0].mutation.beforeReadToken).toBeUndefined();
+    expect(auditJson.records[0].mutation.afterReadToken).toBeUndefined();
 
     const listedAfterDelete = await app.request("/api/v1/provider-oauth");
     expect(await listedAfterDelete.json()).toEqual({ providers: [] });
