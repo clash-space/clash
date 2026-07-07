@@ -249,6 +249,9 @@ Current evidence:
 - cloud route tests now keep client-provided room ids idempotent only for the
   same normalized sender/text/mentions payload, matching local conflict
   semantics.
+- local-api room sync tests now cover deterministic mirror planning: local-only
+  export, remote-only import, already-mirrored same-id rows, and same-id content
+  conflicts.
 
 v1 decision:
 
@@ -256,6 +259,8 @@ v1 decision:
 - Keep cloud room routes compatible.
 - Treat cloud sync as a separate boundary with explicit conflict/idempotency
   and mirror-sequencing tests before exposing it as synced.
+- Do not expose `remote_room.enabled=true` until that planner is wired to an
+  admission-controlled sync loop and conflict recovery surface.
 
 Reason:
 

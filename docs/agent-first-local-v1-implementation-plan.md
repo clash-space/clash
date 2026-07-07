@@ -524,6 +524,10 @@ Current status:
   be overwritten.
 - Cloud room POST now uses the same same-project/id replay rule, so local-to-cloud
   mirroring cannot silently turn a client id into an overwrite handle.
+- `apps/local-api/src/room-sync.ts` now exposes a deterministic room mirror
+  planner: local-only messages export oldest-first, remote-only messages import
+  oldest-first, identical same-id rows are treated as already mirrored, and
+  same-id content differences surface as conflicts without planning an overwrite.
 - Room responses include `sync.remote_room.enabled=false` until remote room
   sync is explicitly implemented.
 - CLI maps 404 to a generic missing-room-API message for older local-api/cloud
@@ -535,8 +539,8 @@ Current status:
 
 Remaining gap:
 
-- Remote/local room import/export sequencing, mirror admission, and live room UI
-  parity still need deeper tests.
+- The planner still needs a real sync loop, mirror admission gates, conflict
+  recovery UI, and live room UI parity before remote room sync can be exposed.
 
 Minimum tests:
 
@@ -546,6 +550,7 @@ Minimum tests:
 - local ACP mention dispatch
 - same-second pagination and duplicate-id idempotency/conflict rejection
 - cloud route duplicate-id idempotency/conflict parity
+- deterministic room mirror planning for import/export/conflict classification
 - spawned CLI `room say/read` against a real local-api loopback server
 
 ### P1-02: Real Codex ACP cwd verification

@@ -455,7 +455,7 @@ Registered commands:
 | Surface | Current mismatch | Product risk | Required fix |
 | --- | --- | --- | --- |
 | Local metadata | `db.json` is ignored if present | stale docs/tools may treat legacy DB as editable truth | keep ignored-legacy tests and doctor cleanup warnings |
-| Local room | SQLite-backed local room POST/GET exists; POST carries accepted/rejected mutation records; same project/id with different content is rejected; cloud room route remains compatible; local responses mark remote room sync disabled | local/cloud room merge semantics can drift if enabled prematurely | sync boundary, parity tests, conflict behavior |
+| Local room | SQLite-backed local room POST/GET exists; POST carries accepted/rejected mutation records; same project/id with different content is rejected; cloud room route matches the idempotency rule; mirror planner classifies import/export/conflict without overwriting; local responses mark remote room sync disabled | sync loop/admission and conflict recovery are not wired yet | sync boundary, conflict recovery UI, live room parity |
 | Vars | CLI exposes remote worker vars; local-api 404; cloud supports vars | future copy/API changes may blur local auth boundary | keep mode-aware CLI copy and local 404 tests |
 | Provider auth | local rows in SQLite but credentials/tokens are not keychain-encrypted yet | local compromise risk for secrets | encrypted SQLite/keychain |
 | Project status | CLI and local-api return roots/protected paths; `doctor storage` validates path boundaries, broken asset links, stray secondary canvas replica files, existing recovery manifests, and local SQLite `asset_node_refs`/`reference_role` schema readiness; `doctor storage --repair` creates missing workspace roots, repairs the local asset reference index schema, and quarantines secondary canvas replica files into protected runtime recovery with manifest evidence; `doctor storage-recovery compare --manifest ... --json` reports quarantined-vs-canonical file evidence without import | agents can inspect paths and host-owned repair can initialize safe workspace/schema prerequisites without blessing cwd snapshots as truth | broader migration/recovery checks and explicit import/review tooling for quarantined replicas |
@@ -595,11 +595,14 @@ Rules:
 - no raw trace dumps.
 - Cloud room POST matches the same same-project/id idempotency rule and rejects
   changed content instead of returning the old row as a silent success.
+- Local room sync code includes a pure mirror planner that sorts import/export
+  candidates by append order and classifies same-id content mismatches as
+  conflicts instead of overwrites.
 
 Remaining:
 
-- cloud sync import/export policy,
-- remote mirror sequencing and conflict recovery policy across local and remote,
+- real cloud sync loop and admission policy,
+- conflict recovery UX across local and remote,
 - live room UI parity in local desktop.
 
 ### Projection apply endpoints/commands

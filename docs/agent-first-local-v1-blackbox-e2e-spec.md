@@ -714,7 +714,8 @@ Current status:
 - Local room endpoints now exist as a SQLite local-only baseline, and
   `apps/local-api/src/room-cli.e2e.test.ts` starts a real local-api HTTP server
   while driving `clash room say/read` through a spawned CLI process. Remaining
-  work is remote sync conflict policy and broader live UI parity.
+  work is admission-controlled remote sync loop wiring, conflict recovery UI,
+  and broader live UI parity.
 - `apps/desktop/e2e/agent-first-cas-smoke.mjs` now covers public CLI
   read-proof rejection for missing/stale/wrong-file locks, daemon direct canvas
   read-token rejection/acceptance, public `clash canvas get/update/delete`
