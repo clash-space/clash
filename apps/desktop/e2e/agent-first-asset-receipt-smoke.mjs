@@ -1360,6 +1360,26 @@ async function main() {
     `status=${customOutputBytes.status}`,
   );
 
+  const assetRowsBeforeInvalidCreate = sqliteCount("select count(*) as count from assets");
+  const invalidAssetCreateResponse = await request("/api/v1/assets", {
+    method: "POST",
+    body: JSON.stringify({
+      projectId,
+      kind: "image",
+      srcR2Key: "../outside-asset.png",
+    }),
+  });
+  const invalidAssetCreate = await parseJsonResponse(invalidAssetCreateResponse);
+  recordCheck(
+    "asset create rejects storage keys outside local asset storage",
+    invalidAssetCreateResponse.status === 400 &&
+      invalidAssetCreate.error === "Invalid asset storage key" &&
+      invalidAssetCreate.mutation?.accepted === false &&
+      sqliteCount("select count(*) as count from assets") === assetRowsBeforeInvalidCreate,
+    JSON.stringify(invalidAssetCreate),
+    { mutation: invalidAssetCreate.mutation },
+  );
+
   const createdResponse = await request("/api/v1/assets", {
     method: "POST",
     body: JSON.stringify({
@@ -1382,6 +1402,22 @@ async function main() {
     "asset get returns receipt read token",
     hasReceipt(initialAsset.readToken, "asset"),
     initialAsset.readToken,
+  );
+
+  const invalidAssetCoverResponse = await request(`/api/v1/assets/${encodeURIComponent(assetId)}/cover`, {
+    method: "PATCH",
+    body: JSON.stringify({ coverR2Key: "../outside-cover.png" }),
+  });
+  const invalidAssetCover = await parseJsonResponse(invalidAssetCoverResponse);
+  const assetAfterInvalidCover = await fetchAssetRecord({ assetId, request });
+  recordCheck(
+    "asset cover update rejects storage keys outside local asset storage",
+    invalidAssetCoverResponse.status === 400 &&
+      invalidAssetCover.error === "Invalid asset storage key" &&
+      invalidAssetCover.mutation?.accepted === false &&
+      assetAfterInvalidCover.coverR2Key == null,
+    JSON.stringify(invalidAssetCover),
+    { mutation: invalidAssetCover.mutation },
   );
 
   await expectRejected(
@@ -2426,6 +2462,8 @@ async function main() {
       customActionCheckpointCreateAccepted: checks.some((check) => check.name === "custom action upload accepts first checkpoint output" && check.status === "pass"),
       customActionCheckpointOverwriteRejected: checks.some((check) => check.name === "custom action upload rejects checkpoint overwrite" && check.status === "pass"),
       customActionCheckpointFilePreserved: checks.some((check) => check.name === "custom action checkpoint file remains first output after rejected overwrite" && check.status === "pass"),
+      assetCreateInvalidStorageKeyRejected: checks.some((check) => check.name === "asset create rejects storage keys outside local asset storage" && check.status === "pass"),
+      assetCoverInvalidStorageKeyRejected: checks.some((check) => check.name === "asset cover update rejects storage keys outside local asset storage" && check.status === "pass"),
       sessionListReceiptReturned: checks.some((check) => check.name === "session list returns receipt read token" && check.status === "pass"),
 	      sessionDeleteMissingReadRejected: checks.some((check) => check.name === "session delete without prior read is rejected" && check.status === "pass"),
 	      sessionDeleteBareCasRejected: checks.some((check) => check.name === "session delete with bare CAS token is rejected" && check.status === "pass"),

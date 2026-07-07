@@ -1174,6 +1174,48 @@ describe("local API app", () => {
     expect(body.assets.map((asset) => asset.srcR2Key).sort()).toEqual([...keys].sort());
   });
 
+  it("rejects asset create paths that escape local asset storage", async () => {
+    const app = createLocalApiApp({ dataDir, userId: "local-user" });
+    const invalidSource = await app.request("/api/v1/assets", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ projectId: "project-paths", kind: "image", srcR2Key: "../outside.png" }),
+    });
+    expect(invalidSource.status).toBe(400);
+    expect(await invalidSource.json()).toMatchObject({
+      error: "Invalid asset storage key",
+      mutation: {
+        operation: "asset_create",
+        entity: { kind: "asset", id: "" },
+        forced: false,
+        accepted: false,
+      },
+    });
+
+    const invalidCover = await app.request("/api/v1/assets", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        projectId: "project-paths",
+        kind: "image",
+        srcR2Key: "uploads/source.png",
+        coverR2Key: "../cover.png",
+      }),
+    });
+    expect(invalidCover.status).toBe(400);
+    expect(await invalidCover.json()).toMatchObject({
+      error: "Invalid asset storage key",
+      mutation: {
+        operation: "asset_create",
+        entity: { kind: "asset", id: "" },
+        forced: false,
+        accepted: false,
+      },
+    });
+
+    await expect(stat(join(dataDir, "local.sqlite"))).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
   it("requires projectId when removing an asset reference", async () => {
     const app = createLocalApiApp({ dataDir, userId: "local-user" });
     const created = await app.request("/api/v1/assets", {
@@ -1450,6 +1492,41 @@ describe("local API app", () => {
         error: "not found",
       },
     });
+  });
+
+  it("rejects asset cover updates that escape local asset storage", async () => {
+    const app = createLocalApiApp({ dataDir, userId: "local-user" });
+    const created = await app.request("/api/v1/assets", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ projectId: "project-cover-paths", kind: "image", srcR2Key: "uploads/source.png" }),
+    });
+    const { id: assetId } = await created.json() as { id: string };
+
+    const patched = await app.request(`/api/v1/assets/${encodeURIComponent(assetId)}/cover`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ coverR2Key: "../outside-cover.png" }),
+    });
+    expect(patched.status).toBe(400);
+    expect(await patched.json()).toMatchObject({
+      error: "Invalid asset storage key",
+      mutation: {
+        operation: "asset_cover_update",
+        entity: { kind: "asset", id: assetId },
+        forced: false,
+        accepted: false,
+      },
+    });
+
+    const sqlite = openSqlite();
+    try {
+      expect(sqlite.prepare("select cover_r2_key from assets where id = ?").get(assetId)).toEqual({
+        cover_r2_key: null,
+      });
+    } finally {
+      sqlite.close();
+    }
   });
 
   it("registers content-addressed local blobs as SQLite assets and project refs", async () => {

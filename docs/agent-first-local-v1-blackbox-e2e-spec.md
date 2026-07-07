@@ -284,6 +284,8 @@ Assertions:
 - cover update accepts a host-issued receipt token and records a mutation
   envelope,
 - cover update rejects a stale receipt after a concurrent host-state change,
+- asset create and cover update reject storage keys that escape local asset
+  storage before those keys can persist in SQLite,
 - `GET /api/v1/local/sync` returns a receipt-bearing local-config token,
 - agent `PATCH /api/v1/local/sync` rejects missing, bare, and stale local-config
   tokens before changing the local/cloud sync boundary,
@@ -628,18 +630,19 @@ Result:
 Latest verified asset receipt CAS smoke:
 
 ```text
-.tmp/agent-first-asset-receipts/2026-07-07T13-53-58-435Z/agent-first-asset-receipt-report.json
+.tmp/agent-first-asset-receipts/2026-07-07T15-45-51-782Z/agent-first-asset-receipt-report.json
 ```
 
 Result:
 
 - `status: pass`,
-- 128 checks passed through `npm --prefix apps/desktop run test:e2e:asset-receipts`,
+- 130 checks passed through `npm --prefix apps/desktop run test:e2e:asset-receipts`,
 - derived agent reads stayed read-only, provider model tests and local audio
   transcription actions recorded host mutation envelopes, and local sync, audio,
   harness, custom agent-server, provider account, provider OAuth, asset
   metadata/ref/GC, project delete/restore/purge, and session delete agent writes
-  rejected missing or bare read proofs; the same run also proved the restore
+  rejected missing or bare read proofs; asset create/cover rejected invalid
+  storage keys before metadata persistence; the same run also proved the restore
   path's sanitized audit evidence, legacy project delete audit evidence,
   project purge's default delayed purge window,
   explicit force override, deleted recovery point removal,

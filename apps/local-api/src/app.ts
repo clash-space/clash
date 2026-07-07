@@ -850,12 +850,26 @@ function assetRoot(dataDir: string): string {
   return join(dataDir, "assets");
 }
 
+function normalizeAssetStorageKey(storageKey: string): string {
+  const raw = storageKey.trim();
+  if (!raw || raw.includes("\0") || raw.startsWith("/") || /^[a-zA-Z]:/.test(raw)) {
+    throw new Error("Invalid asset storage key");
+  }
+  const slashKey = raw.replace(/\\/g, "/");
+  const segments = slashKey.split("/");
+  if (segments.some((segment) => !segment || segment === "." || segment === "..")) {
+    throw new Error("Invalid asset storage key");
+  }
+  return normalize(slashKey).replace(/\\/g, "/");
+}
+
 function assetPath(dataDir: string, storageKey: string, clashRoot?: string): string {
-  if (storageKey.startsWith("local-blobs/")) {
-    return localBlobAssetPath(clashRoot ?? inferClashRoot(dataDir), storageKey);
+  const normalizedKey = normalizeAssetStorageKey(storageKey);
+  if (normalizedKey.startsWith("local-blobs/")) {
+    return localBlobAssetPath(clashRoot ?? inferClashRoot(dataDir), normalizedKey);
   }
   const root = assetRoot(dataDir);
-  const resolved = normalize(join(root, storageKey));
+  const resolved = normalize(join(root, normalizedKey));
   const rel = relative(root, resolved);
   if (rel.startsWith("..") || rel === "..") {
     throw new Error("Invalid asset path");
@@ -5351,7 +5365,7 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
       srcR2Key?: string;
       coverR2Key?: string | null;
     };
-    if (!body.projectId || !body.kind || !body.srcR2Key) {
+    if (!body.projectId || !body.kind || typeof body.srcR2Key !== "string" || !body.srcR2Key) {
       return c.json({
         error: "Missing projectId, kind, or srcR2Key",
         mutation: hostMutationRejected({
@@ -5361,6 +5375,22 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
         }, "Missing projectId, kind, or srcR2Key"),
       }, 400);
     }
+    let srcR2Key: string;
+    let coverR2Key: string | null;
+    try {
+      srcR2Key = normalizeAssetStorageKey(body.srcR2Key);
+      coverR2Key = body.coverR2Key ? normalizeAssetStorageKey(body.coverR2Key) : null;
+    } catch (error) {
+      const message = errorMessage(error);
+      return c.json({
+        error: message,
+        mutation: hostMutationRejected({
+          operation: "asset_create",
+          entity: { kind: "asset", id: "" },
+          forced: false,
+        }, message),
+      }, 400);
+    }
     const projectId = body.projectId;
     const at = Math.floor(Date.now() / 1000);
     const exp = signedUrlExp();
@@ -5368,8 +5398,8 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
       id: crypto.randomUUID(),
       userId,
       kind: body.kind,
-      srcR2Key: body.srcR2Key,
-      coverR2Key: body.coverR2Key ?? null,
+      srcR2Key,
+      coverR2Key,
       metadata: null,
       sourceModel: null,
       sourcePrompt: null,
@@ -6009,6 +6039,21 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
         }, "Missing coverR2Key"),
       }, 400);
     }
+    let coverR2Key: string;
+    try {
+      coverR2Key = normalizeAssetStorageKey(body.coverR2Key);
+    } catch (error) {
+      const message = errorMessage(error);
+      return c.json({
+        error: message,
+        mutation: hostMutationRejected({
+          operation: "asset_cover_update",
+          entity: { kind: "asset", id: assetId },
+          expectedReadToken: preconditions.expectedReadToken,
+          forced: preconditions.force,
+        }, message),
+      }, 400);
+    }
     const result = await db.update((state) => {
       const asset = state.assets.find((a) => a.id === assetId);
       if (!asset) {
@@ -6052,7 +6097,7 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
           body: { error: hostMutation.error, mutation: hostMutation.mutation },
         };
       }
-      asset.coverR2Key = body.coverR2Key;
+      asset.coverR2Key = coverR2Key;
       asset.updatedAt = Math.floor(Date.now() / 1000);
       const readToken = assetReceiptReadToken(asset);
       return {
