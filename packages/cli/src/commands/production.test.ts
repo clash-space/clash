@@ -6110,6 +6110,12 @@ test("projects and applies storyboard prompt packs with CAS stale-write protecti
 
   const promptPack = JSON.parse(await readFile(projected.promptPackPath, "utf8"));
   assert.equal(promptPack.kind, "clash.storyboard.prompt-pack");
+  const lock = JSON.parse(await readFile(projected.lockPath, "utf8"));
+  assert.equal(lock.kind, "clash.storyboard.prompt-pack.lock");
+  assert.equal(lock.projectionKind, "storyboard-prompt-pack");
+  assert.deepEqual(lock.entity, { kind: "storyboard-asset", id: "asset-storyboard" });
+  assert.equal(lock.contentHash, lock.promptPackHash);
+  assert.match(lock.contentHash, /^[a-f0-9]{16}$/);
   promptPack.prompts[0].prompt += "; close-up emotional hook";
   await writeJson(projected.promptPackPath, promptPack);
   await writeJson(join(cwd, "plans", "other-prompt-pack.json"), promptPack);
@@ -6132,6 +6138,30 @@ test("projects and applies storyboard prompt packs with CAS stale-write protecti
   );
   assert.equal(mismatchedFile.status, 1);
   assert.match(mismatchedFile.stderr, /Projection file path does not match storyboard prompt-pack CAS lock/);
+
+  const tamperedLock = {
+    ...lock,
+    entity: { kind: "storyboard-asset", id: "other-storyboard" },
+  };
+  await writeJson(join(cwd, "plans", "tampered-prompt-pack.lock.json"), tamperedLock);
+  const mismatchedEntity = spawnSync(
+    process.execPath,
+    [
+      "--import",
+      tsxLoader,
+      cliEntry.pathname,
+      "production",
+      "apply-storyboard-prompt-pack",
+      "--file",
+      "plans/prompt-pack.json",
+      "--lock",
+      "plans/tampered-prompt-pack.lock.json",
+      "--json",
+    ],
+    { cwd, encoding: "utf8" },
+  );
+  assert.equal(mismatchedEntity.status, 1);
+  assert.match(mismatchedEntity.stderr, /Invalid storyboard prompt-pack lock file/);
 
   const apply = spawnSync(
     process.execPath,

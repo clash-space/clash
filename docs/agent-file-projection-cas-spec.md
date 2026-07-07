@@ -96,6 +96,11 @@ Storyboard prompt packs now have a first-pass JSON projection:
 
 - `clash production project-storyboard-prompt-pack` writes an editable
   `plans/*.prompt-pack.json` file plus a lock sidecar.
+- The lock uses the same generic projection envelope with
+  `projectionKind: "storyboard-prompt-pack"`,
+  `entity: { kind: "storyboard-asset", id: ... }`, and `contentHash`, while
+  keeping compatibility fields such as `storyboardAssetId` and
+  `promptPackHash`.
 - `clash production apply-storyboard-prompt-pack` applies reviewed edits into
   the managed `projections/storyboards/<asset>.prompt-pack.json` projection
   only if the lock still matches both the current managed prompt-pack and the
@@ -105,10 +110,10 @@ Storyboard prompt packs now have a first-pass JSON projection:
   `projections/storyboards/<asset>.prompt-pack.<hash>.cow.json` without moving
   existing downstream references.
 
-The remaining v1 gap is that storyboard prompt packs still use a separate
-file-only CAS path rather than the generic text/timeline lock envelope or a
-host-issued receipt path, and the mechanism does not yet cover remaining
-storyboard files, asset metadata, or future editor timeline projections.
+The remaining v1 gap is that storyboard prompt packs still run as a file-only
+CAS path rather than a host-issued receipt path, and the mechanism does not yet
+cover remaining storyboard files, asset metadata, or future editor timeline
+projections.
 
 ## Lock Envelope
 
@@ -129,9 +134,10 @@ New projection sidecar locks should share this identity shape:
 }
 ```
 
-Projection families may keep compatibility aliases such as `nodeId` or
-`timelineHash`, but `projectionKind`, `entity`, and `contentHash` are the
-generic agent-facing identity. Text and timeline parsers normalize legacy
+Projection families may keep compatibility aliases such as `nodeId`,
+`timelineHash`, `storyboardAssetId`, or `promptPackHash`, but
+`projectionKind`, `entity`, and `contentHash` are the generic agent-facing
+identity. Text, timeline, and storyboard prompt-pack parsers normalize legacy
 sidecars that do not yet contain those fields, so existing local draft folders
 do not fail solely because the lock shape was upgraded.
 
@@ -234,11 +240,11 @@ carry the receipt-bearing token and the host should reject agent writes that
 only provide the bare hash token.
 
 Storyboard prompt-pack projections currently run as local file projections
-without a host-issued receipt. Their lock therefore records semantic CAS for
-both the editable prompt pack and the source storyboard action. Apply/replace
-rejects stale source actions even on the first apply when no managed prompt-pack
-projection exists yet. This is stronger than hash-only managed-state CAS, but it
-is still not equivalent to a host receipt.
+without a host-issued receipt. Their lock uses the generic projection envelope
+and also records semantic CAS for both the editable prompt pack and the source
+storyboard action. Apply/replace rejects stale source actions even on the first
+apply when no managed prompt-pack projection exists yet. This is stronger than
+hash-only managed-state CAS, but it is still not equivalent to a host receipt.
 
 For direct canvas entities without a projection file, the read proof is the
 `readToken` returned by the matching read command. Node writes use
@@ -538,9 +544,9 @@ clash timeline apply --node <video-editor-node-id>
 
 Needed improvements:
 
-- Move timeline lock helpers into a generic projection module.
-- Keep legacy `clash.timeline.lock` reader.
-- Add generic lock writer once downstream clients are updated.
+- Keep generic projection lock helpers shared by timeline, text, and storyboard
+  prompt-pack projections.
+- Keep legacy `clash.timeline.lock` reader normalization.
 - Host mutation must keep `expectedHash` validation.
 - Stdin apply remains blocked without `--lock` or `--force`.
 - Keep materialized downstream checkpoint protection on every timeline mutation

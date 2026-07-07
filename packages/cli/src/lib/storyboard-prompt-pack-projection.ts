@@ -9,15 +9,21 @@ import {
 } from "@clash/shared-types";
 import {
   assertProjectionLockFilePath,
+  createProjectionLock,
   hashProjectionContent,
+  parseProjectionLock,
+  type ProjectionLockEntity,
   resolveProjectionLockPath,
 } from "./projection-cas";
 
 export type StoryboardPromptPackLock = {
   schemaVersion: 1;
   kind: "clash.storyboard.prompt-pack.lock";
+  projectionKind: "storyboard-prompt-pack";
+  entity: ProjectionLockEntity;
   storyboardAssetId: string;
   filePath: string;
+  contentHash: string;
   promptPackHash: string;
   hashAlgorithm: "sha256-64";
   pulledAt: string;
@@ -287,17 +293,20 @@ function createPromptPackLock(options: {
   sourceActionPath: string;
   sourceActionHash: string;
 }): StoryboardPromptPackLock {
-  return {
-    schemaVersion: 1,
+  const packHash = promptPackHash(options.promptPack);
+  return createProjectionLock({
     kind: "clash.storyboard.prompt-pack.lock",
-    storyboardAssetId: options.storyboardAssetId,
+    projectionKind: "storyboard-prompt-pack",
+    entity: { kind: "storyboard-asset", id: options.storyboardAssetId },
     filePath: options.filePath,
-    promptPackHash: promptPackHash(options.promptPack),
-    hashAlgorithm: "sha256-64",
-    pulledAt: new Date().toISOString(),
-    sourceActionPath: options.sourceActionPath,
-    sourceActionHash: options.sourceActionHash,
-  };
+    contentHash: packHash,
+    extra: {
+      storyboardAssetId: options.storyboardAssetId,
+      promptPackHash: packHash,
+      sourceActionPath: options.sourceActionPath,
+      sourceActionHash: options.sourceActionHash,
+    },
+  }) as StoryboardPromptPackLock;
 }
 
 function parsePromptPackLock(raw: string): StoryboardPromptPackLock {
@@ -315,7 +324,26 @@ function parsePromptPackLock(raw: string): StoryboardPromptPackLock {
   ) {
     throw new Error("Invalid storyboard prompt-pack lock file");
   }
-  return value as StoryboardPromptPackLock;
+  const normalized = {
+    ...value,
+    projectionKind: value.projectionKind ?? "storyboard-prompt-pack",
+    entity: value.entity ?? { kind: "storyboard-asset", id: value.storyboardAssetId },
+    contentHash: value.contentHash ?? value.promptPackHash,
+  } as StoryboardPromptPackLock;
+  try {
+    parseProjectionLock(normalized, {
+      kind: "clash.storyboard.prompt-pack.lock",
+      projectionKind: "storyboard-prompt-pack",
+      entityKind: "storyboard-asset",
+      entityId: value.storyboardAssetId,
+    });
+  } catch {
+    throw new Error("Invalid storyboard prompt-pack lock file");
+  }
+  if (normalized.contentHash !== normalized.promptPackHash) {
+    throw new Error("Invalid storyboard prompt-pack lock file");
+  }
+  return normalized;
 }
 
 function promptPackHash(promptPack: StoryboardPromptPack): string {

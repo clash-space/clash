@@ -68,10 +68,11 @@ The main v1 gaps are:
   `clash canvas replace-asset` COW path; storyboard prompt-pack replacement now
   has a first-pass explicit `clash production replace-storyboard-prompt-pack`
   path. Prompt-pack locks now require source action path/hash proof and reject
-  locks with stripped source proof. Text and timeline locks share a generic
-  projection identity envelope while keeping legacy sidecar parsing. Broader
-  storyboard host/UI integration, recovery/rewire flows, and adoption of the
-  generic lock envelope by storyboard/asset metadata projections remain pending.
+  locks with stripped source proof. Text, timeline, and storyboard prompt-pack
+  locks share a generic projection identity envelope while keeping legacy
+  sidecar parsing. Broader storyboard host/UI integration, recovery/rewire
+  flows, and adoption of the generic lock envelope by remaining storyboard and
+  asset metadata projections remain pending.
 
 ## Evidence Snapshot
 
@@ -208,11 +209,11 @@ validates the expected timeline hash in the running daemon path.
 Conclusion:
 
 - Timeline has the right v1 pattern.
-- Text and timeline now use a generic projection lock identity shape
-  (`projectionKind`, `entity`, `contentHash`) instead of only
-  timeline-specific fields.
-- Remaining projection families should adopt that envelope rather than copying
-  one-off lock formats.
+- Text, timeline, and storyboard prompt-pack now use a generic projection lock
+  identity shape (`projectionKind`, `entity`, `contentHash`) instead of only
+  projection-specific fields.
+- Remaining storyboard and asset metadata projection families should adopt that
+  envelope rather than copying one-off lock formats.
 
 Spec: `agent-file-projection-cas-spec.md`.
 
@@ -405,11 +406,10 @@ Conclusion:
 - File apply requires a lock unless `--force`.
 - Host validates CAS, not only CLI.
 - Stdin apply requires `--lock` or `--force`.
-- Lock must match project, entity, projection type, and file path. Timeline
-  and text apply now reject mismatched lock file paths; storyboard prompt-pack
-  apply and prompt-pack COW replacement reject mismatched lock file paths before
-  writing projections, and reject locks missing source storyboard action proof.
-  The generic projection lock abstraction remains a follow-up.
+- Lock must match project, entity, projection type, and file path. Timeline,
+  text, and storyboard prompt-pack apply now reject mismatched lock identities
+  or file paths before writing projections; prompt-pack apply/replace also
+  reject locks missing source storyboard action proof.
 
 ### Restrict action writes
 

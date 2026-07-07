@@ -114,8 +114,8 @@ Examples:
 | `clash tasks status/wait` | Read-only/polling | Not needed | Safe inspection |
 | `clash models provider set` | Provider account config mutation | Read-token CAS for agents | Use `clash models providers --json` then `clash models provider set <PROVIDER> --if-match <readToken>`; `--force` is the explicit overwrite escape hatch |
 | `clash production plan-review-gate/approve-review-gate` | Writes local review gate JSON plus lock; approval checks lock file path and hash | OK | Keep as read-proof CAS for review decisions; durable DB/multi-user review UI is separate |
-| `clash production apply-storyboard-prompt-pack` | Applies edited prompt-pack JSON through a sidecar lock | OK | Keep hash + file-path mismatch rejection; fold into generic projection CAS later |
-| `clash production replace-storyboard-prompt-pack` | Creates a versioned COW prompt-pack projection from a locked prompt-pack JSON file | OK | Same lock as read proof; source managed prompt-pack stale rejection; does not move existing downstream references |
+| `clash production apply-storyboard-prompt-pack` | Applies edited prompt-pack JSON through a generic projection lock envelope plus source-action proof | OK | Keep hash, entity, source-action, and file-path mismatch rejection; host-issued receipt remains separate |
+| `clash production replace-storyboard-prompt-pack` | Creates a versioned COW prompt-pack projection from a locked prompt-pack JSON file | OK | Same generic lock as read proof; source managed prompt-pack stale rejection; does not move existing downstream references |
 | `clash vars set/delete` | Remote variable compatibility | Not local CAS | Remote-only compatibility; not local v1 auth path |
 | `clash auth login/logout` | Writes `${CLASH_HOME:-~/.clash}/config.json` API key with owner-only permissions | Not CAS | Secret/config store; keychain/token store remains a hardening follow-up |
 
@@ -149,11 +149,11 @@ Text now has:
   text node.
 
 The direct read-token primitive is now shared in
-`packages/shared-types/src/agent-read-proof.ts`. Text and timeline now also
-share the projection lock identity envelope through
-`packages/cli/src/lib/projection-cas.ts`. The remaining duplication is in
-storyboard, prompt, and asset metadata projections that still need to adopt that
-envelope instead of growing one-off lock formats.
+`packages/shared-types/src/agent-read-proof.ts`. Text, timeline, and storyboard
+prompt-pack projections now also share the projection lock identity envelope
+through `packages/cli/src/lib/projection-cas.ts`. The remaining duplication is
+in the other storyboard, prompt, and asset metadata projections that still need
+to adopt that envelope instead of growing one-off lock formats.
 
 ### Direct node patch is the main bypass risk
 
@@ -321,15 +321,15 @@ Required behavior:
 
 - Keep `packages/cli/src/lib/projection-cas.ts` as the shared projection CAS
   helper for content hashing, default lock sidecars, and path-bound lock
-  checks; broaden it to identity/hash validation as more projection types move
-  over.
+  checks for text, timeline, and storyboard prompt-pack projections; broaden it
+  as more projection types move over.
 - Keep text/timeline lock `readToken` fields as the agent-facing read proof for
-  file-backed projections, while accepting legacy hash-only locks.
+  file-backed host-backed projections, while accepting legacy hash-only locks.
 - Keep timeline CAS behavior and legacy lock compatibility.
-- Keep timeline/text lock file-path mismatch rejection on every file-backed
-  apply path.
-- Keep storyboard prompt-pack lock file-path mismatch rejection before managed
-  projection writes and before copy-on-write prompt-pack replacement.
+- Keep timeline/text/storyboard prompt-pack lock identity and file-path
+  mismatch rejection on every file-backed apply path.
+- Keep storyboard prompt-pack lock entity/file-path mismatch rejection before
+  managed projection writes and before copy-on-write prompt-pack replacement.
 - Keep current `canvas update` guardrails for timeline/provenance and text
   feeding materialized downstream state; keep agent `--if-match` read-token
   enforcement; keep explicit text, media asset, and storyboard prompt-pack COW
