@@ -5,7 +5,7 @@ import net from "node:net";
 import os from "node:os";
 import { createRequire } from "node:module";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const require = createRequire(import.meta.url);
@@ -235,6 +235,9 @@ async function writeFakeCodexAcp(binDir) {
   await mkdir(binDir, { recursive: true });
   const wrapper = path.join(binDir, "codex-acp");
   const agent = path.join(binDir, "fake-codex-acp.mjs");
+  const sdkUrl = pathToFileURL(require.resolve("@agentclientprotocol/sdk", {
+    paths: [path.join(repoRoot, "packages", "clash-bridge")],
+  })).href;
   await writeFile(
     wrapper,
     [
@@ -255,7 +258,7 @@ async function writeFakeCodexAcp(binDir) {
       "import { spawn } from 'node:child_process';",
       "import { randomUUID } from 'node:crypto';",
       "import { Readable, Writable } from 'node:stream';",
-      "import { AgentSideConnection, ndJsonStream, PROTOCOL_VERSION } from '@agentclientprotocol/sdk';",
+      `import { AgentSideConnection, ndJsonStream, PROTOCOL_VERSION } from ${JSON.stringify(sdkUrl)};`,
       "",
       "const argv = process.argv.slice(2);",
       "if (argv.includes('--help')) {",

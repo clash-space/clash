@@ -134,13 +134,22 @@ function openDatabase(path: string): SqliteDatabase {
   const { DatabaseSync } = require("node:sqlite") as {
     DatabaseSync: new (path: string) => SqliteDatabase;
   };
-  return new DatabaseSync(path);
+  const db = new DatabaseSync(path);
+  configureDatabase(db);
+  return db;
+}
+
+function configureDatabase(db: SqliteDatabase): void {
+  db.exec(`
+    PRAGMA journal_mode = WAL;
+    PRAGMA busy_timeout = 5000;
+    PRAGMA foreign_keys = ON;
+  `);
 }
 
 function applySchema(db: SqliteDatabase): void {
   db.exec(`
-    PRAGMA journal_mode = DELETE;
-
+    BEGIN IMMEDIATE;
     CREATE TABLE IF NOT EXISTS local_migration (
       id TEXT PRIMARY KEY NOT NULL,
       completed_at INTEGER NOT NULL,
@@ -262,6 +271,7 @@ function applySchema(db: SqliteDatabase): void {
       created_at INTEGER NOT NULL
     );
     CREATE INDEX IF NOT EXISTS room_message_project_idx ON room_message(project_id, created_at);
+    COMMIT;
   `);
   try {
     db.exec("ALTER TABLE project ADD COLUMN deleted_at TEXT");

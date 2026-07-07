@@ -44,14 +44,22 @@ function openDatabase(path: string): SqliteDatabase {
   const { DatabaseSync } = require("node:sqlite") as {
     DatabaseSync: new (path: string) => SqliteDatabase;
   };
-  return new DatabaseSync(path);
+  const db = new DatabaseSync(path);
+  configureDatabase(db);
+  return db;
+}
+
+function configureDatabase(db: SqliteDatabase): void {
+  db.exec(`
+    PRAGMA journal_mode = WAL;
+    PRAGMA busy_timeout = 5000;
+    PRAGMA foreign_keys = ON;
+  `);
 }
 
 function applySchema(db: SqliteDatabase): void {
   db.exec(`
-    PRAGMA journal_mode = DELETE;
-    PRAGMA foreign_keys = ON;
-
+    BEGIN IMMEDIATE;
     CREATE TABLE IF NOT EXISTS local_migration (
       id TEXT PRIMARY KEY NOT NULL,
       completed_at INTEGER NOT NULL,
@@ -118,6 +126,7 @@ function applySchema(db: SqliteDatabase): void {
       updated_at TEXT,
       PRIMARY KEY (user_id, provider_id, account_id)
     );
+    COMMIT;
   `);
 }
 

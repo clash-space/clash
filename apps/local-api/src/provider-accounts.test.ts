@@ -1,8 +1,50 @@
+import { createRequire } from "node:module";
+import { mkdtemp } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { normalizeProviderAccountInput, providerAccountsForRuntime, publicProviderAccounts } from "./provider-accounts";
+import { createLocalProviderStore } from "./local-provider-store";
+
+const require = createRequire(import.meta.url);
+
+async function tempProviderDir(): Promise<string> {
+  return mkdtemp(join(tmpdir(), "clash-local-provider-store-"));
+}
+
+function readSqlitePragma(dataDir: string, pragma: string): string | number | undefined {
+  const { DatabaseSync } = require("node:sqlite") as {
+    DatabaseSync: new (path: string) => {
+      prepare(sql: string): { get(): Record<string, string | number> | undefined };
+      close(): void;
+    };
+  };
+  const db = new DatabaseSync(join(dataDir, "local.sqlite"));
+  try {
+    const row = db.prepare(`PRAGMA ${pragma}`).get();
+    return row ? Object.values(row)[0] : undefined;
+  } finally {
+    db.close();
+  }
+}
 
 describe("provider accounts", () => {
+  it("initializes sqlite provider storage with WAL journal mode for local multi-client safety", async () => {
+    const dataDir = await tempProviderDir();
+    const store = createLocalProviderStore(dataDir);
+
+    await store.saveProviderAccounts([
+      {
+        userId: "user-1",
+        providerId: "mock",
+        enabled: true,
+      },
+    ]);
+
+    expect(readSqlitePragma(dataDir, "journal_mode")).toBe("wal");
+  });
+
   it("exposes provider account credentials without env-shaped variable keys", () => {
     const providers = publicProviderAccounts(
       [

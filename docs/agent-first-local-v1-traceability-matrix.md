@@ -72,14 +72,16 @@ Evidence:
 - New route and workflow writes use `<dataDir>/local.sqlite`.
 - Mutating route writes go through `db.update()`; focused tests cover
   concurrent project, provider, session, and asset requests.
+- Metadata/provider SQLite stores use WAL, a 5s busy timeout, foreign keys, and
+  `BEGIN IMMEDIATE` write/schema transactions.
 - `db.json` is ignored by local-api and reported only as cleanup/secrets risk.
 
 Conclusion:
 
 - Active local-api product DB writes are aligned with v1 storage direction.
-- Remaining follow-ups are cross-process store transaction policy, local room
-  sync, CLI config credential hardening, and deeper migration tooling/doctor
-  checks.
+- Remaining follow-ups are constraining future cross-process direct writers to
+  the same store contract, local room sync, CLI config credential hardening, and
+  deeper migration tooling/doctor checks.
 
 ### Project context and cwd
 

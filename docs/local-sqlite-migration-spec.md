@@ -48,6 +48,9 @@ Current implementation status:
   `apps/local-api/src/local-provider-store.ts`.
 - New metadata/provider/workflow writes create `<dataDir>/local.sqlite` and do
   not create a fresh `db.json`.
+- Metadata/provider SQLite handles open with WAL journal mode, a 5s busy
+  timeout, foreign keys enabled, and `BEGIN IMMEDIATE` write/schema
+  transactions.
 - Legacy rows are no longer read from `db.json`; ignored-legacy regression
   tests prevent this file from becoming a local truth source again.
 - Provider credential/token payloads now persist as encrypted `enc:v1:` values
@@ -66,9 +69,9 @@ wrong for v1 because:
 
 Current local-api request handlers use queued `db.update()` for project,
 provider, OAuth, session, and asset metadata mutations, with regression tests
-for concurrent requests. v1 still needs an explicit single-writer or SQLite
-transaction boundary for any future process that writes the same store outside
-the local-api route queue.
+for concurrent requests. Direct future writers outside the local-api route
+queue must use the same SQLite store contract instead of ad hoc file mutation or
+raw SQL writes.
 
 ## Migration Goal
 
@@ -415,12 +418,13 @@ see a store interface, not raw SQL or `db.json`.
 On local-api startup:
 
 1. Open/create `local.sqlite`.
-2. Run schema migrations in a transaction.
-3. If `db.json` exists:
+2. Configure WAL, busy timeout, and foreign keys.
+3. Run schema migrations in a transaction.
+4. If `db.json` exists:
    - do not read it into product state,
    - keep serving from SQLite,
    - let `clash doctor storage` report it as cleanup/secrets risk.
-4. If SQLite is missing projection tables or indexes required by the current
+5. If SQLite is missing projection tables or indexes required by the current
    host, `clash doctor storage` should report a warning and a future explicit
    repair/migration command should apply the schema transactionally.
 

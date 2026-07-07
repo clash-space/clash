@@ -2,11 +2,13 @@ import { spawn } from "node:child_process";
 import { createServer } from "node:http";
 import net from "node:net";
 import { mkdir, rm, writeFile } from "node:fs/promises";
+import { createRequire } from "node:module";
 import os from "node:os";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const require = createRequire(import.meta.url);
 const appDir = path.resolve(__dirname, "..");
 const repoRoot = path.resolve(appDir, "..", "..");
 const dataDir = process.env.CLASH_LOCAL_API_E2E_DATA_DIR ?? path.join(repoRoot, ".tmp", "local-api-e2e-data");
@@ -581,15 +583,18 @@ async function exerciseCliModelProviders(origin, createLocalAgentToolEnv) {
   const falProvider = configured.find((provider) => provider.providerId === "fal" && provider.upstreamId === "fal");
   assert(falProvider?.weight === 75, "agent CLI model provider set stores fal weight", configured);
 
-  const providers = JSON.parse(await runClashCli([
+  const providersEnvelope = JSON.parse(await runClashCli([
     "models",
     "providers",
     "--json",
   ], env));
+  const providers = providersEnvelope.providers;
+  assert(Array.isArray(providers), "agent CLI model providers returns a providers array", providersEnvelope);
+  assert(typeof providersEnvelope.readToken === "string" && providersEnvelope.readToken.length > 0, "agent CLI model providers returns a read token", providersEnvelope);
   assert(
     providers.some((provider) => provider.providerId === "fal" && provider.configuredCredentials?.includes("apiKey")),
     "agent CLI model providers lists configured fal credentials",
-    providers,
+    providersEnvelope,
   );
 
   const available = JSON.parse(await runClashCli([
@@ -708,6 +713,9 @@ async function writeFakeCodexAcp(binDir) {
   await mkdir(binDir, { recursive: true });
   const wrapper = path.join(binDir, "codex-acp");
   const agent = path.join(binDir, "fake-codex-acp.mjs");
+  const sdkUrl = pathToFileURL(require.resolve("@agentclientprotocol/sdk", {
+    paths: [path.join(repoRoot, "packages", "clash-bridge")],
+  })).href;
   await writeFile(
     wrapper,
     [
@@ -725,7 +733,7 @@ async function writeFakeCodexAcp(binDir) {
       "import { spawn } from 'node:child_process';",
       "import { randomUUID } from 'node:crypto';",
       "import { Readable, Writable } from 'node:stream';",
-      "import { AgentSideConnection, ndJsonStream, PROTOCOL_VERSION } from '@agentclientprotocol/sdk';",
+      `import { AgentSideConnection, ndJsonStream, PROTOCOL_VERSION } from ${JSON.stringify(sdkUrl)};`,
       "",
       "const argv = process.argv.slice(2);",
       "if (argv.includes('--help')) {",
@@ -976,12 +984,18 @@ async function exerciseFakeCodexAcpChildSession(startLocalApiServer, createLocal
     await new Promise((resolve, reject) => {
       const timeout = setTimeout(() => {
         ws.close();
-        reject(new Error("Timed out waiting for fake ACP session disposal"));
+        reject(new Error(`Timed out waiting for fake ACP session disposal: ${JSON.stringify(events.slice(-8))}`));
       }, 20000);
       let promptSent = false;
       ws.addEventListener("message", (event) => {
         const msg = JSON.parse(String(event.data));
         events.push(msg);
+        if (msg.type === "session.error") {
+          clearTimeout(timeout);
+          ws.close();
+          reject(new Error(`fake ACP session error: ${msg.message}`));
+          return;
+        }
         if (msg.type === "session.ready") {
           const options = msg.config_options || [];
           if (!options.some((option) => option.category === "model")) {
@@ -1092,7 +1106,7 @@ async function exerciseOfficialCodexAcpWithStubModel(startLocalApiServer, create
   const port = await findFreePort(49720);
   const origin = `http://127.0.0.1:${port}`;
 
-  process.env.CLASH_ACP_TEST_BIN_DIR = path.join(repoRoot, "node_modules", ".bin");
+  process.env.CLASH_ACP_TEST_BIN_DIR = path.join(repoRoot, "packages", "clash-bridge", "node_modules", ".bin");
   delete process.env.CLASH_ACP_BIN_DIR;
   delete process.env.CLASH_E2E_STUB_ACP;
   process.env.CLASH_LOCAL_DATA_DIR = realDataDir;

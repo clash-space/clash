@@ -238,6 +238,7 @@ interface LocalAcpSession {
   persistQueue: Promise<void>;
   promptQueue: Promise<void>;
   disposePromise?: Promise<void>;
+  disposedSent?: boolean;
   observers?: Set<(msg: unknown) => void>;
 }
 
@@ -1667,6 +1668,13 @@ export class LocalAcpRuntimeAdapter implements LocalAcpAdapter {
         entry.errorMessage = publicMsg;
         void params.onError?.({ sessionId, message: msg.message });
       }
+      if (
+        publicMsg &&
+        typeof publicMsg === "object" &&
+        (publicMsg as { type?: unknown }).type === "session.disposed"
+      ) {
+        entry.disposedSent = true;
+      }
       this.sendToSession(entry, publicMsg);
       if (persisted) void persisted.catch(() => undefined);
     };
@@ -2121,6 +2129,13 @@ export class LocalAcpRuntimeAdapter implements LocalAcpAdapter {
           });
         })
         .finally(() => {
+          if (!entry.disposedSent) {
+            this.sendToSession(entry, {
+              type: "session.disposed",
+              session_id: sessionId,
+            });
+            entry.disposedSent = true;
+          }
           this.removeSession(sessionId);
         });
     }

@@ -1624,6 +1624,47 @@ describe("local ACP adapter", () => {
     );
   });
 
+  it("broadcasts session.disposed after explicit dispose even when the manager is quiet", async () => {
+    const dispose = vi.fn<SessionManagerLike["dispose"]>(async () => undefined);
+    const adapter = createLocalAcpAdapter({
+      detectAgents: async () => [
+        {
+          id: "codex-acp",
+          label: "Codex",
+          spec: { command: "codex-acp" },
+        },
+      ],
+      createSessionId: () => "local-acp-explicit-dispose",
+      createSessionManager: () => ({
+        start: vi.fn(),
+        prompt: vi.fn(),
+        cancel: vi.fn(),
+        dispose,
+      }),
+    });
+
+    await adapter.createSession({
+      runtimeId: "desktop-local",
+      agentTemplateId: "master-clash",
+    });
+
+    const socket = new FakeSocket();
+    adapter.bindSessionSocket("local-acp-explicit-dispose", socket as never);
+    socket.emit("message", JSON.stringify({ type: "dispose" }));
+
+    await vi.waitFor(() => {
+      expect(dispose).toHaveBeenCalledWith("local-acp-explicit-dispose");
+      expect(socket.sent.map((raw) => JSON.parse(raw) as { type: string })).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            type: "session.disposed",
+            session_id: "local-acp-explicit-dispose",
+          }),
+        ]),
+      );
+    });
+  });
+
   it("mirrors prompts and ACP events into the injected transcript store", async () => {
     let sendFromManager!: SessionSender;
     const prompt = vi.fn<SessionManagerLike["prompt"]>(async () => undefined);

@@ -1,14 +1,51 @@
 import { mkdtemp } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
+import { createRequire } from "node:module";
 import { describe, expect, it } from "vitest";
 import { createLocalMetadataStore } from "./local-metadata-store";
+
+const require = createRequire(import.meta.url);
 
 async function tempDir(): Promise<string> {
   return mkdtemp(join(tmpdir(), "clash-local-metadata-store-"));
 }
 
+function readSqlitePragma(dataDir: string, pragma: string): string | number | undefined {
+  const { DatabaseSync } = require("node:sqlite") as {
+    DatabaseSync: new (path: string) => {
+      prepare(sql: string): { get(): Record<string, string | number> | undefined };
+      close(): void;
+    };
+  };
+  const db = new DatabaseSync(join(dataDir, "local.sqlite"));
+  try {
+    const row = db.prepare(`PRAGMA ${pragma}`).get();
+    return row ? Object.values(row)[0] : undefined;
+  } finally {
+    db.close();
+  }
+}
+
 describe("local metadata store", () => {
+  it("initializes sqlite metadata with WAL journal mode for local multi-client safety", async () => {
+    const dataDir = await tempDir();
+    const store = createLocalMetadataStore(dataDir);
+
+    await store.save({
+      projects: [],
+      assets: [],
+      assetRefs: [],
+      assetNodeRefs: [],
+      sessions: [],
+      agentMembers: [],
+      sessionMessages: [],
+      roomMessages: [],
+    });
+
+    expect(readSqlitePragma(dataDir, "journal_mode")).toBe("wal");
+  });
+
   it("round-trips soft-deleted project metadata", async () => {
     const dataDir = await tempDir();
     const store = createLocalMetadataStore(dataDir);
