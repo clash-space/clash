@@ -1,5 +1,6 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
+import { resolveAgentFilePathInsideCwd } from "./projection-cas";
 
 export type ReferenceDownloadPlanStatus = "blocked" | "planned";
 
@@ -62,11 +63,15 @@ export async function planReferenceDownload(
     options.outputDir ?? join("references", "raw", safeSlug(targetAssetId)),
     "reference output directory",
   );
-  const planPath = resolveProjectPath(
+  const planPath = resolveAgentFilePathInsideCwd({
     cwd,
-    options.outPath ?? join("references", "downloads", `${safeSlug(targetAssetId)}.download-plan.json`),
-    "reference download plan",
-  );
+    filePath: resolveProjectPath(
+      cwd,
+      options.outPath ?? join("references", "downloads", `${safeSlug(targetAssetId)}.download-plan.json`),
+      "reference download plan",
+    ),
+    writeVerb: "Reference download plan",
+  });
   const downloadAllowed = options.allowDownload === true;
   const blockedReasons = downloadAllowed ? [] : ["download requires explicit --allow-download"];
   const redistributionAllowed = options.redistributionAllowed === true;

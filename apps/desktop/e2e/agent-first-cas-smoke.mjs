@@ -617,6 +617,15 @@ function runProjectionPathGuards() {
   mkdirSync(path.join(workspace, "timelines"), { recursive: true });
   mkdirSync(path.join(workspace, "reviews", "gates"), { recursive: true });
   mkdirSync(path.join(workspace, "qa", "pipeline"), { recursive: true });
+  mkdirSync(path.join(workspace, "references"), { recursive: true });
+  writeFileSync(path.join(workspace, "references", "roles.json"), `${JSON.stringify([
+    {
+      roleId: "hero-front",
+      assetId: "asset-hero-front",
+      role: "identity-front",
+      path: "assets/reference-sheets/hero-front.png",
+    },
+  ], null, 2)}\n`, "utf8");
   writeFileSync(path.join(workspace, "pipeline.path-guard.manifest.json"), `${JSON.stringify({
     schemaVersion: 1,
     projectKind: "short-drama",
@@ -633,6 +642,7 @@ function runProjectionPathGuards() {
   writeFileSync(path.join(lockSymlinkTarget, "unsafe-prompt-pack.lock.json"), "{}\n", "utf8");
   writeFileSync(path.join(lockSymlinkTarget, "unsafe.review-gate.lock.json"), "{}\n", "utf8");
   writeFileSync(path.join(lockSymlinkTarget, "unsafe.pipeline-validation.json"), "{}\n", "utf8");
+  writeFileSync(path.join(lockSymlinkTarget, "unsafe.reference-roles.json"), "{}\n", "utf8");
   symlinkSync(
     path.join(lockSymlinkTarget, "script.lock.json"),
     path.join(workspace, "projections", "text", "script.lock.json"),
@@ -652,6 +662,10 @@ function runProjectionPathGuards() {
   symlinkSync(
     path.join(lockSymlinkTarget, "unsafe.pipeline-validation.json"),
     path.join(workspace, "qa", "pipeline", "unsafe.pipeline-validation.json"),
+  );
+  symlinkSync(
+    path.join(lockSymlinkTarget, "unsafe.reference-roles.json"),
+    path.join(workspace, "actions", "unsafe.reference-roles.json"),
   );
 
   const textPull = runText([
@@ -852,6 +866,24 @@ function runProjectionPathGuards() {
     { command: pipelineValidationReport.command },
   );
 
+  const referenceRolesAction = runProduction([
+    "plan-reference-roles",
+    "--target-asset",
+    "asset-reference-pack",
+    "--roles",
+    "references/roles.json",
+    "--out",
+    "actions/unsafe.reference-roles.json",
+    "--json",
+  ]);
+  recordCheck(
+    "reference roles plan rejects symlinked action path outside cwd",
+    referenceRolesAction.status === 1 &&
+      /Agent file path must not traverse a symlink outside the current project cwd/i.test(referenceRolesAction.stderr),
+    referenceRolesAction.stderr || referenceRolesAction.stdout,
+    { command: referenceRolesAction.command },
+  );
+
   return {
     textPull: { status: textPull.status, stderr: textPull.stderr },
     textForcedApply: { status: textForcedApply.status, stderr: textForcedApply.stderr },
@@ -872,6 +904,10 @@ function runProjectionPathGuards() {
     pipelineValidationReport: {
       status: pipelineValidationReport.status,
       stderr: pipelineValidationReport.stderr,
+    },
+    referenceRolesAction: {
+      status: referenceRolesAction.status,
+      stderr: referenceRolesAction.stderr,
     },
   };
 }
@@ -1120,6 +1156,7 @@ async function main() {
           "storyboard prompt-pack project rejects symlinked lock sidecar outside cwd",
           "review gate plan rejects symlinked lock sidecar outside cwd",
           "pipeline validation rejects symlinked report path outside cwd",
+          "reference roles plan rejects symlinked action path outside cwd",
         ].every((name) =>
           checks.some((check) => check.name === name && check.status === "pass"),
       ),

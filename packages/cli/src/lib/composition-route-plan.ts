@@ -1,5 +1,6 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
+import { resolveAgentFilePathInsideCwd } from "./projection-cas";
 
 export type CompositionRouteRuntime = "html" | "remotion" | "ffmpeg" | "manim";
 export type CompositionRouteStatus = "planned" | "blocked";
@@ -58,11 +59,15 @@ export async function planCompositionRoute(
   const cwd = resolve(options.cwd);
   const requestPath = resolveProjectPath(cwd, options.requestPath, "composition route request");
   const request = parseCompositionRouteRequest(JSON.parse(await readFile(requestPath, "utf8")));
-  const planPath = resolveProjectPath(
+  const planPath = resolveAgentFilePathInsideCwd({
     cwd,
-    options.outPath ?? join("plans", "routes", `${safeSlug(request.compositionId)}.route.json`),
-    "composition route plan",
-  );
+    filePath: resolveProjectPath(
+      cwd,
+      options.outPath ?? join("plans", "routes", `${safeSlug(request.compositionId)}.route.json`),
+      "composition route plan",
+    ),
+    writeVerb: "Composition route plan",
+  });
   const plan = buildCompositionRoutePlan({ cwd, request });
   await writeJson(planPath, plan);
   return {

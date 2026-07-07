@@ -1698,6 +1698,50 @@ test("dry-run cost gate rejects symlinked output paths that resolve outside cwd"
   assert.equal(await readFile(outsideGatePath, "utf8"), "outside\n");
 });
 
+test("reference roles planning rejects symlinked action paths that resolve outside cwd", async () => {
+  const cwd = await mkdtemp(join(tmpdir(), "clash-production-reference-roles-path-"));
+  await writeJson(join(cwd, "references", "roles.json"), [
+    {
+      roleId: "hero-front",
+      assetId: "asset-hero-front",
+      role: "identity-front",
+      path: "assets/reference-sheets/hero-front.png",
+    },
+  ]);
+  const outside = join(cwd, "..", "outside-reference-roles-action-path");
+  await mkdir(outside, { recursive: true });
+  await mkdir(join(cwd, "actions"), { recursive: true });
+  const outsideActionPath = join(outside, "reference-roles.json");
+  await writeFile(outsideActionPath, "outside\n", "utf8");
+  await symlink(outsideActionPath, join(cwd, "actions", "reference-roles.json"));
+
+  const cliEntry = new URL("../index.ts", import.meta.url);
+  const require = createRequire(import.meta.url);
+  const tsxLoader = require.resolve("tsx");
+  const planned = spawnSync(
+    process.execPath,
+    [
+      "--import",
+      tsxLoader,
+      cliEntry.pathname,
+      "production",
+      "plan-reference-roles",
+      "--target-asset",
+      "asset-reference-pack",
+      "--roles",
+      "references/roles.json",
+      "--out",
+      "actions/reference-roles.json",
+      "--json",
+    ],
+    { cwd, encoding: "utf8" },
+  );
+
+  assert.equal(planned.status, 1);
+  assert.match(planned.stderr, /Agent file path must not traverse a symlink outside the current project cwd/);
+  assert.equal(await readFile(outsideActionPath, "utf8"), "outside\n");
+});
+
 test("runs production semantic reference roles and applies them to individual asset metadata", async () => {
   const cwd = await mkdtemp(join(tmpdir(), "clash-production-reference-roles-"));
   await writeJson(join(cwd, "assets", "manifest.json"), {
@@ -3072,6 +3116,49 @@ test("runs production plan-text-cut then applies the generated caption timeline 
     ["w5", "我们", 48, 60],
     ["w6", "开始", 60, 72],
   ]);
+});
+
+test("text-cut planning rejects symlinked action paths that resolve outside cwd", async () => {
+  const cwd = await mkdtemp(join(tmpdir(), "clash-production-text-cut-path-"));
+  await writeJson(join(cwd, "analysis", "transcripts", "talking-head.json"), {
+    fps: 30,
+    words: [
+      { id: "w1", text: "大家", startFrame: 0, endFrame: 12 },
+      { id: "w2", text: "今天", startFrame: 12, endFrame: 24 },
+    ],
+  });
+  const outside = join(cwd, "..", "outside-text-cut-action-path");
+  await mkdir(outside, { recursive: true });
+  await mkdir(join(cwd, "actions"), { recursive: true });
+  const outsideActionPath = join(outside, "talking-head-text-cut.json");
+  await writeFile(outsideActionPath, "outside\n", "utf8");
+  await symlink(outsideActionPath, join(cwd, "actions", "talking-head-text-cut.json"));
+
+  const cliEntry = new URL("../index.ts", import.meta.url);
+  const require = createRequire(import.meta.url);
+  const tsxLoader = require.resolve("tsx");
+  const planned = spawnSync(
+    process.execPath,
+    [
+      "--import",
+      tsxLoader,
+      cliEntry.pathname,
+      "production",
+      "plan-text-cut",
+      "--transcript",
+      "analysis/transcripts/talking-head.json",
+      "--target-asset",
+      "asset-talk",
+      "--out",
+      "actions/talking-head-text-cut.json",
+      "--json",
+    ],
+    { cwd, encoding: "utf8" },
+  );
+
+  assert.equal(planned.status, 1);
+  assert.match(planned.stderr, /Agent file path must not traverse a symlink outside the current project cwd/);
+  assert.equal(await readFile(outsideActionPath, "utf8"), "outside\n");
 });
 
 test("runs production plan-text-cut with adjacent repeats then applies a de-duplicated caption projection", async () => {

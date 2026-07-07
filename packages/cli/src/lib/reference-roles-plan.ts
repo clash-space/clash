@@ -1,6 +1,7 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import type { AssetMetadataFillAction, SemanticReferenceRole } from "@clash/shared-types";
+import { resolveAgentFilePathInsideCwd } from "./projection-cas";
 
 export type PlanReferenceRolesOptions = {
   cwd: string;
@@ -35,11 +36,15 @@ export async function planReferenceRolesAction(
       roles,
     },
   };
-  const actionPath = resolveProjectPath(
+  const actionPath = resolveAgentFilePathInsideCwd({
     cwd,
-    options.outPath ?? join("actions", `${safeSlug(targetAssetId)}.semantic-reference-roles.json`),
-    "reference roles action",
-  );
+    filePath: resolveProjectPath(
+      cwd,
+      options.outPath ?? join("actions", `${safeSlug(targetAssetId)}.semantic-reference-roles.json`),
+      "reference roles action",
+    ),
+    writeVerb: "Reference roles action",
+  });
   await writeJson(actionPath, action);
   return {
     planned: true,

@@ -53,6 +53,7 @@ import {
   type DerivedOverlayMediaType,
 } from "../lib/derived-overlay-projection";
 import { isJsonMode, printJson } from "../lib/output";
+import { resolveAgentFilePathInsideCwd } from "../lib/projection-cas";
 
 export const productionCommand = new Command("production")
   .description("Run local production actions that fill asset metadata and emit timeline/view projections");
@@ -795,9 +796,10 @@ productionCommand
           ...(transcript.averageConfidence === undefined ? {} : { averageConfidence: transcript.averageConfidence }),
         },
       });
-      const actionPath = resolveLocalPath(
+      const actionPath = resolveAgentOutputPath(
         cwd,
         options.out ?? join("actions", `${options.targetAsset}.talking-head-text-cut.json`),
+        "Text-cut action",
       );
       await writeJson(actionPath, action);
       const metadata = action.metadata as Extract<typeof action.metadata, { kind: "talking-head.analysis" }>;
@@ -1064,9 +1066,10 @@ productionCommand
         audioPath: resolveLocalPath(cwd, options.audio),
         fps: options.fps,
       });
-      const actionPath = resolveLocalPath(
+      const actionPath = resolveAgentOutputPath(
         cwd,
         options.out ?? join("actions", `${options.targetAsset}.audio-beat-analysis.json`),
+        "Audio beat analysis action",
       );
       await writeJson(actionPath, action);
       const metadata = action.metadata as Extract<typeof action.metadata, { kind: "audio.beat-analysis" }>;
@@ -1120,9 +1123,10 @@ productionCommand
         lyricsSource: options.source ?? options.lyrics,
         vocalStemAssetId: options.vocalStemAsset,
       });
-      const actionPath = resolveLocalPath(
+      const actionPath = resolveAgentOutputPath(
         cwd,
         options.out ?? join("actions", `${options.targetAsset}.lyrics-alignment.json`),
+        "Lyrics alignment action",
       );
       await writeJson(actionPath, action);
       const metadata = action.metadata as Extract<typeof action.metadata, { kind: "audio.lyrics-alignment" }>;
@@ -1169,9 +1173,10 @@ productionCommand
         sourcePath: options.sourcePath,
         moments: JSON.parse(await readFile(resolveLocalPath(cwd, options.moments), "utf8")),
       });
-      const actionPath = resolveLocalPath(
+      const actionPath = resolveAgentOutputPath(
         cwd,
         options.out ?? join("actions", `${options.targetAsset}.visual-moments.json`),
+        "Visual moments action",
       );
       await writeJson(actionPath, action);
       const summary = summarizeVisualMomentAction(action);
@@ -1312,9 +1317,10 @@ productionCommand
         disclaimer: options.disclaimer,
         rightsLedgerAssetId: options.rightsLedgerAsset,
       });
-      const actionPath = resolveLocalPath(
+      const actionPath = resolveAgentOutputPath(
         cwd,
         options.out ?? join("actions", `${options.targetAsset}.ad-delivery-spec.json`),
+        "Ad delivery spec action",
       );
       await writeJson(actionPath, action);
       const metadata = action.metadata as Extract<typeof action.metadata, { kind: "ad.delivery-spec" }>;
@@ -1548,9 +1554,10 @@ productionCommand
           similarityScore: options.similarity,
         },
       });
-      const actionPath = resolveLocalPath(
+      const actionPath = resolveAgentOutputPath(
         cwd,
         options.out ?? join("actions", `${options.targetAsset}.reference-review.json`),
+        "Reference review action",
       );
       await writeJson(actionPath, action);
       const metadata = action.metadata as Extract<typeof action.metadata, { kind: "reference-video.analysis" }>;
@@ -1681,13 +1688,15 @@ productionCommand
         fps: options.fps,
         similarityThreshold: options.similarityThreshold,
       });
-      const actionPath = resolveLocalPath(
+      const actionPath = resolveAgentOutputPath(
         cwd,
         options.out ?? join("actions", `${options.targetAsset}.reference-noncopying-qa.json`),
+        "Reference non-copying QA action",
       );
-      const reportPath = resolveLocalPath(
+      const reportPath = resolveAgentOutputPath(
         cwd,
         options.report ?? join("projections", "references", `${report.referenceId}.noncopying-qa.json`),
+        "Reference non-copying QA report",
       );
       await writeJson(actionPath, action);
       await writeJson(reportPath, report);
@@ -1780,13 +1789,15 @@ productionCommand
         panels,
         minConsistency: options.minConsistency,
       });
-      const actionPath = resolveLocalPath(
+      const actionPath = resolveAgentOutputPath(
         cwd,
         options.out ?? join("actions", `${options.targetAsset}.storyboard-consistency-qa.json`),
+        "Storyboard consistency QA action",
       );
-      const reportPath = resolveLocalPath(
+      const reportPath = resolveAgentOutputPath(
         cwd,
         options.report ?? join("projections", "storyboards", `${options.targetAsset}.consistency-qa.json`),
+        "Storyboard consistency QA report",
       );
       await writeJson(actionPath, action);
       await writeJson(reportPath, report);
@@ -1843,9 +1854,10 @@ productionCommand
         scenes,
         panels,
       });
-      const actionPath = resolveLocalPath(
+      const actionPath = resolveAgentOutputPath(
         cwd,
         options.out ?? join("actions", `${options.targetAsset}.storyboard-review.json`),
+        "Storyboard review action",
       );
       await writeJson(actionPath, action);
       const metadata = action.metadata as Extract<typeof action.metadata, { kind: "image.storyboard-consistency" }>;
@@ -2216,6 +2228,14 @@ function parseArrayJson(input: unknown, label: string): any[] {
 
 function resolveLocalPath(cwd: string, path: string): string {
   return isAbsolute(path) ? path : resolve(cwd, path);
+}
+
+function resolveAgentOutputPath(cwd: string, path: string, writeVerb: string): string {
+  return resolveAgentFilePathInsideCwd({
+    cwd,
+    filePath: resolveLocalPath(cwd, path),
+    writeVerb,
+  });
 }
 
 function toProjectPath(cwd: string, absolutePath: string): string {
