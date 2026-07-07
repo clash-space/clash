@@ -30,6 +30,8 @@ type PeerId = symbol;
 type SendPeerUpdate = (data: Uint8Array) => void;
 type SendPeerJson = (msg: Record<string, unknown>) => void;
 type FetchLike = (input: string, init?: RequestInit) => Promise<Response>;
+const LOCAL_LORO_COMPACT_UPDATE_THRESHOLD = 16;
+const LOCAL_LORO_COMPACT_BYTES_THRESHOLD = 1024 * 1024;
 
 interface LocalPeer {
   sendUpdate: SendPeerUpdate;
@@ -157,6 +159,8 @@ async function loadDoc(options: LocalSyncOptions): Promise<{
 
 export class LocalLoroRoom {
   private peers = new Map<PeerId, LocalPeer>();
+  private updatesSinceSnapshot = 0;
+  private updateBytesSinceSnapshot = 0;
 
   private constructor(
     private readonly projectId: string,
@@ -289,12 +293,21 @@ export class LocalLoroRoom {
   }
 
   private async saveSnapshot(): Promise<void> {
-    await this.store.saveSnapshotAtomic(this.projectId, this.snapshot(), this.doc.version());
+    await this.store.compactSnapshot(this.projectId, this.snapshot(), this.doc.version());
+    this.updatesSinceSnapshot = 0;
+    this.updateBytesSinceSnapshot = 0;
   }
 
   private async persistUpdate(update: Uint8Array): Promise<void> {
     await this.store.appendUpdate(this.projectId, update);
-    await this.saveSnapshot();
+    this.updatesSinceSnapshot += 1;
+    this.updateBytesSinceSnapshot += update.byteLength;
+    if (
+      this.updatesSinceSnapshot >= LOCAL_LORO_COMPACT_UPDATE_THRESHOLD ||
+      this.updateBytesSinceSnapshot >= LOCAL_LORO_COMPACT_BYTES_THRESHOLD
+    ) {
+      await this.saveSnapshot();
+    }
   }
 
   private async processPendingWork(): Promise<void> {

@@ -1,0 +1,78 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>CWD Principle Lower Third</title>
+    <style>
+      html, body { margin: 0; width: 100%; height: 100%; background: #111; }
+      body { display: grid; place-items: center; font-family: Inter, system-ui, sans-serif; }
+      #stage { position: relative; overflow: hidden; width: 1080px; height: 1920px; background: transparent; transform-origin: center; }
+      .mg-layer { position: absolute; box-sizing: border-box; transform-origin: 0 0; will-change: transform, opacity; }
+      .mg-text { white-space: pre-wrap; line-height: 1.04; }
+    </style>
+  </head>
+  <body>
+    <main id="stage" data-composition-id="cwd-principle-lower-third" data-fps="30" data-duration-frames="90">
+      <div class="mg-layer mg-shape" data-layer-id="bar" style="width:720px;height:148px;background:#101820;border-radius:30px;"></div>
+      <div class="mg-layer mg-text" data-layer-id="kicker" style="font-family:Inter, system-ui, sans-serif;font-size:24px;font-weight:800;color:#7DD3FC;">LOCAL-FIRST CLASH</div>
+      <div class="mg-layer mg-text" data-layer-id="title" style="font-family:Inter, system-ui, sans-serif;font-size:58px;font-weight:850;color:#F8FAFC;">Agent owns cwd</div>
+    </main>
+    <script>
+      const spec = {
+        id: "cwd-principle-lower-third",
+        width: 1080,
+        height: 1920,
+        fps: 30,
+        durationInFrames: 90,
+        layers: [
+          { id: "bar", type: "shape", from: 0, durationInFrames: 75, x: 72, y: 1350, opacity: 0, scale: 1, rotation: 0, animations: [
+            { property: "x", from: -820, to: 72, startFrame: 0, durationInFrames: 18, easing: "easeOutCubic" },
+            { property: "opacity", from: 0, to: 0.92, startFrame: 0, durationInFrames: 12, easing: "linear" },
+            { property: "x", from: 72, to: -820, startFrame: 64, durationInFrames: 11, easing: "easeInCubic" }
+          ] },
+          { id: "kicker", type: "text", from: 5, durationInFrames: 58, x: 116, y: 1378, opacity: 0, scale: 1, rotation: 0, animations: [
+            { property: "y", from: 1418, to: 1378, startFrame: 5, durationInFrames: 9, easing: "easeOutCubic" },
+            { property: "opacity", from: 0, to: 1, startFrame: 5, durationInFrames: 7, easing: "linear" }
+          ] },
+          { id: "title", type: "text", from: 8, durationInFrames: 58, x: 116, y: 1414, opacity: 0, scale: 1, rotation: 0, animations: [
+            { property: "y", from: 1476, to: 1414, startFrame: 8, durationInFrames: 12, easing: "easeOutCubic" },
+            { property: "opacity", from: 0, to: 1, startFrame: 8, durationInFrames: 8, easing: "linear" }
+          ] }
+        ]
+      };
+      const metadata = { generator: "clash-first-party-mg-composition", license: "first-party/MIT", externalRuntime: false };
+      function ease(t, easing) {
+        const c = Math.min(1, Math.max(0, t));
+        if (easing === "easeInCubic") return c ** 3;
+        if (easing === "easeOutCubic") return 1 - ((1 - c) ** 3);
+        if (easing === "easeInOutCubic") return c < 0.5 ? 4 * c ** 3 : 1 - (((-2 * c + 2) ** 3) / 2);
+        return c;
+      }
+      function layerStyleAt(layer, frame) {
+        const out = { x: layer.x || 0, y: layer.y || 0, opacity: layer.opacity ?? 1, scale: layer.scale || 1, rotation: layer.rotation || 0 };
+        for (const animation of layer.animations || []) {
+          const progress = (frame - animation.startFrame) / animation.durationInFrames;
+          if (progress < 0) continue;
+          const eased = ease(progress, animation.easing || "linear");
+          out[animation.property] = animation.from + (animation.to - animation.from) * eased;
+        }
+        return out;
+      }
+      function seek(frame) {
+        const clampedFrame = Math.min(Math.max(0, Number(frame) || 0), spec.durationInFrames - 1);
+        for (const layer of spec.layers) {
+          const el = document.querySelector('[data-layer-id="' + CSS.escape(layer.id) + '"]');
+          if (!el) continue;
+          const visible = clampedFrame >= layer.from && clampedFrame < layer.from + layer.durationInFrames;
+          const style = layerStyleAt(layer, clampedFrame);
+          el.style.opacity = visible ? String(style.opacity) : "0";
+          el.style.transform = "translate(" + style.x + "px, " + style.y + "px) scale(" + style.scale + ") rotate(" + style.rotation + "deg)";
+        }
+        return clampedFrame;
+      }
+      window.__CLASH_MG__ = { spec, metadata, seek, layerStyleAt };
+      seek(0);
+    </script>
+  </body>
+</html>

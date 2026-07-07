@@ -33,7 +33,16 @@ interface RoomMessage {
   sender_user_id: string;
   text: string;
   at: number;
-  mentions?: Array<{ user_id: string; agent_member_id?: string; agent_template_id?: string }>;
+  mentions?: Array<{ user_id?: string; agent_member_id?: string; agent_template_id?: string }>;
+}
+
+interface RoomSyncMeta {
+  mode: "local-only" | "cloud-sync";
+  remote_room: {
+    enabled: boolean;
+    status: "disabled" | "imported" | "mirrored" | "failed";
+    error?: string;
+  };
 }
 
 function projectId(): string {
@@ -62,6 +71,21 @@ function agentMemberId(): string {
   return id;
 }
 
+export function roomApiErrorMessage(error: unknown, projectId: string): string | null {
+  const message = error instanceof Error ? error.message : String(error);
+  if (!/^API error 404\b/.test(message)) return null;
+  return (
+    `Room messages are not available for project ${projectId} on this Clash API. ` +
+    "Use a current local-api/cloud API with room support, or fall back to the session response channel."
+  );
+}
+
+function failRoomCommand(error: unknown, projectId: string): never {
+  const roomMessage = roomApiErrorMessage(error, projectId);
+  console.error(roomMessage ?? (error instanceof Error ? error.message : String(error)));
+  process.exit(1);
+}
+
 roomCommand
   .command("say")
   .description("Broadcast a message to the project's group-chat room")
@@ -85,7 +109,7 @@ roomCommand
         sender_id: senderId,
         ...(mentions.length > 0 ? { mentions } : {}),
       }),
-    });
+    }).catch((error) => failRoomCommand(error, pid));
 
     if (isJsonMode(options)) {
       printJson(data);
@@ -102,12 +126,12 @@ roomCommand
   .action(async (options: { limit?: string; json?: boolean }) => {
     const pid = projectId();
     const limit = Math.min(Number(options.limit ?? 50), 200);
-    const data = await apiJson<{ messages: RoomMessage[] }>(
+    const data = await apiJson<{ messages: RoomMessage[]; sync?: RoomSyncMeta }>(
       `/api/v1/projects/${pid}/room/messages?limit=${limit}`,
-    );
+    ).catch((error) => failRoomCommand(error, pid));
 
     if (isJsonMode(options)) {
-      printJson(data.messages);
+      printJson(data);
       return;
     }
 

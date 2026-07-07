@@ -1,0 +1,90 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Clash ad visual QA report",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "kind",
+    "targetAssetId",
+    "variantId",
+    "renderedPath",
+    "evidencePath",
+    "checks",
+    "verdict",
+    "blockedReasons",
+    "visualQa",
+    "decisionLog"
+  ],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "kind": { "const": "clash.ad.visual-qa" },
+    "targetAssetId": { "type": "string" },
+    "variantId": { "type": "string" },
+    "renderedPath": { "type": "string" },
+    "evidencePath": { "type": "string" },
+    "checks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "check", "status", "required", "expected", "actual"],
+        "properties": {
+          "id": { "type": "string" },
+          "check": {
+            "enum": [
+              "captions-present",
+              "safe-zone",
+              "packshot-visible",
+              "end-card-visible",
+              "disclaimer-visible",
+              "disclaimer-ocr",
+              "cta-visible",
+              "logo-lockup-visible",
+              "final-frame-hold"
+            ]
+          },
+          "status": { "enum": ["pass", "fail", "requires-review"] },
+          "required": { "type": "boolean" },
+          "expected": { "type": "string" },
+          "actual": { "type": "string" },
+          "confidence": { "type": "number" },
+          "frame": { "type": "number" },
+          "evidencePath": { "type": "string" }
+        }
+      }
+    },
+    "verdict": { "enum": ["pass", "requires-review", "fail"] },
+    "blockedReasons": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "visualQa": {
+      "type": "object",
+      "required": ["captionsPresent", "safeZoneViolations", "packshotVisible", "endCardVisible"],
+      "properties": {
+        "captionsPresent": { "type": "boolean" },
+        "safeZoneViolations": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["description", "severity"],
+            "properties": {
+              "frame": { "type": "number" },
+              "description": { "type": "string" },
+              "severity": { "enum": ["warning", "error"] }
+            }
+          }
+        },
+        "packshotVisible": { "type": "boolean" },
+        "endCardVisible": { "type": "boolean" },
+        "disclaimerVisible": { "type": "boolean" },
+        "ctaVisible": { "type": "boolean" },
+        "logoLockupVisible": { "type": "boolean" },
+        "finalFrameHolds": { "type": "boolean" }
+      }
+    },
+    "decisionLog": {
+      "type": "array",
+      "items": { "type": "string" }
+    }
+  }
+}

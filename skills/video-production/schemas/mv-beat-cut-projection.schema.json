@@ -1,0 +1,152 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Clash MV beat-cut timeline projection",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "kind",
+    "targetAssetId",
+    "sourceActionPath",
+    "metadataKind",
+    "bpm",
+    "fps",
+    "beats",
+    "sections",
+    "cutAssignments",
+    "timelineItems",
+    "casApply"
+  ],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "kind": { "const": "clash.mv.beat-cut.timeline-projection" },
+    "targetAssetId": { "type": "string" },
+    "sourceActionPath": { "type": "string" },
+    "metadataKind": { "const": "audio.beat-analysis" },
+    "bpm": { "type": "number" },
+    "fps": { "type": "number" },
+    "beats": { "type": "number" },
+    "sections": { "type": "number" },
+    "cutAssignments": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "sectionId",
+          "label",
+          "clipAssetId",
+          "clipPath",
+          "clipType",
+          "outputStartFrame",
+          "outputEndFrame",
+          "anchorFrames"
+        ],
+        "properties": {
+          "sectionId": { "type": "string" },
+          "label": { "type": "string" },
+          "clipAssetId": { "type": "string" },
+          "clipPath": { "type": "string" },
+          "clipType": { "enum": ["video", "image"] },
+          "outputStartFrame": { "type": "number" },
+          "outputEndFrame": { "type": "number" },
+          "anchorFrames": { "type": "array", "items": { "type": "number" } },
+          "semanticLabel": {
+            "enum": [
+              "intro",
+              "verse",
+              "pre-chorus",
+              "chorus",
+              "bridge",
+              "drop",
+              "buildup",
+              "breakdown",
+              "outro",
+              "instrumental",
+              "detected-beats",
+              "unknown"
+            ]
+          },
+          "semanticConfidence": { "type": "number", "minimum": 0, "maximum": 1 },
+          "reviewRequired": { "type": "boolean" },
+          "semanticSource": { "type": "string" },
+          "cutDensity": { "enum": ["hold", "medium", "fast"] },
+          "recommendedCutEveryFrames": { "type": "number" }
+        }
+      }
+    },
+    "timelineItems": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "type",
+          "assetId",
+          "src",
+          "from",
+          "durationInFrames",
+          "beatSectionId"
+        ],
+        "properties": {
+          "id": { "type": "string" },
+          "type": { "enum": ["video", "image"] },
+          "assetId": { "type": "string" },
+          "src": { "type": "string" },
+          "from": { "type": "number" },
+          "durationInFrames": { "type": "number" },
+          "sourceStartInFrames": { "type": "number" },
+          "beatSectionId": { "type": "string" },
+          "semanticLabel": {
+            "enum": [
+              "intro",
+              "verse",
+              "pre-chorus",
+              "chorus",
+              "bridge",
+              "drop",
+              "buildup",
+              "breakdown",
+              "outro",
+              "instrumental",
+              "detected-beats",
+              "unknown"
+            ]
+          },
+          "semanticConfidence": { "type": "number", "minimum": 0, "maximum": 1 },
+          "reviewRequired": { "type": "boolean" },
+          "semanticSource": { "type": "string" },
+          "cutDensity": { "enum": ["hold", "medium", "fast"] },
+          "anchorFrames": { "type": "array", "items": { "type": "number" } }
+        }
+      }
+    },
+    "casApply": {
+      "type": "object",
+      "required": ["target", "mutation", "applyCommand", "filePath", "lockPath", "lockRequired", "lockSource", "nodeIdPlaceholder", "requiredRuntimeArgs", "pullCommand", "pullArgs", "applyArgs"],
+      "properties": {
+        "target": { "const": "timeline" },
+        "mutation": { "const": "projection-only" },
+        "applyCommand": { "const": "clash timeline apply" },
+        "filePath": { "type": "string" },
+        "lockPath": { "type": "string" },
+        "lockRequired": { "const": true },
+        "lockSource": { "const": "fresh-canvas-pull" },
+        "nodeIdPlaceholder": { "const": "<video-editor-node-id>" },
+        "requiredRuntimeArgs": {
+          "type": "array",
+          "contains": { "const": "--node <video-editor-node-id>" }
+        },
+        "pullCommand": { "const": "clash timeline pull" },
+        "pullArgs": {
+          "type": "array",
+          "prefixItems": [{ "const": "--node" }, { "const": "<video-editor-node-id>" }],
+          "items": { "type": "string" }
+        },
+        "applyArgs": {
+          "type": "array",
+          "prefixItems": [{ "const": "--node" }, { "const": "<video-editor-node-id>" }],
+          "items": { "type": "string" }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Clash reference video analysis metadata",
+  "type": "object",
+  "required": ["kind", "sourceUrl", "rights"],
+  "properties": {
+    "kind": { "const": "reference-video.analysis" },
+    "sourceUrl": { "type": "string" },
+    "rights": {
+      "type": "object",
+      "required": ["license", "attribution", "redistributionAllowed", "derivativeAllowed"],
+      "properties": {
+        "license": { "type": "string" },
+        "attribution": { "type": "string" },
+        "redistributionAllowed": { "type": "boolean" },
+        "derivativeAllowed": { "type": "boolean" }
+      }
+    },
+    "shots": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "startFrame", "endFrame", "description"],
+        "properties": {
+          "id": { "type": "string" },
+          "startFrame": { "type": "number" },
+          "endFrame": { "type": "number" },
+          "description": { "type": "string" },
+          "tags": { "type": "array", "items": { "type": "string" } }
+        }
+      }
+    },
+    "nonCopyingQa": {
+      "type": "object",
+      "required": ["status"],
+      "properties": {
+        "status": { "enum": ["passed", "requires-review", "failed"] },
+        "similarityScore": { "type": "number" }
+      }
+    }
+  }
+}

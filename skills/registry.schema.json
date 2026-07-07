@@ -1,0 +1,396 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://clash.local/schemas/skill-marketplace-registry.schema.json",
+  "title": "Clash first-party skill marketplace registry",
+  "type": "object",
+  "required": [
+    "version",
+    "marketplaceSemantics",
+    "actions",
+    "skills",
+    "systemCapabilities",
+    "thirdPartyReferences"
+  ],
+  "properties": {
+    "version": { "type": "integer", "const": 1 },
+    "marketplaceSemantics": {
+      "type": "object",
+      "required": [
+        "skillBoundary",
+        "executionModel",
+        "hostCapabilityContract",
+        "artifactContract",
+        "systemCapabilityMeaning",
+        "statusPolicy",
+        "clashRole"
+      ],
+      "properties": {
+        "skillBoundary": { "const": "portable-artifact-contract" },
+        "executionModel": {
+          "type": "object",
+          "required": ["portableSkillExecution", "clashManagedExecution", "hardBoundary"],
+          "properties": {
+            "portableSkillExecution": { "type": "string" },
+            "clashManagedExecution": { "type": "string" },
+            "hardBoundary": { "type": "string" }
+          }
+        },
+        "hostCapabilityContract": { "type": "string" },
+        "artifactContract": {
+          "type": "object",
+          "required": [
+            "publicInterfaces",
+            "skillOwnedWorkspace",
+            "hostOwnedInternals",
+            "forbiddenDependencyPolicy"
+          ],
+          "properties": {
+            "publicInterfaces": {
+              "type": "array",
+              "items": {
+                "enum": [
+                  "action",
+                  "metadata-fill",
+                  "asset",
+                  "analysis-metadata",
+                  "view-projection",
+                  "timeline-cas-apply",
+                  "schema"
+                ]
+              }
+            },
+            "skillOwnedWorkspace": { "type": "string" },
+            "hostOwnedInternals": {
+              "type": "array",
+              "items": {
+                "enum": [
+                  "snapshot.bin",
+                  "project.sqlite",
+                  "loro-crdt-doc",
+                  "canvas-private-node-state",
+                  "runtime-secrets"
+                ]
+              }
+            },
+            "forbiddenDependencyPolicy": { "type": "string" }
+          }
+        },
+        "systemCapabilityMeaning": { "type": "string" },
+        "statusPolicy": {
+          "type": "object",
+          "required": ["ready", "blockedBySystemGap"],
+          "properties": {
+            "ready": { "type": "string" },
+            "blockedBySystemGap": { "type": "string" }
+          }
+        },
+        "clashRole": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "collaboration-management",
+              "asset-registry",
+              "metadata-fill",
+              "provenance",
+              "review-gates",
+              "timeline-cas-apply",
+              "canvas-timeline-projection"
+            ]
+          }
+        }
+      }
+    },
+    "actions": {
+      "type": "array",
+      "description": "Executable first-party action contracts that bind portable skills to local host commands and artifact outputs.",
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "title",
+          "source",
+          "skillId",
+          "trigger",
+          "lifecycle",
+          "inputs",
+          "outputs",
+          "contractTests",
+          "requiredSystemCapabilities"
+        ],
+        "properties": {
+          "id": { "type": "string", "pattern": "^clash\\.action\\." },
+          "title": { "type": "string" },
+          "source": { "const": "first-party" },
+          "skillId": { "type": "string", "pattern": "^clash\\." },
+          "trigger": {
+            "type": "object",
+            "required": ["mode", "command", "requiresLocalRuntime"],
+            "properties": {
+              "mode": { "const": "local-cli" },
+              "command": { "type": "string", "pattern": "^clash production " },
+              "requiresLocalRuntime": { "const": true }
+            }
+          },
+          "lifecycle": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "enum": [
+                "action",
+                "metadata-fill",
+                "asset",
+                "view-projection",
+                "review-gate"
+              ]
+            }
+          },
+          "inputs": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "object",
+              "required": ["kind", "pathPattern"],
+              "properties": {
+                "kind": {
+                  "enum": ["action", "asset", "metadata", "projection", "view", "analysis", "manifest", "source"]
+                },
+                "pathPattern": { "type": "string" },
+                "schema": { "type": "string" }
+              }
+            }
+          },
+          "outputs": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "object",
+              "required": ["kind", "pathPattern"],
+              "properties": {
+                "kind": {
+                  "enum": ["action", "asset", "metadata", "projection", "view", "analysis", "manifest", "review-gate", "export"]
+                },
+                "pathPattern": { "type": "string" },
+                "schema": { "type": "string" },
+                "metadataKind": { "type": "string" },
+                "metadataSchema": { "type": "string" },
+                "casRequired": { "type": "boolean" },
+                "applyCommand": {
+                  "enum": [
+                    "clash production apply-metadata",
+                    "clash timeline apply"
+                  ]
+                },
+                "lockSource": { "const": "fresh-canvas-pull" },
+                "lockPathPattern": { "type": "string" },
+                "nodeIdPlaceholder": { "const": "<video-editor-node-id>" },
+                "requiredRuntimeArgs": {
+                  "type": "array",
+                  "items": { "type": "string" },
+                  "contains": { "const": "--node <video-editor-node-id>" }
+                },
+                "pullCommand": { "const": "clash timeline pull" },
+                "pullArgsPattern": {
+                  "type": "array",
+                  "prefixItems": [
+                    { "const": "--node" },
+                    { "const": "<video-editor-node-id>" },
+                    { "const": "--file" },
+                    { "const": "timelines/main.timeline.yaml" }
+                  ],
+                  "minItems": 4,
+                  "maxItems": 4
+                },
+                "applyArgsPattern": {
+                  "type": "array",
+                  "prefixItems": [
+                    { "const": "--node" },
+                    { "const": "<video-editor-node-id>" },
+                    { "const": "--file" },
+                    { "type": "string" },
+                    { "const": "--lock" },
+                    { "const": "timelines/main.timeline.lock.json" }
+                  ],
+                  "minItems": 6,
+                  "maxItems": 6
+                }
+              },
+              "allOf": [
+                {
+                  "if": {
+                    "properties": {
+                      "kind": { "const": "projection" }
+                    },
+                    "required": ["kind"]
+                  },
+                  "then": {
+                    "required": [
+                      "casRequired",
+                      "applyCommand",
+                      "lockSource",
+                      "lockPathPattern",
+                      "nodeIdPlaceholder",
+                      "requiredRuntimeArgs",
+                      "pullCommand",
+                      "pullArgsPattern",
+                      "applyArgsPattern"
+                    ],
+                    "properties": {
+                      "casRequired": { "const": true },
+                      "applyCommand": { "const": "clash timeline apply" },
+                      "lockSource": { "const": "fresh-canvas-pull" },
+                      "lockPathPattern": { "const": "timelines/main.timeline.lock.json" },
+                      "nodeIdPlaceholder": { "const": "<video-editor-node-id>" },
+                      "requiredRuntimeArgs": {
+                        "contains": { "const": "--node <video-editor-node-id>" }
+                      },
+                      "pullCommand": { "const": "clash timeline pull" }
+                    }
+                  }
+                }
+              ]
+            }
+          },
+          "contractTests": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "object",
+              "required": ["path", "asserts"],
+              "properties": {
+                "path": { "type": "string" },
+                "asserts": { "type": "string" }
+              }
+            }
+          },
+          "requiredSystemCapabilities": {
+            "type": "array",
+            "items": { "type": "string" }
+          }
+        }
+      }
+    },
+    "skills": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "title",
+          "description",
+          "kind",
+          "source",
+          "path",
+          "tags",
+          "requiredSystemCapabilities"
+        ],
+        "properties": {
+          "id": { "type": "string", "pattern": "^clash\\." },
+          "name": { "type": "string" },
+          "title": { "type": "string" },
+          "description": { "type": "string" },
+          "kind": { "enum": ["architecture", "detail"] },
+          "source": { "const": "first-party" },
+          "path": { "type": "string" },
+          "tags": { "type": "array", "items": { "type": "string" } },
+          "inputs": { "type": "array", "items": { "type": "string" } },
+          "outputs": { "type": "array", "items": { "type": "string" } },
+          "requiredSystemCapabilities": {
+            "type": "array",
+            "description": "Compatibility names for host capabilities needed to make the skill runnable as a managed production workflow.",
+            "items": { "type": "string" }
+          },
+          "systemGaps": {
+            "type": "array",
+            "description": "Explicit Clash-managed execution gaps for skills marked blocked-by-system-gap.",
+            "items": {
+              "type": "object",
+              "required": ["capability", "gap", "unblockSignal"],
+              "properties": {
+                "capability": { "type": "string" },
+                "gap": { "type": "string" },
+                "unblockSignal": { "type": "string" }
+              }
+            }
+          },
+          "researchSources": { "type": "array", "items": { "type": "string" } },
+          "status": {
+            "enum": ["draft", "ready", "blocked-by-system-gap"],
+            "description": "ready means local runnable action/contract coverage exists; blocked-by-system-gap means concrete host capabilities are still missing."
+          }
+        },
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "status": { "const": "blocked-by-system-gap" }
+              },
+              "required": ["status"]
+            },
+            "then": {
+              "required": ["systemGaps"],
+              "properties": {
+                "systemGaps": { "minItems": 1 }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "status": { "const": "ready" }
+              },
+              "required": ["status"]
+            },
+            "then": {
+              "properties": {
+                "systemGaps": { "maxItems": 0 }
+              }
+            }
+          }
+        ]
+      }
+    },
+    "thirdPartyReferences": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "name",
+          "url",
+          "license",
+          "licenseSource",
+          "usage",
+          "integrationPolicy"
+        ],
+        "properties": {
+          "name": { "type": "string" },
+          "url": { "type": "string" },
+          "license": { "type": "string" },
+          "licenseSource": { "type": "string" },
+          "usage": {
+            "enum": [
+              "research-only",
+              "reference-or-integration-with-notice",
+              "user-installed-tool",
+              "existing-runtime-with-license-check"
+            ]
+          },
+          "integrationPolicy": { "type": "string" }
+        }
+      }
+    },
+    "systemCapabilities": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "title", "status", "description"],
+        "properties": {
+          "id": { "type": "string" },
+          "title": { "type": "string" },
+          "status": { "enum": ["available", "partial", "missing"] },
+          "description": { "type": "string" }
+        }
+      }
+    }
+  }
+}

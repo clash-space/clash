@@ -1,9 +1,10 @@
-import { access, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { access, mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import {
   createLocalAcpAdapter,
+  createLocalHarnessConfigStore,
   type SessionManagerLike,
   type SessionPromptParamsLike,
   type SessionSender,
@@ -42,6 +43,28 @@ function deferred<T = void>() {
 }
 
 describe("local ACP adapter", () => {
+  it("writes local harness config with owner-only permissions", async () => {
+    const dataDir = await mkdtemp(join(tmpdir(), "clash-local-acp-config-"));
+    try {
+      const store = createLocalHarnessConfigStore(dataDir);
+      if (!store.saveAgentServers) throw new Error("saveAgentServers missing");
+
+      await store.saveAgentServers({
+        local: {
+          type: "custom",
+          command: "node",
+          args: ["server.js"],
+          env: { LOCAL_TOKEN: "redacted" },
+        },
+      });
+
+      const mode = (await stat(join(dataDir, "harnesses.json"))).mode & 0o777;
+      expect(mode).toBe(0o600);
+    } finally {
+      await rm(dataDir, { recursive: true, force: true });
+    }
+  });
+
   it("reports the desktop local runtime from detected ACP agents", async () => {
     const adapter = createLocalAcpAdapter({
       detectAgents: async () => [

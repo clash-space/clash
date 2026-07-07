@@ -13,6 +13,7 @@ interface ProviderAccountPayload {
 
 interface ModelProviderResponse {
   providers: Array<ProviderAccountPayload & { availableVariables?: string[] }>;
+  readToken?: string;
 }
 
 interface ModelCatalogResponse {
@@ -50,6 +51,23 @@ export function providerPayloadFromOptions(providerId: string, options: Record<s
   };
 }
 
+export function providerWriteHeaders(
+  options: { ifMatch?: string; force?: boolean } = {},
+  env: Record<string, string | undefined> = process.env,
+): Record<string, string> {
+  const headers: Record<string, string> = {};
+  if (env.CLASH_AGENT_MEMBER_ID?.trim()) {
+    headers["x-clash-client-type"] = "agent";
+  }
+  if (options.ifMatch?.trim()) {
+    headers["x-clash-if-match"] = options.ifMatch.trim();
+  }
+  if (options.force === true) {
+    headers["x-clash-force"] = "true";
+  }
+  return headers;
+}
+
 export const modelsCommand = new Command("models")
   .description("Manage model catalog and provider routing");
 
@@ -60,11 +78,12 @@ modelsCommand
   .action(async (options) => {
     const data = await apiJson<ModelProviderResponse>("/api/v1/model-providers");
     if (isJsonMode(options)) {
-      printJson(data.providers);
+      printJson(data);
       return;
     }
     if (data.providers.length === 0) {
-      console.log("No model providers configured. Set keys with `clash vars set <KEY>` or configure one with `clash models provider set <PROVIDER>`.");
+      console.log("No model providers configured. Configure a local provider account with `clash models provider set <PROVIDER>`.");
+      if (data.readToken) console.log(`Read token: ${data.readToken}`);
       return;
     }
     for (const provider of data.providers) {
@@ -74,6 +93,7 @@ modelsCommand
       const status = provider.enabled === false ? "disabled" : "enabled";
       console.log(`  ${route.padEnd(28)} ${status.padEnd(8)} ${vars}${weight}`);
     }
+    if (data.readToken) console.log(`Read token: ${data.readToken}`);
   });
 
 modelsCommand
@@ -86,11 +106,17 @@ modelsCommand
   .option("--weight <number>", "Higher weight wins during auto routing")
   .option("--priority <number>", "Lower priority wins within equal weights")
   .option("--disable", "Disable this provider account")
+  .option("--if-match <readToken>", "Require the provider-accounts read token from `clash models providers --json` before writing")
+  .option("--force", "Bypass the agent read-token check")
   .option("--json", "Output as JSON")
   .action(async (providerId: string, options) => {
     const provider = providerPayloadFromOptions(providerId, options);
     const data = await apiJson<ModelProviderResponse>("/api/v1/model-providers", {
       method: "PATCH",
+      headers: providerWriteHeaders({
+        ifMatch: options.ifMatch,
+        force: options.force === true,
+      }),
       body: JSON.stringify({ providers: [provider] }),
     });
     if (isJsonMode(options)) {

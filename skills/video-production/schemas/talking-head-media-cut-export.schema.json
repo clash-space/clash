@@ -1,0 +1,137 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Clash talking-head media cut export",
+  "type": "object",
+  "required": [
+    "kind",
+    "version",
+    "sourceAssetId",
+    "outputAssetId",
+    "sourcePath",
+    "outputPath",
+    "fps",
+    "rendered",
+    "artifacts",
+    "keepSegments",
+    "deletedRanges",
+    "reviewRanges",
+    "sourceToOutputMap"
+  ],
+  "properties": {
+    "kind": { "const": "clash.talking-head.media-cut-export" },
+    "version": { "const": 1 },
+    "sourceAssetId": { "type": "string" },
+    "outputAssetId": { "type": "string" },
+    "sourcePath": { "type": "string" },
+    "outputPath": { "type": "string" },
+    "actionId": { "type": "string" },
+    "metadataKind": { "type": "string" },
+    "fps": { "type": "number" },
+    "rendered": { "type": "boolean" },
+    "renderMode": { "type": "string" },
+    "artifacts": {
+      "type": "object",
+      "required": ["packagePath", "concatPath", "ffmpegPlanPath", "outputPath"],
+      "properties": {
+        "packagePath": { "type": "string" },
+        "concatPath": { "type": "string" },
+        "ffmpegPlanPath": { "type": "string" },
+        "outputPath": { "type": "string" }
+      }
+    },
+    "keepSegments": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "sourceStartFrame",
+          "sourceEndFrame",
+          "outputStartFrame",
+          "outputEndFrame",
+          "startSeconds",
+          "endSeconds",
+          "durationSeconds"
+        ],
+        "properties": {
+          "id": { "type": "string" },
+          "sourceStartFrame": { "type": "number" },
+          "sourceEndFrame": { "type": "number" },
+          "outputStartFrame": { "type": "number" },
+          "outputEndFrame": { "type": "number" },
+          "startSeconds": { "type": "number" },
+          "endSeconds": { "type": "number" },
+          "durationSeconds": { "type": "number" }
+        }
+      }
+    },
+    "deletedRanges": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "sourceStartFrame", "sourceEndFrame", "startSeconds", "endSeconds"],
+        "properties": {
+          "id": { "type": "string" },
+          "sourceStartFrame": { "type": "number" },
+          "sourceEndFrame": { "type": "number" },
+          "reason": { "type": "string" },
+          "confidence": { "type": "number", "minimum": 0, "maximum": 1 },
+          "detectionSource": { "type": "string" },
+          "startSeconds": { "type": "number" },
+          "endSeconds": { "type": "number" }
+        }
+      }
+    },
+    "reviewRanges": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "sourceStartFrame",
+          "sourceEndFrame",
+          "requiresReview",
+          "startSeconds",
+          "endSeconds"
+        ],
+        "properties": {
+          "id": { "type": "string" },
+          "sourceStartFrame": { "type": "number" },
+          "sourceEndFrame": { "type": "number" },
+          "reason": { "type": "string" },
+          "requiresReview": { "const": true },
+          "confidence": { "type": "number", "minimum": 0, "maximum": 1 },
+          "detectionSource": { "type": "string" },
+          "startSeconds": { "type": "number" },
+          "endSeconds": { "type": "number" }
+        }
+      }
+    },
+    "sourceToOutputMap": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["sourceStartFrame", "sourceEndFrame", "outputStartFrame", "outputEndFrame"],
+        "properties": {
+          "sourceStartFrame": { "type": "number" },
+          "sourceEndFrame": { "type": "number" },
+          "outputStartFrame": { "type": "number" },
+          "outputEndFrame": { "type": "number" }
+        }
+      }
+    },
+    "probe": {
+      "type": "object",
+      "required": ["durationSeconds", "hasVideo", "hasAudio"],
+      "properties": {
+        "durationSeconds": { "type": "number" },
+        "hasVideo": { "type": "boolean" },
+        "hasAudio": { "type": "boolean" },
+        "videoCodec": { "type": "string" },
+        "audioCodec": { "type": "string" },
+        "width": { "type": "number" },
+        "height": { "type": "number" }
+      }
+    }
+  }
+}

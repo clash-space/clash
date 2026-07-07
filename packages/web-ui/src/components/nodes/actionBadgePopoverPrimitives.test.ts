@@ -51,7 +51,7 @@ describe("ActionBadge popover primitives", () => {
         expect(source).not.toContain("e.key === 'ArrowDown'");
         expect(source).not.toContain("e.key === 'ArrowUp'");
         expect(source).not.toContain("e.key === 'Escape'");
-        expect(source).not.toContain("onKeyDown={isFrozen ? undefined : (e) =>");
+        expect(source).not.toContain("onKeyDown={isCheckpointLocked ? undefined : (e) =>");
         expect(source).not.toContain("mentionIndex");
         expect(source).not.toContain("setMentionIndex");
         expect(source).not.toContain("activeIndex");
@@ -136,7 +136,7 @@ describe("ActionBadge popover primitives", () => {
         expect(source).toContain("../ui/tooltip");
         expect(source).toContain("<Tooltip label={modelPickerLabel}>");
         expect(source).toContain('<Tooltip label="Duplicate this panel and open the copy">');
-        expect(source).toContain("<Tooltip label={frozenRunLabel}>");
+        expect(source).toContain("<Tooltip label={checkpointRunLabel}>");
         expect(source).toContain("<Tooltip label={panelRunLabel}>");
         expect(source).not.toContain("title={customActionOffline ? RUNTIME_OFFLINE_TOOLTIP : undefined}");
         expect(source).not.toContain('title="Duplicate this panel and open the copy"');

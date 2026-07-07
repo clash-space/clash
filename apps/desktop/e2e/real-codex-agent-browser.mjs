@@ -1,4 +1,6 @@
 import path from "node:path";
+import { homedir } from "node:os";
+import { stat } from "node:fs/promises";
 import {
   clickButtonByLabel,
   clickByText,
@@ -32,6 +34,63 @@ const failureScreenshot = path.join(captureDir, "failure.png");
 const finalScreenshot = path.join(captureDir, "final.png");
 const historyScreenshot = path.join(captureDir, "history.png");
 const retryStatusScreenshot = path.join(captureDir, "retry-status.png");
+
+function currentClashHome() {
+  return process.env.CLASH_HOME || path.join(homedir(), ".clash");
+}
+
+async function assertProjectWorkspaceLayout(projectId) {
+  const projectWorkspaceRoot = path.join(currentClashHome(), "projects", projectId);
+  const required = [
+    "drafts",
+    "projections/text",
+    "projections/timelines",
+    "assets/links",
+    "sessions",
+    "runtime",
+  ];
+  const missing = [];
+  for (const relativePath of required) {
+    const fullPath = path.join(projectWorkspaceRoot, relativePath);
+    try {
+      const info = await stat(fullPath);
+      if (!info.isDirectory()) missing.push(relativePath);
+    } catch {
+      missing.push(relativePath);
+    }
+  }
+  if (missing.length > 0) {
+    throw new Error(`Project workspace layout is missing ${missing.join(", ")} under ${projectWorkspaceRoot}`);
+  }
+  return { projectWorkspaceRoot, required };
+}
+
+async function fetchAndAssertProjectStatus(apiPort, projectId) {
+  const url = `http://127.0.0.1:${apiPort}/api/v1/projects/${encodeURIComponent(projectId)}/status`;
+  const res = await fetch(url);
+  const text = await res.text();
+  if (!res.ok) {
+    throw new Error(`Project status failed ${res.status}: ${text.slice(0, 1000)}`);
+  }
+  const status = JSON.parse(text);
+  if (!status.runtimeRoot || status.runtimeRoot !== status.roots?.runtime) {
+    throw new Error(`Project status must expose runtimeRoot matching roots.runtime: ${text.slice(0, 1000)}`);
+  }
+  if (!Array.isArray(status.protectedPaths) || !status.protectedPaths.includes(status.runtimeRoot)) {
+    throw new Error(`Project status protectedPaths must include runtimeRoot: ${text.slice(0, 1000)}`);
+  }
+  return {
+    projectId: status.projectId,
+    projectStore: status.projectStore,
+    projectWorkspaceRoot: status.projectWorkspaceRoot,
+    roots: status.roots,
+    runtimeRoot: status.runtimeRoot,
+    protectedPaths: status.protectedPaths,
+    editablePaths: status.editablePaths,
+    loro: status.loro,
+    localSqlitePath: status.localSqlitePath,
+  };
+}
 
 function hasTransportDiagnostic(lines) {
   return lines.some((line) =>
@@ -290,6 +349,8 @@ async function main() {
     );
 
     const persistedToolOutput = await waitForPersistedPwdOutput(apiPort, projectId);
+    const projectWorkspaceLayout = await assertProjectWorkspaceLayout(projectId);
+    const projectStatus = await fetchAndAssertProjectStatus(apiPort, projectId);
     await waitAndClickPwdToolRow(agentBrowser);
     await waitForEval(
       agentBrowser,
@@ -360,6 +421,8 @@ async function main() {
       retryStatusText: retryStatus?.text ?? null,
       transportDiagnosticObserved,
       persistedToolOutput,
+      projectWorkspaceLayout,
+      projectStatus,
       state,
     }));
   } catch (error) {

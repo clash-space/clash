@@ -1,9 +1,8 @@
 import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 function readComponent(name: string): string {
-  return readFileSync(join(process.cwd(), 'packages/remotion-ui/src/components', name), 'utf8');
+  return readFileSync(new URL(`./${name}`, import.meta.url), 'utf8');
 }
 
 describe('InteractiveCanvas primitives', () => {

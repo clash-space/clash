@@ -1,5 +1,6 @@
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm, stat } from "node:fs/promises";
 import { createServer, type Server } from "node:http";
+import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { LoroDoc } from "loro-crdt";
@@ -15,6 +16,20 @@ import { createLocalWorkflowProcessor } from "./local-processor";
 
 let dataDir = "";
 
+function openSqlite() {
+  const require = createRequire(import.meta.url);
+  const { DatabaseSync } = require("node:sqlite") as {
+    DatabaseSync: new (path: string) => {
+      prepare(sql: string): {
+        get(...params: unknown[]): Record<string, unknown> | undefined;
+        all(...params: unknown[]): Array<Record<string, unknown>>;
+      };
+      close(): void;
+    };
+  };
+  return new DatabaseSync(join(dataDir, "local.sqlite"));
+}
+
 beforeEach(async () => {
   dataDir = await mkdtemp(join(tmpdir(), "clash-local-sync-"));
 });
@@ -22,6 +37,19 @@ beforeEach(async () => {
 afterEach(async () => {
   if (dataDir) await rm(dataDir, { recursive: true, force: true });
 });
+
+function countUpdateLogRecords(log: Buffer): number {
+  let count = 0;
+  let offset = 0;
+  while (offset < log.byteLength) {
+    if (offset + 4 > log.byteLength) throw new Error("truncated update log header");
+    const length = log.readUInt32BE(offset);
+    offset += 4 + length;
+    if (offset > log.byteLength) throw new Error("truncated update log record");
+    count += 1;
+  }
+  return count;
+}
 
 describe("LocalLoroRoom", () => {
   it("registers local custom actions from JSON sideband messages", async () => {
@@ -160,28 +188,33 @@ describe("LocalLoroRoom", () => {
     expect(imageNode.data.assetId).toMatch(/^local-asset-/);
     expect(imageNode.data.pendingTask).toBeUndefined();
 
-    const db = JSON.parse(await readFile(join(dataDir, "db.json"), "utf8"));
-    expect(db.assets).toHaveLength(1);
-    expect(db.assets[0]).toMatchObject({
-      id: imageNode.data.assetId,
-      kind: "image",
-      sourceModel: "gemini-3.1-flash-image",
-      sourcePrompt: "小狗一只",
-      sourceTaskId: expect.stringMatching(/^fal-mock-/),
-      metadata: expect.objectContaining({
+    await expect(stat(join(dataDir, "db.json"))).rejects.toMatchObject({ code: "ENOENT" });
+    const sqlite = openSqlite();
+    let srcR2Key = "";
+    try {
+      const asset = sqlite.prepare("select id, kind, src_r2_key, source_model, source_prompt, source_task_id, metadata from assets").get();
+      expect(asset).toMatchObject({
+        id: imageNode.data.assetId,
+        kind: "image",
+        source_model: "gemini-3.1-flash-image",
+        source_prompt: "小狗一只",
+        source_task_id: expect.stringMatching(/^fal-mock-/),
+      });
+      expect(JSON.parse(String(asset?.metadata))).toMatchObject({
         provider: "fal-mock",
         requestId: expect.stringMatching(/^fal-mock-/),
         modelEndpoint: expect.stringContaining("fal-ai/"),
-      }),
-    });
-    expect(db.assetRefs).toEqual([
-      expect.objectContaining({
-        assetId: imageNode.data.assetId,
-        projectId: "project/local-gen",
-      }),
-    ]);
+      });
+      expect(sqlite.prepare("select asset_id, project_id from asset_refs").get()).toMatchObject({
+        asset_id: imageNode.data.assetId,
+        project_id: "project/local-gen",
+      });
+      srcR2Key = String(asset?.src_r2_key);
+    } finally {
+      sqlite.close();
+    }
 
-    const generated = await readFile(join(dataDir, "assets", db.assets[0].srcR2Key), "utf8");
+    const generated = await readFile(join(dataDir, "assets", srcR2Key), "utf8");
     expect(generated).toContain("小狗一只");
     expect(generated).toContain("Mock fal");
     expect(peerUpdates.length).toBeGreaterThan(0);
@@ -230,14 +263,22 @@ describe("LocalLoroRoom", () => {
     expect(videoNode.data.assetId).toMatch(/^local-asset-/);
     expect(audioNode.data.assetId).toMatch(/^local-asset-/);
 
-    const db = JSON.parse(await readFile(join(dataDir, "db.json"), "utf8"));
-    const videoAsset = db.assets.find((asset: any) => asset.id === videoNode.data.assetId);
-    const audioAsset = db.assets.find((asset: any) => asset.id === audioNode.data.assetId);
+    await expect(stat(join(dataDir, "db.json"))).rejects.toMatchObject({ code: "ENOENT" });
+    const sqlite = openSqlite();
+    let videoAsset: Record<string, unknown> | undefined;
+    let audioAsset: Record<string, unknown> | undefined;
+    try {
+      videoAsset = sqlite.prepare("select id, kind, source_prompt, source_task_id, metadata, src_r2_key from assets where id = ?").get(videoNode.data.assetId);
+      audioAsset = sqlite.prepare("select id, kind, source_prompt, source_task_id, metadata, src_r2_key from assets where id = ?").get(audioNode.data.assetId);
+    } finally {
+      sqlite.close();
+    }
     expect(videoAsset).toMatchObject({
       kind: "video",
-      sourcePrompt: "竖屏小狗视频",
-      sourceTaskId: expect.stringMatching(/^fal-mock-/),
-      metadata: expect.objectContaining({
+      source_prompt: "竖屏小狗视频",
+      source_task_id: expect.stringMatching(/^fal-mock-/),
+    });
+    expect(JSON.parse(String(videoAsset?.metadata))).toMatchObject({
         provider: "fal-mock",
         width: 720,
         height: 1280,
@@ -245,22 +286,22 @@ describe("LocalLoroRoom", () => {
         contentType: "video/mp4",
         modelEndpoint: expect.stringContaining("fal-ai/"),
         mockText: "竖屏小狗视频",
-      }),
     });
     expect(audioAsset).toMatchObject({
       kind: "audio",
-      sourcePrompt: "这是一段三秒 mock 音频",
-      sourceTaskId: expect.stringMatching(/^fal-mock-/),
-      metadata: expect.objectContaining({
+      source_prompt: "这是一段三秒 mock 音频",
+      source_task_id: expect.stringMatching(/^fal-mock-/),
+    });
+    const audioMetadata = JSON.parse(String(audioAsset?.metadata));
+    expect(audioMetadata).toMatchObject({
         provider: "fal-mock",
         durationMs: 3000,
         contentType: "audio/wav",
         transcript: "这是一段三秒 mock 音频",
-      }),
     });
-    expect(audioAsset.metadata.waveform).toHaveLength(128);
+    expect(audioMetadata.waveform).toHaveLength(128);
 
-    const audioBytes = await readFile(join(dataDir, "assets", audioAsset.srcR2Key), "utf8");
+    const audioBytes = await readFile(join(dataDir, "assets", String(audioAsset?.src_r2_key)), "utf8");
     expect(audioBytes).toContain("这是一段三秒 mock 音频");
   });
 
@@ -442,6 +483,28 @@ describe("LocalLoroRoom", () => {
     const persisted = new LoroDoc();
     persisted.import(reopened.snapshot());
     expect((persisted.getMap("nodes").get("node-cloud") as any).data.label).toBe("Cloud");
+  });
+
+  it("periodically compacts local update log records instead of keeping one record per edit", async () => {
+    const projectId = "project/compact-log";
+    const room = await LocalLoroRoom.open({ dataDir, projectId, workflowProcessor: null });
+    const peer = room.addPeer(() => {});
+
+    for (let i = 0; i < 40; i += 1) {
+      const clientDoc = new LoroDoc();
+      clientDoc.getMap("nodes").set(`node-${i}`, { type: "text", data: { label: `Edit ${i}` } });
+      await room.receive(peer, clientDoc.export({ mode: "snapshot" }));
+    }
+
+    const logPath = join(dataDir, "projects", encodeURIComponent(projectId), "loro", "updates.log");
+    const log = await readFile(logPath);
+    expect(countUpdateLogRecords(log)).toBeLessThan(40);
+
+    const reopened = await LocalLoroRoom.open({ dataDir, projectId, workflowProcessor: null });
+    const persisted = new LoroDoc();
+    persisted.import(reopened.snapshot());
+    expect((persisted.getMap("nodes").get("node-0") as any).data.label).toBe("Edit 0");
+    expect((persisted.getMap("nodes").get("node-39") as any).data.label).toBe("Edit 39");
   });
 });
 

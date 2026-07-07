@@ -62,8 +62,12 @@ interface ChatbotCopilotProps {
     onCollapseChange: (collapsed: boolean) => void;
     selectedNodes?: RFNode[];
     onAddNode?: (type: string, extraData?: any) => string;
-    onAddEdge?: (params: RFEdge | RFConnection) => void;
-    onUpdateNode?: (nodeId: string, updates: Partial<RFNode>) => void;
+    onRemoveNode?: (nodeId: string, options?: { actorClientType?: string; ifMatch?: string; force?: boolean }) => void;
+    onAddEdge?: (params: RFEdge | RFConnection, options?: { actorClientType?: string; ifMatch?: string; force?: boolean }) => void;
+    onUpdateEdge?: (edgeId: string, patch: Record<string, unknown>, options?: { actorClientType?: string; ifMatch?: string; force?: boolean }) => void;
+    onRemoveEdge?: (edgeId: string, options?: { actorClientType?: string; ifMatch?: string; force?: boolean }) => void;
+    onApplyTimeline?: (nodeId: string, timelineDsl: unknown, options?: { actorClientType?: string; ifMatch?: string; force?: boolean }) => void;
+    onUpdateNode?: (nodeId: string, updates: Partial<RFNode>, options?: { actorClientType?: string; ifMatch?: string; force?: boolean }) => void;
     findNodeIdByName?: (name: string) => string | undefined;
     nodes?: RFNode[];
     edges?: RFEdge[];
@@ -538,7 +542,11 @@ export default function ChatbotCopilot({
     onCollapseChange,
     selectedNodes = [],
     onAddNode,
-    onAddEdge: _onAddEdge,
+    onRemoveNode,
+    onAddEdge,
+    onUpdateEdge,
+    onRemoveEdge,
+    onApplyTimeline,
     onUpdateNode,
     findNodeIdByName: _findNodeIdByName,
     nodes = [],
@@ -907,6 +915,11 @@ export default function ChatbotCopilot({
     const panelRef = useRef<HTMLElement | null>(null);
     const resizeStartWidthRef = useRef(width);
     const appliedRuntimeCanvasNodesRef = useRef<Set<string>>(new Set());
+    const appliedRuntimeCanvasNodeDeletesRef = useRef<Set<string>>(new Set());
+    const appliedRuntimeCanvasEdgesRef = useRef<Set<string>>(new Set());
+    const appliedRuntimeCanvasEdgeUpdatesRef = useRef<Set<string>>(new Set());
+    const appliedRuntimeCanvasEdgeDeletesRef = useRef<Set<string>>(new Set());
+    const appliedRuntimeTimelineAppliesRef = useRef<Set<string>>(new Set());
 
     const closeMobileSheet = useCallback(() => onCollapseChange(true), [onCollapseChange]);
 
@@ -1079,17 +1092,91 @@ export default function ChatbotCopilot({
         (showRuntimeActivityRow || (isDesktopLocalMode && (clashRt.status === 'draft' || clashRt.ready)));
 
     useEffect(() => {
-        if (chatMode !== 'runtime' || !onAddNode) return;
+        if (chatMode !== 'runtime' || (!onAddNode && !onRemoveNode && !onAddEdge && !onUpdateEdge && !onRemoveEdge && !onApplyTimeline)) return;
+
+        const pendingNodeDeletes: Array<{ nodeId: string; ifMatch?: string; force?: boolean; requiresReadProof: boolean }> = [];
+        const pendingEdges: Array<{ id: string; source: string; target: string; type?: string; ifMatch?: string; force?: boolean; requiresReadProof: boolean }> = [];
+        const pendingEdgeUpdates: Array<{ id: string; patch: Record<string, unknown>; ifMatch?: string; force?: boolean }> = [];
+        const pendingEdgeDeletes: Array<{ id: string; ifMatch?: string; force?: boolean }> = [];
+        const pendingTimelineApplies: Array<{ nodeId: string; dsl: unknown; ifMatch?: string; force?: boolean; requiresReadProof: boolean }> = [];
 
         for (const message of clashRt.messages) {
             for (const part of message.parts) {
                 if (part.type !== 'raw_event') continue;
                 const operations = parseAgentCanvasPatch(part.event);
+                const createdNodeIdsInPatch = new Set<string>();
                 for (const operation of operations) {
-                    if (operation.op !== 'add_node') continue;
+                    if (operation.op === 'add_edge') {
+                        if (!onAddEdge) continue;
+                        const patchEdge = operation.edge;
+                        if (appliedRuntimeCanvasEdgesRef.current.has(patchEdge.id)) continue;
+                        appliedRuntimeCanvasEdgesRef.current.add(patchEdge.id);
+                        pendingEdges.push({
+                            ...patchEdge,
+                            ifMatch: operation.ifMatch,
+                            force: operation.force,
+                            requiresReadProof: !createdNodeIdsInPatch.has(patchEdge.source) && !createdNodeIdsInPatch.has(patchEdge.target),
+                        });
+                        continue;
+                    }
+
+                    if (operation.op === 'update_edge') {
+                        if (!onUpdateEdge) continue;
+                        const key = `${operation.edge.id}:${JSON.stringify(operation.edge.patch)}`;
+                        if (appliedRuntimeCanvasEdgeUpdatesRef.current.has(key)) continue;
+                        appliedRuntimeCanvasEdgeUpdatesRef.current.add(key);
+                        pendingEdgeUpdates.push({
+                            ...operation.edge,
+                            ifMatch: operation.ifMatch,
+                            force: operation.force,
+                        });
+                        continue;
+                    }
+
+                    if (operation.op === 'delete_edge') {
+                        if (!onRemoveEdge) continue;
+                        const edgeId = operation.edge.id;
+                        if (appliedRuntimeCanvasEdgeDeletesRef.current.has(edgeId)) continue;
+                        appliedRuntimeCanvasEdgeDeletesRef.current.add(edgeId);
+                        pendingEdgeDeletes.push({
+                            id: edgeId,
+                            ifMatch: operation.ifMatch,
+                            force: operation.force,
+                        });
+                        continue;
+                    }
+
+                    if (operation.op === 'timeline_apply') {
+                        if (!onApplyTimeline) continue;
+                        const key = `${operation.timeline.nodeId}:${JSON.stringify(operation.timeline.dsl)}`;
+                        if (appliedRuntimeTimelineAppliesRef.current.has(key)) continue;
+                        appliedRuntimeTimelineAppliesRef.current.add(key);
+                        pendingTimelineApplies.push({
+                            ...operation.timeline,
+                            requiresReadProof: !createdNodeIdsInPatch.has(operation.timeline.nodeId),
+                        });
+                        continue;
+                    }
+
+                    if (operation.op === 'delete_node') {
+                        if (!onRemoveNode) continue;
+                        const nodeId = operation.node.id;
+                        if (appliedRuntimeCanvasNodeDeletesRef.current.has(nodeId)) continue;
+                        appliedRuntimeCanvasNodeDeletesRef.current.add(nodeId);
+                        pendingNodeDeletes.push({
+                            nodeId,
+                            ifMatch: operation.ifMatch,
+                            force: operation.force,
+                            requiresReadProof: !createdNodeIdsInPatch.has(nodeId),
+                        });
+                        continue;
+                    }
+
+                    if (operation.op !== 'add_node' || !onAddNode) continue;
                     const patchNode = operation.node;
                     if (appliedRuntimeCanvasNodesRef.current.has(patchNode.id)) continue;
                     appliedRuntimeCanvasNodesRef.current.add(patchNode.id);
+                    createdNodeIdsInPatch.add(patchNode.id);
 
                     const data = applyAgentAttribution(patchNode.data, {
                         actorUserId,
@@ -1108,7 +1195,87 @@ export default function ChatbotCopilot({
                 }
             }
         }
-    }, [actorUserId, chatMode, clashRt.messages, clashRt.selectedAgentId, onAddNode]);
+
+        if (
+            (pendingNodeDeletes.length > 0 && onRemoveNode) ||
+            (pendingEdges.length > 0 && onAddEdge) ||
+            (pendingEdgeUpdates.length > 0 && onUpdateEdge) ||
+            (pendingEdgeDeletes.length > 0 && onRemoveEdge) ||
+            (pendingTimelineApplies.length > 0 && onApplyTimeline)
+        ) {
+            window.setTimeout(() => {
+                if (onRemoveNode) {
+                    for (const deletion of pendingNodeDeletes) {
+                        onRemoveNode(
+                            deletion.nodeId,
+                            deletion.requiresReadProof
+                                ? {
+                                    actorClientType: 'agent',
+                                    ifMatch: deletion.ifMatch,
+                                    force: deletion.force,
+                                }
+                                : deletion.force
+                                    ? { force: true }
+                                    : undefined,
+                        );
+                    }
+                }
+                if (onAddEdge) {
+                    for (const patchEdge of pendingEdges) {
+                        onAddEdge({
+                            id: patchEdge.id,
+                            source: patchEdge.source,
+                            target: patchEdge.target,
+                            type: patchEdge.type ?? 'default',
+                        }, patchEdge.requiresReadProof
+                            ? {
+                                actorClientType: 'agent',
+                                ifMatch: patchEdge.ifMatch,
+                                force: patchEdge.force,
+                            }
+                            : patchEdge.force
+                                ? { force: true }
+                                : undefined);
+                    }
+                }
+                if (onUpdateEdge) {
+                    for (const edgeUpdate of pendingEdgeUpdates) {
+                        onUpdateEdge(edgeUpdate.id, edgeUpdate.patch, {
+                            actorClientType: 'agent',
+                            ifMatch: edgeUpdate.ifMatch,
+                            force: edgeUpdate.force,
+                        });
+                    }
+                }
+                if (onRemoveEdge) {
+                    for (const edgeDelete of pendingEdgeDeletes) {
+                        onRemoveEdge(edgeDelete.id, {
+                            actorClientType: 'agent',
+                            ifMatch: edgeDelete.ifMatch,
+                            force: edgeDelete.force,
+                        });
+                    }
+                }
+                if (onApplyTimeline) {
+                    for (const apply of pendingTimelineApplies) {
+                        onApplyTimeline(
+                            apply.nodeId,
+                            apply.dsl,
+                            apply.requiresReadProof
+                                ? {
+                                    actorClientType: 'agent',
+                                    ifMatch: apply.ifMatch,
+                                    force: apply.force,
+                                }
+                                : apply.force
+                                    ? { force: true }
+                                    : undefined,
+                        );
+                    }
+                }
+            }, 0);
+        }
+    }, [actorUserId, chatMode, clashRt.messages, clashRt.selectedAgentId, onAddEdge, onAddNode, onApplyTimeline, onRemoveEdge, onRemoveNode, onUpdateEdge]);
 
     // Mount-time send of the pending first message. Parent gives us a fresh
     // `key={threadId}` whenever the session changes, so this component remounts

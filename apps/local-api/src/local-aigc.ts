@@ -396,6 +396,15 @@ function vertexBaseHost(location: string): string {
   return location === "global" ? "aiplatform.googleapis.com" : `${location}-aiplatform.googleapis.com`;
 }
 
+function googleAgentPlatformModelUrl(
+  credentials: GoogleAgentPlatformCredentials,
+  location: string,
+  route: ModelUpstreamRoute,
+  action: string,
+): string {
+  return `https://${vertexBaseHost(location)}/v1/projects/${credentials.project}/locations/${location}/publishers/google/models/${route.upstreamModel}:${action}`;
+}
+
 function googleAgentPlatformTextBody(input: MockMediaGenerationInput): Record<string, unknown> {
   const body: Record<string, unknown> = {
     contents: [{ role: "user", parts: [{ text: input.prompt }] }],
@@ -413,6 +422,72 @@ function googleText(json: any): string | null {
   return text ? text : null;
 }
 
+function googleAgentPlatformImageBody(input: MockMediaGenerationInput): Record<string, unknown> {
+  const params = input.modelParams ?? {};
+  const imageConfig: Record<string, unknown> = {};
+  const aspectRatio = input.aspectRatio || stringParam(params, "aspect_ratio");
+  if (aspectRatio) imageConfig.aspectRatio = aspectRatio;
+  const resolution = stringParam(params, "resolution");
+  if (resolution) imageConfig.imageSize = resolution.toLowerCase();
+  return {
+    contents: [{ role: "user", parts: [{ text: input.prompt }] }],
+    generationConfig: {
+      responseModalities: ["TEXT", "IMAGE"],
+      ...(Object.keys(imageConfig).length ? { imageConfig } : {}),
+    },
+  };
+}
+
+function googleAgentPlatformVideoBody(input: MockMediaGenerationInput): Record<string, unknown> {
+  const params = input.modelParams ?? {};
+  const parameters: Record<string, unknown> = {
+    aspectRatio: input.aspectRatio || stringParam(params, "aspect_ratio") || "16:9",
+    sampleCount: Math.max(1, Math.min(4, numberParam(params, "count", 1))),
+    personGeneration: stringParam(params, "person_generation") || "allow_adult",
+  };
+  const durationSeconds = input.duration ?? numberParam(params, "duration", 0);
+  if (durationSeconds > 0) parameters.durationSeconds = durationSeconds;
+  const negativePrompt = stringParam(params, "negative_prompt") || stringParam(params, "negativePrompt");
+  if (negativePrompt) parameters.negativePrompt = negativePrompt;
+  const resolution = stringParam(params, "resolution");
+  if (resolution) parameters.resolution = resolution;
+  const seed = numberParam(params, "seed", Number.NaN);
+  if (Number.isFinite(seed)) parameters.seed = seed;
+  return {
+    instances: [{ prompt: input.prompt }],
+    parameters,
+  };
+}
+
+function googleVideoInlineData(json: any): { data: string; mimeType: string } | null {
+  const response = json?.response ?? json;
+  const samples = response?.generated_samples ?? response?.generatedVideos ?? response?.videos ?? [];
+  if (!Array.isArray(samples)) return null;
+  for (const sample of samples) {
+    const video = sample?.video ?? sample;
+    const data = video?.bytesBase64Encoded ?? video?.data;
+    if (typeof data === "string" && data) {
+      return {
+        data,
+        mimeType: video?.mimeType ?? video?.mime_type ?? "video/mp4",
+      };
+    }
+  }
+  return null;
+}
+
+function googleVideoUri(json: any): string | null {
+  const response = json?.response ?? json;
+  const samples = response?.generated_samples ?? response?.generatedVideos ?? response?.videos ?? [];
+  if (!Array.isArray(samples)) return null;
+  for (const sample of samples) {
+    const video = sample?.video ?? sample;
+    const uri = video?.uri ?? video?.gcsUri ?? video?.gcs_uri;
+    if (typeof uri === "string" && uri) return uri;
+  }
+  return null;
+}
+
 async function generateGoogleAgentPlatformText(
   input: MockMediaGenerationInput,
   route: ModelUpstreamRoute,
@@ -422,17 +497,14 @@ async function generateGoogleAgentPlatformText(
   const credentials = parseGoogleAgentPlatformCredentials(rawCredentials);
   const location = credentials.location || route.region || "global";
   const token = await googleVertexAccessToken(credentials, fetchImpl);
-  const response = await fetchImpl(
-    `https://${vertexBaseHost(location)}/v1/projects/${credentials.project}/locations/${location}/publishers/google/models/${route.upstreamModel}:generateContent`,
-    {
-      method: "POST",
-      headers: {
-        authorization: `Bearer ${token}`,
-        "content-type": "application/json",
-      },
-      body: JSON.stringify(googleAgentPlatformTextBody(input)),
+  const response = await fetchImpl(googleAgentPlatformModelUrl(credentials, location, route, "generateContent"), {
+    method: "POST",
+    headers: {
+      authorization: `Bearer ${token}`,
+      "content-type": "application/json",
     },
-  );
+    body: JSON.stringify(googleAgentPlatformTextBody(input)),
+  });
   const json = await responseJson(response);
   if (!response.ok) {
     throw new Error(`Google Cloud Agent Platform text request failed: ${json?.error?.message ?? response.statusText}`);
@@ -445,6 +517,104 @@ async function generateGoogleAgentPlatformText(
     bytes: new TextEncoder().encode(text),
     contentType: "text/plain; charset=utf-8",
     requestId: input.taskId,
+    provider: "google-agent-platform",
+    modelEndpoint: route.upstreamModel,
+  };
+}
+
+async function generateGoogleAgentPlatformImage(
+  input: MockMediaGenerationInput,
+  route: ModelUpstreamRoute,
+  fetchImpl: typeof fetch,
+  rawCredentials: string,
+): Promise<MockMediaGenerationResult> {
+  const credentials = parseGoogleAgentPlatformCredentials(rawCredentials);
+  const location = credentials.location || route.region || "global";
+  const token = await googleVertexAccessToken(credentials, fetchImpl);
+  const response = await fetchImpl(googleAgentPlatformModelUrl(credentials, location, route, "generateContent"), {
+    method: "POST",
+    headers: {
+      authorization: `Bearer ${token}`,
+      "content-type": "application/json",
+    },
+    body: JSON.stringify(googleAgentPlatformImageBody(input)),
+  });
+  const json = await responseJson(response);
+  if (!response.ok) {
+    throw new Error(`Google Cloud Agent Platform image request failed: ${json?.error?.message ?? response.statusText}`);
+  }
+  const inlineData = googleInlineData(json);
+  if (!inlineData) {
+    throw new Error(`Google Cloud Agent Platform response returned no image for ${route.upstreamModel}.`);
+  }
+  return {
+    bytes: base64ToBytes(inlineData.data),
+    contentType: inlineData.mimeType,
+    requestId: input.taskId,
+    provider: "google-agent-platform",
+    modelEndpoint: route.upstreamModel,
+  };
+}
+
+async function generateGoogleAgentPlatformVideo(
+  input: MockMediaGenerationInput,
+  route: ModelUpstreamRoute,
+  fetchImpl: typeof fetch,
+  rawCredentials: string,
+): Promise<MockMediaGenerationResult> {
+  const credentials = parseGoogleAgentPlatformCredentials(rawCredentials);
+  const location = credentials.location || route.region || "global";
+  const token = await googleVertexAccessToken(credentials, fetchImpl);
+  const headers = {
+    authorization: `Bearer ${token}`,
+    "content-type": "application/json",
+  };
+  const submitResponse = await fetchImpl(googleAgentPlatformModelUrl(credentials, location, route, "predictLongRunning"), {
+    method: "POST",
+    headers,
+    body: JSON.stringify(googleAgentPlatformVideoBody(input)),
+  });
+  const submitted = await responseJson(submitResponse);
+  if (!submitResponse.ok) {
+    throw new Error(`Google Cloud Agent Platform video request failed: ${submitted?.error?.message ?? submitResponse.statusText}`);
+  }
+  const operationName = submitted?.name;
+  if (typeof operationName !== "string" || !operationName) {
+    throw new Error(`Google Cloud Agent Platform video response returned no operation name for ${route.upstreamModel}.`);
+  }
+
+  let operation: any = null;
+  for (let attempt = 0; attempt < 108; attempt += 1) {
+    const pollResponse = await fetchImpl(googleAgentPlatformModelUrl(credentials, location, route, "fetchPredictOperation"), {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ operationName }),
+    });
+    operation = await responseJson(pollResponse);
+    if (!pollResponse.ok) {
+      throw new Error(`Google Cloud Agent Platform video poll failed: ${operation?.error?.message ?? pollResponse.statusText}`);
+    }
+    if (operation?.done) break;
+    await new Promise((resolve) => setTimeout(resolve, 5000));
+  }
+  if (!operation?.done) {
+    throw new Error(`Google Cloud Agent Platform video request timed out: ${operationName}`);
+  }
+  if (operation.error) {
+    throw new Error(`Google Cloud Agent Platform video request failed: ${JSON.stringify(operation.error).slice(0, 500)}`);
+  }
+  const inlineData = googleVideoInlineData(operation);
+  if (!inlineData) {
+    const uri = googleVideoUri(operation);
+    if (uri) {
+      throw new Error(`Google Cloud Agent Platform video returned a URI instead of inline bytes: ${uri}`);
+    }
+    throw new Error(`Google Cloud Agent Platform video response returned no video for ${route.upstreamModel}.`);
+  }
+  return {
+    bytes: base64ToBytes(inlineData.data),
+    contentType: inlineData.mimeType,
+    requestId: operationName,
     provider: "google-agent-platform",
     modelEndpoint: route.upstreamModel,
   };
@@ -960,10 +1130,13 @@ export function createMockExternalAigcService(
       }, apiKey);
     }
 
-    if (route.apiShape === "google-agent-platform" && kind === "text") {
+    if (route.apiShape === "google-agent-platform") {
       const vertexCredentials = credential(route, providerAccounts, "vertexCredentials");
       if (!vertexCredentials) return fallback();
-      return generateGoogleAgentPlatformText(input, route, fetchImpl, vertexCredentials);
+      if (kind === "text") return generateGoogleAgentPlatformText(input, route, fetchImpl, vertexCredentials);
+      if (kind === "image") return generateGoogleAgentPlatformImage(input, route, fetchImpl, vertexCredentials);
+      if (kind === "video") return generateGoogleAgentPlatformVideo(input, route, fetchImpl, vertexCredentials);
+      throw missingAdapter(route);
     }
 
     if (route.apiShape === "fal") {

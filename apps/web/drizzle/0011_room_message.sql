@@ -11,7 +11,7 @@
 -- their own daemon with their own agent sessions, but the room is shared
 -- across the project's members.
 --
--- mentions_json — array of {user_id, agent_member_id?}. Used by ProjectRoom DO to
+-- mentions_json — array of {user_id?, agent_member_id?}. Used by ProjectRoom DO to
 -- look up the matching runtime_session (where agent_member_id=?) and
 -- push room.mention into that agent's react loop.
 --
@@ -25,7 +25,7 @@ CREATE TABLE `room_message` (
     `sender_kind` TEXT NOT NULL,        -- 'user' | 'agent'
     `sender_id` TEXT NOT NULL,          -- user_id (when 'user') or agent_member_id (when 'agent')
     `sender_user_id` TEXT NOT NULL,     -- always the human; for agents it's the daemon owner
-    `mentions_json` TEXT NOT NULL,      -- '[]' or '[{"user_id":"alice","agent_member_id":"local-director"}]'
+    `mentions_json` TEXT NOT NULL,      -- '[]' or '[{"agent_member_id":"local-director"}]'
     `text` TEXT NOT NULL,
     `created_at` INTEGER NOT NULL
 );

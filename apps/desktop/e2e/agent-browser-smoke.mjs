@@ -4,7 +4,7 @@ import { createRequire } from "node:module";
 import net from "node:net";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { clickComposerSubmitButton, typeComposer } from "./startup-shared.mjs";
+import { clickButtonByLabel, clickComposerSubmitButton, typeComposer } from "./startup-shared.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const require = createRequire(import.meta.url);
@@ -74,6 +74,26 @@ function tail(lines, max = 100) {
   return lines.slice(Math.max(0, lines.length - max)).join("");
 }
 
+const forbiddenRendererPatterns = [
+  /Cannot update a component .* while rendering a different component/,
+  /Maximum update depth exceeded/,
+  /Rendered (?:fewer|more) hooks than expected/,
+  /Invalid hook call/,
+  /Minified React error #/,
+];
+
+function assertNoForbiddenRendererIssues(logs) {
+  const text = logs.join("");
+  const matched = forbiddenRendererPatterns.find((pattern) => pattern.test(text));
+  if (!matched) return;
+  const lines = text
+    .split(/\r?\n/)
+    .filter((line) => forbiddenRendererPatterns.some((pattern) => pattern.test(line)));
+  throw new Error(
+    `Forbidden renderer issue matched ${matched}: ${lines.slice(-5).join("\n")}`,
+  );
+}
+
 function sleepSync(ms) {
   Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
 }
@@ -135,25 +155,6 @@ async function waitForEval(expression, label, timeoutMs = 20000) {
   throw new Error(`Timed out waiting for ${label}; last value: ${JSON.stringify(lastValue)}`);
 }
 
-function clickVisibleButtonByLabel(label) {
-  return evalJson(`(() => {
-    const button = [...document.querySelectorAll("button")].find((el) => {
-      const text = (el.innerText || el.textContent || "").trim();
-      const aria = el.getAttribute("aria-label") || "";
-      const rect = el.getBoundingClientRect();
-      const style = getComputedStyle(el);
-      return (text === ${JSON.stringify(label)} || aria === ${JSON.stringify(label)}) &&
-        rect.width > 0 && rect.height > 0 &&
-        style.display !== "none" && style.visibility !== "hidden" &&
-        !el.disabled;
-    });
-    if (!button) return false;
-    button.scrollIntoView({ block: "center", inline: "center" });
-    button.click();
-    return true;
-  })()`);
-}
-
 function clickVisibleLinkOrButtonByText(text) {
   return evalJson(`(() => {
     const el = [...document.querySelectorAll("a, button, [role='button'], [role='tab']")].find((candidate) => {
@@ -168,6 +169,33 @@ function clickVisibleLinkOrButtonByText(text) {
     if (!el) return false;
     el.scrollIntoView({ block: "center", inline: "center" });
     el.click();
+    return true;
+  })()`);
+}
+
+function clickHistoryMenuItemByText(text) {
+  return evalJson(`(() => {
+    const wanted = ${JSON.stringify(text)};
+    const menu = document.querySelector('[role="menu"][aria-label="Session history"], [role="menu"][aria-label="历史会话"]');
+    const root = menu || document;
+    const item = [...root.querySelectorAll("[role='menuitem']")].find((candidate) => {
+      const value = (candidate.innerText || candidate.textContent || "").trim();
+      const rect = candidate.getBoundingClientRect();
+      const style = getComputedStyle(candidate);
+      return value.includes(wanted) &&
+        rect.width > 0 && rect.height > 0 &&
+        style.display !== "none" && style.visibility !== "hidden" &&
+        candidate.getAttribute("aria-disabled") !== "true";
+    });
+    if (!item) return false;
+    item.scrollIntoView({ block: "center", inline: "center" });
+    const pointerInit = { bubbles: true, cancelable: true, button: 0, pointerId: 1, pointerType: "mouse", isPrimary: true };
+    const mouseInit = { bubbles: true, cancelable: true, button: 0 };
+    item.dispatchEvent(new PointerEvent("pointerdown", pointerInit));
+    item.dispatchEvent(new MouseEvent("mousedown", mouseInit));
+    item.dispatchEvent(new PointerEvent("pointerup", pointerInit));
+    item.dispatchEvent(new MouseEvent("mouseup", mouseInit));
+    item.click();
     return true;
   })()`);
 }
@@ -310,7 +338,7 @@ async function main() {
     await sendPrompt(firstPrompt);
     const firstHistory = await assertRuntimeHistory(projectId, apiOrigin, 1);
 
-    if (!clickVisibleButtonByLabel("New session") && !clickVisibleButtonByLabel("新建会话")) {
+    if (!clickButtonByLabel(agentBrowser, "New session") && !clickButtonByLabel(agentBrowser, "新建会话")) {
       throw new Error("Could not click New session");
     }
     await waitForEval(
@@ -321,19 +349,27 @@ async function main() {
     await sendPrompt(secondPrompt);
     const secondHistory = await assertRuntimeHistory(projectId, apiOrigin, 2);
 
-    if (!clickVisibleButtonByLabel("Session history") && !clickVisibleButtonByLabel("历史会话")) {
+    if (!clickButtonByLabel(agentBrowser, "Session history") && !clickButtonByLabel(agentBrowser, "历史会话")) {
       throw new Error("Could not open session history");
     }
     await waitForEval(
       `(() => {
-        const text = document.body.innerText.toLowerCase();
-        return !!document.querySelector("[role='dialog']") &&
-          (text.includes("session history") || document.body.innerText.includes("历史会话"));
+        const menu = document.querySelector('[role="menu"][aria-label="Session history"], [role="menu"][aria-label="历史会话"]');
+        return !!menu && !menu.innerText.toLowerCase().includes("no history yet");
       })()`,
       "session history panel",
       10000,
     );
     agentBrowser(["screenshot", historyScreenshot]);
+    if (!clickHistoryMenuItemByText(firstPrompt)) {
+      throw new Error("Could not restore the first session from history");
+    }
+    await waitForEval(
+      `document.body.innerText.includes(${JSON.stringify(firstPrompt)}) &&
+        document.body.innerText.includes(${JSON.stringify(`Mock ACP reply: ${firstPrompt}`)})`,
+      "restored first session transcript",
+      20000,
+    );
 
     const state = evalJson(`(() => ({
       href: location.href,
@@ -346,10 +382,11 @@ async function main() {
     console.log("[desktop-agent-browser] history", JSON.stringify({ firstHistory, secondHistory }));
     console.log(`[desktop-agent-browser] screenshot ${latestScreenshot}`);
     console.log(`[desktop-agent-browser] history screenshot ${historyScreenshot}`);
+    assertNoForbiddenRendererIssues(electronLogs);
   } catch (error) {
     try {
       agentBrowser(["screenshot", latestScreenshot], { allowFailure: true });
-    console.error(`[desktop-agent-browser] failure screenshot ${latestScreenshot}`);
+      console.error(`[desktop-agent-browser] failure screenshot ${latestScreenshot}`);
     } catch {
       // Ignore screenshot failure while unwinding.
     }

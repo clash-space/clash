@@ -1,0 +1,59 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Clash semantic reference roles projection",
+  "type": "object",
+  "required": ["schemaVersion", "kind", "targetAssetId", "roles", "copyOnWriteRequired"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "kind": { "const": "clash.image.semantic-reference-roles.projection" },
+    "targetAssetId": { "type": "string" },
+    "copyOnWriteRequired": { "type": "boolean" },
+    "roles": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "roleId",
+          "assetId",
+          "role",
+          "path",
+          "locked",
+          "copyOnWriteRequired",
+          "downstreamUsage",
+          "constraints"
+        ],
+        "properties": {
+          "roleId": { "type": "string" },
+          "assetId": { "type": "string" },
+          "role": {
+            "enum": [
+              "identity-front",
+              "identity-side",
+              "identity-back",
+              "identity-three-quarter",
+              "identity-expression",
+              "scene-plate",
+              "style-frame",
+              "logo-lock",
+              "product-packshot"
+            ]
+          },
+          "subjectId": { "type": "string" },
+          "path": { "type": "string" },
+          "locked": { "type": "boolean" },
+          "copyOnWriteRequired": { "type": "boolean" },
+          "downstreamUsage": {
+            "enum": [
+              "identity-reference",
+              "scene-reference",
+              "style-reference",
+              "brand-lock",
+              "product-reference"
+            ]
+          },
+          "constraints": { "type": "array", "items": { "type": "string" } }
+        }
+      }
+    }
+  }
+}

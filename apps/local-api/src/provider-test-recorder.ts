@@ -294,6 +294,13 @@ export function createProviderTestReplayFixtures(events: readonly ProviderTestRe
   });
 }
 
+export function filterProviderTestReplayFixturesForStub(
+  fixtures: readonly ProviderTestReplayFixture[],
+  stubId: string,
+): ProviderTestReplayFixture[] {
+  return fixtures.filter((fixture) => fixture.stub.id === stubId);
+}
+
 export function createProviderTestReplayFetch(fixtures: readonly ProviderTestReplayFixture[]): typeof fetch {
   const pending = [...fixtures];
   return (async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
@@ -312,6 +319,23 @@ export function createProviderTestReplayFetch(fixtures: readonly ProviderTestRep
       headers: fixture.response.headers,
     });
   }) as typeof fetch;
+}
+
+export async function replayProviderTestCallbacks(
+  fixtures: readonly ProviderTestReplayFixture[],
+  handler: typeof fetch,
+): Promise<Response[]> {
+  const responses: Response[] = [];
+  for (const fixture of fixtures) {
+    for (const callback of fixture.callbacks) {
+      responses.push(await handler(callback.url, {
+        method: callback.method,
+        headers: callback.headers,
+        ...(callback.body === undefined ? {} : { body: providerTestReplayResponseBody(callback.body) }),
+      }));
+    }
+  }
+  return responses;
 }
 
 function providerConformanceInputForModel(shape: ModelKind, model: string, modelName: string): ProviderConformanceInput {
@@ -348,7 +372,8 @@ function normalizePayload(value: unknown): ProviderTestRecordingPayload {
       try {
         return normalizePayload(JSON.parse(value));
       } catch {
-        return value;
+        const formBody = normalizeUrlEncodedPayload(value);
+        return formBody ?? value;
       }
     }
     return value;
@@ -374,8 +399,20 @@ function normalizePayload(value: unknown): ProviderTestRecordingPayload {
   return String(value);
 }
 
+function normalizeUrlEncodedPayload(value: string): ProviderTestRecordingPayload | null {
+  if (!value.includes("=") || !value.includes("&")) return null;
+  try {
+    const params = new URLSearchParams(value);
+    const entries = [...params.entries()];
+    if (!entries.length) return null;
+    return normalizePayload(Object.fromEntries(entries));
+  } catch {
+    return null;
+  }
+}
+
 function shouldRedactKey(key: string): boolean {
-  return /authorization|api[-_]?key|access[-_]?key|secret|token|password/i.test(key);
+  return /authorization|api[-_]?key|access[-_]?key|private[-_]?key|secret|token|password|assertion/i.test(key);
 }
 
 async function providerTestFetchRequest(input: RequestInfo | URL, init?: RequestInit): Promise<{
@@ -484,7 +521,29 @@ function providerTestReplayFixtureMatches(
 }
 
 function providerTestPayloadKey(value: unknown): string {
-  return JSON.stringify(normalizePayload(value));
+  return JSON.stringify(normalizeReplayComparablePayload(normalizePayload(value)));
+}
+
+function normalizeReplayComparablePayload(value: ProviderTestRecordingPayload): ProviderTestRecordingPayload {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return value;
+  const body = value as Record<string, ProviderTestRecordingPayload>;
+  const generationConfig = body.generationConfig;
+  if (!generationConfig || typeof generationConfig !== "object" || Array.isArray(generationConfig)) {
+    return value;
+  }
+  const config = generationConfig as Record<string, ProviderTestRecordingPayload>;
+  const responseModalities = config.responseModalities;
+  const hasImageOutput = Array.isArray(responseModalities) &&
+    responseModalities.some((item) => typeof item === "string" && item.toUpperCase() === "IMAGE");
+  if (!hasImageOutput || config.imageConfig !== undefined) return value;
+
+  return {
+    ...body,
+    generationConfig: {
+      ...config,
+      imageConfig: { aspectRatio: "16:9" },
+    },
+  };
 }
 
 function providerTestReplayResponseBody(body: ProviderTestRecordingPayload | undefined): BodyInit | null {

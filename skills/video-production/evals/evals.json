@@ -1,0 +1,168 @@
+{
+  "skill_set": "clash-video-production",
+  "version": 1,
+  "evals": [
+    {
+      "id": "architecture-local-first-pipeline",
+      "skill_id": "clash.video.agentic-video-architecture",
+      "prompt": "Design a local-first Clash pipeline for a 30s product video that an agent can run through files, but protect canvas and final exports.",
+      "expected_output": "Pipeline manifest with stages, editable/protected files, CAS apply boundaries, and QA gates."
+    },
+    {
+      "id": "asset-lineage-copy-on-write",
+      "skill_id": "clash.media.asset-metadata-architecture",
+      "prompt": "Define how generated images, imported videos, transcript files, and rendered clips should be stored when downstream references exist.",
+      "expected_output": "Asset manifest/lineage policy including immutable bytes, copy-on-write, rights, and analysis metadata."
+    },
+    {
+      "id": "short-drama-character-scene-pack",
+      "skill_id": "clash.video.short-drama-production",
+      "prompt": "Create the production files for episode 1 of a 60s vertical hidden-identity short drama, including character 三视图 and scene sheet requirements.",
+      "expected_output": "Series brief, character identity files, reference sheet plan, storyboard, prompt pack, and timeline projection plan."
+    },
+    {
+      "id": "mv-beat-grid-cut-plan",
+      "skill_id": "clash.video.music-video-beat-editing",
+      "prompt": "Given song.mp3 and lyrics.txt, plan an MV edit that cuts on downbeats, emphasizes the chorus, and exports required analysis files.",
+      "expected_output": "audio probe, beat-grid, sections, lyrics alignment, visual moment plan, and timeline requirements."
+    },
+    {
+      "id": "talking-head-filler-tone-cut",
+      "skill_id": "clash.video.talking-head-text-cut",
+      "prompt": "Clean a 口播 video by removing long pauses, 嗯/啊/然后口癖, and generating captions, without destructive edits.",
+      "expected_output": "words transcript dependencies, filler/tone analysis, safe cut plan, captions, COW/timeline apply rules."
+    },
+    {
+      "id": "tvc-reference-remix",
+      "skill_id": "clash.video.tvc-reference-remix",
+      "prompt": "Use a public YouTube TVC as reference for a 15s product ad, but keep rights and brand constraints explicit.",
+      "expected_output": "source ledger, shot analysis, brand/legal guardrails, storyboard, packshot, and export package."
+    },
+    {
+      "id": "image-storyboard-consistency",
+      "skill_id": "clash.image.storyboard-consistency",
+      "prompt": "Build an image storyboard pack for a short drama while preserving character identity, scene continuity, and product/logo accuracy.",
+      "expected_output": "reference sheets, prompt pack, storyboard panels, and consistency QA dimensions."
+    },
+    {
+      "id": "character-three-view",
+      "skill_id": "clash.image.character-reference-sheets",
+      "prompt": "Create a character identity pack with front/side/back views, expression sheet, locked traits, and variant policy.",
+      "expected_output": "character identity JSON, three-view sheet plan, expression sheet plan, locked/variable traits."
+    },
+    {
+      "id": "audio-beat-analysis",
+      "skill_id": "clash.audio.beat-analysis",
+      "prompt": "Analyze an audio file for BPM, beat grid, downbeats, phrase anchors, sections, and cut-density hints at 30fps.",
+      "expected_output": "probe, beat-grid, sections, energy, cut-density files with confidence and frame conversion."
+    },
+    {
+      "id": "transcript-cut-planning",
+      "skill_id": "clash.audio.transcript-cut-planning",
+      "prompt": "Turn word-level ASR into a conservative cut plan for filler words, tone particles, repetition, silence, and caption cleanup.",
+      "expected_output": "filler/tone analysis, cuts.json, caption delta, review report, non-destructive apply rule."
+    },
+    {
+      "id": "reference-ingest-analysis",
+      "skill_id": "clash.video.reference-ingest-analysis",
+      "prompt": "Ingest a public TikTok reference for hotspot remix analysis with yt-dlp-style tooling and no silent redistribution.",
+      "expected_output": "rights ledger, raw reference separation, shot analysis, visual moment library, remix constraints."
+    },
+    {
+      "id": "mg-overlay-plan",
+      "skill_id": "clash.video.motion-graphics-overlays",
+      "prompt": "Create MG overlays for a talking-head clip: kinetic captions, lower third, product callout, and transparent render validation.",
+      "expected_output": "overlay plan, composition source, rendered overlay asset, timeline items, validation checks."
+    },
+    {
+      "id": "pipeline-manifest",
+      "skill_id": "clash.video.pipeline-manifest-architecture",
+      "prompt": "Design a stage-gated pipeline manifest for a 30s ad with dry-run cost gates and export QA.",
+      "expected_output": "Manifest includes stages, gates, editable/protected paths, capabilities, dry-run, and QA checks."
+    },
+    {
+      "id": "project-file-contract",
+      "skill_id": "clash.video.project-file-contract",
+      "prompt": "Define which files an agent can edit in a Clash project for MV production and which are protected.",
+      "expected_output": "Editable/protected path contract with CAS projections and product API boundaries."
+    },
+    {
+      "id": "copy-on-write-lineage",
+      "skill_id": "clash.media.copy-on-write-lineage",
+      "prompt": "Plan a non-destructive crop/caption edit for a referenced video asset.",
+      "expected_output": "Derived asset lineage with immutable parent, operation params, rights inheritance, and audit behavior."
+    },
+    {
+      "id": "composition-router",
+      "skill_id": "clash.render.composition-runtime-router",
+      "prompt": "Choose between Remotion, HTML composition, and FFmpeg for a kinetic caption overlay and final render.",
+      "expected_output": "Decision log with runtime availability, no silent fallback, and validation checks."
+    },
+    {
+      "id": "release-checkpoint",
+      "skill_id": "clash.review.video-release-checkpoint",
+      "prompt": "Validate a finished 15s TVC export before telling the user it is done.",
+      "expected_output": "ffprobe-style checks, safe area, captions, packshot/end card, rights, source refs, and receipt."
+    },
+    {
+      "id": "provider-budget",
+      "skill_id": "clash.tools.provider-budget-capability",
+      "prompt": "Dry-run a short drama generation plan with missing local ComfyUI and a max-cost of zero.",
+      "expected_output": "Provider/runtime availability, blocked paid generation, fallback decision log."
+    },
+    {
+      "id": "lyrics-alignment",
+      "skill_id": "clash.audio.lyrics-alignment",
+      "prompt": "Align lyrics.txt to song.mp3 for karaoke captions and MV beat planning.",
+      "expected_output": "Line/word/syllable timing, confidence, unmatched ranges, optional vocal stem."
+    },
+    {
+      "id": "visual-moment-library",
+      "skill_id": "clash.video.visual-moment-library",
+      "prompt": "Build reusable visual moments from three source clips for an MV drop section.",
+      "expected_output": "Scene changes, candidate moments, motion/quality/action/emotion tags, source refs."
+    },
+    {
+      "id": "caption-retime",
+      "skill_id": "clash.caption.retime-and-render",
+      "prompt": "Retime captions after deleting two filler-word ranges from a talking-head video.",
+      "expected_output": "Captions use sourceToOutputMap, deleted words removed, output timestamps correct."
+    },
+    {
+      "id": "ad-delivery",
+      "skill_id": "clash.ad.delivery-spec-pack",
+      "prompt": "Prepare 6s/15s/30s ad delivery specs for TikTok and YouTube Shorts.",
+      "expected_output": "Durations, aspect ratios, safe zones, disclaimers, loudness, package manifest."
+    },
+    {
+      "id": "packshot-end-card",
+      "skill_id": "clash.ad.packshot-end-card-builder",
+      "prompt": "Create a packshot and end card plan for a skincare TVC with QR and disclaimer.",
+      "expected_output": "Product/logo/CTA/disclaimer/badges/final-frame QA requirements."
+    },
+    {
+      "id": "reference-noncopying",
+      "skill_id": "clash.video.reference-noncopying-qa",
+      "prompt": "Check a reference-inspired ad export to ensure it did not copy frames/audio/text.",
+      "expected_output": "No raw reference assets, fingerprint/text/audio checks, rights ledger verdict."
+    },
+    {
+      "id": "hotspot-remix",
+      "skill_id": "clash.video.hotspot-structure-remix",
+      "prompt": "Analyze a public viral video for structure and create an original remix plan.",
+      "expected_output": "Hook pacing, shot taxonomy, captions rhythm, CTA pattern, no source media copying."
+    },
+    {
+      "id": "image-consistency",
+      "skill_id": "clash.image.consistency-qa",
+      "prompt": "QA six storyboard panels for identity, wardrobe, scene, product logo, and style drift.",
+      "expected_output": "Per-dimension consistency report and blocker/warning verdicts."
+    },
+    {
+      "id": "product-logo-lock",
+      "skill_id": "clash.image.product-logo-lock",
+      "prompt": "Create a product/logo lock for a beverage ad with exact label text and brand colors.",
+      "expected_output": "Packshot/logo/text/color constraints, OCR baseline, forbidden alterations."
+    }
+  ]
+}

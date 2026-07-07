@@ -1,0 +1,110 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Clash rendered composition timeline projection",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "kind",
+    "routePlanPath",
+    "compositionId",
+    "compositionKind",
+    "runtime",
+    "sourcePath",
+    "renderedAssetId",
+    "renderedAssetPath",
+    "timelineItems",
+    "validation",
+    "casApply"
+  ],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "kind": { "const": "clash.composition.timeline-projection" },
+    "routePlanPath": { "type": "string" },
+    "compositionId": { "type": "string" },
+    "compositionKind": { "type": "string" },
+    "runtime": { "const": "remotion" },
+    "sourcePath": { "type": "string" },
+    "renderedAssetId": { "type": "string" },
+    "renderedAssetPath": { "type": "string" },
+    "routeCommand": { "type": "string" },
+    "validationPlan": { "type": "array", "items": { "type": "string" } },
+    "timelineItems": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "type",
+          "from",
+          "durationInFrames",
+          "compositionKind",
+          "runtime",
+          "compositionId",
+          "sourcePath",
+          "renderedAssetPath",
+          "assetId"
+        ],
+        "properties": {
+          "id": { "type": "string" },
+          "type": { "const": "composition" },
+          "from": { "type": "number" },
+          "durationInFrames": { "type": "number" },
+          "compositionKind": { "type": "string" },
+          "runtime": { "const": "remotion" },
+          "compositionId": { "type": "string" },
+          "sourcePath": { "type": "string" },
+          "renderedAssetPath": { "type": "string" },
+          "assetId": { "type": "string" }
+        }
+      }
+    },
+    "validation": {
+      "type": "object",
+      "required": [
+        "routeStatus",
+        "fallbackUsed",
+        "renderedAssetRegistered",
+        "renderedAssetMatchesRoute",
+        "localProjectPaths",
+        "timelineItemType"
+      ],
+      "properties": {
+        "routeStatus": { "const": "planned" },
+        "fallbackUsed": { "const": false },
+        "renderedAssetRegistered": { "const": true },
+        "renderedAssetMatchesRoute": { "const": true },
+        "localProjectPaths": { "const": true },
+        "timelineItemType": { "const": "composition" }
+      }
+    },
+    "casApply": {
+      "type": "object",
+      "required": ["target", "mutation", "applyCommand", "filePath", "lockPath", "lockRequired", "lockSource", "nodeIdPlaceholder", "requiredRuntimeArgs", "pullCommand", "pullArgs", "applyArgs"],
+      "properties": {
+        "target": { "const": "timeline" },
+        "mutation": { "const": "projection-only" },
+        "applyCommand": { "const": "clash timeline apply" },
+        "filePath": { "type": "string" },
+        "lockPath": { "type": "string" },
+        "lockRequired": { "const": true },
+        "lockSource": { "const": "fresh-canvas-pull" },
+        "nodeIdPlaceholder": { "const": "<video-editor-node-id>" },
+        "requiredRuntimeArgs": {
+          "type": "array",
+          "contains": { "const": "--node <video-editor-node-id>" }
+        },
+        "pullCommand": { "const": "clash timeline pull" },
+        "pullArgs": {
+          "type": "array",
+          "prefixItems": [{ "const": "--node" }, { "const": "<video-editor-node-id>" }],
+          "items": { "type": "string" }
+        },
+        "applyArgs": {
+          "type": "array",
+          "prefixItems": [{ "const": "--node" }, { "const": "<video-editor-node-id>" }],
+          "items": { "type": "string" }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,91 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Clash reference download receipt",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "kind",
+    "targetAssetId",
+    "sourceUrl",
+    "planPath",
+    "tool",
+    "outputDir",
+    "downloadedFiles",
+    "rawReferenceQuarantine",
+    "finalExportAllowed",
+    "sourceLedger",
+    "assetId",
+    "assetPath",
+    "metadataKind",
+    "decisionLog",
+    "executedAt"
+  ],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "kind": { "const": "clash.reference.download-receipt" },
+    "targetAssetId": { "type": "string" },
+    "sourceUrl": { "type": "string" },
+    "planPath": { "type": "string" },
+    "tool": { "const": "yt-dlp" },
+    "outputDir": { "type": "string" },
+    "downloadedFiles": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["path", "mediaType"],
+        "properties": {
+          "path": { "type": "string" },
+          "mediaType": { "enum": ["video", "audio", "image", "metadata", "unknown"] },
+          "sizeBytes": { "type": "number" }
+        }
+      }
+    },
+    "rawReferenceQuarantine": { "const": true },
+    "finalExportAllowed": { "type": "boolean" },
+    "sourceLedger": {
+      "type": "object",
+      "required": [
+        "sourceUrl",
+        "license",
+        "attribution",
+        "allowedUses",
+        "redistributionAllowed",
+        "derivativeAllowed"
+      ],
+      "properties": {
+        "sourceUrl": { "type": "string" },
+        "license": { "type": "string" },
+        "attribution": { "type": "string" },
+        "allowedUses": { "type": "array", "items": { "type": "string" } },
+        "redistributionAllowed": { "type": "boolean" },
+        "derivativeAllowed": { "type": "boolean" }
+      }
+    },
+    "assetId": { "type": "string" },
+    "assetPath": { "type": "string" },
+    "metadataKind": { "const": "reference.download" },
+    "decisionLog": { "type": "array", "items": { "type": "string" } },
+    "executedAt": { "type": "string" }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "finalExportAllowed": { "const": true }
+        },
+        "required": ["finalExportAllowed"]
+      },
+      "then": {
+        "properties": {
+          "sourceLedger": {
+            "properties": {
+              "redistributionAllowed": { "const": true },
+              "derivativeAllowed": { "const": true }
+            },
+            "required": ["redistributionAllowed", "derivativeAllowed"]
+          }
+        }
+      }
+    }
+  ]
+}

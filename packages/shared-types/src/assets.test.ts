@@ -1,0 +1,63 @@
+import { describe, expect, it } from "vitest";
+import { assetReadToken, assetRefReadToken, AssetMetadataSchema, type Asset } from "./assets";
+
+describe("asset metadata", () => {
+  it("preserves local content-addressed blob provenance", () => {
+    const metadata = AssetMetadataSchema.parse({
+      bytes: 11,
+      contentType: "image/png",
+      contentHash: "a".repeat(64),
+      localBlobKey: "blobs/aaaaaaaa/original.png",
+      originalName: "hero.png",
+    });
+
+    expect(metadata).toMatchObject({
+      bytes: 11,
+      contentType: "image/png",
+      contentHash: "a".repeat(64),
+      localBlobKey: "blobs/aaaaaaaa/original.png",
+      originalName: "hero.png",
+    });
+  });
+
+  it("derives read tokens from persistent asset state only", () => {
+    const asset: Asset = {
+      id: "asset-1",
+      userId: "user-1",
+      kind: "image",
+      srcR2Key: "uploads/source.png",
+      coverR2Key: null,
+      metadata: { bytes: 100, contentType: "image/png" },
+      sourceModel: null,
+      sourcePrompt: null,
+      sourceTaskId: null,
+      sources: null,
+      signedUrl: "http://localhost/assets/uploads/source.png?read=1",
+      signedUrlExp: 100,
+      createdAt: 10,
+      updatedAt: 20,
+    };
+
+    expect(assetReadToken({
+      ...asset,
+      signedUrl: "http://localhost/assets/uploads/source.png?read=2",
+      signedUrlExp: 200,
+    })).toBe(assetReadToken(asset));
+    expect(assetReadToken({ ...asset, coverR2Key: "uploads/cover.png", updatedAt: 21 }))
+      .not.toBe(assetReadToken(asset));
+  });
+
+  it("derives asset-ref read tokens from the project relation", () => {
+    const token = assetRefReadToken({
+      assetId: "asset-1",
+      projectId: "project-a",
+      importedAt: 10,
+    });
+
+    expect(token).toMatch(/^asset-ref-v1:[a-f0-9]{16}$/);
+    expect(assetRefReadToken({ assetId: "asset-1", projectId: "project-a", importedAt: 11 }))
+      .not.toBe(token);
+    expect(assetRefReadToken({ assetId: "asset-1", projectId: "project-b", importedAt: 10 }))
+      .not.toBe(token);
+  });
+});

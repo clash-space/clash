@@ -1,0 +1,54 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Clash caption sidecar export",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "kind",
+    "sourceTimelineId",
+    "sourceTimelinePath",
+    "sourceTimelineHash",
+    "sourceTimelineRevisionId",
+    "sourceTimelineRevisionStatus",
+    "format",
+    "outputPath",
+    "fps",
+    "captionItems",
+    "cues",
+    "wordRefs",
+    "sourceToOutputMaps",
+    "sources",
+    "exportedAt"
+  ],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "kind": { "const": "clash.caption.export" },
+    "sourceTimelineId": { "type": "string" },
+    "sourceTimelinePath": { "type": "string" },
+    "sourceTimelineHash": { "type": "string" },
+    "sourceTimelineRevisionId": { "type": "string" },
+    "sourceTimelineRevisionStatus": { "enum": ["draft-file", "applied"] },
+    "sourceTimelineFrontiers": { "type": "array" },
+    "sourceTimelineVersionVector": { "type": "object" },
+    "format": { "enum": ["srt", "vtt", "ass"] },
+    "outputPath": { "type": "string" },
+    "fps": { "type": "number" },
+    "captionItems": { "type": "number" },
+    "cues": { "type": "number" },
+    "wordRefs": { "type": "number" },
+    "sourceToOutputMaps": { "type": "number" },
+    "sources": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["trackId", "itemId", "cueIds"],
+        "properties": {
+          "trackId": { "type": "string" },
+          "itemId": { "type": "string" },
+          "cueIds": { "type": "array", "items": { "type": "string" } }
+        }
+      }
+    },
+    "exportedAt": { "type": "string" }
+  }
+}

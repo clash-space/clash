@@ -1,13 +1,13 @@
 import { Command } from "commander";
 import { createServer } from "node:http";
-import { saveConfig, loadConfig, getApiKey, getServerUrl } from "../lib/config";
+import { configFilePath, saveConfig, loadConfig, getApiKey, getServerUrl } from "../lib/config";
 
 export const authCommand = new Command("auth")
   .description(`Manage authentication
 
 Get a token: Clash web app → avatar → Settings → API Tokens → Create
 Or run: clash auth login (opens browser for OAuth)
-Config stored at: ~/.clash/config.json`);
+Config stored at: $CLASH_HOME/config.json, or ~/.clash/config.json by default`);
 
 authCommand
   .command("login")
@@ -53,7 +53,7 @@ authCommand
           `);
 
           console.log("\nAuthenticated successfully!");
-          console.log(`API key saved to ~/.clash/config.json`);
+          console.log(`API key saved to ${configFilePath()}`);
           setTimeout(() => { server.close(); process.exit(0); }, 500);
         } else {
           res.writeHead(400, { "Content-Type": "text/html" });

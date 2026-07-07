@@ -535,54 +535,16 @@ async function exerciseAgentCliShim(origin, createLocalAgentToolEnv) {
   }
 }
 
-async function exerciseCliVariables(origin, createLocalAgentToolEnv) {
-  const env = createLocalAgentToolEnv({
-    dataDir,
-    apiBaseUrl: origin,
-    env: process.env,
+async function exerciseLocalVarsDisabled(origin) {
+  const list = await fetch(`${origin}/api/v1/vars`);
+  const put = await fetch(`${origin}/api/v1/vars/FAL_API_KEY`, {
+    method: "PUT",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ value: "fal-daemon-smoke-key" }),
   });
-
-  const set = JSON.parse(await runClashCli([
-    "vars",
-    "set",
-    "FAL_API_KEY",
-    "--value",
-    "fal-daemon-smoke-key",
-    "--json",
-  ], env));
-  assert(set.ok === true && set.key === "FAL_API_KEY", "agent CLI vars set returns the key", set);
-
-  const listed = JSON.parse(await runClashCli([
-    "vars",
-    "list",
-    "--json",
-  ], env));
-  assert(
-    listed.some((variable) => variable.key === "FAL_API_KEY"),
-    "agent CLI vars list sees the key in the local variable store",
-    listed,
-  );
-
-  const deleted = JSON.parse(await runClashCli([
-    "vars",
-    "delete",
-    "FAL_API_KEY",
-    "--json",
-  ], env));
-  assert(deleted.deleted === true && deleted.key === "FAL_API_KEY", "agent CLI vars delete returns the key", deleted);
-
-  const afterDelete = JSON.parse(await runClashCli([
-    "vars",
-    "list",
-    "--json",
-  ], env));
-  assert(
-    !afterDelete.some((variable) => variable.key === "FAL_API_KEY"),
-    "agent CLI vars delete removes the key from the local variable store",
-    afterDelete,
-  );
-
-  return { key: "FAL_API_KEY", listed: listed.length, remaining: afterDelete.length };
+  assert(list.status === 404, "local vars list endpoint is not exposed", { status: list.status });
+  assert(put.status === 404, "local vars write endpoint is not exposed", { status: put.status });
+  return { listStatus: list.status, writeStatus: put.status };
 }
 
 async function exerciseCliModelProviders(origin, createLocalAgentToolEnv) {
@@ -592,14 +554,20 @@ async function exerciseCliModelProviders(origin, createLocalAgentToolEnv) {
     env: process.env,
   });
 
-  await runClashCli([
-    "vars",
-    "set",
-    "FAL_API_KEY",
-    "--value",
-    "fal-model-provider-smoke-key",
-    "--json",
-  ], env);
+  const seeded = await jsonFetch(`${origin}/api/v1/model-providers`, {
+    method: "PATCH",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      providers: [
+        { providerId: "fal", enabled: true, weight: 10, credentials: { apiKey: "fal-model-provider-smoke-key" } },
+      ],
+    }),
+  });
+  assert(
+    seeded.providers?.some((provider) => provider.providerId === "fal" && provider.configuredCredentials?.includes("apiKey")),
+    "local provider account API stores fal credentials",
+    seeded,
+  );
 
   const configured = JSON.parse(await runClashCli([
     "models",
@@ -619,8 +587,8 @@ async function exerciseCliModelProviders(origin, createLocalAgentToolEnv) {
     "--json",
   ], env));
   assert(
-    providers.some((provider) => provider.providerId === "fal" && provider.availableVariables?.includes("FAL_API_KEY")),
-    "agent CLI model providers lists configured fal key",
+    providers.some((provider) => provider.providerId === "fal" && provider.configuredCredentials?.includes("apiKey")),
+    "agent CLI model providers lists configured fal credentials",
     providers,
   );
 
@@ -641,12 +609,31 @@ async function exerciseCliModelProviders(origin, createLocalAgentToolEnv) {
 }
 
 async function exerciseOpenAiProviderGeneration(origin, mockOpenAi) {
-  const configured = await jsonFetch(`${origin}/api/v1/vars/OPENAI_API_KEY`, {
-    method: "PUT",
+  const configured = await jsonFetch(`${origin}/api/v1/model-providers`, {
+    method: "PATCH",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ value: "sk-daemon-openai" }),
+    body: JSON.stringify({
+      providers: [
+        {
+          providerId: "official",
+          upstreamId: "openai",
+          region: "global",
+          enabled: true,
+          weight: 100,
+          credentials: { apiKey: "sk-daemon-openai" },
+        },
+      ],
+    }),
   });
-  assert(configured.ok === true && configured.key === "OPENAI_API_KEY", "local vars API stores OPENAI_API_KEY", configured);
+  assert(
+    configured.providers?.some((provider) =>
+      provider.providerId === "official" &&
+      provider.upstreamId === "openai" &&
+      provider.configuredCredentials?.includes("apiKey")
+    ),
+    "local provider account API stores OPENAI_API_KEY",
+    configured,
+  );
 
   const created = await jsonFetch(`${origin}/api/projects`, {
     method: "POST",
@@ -932,6 +919,7 @@ async function exerciseFakeCodexAcpChildSession(startLocalApiServer, createLocal
   await writeFakeCodexAcp(fakeBinDir);
 
   const envSnapshot = {
+    CLASH_ACP_TEST_BIN_DIR: process.env.CLASH_ACP_TEST_BIN_DIR,
     CLASH_ACP_BIN_DIR: process.env.CLASH_ACP_BIN_DIR,
     CLASH_E2E_STUB_ACP: process.env.CLASH_E2E_STUB_ACP,
     CLASH_LOCAL_DATA_DIR: process.env.CLASH_LOCAL_DATA_DIR,
@@ -941,6 +929,7 @@ async function exerciseFakeCodexAcpChildSession(startLocalApiServer, createLocal
   const port = await findFreePort(49620);
   const origin = `http://127.0.0.1:${port}`;
 
+  delete process.env.CLASH_ACP_TEST_BIN_DIR;
   process.env.CLASH_ACP_BIN_DIR = fakeBinDir;
   delete process.env.CLASH_E2E_STUB_ACP;
   process.env.CLASH_LOCAL_DATA_DIR = fakeDataDir;
@@ -1089,6 +1078,7 @@ async function exerciseOfficialCodexAcpWithStubModel(startLocalApiServer, create
   await writeCodexStubConfig(codexHome, mockCodex);
 
   const envSnapshot = {
+    CLASH_ACP_TEST_BIN_DIR: process.env.CLASH_ACP_TEST_BIN_DIR,
     CLASH_ACP_BIN_DIR: process.env.CLASH_ACP_BIN_DIR,
     CLASH_E2E_STUB_ACP: process.env.CLASH_E2E_STUB_ACP,
     CLASH_LOCAL_DATA_DIR: process.env.CLASH_LOCAL_DATA_DIR,
@@ -1102,6 +1092,7 @@ async function exerciseOfficialCodexAcpWithStubModel(startLocalApiServer, create
   const port = await findFreePort(49720);
   const origin = `http://127.0.0.1:${port}`;
 
+  process.env.CLASH_ACP_TEST_BIN_DIR = path.join(repoRoot, "node_modules", ".bin");
   delete process.env.CLASH_ACP_BIN_DIR;
   delete process.env.CLASH_E2E_STUB_ACP;
   process.env.CLASH_LOCAL_DATA_DIR = realDataDir;
@@ -1293,7 +1284,7 @@ async function main() {
 
   try {
     const runtime = await exerciseLocalSession(origin);
-    const variables = await exerciseCliVariables(origin, createLocalAgentToolEnv);
+    const localVars = await exerciseLocalVarsDisabled(origin);
     const modelProviders = await exerciseCliModelProviders(origin, createLocalAgentToolEnv);
     const openai = await exerciseOpenAiProviderGeneration(origin, mockOpenAi);
     const cli = await exerciseAgentCliShim(origin, createLocalAgentToolEnv);
@@ -1302,7 +1293,7 @@ async function main() {
     const loro = await exerciseLoroSync(origin, mockRemote);
     const fal = await exerciseFalMock(origin);
     console.log("[daemon-smoke] runtime", JSON.stringify(runtime));
-    console.log("[daemon-smoke] vars", JSON.stringify(variables));
+    console.log("[daemon-smoke] local-vars-disabled", JSON.stringify(localVars));
     console.log("[daemon-smoke] model-providers", JSON.stringify(modelProviders));
     console.log("[daemon-smoke] openai", JSON.stringify(openai));
     console.log("[daemon-smoke] agent-cli", JSON.stringify(cli));

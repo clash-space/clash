@@ -112,12 +112,15 @@ export interface UpstreamAvailability {
 }
 
 export interface ProviderAccountAvailability {
+  id?: string;
   providerId: ProviderAccountId;
   upstreamId?: ModelUpstreamId;
   region?: string;
+  label?: string;
   enabled?: boolean;
   configuredCredentials?: string[];
   availableOAuth?: ProviderOAuthId[];
+  readToken?: string;
   /** When set, this account only serves the listed public model card ids. Undefined means all models declared by the provider. */
   supportedModelIds?: string[];
   /** Lower numbers win for a specific public model card id. */
@@ -126,6 +129,8 @@ export interface ProviderAccountAvailability {
   priority?: number;
   /** Higher numbers win before declaration order. */
   weight?: number;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface ModelUpstreamRouteQuery {

@@ -1,7 +1,7 @@
 /**
  * Custom action host for `clash canvas connect`.
  *
- * Mirrors the bridge's actions host: scans ~/.clash/actions/ on daemon
+ * Mirrors the bridge's actions host: scans $CLASH_HOME/actions/ on daemon
  * startup, supervises one Python subprocess per local-runtime manifest,
  * SIGTERMs them all on daemon shutdown.
  *
@@ -11,7 +11,7 @@
  * dependency just for this. Both files are small and the bridge version
  * is the canonical reference — keep them in sync when you touch one.
  *
- * Runtime identity: read from ~/.clash/credentials.json (the bridge
+ * Runtime identity: read from $CLASH_HOME/credentials.json (the bridge
  * writes this during `clash setup`). The CLI daemon is on the same
  * machine as the bridge, so reusing the same runtime_id is correct —
  * it's the runtime row tied to this user+machine. If credentials.json
@@ -22,7 +22,7 @@ import { spawn, spawnSync, type ChildProcess } from "node:child_process";
 import { readdir, readFile, stat } from "node:fs/promises";
 import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { homedir } from "node:os";
+import { resolveClashRoot } from "./clash-home";
 
 const RESTART_BACKOFF_MIN_MS = 1000;
 const RESTART_BACKOFF_MAX_MS = 60_000;
@@ -255,11 +255,11 @@ export class CliActionsHost {
 }
 
 function actionsDir(): string {
-  return join(homedir(), ".clash", "actions");
+  return join(resolveClashRoot(), "actions");
 }
 
 function credsPath(): string {
-  return join(homedir(), ".clash", "credentials.json");
+  return join(resolveClashRoot(), "credentials.json");
 }
 
 function managedPythonVenvDir(): string {

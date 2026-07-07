@@ -86,6 +86,53 @@ describe("Timeline tools", () => {
     expect(sendMessage).not.toHaveBeenCalled();
   });
 
+  it("applies short-drama text overlays through the semantic adapter", async () => {
+    const updateTimelineDsl = vi.fn();
+    const tools = createTimelineTools(vi.fn(), {
+      getTimelineDsl: () => ({
+        tracks: [{ id: "overlays", name: "Overlays", role: "overlay", items: [] }],
+        compositionWidth: 1080,
+        compositionHeight: 1920,
+        fps: 30,
+        durationInFrames: 0,
+      }),
+      updateTimelineDsl,
+    });
+
+    const result = await tools.timeline_editor.execute!(
+      {
+        action: "add_clip",
+        params: {
+          trackId: "overlays",
+          sourceNodeId: "scene-1-text",
+          itemType: "text",
+          from: 30,
+          durationInFrames: 90,
+          id: "subtitle-hook",
+          text: "你以为我只是便利店店员？",
+        },
+      },
+      { toolCallId: "1", messages: [] }
+    );
+
+    expect(result).toContain("applied");
+    expect(updateTimelineDsl).toHaveBeenCalledWith(expect.objectContaining({
+      compositionWidth: 1080,
+      compositionHeight: 1920,
+      tracks: [
+        expect.objectContaining({
+          role: "overlay",
+          items: [expect.objectContaining({
+            type: "text",
+            id: "subtitle-hook",
+            text: "你以为我只是便利店店员？",
+            durationInFrames: 90,
+          })],
+        }),
+      ],
+    }));
+  });
+
   it("returns semantic validation errors instead of claiming success", async () => {
     const tools = createTimelineTools(vi.fn(), {
       getTimelineDsl: () => ({

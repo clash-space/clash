@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Clash asset metadata fill action",
+  "type": "object",
+  "required": [
+    "actionId",
+    "targetAssetId",
+    "metadataKind",
+    "producer",
+    "metadata"
+  ],
+  "properties": {
+    "actionId": { "type": "string" },
+    "targetAssetId": { "type": "string" },
+    "metadataKind": { "type": "string" },
+    "producer": { "type": "string" },
+    "createdAt": { "type": "string" },
+    "metadata": {
+      "type": "object",
+      "required": ["kind"],
+      "properties": {
+        "kind": { "type": "string" }
+      }
+    }
+  }
+}

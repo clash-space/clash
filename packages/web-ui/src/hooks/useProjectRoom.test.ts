@@ -44,7 +44,6 @@ describe("useProjectRoom", () => {
     const fetchMock = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
       if (init?.method === "POST") {
         return new Response(JSON.stringify({
-          type: "room.message",
           id: "local-message-1",
           project_id: "project-1",
           sender_kind: "user",

@@ -1,5 +1,5 @@
 export interface RemoteRoomMention {
-  user_id: string;
+  user_id?: string;
   agent_member_id?: string;
 }
 
@@ -65,11 +65,15 @@ function normalizeRemoteMessage(raw: unknown, projectId: string): RemoteRoomMess
   const mentions = Array.isArray(row.mentions)
     ? row.mentions
         .filter((mention): mention is Record<string, unknown> => !!mention && typeof mention === "object")
-        .map((mention) => ({
-          user_id: typeof mention.user_id === "string" ? mention.user_id : "",
-          ...(typeof mention.agent_member_id === "string" ? { agent_member_id: mention.agent_member_id } : {}),
-        }))
-        .filter((mention) => mention.user_id.length > 0)
+        .flatMap((mention): RemoteRoomMention[] => {
+          const userId = typeof mention.user_id === "string" ? mention.user_id.trim() : "";
+          const agentMemberId = typeof mention.agent_member_id === "string" ? mention.agent_member_id.trim() : "";
+          if (!userId && !agentMemberId) return [];
+          return [{
+            ...(userId ? { user_id: userId } : {}),
+            ...(agentMemberId ? { agent_member_id: agentMemberId } : {}),
+          }];
+        })
     : [];
   return {
     id: row.id,

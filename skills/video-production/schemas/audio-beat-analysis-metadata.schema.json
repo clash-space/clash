@@ -1,0 +1,62 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Clash audio beat analysis metadata",
+  "type": "object",
+  "required": ["kind", "bpm", "fps", "beats"],
+  "properties": {
+    "kind": { "const": "audio.beat-analysis" },
+    "bpm": { "type": "number" },
+    "fps": { "type": "number" },
+    "beats": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["frame", "timeSeconds", "confidence"],
+        "properties": {
+          "frame": { "type": "number" },
+          "timeSeconds": { "type": "number" },
+          "confidence": { "type": "number" },
+          "bar": { "type": "number" },
+          "beatInBar": { "type": "number" },
+          "downbeat": { "type": "boolean" }
+        }
+      }
+    },
+    "sections": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "startFrame", "endFrame", "label"],
+        "properties": {
+          "id": { "type": "string" },
+          "startFrame": { "type": "number" },
+          "endFrame": { "type": "number" },
+          "label": { "type": "string" },
+          "semanticLabel": { "type": "string" },
+          "semanticConfidence": { "type": "number" },
+          "reviewRequired": { "type": "boolean" },
+          "semanticSource": { "type": "string" },
+          "energy": { "type": "number" },
+          "novelty": { "type": "number" },
+          "impact": { "type": "number" },
+          "cutDensity": { "enum": ["hold", "medium", "fast"] }
+        }
+      }
+    },
+    "energyCurve": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["frame", "timeSeconds", "rms", "normalized", "novelty", "impact"],
+        "properties": {
+          "frame": { "type": "number" },
+          "timeSeconds": { "type": "number" },
+          "rms": { "type": "number" },
+          "normalized": { "type": "number" },
+          "novelty": { "type": "number" },
+          "impact": { "type": "number" }
+        }
+      }
+    }
+  }
+}

@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import { createServer } from "node:http";
 import { mkdir, rm } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -11,6 +12,7 @@ import {
   clickByText,
   evaluate,
   findFreePort,
+  startViteDevServer,
   stopProcess,
   tail,
   typeText,
@@ -28,28 +30,79 @@ const chromeDataDir = process.env.CLASH_WEB_GUI_E2E_CHROME_DATA_DIR ?? path.join
 const captureDir = process.env.CLASH_WEB_GUI_E2E_CAPTURE_DIR ?? path.join(repoRoot, ".tmp", "web-gui-e2e-captures");
 const latestScreenshot = path.join(captureDir, "latest-web-gui.png");
 
+async function readRequestBody(req) {
+  const chunks = [];
+  for await (const chunk of req) chunks.push(chunk);
+  return Buffer.concat(chunks);
+}
+
+async function startMockReplicateApi() {
+  const port = await findFreePort(49750);
+  const origin = `http://127.0.0.1:${port}`;
+  const requests = [];
+  const predictionId = "replicate-gui-smoke-1";
+  const mediaUrl = `${origin}/media/${predictionId}.png`;
+  const prediction = {
+    id: predictionId,
+    status: "succeeded",
+    output: [mediaUrl],
+    urls: { get: `${origin}/v1/predictions/${predictionId}` },
+  };
+
+  const server = createServer(async (req, res) => {
+    const url = new URL(req.url ?? "/", origin);
+    if (url.pathname === "/v1/models/google/nano-banana-2/predictions" && req.method === "POST") {
+      const raw = await readRequestBody(req);
+      requests.push({
+        method: req.method,
+        path: url.pathname,
+        authorization: req.headers.authorization ?? "",
+        body: raw.byteLength ? JSON.parse(raw.toString("utf8")) : {},
+      });
+      res.writeHead(201, { "content-type": "application/json" });
+      res.end(JSON.stringify(prediction));
+      return;
+    }
+    if (url.pathname === `/v1/predictions/${predictionId}` && req.method === "GET") {
+      requests.push({
+        method: req.method,
+        path: url.pathname,
+        authorization: req.headers.authorization ?? "",
+      });
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(JSON.stringify(prediction));
+      return;
+    }
+    if (url.pathname === `/media/${predictionId}.png` && req.method === "GET") {
+      requests.push({ method: req.method, path: url.pathname });
+      res.writeHead(200, { "content-type": "image/png" });
+      res.end(Buffer.from("replicate-gui-smoke-image"));
+      return;
+    }
+    res.writeHead(404, { "content-type": "application/json" });
+    res.end(JSON.stringify({ error: "not found" }));
+  });
+  await new Promise((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(port, "127.0.0.1", resolve);
+  });
+  return {
+    url: `${origin}/v1`,
+    requests,
+    close: () => new Promise((resolve) => server.close(resolve)),
+  };
+}
+
 async function startWeb({ webPort, apiOrigin }) {
-  const logs = [];
-  const child = spawn("pnpm", ["--dir", webDir, "exec", "vite", "--host", "127.0.0.1", "--port", String(webPort)], {
-    cwd: webDir,
+  return startViteDevServer({
+    webDir,
+    repoRoot,
+    port: webPort,
     env: {
-      ...process.env,
       VITE_CLASH_API_BASE_URL: apiOrigin,
       VITE_CLASH_WS_BASE_URL: apiOrigin.replace("http:", "ws:"),
     },
-    stdio: ["ignore", "pipe", "pipe"],
   });
-  child.stdout.on("data", (buf) => {
-    const text = String(buf);
-    logs.push(text);
-    process.stdout.write(text);
-  });
-  child.stderr.on("data", (buf) => {
-    const text = String(buf);
-    logs.push(text);
-    process.stderr.write(text);
-  });
-  return { child, logs };
 }
 
 async function assertNoCriticalA11yRegressions(cdp) {
@@ -380,7 +433,7 @@ async function exerciseProviderModelRouting(cdp, { webOrigin, apiOrigin }) {
   );
   await waitFor(
     cdp,
-    `document.body.innerText.includes("Replicate configuration is ready for Nano Banana 2.")`,
+    `document.body.innerText.includes("Replicate ran Nano Banana 2 through google/nano-banana-2.")`,
     "replicate provider readiness result",
   );
 }
@@ -524,12 +577,15 @@ async function main() {
   await rm(dataDir, { recursive: true, force: true });
   await rm(chromeDataDir, { recursive: true, force: true });
   await mkdir(captureDir, { recursive: true });
+  const previousReplicateUrl = process.env.CLASH_REPLICATE_URL;
 
   const apiPort = await findFreePort(49800);
   const webPort = await findFreePort(49850);
   const cdpPort = await findFreePort(49900);
   const apiOrigin = `http://127.0.0.1:${apiPort}`;
   const webOrigin = `http://127.0.0.1:${webPort}`;
+  const mockReplicate = await startMockReplicateApi();
+  process.env.CLASH_REPLICATE_URL = mockReplicate.url;
 
   const { startLocalApiServer } = await import("../../local-api/dist/server.js");
   const apiServer = await startLocalApiServer({ port: apiPort, dataDir });
@@ -596,6 +652,9 @@ async function main() {
     await stopProcess(chrome);
     await stopProcess(web);
     await new Promise((resolve) => apiServer.close(resolve));
+    await mockReplicate.close();
+    if (previousReplicateUrl === undefined) delete process.env.CLASH_REPLICATE_URL;
+    else process.env.CLASH_REPLICATE_URL = previousReplicateUrl;
   }
 }
 

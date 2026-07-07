@@ -1,0 +1,105 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Clash MG preview verification report",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "kind",
+    "status",
+    "overlayId",
+    "htmlPath",
+    "manifestPath",
+    "framesChecked",
+    "checks",
+    "frameEvaluations",
+    "blockedReasons"
+  ],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "kind": { "const": "clash.mg.preview-verification" },
+    "status": { "enum": ["pass", "blocked"] },
+    "overlayId": { "type": "string" },
+    "htmlPath": { "type": "string" },
+    "manifestPath": { "type": "string" },
+    "framesChecked": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "type": "integer", "minimum": 0 }
+    },
+    "checks": {
+      "type": "array",
+      "minItems": 5,
+      "items": {
+        "type": "object",
+        "required": ["id", "label", "required", "status", "expected", "actual"],
+        "properties": {
+          "id": {
+            "enum": [
+              "html.self-contained",
+              "html.seek-api",
+              "manifest.cas-fresh-pull",
+              "implementation.first-party-license-safe",
+              "frames.deterministic-evaluation"
+            ]
+          },
+          "label": { "type": "string" },
+          "required": { "const": true },
+          "status": { "enum": ["pass", "fail"] },
+          "expected": { "type": "string" },
+          "actual": { "type": "string" }
+        }
+      }
+    },
+    "frameEvaluations": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["frame", "layers"],
+        "properties": {
+          "frame": { "type": "integer", "minimum": 0 },
+          "layers": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["id", "type", "visible", "style"],
+              "properties": {
+                "id": { "type": "string" },
+                "type": { "enum": ["text", "shape"] },
+                "visible": { "type": "boolean" },
+                "style": {
+                  "type": "object",
+                  "required": ["x", "y", "opacity", "scale", "rotation"],
+                  "properties": {
+                    "x": { "type": "number" },
+                    "y": { "type": "number" },
+                    "opacity": { "type": "number" },
+                    "scale": { "type": "number" },
+                    "rotation": { "type": "number" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "blockedReasons": {
+      "type": "array",
+      "items": { "type": "string" }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": { "status": { "const": "pass" } },
+        "required": ["status"]
+      },
+      "then": {
+        "properties": {
+          "blockedReasons": { "maxItems": 0 }
+        }
+      }
+    }
+  ]
+}

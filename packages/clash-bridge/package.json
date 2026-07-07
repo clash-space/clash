@@ -38,7 +38,7 @@
     "access": "public"
   },
   "scripts": {
-    "build": "tsup && pnpm bundle:agents",
+    "build": "tsup && node scripts/bundle-agents.mjs",
     "bundle:agents": "node scripts/bundle-agents.mjs",
     "dev": "tsup --watch",
     "typecheck": "tsc --noEmit",

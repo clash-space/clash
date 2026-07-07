@@ -1,6 +1,6 @@
 /**
  * Custom action host — supervises Python (or other) subprocesses defined
- * under `~/.clash/actions/<id>/`.
+ * under `$CLASH_HOME/actions/<id>/`.
  *
  * Each subdirectory contains:
  *   - manifest.json   (CustomActionDefinition shape; see shared-types)
@@ -44,9 +44,8 @@ import { spawn, spawnSync, type ChildProcess } from "node:child_process";
 import { readdir, readFile, stat } from "node:fs/promises";
 import { existsSync, mkdirSync, readFileSync, statSync, watch, type FSWatcher, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { homedir } from "node:os";
+import { paths } from "./platform.js";
 
-const ACTIONS_DIR = join(homedir(), ".clash", "actions");
 const RESTART_BACKOFF_MIN_MS = 1000;
 const RESTART_BACKOFF_MAX_MS = 60_000;
 const HEALTHY_UPTIME_MS = 60_000;
@@ -61,6 +60,10 @@ const PYTHON_DEPS_STAMP = ".clash-python-deps.json";
  * UX feel laggy.
  */
 const WATCH_DEBOUNCE_MS = 500;
+
+function actionsDir(): string {
+  return join(paths().configDir, "actions");
+}
 
 export interface ActionEnv {
   /** CLASH_SERVER_URL — full URL (http[s]://). The python SDK converts http→ws. */
@@ -132,30 +135,31 @@ export class ActionsHost {
   }
 
   /**
-   * Scan ~/.clash/actions/ and spawn a subprocess per local-runtime
+   * Scan $CLASH_HOME/actions/ and spawn a subprocess per local-runtime
    * action. No-op if the dir doesn't exist (a brand-new bridge install
    * just doesn't host any actions yet).
    */
   async start(): Promise<{ spawned: string[]; skipped: string[] }> {
     const spawned: string[] = [];
     const skipped: string[] = [];
+    const root = actionsDir();
 
     // Ensure the dir exists so we can immediately watch it. Without this,
     // a brand-new install would silently skip the watcher and the user
     // would have to restart the daemon after their first `action install`.
     // We create with mode 0755; mkdirSync is idempotent thanks to recursive.
     try {
-      mkdirSync(ACTIONS_DIR, { recursive: true });
+      mkdirSync(root, { recursive: true });
     } catch (e) {
-      process.stderr.write(`actions: could not create ${ACTIONS_DIR}: ${(e as Error).message}\n`);
+      process.stderr.write(`actions: could not create ${root}: ${(e as Error).message}\n`);
     }
 
     let entries: string[];
     try {
-      entries = await readdir(ACTIONS_DIR);
+      entries = await readdir(root);
     } catch (e: any) {
       if (e.code === "ENOENT") {
-        process.stderr.write(`actions: no ~/.clash/actions/ — skipping action host\n`);
+        process.stderr.write(`actions: no ${root} — skipping action host\n`);
         this.startWatcher();
         return { spawned, skipped };
       }
@@ -173,14 +177,14 @@ export class ActionsHost {
   }
 
   /**
-   * Read ~/.clash/actions/<dirName>/manifest.json, validate, and spawn
+   * Read $CLASH_HOME/actions/<dirName>/manifest.json, validate, and spawn
    * (or skip) the subprocess. Returns the outcome so callers can update
    * their counters. Shared between start() and the fs.watch reconciler.
    */
   private async tryLoadAndSpawn(
     dirName: string,
   ): Promise<"spawned" | "skipped" | "ignored"> {
-    const dir = join(ACTIONS_DIR, dirName);
+    const dir = join(actionsDir(), dirName);
     try {
       const s = await stat(dir);
       if (!s.isDirectory()) return "ignored";
@@ -296,7 +300,7 @@ export class ActionsHost {
   // ─── fs.watch / reconciliation ──────────────────────────────
   //
   // node's fs.watch is intentionally minimal — it tells us *something*
-  // changed under ACTIONS_DIR but not what. So we use it purely as a
+  // changed under the actions directory but not what. So we use it purely as a
   // change signal and call reconcile() (a full diff between disk state
   // and the supervised map) on a 500ms debounce. That keeps the logic
   // robust against:
@@ -313,9 +317,10 @@ export class ActionsHost {
   private startWatcher(): void {
     if (this.stopping) return;
     if (this.watcher) return;
+    const root = actionsDir();
     try {
       this.watcher = watch(
-        ACTIONS_DIR,
+        root,
         { recursive: true, persistent: false },
         (_eventType, filename) => {
           // Ignore swap/temp files that editors create — they churn the
@@ -327,7 +332,7 @@ export class ActionsHost {
       this.watcher.on("error", (err) => {
         process.stderr.write(`actions: watcher error ${err.message}\n`);
       });
-      process.stderr.write(`actions: watching ${ACTIONS_DIR} for changes\n`);
+      process.stderr.write(`actions: watching ${root} for changes\n`);
     } catch (e) {
       // Likely linux <20 without recursive support, or an exotic FS.
       // We still function — just no auto-reload.
@@ -362,8 +367,9 @@ export class ActionsHost {
     if (this.stopping) return;
 
     let entries: string[];
+    const root = actionsDir();
     try {
-      entries = await readdir(ACTIONS_DIR);
+      entries = await readdir(root);
     } catch (e: any) {
       if (e.code === "ENOENT") {
         // Whole dir vanished — tear down everything we host.
@@ -376,7 +382,7 @@ export class ActionsHost {
     const liveDirs = new Set<string>();
 
     for (const entry of entries) {
-      const dir = join(ACTIONS_DIR, entry);
+      const dir = join(root, entry);
       try {
         const s = await stat(dir);
         if (!s.isDirectory()) continue;
@@ -679,7 +685,7 @@ function resolveSdkPythonDir(): string | null {
 }
 
 function managedPythonVenvDir(): string {
-  return process.env.CLASH_ACTIONS_VENV || join(ACTIONS_DIR, ".venv");
+  return process.env.CLASH_ACTIONS_VENV || join(actionsDir(), ".venv");
 }
 
 function managedPythonBin(venvDir: string): string {
@@ -690,7 +696,7 @@ function managedPythonBin(venvDir: string): string {
 
 function explicitPythonStampDir(pythonBin: string): string {
   const key = Buffer.from(pythonBin).toString("base64url").slice(0, 80);
-  return join(ACTIONS_DIR, ".python-deps", key);
+  return join(actionsDir(), ".python-deps", key);
 }
 
 function prepareExplicitPythonRuntime(opts: {

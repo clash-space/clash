@@ -15,6 +15,18 @@ The product reference is:
 
 This does not mean copying either product surface. Clash's distinctive surface is creative canvas + media assets + AIGC processors + local agent daemon.
 
+v1 local/agent-first follow-up docs:
+
+- `agent-first-local-v1-principles.md`
+- `agent-first-local-v1-traceability-matrix.md`
+- `agent-first-local-v1-implementation-plan.md`
+- `agent-first-local-v1-remote-compatibility-boundary.md`
+- `local-sqlite-migration-spec.md`
+- `agent-file-projection-cas-spec.md`
+
+Those docs refine this guide with concrete storage, SQLite, projection/CAS,
+and agent-editability constraints.
+
 ## Principles
 
 1. Default to local.

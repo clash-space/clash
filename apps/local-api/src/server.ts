@@ -1,9 +1,8 @@
 import { createRequire } from "node:module";
 import { homedir } from "node:os";
-import { delimiter, join } from "node:path";
+import { delimiter, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { chmodSync, mkdirSync, writeFileSync } from "node:fs";
-import { readFile } from "node:fs/promises";
 import { serve } from "@hono/node-server";
 import type { HostLaunchMode, HostStartedBy } from "@clash/shared-runtime";
 import { createLocalApiApp } from "./app.js";
@@ -26,9 +25,8 @@ import { createLocalWorkflowProcessor } from "./local-processor.js";
 import {
   providerAccountsForRuntime,
   publicProviderAccounts,
-  type LocalProviderAccountConfig,
-  type LocalProviderOAuthRecord,
 } from "./provider-accounts.js";
+import { createLocalProviderStore } from "./local-provider-store.js";
 import {
   attachLocalSync,
   type RemoteLoroPersistenceSource,
@@ -36,10 +34,17 @@ import {
 import { createLocalSyncConfigStore } from "./sync-config.js";
 
 const port = Number(process.env.PORT ?? 49321);
-const dataDir =
-  process.env.CLASH_LOCAL_DATA_DIR ??
-  join(homedir(), ".clash", "local-api");
+const dataDir = defaultLocalApiDataDir();
 const require = createRequire(import.meta.url);
+
+export function defaultLocalApiDataDir(
+  env: Record<string, string | undefined> = process.env,
+): string {
+  const explicit = env.CLASH_LOCAL_DATA_DIR?.trim();
+  if (explicit) return explicit;
+  const clashHome = env.CLASH_HOME?.trim();
+  return join(clashHome ? resolve(clashHome) : join(homedir(), ".clash"), "local-api");
+}
 
 export interface LocalApiServerOptions {
   port: number;
@@ -158,6 +163,99 @@ function createMockCanvasPatch(turnId: string, text: string) {
           height: 48,
         },
       },
+      {
+        op: "add_node",
+        node: {
+          id: `mock-agent-timeline-${safeTurnId}`,
+          type: "video-editor",
+          data: {
+            label: "Agent Timeline",
+            content: `# Timeline\n${text}`,
+          },
+          position: { x: 850, y: 210 },
+          width: 360,
+          height: 220,
+          style: { width: 360, height: 220 },
+        },
+      },
+      {
+        op: "add_node",
+        node: {
+          id: `mock-agent-discard-${safeTurnId}`,
+          type: "text",
+          data: {
+            label: "Agent Scratch",
+            content: `# Scratch\n${text}`,
+          },
+          position: { x: 850, y: 460 },
+          width: 240,
+          height: 120,
+          style: { width: 240, height: 120 },
+        },
+      },
+      {
+        op: "delete_node",
+        node: {
+          id: `mock-agent-discard-${safeTurnId}`,
+        },
+      },
+      {
+        op: "timeline_apply",
+        timeline: {
+          nodeId: `mock-agent-timeline-${safeTurnId}`,
+          dsl: {
+            fps: 30,
+            durationInFrames: 90,
+            tracks: [
+              {
+                id: "main",
+                type: "video",
+                items: [],
+              },
+            ],
+          },
+        },
+      },
+      {
+        op: "add_edge",
+        edge: {
+          id: `mock-agent-brief-${safeTurnId}-mock-agent-action-${safeTurnId}`,
+          source: `mock-agent-brief-${safeTurnId}`,
+          target: `mock-agent-action-${safeTurnId}`,
+          type: "default",
+        },
+      },
+      {
+        op: "update_edge",
+        edge: {
+          id: `mock-agent-brief-${safeTurnId}-mock-agent-action-${safeTurnId}`,
+          patch: {
+            label: "agent-reviewed",
+            animated: true,
+          },
+        },
+      },
+      {
+        op: "delete_edge",
+        edge: {
+          id: `mock-agent-brief-${safeTurnId}-mock-agent-action-${safeTurnId}`,
+        },
+      },
+    ],
+  };
+}
+
+function createMockMissingReadProofPatch(turnId: string) {
+  const safeTurnId = turnId.replace(/[^a-zA-Z0-9_-]/g, "-");
+  return {
+    sessionUpdate: "clash.canvas.patch",
+    operations: [
+      {
+        op: "delete_node",
+        node: {
+          id: `mock-agent-brief-${safeTurnId}`,
+        },
+      },
     ],
   };
 }
@@ -262,6 +360,12 @@ function createMockAcpSessionManager(send: SessionSender): SessionManagerLike {
         turn_id,
         event: createMockCanvasPatch(turn_id, text),
       });
+      send({
+        type: "session.event",
+        session_id,
+        turn_id,
+        event: createMockMissingReadProofPatch(turn_id),
+      });
       send({ type: "session.complete", session_id, turn_id });
     },
     cancel: () => undefined,
@@ -314,18 +418,11 @@ async function loadLocalProviderAccounts(
   dataDir: string,
   userId = "local-user",
 ) {
-  let providerAccounts: LocalProviderAccountConfig[] = [];
-  let providerOAuth: LocalProviderOAuthRecord[] = [];
-  try {
-    const db = JSON.parse(await readFile(join(dataDir, "db.json"), "utf8")) as {
-      providerAccounts?: LocalProviderAccountConfig[];
-      providerOAuth?: LocalProviderOAuthRecord[];
-    };
-    providerAccounts = (db.providerAccounts ?? []).filter((account) => account.userId === userId);
-    providerOAuth = (db.providerOAuth ?? []).filter((record) => record.userId === userId);
-  } catch {
-    // Missing local DB means no configured local provider accounts.
-  }
+  const store = createLocalProviderStore(dataDir);
+  const [providerAccounts, providerOAuth] = await Promise.all([
+    store.loadProviderAccounts(),
+    store.loadProviderOAuth(),
+  ]);
   return providerAccountsForRuntime(providerAccounts, userId, providerOAuth);
 }
 

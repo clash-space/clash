@@ -1,0 +1,73 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Clash ad visual pixel evidence",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "kind",
+    "targetAssetId",
+    "variantId",
+    "renderedPath",
+    "analysisBackend",
+    "checks",
+    "pixelSamples"
+  ],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "kind": { "const": "clash.ad.visual-pixel-evidence" },
+    "targetAssetId": { "type": "string" },
+    "variantId": { "type": "string" },
+    "renderedPath": { "type": "string" },
+    "analysisBackend": {
+      "type": "object",
+      "required": ["id", "inputFormat", "capabilities"],
+      "properties": {
+        "id": { "const": "clash-local-ad-pixel-analyzer" },
+        "inputFormat": { "const": "ppm" },
+        "capabilities": {
+          "type": "array",
+          "items": {
+            "enum": ["packshot-color-sample", "end-card-sample", "final-frame-diff"]
+          }
+        }
+      }
+    },
+    "checks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "check", "status", "required", "expected", "actual"],
+        "properties": {
+          "id": { "type": "string" },
+          "check": {
+            "enum": ["packshot-visible", "end-card-visible", "final-frame-hold"]
+          },
+          "status": { "enum": ["pass", "fail", "requires-review"] },
+          "required": { "type": "boolean" },
+          "expected": { "type": "string" },
+          "actual": { "type": "string" },
+          "confidence": { "type": "number" },
+          "frame": { "type": "number" },
+          "evidencePath": { "type": "string" }
+        }
+      }
+    },
+    "pixelSamples": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "path", "width", "height", "averageRgb"],
+        "properties": {
+          "id": { "type": "string" },
+          "path": { "type": "string" },
+          "width": { "type": "number" },
+          "height": { "type": "number" },
+          "averageRgb": { "type": "string" },
+          "matchedPixels": { "type": "number" },
+          "matchRatio": { "type": "number" },
+          "meanAbsoluteDiff": { "type": "number" }
+        }
+      }
+    }
+  }
+}

@@ -20,6 +20,26 @@ export const NANO_BANANA_ASPECT_RATIOS = [
 ] as const;
 
 /**
+ * Gemini 3.1 Flash-Lite Image (Nano Banana 2 Lite) aspect ratios.
+ */
+export const NANO_BANANA_LITE_ASPECT_RATIOS = [
+  { label: '1:1', value: '1:1' },
+  { label: '1:4', value: '1:4' },
+  { label: '4:1', value: '4:1' },
+  { label: '1:8', value: '1:8' },
+  { label: '8:1', value: '8:1' },
+  { label: '2:3', value: '2:3' },
+  { label: '3:2', value: '3:2' },
+  { label: '3:4', value: '3:4' },
+  { label: '4:3', value: '4:3' },
+  { label: '4:5', value: '4:5' },
+  { label: '5:4', value: '5:4' },
+  { label: '9:16', value: '9:16' },
+  { label: '16:9', value: '16:9' },
+  { label: '21:9', value: '21:9' },
+] as const;
+
+/**
  * Nano Banana 2 resolutions (fal.ai)
  */
 export const NANO_BANANA_RESOLUTIONS = [
@@ -441,6 +461,33 @@ const MODEL_CARD_DEFINITIONS = [
       count: 1,
     },
     input: { requiresPrompt: true, inputMode: { images: { max: 8 } }, promptModalities: ['text', 'image'] },
+  },
+
+  // ─── Image: Nano Banana 2 Lite (Google) ────────────────────
+  {
+    id: 'nano-banana-2-lite',
+    name: 'Nano Banana 2 Lite',
+    aliases: ['gemini-3.1-flash-lite-image'],
+    provider: 'Google',
+    availableProviders: ['official'],
+    defaultProvider: 'official',
+    kind: 'image',
+    defaultAspectRatio: '16:9',
+    aspectRatioParam: 'aspect_ratio',
+    description: 'Fast Gemini 3.1 Flash-Lite image generation.',
+    parameters: [
+      {
+        id: 'aspect_ratio',
+        label: 'Aspect Ratio',
+        type: 'select',
+        options: NANO_BANANA_LITE_ASPECT_RATIOS.map(r => ({ label: r.label, value: r.value })),
+        defaultValue: '16:9',
+      },
+    ],
+    defaultParams: {
+      aspect_ratio: '16:9',
+    },
+    input: { requiresPrompt: true, inputMode: { images: { max: 14 } }, promptModalities: ['text', 'image'] },
   },
 
   // ─── Image: Nano Banana 2 Edit (fal.ai) ─────────────────────
@@ -1311,6 +1358,34 @@ const MODEL_CARD_DEFINITIONS = [
     maxRuntimeMs: 5 * 60 * 1000,
   },
   {
+    id: 'gemini-3.5-flash',
+    name: 'Gemini 3.5 Flash',
+    provider: 'Google',
+    availableProviders: ['official'],
+    defaultProvider: 'official',
+    kind: 'text',
+    defaultAspectRatio: '1:1',
+    description: 'Google Gemini 3.5 Flash — near-Pro agentic capability at Flash-tier speed and cost.',
+    parameters: [
+      {
+        id: 'system_prompt',
+        label: 'System prompt',
+        type: 'text',
+        placeholder: 'Optional instructions for tone, format, or role',
+        defaultValue: '',
+      },
+    ],
+    defaultParams: {
+      system_prompt: '',
+    },
+    input: {
+      requiresPrompt: true,
+      inputMode: { images: { max: 16 }, videos: { max: 1 }, audios: { max: 1 } },
+      promptModalities: ['text', 'image', 'video', 'audio'],
+    },
+    maxRuntimeMs: 5 * 60 * 1000,
+  },
+  {
     id: 'gemini-3.1-pro',
     name: 'Gemini 3.1 Pro',
     provider: 'Google',
@@ -1347,6 +1422,34 @@ const MODEL_CARD_DEFINITIONS = [
     kind: 'text',
     defaultAspectRatio: '1:1',
     description: 'Faster, cheaper Gemini 3 Flash — multimodal across text, image, video, and audio inputs.',
+    parameters: [
+      {
+        id: 'system_prompt',
+        label: 'System prompt',
+        type: 'text',
+        placeholder: 'Optional instructions for tone, format, or role',
+        defaultValue: '',
+      },
+    ],
+    defaultParams: {
+      system_prompt: '',
+    },
+    input: {
+      requiresPrompt: true,
+      inputMode: { images: { max: 16 }, videos: { max: 1 }, audios: { max: 1 } },
+      promptModalities: ['text', 'image', 'video', 'audio'],
+    },
+    maxRuntimeMs: 5 * 60 * 1000,
+  },
+  {
+    id: 'gemini-3.1-flash-lite',
+    name: 'Gemini 3.1 Flash-Lite',
+    provider: 'Google',
+    availableProviders: ['official'],
+    defaultProvider: 'official',
+    kind: 'text',
+    defaultAspectRatio: '1:1',
+    description: 'Google Gemini 3.1 Flash-Lite — low-latency, high-volume text generation with multimodal inputs.',
     parameters: [
       {
         id: 'system_prompt',
@@ -1688,14 +1791,17 @@ const MODEL_PROVIDER_IMPLEMENTATION_ROWS: ModelProviderImplementationRow[] = [
   ['gemini-3.1-flash-tts', 'official', 'google-ai-studio', 'google-ai-studio', 'gemini-3.1-flash-tts-preview', 10, { region: 'global', credentials: ['apiKey'] }],
   ['gemini-2.5-pro-tts', 'official', 'google-ai-studio', 'google-ai-studio', 'gemini-2.5-pro-tts', 10, { region: 'global', credentials: ['apiKey'] }],
   ['nano-banana-2', 'official', 'google-agent-platform', 'google-agent-platform', 'gemini-3.1-flash-image', 10, { region: 'global', credentials: ['vertexCredentials'] }],
+  ['nano-banana-2-lite', 'official', 'google-agent-platform', 'google-agent-platform', 'gemini-3.1-flash-lite-image', 10, { region: 'global', credentials: ['vertexCredentials'] }],
   ['nano-banana-pro', 'official', 'google-agent-platform', 'google-agent-platform', 'gemini-3-pro-image', 10, { region: 'global', credentials: ['vertexCredentials'] }],
   ['veo-3.1', 'official', 'google-agent-platform', 'google-agent-platform', 'veo-3.1-generate-001', 10, { region: 'global', credentials: ['vertexCredentials'] }],
   ['veo-3.1-startend', 'official', 'google-agent-platform', 'google-agent-platform', 'veo-3.1-generate-001', 10, { region: 'global', credentials: ['vertexCredentials'] }],
   ['veo-3.1-lite', 'official', 'google-agent-platform', 'google-agent-platform', 'veo-3.1-lite-generate-001', 10, { region: 'global', credentials: ['vertexCredentials'] }],
   ['veo-3.1-fast', 'official', 'google-agent-platform', 'google-agent-platform', 'veo-3.1-fast-generate-001', 10, { region: 'global', credentials: ['vertexCredentials'] }],
   ['veo-3.1-fast-startend', 'official', 'google-agent-platform', 'google-agent-platform', 'veo-3.1-fast-generate-001', 10, { region: 'global', credentials: ['vertexCredentials'] }],
+  ['gemini-3.5-flash', 'official', 'google-agent-platform', 'google-agent-platform', 'gemini-3.5-flash', 10, { region: 'global', credentials: ['vertexCredentials'] }],
   ['gemini-3.1-pro', 'official', 'google-agent-platform', 'google-agent-platform', 'gemini-3.1-pro-preview', 10, { region: 'global', credentials: ['vertexCredentials'] }],
   ['gemini-3-flash', 'official', 'google-agent-platform', 'google-agent-platform', 'gemini-3-flash-preview', 10, { region: 'global', credentials: ['vertexCredentials'] }],
+  ['gemini-3.1-flash-lite', 'official', 'google-agent-platform', 'google-agent-platform', 'gemini-3.1-flash-lite', 10, { region: 'global', credentials: ['vertexCredentials'] }],
 
   ['gpt-image-2', 'official', 'openai', 'openai-images', 'gpt-image-2', 10, { region: 'global', credentials: ['apiKey'] }],
   ['gpt-5.4', 'official', 'openai', 'openai-compatible', 'gpt-5.4', 10, { region: 'global', credentials: ['apiKey'] }],

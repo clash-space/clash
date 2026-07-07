@@ -1,0 +1,2918 @@
+{
+  "$schema": "./registry.schema.json",
+  "version": 1,
+  "marketplaceSemantics": {
+    "skillBoundary": "portable-artifact-contract",
+    "executionModel": {
+      "portableSkillExecution": "A skill can be run by an agent from its own cwd as instructions plus readable and writable files, manifests, metadata, and generated artifacts.",
+      "clashManagedExecution": "Clash can optionally host the same workflow as managed actions that register assets, fill metadata, preserve provenance, gate review, and apply canvas/timeline projections with CAS.",
+      "hardBoundary": "The skill owns the workflow and artifact contract; Clash owns collaboration and project-state management. A missing Clash system capability must not prevent portable skill execution."
+    },
+    "hostCapabilityContract": "Skills depend on named host capability contracts, not Clash private storage or UI internals. Clash is one host implementation that provides collaboration, permissioning, asset registry, metadata fill, provenance, review gates, and CAS apply.",
+    "artifactContract": {
+      "publicInterfaces": [
+        "action",
+        "metadata-fill",
+        "asset",
+        "analysis-metadata",
+        "view-projection",
+        "timeline-cas-apply",
+        "schema"
+      ],
+      "skillOwnedWorkspace": "The agent owns its cwd as a draft workspace and may read/write declared project files, actions, assets, metadata, manifests, schemas, and projections there before explicit apply.",
+      "hostOwnedInternals": [
+        "snapshot.bin",
+        "project.sqlite",
+        "loro-crdt-doc",
+        "canvas-private-node-state",
+        "runtime-secrets"
+      ],
+      "forbiddenDependencyPolicy": "Portable skills must not depend on snapshot.bin, SQLite rows, Loro documents, canvas private node state, runtime secrets, or any other Clash-private storage surface; managed Clash execution must expose those changes through public action, metadata, asset, and CAS projection contracts."
+    },
+    "systemCapabilityMeaning": "requiredSystemCapabilities is a compatibility field for Clash-native automation bindings needed for fully managed execution. These capabilities are not required to run a skill as a portable file/artifact workflow outside Clash.",
+    "statusPolicy": {
+      "ready": "ready means the skill has a runnable local CLI/action contract with contract tests proving its declared production artifacts, metadata, assets, or view projections.",
+      "blockedBySystemGap": "blocked-by-system-gap skills must list systemGaps with a capability, concrete missing behavior, and unblockSignal for Clash-managed execution."
+    },
+    "clashRole": [
+      "collaboration-management",
+      "asset-registry",
+      "metadata-fill",
+      "provenance",
+      "review-gates",
+      "timeline-cas-apply",
+      "canvas-timeline-projection"
+    ]
+  },
+  "actions": [
+    {
+      "id": "clash.action.production.render-mg",
+      "title": "Render first-party MG composition preview",
+      "source": "first-party",
+      "skillId": "clash.video.motion-graphics-overlays",
+      "trigger": {
+        "mode": "local-cli",
+        "command": "clash production render-mg",
+        "requiresLocalRuntime": true
+      },
+      "lifecycle": ["action", "asset", "view-projection"],
+      "inputs": [
+        {
+          "kind": "source",
+          "pathPattern": "compositions/<composition-id>/spec.json"
+        }
+      ],
+      "outputs": [
+        {
+          "kind": "view",
+          "pathPattern": "projections/mg/<composition-id>/index.html"
+        },
+        {
+          "kind": "manifest",
+          "pathPattern": "projections/mg/<composition-id>/timeline-manifest.json",
+          "schema": "mg-overlay-manifest"
+        },
+        {
+          "kind": "projection",
+          "pathPattern": "projections/timelines/<composition-id>.mg.timeline.yaml",
+          "applyCommand": "clash timeline apply",
+          "lockSource": "fresh-canvas-pull",
+          "lockPathPattern": "timelines/main.timeline.lock.json",
+          "nodeIdPlaceholder": "<video-editor-node-id>",
+          "requiredRuntimeArgs": ["--node <video-editor-node-id>"],
+          "pullCommand": "clash timeline pull",
+          "pullArgsPattern": ["--node", "<video-editor-node-id>", "--file", "timelines/main.timeline.yaml"],
+          "applyArgsPattern": ["--node", "<video-editor-node-id>", "--file", "projections/timelines/<composition-id>.mg.timeline.yaml", "--lock", "timelines/main.timeline.lock.json"],
+          "casRequired": true
+        }
+      ],
+      "requiredSystemCapabilities": [
+        "render.html-composition",
+        "timeline.cas-projection",
+        "media.asset-registry",
+        "legal.oss-license-ledger"
+      ],
+      "contractTests": [
+        {
+          "path": "packages/cli/src/commands/production.test.ts",
+          "asserts": "render-mg black-box CLI creates self-contained HTML, manifest, CAS-required timeline projection, and first-party license-safe metadata"
+        },
+        {
+          "path": "skills/skill-market.test.mjs",
+          "asserts": "marketplace action contract exposes trigger, artifacts, apply commands, CAS lock sidecar, capabilities, and skill linkage"
+        }
+      ]
+    },
+    {
+      "id": "clash.action.production.verify-mg-preview",
+      "title": "Verify first-party MG HTML preview and deterministic frames",
+      "source": "first-party",
+      "skillId": "clash.video.motion-graphics-overlays",
+      "trigger": {
+        "mode": "local-cli",
+        "command": "clash production verify-mg-preview",
+        "requiresLocalRuntime": true
+      },
+      "lifecycle": ["action", "review-gate"],
+      "inputs": [
+        {
+          "kind": "view",
+          "pathPattern": "projections/mg/<composition-id>/index.html"
+        },
+        {
+          "kind": "manifest",
+          "pathPattern": "projections/mg/<composition-id>/timeline-manifest.json",
+          "schema": "mg-overlay-manifest"
+        }
+      ],
+      "outputs": [
+        {
+          "kind": "analysis",
+          "pathPattern": "qa/mg/<composition-id>.preview-verification.json",
+          "schema": "mg-preview-verification"
+        }
+      ],
+      "requiredSystemCapabilities": [
+        "render.html-composition",
+        "timeline.cas-projection",
+        "legal.oss-license-ledger"
+      ],
+      "contractTests": [
+        {
+          "path": "packages/cli/src/commands/production.test.ts",
+          "asserts": "verify-mg-preview black-box CLI reads rendered HTML and manifest, rejects external preview dependencies, verifies first-party license-safe metadata, and writes deterministic frame QA"
+        },
+        {
+          "path": "skills/skill-market.test.mjs",
+          "asserts": "marketplace action contract exposes trigger, artifacts, capabilities, and skill linkage"
+        }
+      ]
+    },
+    {
+      "id": "clash.action.production.project-composition-timeline",
+      "title": "Project a rendered Remotion composition into timeline",
+      "source": "first-party",
+      "skillId": "clash.render.composition-runtime-router",
+      "trigger": {
+        "mode": "local-cli",
+        "command": "clash production project-composition-timeline",
+        "requiresLocalRuntime": true
+      },
+      "lifecycle": ["action", "asset", "view-projection"],
+      "inputs": [
+        {
+          "kind": "manifest",
+          "pathPattern": "plans/routes/<composition-id>.route.json",
+          "schema": "composition-route"
+        },
+        {
+          "kind": "asset",
+          "pathPattern": "assets/manifest.json"
+        },
+        {
+          "kind": "asset",
+          "pathPattern": "assets/renders/<composition-id>.<ext>"
+        }
+      ],
+      "outputs": [
+        {
+          "kind": "manifest",
+          "pathPattern": "projections/timelines/<composition-id>.composition.timeline-manifest.json",
+          "schema": "composition-timeline-projection"
+        },
+        {
+          "kind": "projection",
+          "pathPattern": "projections/timelines/<composition-id>.composition.timeline.yaml",
+          "applyCommand": "clash timeline apply",
+          "lockSource": "fresh-canvas-pull",
+          "lockPathPattern": "timelines/main.timeline.lock.json",
+          "nodeIdPlaceholder": "<video-editor-node-id>",
+          "requiredRuntimeArgs": ["--node <video-editor-node-id>"],
+          "pullCommand": "clash timeline pull",
+          "pullArgsPattern": ["--node", "<video-editor-node-id>", "--file", "timelines/main.timeline.yaml"],
+          "applyArgsPattern": ["--node", "<video-editor-node-id>", "--file", "projections/timelines/<composition-id>.composition.timeline.yaml", "--lock", "timelines/main.timeline.lock.json"],
+          "casRequired": true
+        }
+      ],
+      "requiredSystemCapabilities": [
+        "render.composition-router",
+        "render.remotion-composition",
+        "media.asset-registry",
+        "timeline.cas-projection"
+      ],
+      "contractTests": [
+        {
+          "path": "packages/cli/src/commands/production.test.ts",
+          "asserts": "project-composition-timeline black-box CLI reads a planned Remotion route and registered rendered asset, then writes a CAS-required composition timeline projection"
+        },
+        {
+          "path": "skills/skill-market.test.mjs",
+          "asserts": "marketplace action contract exposes trigger, artifacts, apply commands, CAS lock sidecar, capabilities, and skill linkage"
+        }
+      ]
+    },
+    {
+      "id": "clash.action.production.project-derived-overlay",
+      "title": "Project a copy-on-write derived asset overlay",
+      "source": "first-party",
+      "skillId": "clash.media.copy-on-write-lineage",
+      "trigger": {
+        "mode": "local-cli",
+        "command": "clash production project-derived-overlay",
+        "requiresLocalRuntime": true
+      },
+      "lifecycle": ["action", "view-projection"],
+      "inputs": [
+        {
+          "kind": "asset",
+          "pathPattern": "assets/manifest.json"
+        }
+      ],
+      "outputs": [
+        {
+          "kind": "manifest",
+          "pathPattern": "projections/timelines/<derived-asset-id>.derived-overlay.timeline-manifest.json",
+          "schema": "derived-overlay-projection"
+        },
+        {
+          "kind": "projection",
+          "pathPattern": "projections/timelines/<derived-asset-id>.derived-overlay.timeline.yaml",
+          "applyCommand": "clash timeline apply",
+          "lockSource": "fresh-canvas-pull",
+          "lockPathPattern": "timelines/main.timeline.lock.json",
+          "nodeIdPlaceholder": "<video-editor-node-id>",
+          "requiredRuntimeArgs": ["--node <video-editor-node-id>"],
+          "pullCommand": "clash timeline pull",
+          "pullArgsPattern": ["--node", "<video-editor-node-id>", "--file", "timelines/main.timeline.yaml"],
+          "applyArgsPattern": ["--node", "<video-editor-node-id>", "--file", "projections/timelines/<derived-asset-id>.derived-overlay.timeline.yaml", "--lock", "timelines/main.timeline.lock.json"],
+          "casRequired": true
+        }
+      ],
+      "requiredSystemCapabilities": [
+        "media.copy-on-write",
+        "media.asset-registry",
+        "timeline.cas-projection"
+      ],
+      "contractTests": [
+        {
+          "path": "packages/cli/src/commands/production.test.ts",
+          "asserts": "project-derived-overlay black-box CLI writes derived-overlay timeline YAML plus manifest, requires source and derived assets to differ, and does not mint a fake CAS lock"
+        },
+        {
+          "path": "skills/skill-market.test.mjs",
+          "asserts": "marketplace action contract exposes trigger, artifacts, apply commands, CAS lock sidecar, capabilities, and skill linkage"
+        }
+      ]
+    },
+    {
+      "id": "clash.action.production.plan-text-cut",
+      "title": "Plan talking-head text cuts and caption projection",
+      "source": "first-party",
+      "skillId": "clash.video.talking-head-text-cut",
+      "trigger": {
+        "mode": "local-cli",
+        "command": "clash production plan-text-cut",
+        "requiresLocalRuntime": true
+      },
+      "lifecycle": ["action", "metadata-fill", "view-projection"],
+      "inputs": [
+        {
+          "kind": "analysis",
+          "pathPattern": "analysis/transcripts/<asset-id>.words.json"
+        }
+      ],
+      "outputs": [
+        {
+          "kind": "action",
+          "pathPattern": "actions/talking-head-text-cut.json",
+          "schema": "asset-metadata-fill-action",
+          "metadataKind": "talking-head.analysis",
+          "metadataSchema": "talking-head-analysis-metadata"
+        },
+        {
+          "kind": "metadata",
+          "pathPattern": "projections/metadata/<asset-id>.talking-head.analysis.json",
+          "metadataKind": "talking-head.analysis",
+          "metadataSchema": "talking-head-analysis-metadata",
+          "applyCommand": "clash production apply-metadata"
+        },
+        {
+          "kind": "projection",
+          "pathPattern": "projections/timelines/<asset-id>.caption.timeline.yaml",
+          "applyCommand": "clash timeline apply",
+          "lockSource": "fresh-canvas-pull",
+          "lockPathPattern": "timelines/main.timeline.lock.json",
+          "nodeIdPlaceholder": "<video-editor-node-id>",
+          "requiredRuntimeArgs": ["--node <video-editor-node-id>"],
+          "pullCommand": "clash timeline pull",
+          "pullArgsPattern": ["--node", "<video-editor-node-id>", "--file", "timelines/main.timeline.yaml"],
+          "applyArgsPattern": ["--node", "<video-editor-node-id>", "--file", "projections/timelines/<asset-id>.caption.timeline.yaml", "--lock", "timelines/main.timeline.lock.json"],
+          "casRequired": true
+        }
+      ],
+      "requiredSystemCapabilities": [
+        "audio.word-timestamps",
+        "audio.filler-analysis",
+        "video.text-cut-plan",
+        "caption.retime-and-render",
+        "timeline.cas-projection"
+      ],
+      "contractTests": [
+        {
+          "path": "packages/cli/src/commands/production.test.ts",
+          "asserts": "plan-text-cut black-box CLI writes ASR provenance, disfluency metadata, review ranges, and structured caption timeline projection"
+        },
+        {
+          "path": "skills/skill-market.test.mjs",
+          "asserts": "marketplace action contract exposes trigger, artifacts, apply commands, CAS lock sidecar, capabilities, and skill linkage"
+        }
+      ]
+    },
+    {
+      "id": "clash.action.production.verify-caption-lineage",
+      "title": "Verify structured caption lineage",
+      "source": "first-party",
+      "skillId": "clash.video.talking-head-text-cut",
+      "trigger": {
+        "mode": "local-cli",
+        "command": "clash production verify-caption-lineage",
+        "requiresLocalRuntime": true
+      },
+      "lifecycle": ["action", "review-gate"],
+      "inputs": [
+        {
+          "kind": "projection",
+          "pathPattern": "projections/timelines/<asset-id>.caption.timeline.yaml"
+        }
+      ],
+      "outputs": [
+        {
+          "kind": "analysis",
+          "pathPattern": "qa/captions/<asset-id>.caption-lineage.json",
+          "schema": "caption-lineage-verification"
+        }
+      ],
+      "requiredSystemCapabilities": [
+        "caption.retime-and-render",
+        "timeline.cas-projection"
+      ],
+      "contractTests": [
+        {
+          "path": "packages/cli/src/commands/production.test.ts",
+          "asserts": "verify-caption-lineage black-box CLI writes pass reports for structured caption timelines and blocked reports when subtitle tracks contain plain text"
+        },
+        {
+          "path": "skills/skill-market.test.mjs",
+          "asserts": "marketplace action contract exposes trigger, artifacts, capabilities, and skill linkage"
+        }
+      ]
+    },
+    {
+      "id": "clash.action.production.analyze-audio-beats",
+      "title": "Analyze music beats and project MV cut hints",
+      "source": "first-party",
+      "skillId": "clash.audio.beat-analysis",
+      "trigger": {
+        "mode": "local-cli",
+        "command": "clash production analyze-audio-beats",
+        "requiresLocalRuntime": true
+      },
+      "lifecycle": ["action", "metadata-fill", "view-projection"],
+      "inputs": [
+        {
+          "kind": "asset",
+          "pathPattern": "assets/audio/<asset-id>.wav"
+        }
+      ],
+      "outputs": [
+        {
+          "kind": "action",
+          "pathPattern": "actions/mv-beat-fill.json",
+          "schema": "asset-metadata-fill-action",
+          "metadataKind": "audio.beat-analysis",
+          "metadataSchema": "audio-beat-analysis-metadata"
+        },
+        {
+          "kind": "metadata",
+          "pathPattern": "projections/metadata/<asset-id>.audio.beat-analysis.json",
+          "metadataKind": "audio.beat-analysis",
+          "metadataSchema": "audio-beat-analysis-metadata",
+          "applyCommand": "clash production apply-metadata"
+        },
+        {
+          "kind": "projection",
+          "pathPattern": "projections/timelines/<asset-id>.mv-beat-cut.timeline.yaml",
+          "schema": "mv-beat-cut-projection",
+          "applyCommand": "clash timeline apply",
+          "lockSource": "fresh-canvas-pull",
+          "lockPathPattern": "timelines/main.timeline.lock.json",
+          "nodeIdPlaceholder": "<video-editor-node-id>",
+          "requiredRuntimeArgs": ["--node <video-editor-node-id>"],
+          "pullCommand": "clash timeline pull",
+          "pullArgsPattern": ["--node", "<video-editor-node-id>", "--file", "timelines/main.timeline.yaml"],
+          "applyArgsPattern": ["--node", "<video-editor-node-id>", "--file", "projections/timelines/<asset-id>.mv-beat-cut.timeline.yaml", "--lock", "timelines/main.timeline.lock.json"],
+          "casRequired": true
+        }
+      ],
+      "requiredSystemCapabilities": [
+        "audio.beat-grid",
+        "audio.section-analysis",
+        "media.analysis-store",
+        "timeline.cas-projection"
+      ],
+      "contractTests": [
+        {
+          "path": "packages/cli/src/commands/production.test.ts",
+          "asserts": "analyze-audio-beats black-box CLI writes beat metadata, section hints, metadata fill, and MV beat-cut projection"
+        },
+        {
+          "path": "skills/skill-market.test.mjs",
+          "asserts": "marketplace action contract exposes trigger, artifacts, apply commands, CAS lock sidecar, capabilities, and skill linkage"
+        }
+      ]
+    },
+    {
+      "id": "clash.action.production.verify-mv-beat-sync",
+      "title": "Verify MV beat sync projection contract",
+      "source": "first-party",
+      "skillId": "clash.video.music-video-beat-editing",
+      "trigger": {
+        "mode": "local-cli",
+        "command": "clash production verify-mv-beat-sync",
+        "requiresLocalRuntime": true
+      },
+      "lifecycle": ["action", "review-gate"],
+      "inputs": [
+        {
+          "kind": "action",
+          "pathPattern": "actions/mv-beat-fill.json",
+          "schema": "asset-metadata-fill-action",
+          "metadataKind": "audio.beat-analysis",
+          "metadataSchema": "audio-beat-analysis-metadata"
+        },
+        {
+          "kind": "manifest",
+          "pathPattern": "projections/timelines/<asset-id>.mv-beat-cut.timeline-manifest.json",
+          "schema": "mv-beat-cut-projection"
+        }
+      ],
+      "outputs": [
+        {
+          "kind": "analysis",
+          "pathPattern": "qa/mv/<asset-id>.beat-sync-verification.json",
+          "schema": "mv-beat-sync-verification"
+        }
+      ],
+      "requiredSystemCapabilities": [
+        "audio.beat-grid",
+        "audio.section-analysis",
+        "timeline.cas-projection"
+      ],
+      "contractTests": [
+        {
+          "path": "packages/cli/src/commands/production.test.ts",
+          "asserts": "verify-mv-beat-sync black-box CLI writes pass reports for beat metadata plus CAS timeline projection and blocked reports for incomplete downbeat or section metadata"
+        },
+        {
+          "path": "skills/skill-market.test.mjs",
+          "asserts": "marketplace action contract exposes trigger, artifacts, capabilities, and skill linkage"
+        }
+      ]
+    },
+    {
+      "id": "clash.action.production.plan-reference-review",
+      "title": "Plan TVC or hotspot reference review without copying source media",
+      "source": "first-party",
+      "skillId": "clash.video.reference-ingest-analysis",
+      "trigger": {
+        "mode": "local-cli",
+        "command": "clash production plan-reference-review",
+        "requiresLocalRuntime": true
+      },
+      "lifecycle": ["action", "metadata-fill", "review-gate"],
+      "inputs": [
+        {
+          "kind": "source",
+          "pathPattern": "public-reference-url"
+        },
+        {
+          "kind": "analysis",
+          "pathPattern": "analysis/reference/<reference-id>.shots.json"
+        }
+      ],
+      "outputs": [
+        {
+          "kind": "action",
+          "pathPattern": "actions/reference-review.json",
+          "schema": "asset-metadata-fill-action",
+          "metadataKind": "reference-video.analysis",
+          "metadataSchema": "reference-video-analysis-metadata"
+        },
+        {
+          "kind": "metadata",
+          "pathPattern": "projections/metadata/<reference-id>.reference-video.analysis.json",
+          "metadataKind": "reference-video.analysis",
+          "metadataSchema": "reference-video-analysis-metadata",
+          "applyCommand": "clash production apply-metadata"
+        },
+        {
+          "kind": "analysis",
+          "pathPattern": "projections/references/<reference-id>.rights-ledger.json"
+        }
+      ],
+      "requiredSystemCapabilities": [
+        "video.reference-ingest",
+        "video.shot-analysis",
+        "media.rights-ledger",
+        "review.stage-gates"
+      ],
+      "contractTests": [
+        {
+          "path": "packages/cli/src/commands/production.test.ts",
+          "asserts": "plan-reference-review black-box CLI applies reference metadata, writes shot analysis and rights ledger, and blocks unauthorized derivatives"
+        },
+        {
+          "path": "skills/skill-market.test.mjs",
+          "asserts": "marketplace action contract exposes trigger, artifacts, apply commands, capabilities, and skill linkage"
+        }
+      ]
+    },
+    {
+      "id": "clash.action.production.verify-reference-isolation",
+      "title": "Verify final timeline does not reuse quarantined raw references",
+      "source": "first-party",
+      "skillId": "clash.video.reference-noncopying-qa",
+      "trigger": {
+        "mode": "local-cli",
+        "command": "clash production verify-reference-isolation",
+        "requiresLocalRuntime": true
+      },
+      "lifecycle": ["action", "review-gate"],
+      "inputs": [
+        {
+          "kind": "projection",
+          "pathPattern": "projections/timelines/<timeline-id>.timeline.yaml"
+        },
+        {
+          "kind": "asset",
+          "pathPattern": "assets/manifest.json"
+        }
+      ],
+      "outputs": [
+        {
+          "kind": "analysis",
+          "pathPattern": "qa/reference/<timeline-id>.reference-isolation.json",
+          "schema": "reference-isolation-verification"
+        }
+      ],
+      "requiredSystemCapabilities": [
+        "video.reference-ingest",
+        "video.noncopying-qa",
+        "media.rights-ledger",
+        "timeline.cas-projection"
+      ],
+      "contractTests": [
+        {
+          "path": "packages/cli/src/commands/production.test.ts",
+          "asserts": "verify-reference-isolation black-box CLI writes pass reports for generated timelines and blocked reports when final timeline items directly use unlicensed quarantined raw reference assets"
+        },
+        {
+          "path": "skills/skill-market.test.mjs",
+          "asserts": "marketplace action contract exposes trigger, artifacts, capabilities, and skill linkage"
+        }
+      ]
+    },
+    {
+      "id": "clash.action.production.plan-storyboard-review",
+      "title": "Plan short-drama storyboard and character reference metadata",
+      "source": "first-party",
+      "skillId": "clash.image.storyboard-consistency",
+      "trigger": {
+        "mode": "local-cli",
+        "command": "clash production plan-storyboard-review",
+        "requiresLocalRuntime": true
+      },
+      "lifecycle": ["action", "metadata-fill", "asset", "view-projection"],
+      "inputs": [
+        {
+          "kind": "source",
+          "pathPattern": "storyboards/characters.json"
+        },
+        {
+          "kind": "source",
+          "pathPattern": "storyboards/scenes.json"
+        },
+        {
+          "kind": "source",
+          "pathPattern": "storyboards/panels.json"
+        }
+      ],
+      "outputs": [
+        {
+          "kind": "action",
+          "pathPattern": "actions/storyboard-review.json",
+          "schema": "asset-metadata-fill-action",
+          "metadataKind": "image.storyboard-consistency",
+          "metadataSchema": "image-storyboard-consistency-metadata"
+        },
+        {
+          "kind": "metadata",
+          "pathPattern": "projections/storyboards/<asset-id>.storyboard.json",
+          "metadataKind": "image.storyboard-consistency",
+          "metadataSchema": "image-storyboard-consistency-metadata",
+          "applyCommand": "clash production apply-metadata"
+        },
+        {
+          "kind": "asset",
+          "pathPattern": "assets/storyboards/<panel-id>.<ext>"
+        }
+      ],
+      "requiredSystemCapabilities": [
+        "image.storyboard-consistency",
+        "image.reference-sheets",
+        "media.asset-registry",
+        "media.analysis-store"
+      ],
+      "contractTests": [
+        {
+          "path": "packages/cli/src/commands/production.test.ts",
+          "asserts": "plan-storyboard-review black-box CLI applies storyboard metadata and registers panel plus character reference assets"
+        },
+        {
+          "path": "skills/skill-market.test.mjs",
+          "asserts": "marketplace action contract exposes trigger, artifacts, apply commands, capabilities, and skill linkage"
+        }
+      ]
+    },
+    {
+      "id": "clash.action.production.project-storyboard-timeline",
+      "title": "Project storyboard panel assets into a CAS timeline view",
+      "source": "first-party",
+      "skillId": "clash.image.storyboard-consistency",
+      "trigger": {
+        "mode": "local-cli",
+        "command": "clash production project-storyboard-timeline",
+        "requiresLocalRuntime": true
+      },
+      "lifecycle": ["action", "view-projection"],
+      "inputs": [
+        {
+          "kind": "action",
+          "pathPattern": "actions/storyboard-review.json"
+        },
+        {
+          "kind": "asset",
+          "pathPattern": "assets/storyboards/<panel-id>.<ext>"
+        }
+      ],
+      "outputs": [
+        {
+          "kind": "manifest",
+          "pathPattern": "projections/timelines/<asset-id>.storyboard.timeline-manifest.json",
+          "schema": "storyboard-timeline-projection"
+        },
+        {
+          "kind": "projection",
+          "pathPattern": "projections/timelines/<asset-id>.storyboard.timeline.yaml",
+          "applyCommand": "clash timeline apply",
+          "lockSource": "fresh-canvas-pull",
+          "lockPathPattern": "timelines/main.timeline.lock.json",
+          "nodeIdPlaceholder": "<video-editor-node-id>",
+          "requiredRuntimeArgs": ["--node <video-editor-node-id>"],
+          "pullCommand": "clash timeline pull",
+          "pullArgsPattern": ["--node", "<video-editor-node-id>", "--file", "timelines/main.timeline.yaml"],
+          "applyArgsPattern": ["--node", "<video-editor-node-id>", "--file", "projections/timelines/<asset-id>.storyboard.timeline.yaml", "--lock", "timelines/main.timeline.lock.json"],
+          "casRequired": true
+        }
+      ],
+      "requiredSystemCapabilities": [
+        "image.storyboard-consistency",
+        "media.asset-registry",
+        "timeline.cas-projection"
+      ],
+      "contractTests": [
+        {
+          "path": "packages/cli/src/commands/production.test.ts",
+          "asserts": "project-storyboard-timeline black-box CLI writes CAS-required storyboard image timeline projection and manifest"
+        },
+        {
+          "path": "skills/skill-market.test.mjs",
+          "asserts": "marketplace action contract exposes trigger, artifacts, apply commands, CAS lock sidecar, capabilities, and skill linkage"
+        }
+      ]
+    },
+    {
+      "id": "clash.action.production.verify-storyboard-timeline",
+      "title": "Verify storyboard timeline projection readiness",
+      "source": "first-party",
+      "skillId": "clash.image.storyboard-consistency",
+      "trigger": {
+        "mode": "local-cli",
+        "command": "clash production verify-storyboard-timeline",
+        "requiresLocalRuntime": true
+      },
+      "lifecycle": ["action", "review-gate"],
+      "inputs": [
+        {
+          "kind": "action",
+          "pathPattern": "actions/storyboard-review.json",
+          "schema": "asset-metadata-fill-action",
+          "metadataKind": "image.storyboard-consistency",
+          "metadataSchema": "image-storyboard-consistency-metadata"
+        },
+        {
+          "kind": "manifest",
+          "pathPattern": "projections/timelines/<asset-id>.storyboard.timeline-manifest.json",
+          "schema": "storyboard-timeline-projection"
+        }
+      ],
+      "outputs": [
+        {
+          "kind": "analysis",
+          "pathPattern": "qa/storyboards/<asset-id>.timeline-verification.json",
+          "schema": "storyboard-timeline-verification"
+        }
+      ],
+      "requiredSystemCapabilities": [
+        "image.storyboard-consistency",
+        "media.asset-registry",
+        "timeline.cas-projection"
+      ],
+      "contractTests": [
+        {
+          "path": "packages/cli/src/commands/production.test.ts",
+          "asserts": "verify-storyboard-timeline black-box CLI writes pass reports for covered storyboard timelines and blocked reports for low-consistency panels"
+        },
+        {
+          "path": "skills/skill-market.test.mjs",
+          "asserts": "marketplace action contract exposes trigger, artifacts, capabilities, and skill linkage"
+        }
+      ]
+    }
+  ],
+  "skills": [
+    {
+      "id": "clash.video.agentic-video-architecture",
+      "name": "agentic-video-architecture",
+      "title": "Agentic Video Architecture",
+      "description": "Plan Clash video work as agent-first pipelines with manifests, stage gates, file projections, CAS apply, media lineage, and black-box QA.",
+      "kind": "architecture",
+      "source": "first-party",
+      "path": "skills/video-production/agentic-video-architecture",
+      "tags": [
+        "architecture",
+        "video",
+        "agent-first",
+        "pipeline",
+        "qa"
+      ],
+      "inputs": [
+        "creative brief",
+        "reference video",
+        "project folder"
+      ],
+      "outputs": [
+        "pipeline manifest",
+        "stage outputs",
+        "system gap list",
+        "QA checklist"
+      ],
+      "requiredSystemCapabilities": [
+        "media.asset-registry",
+        "media.analysis-store",
+        "timeline.cas-projection",
+        "render.export-validation",
+        "review.stage-gates",
+        "legal.oss-license-ledger",
+        "workflow.production-action-runner"
+      ],
+      "researchSources": [
+        "OpenMontage",
+        "HyperFrames",
+        "Montage AI"
+      ],
+      "status": "blocked-by-system-gap",
+      "systemGaps": [
+        {
+          "capability": "workflow.production-action-runner",
+          "gap": "Architecture guidance and first-party action contracts exist, but the full agentic pipeline runner does not yet execute all declared stages end to end with resumable state.",
+          "unblockSignal": "A local production runner executes the full pipeline manifest, records stage receipts, and passes black-box resume and restore tests."
+        },
+        {
+          "capability": "timeline.cas-projection",
+          "gap": "Timeline projection files and stale-write checks exist, but not every host/UI timeline write path is proven to use pull/edit/apply CAS.",
+          "unblockSignal": "Every timeline-modifying CLI and host UI path uses the shared CAS apply contract with stale rejection tests."
+        },
+        {
+          "capability": "render.export-validation",
+          "gap": "Selected preview/export validation exists, but full video export receipts across MG, captions, MV, talking-head, and TVC workflows are incomplete.",
+          "unblockSignal": "Rendered outputs carry codec, duration, fps, dimension, audio, caption, visual QA, and rights receipts across all production categories."
+        }
+      ]
+    },
+    {
+      "id": "clash.media.asset-metadata-architecture",
+      "name": "asset-metadata-architecture",
+      "title": "Asset Metadata Architecture",
+      "description": "Design local/agent-first media assets, analysis metadata, immutable references, copy-on-write edits, rights metadata, and canvas projection safety.",
+      "kind": "architecture",
+      "source": "first-party",
+      "path": "skills/video-production/asset-metadata-architecture",
+      "tags": [
+        "architecture",
+        "assets",
+        "metadata",
+        "analysis",
+        "copy-on-write"
+      ],
+      "inputs": [
+        "project asset folder",
+        "generated media",
+        "reference media",
+        "analysis files"
+      ],
+      "outputs": [
+        "asset manifest",
+        "analysis metadata",
+        "lineage policy",
+        "permission model"
+      ],
+      "requiredSystemCapabilities": [
+        "media.asset-registry",
+        "media.analysis-store",
+        "media.copy-on-write",
+        "media.rights-ledger",
+        "timeline.cas-projection",
+        "legal.oss-license-ledger",
+        "workflow.production-action-runner"
+      ],
+      "researchSources": [
+        "CutScript",
+        "Montage AI",
+        "Awesome Multi-Image Generation"
+      ],
+      "status": "blocked-by-system-gap",
+      "systemGaps": [
+        {
+          "capability": "media.asset-registry",
+          "gap": "Agent-readable asset manifests and projection metadata exist, but durable project DB rows, restore semantics, and canvas node mappings are not complete.",
+          "unblockSignal": "A managed asset registry persists and restores assets with stable node mappings, path ownership checks, and black-box project recovery tests."
+        },
+        {
+          "capability": "media.copy-on-write",
+          "gap": "Derived overlay and reference lock contracts exist, but immutable downstream-reference enforcement is not yet universal across all asset edits.",
+          "unblockSignal": "Every edit to a referenced asset either rejects or creates a derived copy with lineage, rights inheritance, and regression tests."
+        },
+        {
+          "capability": "media.rights-ledger",
+          "gap": "Rights ledger projections exist for reference workflows, but durable rights storage, attribution export, and legal review state are incomplete.",
+          "unblockSignal": "Reference, generated, and derived assets carry durable rights ledger records through export receipts and review gates."
+        }
+      ]
+    },
+    {
+      "id": "clash.video.short-drama-production",
+      "name": "short-drama-production",
+      "title": "Short Drama Production",
+      "description": "Create vertical short-drama episodes from premise to characters, three-view sheets, scene sheets, storyboard beats, generated assets, and CAS-required timeline assembly.",
+      "kind": "detail",
+      "source": "first-party",
+      "path": "skills/video-production/short-drama-production",
+      "tags": [
+        "short-drama",
+        "storyboard",
+        "character",
+        "scene",
+        "vertical-video"
+      ],
+      "inputs": [
+        "premise",
+        "genre",
+        "episode count",
+        "character references"
+      ],
+      "outputs": [
+        "characters",
+        "three-view sheets",
+        "scene sheets",
+        "storyboard",
+        "timeline"
+      ],
+      "requiredSystemCapabilities": [
+        "image.reference-sheets",
+        "image.comfyui-runner",
+        "image.storyboard-consistency",
+        "media.asset-registry",
+        "timeline.cas-projection",
+        "render.export-validation"
+      ],
+      "researchSources": [
+        "OpenMontage",
+        "Awesome Multi-Image Generation",
+        "StoryMaker"
+      ],
+      "status": "blocked-by-system-gap",
+      "systemGaps": [
+        {
+          "capability": "image.reference-sheets",
+          "gap": "Character reference sheet metadata and asset registration exist, but automatic sheet generation, immutable UI, and visual QA backends are incomplete.",
+          "unblockSignal": "Reference sheets can be generated or imported, locked, copy-on-write enforced, and visually checked through tests."
+        },
+        {
+          "capability": "image.comfyui-runner",
+          "gap": "ComfyUI workflow/output lineage can be registered, but Clash does not execute ComfyUI, manage models/nodes, or validate generated pixels.",
+          "unblockSignal": "A local ComfyUI runner executes pinned workflows, records output hashes, and registers generated assets with visual QA."
+        },
+        {
+          "capability": "image.storyboard-consistency",
+          "gap": "Storyboard consistency metadata and deterministic QA files exist, but embedding/OCR/logo/style consistency backends and review UI are incomplete.",
+          "unblockSignal": "Storyboard panels are checked by configured visual backends and failed consistency gates block downstream timeline apply."
+        },
+        {
+          "capability": "media.asset-registry",
+          "gap": "Local assets/manifest.json and some asset nodes exist, but durable SQLite-backed asset rows, path ownership checks, and canvas node round-trip are not complete.",
+          "unblockSignal": "A managed asset registry persists assets in the project DB and passes create/update/restore tests with canvas node mappings."
+        },
+        {
+          "capability": "timeline.cas-projection",
+          "gap": "Timeline projection files and stale-write checks exist, but managed timeline apply orchestration is not integrated across every host/UI write path.",
+          "unblockSignal": "Every timeline-modifying command and host UI path uses pull/edit/apply CAS with stale rejection tests."
+        },
+        {
+          "capability": "render.export-validation",
+          "gap": "Export validation covers selected MG and TVC probes, but full renderer/provider export packages, loudness, OCR/logo, and broad media validation are incomplete.",
+          "unblockSignal": "Rendered outputs have codec/duration/fps/dimensions/audio/loudness/visual QA receipts across MG, captions, MV, talking-head, and TVC flows."
+        }
+      ]
+    },
+    {
+      "id": "clash.video.music-video-beat-editing",
+      "name": "music-video-beat-editing",
+      "title": "Music Video Beat Editing",
+      "description": "Build MV and beat-cut videos from music analysis, beat grids, sections, lyrics alignment, visual moment libraries, and CAS-required rhythm-aware timeline projections.",
+      "kind": "detail",
+      "source": "first-party",
+      "path": "skills/video-production/music-video-beat-editing",
+      "tags": [
+        "mv",
+        "music",
+        "beat-detection",
+        "lyrics",
+        "timeline"
+      ],
+      "inputs": [
+        "song file",
+        "lyrics",
+        "source clips",
+        "style brief"
+      ],
+      "outputs": [
+        "audio analysis",
+        "beat grid",
+        "sections",
+        "cut plan",
+        "timeline",
+        "export"
+      ],
+      "requiredSystemCapabilities": [
+        "audio.beat-grid",
+        "audio.section-analysis",
+        "audio.lyrics-alignment",
+        "video.visual-moment-library",
+        "timeline.nle-handoff",
+        "timeline.cas-projection",
+        "render.export-validation",
+        "workflow.production-action-runner"
+      ],
+      "researchSources": [
+        "BeatSync Engine",
+        "Montage AI",
+        "HyperFrames"
+      ],
+      "status": "blocked-by-system-gap",
+      "systemGaps": [
+        {
+          "capability": "audio.beat-grid",
+          "gap": "Local WAV beat analysis exists, but compressed-audio support and robust multi-tempo beat tracking are incomplete.",
+          "unblockSignal": "Beat analysis handles common audio formats and multi-tempo tracks with fixture-backed accuracy thresholds."
+        },
+        {
+          "capability": "audio.section-analysis",
+          "gap": "Heuristic bar sections and semantic labels exist, but model-grade verse/chorus/drop detection and multi-tempo boundaries are incomplete.",
+          "unblockSignal": "Section analysis is validated against fixtures with semantic labels, confidence, and editable review state."
+        },
+        {
+          "capability": "audio.lyrics-alignment",
+          "gap": "Lyrics can be heuristically mapped to beat sections, but vocal/phoneme forced alignment and syllable timing are incomplete.",
+          "unblockSignal": "Lyrics alignment uses local vocal timing or forced alignment and produces reviewed word/syllable caption timing."
+        },
+        {
+          "capability": "video.visual-moment-library",
+          "gap": "Agent or external candidate ranges can be normalized, but automatic scene detection, optical-flow/VLM scoring, and rights-aware extraction are incomplete.",
+          "unblockSignal": "Visual moments are generated by local analyzers with scene/motion/quality scores and rights-aware source range gating."
+        },
+        {
+          "capability": "timeline.nle-handoff",
+          "gap": "CSV handoff exists, but OTIO/EDL round-trip import and richer external NLE review state are still missing.",
+          "unblockSignal": "Timeline handoff supports at least one structured NLE interchange format with import validation and review receipts."
+        },
+        {
+          "capability": "timeline.cas-projection",
+          "gap": "Timeline projection files and stale-write checks exist, but managed timeline apply orchestration is not integrated across every host/UI write path.",
+          "unblockSignal": "Every timeline-modifying command and host UI path uses pull/edit/apply CAS with stale rejection tests."
+        },
+        {
+          "capability": "render.export-validation",
+          "gap": "Export validation covers selected MG and TVC probes, but full renderer/provider export packages, loudness, OCR/logo, and broad media validation are incomplete.",
+          "unblockSignal": "Rendered outputs have codec/duration/fps/dimensions/audio/loudness/visual QA receipts across MG, captions, MV, talking-head, and TVC flows."
+        },
+        {
+          "capability": "workflow.production-action-runner",
+          "gap": "The CLI action runner covers many local plans, but provider execution, project DB integration, multi-user review UI, and managed timeline apply are incomplete.",
+          "unblockSignal": "Managed actions run through local API/project storage with permissions, provenance, review gates, and CAS apply integration."
+        }
+      ]
+    },
+    {
+      "id": "clash.video.talking-head-text-cut",
+      "name": "talking-head-text-cut",
+      "title": "Talking Head Text Cut",
+      "description": "Edit口播视频 through ASR, word timestamps, filler/tone-particle removal, silence cuts, captions, MG overlays, and non-destructive timeline apply.",
+      "kind": "detail",
+      "source": "first-party",
+      "path": "skills/video-production/talking-head-text-cut",
+      "tags": [
+        "talking-head",
+        "asr",
+        "text-based-editing",
+        "captions",
+        "口播"
+      ],
+      "inputs": [
+        "talking-head video",
+        "style preset",
+        "cut strategy"
+      ],
+      "outputs": [
+        "words transcript",
+        "filler analysis",
+        "cut plan",
+        "captions",
+        "timeline",
+        "export"
+      ],
+      "requiredSystemCapabilities": [
+        "audio.word-timestamps",
+        "audio.filler-analysis",
+        "video.text-cut-plan",
+        "media.copy-on-write",
+        "timeline.nle-handoff",
+        "timeline.cas-projection",
+        "render.export-validation",
+        "workflow.production-action-runner"
+      ],
+      "researchSources": [
+        "CutScript",
+        "auto-editor",
+        "HyperFrames"
+      ],
+      "status": "blocked-by-system-gap",
+      "systemGaps": [
+        {
+          "capability": "audio.word-timestamps",
+          "gap": "Existing ASR transcript provenance can be recorded, but ASR execution, transcript correction UI, and diarization review are incomplete.",
+          "unblockSignal": "Local or BYO ASR creates word timestamps, supports correction, and stores transcript revisions with provenance."
+        },
+        {
+          "capability": "audio.filler-analysis",
+          "gap": "Filler, tone-particle, silence, and adjacent-repeat detection exist from word gaps, but semantic false-start confidence and waveform VAD are incomplete.",
+          "unblockSignal": "Disfluency analysis combines transcript and audio evidence with reviewed keep/remove decisions and confidence."
+        },
+        {
+          "capability": "video.text-cut-plan",
+          "gap": "Text-cut plans and caption projections exist, but review UI, crossfades, batch operations, and OTIO/EDL handoff are incomplete.",
+          "unblockSignal": "Text-based cut decisions can be reviewed/applied with media export, caption projection, and NLE handoff tests."
+        },
+        {
+          "capability": "media.copy-on-write",
+          "gap": "Copy-on-write lineage exists for some derived overlays and cuts, but immutable asset enforcement is not applied across every asset mutation path.",
+          "unblockSignal": "All destructive edit paths reject source mutation and require derived asset creation with lineage tests."
+        },
+        {
+          "capability": "timeline.nle-handoff",
+          "gap": "CSV handoff exists, but OTIO/EDL round-trip import and richer external NLE review state are still missing.",
+          "unblockSignal": "Timeline handoff supports at least one structured NLE interchange format with import validation and review receipts."
+        },
+        {
+          "capability": "timeline.cas-projection",
+          "gap": "Timeline projection files and stale-write checks exist, but managed timeline apply orchestration is not integrated across every host/UI write path.",
+          "unblockSignal": "Every timeline-modifying command and host UI path uses pull/edit/apply CAS with stale rejection tests."
+        },
+        {
+          "capability": "render.export-validation",
+          "gap": "Export validation covers selected MG and TVC probes, but full renderer/provider export packages, loudness, OCR/logo, and broad media validation are incomplete.",
+          "unblockSignal": "Rendered outputs have codec/duration/fps/dimensions/audio/loudness/visual QA receipts across MG, captions, MV, talking-head, and TVC flows."
+        },
+        {
+          "capability": "workflow.production-action-runner",
+          "gap": "The CLI action runner covers many local plans, but provider execution, project DB integration, multi-user review UI, and managed timeline apply are incomplete.",
+          "unblockSignal": "Managed actions run through local API/project storage with permissions, provenance, review gates, and CAS apply integration."
+        }
+      ]
+    },
+    {
+      "id": "clash.video.tvc-reference-remix",
+      "name": "tvc-reference-remix",
+      "title": "TVC and Reference Remix",
+      "description": "Produce TVCs and public-reference remixes with brand constraints, yt-dlp ingestion, shot analysis, legal review, packshots, end cards, and delivery specs.",
+      "kind": "detail",
+      "source": "first-party",
+      "path": "skills/video-production/tvc-reference-remix",
+      "tags": [
+        "tvc",
+        "advertising",
+        "reference-video",
+        "yt-dlp",
+        "brand"
+      ],
+      "inputs": [
+        "brand brief",
+        "public reference URL",
+        "product assets",
+        "delivery specs"
+      ],
+      "outputs": [
+        "reference analysis",
+        "brand guardrails",
+        "shot list",
+        "timeline",
+        "export package"
+      ],
+      "requiredSystemCapabilities": [
+        "video.reference-ingest",
+        "video.reference-download",
+        "video.shot-analysis",
+        "media.rights-ledger",
+        "image.reference-sheets",
+        "provenance.content-credentials",
+        "timeline.cas-projection",
+        "render.export-validation",
+        "workflow.production-action-runner"
+      ],
+      "researchSources": [
+        "OpenMontage",
+        "HyperFrames",
+        "yt-dlp"
+      ],
+      "status": "blocked-by-system-gap",
+      "systemGaps": [
+        {
+          "capability": "video.reference-ingest",
+          "gap": "Reference review metadata and rights projections exist, but browser capture, cookie/session handling, and platform terms review are incomplete.",
+          "unblockSignal": "Reference ingest records source capture, rights review, and allowed/prohibited uses before any download or derivative export."
+        },
+        {
+          "capability": "video.reference-download",
+          "gap": "Allowed yt-dlp command plans can execute locally, but browser session capture, cookie handling, and platform terms checks are incomplete.",
+          "unblockSignal": "Reference downloads require explicit rights approval, quarantine raw media, and record platform/session review receipts."
+        },
+        {
+          "capability": "video.shot-analysis",
+          "gap": "Agent-authored shot-analysis projections exist, but automatic detector, visual QA backend, and review UI are incomplete.",
+          "unblockSignal": "Shot boundaries and semantics can be detected or reviewed, then stored as analysis-only projections without copying media."
+        },
+        {
+          "capability": "media.rights-ledger",
+          "gap": "Rights ledger projections exist for reference workflows, but durable rights storage, attribution export, and review UI are incomplete.",
+          "unblockSignal": "Rights records survive project restore, gate exports, and generate attribution/prohibited-use receipts in tests."
+        },
+        {
+          "capability": "image.reference-sheets",
+          "gap": "Character reference sheet metadata and asset registration exist, but automatic sheet generation, immutable UI, and visual QA backends are incomplete.",
+          "unblockSignal": "Reference sheets can be generated or imported, locked, copy-on-write enforced, and visually checked through tests."
+        },
+        {
+          "capability": "provenance.content-credentials",
+          "gap": "Unsigned or external content-credentials manifests can be registered, but C2PA signing identity and export embedding are incomplete.",
+          "unblockSignal": "Exports can be signed or linked to signed manifests with ingredient hashes and verified provenance receipts."
+        },
+        {
+          "capability": "timeline.cas-projection",
+          "gap": "Timeline projection files and stale-write checks exist, but managed timeline apply orchestration is not integrated across every host/UI write path.",
+          "unblockSignal": "Every timeline-modifying command and host UI path uses pull/edit/apply CAS with stale rejection tests."
+        },
+        {
+          "capability": "render.export-validation",
+          "gap": "Export validation covers selected MG and TVC probes, but full renderer/provider export packages, loudness, OCR/logo, and broad media validation are incomplete.",
+          "unblockSignal": "Rendered outputs have codec/duration/fps/dimensions/audio/loudness/visual QA receipts across MG, captions, MV, talking-head, and TVC flows."
+        },
+        {
+          "capability": "workflow.production-action-runner",
+          "gap": "The CLI action runner covers many local plans, but provider execution, project DB integration, multi-user review UI, and managed timeline apply are incomplete.",
+          "unblockSignal": "Managed actions run through local API/project storage with permissions, provenance, review gates, and CAS apply integration."
+        }
+      ]
+    },
+    {
+      "id": "clash.image.storyboard-consistency",
+      "name": "image-storyboard-consistency",
+      "title": "Image Storyboard Consistency",
+      "description": "Generate image preproduction packs: character identity sheets, three-view sheets, scene boards, product boards, and multi-image consistency QA.",
+      "kind": "detail",
+      "source": "first-party",
+      "path": "skills/video-production/image-storyboard-consistency",
+      "tags": [
+        "image",
+        "storyboard",
+        "character-consistency",
+        "three-view",
+        "product-image"
+      ],
+      "inputs": [
+        "character brief",
+        "scene brief",
+        "product references",
+        "style guide"
+      ],
+      "outputs": [
+        "character sheets",
+        "scene sheets",
+        "storyboard panels",
+        "consistency report"
+      ],
+      "requiredSystemCapabilities": [
+        "image.reference-sheets",
+        "image.comfyui-runner",
+        "image.storyboard-consistency",
+        "media.asset-registry",
+        "media.analysis-store",
+        "review.stage-gates",
+        "workflow.production-action-runner"
+      ],
+      "researchSources": [
+        "Awesome Multi-Image Generation",
+        "StoryMaker",
+        "PhotoMaker"
+      ],
+      "status": "blocked-by-system-gap",
+      "systemGaps": [
+        {
+          "capability": "image.reference-sheets",
+          "gap": "Character reference sheet metadata and asset registration exist, but automatic sheet generation, immutable UI, and visual QA backends are incomplete.",
+          "unblockSignal": "Reference sheets can be generated or imported, locked, copy-on-write enforced, and visually checked through tests."
+        },
+        {
+          "capability": "image.comfyui-runner",
+          "gap": "ComfyUI workflow/output lineage can be registered, but Clash does not execute ComfyUI, manage models/nodes, or validate generated pixels.",
+          "unblockSignal": "A local ComfyUI runner executes pinned workflows, records output hashes, and registers generated assets with visual QA."
+        },
+        {
+          "capability": "image.storyboard-consistency",
+          "gap": "Storyboard consistency metadata and deterministic QA files exist, but embedding/OCR/logo/style consistency backends and review UI are incomplete.",
+          "unblockSignal": "Storyboard panels are checked by configured visual backends and failed consistency gates block downstream timeline apply."
+        },
+        {
+          "capability": "media.asset-registry",
+          "gap": "Local assets/manifest.json and some asset nodes exist, but durable SQLite-backed asset rows, path ownership checks, and canvas node round-trip are not complete.",
+          "unblockSignal": "A managed asset registry persists assets in the project DB and passes create/update/restore tests with canvas node mappings."
+        },
+        {
+          "capability": "media.analysis-store",
+          "gap": "Analysis outputs are readable JSON/projection files, but there is no durable indexed analysis store or host apply API for every analysis kind.",
+          "unblockSignal": "Analysis records are indexed in project storage and can be queried, applied, restored, and validated through the local API."
+        },
+        {
+          "capability": "review.stage-gates",
+          "gap": "Local review gate files and hash locks exist, but durable multi-user review UI, cloud sync, and stage graph orchestration are incomplete.",
+          "unblockSignal": "Review gates persist in project state, sync across sessions, and block/apply stages through UI and CLI tests."
+        },
+        {
+          "capability": "workflow.production-action-runner",
+          "gap": "The CLI action runner covers many local plans, but provider execution, project DB integration, multi-user review UI, and managed timeline apply are incomplete.",
+          "unblockSignal": "Managed actions run through local API/project storage with permissions, provenance, review gates, and CAS apply integration."
+        }
+      ]
+    },
+    {
+      "id": "clash.image.character-reference-sheets",
+      "name": "image-character-reference-sheets",
+      "title": "Character Reference Sheets",
+      "description": "Create character identity packs, three-view sheets, expression sheets, wardrobe variants, and reference locks for image/video generation workflows.",
+      "kind": "detail",
+      "source": "first-party",
+      "path": "skills/video-production/image-character-reference-sheets",
+      "tags": [
+        "image",
+        "character",
+        "three-view",
+        "reference-sheet",
+        "identity"
+      ],
+      "inputs": [
+        "character brief",
+        "style guide",
+        "existing references"
+      ],
+      "outputs": [
+        "character identity JSON",
+        "three-view sheet plan",
+        "expression sheet plan",
+        "reference lock policy"
+      ],
+      "requiredSystemCapabilities": [
+        "image.reference-sheets",
+        "image.storyboard-consistency",
+        "media.asset-registry",
+        "media.copy-on-write",
+        "review.stage-gates",
+        "workflow.production-action-runner"
+      ],
+      "researchSources": [
+        "StoryMaker",
+        "PhotoMaker",
+        "Awesome Multi-Image Generation"
+      ],
+      "status": "blocked-by-system-gap",
+      "systemGaps": [
+        {
+          "capability": "image.reference-sheets",
+          "gap": "Character reference sheet metadata and asset registration exist, but automatic sheet generation, immutable UI, and visual QA backends are incomplete.",
+          "unblockSignal": "Reference sheets can be generated or imported, locked, copy-on-write enforced, and visually checked through tests."
+        },
+        {
+          "capability": "image.storyboard-consistency",
+          "gap": "Storyboard consistency metadata and deterministic QA files exist, but embedding/OCR/logo/style consistency backends and review UI are incomplete.",
+          "unblockSignal": "Storyboard panels are checked by configured visual backends and failed consistency gates block downstream timeline apply."
+        },
+        {
+          "capability": "media.asset-registry",
+          "gap": "Local assets/manifest.json and some asset nodes exist, but durable SQLite-backed asset rows, path ownership checks, and canvas node round-trip are not complete.",
+          "unblockSignal": "A managed asset registry persists assets in the project DB and passes create/update/restore tests with canvas node mappings."
+        },
+        {
+          "capability": "media.copy-on-write",
+          "gap": "Copy-on-write lineage exists for some derived overlays and cuts, but immutable asset enforcement is not applied across every asset mutation path.",
+          "unblockSignal": "All destructive edit paths reject source mutation and require derived asset creation with lineage tests."
+        },
+        {
+          "capability": "review.stage-gates",
+          "gap": "Local review gate files and hash locks exist, but durable multi-user review UI, cloud sync, and stage graph orchestration are incomplete.",
+          "unblockSignal": "Review gates persist in project state, sync across sessions, and block/apply stages through UI and CLI tests."
+        },
+        {
+          "capability": "workflow.production-action-runner",
+          "gap": "The CLI action runner covers many local plans, but provider execution, project DB integration, multi-user review UI, and managed timeline apply are incomplete.",
+          "unblockSignal": "Managed actions run through local API/project storage with permissions, provenance, review gates, and CAS apply integration."
+        }
+      ]
+    },
+    {
+      "id": "clash.audio.beat-analysis",
+      "name": "audio-beat-analysis",
+      "title": "Audio Beat Analysis",
+      "description": "Analyze music for BPM, beat grids, downbeats, bars, phrase anchors, energy curves, sections, lyrics alignment hooks, and timeline cut-density metadata.",
+      "kind": "detail",
+      "source": "first-party",
+      "path": "skills/video-production/audio-beat-analysis",
+      "tags": [
+        "audio",
+        "beat-grid",
+        "bpm",
+        "music-analysis",
+        "mv"
+      ],
+      "inputs": [
+        "audio file",
+        "optional lyrics",
+        "target fps"
+      ],
+      "outputs": [
+        "probe.json",
+        "beat-grid.json",
+        "sections.json",
+        "energy.json",
+        "analysis report"
+      ],
+      "requiredSystemCapabilities": [
+        "audio.beat-grid",
+        "audio.section-analysis",
+        "audio.lyrics-alignment",
+        "media.analysis-store",
+        "render.export-validation",
+        "workflow.production-action-runner"
+      ],
+      "researchSources": [
+        "BeatSync Engine",
+        "Montage AI",
+        "librosa"
+      ],
+      "status": "blocked-by-system-gap",
+      "systemGaps": [
+        {
+          "capability": "audio.beat-grid",
+          "gap": "Local WAV beat analysis exists, but compressed-audio support and robust multi-tempo beat tracking are incomplete.",
+          "unblockSignal": "Beat analysis handles common audio formats and multi-tempo tracks with fixture-backed accuracy thresholds."
+        },
+        {
+          "capability": "audio.section-analysis",
+          "gap": "Heuristic bar sections and semantic labels exist, but model-grade verse/chorus/drop detection and multi-tempo boundaries are incomplete.",
+          "unblockSignal": "Section analysis is validated against fixtures with semantic labels, confidence, and editable review state."
+        },
+        {
+          "capability": "audio.lyrics-alignment",
+          "gap": "Lyrics can be heuristically mapped to beat sections, but vocal/phoneme forced alignment and syllable timing are incomplete.",
+          "unblockSignal": "Lyrics alignment uses local vocal timing or forced alignment and produces reviewed word/syllable caption timing."
+        },
+        {
+          "capability": "media.analysis-store",
+          "gap": "Analysis outputs are readable JSON/projection files, but there is no durable indexed analysis store or host apply API for every analysis kind.",
+          "unblockSignal": "Analysis records are indexed in project storage and can be queried, applied, restored, and validated through the local API."
+        },
+        {
+          "capability": "render.export-validation",
+          "gap": "Export validation covers selected MG and TVC probes, but full renderer/provider export packages, loudness, OCR/logo, and broad media validation are incomplete.",
+          "unblockSignal": "Rendered outputs have codec/duration/fps/dimensions/audio/loudness/visual QA receipts across MG, captions, MV, talking-head, and TVC flows."
+        },
+        {
+          "capability": "workflow.production-action-runner",
+          "gap": "The CLI action runner covers many local plans, but provider execution, project DB integration, multi-user review UI, and managed timeline apply are incomplete.",
+          "unblockSignal": "Managed actions run through local API/project storage with permissions, provenance, review gates, and CAS apply integration."
+        }
+      ]
+    },
+    {
+      "id": "clash.audio.transcript-cut-planning",
+      "name": "audio-transcript-cut-planning",
+      "title": "Transcript Cut Planning",
+      "description": "Turn ASR words into safe text-based cut plans for silence, filler words, tone particles, repeated phrases, captions, padding, and crossfade timing.",
+      "kind": "detail",
+      "source": "first-party",
+      "path": "skills/video-production/audio-transcript-cut-planning",
+      "tags": [
+        "asr",
+        "transcript",
+        "filler-removal",
+        "text-cut",
+        "captions"
+      ],
+      "inputs": [
+        "words.json",
+        "source video",
+        "cut strategy"
+      ],
+      "outputs": [
+        "filler analysis",
+        "tone-particle analysis",
+        "cuts.json",
+        "caption delta",
+        "review report"
+      ],
+      "requiredSystemCapabilities": [
+        "audio.word-timestamps",
+        "audio.filler-analysis",
+        "video.text-cut-plan",
+        "media.copy-on-write",
+        "timeline.nle-handoff",
+        "timeline.cas-projection",
+        "workflow.production-action-runner"
+      ],
+      "researchSources": [
+        "CutScript",
+        "auto-editor",
+        "cut-clean"
+      ],
+      "status": "blocked-by-system-gap",
+      "systemGaps": [
+        {
+          "capability": "audio.word-timestamps",
+          "gap": "Existing ASR transcript provenance can be recorded, but ASR execution, transcript correction UI, and diarization review are incomplete.",
+          "unblockSignal": "Local or BYO ASR creates word timestamps, supports correction, and stores transcript revisions with provenance."
+        },
+        {
+          "capability": "audio.filler-analysis",
+          "gap": "Filler, tone-particle, silence, and adjacent-repeat detection exist from word gaps, but semantic false-start confidence and waveform VAD are incomplete.",
+          "unblockSignal": "Disfluency analysis combines transcript and audio evidence with reviewed keep/remove decisions and confidence."
+        },
+        {
+          "capability": "video.text-cut-plan",
+          "gap": "Text-cut plans and caption projections exist, but review UI, crossfades, batch operations, and OTIO/EDL handoff are incomplete.",
+          "unblockSignal": "Text-based cut decisions can be reviewed/applied with media export, caption projection, and NLE handoff tests."
+        },
+        {
+          "capability": "media.copy-on-write",
+          "gap": "Copy-on-write lineage exists for some derived overlays and cuts, but immutable asset enforcement is not applied across every asset mutation path.",
+          "unblockSignal": "All destructive edit paths reject source mutation and require derived asset creation with lineage tests."
+        },
+        {
+          "capability": "timeline.nle-handoff",
+          "gap": "CSV handoff exists, but OTIO/EDL round-trip import and richer external NLE review state are still missing.",
+          "unblockSignal": "Timeline handoff supports at least one structured NLE interchange format with import validation and review receipts."
+        },
+        {
+          "capability": "timeline.cas-projection",
+          "gap": "Timeline projection files and stale-write checks exist, but managed timeline apply orchestration is not integrated across every host/UI write path.",
+          "unblockSignal": "Every timeline-modifying command and host UI path uses pull/edit/apply CAS with stale rejection tests."
+        },
+        {
+          "capability": "workflow.production-action-runner",
+          "gap": "The CLI action runner covers many local plans, but provider execution, project DB integration, multi-user review UI, and managed timeline apply are incomplete.",
+          "unblockSignal": "Managed actions run through local API/project storage with permissions, provenance, review gates, and CAS apply integration."
+        }
+      ]
+    },
+    {
+      "id": "clash.video.reference-ingest-analysis",
+      "name": "reference-video-ingest-analysis",
+      "title": "Reference Video Ingest Analysis",
+      "description": "Ingest public reference videos with yt-dlp-style tooling, rights metadata, shot analysis, visual moment extraction, and non-copying remix constraints.",
+      "kind": "detail",
+      "source": "first-party",
+      "path": "skills/video-production/reference-video-ingest-analysis",
+      "tags": [
+        "reference-video",
+        "yt-dlp",
+        "shot-analysis",
+        "rights",
+        "hotspot-remix"
+      ],
+      "inputs": [
+        "public URL",
+        "rights decision",
+        "target workflow"
+      ],
+      "outputs": [
+        "source ledger",
+        "shot analysis",
+        "visual moments",
+        "remix constraints"
+      ],
+      "requiredSystemCapabilities": [
+        "video.reference-ingest",
+        "video.reference-download",
+        "video.shot-analysis",
+        "video.visual-moment-library",
+        "media.rights-ledger",
+        "media.analysis-store",
+        "legal.oss-license-ledger",
+        "workflow.production-action-runner"
+      ],
+      "researchSources": [
+        "yt-dlp",
+        "Vex",
+        "Montage AI"
+      ],
+      "status": "blocked-by-system-gap",
+      "systemGaps": [
+        {
+          "capability": "video.reference-ingest",
+          "gap": "Reference review metadata and rights projections exist, but browser capture, cookie/session handling, and platform terms review are incomplete.",
+          "unblockSignal": "Reference ingest records source capture, rights review, and allowed/prohibited uses before any download or derivative export."
+        },
+        {
+          "capability": "video.reference-download",
+          "gap": "Allowed yt-dlp command plans can execute locally, but browser session capture, cookie handling, and platform terms checks are incomplete.",
+          "unblockSignal": "Reference downloads require explicit rights approval, quarantine raw media, and record platform/session review receipts."
+        },
+        {
+          "capability": "video.shot-analysis",
+          "gap": "Agent-authored shot-analysis projections exist, but automatic detector, visual QA backend, and review UI are incomplete.",
+          "unblockSignal": "Shot boundaries and semantics can be detected or reviewed, then stored as analysis-only projections without copying media."
+        },
+        {
+          "capability": "video.visual-moment-library",
+          "gap": "Agent or external candidate ranges can be normalized, but automatic scene detection, optical-flow/VLM scoring, and rights-aware extraction are incomplete.",
+          "unblockSignal": "Visual moments are generated by local analyzers with scene/motion/quality scores and rights-aware source range gating."
+        },
+        {
+          "capability": "media.rights-ledger",
+          "gap": "Rights ledger projections exist for reference workflows, but durable rights storage, attribution export, and review UI are incomplete.",
+          "unblockSignal": "Rights records survive project restore, gate exports, and generate attribution/prohibited-use receipts in tests."
+        },
+        {
+          "capability": "media.analysis-store",
+          "gap": "Analysis outputs are readable JSON/projection files, but there is no durable indexed analysis store or host apply API for every analysis kind.",
+          "unblockSignal": "Analysis records are indexed in project storage and can be queried, applied, restored, and validated through the local API."
+        },
+        {
+          "capability": "legal.oss-license-ledger",
+          "gap": "Third-party references have ledger entries, but dependency scanning, NOTICE generation, and explicit legal review workflow are incomplete.",
+          "unblockSignal": "External tools/models/prompts cannot be integrated until scanner output, NOTICE files, and legal review receipts are present."
+        },
+        {
+          "capability": "workflow.production-action-runner",
+          "gap": "The CLI action runner covers many local plans, but provider execution, project DB integration, multi-user review UI, and managed timeline apply are incomplete.",
+          "unblockSignal": "Managed actions run through local API/project storage with permissions, provenance, review gates, and CAS apply integration."
+        }
+      ]
+    },
+    {
+      "id": "clash.video.motion-graphics-overlays",
+      "name": "motion-graphics-overlays",
+      "title": "Motion Graphics Overlays",
+      "description": "Create MG motion graphics, kinetic captions, lower-thirds, data callouts, brand-safe overlays, and reusable transparent or embedded video layers.",
+      "kind": "detail",
+      "source": "first-party",
+      "path": "skills/video-production/motion-graphics-overlays",
+      "tags": [
+        "motion-graphics",
+        "mg",
+        "captions",
+        "overlay",
+        "hyperframes"
+      ],
+      "inputs": [
+        "script segment",
+        "brand tokens",
+        "caption style",
+        "data callout"
+      ],
+      "outputs": [
+        "overlay plan",
+        "composition files",
+        "rendered overlay",
+        "timeline references"
+      ],
+      "requiredSystemCapabilities": [
+        "render.html-composition",
+        "render.remotion-composition",
+        "media.asset-registry",
+        "timeline.cas-projection",
+        "render.export-validation",
+        "workflow.production-action-runner"
+      ],
+      "researchSources": [
+        "HyperFrames",
+        "Remotion"
+      ],
+      "status": "blocked-by-system-gap",
+      "systemGaps": [
+        {
+          "capability": "render.html-composition",
+          "gap": "First-party seekable HTML MG previews and exports exist, but renderer parity for richer effects, fonts, layout, and complex component behavior is incomplete.",
+          "unblockSignal": "HTML composition parity tests cover the supported MG effect set and reject unsupported effects with explicit route plans."
+        },
+        {
+          "capability": "render.remotion-composition",
+          "gap": "Remotion preview rendering exists, but managed Remotion route execution, packaging, and host-side render orchestration are incomplete.",
+          "unblockSignal": "Remotion compositions can be selected, rendered, validated, and registered as assets through managed production commands."
+        },
+        {
+          "capability": "media.asset-registry",
+          "gap": "Local assets/manifest.json and some asset nodes exist, but durable SQLite-backed asset rows, path ownership checks, and canvas node round-trip are not complete.",
+          "unblockSignal": "A managed asset registry persists assets in the project DB and passes create/update/restore tests with canvas node mappings."
+        },
+        {
+          "capability": "timeline.cas-projection",
+          "gap": "Timeline projection files and stale-write checks exist, but managed timeline apply orchestration is not integrated across every host/UI write path.",
+          "unblockSignal": "Every timeline-modifying command and host UI path uses pull/edit/apply CAS with stale rejection tests."
+        },
+        {
+          "capability": "render.export-validation",
+          "gap": "Export validation covers selected MG and TVC probes, but full renderer/provider export packages, loudness, OCR/logo, and broad media validation are incomplete.",
+          "unblockSignal": "Rendered outputs have codec/duration/fps/dimensions/audio/loudness/visual QA receipts across MG, captions, MV, talking-head, and TVC flows."
+        },
+        {
+          "capability": "workflow.production-action-runner",
+          "gap": "The CLI action runner covers many local plans, but provider execution, project DB integration, multi-user review UI, and managed timeline apply are incomplete.",
+          "unblockSignal": "Managed actions run through local API/project storage with permissions, provenance, review gates, and CAS apply integration."
+        }
+      ]
+    },
+    {
+      "id": "clash.video.pipeline-manifest-architecture",
+      "name": "pipeline-manifest-architecture",
+      "title": "Pipeline Manifest Architecture",
+      "description": "Design stage graphs, gates, artifacts, dry runs, capability requirements, review checkpoints, and machine-readable video pipeline manifests.",
+      "kind": "architecture",
+      "source": "first-party",
+      "path": "skills/video-production/pipeline-manifest-architecture",
+      "tags": [
+        "architecture",
+        "pipeline",
+        "manifest",
+        "stage-gates"
+      ],
+      "inputs": [
+        "project files",
+        "brief",
+        "source assets"
+      ],
+      "outputs": [
+        "structured artifacts",
+        "validation report"
+      ],
+      "requiredSystemCapabilities": [
+        "workflow.pipeline-validation",
+        "review.stage-gates",
+        "media.analysis-store",
+        "timeline.cas-projection",
+        "render.export-validation",
+        "workflow.dry-run-cost-gate"
+      ],
+      "researchSources": [
+        "OpenMontage",
+        "HyperFrames",
+        "VibeFrame"
+      ],
+      "status": "blocked-by-system-gap",
+      "systemGaps": [
+        {
+          "capability": "workflow.pipeline-validation",
+          "gap": "Local pipeline manifest validation exists, but durable stage graph orchestration, UI blocking, and cloud/project DB persistence are incomplete.",
+          "unblockSignal": "Pipeline validation reports are persisted in project state and block managed stage transitions across CLI, local API, and UI."
+        },
+        {
+          "capability": "review.stage-gates",
+          "gap": "Local review gate files and hash locks exist, but durable multi-user review UI, cloud sync, and stage graph orchestration are incomplete.",
+          "unblockSignal": "Review gates persist in project state, sync across sessions, and block/apply stages through UI and CLI tests."
+        },
+        {
+          "capability": "media.analysis-store",
+          "gap": "Analysis outputs are readable JSON/projection files, but there is no durable indexed analysis store or host apply API for every analysis kind.",
+          "unblockSignal": "Analysis records are indexed in project storage and can be queried, applied, restored, and validated through the local API."
+        },
+        {
+          "capability": "timeline.cas-projection",
+          "gap": "Timeline projection files and stale-write checks exist, but managed timeline apply orchestration is not integrated across every host/UI write path.",
+          "unblockSignal": "Every timeline-modifying command and host UI path uses pull/edit/apply CAS with stale rejection tests."
+        },
+        {
+          "capability": "render.export-validation",
+          "gap": "Export validation covers selected MG and TVC probes, but full renderer/provider export packages, loudness, OCR/logo, and broad media validation are incomplete.",
+          "unblockSignal": "Rendered outputs have codec/duration/fps/dimensions/audio/loudness/visual QA receipts across MG, captions, MV, talking-head, and TVC flows."
+        },
+        {
+          "capability": "workflow.dry-run-cost-gate",
+          "gap": "Dry-run cost gate files exist, but live provider probing, BYO OAuth/key checks, quotas, and cloud policy sync are incomplete.",
+          "unblockSignal": "Cost gates probe configured providers without executing jobs and block generation when budget, auth, or quota checks fail."
+        }
+      ]
+    },
+    {
+      "id": "clash.video.project-file-contract",
+      "name": "project-file-contract",
+      "title": "Project File Contract",
+      "description": "Define Clash project-local files, editable/protected paths, plans, analyses, projections, reports, and agent-safe file ownership rules.",
+      "kind": "architecture",
+      "source": "first-party",
+      "path": "skills/video-production/project-file-contract",
+      "tags": [
+        "architecture",
+        "project-files",
+        "agent-first"
+      ],
+      "inputs": [
+        "project files",
+        "brief",
+        "source assets"
+      ],
+      "outputs": [
+        "structured artifacts",
+        "validation report"
+      ],
+      "requiredSystemCapabilities": [
+        "media.asset-registry",
+        "media.analysis-store",
+        "timeline.cas-projection"
+      ],
+      "researchSources": [
+        "VibeFrame",
+        "Vex",
+        "Montage AI"
+      ],
+      "status": "blocked-by-system-gap",
+      "systemGaps": [
+        {
+          "capability": "media.asset-registry",
+          "gap": "Local assets/manifest.json and some asset nodes exist, but durable SQLite-backed asset rows, path ownership checks, and canvas node round-trip are not complete.",
+          "unblockSignal": "A managed asset registry persists assets in the project DB and passes create/update/restore tests with canvas node mappings."
+        },
+        {
+          "capability": "media.analysis-store",
+          "gap": "Analysis outputs are readable JSON/projection files, but there is no durable indexed analysis store or host apply API for every analysis kind.",
+          "unblockSignal": "Analysis records are indexed in project storage and can be queried, applied, restored, and validated through the local API."
+        },
+        {
+          "capability": "timeline.cas-projection",
+          "gap": "Timeline projection files and stale-write checks exist, but managed timeline apply orchestration is not integrated across every host/UI write path.",
+          "unblockSignal": "Every timeline-modifying command and host UI path uses pull/edit/apply CAS with stale rejection tests."
+        }
+      ]
+    },
+    {
+      "id": "clash.media.copy-on-write-lineage",
+      "name": "copy-on-write-lineage",
+      "title": "Copy-on-Write Lineage",
+      "description": "Design derived media lineage, immutable parent assets, reference locks, rights inheritance, and auditable force/replace behavior.",
+      "kind": "architecture",
+      "source": "first-party",
+      "path": "skills/video-production/copy-on-write-lineage",
+      "tags": [
+        "architecture",
+        "copy-on-write",
+        "lineage",
+        "assets"
+      ],
+      "inputs": [
+        "project files",
+        "brief",
+        "source assets"
+      ],
+      "outputs": [
+        "structured artifacts",
+        "validation report"
+      ],
+      "requiredSystemCapabilities": [
+        "media.copy-on-write",
+        "media.asset-registry",
+        "media.rights-ledger"
+      ],
+      "researchSources": [
+        "Vex",
+        "Montage AI",
+        "auto-editor"
+      ],
+      "status": "blocked-by-system-gap",
+      "systemGaps": [
+        {
+          "capability": "media.copy-on-write",
+          "gap": "Copy-on-write lineage exists for some derived overlays and cuts, but immutable asset enforcement is not applied across every asset mutation path.",
+          "unblockSignal": "All destructive edit paths reject source mutation and require derived asset creation with lineage tests."
+        },
+        {
+          "capability": "media.asset-registry",
+          "gap": "Local assets/manifest.json and some asset nodes exist, but durable SQLite-backed asset rows, path ownership checks, and canvas node round-trip are not complete.",
+          "unblockSignal": "A managed asset registry persists assets in the project DB and passes create/update/restore tests with canvas node mappings."
+        },
+        {
+          "capability": "media.rights-ledger",
+          "gap": "Rights ledger projections exist for reference workflows, but durable rights storage, attribution export, and review UI are incomplete.",
+          "unblockSignal": "Rights records survive project restore, gate exports, and generate attribution/prohibited-use receipts in tests."
+        }
+      ]
+    },
+    {
+      "id": "clash.render.composition-runtime-router",
+      "name": "composition-runtime-router",
+      "title": "Composition Runtime Router",
+      "description": "Route render work between Remotion, HTML/HyperFrames-style compositions, FFmpeg, Manim, and future runtimes through explicit route plans without silent fallback.",
+      "kind": "architecture",
+      "source": "first-party",
+      "path": "skills/video-production/composition-runtime-router",
+      "tags": [
+        "architecture",
+        "render",
+        "hyperframes",
+        "remotion"
+      ],
+      "inputs": [
+        "project files",
+        "brief",
+        "source assets"
+      ],
+      "outputs": [
+        "structured artifacts",
+        "validation report"
+      ],
+      "requiredSystemCapabilities": [
+        "render.composition-router",
+        "render.html-composition",
+        "render.remotion-composition",
+        "render.export-validation",
+        "legal.oss-license-ledger"
+      ],
+      "researchSources": [
+        "HyperFrames",
+        "Remotion",
+        "mcp-video",
+        "VibeFrame"
+      ],
+      "status": "blocked-by-system-gap",
+      "systemGaps": [
+        {
+          "capability": "render.composition-router",
+          "gap": "Composition route plans reject silent fallback, but host runtime probing and managed execution orchestration are incomplete.",
+          "unblockSignal": "Runtime availability is probed locally and selected routes can execute or fail closed with tested fallback rejection."
+        },
+        {
+          "capability": "render.html-composition",
+          "gap": "First-party seekable HTML MG previews and exports exist, but renderer parity for richer effects, fonts, layout, and complex component behavior is incomplete.",
+          "unblockSignal": "HTML composition parity tests cover the supported MG effect set and reject unsupported effects with explicit route plans."
+        },
+        {
+          "capability": "render.remotion-composition",
+          "gap": "Remotion preview rendering exists, but managed Remotion route execution, packaging, and host-side render orchestration are incomplete.",
+          "unblockSignal": "Remotion compositions can be selected, rendered, validated, and registered as assets through managed production commands."
+        },
+        {
+          "capability": "render.export-validation",
+          "gap": "Export validation covers selected MG and TVC probes, but full renderer/provider export packages, loudness, OCR/logo, and broad media validation are incomplete.",
+          "unblockSignal": "Rendered outputs have codec/duration/fps/dimensions/audio/loudness/visual QA receipts across MG, captions, MV, talking-head, and TVC flows."
+        },
+        {
+          "capability": "legal.oss-license-ledger",
+          "gap": "Third-party references have ledger entries, but dependency scanning, NOTICE generation, and explicit legal review workflow are incomplete.",
+          "unblockSignal": "External tools/models/prompts cannot be integrated until scanner output, NOTICE files, and legal review receipts are present."
+        }
+      ]
+    },
+    {
+      "id": "clash.review.video-release-checkpoint",
+      "name": "video-release-checkpoint",
+      "title": "Video Release Checkpoint",
+      "description": "Validate final video releases with ffprobe-style checks, sampled frames, audio/caption/safe-area checks, rights ledgers, and receipts.",
+      "kind": "architecture",
+      "source": "first-party",
+      "path": "skills/video-production/video-release-checkpoint",
+      "tags": [
+        "architecture",
+        "qa",
+        "release",
+        "export-validation"
+      ],
+      "inputs": [
+        "project files",
+        "brief",
+        "source assets"
+      ],
+      "outputs": [
+        "structured artifacts",
+        "validation report"
+      ],
+      "requiredSystemCapabilities": [
+        "render.export-validation",
+        "media.rights-ledger",
+        "review.stage-gates"
+      ],
+      "researchSources": [
+        "OpenMontage",
+        "Montage AI",
+        "mcp-video"
+      ],
+      "status": "blocked-by-system-gap",
+      "systemGaps": [
+        {
+          "capability": "render.export-validation",
+          "gap": "Export validation covers selected MG and TVC probes, but full renderer/provider export packages, loudness, OCR/logo, and broad media validation are incomplete.",
+          "unblockSignal": "Rendered outputs have codec/duration/fps/dimensions/audio/loudness/visual QA receipts across MG, captions, MV, talking-head, and TVC flows."
+        },
+        {
+          "capability": "media.rights-ledger",
+          "gap": "Rights ledger projections exist for reference workflows, but durable rights storage, attribution export, and review UI are incomplete.",
+          "unblockSignal": "Rights records survive project restore, gate exports, and generate attribution/prohibited-use receipts in tests."
+        },
+        {
+          "capability": "review.stage-gates",
+          "gap": "Local review gate files and hash locks exist, but durable multi-user review UI, cloud sync, and stage graph orchestration are incomplete.",
+          "unblockSignal": "Review gates persist in project state, sync across sessions, and block/apply stages through UI and CLI tests."
+        }
+      ]
+    },
+    {
+      "id": "clash.tools.provider-budget-capability",
+      "name": "provider-budget-capability",
+      "title": "Provider Budget Capability",
+      "description": "Plan provider/runtime availability, BYO keys, dry-run costs, max-cost gates, model routing, and explicit fallback decisions.",
+      "kind": "architecture",
+      "source": "first-party",
+      "path": "skills/video-production/provider-budget-capability",
+      "tags": [
+        "architecture",
+        "provider",
+        "budget",
+        "dry-run"
+      ],
+      "inputs": [
+        "project files",
+        "brief",
+        "source assets"
+      ],
+      "outputs": [
+        "structured artifacts",
+        "validation report"
+      ],
+      "requiredSystemCapabilities": [
+        "workflow.dry-run-cost-gate",
+        "media.asset-registry",
+        "review.stage-gates",
+        "legal.oss-license-ledger"
+      ],
+      "researchSources": [
+        "VibeFrame",
+        "OpenMontage",
+        "Remotion"
+      ],
+      "status": "blocked-by-system-gap",
+      "systemGaps": [
+        {
+          "capability": "workflow.dry-run-cost-gate",
+          "gap": "Dry-run cost gate files exist, but live provider probing, BYO OAuth/key checks, quotas, and cloud policy sync are incomplete.",
+          "unblockSignal": "Cost gates probe configured providers without executing jobs and block generation when budget, auth, or quota checks fail."
+        },
+        {
+          "capability": "media.asset-registry",
+          "gap": "Local assets/manifest.json and some asset nodes exist, but durable SQLite-backed asset rows, path ownership checks, and canvas node round-trip are not complete.",
+          "unblockSignal": "A managed asset registry persists assets in the project DB and passes create/update/restore tests with canvas node mappings."
+        },
+        {
+          "capability": "review.stage-gates",
+          "gap": "Local review gate files and hash locks exist, but durable multi-user review UI, cloud sync, and stage graph orchestration are incomplete.",
+          "unblockSignal": "Review gates persist in project state, sync across sessions, and block/apply stages through UI and CLI tests."
+        },
+        {
+          "capability": "legal.oss-license-ledger",
+          "gap": "Third-party references have ledger entries, but dependency scanning, NOTICE generation, and explicit legal review workflow are incomplete.",
+          "unblockSignal": "External tools/models/prompts cannot be integrated until scanner output, NOTICE files, and legal review receipts are present."
+        }
+      ]
+    },
+    {
+      "id": "clash.audio.lyrics-alignment",
+      "name": "audio-lyrics-alignment",
+      "title": "Lyrics Alignment",
+      "description": "Align lyrics to audio with line/word/syllable timestamps, confidence, unmatched ranges, and optional stem separation for MV/karaoke workflows.",
+      "kind": "detail",
+      "source": "first-party",
+      "path": "skills/video-production/audio-lyrics-alignment",
+      "tags": [
+        "audio",
+        "lyrics",
+        "alignment",
+        "karaoke",
+        "mv"
+      ],
+      "inputs": [
+        "project files",
+        "brief",
+        "source assets"
+      ],
+      "outputs": [
+        "structured artifacts",
+        "validation report"
+      ],
+      "requiredSystemCapabilities": [
+        "audio.lyrics-alignment",
+        "audio.stem-separation",
+        "media.analysis-store"
+      ],
+      "researchSources": [
+        "WhisperX",
+        "librosa",
+        "CutScript"
+      ],
+      "status": "blocked-by-system-gap",
+      "systemGaps": [
+        {
+          "capability": "audio.lyrics-alignment",
+          "gap": "Lyrics can be heuristically mapped to beat sections, but vocal/phoneme forced alignment and syllable timing are incomplete.",
+          "unblockSignal": "Lyrics alignment uses local vocal timing or forced alignment and produces reviewed word/syllable caption timing."
+        },
+        {
+          "capability": "audio.stem-separation",
+          "gap": "Existing stem files can be registered, but Demucs/UVR style separation runners and vocal quality scoring are incomplete.",
+          "unblockSignal": "A local stem separation runner creates stems, validates hashes/durations, and records quality metrics."
+        },
+        {
+          "capability": "media.analysis-store",
+          "gap": "Analysis outputs are readable JSON/projection files, but there is no durable indexed analysis store or host apply API for every analysis kind.",
+          "unblockSignal": "Analysis records are indexed in project storage and can be queried, applied, restored, and validated through the local API."
+        }
+      ]
+    },
+    {
+      "id": "clash.video.visual-moment-library",
+      "name": "visual-moment-library",
+      "title": "Visual Moment Library",
+      "description": "Analyze source footage into reusable visual moments with scene changes, motion, quality, action, emotion, semantic tags, and source refs.",
+      "kind": "detail",
+      "source": "first-party",
+      "path": "skills/video-production/visual-moment-library",
+      "tags": [
+        "video",
+        "shot-analysis",
+        "visual-moments",
+        "mv"
+      ],
+      "inputs": [
+        "project files",
+        "brief",
+        "source assets"
+      ],
+      "outputs": [
+        "structured artifacts",
+        "validation report"
+      ],
+      "requiredSystemCapabilities": [
+        "video.visual-moment-library",
+        "video.shot-analysis",
+        "media.analysis-store"
+      ],
+      "researchSources": [
+        "BeatSync Engine",
+        "Montage AI"
+      ],
+      "status": "blocked-by-system-gap",
+      "systemGaps": [
+        {
+          "capability": "video.visual-moment-library",
+          "gap": "Agent or external candidate ranges can be normalized, but automatic scene detection, optical-flow/VLM scoring, and rights-aware extraction are incomplete.",
+          "unblockSignal": "Visual moments are generated by local analyzers with scene/motion/quality scores and rights-aware source range gating."
+        },
+        {
+          "capability": "video.shot-analysis",
+          "gap": "Agent-authored shot-analysis projections exist, but automatic detector, visual QA backend, and review UI are incomplete.",
+          "unblockSignal": "Shot boundaries and semantics can be detected or reviewed, then stored as analysis-only projections without copying media."
+        },
+        {
+          "capability": "media.analysis-store",
+          "gap": "Analysis outputs are readable JSON/projection files, but there is no durable indexed analysis store or host apply API for every analysis kind.",
+          "unblockSignal": "Analysis records are indexed in project storage and can be queried, applied, restored, and validated through the local API."
+        }
+      ]
+    },
+    {
+      "id": "clash.caption.retime-and-render",
+      "name": "caption-retime-and-render",
+      "title": "Caption Retime and Render",
+      "description": "Retime captions after transcript cuts using source-to-output maps, then prepare SRT/VTT/ASS or rendered caption overlays.",
+      "kind": "detail",
+      "source": "first-party",
+      "path": "skills/video-production/caption-retime-and-render",
+      "tags": [
+        "captions",
+        "retime",
+        "asr",
+        "口播"
+      ],
+      "inputs": [
+        "project files",
+        "brief",
+        "source assets"
+      ],
+      "outputs": [
+        "structured artifacts",
+        "validation report"
+      ],
+      "requiredSystemCapabilities": [
+        "caption.retime-and-render",
+        "video.text-cut-plan",
+        "timeline.cas-projection",
+        "render.export-validation"
+      ],
+      "researchSources": [
+        "CutScript",
+        "auto-editor",
+        "WhisperX"
+      ],
+      "status": "blocked-by-system-gap",
+      "systemGaps": [
+        {
+          "capability": "caption.retime-and-render",
+          "gap": "Structured caption tracks and sidecar/burn plans exist, but full retime UI, batch review, and visual caption QA are incomplete.",
+          "unblockSignal": "Caption cues can be reviewed, retimed, rendered, visually checked, and applied through CAS across representative fixtures."
+        },
+        {
+          "capability": "video.text-cut-plan",
+          "gap": "Text-cut plans and caption projections exist, but review UI, crossfades, batch operations, and OTIO/EDL handoff are incomplete.",
+          "unblockSignal": "Text-based cut decisions can be reviewed/applied with media export, caption projection, and NLE handoff tests."
+        },
+        {
+          "capability": "timeline.cas-projection",
+          "gap": "Timeline projection files and stale-write checks exist, but managed timeline apply orchestration is not integrated across every host/UI write path.",
+          "unblockSignal": "Every timeline-modifying command and host UI path uses pull/edit/apply CAS with stale rejection tests."
+        },
+        {
+          "capability": "render.export-validation",
+          "gap": "Export validation covers selected MG and TVC probes, but full renderer/provider export packages, loudness, OCR/logo, and broad media validation are incomplete.",
+          "unblockSignal": "Rendered outputs have codec/duration/fps/dimensions/audio/loudness/visual QA receipts across MG, captions, MV, talking-head, and TVC flows."
+        }
+      ]
+    },
+    {
+      "id": "clash.ad.delivery-spec-pack",
+      "name": "ad-delivery-spec-pack",
+      "title": "Ad Delivery Spec Pack",
+      "description": "Create platform delivery specs, safe zones, aspect ratios, 6s/15s/30s variants, subtitle/disclaimer timing, and export QA requirements.",
+      "kind": "detail",
+      "source": "first-party",
+      "path": "skills/video-production/ad-delivery-spec-pack",
+      "tags": [
+        "ad",
+        "tvc",
+        "delivery",
+        "safe-area"
+      ],
+      "inputs": [
+        "project files",
+        "brief",
+        "source assets"
+      ],
+      "outputs": [
+        "structured artifacts",
+        "validation report"
+      ],
+      "requiredSystemCapabilities": [
+        "ad.delivery-spec",
+        "ad.delivery-export-validation",
+        "provenance.content-credentials",
+        "review.stage-gates"
+      ],
+      "researchSources": [
+        "OpenMontage",
+        "VibeFrame"
+      ],
+      "status": "blocked-by-system-gap",
+      "systemGaps": [
+        {
+          "capability": "ad.delivery-spec",
+          "gap": "Delivery specs and checklists exist, but package assembly and managed multi-platform review workflow are incomplete.",
+          "unblockSignal": "Each ad variant can be packaged with platform-specific receipts, assets, captions, and reviewed delivery metadata."
+        },
+        {
+          "capability": "ad.delivery-export-validation",
+          "gap": "TVC media and PPM visual checks exist, but automatic OCR/logo/loudness and direct PNG/JPEG image decoding are incomplete.",
+          "unblockSignal": "Delivery validation includes automated loudness, OCR/logo, image decode, and visual QA evidence for each variant."
+        },
+        {
+          "capability": "provenance.content-credentials",
+          "gap": "Unsigned or external content-credentials manifests can be registered, but C2PA signing identity and export embedding are incomplete.",
+          "unblockSignal": "Exports can be signed or linked to signed manifests with ingredient hashes and verified provenance receipts."
+        },
+        {
+          "capability": "review.stage-gates",
+          "gap": "Local review gate files and hash locks exist, but durable multi-user review UI, cloud sync, and stage graph orchestration are incomplete.",
+          "unblockSignal": "Review gates persist in project state, sync across sessions, and block/apply stages through UI and CLI tests."
+        }
+      ]
+    },
+    {
+      "id": "clash.ad.packshot-end-card-builder",
+      "name": "packshot-end-card-builder",
+      "title": "Packshot End Card Builder",
+      "description": "Plan product packshots, end cards, CTA lockups, disclaimers, app-store/QR/social badges, and final-frame validation.",
+      "kind": "detail",
+      "source": "first-party",
+      "path": "skills/video-production/packshot-end-card-builder",
+      "tags": [
+        "ad",
+        "packshot",
+        "end-card",
+        "cta"
+      ],
+      "inputs": [
+        "project files",
+        "brief",
+        "source assets"
+      ],
+      "outputs": [
+        "structured artifacts",
+        "validation report"
+      ],
+      "requiredSystemCapabilities": [
+        "ad.packshot-end-card",
+        "image.product-logo-qa",
+        "render.export-validation"
+      ],
+      "researchSources": [
+        "HyperFrames",
+        "VibeFrame"
+      ],
+      "status": "blocked-by-system-gap",
+      "systemGaps": [
+        {
+          "capability": "ad.packshot-end-card",
+          "gap": "Packshot/end-card gates and PPM pixel checks exist, but automatic OCR/logo detectors and richer image decoding are incomplete.",
+          "unblockSignal": "Packshot, CTA, disclaimer, logo, and final-frame holds are verified by analyzers or reviewed evidence before export."
+        },
+        {
+          "capability": "image.product-logo-qa",
+          "gap": "Product/logo QA consumes supplied evidence and fails closed, but automatic OCR/logo detection, color sampling, material checks, and review UI are incomplete.",
+          "unblockSignal": "Locked product/logo references are checked by local analyzers and missing or failed evidence blocks release receipts."
+        },
+        {
+          "capability": "render.export-validation",
+          "gap": "Export validation covers selected MG and TVC probes, but full renderer/provider export packages, loudness, OCR/logo, and broad media validation are incomplete.",
+          "unblockSignal": "Rendered outputs have codec/duration/fps/dimensions/audio/loudness/visual QA receipts across MG, captions, MV, talking-head, and TVC flows."
+        }
+      ]
+    },
+    {
+      "id": "clash.video.reference-noncopying-qa",
+      "name": "reference-noncopying-qa",
+      "title": "Reference Non-Copying QA",
+      "description": "Check reference-inspired videos against source frames/audio/text so structure can be remixed without copying expressive assets.",
+      "kind": "detail",
+      "source": "first-party",
+      "path": "skills/video-production/reference-noncopying-qa",
+      "tags": [
+        "reference-video",
+        "qa",
+        "rights",
+        "noncopying"
+      ],
+      "inputs": [
+        "project files",
+        "brief",
+        "source assets"
+      ],
+      "outputs": [
+        "structured artifacts",
+        "validation report"
+      ],
+      "requiredSystemCapabilities": [
+        "video.noncopying-qa",
+        "media.rights-ledger",
+        "render.export-validation"
+      ],
+      "researchSources": [
+        "yt-dlp",
+        "Vex",
+        "OpenMontage"
+      ],
+      "status": "blocked-by-system-gap",
+      "systemGaps": [
+        {
+          "capability": "video.noncopying-qa",
+          "gap": "Non-copying QA checks text/tag structural similarity, but video/audio fingerprinting, creator-likeness checks, and review UI are incomplete.",
+          "unblockSignal": "Reference remix QA compares structure, visuals, audio, and likeness signals and blocks unsafe derivative exports."
+        },
+        {
+          "capability": "media.rights-ledger",
+          "gap": "Rights ledger projections exist for reference workflows, but durable rights storage, attribution export, and review UI are incomplete.",
+          "unblockSignal": "Rights records survive project restore, gate exports, and generate attribution/prohibited-use receipts in tests."
+        },
+        {
+          "capability": "render.export-validation",
+          "gap": "Export validation covers selected MG and TVC probes, but full renderer/provider export packages, loudness, OCR/logo, and broad media validation are incomplete.",
+          "unblockSignal": "Rendered outputs have codec/duration/fps/dimensions/audio/loudness/visual QA receipts across MG, captions, MV, talking-head, and TVC flows."
+        }
+      ]
+    },
+    {
+      "id": "clash.video.hotspot-structure-remix",
+      "name": "hotspot-structure-remix",
+      "title": "Hotspot Structure Remix",
+      "description": "Extract trend grammar, hook pacing, caption patterns, shot taxonomy, and remix constraints from hotspot videos without copying source media.",
+      "kind": "detail",
+      "source": "first-party",
+      "path": "skills/video-production/hotspot-structure-remix",
+      "tags": [
+        "hotspot",
+        "reference-video",
+        "remix",
+        "trend"
+      ],
+      "inputs": [
+        "project files",
+        "brief",
+        "source assets"
+      ],
+      "outputs": [
+        "structured artifacts",
+        "validation report"
+      ],
+      "requiredSystemCapabilities": [
+        "video.reference-ingest",
+        "video.reference-download",
+        "video.shot-analysis",
+        "video.noncopying-qa",
+        "media.rights-ledger"
+      ],
+      "researchSources": [
+        "yt-dlp",
+        "Vex",
+        "Montage AI"
+      ],
+      "status": "blocked-by-system-gap",
+      "systemGaps": [
+        {
+          "capability": "video.reference-ingest",
+          "gap": "Reference review metadata and rights projections exist, but browser capture, cookie/session handling, and platform terms review are incomplete.",
+          "unblockSignal": "Reference ingest records source capture, rights review, and allowed/prohibited uses before any download or derivative export."
+        },
+        {
+          "capability": "video.reference-download",
+          "gap": "Allowed yt-dlp command plans can execute locally, but browser session capture, cookie handling, and platform terms checks are incomplete.",
+          "unblockSignal": "Reference downloads require explicit rights approval, quarantine raw media, and record platform/session review receipts."
+        },
+        {
+          "capability": "video.shot-analysis",
+          "gap": "Agent-authored shot-analysis projections exist, but automatic detector, visual QA backend, and review UI are incomplete.",
+          "unblockSignal": "Shot boundaries and semantics can be detected or reviewed, then stored as analysis-only projections without copying media."
+        },
+        {
+          "capability": "video.noncopying-qa",
+          "gap": "Non-copying QA checks text/tag structural similarity, but video/audio fingerprinting, creator-likeness checks, and review UI are incomplete.",
+          "unblockSignal": "Reference remix QA compares structure, visuals, audio, and likeness signals and blocks unsafe derivative exports."
+        },
+        {
+          "capability": "media.rights-ledger",
+          "gap": "Rights ledger projections exist for reference workflows, but durable rights storage, attribution export, and review UI are incomplete.",
+          "unblockSignal": "Rights records survive project restore, gate exports, and generate attribution/prohibited-use receipts in tests."
+        }
+      ]
+    },
+    {
+      "id": "clash.image.consistency-qa",
+      "name": "image-consistency-qa",
+      "title": "Image Consistency QA",
+      "description": "Evaluate image packs for identity, wardrobe, scene, product/logo, style, composition, temporal continuity, OCR, and review verdicts.",
+      "kind": "detail",
+      "source": "first-party",
+      "path": "skills/video-production/image-consistency-qa",
+      "tags": [
+        "image",
+        "qa",
+        "consistency",
+        "storyboard"
+      ],
+      "inputs": [
+        "project files",
+        "brief",
+        "source assets"
+      ],
+      "outputs": [
+        "structured artifacts",
+        "validation report"
+      ],
+      "requiredSystemCapabilities": [
+        "image.storyboard-consistency",
+        "image.product-logo-qa",
+        "media.analysis-store",
+        "review.stage-gates"
+      ],
+      "researchSources": [
+        "StoryMaker",
+        "PhotoMaker",
+        "Awesome Multi-Image Generation"
+      ],
+      "status": "blocked-by-system-gap",
+      "systemGaps": [
+        {
+          "capability": "image.storyboard-consistency",
+          "gap": "Storyboard consistency metadata and deterministic QA files exist, but embedding/OCR/logo/style consistency backends and review UI are incomplete.",
+          "unblockSignal": "Storyboard panels are checked by configured visual backends and failed consistency gates block downstream timeline apply."
+        },
+        {
+          "capability": "image.product-logo-qa",
+          "gap": "Product/logo QA consumes supplied evidence and fails closed, but automatic OCR/logo detection, color sampling, material checks, and review UI are incomplete.",
+          "unblockSignal": "Locked product/logo references are checked by local analyzers and missing or failed evidence blocks release receipts."
+        },
+        {
+          "capability": "media.analysis-store",
+          "gap": "Analysis outputs are readable JSON/projection files, but there is no durable indexed analysis store or host apply API for every analysis kind.",
+          "unblockSignal": "Analysis records are indexed in project storage and can be queried, applied, restored, and validated through the local API."
+        },
+        {
+          "capability": "review.stage-gates",
+          "gap": "Local review gate files and hash locks exist, but durable multi-user review UI, cloud sync, and stage graph orchestration are incomplete.",
+          "unblockSignal": "Review gates persist in project state, sync across sessions, and block/apply stages through UI and CLI tests."
+        }
+      ]
+    },
+    {
+      "id": "clash.image.product-logo-lock",
+      "name": "product-logo-lock",
+      "title": "Product Logo Lock",
+      "description": "Create product/logo reference locks, exact claim text, brand color/material constraints, OCR baselines, and image-generation QA rules.",
+      "kind": "detail",
+      "source": "first-party",
+      "path": "skills/video-production/product-logo-lock",
+      "tags": [
+        "image",
+        "product",
+        "logo",
+        "brand",
+        "ocr"
+      ],
+      "inputs": [
+        "project files",
+        "brief",
+        "source assets"
+      ],
+      "outputs": [
+        "structured artifacts",
+        "validation report"
+      ],
+      "requiredSystemCapabilities": [
+        "image.product-logo-qa",
+        "image.semantic-reference-roles",
+        "media.asset-registry",
+        "review.stage-gates"
+      ],
+      "researchSources": [
+        "PhotoMaker",
+        "Awesome Multi-Image Generation"
+      ],
+      "status": "blocked-by-system-gap",
+      "systemGaps": [
+        {
+          "capability": "image.product-logo-qa",
+          "gap": "Product/logo QA consumes supplied evidence and fails closed, but automatic OCR/logo detection, color sampling, material checks, and review UI are incomplete.",
+          "unblockSignal": "Locked product/logo references are checked by local analyzers and missing or failed evidence blocks release receipts."
+        },
+        {
+          "capability": "image.semantic-reference-roles",
+          "gap": "Semantic reference roles can be planned and applied, but automatic role detection, OCR/logo verification, and immutable reference UI are incomplete.",
+          "unblockSignal": "Reference roles are detected or reviewed in UI and enforced during downstream generation and QA gates."
+        },
+        {
+          "capability": "media.asset-registry",
+          "gap": "Local assets/manifest.json and some asset nodes exist, but durable SQLite-backed asset rows, path ownership checks, and canvas node round-trip are not complete.",
+          "unblockSignal": "A managed asset registry persists assets in the project DB and passes create/update/restore tests with canvas node mappings."
+        },
+        {
+          "capability": "review.stage-gates",
+          "gap": "Local review gate files and hash locks exist, but durable multi-user review UI, cloud sync, and stage graph orchestration are incomplete.",
+          "unblockSignal": "Review gates persist in project state, sync across sessions, and block/apply stages through UI and CLI tests."
+        }
+      ]
+    }
+  ],
+  "systemCapabilities": [
+    {
+      "id": "media.asset-registry",
+      "title": "Project asset registry",
+      "status": "partial",
+      "description": "Project-local assets/manifest.json can record production metadata, MG snapshot/video exports, and storyboard panel assets; stable SQLite rows, full media files, and canvas node mappings still need durable integration."
+    },
+    {
+      "id": "media.analysis-store",
+      "title": "Analysis metadata store",
+      "status": "partial",
+      "description": "Shared metadata-fill schemas exist for audio, transcript, reference video, and storyboard analysis; project-file/SQLite storage and host apply API still missing."
+    },
+    {
+      "id": "media.copy-on-write",
+      "title": "Copy-on-write media edits",
+      "status": "partial",
+      "description": "Timeline derived-overlay items can represent copy-on-write lineage with sourceAssetId, derivedAssetId, derivation, local preview paths, and optional assetId that must match derivedAssetId; clash production project-derived-overlay projects an existing derived asset into a CAS-required timeline view without minting a fake lock, and Remotion preview preserves derived-overlay structure while hydrating the backing asset row and exposes source/derived lineage as inspectable DOM attributes. Broader media derivation commands and immutable asset registry enforcement are still missing."
+    },
+    {
+      "id": "media.rights-ledger",
+      "title": "Rights and source ledger",
+      "status": "partial",
+      "description": "Reference rights metadata schema, remix guard, and agent-readable rights-ledger projection exist; durable project storage, attribution export, and legal review workflow still missing."
+    },
+    {
+      "id": "timeline.cas-projection",
+      "title": "Timeline CAS projection",
+      "status": "partial",
+      "description": "Agent-readable timeline files with stale-write protection and host-enforced compare-and-swap apply."
+    },
+    {
+      "id": "render.export-validation",
+      "title": "Export validation",
+      "status": "partial",
+      "description": "MG SVG snapshots and local WebM/MP4 overlay exports are written and registered; ffprobe validates codec, dimensions, duration, VP9 alpha_mode, and decoded alpha-plane pixel samples for transparent WebM MG exports, and TVC delivery validation can consume ffprobe media probes. Full render-server/provider export and broad referenced-media validation still missing."
+    },
+    {
+      "id": "review.stage-gates",
+      "title": "Stage review gates",
+      "status": "partial",
+      "description": "clash production plan-review-gate and approve-review-gate write local clash.review.stage-gate artifacts plus path-bound hash lock sidecars, block missing required artifacts, require explicit approval, and reject stale or wrong-file approval writes. Durable project DB storage, multi-user review UI, cloud sync, and full stage graph orchestration remain missing."
+    },
+    {
+      "id": "workflow.pipeline-validation",
+      "title": "Pipeline manifest validation",
+      "status": "partial",
+      "description": "clash production validate-pipeline-manifest validates pipeline.manifest.json artifact coverage for action, metadata, asset, projection, review-gate, and export outputs, requires projection artifacts to declare casRequired=true, checks local file presence, and writes clash.production.pipeline-validation reports. Durable stage graph orchestration, UI blocking, and cloud/project DB persistence remain missing."
+    },
+    {
+      "id": "image.reference-sheets",
+      "title": "Image reference sheets",
+      "status": "partial",
+      "description": "Character reference packs, semantic reference roles, and storyboard referenceViews exist; plan-storyboard-review plus apply-metadata register declared character views as character-reference-sheet assets with image.character-reference-sheet metadata, locked identity-reference usage, and copy-on-write requirements. Automatic generation, visual QA, and immutable reference-sheet UI still missing."
+    },
+    {
+      "id": "image.storyboard-consistency",
+      "title": "Storyboard consistency checks",
+      "status": "partial",
+      "description": "Storyboard/character/scene/panel metadata schema, CLI planner, storyboard projection, panel asset registration, character reference-sheet registration from characters[].referenceViews, clash production plan-storyboard-consistency-qa deterministic QA report/action, and clash production project-storyboard-timeline CAS-required image timeline projection exist; embedding/OCR/logo/style consistency backend still missing."
+    },
+    {
+      "id": "audio.beat-grid",
+      "title": "Beat grid analysis",
+      "status": "partial",
+      "description": "Beat-grid metadata schema, timeline edit hints, section cut hints, energyCurve points, a local PCM WAV beat analyzer with semantic section labels/review confidence, and clash production project-mv-beat-cuts CAS-required timeline projection exist; non-WAV backend support and robust multi-tempo analysis still missing."
+    },
+    {
+      "id": "audio.section-analysis",
+      "title": "Music section analysis",
+      "status": "partial",
+      "description": "Local PCM WAV analyzer emits 4-beat bar sections with energy, novelty, impact, cutDensity hints, semantic intro/verse/chorus/drop/buildup/outro-style labels, review confidence, and semanticSource metadata; multi-tempo boundaries, compressed-audio backends, and model-grade verse/chorus detection remain missing."
+    },
+    {
+      "id": "audio.lyrics-alignment",
+      "title": "Lyrics alignment",
+      "status": "partial",
+      "description": "clash production plan-lyrics-alignment can create audio.lyrics-alignment metadata from lyric lines and beat-analysis sections, apply it to the audio asset, and project a structured caption timeline with frame-locked lyric cues. True vocal/phoneme forced alignment, word/syllable timing, stem-assisted confidence, and low-confidence review UI remain missing."
+    },
+    {
+      "id": "audio.word-timestamps",
+      "title": "ASR word timestamps",
+      "status": "partial",
+      "description": "plan-text-cut records existing ASR transcript provenance with source path/hash, backend/model, language, wordCount, optional confidence/speaker metadata, and apply-metadata writes a readable asr-transcript projection; executing ASR backends and transcript review UI remain missing."
+    },
+    {
+      "id": "audio.filler-analysis",
+      "title": "Filler and tone-particle analysis",
+      "status": "partial",
+      "description": "Deterministic planner detects configured filler words, tone particles, and adjacent repeated words from existing word timestamps; semantic discourse-marker confidence and broader false-start analysis still need an analysis backend."
+    },
+    {
+      "id": "video.text-cut-plan",
+      "title": "Text-based cut plan",
+      "status": "partial",
+      "description": "Talking-head transcript/cut metadata schema, plan-text-cut CLI action generation with ASR transcript provenance path/hash/backend/model, caption projection, filler/silence auto-delete suggestions, tone-particle/repeat review suggestions, export-captions SRT/VTT/ASS sidecars, project-caption-overlay CAS subtitle timeline projection, export-caption-burn copy-on-write package plus optional FFmpeg render, export-timeline-handoff CSV review handoff, and export-text-cut-media non-destructive FFmpeg cut package with reviewRanges plus ffprobe-validated rendered video assets only after pending review cuts are cleared; ASR execution, review UI, crossfades, batch operations, and OTIO/EDL handoff remain missing."
+    },
+    {
+      "id": "video.reference-ingest",
+      "title": "Public reference ingest",
+      "status": "partial",
+      "description": "Reference review and non-copying QA actions record source URL, rights, shots, structured QA report, rights-ledger projection, and analysis-only shot-analysis projection without redistribution; plan-reference-download creates a blocked-by-default yt-dlp command plan with raw-reference quarantine, and execute-reference-download can explicitly run an allowed plan locally, reject tampered executables and yt-dlp local-execution flags, write a download receipt, and register reference.download metadata on a quarantined raw reference asset. Browser capture, cookie/session handling, and platform terms review remain missing."
+    },
+    {
+      "id": "video.reference-download",
+      "title": "Controlled reference download plan",
+      "status": "partial",
+      "description": "clash production plan-reference-download writes a clash.reference.download-plan manifest with explicit --allow-download gate, yt-dlp command plan, rights ledger, raw-reference quarantine, and final-export guard. clash production execute-reference-download can run an allowed plan with a local yt-dlp-compatible runner, rejects plans whose downloadCommand does not start with yt-dlp, rejects yt-dlp arguments that execute local commands such as --exec, writes a clash.reference.download-receipt, and registers reference.download metadata on a quarantined raw reference asset; this does not grant final export rights. Browser capture, cookie/session handling, and platform terms review remain missing."
+    },
+    {
+      "id": "video.shot-analysis",
+      "title": "Shot and scene analysis",
+      "status": "partial",
+      "description": "Reference shot-analysis metadata schema exists, and apply-metadata writes analysis-only clash.reference.shot-analysis.projection files with no media copying and rights-ledger allowed/prohibited uses; automatic detector and visual QA backend still missing."
+    },
+    {
+      "id": "video.visual-moment-library",
+      "title": "Visual moment library",
+      "status": "partial",
+      "description": "clash production plan-visual-moments can turn agent or external analysis candidate ranges into video.visual-moments metadata, apply it to the source video asset, and emit projections/visual-moments recommendedClips sorted by quality/motion/action/emotion for MV/TVC planning. Automatic scene detection, VLM semantic scoring, optical-flow motion analysis, and rights-aware raw reference extraction remain missing."
+    },
+    {
+      "id": "render.html-composition",
+      "title": "HTML composition renderer",
+      "status": "partial",
+      "description": "First-party MG spec, deterministic frame evaluation, self-contained seekable HTML preview with browser-verifiable data-current-frame state and clash-mg-frame events, CLI projection generation with explicit CAS apply boundary, SVG snapshot asset export, local WebM/MP4 video export, derived-overlay timeline projection for registered overlay assets, VP9 alpha_mode verification, decoded alpha-plane pixel sampling, timeline composition item preview with inspectable composition DOM attributes, and manifests that declare Clash first-party MIT implementation with no copied third-party code exist; richer renderer parity remains missing."
+    },
+    {
+      "id": "render.remotion-composition",
+      "title": "Remotion composition renderer",
+      "status": "partial",
+      "description": "React/Remotion timeline rendering with media path hydration, structured caption cues, first-party MG composition layers, derived-overlay lineage attributes, preservation of structural timeline item types while resolving backing assets, audio, overlays, and export validation. Non-HTML React/Remotion composition timeline items must carry a local renderedAssetPath before apply; raw React source paths alone are rejected."
+    },
+    {
+      "id": "workflow.dry-run-cost-gate",
+      "title": "Dry-run and cost gate",
+      "status": "partial",
+      "description": "clash production plan-dry-run-cost-gate writes clash.workflow.dry-run-cost-gate artifacts with provider/runtime availability, estimated cost/time, max-cost blocking, fallbackUsed=false, and rejected fallback records without executing generation/download/render/provider calls. Live provider probing, BYO OAuth/key checks, quota/rate-limit checks, and cloud policy sync remain missing."
+    },
+    {
+      "id": "render.composition-router",
+      "title": "Composition runtime router",
+      "status": "partial",
+      "description": "clash production plan-composition-route writes clash.render.composition-route plans with selected runtime, validation plan, decision log, and fallbackUsed=false, blocking unavailable required runtimes instead of silently falling back. React/Remotion timeline items require a local renderedAssetPath before apply. Host runtime probing, Remotion/Manim execution orchestration, and managed apply integration remain missing."
+    },
+    {
+      "id": "audio.silence-analysis",
+      "title": "Silence analysis",
+      "status": "partial",
+      "description": "Word-gap silence detection exists in plan-text-cut; waveform VAD/RMS thresholds, margins, smoothing, and review recommendations still need an audio backend."
+    },
+    {
+      "id": "caption.retime-and-render",
+      "title": "Caption retime and render",
+      "status": "partial",
+      "description": "Structured caption item, cue word references, source frame ranges, source-to-output maps, subtitle-track validation, Remotion renderer preview, talking-head metadata projection, clash production export-captions SRT/VTT/ASS sidecar export, clash production project-caption-overlay CAS subtitle timeline projection, and clash production export-caption-burn copy-on-write package plus optional FFmpeg ASS burn-in render exist; full retime UI, batch review, and visual caption QA still missing."
+    },
+    {
+      "id": "audio.stem-separation",
+      "title": "Audio stem separation",
+      "status": "partial",
+      "description": "clash production plan-audio-stem-separation plus apply-metadata registers existing local vocal/instrumental/drum/bass/other stem files, records path/hash/backend/model lineage, projects clash.audio.stem-separation.projection, and attaches per-stem audio.stem metadata as local audio-stem assets. It does not execute Demucs/UVR/separation backends; backend runners, vocal quality scoring, and review UI remain missing."
+    },
+    {
+      "id": "timeline.nle-handoff",
+      "title": "NLE handoff",
+      "status": "partial",
+      "description": "clash production export-timeline-handoff exports timeline YAML views to CSV with track/item ids, item type, frame ranges, timecodes, asset/source paths, notes, and a clash.timeline.nle-handoff manifest. OTIO/EDL export and richer NLE round-trip import remain missing."
+    },
+    {
+      "id": "analysis.backend-benchmark",
+      "title": "Analysis backend benchmark",
+      "status": "partial",
+      "description": "clash production plan-analysis-benchmark plus apply-metadata compares existing local backend result files against deterministic metric thresholds, writes analysis.backend-benchmark metadata, emits clash.analysis.backend-benchmark reports and projections, selects the best passing backend, and records that it did not execute ASR/beat/image/VLM/provider backends. Benchmark execution orchestration, larger fixture suites, and backend-specific runners remain missing."
+    },
+    {
+      "id": "video.noncopying-qa",
+      "title": "Reference non-copying QA",
+      "status": "partial",
+      "description": "clash production plan-reference-noncopying-qa writes a structured QA report and reference metadata-fill action from reference shot analysis plus proposed treatment, checking raw reference asset paths and text/tag structural similarity; video/audio fingerprinting, creator-likeness checks, and review UI still missing."
+    },
+    {
+      "id": "ad.delivery-spec",
+      "title": "Ad delivery spec",
+      "status": "partial",
+      "description": "clash production plan-ad-delivery-spec writes ad.delivery-spec metadata plus projections/delivery delivery checklists for platform variants, aspect ratios, safe zones, subtitles/loudness expectations, disclaimers, and rights links; clash production validate-ad-delivery-export can validate a rendered variant against the spec using media probe and visual QA receipts. Package assembly and managed review workflow remain missing."
+    },
+    {
+      "id": "ad.delivery-export-validation",
+      "title": "Ad delivery export validation",
+      "status": "partial",
+      "description": "clash production extract-ad-visual-frames uses local ffmpeg to extract rendered ad video frames into PPM samples and writes clash.ad.visual-frame-extraction manifests; analyze-ad-visual-pixels reads local P3/P6 PPM frame samples and emits clash.ad.visual-pixel-evidence for packshot color coverage, end-card readability, and final-frame mean RGB diff; plan-ad-visual-qa normalizes local analyzer or human review evidence into portable clash.ad.visual-qa reports and ad.visual-qa metadata; validate-ad-delivery-export writes qa/delivery validation receipts for rendered TVC/ad variants, checking variant, video/audio tracks, resolution, aspect ratio, fps, duration, subtitles, safe-zone, packshot, end-card, disclaimer, and rights-ledger evidence from ffprobe or probe JSON plus visual QA reports. Automatic OCR/logo/loudness and direct PNG/JPEG image decoding backends still missing."
+    },
+    {
+      "id": "ad.packshot-end-card",
+      "title": "Packshot end card",
+      "status": "partial",
+      "description": "clash production plan-ad-delivery-spec records packshot asset/frame gates, CTA, disclaimer, QR requirement, and end-card duration in metadata/projection checklists; extract-ad-visual-frames uses local ffmpeg to extract rendered video frames into PPM samples; analyze-ad-visual-pixels produces local PPM pixel evidence for packshot color coverage, end-card samples, and final-frame holds; plan-ad-visual-qa records packshot, logo, disclaimer, CTA, and final-frame evidence from local analyzers or human review; validate-ad-delivery-export can require the resulting visual QA report. Automatic OCR/logo detector backends and richer image decoding remain missing."
+    },
+    {
+      "id": "image.semantic-reference-roles",
+      "title": "Semantic reference roles",
+      "status": "partial",
+      "description": "clash production plan-reference-roles plus apply-metadata writes image.semantic-reference-roles metadata, projects clash.image.semantic-reference-roles.projection, and attaches image.semantic-reference-role metadata to individual reference assets for identity views, scene plates, style frames, logo locks, and product packshots with copy-on-write requirements. Automatic role detection, OCR/logo verification, and immutable reference-sheet UI remain missing."
+    },
+    {
+      "id": "image.product-logo-qa",
+      "title": "Product logo QA",
+      "status": "partial",
+      "description": "clash production plan-product-logo-qa plus apply-metadata consumes semantic logo-lock and product-packshot roles plus agent/local analyzer visual or OCR evidence, writes image.product-logo-qa metadata, projects clash.image.product-logo-qa.projection, preserves copy-on-write reference locks, and fails closed on failed or missing locked-role evidence. Automatic OCR/logo detection, color sampling, material verification, and review UI remain missing."
+    },
+    {
+      "id": "image.comfyui-runner",
+      "title": "ComfyUI runner contract",
+      "status": "partial",
+      "description": "clash production plan-comfyui-workflow plus apply-metadata registers a pinned local ComfyUI workflow file, computes workflow/output hashes, records model and custom-node lineage, preserves input slot mapping, projects clash.image.comfyui-runner.projection, and attaches per-output image.comfyui-output metadata as local assets. It does not execute ComfyUI, install models/nodes, manage queues, or validate generated pixels; host execution and visual QA remain missing."
+    },
+    {
+      "id": "image.embedding-store",
+      "title": "Image embedding store",
+      "status": "partial",
+      "description": "clash production plan-image-embedding-store plus apply-metadata registers existing local image embedding vector files, verifies vector dimensions, stores vector path/hash/model/distance metric metadata, projects clash.image.embedding-store.projection, and attaches per-asset image.embedding metadata for identity/product/scene/style/logo baselines. It does not execute embedding models; backend runners, similarity search indexes, threshold calibration, and review UI remain missing."
+    },
+    {
+      "id": "storyboard.cas-projection",
+      "title": "Storyboard CAS projection",
+      "status": "partial",
+      "description": "clash production project-storyboard-timeline projects storyboard panel assets into a CAS-required timeline view; project-storyboard-prompt-pack/apply-storyboard-prompt-pack provide an agent-editable prompt-pack file with lock sidecar plus stale-write rejection into managed storyboard projections; replace-storyboard-prompt-pack creates a versioned copy-on-write prompt-pack projection from the same read-proof lock without moving existing downstream references. Editable storyboard host UI/apply integration remains missing."
+    },
+    {
+      "id": "provenance.content-credentials",
+      "title": "Content provenance credentials",
+      "status": "partial",
+      "description": "clash production plan-content-credentials plus apply-metadata registers a local unsigned or externally signed content-credentials manifest, computes target/ingredient/optional C2PA manifest hashes, writes provenance.content-credentials metadata, and projects clash.provenance.content-credentials.projection under projections/provenance. It does not sign C2PA manifests or create content credentials; c2patool integration, signing identity, and export embedding remain missing."
+    },
+    {
+      "id": "legal.oss-license-ledger",
+      "title": "Open-source license ledger",
+      "status": "partial",
+      "description": "Tracks third-party reference licenses, integration policy, NOTICE obligations, and review-required sources before code/model/tool reuse."
+    },
+    {
+      "id": "workflow.production-action-runner",
+      "title": "Production action runner",
+      "status": "partial",
+      "description": "Local CLI action runner is a Clash-managed adapter for portable file/artifact skill workflows, with repo-hosted marketplace action contracts for representative production primitives. It validates pipeline manifests, applies AssetMetadataFillAction, composition route plans, review stage gates, dry-run cost gates, semantic reference role plans, product/logo QA plans, analysis backend benchmark plans, image embedding store plans, audio stem separation plans, ComfyUI workflow plans, content credentials plans, MG specs/snapshots/video exports, derived-overlay projections, beat analysis, lyrics alignment, visual moment libraries, MV beat-cut timeline projections, ad delivery/packshot metadata, ad visual frame extraction manifests, ad visual pixel evidence, ad visual QA plans, text-cut plans/media exports, caption sidecar exports, timeline CSV handoffs, reference-review plans, controlled reference download plans/executions, reference non-copying QA, storyboard consistency QA, storyboard prompt-pack CAS projections, and storyboard timeline projections into metadata/assets/projections/rights without mutating canvas; pipeline validation checks action/metadata/asset/projection/review/export artifact coverage and CAS-required projections, route plans forbid silent runtime fallback, dry-run gates do not execute providers, semantic references carry copy-on-write requirements, controlled reference download execution keeps raw media quarantined and does not grant final export rights, product/logo QA fails closed on locked reference evidence, ad visual frame extraction uses explicit local ffmpeg and writes manifests, ad visual pixel analysis reads only local PPM frame samples, ad visual QA plans do not execute OCR/logo/pixel analysis backends, analysis backend benchmarks do not execute backends, image embedding stores register existing vector files without executing models, audio stem separation registers existing stem files without executing separation backends, ComfyUI workflow plans register pinned workflow/output lineage without executing ComfyUI, content credentials plans register unsigned/external manifests without signing C2PA, review approvals are path-bound hash-lock protected, and MG/derived-overlay/MV beat-cut/storyboard prompt-pack/storyboard timeline projections declare explicit CAS apply boundaries, including COW prompt-pack replacement from read-proof locks. Provider execution, project DB integration, multi-user review UI, and managed timeline apply orchestration remain separate."
+    }
+  ],
+  "thirdPartyReferences": [
+    {
+      "name": "OpenMontage",
+      "url": "https://github.com/calesthio/OpenMontage",
+      "license": "AGPL-3.0",
+      "licenseSource": "https://github.com/calesthio/OpenMontage/blob/main/LICENSE",
+      "usage": "research-only",
+      "integrationPolicy": "Do not copy or vendor code into Clash without AGPL compliance review; runtime use must be isolated and explicitly attributed."
+    },
+    {
+      "name": "HyperFrames",
+      "url": "https://github.com/heygen-com/hyperframes",
+      "license": "Apache-2.0",
+      "licenseSource": "https://github.com/heygen-com/hyperframes/blob/main/LICENSE",
+      "usage": "reference-or-integration-with-notice",
+      "integrationPolicy": "Code integration is allowed only with preserved copyright, license, NOTICE, and dependency attribution."
+    },
+    {
+      "name": "CutScript",
+      "url": "https://github.com/DataAnts-AI/CutScript",
+      "license": "MIT",
+      "licenseSource": "https://github.com/DataAnts-AI/CutScript/blob/main/LICENSE",
+      "usage": "reference-or-integration-with-notice",
+      "integrationPolicy": "Code integration requires preserving MIT copyright and permission notice."
+    },
+    {
+      "name": "auto-editor",
+      "url": "https://github.com/WyattBlue/auto-editor",
+      "license": "Unlicense",
+      "licenseSource": "https://github.com/WyattBlue/auto-editor/blob/master/LICENSE",
+      "usage": "reference-or-integration-with-notice",
+      "integrationPolicy": "Prefer attribution even where not legally required; keep source URL in implementation notes."
+    },
+    {
+      "name": "BeatSync Engine",
+      "url": "https://github.com/Merserk/BeatSync-Engine",
+      "license": "AGPL-3.0",
+      "licenseSource": "https://github.com/Merserk/BeatSync-Engine/blob/master/LICENSE",
+      "usage": "research-only",
+      "integrationPolicy": "Do not copy or vendor code into Clash without AGPL compliance review; use schemas/ideas only unless isolated as a user-installed tool."
+    },
+    {
+      "name": "Montage AI",
+      "url": "https://github.com/mfahsold/montage-ai",
+      "license": "PolyForm-Noncommercial-1.0.0",
+      "licenseSource": "https://github.com/mfahsold/montage-ai/blob/main/LICENSE",
+      "usage": "research-only",
+      "integrationPolicy": "Noncommercial license: do not copy, vendor, or use commercially without a separate license from the author."
+    },
+    {
+      "name": "Awesome Multi-Image Generation",
+      "url": "https://github.com/ATH-MaaS/Awesome-Multi-Image-Generation",
+      "license": "Apache-2.0",
+      "licenseSource": "https://github.com/ATH-MaaS/Awesome-Multi-Image-Generation/blob/main/LICENSE",
+      "usage": "reference-or-integration-with-notice",
+      "integrationPolicy": "Use as bibliography/taxonomy; preserve license and attribution if any project material is copied."
+    },
+    {
+      "name": "StoryMaker",
+      "url": "https://github.com/FireRedTeam/StoryMaker",
+      "license": "NOASSERTION",
+      "licenseSource": "https://github.com/FireRedTeam/StoryMaker",
+      "usage": "research-only",
+      "integrationPolicy": "No code/model integration until license, model weights, and dataset terms are explicitly verified."
+    },
+    {
+      "name": "PhotoMaker",
+      "url": "https://github.com/TencentARC/PhotoMaker",
+      "license": "NOASSERTION/custom",
+      "licenseSource": "https://github.com/TencentARC/PhotoMaker",
+      "usage": "research-only",
+      "integrationPolicy": "No code/model integration until repository, model weights, and InsightFace-related terms are explicitly verified."
+    },
+    {
+      "name": "Vex",
+      "url": "https://github.com/AKMessi/vex",
+      "license": "NOASSERTION/source-available-noncommercial",
+      "licenseSource": "https://github.com/AKMessi/vex",
+      "usage": "research-only",
+      "integrationPolicy": "Treat as noncommercial/source-available: do not copy or vendor; reference architecture only."
+    },
+    {
+      "name": "mcp-video",
+      "url": "https://github.com/KyaniteLabs/mcp-video",
+      "license": "Apache-2.0",
+      "licenseSource": "https://github.com/KyaniteLabs/mcp-video/blob/master/LICENSE",
+      "usage": "reference-or-integration-with-notice",
+      "integrationPolicy": "Code integration is allowed only with preserved copyright, license, NOTICE, and dependency attribution."
+    },
+    {
+      "name": "cut-clean",
+      "url": "https://github.com/dennisrongo/cut-clean",
+      "license": "MIT",
+      "licenseSource": "https://dennisrongo.github.io/cut-clean/",
+      "usage": "reference-or-integration-with-notice",
+      "integrationPolicy": "Code integration requires preserving MIT copyright and permission notice after verifying repository license file."
+    },
+    {
+      "name": "VibeFrame",
+      "url": "https://github.com/vericontext/vibeframe",
+      "license": "MIT",
+      "licenseSource": "https://github.com/vericontext/vibeframe/blob/main/LICENSE",
+      "usage": "reference-or-integration-with-notice",
+      "integrationPolicy": "Code integration requires preserving MIT copyright and permission notice."
+    },
+    {
+      "name": "WhisperX",
+      "url": "https://github.com/m-bain/whisperX",
+      "license": "BSD-2-Clause",
+      "licenseSource": "https://github.com/m-bain/whisperX/blob/main/LICENSE",
+      "usage": "reference-or-integration-with-notice",
+      "integrationPolicy": "Code integration requires preserving BSD copyright and license notice; model dependencies have separate terms."
+    },
+    {
+      "name": "yt-dlp",
+      "url": "https://github.com/yt-dlp/yt-dlp",
+      "license": "Unlicense",
+      "licenseSource": "https://github.com/yt-dlp/yt-dlp/blob/master/LICENSE",
+      "usage": "user-installed-tool",
+      "integrationPolicy": "Prefer shelling out to a user-installed binary and record source media rights; do not silently redistribute downloaded media."
+    },
+    {
+      "name": "librosa",
+      "url": "https://github.com/librosa/librosa",
+      "license": "ISC",
+      "licenseSource": "https://github.com/librosa/librosa/blob/main/LICENSE.md",
+      "usage": "reference-or-integration-with-notice",
+      "integrationPolicy": "Code integration requires preserving ISC copyright and permission notice."
+    },
+    {
+      "name": "Remotion",
+      "url": "https://github.com/remotion-dev/remotion",
+      "license": "custom/company-license-may-be-required",
+      "licenseSource": "https://www.remotion.dev/docs/license",
+      "usage": "existing-runtime-with-license-check",
+      "integrationPolicy": "Keep runtime use explicit and check whether a company license is required before commercial deployment."
+    }
+  ]
+}

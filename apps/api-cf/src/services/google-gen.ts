@@ -202,8 +202,10 @@ export interface GoogleTextResult {
 }
 
 export const GOOGLE_TEXT_MODELS = new Set([
+  "gemini-3.5-flash",
   "gemini-3.1-pro",
   "gemini-3-flash",
+  "gemini-3.1-flash-lite",
 ]);
 
 export function isGoogleTextModel(modelName: string | undefined): boolean {
@@ -217,8 +219,10 @@ export function isGoogleTextModel(modelName: string | undefined): boolean {
 //   Docs: https://docs.cloud.google.com/vertex-ai/generative-ai/docs/models/gemini/3-1-pro
 //         https://docs.cloud.google.com/vertex-ai/generative-ai/docs/models/gemini/3-flash
 const GOOGLE_TEXT_MODEL_MAP: Record<string, string> = {
+  "gemini-3.5-flash": "gemini-3.5-flash",
   "gemini-3.1-pro": "gemini-3.1-pro-preview",
   "gemini-3-flash": "gemini-3-flash-preview",
+  "gemini-3.1-flash-lite": "gemini-3.1-flash-lite",
 };
 
 export async function generateGoogleText(
@@ -263,8 +267,10 @@ export interface GoogleImageResult {
 // "nano-banana" models as the replacement.
 export const GOOGLE_IMAGE_MODELS = new Set([
   "nano-banana-2",
+  "nano-banana-2-lite",
   "nano-banana-pro",
   "gemini-3.1-flash-image",
+  "gemini-3.1-flash-lite-image",
   "gemini-3-pro-image",
 ]);
 
@@ -276,6 +282,8 @@ export function isGoogleImageModel(modelName: string | undefined): boolean {
 const GOOGLE_IMAGE_MODEL_MAP: Record<string, string> = {
   "nano-banana-2": "gemini-3.1-flash-image",
   "gemini-3.1-flash-image": "gemini-3.1-flash-image",
+  "nano-banana-2-lite": "gemini-3.1-flash-lite-image",
+  "gemini-3.1-flash-lite-image": "gemini-3.1-flash-lite-image",
   "nano-banana-pro": "gemini-3-pro-image",
   "gemini-3-pro-image": "gemini-3-pro-image",
 };
@@ -296,6 +304,7 @@ const GOOGLE_IMAGE_MODEL_MAP: Record<string, string> = {
 //   access" 404 because there's no predict handler for them.
 const GEMINI_GENERATE_CONTENT_MODELS = new Set([
   "gemini-3.1-flash-image",
+  "gemini-3.1-flash-lite-image",
   "gemini-3-pro-image",
 ]);
 
@@ -320,6 +329,17 @@ function buildImageProviderOptions(modelParams?: Record<string, unknown>) {
   return opts;
 }
 
+function buildGeminiImageConfig(params: GoogleImageParams): Record<string, unknown> | undefined {
+  const config: Record<string, unknown> = {};
+  const aspectRatio = params.aspectRatio || (
+    typeof params.modelParams?.aspect_ratio === "string" ? params.modelParams.aspect_ratio : undefined
+  );
+  if (aspectRatio) config.aspectRatio = aspectRatio;
+  const resolution = typeof params.modelParams?.resolution === "string" ? params.modelParams.resolution : undefined;
+  if (resolution) config.imageSize = resolution.toLowerCase();
+  return Object.keys(config).length ? config : undefined;
+}
+
 export async function generateGoogleImage(
   creds: VertexCredentials,
   params: GoogleImageParams,
@@ -341,6 +361,7 @@ export async function generateGoogleImage(
     (params.referenceImages?.length ?? 0) > 0;
 
   if (useGenerateContent) {
+    const imageConfig = buildGeminiImageConfig(params);
     // Gemini content-API path: pass references as inline image parts in the
     // user message, then text. Returned images land in `result.files`.
     const refs = params.referenceImages ?? [];
@@ -364,6 +385,7 @@ export async function generateGoogleImage(
       providerOptions: {
         vertex: {
           responseModalities: ["TEXT", "IMAGE"],
+          ...(imageConfig ? { imageConfig } : {}),
         } as Record<string, any>,
       },
     });

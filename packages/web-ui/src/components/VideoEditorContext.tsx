@@ -148,17 +148,13 @@ export function VideoEditorProvider({
         setAvailableAssets(nextAvailableAssets);
         setIsOpen(true);
 
-        // Declare timeline soft-lock to ProjectRoom: blocks server-side
-        // writers (agent timeline_editor tool) from racing the user's
-        // in-flight edits. Released on closeEditor or WS disconnect.
+        // Declare timeline soft-lock to ProjectRoom: remote timeline_editor
+        // events should remain proposals while the user's in-flight editor
+        // state is open. Released on closeEditor or WS disconnect.
         loroSync?.sendSideband?.({ type: 'set_editing_node', nodeId });
     }, [loroSync]);
 
     const closeEditor = useCallback(() => {
-        // Release timeline soft-lock first so any server-side writes that were
-        // refused while we held it can resume immediately on the user's intent.
-        loroSync?.sendSideband?.({ type: 'set_editing_node', nodeId: null });
-
         // Save state on close - read from ref
         if (editorNodeId && editorStateRef.current && loroSync?.connected) {
             const state = editorStateRef.current;
@@ -172,10 +168,13 @@ export function VideoEditorProvider({
                 fps: state.fps,
                 durationInFrames: state.durationInFrames,
             };
-            loroSync.updateNode(editorNodeId, {
-                data: { timelineDsl: finalDsl },
-            });
+            const saved = loroSync.applyTimelineDsl(editorNodeId, finalDsl);
+            if (!saved) return;
         }
+
+        // Release timeline soft-lock after a successful save so server-side
+        // writers do not resume while unsaved local edits are still open.
+        loroSync?.sendSideband?.({ type: 'set_editing_node', nodeId: null });
 
         setIsOpen(false);
         setAssets([]);

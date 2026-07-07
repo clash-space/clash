@@ -1,9 +1,8 @@
 import { readFileSync } from "node:fs";
-import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 const readRouteSource = (file: string) =>
-  readFileSync(join(process.cwd(), "apps/web/app/routes", file), "utf8");
+  readFileSync(new URL(`./${file}`, import.meta.url), "utf8");
 
 describe("auth route primitives", () => {
   it.each(["auth.cli.tsx", "connect-daemon.tsx"])(

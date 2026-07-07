@@ -114,6 +114,79 @@ export type StickerItem = BaseItem & {
   };
 };
 
+export type CompositionRuntime = 'html' | 'react' | 'remotion';
+
+export type CompositionItem = BaseItem & {
+  type: 'composition';
+  compositionKind: 'motion-graphics' | 'custom';
+  runtime: CompositionRuntime;
+  compositionId: string;
+  /**
+   * Local project path owned by the user/agent cwd. Remote URLs are rejected
+   * by timeline validation; rendering must go through explicit asset/runtime
+   * plumbing instead of executing network code from timeline state.
+   */
+  sourcePath: string;
+  /** Optional rendered preview/export asset path. */
+  renderedAssetPath?: string;
+  /** Agent-authored spec for first-party renderers such as MG HTML previews. */
+  spec?: unknown;
+};
+
+export type CaptionCue = {
+  id: string;
+  startFrame: number;
+  durationInFrames: number;
+  text: string;
+  wordIds?: string[];
+  sourceStartFrame?: number;
+  sourceEndFrame?: number;
+};
+
+export type CaptionWordReference = {
+  id: string;
+  text: string;
+  sourceStartFrame: number;
+  sourceEndFrame: number;
+  confidence?: number;
+};
+
+export type SourceToOutputFrameMap = {
+  sourceStartFrame: number;
+  sourceEndFrame: number;
+  outputStartFrame: number;
+  outputEndFrame: number;
+};
+
+export type CaptionItem = BaseItem & {
+  type: 'caption';
+  cues: CaptionCue[];
+  language?: string;
+  wordRefs?: CaptionWordReference[];
+  sourceToOutputMap?: SourceToOutputFrameMap[];
+  style?: {
+    fontFamily?: string;
+    fontSize?: number;
+    fontWeight?: string | number;
+    color?: string;
+    backgroundColor?: string;
+    position?: 'bottom' | 'top' | 'center';
+  };
+};
+
+export type DerivedOverlayItem = BaseItem & {
+  type: 'derived-overlay';
+  mediaType: 'image' | 'video';
+  src: string;
+  sourceAssetId: string;
+  derivedAssetId: string;
+  derivation: {
+    kind: 'trim' | 'crop' | 'caption-burn' | 'mg-render' | 'transcode' | 'other';
+    description?: string;
+    parameters?: Record<string, unknown>;
+  };
+};
+
 /**
  * Transition between two clips. Sits on the timeline like any other item;
  * during [from, from + durationInFrames) it renders fromItem and toItem
@@ -153,6 +226,9 @@ export type Item =
   | AudioItem
   | ImageItem
   | StickerItem
+  | CompositionItem
+  | CaptionItem
+  | DerivedOverlayItem
   | TransitionItem;
 
 export type TrackRole =

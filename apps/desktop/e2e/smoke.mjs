@@ -652,19 +652,41 @@ async function exerciseLocalAcpSessionHistory(cdp) {
     const firstEvents = await promptSession("desktop-smoke-turn-1", "hello desktop local agent");
     const secondEvents = await promptSession("desktop-smoke-turn-2", "hello again after detach");
 
-    const historyRes = await fetch(runtime.apiBaseUrl + "/api/v1/local-sessions/" + encodeURIComponent(created.session_id) + "/messages");
-    const history = await historyRes.json();
-    const sessionsRes = await fetch(runtime.apiBaseUrl + "/api/v1/sessions?projectId=desktop-smoke-agent");
-    const sessions = await sessionsRes.json();
+    async function readPersistedSessionState() {
+      const historyRes = await fetch(runtime.apiBaseUrl + "/api/v1/local-sessions/" + encodeURIComponent(created.session_id) + "/messages");
+      const history = await historyRes.json();
+      const sessionsRes = await fetch(runtime.apiBaseUrl + "/api/v1/sessions?projectId=desktop-smoke-agent");
+      const sessions = await sessionsRes.json();
+      return {
+        ok: historyRes.ok && sessionsRes.ok,
+        status: { history: historyRes.status, sessions: sessionsRes.status },
+        history,
+        sessions
+      };
+    }
+
+    let persisted = await readPersistedSessionState();
+    const deadline = Date.now() + 5000;
+    while (
+      Date.now() < deadline &&
+      !persisted.history?.messages?.some((message) =>
+        message.sender_kind === "agent" &&
+        message.turn_id === "desktop-smoke-turn-2" &&
+        message.events?.some((event) => event.type === "text" && event.text === "Mock ACP reply: hello again after detach")
+      )
+    ) {
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      persisted = await readPersistedSessionState();
+    }
     return {
-      ok: historyRes.ok && sessionsRes.ok,
+      ok: persisted.ok,
       stage: "history",
-      status: { history: historyRes.status, sessions: sessionsRes.status },
+      status: persisted.status,
       runtimes,
       created,
       events: [...firstEvents, ...secondEvents],
-      history,
-      sessions
+      history: persisted.history,
+      sessions: persisted.sessions
     };
   })()`);
 
@@ -869,8 +891,8 @@ async function exerciseRuntimeCopilotUi(cdp) {
   );
   await waitFor(
     cdp,
-    `!!document.querySelector('[role="status"][aria-label="Connected"], [role="status"][aria-label="已连接"]')`,
-    "desktop local runtime connected",
+    `!!document.querySelector(".milkdown-chat-input [contenteditable='true']")`,
+    "desktop runtime composer ready",
     15000,
   );
   const emptyState = await evaluate(cdp, `(() => ({
@@ -1130,7 +1152,11 @@ async function main() {
     await waitFor(cdp, `location.pathname === "/projects"`, "projects page again");
 
     await click(cdp, clickableByText("Store"), "Store");
-    await waitFor(cdp, `location.pathname === "/marketplace"`, "store page");
+    await waitFor(
+      cdp,
+      `location.pathname === "/marketplace/manage" && document.body.innerText.includes("Marketplace")`,
+      "store page",
+    );
 
     const finalState = await evaluate(cdp, `({
       href: location.href,

@@ -15,13 +15,15 @@ clash --version
 clash auth login
 ```
 
-Opens browser → click "Authorize" → done. Token saved to `~/.clash/config.json`.
+Opens browser → click "Authorize" → done. Token saved to
+`$CLASH_HOME/config.json`, or `~/.clash/config.json` by default.
 
 ### For agents / CI (environment variable)
 
 ```bash
 export CLASH_API_KEY=clsh_...
 export CLASH_API_URL=https://your-instance.com  # optional, defaults to http://localhost:8788
+export CLASH_HOME=~/.clash                    # optional local Clash root
 ```
 
 Create a token in the Clash web app: avatar → Settings → API Tokens → Create.
@@ -36,8 +38,9 @@ clash auth status
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `CLASH_API_KEY` | API token (`clsh_...`) — overrides config file | from `~/.clash/config.json` |
+| `CLASH_API_KEY` | API token (`clsh_...`) — overrides config file | from `$CLASH_HOME/config.json` or `~/.clash/config.json` |
 | `CLASH_API_URL` | Server URL | `http://localhost:8788` |
+| `CLASH_HOME` | Local Clash root for config, project workspaces, and local API defaults | `~/.clash` |
 
 ## Troubleshooting
 

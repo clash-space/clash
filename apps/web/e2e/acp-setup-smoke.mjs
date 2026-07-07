@@ -12,6 +12,7 @@ import {
   clickByText,
   evaluate,
   findFreePort,
+  startViteDevServer,
   stopProcess,
   tail,
   typeText,
@@ -246,27 +247,15 @@ async function startLocalApi({ port, harnessDownloadDir }) {
 }
 
 async function startWeb({ webPort, apiOrigin }) {
-  const logs = [];
-  const child = spawn("pnpm", ["--dir", webDir, "exec", "vite", "--host", "127.0.0.1", "--port", String(webPort)], {
-    cwd: webDir,
+  return startViteDevServer({
+    webDir,
+    repoRoot,
+    port: webPort,
     env: {
-      ...process.env,
       VITE_CLASH_API_BASE_URL: apiOrigin,
       VITE_CLASH_WS_BASE_URL: apiOrigin.replace("http:", "ws:"),
     },
-    stdio: ["ignore", "pipe", "pipe"],
   });
-  child.stdout.on("data", (buf) => {
-    const text = String(buf);
-    logs.push(text);
-    process.stdout.write(text);
-  });
-  child.stderr.on("data", (buf) => {
-    const text = String(buf);
-    logs.push(text);
-    process.stderr.write(text);
-  });
-  return { child, logs };
 }
 
 function agentRowExpression(label) {

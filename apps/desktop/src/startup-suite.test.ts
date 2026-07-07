@@ -26,6 +26,15 @@ describe("desktop startup test suite", () => {
     expect(rootPkg.scripts["test:startup:real-codex"]).toBe(
       "pnpm --filter @master-clash/desktop test:startup:real-codex",
     );
+    expect(rootPkg.scripts["test:startup:real-codex-resume"]).toBe(
+      "pnpm --filter @master-clash/desktop test:startup:real-codex-resume",
+    );
+    expect(rootPkg.scripts["test:e2e:qa-agent"]).toBe(
+      "pnpm --filter @master-clash/desktop test:e2e:qa-agent",
+    );
+    expect(rootPkg.scripts["test:e2e:agent-first-cas"]).toBe(
+      "pnpm --filter @master-clash/desktop test:e2e:agent-first-cas",
+    );
   });
 
   it("exposes layered startup scripts", () => {
@@ -47,6 +56,9 @@ describe("desktop startup test suite", () => {
       "real-codex-acp-backend.mjs",
     );
     expect(pkg.scripts["test:startup:real-codex"]).toContain(
+      "pnpm --filter @clash-space/bridge build",
+    );
+    expect(pkg.scripts["test:startup:real-codex"]).toContain(
       "node scripts/prepare-clash-cli.mjs",
     );
     expect(pkg.scripts["test:startup:real-codex"]).toContain(
@@ -54,6 +66,21 @@ describe("desktop startup test suite", () => {
     );
     expect(pkg.scripts["test:startup:real-codex"]).toContain(
       "real-codex-agent-browser.mjs",
+    );
+    expect(pkg.scripts["test:startup:real-codex-resume"]).toContain(
+      "pnpm --filter @clash-space/bridge build",
+    );
+    expect(pkg.scripts["test:startup:real-codex-resume"]).toContain(
+      "real-codex-resume-agent-browser.mjs",
+    );
+    expect(pkg.scripts["test:e2e:short-drama-timeline"]).toContain(
+      "short-drama-timeline-smoke.mjs",
+    );
+    expect(pkg.scripts["test:e2e:agent-first-cas"]).toContain(
+      "agent-first-cas-smoke.mjs",
+    );
+    expect(pkg.scripts["test:e2e:qa-agent"]).toContain(
+      "qa-agent-codex.mjs",
     );
   });
 
@@ -63,9 +90,100 @@ describe("desktop startup test suite", () => {
       "e2e/startup-ui-smoke.mjs",
       "e2e/real-codex-acp-backend.mjs",
       "e2e/real-codex-agent-browser.mjs",
+      "e2e/short-drama-timeline-smoke.mjs",
+      "e2e/agent-first-cas-smoke.mjs",
+      "e2e/qa-agent-codex.mjs",
+      "e2e/qa-agent-report.schema.json",
     ]) {
     expect(statSync(join(desktopPath, relativePath)).isFile()).toBe(true);
     }
+  });
+
+  it("runs black-box QA through Codex CLI with a structured artifact contract", () => {
+    const source = readText("e2e/qa-agent-codex.mjs");
+    const casSmokeSource = readText("e2e/agent-first-cas-smoke.mjs");
+    const schema = JSON.parse(readText("e2e/qa-agent-report.schema.json")) as {
+      required: string[];
+      properties: {
+        cas: unknown;
+        paths: {
+          required: string[];
+          properties: Record<string, unknown>;
+        };
+      };
+    };
+
+    expect(source).toContain('"codex"');
+    expect(source).toContain('"exec"');
+    expect(source).toContain("--output-schema");
+    expect(source).toContain("--output-last-message");
+    expect(source).toContain("--cd");
+    expect(source).toContain("artifactRoot");
+    expect(source).toContain("createdProjects");
+    expect(source).toContain("createdSessions");
+    expect(source).toContain("createdTimelines");
+    expect(source).toContain("projectStatuses");
+    expect(source).toContain("restoredProjects");
+    expect(source).toContain("restoredSessions");
+    expect(source).toContain("restoredTimelines");
+    expect(source).toContain("test:e2e:short-drama-timeline");
+    expect(source).toContain("test:e2e:agent-first-cas");
+    expect(source).toContain("agentFirstCasReportPath");
+    expect(source).toContain("validateCasEvidence");
+    expect(source).toContain("smoke.booleans");
+    expect(source).toContain('if (report.status !== "pass")');
+    expect(source).toContain("QA report status");
+    expect(source).not.toContain("${localDataDir}/db.json");
+    expect(casSmokeSource).toContain("runDirectCanvasCliReadTokenCas");
+    expect(casSmokeSource).toContain("clash canvas update");
+    expect(casSmokeSource).toContain("CLASH_AGENT_MEMBER_ID");
+    expect(casSmokeSource).toContain("direct canvas CLI fresh read token accepted");
+    expect(casSmokeSource).toContain("direct canvas mutation envelope recorded");
+    expect(casSmokeSource).toContain("direct canvas CLI mutation envelope recorded");
+
+    expect(schema.required).toContain("cas");
+    expect(schema.properties.cas).toBeTruthy();
+    expect(JSON.stringify(schema.properties.cas)).toContain("missingReadProofRejected");
+    expect(JSON.stringify(schema.properties.cas)).toContain("staleReadProofRejected");
+    expect(JSON.stringify(schema.properties.cas)).toContain("wrongFileLockRejected");
+    expect(JSON.stringify(schema.properties.cas)).toContain("copyOnWritePreservedSource");
+    expect(JSON.stringify(schema.properties.cas)).toContain("directCanvasMissingReadTokenRejected");
+    expect(JSON.stringify(schema.properties.cas)).toContain("directCanvasStaleReadTokenRejected");
+    expect(JSON.stringify(schema.properties.cas)).toContain("directCanvasFreshReadTokenAccepted");
+    expect(JSON.stringify(schema.properties.cas)).toContain("directCanvasMutationEnvelopeRecorded");
+    expect(JSON.stringify(schema.properties.cas)).toContain("directCanvasDeleteReadTokenRequired");
+    expect(JSON.stringify(schema.properties.cas)).toContain("directCanvasCliMissingReadTokenRejected");
+    expect(JSON.stringify(schema.properties.cas)).toContain("directCanvasCliStaleReadTokenRejected");
+    expect(JSON.stringify(schema.properties.cas)).toContain("directCanvasCliFreshReadTokenAccepted");
+    expect(JSON.stringify(schema.properties.cas)).toContain("directCanvasCliMutationEnvelopeRecorded");
+    expect(JSON.stringify(schema.properties.cas)).toContain("directCanvasCliDeleteReadTokenRequired");
+
+    expect(schema.properties.paths.required).toEqual(
+      expect.arrayContaining([
+        "repoRoot",
+        "artifactRoot",
+        "createdProjects",
+        "createdSessions",
+        "createdTimelines",
+        "projectStatuses",
+        "restoredProjects",
+        "restoredSessions",
+        "restoredTimelines",
+      ]),
+    );
+    for (const key of [
+      "createdProjects",
+      "createdSessions",
+      "createdTimelines",
+      "projectStatuses",
+      "restoredProjects",
+      "restoredSessions",
+      "restoredTimelines",
+    ]) {
+      expect(schema.properties.paths.properties[key]).toBeTruthy();
+    }
+    expect(JSON.stringify(schema)).toContain('"timeline"');
+    expect(JSON.stringify(schema)).toContain('"runtimeRoot"');
   });
 
   it("keeps real Codex transport diagnostics out of assistant text", async () => {
@@ -156,6 +274,16 @@ describe("desktop startup test suite", () => {
     expect(source).not.toContain('execCommand("insertText"');
   });
 
+  it("opens stub session history with the shared pointer helper and waits for the menu role", () => {
+    const source = readText("e2e/agent-browser-smoke.mjs");
+
+    expect(source).toContain("clickButtonByLabel(agentBrowser, \"Session history\")");
+    expect(source).toContain("[role=\"menu\"][aria-label=\"Session history\"]");
+    expect(source).toContain("clickHistoryMenuItemByText(firstPrompt)");
+    expect(source).toContain("restored first session transcript");
+    expect(source).not.toContain("document.querySelector(\"[role='dialog']\")");
+  });
+
   it("waits for the real Codex turn to finish before creating a fresh session", () => {
     const source = readText("e2e/real-codex-agent-browser.mjs");
 
@@ -166,7 +294,25 @@ describe("desktop startup test suite", () => {
   it("accepts the current project-root cwd in the real Codex E2E", () => {
     const source = readText("e2e/real-codex-agent-browser.mjs");
 
-    expect(source).toContain(".clash\\\\/projects\\\\/");
-    expect(source).not.toContain(".clash\\\\/agent\\\\/");
+    expect(source).toContain("/.clash/projects/");
+    expect(source).not.toContain("/.clash/agent/");
+  });
+
+  it("verifies real Codex project cwd materializes the v1 editable roots", () => {
+    const realSource = readText("e2e/real-codex-agent-browser.mjs");
+    const resumeSource = readText("e2e/real-codex-resume-agent-browser.mjs");
+
+    for (const source of [realSource, resumeSource]) {
+      expect(source).toContain("assertProjectWorkspaceLayout");
+      expect(source).toContain('"drafts"');
+      expect(source).toContain('"projections/text"');
+      expect(source).toContain('"projections/timelines"');
+      expect(source).toContain('"assets/links"');
+      expect(source).toContain('"sessions"');
+      expect(source).toContain('"runtime"');
+      expect(source).toContain("/api/v1/projects/");
+      expect(source).toContain("/status");
+      expect(source).toContain("runtimeRoot");
+    }
   });
 });

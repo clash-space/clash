@@ -1,10 +1,11 @@
 
 import { useEffect, useMemo, useRef } from 'react';
-import { useReactFlow, useNodes, useEdges } from '@xyflow/react';
 import type { Node as RFNode, Edge } from '@xyflow/react';
+import type { CustomActionDefinition } from '@clash/shared-types';
 import { useOptionalLoroSyncContext } from '../components/LoroSyncContext';
-import { useCustomActions } from './useCustomActions';
 import { computeAdoption } from '../components/nodes/performAdoption';
+
+type SetNodes = (updater: RFNode[] | ((nodes: RFNode[]) => RFNode[])) => void;
 
 /**
  * Canvas-level dispatcher for the **backward DAG** build model.
@@ -30,12 +31,18 @@ import { computeAdoption } from '../components/nodes/performAdoption';
  * No fan-out, no forward propagation — those happened at plan time in the
  * dialog. Dispatcher is a pure executor.
  */
-export function useCascadeRunner() {
-    const { setNodes } = useReactFlow();
-    const nodes = useNodes();
-    const edges = useEdges();
+export function useCascadeRunner({
+    nodes,
+    edges,
+    setNodes,
+    customActions,
+}: {
+    nodes: RFNode[];
+    edges: Edge[];
+    setNodes: SetNodes;
+    customActions: CustomActionDefinition[];
+}) {
     const loroSync = useOptionalLoroSyncContext();
-    const customActions = useCustomActions(loroSync?.doc ?? null);
 
     // Re-entrancy guards against double-processing the same node in a single
     // render cycle (React state batching mid-effect).
@@ -185,11 +192,24 @@ export function useCascadeRunner() {
 }
 
 /**
- * Zero-render component that mounts `useCascadeRunner`. Must be rendered
- * INSIDE `<ReactFlow>` — the underlying hooks (useNodes/useEdges) require
- * the React Flow context that ReactFlow provides to its children.
+ * Zero-render component that mounts `useCascadeRunner`.
+ *
+ * It intentionally receives controlled ReactFlow state from `ProjectEditor`
+ * instead of subscribing with `useNodes()` / `useEdges()`. Subscribing from a
+ * ReactFlow child can trigger React's "setState while rendering parent"
+ * warning when the parent updates the controlled nodes prop.
  */
-export function CascadeRunnerMount() {
-    useCascadeRunner();
+export function CascadeRunnerMount({
+    nodes,
+    edges,
+    setNodes,
+    customActions,
+}: {
+    nodes: RFNode[];
+    edges: Edge[];
+    setNodes: SetNodes;
+    customActions: CustomActionDefinition[];
+}) {
+    useCascadeRunner({ nodes, edges, setNodes, customActions });
     return null;
 }

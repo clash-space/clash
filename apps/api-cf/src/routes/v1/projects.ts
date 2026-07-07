@@ -91,15 +91,30 @@ projectRoutes.delete("/:id", async (c) => {
 // (same POST). Agent internal activity (tool calls, streaming text)
 // stays in chat_message — it does NOT come through here.
 //
-// Mention dispatch: each {user_id, agent_member_id} entry → look up the
+// Mention dispatch: each mention with an agent_member_id → look up the
 // active runtime_session for that agent member → push room.mention via
 // RuntimeRoom DO RPC. Best-effort: if no live session, the mention is
 // silently dropped (the room message itself is still visible — the
 // agent just won't auto-respond until next time it's spawned).
 
 interface RoomMention {
-  user_id: string;
+  user_id?: string;
   agent_member_id?: string;
+}
+
+function normalizeRoomMentions(value: unknown): RoomMention[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((item): RoomMention[] => {
+    if (!item || typeof item !== "object") return [];
+    const row = item as Record<string, unknown>;
+    const userId = typeof row.user_id === "string" ? row.user_id.trim() : "";
+    const agentMemberId = typeof row.agent_member_id === "string" ? row.agent_member_id.trim() : "";
+    if (!userId && !agentMemberId) return [];
+    return [{
+      ...(userId ? { user_id: userId } : {}),
+      ...(agentMemberId ? { agent_member_id: agentMemberId } : {}),
+    }];
+  });
 }
 
 // Membership check — for v1, "in the project" means owner. When
@@ -129,16 +144,22 @@ projectRoutes.get("/:pid/room/messages", async (c) => {
 
   const stmt = before
     ? c.env.DB.prepare(
-        `SELECT id, sender_kind, sender_id, sender_user_id, mentions_json, text, created_at
-         FROM room_message
-         WHERE project_id = ?
-           AND created_at < (SELECT created_at FROM room_message WHERE id = ?)
-         ORDER BY created_at DESC LIMIT ?`,
-      ).bind(projectId, before, limit)
+        `WITH cursor AS (
+           SELECT created_at, id FROM room_message WHERE id = ? AND project_id = ?
+         )
+         SELECT room_message.id, sender_kind, sender_id, sender_user_id, mentions_json, text, room_message.created_at
+           FROM room_message, cursor
+          WHERE project_id = ?
+            AND (
+              room_message.created_at < cursor.created_at
+              OR (room_message.created_at = cursor.created_at AND room_message.id < cursor.id)
+            )
+          ORDER BY room_message.created_at DESC, room_message.id DESC LIMIT ?`,
+      ).bind(before, projectId, projectId, limit)
     : c.env.DB.prepare(
         `SELECT id, sender_kind, sender_id, sender_user_id, mentions_json, text, created_at
          FROM room_message WHERE project_id = ?
-         ORDER BY created_at DESC LIMIT ?`,
+         ORDER BY created_at DESC, id DESC LIMIT ?`,
       ).bind(projectId, limit);
 
   const { results } = await stmt.all<{
@@ -206,17 +227,44 @@ projectRoutes.post("/:pid/room/messages", async (c) => {
     }
   }
 
-  const mentions: RoomMention[] = Array.isArray(body.mentions)
-    ? body.mentions.filter((m) => m && typeof m.user_id === "string")
-    : [];
+  const mentions = normalizeRoomMentions(body.mentions);
 
   const clientId = typeof body.id === "string" ? body.id.trim() : "";
   const id = clientId || crypto.randomUUID();
   const at = Math.floor(Date.now() / 1000);
   const mentionsJson = JSON.stringify(mentions);
 
+  const existing = await c.env.DB.prepare(
+    `SELECT id, project_id, sender_kind, sender_id, sender_user_id, mentions_json, text, created_at
+       FROM room_message WHERE id = ?`,
+  ).bind(id).first<{
+    id: string;
+    project_id: string;
+    sender_kind: string;
+    sender_id: string;
+    sender_user_id: string;
+    mentions_json: string;
+    text: string;
+    created_at: number;
+  }>();
+  if (existing) {
+    if (existing.project_id !== projectId) {
+      return c.json({ error: "room message id already exists" }, 409);
+    }
+    return c.json({
+      id: existing.id,
+      project_id: existing.project_id,
+      sender_kind: existing.sender_kind,
+      sender_id: existing.sender_id,
+      sender_user_id: existing.sender_user_id,
+      mentions: JSON.parse(existing.mentions_json) as RoomMention[],
+      text: existing.text,
+      at: existing.created_at,
+    });
+  }
+
   await c.env.DB.prepare(
-    `INSERT OR IGNORE INTO room_message
+    `INSERT INTO room_message
      (id, project_id, sender_kind, sender_id, sender_user_id, mentions_json, text, created_at)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
   ).bind(id, projectId, senderKind, senderId, userId, mentionsJson, text, at).run();

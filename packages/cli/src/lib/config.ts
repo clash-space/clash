@@ -1,9 +1,14 @@
-import { readFileSync, writeFileSync, mkdirSync, existsSync } from "node:fs";
+import { chmodSync, readFileSync, writeFileSync, mkdirSync, existsSync } from "node:fs";
 import { join } from "node:path";
-import { homedir } from "node:os";
+import { resolveClashRoot } from "./clash-home";
 
-const CONFIG_DIR = join(homedir(), ".clash");
-const CONFIG_FILE = join(CONFIG_DIR, "config.json");
+export function configDir(env: Record<string, string | undefined> = process.env): string {
+  return resolveClashRoot(env);
+}
+
+export function configFilePath(env: Record<string, string | undefined> = process.env): string {
+  return join(configDir(env), "config.json");
+}
 
 export interface ClashConfig {
   apiKey?: string;
@@ -11,9 +16,10 @@ export interface ClashConfig {
 }
 
 export function loadConfig(): ClashConfig {
+  const path = configFilePath();
   try {
-    if (!existsSync(CONFIG_FILE)) return {};
-    const raw = readFileSync(CONFIG_FILE, "utf-8");
+    if (!existsSync(path)) return {};
+    const raw = readFileSync(path, "utf-8");
     return JSON.parse(raw) as ClashConfig;
   } catch {
     return {};
@@ -21,8 +27,11 @@ export function loadConfig(): ClashConfig {
 }
 
 export function saveConfig(config: ClashConfig): void {
-  mkdirSync(CONFIG_DIR, { recursive: true });
-  writeFileSync(CONFIG_FILE, JSON.stringify(config, null, 2) + "\n", "utf-8");
+  const dir = configDir();
+  const path = configFilePath();
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(path, JSON.stringify(config, null, 2) + "\n", { encoding: "utf-8", mode: 0o600 });
+  chmodSync(path, 0o600);
 }
 
 /**

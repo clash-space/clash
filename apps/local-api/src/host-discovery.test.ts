@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -8,6 +8,7 @@ import {
   type LocalHostDiscoveryRecord,
 } from "@clash/shared-runtime";
 import {
+  getDefaultHostDiscoveryRunDir,
   getHostDiscoveryPath,
   readHostDiscovery,
   removeHostDiscovery,
@@ -32,6 +33,21 @@ function activeRecord(overrides: Partial<LocalHostDiscoveryRecord> = {}): LocalH
 }
 
 describe("local host discovery file", () => {
+  it("honors CLASH_HOME for the default run directory", async () => {
+    const previous = process.env.CLASH_HOME;
+    const clashHome = await mkdtemp(join(tmpdir(), "clash-home-"));
+    process.env.CLASH_HOME = clashHome;
+    try {
+      expect(getDefaultHostDiscoveryRunDir()).toBe(join(clashHome, "run"));
+    } finally {
+      if (previous === undefined) {
+        delete process.env.CLASH_HOME;
+      } else {
+        process.env.CLASH_HOME = previous;
+      }
+    }
+  });
+
   it("writes and reads a valid discovery record", async () => {
     const runDir = await mkdtemp(join(tmpdir(), "clash-host-discovery-"));
     const record = activeRecord();
@@ -42,6 +58,7 @@ describe("local host discovery file", () => {
       status: "active",
       record,
     });
+    expect((await stat(getHostDiscoveryPath(runDir))).mode & 0o777).toBe(0o600);
   });
 
   it("removes only a matching host id", async () => {

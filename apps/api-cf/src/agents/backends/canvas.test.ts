@@ -152,6 +152,19 @@ describe("Canvas class", () => {
       expect(result.proposal!.type).toBe(ProposalType.Group);
     });
 
+    it("rejects duplicate node ids without overwriting the existing node", () => {
+      const canvas = makeCanvas();
+      canvas.createNode("n1", "text", { label: "Original" }, { x: 0, y: 0 }, null);
+
+      const result = canvas.createNode("n1", "text", { label: "Overwrite" }, { x: 1, y: 1 }, null);
+
+      expect(result.node_id).toBeNull();
+      expect(result.error).toContain("already exists");
+      const node = canvas.readNode("n1");
+      expect(node!.data.label).toBe("Original");
+      expect(node!.position).toEqual({ x: 0, y: 0 });
+    });
+
     it("creates image_gen node with generative proposal and assetId", () => {
       const canvas = makeCanvas();
       const result = canvas.createNode("img1", "image_gen", { label: "Img" }, null, null, "asset-123");
@@ -386,6 +399,20 @@ describe("Canvas class", () => {
       expect(edges.some(e => e.source === "badge1" && e.target === "gen-1")).toBe(true);
     });
 
+    it("does not overwrite an existing node when the generated child id collides", () => {
+      idCounter = 0;
+      const canvas = makeCanvasWithBadge();
+      canvas.insertNode("gen-1", "text", { label: "Existing child id" }, null, { x: 1, y: 2 });
+
+      const result = canvas.executeGeneration("badge1", generateId);
+
+      expect(result.error).toContain("already exists");
+      const existing = canvas.readNode("gen-1");
+      expect(existing!.type).toBe("text");
+      expect(existing!.data.label).toBe("Existing child id");
+      expect(canvas.listEdges().some((e) => e.source === "badge1" && e.target === "gen-1")).toBe(false);
+    });
+
     it("returns error for missing node", () => {
       const canvas = makeCanvas();
       const result = canvas.executeGeneration("nonexistent", generateId);
@@ -427,12 +454,13 @@ describe("Canvas class", () => {
         model: "nano-banana-2-edit",
         modelParams: { aspect_ratio: "16:9" },
         referenceMode: "multi",
-        referenceImageUrls: ["projects/p1/assets/ref.png"],
+        referenceImageAssetIds: ["asset-ref-1"],
       }, null, { x: 0, y: 0 });
 
       const result = canvas.executeGeneration("badge1", generateId);
       expect(result.error).toBeNull();
       expect(result.assetNodeId).toBe("gen-1");
+      expect(canvas.readNode("gen-1")?.data.referenceImageAssetIds).toEqual(["asset-ref-1"]);
     });
 
     it("handles video generation", () => {
@@ -455,6 +483,39 @@ describe("Canvas class", () => {
       const pending = canvas.readNode("gen-1");
       expect(pending!.data.status).toBe("pending");
       expect(pending!.data.duration).toBe(5);
+    });
+  });
+
+  describe("executeRender", () => {
+    let idCounter = 0;
+    const generateId = () => `gen-${++idCounter}`;
+
+    it("does not overwrite an existing node when the generated render id collides", () => {
+      idCounter = 0;
+      const canvas = makeCanvas();
+      canvas.insertNode("editor1", "video-editor", {
+        timelineDsl: {
+          tracks: [
+            {
+              id: "track-1",
+              type: "video",
+              items: [
+                { id: "item-1", type: "video", from: 0, durationInFrames: 30 },
+              ],
+            },
+          ],
+          durationInFrames: 30,
+        },
+      }, null, { x: 0, y: 0 });
+      canvas.insertNode("gen-1", "text", { label: "Existing render id" }, null, { x: 1, y: 2 });
+
+      const result = canvas.executeRender("editor1", generateId);
+
+      expect(result.error).toContain("already exists");
+      const existing = canvas.readNode("gen-1");
+      expect(existing!.type).toBe("text");
+      expect(existing!.data.label).toBe("Existing render id");
+      expect(canvas.listEdges().some((e) => e.source === "editor1" && e.target === "gen-1")).toBe(false);
     });
   });
 

@@ -1,0 +1,7 @@
+[
+  {
+    "id": "store-night",
+    "referenceAssetIds": ["asset-store"],
+    "prompt": "night convenience store aisle"
+  }
+]

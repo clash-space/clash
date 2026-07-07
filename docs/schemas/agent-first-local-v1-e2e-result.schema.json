@@ -1,0 +1,306 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://clash.local/schemas/agent-first-local-v1-e2e-result.schema.json",
+  "title": "Agent-First Local v1 E2E Result",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "suite",
+    "runId",
+    "status",
+    "startedAt",
+    "endedAt",
+    "repoRoot",
+    "artifactDir",
+    "project",
+    "commands",
+    "assertions",
+    "createdFiles",
+    "productGaps",
+    "forbiddenInternalsUsed",
+    "summary"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "type": "integer",
+      "const": 1
+    },
+    "suite": {
+      "type": "string",
+      "enum": [
+        "project-path-creation",
+        "project-restore",
+        "timeline-cas",
+        "text-projection",
+        "short-drama-creative-flow",
+        "local-remote-boundary",
+        "custom"
+      ]
+    },
+    "runId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "status": {
+      "type": "string",
+      "enum": ["pass", "fail", "skip"]
+    },
+    "startedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "endedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "repoRoot": {
+      "type": "string",
+      "minLength": 1
+    },
+    "artifactDir": {
+      "type": "string",
+      "minLength": 1
+    },
+    "project": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "projectId",
+        "workspaceCwd",
+        "markerPath",
+        "projectStore",
+        "snapshotPath",
+        "updatesLogPath",
+        "localSqlitePath",
+        "projectionsRoot",
+        "draftsRoot",
+        "runtimeRoot",
+        "syncMode"
+      ],
+      "properties": {
+        "projectId": {
+          "type": ["string", "null"]
+        },
+        "workspaceCwd": {
+          "type": ["string", "null"]
+        },
+        "markerPath": {
+          "type": ["string", "null"]
+        },
+        "projectStore": {
+          "type": ["string", "null"]
+        },
+        "snapshotPath": {
+          "type": ["string", "null"]
+        },
+        "updatesLogPath": {
+          "type": ["string", "null"]
+        },
+        "localSqlitePath": {
+          "type": ["string", "null"]
+        },
+        "projectionsRoot": {
+          "type": ["string", "null"]
+        },
+        "draftsRoot": {
+          "type": ["string", "null"]
+        },
+        "runtimeRoot": {
+          "type": ["string", "null"]
+        },
+        "syncMode": {
+          "type": ["string", "null"],
+          "enum": ["local", "local-only", "cloud-sync", "synced", "shared", "unknown", null]
+        }
+      }
+    },
+    "commands": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "cmd",
+          "cwd",
+          "exitCode",
+          "durationMs",
+          "stdoutExcerpt",
+          "stderrExcerpt"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "cmd": {
+            "type": "string",
+            "minLength": 1
+          },
+          "cwd": {
+            "type": "string",
+            "minLength": 1
+          },
+          "exitCode": {
+            "type": ["integer", "null"]
+          },
+          "durationMs": {
+            "type": ["integer", "null"],
+            "minimum": 0
+          },
+          "stdoutExcerpt": {
+            "type": "string"
+          },
+          "stderrExcerpt": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "assertions": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "title",
+          "status",
+          "evidence",
+          "expected",
+          "actual"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "title": {
+            "type": "string",
+            "minLength": 1
+          },
+          "status": {
+            "type": "string",
+            "enum": ["pass", "fail", "skip"]
+          },
+          "evidence": {
+            "type": "string"
+          },
+          "expected": {
+            "type": "string"
+          },
+          "actual": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "createdFiles": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["path", "kind", "exists"],
+        "properties": {
+          "path": {
+            "type": "string",
+            "minLength": 1
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "artifact",
+              "draft",
+              "projection",
+              "lock",
+              "asset",
+              "marker",
+              "log",
+              "other"
+            ]
+          },
+          "exists": {
+            "type": "boolean"
+          },
+          "sha256": {
+            "type": ["string", "null"]
+          }
+        }
+      }
+    },
+    "productGaps": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "severity", "summary", "evidence", "mappedTask"],
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "severity": {
+            "type": "string",
+            "enum": ["P0", "P1", "P2", "P3"]
+          },
+          "summary": {
+            "type": "string",
+            "minLength": 1
+          },
+          "evidence": {
+            "type": "string"
+          },
+          "mappedTask": {
+            "type": ["string", "null"]
+          }
+        }
+      }
+    },
+    "forbiddenInternalsUsed": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": [
+          "snapshot-bin-read",
+          "snapshot-bin-write",
+          "sqlite-direct-edit",
+          "db-json-direct-edit",
+          "secret-read",
+          "source-code-patch",
+          "other"
+        ]
+      }
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["oneLine", "passCount", "failCount", "skipCount", "nextActions"],
+      "properties": {
+        "oneLine": {
+          "type": "string",
+          "minLength": 1
+        },
+        "passCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "failCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "skipCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "nextActions": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  }
+}

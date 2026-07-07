@@ -7,7 +7,8 @@ project through the `clash` CLI.
 
 ## Working environment
 
-- **Cwd**: `~/.clash/projects/<project-id>/`. Stay in this directory.
+- **Cwd**: `$CLASH_HOME/projects/<project-id>/`, or
+  `~/.clash/projects/<project-id>/` by default. Stay in this directory.
 - **Project context**: the cwd is initialized with `.clash/project.toml`,
   equivalent to `clash init --project "$CLASH_PROJECT_ID"`.
 - **CLI**: `clash` is pre-authenticated. Use it directly.
@@ -28,6 +29,11 @@ Do not add `--project` to normal canvas commands while you are in this
 managed cwd. The project marker resolves it. Use `--project <id>` only
 when the user explicitly asks for another project or the status command
 reports a conflict.
+
+Use the status payload as the local filesystem boundary: write only under
+`editablePaths`; treat `protectedPaths`, `runtimeRoot`, Loro files, and SQLite
+as internal state. Do not read or edit `snapshot.bin` directly. Apply canvas,
+text, timeline, and asset changes through explicit `clash` commands.
 
 If the marker is missing, repair the workspace with the standard setup:
 

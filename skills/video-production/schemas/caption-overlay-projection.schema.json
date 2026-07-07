@@ -1,0 +1,151 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Clash caption timeline overlay projection",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "kind",
+    "sourceTimelinePath",
+    "timelineProjectionPath",
+    "fps",
+    "dimensions",
+    "timelineItems",
+    "rendering",
+    "validation",
+    "casApply"
+  ],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "kind": { "const": "clash.caption.timeline-overlay" },
+    "sourceTimelinePath": { "type": "string" },
+    "timelineProjectionPath": { "type": "string" },
+    "fps": { "type": "number" },
+    "dimensions": {
+      "type": "object",
+      "required": ["width", "height"],
+      "properties": {
+        "width": { "type": "number" },
+        "height": { "type": "number" }
+      }
+    },
+    "timelineItems": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "type", "from", "durationInFrames", "cues", "wordRefs", "sourceToOutputMap"],
+        "properties": {
+          "id": { "type": "string" },
+          "type": { "const": "caption" },
+          "from": { "type": "number" },
+          "durationInFrames": { "type": "number" },
+          "language": { "type": "string" },
+          "cues": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "object",
+              "required": ["id", "startFrame", "durationInFrames", "text", "wordIds", "sourceStartFrame", "sourceEndFrame"],
+              "properties": {
+                "id": { "type": "string" },
+                "startFrame": { "type": "number" },
+                "durationInFrames": { "type": "number" },
+                "text": { "type": "string" },
+                "wordIds": { "type": "array", "minItems": 1, "items": { "type": "string" } },
+                "sourceStartFrame": { "type": "number" },
+                "sourceEndFrame": { "type": "number" }
+              }
+            }
+          },
+          "wordRefs": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "object",
+              "required": ["id", "text", "sourceStartFrame", "sourceEndFrame"],
+              "properties": {
+                "id": { "type": "string" },
+                "text": { "type": "string" },
+                "sourceStartFrame": { "type": "number" },
+                "sourceEndFrame": { "type": "number" }
+              }
+            }
+          },
+          "sourceToOutputMap": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "object",
+              "required": ["sourceStartFrame", "sourceEndFrame", "outputStartFrame", "outputEndFrame"],
+              "properties": {
+                "sourceStartFrame": { "type": "number" },
+                "sourceEndFrame": { "type": "number" },
+                "outputStartFrame": { "type": "number" },
+                "outputEndFrame": { "type": "number" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "rendering": {
+      "type": "object",
+      "required": ["previewRenderer", "sidecarFormats", "burnInRequires"],
+      "properties": {
+        "previewRenderer": { "const": "remotion-components.caption" },
+        "sidecarFormats": {
+          "type": "array",
+          "items": { "enum": ["srt", "vtt", "ass"] }
+        },
+        "burnInRequires": { "type": "string" }
+      }
+    },
+    "validation": {
+      "type": "object",
+      "required": [
+        "timelineItemType",
+        "captionItems",
+        "cues",
+        "wordRefs",
+        "sourceToOutputMaps",
+        "structuredCaptionOnly"
+      ],
+      "properties": {
+        "timelineItemType": { "const": "caption" },
+        "captionItems": { "type": "number" },
+        "cues": { "type": "number" },
+        "wordRefs": { "type": "number" },
+        "sourceToOutputMaps": { "type": "number" },
+        "structuredCaptionOnly": { "const": true }
+      }
+    },
+    "casApply": {
+      "type": "object",
+      "required": ["target", "mutation", "applyCommand", "filePath", "lockPath", "lockRequired", "lockSource", "nodeIdPlaceholder", "requiredRuntimeArgs", "pullCommand", "pullArgs", "applyArgs"],
+      "properties": {
+        "target": { "const": "timeline" },
+        "mutation": { "const": "projection-only" },
+        "applyCommand": { "const": "clash timeline apply" },
+        "filePath": { "type": "string" },
+        "lockPath": { "type": "string" },
+        "lockRequired": { "const": true },
+        "lockSource": { "const": "fresh-canvas-pull" },
+        "nodeIdPlaceholder": { "const": "<video-editor-node-id>" },
+        "requiredRuntimeArgs": {
+          "type": "array",
+          "contains": { "const": "--node <video-editor-node-id>" }
+        },
+        "pullCommand": { "const": "clash timeline pull" },
+        "pullArgs": {
+          "type": "array",
+          "prefixItems": [{ "const": "--node" }, { "const": "<video-editor-node-id>" }],
+          "items": { "type": "string" }
+        },
+        "applyArgs": {
+          "type": "array",
+          "prefixItems": [{ "const": "--node" }, { "const": "<video-editor-node-id>" }],
+          "items": { "type": "string" }
+        }
+      }
+    }
+  }
+}

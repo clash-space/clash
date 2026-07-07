@@ -29,6 +29,7 @@ type RawItem = {
 type RawTrack = {
   id?: string;
   name?: string;
+  role?: string;
   items?: RawItem[];
   hidden?: boolean;
   locked?: boolean;
@@ -47,7 +48,7 @@ type RawTimelineDsl = {
 // The resolved DSL stored in Loro: from is a number, fromExpr optionally
 // preserved alongside.
 export type ResolvedItem = RawItem & { id: string; type: string; from: number; durationInFrames: number };
-export type ResolvedTrack = { id: string; name?: string; items: ResolvedItem[]; hidden?: boolean; locked?: boolean };
+export type ResolvedTrack = { id: string; name?: string; role?: string; items: ResolvedItem[]; hidden?: boolean; locked?: boolean };
 export type ResolvedTimelineDsl = {
   tracks: ResolvedTrack[];
   compositionWidth?: number;
@@ -73,6 +74,7 @@ export type FromExpression =
 // digits at the end is unambiguously an offset.
 const OFFSET_RE = /^(.+?)\s*([+-])\s*([0-9]+(?:\.[0-9]+)?)$/;
 const BARE_ID_RE = /^[A-Za-z0-9_.:-]+$/;
+const SUBTITLE_ALLOWED_ITEM_TYPES = new Set(["caption"]);
 
 export function parseFromExpression(raw: unknown): FromExpression | null {
   if (typeof raw === "number" && Number.isFinite(raw)) {
@@ -205,6 +207,7 @@ export function timelineDslToYaml(dsl: ResolvedTimelineDsl): string {
   projected.tracks = (dsl.tracks ?? []).map((t) => ({
     id: t.id,
     name: t.name,
+    ...(t.role ? { role: t.role } : {}),
     ...(t.locked ? { locked: true } : {}),
     ...(t.hidden ? { hidden: true } : {}),
     items: (t.items ?? []).map((it) => itemToYamlObject(it)),
@@ -277,6 +280,11 @@ export function timelineDslFromYaml(yamlText: string): FromYamlResult {
       if (typeof item.durationInFrames !== "number" || !Number.isFinite(item.durationInFrames) || item.durationInFrames < 0) {
         return { ok: false, error: `Item ${item.id} has invalid durationInFrames` };
       }
+      const semanticError = validateSemanticTimelineItem(
+        item as RawItem & { id: string; type: string; durationInFrames: number },
+        track,
+      );
+      if (semanticError) return { ok: false, error: semanticError };
     }
   }
 
@@ -312,6 +320,7 @@ export function timelineDslFromYaml(yamlText: string): FromYamlResult {
     return {
       id: typeof track.id === "string" ? track.id : `track-${trackIdx}`,
       name: typeof track.name === "string" ? track.name : undefined,
+      role: typeof track.role === "string" ? track.role : undefined,
       items,
       hidden: track.hidden === true || undefined,
       locked: track.locked === true || undefined,
@@ -326,6 +335,164 @@ export function timelineDslFromYaml(yamlText: string): FromYamlResult {
   if (typeof root.fps === "number") out.fps = root.fps;
   if (typeof root.durationInFrames === "number") out.durationInFrames = root.durationInFrames;
   return { ok: true, dsl: out };
+}
+
+function validateSemanticTimelineItem(
+  item: RawItem & { id: string; type: string; durationInFrames: number },
+  track: RawTrack,
+): string | null {
+  if (track.role === "subtitle" && !SUBTITLE_ALLOWED_ITEM_TYPES.has(item.type)) {
+    return `Track ${track.id ?? "subtitle"} has role subtitle and must contain caption items, not ${item.type}`;
+  }
+  if (item.type === "caption") return validateCaptionTimelineItem(item);
+  if (item.type === "derived-overlay") return validateDerivedOverlayTimelineItem(item);
+  if (item.type === "composition") return validateCompositionTimelineItem(item);
+  return null;
+}
+
+function validateCaptionTimelineItem(item: RawItem & { id: string; durationInFrames: number }): string | null {
+  const cues = Array.isArray(item.cues) ? item.cues : [];
+  const wordRefs = Array.isArray(item.wordRefs) ? item.wordRefs : [];
+  const sourceToOutputMap = Array.isArray(item.sourceToOutputMap) ? item.sourceToOutputMap : [];
+  if (cues.length === 0 || wordRefs.length === 0 || sourceToOutputMap.length === 0) {
+    return `Caption item ${item.id} must include cues, wordRefs, and sourceToOutputMap`;
+  }
+
+  const wordIds = new Set<string>();
+  for (const wordRef of wordRefs) {
+    if (!isRecord(wordRef)) return `Caption item ${item.id} has invalid wordRefs`;
+    if (typeof wordRef.id !== "string" || wordRef.id.length === 0) return `Caption item ${item.id} has invalid wordRefs`;
+    if (typeof wordRef.text !== "string") return `Caption item ${item.id} has invalid wordRefs`;
+    if (!isValidFrameRange(wordRef.sourceStartFrame, wordRef.sourceEndFrame)) {
+      return `Caption item ${item.id} has invalid wordRefs source frame range`;
+    }
+    wordIds.add(wordRef.id);
+  }
+
+  for (const map of sourceToOutputMap) {
+    if (!isRecord(map)) return `Caption item ${item.id} has invalid sourceToOutputMap`;
+    if (!isValidFrameRange(map.sourceStartFrame, map.sourceEndFrame) || !isValidFrameRange(map.outputStartFrame, map.outputEndFrame)) {
+      return `Caption item ${item.id} has invalid sourceToOutputMap frame range`;
+    }
+  }
+
+  for (const cue of cues) {
+    if (!isRecord(cue)) return `Caption item ${item.id} has invalid cues`;
+    if (typeof cue.id !== "string" || cue.id.length === 0) return `Caption item ${item.id} has invalid cues`;
+    if (typeof cue.text !== "string" || cue.text.trim().length === 0) return `Caption item ${item.id} has invalid cues`;
+    if (typeof cue.startFrame !== "number" || !Number.isInteger(cue.startFrame) || cue.startFrame < 0) {
+      return `Caption item ${item.id} has invalid cue startFrame`;
+    }
+    if (typeof cue.durationInFrames !== "number" || !Number.isInteger(cue.durationInFrames) || cue.durationInFrames <= 0) {
+      return `Caption item ${item.id} has invalid cue durationInFrames`;
+    }
+    const cueStartFrame = cue.startFrame;
+    const cueDurationInFrames = cue.durationInFrames;
+    const cueSourceStartFrame = cue.sourceStartFrame;
+    const cueSourceEndFrame = cue.sourceEndFrame;
+    if (cueStartFrame + cueDurationInFrames > item.durationInFrames) {
+      return `Caption item ${item.id} has cue outside item duration`;
+    }
+    if (!isValidFrameRange(cueSourceStartFrame, cueSourceEndFrame)) {
+      return `Caption item ${item.id} has invalid cue source frame range`;
+    }
+    const cueSourceStart = cueSourceStartFrame as number;
+    const cueSourceEnd = cueSourceEndFrame as number;
+    if (!Array.isArray(cue.wordIds) || cue.wordIds.length === 0) {
+      return `Caption item ${item.id} cues must reference wordRefs`;
+    }
+    for (const wordId of cue.wordIds) {
+      if (typeof wordId !== "string" || !wordIds.has(wordId)) {
+        return `Caption item ${item.id} cue references unknown wordRefs`;
+      }
+    }
+    const cueEndFrame = cueStartFrame + cueDurationInFrames;
+    const coveredByMap = sourceToOutputMap.some((map) => {
+      if (!isRecord(map)) return false;
+      if (!isValidFrameRange(map.sourceStartFrame, map.sourceEndFrame)) return false;
+      if (!isValidFrameRange(map.outputStartFrame, map.outputEndFrame)) return false;
+      const frameMap = map as {
+        sourceStartFrame: number;
+        sourceEndFrame: number;
+        outputStartFrame: number;
+        outputEndFrame: number;
+      };
+      return (
+        cueSourceStart >= frameMap.sourceStartFrame &&
+        cueSourceEnd <= frameMap.sourceEndFrame &&
+        cueStartFrame >= frameMap.outputStartFrame &&
+        cueEndFrame <= frameMap.outputEndFrame
+      );
+    });
+    if (!coveredByMap) return `Caption item ${item.id} cue must be covered by sourceToOutputMap`;
+  }
+  return null;
+}
+
+function validateDerivedOverlayTimelineItem(item: RawItem & { id: string }): string | null {
+  if (item.mediaType !== "image" && item.mediaType !== "video") {
+    return `Derived overlay item ${item.id} mediaType must be image or video`;
+  }
+  if (!isLocalProjectPath(item.src)) {
+    return `Derived overlay item ${item.id} src must be a local project path`;
+  }
+  if (typeof item.sourceAssetId !== "string" || item.sourceAssetId.length === 0) {
+    return `Derived overlay item ${item.id} must include sourceAssetId, derivedAssetId, and derivation.kind`;
+  }
+  if (typeof item.derivedAssetId !== "string" || item.derivedAssetId.length === 0) {
+    return `Derived overlay item ${item.id} must include sourceAssetId, derivedAssetId, and derivation.kind`;
+  }
+  if (item.sourceAssetId === item.derivedAssetId) {
+    return `Derived overlay item ${item.id} must be copy-on-write`;
+  }
+  if (!isRecord(item.derivation) || typeof item.derivation.kind !== "string" || item.derivation.kind.length === 0) {
+    return `Derived overlay item ${item.id} must include sourceAssetId, derivedAssetId, and derivation.kind`;
+  }
+  return null;
+}
+
+function validateCompositionTimelineItem(item: RawItem & { id: string }): string | null {
+  if (item.runtime !== "html" && item.runtime !== "react" && item.runtime !== "remotion") {
+    return `Composition item ${item.id} runtime must be html, react, or remotion`;
+  }
+  if (typeof item.compositionId !== "string" || item.compositionId.length === 0) {
+    return `Composition item ${item.id} must include compositionId`;
+  }
+  if (!isLocalProjectPath(item.sourcePath)) {
+    return `Composition item ${item.id} sourcePath must be a local project path`;
+  }
+  if (item.runtime === "html" && item.compositionKind === "motion-graphics" && !isRecord(item.spec)) {
+    return `Composition item ${item.id} HTML motion-graphics items must include a first-party spec`;
+  }
+  if (item.renderedAssetPath !== undefined && !isLocalProjectPath(item.renderedAssetPath)) {
+    return `Composition item ${item.id} renderedAssetPath must be a local project path`;
+  }
+  if (item.runtime !== "html" && !isLocalProjectPath(item.renderedAssetPath)) {
+    return `Composition item ${item.id} React/Remotion items must include local renderedAssetPath for timeline preview`;
+  }
+  return null;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function isValidFrameRange(startFrame: unknown, endFrame: unknown): boolean {
+  return (
+    typeof startFrame === "number" &&
+    typeof endFrame === "number" &&
+    Number.isInteger(startFrame) &&
+    Number.isInteger(endFrame) &&
+    startFrame >= 0 &&
+    endFrame > startFrame
+  );
+}
+
+function isLocalProjectPath(value: unknown): boolean {
+  if (typeof value !== "string" || value.trim().length === 0) return false;
+  if (/^[a-z][a-z0-9+.-]*:\/\//i.test(value)) return false;
+  if (value.startsWith("/") || /^[A-Za-z]:[\\/]/.test(value)) return false;
+  return !value.split(/[\\/]+/).includes("..");
 }
 
 // ─── Stable hash for stale-read detection ───────────────────────────

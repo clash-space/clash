@@ -27,6 +27,16 @@ managed cwd. Prefer `clash canvas list --json`, `clash canvas get
 asks you to operate on a different project or `clash project status`
 reports a conflict.
 
+Treat the status payload as your filesystem contract:
+
+- Write drafts, projections, session work files, and asset links only under
+  paths listed in `editablePaths`.
+- Treat every path listed in `protectedPaths` as internal Clash state.
+- `runtimeRoot` is a protected runtime/cache directory, not scratch space.
+- Do not read or edit `snapshot.bin`, `updates.log`, `local.sqlite`, or
+  legacy `db.json` directly. Use explicit `clash` commands to inspect or
+  apply project changes.
+
 If a workspace is missing its marker, repair it with the standard setup
 command instead of guessing:
 

@@ -1,13 +1,9 @@
 import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 describe('PropertiesPanel primitives', () => {
   it('routes properties form controls through remotion-ui primitives', () => {
-    const source = readFileSync(
-      join(process.cwd(), 'packages/remotion-ui/src/components/PropertiesPanel.tsx'),
-      'utf8',
-    );
+    const source = readFileSync(new URL('./PropertiesPanel.tsx', import.meta.url), 'utf8');
 
     expect(source).toContain('./ui/controls');
     expect(source).toContain('<RemotionButton');

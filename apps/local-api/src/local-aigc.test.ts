@@ -366,6 +366,152 @@ describe("local mock AIGC", () => {
     });
   });
 
+  it("uses provider account Google Cloud Agent Platform credentials for image models", async () => {
+    const privateKey = await createTestPrivateKeyPem();
+    const calls: Array<{ url: string; init?: RequestInit }> = [];
+    const service = createMockExternalAigcService({
+      providerAccounts: async () => [
+        {
+          providerId: "official",
+          upstreamId: "google-agent-platform",
+          region: "global",
+          enabled: true,
+          configuredCredentials: ["vertexCredentials"],
+          credentials: {
+            vertexCredentials: JSON.stringify({
+              project_id: "vertex-project",
+              client_email: "svc@vertex-project.iam.gserviceaccount.com",
+              private_key: privateKey,
+            }),
+          },
+        },
+      ],
+      fetch: async (input: string | URL | Request, init?: RequestInit) => {
+        const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+        calls.push({ url, init });
+        if (url === "https://oauth2.googleapis.com/token") {
+          return Response.json({ access_token: "vertex-access-token", expires_in: 3600 });
+        }
+        if (url === "https://aiplatform.googleapis.com/v1/projects/vertex-project/locations/global/publishers/google/models/gemini-3.1-flash-image:generateContent") {
+          return Response.json({
+            candidates: [
+              {
+                content: {
+                  parts: [
+                    { text: "image preface" },
+                    {
+                      inlineData: {
+                        mimeType: "image/png",
+                        data: Buffer.from("vertex-google-image").toString("base64"),
+                      },
+                    },
+                  ],
+                },
+              },
+            ],
+          });
+        }
+        return new Response("not found", { status: 404 });
+      },
+    } as never);
+
+    const result = await service.generateImage({
+      taskId: "task-google-agent-platform-image",
+      prompt: "draw a routing map",
+      model: "nano-banana-2",
+      aspectRatio: "16:9",
+    });
+
+    expect(result.provider).toBe("google-agent-platform");
+    expect(result.modelEndpoint).toBe("gemini-3.1-flash-image");
+    expect(Buffer.from(result.bytes).toString("utf8")).toBe("vertex-google-image");
+    expect(result.contentType).toBe("image/png");
+    expect(calls[1].init?.headers).toMatchObject({
+      authorization: "Bearer vertex-access-token",
+      "content-type": "application/json",
+    });
+    expect(JSON.parse(String(calls[1].init?.body))).toEqual({
+      contents: [{ role: "user", parts: [{ text: "draw a routing map" }] }],
+      generationConfig: {
+        responseModalities: ["TEXT", "IMAGE"],
+        imageConfig: { aspectRatio: "16:9" },
+      },
+    });
+  });
+
+  it("uses provider account Google Cloud Agent Platform credentials for text-to-video models", async () => {
+    const privateKey = await createTestPrivateKeyPem();
+    const calls: Array<{ url: string; init?: RequestInit }> = [];
+    const operationName = "projects/vertex-project/locations/global/publishers/google/models/veo-3.1-fast-generate-001/operations/op-1";
+    const service = createMockExternalAigcService({
+      providerAccounts: async () => [
+        {
+          providerId: "official",
+          upstreamId: "google-agent-platform",
+          region: "global",
+          enabled: true,
+          configuredCredentials: ["vertexCredentials"],
+          credentials: {
+            vertexCredentials: JSON.stringify({
+              project_id: "vertex-project",
+              client_email: "svc@vertex-project.iam.gserviceaccount.com",
+              private_key: privateKey,
+            }),
+          },
+        },
+      ],
+      fetch: async (input: string | URL | Request, init?: RequestInit) => {
+        const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+        calls.push({ url, init });
+        if (url === "https://oauth2.googleapis.com/token") {
+          return Response.json({ access_token: "vertex-access-token", expires_in: 3600 });
+        }
+        if (url === "https://aiplatform.googleapis.com/v1/projects/vertex-project/locations/global/publishers/google/models/veo-3.1-fast-generate-001:predictLongRunning") {
+          return Response.json({ name: operationName });
+        }
+        if (url === "https://aiplatform.googleapis.com/v1/projects/vertex-project/locations/global/publishers/google/models/veo-3.1-fast-generate-001:fetchPredictOperation") {
+          return Response.json({
+            name: operationName,
+            done: true,
+            response: {
+              videos: [
+                {
+                  bytesBase64Encoded: Buffer.from("vertex-google-video").toString("base64"),
+                  mimeType: "video/mp4",
+                },
+              ],
+            },
+          });
+        }
+        return new Response("not found", { status: 404 });
+      },
+    } as never);
+
+    const result = await service.generateVideo({
+      taskId: "task-google-agent-platform-video",
+      prompt: "a tiny router interface recording",
+      model: "veo-3.1-fast",
+      aspectRatio: "16:9",
+      duration: 4,
+    });
+
+    expect(result.provider).toBe("google-agent-platform");
+    expect(result.modelEndpoint).toBe("veo-3.1-fast-generate-001");
+    expect(result.requestId).toBe(operationName);
+    expect(Buffer.from(result.bytes).toString("utf8")).toBe("vertex-google-video");
+    expect(result.contentType).toBe("video/mp4");
+    expect(JSON.parse(String(calls[1].init?.body))).toEqual({
+      instances: [{ prompt: "a tiny router interface recording" }],
+      parameters: {
+        aspectRatio: "16:9",
+        durationSeconds: 4,
+        personGeneration: "allow_adult",
+        sampleCount: 1,
+      },
+    });
+    expect(JSON.parse(String(calls[2].init?.body))).toEqual({ operationName });
+  });
+
   it("uses provider account fal credentials for fal-routed video models", async () => {
     const calls: Array<{ url: string; init?: RequestInit }> = [];
     const service = createMockExternalAigcService({

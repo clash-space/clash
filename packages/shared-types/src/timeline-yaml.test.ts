@@ -211,6 +211,162 @@ describe("timelineDslToYaml round-trip", () => {
     expect(typeAt).toBeLessThan(fromAt);
     expect(fromAt).toBeLessThan(durAt);
   });
+
+  it("preserves track role for semantic timeline projections", () => {
+    const yaml = timelineDslToYaml({
+      tracks: [
+        {
+          id: "subtitles",
+          name: "Subtitles",
+          role: "subtitle",
+          items: [
+            {
+              id: "captions-main",
+              type: "caption",
+              from: 0,
+              durationInFrames: 45,
+              cues: [
+                {
+                  id: "cue-1",
+                  startFrame: 0,
+                  durationInFrames: 45,
+                  text: "大家好",
+                  wordIds: ["w1"],
+                  sourceStartFrame: 0,
+                  sourceEndFrame: 45,
+                },
+              ],
+              wordRefs: [{ id: "w1", text: "大家好", sourceStartFrame: 0, sourceEndFrame: 45 }],
+              sourceToOutputMap: [{ sourceStartFrame: 0, sourceEndFrame: 45, outputStartFrame: 0, outputEndFrame: 45 }],
+            },
+          ],
+        },
+      ],
+    });
+
+    expect(yaml).toContain("role: subtitle");
+    const parsed = timelineDslFromYaml(yaml);
+    expect(parsed.ok).toBe(true);
+    if (!parsed.ok) return;
+    expect(parsed.dsl.tracks[0].role).toBe("subtitle");
+  });
+
+  it("rejects caption items that do not carry structured cue lineage", () => {
+    const parsed = timelineDslFromYaml(`
+tracks:
+  - id: subtitles
+    role: subtitle
+    items:
+      - id: caption-main
+        type: caption
+        from: 0
+        durationInFrames: 60
+        text: hello
+`);
+
+    expect(parsed.ok).toBe(false);
+    if (parsed.ok) return;
+    expect(parsed.error).toMatch(/caption.*cues.*wordRefs.*sourceToOutputMap/i);
+  });
+
+  it("rejects plain text clips on subtitle tracks", () => {
+    const parsed = timelineDslFromYaml(`
+tracks:
+  - id: subtitles
+    role: subtitle
+    items:
+      - id: text-subtitle
+        type: text
+        from: 0
+        durationInFrames: 60
+        text: hello
+`);
+
+    expect(parsed.ok).toBe(false);
+    if (parsed.ok) return;
+    expect(parsed.error).toMatch(/subtitle.*caption/i);
+  });
+
+  it("rejects derived overlay items without copy-on-write lineage", () => {
+    const parsed = timelineDslFromYaml(`
+tracks:
+  - id: overlays
+    role: overlay
+    items:
+      - id: caption-burn-overlay
+        type: derived-overlay
+        from: 0
+        durationInFrames: 120
+        mediaType: video
+        src: assets/video/caption-burn.mp4
+`);
+
+    expect(parsed.ok).toBe(false);
+    if (parsed.ok) return;
+    expect(parsed.error).toMatch(/derived overlay.*sourceAssetId.*derivedAssetId.*derivation/i);
+  });
+
+  it("rejects unsafe MG composition items before they reach timeline apply", () => {
+    const parsed = timelineDslFromYaml(`
+tracks:
+  - id: overlays
+    role: overlay
+    items:
+      - id: remote-mg
+        type: composition
+        from: 0
+        durationInFrames: 120
+        compositionKind: motion-graphics
+        runtime: html
+        compositionId: lower-third
+        sourcePath: https://example.invalid/lower-third.html
+`);
+
+    expect(parsed.ok).toBe(false);
+    if (parsed.ok) return;
+    expect(parsed.error).toMatch(/composition.*sourcePath.*local project path/i);
+  });
+
+  it("rejects React or Remotion composition items without rendered timeline preview assets", () => {
+    const parsed = timelineDslFromYaml(`
+tracks:
+  - id: overlays
+    role: overlay
+    items:
+      - id: react-chart
+        type: composition
+        from: 0
+        durationInFrames: 90
+        compositionKind: custom
+        runtime: remotion
+        compositionId: react-chart
+        sourcePath: compositions/react-chart/Composition.tsx
+`);
+
+    expect(parsed.ok).toBe(false);
+    if (parsed.ok) return;
+    expect(parsed.error).toMatch(/renderedAssetPath/i);
+  });
+
+  it("accepts React or Remotion composition items with local rendered timeline preview assets", () => {
+    const parsed = timelineDslFromYaml(`
+tracks:
+  - id: overlays
+    role: overlay
+    items:
+      - id: react-chart
+        type: composition
+        from: 0
+        durationInFrames: 90
+        compositionKind: custom
+        runtime: remotion
+        compositionId: react-chart
+        sourcePath: compositions/react-chart/Composition.tsx
+        renderedAssetPath: assets/renders/react-chart.webm
+`);
+
+    expect(parsed.ok).toBe(true);
+  });
 });
 
 describe("timelineDslHash", () => {

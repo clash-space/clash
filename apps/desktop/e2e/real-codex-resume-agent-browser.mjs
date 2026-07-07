@@ -1,4 +1,6 @@
 import path from "node:path";
+import { homedir } from "node:os";
+import { stat } from "node:fs/promises";
 import {
   clickButtonByLabel,
   clickByText,
@@ -33,6 +35,63 @@ const firstFinalScreenshot = path.join(captureDir, "01-first-turn-final.png");
 const historyScreenshot = path.join(captureDir, "02-reopened-history.png");
 const resumedScreenshot = path.join(captureDir, "03-resumed-session.png");
 const secondFinalScreenshot = path.join(captureDir, "04-second-turn-final.png");
+
+function currentClashHome() {
+  return process.env.CLASH_HOME || path.join(homedir(), ".clash");
+}
+
+async function assertProjectWorkspaceLayout(projectId) {
+  const projectWorkspaceRoot = path.join(currentClashHome(), "projects", projectId);
+  const required = [
+    "drafts",
+    "projections/text",
+    "projections/timelines",
+    "assets/links",
+    "sessions",
+    "runtime",
+  ];
+  const missing = [];
+  for (const relativePath of required) {
+    const fullPath = path.join(projectWorkspaceRoot, relativePath);
+    try {
+      const info = await stat(fullPath);
+      if (!info.isDirectory()) missing.push(relativePath);
+    } catch {
+      missing.push(relativePath);
+    }
+  }
+  if (missing.length > 0) {
+    throw new Error(`Project workspace layout is missing ${missing.join(", ")} under ${projectWorkspaceRoot}`);
+  }
+  return { projectWorkspaceRoot, required };
+}
+
+async function fetchAndAssertProjectStatus(apiPort, projectId) {
+  const url = `http://127.0.0.1:${apiPort}/api/v1/projects/${encodeURIComponent(projectId)}/status`;
+  const res = await fetch(url);
+  const text = await res.text();
+  if (!res.ok) {
+    throw new Error(`Project status failed ${res.status}: ${text.slice(0, 1000)}`);
+  }
+  const status = JSON.parse(text);
+  if (!status.runtimeRoot || status.runtimeRoot !== status.roots?.runtime) {
+    throw new Error(`Project status must expose runtimeRoot matching roots.runtime: ${text.slice(0, 1000)}`);
+  }
+  if (!Array.isArray(status.protectedPaths) || !status.protectedPaths.includes(status.runtimeRoot)) {
+    throw new Error(`Project status protectedPaths must include runtimeRoot: ${text.slice(0, 1000)}`);
+  }
+  return {
+    projectId: status.projectId,
+    projectStore: status.projectStore,
+    projectWorkspaceRoot: status.projectWorkspaceRoot,
+    roots: status.roots,
+    runtimeRoot: status.runtimeRoot,
+    protectedPaths: status.protectedPaths,
+    editablePaths: status.editablePaths,
+    loro: status.loro,
+    localSqlitePath: status.localSqlitePath,
+  };
+}
 
 function visibleMenuItemSelector() {
   return `[role="menu"] [role="menuitem"]`;
@@ -235,6 +294,8 @@ async function main() {
 
     const firstPrompt = "Run pwd with your shell tool. After it finishes, reply exactly DONE.";
     await submitAndWaitForPwd(agentBrowser, firstPrompt, apiPort, projectId, 1);
+    const firstProjectWorkspaceLayout = await assertProjectWorkspaceLayout(projectId);
+    const firstProjectStatus = await fetchAndAssertProjectStatus(apiPort, projectId);
     agentBrowser(["screenshot", firstFinalScreenshot]);
 
     agentBrowser(["close"], { allowFailure: true });
@@ -293,6 +354,8 @@ async function main() {
 
     const secondPrompt = "Run pwd again with your shell tool. After it finishes, reply exactly DONE.";
     await submitAndWaitForPwd(agentBrowser, secondPrompt, apiPort, projectId, 2);
+    const resumedProjectWorkspaceLayout = await assertProjectWorkspaceLayout(projectId);
+    const resumedProjectStatus = await fetchAndAssertProjectStatus(apiPort, projectId);
     agentBrowser(["screenshot", secondFinalScreenshot]);
 
     const state = evalJson(agentBrowser, `(() => ({
@@ -304,6 +367,10 @@ async function main() {
       historyScreenshot,
       resumedScreenshot,
       secondFinalScreenshot,
+      firstProjectWorkspaceLayout,
+      firstProjectStatus,
+      resumedProjectWorkspaceLayout,
+      resumedProjectStatus,
       state,
     }));
   } catch (error) {

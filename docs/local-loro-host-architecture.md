@@ -16,6 +16,19 @@ Desktop UI, CLI, and local ACP agents are actors in v0, not direct Loro peers.
 Cloud ProjectRoom remains a cloud persistent replica and admission point.
 ```
 
+v1 follow-up docs:
+
+- `agent-first-local-v1-principles.md`
+- `agent-first-local-v1-traceability-matrix.md`
+- `agent-first-local-v1-remote-compatibility-boundary.md`
+- `local-project-storage-layout-spec.md`
+- `agent-file-projection-cas-spec.md`
+
+The local persistence layout in this document describes the Loro replica shape.
+The full v1 project storage layout, local SQLite placement, asset link policy,
+and agent-editable projection roots are defined in
+`local-project-storage-layout-spec.md`.
+
 ## Vocabulary
 
 `LoroDoc`
@@ -154,7 +167,7 @@ Do not rely on snapshots alone.
 Persistent replica storage:
 
 ```text
-~/.clash/projects/<projectId>/
+~/.clash/local-api/projects/<encodedProjectId>/
   project.toml
   loro/
     snapshot.bin

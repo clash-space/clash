@@ -1,0 +1,65 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Clash review stage gate",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "kind",
+    "projectKind",
+    "stage",
+    "pipelinePath",
+    "status",
+    "requiredArtifacts",
+    "blockedReasons",
+    "approvals",
+    "gatePolicy",
+    "decisionLog",
+    "createdAt",
+    "updatedAt"
+  ],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "kind": { "const": "clash.review.stage-gate" },
+    "projectKind": { "type": "string" },
+    "stage": { "type": "string" },
+    "pipelinePath": { "type": "string" },
+    "status": { "enum": ["blocked", "pending-review", "approved", "changes-requested"] },
+    "requiredArtifacts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["path", "exists"],
+        "properties": {
+          "path": { "type": "string" },
+          "exists": { "type": "boolean" }
+        }
+      }
+    },
+    "blockedReasons": { "type": "array", "items": { "type": "string" } },
+    "approvals": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["reviewer", "decision", "decidedAt"],
+        "properties": {
+          "reviewer": { "type": "string" },
+          "decision": { "enum": ["approve", "request-changes"] },
+          "note": { "type": "string" },
+          "decidedAt": { "type": "string" }
+        }
+      }
+    },
+    "gatePolicy": {
+      "type": "object",
+      "required": ["requiresExplicitApproval", "applyBlockedUntilApproved", "finalExportBlockedUntilApproved"],
+      "properties": {
+        "requiresExplicitApproval": { "const": true },
+        "applyBlockedUntilApproved": { "const": true },
+        "finalExportBlockedUntilApproved": { "type": "boolean" }
+      }
+    },
+    "decisionLog": { "type": "array", "items": { "type": "string" } },
+    "createdAt": { "type": "string" },
+    "updatedAt": { "type": "string" }
+  }
+}

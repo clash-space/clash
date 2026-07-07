@@ -5,7 +5,23 @@ import { isJsonMode, printJson } from "../lib/output";
 import * as readline from "readline";
 
 export const varsCommand = new Command("vars")
-  .description("Manage user variables (API keys for actions)");
+  .description("Manage remote worker action variables");
+
+export function varsApiErrorMessage(error: unknown): string | null {
+  const message = error instanceof Error ? error.message : String(error);
+  if (!/^API error 404\b/.test(message)) return null;
+  return (
+    "Remote worker action variables are not available on this Clash API. " +
+    "Local custom actions and local providers do not use `clash vars`; " +
+    "configure provider/runtime auth locally instead."
+  );
+}
+
+function failVarsCommand(error: unknown): never {
+  const varsMessage = varsApiErrorMessage(error);
+  console.error(varsMessage ?? (error instanceof Error ? error.message : String(error)));
+  process.exit(1);
+}
 
 // ─── set ──────────────────────────────────────────────
 
@@ -38,7 +54,7 @@ varsCommand
     const data = await apiJson<{ ok: boolean; key: string }>(`/api/v1/vars/${encodeURIComponent(key)}`, {
       method: "PUT",
       body: JSON.stringify({ value }),
-    });
+    }).catch(failVarsCommand);
 
     if (isJsonMode(options)) {
       printJson(data);
@@ -54,12 +70,13 @@ varsCommand
   .description("List configured variable keys")
   .option("--json", "Output as JSON")
   .action(async (options) => {
-    const data = await apiJson<{ variables: Array<{ key: string; createdAt: number | null }> }>("/api/v1/vars");
+    const data = await apiJson<{ variables: Array<{ key: string; createdAt: number | null }> }>("/api/v1/vars")
+      .catch(failVarsCommand);
 
     if (isJsonMode(options)) {
       printJson(data.variables);
     } else if (data.variables.length === 0) {
-      console.log("No variables configured. Use `clash vars set <KEY>` to add one.");
+      console.log("No remote worker action variables configured. Use `clash vars set <KEY>` only for cloud/remote worker actions.");
     } else {
       for (const v of data.variables) {
         console.log(`  ${v.key.padEnd(30)} ✅ set`);
@@ -72,7 +89,7 @@ varsCommand
 
 varsCommand
   .command("providers")
-  .description("List built-in action provider variable keys")
+  .description("List built-in remote worker action variable keys")
   .option("--json", "Output as JSON")
   .action(async (options) => {
     const providers = Object.values(ACTION_PROVIDER_PRESETS).map((preset) => ({
@@ -91,14 +108,14 @@ varsCommand
     for (const provider of providers) {
       console.log(`  ${provider.label.padEnd(14)} ${provider.key}`);
     }
-    console.log("\nSet one with: clash vars set <KEY>");
+    console.log("\nFor cloud/remote worker actions, set one with: clash vars set <KEY>");
   });
 
 // ─── delete ───────────────────────────────────────────
 
 varsCommand
   .command("delete")
-  .description("Delete a variable")
+  .description("Delete a remote worker action variable")
   .argument("<key>", "Variable name to delete")
   .option("--json", "Output as JSON")
   .action(async (key: string, options) => {
@@ -106,7 +123,9 @@ varsCommand
     await resp.text().catch(() => "");
 
     if (!resp.ok) {
-      console.error(`Variable not found: ${key}`);
+      console.error(resp.status === 404
+        ? "Remote worker action variable endpoint unavailable or variable not found. Local custom actions do not use `clash vars`."
+        : `Failed to delete remote worker action variable ${key}: ${resp.status} ${resp.statusText}`);
       process.exit(1);
     }
 

@@ -1,8 +1,8 @@
 import { randomUUID } from "node:crypto";
 import { constants } from "node:fs";
-import { access, mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
+import { access, chmod, mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import {
   LOCAL_HOST_DATA_SCHEMA_VERSION,
   LOCAL_HOST_PROTOCOL_VERSION,
@@ -27,7 +27,8 @@ export interface HostDiscoveryWriteOptions {
 }
 
 export function getDefaultHostDiscoveryRunDir(): string {
-  return join(homedir(), ".clash", "run");
+  const clashHome = process.env.CLASH_HOME?.trim();
+  return join(clashHome ? resolve(clashHome) : join(homedir(), ".clash"), "run");
 }
 
 export function getHostDiscoveryPath(runDir = getDefaultHostDiscoveryRunDir()): string {
@@ -70,8 +71,9 @@ export async function writeHostDiscovery(
   await mkdir(runDir, { recursive: true });
   const finalPath = getHostDiscoveryPath(runDir);
   const tmpPath = join(runDir, `host.${record.hostId}.${process.pid}.${Date.now()}.tmp`);
-  await writeFile(tmpPath, `${JSON.stringify(record, null, 2)}\n`, "utf8");
+  await writeFile(tmpPath, `${JSON.stringify(record, null, 2)}\n`, { encoding: "utf8", mode: 0o600 });
   await rename(tmpPath, finalPath);
+  await chmod(finalPath, 0o600).catch(() => undefined);
 }
 
 export async function readHostDiscovery(

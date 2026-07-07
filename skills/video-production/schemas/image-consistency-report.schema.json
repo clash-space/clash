@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Clash image consistency report",
+  "type": "object",
+  "required": ["schemaVersion", "assetPackId", "scores", "verdict"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "assetPackId": { "type": "string" },
+    "scores": {
+      "type": "object",
+      "required": ["identity", "wardrobe", "scene", "productLogo", "style", "composition", "temporal"],
+      "properties": {
+        "identity": { "type": "number" },
+        "wardrobe": { "type": "number" },
+        "scene": { "type": "number" },
+        "productLogo": { "type": "number" },
+        "style": { "type": "number" },
+        "composition": { "type": "number" },
+        "temporal": { "type": "number" }
+      }
+    },
+    "verdict": { "enum": ["pass", "warning", "block"] },
+    "issues": { "type": "array", "items": { "type": "string" } }
+  }
+}

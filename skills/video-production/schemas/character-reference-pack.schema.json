@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Clash character reference pack",
+  "type": "object",
+  "required": ["schemaVersion", "characterId", "lockedTraits", "variableTraits", "views", "approvedAssetIds"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "characterId": { "type": "string" },
+    "lockedTraits": { "type": "array", "items": { "type": "string" } },
+    "variableTraits": { "type": "array", "items": { "type": "string" } },
+    "views": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["kind", "assetId", "assetPath", "locked", "copyOnWriteRequired"],
+        "properties": {
+          "kind": { "enum": ["front", "side", "back", "expression", "wardrobe"] },
+          "assetId": { "type": "string" },
+          "assetPath": { "type": "string" },
+          "locked": { "type": "boolean" },
+          "copyOnWriteRequired": { "type": "boolean" }
+        }
+      }
+    },
+    "approvedAssetIds": { "type": "array", "items": { "type": "string" } }
+  }
+}

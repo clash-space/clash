@@ -1,0 +1,19 @@
+{
+  "actionId": "fixture-mv-beat-fill",
+  "targetAssetId": "asset-song",
+  "metadataKind": "audio.beat-analysis",
+  "producer": "fixture",
+  "metadata": {
+    "kind": "audio.beat-analysis",
+    "bpm": 128,
+    "fps": 30,
+    "beats": [
+      { "frame": 0, "timeSeconds": 0, "confidence": 0.99, "bar": 1, "beatInBar": 1, "downbeat": true },
+      { "frame": 14, "timeSeconds": 0.466, "confidence": 0.94, "bar": 1, "beatInBar": 2 },
+      { "frame": 28, "timeSeconds": 0.933, "confidence": 0.93, "bar": 1, "beatInBar": 3 }
+    ],
+    "sections": [
+      { "id": "intro", "startFrame": 0, "endFrame": 120, "label": "intro", "energy": 0.35 }
+    ]
+  }
+}

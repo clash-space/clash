@@ -246,6 +246,21 @@ function isAuthSetupMessage(message: string): boolean {
   return /\b(auth|authenticate|authentication|login|sign in)\b/i.test(message);
 }
 
+async function readRuntimeErrorMessage(res: Response): Promise<string> {
+  const contentType = res.headers.get('content-type') ?? '';
+  if (contentType.includes('application/json')) {
+    const fallback = res.clone();
+    try {
+      const json = await res.json() as { error?: unknown; message?: unknown };
+      if (typeof json.error === 'string' && json.error.trim()) return json.error;
+      if (typeof json.message === 'string' && json.message.trim()) return json.message;
+    } catch {
+      return fallback.text();
+    }
+  }
+  return res.text();
+}
+
 interface CreateSessionResponse {
   session_id: string;
 }
@@ -1001,11 +1016,11 @@ export function useClashRuntime(): UseClashRuntimeReturn {
         }),
       });
       if (!res.ok) {
-        const text = await res.text();
-        if (isAuthSetupMessage(text)) {
+        const message = await readRuntimeErrorMessage(res);
+        if (isAuthSetupMessage(message)) {
           void refresh({ probe: 'config', refresh: true });
         }
-        setErrorMessage(`session create failed: ${text.slice(0, 200)}`);
+        setErrorMessage(`session create failed: ${message.slice(0, 200)}`);
         setRuntimeStatus('error');
         return;
       }
@@ -1099,8 +1114,8 @@ export function useClashRuntime(): UseClashRuntimeReturn {
       body: JSON.stringify({}),
     });
     if (!attach.ok) {
-      const text = await attach.text();
-      setErrorMessage(`session attach failed: ${text.slice(0, 200)}`);
+      const message = await readRuntimeErrorMessage(attach);
+      setErrorMessage(`session attach failed: ${message.slice(0, 200)}`);
       setRuntimeStatus('error');
       return;
     }

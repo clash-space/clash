@@ -6,6 +6,19 @@ This plan turns `local-loro-host-architecture.md` into implementation work.
 It is intentionally staged so v0 alpha can ship without opening direct Loro
 peer writes from every local agent or CLI process.
 
+v1 product/storage follow-up docs:
+
+- `agent-first-local-v1-principles.md`
+- `agent-first-local-v1-traceability-matrix.md`
+- `agent-first-local-v1-implementation-plan.md`
+- `agent-first-local-v1-remote-compatibility-boundary.md`
+- `local-project-storage-layout-spec.md`
+- `agent-file-projection-cas-spec.md`
+
+This document remains the lower-level Local Host/CLI plan. The v1 docs define
+the broader product constraints around local SQLite, cwd as draft/reference
+surface, and agent file projection CAS.
+
 ## Non-Goals
 
 - Do not redesign Copilot UI.
@@ -137,7 +150,7 @@ Required behavior:
 Storage shape:
 
 ```text
-~/.clash/projects/<projectId>/loro/
+~/.clash/local-api/projects/<encodedProjectId>/loro/
   snapshot.bin
   updates.log
 ```

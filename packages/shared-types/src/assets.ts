@@ -9,6 +9,7 @@
  */
 
 import { z } from 'zod';
+import { agentReadToken } from './agent-read-proof';
 
 export const AssetKindSchema = z.enum(['image', 'video', 'audio']);
 export type AssetKind = z.infer<typeof AssetKindSchema>;
@@ -32,6 +33,9 @@ export const AssetMetadataSchema = z.object({
   bytes: z.number().int().optional(),
   waveform: z.array(z.number()).optional(),
   contentType: z.string().optional(),
+  contentHash: z.string().optional(),
+  localBlobKey: z.string().optional(),
+  originalName: z.string().optional(),
   mockText: z.string().optional(),
   transcript: z.string().optional(),
   provider: z.string().optional(),
@@ -82,9 +86,56 @@ export const AssetSchema = z.object({
 });
 export type Asset = z.infer<typeof AssetSchema>;
 
+export type AssetReadProofLike = Pick<
+  Asset,
+  | 'id'
+  | 'kind'
+  | 'srcR2Key'
+  | 'coverR2Key'
+  | 'metadata'
+  | 'sourceModel'
+  | 'sourcePrompt'
+  | 'sourceTaskId'
+  | 'sources'
+  | 'createdAt'
+  | 'updatedAt'
+>;
+
+export function assetReadToken(asset: AssetReadProofLike): string {
+  return agentReadToken({
+    namespace: 'asset',
+    subject: {
+      id: asset.id,
+      kind: asset.kind,
+      srcR2Key: asset.srcR2Key,
+      coverR2Key: asset.coverR2Key ?? null,
+      metadata: asset.metadata ?? null,
+      sourceModel: asset.sourceModel ?? null,
+      sourcePrompt: asset.sourcePrompt ?? null,
+      sourceTaskId: asset.sourceTaskId ?? null,
+      sources: asset.sources ?? null,
+      createdAt: asset.createdAt,
+      updatedAt: asset.updatedAt,
+    },
+  });
+}
+
 export const AssetRefRowSchema = z.object({
   assetId: z.string(),
   projectId: z.string(),
   importedAt: z.number(),
 });
 export type AssetRefRow = z.infer<typeof AssetRefRowSchema>;
+
+export type AssetRefReadProofLike = Pick<AssetRefRow, 'assetId' | 'projectId' | 'importedAt'>;
+
+export function assetRefReadToken(ref: AssetRefReadProofLike): string {
+  return agentReadToken({
+    namespace: 'asset-ref',
+    subject: {
+      assetId: ref.assetId,
+      projectId: ref.projectId,
+      importedAt: ref.importedAt,
+    },
+  });
+}

@@ -13,7 +13,7 @@ import { getSignedUrl } from '@clash/web-ui/lib/hooks/useSignedUrl';
 import { getAsset } from '@clash/web-ui/lib/hooks/useAsset';
 import { MODEL_CARDS, snapAspectRatio, parsePromptParts, extractPromptText, composePromptWithTextRefs, buildMention, capability, type ModelCard, type ModelParameter, type CustomActionDefinition, type Modality } from '@clash/shared-types';
 import { applyLayoutPatchesToLoro, collectLayoutNodePatches } from '@clash/web-ui/lib/loroNodeSync';
-import { useCustomActions } from '@clash/web-ui/hooks/useCustomActions';
+import { useProjectCustomActions } from '../CustomActionsContext';
 import {
     useRuntimes,
     isCustomActionRuntimeOnline,
@@ -33,6 +33,7 @@ import { Slider, SliderRange, SliderThumb, SliderTrack } from '../ui/slider';
 import { ComboboxItem, ComboboxList, ComboboxProvider, useComboboxStore, type ComboboxStore } from '../ui/combobox';
 import { replaceContentEditableHtmlPreservingFocus } from '../contentEditableSync';
 import { handleMentionComboboxKeyDown } from '../mentionComboboxKeyboard';
+import { actionIsCheckpointLocked } from '@clash/web-ui/lib/actionCheckpoint';
 import { useSpawnPendingAsset } from './useSpawnPendingAsset';
 import ActionBadgePipelineMenu from './ActionBadgePipelineMenu';
 import AttributionLine from './AttributionLine';
@@ -254,7 +255,10 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
     };
     const [label, setLabel] = useState(data.label || 'Prompt');
     const [content, setContent] = useState(cleanContent(data.content));
-    const isFrozen = !!data.hasRun;
+    const isCheckpointLocked = useMemo(
+        () => actionIsCheckpointLocked({ nodeId: id, nodes: getNodes(), edges: getEdges() }),
+        [id, data.hasRun, connectedEdges, getNodes, getEdges],
+    );
     const [showRefPicker, setShowRefPicker] = useState(false);
     const [paramsPopoverOpen, setParamsPopoverOpen] = useState(false);
 
@@ -281,8 +285,7 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
     const isCustom = actionType.startsWith('custom:');
     const customActionId = isCustom ? actionType.replace('custom:', '') : null;
 
-    // Get custom action definitions from Loro
-    const customActions = useCustomActions(loroSync?.doc ?? null);
+    const customActions = useProjectCustomActions();
     const customDef: CustomActionDefinition | undefined = customActionId
         ? customActions.find((a) => a.id === customActionId)
         : undefined;
@@ -385,7 +388,7 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
         : (selectedModel?.name || modelId);
     const countValue = Number(modelParams.count ?? 1);
     const modelPickerLabel = customActionOffline ? RUNTIME_OFFLINE_TOOLTIP : modelDisplay;
-    const frozenRunLabel = customActionOffline ? RUNTIME_OFFLINE_TOOLTIP : 'Run again with current parameters';
+    const checkpointRunLabel = customActionOffline ? RUNTIME_OFFLINE_TOOLTIP : 'Run again with current parameters';
     const panelRunLabel = customActionOffline ? RUNTIME_OFFLINE_TOOLTIP : 'Run action';
 
     // Single derivation — all per-modality questions read fields off `cap`.
@@ -1282,7 +1285,7 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
                             type="text"
                             value={label}
                             onChange={handleLabelChange}
-                            disabled={isFrozen}
+                            disabled={isCheckpointLocked}
                             placeholder="Untitled Prompt"
                             className="w-full text-4xl font-bold text-slate-900 dark:text-slate-50 placeholder:text-stone-300 bg-transparent border-none outline-none focus:outline-none disabled:opacity-60"
                             style={{
@@ -1291,11 +1294,11 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
                             }}
                         />
                         <div className="flex gap-2 items-center">
-                            {isFrozen ? (
+                            {isCheckpointLocked ? (
                                 <>
                                     <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-warm-muted text-slate-700 dark:text-slate-300 text-sm font-medium">
                                         <Lock size={13} weight="bold" />
-                                        Frozen
+                                        Checkpoint
                                     </div>
                                     <Button
                                         onClick={handleCopy}
@@ -1304,7 +1307,7 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
                                         shape="rounded"
                                         className="clash-node-primary rounded-xl px-4 py-2 text-sm font-medium"
                                     >
-                                        Copy to Edit
+                                        Copy to revise
                                     </Button>
                                 </>
                             ) : (
@@ -1329,7 +1332,7 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
                     </div>
 
                     {/* Image Attachment Row */}
-                    {(refNodeIds.length > 0 || !isFrozen) && (
+                    {(refNodeIds.length > 0 || !isCheckpointLocked) && (
                         <div className="px-12 py-3 flex items-center gap-2 flex-wrap border-b border-warm-border">
                             <Reorder.Group
                                 axis="x"
@@ -1347,11 +1350,11 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
                                         <Reorder.Item
                                             key={nodeId}
                                             value={nodeId}
-                                            drag={isFrozen ? false : 'x'}
+                                            drag={isCheckpointLocked ? false : 'x'}
                                             className="relative group/thumb flex-shrink-0"
                                             as="div"
                                             whileDrag={{ scale: 1.08, zIndex: 10 }}
-                                            style={{ cursor: isFrozen ? 'default' : 'grab' }}
+                                            style={{ cursor: isCheckpointLocked ? 'default' : 'grab' }}
                                         >
                                             <div className="w-10 h-10 rounded-lg overflow-hidden border border-warm-border bg-warm-muted flex items-center justify-center pointer-events-none">
                                                 {src ? (
@@ -1365,7 +1368,7 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
                                             <span className="clash-node-ref-index absolute -top-1 -left-1 text-[9px] font-bold rounded px-1 min-w-[14px] text-center leading-[14px] pointer-events-none">
                                                 {i + 1}
                                             </span>
-                                            {!isFrozen && (
+                                            {!isCheckpointLocked && (
                                                 <IconButton
                                                     label={`Remove reference ${i + 1}`}
                                                     icon="×"
@@ -1379,7 +1382,7 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
                                     );
                                 })}
                             </Reorder.Group>
-                            {!isFrozen && (
+                            {!isCheckpointLocked && (
                                 <Popover open={showRefPicker} onOpenChange={setShowRefPicker}>
                                     <PopoverTrigger asChild>
                                         <IconButton
@@ -1442,7 +1445,7 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
                     )}
 
                     {/* Editor Content */}
-                    <div className="flex-1 overflow-y-auto bg-warm-surface" style={isFrozen ? { pointerEvents: 'none', opacity: 0.7 } : undefined}>
+                    <div className="flex-1 overflow-y-auto bg-warm-surface" style={isCheckpointLocked ? { pointerEvents: 'none', opacity: 0.7 } : undefined}>
                         <MilkdownEditor
                             value={content}
                             onChange={setContent}
@@ -1520,7 +1523,7 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
                                                             alt={fullLabel}
                                                             className="h-10 w-10 rounded-lg object-cover border border-warm-border shadow-sm"
                                                         />
-                                                        {!isFrozen && (
+                                                        {!isCheckpointLocked && (
                                                             <IconButton
                                                                 label={`Clear ${fullLabel} frame`}
                                                                 icon="×"
@@ -1542,7 +1545,7 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
                                                                 icon={<Plus size={14} weight="bold" />}
                                                                 size="lg"
                                                                 shape="rounded"
-                                                                disabled={isFrozen}
+                                                                disabled={isCheckpointLocked}
                                                                 className="h-10 min-h-10 w-10 min-w-10 rounded-lg border border-dashed border-slate-300 bg-white/60 text-slate-700 shadow-sm hover:border-slate-400 hover:bg-white dark:text-slate-300"
                                                             />
                                                         </PopoverTrigger>
@@ -1604,11 +1607,11 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
                                             <Reorder.Item
                                                 key={nodeId}
                                                 value={nodeId}
-                                                drag={isFrozen ? false : 'x'}
+                                                drag={isCheckpointLocked ? false : 'x'}
                                                 as="div"
                                                 className="relative group/thumb flex-shrink-0"
                                                 whileDrag={{ scale: 1.08, zIndex: 10 }}
-                                                style={{ cursor: isFrozen ? 'default' : 'grab' }}
+                                                style={{ cursor: isCheckpointLocked ? 'default' : 'grab' }}
                                             >
                                                 {isText ? (
                                                     <div className="h-10 w-10 rounded-lg bg-warm-muted border border-warm-border shadow-sm flex items-center justify-center text-slate-700 dark:text-slate-300 pointer-events-none">
@@ -1632,7 +1635,7 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
                                                 <span className="clash-node-ref-index absolute -top-1 -left-1 text-[9px] font-bold rounded px-1 min-w-[14px] text-center leading-[14px] pointer-events-none">
                                                     {badge}
                                                 </span>
-                                                {!isFrozen && (
+                                                {!isCheckpointLocked && (
                                                     <IconButton
                                                         label={`Remove reference ${i + 1}`}
                                                         icon="×"
@@ -1646,7 +1649,7 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
                                         );
                                     })}
                                 </Reorder.Group>
-                                {!isFrozen && (
+                                {!isCheckpointLocked && (
                                     <Popover
                                         open={refPickerTarget === 'append'}
                                         onOpenChange={(open) => setRefPickerTarget(open ? 'append' : null)}
@@ -1687,21 +1690,21 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
                         setParamsPopoverOpen(false);
                     }}
                 >
-                    {/* Prompt editor with inline @ mention chips.
-                        Frozen (post-run) panels render the prompt read-only —
-                        the lineage of a shipped generation is locked. */}
+                    {/* Prompt editor with inline @ mention chips. Materialized
+                        checkpoints render read-only because downstream lineage
+                        now depends on these inputs. */}
                     <div className="relative px-4 pt-3 pb-4 nodrag">
                         <div
                             ref={editorRef}
-                            contentEditable={!isFrozen}
+                            contentEditable={!isCheckpointLocked}
                             suppressContentEditableWarning
                             className={`${NODE_INTERACTION_BOUNDARY_CLASS} w-full max-h-[40vh] overflow-y-auto text-sm focus:outline-none leading-relaxed empty:before:content-[attr(data-placeholder)] empty:before:text-stone-400 ${
-                                isFrozen ? 'text-stone-700 dark:text-stone-300 cursor-default select-text' : 'text-slate-900 dark:text-slate-50'
+                                isCheckpointLocked ? 'text-stone-700 dark:text-stone-300 cursor-default select-text' : 'text-slate-900 dark:text-slate-50'
                             }`}
                             style={{ minHeight: '3em' }}
                             data-placeholder="Describe anything you want to generate... (@ to ref assets)"
-                            onInput={isFrozen ? undefined : handleEditorInput}
-                            onKeyDown={isFrozen ? undefined : handleEditorKeyDown}
+                            onInput={isCheckpointLocked ? undefined : handleEditorInput}
+                            onKeyDown={isCheckpointLocked ? undefined : handleEditorKeyDown}
                         />
                         {showMentionMenu && filteredMentionNodes.length > 0 && (
                             <ActionMentionPicker
@@ -1891,7 +1894,7 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
                         {/* Spacer */}
                         <div className="flex-1 min-w-[8px]" />
 
-                        {/* Batch count chip (xN). Stays interactive even when frozen —
+                        {/* Batch count chip (xN). Stays interactive even when checkpoint-locked —
                             user can bump the count and then Run to spawn more siblings. */}
                         <SelectMenu<number>
                             ariaLabel="Batch count"
@@ -1910,8 +1913,8 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
                             triggerClassName="h-auto min-h-0 px-2.5 py-1 text-xs"
                         />
 
-                        {/* Frozen-only: Run (re-generate with current params) + Copy (clone into a fresh panel). */}
-                        {isFrozen && (
+                        {/* Materialized-checkpoint lock: Run again or copy into a fresh revision. */}
+                        {isCheckpointLocked && (
                             <>
                                 <Tooltip label="Duplicate this panel and open the copy">
                                     <Button
@@ -1926,7 +1929,7 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
                                         Copy & open
                                     </Button>
                                 </Tooltip>
-                                <Tooltip label={frozenRunLabel}>
+                                <Tooltip label={checkpointRunLabel}>
                                     <span className="inline-flex flex-shrink-0">
                                         <Button
                                             onClick={(e) => { e.stopPropagation(); if (customActionOffline) return; handleExecute(); }}
@@ -1939,7 +1942,7 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
                                             size="sm"
                                             shape="pill"
                                             className="clash-node-primary h-7 min-h-7 flex-shrink-0 px-3 text-xs font-semibold"
-                                            aria-label={frozenRunLabel}
+                                            aria-label={checkpointRunLabel}
                                             aria-disabled={customActionOffline || undefined}
                                         >
                                             Run

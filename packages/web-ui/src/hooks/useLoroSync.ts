@@ -8,7 +8,29 @@ import type {
   RoomMessageEvent,
   AwarenessBroadcastMessage,
 } from '@clash/shared-types';
-import { isSidebandMessage } from '@clash/shared-types';
+import {
+  canvasBatchDeleteReadToken,
+  canvasEdgeReadToken,
+  canvasEdgesReadToken,
+  canvasNodeReadToken,
+  hostMutationRejected,
+  hostMutationSucceeded,
+  isSidebandMessage,
+  validateHostMutationEnvelope,
+  validateCanvasBatchDeleteReadProof,
+  validateCanvasDelete,
+  validateCanvasBatchDelete,
+  validateCanvasEdgeAdd,
+  validateCanvasEdgeDelete,
+  validateCanvasEdgePatch,
+  validateCanvasEdgeReadProof,
+  validateCanvasEdgesReadProof,
+  validateCanvasNodePatch,
+  validateCanvasReadProof,
+  validateCanvasTimelineApply,
+  type HostMutationEnvelope,
+  type HostMutationRecord,
+} from '@clash/shared-types';
 import { sanitizeNodesForReactFlow } from '../lib/canvasNodeOrder';
 
 interface LoroSyncOptions {
@@ -19,6 +41,7 @@ interface LoroSyncOptions {
   onTaskUpdate?: (taskId: string, taskData: any) => void;
   onPresenceChange?: (clients: PresenceClient[]) => void;
   onActivity?: (activity: ActivityMessage) => void;
+  onMutation?: (mutation: HostMutationRecord) => void;
   /** Group-chat IM: a new message just landed in this project's room. */
   onRoomMessage?: (msg: RoomMessageEvent) => void;
   /**
@@ -31,6 +54,12 @@ interface LoroSyncOptions {
   onAwareness?: (msg: AwarenessBroadcastMessage) => void;
 }
 
+type LoroHostWriteOptions = {
+  actorClientType?: string;
+  ifMatch?: string;
+  force?: boolean;
+};
+
 export interface UseLoroSyncReturn {
   /** The project ID this sync is connected to */
   projectId: string;
@@ -38,12 +67,14 @@ export interface UseLoroSyncReturn {
   connected: boolean;
   /** Whether initial load from IndexedDB is complete */
   isInitialized: boolean;
-  addNode: (nodeId: string, nodeData: any) => void;
-  updateNode: (nodeId: string, nodeData: any) => void;
-  removeNode: (nodeId: string) => void;
-  addEdge: (edgeId: string, edgeData: any) => void;
-  updateEdge: (edgeId: string, edgeData: any) => void;
-  removeEdge: (edgeId: string) => void;
+  addNode: (nodeId: string, nodeData: any) => boolean;
+  updateNode: (nodeId: string, nodeData: any, options?: LoroHostWriteOptions) => boolean;
+  applyTimelineDsl: (nodeId: string, timelineDsl: unknown, options?: LoroHostWriteOptions) => boolean;
+  removeNode: (nodeId: string, options?: LoroHostWriteOptions) => boolean;
+  removeNodes: (nodeIds: string[], options?: LoroHostWriteOptions) => boolean;
+  addEdge: (edgeId: string, edgeData: any, options?: LoroHostWriteOptions) => boolean;
+  updateEdge: (edgeId: string, edgeData: any, options?: LoroHostWriteOptions) => boolean;
+  removeEdge: (edgeId: string, options?: LoroHostWriteOptions) => boolean;
   undo: () => void;
   redo: () => void;
   canUndo: boolean;
@@ -98,6 +129,95 @@ const wipeDB = async (): Promise<void> => {
     // best-effort
   }
 };
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
+function readGuardrailEdges(rawEdges: Iterable<unknown>): Array<{ source: string; target: string }> {
+  return [...rawEdges]
+    .filter(isRecord)
+    .map((edge) => ({
+      source: typeof edge.source === 'string' ? edge.source : '',
+      target: typeof edge.target === 'string' ? edge.target : '',
+    }))
+    .filter((edge) => edge.source && edge.target);
+}
+
+function readProofEdges(rawEdges: Iterable<[unknown, unknown]>): Array<Record<string, unknown> & { id: string }> {
+  const edges: Array<Record<string, unknown> & { id: string }> = [];
+  for (const [edgeId, rawEdge] of rawEdges) {
+    if (typeof edgeId !== 'string' || !isRecord(rawEdge)) continue;
+    edges.push({ id: edgeId, ...rawEdge });
+  }
+  return edges;
+}
+
+function readGuardrailNodes(rawNodes: Iterable<[unknown, unknown]>): Array<{ id: string; type?: string; data?: Record<string, unknown> }> {
+  const nodes: Array<{ id: string; type?: string; data?: Record<string, unknown> }> = [];
+  for (const [id, rawNode] of rawNodes) {
+    if (typeof id !== 'string' || !isRecord(rawNode)) continue;
+    nodes.push({
+      id,
+      type: typeof rawNode.type === 'string' ? rawNode.type : undefined,
+      data: isRecord(rawNode.data) ? rawNode.data : undefined,
+    });
+  }
+  return nodes;
+}
+
+function readNodeToken(nodeId: string, rawNode: unknown): string | undefined {
+  if (!isRecord(rawNode)) return undefined;
+  return canvasNodeReadToken({
+    id: nodeId,
+    type: typeof rawNode.type === 'string' ? rawNode.type : undefined,
+    data: isRecord(rawNode.data) ? rawNode.data : undefined,
+    parentId: typeof rawNode.parentId === 'string' ? rawNode.parentId : null,
+    parent_id: typeof rawNode.parent_id === 'string' ? rawNode.parent_id : null,
+    position: rawNode.position,
+  });
+}
+
+function readProofNode(nodeId: string, rawNode: unknown) {
+  if (!isRecord(rawNode)) return null;
+  return {
+    id: nodeId,
+    type: typeof rawNode.type === 'string' ? rawNode.type : undefined,
+    data: isRecord(rawNode.data) ? rawNode.data : undefined,
+    parentId: typeof rawNode.parentId === 'string' ? rawNode.parentId : null,
+    parent_id: typeof rawNode.parent_id === 'string' ? rawNode.parent_id : null,
+    position: rawNode.position,
+  };
+}
+
+function readEdgeToken(edgeId: string, rawEdge: unknown): string | undefined {
+  if (!isRecord(rawEdge)) return undefined;
+  return canvasEdgeReadToken({ id: edgeId, ...rawEdge });
+}
+
+function readEdgesToken(rawEdges: Iterable<[unknown, unknown]>): string {
+  return canvasEdgesReadToken(readProofEdges(rawEdges));
+}
+
+function readBatchDeleteToken(
+  nodeIds: string[],
+  rawNodes: Iterable<[unknown, unknown]>,
+  rawEdges: Iterable<[unknown, unknown]>,
+): string {
+  const nodeIdSet = new Set(nodeIds);
+  const nodes = [...rawNodes]
+    .map(([nodeId, rawNode]) => typeof nodeId === 'string' && nodeIdSet.has(nodeId) ? readProofNode(nodeId, rawNode) : null)
+    .filter((node): node is NonNullable<ReturnType<typeof readProofNode>> => Boolean(node));
+  return canvasBatchDeleteReadToken({
+    nodes,
+    edges: readProofEdges(rawEdges),
+  });
+}
+
+function readProofEdge(edgeId: string, rawEdge: unknown) {
+  if (!isRecord(rawEdge)) return null;
+  return { id: edgeId, ...rawEdge };
+}
 
 const saveToDB = async (projectId: string, snapshot: Uint8Array): Promise<void> => {
   try {
@@ -167,6 +287,7 @@ export function useLoroSync(options: LoroSyncOptions): UseLoroSyncReturn {
     onTaskUpdate,
     onPresenceChange,
     onActivity,
+    onMutation,
     onRoomMessage,
     onAwareness,
   } = options;
@@ -192,10 +313,10 @@ export function useLoroSync(options: LoroSyncOptions): UseLoroSyncReturn {
 
   // Stash callbacks in a ref so init / subscribe effects don't re-run when the caller
   // passes inline closures (which get a new reference on every parent render).
-  const callbacksRef = useRef({ onNodesChange, onEdgesChange, onTaskUpdate, onPresenceChange, onActivity, onRoomMessage, onAwareness });
+  const callbacksRef = useRef({ onNodesChange, onEdgesChange, onTaskUpdate, onPresenceChange, onActivity, onMutation, onRoomMessage, onAwareness });
   useEffect(() => {
-    callbacksRef.current = { onNodesChange, onEdgesChange, onTaskUpdate, onPresenceChange, onActivity, onRoomMessage, onAwareness };
-  }, [onNodesChange, onEdgesChange, onTaskUpdate, onPresenceChange, onActivity, onRoomMessage, onAwareness]);
+    callbacksRef.current = { onNodesChange, onEdgesChange, onTaskUpdate, onPresenceChange, onActivity, onMutation, onRoomMessage, onAwareness };
+  }, [onNodesChange, onEdgesChange, onTaskUpdate, onPresenceChange, onActivity, onMutation, onRoomMessage, onAwareness]);
 
   // Track pending local updates that haven't been acknowledged by server
   
@@ -537,29 +658,233 @@ export function useLoroSync(options: LoroSyncOptions): UseLoroSyncReturn {
   // So we just need to modify the Loro doc - no manual export needed
   const addNode = useCallback((nodeId: string, nodeData: any) => {
     const nodesMap = doc.getMap('nodes');
+    const existing = nodesMap.get(nodeId);
+    if (existing !== undefined) {
+      console.warn(`[useLoroSync] Blocked addNode for existing node ${nodeId}`);
+      callbacksRef.current.onMutation?.(hostMutationRejected({
+        operation: 'canvas_add_node',
+        entity: { kind: 'canvas-node', id: nodeId },
+        beforeReadToken: readNodeToken(nodeId, existing),
+        forced: false,
+      }, `Node already exists: ${nodeId}`));
+      return false;
+    }
     nodesMap.set(nodeId, nodeData);
     doc.commit(); // Commit to trigger subscribeLocalUpdate
     updateUndoRedoState();
+    callbacksRef.current.onMutation?.(hostMutationSucceeded({
+      operation: 'canvas_add_node',
+      entity: { kind: 'canvas-node', id: nodeId },
+      forced: false,
+    }, {
+      resultEntityId: nodeId,
+      afterReadToken: readNodeToken(nodeId, nodesMap.get(nodeId)),
+    }));
+    return true;
   }, [doc, updateUndoRedoState]);
 
-  const updateNode = useCallback((nodeId: string, nodeData: any) => {
+  const updateNode = useCallback((nodeId: string, nodeData: any, options?: LoroHostWriteOptions) => {
     const nodesMap = doc.getMap('nodes');
     const existing = nodesMap.get(nodeId) as any;
+    let mutationEnvelope: HostMutationEnvelope | undefined;
     if (!existing) {
       nodesMap.set(nodeId, nodeData);
     } else {
-      nodesMap.set(nodeId, {
+      const beforeReadToken = readNodeToken(nodeId, existing);
+      const edgesMap = doc.getMap('edges');
+      const nodesForGuard = readGuardrailNodes(nodesMap.entries());
+      const proofNode = readProofNode(nodeId, existing);
+      const readProof = proofNode
+        ? validateCanvasReadProof({
+            operation: 'update',
+            actorClientType: options?.actorClientType,
+            node: proofNode,
+            expectedReadToken: options?.ifMatch,
+            force: options?.force === true,
+          })
+        : { ok: true as const };
+      const patchGuard = validateCanvasNodePatch({
+        nodeId,
+        node: {
+          type: typeof existing.type === 'string' ? existing.type : undefined,
+          data: isRecord(existing.data) ? existing.data : undefined,
+        },
+        nodes: nodesForGuard,
+        edges: readGuardrailEdges(edgesMap.values()),
+        patch: isRecord(nodeData) ? nodeData : {},
+      });
+      const guard = readProof.ok ? patchGuard : readProof;
+      const hostMutation = validateHostMutationEnvelope({
+        operation: 'canvas_update',
+        entity: { kind: 'canvas-node', id: nodeId },
+        expectedReadToken: options?.ifMatch,
+        currentReadToken: beforeReadToken,
+        force: options?.force === true,
+        guard,
+      });
+      if (!guard.ok) {
+        console.warn(`[useLoroSync] Blocked node update for ${nodeId}: ${guard.error}`);
+        if (!hostMutation.ok) callbacksRef.current.onMutation?.(hostMutation.mutation);
+        const { nodes, edges, tasks } = readStateFromLoro();
+        const cb = callbacksRef.current;
+        if (cb.onNodesChange) cb.onNodesChange(nodes);
+        if (cb.onEdgesChange) cb.onEdgesChange(edges);
+        if (cb.onTaskUpdate) tasks.forEach(t => cb.onTaskUpdate!(t.id, t.data));
+        return false;
+      }
+      if (hostMutation.ok) mutationEnvelope = hostMutation.envelope;
+      const updated = {
         ...existing,
         ...nodeData,
         data: { ...(existing?.data || {}), ...(nodeData.data || {}) },
-      });
+      };
+      nodesMap.set(nodeId, updated);
     }
     doc.commit(); // Commit to trigger subscribeLocalUpdate
     updateUndoRedoState();
-  }, [doc, updateUndoRedoState]);
+    const updatedNode = nodesMap.get(nodeId);
+    callbacksRef.current.onMutation?.(hostMutationSucceeded(
+      mutationEnvelope ?? {
+        operation: 'canvas_update',
+        entity: { kind: 'canvas-node', id: nodeId },
+        forced: false,
+      },
+      {
+        resultEntityId: nodeId,
+        afterReadToken: readNodeToken(nodeId, updatedNode),
+      },
+    ));
+    return true;
+  }, [doc, readStateFromLoro, updateUndoRedoState]);
 
-  const removeNode = useCallback((nodeId: string) => {
+  const applyTimelineDsl = useCallback((nodeId: string, timelineDsl: unknown, options?: LoroHostWriteOptions) => {
     const nodesMap = doc.getMap('nodes');
+    const existing = nodesMap.get(nodeId) as any;
+    if (!existing) {
+      console.warn(`[useLoroSync] Blocked timeline apply for ${nodeId}: node not found`);
+      callbacksRef.current.onMutation?.(hostMutationRejected({
+        operation: 'timeline_apply',
+        entity: { kind: 'timeline', id: nodeId },
+        forced: options?.force === true,
+      }, `Node not found: ${nodeId}`));
+      return false;
+    }
+
+    const beforeReadToken = readNodeToken(nodeId, existing);
+    const edgesMap = doc.getMap('edges');
+    const proofNode = readProofNode(nodeId, existing);
+    const readProof = proofNode
+      ? validateCanvasReadProof({
+          operation: 'timeline apply',
+          actorClientType: options?.actorClientType,
+          node: proofNode,
+          expectedReadToken: options?.ifMatch,
+          force: options?.force === true,
+        })
+      : { ok: true as const };
+    const timelineGuard = validateCanvasTimelineApply({
+      nodeId,
+      nodes: readGuardrailNodes(nodesMap.entries()),
+      edges: readGuardrailEdges(edgesMap.values()),
+      force: options?.force === true,
+    });
+    const guard = readProof.ok ? timelineGuard : readProof;
+    const hostMutation = validateHostMutationEnvelope({
+      operation: 'timeline_apply',
+      entity: { kind: 'timeline', id: nodeId },
+      expectedReadToken: options?.ifMatch,
+      currentReadToken: beforeReadToken,
+      force: options?.force === true,
+      guard,
+    });
+    if (!guard.ok) {
+      console.warn(`[useLoroSync] Blocked timeline apply for ${nodeId}: ${guard.error}`);
+      if (!hostMutation.ok) callbacksRef.current.onMutation?.(hostMutation.mutation);
+      const { nodes, edges, tasks } = readStateFromLoro();
+      const cb = callbacksRef.current;
+      if (cb.onNodesChange) cb.onNodesChange(nodes);
+      if (cb.onEdgesChange) cb.onEdgesChange(edges);
+      if (cb.onTaskUpdate) tasks.forEach(t => cb.onTaskUpdate!(t.id, t.data));
+      return false;
+    }
+
+    nodesMap.set(nodeId, {
+      ...existing,
+      data: { ...(existing?.data || {}), timelineDsl },
+    });
+    doc.commit();
+    updateUndoRedoState();
+    callbacksRef.current.onMutation?.(hostMutationSucceeded(
+      hostMutation.ok ? hostMutation.envelope : {
+        operation: 'timeline_apply',
+        entity: { kind: 'timeline', id: nodeId },
+        forced: options?.force === true,
+      },
+      {
+        resultEntityId: nodeId,
+        afterReadToken: readNodeToken(nodeId, nodesMap.get(nodeId)),
+      },
+    ));
+    return true;
+  }, [doc, readStateFromLoro, updateUndoRedoState]);
+
+  const removeNode = useCallback((nodeId: string, options?: LoroHostWriteOptions) => {
+    const nodesMap = doc.getMap('nodes');
+    const edgesMap = doc.getMap('edges');
+    const existing = nodesMap.get(nodeId);
+    if (!isRecord(existing)) {
+      const error = `Node not found: ${nodeId}`;
+      console.warn(`[useLoroSync] Blocked node delete for ${nodeId}: ${error}`);
+      callbacksRef.current.onMutation?.(hostMutationRejected({
+        operation: 'canvas_delete',
+        entity: { kind: 'canvas-node', id: nodeId },
+        expectedReadToken: options?.ifMatch,
+        forced: options?.force === true,
+      }, error));
+      return false;
+    }
+    const beforeReadToken = readNodeToken(nodeId, existing);
+    const edges = [...edgesMap.values()]
+      .filter(isRecord)
+      .map((edge) => ({
+        source: typeof edge.source === 'string' ? edge.source : '',
+        target: typeof edge.target === 'string' ? edge.target : '',
+      }))
+      .filter((edge) => edge.source && edge.target);
+    const proofNode = readProofNode(nodeId, existing);
+    const readProof = proofNode
+      ? validateCanvasReadProof({
+          operation: 'delete',
+          actorClientType: options?.actorClientType,
+          node: proofNode,
+          expectedReadToken: options?.ifMatch,
+          force: options?.force === true,
+        })
+      : { ok: true as const };
+    const deleteGuard = validateCanvasDelete({
+      nodeId,
+      edges,
+      force: options?.force === true,
+    });
+    const guard = readProof.ok ? deleteGuard : readProof;
+    const hostMutation = validateHostMutationEnvelope({
+      operation: 'canvas_delete',
+      entity: { kind: 'canvas-node', id: nodeId },
+      expectedReadToken: options?.ifMatch,
+      currentReadToken: beforeReadToken,
+      force: options?.force === true,
+      guard,
+    });
+    if (!guard.ok) {
+      console.warn(`[useLoroSync] Blocked node delete for ${nodeId}: ${guard.error}`);
+      if (!hostMutation.ok) callbacksRef.current.onMutation?.(hostMutation.mutation);
+      const { nodes, edges: currentEdges, tasks } = readStateFromLoro();
+      const cb = callbacksRef.current;
+      if (cb.onNodesChange) cb.onNodesChange(nodes);
+      if (cb.onEdgesChange) cb.onEdgesChange(currentEdges);
+      if (cb.onTaskUpdate) tasks.forEach(t => cb.onTaskUpdate!(t.id, t.data));
+      return false;
+    }
 
     // Clean up children's parentId references before deleting the node
     // This prevents "Parent node X not found" errors in ReactFlow
@@ -575,26 +900,299 @@ export function useLoroSync(options: LoroSyncOptions): UseLoroSyncReturn {
     nodesMap.delete(nodeId);
     doc.commit(); // Commit to trigger subscribeLocalUpdate
     updateUndoRedoState();
-  }, [doc, updateUndoRedoState]);
+    callbacksRef.current.onMutation?.(hostMutationSucceeded(
+      hostMutation.ok ? hostMutation.envelope : {
+        operation: 'canvas_delete',
+        entity: { kind: 'canvas-node', id: nodeId },
+        forced: options?.force === true,
+      },
+      { resultEntityId: nodeId },
+    ));
+    return true;
+  }, [doc, readStateFromLoro, updateUndoRedoState]);
 
-  const addEdge = useCallback((edgeId: string, edgeData: any) => {
+  const removeNodes = useCallback((nodeIds: string[], options?: LoroHostWriteOptions) => {
+    const uniqueNodeIds = [...new Set(nodeIds.map((nodeId) => nodeId.trim()).filter(Boolean))];
+    if (uniqueNodeIds.length === 0) return true;
+    if (uniqueNodeIds.length === 1) return removeNode(uniqueNodeIds[0], options);
+
+    const nodesMap = doc.getMap('nodes');
     const edgesMap = doc.getMap('edges');
+    const existingIds = uniqueNodeIds.filter((nodeId) => isRecord(nodesMap.get(nodeId)));
+    const batchId = existingIds.join(',');
+    if (existingIds.length === 0) {
+      callbacksRef.current.onMutation?.(hostMutationRejected({
+        operation: 'canvas_batch_delete',
+        entity: { kind: 'canvas-node-batch', id: batchId || uniqueNodeIds.join(',') },
+        forced: options?.force === true,
+      }, `Node(s) not found: ${uniqueNodeIds.join(', ')}`));
+      return false;
+    }
+
+    const beforeReadToken = readBatchDeleteToken(existingIds, nodesMap.entries(), edgesMap.entries());
+    const readProof = validateCanvasBatchDeleteReadProof({
+      actorClientType: options?.actorClientType,
+      nodes: existingIds.map((nodeId) => readProofNode(nodeId, nodesMap.get(nodeId))).filter((node): node is NonNullable<ReturnType<typeof readProofNode>> => Boolean(node)),
+      edges: readProofEdges(edgesMap.entries()),
+      expectedReadToken: options?.ifMatch,
+      force: options?.force === true,
+    });
+    const edges = readGuardrailEdges(edgesMap.values());
+    const deleteGuard = validateCanvasBatchDelete({
+      nodeIds: existingIds,
+      edges,
+      force: options?.force === true,
+    });
+    const guard = readProof.ok ? deleteGuard : readProof;
+    const hostMutation = validateHostMutationEnvelope({
+      operation: 'canvas_batch_delete',
+      entity: { kind: 'canvas-node-batch', id: batchId },
+      expectedReadToken: options?.ifMatch,
+      currentReadToken: beforeReadToken,
+      force: options?.force === true,
+      guard,
+    });
+    if (!guard.ok) {
+      console.warn(`[useLoroSync] Blocked batch node delete for ${batchId}: ${guard.error}`);
+      if (!hostMutation.ok) callbacksRef.current.onMutation?.(hostMutation.mutation);
+      const { nodes, edges: currentEdges, tasks } = readStateFromLoro();
+      const cb = callbacksRef.current;
+      if (cb.onNodesChange) cb.onNodesChange(nodes);
+      if (cb.onEdgesChange) cb.onEdgesChange(currentEdges);
+      if (cb.onTaskUpdate) tasks.forEach(t => cb.onTaskUpdate!(t.id, t.data));
+      return false;
+    }
+
+    const deletedSet = new Set(existingIds);
+    for (const [key, value] of nodesMap.entries()) {
+      if (!isRecord(value)) continue;
+      if (typeof value.parentId === 'string' && deletedSet.has(value.parentId) && !deletedSet.has(key)) {
+        const { parentId: _parentId, extent: _extent, ...rest } = value;
+        nodesMap.set(key, rest);
+      }
+    }
+    for (const [edgeId, rawEdge] of edgesMap.entries()) {
+      if (!isRecord(rawEdge)) continue;
+      const source = typeof rawEdge.source === 'string' ? rawEdge.source : '';
+      const target = typeof rawEdge.target === 'string' ? rawEdge.target : '';
+      if (deletedSet.has(source) || deletedSet.has(target)) {
+        edgesMap.delete(edgeId);
+      }
+    }
+    for (const nodeId of existingIds) {
+      nodesMap.delete(nodeId);
+    }
+    doc.commit();
+    updateUndoRedoState();
+    callbacksRef.current.onMutation?.(hostMutationSucceeded(
+      hostMutation.ok ? hostMutation.envelope : {
+        operation: 'canvas_batch_delete',
+        entity: { kind: 'canvas-node-batch', id: batchId },
+        ...(options?.ifMatch ? { expectedReadToken: options.ifMatch } : {}),
+        beforeReadToken,
+        forced: options?.force === true,
+      },
+      { resultEntityId: batchId },
+    ));
+    return true;
+  }, [doc, readStateFromLoro, removeNode, updateUndoRedoState]);
+
+  const addEdge = useCallback((edgeId: string, edgeData: any, options?: LoroHostWriteOptions) => {
+    const edgesMap = doc.getMap('edges');
+    const needsReadProof =
+      options?.actorClientType === 'agent' ||
+      typeof options?.ifMatch === 'string' ||
+      options?.force === true;
+    const beforeReadToken = needsReadProof ? readEdgesToken(edgesMap.entries()) : undefined;
+    if (isRecord(edgeData)) {
+      const source = typeof edgeData.source === 'string' ? edgeData.source : '';
+      const target = typeof edgeData.target === 'string' ? edgeData.target : '';
+      if (source && target) {
+        const readProof = needsReadProof
+          ? validateCanvasEdgesReadProof({
+              operation: 'add',
+              actorClientType: options?.actorClientType,
+              edges: readProofEdges(edgesMap.entries()),
+              expectedReadToken: options?.ifMatch,
+              force: options?.force === true,
+            })
+          : { ok: true as const };
+        const edgeGuard = validateCanvasEdgeAdd({
+          edge: { source, target },
+          nodes: readGuardrailNodes(doc.getMap('nodes').entries()),
+          edges: readGuardrailEdges(edgesMap.values()),
+          force: options?.force === true,
+        });
+        const guard = readProof.ok ? edgeGuard : readProof;
+        const hostMutation = validateHostMutationEnvelope({
+          operation: 'canvas_add_edge',
+          entity: { kind: 'canvas-edge', id: edgeId },
+          expectedReadToken: options?.ifMatch,
+          currentReadToken: beforeReadToken,
+          force: options?.force === true,
+          guard,
+        });
+        if (!guard.ok) {
+          console.warn(`[useLoroSync] Blocked edge add for ${edgeId}: ${guard.error}`);
+          if (!hostMutation.ok) callbacksRef.current.onMutation?.(hostMutation.mutation);
+          const { nodes, edges, tasks } = readStateFromLoro();
+          const cb = callbacksRef.current;
+          if (cb.onNodesChange) cb.onNodesChange(nodes);
+          if (cb.onEdgesChange) cb.onEdgesChange(edges);
+          if (cb.onTaskUpdate) tasks.forEach(t => cb.onTaskUpdate!(t.id, t.data));
+          return false;
+        }
+      }
+    }
     edgesMap.set(edgeId, edgeData);
     doc.commit(); // Commit to trigger subscribeLocalUpdate
-  }, [doc]);
+    callbacksRef.current.onMutation?.(hostMutationSucceeded({
+      operation: 'canvas_add_edge',
+      entity: { kind: 'canvas-edge', id: edgeId },
+      ...(options?.ifMatch ? { expectedReadToken: options.ifMatch } : {}),
+      ...(beforeReadToken ? { beforeReadToken } : {}),
+      forced: options?.force === true,
+    }, {
+      resultEntityId: edgeId,
+      afterReadToken: needsReadProof ? readEdgesToken(edgesMap.entries()) : undefined,
+    }));
+    return true;
+  }, [doc, readStateFromLoro]);
 
-  const updateEdge = useCallback((edgeId: string, edgeData: any) => {
+  const updateEdge = useCallback((edgeId: string, edgeData: any, options?: LoroHostWriteOptions) => {
     const edgesMap = doc.getMap('edges');
     const existing = edgesMap.get(edgeId) as any;
+    const beforeReadToken = readEdgeToken(edgeId, existing);
+    const existingEdge = isRecord(existing) &&
+      typeof existing.source === 'string' &&
+      typeof existing.target === 'string'
+      ? { source: existing.source, target: existing.target }
+      : null;
+    const proofEdge = readProofEdge(edgeId, existing);
+    const readProof = proofEdge
+      ? validateCanvasEdgeReadProof({
+          operation: 'update',
+          actorClientType: options?.actorClientType,
+          edge: proofEdge,
+          expectedReadToken: options?.ifMatch,
+          force: options?.force === true,
+        })
+      : { ok: true as const };
+    const patchGuard = validateCanvasEdgePatch({
+      existingEdge,
+      patch: isRecord(edgeData) ? edgeData : {},
+      nodes: readGuardrailNodes(doc.getMap('nodes').entries()),
+      edges: readGuardrailEdges(edgesMap.values()),
+      force: options?.force === true,
+    });
+    const guard = readProof.ok ? patchGuard : readProof;
+    const hostMutation = validateHostMutationEnvelope({
+      operation: 'canvas_update_edge',
+      entity: { kind: 'canvas-edge', id: edgeId },
+      expectedReadToken: options?.ifMatch,
+      currentReadToken: beforeReadToken,
+      force: options?.force === true,
+      guard,
+    });
+    if (!guard.ok) {
+      console.warn(`[useLoroSync] Blocked edge update for ${edgeId}: ${guard.error}`);
+      if (!hostMutation.ok) callbacksRef.current.onMutation?.(hostMutation.mutation);
+      const { nodes, edges, tasks } = readStateFromLoro();
+      const cb = callbacksRef.current;
+      if (cb.onNodesChange) cb.onNodesChange(nodes);
+      if (cb.onEdgesChange) cb.onEdgesChange(edges);
+      if (cb.onTaskUpdate) tasks.forEach(t => cb.onTaskUpdate!(t.id, t.data));
+      return false;
+    }
     edgesMap.set(edgeId, { ...existing, ...edgeData });
     doc.commit(); // Commit to trigger subscribeLocalUpdate
-  }, [doc]);
+    callbacksRef.current.onMutation?.(hostMutationSucceeded(
+      hostMutation.ok ? hostMutation.envelope : {
+        operation: 'canvas_update_edge',
+        entity: { kind: 'canvas-edge', id: edgeId },
+        forced: options?.force === true,
+      },
+      { resultEntityId: edgeId, afterReadToken: readEdgeToken(edgeId, edgesMap.get(edgeId)) },
+    ));
+    return true;
+  }, [doc, readStateFromLoro]);
 
-  const removeEdge = useCallback((edgeId: string) => {
+  const removeEdge = useCallback((edgeId: string, options?: LoroHostWriteOptions) => {
     const edgesMap = doc.getMap('edges');
+    const existing = edgesMap.get(edgeId) as any;
+    let hostMutation: ReturnType<typeof validateHostMutationEnvelope> | null = null;
+    if (isRecord(existing)) {
+      const beforeReadToken = readEdgeToken(edgeId, existing);
+      const nodesMap = doc.getMap('nodes');
+      const edges = [...edgesMap.values()]
+        .filter(isRecord)
+        .map((edge) => ({
+          source: typeof edge.source === 'string' ? edge.source : '',
+          target: typeof edge.target === 'string' ? edge.target : '',
+        }))
+        .filter((edge) => edge.source && edge.target);
+      const nodes: Array<{ id: string; type?: string; data?: Record<string, unknown> }> = [];
+      for (const [id, rawNode] of nodesMap.entries()) {
+        if (typeof id !== 'string' || !isRecord(rawNode)) continue;
+        nodes.push({
+          id,
+          type: typeof rawNode.type === 'string' ? rawNode.type : undefined,
+          data: isRecord(rawNode.data) ? rawNode.data : undefined,
+        });
+      }
+      const proofEdge = readProofEdge(edgeId, existing);
+      const readProof = proofEdge
+        ? validateCanvasEdgeReadProof({
+            operation: 'delete',
+            actorClientType: options?.actorClientType,
+            edge: proofEdge,
+            expectedReadToken: options?.ifMatch,
+            force: options?.force === true,
+          })
+        : { ok: true as const };
+      const deleteGuard = validateCanvasEdgeDelete({
+        edge: {
+          source: typeof existing.source === 'string' ? existing.source : '',
+          target: typeof existing.target === 'string' ? existing.target : '',
+        },
+        nodes,
+        edges,
+        force: options?.force === true,
+      });
+      const guard = readProof.ok ? deleteGuard : readProof;
+      hostMutation = validateHostMutationEnvelope({
+        operation: 'canvas_delete_edge',
+        entity: { kind: 'canvas-edge', id: edgeId },
+        expectedReadToken: options?.ifMatch,
+        currentReadToken: beforeReadToken,
+        force: options?.force === true,
+        guard,
+      });
+      if (!guard.ok) {
+        console.warn(`[useLoroSync] Blocked edge delete for ${edgeId}: ${guard.error}`);
+        if (!hostMutation.ok) callbacksRef.current.onMutation?.(hostMutation.mutation);
+        const { nodes: currentNodes, edges: currentEdges, tasks } = readStateFromLoro();
+        const cb = callbacksRef.current;
+        if (cb.onNodesChange) cb.onNodesChange(currentNodes);
+        if (cb.onEdgesChange) cb.onEdgesChange(currentEdges);
+        if (cb.onTaskUpdate) tasks.forEach(t => cb.onTaskUpdate!(t.id, t.data));
+        return false;
+      }
+    }
     edgesMap.delete(edgeId);
     doc.commit(); // Commit to trigger subscribeLocalUpdate
-  }, [doc]);
+    callbacksRef.current.onMutation?.(hostMutationSucceeded(
+      hostMutation?.ok ? hostMutation.envelope : {
+        operation: 'canvas_delete_edge',
+        entity: { kind: 'canvas-edge', id: edgeId },
+        forced: options?.force === true,
+      },
+      {
+      resultEntityId: edgeId,
+      },
+    ));
+    return true;
+  }, [doc, readStateFromLoro]);
 
   // Replay the doc's current state into React. Used by undo/redo, because the
   // subscribe handler skips `event.by === 'local'` to avoid echo-loops with
@@ -633,7 +1231,9 @@ export function useLoroSync(options: LoroSyncOptions): UseLoroSyncReturn {
     isInitialized,
     addNode,
     updateNode,
+    applyTimelineDsl,
     removeNode,
+    removeNodes,
     addEdge,
     updateEdge,
     removeEdge,

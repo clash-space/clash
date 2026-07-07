@@ -1,13 +1,9 @@
 import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 describe('TimelineControls primitives', () => {
   it('routes timeline buttons and range inputs through remotion-ui primitives', () => {
-    const source = readFileSync(
-      join(process.cwd(), 'packages/remotion-ui/src/components/timeline/TimelineControls.tsx'),
-      'utf8',
-    );
+    const source = readFileSync(new URL('./TimelineControls.tsx', import.meta.url), 'utf8');
 
     expect(source).toContain('../ui/controls');
     expect(source).toContain('<TimelineIconButton');
@@ -17,14 +13,8 @@ describe('TimelineControls primitives', () => {
   });
 
   it('routes timeline tooltips through the shared tooltip primitive', () => {
-    const source = readFileSync(
-      join(process.cwd(), 'packages/remotion-ui/src/components/timeline/TimelineControls.tsx'),
-      'utf8',
-    );
-    const tooltipSource = readFileSync(
-      join(process.cwd(), 'packages/remotion-ui/src/components/ui/tooltip.tsx'),
-      'utf8',
-    );
+    const source = readFileSync(new URL('./TimelineControls.tsx', import.meta.url), 'utf8');
+    const tooltipSource = readFileSync(new URL('../ui/tooltip.tsx', import.meta.url), 'utf8');
 
     expect(tooltipSource).toContain('@ariakit/react');
     expect(source).toContain('../ui/tooltip');

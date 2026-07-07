@@ -1,22 +1,9 @@
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import type { LoroDoc } from "loro-crdt";
-import type { Asset, AssetKind, AssetRefRow } from "@clash/shared-types/assets";
+import type { Asset, AssetKind } from "@clash/shared-types/assets";
 import { createMockExternalAigcService, type ExternalAigcService } from "./local-aigc.js";
-
-interface LocalDb {
-  projects: unknown[];
-  assets: Array<Asset & { projectId?: string }>;
-  assetRefs: AssetRefRow[];
-  sessions: unknown[];
-}
-
-const DEFAULT_DB: LocalDb = {
-  projects: [],
-  assets: [],
-  assetRefs: [],
-  sessions: [],
-};
+import { createLocalMetadataStore } from "./local-metadata-store.js";
 
 export interface LocalWorkflowProcessorInput {
   doc: LoroDoc;
@@ -45,19 +32,6 @@ export interface LocalWorkflowProcessorOptions {
 
 type ProcessableKind = Extract<AssetKind, "image" | "video" | "audio">;
 type ProcessableNodeKind = ProcessableKind | "text";
-
-async function readJson<T>(path: string, fallback: T): Promise<T> {
-  try {
-    return JSON.parse(await readFile(path, "utf8")) as T;
-  } catch {
-    return structuredClone(fallback);
-  }
-}
-
-async function writeJson(path: string, value: unknown): Promise<void> {
-  await mkdir(dirname(path), { recursive: true });
-  await writeFile(path, JSON.stringify(value, null, 2), "utf8");
-}
 
 function sanitizeStorageSegment(value: string): string {
   return value.replace(/[^a-zA-Z0-9._-]/g, "-").replace(/^-+|-+$/g, "") || "item";
@@ -113,15 +87,6 @@ function stringList(value: unknown): string[] {
   return Array.isArray(value)
     ? value.filter((item): item is string => typeof item === "string" && item.length > 0)
     : [];
-}
-
-function resolveStorageKeys(db: LocalDb, projectId: string, assetIds: string[]): string[] {
-  const keys: string[] = [];
-  for (const id of assetIds) {
-    const asset = (db.assets ?? []).find((item) => item.id === id && (!item.projectId || item.projectId === projectId));
-    if (asset?.srcR2Key) keys.push(asset.srcR2Key);
-  }
-  return keys;
 }
 
 function pendingCustomNode(node: Record<string, any>): {
@@ -194,8 +159,6 @@ async function saveAsset(
   await mkdir(dirname(assetPath), { recursive: true });
   await writeFile(assetPath, options.bytes);
 
-  const dbPath = join(options.dataDir, "db.json");
-  const db = await readJson<LocalDb>(dbPath, DEFAULT_DB);
   const now = Math.floor(Date.now() / 1000);
   const assetId = `local-asset-${sanitizeStorageSegment(options.taskId)}`;
   const model = modelFromData(options.nodeData, `mock-${options.kind}`);
@@ -233,23 +196,11 @@ async function saveAsset(
     projectId: options.projectId,
   };
 
-  db.assets = [
-    asset,
-    ...(db.assets ?? []).filter((item) => item.id !== asset.id && item.sourceTaskId !== options.taskId),
-  ];
-  db.assetRefs = [
-    {
-      assetId: asset.id,
-      projectId: options.projectId,
-      importedAt: now,
-    },
-    ...(db.assetRefs ?? []).filter(
-      (ref) => !(ref.assetId === asset.id && ref.projectId === options.projectId),
-    ),
-  ];
-  db.projects = db.projects ?? [];
-  db.sessions = db.sessions ?? [];
-  await writeJson(dbPath, db);
+  await createLocalMetadataStore(options.dataDir).upsertAsset(asset, {
+    assetId: asset.id,
+    projectId: options.projectId,
+    importedAt: now,
+  });
   return asset;
 }
 
@@ -285,19 +236,15 @@ export function createLocalWorkflowProcessor(
             continue;
           }
 
-          const db = await readJson<LocalDb>(join(options.dataDir, "db.json"), DEFAULT_DB);
-          const referenceImageR2Keys = [
-            ...stringList(data.referenceImageR2Keys),
-            ...resolveStorageKeys(db, projectId, stringList(data.referenceImageAssetIds)),
-          ];
-          const referenceVideoR2Keys = [
-            ...stringList(data.referenceVideoR2Keys),
-            ...resolveStorageKeys(db, projectId, stringList(data.referenceVideoAssetIds)),
-          ];
-          const referenceAudioR2Keys = [
-            ...stringList(data.referenceAudioR2Keys),
-            ...resolveStorageKeys(db, projectId, stringList(data.referenceAudioAssetIds)),
-          ];
+          const metadataStore = createLocalMetadataStore(options.dataDir);
+          const [referenceImageR2Keys, referenceVideoR2Keys, referenceAudioR2Keys] = await Promise.all([
+            metadataStore.resolveStorageKeys(projectId, stringList(data.referenceImageAssetIds)),
+            metadataStore.resolveStorageKeys(projectId, stringList(data.referenceVideoAssetIds)),
+            metadataStore.resolveStorageKeys(projectId, stringList(data.referenceAudioAssetIds)),
+          ]);
+          referenceImageR2Keys.unshift(...stringList(data.referenceImageR2Keys));
+          referenceVideoR2Keys.unshift(...stringList(data.referenceVideoR2Keys));
+          referenceAudioR2Keys.unshift(...stringList(data.referenceAudioR2Keys));
           const refs: Record<string, string[]> = {};
           if (referenceImageR2Keys.length) refs.image = referenceImageR2Keys;
           if (referenceVideoR2Keys.length) refs.video = referenceVideoR2Keys;

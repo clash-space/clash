@@ -1,0 +1,534 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Clash Codex QA Agent Report",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "status",
+    "summary",
+    "run",
+    "commands",
+    "artifacts",
+    "paths",
+    "cas",
+    "checks",
+    "issues",
+    "recommendations"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "type": "integer",
+      "enum": [1]
+    },
+    "status": {
+      "type": "string",
+      "enum": ["pass", "fail", "blocked"]
+    },
+    "summary": {
+      "type": "string",
+      "minLength": 1
+    },
+    "run": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "repoRoot",
+        "artifactRoot",
+        "startedAt",
+        "finishedAt",
+        "codexCommand",
+        "targetRuntime"
+      ],
+      "properties": {
+        "repoRoot": {
+          "type": "string",
+          "minLength": 1
+        },
+        "artifactRoot": {
+          "type": "string",
+          "minLength": 1
+        },
+        "startedAt": {
+          "type": "string",
+          "minLength": 1
+        },
+        "finishedAt": {
+          "type": "string",
+          "minLength": 1
+        },
+        "codexCommand": {
+          "type": "string",
+          "minLength": 1
+        },
+        "targetRuntime": {
+          "type": "string",
+          "enum": ["stub-acp", "real-codex-acp", "mixed", "unknown"]
+        }
+      }
+    },
+    "commands": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["command", "cwd", "status", "exitCode", "summary", "logPath"],
+        "properties": {
+          "command": {
+            "type": "string",
+            "minLength": 1
+          },
+          "cwd": {
+            "type": "string",
+            "minLength": 1
+          },
+          "status": {
+            "type": "string",
+            "enum": ["pass", "fail", "skipped"]
+          },
+          "exitCode": {
+            "type": ["integer", "null"]
+          },
+          "summary": {
+            "type": "string",
+            "minLength": 1
+          },
+          "logPath": {
+            "type": ["string", "null"]
+          }
+        }
+      }
+    },
+    "artifacts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["screenshots", "logs", "reports"],
+      "properties": {
+        "screenshots": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/artifact"
+          }
+        },
+        "logs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/artifact"
+          }
+        },
+        "reports": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/artifact"
+          }
+        }
+      }
+    },
+    "paths": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "repoRoot",
+        "artifactRoot",
+        "createdProjects",
+        "createdSessions",
+        "createdTimelines",
+        "projectStatuses",
+        "restoredProjects",
+        "restoredSessions",
+        "restoredTimelines",
+        "notes"
+      ],
+      "properties": {
+        "repoRoot": {
+          "type": "string",
+          "minLength": 1
+        },
+        "artifactRoot": {
+          "type": "string",
+          "minLength": 1
+        },
+        "createdProjects": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/pathObservation"
+          }
+        },
+        "createdSessions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/pathObservation"
+          }
+        },
+        "createdTimelines": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/pathObservation"
+          }
+        },
+        "projectStatuses": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/projectStatusObservation"
+          }
+        },
+        "restoredProjects": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/pathObservation"
+          }
+        },
+        "restoredSessions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/pathObservation"
+          }
+        },
+        "restoredTimelines": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/pathObservation"
+          }
+        },
+        "notes": {
+          "type": "string"
+        }
+      }
+    },
+    "cas": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "reportPath",
+        "logPath",
+        "missingReadProofRejected",
+        "staleReadProofRejected",
+        "wrongFileLockRejected",
+        "copyOnWritePreservedSource",
+        "directCanvasMissingReadTokenRejected",
+        "directCanvasStaleReadTokenRejected",
+        "directCanvasFreshReadTokenAccepted",
+        "directCanvasMutationEnvelopeRecorded",
+        "directCanvasDeleteReadTokenRequired",
+        "directCanvasCliMissingReadTokenRejected",
+        "directCanvasCliStaleReadTokenRejected",
+        "directCanvasCliFreshReadTokenAccepted",
+        "directCanvasCliMutationEnvelopeRecorded",
+        "directCanvasCliDeleteReadTokenRequired",
+        "evidence"
+      ],
+      "properties": {
+        "reportPath": {
+          "type": "string",
+          "minLength": 1
+        },
+        "logPath": {
+          "type": "string",
+          "minLength": 1
+        },
+        "missingReadProofRejected": {
+          "type": "boolean",
+          "const": true
+        },
+        "staleReadProofRejected": {
+          "type": "boolean",
+          "const": true
+        },
+        "wrongFileLockRejected": {
+          "type": "boolean",
+          "const": true
+        },
+        "copyOnWritePreservedSource": {
+          "type": "boolean",
+          "const": true
+        },
+        "directCanvasMissingReadTokenRejected": {
+          "type": "boolean",
+          "const": true
+        },
+        "directCanvasStaleReadTokenRejected": {
+          "type": "boolean",
+          "const": true
+        },
+        "directCanvasFreshReadTokenAccepted": {
+          "type": "boolean",
+          "const": true
+        },
+        "directCanvasMutationEnvelopeRecorded": {
+          "type": "boolean",
+          "const": true
+        },
+        "directCanvasDeleteReadTokenRequired": {
+          "type": "boolean",
+          "const": true
+        },
+        "directCanvasCliMissingReadTokenRejected": {
+          "type": "boolean",
+          "const": true
+        },
+        "directCanvasCliStaleReadTokenRejected": {
+          "type": "boolean",
+          "const": true
+        },
+        "directCanvasCliFreshReadTokenAccepted": {
+          "type": "boolean",
+          "const": true
+        },
+        "directCanvasCliMutationEnvelopeRecorded": {
+          "type": "boolean",
+          "const": true
+        },
+        "directCanvasCliDeleteReadTokenRequired": {
+          "type": "boolean",
+          "const": true
+        },
+        "evidence": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "checks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "status", "evidence", "screenshot"],
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1
+          },
+          "status": {
+            "type": "string",
+            "enum": ["pass", "fail", "blocked"]
+          },
+          "evidence": {
+            "type": "string",
+            "minLength": 1
+          },
+          "screenshot": {
+            "type": ["string", "null"]
+          }
+        }
+      }
+    },
+    "issues": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["severity", "title", "repro", "evidence", "suggestedDeterministicTest"],
+        "properties": {
+          "severity": {
+            "type": "string",
+            "enum": ["P0", "P1", "P2", "P3"]
+          },
+          "title": {
+            "type": "string",
+            "minLength": 1
+          },
+          "repro": {
+            "type": "string",
+            "minLength": 1
+          },
+          "evidence": {
+            "type": "string",
+            "minLength": 1
+          },
+          "suggestedDeterministicTest": {
+            "type": ["string", "null"]
+          }
+        }
+      }
+    },
+    "recommendations": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  },
+  "$defs": {
+    "artifact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "path", "description"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": ["screenshot", "log", "report", "other"]
+        },
+        "path": {
+          "type": "string",
+          "minLength": 1
+        },
+        "description": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "projectStatusObservation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "projectId",
+        "phase",
+        "observedAt",
+        "source",
+        "evidence",
+        "statusCommand",
+        "projectStore",
+        "projectWorkspaceRoot",
+        "draftsRoot",
+        "projectionsRoot",
+        "sessionsRoot",
+        "assetLinksRoot",
+        "runtimeRoot",
+        "snapshotPath",
+        "updatesLogPath",
+        "localSqlitePath",
+        "protectedPaths",
+        "editablePaths"
+      ],
+      "properties": {
+        "projectId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "phase": {
+          "type": "string",
+          "enum": ["created", "restored", "resumed", "history"]
+        },
+        "observedAt": {
+          "type": "string",
+          "minLength": 1
+        },
+        "source": {
+          "type": "string",
+          "enum": ["api", "cli", "log", "mixed"]
+        },
+        "evidence": {
+          "type": "string",
+          "minLength": 1
+        },
+        "statusCommand": {
+          "type": ["string", "null"]
+        },
+        "projectStore": {
+          "type": "string",
+          "minLength": 1
+        },
+        "projectWorkspaceRoot": {
+          "type": "string",
+          "minLength": 1
+        },
+        "draftsRoot": {
+          "type": "string",
+          "minLength": 1
+        },
+        "projectionsRoot": {
+          "type": "string",
+          "minLength": 1
+        },
+        "sessionsRoot": {
+          "type": "string",
+          "minLength": 1
+        },
+        "assetLinksRoot": {
+          "type": "string",
+          "minLength": 1
+        },
+        "runtimeRoot": {
+          "type": "string",
+          "minLength": 1
+        },
+        "snapshotPath": {
+          "type": "string",
+          "minLength": 1
+        },
+        "updatesLogPath": {
+          "type": "string",
+          "minLength": 1
+        },
+        "localSqlitePath": {
+          "type": "string",
+          "minLength": 1
+        },
+        "protectedPaths": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "editablePaths": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "pathObservation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "phase",
+        "id",
+        "observedAt",
+        "source",
+        "evidence",
+        "urlPath",
+        "storagePath",
+        "cwdPath",
+        "apiPath",
+        "visibleLabel"
+      ],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": ["project", "session", "timeline"]
+        },
+        "phase": {
+          "type": "string",
+          "enum": ["created", "restored", "resumed", "history"]
+        },
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "observedAt": {
+          "type": "string",
+          "minLength": 1
+        },
+        "source": {
+          "type": "string",
+          "enum": ["ui", "url", "api", "filesystem", "runtime", "mixed"]
+        },
+        "evidence": {
+          "type": "string",
+          "minLength": 1
+        },
+        "urlPath": {
+          "type": ["string", "null"]
+        },
+        "storagePath": {
+          "type": ["string", "null"]
+        },
+        "cwdPath": {
+          "type": ["string", "null"]
+        },
+        "apiPath": {
+          "type": ["string", "null"]
+        },
+        "visibleLabel": {
+          "type": ["string", "null"]
+        }
+      }
+    }
+  }
+}

@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, dirname, extname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -32,6 +32,10 @@ export interface PublicLocalAudioConfig {
   };
 }
 
+export type LocalAudioConfigReadState = PublicLocalAudioConfig & {
+  updated_at: string;
+};
+
 export interface BuiltinFunAsrTranscribeInput {
   file: File;
   model: string;
@@ -40,6 +44,7 @@ export interface BuiltinFunAsrTranscribeInput {
 
 export interface LocalAudioConfigStore {
   getPublicConfig(): Promise<PublicLocalAudioConfig>;
+  getReadState?(): Promise<LocalAudioConfigReadState>;
   updateFromRequest(input: Record<string, unknown>): Promise<PublicLocalAudioConfig>;
   installBuiltin(input?: { model?: unknown }): Promise<PublicLocalAudioConfig>;
   transcribe(input: { file: File; language?: string | null }): Promise<{ text: string }>;
@@ -144,6 +149,16 @@ async function publicConfig(
   };
 }
 
+async function readState(
+  config: LocalAudioConfigFile,
+  builtinStatus: BuiltinFunAsrStatus,
+): Promise<LocalAudioConfigReadState> {
+  return {
+    ...(await publicConfig(config, builtinStatus)),
+    updated_at: config.updatedAt,
+  };
+}
+
 async function readConfigFile(path: string): Promise<LocalAudioConfigFile | null> {
   try {
     const data = JSON.parse(await readFile(path, "utf8")) as Partial<LocalAudioConfigFile>;
@@ -163,7 +178,8 @@ async function readConfigFile(path: string): Promise<LocalAudioConfigFile | null
 
 async function writeConfigFile(path: string, config: LocalAudioConfigFile): Promise<void> {
   await mkdir(dirname(path), { recursive: true });
-  await writeFile(path, JSON.stringify(config, null, 2), "utf8");
+  await writeFile(path, JSON.stringify(config, null, 2), { encoding: "utf8", mode: 0o600 });
+  await chmod(path, 0o600).catch(() => undefined);
 }
 
 function defaultClashSdkPythonPath(): string {
@@ -267,6 +283,11 @@ export function createLocalAudioConfigStore(
     async getPublicConfig() {
       const config = await current();
       return publicConfig(config, await currentRuntimeStatus(config.asrModel));
+    },
+
+    async getReadState() {
+      const config = await current();
+      return readState(config, await currentRuntimeStatus(config.asrModel));
     },
 
     async updateFromRequest(input) {

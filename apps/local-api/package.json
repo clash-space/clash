@@ -20,10 +20,13 @@
   "scripts": {
     "dev": "tsx watch src/server.ts",
     "start": "tsx src/server.ts",
-    "build": "pnpm --filter @clash/shared-types build && pnpm --filter @clash-space/cli build && pnpm --filter @clash-space/bridge build && tsc",
-    "type-check": "tsc --noEmit",
-    "test": "pnpm --filter @clash/shared-types build && pnpm --filter @clash-space/cli build && pnpm --filter @clash-space/bridge build && vitest run src",
-    "test:e2e": "pnpm build && node e2e/daemon-smoke.mjs",
+    "build:deps": "npm --prefix ../../packages/shared-types run build && npm --prefix ../../packages/cli run build && npm --prefix ../../packages/clash-bridge run build",
+    "build": "npm run build:deps && tsc",
+    "type-check": "npm run build:deps && tsc --noEmit",
+    "test": "npm run build:deps && vitest run src",
+    "test:e2e": "npm run build && node e2e/daemon-smoke.mjs",
+    "test:providers": "tsx scripts/provider-conformance.ts",
+    "test:google-agent-platform": "tsx scripts/google-agent-platform-conformance.ts",
     "test:watch": "vitest src"
   },
   "dependencies": {

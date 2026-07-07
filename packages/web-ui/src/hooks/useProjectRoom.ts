@@ -130,8 +130,14 @@ export function useProjectRoom(projectId: string | null): UseProjectRoomReturn {
         | null;
       if (json?.sync) setSync(json.sync);
       if (
-        json?.type === 'room.message' &&
+        json &&
+        (json?.type === undefined || json.type === 'room.message') &&
         typeof json.id === 'string' &&
+        typeof json.project_id === 'string' &&
+        (json.sender_kind === 'user' || json.sender_kind === 'agent') &&
+        typeof json.sender_id === 'string' &&
+        typeof json.sender_user_id === 'string' &&
+        Array.isArray(json.mentions) &&
         typeof json.text === 'string' &&
         typeof json.at === 'number'
       ) {

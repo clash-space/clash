@@ -1,4 +1,4 @@
-import { appendFile, mkdir, open, readFile, rename, rm, truncate } from "node:fs/promises";
+import { appendFile, mkdir, open, readFile, rename, rm, truncate, writeFile } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
 import { join } from "node:path";
 import { LoroDoc } from "loro-crdt";
@@ -17,6 +17,8 @@ function isMissingFile(error: unknown): boolean {
 }
 
 export class FileReplicaStore {
+  private readonly writeQueues = new Map<string, Promise<unknown>>();
+
   constructor(private readonly rootDir: string) {}
 
   async loadSnapshot(projectId: string): Promise<Uint8Array | null> {
@@ -29,6 +31,12 @@ export class FileReplicaStore {
   }
 
   async appendUpdate(projectId: string, update: Uint8Array): Promise<void> {
+    await this.enqueueProjectWrite(projectId, async () => {
+      await this.appendUpdateUnsafe(projectId, update);
+    });
+  }
+
+  private async appendUpdateUnsafe(projectId: string, update: Uint8Array): Promise<void> {
     const logPath = this.updateLogPath(projectId);
     await mkdir(this.loroDir(projectId), { recursive: true });
     const updateBytes = exactBytes(update);
@@ -71,6 +79,33 @@ export class FileReplicaStore {
   }
 
   async saveSnapshotAtomic(projectId: string, snapshot: Uint8Array, _version?: unknown): Promise<void> {
+    await this.enqueueProjectWrite(projectId, async () => {
+      await this.saveSnapshotAtomicUnsafe(projectId, snapshot);
+    });
+  }
+
+  async compactSnapshot(projectId: string, snapshot: Uint8Array, _version?: unknown): Promise<void> {
+    await this.enqueueProjectWrite(projectId, async () => {
+      await this.saveSnapshotAtomicUnsafe(projectId, snapshot);
+      await this.truncateUpdateLog(projectId);
+    });
+  }
+
+  async updateSnapshotAtomic<T>(
+    projectId: string,
+    mutate: (doc: LoroDoc) => Promise<{ value: T; save?: boolean }> | { value: T; save?: boolean },
+  ): Promise<T> {
+    return this.enqueueProjectWrite(projectId, async () => {
+      const doc = await this.recoverUnsafe(projectId);
+      const result = await mutate(doc);
+      if (result.save !== false) {
+        await this.saveSnapshotAtomicUnsafe(projectId, doc.export({ mode: "snapshot" }));
+      }
+      return result.value;
+    });
+  }
+
+  private async saveSnapshotAtomicUnsafe(projectId: string, snapshot: Uint8Array): Promise<void> {
     const dir = this.loroDir(projectId);
     await mkdir(dir, { recursive: true });
     const finalPath = this.snapshotPath(projectId);
@@ -92,7 +127,22 @@ export class FileReplicaStore {
     }
   }
 
+  private async truncateUpdateLog(projectId: string): Promise<void> {
+    const logPath = this.updateLogPath(projectId);
+    await mkdir(this.loroDir(projectId), { recursive: true });
+    try {
+      await truncate(logPath, 0);
+    } catch (error) {
+      if (!isMissingFile(error)) throw error;
+      await writeFile(logPath, new Uint8Array(), { mode: 0o600 });
+    }
+  }
+
   async recover(projectId: string): Promise<LoroDoc> {
+    return this.recoverUnsafe(projectId);
+  }
+
+  private async recoverUnsafe(projectId: string): Promise<LoroDoc> {
     const doc = new LoroDoc();
     const updates = await this.loadUpdateLog(projectId);
     const snapshot = await this.loadSnapshot(projectId);
@@ -114,5 +164,18 @@ export class FileReplicaStore {
 
   private updateLogPath(projectId: string): string {
     return join(this.loroDir(projectId), "updates.log");
+  }
+
+  private async enqueueProjectWrite<T>(projectId: string, task: () => Promise<T>): Promise<T> {
+    const key = encodeURIComponent(projectId);
+    const previous = this.writeQueues.get(key)?.catch(() => undefined) ?? Promise.resolve();
+    const next = previous.then(task);
+    const queued = next.then(() => undefined, () => undefined);
+    this.writeQueues.set(key, queued);
+    try {
+      return await next;
+    } finally {
+      if (this.writeQueues.get(key) === queued) this.writeQueues.delete(key);
+    }
   }
 }

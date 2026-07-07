@@ -1,0 +1,93 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Clash talking-head analysis metadata",
+  "type": "object",
+  "required": ["kind", "fps", "words"],
+  "properties": {
+    "kind": { "const": "talking-head.analysis" },
+    "fps": { "type": "number" },
+    "asr": {
+      "type": "object",
+      "required": ["kind", "sourcePath", "sourceHash", "backendId", "modelId", "wordCount"],
+      "properties": {
+        "kind": { "const": "asr-transcript" },
+        "sourcePath": { "type": "string" },
+        "sourceHash": { "type": "string" },
+        "backendId": { "type": "string" },
+        "modelId": { "type": "string" },
+        "language": { "type": "string" },
+        "durationFrames": { "type": "number" },
+        "wordCount": { "type": "number" },
+        "averageConfidence": { "type": "number" }
+      }
+    },
+    "words": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "text", "startFrame", "endFrame"],
+        "properties": {
+          "id": { "type": "string" },
+          "text": { "type": "string" },
+          "startFrame": { "type": "number" },
+          "endFrame": { "type": "number" },
+          "confidence": { "type": "number" },
+          "speakerId": { "type": "string" }
+        }
+      }
+    },
+    "cuts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "sourceStartFrame", "sourceEndFrame", "outputStartFrame", "outputEndFrame", "action"],
+        "properties": {
+          "id": { "type": "string" },
+          "sourceStartFrame": { "type": "number" },
+          "sourceEndFrame": { "type": "number" },
+          "outputStartFrame": { "type": "number" },
+          "outputEndFrame": { "type": "number" },
+          "action": { "enum": ["keep", "delete", "review"] },
+          "reason": { "type": "string" },
+          "requiresReview": { "type": "boolean" },
+          "confidence": { "type": "number" },
+          "detectionSource": { "type": "string" }
+        }
+      }
+    },
+    "captionCues": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "startFrame", "durationInFrames", "text"],
+        "properties": {
+          "id": { "type": "string" },
+          "startFrame": { "type": "number" },
+          "durationInFrames": { "type": "number" },
+          "text": { "type": "string" },
+          "wordIds": { "type": "array", "items": { "type": "string" } },
+          "sourceStartFrame": { "type": "number" },
+          "sourceEndFrame": { "type": "number" }
+        }
+      }
+    },
+    "disfluencies": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["type"],
+        "properties": {
+          "id": { "type": "string" },
+          "wordId": { "type": "string" },
+          "startFrame": { "type": "number" },
+          "endFrame": { "type": "number" },
+          "text": { "type": "string" },
+          "type": { "enum": ["filler", "silence", "tone-particle", "repeat"] },
+          "requiresReview": { "type": "boolean" },
+          "confidence": { "type": "number" },
+          "detectionSource": { "type": "string" }
+        }
+      }
+    }
+  }
+}

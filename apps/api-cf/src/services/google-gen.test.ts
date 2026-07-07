@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { generateGoogleAudio, isGoogleAudioModel } from "./google-gen";
+import { generateGoogleAudio, isGoogleAudioModel, isGoogleImageModel, isGoogleTextModel } from "./google-gen";
 
 function base64(bytes: Uint8Array): string {
   let binary = "";
@@ -73,5 +73,26 @@ describe("Google audio generation", () => {
         },
       },
     });
+  });
+});
+
+describe("Google text generation", () => {
+  it("recognizes current Google Agent Platform SOTA text model cards", () => {
+    expect(isGoogleTextModel("gemini-3.5-flash")).toBe(true);
+    expect(isGoogleTextModel("gemini-3.1-pro")).toBe(true);
+    expect(isGoogleTextModel("gemini-3-flash")).toBe(true);
+    expect(isGoogleTextModel("gemini-3.1-flash-lite")).toBe(true);
+    expect(isGoogleTextModel("gemini-3.1-flash-lite-preview")).toBe(false);
+  });
+});
+
+describe("Google image generation", () => {
+  it("recognizes current Google Agent Platform SOTA image model cards", () => {
+    expect(isGoogleImageModel("nano-banana-2")).toBe(true);
+    expect(isGoogleImageModel("gemini-3.1-flash-image")).toBe(true);
+    expect(isGoogleImageModel("nano-banana-2-lite")).toBe(true);
+    expect(isGoogleImageModel("gemini-3.1-flash-lite-image")).toBe(true);
+    expect(isGoogleImageModel("nano-banana-pro")).toBe(true);
+    expect(isGoogleImageModel("gemini-pro-image")).toBe(false);
   });
 });

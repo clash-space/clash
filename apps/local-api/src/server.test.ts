@@ -5,7 +5,12 @@ import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import { LOCAL_HOST_PROTOCOL_VERSION } from "@clash/shared-runtime";
 import { readHostDiscovery } from "./host-discovery";
-import { createConfiguredLocalAcpAdapter, createLocalAgentToolEnv, startLocalApiServer } from "./server";
+import {
+  createConfiguredLocalAcpAdapter,
+  createLocalAgentToolEnv,
+  defaultLocalApiDataDir,
+  startLocalApiServer,
+} from "./server";
 
 async function withLocalDataDir<T>(dataDir: string, run: () => Promise<T>): Promise<T> {
   const previous = process.env.CLASH_LOCAL_DATA_DIR;
@@ -50,6 +55,31 @@ async function listenOnLoopback(server: ReturnType<typeof createServer>, port = 
 }
 
 describe("local API server configuration", () => {
+  it("keeps local package scripts reproducible without pnpm install checks", async () => {
+    const packageJson = JSON.parse(
+      await readFile(new URL("../package.json", import.meta.url), "utf8"),
+    ) as { scripts?: Record<string, string> };
+    const scripts = packageJson.scripts ?? {};
+
+    expect(scripts["build:deps"]).toContain("npm --prefix ../../packages/shared-types run build");
+    expect(scripts["build:deps"]).toContain("npm --prefix ../../packages/cli run build");
+    expect(scripts["build:deps"]).toContain("npm --prefix ../../packages/clash-bridge run build");
+    expect(scripts.build).toBe("npm run build:deps && tsc");
+    expect(scripts.test).toBe("npm run build:deps && vitest run src");
+    expect(scripts["test:e2e"]).toBe("npm run build && node e2e/daemon-smoke.mjs");
+    expect(`${scripts.build} ${scripts.test} ${scripts["test:e2e"]}`).not.toContain("pnpm");
+  });
+
+  it("uses CLASH_HOME for the default local data dir when CLASH_LOCAL_DATA_DIR is absent", () => {
+    expect(defaultLocalApiDataDir({
+      CLASH_HOME: "/tmp/clash-home",
+    })).toBe(join("/tmp/clash-home", "local-api"));
+    expect(defaultLocalApiDataDir({
+      CLASH_HOME: "/tmp/clash-home",
+      CLASH_LOCAL_DATA_DIR: "/tmp/explicit-local-api",
+    })).toBe("/tmp/explicit-local-api");
+  });
+
   it("rejects when the requested listen port is occupied", async () => {
     const blocker = createServer();
     const occupiedPort = await listenOnLoopback(blocker);
@@ -216,80 +246,96 @@ describe("local API server configuration", () => {
         turn_id: "turn-smoke",
       });
     });
-    expect(sent).toContainEqual({
-      type: "session.event",
-      session_id: created.session_id,
-      turn_id: "turn-smoke",
-      event: {
-        sessionUpdate: "clash.canvas.patch",
-        operations: [
-          {
-            op: "add_node",
-            node: {
-              id: "mock-agent-stage-turn-smoke",
-              type: "group",
-              data: { label: "Agent Stage" },
-              position: { x: 480, y: 140 },
-              width: 620,
-              height: 360,
-              style: { width: 620, height: 360 },
-            },
-          },
-          {
-            op: "add_node",
-            node: {
-              id: "mock-agent-brief-turn-smoke",
-              type: "action-badge",
-              data: {
-                label: "Agent Brief",
-                actionType: "text-gen",
-                content: "# Agent Brief\nhello local agent",
-              },
-              position: { x: 530, y: 210 },
-              width: 260,
-              height: 48,
-            },
-          },
-          {
-            op: "add_node",
-            node: {
-              id: "mock-agent-action-turn-smoke",
-              type: "action-badge",
-              data: {
-                label: "Agent Image Pass",
-                actionType: "image-gen",
-                content: "# Prompt\nhello local agent",
-              },
-              position: { x: 530, y: 320 },
-              width: 260,
-              height: 48,
-            },
-          },
-        ],
+    const patchEvent = sent.find((message) => {
+      const record = message as {
+        type?: string;
+        session_id?: string;
+        turn_id?: string;
+        event?: { sessionUpdate?: string; operations?: unknown[] };
+      };
+      return record.type === "session.event" &&
+        record.session_id === created.session_id &&
+        record.turn_id === "turn-smoke" &&
+        record.event?.sessionUpdate === "clash.canvas.patch" &&
+        Array.isArray(record.event.operations);
+    }) as {
+      event: { operations: unknown[] };
+    } | undefined;
+    expect(patchEvent).toBeTruthy();
+    expect(patchEvent?.event.operations).toEqual(expect.arrayContaining([
+      {
+        op: "add_node",
+        node: {
+          id: "mock-agent-stage-turn-smoke",
+          type: "group",
+          data: { label: "Agent Stage" },
+          position: { x: 480, y: 140 },
+          width: 620,
+          height: 360,
+          style: { width: 620, height: 360 },
+        },
       },
-    });
+      {
+        op: "add_node",
+        node: {
+          id: "mock-agent-brief-turn-smoke",
+          type: "action-badge",
+          data: {
+            label: "Agent Brief",
+            actionType: "text-gen",
+            content: "# Agent Brief\nhello local agent",
+          },
+          position: { x: 530, y: 210 },
+          width: 260,
+          height: 48,
+        },
+      },
+      {
+        op: "add_node",
+        node: {
+          id: "mock-agent-action-turn-smoke",
+          type: "action-badge",
+          data: {
+            label: "Agent Image Pass",
+            actionType: "image-gen",
+            content: "# Prompt\nhello local agent",
+          },
+          position: { x: 530, y: 320 },
+          width: 260,
+          height: 48,
+        },
+      },
+      {
+        op: "timeline_apply",
+        timeline: expect.objectContaining({
+          nodeId: "mock-agent-timeline-turn-smoke",
+        }),
+      },
+    ]));
 
-    await expect(adapter.listSessionMessages(created.session_id)).resolves.toMatchObject({
-      messages: [
-        {
-          id: "turn-smoke-user",
-          sender_kind: "user",
-          sender_id: "local-user",
-          turn_id: "turn-smoke",
-          events: [{ type: "text", text: "hello local agent" }],
-        },
-        {
-          id: "turn-smoke-agent",
-          sender_kind: "agent",
-          sender_id: "mock-agent",
-          turn_id: "turn-smoke",
-          events: [
-            { type: "text", text: "Mock ACP reply: hello local agent" },
-            { sessionUpdate: "clash.canvas.patch" },
-          ],
-        },
-      ],
-    });
+    const persisted = await adapter.listSessionMessages(created.session_id);
+    expect(persisted).not.toBeNull();
+    if (!persisted) throw new Error("expected persisted local session messages");
+    expect(persisted.messages).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        id: "turn-smoke-user",
+        sender_kind: "user",
+        sender_id: "local-user",
+        turn_id: "turn-smoke",
+        events: [{ type: "text", text: "hello local agent" }],
+      }),
+      expect.objectContaining({
+        id: "turn-smoke-agent",
+        sender_kind: "agent",
+        sender_id: "mock-agent",
+        turn_id: "turn-smoke",
+      }),
+    ]));
+    const agentMessage = persisted.messages.find((message) => message.id === "turn-smoke-agent");
+    expect(agentMessage?.events).toEqual(expect.arrayContaining([
+      { type: "text", text: "Mock ACP reply: hello local agent" },
+      expect.objectContaining({ sessionUpdate: "clash.canvas.patch" }),
+    ]));
   });
 
   it("can run a one-shot local ACP text task", async () => {

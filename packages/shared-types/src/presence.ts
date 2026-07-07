@@ -78,7 +78,7 @@ export interface ActivityMessage {
 // ─── Project Room (group-chat IM) ─────────────────────────────
 
 export interface RoomMention {
-  user_id: string;
+  user_id?: string;
   agent_member_id?: string;
 }
 

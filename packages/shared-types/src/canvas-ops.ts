@@ -248,6 +248,42 @@ export class Canvas {
     return true;
   }
 
+  deleteNodes(nodeIds: string[]): { deletedNodeIds: string[]; deletedEdgeIds: string[] } {
+    const uniqueNodeIds = [...new Set(nodeIds.map((nodeId) => nodeId.trim()).filter(Boolean))];
+    if (uniqueNodeIds.length === 0) return { deletedNodeIds: [], deletedEdgeIds: [] };
+
+    const nodesMap = this.doc.getMap("nodes");
+    const edgesMap = this.doc.getMap("edges");
+    const deletedNodeIds = uniqueNodeIds.filter((nodeId) => Boolean(nodesMap.get(nodeId)));
+    if (deletedNodeIds.length === 0) return { deletedNodeIds: [], deletedEdgeIds: [] };
+
+    const deletedSet = new Set(deletedNodeIds);
+    const versionBefore = this.doc.version();
+    for (const [key, value] of nodesMap.entries()) {
+      const raw = value as Record<string, any> | undefined;
+      if (!raw || typeof raw !== "object") continue;
+      if (typeof raw.parentId === "string" && deletedSet.has(raw.parentId) && !deletedSet.has(key)) {
+        const { parentId: _parentId, extent: _extent, ...rest } = raw;
+        nodesMap.set(key, rest);
+      }
+    }
+
+    const deletedEdgeIds: string[] = [];
+    for (const [edgeId, rawEdge] of edgesMap.entries()) {
+      const edge = rawEdge as Record<string, any> | undefined;
+      if (!edge || typeof edge !== "object") continue;
+      if (deletedSet.has(edge.source) || deletedSet.has(edge.target)) {
+        edgesMap.delete(edgeId);
+        deletedEdgeIds.push(edgeId);
+      }
+    }
+    for (const nodeId of deletedNodeIds) nodesMap.delete(nodeId);
+
+    const update = this.doc.export({ mode: "update", from: versionBefore });
+    this.broadcast(update);
+    return { deletedNodeIds, deletedEdgeIds };
+  }
+
   // ── Create with auto-layout ──────────────────────────
 
   createNode(
@@ -258,6 +294,15 @@ export class Canvas {
     parentId?: string | null,
     assetId?: string | null,
   ): CreateNodeResult {
+    if (this.readNode(nodeId)) {
+      return {
+        node_id: null,
+        error: `Node ${nodeId} already exists`,
+        proposal: null,
+        asset_id: null,
+      };
+    }
+
     const mapping = AGENT_NODE_TYPE_MAP[nodeType as keyof typeof AGENT_NODE_TYPE_MAP];
     const rfType = mapping?.rfType ?? nodeType;
     let proposalType: string = ProposalType.Simple;
@@ -346,6 +391,10 @@ export class Canvas {
     edgeType?: string;
   }): CreateLinkedNodeResult {
     const { nodeId, nodeType, data, parentId, sourceNodeId } = opts;
+    if (this.readNode(nodeId)) {
+      throw new Error(`Node ${nodeId} already exists`);
+    }
+
     const edgeId = opts.edgeId ?? `${sourceNodeId}-${nodeId}`;
     const edgeType = opts.edgeType ?? "default";
 
@@ -537,6 +586,15 @@ export class Canvas {
 
     // Build pending asset node
     const assetNodeId = generateId();
+    if (this.readNode(assetNodeId)) {
+      return {
+        assetNodeId: "",
+        assetNodeType: "",
+        position: { x: 0, y: 0 },
+        error: `Node ${assetNodeId} already exists`,
+      };
+    }
+
     const pendingNode = buildPendingAssetNode({ ...pendingInput, nodeId: assetNodeId });
     const pendingData: Record<string, unknown> = { ...pendingNode.data };
     if (nodeData.actorType === "user" || nodeData.actorType === "agent") {
@@ -619,6 +677,14 @@ export class Canvas {
     const naturalHeight = typeof timelineDsl.compositionHeight === "number" && timelineDsl.compositionHeight > 0 ? timelineDsl.compositionHeight : 1080;
 
     const renderNodeId = generateId();
+    if (this.readNode(renderNodeId)) {
+      return {
+        renderNodeId: "",
+        position: { x: 0, y: 0 },
+        error: `Node ${renderNodeId} already exists`,
+      };
+    }
+
     const data: Record<string, unknown> = {
       label: "Rendered Video",
       status: TaskStatus.Pending,

@@ -1,0 +1,8 @@
+[
+  {
+    "id": "hero",
+    "name": "便利店店员",
+    "referenceAssetIds": ["asset-hero-front", "asset-hero-side", "asset-hero-back"],
+    "requiredViews": ["front", "side", "back"]
+  }
+]

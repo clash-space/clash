@@ -8,6 +8,7 @@ import {
   chromeBinary,
   evaluate,
   findFreePort,
+  startViteDevServer,
   stopProcess,
   tail,
   waitFor,
@@ -28,22 +29,7 @@ function countParam(name, fallback) {
 }
 
 async function startWeb({ webPort }) {
-  const logs = [];
-  const child = spawn("pnpm", ["--dir", webDir, "exec", "vite", "--host", "127.0.0.1", "--port", String(webPort)], {
-    cwd: webDir,
-    stdio: ["ignore", "pipe", "pipe"],
-  });
-  child.stdout.on("data", (buf) => {
-    const text = String(buf);
-    logs.push(text);
-    process.stdout.write(text);
-  });
-  child.stderr.on("data", (buf) => {
-    const text = String(buf);
-    logs.push(text);
-    process.stderr.write(text);
-  });
-  return { child, logs };
+  return startViteDevServer({ webDir, repoRoot, port: webPort });
 }
 
 async function main() {

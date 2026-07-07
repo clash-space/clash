@@ -1,0 +1,57 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Clash visual moment library",
+  "type": "object",
+  "required": ["schemaVersion", "kind", "sourceVideoAssetId", "fps", "sceneChanges", "candidates"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "kind": { "const": "clash.video.visual-moments.projection" },
+    "sourceVideoAssetId": { "type": "string" },
+    "fps": { "type": "number" },
+    "sourcePath": { "type": "string" },
+    "sceneChanges": { "type": "array", "items": { "type": "number" } },
+    "candidates": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "startMs", "endMs", "peakMs", "startFrame", "endFrame", "peakFrame", "sceneIndex", "motion", "quality", "tags"],
+        "properties": {
+          "id": { "type": "string" },
+          "startMs": { "type": "number" },
+          "endMs": { "type": "number" },
+          "peakMs": { "type": "number" },
+          "startFrame": { "type": "number" },
+          "endFrame": { "type": "number" },
+          "peakFrame": { "type": "number" },
+          "sceneIndex": { "type": "number" },
+          "motion": { "type": "number" },
+          "quality": { "type": "number" },
+          "action": { "type": "number" },
+          "emotion": { "type": "number" },
+          "semantic": { "type": "string" },
+          "tags": { "type": "array", "items": { "type": "string" } }
+        }
+      }
+    },
+    "recommendedClips": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "assetId", "type", "sourceStartFrame", "sourceEndFrame", "peakFrame", "score", "sceneIndex", "tags"],
+        "properties": {
+          "id": { "type": "string" },
+          "assetId": { "type": "string" },
+          "type": { "const": "video" },
+          "path": { "type": "string" },
+          "sourceStartFrame": { "type": "number" },
+          "sourceEndFrame": { "type": "number" },
+          "peakFrame": { "type": "number" },
+          "score": { "type": "number" },
+          "sceneIndex": { "type": "number" },
+          "semantic": { "type": "string" },
+          "tags": { "type": "array", "items": { "type": "string" } }
+        }
+      }
+    }
+  }
+}

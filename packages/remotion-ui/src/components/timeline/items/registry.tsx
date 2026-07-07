@@ -21,6 +21,9 @@ import { TextRenderer } from './renderers/TextRenderer';
 import { SolidRenderer } from './renderers/SolidRenderer';
 import { StickerRenderer } from './renderers/StickerRenderer';
 import { TransitionRenderer } from './renderers/TransitionRenderer';
+import { CaptionRenderer } from './renderers/CaptionRenderer';
+import { CompositionRenderer } from './renderers/CompositionRenderer';
+import { DerivedOverlayRenderer } from './renderers/DerivedOverlayRenderer';
 
 // Registry: map item.type to its renderer.
 // Adding a new type only requires wiring here and implementing its renderer.
@@ -33,6 +36,9 @@ export const itemRendererRegistry: Record<string, ItemRenderer> = {
   // Future: animated stickers (webp, image sequences)
   sticker: StickerRenderer,
   transition: TransitionRenderer,
+  caption: CaptionRenderer,
+  composition: CompositionRenderer,
+  'derived-overlay': DerivedOverlayRenderer,
 } as const;
 
 export function getRendererForItem(item: Item): ItemRenderer {
@@ -40,4 +46,3 @@ export function getRendererForItem(item: Item): ItemRenderer {
   // Default to SolidRenderer if unknown type to avoid runtime crash.
   return Renderer ?? SolidRenderer;
 }
-

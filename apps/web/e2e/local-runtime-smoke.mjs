@@ -74,6 +74,14 @@ function chromeBinary() {
   return found;
 }
 
+function viteCli() {
+  const localVite = path.join(webDir, "node_modules", "vite", "bin", "vite.js");
+  if (existsSync(localVite)) return localVite;
+  const rootVite = path.join(repoRoot, "node_modules", "vite", "bin", "vite.js");
+  if (existsSync(rootVite)) return rootVite;
+  throw new Error("Vite CLI not found. Run dependency install before web E2E.");
+}
+
 async function waitForTarget(cdpPort) {
   const url = `http://127.0.0.1:${cdpPort}/json/list`;
   const deadline = Date.now() + 15000;
@@ -194,6 +202,23 @@ async function typeChatMessage(cdp, text) {
   if (!inserted) throw new Error("Could not type into chat editor");
 }
 
+async function installHostMutationObserver(cdp) {
+  await evaluate(cdp, `(() => {
+    window.__CLASH_HOST_MUTATION_EVENTS__ = [];
+    window.addEventListener("clash:host-mutation", (event) => {
+      window.__CLASH_HOST_MUTATION_EVENTS__.push({
+        projectId: event.detail?.projectId ?? null,
+        mutation: event.detail?.mutation ?? null,
+      });
+    });
+    return true;
+  })()`);
+}
+
+async function readHostMutationEvents(cdp) {
+  return evaluate(cdp, `(() => window.__CLASH_HOST_MUTATION_EVENTS__ ?? [])()`);
+}
+
 async function capture(cdp, targetPath = latestScreenshot) {
   await mkdir(captureDir, { recursive: true });
   const shot = await cdp.send("Page.captureScreenshot", {
@@ -217,6 +242,7 @@ async function exerciseLocalRuntimeUi(cdp) {
     "project editor",
     15000,
   );
+  await installHostMutationObserver(cdp);
 
   const hasRuntimePickerButton = await evaluate(cdp, `(() => {
     const button = document.querySelector("button[aria-label='Run on (Cloud / local runtime)']") ||
@@ -305,6 +331,197 @@ async function exerciseLocalRuntimeUi(cdp) {
     "runtime-created canvas nodes",
     15000,
   );
+  await waitFor(
+    cdp,
+    `(() => {
+      const projectId = location.pathname.split("/").filter(Boolean).at(-1);
+      const events = window.__CLASH_HOST_MUTATION_EVENTS__ ?? [];
+      return events.some((event) =>
+        event?.projectId === projectId &&
+        event?.mutation?.accepted === true &&
+        event?.mutation?.operation === "canvas_add_node" &&
+        event?.mutation?.entity?.kind === "canvas-node" &&
+        typeof event?.mutation?.resultEntityId === "string" &&
+        typeof event?.mutation?.afterReadToken === "string"
+      );
+    })()`,
+    "browser-visible host mutation event",
+    15000,
+  );
+  await waitFor(
+    cdp,
+    `(() => {
+      const projectId = location.pathname.split("/").filter(Boolean).at(-1);
+      const events = window.__CLASH_HOST_MUTATION_EVENTS__ ?? [];
+      return events.some((event) =>
+        event?.projectId === projectId &&
+        event?.mutation?.accepted === true &&
+        event?.mutation?.operation === "canvas_delete" &&
+        event?.mutation?.entity?.kind === "canvas-node" &&
+        typeof event?.mutation?.resultEntityId === "string"
+      );
+    })()`,
+    "browser-visible host node delete mutation event",
+    15000,
+  );
+  await waitFor(
+    cdp,
+    `(() => {
+      const projectId = location.pathname.split("/").filter(Boolean).at(-1);
+      const events = window.__CLASH_HOST_MUTATION_EVENTS__ ?? [];
+      return events.some((event) =>
+        event?.projectId === projectId &&
+        event?.mutation?.accepted === false &&
+        event?.mutation?.operation === "canvas_delete" &&
+        event?.mutation?.entity?.kind === "canvas-node" &&
+        typeof event?.mutation?.beforeReadToken === "string" &&
+        typeof event?.mutation?.error === "string" &&
+        event.mutation.error.includes("Missing canvas delete read proof")
+      );
+    })()`,
+    "browser-visible rejected agent node delete without read proof",
+    15000,
+  );
+  await waitFor(
+    cdp,
+    `(() => {
+      const projectId = location.pathname.split("/").filter(Boolean).at(-1);
+      const events = window.__CLASH_HOST_MUTATION_EVENTS__ ?? [];
+      return events.some((event) =>
+        event?.projectId === projectId &&
+        event?.mutation?.accepted === true &&
+        event?.mutation?.operation === "canvas_add_edge" &&
+        event?.mutation?.entity?.kind === "canvas-edge" &&
+        typeof event?.mutation?.resultEntityId === "string"
+      );
+    })()`,
+    "browser-visible host edge mutation event",
+    15000,
+  );
+  await waitFor(
+    cdp,
+    `(() => {
+      const projectId = location.pathname.split("/").filter(Boolean).at(-1);
+      const events = window.__CLASH_HOST_MUTATION_EVENTS__ ?? [];
+      return events.some((event) =>
+        event?.projectId === projectId &&
+        event?.mutation?.accepted === true &&
+        event?.mutation?.operation === "canvas_update_edge" &&
+        event?.mutation?.entity?.kind === "canvas-edge" &&
+        typeof event?.mutation?.resultEntityId === "string"
+      );
+    })()`,
+    "browser-visible host edge update mutation event",
+    15000,
+  );
+  await waitFor(
+    cdp,
+    `(() => {
+      const projectId = location.pathname.split("/").filter(Boolean).at(-1);
+      const events = window.__CLASH_HOST_MUTATION_EVENTS__ ?? [];
+      return events.some((event) =>
+        event?.projectId === projectId &&
+        event?.mutation?.accepted === true &&
+        event?.mutation?.operation === "canvas_delete_edge" &&
+        event?.mutation?.entity?.kind === "canvas-edge" &&
+        typeof event?.mutation?.resultEntityId === "string"
+      );
+    })()`,
+    "browser-visible host edge delete mutation event",
+    15000,
+  );
+  await waitFor(
+    cdp,
+    `(() => {
+      const projectId = location.pathname.split("/").filter(Boolean).at(-1);
+      const events = window.__CLASH_HOST_MUTATION_EVENTS__ ?? [];
+      return events.some((event) =>
+        event?.projectId === projectId &&
+        event?.mutation?.accepted === true &&
+        event?.mutation?.operation === "timeline_apply" &&
+        event?.mutation?.entity?.kind === "timeline" &&
+        typeof event?.mutation?.resultEntityId === "string" &&
+        typeof event?.mutation?.afterReadToken === "string"
+      );
+    })()`,
+    "browser-visible host timeline apply mutation event",
+    15000,
+  );
+
+  const hostMutationEvents = await readHostMutationEvents(cdp);
+  const acceptedNodeMutations = hostMutationEvents.filter((event) =>
+    event?.mutation?.accepted === true &&
+    event?.mutation?.operation === "canvas_add_node" &&
+    event?.mutation?.entity?.kind === "canvas-node"
+  );
+  assert(
+    acceptedNodeMutations.length > 0,
+    "ProjectEditor emitted browser-visible host mutation events",
+    hostMutationEvents,
+  );
+  const acceptedNodeDeleteMutations = hostMutationEvents.filter((event) =>
+    event?.mutation?.accepted === true &&
+    event?.mutation?.operation === "canvas_delete" &&
+    event?.mutation?.entity?.kind === "canvas-node"
+  );
+  assert(
+    acceptedNodeDeleteMutations.length > 0,
+    "ProjectEditor emitted browser-visible host node delete mutation events",
+    hostMutationEvents,
+  );
+  const rejectedNodeDeleteReadProofMutations = hostMutationEvents.filter((event) =>
+    event?.mutation?.accepted === false &&
+    event?.mutation?.operation === "canvas_delete" &&
+    event?.mutation?.entity?.kind === "canvas-node" &&
+    typeof event?.mutation?.beforeReadToken === "string" &&
+    typeof event?.mutation?.error === "string" &&
+    event.mutation.error.includes("Missing canvas delete read proof")
+  );
+  assert(
+    rejectedNodeDeleteReadProofMutations.length > 0,
+    "ProjectEditor rejected browser-visible agent node delete without read proof",
+    hostMutationEvents,
+  );
+  const acceptedEdgeMutations = hostMutationEvents.filter((event) =>
+    event?.mutation?.accepted === true &&
+    event?.mutation?.operation === "canvas_add_edge" &&
+    event?.mutation?.entity?.kind === "canvas-edge"
+  );
+  assert(
+    acceptedEdgeMutations.length > 0,
+    "ProjectEditor emitted browser-visible host edge mutation events",
+    hostMutationEvents,
+  );
+  const acceptedEdgeUpdateMutations = hostMutationEvents.filter((event) =>
+    event?.mutation?.accepted === true &&
+    event?.mutation?.operation === "canvas_update_edge" &&
+    event?.mutation?.entity?.kind === "canvas-edge"
+  );
+  assert(
+    acceptedEdgeUpdateMutations.length > 0,
+    "ProjectEditor emitted browser-visible host edge update mutation events",
+    hostMutationEvents,
+  );
+  const acceptedEdgeDeleteMutations = hostMutationEvents.filter((event) =>
+    event?.mutation?.accepted === true &&
+    event?.mutation?.operation === "canvas_delete_edge" &&
+    event?.mutation?.entity?.kind === "canvas-edge"
+  );
+  assert(
+    acceptedEdgeDeleteMutations.length > 0,
+    "ProjectEditor emitted browser-visible host edge delete mutation events",
+    hostMutationEvents,
+  );
+  const acceptedTimelineMutations = hostMutationEvents.filter((event) =>
+    event?.mutation?.accepted === true &&
+    event?.mutation?.operation === "timeline_apply" &&
+    event?.mutation?.entity?.kind === "timeline"
+  );
+  assert(
+    acceptedTimelineMutations.length > 0,
+    "ProjectEditor emitted browser-visible host timeline apply mutation events",
+    hostMutationEvents,
+  );
 
   return evaluate(cdp, `({
     href: location.href,
@@ -318,6 +535,16 @@ async function exerciseLocalRuntimeUi(cdp) {
       node.text.includes("Agent Brief") ||
       node.text.includes("Agent Image Pass")
     ),
+    hostMutationEvents: (window.__CLASH_HOST_MUTATION_EVENTS__ ?? []).map((event) => ({
+      projectId: event.projectId,
+      operation: event.mutation?.operation,
+      accepted: event.mutation?.accepted,
+      entity: event.mutation?.entity,
+      resultEntityId: event.mutation?.resultEntityId,
+      hasAfterReadToken: typeof event.mutation?.afterReadToken === "string",
+      hasBeforeReadToken: typeof event.mutation?.beforeReadToken === "string",
+      error: event.mutation?.error,
+    })),
   })`);
 }
 
@@ -355,12 +582,13 @@ async function main() {
   let cdp;
 
   try {
-    web = spawn("pnpm", ["--dir", webDir, "exec", "vite", "--host", "127.0.0.1", "--port", String(webPort)], {
+    web = spawn(process.execPath, [viteCli(), "--host", "127.0.0.1", "--port", String(webPort)], {
       cwd: webDir,
       env: {
         ...process.env,
         VITE_CLASH_API_BASE_URL: apiOrigin,
         VITE_CLASH_WS_BASE_URL: apiOrigin.replace("http:", "ws:"),
+        CLASH_WEB_E2E_NO_CLOUDFLARE: "1",
       },
       stdio: ["ignore", "pipe", "pipe"],
     });

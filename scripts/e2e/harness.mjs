@@ -1,3 +1,4 @@
+import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
 import { mkdir, writeFile } from "node:fs/promises";
 import net from "node:net";
@@ -63,6 +64,38 @@ export function chromeBinary() {
     throw new Error("No Chrome-compatible browser found. Set CHROME_BIN to run GUI E2E.");
   }
   return found;
+}
+
+export function viteCli({ webDir, repoRoot }) {
+  const localVite = path.join(webDir, "node_modules", "vite", "bin", "vite.js");
+  if (existsSync(localVite)) return localVite;
+  const rootVite = path.join(repoRoot, "node_modules", "vite", "bin", "vite.js");
+  if (existsSync(rootVite)) return rootVite;
+  throw new Error("Vite CLI not found. Run dependency install before web E2E.");
+}
+
+export function startViteDevServer({ webDir, repoRoot, port, env = {} }) {
+  const logs = [];
+  const child = spawn(process.execPath, [viteCli({ webDir, repoRoot }), "--host", "127.0.0.1", "--port", String(port)], {
+    cwd: webDir,
+    env: {
+      ...process.env,
+      CLASH_WEB_E2E_NO_CLOUDFLARE: "1",
+      ...env,
+    },
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  child.stdout.on("data", (buf) => {
+    const text = String(buf);
+    logs.push(text);
+    process.stdout.write(text);
+  });
+  child.stderr.on("data", (buf) => {
+    const text = String(buf);
+    logs.push(text);
+    process.stderr.write(text);
+  });
+  return { child, logs };
 }
 
 export async function waitForTarget(cdpPort, timeoutMs = 15000) {

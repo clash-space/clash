@@ -1,10 +1,10 @@
 import { readFile, rm } from "node:fs/promises";
-import { homedir } from "node:os";
 import { join } from "node:path";
 import {
   isLocalHostDiscoveryRecord,
   type LocalHostDiscoveryRecord,
 } from "@clash/shared-runtime";
+import { resolveClashRoot } from "./clash-home";
 
 export type HostDiscoveryStatus =
   | { status: "active"; record: LocalHostDiscoveryRecord }
@@ -16,7 +16,7 @@ export interface HostDiscoveryStatusOptions {
 }
 
 export function getDefaultHostDiscoveryRunDir(): string {
-  return join(homedir(), ".clash", "run");
+  return join(resolveClashRoot(), "run");
 }
 
 export function getHostDiscoveryPath(runDir = getDefaultHostDiscoveryRunDir()): string {

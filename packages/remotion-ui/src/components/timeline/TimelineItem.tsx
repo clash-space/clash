@@ -121,6 +121,12 @@ export const TimelineItem: React.FC<TimelineItemProps> = ({
         return '#FF9800';
       case 'image':
         return '#9C27B0';
+      case 'caption':
+        return '#0f766e';
+      case 'composition':
+        return '#4f46e5';
+      case 'derived-overlay':
+        return '#db2777';
       default:
         return '#666666';
     }

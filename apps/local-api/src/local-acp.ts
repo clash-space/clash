@@ -1,7 +1,7 @@
 import type { IncomingMessage } from "node:http";
 import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { access, mkdir, readFile, writeFile } from "node:fs/promises";
+import { access, chmod, mkdir, readFile, writeFile } from "node:fs/promises";
 import { basename, join } from "node:path";
 import { WebSocketServer, type WebSocket } from "ws";
 import {
@@ -557,6 +557,11 @@ async function readHarnessConfigFile(configPath: string): Promise<Record<string,
   }
 }
 
+async function writeHarnessConfigFile(configPath: string, value: Record<string, unknown>): Promise<void> {
+  await writeFile(configPath, JSON.stringify(value, null, 2), { encoding: "utf8", mode: 0o600 });
+  await chmod(configPath, 0o600).catch(() => undefined);
+}
+
 export function createLocalHarnessConfigStore(dataDir: string): LocalAcpHarnessConfigStore {
   const configPath = join(dataDir, "harnesses.json");
   return {
@@ -576,7 +581,7 @@ export function createLocalHarnessConfigStore(dataDir: string): LocalAcpHarnessC
     async saveEnabledHarnessIds(ids) {
       await mkdir(dataDir, { recursive: true });
       const parsed = await readHarnessConfigFile(configPath);
-      await writeFile(configPath, JSON.stringify({ ...parsed, enabled_harness_ids: ids }, null, 2), "utf8");
+      await writeHarnessConfigFile(configPath, { ...parsed, enabled_harness_ids: ids });
     },
     async loadAgentServers() {
       const parsed = await readHarnessConfigFile(configPath);
@@ -586,10 +591,10 @@ export function createLocalHarnessConfigStore(dataDir: string): LocalAcpHarnessC
     async saveAgentServers(servers) {
       await mkdir(dataDir, { recursive: true });
       const parsed = await readHarnessConfigFile(configPath);
-      await writeFile(configPath, JSON.stringify({
+      await writeHarnessConfigFile(configPath, {
         ...parsed,
         agent_servers: normalizeAgentServersConfig(servers),
-      }, null, 2), "utf8");
+      });
     },
   };
 }

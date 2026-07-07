@@ -8,6 +8,35 @@ import { fileURLToPath } from "node:url";
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "..");
 const SDK_PYTHON_DIR = join(REPO_ROOT, "packages", "clash-sdk", "python");
 
+test("reads bridge runtime credentials from CLASH_HOME", async () => {
+  const clashHome = await mkdtemp(join(tmpdir(), "clash-actions-creds-"));
+  const previousClashHome = process.env.CLASH_HOME;
+  process.env.CLASH_HOME = clashHome;
+  try {
+    await writeFile(
+      join(clashHome, "credentials.json"),
+      JSON.stringify({
+        runtimeId: "runtime-home",
+        agentApiKey: "clsh_agent",
+        token: "sk_machine",
+        serverUrl: "http://127.0.0.1:49321",
+      }),
+      "utf8",
+    );
+
+    const { readBridgeRuntimeId } = await import("./actions-host");
+    assert.deepEqual(readBridgeRuntimeId(), {
+      runtimeId: "runtime-home",
+      apiKey: "clsh_agent",
+      serverUrl: "http://127.0.0.1:49321",
+    });
+  } finally {
+    if (previousClashHome === undefined) delete process.env.CLASH_HOME;
+    else process.env.CLASH_HOME = previousClashHome;
+    await rm(clashHome, { recursive: true, force: true });
+  }
+});
+
 test("disables an action that exits immediately instead of respawning it", async () => {
   const home = await mkdtemp(join(tmpdir(), "clash-actions-host-"));
   const previousHome = process.env.HOME;

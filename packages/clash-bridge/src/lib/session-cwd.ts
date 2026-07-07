@@ -2,8 +2,10 @@
  * Per-project workspace management.
  *
  * Each spawned ACP agent runs with cwd
- *   `~/.clash/projects/<project-id>/`
+ *   `~/.clash/projects/<encoded-project-id>/`
  * — never the user's shell pwd and never a per-session directory.
+ * The path segment is URI-encoded to avoid collisions; `.clash/project.toml`
+ * stores the canonical project id.
  *
  * Each agent template has its own bundled AGENTS.md system prompt + chosen
  * ACP runtime (claude-agent-acp by default; could be
@@ -17,7 +19,7 @@
  * be an explicit product action.
  */
 
-import { mkdir, readFile, stat, cp, rename, writeFile } from "node:fs/promises";
+import { mkdir, readFile, cp, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -82,7 +84,7 @@ export async function readAgentRuntime(agentTemplateId: string): Promise<{ agent
  * Idempotent — safe to call on every spawn.
  *
  * Layout:
- *   ~/.clash/projects/<project-id>/
+ *   ~/.clash/projects/<encoded-project-id>/
  *     AGENTS.md
  *     .clash/project.toml
  *     .claude/
@@ -90,18 +92,38 @@ export async function readAgentRuntime(agentTemplateId: string): Promise<{ agent
  *       commands/...
  */
 export async function ensureAgentCwd(agentTemplateId: string, projectId?: string): Promise<string> {
-  await migrateLegacyDirs();
-  const proj = projectId && projectId.length > 0 ? sanitize(projectId) : DEFAULT_PROJECT;
-  const cwd = join(paths().projectsDir, proj);
+  const canonicalProjectId = projectId && projectId.length > 0 ? projectId : DEFAULT_PROJECT;
+  const projectPathSegment = projectIdPathSegment(canonicalProjectId);
+  const cwd = join(paths().projectsDir, projectPathSegment);
   await mkdir(cwd, { recursive: true });
+  await ensureProjectWorkspaceLayout(cwd);
   await installAgentTemplate(agentTemplateId, cwd);
-  await writeProjectMarker(cwd, proj);
+  await writeProjectMarker(cwd, canonicalProjectId);
   return cwd;
+}
+
+async function ensureProjectWorkspaceLayout(cwd: string): Promise<void> {
+  await Promise.all([
+    mkdir(join(cwd, "drafts"), { recursive: true }),
+    mkdir(join(cwd, "projections", "text"), { recursive: true }),
+    mkdir(join(cwd, "projections", "timelines"), { recursive: true }),
+    mkdir(join(cwd, "projections", "storyboards"), { recursive: true }),
+    mkdir(join(cwd, "projections", "prompts"), { recursive: true }),
+    mkdir(join(cwd, "projections", "metadata"), { recursive: true }),
+    mkdir(join(cwd, "sessions"), { recursive: true }),
+    mkdir(join(cwd, "assets", "links"), { recursive: true }),
+    mkdir(join(cwd, "runtime"), { recursive: true }),
+  ]);
 }
 
 /** Filesystem-safe form of an arbitrary id (no slashes, no leading dots). */
 function sanitize(id: string): string {
   return id.replace(/[^a-zA-Z0-9._-]/g, "_").replace(/^\.+/, "");
+}
+
+function projectIdPathSegment(id: string): string {
+  const encoded = encodeURIComponent(id).replace(/\./g, "%2E");
+  return encoded || DEFAULT_PROJECT;
 }
 
 /**
@@ -141,28 +163,8 @@ async function writeProjectMarker(cwd: string, projectId: string): Promise<void>
   );
 }
 
-/**
- * Pre-project-root versions stored workspaces under
- *   ~/.clash/sessions/<id>/   (beta.20–25)
- *   ~/.clash/workspaces/<id>/ (beta.26 briefly)
- * Move both out of the way on first call so they don't sit around
- * confusing future debugging. We don't try to import them automatically:
- * older layouts mixed role/session concerns into cwd, and silent imports can
- * overwrite a real project root.
- */
-async function migrateLegacyDirs(): Promise<void> {
-  const archive = join(paths().configDir, ".legacy-archive");
-  for (const oldName of ["sessions", "workspaces"]) {
-    const old = join(paths().configDir, oldName);
-    try { await stat(old); } catch { continue; }
-    try {
-      await mkdir(archive, { recursive: true });
-      await rename(old, join(archive, oldName));
-    } catch {
-      /* best-effort; user can clean by hand */
-    }
-  }
-}
+// v1 does not auto-migrate old cwd layouts into a hidden archive directory.
+// Project cwd creation is explicit and stable under ~/.clash/projects/<encoded-id>.
 
 /**
  * Project cwd is durable product state. Function name kept for the daemon's

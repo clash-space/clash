@@ -1135,6 +1135,19 @@ describe("model upstream routing", () => {
         },
       ],
     });
+    const flashLiteRoute = resolveModelUpstreamRoute({
+      modelCode: "gemini-3.1-flash-lite-image",
+      kind: "image",
+      configuredProviders: [
+        {
+          providerId: "official",
+          upstreamId: "google-agent-platform",
+          region: "global",
+          enabled: true,
+          configuredCredentials: ["vertexCredentials"],
+        },
+      ],
+    });
 
     expect(proRoute).toMatchObject({
       modelCode: "nano-banana-pro",
@@ -1145,6 +1158,61 @@ describe("model upstream routing", () => {
       modelCode: "nano-banana-2",
       upstreamModel: "gemini-3.1-flash-image",
     });
+    expect(flashLiteRoute).toMatchObject({
+      modelCode: "nano-banana-2-lite",
+      upstreamModel: "gemini-3.1-flash-lite-image",
+    });
+  });
+
+  it("routes current Google Agent Platform SOTA text models through official Vertex credentials", () => {
+    const configuredProviders: ProviderAccountAvailability[] = [
+      {
+        providerId: "official",
+        upstreamId: "google-agent-platform",
+        region: "global",
+        enabled: true,
+        configuredCredentials: ["vertexCredentials"],
+      },
+    ];
+
+    expect(
+      ["gemini-3.5-flash", "gemini-3.1-pro", "gemini-3-flash", "gemini-3.1-flash-lite"].map((modelCode) =>
+        resolveModelUpstreamRoute({
+          modelCode,
+          kind: "text",
+          configuredProviders,
+        })
+      )
+    ).toEqual([
+      expect.objectContaining({
+        modelCode: "gemini-3.5-flash",
+        upstreamId: "google-agent-platform",
+        upstreamModel: "gemini-3.5-flash",
+        apiShape: "google-agent-platform",
+        requiredCredentials: ["vertexCredentials"],
+      }),
+      expect.objectContaining({
+        modelCode: "gemini-3.1-pro",
+        upstreamId: "google-agent-platform",
+        upstreamModel: "gemini-3.1-pro-preview",
+        apiShape: "google-agent-platform",
+        requiredCredentials: ["vertexCredentials"],
+      }),
+      expect.objectContaining({
+        modelCode: "gemini-3-flash",
+        upstreamId: "google-agent-platform",
+        upstreamModel: "gemini-3-flash-preview",
+        apiShape: "google-agent-platform",
+        requiredCredentials: ["vertexCredentials"],
+      }),
+      expect.objectContaining({
+        modelCode: "gemini-3.1-flash-lite",
+        upstreamId: "google-agent-platform",
+        upstreamModel: "gemini-3.1-flash-lite",
+        apiShape: "google-agent-platform",
+        requiredCredentials: ["vertexCredentials"],
+      }),
+    ]);
   });
 
   it("lists Clash canonical image models instead of provider model aliases", () => {
@@ -1152,8 +1220,10 @@ describe("model upstream routing", () => {
     const ids = entries.map((entry) => entry.model.id);
 
     expect(ids).toContain("nano-banana-2");
+    expect(ids).toContain("nano-banana-2-lite");
     expect(ids).toContain("nano-banana-pro");
     expect(ids).not.toContain("gemini-3.1-flash-image");
+    expect(ids).not.toContain("gemini-3.1-flash-lite-image");
     expect(ids).not.toContain("gemini-3-pro-image");
   });
 

@@ -166,6 +166,45 @@ describe("useClashRuntime", () => {
     });
   });
 
+  it("shows the runtime create error field from structured local API failures", async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith("/api/v1/runtimes") && !init?.method) {
+        return new Response(JSON.stringify({ runtimes: [] }), {
+          headers: { "content-type": "application/json" },
+        });
+      }
+      if (url.endsWith("/api/v1/runtimes/desktop-local/sessions") && init?.method === "POST") {
+        return new Response(JSON.stringify({
+          error: "No local agent found. Install or enable an agent in Settings > Runtimes, then retry.",
+          mutation: {
+            operation: "runtime_session_create",
+            entity: { kind: "session", id: "" },
+            forced: false,
+            accepted: false,
+          },
+        }), {
+          status: 503,
+          headers: { "content-type": "application/json" },
+        });
+      }
+      return new Response("not found", { status: 404 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    vi.stubGlobal("WebSocket", FakeWebSocket);
+
+    const { result } = renderHook(() => useClashRuntime());
+
+    await act(async () => {
+      await result.current.select("desktop-local", undefined, { agentId: "codex-acp" });
+    });
+
+    expect(result.current.status).toBe("error");
+    expect(result.current.errorMessage).toBe(
+      "session create failed: No local agent found. Install or enable an agent in Settings > Runtimes, then retry.",
+    );
+  });
+
   it("hydrates persisted Cursor assistant chunks after session complete", async () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
@@ -1545,6 +1584,55 @@ describe("useClashRuntime", () => {
 
     expect(result.current.messages.map((message) => message.role)).toEqual(["user", "assistant"]);
     expect(result.current.messages.at(1)?.parts).toEqual([{ type: "text", text: "/Users/xiaoyang/project" }]);
+  });
+
+  it("shows the runtime attach error field from structured local API failures", async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith("/api/v1/runtimes") && !init?.method) {
+        return new Response(JSON.stringify({ runtimes: [] }), {
+          headers: { "content-type": "application/json" },
+        });
+      }
+      if (url.endsWith("/api/v1/local-sessions/local-session-old/messages") && !init?.method) {
+        return new Response("not found", { status: 404 });
+      }
+      if (url.endsWith("/api/v1/local-sessions/local-session-old/_attach") && init?.method === "POST") {
+        return new Response(JSON.stringify({
+          error: "ACP session init timed out after 10ms",
+          session_id: "local-session-old",
+          mutation: {
+            operation: "runtime_session_attach",
+            entity: { kind: "session", id: "local-session-old" },
+            forced: false,
+            accepted: true,
+          },
+        }), {
+          status: 503,
+          headers: { "content-type": "application/json" },
+        });
+      }
+      return new Response("not found", { status: 404 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    vi.stubGlobal("WebSocket", FakeWebSocket);
+
+    const { result } = renderHook(() => useClashRuntime());
+
+    await act(async () => {
+      await result.current.attachSession({
+        id: "local-session-old",
+        threadId: "local-session-old",
+        type: "runtime",
+        projectId: "project-one",
+        runtimeId: "desktop-local",
+        agentId: "codex-acp",
+        status: "active",
+      });
+    });
+
+    expect(result.current.status).toBe("error");
+    expect(result.current.errorMessage).toBe("session attach failed: ACP session init timed out after 10ms");
   });
 
   it("treats loaded attach history as connected while ACP restore is still pending", async () => {

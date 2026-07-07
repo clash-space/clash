@@ -9,6 +9,16 @@ export {
   type TextProviderKind,
 } from "./text-generation.js";
 
+export {
+  buildProjectStatus,
+  projectIdPathSegment,
+  type ProjectStatus,
+  type ProjectStatusContext,
+  type ProjectStatusMarker,
+  type ProjectStatusStorage,
+  type ProjectStatusSource,
+} from "./project-status.js";
+
 export const LOCAL_HOST_RECORD_SCHEMA_VERSION = 1;
 export const LOCAL_HOST_PROTOCOL_VERSION = 1;
 export const LOCAL_HOST_DATA_SCHEMA_VERSION = 1;

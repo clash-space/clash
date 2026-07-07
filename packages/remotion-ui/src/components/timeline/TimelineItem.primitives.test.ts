@@ -1,13 +1,9 @@
 import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 describe('TimelineItem primitives', () => {
   it('routes item edit/delete controls through remotion-ui primitives', () => {
-    const source = readFileSync(
-      join(process.cwd(), 'packages/remotion-ui/src/components/timeline/TimelineItem.tsx'),
-      'utf8',
-    );
+    const source = readFileSync(new URL('./TimelineItem.tsx', import.meta.url), 'utf8');
 
     expect(source).toContain('../ui/controls');
     expect(source).toContain('<TimelineTextInput');
@@ -18,10 +14,7 @@ describe('TimelineItem primitives', () => {
   });
 
   it('routes text edit keyboard commit and cancel through the text input primitive', () => {
-    const source = readFileSync(
-      join(process.cwd(), 'packages/remotion-ui/src/components/timeline/TimelineItem.tsx'),
-      'utf8',
-    );
+    const source = readFileSync(new URL('./TimelineItem.tsx', import.meta.url), 'utf8');
 
     expect(source).toContain('onCommit={handleTextSave}');
     expect(source).toContain('onCancel={handleTextCancel}');
@@ -29,10 +22,7 @@ describe('TimelineItem primitives', () => {
   });
 
   it('routes fade and volume sliders through the timeline slider primitive', () => {
-    const source = readFileSync(
-      join(process.cwd(), 'packages/remotion-ui/src/components/timeline/TimelineItem.tsx'),
-      'utf8',
-    );
+    const source = readFileSync(new URL('./TimelineItem.tsx', import.meta.url), 'utf8');
 
     expect(source).toContain('../ui/timeline-slider');
     expect(source).toContain('<TimelineSlider');
@@ -42,10 +32,7 @@ describe('TimelineItem primitives', () => {
   });
 
   it('routes resize handle drags through the gesture primitive', () => {
-    const source = readFileSync(
-      join(process.cwd(), 'packages/remotion-ui/src/components/timeline/TimelineItem.tsx'),
-      'utf8',
-    );
+    const source = readFileSync(new URL('./TimelineItem.tsx', import.meta.url), 'utf8');
 
     expect(source).toContain('../ui/gesture');
     expect(source).toContain('useDragGesture');

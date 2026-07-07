@@ -201,6 +201,7 @@ export class LoroSyncClient {
   ) { return this.canvas.createNode(nodeId, nodeType, data, position, parentId, assetId); }
   updateNode(nodeId: string, updates: Record<string, unknown>) { return this.canvas.updateNode(nodeId, updates); }
   deleteNode(nodeId: string) { return this.canvas.deleteNode(nodeId); }
+  deleteNodes(nodeIds: string[]) { return this.canvas.deleteNodes(nodeIds); }
   searchNodes(query: string, nodeTypes?: string[] | null) { return this.canvas.searchNodes(query, nodeTypes); }
   getNodeStatus(nodeIdOrAssetId: string) { return this.canvas.getNodeStatus(nodeIdOrAssetId); }
   findNodeByIdOrAssetId(idOrAssetId: string) { return this.canvas.findNode(idOrAssetId); }

@@ -1,0 +1,63 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Clash reference non-copying QA report",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "kind",
+    "referenceId",
+    "sourceUrl",
+    "status",
+    "similarityScore",
+    "similarityThreshold",
+    "blockedReasons",
+    "checks",
+    "matches"
+  ],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "kind": { "const": "clash.reference.noncopying-qa" },
+    "referenceId": { "type": "string" },
+    "sourceUrl": { "type": "string" },
+    "status": { "enum": ["passed", "requires-review", "failed"] },
+    "similarityScore": { "type": "number" },
+    "similarityThreshold": { "type": "number" },
+    "blockedReasons": { "type": "array", "items": { "type": "string" } },
+    "checks": {
+      "type": "object",
+      "required": ["rawReferenceAssetReuse", "structureSimilarity"],
+      "properties": {
+        "rawReferenceAssetReuse": {
+          "type": "object",
+          "required": ["pass", "offenders"],
+          "properties": {
+            "pass": { "type": "boolean" },
+            "offenders": { "type": "array", "items": { "type": "string" } }
+          }
+        },
+        "structureSimilarity": {
+          "type": "object",
+          "required": ["pass", "threshold", "maxScore"],
+          "properties": {
+            "pass": { "type": "boolean" },
+            "threshold": { "type": "number" },
+            "maxScore": { "type": "number" }
+          }
+        }
+      }
+    },
+    "matches": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["referenceShotId", "proposedShotId", "similarityScore", "sharedTerms"],
+        "properties": {
+          "referenceShotId": { "type": "string" },
+          "proposedShotId": { "type": "string" },
+          "similarityScore": { "type": "number" },
+          "sharedTerms": { "type": "array", "items": { "type": "string" } }
+        }
+      }
+    }
+  }
+}

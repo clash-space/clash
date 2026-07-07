@@ -1,11 +1,15 @@
 import type {
   AudioItem,
+  CaptionItem,
+  CompositionItem,
+  DerivedOverlayItem,
   ImageItem,
   Item,
   TimelineDsl,
   Track,
   TrackRole,
   TransitionItem,
+  TextItem,
   VideoItem,
 } from './types';
 
@@ -27,6 +31,9 @@ export type TimelineIssue = {
     | 'item.invalid_duration'
     | 'item.unresolved_source'
     | 'item.transition_missing_ref'
+    | 'item.invalid_composition'
+    | 'item.invalid_caption'
+    | 'item.invalid_derived_overlay'
     | 'command.track_not_found'
     | 'command.item_not_found'
     | 'command.invalid_input';
@@ -51,10 +58,11 @@ export type TimelineCommand =
       trackId: string;
       sourceNodeId: string;
       assetId?: string;
-      itemType: 'video' | 'audio' | 'image';
+      itemType: 'video' | 'audio' | 'image' | 'text';
       from: number;
       durationInFrames: number;
       id?: string;
+      text?: string;
     }
   | {
       type: 'trim_clip';
@@ -77,13 +85,13 @@ export type TimelineCommandResult =
 const ROLE_ALLOWED_TYPES: Record<TrackRole, ReadonlySet<Item['type']>> = {
   'primary-video': new Set(['video', 'image', 'solid']),
   'b-roll': new Set(['video', 'image', 'solid']),
-  overlay: new Set(['video', 'image', 'solid', 'text', 'sticker']),
-  subtitle: new Set(['text']),
+  overlay: new Set(['video', 'image', 'solid', 'text', 'sticker', 'composition', 'derived-overlay']),
+  subtitle: new Set(['caption']),
   narration: new Set(['audio', 'video']),
   music: new Set(['audio']),
   sfx: new Set(['audio']),
   transition: new Set(['transition']),
-  mixed: new Set(['video', 'audio', 'image', 'solid', 'text', 'sticker', 'transition']),
+  mixed: new Set(['video', 'audio', 'image', 'solid', 'text', 'sticker', 'composition', 'caption', 'derived-overlay', 'transition']),
 };
 
 function issue(code: TimelineIssue['code'], message: string, path: string): TimelineIssue {
@@ -130,6 +138,161 @@ function isResolved(item: Item, context: TimelineValidationContext): boolean {
   }
 
   return false;
+}
+
+function isLocalProjectPath(value: unknown): boolean {
+  if (typeof value !== 'string' || !value.trim()) return false;
+  return !/^[a-z][a-z0-9+.-]*:\/\//i.test(value);
+}
+
+function validateCompositionItem(item: CompositionItem, path: string, issues: TimelineIssue[]) {
+  if (item.runtime !== 'html' && item.runtime !== 'react' && item.runtime !== 'remotion') {
+    issues.push(issue('item.invalid_composition', 'Composition item runtime must be html, react, or remotion.', `${path}.runtime`));
+  }
+  if (!item.compositionId || typeof item.compositionId !== 'string') {
+    issues.push(issue('item.invalid_composition', 'Composition item must have a compositionId.', `${path}.compositionId`));
+  }
+  if (!isLocalProjectPath(item.sourcePath)) {
+    issues.push(issue('item.invalid_composition', 'Composition sourcePath must be a local project path, not a remote URL.', `${path}.sourcePath`));
+  }
+  if (item.runtime === 'html' && item.compositionKind === 'motion-graphics' && !item.spec) {
+    issues.push(issue('item.invalid_composition', 'HTML motion-graphics composition items must include a first-party spec for preview.', `${path}.spec`));
+  }
+  if (item.renderedAssetPath !== undefined && !isLocalProjectPath(item.renderedAssetPath)) {
+    issues.push(issue('item.invalid_composition', 'Composition renderedAssetPath must be a local project path, not a remote URL.', `${path}.renderedAssetPath`));
+  }
+  if (item.runtime !== 'html' && !isLocalProjectPath(item.renderedAssetPath)) {
+    issues.push(issue('item.invalid_composition', 'React/Remotion composition items must include a local renderedAssetPath for timeline preview.', `${path}.renderedAssetPath`));
+  }
+}
+
+function validateCaptionItem(item: CaptionItem, path: string, issues: TimelineIssue[]) {
+  const wordRefs = Array.isArray(item.wordRefs) ? item.wordRefs : [];
+  const wordRefById = new Map<string, { sourceStartFrame: number; sourceEndFrame: number }>();
+  const sourceToOutputMap = Array.isArray(item.sourceToOutputMap) ? item.sourceToOutputMap : [];
+
+  if (wordRefs.length === 0) {
+    issues.push(issue('item.invalid_caption', 'Caption item must include source word references.', `${path}.wordRefs`));
+  }
+  wordRefs.forEach((word, wordIndex) => {
+    const wordPath = `${path}.wordRefs[${wordIndex}]`;
+    if (!word.id || typeof word.id !== 'string') {
+      issues.push(issue('item.invalid_caption', 'Caption word reference must have an id.', `${wordPath}.id`));
+    }
+    if (typeof word.text !== 'string') {
+      issues.push(issue('item.invalid_caption', 'Caption word reference text must be a string.', `${wordPath}.text`));
+    }
+    if (!isValidFrameRange(word.sourceStartFrame, word.sourceEndFrame)) {
+      issues.push(issue('item.invalid_caption', 'Caption word reference must include a valid source frame range.', wordPath));
+    }
+    if (word.id && typeof word.id === 'string' && isValidFrameRange(word.sourceStartFrame, word.sourceEndFrame)) {
+      wordRefById.set(word.id, {
+        sourceStartFrame: word.sourceStartFrame,
+        sourceEndFrame: word.sourceEndFrame,
+      });
+    }
+  });
+
+  if (sourceToOutputMap.length === 0) {
+    issues.push(issue('item.invalid_caption', 'Caption item must include a source-to-output frame map.', `${path}.sourceToOutputMap`));
+  }
+  sourceToOutputMap.forEach((entry, mapIndex) => {
+    const mapPath = `${path}.sourceToOutputMap[${mapIndex}]`;
+    if (!isValidFrameRange(entry.sourceStartFrame, entry.sourceEndFrame)) {
+      issues.push(issue('item.invalid_caption', 'Caption source-to-output map must include a valid source frame range.', mapPath));
+    }
+    if (!isValidFrameRange(entry.outputStartFrame, entry.outputEndFrame)) {
+      issues.push(issue('item.invalid_caption', 'Caption source-to-output map must include a valid output frame range.', mapPath));
+    }
+  });
+
+  if (!Array.isArray(item.cues) || item.cues.length === 0) {
+    issues.push(issue('item.invalid_caption', 'Caption item must contain at least one cue.', `${path}.cues`));
+    return;
+  }
+  item.cues.forEach((cue, cueIndex) => {
+    const cuePath = `${path}.cues[${cueIndex}]`;
+    if (!cue.id || typeof cue.id !== 'string') {
+      issues.push(issue('item.invalid_caption', 'Caption cue must have an id.', `${cuePath}.id`));
+    }
+    if (!Number.isInteger(cue.startFrame) || cue.startFrame < 0) {
+      issues.push(issue('item.invalid_caption', 'Caption cue startFrame must be a non-negative integer.', `${cuePath}.startFrame`));
+    }
+    if (!Number.isInteger(cue.durationInFrames) || cue.durationInFrames <= 0) {
+      issues.push(issue('item.invalid_caption', 'Caption cue durationInFrames must be a positive integer.', `${cuePath}.durationInFrames`));
+    }
+    if (typeof cue.text !== 'string' || cue.text.trim().length === 0) {
+      issues.push(issue('item.invalid_caption', 'Caption cue text must be non-empty.', `${cuePath}.text`));
+    }
+    if (
+      Number.isInteger(cue.startFrame) &&
+      Number.isInteger(cue.durationInFrames) &&
+      cue.durationInFrames > 0 &&
+      cue.startFrame + cue.durationInFrames > item.durationInFrames
+    ) {
+      issues.push(issue('item.invalid_caption', 'Caption cue must fit inside the caption item duration.', cuePath));
+    }
+    if (!Array.isArray(cue.wordIds) || cue.wordIds.length === 0) {
+      issues.push(issue('item.invalid_caption', 'Caption cue must reference source word ids.', `${cuePath}.wordIds`));
+    } else {
+      for (const wordId of cue.wordIds) {
+        if (!wordRefById.has(wordId)) {
+          issues.push(issue('item.invalid_caption', `Caption cue references unknown word id "${wordId}".`, `${cuePath}.wordIds`));
+        }
+      }
+    }
+
+    if (!isValidFrameRange(cue.sourceStartFrame, cue.sourceEndFrame)) {
+      issues.push(issue('item.invalid_caption', 'Caption cue must include a valid source frame range.', cuePath));
+      return;
+    }
+
+    const cueEndFrame = cue.startFrame + cue.durationInFrames;
+    const matchingMap = sourceToOutputMap.find((entry) =>
+      isValidFrameRange(entry.sourceStartFrame, entry.sourceEndFrame) &&
+      isValidFrameRange(entry.outputStartFrame, entry.outputEndFrame) &&
+      cue.sourceStartFrame! >= entry.sourceStartFrame &&
+      cue.sourceEndFrame! <= entry.sourceEndFrame &&
+      cue.startFrame >= entry.outputStartFrame &&
+      cueEndFrame <= entry.outputEndFrame
+    );
+    if (!matchingMap) {
+      issues.push(issue('item.invalid_caption', 'Caption cue must be covered by source-to-output map.', cuePath));
+    }
+  });
+}
+
+function isValidFrameRange(startFrame: unknown, endFrame: unknown): boolean {
+  return typeof startFrame === 'number' &&
+    typeof endFrame === 'number' &&
+    Number.isInteger(startFrame) &&
+    Number.isInteger(endFrame) &&
+    startFrame >= 0 &&
+    endFrame > startFrame;
+}
+
+function validateDerivedOverlayItem(item: DerivedOverlayItem, path: string, issues: TimelineIssue[]) {
+  if (item.mediaType !== 'image' && item.mediaType !== 'video') {
+    issues.push(issue('item.invalid_derived_overlay', 'Derived overlay mediaType must be image or video.', `${path}.mediaType`));
+  }
+  if (!isLocalProjectPath(item.src)) {
+    issues.push(issue('item.invalid_derived_overlay', 'Derived overlay src must be a local project/asset path, not a remote URL.', `${path}.src`));
+  }
+  if (!item.sourceAssetId || typeof item.sourceAssetId !== 'string') {
+    issues.push(issue('item.invalid_derived_overlay', 'Derived overlay must record sourceAssetId.', `${path}.sourceAssetId`));
+  }
+  if (!item.derivedAssetId || typeof item.derivedAssetId !== 'string') {
+    issues.push(issue('item.invalid_derived_overlay', 'Derived overlay must record derivedAssetId.', `${path}.derivedAssetId`));
+  }
+  if (item.assetId && item.derivedAssetId && item.assetId !== item.derivedAssetId) {
+    issues.push(issue('item.invalid_derived_overlay', 'Derived overlay assetId must match derivedAssetId when present.', `${path}.assetId`));
+  }
+  if (item.sourceAssetId && item.derivedAssetId && item.sourceAssetId === item.derivedAssetId) {
+    issues.push(issue('item.invalid_derived_overlay', 'Derived overlay must be copy-on-write: sourceAssetId and derivedAssetId cannot match.', path));
+  }
+  if (!item.derivation || typeof item.derivation.kind !== 'string') {
+    issues.push(issue('item.invalid_derived_overlay', 'Derived overlay must record derivation.kind.', `${path}.derivation`));
+  }
 }
 
 export function validateTimelineDsl(
@@ -186,6 +349,15 @@ export function validateTimelineDsl(
           issues.push(issue('item.transition_missing_ref', 'Transition item must reference both source clips.', itemPath));
         }
       }
+      if (item.type === 'composition') {
+        validateCompositionItem(item as CompositionItem, itemPath, issues);
+      }
+      if (item.type === 'caption') {
+        validateCaptionItem(item as CaptionItem, itemPath, issues);
+      }
+      if (item.type === 'derived-overlay') {
+        validateDerivedOverlayItem(item as DerivedOverlayItem, itemPath, issues);
+      }
     });
   });
 
@@ -222,6 +394,20 @@ function makeClip(command: Extract<TimelineCommand, { type: 'add_clip' }>): Item
   };
   if (command.itemType === 'image') return base as ImageItem;
   if (command.itemType === 'audio') return { ...base, volume: 1 } as AudioItem;
+  if (command.itemType === 'text') {
+    return {
+      id: base.id,
+      type: 'text',
+      from: base.from,
+      durationInFrames: base.durationInFrames,
+      sourceNodeId: base.sourceNodeId,
+      assetId: base.assetId,
+      text: command.text ?? '',
+      color: '#ffffff',
+      fontSize: 64,
+      fontWeight: 'bold',
+    } as TextItem;
+  }
   return { ...base, volume: 1 } as VideoItem;
 }
 

@@ -13,7 +13,7 @@
  */
 
 import { readCreds } from "../lib/config.js";
-import { osTag, machineName } from "../lib/platform.js";
+import { osTag, machineName, paths } from "../lib/platform.js";
 import { listLocalCcSessions } from "../lib/cc-sessions.js";
 import { detectAll } from "../_acp-runtime/registry.js";
 import { SessionManager } from "../lib/session-manager.js";
@@ -60,7 +60,7 @@ export async function runDaemon(): Promise<void> {
   let backoffMs = RECONNECT_BACKOFF_MIN_MS;
   let stopping = false;
 
-  // Custom-action host: scans ~/.clash/actions/ and supervises one
+  // Custom-action host: scans $CLASH_HOME/actions/ and supervises one
   // subprocess per local-runtime action. Each child inherits creds +
   // CLASH_RUNTIME_ID so the server can stamp registrations as owned
   // by this machine. Started before WS attach because the server's
@@ -76,7 +76,7 @@ export async function runDaemon(): Promise<void> {
     if (result.spawned.length > 0) {
       log.ok(`actions: hosting ${result.spawned.length} action${result.spawned.length === 1 ? "" : "s"} — ${result.spawned.join(", ")}`);
     } else if (result.skipped.length === 0) {
-      log.step(`actions: nothing under ~/.clash/actions/`);
+      log.step(`actions: nothing under ${paths().configDir}/actions/`);
     }
     if (result.skipped.length > 0) {
       log.warn(`actions: skipped ${result.skipped.length} (see preceding lines)`);

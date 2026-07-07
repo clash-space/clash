@@ -69,6 +69,14 @@ describe("ProjectEditor toolbar primitives", () => {
     expect(buttonSource).not.toContain("onMouseDown={(e) => e.stopPropagation()}");
   });
 
+  it("only removes asset refs for nodes whose Loro delete was accepted", () => {
+    const editorSource = readSource("packages/web-ui/src/components/ProjectEditor.tsx");
+
+    expect(editorSource).toContain("const persistedDeletedNodes = deletedNodes.filter(node => loroSync.removeNode(node.id));");
+    expect(editorSource).toContain("const deletedIds = new Set(persistedDeletedNodes.map(n => n.id));");
+    expect(editorSource).toContain("persistedDeletedNodes\n                .map");
+  });
+
   it("uses shared button primitives for project editor chrome and canvas toolbar actions", () => {
     const editorSource = readSource("packages/web-ui/src/components/ProjectEditor.tsx");
     const toolbarSource = readCanvasToolbarSource();
@@ -97,5 +105,12 @@ describe("ProjectEditor toolbar primitives", () => {
     expect(debugOverlaySource).not.toContain("expandedNode");
     expect(debugOverlaySource).not.toContain("setExpandedNode");
     expect(debugOverlaySource).not.toContain("isExpanded &&");
+  });
+
+  it("dispatches host mutation records from the live ProjectEditor runtime", () => {
+    const editorSource = readSource("packages/web-ui/src/components/ProjectEditor.tsx");
+
+    expect(editorSource).toContain("@clash/web-ui/lib/hostMutationEvents");
+    expect(editorSource).toContain("onMutation: (mutation) => dispatchHostMutationEvent(project.id, mutation)");
   });
 });

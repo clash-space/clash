@@ -1,13 +1,9 @@
 import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 describe('TimelinePlayhead primitives', () => {
   it('routes slider semantics and pointer seeking through the timeline slider primitive', () => {
-    const source = readFileSync(
-      join(process.cwd(), 'packages/remotion-ui/src/components/timeline/TimelinePlayhead.tsx'),
-      'utf8',
-    );
+    const source = readFileSync(new URL('./TimelinePlayhead.tsx', import.meta.url), 'utf8');
 
     expect(source).toContain('../ui/timeline-slider');
     expect(source).toContain('<TimelineSlider');

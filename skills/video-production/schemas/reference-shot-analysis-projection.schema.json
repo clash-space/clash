@@ -1,0 +1,44 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Clash reference shot analysis projection",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "kind",
+    "targetAssetId",
+    "sourceUrl",
+    "rightsLedgerPath",
+    "analysisOnly",
+    "mediaCopied",
+    "finalExportAllowed",
+    "allowedUses",
+    "prohibitedUses",
+    "shots"
+  ],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "kind": { "const": "clash.reference.shot-analysis.projection" },
+    "targetAssetId": { "type": "string" },
+    "sourceUrl": { "type": "string" },
+    "rightsLedgerPath": { "type": "string" },
+    "analysisOnly": { "const": true },
+    "mediaCopied": { "const": false },
+    "finalExportAllowed": { "type": "boolean" },
+    "allowedUses": { "type": "array", "items": { "type": "string" } },
+    "prohibitedUses": { "type": "array", "items": { "type": "string" } },
+    "shots": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "startFrame", "endFrame", "description"],
+        "properties": {
+          "id": { "type": "string" },
+          "startFrame": { "type": "number" },
+          "endFrame": { "type": "number" },
+          "description": { "type": "string" },
+          "tags": { "type": "array", "items": { "type": "string" } }
+        }
+      }
+    }
+  }
+}

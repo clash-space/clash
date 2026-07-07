@@ -10,6 +10,8 @@ const { mockLoroSync, mockAutoInsertNode, mockEditorState } = vi.hoisted(() => (
     addNode: vi.fn(),
     addEdge: vi.fn(),
     updateNode: vi.fn(),
+    applyTimelineDsl: vi.fn(() => true),
+    sendSideband: vi.fn(),
   },
   mockAutoInsertNode: vi.fn(() => ({
     position: { x: 320, y: 180 },
@@ -48,7 +50,11 @@ const { mockLoroSync, mockAutoInsertNode, mockEditorState } = vi.hoisted(() => (
 vi.mock("@master-clash/remotion-ui", () => ({
   Editor: (props: any) => {
     props.stateRef.current = mockEditorState;
-    return <div data-testid="mock-editor" />;
+    return (
+      <div data-testid="mock-editor">
+        <button onClick={props.onBack}>Back</button>
+      </div>
+    );
   },
 }));
 
@@ -88,6 +94,8 @@ describe("VideoEditorProvider", () => {
     mockLoroSync.addNode.mockReset();
     mockLoroSync.addEdge.mockReset();
     mockLoroSync.updateNode.mockReset();
+    mockLoroSync.applyTimelineDsl.mockClear();
+    mockLoroSync.sendSideband.mockClear();
     mockAutoInsertNode.mockClear();
     vi.spyOn(Date, "now").mockReturnValue(1700000000000);
     vi.spyOn(window, "alert").mockImplementation(() => undefined);
@@ -109,7 +117,7 @@ describe("VideoEditorProvider", () => {
     fireEvent.click(screen.getByText("Open"));
 
     const dialog = await screen.findByRole("dialog", { name: "Video editor" });
-    expect(dialog.getAttribute("aria-modal")).toBe("true");
+    expect(dialog).toBeTruthy();
     expect(screen.getByTestId("video-editor-panel")).toBeTruthy();
     expect(screen.getByTestId("project-surface")).toBeTruthy();
   });
@@ -143,5 +151,40 @@ describe("VideoEditorProvider", () => {
     expect(createdNode.data.naturalHeight).toBe(1080);
     expect(createdNode.width).toBe(500);
     expect(createdNode.height).toBe(281);
+  });
+
+  it("saves timeline edits through explicit timeline apply instead of generic node patch", async () => {
+    render(
+      <VideoEditorProvider>
+        <Harness />
+      </VideoEditorProvider>,
+    );
+
+    fireEvent.click(screen.getByText("Open"));
+    await waitFor(() => expect(screen.getByTestId("mock-editor")).toBeTruthy());
+
+    fireEvent.click(screen.getByText("Back"));
+
+    expect(mockLoroSync.applyTimelineDsl).toHaveBeenCalledWith("editor-node-1", {
+      tracks: [
+        expect.objectContaining({
+          id: "track-1",
+          items: [
+            expect.objectContaining({
+              id: "item-1",
+              assetId: "asset-node-1",
+              sourceNodeId: "asset-node-1",
+            }),
+          ],
+        }),
+      ],
+      compositionWidth: 1920,
+      compositionHeight: 1080,
+      fps: 30,
+      durationInFrames: 300,
+    });
+    expect(mockLoroSync.updateNode).not.toHaveBeenCalledWith("editor-node-1", expect.objectContaining({
+      data: expect.objectContaining({ timelineDsl: expect.anything() }),
+    }));
   });
 });

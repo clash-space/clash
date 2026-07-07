@@ -1,0 +1,95 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Clash reference download plan",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "kind",
+    "targetAssetId",
+    "sourceUrl",
+    "status",
+    "downloadAllowed",
+    "blockedReasons",
+    "tool",
+    "outputDir",
+    "rawReferenceQuarantine",
+    "finalExportAllowed",
+    "requiresUserExecution",
+    "downloadCommand",
+    "sourceLedger",
+    "createdAt"
+  ],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "kind": { "const": "clash.reference.download-plan" },
+    "targetAssetId": { "type": "string" },
+    "sourceUrl": { "type": "string" },
+    "status": { "enum": ["blocked", "planned"] },
+    "downloadAllowed": { "type": "boolean" },
+    "blockedReasons": { "type": "array", "items": { "type": "string" } },
+    "tool": { "const": "yt-dlp" },
+    "outputDir": { "type": "string" },
+    "rawReferenceQuarantine": { "const": true },
+    "finalExportAllowed": { "type": "boolean" },
+    "requiresUserExecution": { "const": true },
+    "downloadCommand": {
+      "type": "array",
+      "minItems": 2,
+      "prefixItems": [{ "const": "yt-dlp" }],
+      "items": { "type": "string" },
+      "not": {
+        "contains": {
+          "enum": [
+            "--exec",
+            "--exec-before-download",
+            "--external-downloader",
+            "--external-downloader-args",
+            "--postprocessor-args",
+            "--use-postprocessor"
+          ]
+        }
+      }
+    },
+    "sourceLedger": {
+      "type": "object",
+      "required": [
+        "sourceUrl",
+        "license",
+        "attribution",
+        "allowedUses",
+        "redistributionAllowed",
+        "derivativeAllowed"
+      ],
+      "properties": {
+        "sourceUrl": { "type": "string" },
+        "license": { "type": "string" },
+        "attribution": { "type": "string" },
+        "allowedUses": { "type": "array", "items": { "type": "string" } },
+        "redistributionAllowed": { "type": "boolean" },
+        "derivativeAllowed": { "type": "boolean" }
+      }
+    },
+    "createdAt": { "type": "string" }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "finalExportAllowed": { "const": true }
+        },
+        "required": ["finalExportAllowed"]
+      },
+      "then": {
+        "properties": {
+          "sourceLedger": {
+            "properties": {
+              "redistributionAllowed": { "const": true },
+              "derivativeAllowed": { "const": true }
+            },
+            "required": ["redistributionAllowed", "derivativeAllowed"]
+          }
+        }
+      }
+    }
+  ]
+}

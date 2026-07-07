@@ -365,7 +365,7 @@ export const chatMessage = sqliteTable(
  * UI can render "director (alice)". Per-user agent model: each user runs
  * their own daemon; the room is shared across the project's members.
  *
- * mentions_json — array of {user_id, agent_member_id?}. ProjectRoom DO uses it
+ * mentions_json — array of {user_id?, agent_member_id?}. ProjectRoom DO uses it
  * to look up the matching runtime_session and push room.mention into
  * that agent's react loop.
  */

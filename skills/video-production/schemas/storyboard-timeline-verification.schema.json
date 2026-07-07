@@ -1,0 +1,106 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Clash storyboard timeline verification report",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "kind",
+    "status",
+    "storyboardAssetId",
+    "sourceActionPath",
+    "manifestPath",
+    "minConsistency",
+    "panels",
+    "timelineItems",
+    "lowConsistencyPanels",
+    "panelCoverage",
+    "checks",
+    "blockedReasons"
+  ],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "kind": { "const": "clash.storyboard.timeline-verification" },
+    "status": { "enum": ["pass", "blocked"] },
+    "storyboardAssetId": { "type": "string" },
+    "sourceActionPath": { "type": "string" },
+    "manifestPath": { "type": "string" },
+    "timelineProjectionPath": { "type": "string" },
+    "minConsistency": { "type": "number" },
+    "panels": { "type": "number" },
+    "timelineItems": { "type": "number" },
+    "lowConsistencyPanels": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["panelId", "score"],
+        "properties": {
+          "panelId": { "type": "string" },
+          "score": { "type": "number" }
+        }
+      }
+    },
+    "panelCoverage": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "panelId",
+          "assetId",
+          "coveredByPanelManifest",
+          "coveredByTimelineItem"
+        ],
+        "properties": {
+          "panelId": { "type": "string" },
+          "assetId": { "type": "string" },
+          "coveredByPanelManifest": { "type": "boolean" },
+          "coveredByTimelineItem": { "type": "boolean" },
+          "timelineItemId": { "type": "string" },
+          "consistencyScore": { "type": "number" }
+        }
+      }
+    },
+    "checks": {
+      "type": "array",
+      "minItems": 6,
+      "items": {
+        "type": "object",
+        "required": ["id", "label", "required", "status", "expected", "actual"],
+        "properties": {
+          "id": {
+            "enum": [
+              "action.storyboard-metadata-present",
+              "manifest.cas-fresh-pull",
+              "manifest.panels-covered",
+              "manifest.timeline-items-covered",
+              "panels.consistency-threshold",
+              "panels.assets-local"
+            ]
+          },
+          "label": { "type": "string" },
+          "required": { "const": true },
+          "status": { "enum": ["pass", "fail"] },
+          "expected": { "type": "string" },
+          "actual": { "type": "string" }
+        }
+      }
+    },
+    "blockedReasons": {
+      "type": "array",
+      "items": { "type": "string" }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": { "status": { "const": "pass" } },
+        "required": ["status"]
+      },
+      "then": {
+        "properties": {
+          "lowConsistencyPanels": { "maxItems": 0 },
+          "blockedReasons": { "maxItems": 0 }
+        }
+      }
+    }
+  ]
+}

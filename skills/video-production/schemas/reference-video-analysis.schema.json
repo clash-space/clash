@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Clash reference video analysis",
+  "type": "object",
+  "required": ["schemaVersion", "referenceId", "sourceLedger", "shots", "remixConstraints"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "referenceId": { "type": "string" },
+    "sourceLedger": {
+      "type": "object",
+      "required": ["sourceUrl", "license", "allowedUses", "redistributionAllowed"],
+      "properties": {
+        "sourceUrl": { "type": "string" },
+        "license": { "type": "string" },
+        "allowedUses": { "type": "array", "items": { "type": "string" } },
+        "redistributionAllowed": { "type": "boolean" }
+      }
+    },
+    "shots": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "startMs", "endMs", "description"],
+        "properties": {
+          "id": { "type": "string" },
+          "startMs": { "type": "number" },
+          "endMs": { "type": "number" },
+          "description": { "type": "string" },
+          "tags": { "type": "array", "items": { "type": "string" } }
+        }
+      }
+    },
+    "remixConstraints": { "type": "array", "items": { "type": "string" } }
+  }
+}

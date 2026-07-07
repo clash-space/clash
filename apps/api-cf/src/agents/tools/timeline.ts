@@ -21,9 +21,10 @@ function stringParam(params: Record<string, unknown>, key: string): string {
   return typeof value === "string" ? value : "";
 }
 
-function itemTypeParam(params: Record<string, unknown>): "video" | "audio" | "image" {
+function itemTypeParam(params: Record<string, unknown>): "video" | "audio" | "image" | "text" {
   const value = stringParam(params, "itemType") || stringParam(params, "item_type");
-  return value === "audio" || value === "image" ? value : "video";
+  if (value === "audio" || value === "image" || value === "text") return value;
+  return "video";
 }
 
 function commandFromAction(action: string, params: Record<string, unknown>): TimelineCommand | null {
@@ -37,6 +38,7 @@ function commandFromAction(action: string, params: Record<string, unknown>): Tim
       from: numberParam(params, "from"),
       durationInFrames: numberParam(params, "durationInFrames"),
       id: stringParam(params, "id") || undefined,
+      text: stringParam(params, "text") || undefined,
     } as TimelineCommand;
   }
 

@@ -16,7 +16,7 @@
 
 import { homedir, platform, hostname as osHostname } from "node:os";
 import { execSync } from "node:child_process";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 
 export type Platform = "darwin" | "linux" | "win32" | "unknown";
 
@@ -50,7 +50,8 @@ const SERVICE_LABEL = "space.clash.bridge";
 export function paths(): Paths {
   const home = homedir();
   const p = currentPlatform();
-  const configDir = join(home, ".clash");
+  const clashHome = process.env.CLASH_HOME?.trim();
+  const configDir = clashHome ? resolve(clashHome) : join(home, ".clash");
   const credsFile = join(configDir, "credentials.json");
   const machineIdFile = join(configDir, "machine-id");
   const projectsDir = join(configDir, "projects");

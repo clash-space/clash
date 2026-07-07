@@ -1,10 +1,10 @@
 import { Command } from "commander";
 import WebSocket from "ws";
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync, readdirSync } from "node:fs";
-import { homedir } from "node:os";
 import { join } from "node:path";
 import { CustomActionDefinitionSchema, LoroSyncClient } from "@clash/shared-types";
 import { requireApiKey, getServerUrl } from "../lib/config";
+import { resolveClashRoot } from "../lib/clash-home";
 import { isJsonMode, printJson } from "../lib/output";
 
 const REGISTRY_URL = "https://raw.githubusercontent.com/clash-community/awesome-actions/main/registry.json";
@@ -14,7 +14,15 @@ const REGISTRY_URL = "https://raw.githubusercontent.com/clash-community/awesome-
  * action means writing manifest.json + source files into a subdir here;
  * the bridge picks it up via fs.watch and spawns the python subprocess.
  */
-const ACTIONS_DIR = join(homedir(), ".clash", "actions");
+export function localActionsDir(env: Record<string, string | undefined> = process.env): string {
+  return join(resolveClashRoot(env), "actions");
+}
+
+export function customActionSecretHint(runtime: unknown): string {
+  return runtime === "local"
+    ? "  → Local actions read credentials from their local runtime environment."
+    : "  → Remote worker action secrets: clash vars set <KEY>";
+}
 
 /** Shape of the GET /api/v1/actions/:id/package response. */
 interface ActionPackage {
@@ -48,7 +56,7 @@ actionsCommand
   .command("install")
   .description(
     "Install an action. Two modes:\n" +
-      "  clash action install <id>                                  fetch from server registry → ~/.clash/actions/<id>/\n" +
+      "  clash action install <id>                                  fetch from server registry → $CLASH_HOME/actions/<id>/\n" +
       "  clash action install --project <id> --repo owner/repo      register a project-level worker action via Loro"
   )
   .argument("[id]", "Action id to fetch from the server registry")
@@ -58,7 +66,7 @@ actionsCommand
   .option("--url <workerUrl>", "Direct CF Worker URL for author-deployed actions")
   .option("--json", "Output as JSON")
   .action(async (id: string | undefined, options) => {
-    // ─── New flow: install <id> → write package to ~/.clash/actions/<id>/ ───
+    // ─── New flow: install <id> → write package to $CLASH_HOME/actions/<id>/ ───
     //
     // This is the path the task brief specifies. The CLI hits
     // GET /api/v1/actions/:id/package, decodes the base64 file contents,
@@ -183,7 +191,7 @@ actionsCommand
         if (manifest.workerUrl) console.log(`  Worker:   ${manifest.workerUrl}`);
         if (manifest.secrets?.length) {
           console.log(`  Requires: ${manifest.secrets.map((s: any) => s.id).join(", ")}`);
-          console.log(`  → Set variables with: clash vars set <KEY>`);
+          console.log(customActionSecretHint(manifest.runtime));
         }
       }
     } finally {
@@ -197,10 +205,10 @@ actionsCommand
   .command("list")
   .description(
     "List actions. Without --local, lists actions registered in a project " +
-      "(requires --project). With --local, lists packages installed under ~/.clash/actions/."
+      "(requires --project). With --local, lists packages installed under $CLASH_HOME/actions/."
   )
   .option("--project <id>", "Project ID (omit when using --local)")
-  .option("--local", "List packages installed locally under ~/.clash/actions/")
+  .option("--local", "List packages installed locally under $CLASH_HOME/actions/")
   .option("--json", "Output as JSON")
   .action(async (options) => {
     if (options.local) {
@@ -208,14 +216,14 @@ actionsCommand
       if (isJsonMode(options)) {
         printJson(installed);
       } else if (installed.length === 0) {
-        console.log(`No local actions installed (looked in ${ACTIONS_DIR}).`);
+        console.log(`No local actions installed (looked in ${localActionsDir()}).`);
         console.log("Install one with: clash action install <id>");
       } else {
         for (const a of installed) {
           const version = a.version ? `@${a.version}` : "";
           console.log(`  🖥  ${(a.name ?? a.id).padEnd(25)} ${a.id}${version}`);
         }
-        console.log(`\n${installed.length} local action(s) at ${ACTIONS_DIR}`);
+        console.log(`\n${installed.length} local action(s) at ${localActionsDir()}`);
       }
       return;
     }
@@ -250,18 +258,18 @@ actionsCommand
 
 // ─── uninstall ────────────────────────────────────────
 //
-// Removes a locally-installed action package (rm -rf ~/.clash/actions/<id>).
+// Removes a locally-installed action package (rm -rf $CLASH_HOME/actions/<id>).
 // The bridge's fs.watch picks up the deletion within ~500ms and SIGTERMs
 // the running subprocess for that action — no daemon restart needed.
 
 actionsCommand
   .command("uninstall")
-  .description("Remove a locally-installed action package from ~/.clash/actions/")
+  .description("Remove a locally-installed action package from $CLASH_HOME/actions/")
   .argument("<id>", "Action id")
   .option("-y, --yes", "Skip confirmation prompt")
   .option("--json", "Output as JSON")
   .action(async (id: string, options) => {
-    const dir = join(ACTIONS_DIR, id);
+    const dir = join(localActionsDir(), id);
     if (!existsSync(dir)) {
       console.error(`Not installed: ${dir}`);
       process.exit(1);
@@ -394,7 +402,7 @@ actionsCommand
 
 /**
  * Fetch a package from the server registry and unpack it into
- * `~/.clash/actions/<id>/`. The bridge's ActionsHost fs.watch picks
+ * `$CLASH_HOME/actions/<id>/`. The bridge's ActionsHost fs.watch picks
  * up the new manifest within ~500ms and spawns the python subprocess —
  * no daemon restart needed.
  *
@@ -436,7 +444,7 @@ async function installFromRegistry(
     process.exit(1);
   }
 
-  const targetDir = join(ACTIONS_DIR, id);
+  const targetDir = join(localActionsDir(), id);
   const manifestPath = join(targetDir, "manifest.json");
   const newVersion = pkg.manifest.version ?? "0.0.0";
 
@@ -503,23 +511,24 @@ async function installFromRegistry(
   }
 }
 
-/** Read every manifest.json under ~/.clash/actions/ for `list --local`. */
+/** Read every manifest.json under $CLASH_HOME/actions/ for `list --local`. */
 function readLocalInstalls(): Array<{
   id: string;
   name?: string;
   version?: string;
   dir: string;
 }> {
-  if (!existsSync(ACTIONS_DIR)) return [];
+  const actionsDir = localActionsDir();
+  if (!existsSync(actionsDir)) return [];
   const out: Array<{ id: string; name?: string; version?: string; dir: string }> = [];
   let entries: string[];
   try {
-    entries = readdirSync(ACTIONS_DIR);
+    entries = readdirSync(actionsDir);
   } catch {
     return [];
   }
   for (const entry of entries) {
-    const dir = join(ACTIONS_DIR, entry);
+    const dir = join(actionsDir, entry);
     const manifestPath = join(dir, "manifest.json");
     if (!existsSync(manifestPath)) continue;
     try {

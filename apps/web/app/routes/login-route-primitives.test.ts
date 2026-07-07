@@ -1,10 +1,9 @@
 import { readFileSync } from "node:fs";
-import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 describe("login route primitives", () => {
   it("routes form controls through shared input and button primitives", () => {
-    const source = readFileSync(join(process.cwd(), "apps/web/app/routes/login.tsx"), "utf8");
+    const source = readFileSync(new URL("./login.tsx", import.meta.url), "utf8");
 
     expect(source).toContain("@clash/web-ui/components/ui/button");
     expect(source).toContain("@clash/web-ui/components/ui/input");

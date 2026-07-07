@@ -82,6 +82,7 @@ import {
 } from '@clash/web-ui/lib/layout';
 import { generateSemanticId } from '@clash/web-ui/lib/utils/semanticId';
 import { useLoroSync } from '@clash/web-ui/hooks/useLoroSync';
+import { actionIsCheckpointLocked } from '@clash/web-ui/lib/actionCheckpoint';
 import { LoroSyncProvider } from './LoroSyncContext';
 import type { PresenceClient } from '@clash/shared-types';
 import PresenceBar from './PresenceBar';
@@ -94,12 +95,14 @@ import type { AwarenessBroadcastMessage } from '@clash/shared-types';
 import { CascadeRunnerMount } from '@clash/web-ui/hooks/useCascadeRunner';
 import { CustomActionDefinitionSchema, MODEL_CARDS } from '@clash/shared-types';
 import { useCustomActions } from '@clash/web-ui/hooks/useCustomActions';
+import { CustomActionsProvider } from './CustomActionsContext';
 import { applyLayoutPatchesToLoro, collectLayoutNodePatches } from '@clash/web-ui/lib/loroNodeSync';
 import { calculateScaledDimensions } from './nodes/assetNodeSizing';
 import { getAsset } from '@clash/web-ui/lib/hooks/useAsset';
 import { getSignedUrl } from '@clash/web-ui/lib/hooks/useSignedUrl';
 import { getRuntimeCapabilities, runtimeApiUrl } from '@clash/web-ui/lib/runtimeConfig';
 import { DESKTOP_TAB_TITLE_EVENT, type DesktopTabTitleEventDetail } from '@clash/web-ui/lib/desktopTabs';
+import { dispatchHostMutationEvent } from '@clash/web-ui/lib/hostMutationEvents';
 import { buildFallbackCanvasFromAssets } from '@clash/web-ui/lib/projectFallbackCanvas';
 import { visiblePresenceClients } from '@clash/web-ui/lib/presenceVisibility';
 import { sanitizeNodesForReactFlow } from '@clash/web-ui/lib/canvasNodeOrder';
@@ -404,6 +407,7 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
             addToast(activity);
             addHighlight(activity);
         },
+        onMutation: (mutation) => dispatchHostMutationEvent(project.id, mutation),
         onAwareness: (msg) => {
             awarenessSinkRef.current?.(msg);
         },
@@ -900,32 +904,28 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
         // Handle node deletions - sync to Loro (Fallback if onNodesDelete doesn't fire)
         const removeChanges = changes.filter(c => c.type === 'remove');
         if (removeChanges.length > 0) {
-            removeChanges.forEach(change => {
-                if (change.type === 'remove') {
-                    loroSync.removeNode(change.id);
-                }
-            });
+            loroSync.removeNodes(removeChanges.map((change) => change.id));
         }
 
     }, [setNodes, loroSync, applyAutoZIndex]);
 
-    // GC-style protection: a canvas asset that's been "consumed" by a frozen
-    // (already-run) ActionBadge can't be silently yanked out from under it.
-    // Block both the upstream node and the edge feeding the action — once the
-    // generation has gone out, the lineage is locked.
+    // GC-style protection: a canvas asset that's been consumed by a
+    // materialized ActionBadge checkpoint can't be silently yanked out from
+    // under it. A previously run action without materialized downstream is
+    // still editable; the checkpoint boundary is the downstream output.
     const onBeforeDelete = useCallback(async ({ nodes: nds, edges: eds }: { nodes: Node[]; edges: Edge[] }) => {
-        const frozenActionIds = new Set<string>();
+        const checkpointActionIds = new Set<string>();
         for (const n of nodes) {
-            if (n.type === 'action-badge' && (n.data as Record<string, unknown>)?.hasRun) {
-                frozenActionIds.add(n.id);
+            if (n.type === 'action-badge' && actionIsCheckpointLocked({ nodeId: n.id, nodes, edges })) {
+                checkpointActionIds.add(n.id);
             }
         }
-        if (frozenActionIds.size === 0) return { nodes: nds, edges: eds };
+        if (checkpointActionIds.size === 0) return { nodes: nds, edges: eds };
 
         const lockedEdgeIds = new Set<string>();
         const pinnedNodeIds = new Set<string>();
         for (const e of edges) {
-            if (frozenActionIds.has(e.target)) {
+            if (checkpointActionIds.has(e.target)) {
                 lockedEdgeIds.add(e.id);
                 pinnedNodeIds.add(e.source);
             }
@@ -938,13 +938,13 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
 
     // Reliable sync handlers
     const onNodesDelete = useCallback((deletedNodes: Node[]) => {
-        deletedNodes.forEach(node => {
-            loroSync.removeNode(node.id);
-        });
+        const persistedDeletedNodes = loroSync.removeNodes(deletedNodes.map((node) => node.id))
+            ? deletedNodes
+            : [];
 
         // Drop project's asset_refs row for any assetId no longer referenced by any surviving node.
         // Other projects sharing the same asset are unaffected (M:N).
-        const deletedIds = new Set(deletedNodes.map(n => n.id));
+        const deletedIds = new Set(persistedDeletedNodes.map(n => n.id));
         const survivingAssetIds = new Set(
             nodes
                 .filter(n => !deletedIds.has(n.id))
@@ -952,7 +952,7 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
                 .filter((v): v is string => !!v),
         );
         const orphanedAssetIds = new Set(
-            deletedNodes
+            persistedDeletedNodes
                 .map(n => (n.data as Record<string, unknown>)?.assetId as string | undefined)
                 .filter((v): v is string => !!v && !survivingAssetIds.has(v)),
         );
@@ -1235,11 +1235,11 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
             if (srcId && tgtId) {
                 const src = nodes.find(n => n.id === srcId);
                 const tgt = nodes.find(n => n.id === tgtId);
-                // GC-style protection: a frozen action-badge has already shipped
-                // its generation — its refs are part of that lineage and can't
-                // be extended after the fact.
-                if (tgt?.type === 'action-badge' && (tgt.data as Record<string, unknown>)?.hasRun) {
-                    console.warn(`[onConnect] rejected: target action-badge is frozen (already run)`);
+                // GC-style protection: refs of materialized checkpoints are
+                // lineage, not editable inputs. Draft-only action chains remain
+                // editable.
+                if (tgt?.type === 'action-badge' && actionIsCheckpointLocked({ nodeId: tgt.id, nodes, edges })) {
+                    console.warn(`[onConnect] rejected: target action-badge is a materialized checkpoint`);
                     return;
                 }
                 const tgtIsImageGen = tgt?.type === 'action-badge' && (tgt.data as any)?.actionType === 'image-gen';
@@ -1265,7 +1265,7 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
                 if (eds.some(e => e.id === canonicalId)) return eds;
                 const newEdges = addEdge(paramsWithDefaults as any, eds);
                 const addedEdge = newEdges.find(e => e.id === canonicalId);
-                if (addedEdge) loroSync.addEdge(addedEdge.id, addedEdge);
+                if (addedEdge && !loroSync.addEdge(addedEdge.id, addedEdge)) return eds;
                 return newEdges;
             });
         },
@@ -1300,16 +1300,15 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
         }
 
         // Del/Backspace: delete selected edges (ReactFlow's deleteKeyCode isn't firing reliably).
-        // Honor the same freeze guard as `onBeforeDelete` — edges into a frozen
-        // ActionBadge are part of a shipped lineage and can't be detached.
+        // Honor the same checkpoint guard as `onBeforeDelete`.
         if (e.key === 'Delete' || e.key === 'Backspace') {
-            const frozenActionIds = new Set(
+            const checkpointActionIds = new Set(
                 nodes
-                    .filter(n => n.type === 'action-badge' && (n.data as Record<string, unknown>)?.hasRun)
+                    .filter(n => n.type === 'action-badge' && actionIsCheckpointLocked({ nodeId: n.id, nodes, edges }))
                     .map(n => n.id),
             );
             const selectedEdgeIds = edges
-                .filter(ed => ed.selected && !frozenActionIds.has(ed.target))
+                .filter(ed => ed.selected && !checkpointActionIds.has(ed.target))
                 .map(ed => ed.id);
             if (selectedEdgeIds.length > 0) {
                 e.preventDefault();
@@ -1890,7 +1889,7 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
                 targetHandle: 'assets',
             };
 
-            loroSync.addEdge(edgeId, newEdge);
+            if (!loroSync.addEdge(edgeId, newEdge)) return eds;
 
             return [...eds, newEdge];
         });
@@ -2318,6 +2317,7 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
     return (
         <ProjectProvider projectId={project.id}>
             <LoroSyncProvider loroSync={loroSync}>
+              <CustomActionsProvider actions={customActions}>
               <PresenceAwarenessProvider peers={awareness.peers}>
               <ImageEditorProvider>
                 <VideoClipperProvider>
@@ -2478,7 +2478,12 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
 
                                     {/* Unix-pipe cascade dispatcher: adopts drafts on run
                                         request, propagates cascadeToken across stages. */}
-                                    <CascadeRunnerMount />
+                                    <CascadeRunnerMount
+                                        nodes={nodes}
+                                        edges={edges}
+                                        setNodes={setNodes}
+                                        customActions={customActions}
+                                    />
 
                                 </ReactFlow>
                             </div>
@@ -2667,10 +2672,63 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
                                         onCollapseChange={setIsSidebarCollapsed}
                                         selectedNodes={selectedNodes}
                                         onAddNode={addNode}
-                                        onAddEdge={(edge) => {
+                                        onRemoveNode={(nodeId, options) => {
+                                            setNodes((nds) => {
+                                                if (!nds.some((node) => node.id === nodeId)) return nds;
+                                                if (!loroSync.removeNode(nodeId, options)) return nds;
+                                                return nds.filter((node) => node.id !== nodeId);
+                                            });
+                                        }}
+                                        onAddEdge={(edge, options) => {
                                             if ('source' in edge && edge.source && edge.target) {
-                                                setEdges((eds) => addEdge(edge as any, eds));
+                                                const edgeId = 'id' in edge && typeof edge.id === 'string' && edge.id
+                                                    ? edge.id
+                                                    : `${edge.source}-${edge.target}`;
+                                                const edgeWithDefaults = {
+                                                    ...edge,
+                                                    id: edgeId,
+                                                    type: 'type' in edge && edge.type ? edge.type : 'default',
+                                                };
+                                                setEdges((eds) => {
+                                                    if (eds.some((existingEdge) => existingEdge.id === edgeId)) return eds;
+                                                    const nextEdges = addEdge(edgeWithDefaults as any, eds);
+                                                    const addedEdge = nextEdges.find((candidate) => candidate.id === edgeId);
+                                                    if (addedEdge && !loroSync.addEdge(addedEdge.id, addedEdge, options)) return eds;
+                                                    return nextEdges;
+                                                });
                                             }
+                                        }}
+                                        onUpdateEdge={(edgeId, patch, options) => {
+                                            setEdges((eds) => {
+                                                if (!eds.some((edge) => edge.id === edgeId)) return eds;
+                                                if (!loroSync.updateEdge(edgeId, patch, options)) return eds;
+                                                return eds.map((edge) => (
+                                                    edge.id === edgeId
+                                                        ? { ...edge, ...patch }
+                                                        : edge
+                                                ));
+                                            });
+                                        }}
+                                        onRemoveEdge={(edgeId, options) => {
+                                            setEdges((eds) => {
+                                                if (!eds.some((edge) => edge.id === edgeId)) return eds;
+                                                if (!loroSync.removeEdge(edgeId, options)) return eds;
+                                                return eds.filter((edge) => edge.id !== edgeId);
+                                            });
+                                        }}
+                                        onApplyTimeline={(nodeId, timelineDsl, options) => {
+                                            if (!loroSync.applyTimelineDsl(nodeId, timelineDsl, options)) return;
+                                            setNodes((nds) => nds.map((node) => (
+                                                node.id === nodeId
+                                                    ? {
+                                                        ...node,
+                                                        data: {
+                                                            ...(node.data || {}),
+                                                            timelineDsl,
+                                                        },
+                                                    }
+                                                    : node
+                                            )));
                                         }}
                                         onUpdateNode={updateNode}
                                         findNodeIdByName={findNodeIdByName}
@@ -2696,6 +2754,7 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
                 </VideoClipperProvider>
               </ImageEditorProvider>
               </PresenceAwarenessProvider>
+              </CustomActionsProvider>
             </LoroSyncProvider>
         </ProjectProvider >
     );

@@ -1,0 +1,85 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Clash MG video export manifest",
+  "type": "object",
+  "required": [
+    "kind",
+    "compositionId",
+    "sourceSpecPath",
+    "outputPath",
+    "format",
+    "fps",
+    "durationInFrames",
+    "durationSeconds",
+    "dimensions",
+    "renderer",
+    "alpha",
+    "probe",
+    "limitations"
+  ],
+  "properties": {
+    "kind": { "const": "clash.mg.video-export" },
+    "compositionId": { "type": "string" },
+    "sourceSpecPath": { "type": "string" },
+    "outputPath": { "type": "string" },
+    "format": { "enum": ["webm", "mp4"] },
+    "fps": { "type": "number" },
+    "durationInFrames": { "type": "number" },
+    "durationSeconds": { "type": "number" },
+    "dimensions": {
+      "type": "object",
+      "required": ["width", "height"],
+      "properties": {
+        "width": { "type": "number" },
+        "height": { "type": "number" }
+      }
+    },
+    "renderer": {
+      "type": "object",
+      "required": ["kind", "externalRuntime", "ffmpeg"],
+      "properties": {
+        "kind": { "const": "first-party-rgba-rasterizer" },
+        "externalRuntime": { "const": false },
+        "ffmpeg": { "type": "string" }
+      }
+    },
+    "alpha": {
+      "type": "object",
+      "required": ["requested", "verified", "mode", "pixelSampleVerified", "reason"],
+      "properties": {
+        "requested": { "type": "boolean" },
+        "verified": { "type": "boolean" },
+        "mode": { "enum": ["vp9-alpha-mode", "not-requested", "unsupported-format", "missing-alpha-mode"] },
+        "pixelSampleVerified": { "type": "boolean" },
+        "reason": { "type": "string" },
+        "sample": {
+          "type": "object",
+          "required": ["frame", "width", "height", "pixels", "transparentPixels", "visiblePixels", "minAlpha", "maxAlpha"],
+          "properties": {
+            "frame": { "type": "number" },
+            "width": { "type": "number" },
+            "height": { "type": "number" },
+            "pixels": { "type": "number" },
+            "transparentPixels": { "type": "number" },
+            "visiblePixels": { "type": "number" },
+            "minAlpha": { "type": "number" },
+            "maxAlpha": { "type": "number" }
+          }
+        }
+      }
+    },
+    "probe": {
+      "type": "object",
+      "required": ["codecName", "width", "height"],
+      "properties": {
+        "codecName": { "type": "string" },
+        "width": { "type": "number" },
+        "height": { "type": "number" },
+        "pixelFormat": { "type": "string" },
+        "durationSeconds": { "type": "number" },
+        "alphaMode": { "type": "string" }
+      }
+    },
+    "limitations": { "type": "array", "items": { "type": "string" } }
+  }
+}

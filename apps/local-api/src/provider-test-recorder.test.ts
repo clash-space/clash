@@ -9,8 +9,10 @@ import {
   createProviderTestReplayFixtures,
   createProviderConformanceStubs,
   createProviderTestRecorder,
+  filterProviderTestReplayFixturesForStub,
   providerTestRecordingEventToJsonl,
   readJsonlProviderTestRecording,
+  replayProviderTestCallbacks,
 } from "./provider-test-recorder.js";
 
 describe("provider test recorder", () => {
@@ -216,6 +218,45 @@ describe("provider test recorder", () => {
     ]);
   });
 
+  it("redacts OAuth JWT assertions from URL-encoded request bodies", async () => {
+    const events: unknown[] = [];
+    const stub = createProviderConformanceStubs({ includeMock: true })
+      .find((candidate) => candidate.providerId === "mock" && candidate.shape === "text");
+    expect(stub).toBeTruthy();
+    const recorder = createProviderTestRecorder({
+      requestId: () => "provider-test-google-token",
+      write: async (event) => {
+        events.push(event);
+      },
+    });
+    const fetchImpl = createProviderTestRecordingFetch({
+      fetch: async () => Response.json({ access_token: "real-access-token" }),
+      recorder,
+      stub: stub!,
+    });
+
+    await fetchImpl("https://oauth2.googleapis.com/token", {
+      method: "POST",
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({
+        grant_type: "urn:ietf:params:oauth:grant-type:jwt-bearer",
+        assertion: "header.payload.signature",
+      }).toString(),
+    });
+
+    expect(events[0]).toMatchObject({
+      type: "request",
+      request: {
+        body: {
+          grant_type: "urn:ietf:params:oauth:grant-type:jwt-bearer",
+          assertion: "[redacted]",
+        },
+      },
+    });
+    expect(JSON.stringify(events)).not.toContain("header.payload.signature");
+    expect(JSON.stringify(events)).not.toContain("real-access-token");
+  });
+
   it("loads JSONL recordings into replay fixtures keyed by provider/model request", async () => {
     const dir = await mkdtemp(join(tmpdir(), "provider-test-recorder-"));
     const filePath = join(dir, "recording.jsonl");
@@ -346,5 +387,150 @@ describe("provider test recorder", () => {
       method: "POST",
       body: JSON.stringify({ model: "gpt-image-2", prompt: "Replay this image" }),
     })).rejects.toThrow(/No provider test replay fixture/);
+  });
+
+  it("replays recorded provider callbacks through a fetch-compatible handler", async () => {
+    const stub = createProviderConformanceStubs({ includeMock: true })
+      .find((candidate) => candidate.providerId === "mock" && candidate.shape === "video");
+    expect(stub).toBeTruthy();
+    const handled: Array<{ url: string; init?: RequestInit }> = [];
+
+    const responses = await replayProviderTestCallbacks([
+      {
+        schemaVersion: 1,
+        requestId: "video-request",
+        stub: stub!,
+        request: {
+          url: "https://provider.example/video",
+          method: "POST",
+          headers: {},
+        },
+        response: {
+          status: 202,
+          headers: {},
+        },
+        callbacks: [
+          {
+            url: "https://local.test/api/provider-callback/video-request",
+            method: "POST",
+            headers: {
+              "content-type": "application/json",
+              "x-provider-event": "completed",
+            },
+            body: {
+              status: "completed",
+              output: { url: "https://provider.example/video.mp4" },
+            },
+          },
+        ],
+      },
+    ], async (input, init) => {
+      const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+      handled.push({ url, init });
+      return Response.json({ ok: true }, { status: 200 });
+    });
+
+    expect(responses.map((response) => response.status)).toEqual([200]);
+    expect(handled).toHaveLength(1);
+    expect(handled[0]?.url).toBe("https://local.test/api/provider-callback/video-request");
+    expect(handled[0]?.init).toMatchObject({
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-provider-event": "completed",
+      },
+    });
+    expect(JSON.parse(String(handled[0]?.init?.body))).toEqual({
+      status: "completed",
+      output: { url: "https://provider.example/video.mp4" },
+    });
+  });
+
+  it("filters replay fixtures to one provider/model conformance target", () => {
+    const stubs = createProviderConformanceStubs({ includeMock: true });
+    const imageStub = stubs.find((candidate) => candidate.id === "mock:mock::mock-image-model");
+    const textStub = stubs.find((candidate) => candidate.id === "mock:mock::mock-text-model");
+    expect(imageStub).toBeTruthy();
+    expect(textStub).toBeTruthy();
+
+    const imageFixture = {
+      schemaVersion: 1 as const,
+      requestId: "image-request",
+      stub: imageStub!,
+      request: {
+        url: "https://provider.example/image",
+        method: "POST",
+        headers: {},
+      },
+      response: {
+        status: 200,
+        headers: {},
+      },
+      callbacks: [],
+    };
+    const textFixture = {
+      schemaVersion: 1 as const,
+      requestId: "text-request",
+      stub: textStub!,
+      request: {
+        url: "https://provider.example/text",
+        method: "POST",
+        headers: {},
+      },
+      response: {
+        status: 200,
+        headers: {},
+      },
+      callbacks: [],
+    };
+
+    expect(filterProviderTestReplayFixturesForStub([imageFixture, textFixture], imageStub!.id)).toEqual([imageFixture]);
+    expect(filterProviderTestReplayFixturesForStub([imageFixture, textFixture], "missing")).toEqual([]);
+  });
+
+  it("matches legacy Gemini image recordings after default imageConfig became explicit", async () => {
+    const stub = createProviderConformanceStubs({ includeMock: true })
+      .find((candidate) => candidate.id === "official:google-agent-platform:global:nano-banana-2");
+    expect(stub).toBeTruthy();
+
+    const replayFetch = createProviderTestReplayFetch([
+      {
+        schemaVersion: 1,
+        requestId: "legacy-gemini-image",
+        stub: stub!,
+        request: {
+          url: "https://aiplatform.googleapis.com/v1/projects/test/locations/global/publishers/google/models/gemini-3.1-flash-image:generateContent",
+          method: "POST",
+          headers: {},
+          body: {
+            contents: [{ role: "user", parts: [{ text: "draw a routing map" }] }],
+            generationConfig: { responseModalities: ["TEXT", "IMAGE"] },
+          },
+        },
+        response: {
+          status: 200,
+          headers: { "content-type": "application/json" },
+          body: { candidates: [{ content: { parts: [{ text: "ok" }] } }] },
+        },
+        callbacks: [],
+      },
+    ]);
+
+    const response = await replayFetch(
+      "https://aiplatform.googleapis.com/v1/projects/test/locations/global/publishers/google/models/gemini-3.1-flash-image:generateContent",
+      {
+        method: "POST",
+        body: JSON.stringify({
+          contents: [{ role: "user", parts: [{ text: "draw a routing map" }] }],
+          generationConfig: {
+            responseModalities: ["TEXT", "IMAGE"],
+            imageConfig: { aspectRatio: "16:9" },
+          },
+        }),
+      },
+    );
+
+    expect(response.ok).toBe(true);
+    expect(await response.json()).toEqual({ candidates: [{ content: { parts: [{ text: "ok" }] } }] });
   });
 });

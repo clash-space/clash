@@ -1,0 +1,85 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Clash caption lineage verification report",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "kind",
+    "status",
+    "sourceTimelinePath",
+    "captionItems",
+    "cues",
+    "wordRefs",
+    "sourceToOutputMaps",
+    "tracks",
+    "checks",
+    "blockedReasons"
+  ],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "kind": { "const": "clash.caption.lineage-verification" },
+    "status": { "enum": ["pass", "blocked"] },
+    "sourceTimelinePath": { "type": "string" },
+    "captionItems": { "type": "number" },
+    "cues": { "type": "number" },
+    "wordRefs": { "type": "number" },
+    "sourceToOutputMaps": { "type": "number" },
+    "tracks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["trackId", "itemIds", "cueIds"],
+        "properties": {
+          "trackId": { "type": "string" },
+          "itemIds": { "type": "array", "items": { "type": "string" } },
+          "cueIds": { "type": "array", "items": { "type": "string" } }
+        }
+      }
+    },
+    "checks": {
+      "type": "array",
+      "minItems": 5,
+      "items": {
+        "type": "object",
+        "required": ["id", "label", "required", "status", "expected", "actual"],
+        "properties": {
+          "id": {
+            "enum": [
+              "timeline.valid-structured-caption",
+              "caption.items-present",
+              "caption.wordrefs-present",
+              "caption.source-map-present",
+              "caption.cues-covered-by-lineage"
+            ]
+          },
+          "label": { "type": "string" },
+          "required": { "const": true },
+          "status": { "enum": ["pass", "fail"] },
+          "expected": { "type": "string" },
+          "actual": { "type": "string" }
+        }
+      }
+    },
+    "blockedReasons": {
+      "type": "array",
+      "items": { "type": "string" }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": { "status": { "const": "pass" } },
+        "required": ["status"]
+      },
+      "then": {
+        "properties": {
+          "captionItems": { "exclusiveMinimum": 0 },
+          "cues": { "exclusiveMinimum": 0 },
+          "wordRefs": { "exclusiveMinimum": 0 },
+          "sourceToOutputMaps": { "exclusiveMinimum": 0 },
+          "blockedReasons": { "maxItems": 0 }
+        }
+      }
+    }
+  ]
+}

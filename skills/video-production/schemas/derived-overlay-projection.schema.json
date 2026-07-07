@@ -1,0 +1,99 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Clash derived overlay timeline projection",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "kind",
+    "sourceAssetId",
+    "derivedAssetId",
+    "derivedAssetPath",
+    "mediaType",
+    "casApply",
+    "timelineItems",
+    "validation"
+  ],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "kind": { "const": "clash.derived-overlay.timeline-projection" },
+    "sourceAssetId": { "type": "string" },
+    "derivedAssetId": { "type": "string" },
+    "sourceAssetPath": { "type": "string" },
+    "derivedAssetPath": { "type": "string" },
+    "mediaType": { "enum": ["image", "video"] },
+    "casApply": {
+      "type": "object",
+      "required": ["target", "mutation", "applyCommand", "filePath", "lockPath", "lockRequired", "lockSource", "nodeIdPlaceholder", "requiredRuntimeArgs", "pullCommand", "pullArgs", "applyArgs"],
+      "properties": {
+        "target": { "const": "timeline" },
+        "mutation": { "const": "projection-only" },
+        "applyCommand": { "const": "clash timeline apply" },
+        "filePath": { "type": "string" },
+        "lockPath": { "type": "string" },
+        "lockRequired": { "const": true },
+        "lockSource": { "const": "fresh-canvas-pull" },
+        "nodeIdPlaceholder": { "const": "<video-editor-node-id>" },
+        "requiredRuntimeArgs": {
+          "type": "array",
+          "contains": { "const": "--node <video-editor-node-id>" }
+        },
+        "pullCommand": { "const": "clash timeline pull" },
+        "pullArgs": {
+          "type": "array",
+          "prefixItems": [{ "const": "--node" }, { "const": "<video-editor-node-id>" }],
+          "items": { "type": "string" }
+        },
+        "applyArgs": {
+          "type": "array",
+          "prefixItems": [{ "const": "--node" }, { "const": "<video-editor-node-id>" }],
+          "items": { "type": "string" }
+        }
+      }
+    },
+    "timelineItems": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "type",
+          "from",
+          "durationInFrames",
+          "mediaType",
+          "src",
+          "sourceAssetId",
+          "derivedAssetId",
+          "derivation"
+        ],
+        "properties": {
+          "id": { "type": "string" },
+          "type": { "const": "derived-overlay" },
+          "from": { "type": "number" },
+          "durationInFrames": { "type": "number" },
+          "mediaType": { "enum": ["image", "video"] },
+          "src": { "type": "string" },
+          "sourceAssetId": { "type": "string" },
+          "derivedAssetId": { "type": "string" },
+          "derivation": {
+            "type": "object",
+            "required": ["kind"],
+            "properties": {
+              "kind": { "enum": ["trim", "crop", "caption-burn", "mg-render", "transcode", "other"] },
+              "description": { "type": "string" },
+              "parameters": { "type": "object" }
+            }
+          }
+        }
+      }
+    },
+    "validation": {
+      "type": "object",
+      "required": ["timelineItemType", "copyOnWrite", "localProjectPath"],
+      "properties": {
+        "timelineItemType": { "const": "derived-overlay" },
+        "copyOnWrite": { "const": true },
+        "localProjectPath": { "const": true }
+      }
+    }
+  }
+}

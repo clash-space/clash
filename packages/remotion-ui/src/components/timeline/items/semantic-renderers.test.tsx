@@ -1,0 +1,106 @@
+// @vitest-environment jsdom
+import { cleanup, render, screen } from '@testing-library/react';
+import type { CaptionItem, CompositionItem, DerivedOverlayItem } from '@master-clash/remotion-core';
+import { afterEach, describe, expect, it } from 'vitest';
+import { getRendererForItem, itemRendererRegistry } from './registry';
+
+afterEach(() => cleanup());
+
+const captionItem: CaptionItem = {
+  id: 'caption-main',
+  type: 'caption',
+  from: 0,
+  durationInFrames: 90,
+  cues: [
+    {
+      id: 'cue-hook',
+      startFrame: 0,
+      durationInFrames: 30,
+      text: '别再把字幕当 text clip',
+      wordIds: ['w1'],
+      sourceStartFrame: 0,
+      sourceEndFrame: 30,
+    },
+  ],
+  wordRefs: [{ id: 'w1', text: '字幕', sourceStartFrame: 0, sourceEndFrame: 30 }],
+  sourceToOutputMap: [
+    { sourceStartFrame: 0, sourceEndFrame: 30, outputStartFrame: 0, outputEndFrame: 30 },
+  ],
+};
+
+const compositionItem: CompositionItem = {
+  id: 'mg-lower-third',
+  type: 'composition',
+  from: 0,
+  durationInFrames: 60,
+  compositionKind: 'motion-graphics',
+  runtime: 'html',
+  compositionId: 'lower-third',
+  sourcePath: 'compositions/lower-third/index.html',
+  spec: {
+    layers: [
+      { id: 'headline', type: 'text', text: 'MG Overlay', from: 0, durationInFrames: 60 },
+    ],
+  },
+};
+
+const derivedOverlayItem: DerivedOverlayItem = {
+  id: 'overlay-crop',
+  type: 'derived-overlay',
+  from: 0,
+  durationInFrames: 45,
+  mediaType: 'image',
+  src: 'assets/derived/crop.webp',
+  sourceAssetId: 'asset-source',
+  derivedAssetId: 'asset-crop',
+  assetId: 'asset-crop',
+  derivation: { kind: 'crop', description: 'safe copy-on-write crop' },
+};
+
+describe('semantic timeline item renderers', () => {
+  it('registers explicit timeline renderers instead of falling back to solid blocks', () => {
+    expect(itemRendererRegistry.caption?.name).toBe('CaptionRenderer');
+    expect(itemRendererRegistry.composition?.name).toBe('CompositionRenderer');
+    expect(itemRendererRegistry['derived-overlay']?.name).toBe('DerivedOverlayRenderer');
+  });
+
+  it('renders caption items as structured caption tracks with cue lineage context', () => {
+    const Renderer = getRendererForItem(captionItem);
+    const { container } = render(
+      <Renderer item={captionItem} asset={null} width={240} height={44} pixelsPerFrame={2} />,
+    );
+
+    expect(screen.getByText('Caption')).toBeTruthy();
+    expect(screen.getByText('1 cue')).toBeTruthy();
+    expect(screen.getByText('别再把字幕当 text clip')).toBeTruthy();
+    expect((container.firstElementChild as HTMLElement).dataset.timelineItemType).toBe('caption');
+    expect((container.firstElementChild as HTMLElement).title).toContain('1 word ref');
+  });
+
+  it('renders composition items with runtime, composition id, and first-party layer count', () => {
+    const Renderer = getRendererForItem(compositionItem);
+    const { container } = render(
+      <Renderer item={compositionItem} asset={null} width={260} height={44} pixelsPerFrame={2} />,
+    );
+
+    expect(screen.getByText('MG')).toBeTruthy();
+    expect(screen.getByText('lower-third')).toBeTruthy();
+    expect(screen.getByText('html')).toBeTruthy();
+    expect(screen.getByText('1 layer')).toBeTruthy();
+    expect((container.firstElementChild as HTMLElement).dataset.timelineItemType).toBe('composition');
+    expect((container.firstElementChild as HTMLElement).title).toContain('compositions/lower-third/index.html');
+  });
+
+  it('renders derived overlays as copy-on-write assets with source and derived ids', () => {
+    const Renderer = getRendererForItem(derivedOverlayItem);
+    const { container } = render(
+      <Renderer item={derivedOverlayItem} asset={null} width={260} height={44} pixelsPerFrame={2} />,
+    );
+
+    expect(screen.getByText('Derived overlay')).toBeTruthy();
+    expect(screen.getByText('crop')).toBeTruthy();
+    expect(screen.getByText('asset-source -> asset-crop')).toBeTruthy();
+    expect((container.firstElementChild as HTMLElement).dataset.timelineItemType).toBe('derived-overlay');
+    expect((container.firstElementChild as HTMLElement).title).toContain('copy-on-write');
+  });
+});

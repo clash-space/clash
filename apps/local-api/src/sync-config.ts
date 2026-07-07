@@ -1,4 +1,4 @@
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { chmod, mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import {
   createHttpRemoteLoroPersistence,
@@ -20,8 +20,13 @@ export interface PublicLocalSyncConfig {
   };
 }
 
+export type LocalSyncConfigReadState = PublicLocalSyncConfig & {
+  updated_at: string;
+};
+
 export interface LocalSyncConfigStore {
   getPublicConfig(): Promise<PublicLocalSyncConfig>;
+  getReadState?(): Promise<LocalSyncConfigReadState>;
   updateFromRequest(input: Record<string, unknown>): Promise<PublicLocalSyncConfig>;
   resolveRemotePersistence(): Promise<RemoteLoroPersistence | undefined>;
   resolveRemoteRoomSync(): Promise<RemoteRoomSync | undefined>;
@@ -46,6 +51,7 @@ interface EffectiveLocalSyncConfig {
   remoteLoroUrl: string | null;
   remoteLoroToken: string | null;
   source: RemoteLoroSource;
+  updatedAt: string;
 }
 
 interface LocalSyncConfigStoreOptions {
@@ -90,6 +96,7 @@ function envConfig(env: RemoteLoroPersistenceEnv | undefined): EffectiveLocalSyn
     remoteLoroUrl: url,
     remoteLoroToken: trimToNull(env?.CLASH_REMOTE_LORO_TOKEN),
     source: url ? "env" : "none",
+    updatedAt: "env",
   };
 }
 
@@ -103,6 +110,13 @@ function toPublicConfig(config: EffectiveLocalSyncConfig): PublicLocalSyncConfig
       has_token: enabled && !!config.remoteLoroToken,
       source: enabled ? config.source : "none",
     },
+  };
+}
+
+function toReadState(config: EffectiveLocalSyncConfig): LocalSyncConfigReadState {
+  return {
+    ...toPublicConfig(config),
+    updated_at: config.updatedAt,
   };
 }
 
@@ -123,7 +137,8 @@ async function readConfigFile(path: string): Promise<LocalSyncConfigFile | null>
 
 async function writeConfigFile(path: string, config: LocalSyncConfigFile): Promise<void> {
   await mkdir(dirname(path), { recursive: true });
-  await writeFile(path, JSON.stringify(config, null, 2), "utf8");
+  await writeFile(path, JSON.stringify(config, null, 2), { encoding: "utf8", mode: 0o600 });
+  await chmod(path, 0o600).catch(() => undefined);
 }
 
 export function createLocalSyncConfigStore(
@@ -140,12 +155,17 @@ export function createLocalSyncConfigStore(
       remoteLoroUrl: file.remoteLoroUrl,
       remoteLoroToken: file.remoteLoroToken,
       source: file.remoteLoroUrl ? "config" : "none",
+      updatedAt: file.updatedAt,
     };
   }
 
   return {
     async getPublicConfig() {
       return toPublicConfig(await effective());
+    },
+
+    async getReadState() {
+      return toReadState(await effective());
     },
 
     async updateFromRequest(input) {
@@ -182,6 +202,7 @@ export function createLocalSyncConfigStore(
         remoteLoroUrl: next.remoteLoroUrl,
         remoteLoroToken: next.remoteLoroToken,
         source: next.remoteLoroUrl ? "config" : "none",
+        updatedAt: next.updatedAt,
       });
     },
 

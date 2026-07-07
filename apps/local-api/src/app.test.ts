@@ -1,13 +1,66 @@
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { createRequire } from "node:module";
+import { LoroDoc } from "loro-crdt";
+import {
+  assetReadToken,
+  assetRefReadToken,
+  Canvas,
+  canvasEdgeReadToken,
+  canvasEdgesReadToken,
+  canvasNodeReadToken,
+  type Asset,
+} from "@clash/shared-types";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createLocalApiApp, type LocalAcpAgentServersConfig } from "./app";
 import { createLocalAudioConfigStore } from "./audio-config";
 import { createMockFalQueueService } from "./fal-mock";
-import { createLocalSyncConfigStore } from "./sync-config";
+import { FileReplicaStore } from "./loro/file-replica-store";
 
 let dataDir = "";
+
+function openSqlite() {
+  const require = createRequire(import.meta.url);
+  const { DatabaseSync } = require("node:sqlite") as {
+    DatabaseSync: new (path: string) => {
+      prepare(sql: string): {
+        run(...params: unknown[]): unknown;
+        get(...params: unknown[]): Record<string, unknown> | undefined;
+        all(...params: unknown[]): Array<Record<string, unknown>>;
+      };
+      close(): void;
+    };
+  };
+  return new DatabaseSync(join(dataDir, "local.sqlite"));
+}
+
+function baseReadToken(readToken: string): string {
+  return readToken.split(":receipt:")[0];
+}
+
+function providerModelTestMutation(providerId: string, modelId: string) {
+  return {
+    operation: "provider_model_test",
+    entity: { kind: "provider-test", id: `${providerId}:${modelId}` },
+    forced: false,
+    accepted: true,
+    resultEntityId: `${providerId}:${modelId}`,
+  };
+}
+
+const PROJECT_RECEIPT_READ_TOKEN_RE = /^project-v1:[a-f0-9]{16}:receipt:[A-Za-z0-9._~-]+$/;
+const NODE_RECEIPT_READ_TOKEN_RE = /^node-v1:[a-f0-9]{16}:receipt:[A-Za-z0-9._~-]+$/;
+const EDGE_RECEIPT_READ_TOKEN_RE = /^edge-v1:[a-f0-9]{16}:receipt:[A-Za-z0-9._~-]+$/;
+const EDGES_RECEIPT_READ_TOKEN_RE = /^edges-v1:[a-f0-9]{16}:receipt:[A-Za-z0-9._~-]+$/;
+const ASSET_RECEIPT_READ_TOKEN_RE = /^asset-v1:[a-f0-9]{16}:receipt:[A-Za-z0-9._~-]+$/;
+const ASSET_REF_RECEIPT_READ_TOKEN_RE = /^asset-ref-v1:[a-f0-9]{16}:receipt:[A-Za-z0-9._~-]+$/;
+const SESSION_RECEIPT_READ_TOKEN_RE = /^session-v1:[a-f0-9]{16}:receipt:[A-Za-z0-9._~-]+$/;
+const LOCAL_CONFIG_RECEIPT_READ_TOKEN_RE = /^local-config-v1:[a-f0-9]{16}:receipt:[A-Za-z0-9._~-]+$/;
+const PROVIDER_ACCOUNT_RECEIPT_READ_TOKEN_RE = /^provider-account-v1:[a-f0-9]{16}:receipt:[A-Za-z0-9._~-]+$/;
+const PROVIDER_ACCOUNTS_RECEIPT_READ_TOKEN_RE = /^provider-accounts-v1:[a-f0-9]{16}:receipt:[A-Za-z0-9._~-]+$/;
+const PROVIDER_OAUTH_RECEIPT_READ_TOKEN_RE = /^provider-oauth-v1:[a-f0-9]{16}:receipt:[A-Za-z0-9._~-]+$/;
+const ASSET_GC_RECEIPT_READ_TOKEN_RE = /^asset-gc-v1:[a-f0-9]{16}:receipt:[A-Za-z0-9._~-]+$/;
 
 beforeEach(async () => {
   dataDir = await mkdtemp(join(tmpdir(), "clash-local-api-"));
@@ -76,6 +129,7 @@ describe("local API app", () => {
         has_token: false,
         source: "none",
       },
+      readToken: expect.stringMatching(LOCAL_CONFIG_RECEIPT_READ_TOKEN_RE),
     });
 
     const updated = await app.request("/api/v1/local/sync", {
@@ -96,6 +150,14 @@ describe("local API app", () => {
         has_token: true,
         source: "config",
       },
+      readToken: expect.stringMatching(LOCAL_CONFIG_RECEIPT_READ_TOKEN_RE),
+      mutation: {
+        operation: "local_sync_config_update",
+        entity: { kind: "local-config", id: "sync" },
+        forced: false,
+        accepted: true,
+        resultEntityId: "sync",
+      },
     });
 
     const reopened = createLocalApiApp({ dataDir, userId: "local-user", syncEnv: {} });
@@ -108,6 +170,7 @@ describe("local API app", () => {
         has_token: true,
         source: "config",
       },
+      readToken: expect.stringMatching(LOCAL_CONFIG_RECEIPT_READ_TOKEN_RE),
     });
   });
 
@@ -123,6 +186,136 @@ describe("local API app", () => {
     expect(res.status).toBe(400);
     expect(await res.json()).toEqual({
       error: "remote_loro_url is required for cloud-sync mode",
+      mutation: {
+        operation: "local_sync_config_update",
+        entity: { kind: "local-config", id: "sync" },
+        forced: false,
+        accepted: false,
+        error: "remote_loro_url is required for cloud-sync mode",
+      },
+    });
+  });
+
+  it("requires a receipt-bearing sync config read token before agent cloud-sync changes", async () => {
+    const app = createLocalApiApp({ dataDir, userId: "local-user", syncEnv: {} });
+
+    const initial = await app.request("/api/v1/local/sync");
+    const initialJson = await initial.json() as { readToken?: string };
+    expect(initialJson.readToken).toMatch(LOCAL_CONFIG_RECEIPT_READ_TOKEN_RE);
+
+    const missing = await app.request("/api/v1/local/sync", {
+      method: "PATCH",
+      headers: {
+        "content-type": "application/json",
+        "x-clash-client-type": "agent",
+      },
+      body: JSON.stringify({
+        mode: "cloud-sync",
+        remote_loro_url: "https://cloud.example",
+      }),
+    });
+    expect(missing.status).toBe(409);
+    expect(await missing.json()).toMatchObject({
+      error: expect.stringContaining("Missing local sync config update read proof"),
+      mutation: {
+        operation: "local_sync_config_update",
+        entity: { kind: "local-config", id: "sync" },
+        forced: false,
+        accepted: false,
+        error: expect.stringContaining("Missing local sync config update read proof"),
+      },
+    });
+
+    const bareReadToken = baseReadToken(initialJson.readToken!);
+    const bare = await app.request("/api/v1/local/sync", {
+      method: "PATCH",
+      headers: {
+        "content-type": "application/json",
+        "x-clash-client-type": "agent",
+        "x-clash-if-match": bareReadToken,
+      },
+      body: JSON.stringify({
+        mode: "cloud-sync",
+        remote_loro_url: "https://cloud.example",
+      }),
+    });
+    expect(bare.status).toBe(409);
+    expect(await bare.json()).toMatchObject({
+      error: expect.stringContaining("Missing local sync config update read receipt"),
+      mutation: {
+        operation: "local_sync_config_update",
+        entity: { kind: "local-config", id: "sync" },
+        expectedReadToken: bareReadToken,
+        beforeReadToken: bareReadToken,
+        forced: false,
+        accepted: false,
+        error: expect.stringContaining("Missing local sync config update read receipt"),
+      },
+    });
+
+    const userUpdate = await app.request("/api/v1/local/sync", {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        mode: "cloud-sync",
+        remote_loro_url: "https://first.example",
+      }),
+    });
+    expect(userUpdate.status).toBe(200);
+
+    const stale = await app.request("/api/v1/local/sync", {
+      method: "PATCH",
+      headers: {
+        "content-type": "application/json",
+        "x-clash-client-type": "agent",
+        "x-clash-if-match": initialJson.readToken!,
+      },
+      body: JSON.stringify({
+        mode: "cloud-sync",
+        remote_loro_url: "https://second.example",
+      }),
+    });
+    expect(stale.status).toBe(409);
+    const staleJson = await stale.json() as { error: string; mutation: { beforeReadToken?: string; expectedReadToken?: string } };
+    expect(staleJson.error).toContain("Stale local sync config update rejected");
+    expect(staleJson.mutation.expectedReadToken).toBe(initialJson.readToken);
+    expect(staleJson.mutation.beforeReadToken).toMatch(/^local-config-v1:[a-f0-9]{16}$/);
+    expect(staleJson.mutation.beforeReadToken).not.toBe(baseReadToken(initialJson.readToken!));
+
+    const refreshed = await app.request("/api/v1/local/sync");
+    const refreshedJson = await refreshed.json() as { readToken?: string };
+    expect(refreshedJson.readToken).toMatch(LOCAL_CONFIG_RECEIPT_READ_TOKEN_RE);
+
+    const accepted = await app.request("/api/v1/local/sync", {
+      method: "PATCH",
+      headers: {
+        "content-type": "application/json",
+        "x-clash-client-type": "agent",
+        "x-clash-if-match": refreshedJson.readToken!,
+      },
+      body: JSON.stringify({
+        mode: "cloud-sync",
+        remote_loro_url: "https://second.example",
+      }),
+    });
+    expect(accepted.status).toBe(200);
+    expect(await accepted.json()).toMatchObject({
+      mode: "cloud-sync",
+      remote_loro: {
+        enabled: true,
+        url: "https://second.example",
+      },
+      readToken: expect.stringMatching(LOCAL_CONFIG_RECEIPT_READ_TOKEN_RE),
+      mutation: {
+        operation: "local_sync_config_update",
+        entity: { kind: "local-config", id: "sync" },
+        expectedReadToken: refreshedJson.readToken,
+        beforeReadToken: baseReadToken(refreshedJson.readToken!),
+        forced: false,
+        accepted: true,
+        resultEntityId: "sync",
+        afterReadToken: expect.stringMatching(LOCAL_CONFIG_RECEIPT_READ_TOKEN_RE),
+      },
     });
   });
 
@@ -148,6 +341,7 @@ describe("local API app", () => {
           available: false,
         }),
       }),
+      readToken: expect.stringMatching(LOCAL_CONFIG_RECEIPT_READ_TOKEN_RE),
     });
 
     const updated = await app.request("/api/v1/local/audio", {
@@ -175,6 +369,14 @@ describe("local API app", () => {
           available: false,
         }),
       }),
+      readToken: expect.stringMatching(LOCAL_CONFIG_RECEIPT_READ_TOKEN_RE),
+      mutation: {
+        operation: "local_audio_config_update",
+        entity: { kind: "local-config", id: "audio" },
+        forced: false,
+        accepted: true,
+        resultEntityId: "audio",
+      },
     });
 
     const legacyEndpointConfig = await app.request("/api/v1/local/audio", {
@@ -197,6 +399,14 @@ describe("local API app", () => {
         has_api_key: false,
         ready: false,
       }),
+      readToken: expect.stringMatching(LOCAL_CONFIG_RECEIPT_READ_TOKEN_RE),
+      mutation: {
+        operation: "local_audio_config_update",
+        entity: { kind: "local-config", id: "audio" },
+        forced: false,
+        accepted: true,
+        resultEntityId: "audio",
+      },
     });
 
     const reopenedAudioConfig = createLocalAudioConfigStore({
@@ -213,6 +423,133 @@ describe("local API app", () => {
         has_api_key: false,
         ready: false,
       }),
+      readToken: expect.stringMatching(LOCAL_CONFIG_RECEIPT_READ_TOKEN_RE),
+    });
+  });
+
+  it("requires a receipt-bearing audio config read token before agent audio config changes", async () => {
+    const audioConfig = createLocalAudioConfigStore({
+      dataDir,
+      builtinStatus: async () => ({ available: false, message: "FunASR is not installed" }),
+    });
+    const app = createLocalApiApp({ dataDir, userId: "local-user", audioConfig });
+
+    const initial = await app.request("/api/v1/local/audio");
+    const initialJson = await initial.json() as { readToken?: string };
+    expect(initialJson.readToken).toMatch(LOCAL_CONFIG_RECEIPT_READ_TOKEN_RE);
+
+    const missing = await app.request("/api/v1/local/audio", {
+      method: "PATCH",
+      headers: {
+        "content-type": "application/json",
+        "x-clash-client-type": "agent",
+      },
+      body: JSON.stringify({
+        asr_enabled: true,
+        asr_model: "iic/SenseVoiceSmall",
+      }),
+    });
+    expect(missing.status).toBe(409);
+    expect(await missing.json()).toMatchObject({
+      error: expect.stringContaining("Missing local audio config update read proof"),
+      mutation: {
+        operation: "local_audio_config_update",
+        entity: { kind: "local-config", id: "audio" },
+        forced: false,
+        accepted: false,
+        error: expect.stringContaining("Missing local audio config update read proof"),
+      },
+    });
+
+    const bareReadToken = baseReadToken(initialJson.readToken!);
+    const bare = await app.request("/api/v1/local/audio", {
+      method: "PATCH",
+      headers: {
+        "content-type": "application/json",
+        "x-clash-client-type": "agent",
+        "x-clash-if-match": bareReadToken,
+      },
+      body: JSON.stringify({
+        asr_enabled: true,
+        asr_model: "iic/SenseVoiceSmall",
+      }),
+    });
+    expect(bare.status).toBe(409);
+    expect(await bare.json()).toMatchObject({
+      error: expect.stringContaining("Missing local audio config update read receipt"),
+      mutation: {
+        operation: "local_audio_config_update",
+        entity: { kind: "local-config", id: "audio" },
+        expectedReadToken: bareReadToken,
+        beforeReadToken: bareReadToken,
+        forced: false,
+        accepted: false,
+        error: expect.stringContaining("Missing local audio config update read receipt"),
+      },
+    });
+
+    const userUpdate = await app.request("/api/v1/local/audio", {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        asr_enabled: true,
+        asr_model: "iic/SenseVoiceSmall",
+      }),
+    });
+    expect(userUpdate.status).toBe(200);
+
+    const stale = await app.request("/api/v1/local/audio", {
+      method: "PATCH",
+      headers: {
+        "content-type": "application/json",
+        "x-clash-client-type": "agent",
+        "x-clash-if-match": initialJson.readToken!,
+      },
+      body: JSON.stringify({
+        asr_enabled: false,
+        asr_model: "iic/SenseVoiceSmall",
+      }),
+    });
+    expect(stale.status).toBe(409);
+    const staleJson = await stale.json() as { error: string; mutation: { beforeReadToken?: string; expectedReadToken?: string } };
+    expect(staleJson.error).toContain("Stale local audio config update rejected");
+    expect(staleJson.mutation.expectedReadToken).toBe(initialJson.readToken);
+    expect(staleJson.mutation.beforeReadToken).toMatch(/^local-config-v1:[a-f0-9]{16}$/);
+    expect(staleJson.mutation.beforeReadToken).not.toBe(baseReadToken(initialJson.readToken!));
+
+    const refreshed = await app.request("/api/v1/local/audio");
+    const refreshedJson = await refreshed.json() as { readToken?: string };
+    expect(refreshedJson.readToken).toMatch(LOCAL_CONFIG_RECEIPT_READ_TOKEN_RE);
+
+    const accepted = await app.request("/api/v1/local/audio", {
+      method: "PATCH",
+      headers: {
+        "content-type": "application/json",
+        "x-clash-client-type": "agent",
+        "x-clash-if-match": refreshedJson.readToken!,
+      },
+      body: JSON.stringify({
+        asr_enabled: false,
+        asr_model: "iic/SenseVoiceSmall",
+      }),
+    });
+    expect(accepted.status).toBe(200);
+    expect(await accepted.json()).toMatchObject({
+      asr: {
+        enabled: false,
+        provider: "builtin-funasr",
+      },
+      readToken: expect.stringMatching(LOCAL_CONFIG_RECEIPT_READ_TOKEN_RE),
+      mutation: {
+        operation: "local_audio_config_update",
+        entity: { kind: "local-config", id: "audio" },
+        expectedReadToken: refreshedJson.readToken,
+        beforeReadToken: baseReadToken(refreshedJson.readToken!),
+        forced: false,
+        accepted: true,
+        resultEntityId: "audio",
+        afterReadToken: expect.stringMatching(LOCAL_CONFIG_RECEIPT_READ_TOKEN_RE),
+      },
     });
   });
 
@@ -247,8 +584,143 @@ describe("local API app", () => {
           available: true,
         }),
       }),
+      readToken: expect.stringMatching(LOCAL_CONFIG_RECEIPT_READ_TOKEN_RE),
+      mutation: {
+        operation: "local_audio_model_install",
+        entity: { kind: "local-config", id: "audio" },
+        forced: false,
+        accepted: true,
+        resultEntityId: "audio",
+      },
     });
     expect(builtinInstall).toHaveBeenCalledWith({ model: "iic/SenseVoiceSmall", pythonBinary: "python3" });
+  });
+
+  it("requires a receipt-bearing audio config read token before agent audio installs", async () => {
+    let installed = false;
+    const builtinInstall = vi.fn(async () => {
+      installed = true;
+    });
+    const audioConfig = createLocalAudioConfigStore({
+      dataDir,
+      builtinStatus: async () => ({ available: installed, message: installed ? undefined : "FunASR is not installed" }),
+      builtinInstall,
+    });
+    const app = createLocalApiApp({ dataDir, userId: "local-user", audioConfig });
+
+    const initial = await app.request("/api/v1/local/audio");
+    const initialJson = await initial.json() as { readToken?: string };
+    expect(initialJson.readToken).toMatch(LOCAL_CONFIG_RECEIPT_READ_TOKEN_RE);
+
+    const missing = await app.request("/api/v1/local/audio/install", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-clash-client-type": "agent",
+      },
+      body: JSON.stringify({ asr_model: "iic/SenseVoiceSmall" }),
+    });
+    expect(missing.status).toBe(409);
+    expect(await missing.json()).toMatchObject({
+      error: expect.stringContaining("Missing local audio model install read proof"),
+      mutation: {
+        operation: "local_audio_model_install",
+        entity: { kind: "local-config", id: "audio" },
+        accepted: false,
+      },
+    });
+    expect(builtinInstall).not.toHaveBeenCalled();
+
+    const bare = await app.request("/api/v1/local/audio/install", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-clash-client-type": "agent",
+        "x-clash-if-match": baseReadToken(initialJson.readToken!),
+      },
+      body: JSON.stringify({ asr_model: "iic/SenseVoiceSmall" }),
+    });
+    expect(bare.status).toBe(409);
+    expect(await bare.json()).toMatchObject({
+      error: expect.stringContaining("Missing local audio model install read receipt"),
+      mutation: {
+        operation: "local_audio_model_install",
+        entity: { kind: "local-config", id: "audio" },
+        accepted: false,
+      },
+    });
+    expect(builtinInstall).not.toHaveBeenCalled();
+
+    const accepted = await app.request("/api/v1/local/audio/install", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-clash-client-type": "agent",
+        "x-clash-if-match": initialJson.readToken!,
+      },
+      body: JSON.stringify({ asr_model: "iic/SenseVoiceSmall" }),
+    });
+    expect(accepted.status).toBe(200);
+    const acceptedJson = await accepted.json() as { readToken?: string; mutation?: any };
+    expect(acceptedJson.readToken).toMatch(LOCAL_CONFIG_RECEIPT_READ_TOKEN_RE);
+    expect(acceptedJson.readToken).not.toBe(initialJson.readToken);
+    expect(acceptedJson.mutation).toMatchObject({
+      operation: "local_audio_model_install",
+      entity: { kind: "local-config", id: "audio" },
+      expectedReadToken: initialJson.readToken,
+      beforeReadToken: baseReadToken(initialJson.readToken!),
+      afterReadToken: acceptedJson.readToken,
+      accepted: true,
+      resultEntityId: "audio",
+    });
+    expect(builtinInstall).toHaveBeenCalledTimes(1);
+
+    const stale = await app.request("/api/v1/local/audio/install", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-clash-client-type": "agent",
+        "x-clash-if-match": initialJson.readToken!,
+      },
+      body: JSON.stringify({ asr_model: "iic/SenseVoiceSmall" }),
+    });
+    expect(stale.status).toBe(409);
+    expect(await stale.json()).toMatchObject({
+      error: expect.stringContaining("Stale local audio model install rejected"),
+      mutation: {
+        operation: "local_audio_model_install",
+        entity: { kind: "local-config", id: "audio" },
+        expectedReadToken: initialJson.readToken,
+        accepted: false,
+      },
+    });
+    expect(builtinInstall).toHaveBeenCalledTimes(1);
+  });
+
+  it("records rejected mutation envelopes for invalid local audio configuration writes", async () => {
+    const audioConfig = createLocalAudioConfigStore({
+      dataDir,
+      builtinStatus: async () => ({ available: false }),
+    });
+    const app = createLocalApiApp({ dataDir, userId: "local-user", audioConfig });
+
+    const res = await app.request("/api/v1/local/audio", {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ asr_provider: "remote-openai" }),
+    });
+
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({
+      error: "asr_provider must be builtin-funasr",
+      mutation: {
+        operation: "local_audio_config_update",
+        entity: { kind: "local-config", id: "audio" },
+        forced: false,
+        accepted: false,
+        error: "asr_provider must be builtin-funasr",
+      },
+    });
   });
 
   it("transcribes local ASR through the built-in FunASR RPC adapter", async () => {
@@ -280,68 +752,2053 @@ describe("local API app", () => {
     });
 
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ text: "你好 Clash" });
+    expect(await res.json()).toEqual({
+      text: "你好 Clash",
+      mutation: {
+        operation: "local_audio_transcription",
+        entity: { kind: "local-action", id: "audio-transcription" },
+        forced: false,
+        accepted: true,
+        resultEntityId: "audio-transcription",
+      },
+    });
     expect(builtinTranscribe).toHaveBeenCalledTimes(1);
   });
 
-  it("stores local settings variables without exposing secret values", async () => {
-    const app = createLocalApiApp({ dataDir, userId: "local-user" });
-
-    const created = await app.request("/api/settings/variables", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ key: "OPENAI_API_KEY", value: "sk-local" }),
+  it("records rejected mutation envelopes for local ASR transcription failures", async () => {
+    const audioConfig = createLocalAudioConfigStore({
+      dataDir,
+      builtinStatus: async () => ({ available: true }),
     });
-    expect(created.status).toBe(200);
-    const createdJson = (await created.json()) as { id: string; key: string; value?: string };
-    expect(createdJson).toMatchObject({ key: "OPENAI_API_KEY" });
-    expect(createdJson.value).toBeUndefined();
+    const app = createLocalApiApp({ dataDir, userId: "local-user", audioConfig });
+    const form = new FormData();
+    form.append("file", new File(["voice-bytes"], "voice.webm", { type: "audio/webm" }));
 
-    const listed = await app.request("/api/settings/variables");
-    expect(await listed.json()).toEqual([
-      expect.objectContaining({
-        id: createdJson.id,
-        key: "OPENAI_API_KEY",
-      }),
-    ]);
+    const res = await app.request("/api/v1/local/audio/transcriptions", {
+      method: "POST",
+      body: form,
+    });
 
-    const removed = await app.request(`/api/settings/variables/${createdJson.id}`, { method: "DELETE" });
-    expect(removed.status).toBe(204);
-    const afterDelete = await app.request("/api/settings/variables");
-    expect(await afterDelete.json()).toEqual([]);
+    expect(res.status).toBe(409);
+    expect(await res.json()).toEqual({
+      error: "Local ASR is not enabled. Open Settings > Audio and enable voice input.",
+      mutation: {
+        operation: "local_audio_transcription",
+        entity: { kind: "local-action", id: "audio-transcription" },
+        forced: false,
+        accepted: false,
+        error: "Local ASR is not enabled. Open Settings > Audio and enable voice input.",
+      },
+    });
   });
 
-  it("serves CLI-compatible v1 variable endpoints from the local variable store", async () => {
+  it("records rejected mutation envelopes for invalid local ASR transcription input", async () => {
+    const audioConfig = createLocalAudioConfigStore({
+      dataDir,
+      builtinStatus: async () => ({ available: true }),
+    });
+    const app = createLocalApiApp({ dataDir, userId: "local-user", audioConfig });
+
+    const res = await app.request("/api/v1/local/audio/transcriptions", {
+      method: "POST",
+      body: new FormData(),
+    });
+
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({
+      error: "Missing file",
+      mutation: {
+        operation: "local_audio_transcription",
+        entity: { kind: "local-action", id: "audio-transcription" },
+        forced: false,
+        accepted: false,
+        error: "Missing file",
+      },
+    });
+  });
+
+  it("does not expose local platform variable or action-secret endpoints", async () => {
     const app = createLocalApiApp({ dataDir, userId: "local-user" });
 
-    const set = await app.request("/api/v1/vars/FAL_API_KEY", {
-      method: "PUT",
+    for (const [method, path] of [
+      ["GET", "/api/settings/variables"],
+      ["POST", "/api/settings/variables"],
+      ["DELETE", "/api/settings/variables/secret-id"],
+      ["GET", "/api/settings/action-secrets"],
+      ["POST", "/api/settings/action-secrets"],
+      ["DELETE", "/api/settings/action-secrets/secret-id"],
+      ["GET", "/api/v1/vars"],
+      ["PUT", "/api/v1/vars/FAL_API_KEY"],
+      ["DELETE", "/api/v1/vars/FAL_API_KEY"],
+      ["GET", "/api/v1/action-secrets"],
+      ["PUT", "/api/v1/action-secrets/FAL_API_KEY"],
+      ["DELETE", "/api/v1/action-secrets/FAL_API_KEY"],
+    ] as const) {
+      const res = await app.request(path, {
+        method,
+        headers: { "content-type": "application/json" },
+        body: method === "POST" || method === "PUT" ? JSON.stringify({ key: "FAL_API_KEY", value: "secret" }) : undefined,
+      });
+      expect(res.status).toBe(404);
+    }
+  });
+
+  it("persists local project metadata in SQLite without creating legacy db.json", async () => {
+    const app = createLocalApiApp({ dataDir, userId: "local-user" });
+
+    const created = await app.request("/api/v1/projects", {
+      method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ value: "fal-local-key" }),
+      body: JSON.stringify({ name: "Private DB permissions" }),
     });
-    expect(set.status).toBe(200);
-    expect(await set.json()).toEqual({ ok: true, key: "FAL_API_KEY" });
 
-    const listed = await app.request("/api/v1/vars");
-    const listedJson = (await listed.json()) as { variables: Array<{ key: string; createdAt: number | null }> };
-    expect(listedJson.variables).toEqual([
-      expect.objectContaining({
-        key: "FAL_API_KEY",
-        createdAt: expect.any(Number),
-      }),
-    ]);
+    expect(created.status).toBe(201);
+    await expect(stat(join(dataDir, "local.sqlite"))).resolves.toMatchObject({ mode: expect.any(Number) });
+    await expect(stat(join(dataDir, "db.json"))).rejects.toMatchObject({ code: "ENOENT" });
 
-    const settingsListed = await app.request("/api/settings/variables");
-    expect(await settingsListed.json()).toEqual([
-      expect.objectContaining({ key: "FAL_API_KEY" }),
-    ]);
+    const sqlite = openSqlite();
+    try {
+      expect(sqlite.prepare("select owner_id, name, description from project").get()).toEqual({
+        owner_id: "local-user",
+        name: "Private DB permissions",
+        description: null,
+      });
+    } finally {
+      sqlite.close();
+    }
+  });
 
-    const deleted = await app.request("/api/v1/vars/FAL_API_KEY", { method: "DELETE" });
+  it("keeps all concurrent project creates instead of last-write-wins overwriting metadata", async () => {
+    const app = createLocalApiApp({ dataDir, userId: "local-user" });
+    const names = Array.from({ length: 12 }, (_, index) => `Concurrent Project ${index}`);
+
+    const created = await Promise.all(names.map((name) =>
+      app.request("/api/v1/projects", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ name }),
+      })
+    ));
+    expect(created.map((response) => response.status)).toEqual(names.map(() => 201));
+
+    const listed = await app.request("/api/v1/projects");
+    const body = await listed.json() as { projects: Array<{ name: string }> };
+    expect(body.projects.map((project) => project.name).sort()).toEqual([...names].sort());
+  });
+
+  it("keeps all concurrent session creates for a project", async () => {
+    const app = createLocalApiApp({ dataDir, userId: "local-user" });
+    const titles = Array.from({ length: 12 }, (_, index) => `Concurrent Session ${index}`);
+
+    const created = await Promise.all(titles.map((title) =>
+      app.request("/api/v1/sessions", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ projectId: "project-concurrent-sessions", title }),
+      })
+    ));
+    expect(created.map((response) => response.status)).toEqual(titles.map(() => 200));
+
+    const listed = await app.request("/api/v1/sessions?projectId=project-concurrent-sessions");
+    const body = await listed.json() as { sessions: Array<{ title: string }> };
+    expect(body.sessions.map((session) => session.title).sort()).toEqual([...titles].sort());
+  });
+
+  it("records mutation envelopes for v1 session create and delete", async () => {
+    const app = createLocalApiApp({ dataDir, userId: "local-user" });
+
+    const missingProjectId = await app.request("/api/v1/sessions", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ title: "No project" }),
+    });
+    expect(missingProjectId.status).toBe(400);
+    expect(await missingProjectId.json()).toEqual({
+      error: "Missing projectId",
+      mutation: {
+        operation: "session_create",
+        entity: { kind: "session", id: "" },
+        forced: false,
+        accepted: false,
+        error: "Missing projectId",
+      },
+    });
+
+    const createdProject = await app.request("/api/v1/projects", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ name: "Session Project" }),
+    });
+    const { id: projectId } = await createdProject.json() as { id: string };
+
+    const created = await app.request("/api/v1/sessions", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ projectId, title: "Editable session" }),
+    });
+    expect(created.status).toBe(200);
+    const createdJson = await created.json() as { threadId: string; title: string; mutation?: unknown };
+    expect(createdJson.title).toBe("Editable session");
+    expect(createdJson.mutation).toEqual({
+      operation: "session_create",
+      entity: { kind: "session", id: createdJson.threadId },
+      resultEntityId: createdJson.threadId,
+      forced: false,
+      accepted: true,
+    });
+
+    const deletedProject = await app.request(`/api/v1/projects/${encodeURIComponent(projectId)}`, {
+      method: "DELETE",
+    });
+    expect(deletedProject.status).toBe(200);
+    const deletedProjectSession = await app.request("/api/v1/sessions", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ projectId, title: "Hidden project session" }),
+    });
+    expect(deletedProjectSession.status).toBe(409);
+    expect(await deletedProjectSession.json()).toEqual({
+      error: "Project is deleted; restore it before creating sessions",
+      mutation: {
+        operation: "session_create",
+        entity: { kind: "session", id: "" },
+        forced: false,
+        accepted: false,
+        error: "Project is deleted; restore it before creating sessions",
+      },
+    });
+
+    const missingThread = await app.request("/api/v1/sessions", { method: "DELETE" });
+    expect(missingThread.status).toBe(400);
+    expect(await missingThread.json()).toEqual({
+      error: "Missing threadId",
+      mutation: {
+        operation: "session_delete",
+        entity: { kind: "session", id: "" },
+        forced: false,
+        accepted: false,
+        error: "Missing threadId",
+      },
+    });
+
+    const missingSession = await app.request("/api/v1/sessions?threadId=missing-session", {
+      method: "DELETE",
+    });
+    expect(missingSession.status).toBe(404);
+    expect(await missingSession.json()).toEqual({
+      error: "Not found",
+      mutation: {
+        operation: "session_delete",
+        entity: { kind: "session", id: "missing-session" },
+        forced: false,
+        accepted: false,
+        error: "Not found",
+      },
+    });
+
+    const deleted = await app.request(`/api/v1/sessions?threadId=${encodeURIComponent(createdJson.threadId)}`, {
+      method: "DELETE",
+    });
     expect(deleted.status).toBe(200);
-    expect(await deleted.json()).toEqual({ ok: true, key: "FAL_API_KEY" });
+    expect(await deleted.json()).toEqual({
+      ok: true,
+      mutation: {
+        operation: "session_delete",
+        entity: { kind: "session", id: createdJson.threadId },
+        resultEntityId: createdJson.threadId,
+        forced: false,
+        accepted: true,
+      },
+    });
+  });
 
-    const afterDelete = await app.request("/api/v1/vars");
-    expect(await afterDelete.json()).toEqual({ variables: [] });
+  it("requires a receipt-bearing session read token before agent session delete", async () => {
+    const app = createLocalApiApp({ dataDir, userId: "local-user" });
+
+    const createdProject = await app.request("/api/v1/projects", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ name: "Session CAS Project" }),
+    });
+    const { id: projectId } = await createdProject.json() as { id: string };
+
+    const created = await app.request("/api/v1/sessions", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ projectId, title: "Agent deletable session" }),
+    });
+    expect(created.status).toBe(200);
+    const { threadId } = await created.json() as { threadId: string };
+
+    const listed = await app.request(`/api/v1/sessions?projectId=${encodeURIComponent(projectId)}`);
+    const listedJson = await listed.json() as { sessions: Array<{ threadId: string; readToken?: string }> };
+    const session = listedJson.sessions.find((candidate) => candidate.threadId === threadId);
+    expect(session?.readToken).toMatch(SESSION_RECEIPT_READ_TOKEN_RE);
+
+    const missing = await app.request(`/api/v1/sessions?threadId=${encodeURIComponent(threadId)}`, {
+      method: "DELETE",
+      headers: { "x-clash-client-type": "agent" },
+    });
+    expect(missing.status).toBe(409);
+    expect(await missing.json()).toMatchObject({
+      error: expect.stringContaining("Missing session delete read proof"),
+      mutation: {
+        operation: "session_delete",
+        entity: { kind: "session", id: threadId },
+        forced: false,
+        accepted: false,
+        error: expect.stringContaining("Missing session delete read proof"),
+      },
+    });
+
+    const bareReadToken = baseReadToken(session!.readToken!);
+    const bare = await app.request(`/api/v1/sessions?threadId=${encodeURIComponent(threadId)}`, {
+      method: "DELETE",
+      headers: {
+        "x-clash-client-type": "agent",
+        "x-clash-if-match": bareReadToken,
+      },
+    });
+    expect(bare.status).toBe(409);
+    expect(await bare.json()).toMatchObject({
+      error: expect.stringContaining("Missing session delete read receipt"),
+      mutation: {
+        operation: "session_delete",
+        entity: { kind: "session", id: threadId },
+        expectedReadToken: bareReadToken,
+        beforeReadToken: bareReadToken,
+        forced: false,
+        accepted: false,
+        error: expect.stringContaining("Missing session delete read receipt"),
+      },
+    });
+
+    const sqlite = openSqlite();
+    try {
+      sqlite.prepare("UPDATE runtime_session SET updated_at = ? WHERE id = ?")
+        .run("2026-07-07T02:00:00.000Z", threadId);
+    } finally {
+      sqlite.close();
+    }
+
+    const stale = await app.request(`/api/v1/sessions?threadId=${encodeURIComponent(threadId)}`, {
+      method: "DELETE",
+      headers: {
+        "x-clash-client-type": "agent",
+        "x-clash-if-match": session!.readToken!,
+      },
+    });
+    expect(stale.status).toBe(409);
+    const staleJson = await stale.json() as { error: string; mutation: { beforeReadToken?: string; expectedReadToken?: string } };
+    expect(staleJson.error).toContain("Stale session delete rejected");
+    expect(staleJson.mutation.expectedReadToken).toBe(session!.readToken);
+    expect(staleJson.mutation.beforeReadToken).toMatch(/^session-v1:[a-f0-9]{16}$/);
+    expect(staleJson.mutation.beforeReadToken).not.toBe(baseReadToken(session!.readToken!));
+
+    const refreshed = await app.request(`/api/v1/sessions?projectId=${encodeURIComponent(projectId)}`);
+    const refreshedJson = await refreshed.json() as { sessions: Array<{ threadId: string; readToken?: string }> };
+    const freshReadToken = refreshedJson.sessions.find((candidate) => candidate.threadId === threadId)?.readToken;
+    expect(freshReadToken).toMatch(SESSION_RECEIPT_READ_TOKEN_RE);
+
+    const deleted = await app.request(`/api/v1/sessions?threadId=${encodeURIComponent(threadId)}`, {
+      method: "DELETE",
+      headers: {
+        "x-clash-client-type": "agent",
+        "x-clash-if-match": freshReadToken!,
+      },
+    });
+    expect(deleted.status).toBe(200);
+    expect(await deleted.json()).toMatchObject({
+      ok: true,
+      mutation: {
+        operation: "session_delete",
+        entity: { kind: "session", id: threadId },
+        expectedReadToken: freshReadToken,
+        beforeReadToken: baseReadToken(freshReadToken!),
+        resultEntityId: threadId,
+        forced: false,
+        accepted: true,
+      },
+    });
+  });
+
+  it("keeps all concurrent asset creates for a project preview", async () => {
+    const app = createLocalApiApp({ dataDir, userId: "local-user" });
+    const createdProject = await app.request("/api/projects", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ prompt: "Concurrent Asset Project" }),
+    });
+    const { id: projectId } = await createdProject.json() as { id: string };
+    const keys = Array.from({ length: 12 }, (_, index) => `uploads/concurrent-${index}.png`);
+
+    const created = await Promise.all(keys.map((srcR2Key) =>
+      app.request("/api/v1/assets", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ projectId, kind: "image", srcR2Key }),
+      })
+    ));
+    expect(created.map((response) => response.status)).toEqual(keys.map(() => 200));
+    const createdAssets = await Promise.all(created.map((response) => response.json() as Promise<{ id: string }>));
+
+    const loaded = await app.request("/api/v1/assets/batch", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ ids: createdAssets.map((asset) => asset.id) }),
+    });
+    const body = await loaded.json() as { assets: Array<{ srcR2Key: string }> };
+    expect(body.assets.map((asset) => asset.srcR2Key).sort()).toEqual([...keys].sort());
+  });
+
+  it("requires projectId when removing an asset reference", async () => {
+    const app = createLocalApiApp({ dataDir, userId: "local-user" });
+    const created = await app.request("/api/v1/assets", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ projectId: "project-a", kind: "image", srcR2Key: "uploads/shared.png" }),
+    });
+    const { id: assetId, mutation: createMutation } = await created.json() as { id: string; mutation?: unknown };
+    expect(createMutation).toEqual({
+      operation: "asset_create",
+      entity: { kind: "asset", id: assetId },
+      resultEntityId: assetId,
+      forced: false,
+      accepted: true,
+    });
+
+    let projectAReadToken = "";
+    const sqlite = openSqlite();
+    try {
+      sqlite.prepare(`
+        INSERT OR REPLACE INTO asset_refs (asset_id, project_id, imported_at)
+        VALUES (?, ?, ?)
+      `).run(assetId, "project-b", 123);
+      const projectARef = sqlite.prepare(`
+        SELECT asset_id, project_id, imported_at
+        FROM asset_refs
+        WHERE asset_id = ? AND project_id = ?
+      `).get(assetId, "project-a") as { asset_id: string; project_id: string; imported_at: number } | undefined;
+      expect(projectARef).toBeTruthy();
+      projectAReadToken = assetRefReadToken({
+        assetId: projectARef!.asset_id,
+        projectId: projectARef!.project_id,
+        importedAt: projectARef!.imported_at,
+      });
+    } finally {
+      sqlite.close();
+    }
+
+    const missingProject = await app.request(`/api/v1/assets/${encodeURIComponent(assetId)}/ref`, {
+      method: "DELETE",
+    });
+    expect(missingProject.status).toBe(400);
+    expect(await missingProject.json()).toEqual({
+      error: "Missing projectId",
+      mutation: {
+        operation: "asset_ref_delete",
+        entity: { kind: "asset-ref", id: `${assetId}:` },
+        forced: false,
+        accepted: false,
+        error: "Missing projectId",
+      },
+    });
+
+    const missingRead = await app.request(`/api/v1/assets/${encodeURIComponent(assetId)}/ref?projectId=project-a`, {
+      method: "DELETE",
+      headers: { "x-clash-client-type": "agent" },
+    });
+    expect(missingRead.status).toBe(409);
+    expect(await missingRead.json()).toMatchObject({
+      error: expect.stringContaining("Missing asset-ref delete read proof for agent"),
+      mutation: {
+        operation: "asset_ref_delete",
+        entity: { kind: "asset-ref", id: `${assetId}:project-a` },
+        beforeReadToken: projectAReadToken,
+        forced: false,
+        accepted: false,
+      },
+    });
+
+    const read = await app.request(`/api/v1/assets/${encodeURIComponent(assetId)}/ref?projectId=project-a`);
+    expect(read.status).toBe(200);
+    const readJson = await read.json() as { readToken: string };
+    expect(readJson.readToken).toMatch(ASSET_REF_RECEIPT_READ_TOKEN_RE);
+    expect(baseReadToken(readJson.readToken)).toBe(projectAReadToken);
+
+    const syntheticCasOnly = await app.request(`/api/v1/assets/${encodeURIComponent(assetId)}/ref?projectId=project-a`, {
+      method: "DELETE",
+      headers: {
+        "x-clash-client-type": "agent",
+        "x-clash-if-match": projectAReadToken,
+      },
+    });
+    expect(syntheticCasOnly.status).toBe(409);
+    expect(await syntheticCasOnly.json()).toMatchObject({
+      error: expect.stringContaining("Missing asset-ref delete read receipt for agent"),
+      mutation: {
+        operation: "asset_ref_delete",
+        entity: { kind: "asset-ref", id: `${assetId}:project-a` },
+        expectedReadToken: projectAReadToken,
+        beforeReadToken: projectAReadToken,
+        forced: false,
+        accepted: false,
+      },
+    });
+
+    const removed = await app.request(`/api/v1/assets/${encodeURIComponent(assetId)}/ref?projectId=project-a`, {
+      method: "DELETE",
+      headers: {
+        "x-clash-client-type": "agent",
+        "x-clash-if-match": readJson.readToken,
+      },
+    });
+    expect(removed.status).toBe(200);
+    expect(await removed.json()).toEqual({
+      deleted: true,
+      mutation: {
+        operation: "asset_ref_delete",
+        entity: { kind: "asset-ref", id: `${assetId}:project-a` },
+        expectedReadToken: readJson.readToken,
+        beforeReadToken: projectAReadToken,
+        resultEntityId: `${assetId}:project-a`,
+        forced: false,
+        accepted: true,
+      },
+    });
+
+    const check = openSqlite();
+    try {
+      expect(check.prepare("select id from assets where id = ?").get(assetId)).toMatchObject({ id: assetId });
+      expect(
+        check.prepare("select project_id from asset_refs where asset_id = ? order by project_id").all(assetId),
+      ).toEqual([{ project_id: "project-b" }]);
+    } finally {
+      check.close();
+    }
+  });
+
+  it("records mutation envelopes when patching asset covers", async () => {
+    const app = createLocalApiApp({ dataDir, userId: "local-user" });
+    const created = await app.request("/api/v1/assets", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ projectId: "project-cover", kind: "image", srcR2Key: "uploads/cover-source.png" }),
+    });
+    const { id: assetId } = await created.json() as { id: string };
+
+    const patched = await app.request(`/api/v1/assets/${encodeURIComponent(assetId)}/cover`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ coverR2Key: "uploads/cover.png" }),
+    });
+    expect(patched.status).toBe(200);
+    const patchedJson = await patched.json() as { readToken: string; mutation?: any };
+    expect(patchedJson.readToken).toMatch(ASSET_RECEIPT_READ_TOKEN_RE);
+    expect(patchedJson).toMatchObject({
+      ok: true,
+      mutation: {
+        operation: "asset_cover_update",
+        entity: { kind: "asset", id: assetId },
+        afterReadToken: patchedJson.readToken,
+        resultEntityId: assetId,
+        forced: false,
+        accepted: true,
+      },
+    });
+
+    const missingRead = await app.request(`/api/v1/assets/${encodeURIComponent(assetId)}/cover`, {
+      method: "PATCH",
+      headers: {
+        "content-type": "application/json",
+        "x-clash-client-type": "agent",
+      },
+      body: JSON.stringify({ coverR2Key: "uploads/agent-no-read.png" }),
+    });
+    expect(missingRead.status).toBe(409);
+    expect(await missingRead.json()).toMatchObject({
+      error: expect.stringContaining("Missing asset update read proof for agent"),
+      mutation: {
+        operation: "asset_cover_update",
+        entity: { kind: "asset", id: assetId },
+        beforeReadToken: baseReadToken(patchedJson.readToken),
+        forced: false,
+        accepted: false,
+      },
+    });
+
+    const fetched = await app.request(`/api/v1/assets/${encodeURIComponent(assetId)}`);
+    expect(fetched.status).toBe(200);
+    const fetchedJson = await fetched.json() as Asset & { readToken: string };
+    const bareReadToken = assetReadToken(fetchedJson);
+    expect(fetchedJson.readToken).toMatch(ASSET_RECEIPT_READ_TOKEN_RE);
+    expect(baseReadToken(fetchedJson.readToken)).toBe(bareReadToken);
+
+    const syntheticCasOnly = await app.request(`/api/v1/assets/${encodeURIComponent(assetId)}/cover`, {
+      method: "PATCH",
+      headers: {
+        "content-type": "application/json",
+        "x-clash-client-type": "agent",
+        "x-clash-if-match": bareReadToken,
+      },
+      body: JSON.stringify({ coverR2Key: "uploads/agent-synthetic.png" }),
+    });
+    expect(syntheticCasOnly.status).toBe(409);
+    expect(await syntheticCasOnly.json()).toMatchObject({
+      error: expect.stringContaining("Missing asset update read receipt for agent"),
+      mutation: {
+        operation: "asset_cover_update",
+        entity: { kind: "asset", id: assetId },
+        expectedReadToken: bareReadToken,
+        beforeReadToken: bareReadToken,
+        forced: false,
+        accepted: false,
+      },
+    });
+
+    const agentPatched = await app.request(`/api/v1/assets/${encodeURIComponent(assetId)}/cover`, {
+      method: "PATCH",
+      headers: {
+        "content-type": "application/json",
+        "x-clash-client-type": "agent",
+        "x-clash-if-match": fetchedJson.readToken,
+      },
+      body: JSON.stringify({ coverR2Key: "uploads/agent-cover.png" }),
+    });
+    expect(agentPatched.status).toBe(200);
+    const agentPatchedJson = await agentPatched.json() as { readToken: string; mutation?: any };
+    expect(agentPatchedJson.readToken).toMatch(ASSET_RECEIPT_READ_TOKEN_RE);
+    expect(agentPatchedJson.mutation).toMatchObject({
+      operation: "asset_cover_update",
+      entity: { kind: "asset", id: assetId },
+      expectedReadToken: fetchedJson.readToken,
+      beforeReadToken: bareReadToken,
+      afterReadToken: agentPatchedJson.readToken,
+      resultEntityId: assetId,
+      forced: false,
+      accepted: true,
+    });
+
+    const missingCover = await app.request(`/api/v1/assets/${encodeURIComponent(assetId)}/cover`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({}),
+    });
+    expect(missingCover.status).toBe(400);
+    expect(await missingCover.json()).toEqual({
+      error: "Missing coverR2Key",
+      mutation: {
+        operation: "asset_cover_update",
+        entity: { kind: "asset", id: assetId },
+        forced: false,
+        accepted: false,
+        error: "Missing coverR2Key",
+      },
+    });
+
+    const missingAsset = await app.request("/api/v1/assets/missing-asset/cover", {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ coverR2Key: "uploads/cover.png" }),
+    });
+    expect(missingAsset.status).toBe(404);
+    expect(await missingAsset.json()).toEqual({
+      error: "not found",
+      mutation: {
+        operation: "asset_cover_update",
+        entity: { kind: "asset", id: "missing-asset" },
+        forced: false,
+        accepted: false,
+        error: "not found",
+      },
+    });
+  });
+
+  it("registers content-addressed local blobs as SQLite assets and project refs", async () => {
+    const clashRoot = await mkdtemp(join(tmpdir(), "clash-local-api-clash-home-"));
+    const contentHash = "b".repeat(64);
+    const blobKey = `blobs/${contentHash}/original.png`;
+    const blobPath = join(clashRoot, "assets", blobKey);
+    await mkdir(join(blobPath, ".."), { recursive: true });
+    await writeFile(blobPath, "asset-bytes", "utf8");
+    const app = createLocalApiApp({ dataDir, userId: "local-user", clashRoot });
+
+    const imported = await app.request("/api/v1/assets/import", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        projectId: "project-local-asset",
+        kind: "image",
+        assetId: `local:sha256:${contentHash}`,
+        contentHash,
+        localBlobKey: blobKey,
+        bytes: 11,
+        contentType: "image/png",
+        originalName: "hero.png",
+      }),
+    });
+
+    expect(imported.status).toBe(200);
+    const importedJson = await imported.json() as {
+      id: string;
+      srcR2Key: string;
+      signedUrl: string;
+      mutation: unknown;
+    };
+    expect(importedJson).toMatchObject({
+      id: `local:sha256:${contentHash}`,
+      srcR2Key: `local-blobs/${contentHash}/original.png`,
+      mutation: {
+        operation: "asset_import",
+        entity: { kind: "asset", id: `local:sha256:${contentHash}` },
+        resultEntityId: `local:sha256:${contentHash}`,
+        forced: false,
+        accepted: true,
+      },
+    });
+    expect(importedJson.signedUrl).toContain(`/assets/local-blobs/${contentHash}/original.png`);
+
+    const sqlite = openSqlite();
+    try {
+      expect(sqlite.prepare("select id, src_r2_key, project_id from assets where id = ?").get(importedJson.id)).toEqual({
+        id: importedJson.id,
+        src_r2_key: `local-blobs/${contentHash}/original.png`,
+        project_id: null,
+      });
+      expect(
+        sqlite.prepare("select asset_id, project_id from asset_refs where asset_id = ?").get(importedJson.id),
+      ).toEqual({
+        asset_id: importedJson.id,
+        project_id: "project-local-asset",
+      });
+    } finally {
+      sqlite.close();
+    }
+
+    const fetchedAsset = await app.request(`/api/v1/assets/${encodeURIComponent(importedJson.id)}`);
+    expect(fetchedAsset.status).toBe(200);
+    expect(await fetchedAsset.json()).toMatchObject({
+      id: importedJson.id,
+      metadata: {
+        bytes: 11,
+        contentType: "image/png",
+        contentHash,
+        localBlobKey: blobKey,
+        originalName: "hero.png",
+      },
+    });
+
+    const bytes = await app.request(`/assets/local-blobs/${contentHash}/original.png`);
+    expect(bytes.status).toBe(200);
+    expect(await bytes.text()).toBe("asset-bytes");
+  });
+
+  it("rejects reimporting an existing asset id with different local blob identity", async () => {
+    const clashRoot = await mkdtemp(join(tmpdir(), "clash-local-api-immutable-asset-home-"));
+    const firstHash = "c".repeat(64);
+    const secondHash = "d".repeat(64);
+    const firstBlobKey = `blobs/${firstHash}/original.png`;
+    const secondBlobKey = `blobs/${secondHash}/original.png`;
+    const firstBlobPath = join(clashRoot, "assets", firstBlobKey);
+    const secondBlobPath = join(clashRoot, "assets", secondBlobKey);
+    await mkdir(join(firstBlobPath, ".."), { recursive: true });
+    await mkdir(join(secondBlobPath, ".."), { recursive: true });
+    await writeFile(firstBlobPath, "first-asset-bytes", "utf8");
+    await writeFile(secondBlobPath, "second-asset-bytes", "utf8");
+    const app = createLocalApiApp({ dataDir, userId: "local-user", clashRoot });
+    const assetId = `local:sha256:${firstHash}`;
+
+    const imported = await app.request("/api/v1/assets/import", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        projectId: "project-one",
+        kind: "image",
+        assetId,
+        contentHash: firstHash,
+        localBlobKey: firstBlobKey,
+        contentType: "image/png",
+      }),
+    });
+    expect(imported.status).toBe(200);
+
+    const conflicting = await app.request("/api/v1/assets/import", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        projectId: "project-two",
+        kind: "image",
+        assetId,
+        contentHash: secondHash,
+        localBlobKey: secondBlobKey,
+        contentType: "image/png",
+      }),
+    });
+    expect(conflicting.status).toBe(409);
+    expect(await conflicting.json()).toMatchObject({
+      error: expect.stringContaining("Asset id already exists with different immutable content"),
+      mutation: {
+        operation: "asset_import",
+        entity: { kind: "asset", id: assetId },
+        forced: false,
+        accepted: false,
+        error: expect.stringContaining("Asset id already exists with different immutable content"),
+      },
+    });
+
+    const sqlite = openSqlite();
+    try {
+      expect(sqlite.prepare("select src_r2_key, kind from assets where id = ?").get(assetId)).toEqual({
+        src_r2_key: `local-blobs/${firstHash}/original.png`,
+        kind: "image",
+      });
+      expect(sqlite.prepare("select count(*) as count from asset_refs where asset_id = ?").get(assetId)).toEqual({
+        count: 1,
+      });
+    } finally {
+      sqlite.close();
+    }
+  });
+
+  it("creates copy-on-write media replacement nodes from registered local assets with read proof", async () => {
+    const clashRoot = await mkdtemp(join(tmpdir(), "clash-local-api-asset-replace-home-"));
+    const projectId = "project-asset-replace";
+    const sourceAssetId = "asset-original";
+    const replacementHash = "a".repeat(64);
+    const replacementAssetId = `local:sha256:${replacementHash}`;
+    const blobKey = `blobs/${replacementHash}/original.png`;
+    const blobPath = join(clashRoot, "assets", blobKey);
+    await mkdir(join(blobPath, ".."), { recursive: true });
+    await writeFile(blobPath, "replacement-bytes", "utf8");
+
+    const doc = new LoroDoc();
+    doc.getMap("nodes").set("image-source", {
+      type: "image",
+      data: {
+        label: "Hero",
+        assetId: sourceAssetId,
+        status: "completed",
+      },
+    });
+    await new FileReplicaStore(join(dataDir, "projects")).saveSnapshotAtomic(projectId, doc.export({ mode: "snapshot" }));
+
+    const app = createLocalApiApp({ dataDir, userId: "local-user", clashRoot });
+    const imported = await app.request("/api/v1/assets/import", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        projectId,
+        kind: "image",
+        assetId: replacementAssetId,
+        contentHash: replacementHash,
+        localBlobKey: blobKey,
+      }),
+    });
+    expect(imported.status).toBe(200);
+
+    const missingRead = await app.request("/api/v1/assets/replace", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        projectId,
+        nodeId: "image-source",
+        assetId: replacementAssetId,
+        actorClientType: "agent",
+      }),
+    });
+    expect(missingRead.status).toBe(409);
+    expect(await missingRead.json()).toMatchObject({
+      error: expect.stringContaining("Missing canvas update read proof"),
+      mutation: {
+        operation: "asset_cow_replace",
+        entity: { kind: "media-node", id: "image-source" },
+        beforeReadToken: expect.stringMatching(/^node-v1:/),
+        forced: false,
+        accepted: false,
+      },
+    });
+
+    const current = await new FileReplicaStore(join(dataDir, "projects")).recover(projectId);
+    const readToken = await app.request("/api/v1/assets/replace", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        projectId,
+        nodeId: "image-source",
+        assetId: replacementAssetId,
+        ifMatch: "stale-token",
+        actorClientType: "agent",
+      }),
+    });
+    expect(readToken.status).toBe(409);
+
+    const currentNode = new Canvas(current, () => {}).readNode("image-source");
+    expect(currentNode).toBeTruthy();
+    const freshReadToken = canvasNodeReadToken(currentNode!);
+
+    const syntheticCasOnly = await app.request("/api/v1/assets/replace", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        projectId,
+        nodeId: "image-source",
+        assetId: replacementAssetId,
+        ifMatch: freshReadToken,
+        actorClientType: "agent",
+        newNodeId: "image-synthetic",
+      }),
+    });
+    expect(syntheticCasOnly.status).toBe(409);
+    expect(await syntheticCasOnly.json()).toMatchObject({
+      error: expect.stringContaining("Missing canvas update read receipt for agent"),
+      mutation: {
+        operation: "asset_cow_replace",
+        entity: { kind: "media-node", id: "image-source" },
+        expectedReadToken: freshReadToken,
+        beforeReadToken: freshReadToken,
+        forced: false,
+        accepted: false,
+      },
+    });
+
+    const read = await app.request(`/api/v1/projects/${projectId}/canvas/nodes/image-source`);
+    expect(read.status).toBe(200);
+    const readJson = await read.json() as { readToken: string };
+    expect(readJson.readToken).toMatch(NODE_RECEIPT_READ_TOKEN_RE);
+    expect(baseReadToken(readJson.readToken)).toBe(freshReadToken);
+
+    const replaced = await app.request("/api/v1/assets/replace", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        projectId,
+        nodeId: "image-source",
+        assetId: replacementAssetId,
+        ifMatch: readJson.readToken,
+        actorClientType: "agent",
+        newNodeId: "image-replacement",
+        label: "Hero replacement",
+      }),
+    });
+    expect(replaced.status).toBe(200);
+    const replacedJson = await replaced.json() as { readToken: string; mutation?: any };
+    expect(replacedJson.readToken).toMatch(NODE_RECEIPT_READ_TOKEN_RE);
+    expect(replacedJson).toMatchObject({
+      replaced: true,
+      copyOnWrite: true,
+      sourceNodeId: "image-source",
+      newNodeId: "image-replacement",
+      assetId: replacementAssetId,
+      sourceAssetId,
+      lineageEdge: { source: "image-source", target: "image-replacement", type: "copy-on-write" },
+      mutation: {
+        operation: "asset_cow_replace",
+        entity: { kind: "media-node", id: "image-source" },
+        expectedReadToken: readJson.readToken,
+        beforeReadToken: freshReadToken,
+        afterReadToken: replacedJson.readToken,
+        forced: false,
+        accepted: true,
+        resultEntityId: "image-replacement",
+      },
+    });
+
+    const recovered = await new FileReplicaStore(join(dataDir, "projects")).recover(projectId);
+    const canvas = recovered.getMap("nodes");
+    expect((canvas.get("image-source") as any).data.assetId).toBe(sourceAssetId);
+    expect((canvas.get("image-replacement") as any).data).toMatchObject({
+      label: "Hero replacement",
+      assetId: replacementAssetId,
+      copyOnWrite: true,
+      copyOnWriteKind: "media-asset-replacement",
+      sourceMediaNodeId: "image-source",
+      sourceAssetId,
+    });
+    const edges = recovered.getMap("edges");
+    expect(edges.get("image-source-image-replacement")).toMatchObject({
+      source: "image-source",
+      target: "image-replacement",
+      type: "copy-on-write",
+    });
+  });
+
+  it("requires receipt-bearing canvas edge reads before agent edge writes", async () => {
+    const projectId = "project-edge-cas";
+    const doc = new LoroDoc();
+    doc.getMap("nodes").set("node-a", { type: "text", data: { label: "A" } });
+    doc.getMap("nodes").set("node-b", { type: "text", data: { label: "B" } });
+    doc.getMap("nodes").set("node-c", { type: "text", data: { label: "C" } });
+    doc.getMap("edges").set("edge-ab", {
+      source: "node-a",
+      target: "node-b",
+      type: "default",
+    });
+    await new FileReplicaStore(join(dataDir, "projects")).saveSnapshotAtomic(projectId, doc.export({ mode: "snapshot" }));
+
+    const app = createLocalApiApp({ dataDir, userId: "local-user" });
+    const baseGraphToken = canvasEdgesReadToken([
+      { id: "edge-ab", source: "node-a", target: "node-b", type: "default" },
+    ]);
+
+    const bareAdd = await app.request(`/api/v1/projects/${projectId}/canvas/edges/edge-bc`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        source: "node-b",
+        target: "node-c",
+        type: "reference",
+        actorClientType: "agent",
+        ifMatch: baseGraphToken,
+      }),
+    });
+    expect(bareAdd.status).toBe(409);
+    expect(await bareAdd.json()).toMatchObject({
+      error: expect.stringContaining("Missing canvas edge add read receipt for agent"),
+      mutation: {
+        operation: "canvas_add_edge",
+        entity: { kind: "canvas-edge", id: "edge-bc" },
+        expectedReadToken: baseGraphToken,
+        beforeReadToken: baseGraphToken,
+        accepted: false,
+      },
+    });
+
+    const listed = await app.request(`/api/v1/projects/${projectId}/canvas/edges`);
+    expect(listed.status).toBe(200);
+    const listedJson = await listed.json() as {
+      readToken: string;
+      edges: Array<{ id: string; source: string; target: string; type?: string; readToken: string }>;
+    };
+    expect(listedJson.readToken).toMatch(EDGES_RECEIPT_READ_TOKEN_RE);
+    expect(baseReadToken(listedJson.readToken)).toBe(baseGraphToken);
+    const edgeAb = listedJson.edges.find((edge) => edge.id === "edge-ab");
+    expect(edgeAb?.readToken).toMatch(EDGE_RECEIPT_READ_TOKEN_RE);
+    expect(baseReadToken(edgeAb!.readToken)).toBe(
+      canvasEdgeReadToken({ id: "edge-ab", source: "node-a", target: "node-b", type: "default" }),
+    );
+
+    const added = await app.request(`/api/v1/projects/${projectId}/canvas/edges/edge-bc`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        source: "node-b",
+        target: "node-c",
+        type: "reference",
+        actorClientType: "agent",
+        ifMatch: listedJson.readToken,
+      }),
+    });
+    expect(added.status).toBe(200);
+    const addedJson = await added.json() as {
+      readToken: string;
+      edge: { id: string; source: string; target: string; type?: string; readToken: string };
+      mutation?: any;
+    };
+    expect(addedJson.readToken).toMatch(EDGES_RECEIPT_READ_TOKEN_RE);
+    expect(addedJson.edge.readToken).toMatch(EDGE_RECEIPT_READ_TOKEN_RE);
+    expect(addedJson).toMatchObject({
+      edge: { id: "edge-bc", source: "node-b", target: "node-c", type: "reference" },
+      mutation: {
+        operation: "canvas_add_edge",
+        entity: { kind: "canvas-edge", id: "edge-bc" },
+        expectedReadToken: listedJson.readToken,
+        beforeReadToken: baseReadToken(listedJson.readToken),
+        afterReadToken: addedJson.readToken,
+        accepted: true,
+        resultEntityId: "edge-bc",
+      },
+    });
+
+    const bareUpdate = await app.request(`/api/v1/projects/${projectId}/canvas/edges/edge-bc`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        type: "copy-on-write",
+        actorClientType: "agent",
+        ifMatch: baseReadToken(addedJson.edge.readToken),
+      }),
+    });
+    expect(bareUpdate.status).toBe(409);
+    expect(await bareUpdate.json()).toMatchObject({
+      error: expect.stringContaining("Missing canvas edge update read receipt for agent"),
+      mutation: {
+        operation: "canvas_update_edge",
+        entity: { kind: "canvas-edge", id: "edge-bc" },
+        expectedReadToken: baseReadToken(addedJson.edge.readToken),
+        beforeReadToken: baseReadToken(addedJson.edge.readToken),
+        accepted: false,
+      },
+    });
+
+    const updated = await app.request(`/api/v1/projects/${projectId}/canvas/edges/edge-bc`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        type: "copy-on-write",
+        actorClientType: "agent",
+        ifMatch: addedJson.edge.readToken,
+      }),
+    });
+    expect(updated.status).toBe(200);
+    const updatedJson = await updated.json() as {
+      readToken: string;
+      edge: { id: string; type?: string; readToken: string };
+      mutation?: any;
+    };
+    expect(updatedJson.readToken).toMatch(EDGE_RECEIPT_READ_TOKEN_RE);
+    expect(updatedJson.edge.readToken).toBe(updatedJson.readToken);
+    expect(updatedJson).toMatchObject({
+      edge: { id: "edge-bc", type: "copy-on-write" },
+      mutation: {
+        operation: "canvas_update_edge",
+        entity: { kind: "canvas-edge", id: "edge-bc" },
+        expectedReadToken: addedJson.edge.readToken,
+        beforeReadToken: baseReadToken(addedJson.edge.readToken),
+        afterReadToken: updatedJson.readToken,
+        accepted: true,
+      },
+    });
+
+    const staleDelete = await app.request(`/api/v1/projects/${projectId}/canvas/edges/edge-bc`, {
+      method: "DELETE",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        actorClientType: "agent",
+        ifMatch: addedJson.edge.readToken,
+      }),
+    });
+    expect(staleDelete.status).toBe(409);
+    expect(await staleDelete.json()).toMatchObject({
+      error: expect.stringContaining("Stale canvas edge delete rejected"),
+      mutation: {
+        operation: "canvas_delete_edge",
+        entity: { kind: "canvas-edge", id: "edge-bc" },
+        expectedReadToken: addedJson.edge.readToken,
+        beforeReadToken: baseReadToken(updatedJson.readToken),
+        accepted: false,
+      },
+    });
+
+    const deleted = await app.request(`/api/v1/projects/${projectId}/canvas/edges/edge-bc`, {
+      method: "DELETE",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        actorClientType: "agent",
+        ifMatch: updatedJson.readToken,
+      }),
+    });
+    expect(deleted.status).toBe(200);
+    const deletedJson = await deleted.json() as { readToken: string; mutation?: any };
+    expect(deletedJson.readToken).toMatch(EDGES_RECEIPT_READ_TOKEN_RE);
+    expect(deletedJson.mutation).toMatchObject({
+      operation: "canvas_delete_edge",
+      entity: { kind: "canvas-edge", id: "edge-bc" },
+      expectedReadToken: updatedJson.readToken,
+      beforeReadToken: baseReadToken(updatedJson.readToken),
+      afterReadToken: deletedJson.readToken,
+      accepted: true,
+      resultEntityId: "edge-bc",
+    });
+
+    const recovered = await new FileReplicaStore(join(dataDir, "projects")).recover(projectId);
+    expect(recovered.getMap("edges").get("edge-ab")).toMatchObject({
+      source: "node-a",
+      target: "node-b",
+    });
+    expect(recovered.getMap("edges").get("edge-bc")).toBeUndefined();
+  });
+
+  it("garbage collects only unreferenced local content-addressed assets", async () => {
+    const clashRoot = await mkdtemp(join(tmpdir(), "clash-local-api-gc-home-"));
+    const app = createLocalApiApp({ dataDir, userId: "local-user", clashRoot });
+
+    async function importLocal(hash: string, projectId: string) {
+      const blobKey = `blobs/${hash}/original.png`;
+      const blobPath = join(clashRoot, "assets", blobKey);
+      await mkdir(join(blobPath, ".."), { recursive: true });
+      await writeFile(blobPath, `bytes-${hash.slice(0, 4)}`, "utf8");
+      const imported = await app.request("/api/v1/assets/import", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          projectId,
+          kind: "image",
+          assetId: `local:sha256:${hash}`,
+          contentHash: hash,
+          localBlobKey: blobKey,
+          contentType: "image/png",
+        }),
+      });
+      expect(imported.status).toBe(200);
+      return { assetId: `local:sha256:${hash}`, blobPath };
+    }
+
+    const orphan = await importLocal("c".repeat(64), "project-orphan");
+    const live = await importLocal("d".repeat(64), "project-live");
+    const removedRef = await app.request(`/api/v1/assets/${encodeURIComponent(orphan.assetId)}/ref?projectId=project-orphan`, {
+      method: "DELETE",
+    });
+    expect(removedRef.status).toBe(200);
+
+    const gc = await app.request("/api/v1/assets/gc", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ dryRun: false }),
+    });
+
+    expect(gc.status).toBe(200);
+    expect(await gc.json()).toMatchObject({
+      dryRun: false,
+      deletedAssets: [{ id: orphan.assetId, srcR2Key: `local-blobs/${"c".repeat(64)}/original.png` }],
+      deletedBlobKeys: [`local-blobs/${"c".repeat(64)}/original.png`],
+      mutation: {
+        operation: "asset_gc",
+        entity: { kind: "asset-store", id: "local" },
+        resultEntityId: "local",
+        forced: false,
+        accepted: true,
+      },
+    });
+
+    await expect(stat(orphan.blobPath)).rejects.toMatchObject({ code: "ENOENT" });
+    await expect(stat(live.blobPath)).resolves.toMatchObject({ size: "bytes-dddd".length });
+
+    const sqlite = openSqlite();
+    try {
+      expect(sqlite.prepare("select id from assets where id = ?").get(orphan.assetId)).toBeUndefined();
+      expect(sqlite.prepare("select id from assets where id = ?").get(live.assetId)).toMatchObject({ id: live.assetId });
+      expect(sqlite.prepare("select asset_id from asset_refs where asset_id = ?").get(live.assetId)).toMatchObject({
+        asset_id: live.assetId,
+      });
+    } finally {
+      sqlite.close();
+    }
+  });
+
+  it("requires a receipt-bearing dry-run read before an agent can garbage collect assets", async () => {
+    const clashRoot = await mkdtemp(join(tmpdir(), "clash-local-api-gc-agent-cas-home-"));
+    const app = createLocalApiApp({ dataDir, userId: "local-user", clashRoot });
+
+    async function importOrphan(hash: string, projectId: string) {
+      const blobKey = `blobs/${hash}/original.png`;
+      const blobPath = join(clashRoot, "assets", blobKey);
+      await mkdir(join(blobPath, ".."), { recursive: true });
+      await writeFile(blobPath, `bytes-${hash.slice(0, 4)}`, "utf8");
+      const assetId = `local:sha256:${hash}`;
+      const imported = await app.request("/api/v1/assets/import", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          projectId,
+          kind: "image",
+          assetId,
+          contentHash: hash,
+          localBlobKey: blobKey,
+          contentType: "image/png",
+        }),
+      });
+      expect(imported.status).toBe(200);
+      const removedRef = await app.request(`/api/v1/assets/${encodeURIComponent(assetId)}/ref?projectId=${projectId}`, {
+        method: "DELETE",
+      });
+      expect(removedRef.status).toBe(200);
+      return { assetId, blobPath };
+    }
+
+    const first = await importOrphan("6".repeat(64), "project-gc-agent-first");
+
+    const dryRun = await app.request("/api/v1/assets/gc", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ dryRun: true }),
+    });
+    expect(dryRun.status).toBe(200);
+    const dryRunJson = await dryRun.json() as { readToken: string; deletedAssets: Array<{ id: string }> };
+    expect(dryRunJson.readToken).toMatch(ASSET_GC_RECEIPT_READ_TOKEN_RE);
+    expect(dryRunJson.deletedAssets.map((asset) => asset.id)).toEqual([first.assetId]);
+
+    const missingProof = await app.request("/api/v1/assets/gc", {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-clash-client-type": "agent" },
+      body: JSON.stringify({ dryRun: false }),
+    });
+    expect(missingProof.status).toBe(409);
+    expect(await missingProof.json()).toMatchObject({
+      error: expect.stringContaining("Missing asset garbage collection read proof for agent"),
+      mutation: {
+        operation: "asset_gc",
+        entity: { kind: "asset-store", id: "local" },
+        accepted: false,
+      },
+    });
+
+    const bareToken = await app.request("/api/v1/assets/gc", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-clash-client-type": "agent",
+        "x-clash-if-match": baseReadToken(dryRunJson.readToken),
+      },
+      body: JSON.stringify({ dryRun: false }),
+    });
+    expect(bareToken.status).toBe(409);
+    expect(await bareToken.json()).toMatchObject({
+      error: expect.stringContaining("Missing asset garbage collection read receipt for agent"),
+      mutation: { accepted: false },
+    });
+
+    const second = await importOrphan("7".repeat(64), "project-gc-agent-second");
+
+    const staleProof = await app.request("/api/v1/assets/gc", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-clash-client-type": "agent",
+        "x-clash-if-match": dryRunJson.readToken,
+      },
+      body: JSON.stringify({ dryRun: false }),
+    });
+    expect(staleProof.status).toBe(409);
+    expect(await staleProof.json()).toMatchObject({
+      error: expect.stringContaining("Stale asset garbage collection rejected"),
+      mutation: { accepted: false },
+    });
+
+    const freshDryRun = await app.request("/api/v1/assets/gc", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ dryRun: true }),
+    });
+    expect(freshDryRun.status).toBe(200);
+    const freshDryRunJson = await freshDryRun.json() as { readToken: string; deletedAssets: Array<{ id: string }> };
+    expect(freshDryRunJson.readToken).toMatch(ASSET_GC_RECEIPT_READ_TOKEN_RE);
+    expect(freshDryRunJson.deletedAssets.map((asset) => asset.id).sort()).toEqual([first.assetId, second.assetId]);
+
+    const accepted = await app.request("/api/v1/assets/gc", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-clash-client-type": "agent",
+        "x-clash-if-match": freshDryRunJson.readToken,
+      },
+      body: JSON.stringify({ dryRun: false }),
+    });
+    expect(accepted.status).toBe(200);
+    const acceptedJson = await accepted.json() as {
+      deletedAssets: Array<{ id: string }>;
+      mutation: { expectedReadToken?: string; beforeReadToken?: string; accepted?: boolean };
+    };
+    expect(acceptedJson.deletedAssets.map((asset) => asset.id).sort()).toEqual([first.assetId, second.assetId]);
+    expect(acceptedJson).toMatchObject({
+      dryRun: false,
+      mutation: {
+        operation: "asset_gc",
+        entity: { kind: "asset-store", id: "local" },
+        expectedReadToken: freshDryRunJson.readToken,
+        beforeReadToken: baseReadToken(freshDryRunJson.readToken),
+        accepted: true,
+      },
+    });
+    await expect(stat(first.blobPath)).rejects.toMatchObject({ code: "ENOENT" });
+    await expect(stat(second.blobPath)).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
+  it("keeps unreferenced local assets that are protected by live canvas references", async () => {
+    const clashRoot = await mkdtemp(join(tmpdir(), "clash-local-api-gc-protected-home-"));
+    const app = createLocalApiApp({ dataDir, userId: "local-user", clashRoot });
+    const hash = "e".repeat(64);
+    const assetId = `local:sha256:${hash}`;
+    const blobKey = `blobs/${hash}/original.png`;
+    const blobPath = join(clashRoot, "assets", blobKey);
+    await mkdir(join(blobPath, ".."), { recursive: true });
+    await writeFile(blobPath, "protected-by-canvas", "utf8");
+
+    const imported = await app.request("/api/v1/assets/import", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        projectId: "project-canvas-ref",
+        kind: "image",
+        assetId,
+        contentHash: hash,
+        localBlobKey: blobKey,
+      }),
+    });
+    expect(imported.status).toBe(200);
+    const removedRef = await app.request(`/api/v1/assets/${encodeURIComponent(assetId)}/ref?projectId=project-canvas-ref`, {
+      method: "DELETE",
+    });
+    expect(removedRef.status).toBe(200);
+
+    const gc = await app.request("/api/v1/assets/gc", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ dryRun: false, protectedAssetIds: [assetId] }),
+    });
+
+    expect(gc.status).toBe(200);
+    expect(await gc.json()).toMatchObject({
+      dryRun: false,
+      deletedAssets: [],
+      protectedAssets: [assetId],
+      deletedBlobKeys: [],
+    });
+    await expect(stat(blobPath)).resolves.toMatchObject({ size: "protected-by-canvas".length });
+    const sqlite = openSqlite();
+    try {
+      expect(sqlite.prepare("select id from assets where id = ?").get(assetId)).toMatchObject({ id: assetId });
+    } finally {
+      sqlite.close();
+    }
+  });
+
+  it("auto-protects local assets referenced by persisted project canvas state during GC", async () => {
+    const clashRoot = await mkdtemp(join(tmpdir(), "clash-local-api-gc-loro-home-"));
+    const projectId = "project-loro-ref";
+    const hash = "f".repeat(64);
+    const assetId = `local:sha256:${hash}`;
+    const blobKey = `blobs/${hash}/original.png`;
+    const blobPath = join(clashRoot, "assets", blobKey);
+    await mkdir(join(blobPath, ".."), { recursive: true });
+    await writeFile(blobPath, "protected-by-loro", "utf8");
+
+    const doc = new LoroDoc();
+    doc.getMap("nodes").set("image-node", {
+      type: "image",
+      data: { assetId },
+    });
+    await new FileReplicaStore(join(dataDir, "projects")).saveSnapshotAtomic(projectId, doc.export({ mode: "snapshot" }));
+
+    const app = createLocalApiApp({ dataDir, userId: "local-user", clashRoot });
+    const imported = await app.request("/api/v1/assets/import", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        projectId,
+        kind: "image",
+        assetId,
+        contentHash: hash,
+        localBlobKey: blobKey,
+      }),
+    });
+    expect(imported.status).toBe(200);
+    const removedRef = await app.request(`/api/v1/assets/${encodeURIComponent(assetId)}/ref?projectId=${encodeURIComponent(projectId)}`, {
+      method: "DELETE",
+    });
+    expect(removedRef.status).toBe(200);
+
+    const gc = await app.request("/api/v1/assets/gc", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ dryRun: false, projectIds: [projectId] }),
+    });
+
+    expect(gc.status).toBe(200);
+    expect(await gc.json()).toMatchObject({
+      dryRun: false,
+      deletedAssets: [],
+      protectedAssets: [assetId],
+      protectedProjectIds: [projectId],
+      deletedBlobKeys: [],
+    });
+    await expect(stat(blobPath)).resolves.toMatchObject({ size: "protected-by-loro".length });
+    const sqlite = openSqlite();
+    try {
+      expect(sqlite.prepare("select asset_id, project_id from asset_refs where asset_id = ?").get(assetId)).toEqual({
+        asset_id: assetId,
+        project_id: projectId,
+      });
+    } finally {
+      sqlite.close();
+    }
+  });
+
+  it("auto-discovers persisted project canvas references during GC when projectIds are omitted", async () => {
+    const clashRoot = await mkdtemp(join(tmpdir(), "clash-local-api-gc-discovery-home-"));
+    const projectId = "project-auto-discovered-loro-ref";
+    const hash = "1".repeat(64);
+    const assetId = `local:sha256:${hash}`;
+    const blobKey = `blobs/${hash}/original.png`;
+    const blobPath = join(clashRoot, "assets", blobKey);
+    await mkdir(join(blobPath, ".."), { recursive: true });
+    await writeFile(blobPath, "protected-by-auto-discovery", "utf8");
+
+    const doc = new LoroDoc();
+    doc.getMap("nodes").set("image-node", {
+      type: "image",
+      data: { assetId },
+    });
+    await new FileReplicaStore(join(dataDir, "projects")).saveSnapshotAtomic(projectId, doc.export({ mode: "snapshot" }));
+
+    const app = createLocalApiApp({ dataDir, userId: "local-user", clashRoot });
+    const imported = await app.request("/api/v1/assets/import", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        projectId,
+        kind: "image",
+        assetId,
+        contentHash: hash,
+        localBlobKey: blobKey,
+      }),
+    });
+    expect(imported.status).toBe(200);
+    const removedRef = await app.request(`/api/v1/assets/${encodeURIComponent(assetId)}/ref?projectId=${encodeURIComponent(projectId)}`, {
+      method: "DELETE",
+    });
+    expect(removedRef.status).toBe(200);
+
+    const gc = await app.request("/api/v1/assets/gc", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ dryRun: false }),
+    });
+
+    expect(gc.status).toBe(200);
+    expect(await gc.json()).toMatchObject({
+      dryRun: false,
+      deletedAssets: [],
+      protectedAssets: [assetId],
+      protectedProjectIds: [projectId],
+      deletedBlobKeys: [],
+    });
+    await expect(stat(blobPath)).resolves.toMatchObject({ size: "protected-by-auto-discovery".length });
+  });
+
+  it("protects downstream asset reference fields beyond bare assetId during GC", async () => {
+    const clashRoot = await mkdtemp(join(tmpdir(), "clash-local-api-gc-deep-refs-home-"));
+    const projectId = "project-deep-asset-refs";
+    const hashes = ["2".repeat(64), "3".repeat(64), "4".repeat(64)];
+    const assetIds = hashes.map((hash) => `local:sha256:${hash}`);
+    for (const [index, hash] of hashes.entries()) {
+      const blobPath = join(clashRoot, "assets", "blobs", hash, "original.png");
+      await mkdir(join(blobPath, ".."), { recursive: true });
+      await writeFile(blobPath, `deep-ref-${index}`, "utf8");
+    }
+
+    const doc = new LoroDoc();
+    doc.getMap("nodes").set("metadata-node", {
+      type: "group",
+      data: {
+        productionMetadata: {
+          sourceAssetId: assetIds[0],
+          checks: [{ referenceAssetId: assetIds[1], status: "pass" }],
+          requiredReferenceAssetIds: [assetIds[2]],
+        },
+      },
+    });
+    await new FileReplicaStore(join(dataDir, "projects")).saveSnapshotAtomic(projectId, doc.export({ mode: "snapshot" }));
+
+    const app = createLocalApiApp({ dataDir, userId: "local-user", clashRoot });
+    for (const [index, hash] of hashes.entries()) {
+      const imported = await app.request("/api/v1/assets/import", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          projectId,
+          kind: "image",
+          assetId: assetIds[index],
+          contentHash: hash,
+          localBlobKey: `blobs/${hash}/original.png`,
+        }),
+      });
+      expect(imported.status).toBe(200);
+      const removedRef = await app.request(`/api/v1/assets/${encodeURIComponent(assetIds[index])}/ref?projectId=${encodeURIComponent(projectId)}`, {
+        method: "DELETE",
+      });
+      expect(removedRef.status).toBe(200);
+    }
+
+    const gc = await app.request("/api/v1/assets/gc", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ dryRun: false }),
+    });
+
+    expect(gc.status).toBe(200);
+    expect(await gc.json()).toMatchObject({
+      dryRun: false,
+      deletedAssets: [],
+      protectedAssets: assetIds,
+      protectedProjectIds: [projectId],
+      deletedBlobKeys: [],
+    });
+    for (const [index, hash] of hashes.entries()) {
+      await expect(stat(join(clashRoot, "assets", "blobs", hash, "original.png"))).resolves.toMatchObject({ size: `deep-ref-${index}`.length });
+    }
+    const sqlite = openSqlite();
+    try {
+      expect(sqlite.prepare("select asset_id, project_id from asset_refs order by asset_id").all()).toEqual(
+        assetIds.map((assetId) => ({ asset_id: assetId, project_id: projectId })),
+      );
+      expect(sqlite.prepare("select name from sqlite_master where type = 'table' and name = 'asset_node_refs'").get()).toEqual({
+        name: "asset_node_refs",
+      });
+      expect(sqlite.prepare("select asset_id, project_id, node_id, node_type, field_path, reference_role from asset_node_refs order by asset_id").all()).toEqual([
+        {
+          asset_id: assetIds[0],
+          project_id: projectId,
+          node_id: "metadata-node",
+          node_type: "group",
+          field_path: "data.productionMetadata.sourceAssetId",
+          reference_role: "source",
+        },
+        {
+          asset_id: assetIds[1],
+          project_id: projectId,
+          node_id: "metadata-node",
+          node_type: "group",
+          field_path: "data.productionMetadata.checks[0].referenceAssetId",
+          reference_role: "reference",
+        },
+        {
+          asset_id: assetIds[2],
+          project_id: projectId,
+          node_id: "metadata-node",
+          node_type: "group",
+          field_path: "data.productionMetadata.requiredReferenceAssetIds[0]",
+          reference_role: "required-reference",
+        },
+      ]);
+    } finally {
+      sqlite.close();
+    }
+
+    const references = await app.request(`/api/v1/assets/${encodeURIComponent(assetIds[1])}/references`);
+    expect(references.status).toBe(200);
+    expect(await references.json()).toEqual({
+      assetId: assetIds[1],
+      references: [
+        {
+          assetId: assetIds[1],
+          projectId,
+          nodeId: "metadata-node",
+          nodeType: "group",
+          fieldPath: "data.productionMetadata.checks[0].referenceAssetId",
+          referenceRole: "reference",
+        },
+      ],
+    });
+  });
+
+  it("refreshes asset reference projection without running GC deletion", async () => {
+    const clashRoot = await mkdtemp(join(tmpdir(), "clash-local-api-asset-ref-refresh-home-"));
+    const projectId = "project-refresh-asset-refs";
+    const hash = "5".repeat(64);
+    const assetId = `local:sha256:${hash}`;
+    const blobPath = join(clashRoot, "assets", "blobs", hash, "original.png");
+    await mkdir(join(blobPath, ".."), { recursive: true });
+    await writeFile(blobPath, "refresh-ref", "utf8");
+
+    const doc = new LoroDoc();
+    doc.getMap("nodes").set("image-node", {
+      type: "image",
+      data: { assetId },
+    });
+    await new FileReplicaStore(join(dataDir, "projects")).saveSnapshotAtomic(projectId, doc.export({ mode: "snapshot" }));
+
+    const app = createLocalApiApp({ dataDir, userId: "local-user", clashRoot });
+    const imported = await app.request("/api/v1/assets/import", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        projectId,
+        kind: "image",
+        assetId,
+        contentHash: hash,
+        localBlobKey: `blobs/${hash}/original.png`,
+      }),
+    });
+    expect(imported.status).toBe(200);
+    const removedRef = await app.request(`/api/v1/assets/${encodeURIComponent(assetId)}/ref?projectId=${encodeURIComponent(projectId)}`, {
+      method: "DELETE",
+    });
+    expect(removedRef.status).toBe(200);
+
+    const refresh = await app.request(`/api/v1/assets/${encodeURIComponent(assetId)}/references/refresh`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ projectIds: [projectId] }),
+    });
+
+    expect(refresh.status).toBe(200);
+    expect(await refresh.json()).toEqual({
+      assetId,
+      refreshed: true,
+      protectedProjectIds: [projectId],
+      references: [
+        {
+          assetId,
+          projectId,
+          nodeId: "image-node",
+          nodeType: "image",
+          fieldPath: "data.assetId",
+          referenceRole: "primary",
+        },
+      ],
+      mutation: {
+        operation: "asset_references_refresh",
+        entity: { kind: "asset", id: assetId },
+        resultEntityId: assetId,
+        forced: false,
+        accepted: true,
+      },
+    });
+    await expect(stat(blobPath)).resolves.toMatchObject({ size: "refresh-ref".length });
+    const sqlite = openSqlite();
+    try {
+      expect(sqlite.prepare("select asset_id, project_id from asset_refs where asset_id = ?").get(assetId)).toEqual({
+        asset_id: assetId,
+        project_id: projectId,
+      });
+    } finally {
+      sqlite.close();
+    }
+  });
+
+  it("records mutation envelopes for local custom action uploads", async () => {
+    const app = createLocalApiApp({ dataDir, userId: "local-user" });
+
+    const missingForm = new FormData();
+    missingForm.append("file", new File(["img"], "x.png", { type: "image/png" }));
+    const missing = await app.request("/api/custom-action/upload", {
+      method: "POST",
+      body: missingForm,
+    });
+    expect(missing.status).toBe(400);
+    expect(await missing.json()).toEqual({
+      error: "Missing required fields: projectId, taskId, nodeId",
+      mutation: {
+        operation: "custom_action_upload",
+        entity: { kind: "custom-action-result", id: "" },
+        forced: false,
+        accepted: false,
+        error: "Missing required fields: projectId, taskId, nodeId",
+      },
+    });
+
+    const textForm = new FormData();
+    textForm.append("projectId", "project-custom");
+    textForm.append("taskId", "task-text");
+    textForm.append("nodeId", "node-text");
+    textForm.append("outputType", "text");
+    textForm.append("content", "hello custom text");
+    const text = await app.request("/api/custom-action/upload", {
+      method: "POST",
+      body: textForm,
+    });
+    expect(text.status).toBe(200);
+    expect(await text.json()).toEqual({
+      success: true,
+      storageKey: null,
+      content: "hello custom text",
+      mutation: {
+        operation: "custom_action_upload",
+        entity: { kind: "custom-action-result", id: "task-text" },
+        forced: false,
+        accepted: true,
+        resultEntityId: "task-text",
+      },
+    });
+
+    const imageForm = new FormData();
+    imageForm.append("projectId", "project-custom");
+    imageForm.append("taskId", "task-image");
+    imageForm.append("nodeId", "node-image");
+    imageForm.append("outputType", "image");
+    imageForm.append("actorUserId", "actor-user");
+    imageForm.append("file", new File(["image-bytes"], "x.png", { type: "image/png" }));
+    const image = await app.request("/api/custom-action/upload", {
+      method: "POST",
+      body: imageForm,
+    });
+    expect(image.status).toBe(200);
+    expect(await image.json()).toEqual({
+      success: true,
+      storageKey: "projects/project-custom/custom/task-image.png",
+      assetId: "task-image",
+      mutation: {
+        operation: "custom_action_upload",
+        entity: { kind: "custom-action-result", id: "task-image" },
+        forced: false,
+        accepted: true,
+        resultEntityId: "task-image",
+      },
+    });
+
+    const sqlite = openSqlite();
+    try {
+      expect(sqlite.prepare("select id, user_id, src_r2_key from assets where id = ?").get("task-image")).toEqual({
+        id: "task-image",
+        user_id: "actor-user",
+        src_r2_key: "projects/project-custom/custom/task-image.png",
+      });
+      expect(sqlite.prepare("select asset_id, project_id from asset_refs where asset_id = ?").get("task-image")).toEqual({
+        asset_id: "task-image",
+        project_id: "project-custom",
+      });
+    } finally {
+      sqlite.close();
+    }
+  });
+
+  it("rejects custom action output reruns that would overwrite an existing checkpoint asset", async () => {
+    const app = createLocalApiApp({ dataDir, userId: "local-user" });
+
+    const firstForm = new FormData();
+    firstForm.append("projectId", "project-custom");
+    firstForm.append("taskId", "task-rerun");
+    firstForm.append("nodeId", "node-image");
+    firstForm.append("outputType", "image");
+    firstForm.append("file", new File(["first-checkpoint"], "x.png", { type: "image/png" }));
+    const first = await app.request("/api/custom-action/upload", {
+      method: "POST",
+      body: firstForm,
+    });
+    expect(first.status).toBe(200);
+
+    const secondForm = new FormData();
+    secondForm.append("projectId", "project-custom");
+    secondForm.append("taskId", "task-rerun");
+    secondForm.append("nodeId", "node-image");
+    secondForm.append("outputType", "image");
+    secondForm.append("file", new File(["second-checkpoint"], "x.png", { type: "image/png" }));
+    const second = await app.request("/api/custom-action/upload", {
+      method: "POST",
+      body: secondForm,
+    });
+    expect(second.status).toBe(409);
+    expect(await second.json()).toMatchObject({
+      error: expect.stringContaining("Custom action output already exists with different checkpoint content"),
+      mutation: {
+        operation: "custom_action_upload",
+        entity: { kind: "custom-action-result", id: "task-rerun" },
+        forced: false,
+        accepted: false,
+        error: expect.stringContaining("Custom action output already exists with different checkpoint content"),
+      },
+    });
+
+    const bytes = await app.request("/assets/projects/project-custom/custom/task-rerun.png");
+    expect(bytes.status).toBe(200);
+    expect(await bytes.text()).toBe("first-checkpoint");
+  });
+
+  it("ignores legacy local metadata db.json instead of making JSON authoritative", async () => {
+    await writeFile(
+      join(dataDir, "db.json"),
+      JSON.stringify({
+        projects: [
+          {
+            id: "legacy-project",
+            ownerId: "local-user",
+            name: "Legacy Project",
+            description: "from db.json",
+            createdAt: "2026-01-01T00:00:00.000Z",
+            updatedAt: "2026-01-01T00:00:00.000Z",
+            assets: [],
+          },
+        ],
+        sessions: [
+          {
+            id: "legacy-session",
+            projectId: "legacy-project",
+            title: "Legacy Session",
+            type: "runtime",
+            runtimeId: "desktop-local",
+            agentId: "codex-acp",
+            createdAt: "2026-01-01T00:00:01.000Z",
+            updatedAt: "2026-01-01T00:00:01.000Z",
+          },
+        ],
+        sessionMessages: [
+          {
+            session_id: "legacy-session",
+            id: "legacy-message",
+            sender_kind: "agent",
+            sender_id: "local-agent",
+            turn_id: "turn-legacy",
+            events: [{ type: "text", text: "legacy transcript" }],
+            created_at: 1_767_225_601,
+          },
+        ],
+      }),
+      "utf8",
+    );
+
+    const app = createLocalApiApp({ dataDir, userId: "local-user" });
+    const listed = await app.request("/api/projects");
+    expect(await listed.json()).toEqual([]);
+
+    const sessions = await app.request("/api/v1/sessions?projectId=legacy-project");
+    expect(await sessions.json()).toEqual({ sessions: [] });
+
+    const renamed = await app.request("/api/projects/legacy-project", {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ name: "SQLite Project" }),
+    });
+    expect(renamed.status).toBe(404);
+  });
+
+  it("persists local provider accounts in SQLite without creating legacy db.json", async () => {
+    const app = createLocalApiApp({ dataDir, userId: "local-user" });
+
+    const saved = await app.request("/api/v1/model-providers", {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        providers: [
+          {
+            providerId: "official",
+            upstreamId: "openai",
+            region: "global",
+            enabled: true,
+            weight: 10,
+            credentials: { apiKey: "sk-local-openai" },
+          },
+        ],
+      }),
+    });
+
+    expect(saved.status).toBe(200);
+    await expect(stat(join(dataDir, "local.sqlite"))).resolves.toMatchObject({ mode: expect.any(Number) });
+    await expect(stat(join(dataDir, "db.json"))).rejects.toMatchObject({ code: "ENOENT" });
+
+    const sqlite = openSqlite();
+    try {
+      expect(sqlite.prepare("select provider_id, upstream_id, region, enabled, weight from provider_accounts").get()).toEqual({
+        provider_id: "official",
+        upstream_id: "openai",
+        region: "global",
+        enabled: 1,
+        weight: 10,
+      });
+      const credential = sqlite.prepare("select credential_key, credential_value from provider_account_credentials").get();
+      expect(credential?.credential_key).toBe("apiKey");
+      expect(credential?.credential_value).not.toBe("sk-local-openai");
+      expect(String(credential?.credential_value)).toMatch(/^enc:v1:/);
+      expect(String(credential?.credential_value)).not.toContain("sk-local-openai");
+    } finally {
+      sqlite.close();
+    }
+
+    const reopened = createLocalApiApp({ dataDir, userId: "local-user" });
+    const listed = await reopened.request("/api/v1/model-providers");
+    expect(await listed.json()).toMatchObject({
+      providers: [
+        {
+          providerId: "official",
+          upstreamId: "openai",
+          region: "global",
+          enabled: true,
+          configuredCredentials: ["apiKey"],
+          weight: 10,
+        },
+      ],
+    });
+  });
+
+  it("keeps all concurrent provider account updates", async () => {
+    const app = createLocalApiApp({ dataDir, userId: "local-user" });
+    const ids = Array.from({ length: 12 }, (_, index) => `replicate-concurrent-${index}`);
+
+    const saved = await Promise.all(ids.map((id, index) =>
+      app.request("/api/v1/model-providers", {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          providers: [
+            {
+              id,
+              providerId: "replicate",
+              upstreamId: "replicate",
+              enabled: true,
+              weight: index + 1,
+              credentials: { apiKey: `r8-concurrent-${index}` },
+            },
+          ],
+        }),
+      })
+    ));
+    expect(saved.map((response) => response.status)).toEqual(ids.map(() => 200));
+
+    const listed = await app.request("/api/v1/model-providers");
+    const body = await listed.json() as { providers: Array<{ id?: string }> };
+    expect(body.providers.map((provider) => provider.id).sort()).toEqual([...ids].sort());
+  });
+
+  it("records mutation envelopes for provider account settings writes", async () => {
+    const app = createLocalApiApp({ dataDir, userId: "local-user" });
+
+    const invalid = await app.request("/api/v1/model-providers", {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ providers: [{ providerId: "not-a-provider" }] }),
+    });
+    expect(invalid.status).toBe(400);
+    expect(await invalid.json()).toEqual({
+      error: "Invalid providers",
+      mutation: {
+        operation: "provider_accounts_update",
+        entity: { kind: "provider-accounts", id: "local-user" },
+        forced: false,
+        accepted: false,
+        error: "Invalid providers",
+      },
+    });
+
+    const saved = await app.request("/api/v1/model-providers", {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        providers: [
+          {
+            id: "replicate-primary",
+            providerId: "replicate",
+            upstreamId: "replicate",
+            enabled: true,
+            credentials: { apiKey: "r8-primary" },
+          },
+        ],
+      }),
+    });
+    expect(saved.status).toBe(200);
+    const savedJson = await saved.json() as { providers: Array<{ id?: string }>; mutation?: unknown };
+    expect(savedJson.providers.map((provider) => provider.id)).toEqual(["replicate-primary"]);
+    expect(savedJson.mutation).toEqual({
+      operation: "provider_accounts_update",
+      entity: { kind: "provider-accounts", id: "local-user" },
+      resultEntityId: "local-user",
+      forced: false,
+      accepted: true,
+    });
+
+    const missing = await app.request("/api/v1/model-providers/missing-provider", { method: "DELETE" });
+    expect(missing.status).toBe(404);
+    expect(await missing.json()).toEqual({
+      error: "Provider account not found",
+      mutation: {
+        operation: "provider_account_delete",
+        entity: { kind: "provider-account", id: "missing-provider" },
+        forced: false,
+        accepted: false,
+        error: "Provider account not found",
+      },
+    });
+
+    const deleted = await app.request("/api/v1/model-providers/replicate-primary", { method: "DELETE" });
+    expect(deleted.status).toBe(200);
+    expect(await deleted.json()).toEqual({
+      ok: true,
+      mutation: {
+        operation: "provider_account_delete",
+        entity: { kind: "provider-account", id: "replicate-primary" },
+        resultEntityId: "replicate-primary",
+        forced: false,
+        accepted: true,
+      },
+    });
   });
 
   it("persists local model provider account settings and exposes catalog tiers", async () => {
@@ -380,7 +2837,10 @@ describe("local API app", () => {
 
     const reopened = createLocalApiApp({ dataDir, userId: "local-user" });
     const providers = await reopened.request("/api/v1/model-providers");
-    expect(await providers.json()).toEqual(savedJson);
+    expect(await providers.json()).toEqual({
+      providers: savedJson.providers,
+      readToken: expect.stringMatching(PROVIDER_ACCOUNTS_RECEIPT_READ_TOKEN_RE),
+    });
 
     const catalog = await reopened.request("/api/v1/models/catalog");
     const catalogJson = (await catalog.json()) as {
@@ -405,7 +2865,7 @@ describe("local API app", () => {
     });
   });
 
-  it("does not expose legacy or incomplete official provider accounts from persisted state", async () => {
+  it("does not expose provider accounts from legacy db.json", async () => {
     await writeFile(
       join(dataDir, "db.json"),
       JSON.stringify({
@@ -443,14 +2903,147 @@ describe("local API app", () => {
     const response = await app.request("/api/v1/model-providers");
     const body = (await response.json()) as { providers: Array<Record<string, unknown>> };
 
-    expect(body.providers).toEqual([
-      expect.objectContaining({
-        providerId: "official",
-        upstreamId: "google-agent-platform",
-        region: "global",
-        configuredCredentials: ["vertexCredentials"],
+    expect(body.providers).toEqual([]);
+  });
+
+  it("ignores legacy provider accounts when SQLite already exists", async () => {
+    const bootstrap = createLocalApiApp({ dataDir, userId: "local-user" });
+    const created = await bootstrap.request("/api/v1/projects", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ name: "Existing SQLite" }),
+    });
+    expect(created.status).toBe(201);
+    await expect(stat(join(dataDir, "local.sqlite"))).resolves.toMatchObject({ mode: expect.any(Number) });
+
+    await writeFile(
+      join(dataDir, "db.json"),
+      JSON.stringify({
+        providerAccounts: [
+          {
+            id: "legacy-openai-account",
+            userId: "local-user",
+            providerId: "official",
+            upstreamId: "openai",
+            region: "global",
+            enabled: true,
+            credentials: { apiKey: "sk-legacy-openai" },
+          },
+        ],
       }),
-    ]);
+      "utf8",
+    );
+
+    const app = createLocalApiApp({ dataDir, userId: "local-user" });
+    const listed = await app.request("/api/v1/model-providers");
+    const listedJson = (await listed.json()) as { providers: Array<Record<string, unknown>> };
+    expect(listedJson.providers).toEqual([]);
+
+    const sqlite = openSqlite();
+    try {
+      expect(sqlite.prepare("select count(*) as count from provider_accounts").get()).toEqual({ count: 0 });
+      expect(sqlite.prepare("select id from local_migration where id = 'provider-accounts-sqlite-v1'").get()).toBeUndefined();
+    } finally {
+      sqlite.close();
+    }
+  });
+
+  it("rewrites legacy plaintext provider credentials in SQLite as encrypted values", async () => {
+    const app = createLocalApiApp({ dataDir, userId: "local-user" });
+    const saved = await app.request("/api/v1/model-providers", {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        providers: [
+          {
+            providerId: "official",
+            upstreamId: "openai",
+            region: "global",
+            enabled: true,
+            credentials: { apiKey: "sk-legacy-sqlite-plaintext" },
+          },
+        ],
+      }),
+    });
+    expect(saved.status).toBe(200);
+
+    let sqlite = openSqlite();
+    try {
+      sqlite.prepare("update provider_account_credentials set credential_value = ?").run("sk-legacy-sqlite-plaintext");
+      sqlite.prepare("delete from local_migration where id = 'provider-accounts-sqlite-v1'").run();
+    } finally {
+      sqlite.close();
+    }
+
+    const listed = await createLocalApiApp({ dataDir, userId: "local-user" }).request("/api/v1/model-providers");
+    expect(await listed.json()).toMatchObject({
+      providers: [
+        {
+          providerId: "official",
+          upstreamId: "openai",
+          configuredCredentials: ["apiKey"],
+        },
+      ],
+    });
+
+    sqlite = openSqlite();
+    try {
+      const credential = sqlite.prepare("select credential_value from provider_account_credentials").get();
+      expect(credential?.credential_value).not.toBe("sk-legacy-sqlite-plaintext");
+      expect(String(credential?.credential_value)).toMatch(/^enc:v1:/);
+    } finally {
+      sqlite.close();
+    }
+  });
+
+  it("rewrites plaintext provider credentials even when the old SQLite migration marker already exists", async () => {
+    const app = createLocalApiApp({ dataDir, userId: "local-user" });
+    const saved = await app.request("/api/v1/model-providers", {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        providers: [
+          {
+            providerId: "official",
+            upstreamId: "openai",
+            region: "global",
+            enabled: true,
+            credentials: { apiKey: "sk-old-marker-plaintext" },
+          },
+        ],
+      }),
+    });
+    expect(saved.status).toBe(200);
+
+    let sqlite = openSqlite();
+    try {
+      sqlite.prepare("update provider_account_credentials set credential_value = ?").run("sk-old-marker-plaintext");
+      expect(sqlite.prepare("select id from local_migration where id = 'provider-accounts-sqlite-v1'").get()).toEqual({
+        id: "provider-accounts-sqlite-v1",
+      });
+    } finally {
+      sqlite.close();
+    }
+
+    const listed = await createLocalApiApp({ dataDir, userId: "local-user" }).request("/api/v1/model-providers");
+    expect(await listed.json()).toMatchObject({
+      providers: [
+        {
+          providerId: "official",
+          upstreamId: "openai",
+          configuredCredentials: ["apiKey"],
+        },
+      ],
+    });
+
+    sqlite = openSqlite();
+    try {
+      const credential = sqlite.prepare("select credential_value from provider_account_credentials").get();
+      expect(credential?.credential_value).not.toBe("sk-old-marker-plaintext");
+      expect(String(credential?.credential_value)).toMatch(/^enc:v1:/);
+    } finally {
+      sqlite.close();
+    }
   });
 
   it("appends a second provider key without replacing an existing id-less account", async () => {
@@ -510,7 +3103,32 @@ describe("local API app", () => {
 
     const reopened = createLocalApiApp({ dataDir, userId: "local-user" });
     const providers = await reopened.request("/api/v1/model-providers");
-    expect(await providers.json()).toEqual(secondJson);
+    expect(await providers.json()).toEqual({
+      providers: secondJson.providers,
+      readToken: expect.stringMatching(PROVIDER_ACCOUNTS_RECEIPT_READ_TOKEN_RE),
+    });
+  });
+
+  it("records rejected mutation envelopes for invalid provider model tests", async () => {
+    const app = createLocalApiApp({ dataDir, userId: "local-user" });
+
+    const response = await app.request("/api/v1/model-providers/test", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ provider: { providerId: "mock", upstreamId: "mock" } }),
+    });
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({
+      error: "provider and modelId are required",
+      mutation: {
+        operation: "provider_model_test",
+        entity: { kind: "provider-test", id: "unknown" },
+        forced: false,
+        accepted: false,
+        error: "provider and modelId are required",
+      },
+    });
   });
 
   it("tests a configured mock provider account against a selected model", async () => {
@@ -543,6 +3161,7 @@ describe("local API app", () => {
       providerId: "mock",
       upstreamId: "mock",
       modelId: "nano-banana-2",
+      mutation: providerModelTestMutation("mock", "nano-banana-2"),
       provider: "fal-mock",
       modelEndpoint: "fal-ai/nano-banana-2",
       requestId: expect.stringMatching(/^fal-mock-/),
@@ -588,6 +3207,7 @@ describe("local API app", () => {
       providerId: "mock",
       upstreamId: "mock",
       modelId: "mock-image-model",
+      mutation: providerModelTestMutation("mock", "mock-image-model"),
       provider: "fal-mock",
       modelEndpoint: "fal-ai/mock-image",
       requestId: expect.stringMatching(/^fal-mock-/),
@@ -633,6 +3253,7 @@ describe("local API app", () => {
       providerId: "mock",
       upstreamId: "mock",
       modelId: "mock-text-model",
+      mutation: providerModelTestMutation("mock", "mock-text-model"),
       provider: "mock",
       modelEndpoint: "mock/text-completion",
       input: {
@@ -664,6 +3285,7 @@ describe("local API app", () => {
       providerId: "mock",
       upstreamId: "mock",
       modelId: "claude-sonnet-4",
+      mutation: providerModelTestMutation("mock", "claude-sonnet-4"),
       unsupported: true,
       message: "Mock provider does not support Claude Sonnet 4.",
     });
@@ -697,6 +3319,7 @@ describe("local API app", () => {
       providerId: "mock",
       upstreamId: "mock",
       modelId: "nano-banana-2",
+      mutation: providerModelTestMutation("mock", "nano-banana-2"),
       disabled: true,
       message: "Mock provider is disabled for Nano Banana 2.",
     });
@@ -737,6 +3360,7 @@ describe("local API app", () => {
       providerId: "replicate",
       upstreamId: "replicate",
       modelId: "nano-banana-2",
+      mutation: providerModelTestMutation("replicate", "nano-banana-2"),
       disabled: true,
       message: "Replicate is disabled for Nano Banana 2.",
     });
@@ -777,6 +3401,7 @@ describe("local API app", () => {
       providerId: "replicate",
       upstreamId: "replicate",
       modelId: "nano-banana-2",
+      mutation: providerModelTestMutation("replicate", "nano-banana-2"),
       message: "Replicate configuration is ready for Nano Banana 2.",
     });
   });
@@ -1039,6 +3664,7 @@ describe("local API app", () => {
       upstreamId: "google-ai-studio",
       region: "global",
       modelId: "nano-banana-2",
+      mutation: providerModelTestMutation("official", "nano-banana-2"),
       message: "Google AI Studio configuration is ready for Nano Banana 2.",
     });
   });
@@ -1086,6 +3712,7 @@ describe("local API app", () => {
       upstreamId: "google-agent-platform",
       region: "global",
       modelId: "veo-3.1",
+      mutation: providerModelTestMutation("official", "veo-3.1"),
       message: "Google Cloud Agent Platform configuration is ready for Veo 3.1.",
     });
   });
@@ -1156,6 +3783,7 @@ describe("local API app", () => {
       providerId: "jimeng",
       upstreamId: "jimeng",
       modelId: "seedance-2-text",
+      mutation: providerModelTestMutation("jimeng", "seedance-2-text"),
       missingOAuth: ["dreamina"],
       message: "Dreamina needs authorization before testing Seedance 2.0 (Text).",
     });
@@ -1222,6 +3850,7 @@ describe("local API app", () => {
       providerId: "mock",
       upstreamId: "mock",
       modelId: "gpt-image-2",
+      mutation: providerModelTestMutation("mock", "gpt-image-2"),
       unsupported: true,
       message: "Mock provider is not enabled for GPT Image 2.",
     });
@@ -1257,6 +3886,13 @@ describe("local API app", () => {
           unsupportedModelIds: ["claude-sonnet-4"],
         },
       ],
+      mutation: {
+        operation: "provider_accounts_update",
+        entity: { kind: "provider-accounts", id: "local-user" },
+        forced: false,
+        accepted: false,
+        error: "Invalid provider model filters",
+      },
     });
   });
 
@@ -1290,7 +3926,179 @@ describe("local API app", () => {
 
     const deleted = await app.request("/api/v1/model-providers/replicate-primary", { method: "DELETE" });
 
-    expect(deleted.status).toBe(204);
+    expect(deleted.status).toBe(200);
+    expect(await deleted.json()).toEqual({
+      ok: true,
+      mutation: {
+        operation: "provider_account_delete",
+        entity: { kind: "provider-account", id: "replicate-primary" },
+        resultEntityId: "replicate-primary",
+        forced: false,
+        accepted: true,
+      },
+    });
+    const providers = await app.request("/api/v1/model-providers");
+    const providersJson = (await providers.json()) as { providers: Array<{ id?: string }> };
+    expect(providersJson.providers.map((provider) => provider.id)).toEqual(["replicate-secondary"]);
+  });
+
+  it("requires receipt-bearing provider account reads before agent provider writes", async () => {
+    const app = createLocalApiApp({ dataDir, userId: "local-user" });
+
+    await app.request("/api/v1/model-providers", {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        providers: [
+          {
+            id: "replicate-primary",
+            providerId: "replicate",
+            upstreamId: "replicate",
+            enabled: true,
+            weight: 10,
+            credentials: { apiKey: "r8-primary" },
+          },
+          {
+            id: "replicate-secondary",
+            providerId: "replicate",
+            upstreamId: "replicate",
+            enabled: true,
+            weight: 5,
+            credentials: { apiKey: "r8-secondary" },
+          },
+        ],
+      }),
+    });
+
+    const initial = await app.request("/api/v1/model-providers");
+    const initialJson = await initial.json() as {
+      readToken?: string;
+      providers: Array<{ id?: string; weight?: number; readToken?: string }>;
+    };
+    expect(initialJson.readToken).toMatch(PROVIDER_ACCOUNTS_RECEIPT_READ_TOKEN_RE);
+    const initialPrimary = initialJson.providers.find((provider) => provider.id === "replicate-primary");
+    expect(initialPrimary?.readToken).toMatch(PROVIDER_ACCOUNT_RECEIPT_READ_TOKEN_RE);
+
+    const missingUpdate = await app.request("/api/v1/model-providers", {
+      method: "PATCH",
+      headers: {
+        "content-type": "application/json",
+        "x-clash-client-type": "agent",
+      },
+      body: JSON.stringify({
+        providers: [{ id: "replicate-primary", providerId: "replicate", upstreamId: "replicate", weight: 11 }],
+      }),
+    });
+    expect(missingUpdate.status).toBe(409);
+    expect(await missingUpdate.json()).toMatchObject({
+      mutation: {
+        operation: "provider_accounts_update",
+        entity: { kind: "provider-accounts", id: "local-user" },
+        accepted: false,
+      },
+    });
+
+    const bareUpdate = await app.request("/api/v1/model-providers", {
+      method: "PATCH",
+      headers: {
+        "content-type": "application/json",
+        "x-clash-client-type": "agent",
+        "x-clash-if-match": baseReadToken(initialJson.readToken!),
+      },
+      body: JSON.stringify({
+        providers: [{ id: "replicate-primary", providerId: "replicate", upstreamId: "replicate", weight: 11 }],
+      }),
+    });
+    expect(bareUpdate.status).toBe(409);
+    const bareUpdateJson = await bareUpdate.json() as { error?: string };
+    expect(bareUpdateJson.error).toContain("Missing provider accounts update read receipt");
+
+    const updated = await app.request("/api/v1/model-providers", {
+      method: "PATCH",
+      headers: {
+        "content-type": "application/json",
+        "x-clash-client-type": "agent",
+        "x-clash-if-match": initialJson.readToken!,
+      },
+      body: JSON.stringify({
+        providers: [{ id: "replicate-primary", providerId: "replicate", upstreamId: "replicate", weight: 11 }],
+      }),
+    });
+    expect(updated.status).toBe(200);
+    const updatedJson = await updated.json() as {
+      readToken?: string;
+      providers: Array<{ id?: string; weight?: number; readToken?: string }>;
+      mutation?: any;
+    };
+    expect(updatedJson.readToken).toMatch(PROVIDER_ACCOUNTS_RECEIPT_READ_TOKEN_RE);
+    expect(updatedJson.readToken).not.toBe(initialJson.readToken);
+    expect(updatedJson.providers.find((provider) => provider.id === "replicate-primary")?.weight).toBe(11);
+    expect(updatedJson.mutation).toMatchObject({
+      operation: "provider_accounts_update",
+      entity: { kind: "provider-accounts", id: "local-user" },
+      expectedReadToken: initialJson.readToken,
+      beforeReadToken: baseReadToken(initialJson.readToken!),
+      afterReadToken: updatedJson.readToken,
+      accepted: true,
+    });
+
+    const missingDelete = await app.request("/api/v1/model-providers/replicate-primary", {
+      method: "DELETE",
+      headers: { "x-clash-client-type": "agent" },
+    });
+    expect(missingDelete.status).toBe(409);
+    expect(await missingDelete.json()).toMatchObject({
+      mutation: {
+        operation: "provider_account_delete",
+        entity: { kind: "provider-account", id: "replicate-primary" },
+        accepted: false,
+      },
+    });
+
+    const staleDelete = await app.request("/api/v1/model-providers/replicate-primary", {
+      method: "DELETE",
+      headers: {
+        "x-clash-client-type": "agent",
+        "x-clash-if-match": initialPrimary!.readToken!,
+      },
+    });
+    expect(staleDelete.status).toBe(409);
+    const staleDeleteJson = await staleDelete.json() as { mutation?: any };
+    expect(staleDeleteJson.mutation.expectedReadToken).toBe(initialPrimary!.readToken);
+    expect(staleDeleteJson.mutation.beforeReadToken).not.toBe(baseReadToken(initialPrimary!.readToken!));
+
+    const freshPrimary = updatedJson.providers.find((provider) => provider.id === "replicate-primary");
+    expect(freshPrimary?.readToken).toMatch(PROVIDER_ACCOUNT_RECEIPT_READ_TOKEN_RE);
+    const bareDelete = await app.request("/api/v1/model-providers/replicate-primary", {
+      method: "DELETE",
+      headers: {
+        "x-clash-client-type": "agent",
+        "x-clash-if-match": baseReadToken(freshPrimary!.readToken!),
+      },
+    });
+    expect(bareDelete.status).toBe(409);
+    const bareDeleteJson = await bareDelete.json() as { error?: string };
+    expect(bareDeleteJson.error).toContain("Missing provider account delete read receipt");
+
+    const deleted = await app.request("/api/v1/model-providers/replicate-primary", {
+      method: "DELETE",
+      headers: {
+        "x-clash-client-type": "agent",
+        "x-clash-if-match": freshPrimary!.readToken!,
+      },
+    });
+    expect(deleted.status).toBe(200);
+    expect(await deleted.json()).toMatchObject({
+      ok: true,
+      mutation: {
+        operation: "provider_account_delete",
+        entity: { kind: "provider-account", id: "replicate-primary" },
+        expectedReadToken: freshPrimary!.readToken,
+        beforeReadToken: baseReadToken(freshPrimary!.readToken!),
+        accepted: true,
+      },
+    });
+
     const providers = await app.request("/api/v1/model-providers");
     const providersJson = (await providers.json()) as { providers: Array<{ id?: string }> };
     expect(providersJson.providers.map((provider) => provider.id)).toEqual(["replicate-secondary"]);
@@ -1356,6 +4164,541 @@ describe("local API app", () => {
     });
   });
 
+  it("records mutation envelopes for provider OAuth lifecycle writes", async () => {
+    const unsupported = createLocalApiApp({ dataDir, userId: "local-user" });
+    const unsupportedStart = await unsupported.request("/api/v1/provider-oauth/not-real/start", {
+      method: "POST",
+    });
+    expect(unsupportedStart.status).toBe(404);
+    expect(await unsupportedStart.json()).toEqual({
+      error: "Unsupported OAuth provider",
+      mutation: {
+        operation: "provider_oauth_start",
+        entity: { kind: "provider-oauth", id: "not-real" },
+        forced: false,
+        accepted: false,
+        error: "Unsupported OAuth provider",
+      },
+    });
+
+    const notConfigured = await unsupported.request("/api/v1/provider-oauth/dreamina/start", {
+      method: "POST",
+    });
+    expect(notConfigured.status).toBe(501);
+    expect(await notConfigured.json()).toEqual({
+      error: "OAuth provider is not configured",
+      mutation: {
+        operation: "provider_oauth_start",
+        entity: { kind: "provider-oauth", id: "dreamina" },
+        forced: false,
+        accepted: false,
+        error: "OAuth provider is not configured",
+      },
+    });
+
+    const oauth = {
+      dreamina: {
+        start: vi.fn(async () => ({
+          verificationUri: "https://jimeng.jianying.com/device",
+          userCode: "ABCD-EFGH",
+          deviceCode: "device-code-1",
+          expiresAt: "2026-06-26T03:00:00.000Z",
+          intervalSeconds: 5,
+        })),
+        complete: vi.fn(async () => ({
+          accessToken: "access-token-1",
+          refreshToken: "refresh-token-1",
+          expiresAt: "2026-06-27T03:00:00.000Z",
+          accountLabel: "Dreamina VIP",
+        })),
+      },
+    };
+    const app = createLocalApiApp({
+      dataDir,
+      userId: "local-user",
+      providerOAuth: oauth,
+    } as any);
+
+    const start = await app.request("/api/v1/provider-oauth/dreamina/start", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ accountId: "jimeng-primary", accountLabel: "Primary Dreamina" }),
+    });
+    expect(start.status).toBe(200);
+    expect(await start.json()).toMatchObject({
+      providerId: "dreamina",
+      accountId: "jimeng-primary",
+      status: "pending",
+      mutation: {
+        operation: "provider_oauth_start",
+        entity: { kind: "provider-oauth", id: "dreamina:jimeng-primary" },
+        resultEntityId: "dreamina:jimeng-primary",
+        forced: false,
+        accepted: true,
+      },
+    });
+
+    const missingDeviceCode = await app.request("/api/v1/provider-oauth/dreamina/complete", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ accountId: "jimeng-missing" }),
+    });
+    expect(missingDeviceCode.status).toBe(400);
+    expect(await missingDeviceCode.json()).toEqual({
+      error: "deviceCode is required",
+      mutation: {
+        operation: "provider_oauth_complete",
+        entity: { kind: "provider-oauth", id: "dreamina:jimeng-missing" },
+        forced: false,
+        accepted: false,
+        error: "deviceCode is required",
+      },
+    });
+
+    const complete = await app.request("/api/v1/provider-oauth/dreamina/complete", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ accountId: "jimeng-primary", deviceCode: "device-code-1" }),
+    });
+    expect(complete.status).toBe(200);
+    expect(await complete.json()).toMatchObject({
+      providerId: "dreamina",
+      accountId: "jimeng-primary",
+      status: "authorized",
+      mutation: {
+        operation: "provider_oauth_complete",
+        entity: { kind: "provider-oauth", id: "dreamina:jimeng-primary" },
+        resultEntityId: "dreamina:jimeng-primary",
+        forced: false,
+        accepted: true,
+      },
+    });
+
+    const deleted = await app.request("/api/v1/provider-oauth/dreamina?accountId=jimeng-primary", {
+      method: "DELETE",
+    });
+    expect(deleted.status).toBe(200);
+    expect(await deleted.json()).toEqual({
+      ok: true,
+      mutation: {
+        operation: "provider_oauth_delete",
+        entity: { kind: "provider-oauth", id: "dreamina:jimeng-primary" },
+        resultEntityId: "dreamina:jimeng-primary",
+        forced: false,
+        accepted: true,
+      },
+    });
+  });
+
+  it("requires receipt-bearing provider OAuth reads before agent OAuth deletion", async () => {
+    const oauth = {
+      dreamina: {
+        start: vi.fn(async () => ({
+          verificationUri: "https://jimeng.jianying.com/device",
+          userCode: "ABCD-EFGH",
+          deviceCode: "device-code-1",
+          expiresAt: "2026-06-26T03:00:00.000Z",
+          intervalSeconds: 5,
+        })),
+        complete: vi.fn(async () => ({
+          accessToken: "access-token-1",
+          refreshToken: "refresh-token-1",
+          expiresAt: "2026-06-27T03:00:00.000Z",
+          accountLabel: "Dreamina VIP",
+        })),
+      },
+    };
+    const app = createLocalApiApp({
+      dataDir,
+      userId: "local-user",
+      providerOAuth: oauth,
+    } as any);
+
+    const start = await app.request("/api/v1/provider-oauth/dreamina/start", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ accountId: "jimeng-primary", accountLabel: "Primary Dreamina" }),
+    });
+    expect(start.status).toBe(200);
+
+    const listedPending = await app.request("/api/v1/provider-oauth");
+    const listedPendingJson = await listedPending.json() as {
+      providers: Array<{ providerId: string; accountId?: string; status: string; readToken?: string }>;
+    };
+    const pending = listedPendingJson.providers.find((provider) =>
+      provider.providerId === "dreamina" && provider.accountId === "jimeng-primary"
+    );
+    expect(pending?.readToken).toMatch(PROVIDER_OAUTH_RECEIPT_READ_TOKEN_RE);
+
+    const missingDelete = await app.request("/api/v1/provider-oauth/dreamina?accountId=jimeng-primary", {
+      method: "DELETE",
+      headers: { "x-clash-client-type": "agent" },
+    });
+    expect(missingDelete.status).toBe(409);
+    expect(await missingDelete.json()).toMatchObject({
+      mutation: {
+        operation: "provider_oauth_delete",
+        entity: { kind: "provider-oauth", id: "dreamina:jimeng-primary" },
+        accepted: false,
+      },
+    });
+
+    const bareDelete = await app.request("/api/v1/provider-oauth/dreamina?accountId=jimeng-primary", {
+      method: "DELETE",
+      headers: {
+        "x-clash-client-type": "agent",
+        "x-clash-if-match": baseReadToken(pending!.readToken!),
+      },
+    });
+    expect(bareDelete.status).toBe(409);
+    const bareDeleteJson = await bareDelete.json() as { error?: string };
+    expect(bareDeleteJson.error).toContain("Missing provider OAuth delete read receipt");
+
+    const complete = await app.request("/api/v1/provider-oauth/dreamina/complete", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ accountId: "jimeng-primary", deviceCode: "device-code-1" }),
+    });
+    expect(complete.status).toBe(200);
+
+    const staleDelete = await app.request("/api/v1/provider-oauth/dreamina?accountId=jimeng-primary", {
+      method: "DELETE",
+      headers: {
+        "x-clash-client-type": "agent",
+        "x-clash-if-match": pending!.readToken!,
+      },
+    });
+    expect(staleDelete.status).toBe(409);
+    const staleDeleteJson = await staleDelete.json() as { mutation?: any };
+    expect(staleDeleteJson.mutation.expectedReadToken).toBe(pending!.readToken);
+    expect(staleDeleteJson.mutation.beforeReadToken).not.toBe(baseReadToken(pending!.readToken!));
+
+    const listedAuthorized = await app.request("/api/v1/provider-oauth");
+    const listedAuthorizedJson = await listedAuthorized.json() as {
+      providers: Array<{ providerId: string; accountId?: string; status: string; readToken?: string }>;
+    };
+    const authorized = listedAuthorizedJson.providers.find((provider) =>
+      provider.providerId === "dreamina" && provider.accountId === "jimeng-primary"
+    );
+    expect(authorized?.status).toBe("authorized");
+    expect(authorized?.readToken).toMatch(PROVIDER_OAUTH_RECEIPT_READ_TOKEN_RE);
+
+    const acceptedDelete = await app.request("/api/v1/provider-oauth/dreamina?accountId=jimeng-primary", {
+      method: "DELETE",
+      headers: {
+        "x-clash-client-type": "agent",
+        "x-clash-if-match": authorized!.readToken!,
+      },
+    });
+    expect(acceptedDelete.status).toBe(200);
+    expect(await acceptedDelete.json()).toMatchObject({
+      ok: true,
+      mutation: {
+        operation: "provider_oauth_delete",
+        entity: { kind: "provider-oauth", id: "dreamina:jimeng-primary" },
+        expectedReadToken: authorized!.readToken,
+        beforeReadToken: baseReadToken(authorized!.readToken!),
+        resultEntityId: "dreamina:jimeng-primary",
+        forced: false,
+        accepted: true,
+      },
+    });
+
+    const listedAfterDelete = await app.request("/api/v1/provider-oauth");
+    expect(await listedAfterDelete.json()).toEqual({ providers: [] });
+
+    const missingAfterDelete = await app.request("/api/v1/provider-oauth/dreamina?accountId=jimeng-primary", {
+      method: "DELETE",
+      headers: { "x-clash-client-type": "agent" },
+    });
+    expect(missingAfterDelete.status).toBe(409);
+    expect(await missingAfterDelete.json()).toMatchObject({
+      error: expect.stringContaining("Provider OAuth record not found"),
+      mutation: {
+        operation: "provider_oauth_delete",
+        entity: { kind: "provider-oauth", id: "dreamina:jimeng-primary" },
+        forced: false,
+        accepted: false,
+      },
+    });
+  });
+
+  it("requires receipt-bearing provider OAuth reads before agent restarts an existing OAuth flow", async () => {
+    let startCall = 0;
+    const oauth = {
+      dreamina: {
+        start: vi.fn(async () => {
+          startCall += 1;
+          return {
+            verificationUri: "https://jimeng.jianying.com/device",
+            userCode: `CODE-${startCall}`,
+            deviceCode: `device-code-${startCall}`,
+            expiresAt: "2026-06-26T03:00:00.000Z",
+            intervalSeconds: 5,
+          };
+        }),
+        complete: vi.fn(),
+      },
+    };
+    const app = createLocalApiApp({
+      dataDir,
+      userId: "local-user",
+      providerOAuth: oauth,
+    } as any);
+
+    const start = await app.request("/api/v1/provider-oauth/dreamina/start", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ accountId: "jimeng-primary", accountLabel: "Primary Dreamina" }),
+    });
+    expect(start.status).toBe(200);
+    oauth.dreamina.start.mockClear();
+
+    const listedPending = await app.request("/api/v1/provider-oauth");
+    const listedPendingJson = await listedPending.json() as {
+      providers: Array<{ providerId: string; accountId?: string; status: string; readToken?: string }>;
+    };
+    const pending = listedPendingJson.providers.find((provider) =>
+      provider.providerId === "dreamina" && provider.accountId === "jimeng-primary"
+    );
+    expect(pending?.status).toBe("pending");
+    expect(pending?.readToken).toMatch(PROVIDER_OAUTH_RECEIPT_READ_TOKEN_RE);
+
+    const missingStart = await app.request("/api/v1/provider-oauth/dreamina/start", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-clash-client-type": "agent",
+      },
+      body: JSON.stringify({ accountId: "jimeng-primary", accountLabel: "Primary Dreamina restart" }),
+    });
+    expect(missingStart.status).toBe(409);
+    expect(await missingStart.json()).toMatchObject({
+      mutation: {
+        operation: "provider_oauth_start",
+        entity: { kind: "provider-oauth", id: "dreamina:jimeng-primary" },
+        accepted: false,
+      },
+    });
+    expect(oauth.dreamina.start).not.toHaveBeenCalled();
+
+    const bareStart = await app.request("/api/v1/provider-oauth/dreamina/start", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-clash-client-type": "agent",
+        "x-clash-if-match": baseReadToken(pending!.readToken!),
+      },
+      body: JSON.stringify({ accountId: "jimeng-primary", accountLabel: "Primary Dreamina restart" }),
+    });
+    expect(bareStart.status).toBe(409);
+    const bareStartJson = await bareStart.json() as { error?: string };
+    expect(bareStartJson.error).toContain("Missing provider OAuth start read receipt");
+    expect(oauth.dreamina.start).not.toHaveBeenCalled();
+
+    const acceptedStart = await app.request("/api/v1/provider-oauth/dreamina/start", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-clash-client-type": "agent",
+        "x-clash-if-match": pending!.readToken!,
+      },
+      body: JSON.stringify({ accountId: "jimeng-primary", accountLabel: "Primary Dreamina restart" }),
+    });
+    expect(acceptedStart.status).toBe(200);
+    const acceptedStartJson = await acceptedStart.json() as { readToken?: string; mutation?: any; status?: string };
+    expect(acceptedStartJson.status).toBe("pending");
+    expect(acceptedStartJson.readToken).toMatch(PROVIDER_OAUTH_RECEIPT_READ_TOKEN_RE);
+    expect(acceptedStartJson.readToken).not.toBe(pending!.readToken);
+    expect(acceptedStartJson.mutation).toMatchObject({
+      operation: "provider_oauth_start",
+      entity: { kind: "provider-oauth", id: "dreamina:jimeng-primary" },
+      expectedReadToken: pending!.readToken,
+      beforeReadToken: baseReadToken(pending!.readToken!),
+      afterReadToken: acceptedStartJson.readToken,
+      accepted: true,
+      resultEntityId: "dreamina:jimeng-primary",
+    });
+    expect(oauth.dreamina.start).toHaveBeenCalledTimes(1);
+
+    const staleStart = await app.request("/api/v1/provider-oauth/dreamina/start", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-clash-client-type": "agent",
+        "x-clash-if-match": pending!.readToken!,
+      },
+      body: JSON.stringify({ accountId: "jimeng-primary", accountLabel: "Primary Dreamina restart" }),
+    });
+    expect(staleStart.status).toBe(409);
+    const staleStartJson = await staleStart.json() as { mutation?: any };
+    expect(staleStartJson.mutation.expectedReadToken).toBe(pending!.readToken);
+    expect(staleStartJson.mutation.beforeReadToken).not.toBe(baseReadToken(pending!.readToken!));
+    expect(oauth.dreamina.start).toHaveBeenCalledTimes(1);
+
+    const deleted = await app.request("/api/v1/provider-oauth/dreamina?accountId=jimeng-primary", {
+      method: "DELETE",
+    });
+    expect(deleted.status).toBe(200);
+
+    const missingAfterDeleteStart = await app.request("/api/v1/provider-oauth/dreamina/start", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-clash-client-type": "agent",
+        "x-clash-if-match": acceptedStartJson.readToken!,
+      },
+      body: JSON.stringify({ accountId: "jimeng-primary", accountLabel: "Primary Dreamina restart" }),
+    });
+    expect(missingAfterDeleteStart.status).toBe(409);
+    expect(await missingAfterDeleteStart.json()).toMatchObject({
+      mutation: {
+        operation: "provider_oauth_start",
+        entity: { kind: "provider-oauth", id: "dreamina:jimeng-primary" },
+        expectedReadToken: acceptedStartJson.readToken,
+        accepted: false,
+      },
+    });
+    expect(oauth.dreamina.start).toHaveBeenCalledTimes(1);
+  });
+
+  it("requires receipt-bearing provider OAuth reads before agent OAuth completion", async () => {
+    const oauth = {
+      dreamina: {
+        start: vi.fn(async () => ({
+          verificationUri: "https://jimeng.jianying.com/device",
+          userCode: "ABCD-EFGH",
+          deviceCode: "device-code-1",
+          expiresAt: "2026-06-26T03:00:00.000Z",
+          intervalSeconds: 5,
+        })),
+        complete: vi.fn(async () => ({
+          accessToken: "access-token-1",
+          refreshToken: "refresh-token-1",
+          expiresAt: "2026-06-27T03:00:00.000Z",
+          accountLabel: "Dreamina VIP",
+        })),
+      },
+    };
+    const app = createLocalApiApp({
+      dataDir,
+      userId: "local-user",
+      providerOAuth: oauth,
+    } as any);
+
+    const start = await app.request("/api/v1/provider-oauth/dreamina/start", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ accountId: "jimeng-primary", accountLabel: "Primary Dreamina" }),
+    });
+    expect(start.status).toBe(200);
+    const listedPending = await app.request("/api/v1/provider-oauth");
+    const listedPendingJson = await listedPending.json() as {
+      providers: Array<{ providerId: string; accountId?: string; status: string; readToken?: string }>;
+    };
+    const pending = listedPendingJson.providers.find((provider) =>
+      provider.providerId === "dreamina" && provider.accountId === "jimeng-primary"
+    );
+    expect(pending?.readToken).toMatch(PROVIDER_OAUTH_RECEIPT_READ_TOKEN_RE);
+
+    const missingComplete = await app.request("/api/v1/provider-oauth/dreamina/complete", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-clash-client-type": "agent",
+      },
+      body: JSON.stringify({ accountId: "jimeng-primary", deviceCode: "device-code-1" }),
+    });
+    expect(missingComplete.status).toBe(409);
+    expect(await missingComplete.json()).toMatchObject({
+      mutation: {
+        operation: "provider_oauth_complete",
+        entity: { kind: "provider-oauth", id: "dreamina:jimeng-primary" },
+        accepted: false,
+      },
+    });
+    expect(oauth.dreamina.complete).not.toHaveBeenCalled();
+
+    const bareComplete = await app.request("/api/v1/provider-oauth/dreamina/complete", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-clash-client-type": "agent",
+        "x-clash-if-match": baseReadToken(pending!.readToken!),
+      },
+      body: JSON.stringify({ accountId: "jimeng-primary", deviceCode: "device-code-1" }),
+    });
+    expect(bareComplete.status).toBe(409);
+    const bareCompleteJson = await bareComplete.json() as { error?: string };
+    expect(bareCompleteJson.error).toContain("Missing provider OAuth complete read receipt");
+    expect(oauth.dreamina.complete).not.toHaveBeenCalled();
+
+    const acceptedComplete = await app.request("/api/v1/provider-oauth/dreamina/complete", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-clash-client-type": "agent",
+        "x-clash-if-match": pending!.readToken!,
+      },
+      body: JSON.stringify({ accountId: "jimeng-primary", deviceCode: "device-code-1" }),
+    });
+    expect(acceptedComplete.status).toBe(200);
+    const acceptedCompleteJson = await acceptedComplete.json() as { readToken?: string; mutation?: any; status?: string };
+    expect(acceptedCompleteJson.status).toBe("authorized");
+    expect(acceptedCompleteJson.readToken).toMatch(PROVIDER_OAUTH_RECEIPT_READ_TOKEN_RE);
+    expect(acceptedCompleteJson.readToken).not.toBe(pending!.readToken);
+    expect(acceptedCompleteJson.mutation).toMatchObject({
+      operation: "provider_oauth_complete",
+      entity: { kind: "provider-oauth", id: "dreamina:jimeng-primary" },
+      expectedReadToken: pending!.readToken,
+      beforeReadToken: baseReadToken(pending!.readToken!),
+      afterReadToken: acceptedCompleteJson.readToken,
+      accepted: true,
+      resultEntityId: "dreamina:jimeng-primary",
+    });
+    expect(oauth.dreamina.complete).toHaveBeenCalledTimes(1);
+
+    const staleComplete = await app.request("/api/v1/provider-oauth/dreamina/complete", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-clash-client-type": "agent",
+        "x-clash-if-match": pending!.readToken!,
+      },
+      body: JSON.stringify({ accountId: "jimeng-primary", deviceCode: "device-code-1" }),
+    });
+    expect(staleComplete.status).toBe(409);
+    const staleCompleteJson = await staleComplete.json() as { mutation?: any };
+    expect(staleCompleteJson.mutation.expectedReadToken).toBe(pending!.readToken);
+    expect(staleCompleteJson.mutation.beforeReadToken).not.toBe(baseReadToken(pending!.readToken!));
+    expect(oauth.dreamina.complete).toHaveBeenCalledTimes(1);
+
+    const deleted = await app.request("/api/v1/provider-oauth/dreamina?accountId=jimeng-primary", {
+      method: "DELETE",
+    });
+    expect(deleted.status).toBe(200);
+
+    const missingWithIfMatch = await app.request("/api/v1/provider-oauth/dreamina/complete", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-clash-if-match": acceptedCompleteJson.readToken!,
+      },
+      body: JSON.stringify({ accountId: "jimeng-primary", deviceCode: "device-code-1" }),
+    });
+    expect(missingWithIfMatch.status).toBe(409);
+    expect(await missingWithIfMatch.json()).toMatchObject({
+      error: expect.stringContaining("Provider OAuth record not found"),
+      mutation: {
+        operation: "provider_oauth_complete",
+        entity: { kind: "provider-oauth", id: "dreamina:jimeng-primary" },
+        expectedReadToken: acceptedCompleteJson.readToken,
+        accepted: false,
+      },
+    });
+    expect(oauth.dreamina.complete).toHaveBeenCalledTimes(1);
+  });
+
   it("manages provider OAuth device flow and exposes connected providers", async () => {
     const oauth = {
       dreamina: {
@@ -1393,6 +4736,13 @@ describe("local API app", () => {
       expiresAt: "2026-06-26T03:00:00.000Z",
       intervalSeconds: 5,
       hasAccessToken: false,
+      mutation: {
+        operation: "provider_oauth_start",
+        entity: { kind: "provider-oauth", id: "dreamina" },
+        resultEntityId: "dreamina",
+        forced: false,
+        accepted: true,
+      },
     });
 
     const listedPending = await app.request("/api/v1/provider-oauth");
@@ -1406,6 +4756,17 @@ describe("local API app", () => {
       ],
     });
 
+    let sqlite = openSqlite();
+    try {
+      const pending = sqlite.prepare("select user_code, device_code from provider_oauth").get();
+      expect(pending?.user_code).not.toBe("ABCD-EFGH");
+      expect(pending?.device_code).not.toBe("device-code-1");
+      expect(String(pending?.user_code)).toMatch(/^enc:v1:/);
+      expect(String(pending?.device_code)).toMatch(/^enc:v1:/);
+    } finally {
+      sqlite.close();
+    }
+
     const complete = await app.request("/api/v1/provider-oauth/dreamina/complete", {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -1418,6 +4779,13 @@ describe("local API app", () => {
       accountLabel: "Dreamina VIP",
       expiresAt: "2026-06-27T03:00:00.000Z",
       hasAccessToken: true,
+      mutation: {
+        operation: "provider_oauth_complete",
+        entity: { kind: "provider-oauth", id: "dreamina" },
+        resultEntityId: "dreamina",
+        forced: false,
+        accepted: true,
+      },
     });
 
     const providers = await app.request("/api/v1/model-providers");
@@ -1430,7 +4798,19 @@ describe("local API app", () => {
           availableOAuth: ["dreamina"],
         }),
       ],
+      readToken: expect.stringMatching(PROVIDER_ACCOUNTS_RECEIPT_READ_TOKEN_RE),
     });
+
+    sqlite = openSqlite();
+    try {
+      const authorized = sqlite.prepare("select access_token, refresh_token from provider_oauth").get();
+      expect(authorized?.access_token).not.toBe("access-token-1");
+      expect(authorized?.refresh_token).not.toBe("refresh-token-1");
+      expect(String(authorized?.access_token)).toMatch(/^enc:v1:/);
+      expect(String(authorized?.refresh_token)).toMatch(/^enc:v1:/);
+    } finally {
+      sqlite.close();
+    }
   });
 
   it("keeps provider OAuth device flows scoped to individual provider configs", async () => {
@@ -1554,6 +4934,7 @@ describe("local API app", () => {
           availableOAuth: ["dreamina"],
         }),
       ],
+      readToken: expect.stringMatching(PROVIDER_ACCOUNTS_RECEIPT_READ_TOKEN_RE),
     });
   });
 
@@ -1593,6 +4974,13 @@ describe("local API app", () => {
     expect(complete.status).toBe(502);
     expect(await complete.json()).toEqual({
       error: "Dreamina device code expired",
+      mutation: {
+        operation: "provider_oauth_complete",
+        entity: { kind: "provider-oauth", id: "dreamina:jimeng-primary" },
+        resultEntityId: "dreamina:jimeng-primary",
+        forced: false,
+        accepted: true,
+      },
     });
 
     const listed = await app.request("/api/v1/provider-oauth");
@@ -1637,6 +5025,35 @@ describe("local API app", () => {
         runtime_status: "online",
       }),
     ]);
+  });
+
+  it("does not persist derived built-in agent members from the agents read endpoint", async () => {
+    const app = createLocalApiApp({ dataDir, userId: "local-user" });
+
+    const created = await app.request("/api/v1/projects", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ name: "Read-only agents" }),
+    });
+    expect(created.status).toBe(201);
+
+    const agent = await app.request("/api/v1/agents");
+    const agentJson = (await agent.json()) as { agents: Array<Record<string, unknown>> };
+    expect(agentJson.agents).toEqual([
+      expect.objectContaining({
+        id: "local-master-clash",
+        user_id: "local-user",
+        template_id: "master-clash",
+      }),
+    ]);
+
+    const sqlite = openSqlite();
+    try {
+      const row = sqlite.prepare("SELECT COUNT(*) AS count FROM agent_member").get();
+      expect(row?.count).toBe(0);
+    } finally {
+      sqlite.close();
+    }
   });
 
   it("surfaces and starts the desktop local ACP runtime from an agent without exposing agent roles", async () => {
@@ -1736,7 +5153,16 @@ describe("local API app", () => {
       }),
     });
     expect(created.status).toBe(200);
-    expect(await created.json()).toEqual({ session_id: "local-session-1" });
+    expect(await created.json()).toEqual({
+      session_id: "local-session-1",
+      mutation: {
+        operation: "runtime_session_create",
+        entity: { kind: "session", id: "local-session-1" },
+        resultEntityId: "local-session-1",
+        forced: false,
+        accepted: true,
+      },
+    });
     expect(starts).toMatchObject([
       {
         runtimeId: "desktop-local",
@@ -1872,6 +5298,58 @@ describe("local API app", () => {
     });
   });
 
+  it("records rejected mutation envelopes for invalid runtime session requests", async () => {
+    const unavailable = createLocalApiApp({ dataDir, userId: "local-user" });
+    const noRuntime = await unavailable.request("/api/v1/runtimes/desktop-local/sessions", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ agent_id: "codex-acp" }),
+    });
+    expect(noRuntime.status).toBe(404);
+    expect(await noRuntime.json()).toEqual({
+      error: "Local agent runtime unavailable",
+      mutation: {
+        operation: "runtime_session_create",
+        entity: { kind: "session", id: "" },
+        forced: false,
+        accepted: false,
+        error: "Local agent runtime unavailable",
+      },
+    });
+
+    const app = createLocalApiApp({
+      dataDir,
+      userId: "local-user",
+      localAcp: {
+        async listRuntimes() {
+          return { runtimes: [] };
+        },
+        async createSession() {
+          return { session_id: "unused" };
+        },
+        async listResumeSessions() {
+          return { sessions: [] };
+        },
+      },
+    });
+    const missingAgent = await app.request("/api/v1/runtimes/desktop-local/sessions", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({}),
+    });
+    expect(missingAgent.status).toBe(400);
+    expect(await missingAgent.json()).toEqual({
+      error: "Missing agent_id",
+      mutation: {
+        operation: "runtime_session_create",
+        entity: { kind: "session", id: "" },
+        forced: false,
+        accepted: false,
+        error: "Missing agent_id",
+      },
+    });
+  });
+
   it("deletes local runtime sessions from persisted project history", async () => {
     const app = createLocalApiApp({
       dataDir,
@@ -1903,7 +5381,17 @@ describe("local API app", () => {
     const deleted = await app.request(`/api/v1/sessions?threadId=${encodeURIComponent(session_id)}`, {
       method: "DELETE",
     });
-    expect(deleted.status).toBe(204);
+    expect(deleted.status).toBe(200);
+    expect(await deleted.json()).toMatchObject({
+      ok: true,
+      mutation: {
+        operation: "session_delete",
+        entity: { kind: "session", id: session_id },
+        resultEntityId: session_id,
+        forced: false,
+        accepted: true,
+      },
+    });
 
     const listedProjectSessions = await app.request("/api/v1/sessions?projectId=project-delete");
     expect(await listedProjectSessions.json()).toEqual({ sessions: [] });
@@ -1923,12 +5411,13 @@ describe("local API app", () => {
           return { runtimes: [] };
         },
         async createSession(params: any) {
-          const rawDb = JSON.parse(await readFile(join(dataDir, "db.json"), "utf8")) as {
+          const sessions = await app.request("/api/v1/sessions?projectId=project-start-fail");
+          const sessionJson = await sessions.json() as {
             sessions?: Array<{ id: string; projectId: string; status?: string }>;
           };
           sawPrecreatedSession = Boolean(
             params.sessionId &&
-            rawDb.sessions?.some((session) =>
+            sessionJson.sessions?.some((session) =>
               session.id === params.sessionId &&
               session.projectId === "project-start-fail" &&
               session.status === "starting"
@@ -1952,6 +5441,16 @@ describe("local API app", () => {
     });
     expect(created.status).toBe(503);
     expect(sawPrecreatedSession).toBe(true);
+    const createdJson = await created.json() as { error: string; session_id: string; mutation?: unknown };
+    expect(createdJson.error).toBe("agent child failed to start");
+    expect(createdJson.session_id).toEqual(expect.any(String));
+    expect(createdJson.mutation).toEqual({
+      operation: "runtime_session_create",
+      entity: { kind: "session", id: createdJson.session_id },
+      resultEntityId: createdJson.session_id,
+      forced: false,
+      accepted: true,
+    });
 
     const listed = await app.request("/api/v1/sessions?projectId=project-start-fail");
     const listedJson = await listed.json() as { sessions: Array<{ id: string; status?: string; type?: string }> };
@@ -2094,7 +5593,16 @@ describe("local API app", () => {
     });
 
     expect(created.status).toBe(200);
-    expect(await created.json()).toEqual({ session_id: "local-session-agent" });
+    expect(await created.json()).toEqual({
+      session_id: "local-session-agent",
+      mutation: {
+        operation: "runtime_session_create",
+        entity: { kind: "session", id: "local-session-agent" },
+        resultEntityId: "local-session-agent",
+        forced: false,
+        accepted: true,
+      },
+    });
     expect(starts).toMatchObject([
       {
         runtimeId: "desktop-local",
@@ -2190,7 +5698,317 @@ describe("local API app", () => {
         { id: "codex-acp", enabled: false },
         { id: "claude-acp", enabled: true },
       ],
+      mutation: {
+        operation: "local_harness_enablement_update",
+        entity: { kind: "local-harness-config", id: "enabled" },
+        forced: false,
+        accepted: true,
+        resultEntityId: "enabled",
+      },
     });
+  });
+
+  it("requires receipt-bearing local harness reads before agent enablement changes", async () => {
+    let savedHarnessIds = ["codex-acp"];
+    const harnessRows = (enabledIds: string[]) => [
+      {
+        id: "codex-acp",
+        label: "Codex",
+        binary: "codex-acp",
+        enabled: enabledIds.includes("codex-acp"),
+        available: true,
+      },
+      {
+        id: "claude-acp",
+        label: "Claude",
+        binary: "claude-agent-acp",
+        enabled: enabledIds.includes("claude-acp"),
+        available: true,
+      },
+    ];
+    const app = createLocalApiApp({
+      dataDir,
+      userId: "local-user",
+      localAcp: {
+        async listRuntimes() {
+          return { runtimes: [] };
+        },
+        async createSession() {
+          return { session_id: "local-session-existing" };
+        },
+        async listResumeSessions() {
+          return { sessions: [] };
+        },
+        async listHarnesses() {
+          return { harnesses: harnessRows(savedHarnessIds) };
+        },
+        async updateHarnesses(enabledIds) {
+          savedHarnessIds = enabledIds;
+          return { harnesses: harnessRows(savedHarnessIds) };
+        },
+      },
+    });
+
+    const initial = await app.request("/api/v1/local/harnesses");
+    const initialJson = await initial.json() as { harnesses: Array<{ id: string; enabled: boolean }>; readToken?: string };
+    expect(initialJson.readToken).toMatch(LOCAL_CONFIG_RECEIPT_READ_TOKEN_RE);
+
+    const missing = await app.request("/api/v1/local/harnesses", {
+      method: "PUT",
+      headers: {
+        "content-type": "application/json",
+        "x-clash-client-type": "agent",
+      },
+      body: JSON.stringify({ enabled_harness_ids: ["claude-acp"] }),
+    });
+    expect(missing.status).toBe(409);
+    expect(await missing.json()).toMatchObject({
+      mutation: {
+        operation: "local_harness_enablement_update",
+        entity: { kind: "local-harness-config", id: "enabled" },
+        accepted: false,
+      },
+    });
+
+    const bare = await app.request("/api/v1/local/harnesses", {
+      method: "PUT",
+      headers: {
+        "content-type": "application/json",
+        "x-clash-client-type": "agent",
+        "x-clash-if-match": baseReadToken(initialJson.readToken!),
+      },
+      body: JSON.stringify({ enabled_harness_ids: ["claude-acp"] }),
+    });
+    expect(bare.status).toBe(409);
+    const bareJson = await bare.json() as { error?: string };
+    expect(bareJson.error).toContain("Missing local harness enablement update read receipt");
+
+    const humanUpdate = await app.request("/api/v1/local/harnesses", {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ enabled_harness_ids: ["codex-acp", "claude-acp"] }),
+    });
+    expect(humanUpdate.status).toBe(200);
+
+    const stale = await app.request("/api/v1/local/harnesses", {
+      method: "PUT",
+      headers: {
+        "content-type": "application/json",
+        "x-clash-client-type": "agent",
+        "x-clash-if-match": initialJson.readToken!,
+      },
+      body: JSON.stringify({ enabled_harness_ids: ["claude-acp"] }),
+    });
+    expect(stale.status).toBe(409);
+    const staleJson = await stale.json() as { mutation?: any };
+    expect(staleJson.mutation.expectedReadToken).toBe(initialJson.readToken);
+    expect(staleJson.mutation.beforeReadToken).not.toBe(baseReadToken(initialJson.readToken!));
+
+    const refreshed = await app.request("/api/v1/local/harnesses");
+    const refreshedJson = await refreshed.json() as { harnesses: Array<{ id: string; enabled: boolean }>; readToken?: string };
+    expect(refreshedJson.readToken).toMatch(LOCAL_CONFIG_RECEIPT_READ_TOKEN_RE);
+    const accepted = await app.request("/api/v1/local/harnesses", {
+      method: "PUT",
+      headers: {
+        "content-type": "application/json",
+        "x-clash-client-type": "agent",
+        "x-clash-if-match": refreshedJson.readToken!,
+      },
+      body: JSON.stringify({ enabled_harness_ids: ["claude-acp"] }),
+    });
+    expect(accepted.status).toBe(200);
+    const acceptedJson = await accepted.json() as { readToken?: string; mutation?: any; harnesses: Array<{ id: string; enabled: boolean }> };
+    expect(acceptedJson.readToken).toMatch(LOCAL_CONFIG_RECEIPT_READ_TOKEN_RE);
+    expect(acceptedJson.mutation).toMatchObject({
+      operation: "local_harness_enablement_update",
+      entity: { kind: "local-harness-config", id: "enabled" },
+      expectedReadToken: refreshedJson.readToken,
+      beforeReadToken: baseReadToken(refreshedJson.readToken!),
+      afterReadToken: acceptedJson.readToken,
+      accepted: true,
+    });
+    expect(acceptedJson.harnesses.find((row) => row.id === "claude-acp")?.enabled).toBe(true);
+    expect(acceptedJson.harnesses.find((row) => row.id === "codex-acp")?.enabled).toBe(false);
+  });
+
+  it("requires receipt-bearing local harness reads before agent runtime actions", async () => {
+    let installed = false;
+    const harnessRows = () => [
+      {
+        id: "gemini",
+        label: "Gemini",
+        binary: "gemini",
+        enabled: installed,
+        available: installed,
+        installed,
+        installable: true,
+        installSource: "registry" as const,
+        installedVersion: installed ? "1.1.0" : undefined,
+        latestVersion: "1.1.0",
+      },
+    ];
+    const installHarness = vi.fn(async (id: string) => {
+      installed = true;
+      return { harnesses: harnessRows().map((harness) => ({ ...harness, id })) };
+    });
+    const uninstallHarness = vi.fn(async (id: string) => {
+      installed = false;
+      return { harnesses: harnessRows().map((harness) => ({ ...harness, id })) };
+    });
+    const upgradeHarness = vi.fn(async (id: string) => ({
+      harnesses: harnessRows().map((harness) => ({ ...harness, id, installedVersion: "1.2.0", latestVersion: "1.2.0" })),
+    }));
+    const authenticateHarness = vi.fn(async (id: string) => ({
+      harnesses: harnessRows().map((harness) => ({
+        ...harness,
+        id,
+        auth: { status: "configured" as const, message: "configured" },
+      })),
+    }));
+    const app = createLocalApiApp({
+      dataDir,
+      userId: "local-user",
+      localAcp: {
+        async listRuntimes() {
+          return { runtimes: [] };
+        },
+        async createSession() {
+          return { session_id: "local-session-existing" };
+        },
+        async listResumeSessions() {
+          return { sessions: [] };
+        },
+        async listHarnesses() {
+          return { harnesses: harnessRows() };
+        },
+        async installHarness(id) {
+          return installHarness(id);
+        },
+        async uninstallHarness(id) {
+          return uninstallHarness(id);
+        },
+        async upgradeHarness(id) {
+          return upgradeHarness(id);
+        },
+        async authenticateHarness(id) {
+          return authenticateHarness(id);
+        },
+      },
+    });
+
+    const actionRequests = [
+      {
+        path: "/api/v1/local/harnesses/gemini/install",
+        method: "POST",
+        operation: "local_harness_install",
+        spy: installHarness,
+      },
+      {
+        path: "/api/v1/local/harnesses/gemini/install",
+        method: "DELETE",
+        operation: "local_harness_uninstall",
+        spy: uninstallHarness,
+      },
+      {
+        path: "/api/v1/local/harnesses/gemini/upgrade",
+        method: "POST",
+        operation: "local_harness_upgrade",
+        spy: upgradeHarness,
+      },
+      {
+        path: "/api/v1/local/harnesses/gemini/authenticate",
+        method: "POST",
+        operation: "local_harness_authenticate",
+        spy: authenticateHarness,
+        body: { method_id: "api-key" },
+      },
+    ];
+
+    for (const action of actionRequests) {
+      const response = await app.request(action.path, {
+        method: action.method,
+        headers: {
+          "content-type": "application/json",
+          "x-clash-client-type": "agent",
+        },
+        ...(action.body ? { body: JSON.stringify(action.body) } : {}),
+      });
+      expect(response.status).toBe(409);
+      expect(await response.json()).toMatchObject({
+        mutation: {
+          operation: action.operation,
+          entity: { kind: "local-harness", id: "gemini" },
+          accepted: false,
+        },
+      });
+      expect(action.spy).not.toHaveBeenCalled();
+    }
+
+    const initial = await app.request("/api/v1/local/harnesses");
+    const initialJson = await initial.json() as { readToken?: string };
+    expect(initialJson.readToken).toMatch(LOCAL_CONFIG_RECEIPT_READ_TOKEN_RE);
+
+    const bare = await app.request("/api/v1/local/harnesses/gemini/install", {
+      method: "POST",
+      headers: {
+        "x-clash-client-type": "agent",
+        "x-clash-if-match": baseReadToken(initialJson.readToken!),
+      },
+    });
+    expect(bare.status).toBe(409);
+    expect(await bare.json()).toMatchObject({
+      mutation: {
+        operation: "local_harness_install",
+        accepted: false,
+      },
+    });
+    expect(installHarness).not.toHaveBeenCalled();
+
+    const accepted = await app.request("/api/v1/local/harnesses/gemini/install", {
+      method: "POST",
+      headers: {
+        "x-clash-client-type": "agent",
+        "x-clash-if-match": initialJson.readToken!,
+      },
+    });
+    expect(accepted.status).toBe(200);
+    const acceptedJson = await accepted.json() as { readToken?: string; mutation?: any };
+    expect(acceptedJson.readToken).toMatch(LOCAL_CONFIG_RECEIPT_READ_TOKEN_RE);
+    expect(acceptedJson.readToken).not.toBe(initialJson.readToken);
+    expect(acceptedJson.mutation).toMatchObject({
+      operation: "local_harness_install",
+      entity: { kind: "local-harness", id: "gemini" },
+      expectedReadToken: initialJson.readToken,
+      beforeReadToken: baseReadToken(initialJson.readToken!),
+      afterReadToken: acceptedJson.readToken,
+      accepted: true,
+      resultEntityId: "gemini",
+    });
+    expect(installHarness).toHaveBeenCalledTimes(1);
+
+    const staleUninstall = await app.request("/api/v1/local/harnesses/gemini/install", {
+      method: "DELETE",
+      headers: {
+        "x-clash-client-type": "agent",
+        "x-clash-if-match": initialJson.readToken!,
+      },
+    });
+    expect(staleUninstall.status).toBe(409);
+    expect(await staleUninstall.json()).toMatchObject({
+      mutation: {
+        operation: "local_harness_uninstall",
+        entity: { kind: "local-harness", id: "gemini" },
+        expectedReadToken: initialJson.readToken,
+        accepted: false,
+      },
+    });
+    expect(uninstallHarness).not.toHaveBeenCalled();
+
+    const humanUpgrade = await app.request("/api/v1/local/harnesses/gemini/upgrade", {
+      method: "POST",
+    });
+    expect(humanUpgrade.status).toBe(200);
+    expect(upgradeHarness).toHaveBeenCalledTimes(1);
   });
 
   it("returns a structured error when harness enablement is blocked", async () => {
@@ -2220,7 +6038,16 @@ describe("local API app", () => {
     });
 
     expect(updated.status).toBe(400);
-    expect(await updated.json()).toEqual({ error: "Authenticate Devin before enabling." });
+    expect(await updated.json()).toEqual({
+      error: "Authenticate Devin before enabling.",
+      mutation: {
+        operation: "local_harness_enablement_update",
+        entity: { kind: "local-harness-config", id: "enabled" },
+        forced: false,
+        accepted: false,
+        error: "Authenticate Devin before enabling.",
+      },
+    });
   });
 
   it("exposes and updates Zed-style custom agent server settings", async () => {
@@ -2277,6 +6104,7 @@ describe("local API app", () => {
           env: {},
         },
       },
+      readToken: expect.stringMatching(LOCAL_CONFIG_RECEIPT_READ_TOKEN_RE),
     });
 
     const body = {
@@ -2300,6 +6128,152 @@ describe("local API app", () => {
     expect(await updated.json()).toMatchObject({
       agent_servers: body.agent_servers,
       harnesses: [{ id: "custom-openclaw-acp", custom: true }],
+      mutation: {
+        operation: "local_agent_servers_update",
+        entity: { kind: "local-harness-config", id: "agent-servers" },
+        forced: false,
+        accepted: true,
+        resultEntityId: "agent-servers",
+      },
+    });
+  });
+
+  it("requires receipt-bearing agent-server reads before agent server config changes", async () => {
+    let savedServers: LocalAcpAgentServersConfig = {
+      "OpenClaw ACP": {
+        type: "custom",
+        command: "openclaw",
+        args: ["acp"],
+        env: {},
+      },
+    };
+    const app = createLocalApiApp({
+      dataDir,
+      userId: "local-user",
+      localAcp: {
+        async listRuntimes() {
+          return { runtimes: [] };
+        },
+        async createSession() {
+          return { session_id: "local-session-existing" };
+        },
+        async listResumeSessions() {
+          return { sessions: [] };
+        },
+        async listAgentServers() {
+          return { agent_servers: savedServers };
+        },
+        async updateAgentServers(servers: LocalAcpAgentServersConfig) {
+          savedServers = servers;
+          return {
+            agent_servers: savedServers,
+            harnesses: [{
+              id: "custom-openclaw-acp",
+              label: "OpenClaw ACP",
+              binary: "openclaw",
+              enabled: true,
+              available: false,
+              custom: true,
+            }],
+          };
+        },
+      },
+    });
+
+    const initial = await app.request("/api/v1/local/agent-servers");
+    const initialJson = await initial.json() as { agent_servers: LocalAcpAgentServersConfig; readToken?: string };
+    expect(initialJson.readToken).toMatch(LOCAL_CONFIG_RECEIPT_READ_TOKEN_RE);
+
+    const nextServers = {
+      "OpenClaw ACP": {
+        type: "custom",
+        command: "openclaw",
+        args: ["acp", "--session", "agent:design:main"],
+        env: {},
+      },
+    };
+    const missing = await app.request("/api/v1/local/agent-servers", {
+      method: "PUT",
+      headers: {
+        "content-type": "application/json",
+        "x-clash-client-type": "agent",
+      },
+      body: JSON.stringify({ agent_servers: nextServers }),
+    });
+    expect(missing.status).toBe(409);
+    expect(await missing.json()).toMatchObject({
+      mutation: {
+        operation: "local_agent_servers_update",
+        entity: { kind: "local-harness-config", id: "agent-servers" },
+        accepted: false,
+      },
+    });
+
+    const bare = await app.request("/api/v1/local/agent-servers", {
+      method: "PUT",
+      headers: {
+        "content-type": "application/json",
+        "x-clash-client-type": "agent",
+        "x-clash-if-match": baseReadToken(initialJson.readToken!),
+      },
+      body: JSON.stringify({ agent_servers: nextServers }),
+    });
+    expect(bare.status).toBe(409);
+    const bareJson = await bare.json() as { error?: string };
+    expect(bareJson.error).toContain("Missing local agent servers update read receipt");
+
+    const humanServers = {
+      "OpenClaw ACP": {
+        type: "custom",
+        command: "openclaw",
+        args: ["acp", "--human"],
+        env: {},
+      },
+    };
+    const humanUpdate = await app.request("/api/v1/local/agent-servers", {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ agent_servers: humanServers }),
+    });
+    expect(humanUpdate.status).toBe(200);
+
+    const stale = await app.request("/api/v1/local/agent-servers", {
+      method: "PUT",
+      headers: {
+        "content-type": "application/json",
+        "x-clash-client-type": "agent",
+        "x-clash-if-match": initialJson.readToken!,
+      },
+      body: JSON.stringify({ agent_servers: nextServers }),
+    });
+    expect(stale.status).toBe(409);
+    const staleJson = await stale.json() as { mutation?: any };
+    expect(staleJson.mutation.expectedReadToken).toBe(initialJson.readToken);
+    expect(staleJson.mutation.beforeReadToken).not.toBe(baseReadToken(initialJson.readToken!));
+
+    const refreshed = await app.request("/api/v1/local/agent-servers");
+    const refreshedJson = await refreshed.json() as { readToken?: string };
+    expect(refreshedJson.readToken).toMatch(LOCAL_CONFIG_RECEIPT_READ_TOKEN_RE);
+    const accepted = await app.request("/api/v1/local/agent-servers", {
+      method: "PUT",
+      headers: {
+        "content-type": "application/json",
+        "x-clash-client-type": "agent",
+        "x-clash-if-match": refreshedJson.readToken!,
+      },
+      body: JSON.stringify({ agent_servers: nextServers }),
+    });
+    expect(accepted.status).toBe(200);
+    const acceptedJson = await accepted.json() as { agent_servers: LocalAcpAgentServersConfig; readToken?: string; mutation?: any };
+    expect(acceptedJson.readToken).toMatch(LOCAL_CONFIG_RECEIPT_READ_TOKEN_RE);
+    expect(acceptedJson.agent_servers).toEqual(nextServers);
+    expect(acceptedJson.mutation).toMatchObject({
+      operation: "local_agent_servers_update",
+      entity: { kind: "local-harness-config", id: "agent-servers" },
+      expectedReadToken: refreshedJson.readToken,
+      beforeReadToken: baseReadToken(refreshedJson.readToken!),
+      afterReadToken: acceptedJson.readToken,
+      accepted: true,
     });
   });
 
@@ -2344,6 +6318,13 @@ describe("local API app", () => {
     expect(installHarness).toHaveBeenCalledWith("gemini");
     expect(await response.json()).toMatchObject({
       harnesses: [{ id: "gemini", available: true, installSource: "registry" }],
+      mutation: {
+        operation: "local_harness_install",
+        entity: { kind: "local-harness", id: "gemini" },
+        forced: false,
+        accepted: true,
+        resultEntityId: "gemini",
+      },
     });
   });
 
@@ -2388,6 +6369,13 @@ describe("local API app", () => {
     expect(uninstallHarness).toHaveBeenCalledWith("gemini");
     expect(await response.json()).toMatchObject({
       harnesses: [{ id: "gemini", available: false, installSource: "registry" }],
+      mutation: {
+        operation: "local_harness_uninstall",
+        entity: { kind: "local-harness", id: "gemini" },
+        forced: false,
+        accepted: true,
+        resultEntityId: "gemini",
+      },
     });
   });
 
@@ -2435,6 +6423,13 @@ describe("local API app", () => {
     expect(upgradeHarness).toHaveBeenCalledWith("gemini");
     expect(await response.json()).toMatchObject({
       harnesses: [{ id: "gemini", installedVersion: "1.1.0", latestVersion: "1.1.0" }],
+      mutation: {
+        operation: "local_harness_upgrade",
+        entity: { kind: "local-harness", id: "gemini" },
+        forced: false,
+        accepted: true,
+        resultEntityId: "gemini",
+      },
     });
   });
 
@@ -2483,6 +6478,13 @@ describe("local API app", () => {
     expect(authenticateHarness).toHaveBeenCalledWith("gemini", { methodId: "api-key" });
     expect(await response.json()).toMatchObject({
       harnesses: [{ id: "gemini", auth: { status: "configured" } }],
+      mutation: {
+        operation: "local_harness_authenticate",
+        entity: { kind: "local-harness", id: "gemini" },
+        forced: false,
+        accepted: true,
+        resultEntityId: "gemini",
+      },
     });
   });
 
@@ -2536,7 +6538,16 @@ describe("local API app", () => {
     });
 
     expect(created.status).toBe(200);
-    expect(await created.json()).toEqual({ session_id: "local-session-agent" });
+    expect(await created.json()).toEqual({
+      session_id: "local-session-agent",
+      mutation: {
+        operation: "runtime_session_create",
+        entity: { kind: "session", id: "local-session-agent" },
+        resultEntityId: "local-session-agent",
+        forced: false,
+        accepted: true,
+      },
+    });
     expect(starts).toMatchObject([
       {
         runtimeId: "desktop-local",
@@ -2589,9 +6600,16 @@ describe("local API app", () => {
     });
 
     expect(created.status).toBe(503);
-    expect(await created.text()).toBe(
-      "No local agent found. Install or enable an agent in Settings > Runtimes, then retry.",
-    );
+    const body = await created.json() as { error: string; session_id: string; mutation?: unknown };
+    expect(body.error).toBe("No local agent found. Install or enable an agent in Settings > Runtimes, then retry.");
+    expect(body.session_id).toEqual(expect.any(String));
+    expect(body.mutation).toEqual({
+      operation: "runtime_session_create",
+      entity: { kind: "session", id: body.session_id },
+      resultEntityId: body.session_id,
+      forced: false,
+      accepted: true,
+    });
   });
 
   it("returns local ACP session history with the cloud-compatible message shape", async () => {
@@ -2701,7 +6719,16 @@ describe("local API app", () => {
     });
 
     expect(attach.status).toBe(200);
-    expect(await attach.json()).toEqual({ session_id: "local-session-existing" });
+    expect(await attach.json()).toEqual({
+      session_id: "local-session-existing",
+      mutation: {
+        operation: "runtime_session_attach",
+        entity: { kind: "session", id: "local-session-existing" },
+        resultEntityId: "local-session-existing",
+        forced: false,
+        accepted: true,
+      },
+    });
     expect(attaches).toMatchObject([
       {
         sessionId: "local-session-existing",
@@ -2714,6 +6741,198 @@ describe("local API app", () => {
 
     const sessions = await app.request("/api/v1/sessions?projectId=project-reattach");
     expect((await sessions.json()).sessions).toHaveLength(1);
+  });
+
+  it("requires a receipt-bearing session read token before agent runtime session attach", async () => {
+    const attaches: unknown[] = [];
+    const app = createLocalApiApp({
+      dataDir,
+      userId: "local-user",
+      localAcp: {
+        async listRuntimes() {
+          return { runtimes: [] };
+        },
+        async createSession() {
+          return { session_id: "local-session-attach-cas" };
+        },
+        async attachSession(params: unknown) {
+          attaches.push(params);
+          return { session_id: "local-session-attach-cas" };
+        },
+        async listResumeSessions() {
+          return { sessions: [] };
+        },
+      } as any,
+    });
+
+    const created = await app.request("/api/v1/runtimes/desktop-local/sessions", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        agent_id: "codex-acp",
+        project_id: "project-attach-cas",
+      }),
+    });
+    expect(created.status).toBe(200);
+
+    const listed = await app.request("/api/v1/sessions?projectId=project-attach-cas");
+    const listedJson = await listed.json() as { sessions: Array<{ id: string; readToken?: string }> };
+    const session = listedJson.sessions.find((candidate) => candidate.id === "local-session-attach-cas");
+    expect(session?.readToken).toMatch(SESSION_RECEIPT_READ_TOKEN_RE);
+
+    const missing = await app.request("/api/v1/local-sessions/local-session-attach-cas/_attach", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-clash-client-type": "agent",
+      },
+      body: JSON.stringify({}),
+    });
+    expect(missing.status).toBe(409);
+    expect(await missing.json()).toMatchObject({
+      error: expect.stringContaining("Missing runtime session attach read proof"),
+      mutation: {
+        operation: "runtime_session_attach",
+        entity: { kind: "session", id: "local-session-attach-cas" },
+        forced: false,
+        accepted: false,
+        error: expect.stringContaining("Missing runtime session attach read proof"),
+      },
+    });
+
+    const bareReadToken = baseReadToken(session!.readToken!);
+    const bare = await app.request("/api/v1/local-sessions/local-session-attach-cas/_attach", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-clash-client-type": "agent",
+        "x-clash-if-match": bareReadToken,
+      },
+      body: JSON.stringify({}),
+    });
+    expect(bare.status).toBe(409);
+    expect(await bare.json()).toMatchObject({
+      error: expect.stringContaining("Missing runtime session attach read receipt"),
+      mutation: {
+        operation: "runtime_session_attach",
+        entity: { kind: "session", id: "local-session-attach-cas" },
+        expectedReadToken: bareReadToken,
+        beforeReadToken: bareReadToken,
+        forced: false,
+        accepted: false,
+        error: expect.stringContaining("Missing runtime session attach read receipt"),
+      },
+    });
+
+    const sqlite = openSqlite();
+    try {
+      sqlite.prepare("UPDATE runtime_session SET updated_at = ? WHERE id = ?")
+        .run("2026-07-07T03:31:00.000Z", "local-session-attach-cas");
+    } finally {
+      sqlite.close();
+    }
+
+    const stale = await app.request("/api/v1/local-sessions/local-session-attach-cas/_attach", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-clash-client-type": "agent",
+        "x-clash-if-match": session!.readToken!,
+      },
+      body: JSON.stringify({}),
+    });
+    expect(stale.status).toBe(409);
+    const staleJson = await stale.json() as { error: string; mutation: { beforeReadToken?: string; expectedReadToken?: string } };
+    expect(staleJson.error).toContain("Stale runtime session attach rejected");
+    expect(staleJson.mutation.expectedReadToken).toBe(session!.readToken);
+    expect(staleJson.mutation.beforeReadToken).toMatch(/^session-v1:[a-f0-9]{16}$/);
+    expect(staleJson.mutation.beforeReadToken).not.toBe(baseReadToken(session!.readToken!));
+    expect(attaches).toHaveLength(0);
+
+    const refreshed = await app.request("/api/v1/sessions?projectId=project-attach-cas");
+    const refreshedJson = await refreshed.json() as { sessions: Array<{ id: string; readToken?: string }> };
+    const freshReadToken = refreshedJson.sessions.find((candidate) => candidate.id === "local-session-attach-cas")?.readToken;
+    expect(freshReadToken).toMatch(SESSION_RECEIPT_READ_TOKEN_RE);
+
+    const accepted = await app.request("/api/v1/local-sessions/local-session-attach-cas/_attach", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-clash-client-type": "agent",
+        "x-clash-if-match": freshReadToken!,
+      },
+      body: JSON.stringify({}),
+    });
+    expect(accepted.status).toBe(200);
+    expect(await accepted.json()).toMatchObject({
+      session_id: "local-session-attach-cas",
+      mutation: {
+        operation: "runtime_session_attach",
+        entity: { kind: "session", id: "local-session-attach-cas" },
+        expectedReadToken: freshReadToken,
+        beforeReadToken: baseReadToken(freshReadToken!),
+        resultEntityId: "local-session-attach-cas",
+        forced: false,
+        accepted: true,
+        afterReadToken: expect.stringMatching(SESSION_RECEIPT_READ_TOKEN_RE),
+      },
+    });
+    expect(attaches).toHaveLength(1);
+  });
+
+  it("records a mutation envelope when runtime ACP session attach fails", async () => {
+    const app = createLocalApiApp({
+      dataDir,
+      userId: "local-user",
+      localAcp: {
+        async listRuntimes() {
+          return { runtimes: [] };
+        },
+        async createSession(params: any) {
+          return { session_id: params.sessionId };
+        },
+        async attachSession() {
+          throw new Error("ACP session init timed out after 10ms");
+        },
+        async listResumeSessions() {
+          return { sessions: [] };
+        },
+      } as any,
+    });
+
+    const created = await app.request("/api/v1/runtimes/desktop-local/sessions", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        agent_id: "codex-acp",
+        project_id: "project-attach-fail",
+      }),
+    });
+    expect(created.status).toBe(200);
+    const { session_id: sessionId } = await created.json() as { session_id: string };
+
+    const attach = await app.request(`/api/v1/local-sessions/${encodeURIComponent(sessionId)}/_attach`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({}),
+    });
+    expect(attach.status).toBe(503);
+    expect(await attach.json()).toEqual({
+      error: "ACP session init timed out after 10ms",
+      session_id: sessionId,
+      mutation: {
+        operation: "runtime_session_attach",
+        entity: { kind: "session", id: sessionId },
+        resultEntityId: sessionId,
+        forced: false,
+        accepted: true,
+      },
+    });
+
+    const listed = await app.request("/api/v1/sessions?projectId=project-attach-fail");
+    expect(await listed.json()).toMatchObject({
+      sessions: [{ id: sessionId, status: "error" }],
+    });
   });
 
   it("persists runtime ACP transcript messages in the local DB for cold restore", async () => {
@@ -2935,9 +7154,14 @@ describe("local API app", () => {
 
     const sessions = await app.request("/api/v1/sessions?projectId=project-race");
     const restored = await app.request("/api/v1/local-sessions/local-session-race/messages");
-    const rawDb = await readFile(join(dataDir, "db.json"), "utf8");
 
-    expect(() => JSON.parse(rawDb)).not.toThrow();
+    await expect(stat(join(dataDir, "db.json"))).rejects.toMatchObject({ code: "ENOENT" });
+    const sqlite = openSqlite();
+    try {
+      expect(sqlite.prepare("select count(*) as count from chat_message").get()).toEqual({ count: 24 });
+    } finally {
+      sqlite.close();
+    }
     expect(await sessions.json()).toMatchObject({
       sessions: [{ id: "local-session-race", type: "runtime", projectId: "project-race" }],
     });
@@ -2953,10 +7177,26 @@ describe("local API app", () => {
       headers: { "content-type": "application/json" },
     });
     expect(created.status).toBe(200);
-    const { id } = (await created.json()) as { id: string };
+    const createdJson = (await created.json()) as { id: string; readToken?: string; mutation?: any };
+    const { id } = createdJson;
+    expect(createdJson.readToken).toMatch(PROJECT_RECEIPT_READ_TOKEN_RE);
+    expect(createdJson.mutation).toEqual({
+      operation: "project_create",
+      entity: { kind: "project", id },
+      afterReadToken: createdJson.readToken,
+      resultEntityId: id,
+      forced: false,
+      accepted: true,
+    });
 
     const listed = await app.request("/api/projects");
-    const projects = (await listed.json()) as Array<{ id: string; name: string; description: string; assets: unknown[] }>;
+    const projects = (await listed.json()) as Array<{
+      id: string;
+      name: string;
+      description: string;
+      assets: unknown[];
+      readToken?: string;
+    }>;
     expect(projects).toHaveLength(1);
     expect(projects[0]).toMatchObject({
       id,
@@ -2965,6 +7205,7 @@ describe("local API app", () => {
       description: "A local-first video project",
       assets: [],
     });
+    expect(projects[0].readToken).toBe(createdJson.readToken);
 
     const renamed = await app.request(`/api/projects/${id}`, {
       method: "PATCH",
@@ -2972,13 +7213,224 @@ describe("local API app", () => {
       headers: { "content-type": "application/json" },
     });
     expect(renamed.status).toBe(200);
+    const renamedJson = (await renamed.json()) as { readToken?: string; mutation?: any };
+    expect(renamedJson.readToken).toMatch(PROJECT_RECEIPT_READ_TOKEN_RE);
+    expect(renamedJson.readToken).not.toBe(createdJson.readToken);
+    expect(renamedJson.mutation).toMatchObject({
+      operation: "project_update",
+      entity: { kind: "project", id },
+      beforeReadToken: baseReadToken(createdJson.readToken!),
+      afterReadToken: renamedJson.readToken,
+      resultEntityId: id,
+      forced: false,
+      accepted: true,
+    });
 
     const loaded = await app.request(`/api/projects/${id}`);
-    expect(await loaded.json()).toMatchObject({ id, name: "Renamed" });
+    expect(await loaded.json()).toMatchObject({ id, name: "Renamed", readToken: renamedJson.readToken });
 
     const deleted = await app.request(`/api/projects/${id}`, { method: "DELETE" });
-    expect(deleted.status).toBe(204);
+    expect(deleted.status).toBe(200);
+    const deletedJson = (await deleted.json()) as { readToken?: string; mutation?: any };
+    expect(deletedJson).toMatchObject({ deleted: true, recoverable: true, id });
+    expect(deletedJson.readToken).toMatch(PROJECT_RECEIPT_READ_TOKEN_RE);
+    expect(deletedJson.mutation).toMatchObject({
+      operation: "project_delete",
+      entity: { kind: "project", id },
+      beforeReadToken: baseReadToken(renamedJson.readToken!),
+      afterReadToken: deletedJson.readToken,
+      resultEntityId: id,
+      forced: false,
+      accepted: true,
+    });
     expect(await (await app.request("/api/projects")).json()).toEqual([]);
+  });
+
+  it("requires agent project writes to carry a fresh read proof", async () => {
+    const app = createLocalApiApp({ dataDir, userId: "local-user" });
+
+    const created = await app.request("/api/v1/projects", {
+      method: "POST",
+      body: JSON.stringify({ name: "Read Proof Project" }),
+      headers: { "content-type": "application/json" },
+    });
+    const createdJson = await created.json() as { id: string; readToken: string };
+
+    const missing = await app.request(`/api/projects/${createdJson.id}`, {
+      method: "PATCH",
+      body: JSON.stringify({ name: "No proof" }),
+      headers: {
+        "content-type": "application/json",
+        "x-clash-client-type": "agent",
+      },
+    });
+    expect(missing.status).toBe(409);
+    expect(await missing.json()).toMatchObject({
+      error: expect.stringContaining("Missing project update read proof for agent"),
+      mutation: {
+        operation: "project_update",
+        entity: { kind: "project", id: createdJson.id },
+        beforeReadToken: baseReadToken(createdJson.readToken),
+        forced: false,
+        accepted: false,
+        error: expect.stringContaining("Missing project update read proof for agent"),
+      },
+    });
+
+    const unchanged = await app.request(`/api/v1/projects/${createdJson.id}`);
+    expect(await unchanged.json()).toMatchObject({
+      name: "Read Proof Project",
+      readToken: createdJson.readToken,
+    });
+
+    const humanRename = await app.request(`/api/projects/${createdJson.id}`, {
+      method: "PATCH",
+      body: JSON.stringify({ name: "Concurrent human rename" }),
+      headers: { "content-type": "application/json" },
+    });
+    const humanRenameJson = await humanRename.json() as { readToken: string };
+    expect(humanRenameJson.readToken).not.toBe(createdJson.readToken);
+
+    const stale = await app.request(`/api/projects/${createdJson.id}`, {
+      method: "PATCH",
+      body: JSON.stringify({ name: "Stale agent rename" }),
+      headers: {
+        "content-type": "application/json",
+        "x-clash-client-type": "agent",
+        "x-clash-if-match": createdJson.readToken,
+      },
+    });
+    expect(stale.status).toBe(409);
+    expect(await stale.json()).toMatchObject({
+      error: expect.stringContaining("Stale project update rejected"),
+      mutation: {
+        operation: "project_update",
+        entity: { kind: "project", id: createdJson.id },
+        expectedReadToken: createdJson.readToken,
+        beforeReadToken: baseReadToken(humanRenameJson.readToken),
+        forced: false,
+        accepted: false,
+        error: expect.stringContaining("Stale project update rejected"),
+      },
+    });
+
+    const fresh = await app.request(`/api/projects/${createdJson.id}`);
+    const freshJson = await fresh.json() as { readToken: string };
+    const accepted = await app.request(`/api/projects/${createdJson.id}`, {
+      method: "PATCH",
+      body: JSON.stringify({ name: "Fresh agent rename" }),
+      headers: {
+        "content-type": "application/json",
+        "x-clash-client-type": "agent",
+        "x-clash-if-match": freshJson.readToken,
+      },
+    });
+    expect(accepted.status).toBe(200);
+    const acceptedJson = await accepted.json() as { readToken: string; mutation?: any };
+    expect(acceptedJson.mutation).toMatchObject({
+      operation: "project_update",
+      entity: { kind: "project", id: createdJson.id },
+      expectedReadToken: freshJson.readToken,
+      beforeReadToken: baseReadToken(freshJson.readToken),
+      afterReadToken: acceptedJson.readToken,
+      forced: false,
+      accepted: true,
+    });
+
+    const missingDelete = await app.request(`/api/v1/projects/${createdJson.id}`, {
+      method: "DELETE",
+      headers: { "x-clash-client-type": "agent" },
+    });
+    expect(missingDelete.status).toBe(409);
+    expect(await missingDelete.json()).toMatchObject({
+      error: expect.stringContaining("Missing project delete read proof for agent"),
+      mutation: {
+        operation: "project_delete",
+        entity: { kind: "project", id: createdJson.id },
+        beforeReadToken: baseReadToken(acceptedJson.readToken),
+        forced: false,
+        accepted: false,
+      },
+    });
+
+    const deleted = await app.request(`/api/v1/projects/${createdJson.id}`, {
+      method: "DELETE",
+      headers: {
+        "x-clash-client-type": "agent",
+        "x-clash-if-match": acceptedJson.readToken,
+      },
+    });
+    expect(deleted.status).toBe(200);
+    const deletedJson = await deleted.json() as { readToken: string; mutation?: any };
+    expect(deletedJson.mutation).toMatchObject({
+      operation: "project_delete",
+      entity: { kind: "project", id: createdJson.id },
+      expectedReadToken: acceptedJson.readToken,
+      beforeReadToken: baseReadToken(acceptedJson.readToken),
+      afterReadToken: deletedJson.readToken,
+      forced: false,
+      accepted: true,
+    });
+  });
+
+  it("requires local-api issued project read receipts for agent writes", async () => {
+    const app = createLocalApiApp({ dataDir, userId: "local-user" });
+
+    const created = await app.request("/api/v1/projects", {
+      method: "POST",
+      body: JSON.stringify({ name: "Receipt Project" }),
+      headers: { "content-type": "application/json" },
+    });
+    const createdJson = await created.json() as { id: string; readToken: string };
+    expect(createdJson.readToken).toMatch(PROJECT_RECEIPT_READ_TOKEN_RE);
+
+    const syntheticCasOnly = await app.request(`/api/projects/${createdJson.id}`, {
+      method: "PATCH",
+      body: JSON.stringify({ name: "Synthetic CAS" }),
+      headers: {
+        "content-type": "application/json",
+        "x-clash-client-type": "agent",
+        "x-clash-if-match": baseReadToken(createdJson.readToken),
+      },
+    });
+    expect(syntheticCasOnly.status).toBe(409);
+    expect(await syntheticCasOnly.json()).toMatchObject({
+      error: expect.stringContaining("Missing project update read receipt for agent"),
+      mutation: {
+        operation: "project_update",
+        entity: { kind: "project", id: createdJson.id },
+        expectedReadToken: baseReadToken(createdJson.readToken),
+        beforeReadToken: baseReadToken(createdJson.readToken),
+        forced: false,
+        accepted: false,
+      },
+    });
+
+    const read = await app.request(`/api/projects/${createdJson.id}`);
+    const readJson = await read.json() as { readToken: string };
+    expect(readJson.readToken).toMatch(PROJECT_RECEIPT_READ_TOKEN_RE);
+
+    const accepted = await app.request(`/api/projects/${createdJson.id}`, {
+      method: "PATCH",
+      body: JSON.stringify({ name: "Host receipt rename" }),
+      headers: {
+        "content-type": "application/json",
+        "x-clash-client-type": "agent",
+        "x-clash-if-match": readJson.readToken,
+      },
+    });
+    expect(accepted.status).toBe(200);
+    const acceptedJson = await accepted.json() as { readToken: string; mutation?: any };
+    expect(acceptedJson.readToken).toMatch(PROJECT_RECEIPT_READ_TOKEN_RE);
+    expect(acceptedJson.mutation).toMatchObject({
+      operation: "project_update",
+      entity: { kind: "project", id: createdJson.id },
+      expectedReadToken: readJson.readToken,
+      beforeReadToken: baseReadToken(readJson.readToken),
+      afterReadToken: acceptedJson.readToken,
+      forced: false,
+      accepted: true,
+    });
   });
 
   it("supports the v1 project contract used by the local agent CLI", async () => {
@@ -3022,227 +7474,727 @@ describe("local API app", () => {
 
     const deleted = await app.request(`/api/v1/projects/${createdJson.id}`, { method: "DELETE" });
     expect(deleted.status).toBe(200);
-    expect(await deleted.json()).toEqual({ deleted: true });
+    expect(await deleted.json()).toMatchObject({ deleted: true, recoverable: true });
   });
 
-  it("persists local project room messages", async () => {
+  it("exposes local project status roots over HTTP", async () => {
+    const clashRoot = join(dataDir, "clash-home");
+    const app = createLocalApiApp({ dataDir, userId: "local-user", clashRoot });
+    const created = await app.request("/api/v1/projects", {
+      method: "POST",
+      body: JSON.stringify({ name: "Status Project" }),
+      headers: { "content-type": "application/json" },
+    });
+    const project = (await created.json()) as { id: string; readToken: string; mutation?: unknown };
+    expect(project.readToken).toMatch(PROJECT_RECEIPT_READ_TOKEN_RE);
+    expect(project.mutation).toEqual({
+      operation: "project_create",
+      entity: { kind: "project", id: project.id },
+      afterReadToken: project.readToken,
+      resultEntityId: project.id,
+      forced: false,
+      accepted: true,
+    });
+
+    const statusRes = await app.request(`/api/v1/projects/${project.id}/status`);
+
+    expect(statusRes.status).toBe(200);
+    const status = (await statusRes.json()) as any;
+    expect(status).toMatchObject({
+      projectId: project.id,
+      source: "explicit",
+      mode: "local-only",
+      syncMode: "local-only",
+      collaboration: {
+        schemaVersion: 1,
+        mode: "local-only",
+        rawMode: "local-only",
+        webOpenable: false,
+        multiUser: false,
+        roomAuthority: "local",
+        cloudProjectRoom: "disabled",
+        localAgentRuntime: {
+          requiredForLocalActions: true,
+          availability: "owner-machine-online",
+        },
+      },
+      clashHome: clashRoot,
+      localApiDataDir: dataDir,
+      localSqlitePath: join(dataDir, "local.sqlite"),
+      roots: {
+        drafts: join(clashRoot, "projects", project.id, "drafts"),
+        projections: join(clashRoot, "projects", project.id, "projections"),
+        assetLinks: join(clashRoot, "projects", project.id, "assets", "links"),
+        runtime: join(clashRoot, "projects", project.id, "runtime"),
+      },
+      loro: {
+        snapshotPath: join(dataDir, "projects", encodeURIComponent(project.id), "loro", "snapshot.bin"),
+      },
+    });
+    expect(status.runtimeRoot).toBe(status.roots.runtime);
+    expect(status.editablePaths).toContain(status.roots.projections);
+    expect(status.protectedPaths).toContain(status.loro.snapshotPath);
+    expect(status.protectedPaths).toContain(status.roots.runtime);
+    expect(status.storage.workspace).toMatchObject({
+      role: "agent-draft-and-projection-workspace",
+      root: status.projectWorkspaceRoot,
+      ownsCanonicalSnapshot: false,
+      ownsCanonicalMetadata: false,
+    });
+    expect(status.storage.canonicalReplica).toMatchObject({
+      role: "single-machine-project-replica",
+      scope: "machine",
+      projectId: project.id,
+      metadata: {
+        kind: "sqlite",
+        path: status.localSqlitePath,
+        agentWritable: false,
+      },
+      canvas: {
+        kind: "loro",
+        snapshotPath: status.loro.snapshotPath,
+        updatesLogPath: status.loro.updatesLogPath,
+        agentWritable: false,
+      },
+    });
+
+    const missing = await app.request("/api/v1/projects/not-found/status");
+    expect(missing.status).toBe(404);
+  });
+
+  it("exposes synced project mode gates over HTTP without claiming shared cloud room sequencing", async () => {
+    const app = createLocalApiApp({
+      dataDir,
+      userId: "local-user",
+      syncEnv: {
+        CLASH_REMOTE_LORO_URL: "https://api.example.com",
+        CLASH_REMOTE_LORO_TOKEN: "token-1",
+      },
+    });
+    const created = await app.request("/api/v1/projects", {
+      method: "POST",
+      body: JSON.stringify({ name: "Synced Status Project" }),
+      headers: { "content-type": "application/json" },
+    });
+    const project = (await created.json()) as { id: string };
+
+    const statusRes = await app.request(`/api/v1/projects/${project.id}/status`);
+
+    expect(statusRes.status).toBe(200);
+    const status = (await statusRes.json()) as any;
+    expect(status).toMatchObject({
+      projectId: project.id,
+      mode: "cloud-sync",
+      syncMode: "cloud-sync",
+      collaboration: {
+        schemaVersion: 1,
+        mode: "synced",
+        rawMode: "cloud-sync",
+        webOpenable: true,
+        multiUser: false,
+        roomAuthority: "local-with-cloud-mirror",
+        cloudProjectRoom: "disabled",
+        localAgentRuntime: {
+          requiredForLocalActions: true,
+          availability: "owner-machine-online",
+        },
+      },
+    });
+  });
+
+  it("soft-deletes local projects and can restore their persisted sessions", async () => {
     const app = createLocalApiApp({ dataDir, userId: "local-user" });
 
-    const first = await app.request("/api/v1/projects/project-room/room/messages", {
+    const created = await app.request("/api/v1/projects", {
+      method: "POST",
+      body: JSON.stringify({ name: "Project with sessions" }),
+      headers: { "content-type": "application/json" },
+    });
+    const project = (await created.json()) as { id: string; readToken: string };
+
+    const session = await app.request("/api/v1/sessions", {
+      method: "POST",
+      body: JSON.stringify({ projectId: project.id, title: "Session to delete" }),
+      headers: { "content-type": "application/json" },
+    });
+    const sessionJson = (await session.json()) as { threadId: string };
+
+    const sqlite = openSqlite();
+    try {
+      sqlite.prepare(`
+        INSERT INTO chat_message (session_id, id, sender_kind, sender_id, turn_id, events_json, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+      `).run(sessionJson.threadId, "message-1", "agent", "agent-1", null, "[]", 1);
+    } finally {
+      sqlite.close();
+    }
+
+    const deleted = await app.request(`/api/v1/projects/${project.id}`, { method: "DELETE" });
+    expect(deleted.status).toBe(200);
+    const deletedJson = await deleted.json() as {
+      deleted?: boolean;
+      recoverable?: boolean;
+      id?: string;
+      deletedAt?: string;
+      readToken?: string;
+      mutation?: any;
+    };
+    expect(deletedJson).toMatchObject({ deleted: true, recoverable: true });
+    expect(deletedJson.readToken).toMatch(PROJECT_RECEIPT_READ_TOKEN_RE);
+    expect(deletedJson.mutation).toMatchObject({
+      operation: "project_delete",
+      entity: { kind: "project", id: project.id },
+      beforeReadToken: baseReadToken(project.readToken),
+      afterReadToken: deletedJson.readToken,
+      resultEntityId: project.id,
+      forced: false,
+      accepted: true,
+    });
+
+    const hiddenProject = await app.request(`/api/v1/projects/${project.id}`);
+    expect(hiddenProject.status).toBe(404);
+    const hiddenStatus = await app.request(`/api/v1/projects/${project.id}/status`);
+    expect(hiddenStatus.status).toBe(404);
+
+    const listedSessions = await app.request(`/api/v1/sessions?projectId=${project.id}`);
+    expect(await listedSessions.json()).toEqual({ sessions: [] });
+
+    const check = openSqlite();
+    try {
+      expect(check.prepare("select deleted_at from project where id = ?").get(project.id)).toMatchObject({
+        deleted_at: expect.any(String),
+      });
+      expect(check.prepare("select count(*) as count from runtime_session where project_id = ?").get(project.id)).toEqual({ count: 1 });
+      expect(check.prepare("select count(*) as count from chat_message where session_id = ?").get(sessionJson.threadId)).toEqual({ count: 1 });
+    } finally {
+      check.close();
+    }
+
+    const restored = await app.request(`/api/v1/projects/${project.id}/restore`, { method: "POST" });
+    expect(restored.status).toBe(200);
+    const restoredJson = await restored.json() as {
+      restored?: boolean;
+      id?: string;
+      readToken?: string;
+      mutation?: any;
+    };
+    expect(restoredJson).toMatchObject({ restored: true, id: project.id });
+    expect(restoredJson.readToken).toMatch(PROJECT_RECEIPT_READ_TOKEN_RE);
+    expect(restoredJson.mutation).toMatchObject({
+      operation: "project_restore",
+      entity: { kind: "project", id: project.id },
+      beforeReadToken: baseReadToken(deletedJson.readToken!),
+      afterReadToken: restoredJson.readToken,
+      resultEntityId: project.id,
+      forced: false,
+      accepted: true,
+    });
+
+    const visibleAgain = await app.request(`/api/v1/projects/${project.id}`);
+    expect(visibleAgain.status).toBe(200);
+    const restoredSessions = await app.request(`/api/v1/sessions?projectId=${project.id}`);
+    expect(await restoredSessions.json()).toMatchObject({
+      sessions: [{ id: sessionJson.threadId, projectId: project.id }],
+    });
+
+    const restoredCheck = openSqlite();
+    try {
+      expect(restoredCheck.prepare("select deleted_at from project where id = ?").get(project.id)).toEqual({
+        deleted_at: null,
+      });
+    } finally {
+      restoredCheck.close();
+    }
+
+    const missingDelete = await app.request("/api/v1/projects/missing-project", { method: "DELETE" });
+    expect(missingDelete.status).toBe(404);
+    expect(await missingDelete.json()).toEqual({
+      error: "Project not found",
+      mutation: {
+        operation: "project_delete",
+        entity: { kind: "project", id: "missing-project" },
+        forced: false,
+        accepted: false,
+        error: "Project not found",
+      },
+    });
+
+    const missingRestore = await app.request("/api/v1/projects/missing-project/restore", { method: "POST" });
+    expect(missingRestore.status).toBe(404);
+    expect(await missingRestore.json()).toEqual({
+      error: "Project recovery point not found",
+      mutation: {
+        operation: "project_restore",
+        entity: { kind: "project", id: "missing-project" },
+        forced: false,
+        accepted: false,
+        error: "Project recovery point not found",
+      },
+    });
+  });
+
+  it("requires a receipt-bearing deleted project read before an agent can restore", async () => {
+    const app = createLocalApiApp({ dataDir, userId: "local-user" });
+
+    const created = await app.request("/api/v1/projects", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ name: "Agent Restore CAS Project" }),
+    });
+    expect(created.status).toBe(201);
+    const project = await created.json() as { id: string; readToken: string };
+    expect(project.readToken).toMatch(PROJECT_RECEIPT_READ_TOKEN_RE);
+
+    const deleted = await app.request(`/api/v1/projects/${project.id}`, { method: "DELETE" });
+    expect(deleted.status).toBe(200);
+    const deletedJson = await deleted.json() as { deletedAt: string; readToken: string };
+    expect(deletedJson.readToken).toMatch(PROJECT_RECEIPT_READ_TOKEN_RE);
+    expect(deletedJson.readToken).not.toBe(project.readToken);
+
+    const hidden = await app.request(`/api/v1/projects/${project.id}`);
+    expect(hidden.status).toBe(404);
+
+    const deletedRead = await app.request(`/api/v1/projects/${project.id}?includeDeleted=true`);
+    expect(deletedRead.status).toBe(200);
+    const deletedReadJson = await deletedRead.json() as {
+      id: string;
+      deletedAt: string;
+      readToken: string;
+    };
+    expect(deletedReadJson).toMatchObject({
+      id: project.id,
+      deletedAt: deletedJson.deletedAt,
+      readToken: deletedJson.readToken,
+    });
+    expect(deletedReadJson.readToken).toMatch(PROJECT_RECEIPT_READ_TOKEN_RE);
+
+    const missing = await app.request(`/api/v1/projects/${project.id}/restore`, {
+      method: "POST",
+      headers: { "x-clash-client-type": "agent" },
+    });
+    expect(missing.status).toBe(409);
+    expect(await missing.json()).toMatchObject({
+      error: expect.stringContaining("Missing project restore read proof for agent"),
+      mutation: {
+        operation: "project_restore",
+        entity: { kind: "project", id: project.id },
+        accepted: false,
+      },
+    });
+
+    const bare = await app.request(`/api/v1/projects/${project.id}/restore`, {
+      method: "POST",
+      headers: {
+        "x-clash-client-type": "agent",
+        "x-clash-if-match": baseReadToken(deletedReadJson.readToken),
+      },
+    });
+    expect(bare.status).toBe(409);
+    expect(await bare.json()).toMatchObject({
+      error: expect.stringContaining("Missing project restore read receipt for agent"),
+      mutation: {
+        operation: "project_restore",
+        entity: { kind: "project", id: project.id },
+        expectedReadToken: baseReadToken(deletedReadJson.readToken),
+        beforeReadToken: baseReadToken(deletedReadJson.readToken),
+        accepted: false,
+      },
+    });
+
+    const stale = await app.request(`/api/v1/projects/${project.id}/restore`, {
+      method: "POST",
+      headers: {
+        "x-clash-client-type": "agent",
+        "x-clash-if-match": project.readToken,
+      },
+    });
+    expect(stale.status).toBe(409);
+    expect(await stale.json()).toMatchObject({
+      error: expect.stringContaining("Stale project restore rejected"),
+      mutation: {
+        operation: "project_restore",
+        entity: { kind: "project", id: project.id },
+        expectedReadToken: project.readToken,
+        beforeReadToken: baseReadToken(deletedReadJson.readToken),
+        accepted: false,
+      },
+    });
+
+    const accepted = await app.request(`/api/v1/projects/${project.id}/restore`, {
+      method: "POST",
+      headers: {
+        "x-clash-client-type": "agent",
+        "x-clash-if-match": deletedReadJson.readToken,
+      },
+    });
+    expect(accepted.status).toBe(200);
+    const acceptedJson = await accepted.json() as { readToken: string; mutation?: any };
+    expect(acceptedJson.readToken).toMatch(PROJECT_RECEIPT_READ_TOKEN_RE);
+    expect(acceptedJson.readToken).not.toBe(deletedReadJson.readToken);
+    expect(acceptedJson).toMatchObject({
+      restored: true,
+      id: project.id,
+      mutation: {
+        operation: "project_restore",
+        entity: { kind: "project", id: project.id },
+        expectedReadToken: deletedReadJson.readToken,
+        beforeReadToken: baseReadToken(deletedReadJson.readToken),
+        afterReadToken: acceptedJson.readToken,
+        resultEntityId: project.id,
+        forced: false,
+        accepted: true,
+      },
+    });
+  });
+
+  it("persists local project room messages in SQLite", async () => {
+    const app = createLocalApiApp({ dataDir, userId: "local-user" });
+
+    const created = await app.request("/api/v1/projects", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ name: "Room Project" }),
+    });
+    const project = await created.json() as { id: string };
+
+    const posted = await app.request(`/api/v1/projects/${project.id}/room/messages`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
+        id: "room-message-1",
         text: "hello local room",
+        sender_kind: "agent",
+        sender_id: "local-master-clash",
         mentions: [{ user_id: "local-user", agent_member_id: "local-master-clash" }],
       }),
     });
-    expect(first.status).toBe(201);
-    const firstJson = (await first.json()) as { id: string; type: string };
-    expect(firstJson).toMatchObject({
-      type: "room.message",
-      project_id: "project-room",
-      sender_kind: "user",
-      sender_id: "local-user",
+    expect(posted.status).toBe(200);
+    expect(await posted.json()).toMatchObject({
+      id: "room-message-1",
+      project_id: project.id,
+      sender_kind: "agent",
+      sender_id: "local-master-clash",
       sender_user_id: "local-user",
-      mentions: [{ user_id: "local-user", agent_member_id: "local-master-clash" }],
       text: "hello local room",
+      mentions: [{ user_id: "local-user", agent_member_id: "local-master-clash" }],
+      sync: {
+        mode: "local-only",
+        remote_room: { enabled: false, status: "disabled" },
+      },
+      mutation: {
+        operation: "room_message_create",
+        entity: { kind: "room-message", id: "room-message-1" },
+        resultEntityId: "room-message-1",
+        forced: false,
+        accepted: true,
+      },
     });
 
-    const listed = await app.request("/api/v1/projects/project-room/room/messages");
+    const listed = await app.request(`/api/v1/projects/${project.id}/room/messages`);
     expect(await listed.json()).toMatchObject({
+      sync: {
+        mode: "local-only",
+        remote_room: { enabled: false, status: "disabled" },
+      },
       messages: [
         {
-          id: firstJson.id,
-          project_id: "project-room",
-          sender_kind: "user",
-          sender_id: "local-user",
+          id: "room-message-1",
+          sender_kind: "agent",
+          sender_id: "local-master-clash",
           sender_user_id: "local-user",
-          mentions: [{ user_id: "local-user", agent_member_id: "local-master-clash" }],
           text: "hello local room",
         },
       ],
     });
 
     const reopened = createLocalApiApp({ dataDir, userId: "local-user" });
-    const persisted = await reopened.request("/api/v1/projects/project-room/room/messages");
+    const persisted = await reopened.request(`/api/v1/projects/${project.id}/room/messages`);
     expect(await persisted.json()).toMatchObject({
-      messages: [{ id: firstJson.id, text: "hello local room" }],
+      messages: [{ id: "room-message-1", text: "hello local room" }],
     });
+
+    const sqlite = openSqlite();
+    try {
+      expect(sqlite.prepare("select project_id, sender_kind, sender_id, text from room_message").get()).toEqual({
+        project_id: project.id,
+        sender_kind: "agent",
+        sender_id: "local-master-clash",
+        text: "hello local room",
+      });
+    } finally {
+      sqlite.close();
+    }
   });
 
-  it("mirrors local project room messages to the configured cloud room API", async () => {
-    const fetchImpl = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
-      const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
-      if (url === "https://cloud.example/api/v1/projects/project-room/room/messages" && init?.method === "POST") {
-        return new Response(JSON.stringify({ id: "remote-message-1" }), {
-          status: 201,
-          headers: { "content-type": "application/json" },
-        });
-      }
-      return new Response("not found", { status: 404 });
-    });
+  it("does not claim local room messages are remote-synced in cloud-sync mode yet", async () => {
     const app = createLocalApiApp({
       dataDir,
       userId: "local-user",
-      syncConfig: createLocalSyncConfigStore({
-        dataDir,
-        env: {
-          CLASH_REMOTE_LORO_URL: "https://cloud.example/",
-          CLASH_REMOTE_LORO_TOKEN: "clsh_room_secret",
-        },
-        fetch: fetchImpl,
-      }),
-    });
-
-    const res = await app.request("/api/v1/projects/project-room/room/messages", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        text: "hello synced room",
-        mentions: [{ user_id: "local-user", agent_member_id: "local-master-clash" }],
-      }),
-    });
-
-    expect(res.status).toBe(201);
-    expect(await res.json()).toMatchObject({
-      type: "room.message",
-      text: "hello synced room",
-      sync: {
-        mode: "cloud-sync",
-        remote_room: { enabled: true, status: "mirrored" },
+      syncEnv: {
+        CLASH_REMOTE_LORO_URL: "https://api.example.com",
+        CLASH_REMOTE_LORO_TOKEN: "token-1",
       },
     });
-    expect(fetchImpl).toHaveBeenCalledTimes(1);
-    const [input, init] = fetchImpl.mock.calls[0];
-    expect(String(input)).toBe("https://cloud.example/api/v1/projects/project-room/room/messages");
-    expect(init?.method).toBe("POST");
-    expect(new Headers(init?.headers).get("authorization")).toBe("Bearer clsh_room_secret");
-    expect(JSON.parse(String(init?.body))).toMatchObject({
-      id: expect.any(String),
-      text: "hello synced room",
-      mentions: [{ user_id: "local-user", agent_member_id: "local-master-clash" }],
-      sender_kind: "user",
-      sender_id: "local-user",
+    const created = await app.request("/api/v1/projects", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ name: "Room Project" }),
     });
-  });
+    const project = await created.json() as { id: string };
 
-  it("imports cloud room messages into the local room list when cloud sync is enabled", async () => {
-    const fetchImpl = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
-      const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
-      if (url === "https://cloud.example/api/v1/projects/project-room/room/messages" && (!init || init.method === "GET")) {
-        return new Response(JSON.stringify({
-          messages: [
-            {
-              id: "remote-web-message",
-              project_id: "project-room",
-              sender_kind: "user",
-              sender_id: "web-user",
-              sender_user_id: "web-user",
-              mentions: [{ user_id: "local-user", agent_member_id: "local-master-clash" }],
-              text: "hello from web",
-              at: 1_700_000_100,
-            },
-          ],
-        }), {
-          status: 200,
-          headers: { "content-type": "application/json" },
-        });
-      }
-      return new Response("not found", { status: 404 });
-    });
-    const app = createLocalApiApp({
-      dataDir,
-      userId: "local-user",
-      syncConfig: createLocalSyncConfigStore({
-        dataDir,
-        env: {
-          CLASH_REMOTE_LORO_URL: "https://cloud.example/",
-          CLASH_REMOTE_LORO_TOKEN: "clsh_room_secret",
-        },
-        fetch: fetchImpl,
-      }),
-    });
-
-    const listed = await app.request("/api/v1/projects/project-room/room/messages");
-
-    expect(listed.status).toBe(200);
+    const listed = await app.request(`/api/v1/projects/${project.id}/room/messages`);
     expect(await listed.json()).toMatchObject({
       sync: {
         mode: "cloud-sync",
-        remote_room: { enabled: true, status: "imported" },
-      },
-      messages: [
-        {
-          id: "remote-web-message",
-          project_id: "project-room",
-          sender_kind: "user",
-          sender_id: "web-user",
-          sender_user_id: "web-user",
-          mentions: [{ user_id: "local-user", agent_member_id: "local-master-clash" }],
-          text: "hello from web",
-          at: 1_700_000_100,
+        remote_room: {
+          enabled: false,
+          status: "disabled",
+          error: "room sync is not implemented yet; local room messages remain local",
         },
-      ],
-    });
-    expect(fetchImpl).toHaveBeenCalledTimes(1);
-    const [input, init] = fetchImpl.mock.calls[0];
-    expect(String(input)).toBe("https://cloud.example/api/v1/projects/project-room/room/messages");
-    expect(init?.method).toBe("GET");
-    expect(new Headers(init?.headers).get("authorization")).toBe("Bearer clsh_room_secret");
-
-    const offlineApp = createLocalApiApp({ dataDir, userId: "local-user", syncEnv: {} });
-    const persisted = await offlineApp.request("/api/v1/projects/project-room/room/messages");
-    expect(await persisted.json()).toMatchObject({
-      messages: [{ id: "remote-web-message", text: "hello from web" }],
+      },
+      messages: [],
     });
   });
 
-  it("dispatches local project room mentions to the local ACP adapter", async () => {
-    const pushed: unknown[] = [];
+  it("paginates local room messages with a stable same-second cursor", async () => {
+    const app = createLocalApiApp({ dataDir, userId: "local-user" });
+    const created = await app.request("/api/v1/projects", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ name: "Room Project" }),
+    });
+    const project = await created.json() as { id: string };
+
+    const sqlite = openSqlite();
+    try {
+      const insert = sqlite.prepare(`
+        INSERT INTO room_message
+          (id, project_id, sender_kind, sender_id, sender_user_id, mentions_json, text, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      `);
+      insert.run("room-a", project.id, "user", "local-user", "local-user", "[]", "first", 1000);
+      insert.run("room-b", project.id, "user", "local-user", "local-user", "[]", "second", 1000);
+    } finally {
+      sqlite.close();
+    }
+
+    const firstPage = await app.request(`/api/v1/projects/${project.id}/room/messages?limit=1`);
+    expect(await firstPage.json()).toMatchObject({
+      messages: [{ id: "room-b", text: "second" }],
+    });
+
+    const secondPage = await app.request(`/api/v1/projects/${project.id}/room/messages?limit=1&before=room-b`);
+    expect(await secondPage.json()).toMatchObject({
+      messages: [{ id: "room-a", text: "first" }],
+    });
+  });
+
+  it("dispatches local room agent-member-only mentions", async () => {
+    const pushRoomMention = vi.fn(async () => true);
     const app = createLocalApiApp({
       dataDir,
       userId: "local-user",
-      localAcp: {
-        async listRuntimes() {
-          return { runtimes: [] };
-        },
-        async createSession() {
-          return { session_id: "unused" };
-        },
-        async listResumeSessions() {
-          return { sessions: [] };
-        },
-        async pushRoomMention(projectId, agentMemberId, mention) {
-          pushed.push({ projectId, agentMemberId, mention });
-          return true;
-        },
-      },
+      localAcp: { pushRoomMention } as any,
     });
+    const created = await app.request("/api/v1/projects", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ name: "Room Project" }),
+    });
+    const project = await created.json() as { id: string };
 
-    const res = await app.request("/api/v1/projects/project-room/room/messages", {
+    const posted = await app.request(`/api/v1/projects/${project.id}/room/messages`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
-        text: "hello local master-clash",
-        mentions: [{ user_id: "local-user", agent_member_id: "local-master-clash" }],
+        id: "room-mention-1",
+        text: "ping",
+        mentions: [{ agent_member_id: "local-master-clash" }],
       }),
     });
-    expect(res.status).toBe(201);
-    const message = (await res.json()) as { id: string };
 
-    expect(pushed).toEqual([
-      {
-        projectId: "project-room",
-        agentMemberId: "local-master-clash",
-        mention: {
-          message_id: message.id,
-          from_kind: "user",
-          from_id: "local-user",
-          from_user_id: "local-user",
-          text: "hello local master-clash",
-        },
+    expect(posted.status).toBe(200);
+    expect(await posted.json()).toMatchObject({
+      id: "room-mention-1",
+      mentions: [{ agent_member_id: "local-master-clash" }],
+    });
+    expect(pushRoomMention).toHaveBeenCalledWith(project.id, "local-master-clash", expect.objectContaining({
+      message_id: "room-mention-1",
+      from_kind: "user",
+      from_id: "local-user",
+      from_user_id: "local-user",
+      text: "ping",
+    }));
+  });
+
+  it("rejects duplicate local room message ids across projects", async () => {
+    const app = createLocalApiApp({ dataDir, userId: "local-user" });
+    const firstProjectResponse = await app.request("/api/v1/projects", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ name: "First Room Project" }),
+    });
+    const firstProject = await firstProjectResponse.json() as { id: string };
+    const secondProjectResponse = await app.request("/api/v1/projects", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ name: "Second Room Project" }),
+    });
+    const secondProject = await secondProjectResponse.json() as { id: string };
+
+    const firstPost = await app.request(`/api/v1/projects/${firstProject.id}/room/messages`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        id: "room-shared-id",
+        text: "first",
+      }),
+    });
+    expect(firstPost.status).toBe(200);
+
+    const duplicatePost = await app.request(`/api/v1/projects/${secondProject.id}/room/messages`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        id: "room-shared-id",
+        text: "second",
+      }),
+    });
+    expect(duplicatePost.status).toBe(409);
+    expect(await duplicatePost.json()).toEqual({
+      error: "room message id already exists",
+      mutation: {
+        operation: "room_message_create",
+        entity: { kind: "room-message", id: "room-shared-id" },
+        forced: false,
+        accepted: false,
+        error: "room message id already exists",
       },
-    ]);
+    });
+  });
+
+  it("rejects same-project room message id reuse with different content", async () => {
+    const app = createLocalApiApp({ dataDir, userId: "local-user" });
+    const created = await app.request("/api/v1/projects", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ name: "Room Conflict Project" }),
+    });
+    const project = await created.json() as { id: string };
+
+    const firstPost = await app.request(`/api/v1/projects/${project.id}/room/messages`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        id: "room-local-conflict",
+        text: "first",
+      }),
+    });
+    expect(firstPost.status).toBe(200);
+
+    const duplicatePost = await app.request(`/api/v1/projects/${project.id}/room/messages`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        id: "room-local-conflict",
+        text: "second",
+      }),
+    });
+    expect(duplicatePost.status).toBe(409);
+    expect(await duplicatePost.json()).toEqual({
+      error: "room message id already exists with different content",
+      mutation: {
+        operation: "room_message_create",
+        entity: { kind: "room-message", id: "room-local-conflict" },
+        forced: false,
+        accepted: false,
+        error: "room message id already exists with different content",
+      },
+    });
+
+    const listed = await app.request(`/api/v1/projects/${project.id}/room/messages`);
+    expect(await listed.json()).toMatchObject({
+      messages: [{ id: "room-local-conflict", text: "first" }],
+    });
+  });
+
+  it("rejects local room messages from unknown agent members", async () => {
+    const app = createLocalApiApp({ dataDir, userId: "local-user" });
+    const created = await app.request("/api/v1/projects", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ name: "Room Project" }),
+    });
+    const project = await created.json() as { id: string };
+
+    const posted = await app.request(`/api/v1/projects/${project.id}/room/messages`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        id: "room-spoofed-agent",
+        text: "spoofed",
+        sender_kind: "agent",
+        sender_id: "local-missing-agent",
+      }),
+    });
+
+    expect(posted.status).toBe(403);
+    expect(await posted.json()).toEqual({
+      error: "sender_id is not an agent_member you own",
+      mutation: {
+        operation: "room_message_create",
+        entity: { kind: "room-message", id: "room-spoofed-agent" },
+        forced: false,
+        accepted: false,
+        error: "sender_id is not an agent_member you own",
+      },
+    });
+  });
+
+  it("records rejected mutation envelopes for invalid local room message writes", async () => {
+    const app = createLocalApiApp({ dataDir, userId: "local-user" });
+    const created = await app.request("/api/v1/projects", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ name: "Room Project" }),
+    });
+    const project = await created.json() as { id: string };
+
+    const missingText = await app.request(`/api/v1/projects/${project.id}/room/messages`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ id: "room-empty-text", text: "   " }),
+    });
+
+    expect(missingText.status).toBe(400);
+    expect(await missingText.json()).toEqual({
+      error: "text required",
+      mutation: {
+        operation: "room_message_create",
+        entity: { kind: "room-message", id: "room-empty-text" },
+        forced: false,
+        accepted: false,
+        error: "text required",
+      },
+    });
+
+    const missingSender = await app.request(`/api/v1/projects/${project.id}/room/messages`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ id: "room-missing-agent", text: "ping", sender_kind: "agent" }),
+    });
+
+    expect(missingSender.status).toBe(400);
+    expect(await missingSender.json()).toEqual({
+      error: "sender_id required for agent sender",
+      mutation: {
+        operation: "room_message_create",
+        entity: { kind: "room-message", id: "room-missing-agent" },
+        forced: false,
+        accepted: false,
+        error: "sender_id required for agent sender",
+      },
+    });
   });
 
   it("returns local project preview assets for the desktop project grid", async () => {
@@ -3291,13 +8243,34 @@ describe("local API app", () => {
 
   it("stores uploaded files locally and exposes unsigned asset URLs", async () => {
     const app = createLocalApiApp({ dataDir, userId: "local-user" });
+    const missingForm = new FormData();
+    const missing = await app.request("/upload", { method: "POST", body: missingForm });
+    expect(missing.status).toBe(400);
+    expect(await missing.json()).toEqual({
+      error: "Missing file",
+      mutation: {
+        operation: "asset_blob_upload",
+        entity: { kind: "asset-blob", id: "" },
+        forced: false,
+        accepted: false,
+        error: "Missing file",
+      },
+    });
+
     const form = new FormData();
     form.append("file", new File(["hello"], "hello world.txt", { type: "text/plain" }));
 
     const upload = await app.request("/upload", { method: "POST", body: form });
     expect(upload.status).toBe(200);
-    const { storageKey } = (await upload.json()) as { storageKey: string };
+    const { storageKey, mutation } = (await upload.json()) as { storageKey: string; mutation?: unknown };
     expect(storageKey).toMatch(/^uploads\/.+-hello_world\.txt$/);
+    expect(mutation).toEqual({
+      operation: "asset_blob_upload",
+      entity: { kind: "asset-blob", id: storageKey },
+      forced: false,
+      accepted: true,
+      resultEntityId: storageKey,
+    });
 
     const sign = await app.request(`/assets/sign?key=${encodeURIComponent(storageKey)}`);
     expect(await sign.json()).toMatchObject({ url: `http://localhost/assets/${storageKey}` });

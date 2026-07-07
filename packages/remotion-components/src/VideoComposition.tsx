@@ -158,6 +158,114 @@ export const computeTransitionStyle = (
   }
 };
 
+type RuntimeAnimation = {
+  property: 'x' | 'y' | 'opacity' | 'scale' | 'rotation';
+  from: number;
+  to: number;
+  startFrame: number;
+  durationInFrames: number;
+  easing?: 'linear' | 'easeInCubic' | 'easeOutCubic' | 'easeInOutCubic';
+};
+
+type RuntimeCompositionLayer = {
+  id: string;
+  type: 'text' | 'shape';
+  from?: number;
+  durationInFrames?: number;
+  x?: number;
+  y?: number;
+  width?: number;
+  height?: number;
+  opacity?: number;
+  scale?: number;
+  rotation?: number;
+  zIndex?: number;
+  animations?: RuntimeAnimation[];
+  text?: string;
+  fontFamily?: string;
+  fontSize?: number;
+  fontWeight?: string | number;
+  color?: string;
+  fill?: string;
+  shape?: 'rect' | 'rounded-rect' | 'circle';
+  radius?: number;
+};
+
+type RuntimeCaptionCue = {
+  id: string;
+  startFrame: number;
+  durationInFrames: number;
+  text: string;
+};
+
+function applyCompositionEasing(t: number, easing: RuntimeAnimation['easing']): number {
+  const clamped = Math.min(1, Math.max(0, t));
+  if (easing === 'easeInCubic') return clamped ** 3;
+  if (easing === 'easeOutCubic') return 1 - (1 - clamped) ** 3;
+  if (easing === 'easeInOutCubic') {
+    return clamped < 0.5 ? 4 * clamped ** 3 : 1 - ((-2 * clamped + 2) ** 3) / 2;
+  }
+  return clamped;
+}
+
+function rounded(value: number): number {
+  return Math.round(value * 1000) / 1000;
+}
+
+export function computeCompositionLayerStyle(
+  layer: RuntimeCompositionLayer,
+  frame: number,
+): React.CSSProperties {
+  const style = {
+    x: layer.x ?? 0,
+    y: layer.y ?? 0,
+    opacity: layer.opacity ?? 1,
+    scale: layer.scale ?? 1,
+    rotation: layer.rotation ?? 0,
+  };
+
+  for (const animation of layer.animations ?? []) {
+    const progress = (frame - animation.startFrame) / animation.durationInFrames;
+    if (progress < 0) continue;
+    const eased = applyCompositionEasing(progress, animation.easing ?? 'linear');
+    style[animation.property] = animation.from + (animation.to - animation.from) * eased;
+  }
+
+  const x = rounded(style.x);
+  const y = rounded(style.y);
+  const scale = rounded(style.scale);
+  const rotation = rounded(style.rotation);
+  return {
+    position: 'absolute',
+    left: 0,
+    top: 0,
+    width: typeof layer.width === 'number' ? layer.width : undefined,
+    height: typeof layer.height === 'number' ? layer.height : undefined,
+    opacity: rounded(style.opacity),
+    zIndex: layer.zIndex ?? 0,
+    transform: `translate(${x}px, ${y}px) scale(${scale}) rotate(${rotation}deg)`,
+    transformOrigin: '0 0',
+  };
+}
+
+export function selectCaptionCueAtFrame(
+  cues: RuntimeCaptionCue[] | undefined,
+  frame: number,
+): RuntimeCaptionCue | null {
+  if (!Array.isArray(cues)) return null;
+  for (const cue of cues) {
+    if (
+      Number.isInteger(cue.startFrame) &&
+      Number.isInteger(cue.durationInFrames) &&
+      frame >= cue.startFrame &&
+      frame < cue.startFrame + cue.durationInFrames
+    ) {
+      return cue;
+    }
+  }
+  return null;
+}
+
 type ResolvedTimelineItem = Item & {
   naturalWidth?: number;
   naturalHeight?: number;
@@ -292,11 +400,11 @@ const resolveTimelineItem = (
     return {
       ...item,
       src: assetData.src || ('src' in item ? item.src : undefined),
-      type: asset.type || item.type,
+      type: item.type,
       naturalWidth,
       naturalHeight,
       resolvedSrcUrl: resolveAssetUrl(assetData.src || ('src' in item ? item.src : undefined)),
-    };
+    } as ResolvedTimelineItem;
   }
 
   // Return as-is for non-asset items (solid, text) or if asset not found
@@ -513,6 +621,206 @@ const ItemComponent: React.FC<{
         </h1>
       </AbsoluteFill>
     );
+  }
+
+  if (resolvedItem.type === 'caption') {
+    const captionItem = resolvedItem as ResolvedTimelineItem & {
+      cues?: RuntimeCaptionCue[];
+      style?: {
+        fontFamily?: string;
+        fontSize?: number;
+        fontWeight?: string | number;
+        color?: string;
+        backgroundColor?: string;
+        position?: 'bottom' | 'top' | 'center';
+      };
+    };
+    const cue = selectCaptionCueAtFrame(captionItem.cues, frame);
+    if (!cue) return null;
+    const position = captionItem.style?.position ?? 'bottom';
+    const justifyContent =
+      position === 'top' ? 'flex-start' : position === 'center' ? 'center' : 'flex-end';
+
+    return (
+      <AbsoluteFill
+        ref={(el) => {
+          if (!itemsDomMapRef?.current || !el) return;
+          itemsDomMapRef.current.set(resolvedItem.id, el as HTMLElement);
+        }}
+        data-caption-item-id={resolvedItem.id}
+        style={applyTransform({
+          justifyContent,
+          alignItems: 'center',
+          padding: position === 'bottom' ? '0 72px 96px' : position === 'top' ? '96px 72px 0' : '0 72px',
+          pointerEvents: 'none',
+          opacity: isObscured ? 0 : 1,
+        })}
+      >
+        <div
+          data-caption-cue-id={cue.id}
+          style={{
+            maxWidth: '92%',
+            color: captionItem.style?.color ?? '#ffffff',
+            backgroundColor: captionItem.style?.backgroundColor ?? 'rgba(0,0,0,0.56)',
+            fontFamily: captionItem.style?.fontFamily ?? 'Inter, system-ui, sans-serif',
+            fontSize: captionItem.style?.fontSize ?? 52,
+            fontWeight: captionItem.style?.fontWeight ?? 700,
+            lineHeight: 1.18,
+            textAlign: 'center',
+            borderRadius: 16,
+            padding: '14px 22px',
+            textWrap: 'balance',
+            whiteSpace: 'pre-wrap',
+          }}
+        >
+          {cue.text}
+        </div>
+      </AbsoluteFill>
+    );
+  }
+
+  if (resolvedItem.type === 'composition') {
+    const compositionItem = resolvedItem as ResolvedTimelineItem & {
+      runtime?: string;
+      compositionKind?: string;
+      compositionId?: string;
+      renderedAssetPath?: string;
+      spec?: { layers?: RuntimeCompositionLayer[] };
+    };
+    const layers = compositionItem.spec?.layers;
+    if (compositionItem.runtime === 'html' && compositionItem.compositionKind === 'motion-graphics' && Array.isArray(layers)) {
+      return (
+        <AbsoluteFill
+          ref={(el) => {
+            if (!itemsDomMapRef?.current || !el) return;
+            itemsDomMapRef.current.set(resolvedItem.id, el as HTMLElement);
+          }}
+          data-composition-item-id={resolvedItem.id}
+          data-composition-id={compositionItem.compositionId}
+          data-composition-kind={compositionItem.compositionKind}
+          data-composition-runtime={compositionItem.runtime}
+          style={applyTransform({ overflow: 'hidden', opacity: isObscured ? 0 : 1 })}
+        >
+          {layers
+            .slice()
+            .sort((a, b) => (a.zIndex ?? 0) - (b.zIndex ?? 0))
+            .map((layer) => {
+              const start = layer.from ?? 0;
+              const duration = layer.durationInFrames ?? resolvedItem.durationInFrames;
+              if (frame < start || frame >= start + duration) return null;
+              const layerStyle = computeCompositionLayerStyle(layer, frame);
+              if (layer.type === 'shape') {
+                const radius = layer.shape === 'circle' ? '9999px' : layer.radius ?? 0;
+                return (
+                  <div
+                    key={layer.id}
+                    data-layer-id={layer.id}
+                    style={{
+                      ...layerStyle,
+                      backgroundColor: layer.fill ?? '#ffffff',
+                      borderRadius: radius,
+                    }}
+                  />
+                );
+              }
+              return (
+                <div
+                  key={layer.id}
+                  data-layer-id={layer.id}
+                  style={{
+                    ...layerStyle,
+                    color: layer.color ?? '#ffffff',
+                    fontFamily: layer.fontFamily ?? 'Inter, system-ui, sans-serif',
+                    fontSize: layer.fontSize ?? 64,
+                    fontWeight: layer.fontWeight ?? 700,
+                    lineHeight: 1.04,
+                    whiteSpace: 'pre-wrap',
+                  }}
+                >
+                  {layer.text ?? ''}
+                </div>
+              );
+            })}
+        </AbsoluteFill>
+      );
+    }
+
+    if (compositionItem.renderedAssetPath) {
+      return (
+        <AbsoluteFill
+          ref={(el) => {
+            if (!itemsDomMapRef?.current || !el) return;
+            itemsDomMapRef.current.set(resolvedItem.id, el as HTMLElement);
+          }}
+          data-composition-item-id={resolvedItem.id}
+          data-composition-id={compositionItem.compositionId}
+          data-composition-kind={compositionItem.compositionKind}
+          data-composition-runtime={compositionItem.runtime}
+          style={applyTransform({ opacity: isObscured ? 0 : 1 })}
+        >
+          <OffthreadVideo
+            src={resolveAssetUrl(compositionItem.renderedAssetPath)}
+            style={{ width: '100%', height: '100%', objectFit: 'fill' }}
+            pauseWhenBuffering={false}
+            acceptableTimeShiftInSeconds={0.25}
+            muted
+            volume={0}
+          />
+        </AbsoluteFill>
+      );
+    }
+  }
+
+  if (resolvedItem.type === 'derived-overlay') {
+    const overlayItem = resolvedItem as ResolvedTimelineItem & {
+      mediaType?: 'image' | 'video';
+      src?: string;
+      sourceAssetId?: string;
+      derivedAssetId?: string;
+      derivation?: { kind?: string };
+    };
+    const src = resolveAssetUrl(overlayItem.src);
+    if (overlayItem.mediaType === 'image') {
+      return (
+        <AbsoluteFill
+          ref={(el) => {
+            if (!itemsDomMapRef?.current || !el) return;
+            itemsDomMapRef.current.set(resolvedItem.id, el as HTMLElement);
+          }}
+          data-derived-overlay-item-id={resolvedItem.id}
+          data-derived-source-asset-id={overlayItem.sourceAssetId}
+          data-derived-asset-id={overlayItem.derivedAssetId}
+          data-derived-kind={overlayItem.derivation?.kind}
+          style={applyTransform({ opacity: isObscured ? 0 : 1 })}
+        >
+          <Img src={src} style={{ width: '100%', height: '100%', objectFit: 'fill' }} />
+        </AbsoluteFill>
+      );
+    }
+    if (overlayItem.mediaType === 'video') {
+      return (
+        <AbsoluteFill
+          ref={(el) => {
+            if (!itemsDomMapRef?.current || !el) return;
+            itemsDomMapRef.current.set(resolvedItem.id, el as HTMLElement);
+          }}
+          data-derived-overlay-item-id={resolvedItem.id}
+          data-derived-source-asset-id={overlayItem.sourceAssetId}
+          data-derived-asset-id={overlayItem.derivedAssetId}
+          data-derived-kind={overlayItem.derivation?.kind}
+          style={applyTransform({ opacity: isObscured ? 0 : 1 })}
+        >
+          <OffthreadVideo
+            src={src}
+            style={{ width: '100%', height: '100%', objectFit: 'fill' }}
+            pauseWhenBuffering={false}
+            acceptableTimeShiftInSeconds={0.25}
+            muted
+            volume={0}
+          />
+        </AbsoluteFill>
+      );
+    }
   }
 
   if (resolvedItem.type === 'video') {
@@ -791,33 +1099,6 @@ export const VideoComposition: React.FC<{
   itemsDomMapRef?: React.RefObject<Map<string, HTMLElement>>;
 }> = ({ tracks, allNodes, selectedItemId, selectionBoxRef, itemsDomMapRef }) => {
   const { width: compWidth, height: compHeight } = useVideoConfig();
-
-  console.log('[VideoComposition] INPUT', {
-    tracks: tracks?.map((t) => ({
-      name: t.name,
-      id: t.id,
-      items: t.items?.map((it: any) => ({
-        id: it.id,
-        type: it.type,
-        from: it.from,
-        durationInFrames: it.durationInFrames,
-        sourceNodeId: it.sourceNodeId,
-        assetId: it.assetId,
-        src: it.src?.slice?.(0, 80),
-      })),
-    })),
-    allNodesCount: allNodes?.size ?? 0,
-    allNodesEntries: allNodes
-      ? [...allNodes.entries()].slice(0, 20).map(([k, v]) => ({
-          key: k,
-          type: v?.type,
-          src: v?.data?.src?.slice?.(0, 80),
-          naturalW: v?.data?.naturalWidth,
-          naturalH: v?.data?.naturalHeight,
-          dataKeys: v?.data ? Object.keys(v.data) : null,
-        }))
-      : [],
-  });
 
   // Create empty nodes map if not provided (for backward compatibility)
   const nodesMap = React.useMemo(() => allNodes || new Map(), [allNodes]);

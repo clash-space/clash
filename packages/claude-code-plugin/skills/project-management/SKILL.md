@@ -24,7 +24,7 @@ match case-insensitively; ask only when the match is ambiguous.
 ## Inspecting a project
 
 ```bash
-clash projects get <project-id> --json
+clash projects get --id <project-id> --json
 ```
 
 Returns the same shape as a list entry. Use this when the user wants to
@@ -33,7 +33,7 @@ know the description / created date of a specific project.
 ## Creating
 
 ```bash
-clash projects create "<name>" --description "<one-line>" --json
+clash projects create --name "<name>" --description "<one-line>" --json
 ```
 
 Returns the new project's id + name. Confirm with the user before doing
@@ -42,12 +42,19 @@ this — project creation is cheap but accumulates in their dashboard.
 ## Deleting
 
 ```bash
-clash projects delete <project-id>
+clash project get --id <project-id> --json
+clash projects delete --id <project-id> --if-match <readToken> --yes --json
+clash project get --id <project-id> --include-deleted --json
+clash project restore <project-id> --if-match <readToken> --json
 ```
 
-**Confirm explicitly with the user** before running. Deleting a project
-removes the canvas, asset references, and history. Quote the project's
-name back to them in the confirmation prompt.
+**Confirm explicitly with the user** before running delete. Local project
+delete is a recoverable soft-delete: the project is hidden from active lists
+and new sessions are blocked, but persisted session/message history is retained
+until an explicit purge policy exists. Quote the project's name back to the
+user in the confirmation prompt. The CLI requires `--yes` as the
+machine-readable confirmation flag. Use `restore` when the user asks to undo a
+local deletion.
 
 ## Conventions
 

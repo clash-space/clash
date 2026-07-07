@@ -1,4 +1,4 @@
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -42,6 +42,9 @@ describe("local audio config", () => {
       asr_provider: "builtin-funasr",
       asr_model: "iic/SenseVoiceSmall",
     });
+    const info = await stat(join(dataDir, "audio.json"));
+    expect(info.mode & 0o777).toBe(0o600);
+
     const result = await store.transcribe({
       file: new File(["voice-bytes"], "voice.webm", { type: "audio/webm" }),
       language: "zh",

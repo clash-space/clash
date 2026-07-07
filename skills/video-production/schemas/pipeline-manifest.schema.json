@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Clash video pipeline manifest",
+  "type": "object",
+  "required": ["schemaVersion", "projectKind", "stages", "editableFiles", "protectedFiles", "artifacts"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "projectKind": { "type": "string" },
+    "stages": { "type": "array", "items": { "type": "string" } },
+    "editableFiles": { "type": "array", "items": { "type": "string" } },
+    "protectedFiles": { "type": "array", "items": { "type": "string" } },
+    "artifacts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["kind", "stage", "path"],
+        "properties": {
+          "kind": {
+            "enum": ["action", "metadata", "asset", "projection", "review-gate", "export"]
+          },
+          "stage": { "type": "string" },
+          "path": { "type": "string" },
+          "casRequired": { "type": "boolean" },
+          "description": { "type": "string" }
+        }
+      }
+    },
+    "requiredSystemCapabilities": { "type": "array", "items": { "type": "string" } }
+  }
+}

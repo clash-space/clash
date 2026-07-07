@@ -78,6 +78,65 @@ describe("FileReplicaStore", () => {
     expect((nodes.get("second") as any).data.label).toBe("Second");
   });
 
+  it("serializes recover-mutate-save updates for a project", async () => {
+    const store = new FileReplicaStore(rootDir);
+    const projectId = "project/serialized-update";
+    const doc = new LoroDoc();
+    doc.getMap("nodes").set("base", { type: "text", data: { label: "Base" } });
+    await store.saveSnapshotAtomic(projectId, doc.export({ mode: "snapshot" }));
+
+    let releaseFirst!: () => void;
+    const firstCanFinish = new Promise<void>((resolve) => {
+      releaseFirst = resolve;
+    });
+    let firstStarted!: () => void;
+    const firstDidStart = new Promise<void>((resolve) => {
+      firstStarted = resolve;
+    });
+    const order: string[] = [];
+
+    const first = store.updateSnapshotAtomic(projectId, async (current) => {
+      order.push("first");
+      firstStarted();
+      expect((current.getMap("nodes").get("base") as any).data.label).toBe("Base");
+      await firstCanFinish;
+      current.getMap("nodes").set("first", { type: "text", data: { label: "First" } });
+      return { value: "first" };
+    });
+    await firstDidStart;
+
+    const second = store.updateSnapshotAtomic(projectId, async (current) => {
+      order.push("second");
+      expect((current.getMap("nodes").get("first") as any).data.label).toBe("First");
+      current.getMap("nodes").set("second", { type: "text", data: { label: "Second" } });
+      return { value: "second" };
+    });
+
+    await Promise.resolve();
+    expect(order).toEqual(["first"]);
+    releaseFirst();
+    await expect(Promise.all([first, second])).resolves.toEqual(["first", "second"]);
+    expect(order).toEqual(["first", "second"]);
+
+    const recovered = await store.recover(projectId);
+    expect((recovered.getMap("nodes").get("first") as any).data.label).toBe("First");
+    expect((recovered.getMap("nodes").get("second") as any).data.label).toBe("Second");
+  });
+
+  it("can skip writing a snapshot from a serialized update", async () => {
+    const store = new FileReplicaStore(rootDir);
+    const projectId = "project/no-save";
+
+    const value = await store.updateSnapshotAtomic(projectId, (current) => {
+      current.getMap("nodes").set("rejected", { type: "text", data: { label: "Rejected" } });
+      return { value: "rejected", save: false };
+    });
+
+    expect(value).toBe("rejected");
+    expect(await store.loadSnapshot(projectId)).toBeNull();
+    expect((await store.recover(projectId)).getMap("nodes").get("rejected")).toBeUndefined();
+  });
+
   it("ignores and truncates an incomplete trailing update record during recovery", async () => {
     const store = new FileReplicaStore(rootDir);
     const projectId = "project/partial-log";
@@ -115,6 +174,33 @@ describe("FileReplicaStore", () => {
     expect(await readdir(projectDir(projectId))).toEqual(expect.not.arrayContaining([
       expect.stringMatching(/snapshot\.bin\..+\.tmp/),
     ]));
+  });
+
+  it("compacts imported update records after writing a covering snapshot", async () => {
+    const store = new FileReplicaStore(rootDir);
+    const projectId = "project/compact";
+    const doc = new LoroDoc();
+    doc.getMap("nodes").set("base", { type: "text", data: { label: "Base" } });
+    await store.saveSnapshotAtomic(projectId, doc.export({ mode: "snapshot" }));
+
+    const beforeFirst = doc.version();
+    doc.getMap("nodes").set("first", { type: "text", data: { label: "First" } });
+    await store.appendUpdate(projectId, doc.export({ mode: "update", from: beforeFirst }));
+
+    const beforeSecond = doc.version();
+    doc.getMap("nodes").set("second", { type: "text", data: { label: "Second" } });
+    await store.appendUpdate(projectId, doc.export({ mode: "update", from: beforeSecond }));
+
+    expect(await store.loadUpdateLog(projectId)).toHaveLength(2);
+
+    await store.compactSnapshot(projectId, doc.export({ mode: "snapshot" }), doc.version());
+
+    expect(await store.loadUpdateLog(projectId)).toHaveLength(0);
+    expect((await stat(join(projectDir(projectId), "updates.log"))).size).toBe(0);
+
+    const recovered = await store.recover(projectId);
+    expect((recovered.getMap("nodes").get("first") as any).data.label).toBe("First");
+    expect((recovered.getMap("nodes").get("second") as any).data.label).toBe("Second");
   });
 
   it("ignores legacy flat snapshots because v0 only supports the new replica store", async () => {

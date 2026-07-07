@@ -14,7 +14,61 @@ export interface AgentCanvasAddNodeOperation {
   node: AgentCanvasNodePatch;
 }
 
-export type AgentCanvasPatchOperation = AgentCanvasAddNodeOperation;
+export interface AgentCanvasDeleteNodeOperation {
+  op: "delete_node";
+  node: Pick<AgentCanvasNodePatch, "id">;
+  ifMatch?: string;
+  force?: boolean;
+}
+
+export interface AgentCanvasEdgePatch {
+  id: string;
+  source: string;
+  target: string;
+  type?: string;
+}
+
+export interface AgentCanvasAddEdgeOperation {
+  op: "add_edge";
+  edge: AgentCanvasEdgePatch;
+  ifMatch?: string;
+  force?: boolean;
+}
+
+export interface AgentCanvasUpdateEdgeOperation {
+  op: "update_edge";
+  edge: {
+    id: string;
+    patch: Record<string, unknown>;
+  };
+  ifMatch?: string;
+  force?: boolean;
+}
+
+export interface AgentCanvasDeleteEdgeOperation {
+  op: "delete_edge";
+  edge: Pick<AgentCanvasEdgePatch, "id">;
+  ifMatch?: string;
+  force?: boolean;
+}
+
+export interface AgentTimelineApplyOperation {
+  op: "timeline_apply";
+  timeline: {
+    nodeId: string;
+    dsl: Record<string, unknown>;
+    force?: boolean;
+    ifMatch?: string;
+  };
+}
+
+export type AgentCanvasPatchOperation =
+  | AgentCanvasAddNodeOperation
+  | AgentCanvasDeleteNodeOperation
+  | AgentCanvasAddEdgeOperation
+  | AgentCanvasUpdateEdgeOperation
+  | AgentCanvasDeleteEdgeOperation
+  | AgentTimelineApplyOperation;
 
 export interface AgentAttribution {
   actorUserId?: string;
@@ -27,6 +81,19 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function finiteNumber(value: unknown): number | undefined {
   return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+}
+
+function readWritePrecondition(value: Record<string, unknown>, nested?: Record<string, unknown>): string | undefined {
+  const raw =
+    value.ifMatch ??
+    value.if_match ??
+    value.readToken ??
+    value.read_token ??
+    nested?.ifMatch ??
+    nested?.if_match ??
+    nested?.readToken ??
+    nested?.read_token;
+  return typeof raw === "string" && raw.trim() ? raw.trim() : undefined;
 }
 
 function parsePosition(value: unknown): { x: number; y: number } | undefined {
@@ -68,6 +135,98 @@ function parseAddNodeOperation(value: unknown): AgentCanvasAddNodeOperation | nu
   };
 }
 
+function parseDeleteNodeOperation(value: unknown): AgentCanvasDeleteNodeOperation | null {
+  if (!isRecord(value) || value.op !== "delete_node" || !isRecord(value.node)) return null;
+  const id = typeof value.node.id === "string" ? value.node.id.trim() : "";
+  if (!id) return null;
+  const ifMatch = readWritePrecondition(value, value.node);
+  return {
+    op: "delete_node",
+    node: { id },
+    ...(ifMatch ? { ifMatch } : {}),
+    ...(value.force === true ? { force: true } : {}),
+  };
+}
+
+function parseAddEdgeOperation(value: unknown): AgentCanvasAddEdgeOperation | null {
+  if (!isRecord(value) || value.op !== "add_edge" || !isRecord(value.edge)) return null;
+  const id = typeof value.edge.id === "string" ? value.edge.id.trim() : "";
+  const source = typeof value.edge.source === "string" ? value.edge.source.trim() : "";
+  const target = typeof value.edge.target === "string" ? value.edge.target.trim() : "";
+  if (!id || !source || !target) return null;
+  const type = typeof value.edge.type === "string" ? value.edge.type.trim() : "";
+  const ifMatch = readWritePrecondition(value, value.edge);
+  return {
+    op: "add_edge",
+    edge: {
+      id,
+      source,
+      target,
+      ...(type ? { type } : {}),
+    },
+    ...(ifMatch ? { ifMatch } : {}),
+    ...(value.force === true ? { force: true } : {}),
+  };
+}
+
+function parseUpdateEdgeOperation(value: unknown): AgentCanvasUpdateEdgeOperation | null {
+  if (!isRecord(value) || value.op !== "update_edge" || !isRecord(value.edge)) return null;
+  const id = typeof value.edge.id === "string" ? value.edge.id.trim() : "";
+  if (!id || !isRecord(value.edge.patch)) return null;
+  const ifMatch = readWritePrecondition(value, value.edge);
+  return {
+    op: "update_edge",
+    edge: {
+      id,
+      patch: value.edge.patch,
+    },
+    ...(ifMatch ? { ifMatch } : {}),
+    ...(value.force === true ? { force: true } : {}),
+  };
+}
+
+function parseDeleteEdgeOperation(value: unknown): AgentCanvasDeleteEdgeOperation | null {
+  if (!isRecord(value) || value.op !== "delete_edge" || !isRecord(value.edge)) return null;
+  const id = typeof value.edge.id === "string" ? value.edge.id.trim() : "";
+  if (!id) return null;
+  const ifMatch = readWritePrecondition(value, value.edge);
+  return {
+    op: "delete_edge",
+    edge: { id },
+    ...(ifMatch ? { ifMatch } : {}),
+    ...(value.force === true ? { force: true } : {}),
+  };
+}
+
+function parseTimelineApplyOperation(value: unknown): AgentTimelineApplyOperation | null {
+  if (!isRecord(value) || value.op !== "timeline_apply" || !isRecord(value.timeline)) return null;
+  const nodeId = typeof value.timeline.nodeId === "string"
+    ? value.timeline.nodeId.trim()
+    : typeof value.timeline.node_id === "string"
+      ? value.timeline.node_id.trim()
+      : "";
+  if (!nodeId || !isRecord(value.timeline.dsl)) return null;
+  const ifMatch = readWritePrecondition(value, value.timeline);
+  return {
+    op: "timeline_apply",
+    timeline: {
+      nodeId,
+      dsl: value.timeline.dsl,
+      ...(value.timeline.force === true ? { force: true } : {}),
+      ...(ifMatch ? { ifMatch } : {}),
+    },
+  };
+}
+
+function parsePatchOperation(value: unknown): AgentCanvasPatchOperation | null {
+  return parseAddNodeOperation(value)
+    ?? parseDeleteNodeOperation(value)
+    ?? parseAddEdgeOperation(value)
+    ?? parseUpdateEdgeOperation(value)
+    ?? parseDeleteEdgeOperation(value)
+    ?? parseTimelineApplyOperation(value);
+}
+
 export function parseAgentCanvasPatch(event: unknown): AgentCanvasPatchOperation[] {
   if (!isRecord(event)) return [];
   const inner = isRecord(event.update) ? event.update : event;
@@ -78,7 +237,7 @@ export function parseAgentCanvasPatch(event: unknown): AgentCanvasPatchOperation
       ? [inner.operation]
       : [];
   return rawOperations
-    .map(parseAddNodeOperation)
+    .map(parsePatchOperation)
     .filter((operation): operation is AgentCanvasPatchOperation => operation !== null);
 }
 

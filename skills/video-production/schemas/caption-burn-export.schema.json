@@ -1,0 +1,76 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Clash caption burn-in export",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "kind",
+    "sourceAssetId",
+    "outputAssetId",
+    "sourceTimelineId",
+    "sourceTimelinePath",
+    "sourceTimelineHash",
+    "sourceTimelineRevisionId",
+    "sourceTimelineRevisionStatus",
+    "sourcePath",
+    "captionSidecarPath",
+    "packagePath",
+    "ffmpegPlanPath",
+    "outputPath",
+    "rendered",
+    "renderMode",
+    "derivation",
+    "captionItems",
+    "cues",
+    "wordRefs",
+    "sourceToOutputMaps",
+    "sourceToOutputMap"
+  ],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "kind": { "const": "clash.caption.burn-in-export" },
+    "sourceAssetId": { "type": "string" },
+    "outputAssetId": { "type": "string" },
+    "sourceTimelineId": { "type": "string" },
+    "sourceTimelinePath": { "type": "string" },
+    "sourceTimelineHash": { "type": "string" },
+    "sourceTimelineRevisionId": { "type": "string" },
+    "sourceTimelineRevisionStatus": { "enum": ["draft-file", "applied"] },
+    "sourceTimelineFrontiers": { "type": "array" },
+    "sourceTimelineVersionVector": { "type": "object" },
+    "sourcePath": { "type": "string" },
+    "captionSidecarPath": { "type": "string" },
+    "packagePath": { "type": "string" },
+    "ffmpegPlanPath": { "type": "string" },
+    "outputPath": { "type": "string" },
+    "rendered": { "type": "boolean" },
+    "renderMode": { "enum": ["plan-only", "ffmpeg-ass-burn-in"] },
+    "derivation": {
+      "type": "object",
+      "required": ["kind", "sourceAssetId", "derivedAssetId", "copyOnWrite"],
+      "properties": {
+        "kind": { "const": "caption-burn" },
+        "sourceAssetId": { "type": "string" },
+        "derivedAssetId": { "type": "string" },
+        "copyOnWrite": { "type": "boolean" }
+      }
+    },
+    "captionItems": { "type": "number" },
+    "cues": { "type": "number" },
+    "wordRefs": { "type": "number" },
+    "sourceToOutputMaps": { "type": "number" },
+    "sourceToOutputMap": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["sourceStartFrame", "sourceEndFrame", "outputStartFrame", "outputEndFrame"],
+        "properties": {
+          "sourceStartFrame": { "type": "number" },
+          "sourceEndFrame": { "type": "number" },
+          "outputStartFrame": { "type": "number" },
+          "outputEndFrame": { "type": "number" }
+        }
+      }
+    }
+  }
+}

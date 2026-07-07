@@ -1,0 +1,97 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Clash MV beat sync verification report",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "kind",
+    "status",
+    "targetAssetId",
+    "sourceActionPath",
+    "bpm",
+    "fps",
+    "beats",
+    "downbeats",
+    "sections",
+    "cutAssignments",
+    "sectionCoverage",
+    "checks",
+    "blockedReasons"
+  ],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "kind": { "const": "clash.mv.beat-sync-verification" },
+    "status": { "enum": ["pass", "blocked"] },
+    "targetAssetId": { "type": "string" },
+    "sourceActionPath": { "type": "string" },
+    "projectionPath": { "type": "string" },
+    "timelineProjectionPath": { "type": "string" },
+    "bpm": { "type": "number" },
+    "fps": { "type": "number" },
+    "beats": { "type": "number" },
+    "downbeats": { "type": "number" },
+    "sections": { "type": "number" },
+    "cutAssignments": { "type": "number" },
+    "sectionCoverage": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["sectionId", "covered"],
+        "properties": {
+          "sectionId": { "type": "string" },
+          "covered": { "type": "boolean" },
+          "cutDensity": { "enum": ["hold", "medium", "fast"] },
+          "projectedCutDensity": { "enum": ["hold", "medium", "fast"] }
+        }
+      }
+    },
+    "checks": {
+      "type": "array",
+      "minItems": 8,
+      "items": {
+        "type": "object",
+        "required": ["id", "label", "required", "status", "expected", "actual"],
+        "properties": {
+          "id": {
+            "enum": [
+              "audio.beat-analysis-present",
+              "beat.downbeats-present",
+              "sections.present",
+              "sections.cut-density-present",
+              "sections.review-confidence-present",
+              "projection.cas-fresh-pull",
+              "projection.sections-covered",
+              "projection.cut-density-propagated"
+            ]
+          },
+          "label": { "type": "string" },
+          "required": { "const": true },
+          "status": { "enum": ["pass", "fail"] },
+          "expected": { "type": "string" },
+          "actual": { "type": "string" }
+        }
+      }
+    },
+    "blockedReasons": {
+      "type": "array",
+      "items": { "type": "string" }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": { "status": { "const": "pass" } },
+        "required": ["status"]
+      },
+      "then": {
+        "properties": {
+          "beats": { "exclusiveMinimum": 0 },
+          "downbeats": { "exclusiveMinimum": 0 },
+          "sections": { "exclusiveMinimum": 0 },
+          "cutAssignments": { "exclusiveMinimum": 0 },
+          "blockedReasons": { "maxItems": 0 }
+        }
+      }
+    }
+  ]
+}
