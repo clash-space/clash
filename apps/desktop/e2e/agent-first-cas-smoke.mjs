@@ -615,9 +615,11 @@ function runProjectionPathGuards() {
   symlinkSync(symlinkTarget, path.join(workspace, "symlinked-projections"), "dir");
   mkdirSync(path.join(workspace, "projections", "text"), { recursive: true });
   mkdirSync(path.join(workspace, "timelines"), { recursive: true });
+  mkdirSync(path.join(workspace, "reviews", "gates"), { recursive: true });
   writeFileSync(path.join(lockSymlinkTarget, "script.lock.json"), "{}\n", "utf8");
   writeFileSync(path.join(lockSymlinkTarget, "main.timeline.lock.json"), "{}\n", "utf8");
   writeFileSync(path.join(lockSymlinkTarget, "unsafe-prompt-pack.lock.json"), "{}\n", "utf8");
+  writeFileSync(path.join(lockSymlinkTarget, "unsafe.review-gate.lock.json"), "{}\n", "utf8");
   symlinkSync(
     path.join(lockSymlinkTarget, "script.lock.json"),
     path.join(workspace, "projections", "text", "script.lock.json"),
@@ -629,6 +631,10 @@ function runProjectionPathGuards() {
   symlinkSync(
     path.join(lockSymlinkTarget, "unsafe-prompt-pack.lock.json"),
     path.join(workspace, "plans", "unsafe-prompt-pack.lock.json"),
+  );
+  symlinkSync(
+    path.join(lockSymlinkTarget, "unsafe.review-gate.lock.json"),
+    path.join(workspace, "reviews", "gates", "unsafe.review-gate.lock.json"),
   );
 
   const textPull = runText([
@@ -793,6 +799,26 @@ function runProjectionPathGuards() {
     { command: storyboardPromptPackLockSidecar.command },
   );
 
+  const reviewGateLockSidecar = runProduction([
+    "plan-review-gate",
+    "--pipeline",
+    "pipeline.manifest.json",
+    "--stage",
+    "export",
+    "--artifact",
+    "qa/delivery/validation.json",
+    "--out",
+    "reviews/gates/unsafe.review-gate.json",
+    "--json",
+  ]);
+  recordCheck(
+    "review gate plan rejects symlinked lock sidecar outside cwd",
+    reviewGateLockSidecar.status === 1 &&
+      /Agent file lock sidecar path must not traverse a symlink outside the current project cwd/i.test(reviewGateLockSidecar.stderr),
+    reviewGateLockSidecar.stderr || reviewGateLockSidecar.stdout,
+    { command: reviewGateLockSidecar.command },
+  );
+
   return {
     textPull: { status: textPull.status, stderr: textPull.stderr },
     textForcedApply: { status: textForcedApply.status, stderr: textForcedApply.stderr },
@@ -805,6 +831,10 @@ function runProjectionPathGuards() {
     storyboardPromptPackLockSidecar: {
       status: storyboardPromptPackLockSidecar.status,
       stderr: storyboardPromptPackLockSidecar.stderr,
+    },
+    reviewGateLockSidecar: {
+      status: reviewGateLockSidecar.status,
+      stderr: reviewGateLockSidecar.stderr,
     },
   };
 }
@@ -1051,6 +1081,7 @@ async function main() {
           "timeline forced apply rejects symlinked projection path outside cwd",
           "timeline pull rejects symlinked lock sidecar outside cwd",
           "storyboard prompt-pack project rejects symlinked lock sidecar outside cwd",
+          "review gate plan rejects symlinked lock sidecar outside cwd",
         ].every((name) =>
           checks.some((check) => check.name === name && check.status === "pass"),
       ),

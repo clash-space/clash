@@ -135,6 +135,19 @@ export function assertProjectionFilePathInsideCwd(options: {
   });
 }
 
+export function assertAgentFilePathInsideCwd(options: {
+  filePath: string;
+  cwd: string;
+  writeVerb: string;
+}): ProjectionCasResult {
+  return assertProjectionPathInsideCwd({
+    path: options.filePath,
+    cwd: options.cwd,
+    subject: "Agent file path",
+    valueLabel: `${options.writeVerb} file`,
+  });
+}
+
 export function assertProjectionLockSidecarPathInsideCwd(options: {
   lockPath: string;
   cwd: string;
@@ -144,6 +157,19 @@ export function assertProjectionLockSidecarPathInsideCwd(options: {
     path: options.lockPath,
     cwd: options.cwd,
     subject: "Projection lock sidecar path",
+    valueLabel: `${options.writeVerb} lock`,
+  });
+}
+
+export function assertAgentFileLockSidecarPathInsideCwd(options: {
+  lockPath: string;
+  cwd: string;
+  writeVerb: string;
+}): ProjectionCasResult {
+  return assertProjectionPathInsideCwd({
+    path: options.lockPath,
+    cwd: options.cwd,
+    subject: "Agent file lock sidecar path",
     valueLabel: `${options.writeVerb} lock`,
   });
 }
@@ -239,6 +265,21 @@ export function resolveProjectionFilePathInsideCwd(options: {
   return filePath;
 }
 
+export function resolveAgentFilePathInsideCwd(options: {
+  filePath: string;
+  cwd: string;
+  writeVerb?: string;
+}): string {
+  const filePath = normalizeProjectionPathForCompare(options.filePath, options.cwd);
+  const result = assertAgentFilePathInsideCwd({
+    filePath,
+    cwd: options.cwd,
+    writeVerb: options.writeVerb ?? "Agent file",
+  });
+  if (!result.ok) throw new Error(result.error);
+  return filePath;
+}
+
 export function resolveProjectionLockPathInsideCwd(options: {
   filePath: string;
   cwd: string;
@@ -258,6 +299,21 @@ export function resolveProjectionLockSidecarPathInsideCwd(options: {
     lockPath,
     cwd: options.cwd,
     writeVerb: "Projection",
+  });
+  if (!result.ok) throw new Error(result.error);
+  return lockPath;
+}
+
+export function resolveAgentFileLockSidecarPathInsideCwd(options: {
+  lockPath: string;
+  cwd: string;
+  writeVerb?: string;
+}): string {
+  const lockPath = normalizeProjectionPathForCompare(options.lockPath, options.cwd);
+  const result = assertAgentFileLockSidecarPathInsideCwd({
+    lockPath,
+    cwd: options.cwd,
+    writeVerb: options.writeVerb ?? "Agent file",
   });
   if (!result.ok) throw new Error(result.error);
   return lockPath;

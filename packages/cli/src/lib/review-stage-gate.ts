@@ -2,6 +2,10 @@ import { createHash } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { basename, dirname, extname, isAbsolute, join, relative, resolve, sep } from "node:path";
+import {
+  resolveAgentFileLockSidecarPathInsideCwd,
+  resolveAgentFilePathInsideCwd,
+} from "./projection-cas";
 
 export type ReviewGateStatus = "blocked" | "pending-review" | "approved" | "changes-requested";
 export type ReviewGateDecision = "approve" | "request-changes";
@@ -98,11 +102,15 @@ export async function planReviewStageGate(
     .filter((artifact) => !artifact.exists)
     .map((artifact) => `required artifact missing: ${artifact.path}`);
   const now = new Date().toISOString();
-  const gatePath = resolveProjectPath(
+  const gatePath = resolveAgentFilePathInsideCwd({
     cwd,
-    options.outPath ?? join("reviews", "gates", `${safeSlug(stage)}.review-gate.json`),
-    "review gate",
-  );
+    filePath: resolveProjectPath(
+      cwd,
+      options.outPath ?? join("reviews", "gates", `${safeSlug(stage)}.review-gate.json`),
+      "review gate",
+    ),
+    writeVerb: "Review gate",
+  });
   const gate: ReviewStageGate = {
     schemaVersion: 1,
     kind: "clash.review.stage-gate",
@@ -127,7 +135,11 @@ export async function planReviewStageGate(
     createdAt: now,
     updatedAt: now,
   };
-  const lockPath = reviewGateLockPath(gatePath);
+  const lockPath = resolveAgentFileLockSidecarPathInsideCwd({
+    cwd,
+    lockPath: reviewGateLockPath(gatePath),
+    writeVerb: "Review gate",
+  });
   await writeGateAndLock(cwd, gatePath, lockPath, gate);
   return {
     planned: true,
@@ -144,12 +156,18 @@ export async function approveReviewStageGate(
   options: ApproveReviewStageGateOptions,
 ): Promise<ApproveReviewStageGateResult> {
   const cwd = resolve(options.cwd);
-  const gatePath = resolveProjectPath(cwd, options.gatePath, "review gate");
-  const lockPath = resolveProjectPath(
+  const gatePath = resolveAgentFilePathInsideCwd({
     cwd,
-    options.lockPath ?? reviewGateLockPath(gatePath),
-    "review gate lock",
-  );
+    filePath: resolveProjectPath(cwd, options.gatePath, "review gate"),
+    writeVerb: "Review gate",
+  });
+  const lockPath = resolveAgentFileLockSidecarPathInsideCwd({
+    cwd,
+    lockPath: options.lockPath
+      ? resolveProjectPath(cwd, options.lockPath, "review gate lock")
+      : reviewGateLockPath(gatePath),
+    writeVerb: "Review gate",
+  });
   const gateText = await readFile(gatePath, "utf8");
   const lock = parseReviewGateLock(JSON.parse(await readFile(lockPath, "utf8")));
   const gateProjectPath = toProjectComparablePath(cwd, gatePath);

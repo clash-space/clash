@@ -78,8 +78,9 @@ The main v1 gaps are:
   JSON-derived projection locks share a generic projection identity envelope
   while keeping legacy sidecar parsing where applicable. Generated and
   explicit production projection lock sidecars now use the shared cwd/realpath
-  guard, and asset metadata projection lock rejection happens before manifest
-  mutation. Broader storyboard
+  guard, review/stage gate JSON plus lock sidecars use the same agent-file
+  cwd/realpath boundary, and asset metadata projection lock rejection happens
+  before manifest mutation. Broader storyboard
   host/UI integration, recovery/rewire flows, host-issued receipt paths, and
   adoption of the generic lock envelope by future non-JSON/editor projections
   remain pending.
@@ -224,7 +225,9 @@ Conclusion:
   generic projection lock identity shape (`projectionKind`, `entity`,
   `contentHash`) instead of only projection-specific fields, and production
   projection lock sidecars share the same cwd/realpath guard used by
-  text/timeline sidecars.
+  text/timeline sidecars. Review/stage gate JSON and sidecar locks also use
+  the shared agent-file cwd/realpath guard because they can approve downstream
+  work even though they are not canonical projections.
 - Remaining non-JSON storyboard/editor projection families should adopt that
   envelope rather than copying one-off lock formats.
 

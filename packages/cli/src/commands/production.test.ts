@@ -1347,6 +1347,146 @@ test("runs production review gates with explicit approval and stale-write protec
   assert.equal(approvedGate.gatePolicy.finalExportBlockedUntilApproved, true);
 });
 
+test("review gate planning rejects symlinked gate paths that resolve outside cwd", async () => {
+  const cwd = await mkdtemp(join(tmpdir(), "clash-production-review-gate-path-"));
+  await writeJson(join(cwd, "pipeline.manifest.json"), {
+    schemaVersion: 1,
+    projectKind: "tvc",
+    stages: ["export"],
+  });
+  const outside = join(cwd, "..", "outside-review-gate-path");
+  await mkdir(outside, { recursive: true });
+  await mkdir(join(cwd, "reviews", "gates"), { recursive: true });
+  const outsideGatePath = join(outside, "export.review-gate.json");
+  await writeFile(outsideGatePath, "outside\n", "utf8");
+  await symlink(outsideGatePath, join(cwd, "reviews", "gates", "export.review-gate.json"));
+
+  const cliEntry = new URL("../index.ts", import.meta.url);
+  const require = createRequire(import.meta.url);
+  const tsxLoader = require.resolve("tsx");
+  const planned = spawnSync(
+    process.execPath,
+    [
+      "--import",
+      tsxLoader,
+      cliEntry.pathname,
+      "production",
+      "plan-review-gate",
+      "--pipeline",
+      "pipeline.manifest.json",
+      "--stage",
+      "export",
+      "--out",
+      "reviews/gates/export.review-gate.json",
+      "--json",
+    ],
+    { cwd, encoding: "utf8" },
+  );
+
+  assert.equal(planned.status, 1);
+  assert.match(planned.stderr, /Agent file path must not traverse a symlink outside the current project cwd/);
+  assert.equal(await readFile(outsideGatePath, "utf8"), "outside\n");
+});
+
+test("review gate planning rejects symlinked lock sidecars that resolve outside cwd", async () => {
+  const cwd = await mkdtemp(join(tmpdir(), "clash-production-review-gate-lock-"));
+  await writeJson(join(cwd, "pipeline.manifest.json"), {
+    schemaVersion: 1,
+    projectKind: "tvc",
+    stages: ["export"],
+  });
+  const outside = join(cwd, "..", "outside-review-gate-lock");
+  await mkdir(outside, { recursive: true });
+  await mkdir(join(cwd, "reviews", "gates"), { recursive: true });
+  await writeFile(join(outside, "export.review-gate.lock.json"), "{}\n", "utf8");
+  await symlink(
+    join(outside, "export.review-gate.lock.json"),
+    join(cwd, "reviews", "gates", "export.review-gate.lock.json"),
+  );
+
+  const cliEntry = new URL("../index.ts", import.meta.url);
+  const require = createRequire(import.meta.url);
+  const tsxLoader = require.resolve("tsx");
+  const planned = spawnSync(
+    process.execPath,
+    [
+      "--import",
+      tsxLoader,
+      cliEntry.pathname,
+      "production",
+      "plan-review-gate",
+      "--pipeline",
+      "pipeline.manifest.json",
+      "--stage",
+      "export",
+      "--out",
+      "reviews/gates/export.review-gate.json",
+      "--json",
+    ],
+    { cwd, encoding: "utf8" },
+  );
+
+  assert.equal(planned.status, 1);
+  assert.match(planned.stderr, /Agent file lock sidecar path must not traverse a symlink outside the current project cwd/);
+  assert.equal(existsSync(join(cwd, "reviews", "gates", "export.review-gate.json")), false);
+});
+
+test("review gate approval rejects explicit symlinked lock sidecars that resolve outside cwd", async () => {
+  const cwd = await mkdtemp(join(tmpdir(), "clash-production-review-gate-approve-lock-"));
+  await writeJson(join(cwd, "pipeline.manifest.json"), {
+    schemaVersion: 1,
+    projectKind: "tvc",
+    stages: ["export"],
+  });
+  const cliEntry = new URL("../index.ts", import.meta.url);
+  const require = createRequire(import.meta.url);
+  const tsxLoader = require.resolve("tsx");
+  const runCli = (args: string[]) => spawnSync(
+    process.execPath,
+    ["--import", tsxLoader, cliEntry.pathname, "production", ...args],
+    { cwd, encoding: "utf8" },
+  );
+  const planned = runCli([
+    "plan-review-gate",
+    "--pipeline",
+    "pipeline.manifest.json",
+    "--stage",
+    "export",
+    "--out",
+    "reviews/gates/export.review-gate.json",
+    "--json",
+  ]);
+  assert.equal(planned.status, 0, planned.stderr);
+  const outside = join(cwd, "..", "outside-review-gate-approve-lock");
+  await mkdir(outside, { recursive: true });
+  await mkdir(join(cwd, "reviews", "gates"), { recursive: true });
+  const outsideLockPath = join(outside, "approve.review-gate.lock.json");
+  await writeFile(
+    outsideLockPath,
+    await readFile(join(cwd, "reviews", "gates", "export.review-gate.lock.json"), "utf8"),
+    "utf8",
+  );
+  await symlink(outsideLockPath, join(cwd, "reviews", "gates", "approve.review-gate.lock.json"));
+
+  const approved = runCli([
+    "approve-review-gate",
+    "--gate",
+    "reviews/gates/export.review-gate.json",
+    "--lock",
+    "reviews/gates/approve.review-gate.lock.json",
+    "--reviewer",
+    "qa-agent",
+    "--decision",
+    "approve",
+    "--json",
+  ]);
+
+  assert.equal(approved.status, 1);
+  assert.match(approved.stderr, /Agent file lock sidecar path must not traverse a symlink outside the current project cwd/);
+  const gate = JSON.parse(await readFile(join(cwd, "reviews", "gates", "export.review-gate.json"), "utf8"));
+  assert.equal(gate.status, "pending-review");
+});
+
 test("runs production dry-run cost gates without executing generation or silent provider fallback", async () => {
   const cwd = await mkdtemp(join(tmpdir(), "clash-production-dry-run-gate-"));
   await writeJson(join(cwd, "plans", "free-local.json"), {

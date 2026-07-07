@@ -487,6 +487,12 @@ prompt packs and asset metadata must use the same guard before mutating managed
 state; a rejected lock sidecar must not leave a partially applied manifest
 change behind.
 
+The broader agent-file CAS family follows the same rule. Review/stage gate JSON
+files and their `*.lock.json` sidecars are not canonical project truth, but
+they can block or approve downstream actions, so both the gate path and lock
+path must be checked with cwd plus realpath/symlink guards before writing or
+approving.
+
 Do not rely only on OS file permissions. Permissions are a useful second layer,
 not the product safety model.
 
