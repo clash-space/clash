@@ -558,9 +558,10 @@ Not allowed:
 Every projection apply must require a lock unless `--force` is present.
 
 `--force` should be explicit and logged as intentional overwrite. The local
-API now has first-pass sanitized mutation audit evidence for project lifecycle
-destructive exits, readable through `GET /api/v1/mutation-audit` and `clash
-audit mutations`; broader forced projection/daemon writes should join the same
+API now has first-pass sanitized mutation audit evidence for project
+delete/purge, session delete, and asset GC delete, readable through
+`GET /api/v1/mutation-audit` and `clash audit mutations`; broader forced
+projection/daemon writes should join the same
 audit model instead of generating unbounded generic edit logs. In shared
 projects it may need stronger permission or UI confirmation.
 

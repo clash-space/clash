@@ -1120,6 +1120,29 @@ describe("local API app", () => {
         accepted: true,
       },
     });
+
+    const audit = await app.request(`/api/v1/mutation-audit?operation=session_delete&entityId=${encodeURIComponent(threadId)}`);
+    expect(audit.status).toBe(200);
+    const auditJson = await audit.json() as { records: Array<{ mutation?: unknown }> };
+    expect(auditJson.records).toHaveLength(1);
+    expect(auditJson.records[0]).toMatchObject({
+      operation: "session_delete",
+      entity: { kind: "session", id: threadId },
+      accepted: true,
+      forced: false,
+      actorClientType: "agent",
+      reason: "session delete",
+      mutation: {
+        operation: "session_delete",
+        entity: { kind: "session", id: threadId },
+        resultEntityId: threadId,
+        forced: false,
+        accepted: true,
+      },
+    });
+    expect(JSON.stringify(auditJson.records[0].mutation)).not.toContain("receipt");
+    expect(auditJson.records[0].mutation).not.toHaveProperty("expectedReadToken");
+    expect(auditJson.records[0].mutation).not.toHaveProperty("beforeReadToken");
   });
 
   it("keeps all concurrent asset creates for a project preview", async () => {
@@ -2101,6 +2124,29 @@ describe("local API app", () => {
     });
     await expect(stat(first.blobPath)).rejects.toMatchObject({ code: "ENOENT" });
     await expect(stat(second.blobPath)).rejects.toMatchObject({ code: "ENOENT" });
+
+    const audit = await app.request("/api/v1/mutation-audit?operation=asset_gc&entityId=local");
+    expect(audit.status).toBe(200);
+    const auditJson = await audit.json() as { records: Array<{ mutation?: unknown }> };
+    expect(auditJson.records).toHaveLength(1);
+    expect(auditJson.records[0]).toMatchObject({
+      operation: "asset_gc",
+      entity: { kind: "asset-store", id: "local" },
+      accepted: true,
+      forced: false,
+      actorClientType: "agent",
+      reason: "asset garbage collection",
+      mutation: {
+        operation: "asset_gc",
+        entity: { kind: "asset-store", id: "local" },
+        resultEntityId: "local",
+        forced: false,
+        accepted: true,
+      },
+    });
+    expect(JSON.stringify(auditJson.records[0].mutation)).not.toContain("receipt");
+    expect(auditJson.records[0].mutation).not.toHaveProperty("expectedReadToken");
+    expect(auditJson.records[0].mutation).not.toHaveProperty("beforeReadToken");
   });
 
   it("keeps unreferenced local assets that are protected by live canvas references", async () => {

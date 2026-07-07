@@ -1573,6 +1573,25 @@ async function main() {
     { mutation: acceptedGcDelete.mutation },
   );
 
+  const assetGcAuditResponse = await request("/api/v1/mutation-audit?operation=asset_gc&entityId=local");
+  const assetGcAudit = await parseJsonResponse(assetGcAuditResponse);
+  const assetGcAuditRecord = assetGcAudit.records?.[0];
+  recordCheck(
+    "asset GC delete writes sanitized local mutation audit evidence",
+    assetGcAuditResponse.status === 200 &&
+      assetGcAudit.records?.length === 1 &&
+      assetGcAuditRecord.operation === "asset_gc" &&
+      assetGcAuditRecord.entity?.id === "local" &&
+      assetGcAuditRecord.forced === false &&
+      assetGcAuditRecord.accepted === true &&
+      assetGcAuditRecord.actorClientType === "agent" &&
+      assetGcAuditRecord.reason === "asset garbage collection" &&
+      !JSON.stringify(assetGcAuditRecord.mutation ?? {}).includes("receipt") &&
+      assetGcAuditRecord.mutation?.expectedReadToken == null &&
+      assetGcAuditRecord.mutation?.beforeReadToken == null,
+    JSON.stringify(assetGcAudit),
+  );
+
   await expectRejected(
     "asset GC removed orphan asset metadata",
     () => fetchAssetRecord({ assetId, request }),
@@ -1915,6 +1934,25 @@ async function main() {
 	    { mutation: acceptedSessionDeleteJson.mutation },
 	  );
 
+  const sessionDeleteAuditResponse = await request(`/api/v1/mutation-audit?operation=session_delete&entityId=${encodeURIComponent(sessionCreated.threadId)}`);
+  const sessionDeleteAudit = await parseJsonResponse(sessionDeleteAuditResponse);
+  const sessionDeleteAuditRecord = sessionDeleteAudit.records?.[0];
+  recordCheck(
+    "session delete writes sanitized local mutation audit evidence",
+    sessionDeleteAuditResponse.status === 200 &&
+      sessionDeleteAudit.records?.length === 1 &&
+      sessionDeleteAuditRecord.operation === "session_delete" &&
+      sessionDeleteAuditRecord.entity?.id === sessionCreated.threadId &&
+      sessionDeleteAuditRecord.forced === false &&
+      sessionDeleteAuditRecord.accepted === true &&
+      sessionDeleteAuditRecord.actorClientType === "agent" &&
+      sessionDeleteAuditRecord.reason === "session delete" &&
+      !JSON.stringify(sessionDeleteAuditRecord.mutation ?? {}).includes("receipt") &&
+      sessionDeleteAuditRecord.mutation?.expectedReadToken == null &&
+      sessionDeleteAuditRecord.mutation?.beforeReadToken == null,
+    JSON.stringify(sessionDeleteAudit),
+  );
+
 	  const runtimeSessionResponse = await request("/api/v1/runtimes/desktop-local/sessions", {
 	    method: "POST",
 	    body: JSON.stringify({
@@ -2139,6 +2177,7 @@ async function main() {
       assetGcStaleReceiptRejected: checks.some((check) => check.name === "asset GC delete with stale dry-run receipt is rejected" && check.status === "pass"),
       assetGcFreshPlanReturned: checks.some((check) => check.name === "asset GC fresh dry-run sees current orphan plan" && check.status === "pass"),
       assetGcReceiptAccepted: checks.some((check) => check.name === "asset GC delete with dry-run receipt is accepted" && check.status === "pass"),
+      assetGcAuditRecorded: checks.some((check) => check.name === "asset GC delete writes sanitized local mutation audit evidence" && check.status === "pass"),
       projectRestoreDeletedGetHidden: checks.some((check) => check.name === "deleted project is hidden from normal project get" && check.status === "pass"),
       projectRestoreGetReceiptReturned: checks.some((check) => check.name === "deleted project get returns restore receipt" && check.status === "pass"),
       projectRestoreMissingReadRejected: checks.some((check) => check.name === "project restore without prior deleted read is rejected" && check.status === "pass"),
@@ -2216,6 +2255,7 @@ async function main() {
 	      sessionDeleteMissingReadRejected: checks.some((check) => check.name === "session delete without prior read is rejected" && check.status === "pass"),
 	      sessionDeleteBareCasRejected: checks.some((check) => check.name === "session delete with bare CAS token is rejected" && check.status === "pass"),
 	      sessionDeleteReceiptAccepted: checks.some((check) => check.name === "session delete with receipt read token is accepted" && check.status === "pass"),
+	      sessionDeleteAuditRecorded: checks.some((check) => check.name === "session delete writes sanitized local mutation audit evidence" && check.status === "pass"),
 	      runtimeSessionAttachCreateAccepted: checks.some((check) => check.name === "runtime session create accepted for attach receipt smoke" && check.status === "pass"),
 	      runtimeSessionAttachReadReceiptReturned: checks.some((check) => check.name === "runtime session list returns attach receipt read token" && check.status === "pass"),
 	      runtimeSessionAttachMissingReadRejected: checks.some((check) => check.name === "runtime session attach without prior read is rejected" && check.status === "pass"),

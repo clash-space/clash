@@ -5131,6 +5131,16 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
         },
       };
     });
+    if (result.status === 200) {
+      const mutation = result.body.mutation as HostMutationRecord | undefined;
+      if (mutation?.accepted === true) {
+        await db.appendMutationAudit(mutationAuditRecord({
+          mutation,
+          actorClientType: preconditions.actorClientType,
+          reason: "session delete",
+        }));
+      }
+    }
     return c.json(result.body, result.status);
   });
 
@@ -5735,6 +5745,14 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
     if (result.status === 200) {
       for (const key of result.blobKeys) {
         await rm(assetPath(options.dataDir, key, clashRoot), { force: true });
+      }
+      const mutation = result.body.mutation as HostMutationRecord | undefined;
+      if (mutation?.accepted === true) {
+        await db.appendMutationAudit(mutationAuditRecord({
+          mutation,
+          actorClientType: preconditions.actorClientType,
+          reason: "asset garbage collection",
+        }));
       }
     }
     return c.json(result.body, result.status);

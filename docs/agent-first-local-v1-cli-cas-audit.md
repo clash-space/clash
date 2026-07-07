@@ -359,8 +359,9 @@ Required behavior:
 ### P2
 
 - Add admin/debug commands for explicit low-level patching.
-- Extend first-pass local mutation audit beyond project delete/purge to the
-  remaining force/destructive mutation surfaces.
+- Extend first-pass local mutation audit beyond project delete/purge, session
+  delete, and asset GC delete to the remaining force/destructive mutation
+  surfaces.
 - Promote direct canvas patch/read-token rejection from deterministic daemon
   and public CLI daemon-socket smoke into a live desktop/API project fixture.
 
