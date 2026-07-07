@@ -1,4 +1,4 @@
-import { mkdir, stat, writeFile } from "node:fs/promises";
+import { mkdir, readdir, rm, stat, symlink, writeFile } from "node:fs/promises";
 import { DatabaseSync } from "node:sqlite";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -1360,6 +1360,41 @@ async function main() {
     `status=${customOutputBytes.status}`,
   );
 
+  const escapedUploadTarget = path.join(artifactRoot, "outside-upload-target");
+  const symlinkedUploadParent = path.join(dataDir, "assets", "uploads");
+  await mkdir(escapedUploadTarget, { recursive: true });
+  await mkdir(path.dirname(symlinkedUploadParent), { recursive: true });
+  await symlink(escapedUploadTarget, symlinkedUploadParent);
+  try {
+    const symlinkUploadForm = new FormData();
+    symlinkUploadForm.append("file", new File(["escape"], "escape.txt", { type: "text/plain" }));
+    const symlinkUploadResponse = await request("/upload", {
+      method: "POST",
+      body: symlinkUploadForm,
+    });
+    const symlinkUpload = await parseJsonResponse(symlinkUploadResponse);
+    recordCheck(
+      "asset upload rejects symlinked parent outside local asset storage",
+      symlinkUploadResponse.status === 400 &&
+        symlinkUpload.error === "Asset path escapes local asset storage" &&
+        symlinkUpload.mutation?.accepted === false &&
+        (await readdir(escapedUploadTarget)).length === 0,
+      JSON.stringify(symlinkUpload),
+      { mutation: symlinkUpload.mutation },
+    );
+
+    await writeFile(path.join(escapedUploadTarget, "outside.txt"), "outside", "utf8");
+    const symlinkReadResponse = await request("/assets/uploads/outside.txt");
+    recordCheck(
+      "asset reads reject symlinked parent outside local asset storage",
+      symlinkReadResponse.status === 404 && await symlinkReadResponse.text() !== "outside",
+      `status=${symlinkReadResponse.status}`,
+    );
+  } finally {
+    await rm(symlinkedUploadParent, { force: true });
+    await rm(escapedUploadTarget, { recursive: true, force: true });
+  }
+
   const assetRowsBeforeInvalidCreate = sqliteCount("select count(*) as count from assets");
   const invalidAssetCreateResponse = await request("/api/v1/assets", {
     method: "POST",
@@ -2462,6 +2497,8 @@ async function main() {
       customActionCheckpointCreateAccepted: checks.some((check) => check.name === "custom action upload accepts first checkpoint output" && check.status === "pass"),
       customActionCheckpointOverwriteRejected: checks.some((check) => check.name === "custom action upload rejects checkpoint overwrite" && check.status === "pass"),
       customActionCheckpointFilePreserved: checks.some((check) => check.name === "custom action checkpoint file remains first output after rejected overwrite" && check.status === "pass"),
+      assetUploadSymlinkParentRejected: checks.some((check) => check.name === "asset upload rejects symlinked parent outside local asset storage" && check.status === "pass"),
+      assetReadSymlinkParentRejected: checks.some((check) => check.name === "asset reads reject symlinked parent outside local asset storage" && check.status === "pass"),
       assetCreateInvalidStorageKeyRejected: checks.some((check) => check.name === "asset create rejects storage keys outside local asset storage" && check.status === "pass"),
       assetCoverInvalidStorageKeyRejected: checks.some((check) => check.name === "asset cover update rejects storage keys outside local asset storage" && check.status === "pass"),
       sessionListReceiptReturned: checks.some((check) => check.name === "session list returns receipt read token" && check.status === "pass"),

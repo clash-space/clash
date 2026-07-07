@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, readdir, rm, stat, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createRequire } from "node:module";
@@ -2109,6 +2109,56 @@ describe("local API app", () => {
       expect(sqlite.prepare("select asset_id from asset_refs where asset_id = ?").get(live.assetId)).toMatchObject({
         asset_id: live.assetId,
       });
+    } finally {
+      sqlite.close();
+    }
+  });
+
+  it("garbage collection remains idempotent when an orphaned local blob file is already missing", async () => {
+    const clashRoot = await mkdtemp(join(tmpdir(), "clash-local-api-gc-missing-home-"));
+    const app = createLocalApiApp({ dataDir, userId: "local-user", clashRoot });
+    const hash = "8".repeat(64);
+    const assetId = `local:sha256:${hash}`;
+    const blobKey = `blobs/${hash}/original.png`;
+    const blobPath = join(clashRoot, "assets", blobKey);
+    await mkdir(join(blobPath, ".."), { recursive: true });
+    await writeFile(blobPath, "missing-before-gc", "utf8");
+
+    const imported = await app.request("/api/v1/assets/import", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        projectId: "project-gc-missing",
+        kind: "image",
+        assetId,
+        contentHash: hash,
+        localBlobKey: blobKey,
+        contentType: "image/png",
+      }),
+    });
+    expect(imported.status).toBe(200);
+
+    const removedRef = await app.request(`/api/v1/assets/${encodeURIComponent(assetId)}/ref?projectId=project-gc-missing`, {
+      method: "DELETE",
+    });
+    expect(removedRef.status).toBe(200);
+    await rm(join(blobPath, ".."), { recursive: true, force: true });
+
+    const gc = await app.request("/api/v1/assets/gc", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ dryRun: false }),
+    });
+
+    expect(gc.status).toBe(200);
+    expect(await gc.json()).toMatchObject({
+      deletedAssets: [{ id: assetId, srcR2Key: `local-blobs/${hash}/original.png` }],
+      deletedBlobKeys: [`local-blobs/${hash}/original.png`],
+      mutation: { operation: "asset_gc", accepted: true },
+    });
+    const sqlite = openSqlite();
+    try {
+      expect(sqlite.prepare("select id from assets where id = ?").get(assetId)).toBeUndefined();
     } finally {
       sqlite.close();
     }
@@ -8782,6 +8832,51 @@ describe("local API app", () => {
     expect(served.status).toBe(200);
     expect(served.headers.get("content-type")).toContain("text/plain");
     expect(await served.text()).toBe("hello");
+  });
+
+  it("rejects local asset uploads when the storage parent escapes through a symlink", async () => {
+    const outsideDir = await mkdtemp(join(tmpdir(), "clash-local-api-outside-assets-"));
+    try {
+      await mkdir(join(dataDir, "assets"), { recursive: true });
+      await symlink(outsideDir, join(dataDir, "assets", "uploads"));
+      const app = createLocalApiApp({ dataDir, userId: "local-user" });
+
+      const form = new FormData();
+      form.append("file", new File(["escape"], "escape.txt", { type: "text/plain" }));
+      const upload = await app.request("/upload", { method: "POST", body: form });
+
+      expect(upload.status).toBe(400);
+      expect(await upload.json()).toMatchObject({
+        error: "Asset path escapes local asset storage",
+        mutation: {
+          operation: "asset_blob_upload",
+          entity: { kind: "asset-blob", id: expect.stringMatching(/^uploads\/.+-escape\.txt$/) },
+          forced: false,
+          accepted: false,
+          error: "Asset path escapes local asset storage",
+        },
+      });
+      await expect(readdir(outsideDir)).resolves.toEqual([]);
+    } finally {
+      await rm(outsideDir, { recursive: true, force: true });
+    }
+  });
+
+  it("does not serve local assets through a symlinked storage parent outside the asset root", async () => {
+    const outsideDir = await mkdtemp(join(tmpdir(), "clash-local-api-outside-read-"));
+    try {
+      await writeFile(join(outsideDir, "outside.txt"), "outside");
+      await mkdir(join(dataDir, "assets"), { recursive: true });
+      await symlink(outsideDir, join(dataDir, "assets", "uploads"));
+      const app = createLocalApiApp({ dataDir, userId: "local-user" });
+
+      const served = await app.request("/assets/uploads/outside.txt");
+
+      expect(served.status).toBe(404);
+      expect(await served.text()).not.toBe("outside");
+    } finally {
+      await rm(outsideDir, { recursive: true, force: true });
+    }
   });
 
   it("returns absolute local API asset URLs for desktop clash:// pages", async () => {

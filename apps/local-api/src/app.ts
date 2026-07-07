@@ -1,6 +1,6 @@
-import { mkdir, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
+import { mkdir, readFile, readdir, realpath, rm, stat, writeFile } from "node:fs/promises";
 import { createHash, createHmac, randomBytes, randomUUID } from "node:crypto";
-import { basename, dirname, extname, join, normalize, relative, resolve } from "node:path";
+import { basename, dirname, extname, isAbsolute, join, normalize, relative, resolve } from "node:path";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import type { LoroDoc } from "loro-crdt";
@@ -875,6 +875,68 @@ function assetPath(dataDir: string, storageKey: string, clashRoot?: string): str
     throw new Error("Invalid asset path");
   }
   return resolved;
+}
+
+type AssetPathCandidate = {
+  root: string;
+  path: string;
+};
+
+function localAssetPathCandidate(dataDir: string, storageKey: string, clashRoot?: string): AssetPathCandidate {
+  const normalizedKey = normalizeAssetStorageKey(storageKey);
+  if (normalizedKey.startsWith("local-blobs/")) {
+    const root = join(clashRoot ?? inferClashRoot(dataDir), "assets", "blobs");
+    return { root, path: localBlobAssetPath(clashRoot ?? inferClashRoot(dataDir), normalizedKey) };
+  }
+  return { root: assetRoot(dataDir), path: assetPath(dataDir, normalizedKey, clashRoot) };
+}
+
+function assertRealAssetPathInsideRoot(rootRealPath: string, targetRealPath: string): void {
+  const rel = relative(rootRealPath, targetRealPath);
+  if (rel.startsWith("..") || rel === ".." || isAbsolute(rel)) {
+    throw new Error("Asset path escapes local asset storage");
+  }
+}
+
+async function realpathOrNull(path: string): Promise<string | null> {
+  try {
+    return await realpath(path);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
+    throw error;
+  }
+}
+
+async function assetPathForRead(dataDir: string, storageKey: string, clashRoot?: string): Promise<string> {
+  const candidate = localAssetPathCandidate(dataDir, storageKey, clashRoot);
+  const rootRealPath = await realpath(candidate.root);
+  const targetRealPath = await realpath(candidate.path);
+  assertRealAssetPathInsideRoot(rootRealPath, targetRealPath);
+  return candidate.path;
+}
+
+async function assetPathForWrite(dataDir: string, storageKey: string, clashRoot?: string): Promise<string> {
+  const candidate = localAssetPathCandidate(dataDir, storageKey, clashRoot);
+  await mkdir(candidate.root, { recursive: true });
+  await mkdir(dirname(candidate.path), { recursive: true });
+  const rootRealPath = await realpath(candidate.root);
+  const parentRealPath = await realpath(dirname(candidate.path));
+  assertRealAssetPathInsideRoot(rootRealPath, parentRealPath);
+  const existingTargetRealPath = await realpathOrNull(candidate.path);
+  if (existingTargetRealPath) {
+    assertRealAssetPathInsideRoot(rootRealPath, existingTargetRealPath);
+  }
+  return candidate.path;
+}
+
+async function assetPathForDelete(dataDir: string, storageKey: string, clashRoot?: string): Promise<string> {
+  const candidate = localAssetPathCandidate(dataDir, storageKey, clashRoot);
+  const rootRealPath = await realpathOrNull(candidate.root);
+  const parentRealPath = await realpathOrNull(dirname(candidate.path));
+  if (rootRealPath && parentRealPath) {
+    assertRealAssetPathInsideRoot(rootRealPath, parentRealPath);
+  }
+  return candidate.path;
 }
 
 function localBlobAssetPath(clashRoot: string, storageKey: string): string {
@@ -5256,7 +5318,16 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
     const kind = outputType === "video" ? "video" : outputType === "audio" ? "audio" : "image";
     const ext = kind === "video" ? ".mp4" : kind === "audio" ? ".mp3" : ".png";
     const storageKey = `projects/${sanitizeFileName(projectId)}/custom/${sanitizeFileName(taskId)}${indexSuffix}${ext}`;
-    const path = assetPath(options.dataDir, storageKey);
+    let path: string;
+    try {
+      path = await assetPathForWrite(options.dataDir, storageKey);
+    } catch (error) {
+      const message = errorMessage(error);
+      return c.json({
+        error: message,
+        mutation: hostMutationRejected(envelope, message),
+      }, 400);
+    }
     const bytes = new Uint8Array(await file.arrayBuffer());
     const contentHash = sha256Hex(bytes);
     const assetId = outputIndex > 0 ? `${taskId}${indexSuffix}` : taskId;
@@ -5278,7 +5349,6 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
         }, 409);
       }
     }
-    await mkdir(join(path, ".."), { recursive: true });
     await writeFile(path, bytes);
 
     const at = Math.floor(Date.now() / 1000);
@@ -5330,8 +5400,16 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
 
     const storageKey = `uploads/${crypto.randomUUID().slice(0, 8)}-${sanitizeFileName(file.name)}`;
     const envelope = localMutationEnvelope("asset_blob_upload", "asset-blob", storageKey);
-    const path = assetPath(options.dataDir, storageKey);
-    await mkdir(join(path, ".."), { recursive: true });
+    let path: string;
+    try {
+      path = await assetPathForWrite(options.dataDir, storageKey);
+    } catch (error) {
+      const message = errorMessage(error);
+      return c.json({
+        error: message,
+        mutation: hostMutationRejected(envelope, message),
+      }, 400);
+    }
     await writeFile(path, new Uint8Array(await file.arrayBuffer()));
     return c.json({
       storageKey,
@@ -5345,7 +5423,7 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
       return c.text("Not found", 404);
     }
     try {
-      const bytes = await readFile(assetPath(options.dataDir, storageKey, clashRoot));
+      const bytes = await readFile(await assetPathForRead(options.dataDir, storageKey, clashRoot));
       return new Response(bytes, {
         headers: {
           "content-type": contentTypeForPath(storageKey),
@@ -5492,7 +5570,7 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
     };
     let fileInfo: Awaited<ReturnType<typeof stat>>;
     try {
-      fileInfo = await stat(assetPath(options.dataDir, srcR2Key, clashRoot));
+      fileInfo = await stat(await assetPathForRead(options.dataDir, srcR2Key, clashRoot));
       if (!fileInfo.isFile()) throw new Error("Local blob is not a file");
     } catch {
       return c.json({
@@ -5816,7 +5894,7 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
     });
     if (result.status === 200) {
       for (const key of result.blobKeys) {
-        await rm(assetPath(options.dataDir, key, clashRoot), { force: true });
+        await rm(await assetPathForDelete(options.dataDir, key, clashRoot), { force: true });
       }
       const mutation = result.body.mutation as HostMutationRecord | undefined;
       if (mutation?.accepted === true) {
