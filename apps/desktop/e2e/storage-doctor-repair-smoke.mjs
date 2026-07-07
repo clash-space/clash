@@ -16,7 +16,7 @@ const workspace = path.join(artifactRoot, "workspace");
 const clashHome = path.join(artifactRoot, "clash-home");
 const reportPath = path.join(artifactRoot, "storage-doctor-repair-report.json");
 const cliEntry = path.join(repoRoot, "packages", "cli", "src", "index.ts");
-const require = createRequire(import.meta.url);
+const require = createRequire(path.join(repoRoot, "packages", "cli", "package.json"));
 const tsxLoader = require.resolve("tsx");
 const checks = [];
 
@@ -325,10 +325,44 @@ async function main() {
     JSON.stringify(checkById(afterReport, "secondary-canvas-recovery")),
   );
 
+  const markerPath = path.join(workspace, ".clash", "project.toml");
+  await writeFile(
+    markerPath,
+    [
+      "schema_version = 1",
+      `project_id = ${JSON.stringify(projectId)}`,
+      'store = "managed"',
+      "",
+      "[sync]",
+      'mode = "cloud-sync"',
+      "",
+    ].join("\n"),
+    "utf8",
+  );
+  const cloudSyncStatusResult = runCli(["project", "status", "--json"]);
+  recordCheck(
+    "cloud-sync project status stays pending until sync capabilities are ready",
+    cloudSyncStatusResult.status === 0,
+    cloudSyncStatusResult.stderr || cloudSyncStatusResult.stdout,
+    { command: cloudSyncStatusResult.command },
+  );
+  const cloudSyncStatus = parseStdoutJson(cloudSyncStatusResult);
+  recordCheck(
+    "cloud-sync pending status is not web-openable",
+    cloudSyncStatus?.collaboration?.mode === "synced" &&
+      cloudSyncStatus?.collaboration?.webOpenable === false &&
+      cloudSyncStatus?.collaboration?.roomAuthority === "local" &&
+      cloudSyncStatus?.collaboration?.syncReadiness?.status === "pending" &&
+      cloudSyncStatus?.collaboration?.syncReadiness?.ready === false &&
+      cloudSyncStatus?.collaboration?.syncReadiness?.missing?.includes("room") === true &&
+      cloudSyncStatus?.collaboration?.syncReadiness?.missing?.includes("asset-metadata") === true,
+    JSON.stringify(cloudSyncStatus?.collaboration),
+  );
+
   const report = {
     schemaVersion: 1,
     status: "pass",
-    summary: "Storage doctor repair initializes agent workspace roots and local SQLite asset reference schema through public CLI commands.",
+    summary: "Storage doctor repair initializes agent workspace roots and local SQLite asset reference schema through public CLI commands, and project status keeps partial cloud-sync pending.",
     run: {
       artifactRoot,
       workspace,
@@ -336,7 +370,7 @@ async function main() {
       startedAt,
       finishedAt: now(),
     },
-    commands: [init, before, duplicate, repair, recoveryCompare, after].map((result) => ({
+    commands: [init, before, duplicate, repair, recoveryCompare, after, cloudSyncStatusResult].map((result) => ({
       command: result.command,
       status: result.status,
       stdout: result.stdout.slice(0, 2000),

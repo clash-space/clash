@@ -16,7 +16,7 @@ const artifactRoot = path.resolve(
 const workspace = path.join(artifactRoot, "workspace");
 const reportPath = path.join(artifactRoot, "agent-first-cas-report.json");
 const cliEntry = path.join(repoRoot, "packages", "cli", "src", "index.ts");
-const require = createRequire(import.meta.url);
+const require = createRequire(path.join(repoRoot, "packages", "cli", "package.json"));
 const tsxLoader = require.resolve("tsx");
 
 const checks = [];

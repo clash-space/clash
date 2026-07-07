@@ -26,6 +26,12 @@ describe("project status path builder", () => {
       multiUser: false,
       roomAuthority: "local",
       cloudProjectRoom: "disabled",
+      syncReadiness: {
+        status: "disabled",
+        ready: false,
+        required: ["canvas", "room", "asset-metadata"],
+        missing: ["canvas", "room", "asset-metadata"],
+      },
       localAgentRuntime: {
         requiredForLocalActions: true,
         availability: "owner-machine-online",
@@ -100,14 +106,24 @@ describe("project status path builder", () => {
       multiUser: false,
       roomAuthority: "local",
       cloudProjectRoom: "disabled",
+      syncReadiness: {
+        status: "disabled",
+        ready: false,
+        missing: ["canvas", "room", "asset-metadata"],
+      },
     });
     expect(cloudSync.collaboration).toMatchObject({
       mode: "synced",
       rawMode: "cloud-sync",
-      webOpenable: true,
+      webOpenable: false,
       multiUser: false,
-      roomAuthority: "local-with-cloud-mirror",
+      roomAuthority: "local",
       cloudProjectRoom: "disabled",
+      syncReadiness: {
+        status: "pending",
+        ready: false,
+        missing: ["canvas", "room", "asset-metadata"],
+      },
     });
     expect(shared.collaboration).toMatchObject({
       mode: "shared",
@@ -116,6 +132,55 @@ describe("project status path builder", () => {
       multiUser: true,
       roomAuthority: "cloud-sequencer",
       cloudProjectRoom: "sequencer",
+      syncReadiness: {
+        status: "ready",
+        ready: true,
+        missing: [],
+      },
+    });
+  });
+
+  it("keeps cloud-sync pending until canvas, room, and asset metadata sync are all ready", () => {
+    const pending = buildProjectStatus(
+      { projectId: "project-synced", source: "explicit" },
+      { clashRoot: "/tmp/clash-home", marker: { sync: { mode: "cloud-sync" } } },
+    );
+    const ready = buildProjectStatus(
+      { projectId: "project-synced", source: "explicit" },
+      {
+        clashRoot: "/tmp/clash-home",
+        marker: {
+          sync: {
+            mode: "cloud-sync",
+            capabilities: {
+              canvas: true,
+              room: true,
+              assetMetadata: true,
+            },
+          },
+        },
+      },
+    );
+
+    expect(pending.collaboration).toMatchObject({
+      mode: "synced",
+      webOpenable: false,
+      roomAuthority: "local",
+      syncReadiness: {
+        status: "pending",
+        ready: false,
+        missing: ["canvas", "room", "asset-metadata"],
+      },
+    });
+    expect(ready.collaboration).toMatchObject({
+      mode: "synced",
+      webOpenable: true,
+      roomAuthority: "local-with-cloud-mirror",
+      syncReadiness: {
+        status: "ready",
+        ready: true,
+        missing: [],
+      },
     });
   });
 });

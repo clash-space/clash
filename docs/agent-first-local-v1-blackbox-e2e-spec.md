@@ -623,13 +623,13 @@ Result:
 Latest verified storage doctor repair smoke:
 
 ```text
-.tmp/storage-doctor-repair/2026-07-06T22-52-36-663Z/storage-doctor-repair-report.json
+.tmp/storage-doctor-repair/2026-07-07T14-04-04-724Z/storage-doctor-repair-report.json
 ```
 
 Result:
 
 - `status: pass`,
-- 38 checks passed,
+- 40 checks passed,
 - `clash init`, `clash doctor storage --json`,
   failing `clash doctor storage --json` with a parseable JSON report,
   `clash doctor storage --repair --json`,
@@ -647,6 +647,9 @@ Result:
 - project status reported `collaboration.mode: local-only`,
   `webOpenable: false`, `multiUser: false`, and no cloud ProjectRoom
   sequencing,
+- a `cloud-sync` marker stayed `syncReadiness.status: pending`,
+  `webOpenable: false`, and `roomAuthority: local` until the full sync
+  capabilities are ready,
 - canonical Loro snapshot path remained protected and outside the editable
   workspace root.
 

@@ -483,6 +483,12 @@ Agents need a stable inspection payload:
     "multiUser": false,
     "roomAuthority": "local",
     "cloudProjectRoom": "disabled",
+    "syncReadiness": {
+      "status": "disabled",
+      "ready": false,
+      "required": ["canvas", "room", "asset-metadata"],
+      "missing": ["canvas", "room", "asset-metadata"]
+    },
     "localAgentRuntime": {
       "requiredForLocalActions": true,
       "availability": "owner-machine-online"
@@ -555,10 +561,12 @@ path builder. The `roots.runtime`/`runtimeRoot` field is explicit so agents do
 not need to infer the protected runtime directory by scanning `protectedPaths`.
 The `collaboration` object is the machine-readable local/cloud mode gate:
 `local`/`local-only` normalize to `local-only` and are not web-openable;
-`cloud-sync`/`synced` normalize to `synced` and may be web-openable without
-claiming shared room sequencing; only `shared` enables `cloudProjectRoom:
-"sequencer"` and `multiUser: true`. Local actions still require the owner's
-machine-local agent runtime in every mode.
+`cloud-sync`/`synced` normalize to `synced` but remain `webOpenable: false`
+with `syncReadiness.status: "pending"` until canvas, room, and asset-metadata
+sync capabilities are explicitly ready; only ready synced projects may use
+`roomAuthority: "local-with-cloud-mirror"`. Only `shared` enables
+`cloudProjectRoom: "sequencer"` and `multiUser: true`. Local actions still
+require the owner's machine-local agent runtime in every mode.
 The `storage` object is the machine-readable role contract: the workspace is
 for drafts/projections and does not own canonical snapshot/metadata; the
 canonical replica is protected SQLite + Loro state.

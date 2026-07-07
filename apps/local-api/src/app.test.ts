@@ -7643,6 +7643,12 @@ describe("local API app", () => {
         multiUser: false,
         roomAuthority: "local",
         cloudProjectRoom: "disabled",
+        syncReadiness: {
+          status: "disabled",
+          ready: false,
+          required: ["canvas", "room", "asset-metadata"],
+          missing: ["canvas", "room", "asset-metadata"],
+        },
         localAgentRuntime: {
           requiredForLocalActions: true,
           availability: "owner-machine-online",
@@ -7692,7 +7698,7 @@ describe("local API app", () => {
     expect(missing.status).toBe(404);
   });
 
-  it("exposes synced project mode gates over HTTP without claiming shared cloud room sequencing", async () => {
+  it("keeps cloud-sync project status pending until all sync capabilities are ready", async () => {
     const app = createLocalApiApp({
       dataDir,
       userId: "local-user",
@@ -7720,10 +7726,16 @@ describe("local API app", () => {
         schemaVersion: 1,
         mode: "synced",
         rawMode: "cloud-sync",
-        webOpenable: true,
+        webOpenable: false,
         multiUser: false,
-        roomAuthority: "local-with-cloud-mirror",
+        roomAuthority: "local",
         cloudProjectRoom: "disabled",
+        syncReadiness: {
+          status: "pending",
+          ready: false,
+          required: ["canvas", "room", "asset-metadata"],
+          missing: ["canvas", "room", "asset-metadata"],
+        },
         localAgentRuntime: {
           requiredForLocalActions: true,
           availability: "owner-machine-online",

@@ -54,6 +54,12 @@ test("project status exposes agent-readable project roots and protected local fi
     multiUser: false,
     roomAuthority: "local",
     cloudProjectRoom: "disabled",
+    syncReadiness: {
+      status: "disabled",
+      ready: false,
+      required: ["canvas", "room", "asset-metadata"],
+      missing: ["canvas", "room", "asset-metadata"],
+    },
     localAgentRuntime: {
       requiredForLocalActions: true,
       availability: "owner-machine-online",
@@ -184,10 +190,16 @@ test("project status exposes explicit collaboration gates for synced and shared 
     schemaVersion: 1,
     mode: "synced",
     rawMode: "cloud-sync",
-    webOpenable: true,
+    webOpenable: false,
     multiUser: false,
-    roomAuthority: "local-with-cloud-mirror",
+    roomAuthority: "local",
     cloudProjectRoom: "disabled",
+    syncReadiness: {
+      status: "pending",
+      ready: false,
+      required: ["canvas", "room", "asset-metadata"],
+      missing: ["canvas", "room", "asset-metadata"],
+    },
     localAgentRuntime: {
       requiredForLocalActions: true,
       availability: "owner-machine-online",
@@ -201,6 +213,12 @@ test("project status exposes explicit collaboration gates for synced and shared 
     multiUser: true,
     roomAuthority: "cloud-sequencer",
     cloudProjectRoom: "sequencer",
+    syncReadiness: {
+      status: "ready",
+      ready: true,
+      required: ["canvas", "room", "asset-metadata"],
+      missing: [],
+    },
     localAgentRuntime: {
       requiredForLocalActions: true,
       availability: "owner-machine-online",

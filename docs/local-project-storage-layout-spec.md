@@ -64,9 +64,10 @@ for these current paths. It exposes the bridge workspace root
 lives under an editable workspace root unless the status payload says so.
 The `collaboration` object in the same payload is the mode gate agents and UI
 should use before offering cloud/web/shared affordances: local projects are not
-web-openable, synced projects may have a cloud mirror without shared room
-sequencing, and shared projects are the only mode that uses a cloud sequencer
-for multiplayer.
+web-openable, `cloud-sync` projects remain pending and not web-openable until
+`syncReadiness` proves canvas, room, and asset-metadata sync capabilities are
+ready, and shared projects are the only mode that uses a cloud sequencer for
+multiplayer.
 The `storage` object makes this non-inferential: `storage.workspace` is the
 agent draft/projection workspace and explicitly does not own canonical snapshot
 or metadata state; `storage.canonicalReplica` points at the machine-scoped
@@ -439,6 +440,7 @@ Local-only:
 
 Synced:
 
+- project status reports `syncReadiness.ready: true`,
 - canvas updates have a remote persistence path,
 - asset metadata and required blobs are uploaded or lazily fetchable,
 - room messages sync,

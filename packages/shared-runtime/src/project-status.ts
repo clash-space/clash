@@ -48,6 +48,14 @@ export interface ProjectStatusStorage {
 export type ProjectCollaborationMode = "local-only" | "synced" | "shared" | "unknown";
 export type ProjectRoomAuthority = "local" | "local-with-cloud-mirror" | "cloud-sequencer";
 export type ProjectCloudRoomMode = "disabled" | "sequencer";
+export type ProjectSyncReadinessStatus = "disabled" | "pending" | "ready";
+
+export interface ProjectSyncReadiness {
+  status: ProjectSyncReadinessStatus;
+  ready: boolean;
+  required: string[];
+  missing: string[];
+}
 
 export interface ProjectStatusCollaboration {
   schemaVersion: 1;
@@ -57,6 +65,7 @@ export interface ProjectStatusCollaboration {
   multiUser: boolean;
   roomAuthority: ProjectRoomAuthority;
   cloudProjectRoom: ProjectCloudRoomMode;
+  syncReadiness: ProjectSyncReadiness;
   localAgentRuntime: {
     requiredForLocalActions: true;
     availability: "owner-machine-online";
@@ -126,7 +135,7 @@ export function buildProjectStatus(
     typeof options.marker?.sync?.mode === "string"
       ? options.marker.sync.mode
       : "unknown";
-  const collaboration = projectCollaborationStatus(mode);
+  const collaboration = projectCollaborationStatus(mode, options.marker?.sync);
   const localSqlitePath = joinPath(localApiDataDir, "local.sqlite");
   const legacyDbJsonPath = joinPath(localApiDataDir, "db.json");
   const loroReplicaRoot = joinPath(localApiProjectRoot, "loro");
@@ -221,27 +230,78 @@ export function projectIdPathSegment(id: string): string {
   return encoded || "_default";
 }
 
-export function projectCollaborationStatus(rawMode: unknown): ProjectStatusCollaboration {
+export function projectCollaborationStatus(
+  rawMode: unknown,
+  sync: Record<string, unknown> | undefined = undefined,
+): ProjectStatusCollaboration {
   const raw = typeof rawMode === "string" && rawMode.trim() ? rawMode.trim() : "unknown";
   const normalized = normalizeCollaborationMode(raw);
+  const syncReadiness = projectSyncReadiness(normalized, sync);
+  const webOpenable = normalized === "shared" || (normalized === "synced" && syncReadiness.ready);
   return {
     schemaVersion: 1,
     mode: normalized,
     rawMode: raw,
-    webOpenable: normalized === "synced" || normalized === "shared",
+    webOpenable,
     multiUser: normalized === "shared",
     roomAuthority:
       normalized === "shared"
         ? "cloud-sequencer"
-        : normalized === "synced"
+        : normalized === "synced" && syncReadiness.ready
           ? "local-with-cloud-mirror"
           : "local",
     cloudProjectRoom: normalized === "shared" ? "sequencer" : "disabled",
+    syncReadiness,
     localAgentRuntime: {
       requiredForLocalActions: true,
       availability: "owner-machine-online",
     },
   };
+}
+
+const CLOUD_SYNC_REQUIREMENTS = ["canvas", "room", "asset-metadata"];
+
+function projectSyncReadiness(
+  mode: ProjectCollaborationMode,
+  sync: Record<string, unknown> | undefined,
+): ProjectSyncReadiness {
+  if (mode === "shared") {
+    return {
+      status: "ready",
+      ready: true,
+      required: CLOUD_SYNC_REQUIREMENTS,
+      missing: [],
+    };
+  }
+  if (mode !== "synced") {
+    return {
+      status: "disabled",
+      ready: false,
+      required: CLOUD_SYNC_REQUIREMENTS,
+      missing: CLOUD_SYNC_REQUIREMENTS,
+    };
+  }
+
+  const capabilities = sync && typeof sync.capabilities === "object" && sync.capabilities !== null
+    ? sync.capabilities as Record<string, unknown>
+    : {};
+  const missing = CLOUD_SYNC_REQUIREMENTS.filter((requirement) =>
+    !syncCapabilityReady(capabilities, requirement)
+  );
+  return {
+    status: missing.length === 0 ? "ready" : "pending",
+    ready: missing.length === 0,
+    required: CLOUD_SYNC_REQUIREMENTS,
+    missing,
+  };
+}
+
+function syncCapabilityReady(capabilities: Record<string, unknown>, requirement: string): boolean {
+  if (capabilities[requirement] === true) return true;
+  if (requirement === "asset-metadata") {
+    return capabilities.assetMetadata === true || capabilities.asset_metadata === true;
+  }
+  return false;
 }
 
 function joinPath(...segments: string[]): string {
