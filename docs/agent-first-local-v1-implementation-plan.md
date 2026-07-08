@@ -500,7 +500,10 @@ Current status:
 - `clash doctor storage-recovery list --json` exposes the quarantined recovery
   manifest inventory for review only after current-project recovery-root,
   same-set destination-path, and symlink/non-regular-file checks pass, otherwise
-  returning invalid entries. `clash doctor storage-recovery compare --manifest
+  returning invalid entries. It also exposes prior restore receipt summaries
+  found under each recovery set after regular-file and realpath containment
+  checks, so restarted agents can review explicit promotions without direct
+  protected-path discovery. `clash doctor storage-recovery compare --manifest
   ... --json` compares one manifest against canonical replica paths with
   size/hash evidence while keeping automatic import disabled; compare is
   constrained to the current project's protected recovery root, matching

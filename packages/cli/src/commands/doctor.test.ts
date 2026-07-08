@@ -754,6 +754,87 @@ test("secondary canvas recovery list reports quarantined manifests for review", 
   );
 });
 
+test("secondary canvas recovery list reports prior restore receipts for review", async () => {
+  const homeDir = await tempDir();
+  const cwd = await tempDir();
+  await initProject({ cwd, projectId: "doctor_project" });
+  const snapshotPath = join(cwd, "loro", "snapshot.bin");
+  const updatesPath = join(cwd, "loro", "updates.log");
+  await mkdir(join(cwd, "loro"), { recursive: true });
+  await writeFile(snapshotPath, "draft snapshot", "utf8");
+  await writeFile(updatesPath, "draft updates", "utf8");
+
+  const repaired = await runStorageDoctor({ cwd, env: {}, homeDir, repair: true });
+  const quarantined = repaired.repairs?.filter((repair) => repair.id === "secondary-canvas-replica-quarantine") ?? [];
+  const manifestPath = join(quarantined[0].path ? join(quarantined[0].path, "..", "..") : "", "manifest.json");
+  const compared = await compareSecondaryCanvasRecovery({ manifestPath, cwd, env: {}, homeDir });
+  const restored = await restoreSecondaryCanvasRecovery({
+    manifestPath,
+    cwd,
+    env: {},
+    homeDir,
+    expectedReadToken: compared.readToken,
+    confirm: true,
+  });
+
+  const inventory = await listSecondaryCanvasRecoveries({ cwd, env: {}, homeDir });
+
+  assert.equal(inventory.invalidEntries.length, 0);
+  assert.equal(inventory.sets.length, 1);
+  assert.equal(inventory.sets[0].manifestPath, manifestPath);
+  const receipts = inventory.sets[0].restoreReceipts;
+  assert.equal(receipts.length, 1);
+  assert.equal(receipts[0].receiptPath, restored.receiptPath);
+  assert.equal(receipts[0].status, "restored");
+  assert.equal(receipts[0].projectId, "doctor_project");
+  assert.equal(receipts[0].expectedReadToken, compared.readToken);
+  assert.equal(receipts[0].beforeReadToken, restored.beforeReadToken);
+  assert.equal(receipts[0].afterReadToken, restored.afterReadToken);
+  assert.equal(receipts[0].fileCount, 2);
+});
+
+test("secondary canvas recovery list reports symlinked restore receipt roots as invalid inventory", async () => {
+  const homeDir = await tempDir();
+  const cwd = await tempDir();
+  await initProject({ cwd, projectId: "doctor_project" });
+  const status = buildProjectStatus(
+    { projectId: "doctor_project", source: "marker", markerPath: join(cwd, ".clash", "project.toml") },
+    { homeDir },
+  );
+  const recoverySetRoot = join(status.roots.runtime, "recovery", "secondary-canvas-replicas", "manual");
+  const manifestPath = join(recoverySetRoot, "manifest.json");
+  await mkdir(recoverySetRoot, { recursive: true });
+  await writeFile(
+    manifestPath,
+    JSON.stringify({
+      schemaVersion: 1,
+      projectId: "doctor_project",
+      createdAt: new Date().toISOString(),
+      canonicalReplica: {
+        replicaRoot: status.loro.replicaRoot,
+        snapshotPath: status.loro.snapshotPath,
+        updatesLogPath: status.loro.updatesLogPath,
+      },
+      files: [],
+    }),
+    "utf8",
+  );
+  const externalReceiptRoot = await tempDir();
+  const receiptRoot = join(recoverySetRoot, "canonical-before-restore");
+  await symlink(externalReceiptRoot, receiptRoot);
+
+  const inventory = await listSecondaryCanvasRecoveries({ cwd, env: {}, homeDir });
+
+  assert.equal(inventory.sets.length, 1);
+  assert.equal(inventory.sets[0].restoreReceipts.length, 0);
+  assert.ok(
+    inventory.invalidEntries.some((entry) =>
+      entry.path === receiptRoot &&
+      /outside recovery set root/.test(entry.error)
+    ),
+  );
+});
+
 test("secondary canvas recovery list reports symlinked manifests as invalid inventory", async () => {
   const homeDir = await tempDir();
   const cwd = await tempDir();

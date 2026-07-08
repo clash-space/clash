@@ -104,12 +104,25 @@ export interface SecondaryCanvasRecoveryRestoreReport {
   files: SecondaryCanvasRecoveryRestoreFile[];
 }
 
+export interface SecondaryCanvasRecoveryRestoreReceiptSummary {
+  receiptPath: string;
+  createdAt: string;
+  status: "restored";
+  projectId: string;
+  manifestPath: string;
+  expectedReadToken: string;
+  beforeReadToken: string;
+  afterReadToken: string;
+  fileCount: number;
+}
+
 export interface SecondaryCanvasRecoveryInventorySet {
   manifestPath: string;
   createdAt: string;
   canonicalReplica: SecondaryCanvasReplicaManifest["canonicalReplica"];
   fileCount: number;
   files: SecondaryCanvasReplicaManifest["files"];
+  restoreReceipts: SecondaryCanvasRecoveryRestoreReceiptSummary[];
 }
 
 export interface SecondaryCanvasRecoveryInvalidEntry {
@@ -1006,12 +1019,19 @@ async function collectSecondaryCanvasRecoveryInventory(status: ProjectStatus): P
           throw new Error(`Secondary canvas recovery file destination is outside recovery set root: ${destinationPath}`);
         }
       }
+      const receiptInventory = await collectSecondaryCanvasRecoveryRestoreReceipts({
+        recoverySetRoot,
+        manifestPath,
+        projectId: status.projectId,
+      });
+      invalidEntries.push(...receiptInventory.invalidEntries);
       sets.push({
         manifestPath,
         createdAt: manifest.createdAt,
         canonicalReplica: manifest.canonicalReplica,
         fileCount: manifest.files.length,
         files: manifest.files,
+        restoreReceipts: receiptInventory.restoreReceipts,
       });
     } catch (error) {
       invalidEntries.push({
@@ -1028,6 +1048,137 @@ async function collectSecondaryCanvasRecoveryInventory(status: ProjectStatus): P
     recoveryRoot,
     sets,
     invalidEntries,
+  };
+}
+
+async function collectSecondaryCanvasRecoveryRestoreReceipts(options: {
+  recoverySetRoot: string;
+  manifestPath: string;
+  projectId: string;
+}): Promise<{
+  restoreReceipts: SecondaryCanvasRecoveryRestoreReceiptSummary[];
+  invalidEntries: SecondaryCanvasRecoveryInvalidEntry[];
+}> {
+  const receiptsRoot = join(options.recoverySetRoot, "canonical-before-restore");
+  const restoreReceipts: SecondaryCanvasRecoveryRestoreReceiptSummary[] = [];
+  const invalidEntries: SecondaryCanvasRecoveryInvalidEntry[] = [];
+
+  try {
+    const receiptsRootInfo = await lstat(receiptsRoot);
+    if (receiptsRootInfo.isSymbolicLink() && !(await realPathIsSameOrInside(receiptsRoot, options.recoverySetRoot))) {
+      invalidEntries.push({
+        path: receiptsRoot,
+        error: `Secondary canvas recovery restore receipt root is outside recovery set root: ${receiptsRoot}`,
+      });
+      return { restoreReceipts, invalidEntries };
+    }
+    if (!receiptsRootInfo.isDirectory()) {
+      invalidEntries.push({
+        path: receiptsRoot,
+        error: `Secondary canvas recovery restore receipt root must be a directory inside recovery set root: ${receiptsRoot}`,
+      });
+      return { restoreReceipts, invalidEntries };
+    }
+    if (!(await realPathIsSameOrInside(receiptsRoot, options.recoverySetRoot))) {
+      invalidEntries.push({
+        path: receiptsRoot,
+        error: `Secondary canvas recovery restore receipt root is outside recovery set root: ${receiptsRoot}`,
+      });
+      return { restoreReceipts, invalidEntries };
+    }
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+      return { restoreReceipts, invalidEntries };
+    }
+    throw error;
+  }
+
+  let entries: Dirent<string>[];
+  try {
+    entries = await readdir(receiptsRoot, { withFileTypes: true });
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+      return { restoreReceipts, invalidEntries };
+    }
+    throw error;
+  }
+
+  for (const entry of entries) {
+    if (!entry.isDirectory()) continue;
+    const receiptPath = join(receiptsRoot, entry.name, "restore-receipt.json");
+    try {
+      await assertRegularFile(
+        receiptPath,
+        `Secondary canvas recovery restore receipt must be a regular file inside recovery set root: ${receiptPath}`,
+      );
+      if (!(await realPathIsSameOrInside(receiptPath, options.recoverySetRoot))) {
+        throw new Error(`Secondary canvas recovery restore receipt is outside recovery set root: ${receiptPath}`);
+      }
+      restoreReceipts.push(parseSecondaryCanvasRecoveryRestoreReceiptSummary({
+        input: JSON.parse(await readFile(receiptPath, "utf8")),
+        receiptPath,
+        createdAt: entry.name,
+        manifestPath: options.manifestPath,
+        projectId: options.projectId,
+      }));
+    } catch (error) {
+      invalidEntries.push({
+        path: receiptPath,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  restoreReceipts.sort((a, b) => b.createdAt.localeCompare(a.createdAt) || a.receiptPath.localeCompare(b.receiptPath));
+  invalidEntries.sort((a, b) => a.path.localeCompare(b.path));
+  return { restoreReceipts, invalidEntries };
+}
+
+function parseSecondaryCanvasRecoveryRestoreReceiptSummary(options: {
+  input: unknown;
+  receiptPath: string;
+  createdAt: string;
+  manifestPath: string;
+  projectId: string;
+}): SecondaryCanvasRecoveryRestoreReceiptSummary {
+  const { input, receiptPath, createdAt, manifestPath, projectId } = options;
+  if (!input || typeof input !== "object") {
+    throw new Error(`Invalid secondary canvas recovery restore receipt at ${receiptPath}: expected object`);
+  }
+  const record = input as Record<string, unknown>;
+  const files = Array.isArray(record.files) ? record.files : null;
+  if (
+    record.schemaVersion !== 1 ||
+    record.status !== "restored" ||
+    typeof record.projectId !== "string" ||
+    typeof record.manifestPath !== "string" ||
+    typeof record.expectedReadToken !== "string" ||
+    typeof record.beforeReadToken !== "string" ||
+    typeof record.afterReadToken !== "string" ||
+    !files
+  ) {
+    throw new Error(`Invalid secondary canvas recovery restore receipt at ${receiptPath}`);
+  }
+  if (record.projectId !== projectId) {
+    throw new Error(`Secondary canvas recovery restore receipt project ${record.projectId} does not match current project ${projectId}`);
+  }
+  if (resolve(record.manifestPath) !== resolve(manifestPath)) {
+    throw new Error(`Secondary canvas recovery restore receipt manifest ${record.manifestPath} does not match recovery manifest ${manifestPath}`);
+  }
+  if (typeof record.receiptPath === "string" && resolve(record.receiptPath) !== resolve(receiptPath)) {
+    throw new Error(`Secondary canvas recovery restore receipt path ${record.receiptPath} does not match inventory path ${receiptPath}`);
+  }
+
+  return {
+    receiptPath,
+    createdAt,
+    status: "restored",
+    projectId: record.projectId,
+    manifestPath: record.manifestPath,
+    expectedReadToken: record.expectedReadToken,
+    beforeReadToken: record.beforeReadToken,
+    afterReadToken: record.afterReadToken,
+    fileCount: files.length,
   };
 }
 

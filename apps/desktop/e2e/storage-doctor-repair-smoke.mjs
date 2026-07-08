@@ -448,6 +448,30 @@ async function main() {
       receipt: recoveryRestoreReceipt,
     }),
   );
+  const recoveryListAfterRestore = runCli(["doctor", "storage-recovery", "list", "--json"]);
+  recordCheck(
+    "doctor storage recovery list after restore command succeeds",
+    recoveryListAfterRestore.status === 0,
+    recoveryListAfterRestore.stderr || recoveryListAfterRestore.stdout,
+    { command: recoveryListAfterRestore.command },
+  );
+  const recoveryListAfterRestoreReport = parseStdoutJson(recoveryListAfterRestore);
+  const restoredSet = recoveryListAfterRestoreReport.sets?.find((set) => set.manifestPath === manifestPath);
+  const restoredReceipt = restoredSet?.restoreReceipts?.find((receipt) => receipt.receiptPath === recoveryRestoreReceiptPath);
+  recordCheck(
+    "doctor storage recovery list exposes prior restore receipts",
+    restoredReceipt?.status === "restored" &&
+      restoredReceipt?.projectId === projectId &&
+      restoredReceipt?.manifestPath === manifestPath &&
+      restoredReceipt?.expectedReadToken === recoveryCompareReport.readToken &&
+      restoredReceipt?.beforeReadToken === recoveryRestoreReport.beforeReadToken &&
+      restoredReceipt?.afterReadToken === recoveryRestoreReport.afterReadToken &&
+      restoredReceipt?.fileCount === 2,
+    JSON.stringify({
+      set: restoredSet,
+      receiptPath: recoveryRestoreReceiptPath,
+    }),
+  );
   const staleAfterRestore = runCli([
     "doctor",
     "storage-recovery",

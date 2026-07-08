@@ -683,13 +683,13 @@ Result:
 Latest verified storage doctor repair smoke:
 
 ```text
-.tmp/storage-doctor-repair/2026-07-08T07-04-32-378Z/storage-doctor-repair-report.json
+.tmp/storage-doctor-repair/2026-07-08T07-14-38-457Z/storage-doctor-repair-report.json
 ```
 
 Result:
 
 - `status: pass`,
-- 64 checks passed,
+- 66 checks passed,
 - `clash init`, `clash doctor storage --json`,
   failing `clash doctor storage --json` with a parseable JSON report,
   `clash doctor storage --repair --json`,
@@ -718,6 +718,8 @@ Result:
   recovery set's `canonical-before-restore/` directory with project id,
   manifest path, expected/before/after read tokens, restored file evidence, and
   post-restore canonical hashes,
+- recovery list after restore exposed the prior restore receipt summary without
+  requiring agents to discover the protected receipt path directly,
 - recovery compare rejected a valid-looking manifest outside the current
   project's protected recovery root,
 - recovery list and doctor storage reported invalid manifest inventory instead

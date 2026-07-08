@@ -568,7 +568,11 @@ manifest containment checks as compare before treating a recovery set as valid:
 the manifest must be a real file under the current project's protected recovery
 root and every quarantined file path must stay inside that recovery set without
 symlink indirection. Invalid entries are reported separately instead of being
-blessed as recovery sets. `storage-recovery compare` is read-only evidence
+blessed as recovery sets. List also exposes local `restoreReceipts` summaries
+for successful restores found under the recovery set's
+`canonical-before-restore/` directory, after applying the same regular-file and
+realpath containment checks, so agents can review prior explicit promotions
+without scanning protected internals directly. `storage-recovery compare` is read-only evidence
 tooling for one manifest: it reports quarantined and canonical file existence,
 size, and hash. Compare is bound to the current project status: the manifest
 must be the real `manifest.json` under that project's protected runtime recovery
