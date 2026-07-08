@@ -128,7 +128,7 @@ structured columns such as asset metadata, asset sources, and message events.
 The metadata/provider schema bootstraps upgrade old partial core metadata,
 asset/text/timeline projection tables, and provider/OAuth tables before
 local-api route reads or writes, while storage doctor validates and repairs the
-same provider/OAuth table shape without inspecting secret values. A partially
+  same provider/OAuth table/key shape without inspecting secret values. A partially
 initialized `local.sqlite` therefore does not require a separate doctor repair
 before the API can restart for core metadata or provider auth reads.
 `GET /api/v1/agents` now returns derived built-in local agents without inserting

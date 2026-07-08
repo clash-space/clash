@@ -383,8 +383,8 @@ Assertions:
 - `clash doctor storage --repair --json` reports explicit repair actions,
 - editable roots exist for drafts, projections, sessions, and asset links,
 - protected runtime root exists but remains protected,
-- local SQLite exists and reports the core metadata, provider auth, and
-  projection schema as ready,
+- local SQLite exists and reports the core metadata, provider auth table/key,
+  and projection schema as ready,
 - project status collaboration mode is `local-only`, not web-openable, not
   multi-user, and does not claim cloud ProjectRoom sequencing,
 - local project action gates deny `openInWeb`/`shareProject` with
@@ -682,13 +682,13 @@ Result:
 Latest verified storage doctor repair smoke:
 
 ```text
-.tmp/storage-doctor-repair/2026-07-08T06-19-10-264Z/storage-doctor-repair-report.json
+.tmp/storage-doctor-repair/2026-07-08T06-35-43-246Z/storage-doctor-repair-report.json
 ```
 
 Result:
 
 - `status: pass`,
-- 54 checks passed,
+- 58 checks passed,
 - `clash init`, `clash doctor storage --json`,
   failing `clash doctor storage --json` with a parseable JSON report,
   `clash doctor storage --repair --json`,
@@ -696,9 +696,9 @@ Result:
   successful and rejected
   `clash doctor storage-recovery compare --manifest ... --json` calls, and
   follow-up read-only doctor commands produced the expected exit codes,
-- workspace roots and local SQLite core metadata tables, provider auth tables,
-  plus asset/text/timeline projection indexes were repaired through public CLI
-  commands,
+- workspace roots and local SQLite core metadata tables, provider auth
+  tables/primary keys, plus asset/text/timeline projection indexes were
+  repaired through public CLI commands,
 - a hash-valid writable text revision blob was repaired back to read-only
   permissions through the public `doctor storage --repair --json` path,
 - doctor detected a cwd secondary canvas replica before repair, then
@@ -797,7 +797,8 @@ Current status:
   restored project paths.
 - `clash doctor storage --json` now has first-pass read-only path checks, and
   `clash doctor storage --repair` can initialize missing workspace roots plus
-  the local SQLite core metadata, provider auth, and projection schema.
+  the local SQLite core metadata, provider auth table/key, and projection
+  schema.
 - Direct real Codex E2E now asserts the happy-path workspace roots; the broader
   black-box runner still needs to assert doctor warnings/errors for protected
   cwd, missing replica, and legacy `db.json`.

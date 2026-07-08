@@ -77,7 +77,7 @@ applied bodies therefore have Obsidian-like file recoverability through content
 descriptors, without making the protected canonical store a directly editable
 vault.
 `clash doctor storage --json` verifies this role contract and warns when local
-SQLite is missing core metadata tables, provider auth tables, or the
+SQLite is missing core metadata tables, provider auth tables/primary keys, or the
 `asset_refs`, `asset_node_refs` / `reference_role`, `text_revisions`, or
 `timeline_revisions` projection indexes required for host-readable projects,
 assets, sessions, provider accounts, OAuth rows, room messages, mutation audit,
@@ -593,7 +593,7 @@ Neither command imports or applies recovered Loro bytes automatically.
 8. Add storage doctor checks for:
    - multiple snapshots for one project (`secondary-canvas-replica` first pass),
    - broken asset links,
-   - missing local SQLite core metadata tables, provider auth tables, and
+   - missing local SQLite core metadata tables, provider auth tables/primary keys, and
      projection indexes for asset references and text/timeline revisions,
    - unexpected writes in protected directories,
    - missing project marker,
@@ -602,7 +602,7 @@ Neither command imports or applies recovered Loro bytes automatically.
    - create the standard agent workspace roots (`drafts/`,
      `projections/{text,timelines,storyboards,prompts,metadata}/`,
      `sessions/`, `assets/links/`, and protected `runtime/`),
-   - ensure the local SQLite core metadata tables, provider auth tables, plus
+   - ensure the local SQLite core metadata tables, provider auth tables/primary keys, plus
      `asset_refs`, `asset_node_refs`, `text_revisions`, and
      `timeline_revisions` lookup indexes exist,
    - restore read-only permissions on hash-valid text/timeline revision blob

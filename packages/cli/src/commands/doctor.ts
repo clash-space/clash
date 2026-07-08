@@ -1552,6 +1552,178 @@ function ensureSqliteColumn(db: SqliteDatabase, table: string, columnDefinition:
   }
 }
 
+function sqlitePrimaryKeyColumns(db: SqliteDatabase, table: string): string[] {
+  return db.prepare(`PRAGMA table_info(${table})`).all()
+    .map((row) => ({
+      name: typeof row.name === "string" ? row.name : "",
+      pk: typeof row.pk === "number" ? row.pk : 0,
+    }))
+    .filter((row) => row.name && row.pk > 0)
+    .sort((a, b) => a.pk - b.pk)
+    .map((row) => row.name);
+}
+
+function hasSqlitePrimaryKey(db: SqliteDatabase, table: string, expectedColumns: string[]): boolean {
+  const actual = sqlitePrimaryKeyColumns(db, table);
+  return actual.length === expectedColumns.length && actual.every((column, index) => column === expectedColumns[index]);
+}
+
+function rebuildSqliteTableIfPrimaryKeyDiffers(
+  db: SqliteDatabase,
+  table: string,
+  expectedPrimaryKey: string[],
+  columns: string[],
+  createTableSql: (tableName: string) => string,
+): void {
+  if (hasSqlitePrimaryKey(db, table, expectedPrimaryKey)) return;
+  const tempTable = `${table}__schema_upgrade`;
+  const columnList = columns.join(", ");
+  db.exec(`
+    DROP TABLE IF EXISTS ${tempTable};
+    ${createTableSql(tempTable)}
+    INSERT OR IGNORE INTO ${tempTable} (${columnList})
+      SELECT ${columnList} FROM ${table};
+    DROP TABLE ${table};
+    ALTER TABLE ${tempTable} RENAME TO ${table};
+  `);
+}
+
+function providerAccountsTableSql(tableName: string): string {
+  return `
+    CREATE TABLE ${tableName} (
+      user_id TEXT NOT NULL,
+      account_key TEXT NOT NULL,
+      id TEXT,
+      provider_id TEXT NOT NULL,
+      upstream_id TEXT,
+      region TEXT,
+      label TEXT,
+      enabled INTEGER NOT NULL,
+      priority REAL,
+      weight REAL,
+      created_at TEXT,
+      updated_at TEXT,
+      PRIMARY KEY (user_id, account_key)
+    );
+  `;
+}
+
+function providerAccountCredentialsTableSql(tableName: string): string {
+  return `
+    CREATE TABLE ${tableName} (
+      user_id TEXT NOT NULL,
+      account_key TEXT NOT NULL,
+      credential_key TEXT NOT NULL,
+      credential_value TEXT NOT NULL,
+      PRIMARY KEY (user_id, account_key, credential_key)
+    );
+  `;
+}
+
+function providerAccountSupportedModelsTableSql(tableName: string): string {
+  return `
+    CREATE TABLE ${tableName} (
+      user_id TEXT NOT NULL,
+      account_key TEXT NOT NULL,
+      model_id TEXT NOT NULL,
+      position INTEGER NOT NULL,
+      PRIMARY KEY (user_id, account_key, model_id)
+    );
+  `;
+}
+
+function providerAccountModelPrioritiesTableSql(tableName: string): string {
+  return `
+    CREATE TABLE ${tableName} (
+      user_id TEXT NOT NULL,
+      account_key TEXT NOT NULL,
+      model_id TEXT NOT NULL,
+      priority REAL NOT NULL,
+      PRIMARY KEY (user_id, account_key, model_id)
+    );
+  `;
+}
+
+function providerOAuthTableSql(tableName: string): string {
+  return `
+    CREATE TABLE ${tableName} (
+      user_id TEXT NOT NULL,
+      provider_id TEXT NOT NULL,
+      account_id TEXT NOT NULL DEFAULT '',
+      status TEXT NOT NULL,
+      access_token TEXT,
+      refresh_token TEXT,
+      token_type TEXT,
+      verification_uri TEXT,
+      user_code TEXT,
+      device_code TEXT,
+      interval_seconds INTEGER,
+      account_label TEXT,
+      expires_at TEXT,
+      error TEXT,
+      created_at TEXT,
+      updated_at TEXT,
+      PRIMARY KEY (user_id, provider_id, account_id)
+    );
+  `;
+}
+
+function repairProviderAuthPrimaryKeys(db: SqliteDatabase): void {
+  rebuildSqliteTableIfPrimaryKeyDiffers(db, "provider_accounts", ["user_id", "account_key"], [
+    "user_id",
+    "account_key",
+    "id",
+    "provider_id",
+    "upstream_id",
+    "region",
+    "label",
+    "enabled",
+    "priority",
+    "weight",
+    "created_at",
+    "updated_at",
+  ], providerAccountsTableSql);
+  rebuildSqliteTableIfPrimaryKeyDiffers(
+    db,
+    "provider_account_credentials",
+    ["user_id", "account_key", "credential_key"],
+    ["user_id", "account_key", "credential_key", "credential_value"],
+    providerAccountCredentialsTableSql,
+  );
+  rebuildSqliteTableIfPrimaryKeyDiffers(
+    db,
+    "provider_account_supported_models",
+    ["user_id", "account_key", "model_id"],
+    ["user_id", "account_key", "model_id", "position"],
+    providerAccountSupportedModelsTableSql,
+  );
+  rebuildSqliteTableIfPrimaryKeyDiffers(
+    db,
+    "provider_account_model_priorities",
+    ["user_id", "account_key", "model_id"],
+    ["user_id", "account_key", "model_id", "priority"],
+    providerAccountModelPrioritiesTableSql,
+  );
+  rebuildSqliteTableIfPrimaryKeyDiffers(db, "provider_oauth", ["user_id", "provider_id", "account_id"], [
+    "user_id",
+    "provider_id",
+    "account_id",
+    "status",
+    "access_token",
+    "refresh_token",
+    "token_type",
+    "verification_uri",
+    "user_code",
+    "device_code",
+    "interval_seconds",
+    "account_label",
+    "expires_at",
+    "error",
+    "created_at",
+    "updated_at",
+  ], providerOAuthTableSql);
+}
+
 function ensureLocalSqliteProviderAuthSchema(db: SqliteDatabase): void {
   db.exec(`
     CREATE TABLE IF NOT EXISTS provider_accounts (
@@ -1669,6 +1841,7 @@ function ensureLocalSqliteProviderAuthSchema(db: SqliteDatabase): void {
   ]) {
     ensureSqliteColumn(db, "provider_oauth", column);
   }
+  repairProviderAuthPrimaryKeys(db);
 }
 
 async function inspectLocalSqliteSchema(sqlitePath: string): Promise<StorageDoctorCheck> {
@@ -1833,6 +2006,7 @@ async function inspectLocalSqliteSchema(sqlitePath: string): Promise<StorageDoct
     });
     inspectSqliteTableSchema(db, problems, {
       table: "provider_accounts",
+      primaryKey: ["user_id", "account_key"],
       columns: [
         "user_id",
         "account_key",
@@ -1851,21 +2025,25 @@ async function inspectLocalSqliteSchema(sqlitePath: string): Promise<StorageDoct
     });
     inspectSqliteTableSchema(db, problems, {
       table: "provider_account_credentials",
+      primaryKey: ["user_id", "account_key", "credential_key"],
       columns: ["user_id", "account_key", "credential_key", "credential_value"],
       indexes: [],
     });
     inspectSqliteTableSchema(db, problems, {
       table: "provider_account_supported_models",
+      primaryKey: ["user_id", "account_key", "model_id"],
       columns: ["user_id", "account_key", "model_id", "position"],
       indexes: [],
     });
     inspectSqliteTableSchema(db, problems, {
       table: "provider_account_model_priorities",
+      primaryKey: ["user_id", "account_key", "model_id"],
       columns: ["user_id", "account_key", "model_id", "priority"],
       indexes: [],
     });
     inspectSqliteTableSchema(db, problems, {
       table: "provider_oauth",
+      primaryKey: ["user_id", "provider_id", "account_id"],
       columns: [
         "user_id",
         "provider_id",
@@ -1917,6 +2095,7 @@ function inspectSqliteTableSchema(
   problems: string[],
   options: {
     table: string;
+    primaryKey?: string[];
     columns: string[];
     indexes: string[];
   },
@@ -1938,6 +2117,9 @@ function inspectSqliteTableSchema(
   );
   for (const column of options.columns) {
     if (!columns.has(column)) problems.push(`missing ${options.table}.${column} column`);
+  }
+  if (options.primaryKey && !hasSqlitePrimaryKey(db, options.table, options.primaryKey)) {
+    problems.push(`invalid ${options.table} primary key; expected (${options.primaryKey.join(", ")})`);
   }
   for (const index of options.indexes) {
     if (!indexNames.has(index)) problems.push(`missing ${index} index`);

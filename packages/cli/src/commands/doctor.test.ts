@@ -90,6 +90,49 @@ function createRevisionIndexSchema(sqlite: ReturnType<typeof openSqlite>): void 
   `);
 }
 
+function recreateProviderAuthTablesWithLegacyPrimaryKeys(sqlite: ReturnType<typeof openSqlite>): void {
+  sqlite.exec(`
+    DROP TABLE IF EXISTS provider_accounts;
+    DROP TABLE IF EXISTS provider_oauth;
+
+    CREATE TABLE provider_accounts (
+      user_id TEXT NOT NULL,
+      account_key TEXT NOT NULL,
+      id TEXT,
+      provider_id TEXT NOT NULL,
+      upstream_id TEXT,
+      region TEXT,
+      label TEXT,
+      enabled INTEGER NOT NULL,
+      priority REAL,
+      weight REAL,
+      created_at TEXT,
+      updated_at TEXT,
+      PRIMARY KEY (user_id, provider_id)
+    );
+
+    CREATE TABLE provider_oauth (
+      user_id TEXT NOT NULL,
+      provider_id TEXT NOT NULL,
+      account_id TEXT NOT NULL DEFAULT '',
+      status TEXT NOT NULL,
+      access_token TEXT,
+      refresh_token TEXT,
+      token_type TEXT,
+      verification_uri TEXT,
+      user_code TEXT,
+      device_code TEXT,
+      interval_seconds INTEGER,
+      account_label TEXT,
+      expires_at TEXT,
+      error TEXT,
+      created_at TEXT,
+      updated_at TEXT,
+      PRIMARY KEY (user_id, provider_id)
+    );
+  `);
+}
+
 function textRevisionBlobPath(homeDir: string, content: string): string {
   const hash = createHash("sha256").update(content).digest("hex").slice(0, 16);
   return join(homeDir, ".clash", "local-api", "text-revision-blobs", hash.slice(0, 2), `${hash}.md`);
@@ -1037,6 +1080,28 @@ test("storage doctor warns when local SQLite lacks provider auth tables", async 
   assert.match(schemaCheck.message, /provider_oauth/);
 });
 
+test("storage doctor warns when provider auth primary keys cannot support multi-account rows", async () => {
+  const homeDir = await tempDir();
+  const cwd = await tempDir();
+  await initProject({ cwd, projectId: "doctor_project" });
+  await runStorageDoctor({ cwd, env: {}, homeDir, repair: true });
+  const localApiDir = join(homeDir, ".clash", "local-api");
+  const sqlite = openSqlite(join(localApiDir, "local.sqlite"));
+  try {
+    recreateProviderAuthTablesWithLegacyPrimaryKeys(sqlite);
+  } finally {
+    sqlite.close();
+  }
+
+  const report = await runStorageDoctor({ cwd, env: {}, homeDir });
+
+  assert.equal(report.ok, true);
+  const schemaCheck = checkById(report, "local-sqlite-schema");
+  assert.equal(schemaCheck.level, "warning");
+  assert.match(schemaCheck.message, /provider_accounts primary key/);
+  assert.match(schemaCheck.message, /provider_oauth primary key/);
+});
+
 test("storage doctor repair creates workspace roots and fixes local SQLite asset reference schema", async () => {
   const homeDir = await tempDir();
   const cwd = await tempDir();
@@ -1196,6 +1261,48 @@ test("storage doctor repair creates provider auth SQLite tables", async () => {
         table,
       );
     }
+  } finally {
+    sqliteAfterRepair.close();
+  }
+});
+
+test("storage doctor repair fixes provider auth primary keys for multi-account rows", async () => {
+  const homeDir = await tempDir();
+  const cwd = await tempDir();
+  await initProject({ cwd, projectId: "doctor_project" });
+  await runStorageDoctor({ cwd, env: {}, homeDir, repair: true });
+  const localApiDir = join(homeDir, ".clash", "local-api");
+  const sqlite = openSqlite(join(localApiDir, "local.sqlite"));
+  try {
+    recreateProviderAuthTablesWithLegacyPrimaryKeys(sqlite);
+  } finally {
+    sqlite.close();
+  }
+
+  const repaired = await runStorageDoctor({ cwd, env: {}, homeDir, repair: true });
+
+  assert.equal(repaired.ok, true);
+  assert.equal(checkById(repaired, "local-sqlite-schema").level, "ok");
+  const sqliteAfterRepair = openSqlite(join(localApiDir, "local.sqlite"));
+  try {
+    sqliteAfterRepair.exec(`
+      INSERT INTO provider_accounts (user_id, account_key, provider_id, enabled)
+      VALUES ('local-user', 'replicate-primary', 'replicate', 1);
+      INSERT INTO provider_accounts (user_id, account_key, provider_id, enabled)
+      VALUES ('local-user', 'replicate-secondary', 'replicate', 1);
+      INSERT INTO provider_oauth (user_id, provider_id, account_id, status)
+      VALUES ('local-user', 'dreamina', 'jimeng-primary', 'authorized');
+      INSERT INTO provider_oauth (user_id, provider_id, account_id, status)
+      VALUES ('local-user', 'dreamina', 'jimeng-secondary', 'pending');
+    `);
+    assert.equal(
+      sqliteAfterRepair.prepare("SELECT COUNT(*) AS count FROM provider_accounts WHERE provider_id = 'replicate'").get()?.count,
+      2,
+    );
+    assert.equal(
+      sqliteAfterRepair.prepare("SELECT COUNT(*) AS count FROM provider_oauth WHERE provider_id = 'dreamina'").get()?.count,
+      2,
+    );
   } finally {
     sqliteAfterRepair.close();
   }

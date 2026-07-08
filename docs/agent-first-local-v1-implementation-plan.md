@@ -492,7 +492,7 @@ Current status:
   `storage.canonicalReplica` identifies the protected machine-scoped SQLite
   metadata store and Loro canvas replica.
 - `clash doctor storage --repair` creates missing workspace roots, ensures the
-  local SQLite core metadata tables, provider auth tables, plus
+  local SQLite core metadata tables, provider auth tables/primary keys, plus
   asset/text/timeline projection indexes, and quarantines secondary cwd /
   workspace `snapshot.bin` or `updates.log` files into protected runtime
   recovery with durable manifest evidence instead of treating them as project

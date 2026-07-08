@@ -115,6 +115,74 @@ function sqliteObjectsExist(sqlitePath, objects) {
   }
 }
 
+function sqlitePrimaryKeyMatches(sqlitePath, table, expectedColumns) {
+  const { DatabaseSync } = require("node:sqlite");
+  const db = new DatabaseSync(sqlitePath);
+  try {
+    const actual = db.prepare(`PRAGMA table_info(${table})`).all()
+      .map((row) => ({
+        name: typeof row.name === "string" ? row.name : "",
+        pk: typeof row.pk === "number" ? row.pk : 0,
+      }))
+      .filter((row) => row.name && row.pk > 0)
+      .sort((a, b) => a.pk - b.pk)
+      .map((row) => row.name);
+    return actual.length === expectedColumns.length &&
+      actual.every((column, index) => column === expectedColumns[index]);
+  } finally {
+    db.close();
+  }
+}
+
+function rewriteProviderAuthTablesWithLegacyPrimaryKeys(sqlitePath) {
+  const { DatabaseSync } = require("node:sqlite");
+  const db = new DatabaseSync(sqlitePath);
+  try {
+    db.exec(`
+      DROP TABLE IF EXISTS provider_accounts;
+      DROP TABLE IF EXISTS provider_oauth;
+
+      CREATE TABLE provider_accounts (
+        user_id TEXT NOT NULL,
+        account_key TEXT NOT NULL,
+        id TEXT,
+        provider_id TEXT NOT NULL,
+        upstream_id TEXT,
+        region TEXT,
+        label TEXT,
+        enabled INTEGER NOT NULL,
+        priority REAL,
+        weight REAL,
+        created_at TEXT,
+        updated_at TEXT,
+        PRIMARY KEY (user_id, provider_id)
+      );
+
+      CREATE TABLE provider_oauth (
+        user_id TEXT NOT NULL,
+        provider_id TEXT NOT NULL,
+        account_id TEXT NOT NULL DEFAULT '',
+        status TEXT NOT NULL,
+        access_token TEXT,
+        refresh_token TEXT,
+        token_type TEXT,
+        verification_uri TEXT,
+        user_code TEXT,
+        device_code TEXT,
+        interval_seconds INTEGER,
+        account_label TEXT,
+        expires_at TEXT,
+        error TEXT,
+        created_at TEXT,
+        updated_at TEXT,
+        PRIMARY KEY (user_id, provider_id)
+      );
+    `);
+  } finally {
+    db.close();
+  }
+}
+
 async function main() {
   await mkdir(workspace, { recursive: true });
   await mkdir(clashHome, { recursive: true });
@@ -457,7 +525,7 @@ async function main() {
   }
   recordCheck("local sqlite file exists after repair", await pathIsFile(status.localSqlitePath), status.localSqlitePath);
   recordCheck(
-    "local sqlite core metadata and projection indexes exist after repair",
+    "local sqlite core metadata, provider auth tables, and projection indexes exist after repair",
     sqliteObjectsExist(status.localSqlitePath, [
       { type: "table", name: "local_migration" },
       { type: "table", name: "project" },
@@ -496,6 +564,35 @@ async function main() {
       { type: "table", name: "provider_account_model_priorities" },
       { type: "table", name: "provider_oauth" },
     ]),
+    status.localSqlitePath,
+  );
+  rewriteProviderAuthTablesWithLegacyPrimaryKeys(status.localSqlitePath);
+  const legacyProviderPkDoctor = runCli(["doctor", "storage", "--json"]);
+  recordCheck(
+    "doctor storage detects legacy provider auth primary keys",
+    legacyProviderPkDoctor.status === 0,
+    legacyProviderPkDoctor.stderr || legacyProviderPkDoctor.stdout,
+    { command: legacyProviderPkDoctor.command },
+  );
+  const legacyProviderPkReport = parseStdoutJson(legacyProviderPkDoctor);
+  recordCheck(
+    "doctor legacy provider primary-key report is provider-specific",
+    checkById(legacyProviderPkReport, "local-sqlite-schema")?.level === "warning" &&
+      checkById(legacyProviderPkReport, "local-sqlite-schema")?.message?.includes("provider_accounts primary key") === true &&
+      checkById(legacyProviderPkReport, "local-sqlite-schema")?.message?.includes("provider_oauth primary key") === true,
+    JSON.stringify(checkById(legacyProviderPkReport, "local-sqlite-schema")),
+  );
+  const legacyProviderPkRepair = runCli(["doctor", "storage", "--repair", "--json"]);
+  recordCheck(
+    "doctor storage repair fixes legacy provider auth primary keys",
+    legacyProviderPkRepair.status === 0,
+    legacyProviderPkRepair.stderr || legacyProviderPkRepair.stdout,
+    { command: legacyProviderPkRepair.command },
+  );
+  recordCheck(
+    "local sqlite provider auth primary keys support multi-account rows after repair",
+    sqlitePrimaryKeyMatches(status.localSqlitePath, "provider_accounts", ["user_id", "account_key"]) &&
+      sqlitePrimaryKeyMatches(status.localSqlitePath, "provider_oauth", ["user_id", "provider_id", "account_id"]),
     status.localSqlitePath,
   );
 
@@ -629,7 +726,7 @@ async function main() {
   const report = {
     schemaVersion: 1,
     status: "pass",
-    summary: "Storage doctor repair initializes agent workspace roots plus local SQLite core metadata, provider auth, and projection index schema through public CLI commands, and project status exposes explicit local/cloud action gates.",
+    summary: "Storage doctor repair initializes agent workspace roots plus local SQLite core metadata, provider auth table/primary-key, and projection index schema through public CLI commands, and project status exposes explicit local/cloud action gates.",
     run: {
       artifactRoot,
       workspace,
@@ -642,6 +739,8 @@ async function main() {
       before,
       duplicate,
       repair,
+      legacyProviderPkDoctor,
+      legacyProviderPkRepair,
       recoveryList,
       recoveryCompare,
       externalRecoveryCompare,
