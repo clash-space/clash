@@ -7195,7 +7195,10 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
 
   app.post("/api/v1/assets/:id/references/refresh", async (c) => {
     const assetId = c.req.param("id");
-    const body = (await c.req.json().catch(() => ({}))) as { projectIds?: unknown };
+    const body = (await c.req.json().catch(() => ({}))) as { projectIds?: unknown } & ProjectWriteBody;
+    const actorClientType = optionalBodyString(body.actorClientType) ??
+      normalizeString(c.req.header("x-clash-client-type")) ??
+      normalizeString(c.req.header("x-clash-actor-client-type"));
     const requestedProjectIds = stringArray(body.projectIds);
     const protectedProjectIds = requestedProjectIds.length > 0
       ? requestedProjectIds
@@ -7224,18 +7227,24 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
         fieldPath: ref.fieldPath,
         referenceRole: ref.referenceRole,
       }));
+    const mutation = hostMutationSucceeded({
+      operation: "asset_references_refresh",
+      entity: { kind: "asset", id: assetId },
+      forced: false,
+    }, {
+      resultEntityId: assetId,
+    });
+    await db.appendMutationAudit(mutationAuditRecord({
+      mutation,
+      actorClientType,
+      reason: "asset reference refresh",
+    }));
     return c.json({
       assetId,
       refreshed: true,
       protectedProjectIds,
       references,
-      mutation: hostMutationSucceeded({
-        operation: "asset_references_refresh",
-        entity: { kind: "asset", id: assetId },
-        forced: false,
-      }, {
-        resultEntityId: assetId,
-      }),
+      mutation,
     });
   });
 

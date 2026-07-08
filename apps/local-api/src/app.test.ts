@@ -3389,7 +3389,7 @@ describe("local API app", () => {
 
     const refresh = await app.request(`/api/v1/assets/${encodeURIComponent(assetId)}/references/refresh`, {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: { "content-type": "application/json", "x-clash-client-type": "agent" },
       body: JSON.stringify({ projectIds: [projectId] }),
     });
 
@@ -3416,6 +3416,23 @@ describe("local API app", () => {
         accepted: true,
       },
     });
+    const audit = await app.request(`/api/v1/mutation-audit?operation=asset_references_refresh&entityId=${encodeURIComponent(assetId)}`);
+    expect(audit.status).toBe(200);
+    const auditJson = await audit.json() as { records: Array<{ actorClientType?: string; mutation?: any }> };
+    const agentAuditRecord = auditJson.records.find((record) => record.actorClientType === "agent");
+    expect(agentAuditRecord).toMatchObject({
+      operation: "asset_references_refresh",
+      entity: { kind: "asset", id: assetId },
+      actorClientType: "agent",
+      accepted: true,
+      forced: false,
+      reason: "asset reference refresh",
+      resultEntityId: assetId,
+    });
+    expect(JSON.stringify(agentAuditRecord?.mutation ?? {})).not.toContain("receipt");
+    expect(agentAuditRecord?.mutation).not.toHaveProperty("expectedReadToken");
+    expect(agentAuditRecord?.mutation).not.toHaveProperty("beforeReadToken");
+    expect(agentAuditRecord?.mutation).not.toHaveProperty("afterReadToken");
     await expect(stat(blobPath)).resolves.toMatchObject({ size: "refresh-ref".length });
     const sqlite = openSqlite();
     try {

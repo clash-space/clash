@@ -1018,7 +1018,8 @@ local API contract.
   --json`, `clash audit mutations --operation project_purge --entity <projectId>
   --json`, `clash audit mutations --operation asset_gc --entity local --json`,
   `clash audit mutations --operation asset_cover_update --entity <assetId>
-  --json`,
+  --json`, `clash audit mutations --operation asset_references_refresh
+  --entity <assetId> --json`,
   and `clash audit mutations --operation session_delete --entity <threadId>
   --json`; `clash audit mutations --operation canvas_delete_edge --entity
   <edgeId> --json` reads sanitized local host mutation audit evidence without

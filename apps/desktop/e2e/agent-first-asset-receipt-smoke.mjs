@@ -1688,6 +1688,7 @@ async function main() {
 
 	  const refreshedAssetReferencesResponse = await request(`/api/v1/assets/${encodeURIComponent(assetId)}/references/refresh`, {
 	    method: "POST",
+      headers: { "x-clash-client-type": "agent" },
 	    body: JSON.stringify({ projectIds: [projectId] }),
 	  });
 	  const refreshedAssetReferences = await parseJsonResponse(refreshedAssetReferencesResponse);
@@ -1701,6 +1702,25 @@ async function main() {
 	    JSON.stringify(refreshedAssetReferences),
 	    { mutation: refreshedAssetReferences.mutation },
 	  );
+
+    const assetReferenceRefreshAuditResponse = await request(`/api/v1/mutation-audit?operation=asset_references_refresh&entityId=${encodeURIComponent(assetId)}`);
+    const assetReferenceRefreshAudit = await parseJsonResponse(assetReferenceRefreshAuditResponse);
+    const assetReferenceRefreshAuditRecord = assetReferenceRefreshAudit.records?.[0];
+    recordCheck(
+      "asset reference refresh writes sanitized local mutation audit evidence",
+      assetReferenceRefreshAuditResponse.status === 200 &&
+        assetReferenceRefreshAudit.records?.length === 1 &&
+        assetReferenceRefreshAuditRecord.operation === "asset_references_refresh" &&
+        assetReferenceRefreshAuditRecord.entity?.id === assetId &&
+        assetReferenceRefreshAuditRecord.accepted === true &&
+        assetReferenceRefreshAuditRecord.actorClientType === "agent" &&
+        assetReferenceRefreshAuditRecord.reason === "asset reference refresh" &&
+        !JSON.stringify(assetReferenceRefreshAuditRecord.mutation ?? {}).includes("receipt") &&
+        assetReferenceRefreshAuditRecord.mutation?.expectedReadToken == null &&
+        assetReferenceRefreshAuditRecord.mutation?.beforeReadToken == null &&
+        assetReferenceRefreshAuditRecord.mutation?.afterReadToken == null,
+      JSON.stringify(assetReferenceRefreshAudit),
+    );
 
 	  await expectRejected(
 	    "deleted asset ref no longer reads",
@@ -2855,6 +2875,7 @@ async function main() {
 	      assetRefReceiptAccepted: checks.some((check) => check.name === "asset ref delete with receipt read token is accepted" && check.status === "pass"),
 	      assetRefDeleteAuditRecorded: checks.some((check) => check.name === "asset ref delete writes sanitized local mutation audit evidence" && check.status === "pass"),
 	      assetReferenceRefreshMutationRecorded: checks.some((check) => check.name === "asset reference refresh returns host mutation record" && check.status === "pass"),
+      assetReferenceRefreshAuditRecorded: checks.some((check) => check.name === "asset reference refresh writes sanitized local mutation audit evidence" && check.status === "pass"),
 	      assetGcDryRunReceiptReturned: checks.some((check) => check.name === "asset GC dry-run returns receipt read token" && check.status === "pass"),
       assetGcMissingDryRunRejected: checks.some((check) => check.name === "asset GC delete without prior dry-run is rejected" && check.status === "pass"),
       assetGcBareCasRejected: checks.some((check) => check.name === "asset GC delete with bare dry-run CAS token is rejected" && check.status === "pass"),
