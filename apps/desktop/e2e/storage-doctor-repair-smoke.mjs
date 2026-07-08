@@ -948,6 +948,56 @@ async function main() {
       cloudSyncStatus?.collaboration?.actions?.shareProject?.reason === "cloud-sync-not-ready",
     JSON.stringify(cloudSyncStatus?.collaboration?.actions),
   );
+  const readyCloudSyncWorkspace = path.join(artifactRoot, "ready-cloud-sync-workspace");
+  await mkdir(path.join(readyCloudSyncWorkspace, ".clash"), { recursive: true });
+  await writeFile(
+    path.join(readyCloudSyncWorkspace, ".clash", "project.toml"),
+    [
+      "schema_version = 1",
+      `project_id = ${JSON.stringify(projectId)}`,
+      'store = "managed"',
+      "",
+      "[sync]",
+      'mode = "cloud-sync"',
+      "",
+      "[sync.capabilities]",
+      "canvas = true",
+      "room = true",
+      "asset_metadata = true",
+      "",
+    ].join("\n"),
+    "utf8",
+  );
+  const readyCloudSyncStatusResult = runCli(["project", "status", "--json"], readyCloudSyncWorkspace);
+  recordCheck(
+    "cloud-sync ready project status succeeds from capability marker",
+    readyCloudSyncStatusResult.status === 0,
+    readyCloudSyncStatusResult.stderr || readyCloudSyncStatusResult.stdout,
+    { command: readyCloudSyncStatusResult.command, cwd: readyCloudSyncStatusResult.cwd },
+  );
+  const readyCloudSyncStatus = parseStdoutJson(readyCloudSyncStatusResult);
+  recordCheck(
+    "cloud-sync ready marker opens web and sharing gates while keeping local agent authority",
+    readyCloudSyncStatus?.projectId === projectId &&
+      readyCloudSyncStatus?.collaboration?.mode === "synced" &&
+      readyCloudSyncStatus?.collaboration?.webOpenable === true &&
+      readyCloudSyncStatus?.collaboration?.multiUser === false &&
+      readyCloudSyncStatus?.collaboration?.roomAuthority === "local-with-cloud-mirror" &&
+      readyCloudSyncStatus?.collaboration?.cloudProjectRoom === "disabled" &&
+      readyCloudSyncStatus?.collaboration?.syncReadiness?.status === "ready" &&
+      readyCloudSyncStatus?.collaboration?.syncReadiness?.ready === true &&
+      Array.isArray(readyCloudSyncStatus?.collaboration?.syncReadiness?.missing) &&
+      readyCloudSyncStatus.collaboration.syncReadiness.missing.length === 0 &&
+      readyCloudSyncStatus?.collaboration?.actions?.openInWeb?.allowed === true &&
+      readyCloudSyncStatus?.collaboration?.actions?.shareProject?.allowed === true &&
+      readyCloudSyncStatus?.collaboration?.actions?.runLocalAgent?.allowed === true &&
+      readyCloudSyncStatus?.currentWorkspace?.markerRoot === readyCloudSyncWorkspace &&
+      readyCloudSyncStatus?.currentWorkspace?.deletionDeletesProjectState === false,
+    JSON.stringify({
+      collaboration: readyCloudSyncStatus?.collaboration,
+      currentWorkspace: readyCloudSyncStatus?.currentWorkspace,
+    }),
+  );
   const cloudSyncRecoveryList = runCli(["doctor", "storage-recovery", "list", "--json"]);
   recordCheck(
     "cloud-sync storage recovery list command succeeds",

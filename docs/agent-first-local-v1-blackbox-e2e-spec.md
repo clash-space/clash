@@ -690,13 +690,13 @@ Result:
 Latest verified storage doctor repair smoke:
 
 ```text
-.tmp/storage-doctor-repair/2026-07-08T07-31-19-173Z/storage-doctor-repair-report.json
+.tmp/storage-doctor-repair/2026-07-08T09-03-19-739Z/storage-doctor-repair-report.json
 ```
 
 Result:
 
 - `status: pass`,
-- 72 checks passed,
+- 81 checks passed,
 - `clash init`, `clash doctor storage --json`,
   failing `clash doctor storage --json` with a parseable JSON report,
   `clash doctor storage --repair --json`,
@@ -751,6 +751,11 @@ Result:
   capabilities are ready,
 - cloud-sync pending action gates reported `cloud-sync-not-ready` for web and
   sharing admission with `canvas`, `room`, and `asset-metadata` requirements,
+- a separate cwd marker for the same project with `[sync.capabilities]`
+  declaring canvas, room, and asset metadata ready changed project status to
+  `syncReadiness.status: ready`, `webOpenable: true`, and
+  `roomAuthority: local-with-cloud-mirror` while keeping
+  `multiUser: false` and local agent execution allowed,
 - cloud-sync recovery list exposed `recoveryPolicy` showing recovery is a local
   replica promotion, does not include or mutate cloud state, and requires cloud
   conflict review,

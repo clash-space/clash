@@ -125,3 +125,35 @@ it("init writes a local managed v1 marker without cloud dependency", async () =>
   expect(marker).toContain("[sync]");
   expect(marker).toContain('mode = "local"');
 });
+
+it("project marker writer preserves nested sync capabilities as TOML tables", async () => {
+  const root = await tempDir();
+  const markerPath = await writeProjectMarker(root, {
+    schemaVersion: 1,
+    projectId: "proj_cloud_ready",
+    store: "managed",
+    sync: {
+      mode: "cloud-sync",
+      capabilities: {
+        canvas: true,
+        room: true,
+        asset_metadata: true,
+      },
+    },
+  });
+
+  const marker = await readFile(markerPath, "utf-8");
+  const parsed = await readProjectMarker(markerPath);
+
+  expect(marker).toContain("[sync]");
+  expect(marker).toContain('mode = "cloud-sync"');
+  expect(marker).toContain("[sync.capabilities]");
+  expect(parsed.sync).toEqual({
+    mode: "cloud-sync",
+    capabilities: {
+      canvas: true,
+      room: true,
+      asset_metadata: true,
+    },
+  });
+});

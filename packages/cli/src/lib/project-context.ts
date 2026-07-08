@@ -56,13 +56,18 @@ export async function readProjectMarker(markerPath: string): Promise<ProjectMark
 function parseProjectMarkerToml(markerPath: string, text: string): ProjectMarker {
   const root: Record<string, unknown> = {};
   const sync: Record<string, unknown> = {};
-  let section: "root" | "sync" = "root";
+  const syncCapabilities: Record<string, unknown> = {};
+  let section: "root" | "sync" | "sync.capabilities" = "root";
 
   for (const rawLine of text.split(/\r?\n/)) {
     const line = rawLine.trim();
     if (!line || line.startsWith("#")) continue;
     if (line === "[sync]") {
       section = "sync";
+      continue;
+    }
+    if (line === "[sync.capabilities]") {
+      section = "sync.capabilities";
       continue;
     }
     const match = /^([A-Za-z0-9_-]+)\s*=\s*(.+)$/.exec(line);
@@ -72,6 +77,7 @@ function parseProjectMarkerToml(markerPath: string, text: string): ProjectMarker
     const key = match[1];
     const value = parseTomlScalar(markerPath, match[2]);
     if (section === "sync") sync[key] = value;
+    else if (section === "sync.capabilities") syncCapabilities[key] = value;
     else root[key] = value;
   }
 
@@ -87,7 +93,9 @@ function parseProjectMarkerToml(markerPath: string, text: string): ProjectMarker
       ? { workspaceId: stringValue(root.workspace_id ?? root.workspaceId) }
       : {}),
     ...(stringValue(root.store) ? { store: stringValue(root.store) } : {}),
-    ...(Object.keys(sync).length > 0 ? { sync } : {}),
+    ...(Object.keys(sync).length > 0 || Object.keys(syncCapabilities).length > 0
+      ? { sync: { ...sync, ...(Object.keys(syncCapabilities).length > 0 ? { capabilities: syncCapabilities } : {}) } }
+      : {}),
   };
 }
 
@@ -114,12 +122,31 @@ function serializeProjectMarkerToml(marker: ProjectMarker): string {
   if (marker.workspaceId) lines.push(`workspace_id = ${tomlString(marker.workspaceId)}`);
   if (marker.store) lines.push(`store = ${tomlString(marker.store)}`);
   if (marker.sync && Object.keys(marker.sync).length > 0) {
-    lines.push("", "[sync]");
-    for (const [key, value] of Object.entries(marker.sync)) {
+    const syncCapabilities = recordValue(marker.sync.capabilities);
+    const syncEntries = Object.entries(marker.sync).filter(
+      ([key]) => !(key === "capabilities" && syncCapabilities),
+    );
+    if (syncEntries.length > 0) {
+      lines.push("", "[sync]");
+    }
+    for (const [key, value] of syncEntries) {
       lines.push(`${tomlKey(key)} = ${tomlValue(value)}`);
+    }
+    if (syncCapabilities && Object.keys(syncCapabilities).length > 0) {
+      lines.push("", "[sync.capabilities]");
+      for (const [key, value] of Object.entries(syncCapabilities)) {
+        lines.push(`${tomlKey(key)} = ${tomlValue(value)}`);
+      }
     }
   }
   return `${lines.join("\n")}\n`;
+}
+
+function recordValue(value: unknown): Record<string, unknown> | undefined {
+  if (value && typeof value === "object" && !Array.isArray(value)) {
+    return value as Record<string, unknown>;
+  }
+  return undefined;
 }
 
 function tomlKey(key: string): string {

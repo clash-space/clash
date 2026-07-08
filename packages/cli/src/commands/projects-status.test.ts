@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp } from "node:fs/promises";
+import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -262,6 +262,53 @@ test("project status reads marker sync mode when marker selects the project", as
     status.projectStore,
     join(homeDir, ".clash", "projects", "local_status_project"),
   );
+});
+
+test("project status reads marker sync capabilities before opening cloud collaboration gates", async () => {
+  const homeDir = await tempDir();
+  const cwd = await tempDir();
+  await mkdir(join(cwd, ".clash"), { recursive: true });
+  await writeFile(
+    join(cwd, ".clash", "project.toml"),
+    [
+      "schema_version = 1",
+      'project_id = "ready_cloud_project"',
+      'store = "managed"',
+      "",
+      "[sync]",
+      'mode = "cloud-sync"',
+      "",
+      "[sync.capabilities]",
+      "canvas = true",
+      "room = true",
+      "asset_metadata = true",
+      "",
+    ].join("\n"),
+    "utf8",
+  );
+
+  const status = await resolveProjectStatus({ cwd, env: {}, homeDir });
+
+  assert.equal(status.projectId, "ready_cloud_project");
+  assert.equal(status.collaboration.mode, "synced");
+  assert.equal(status.collaboration.webOpenable, true);
+  assert.equal(status.collaboration.roomAuthority, "local-with-cloud-mirror");
+  assert.deepEqual(status.collaboration.syncReadiness, {
+    status: "ready",
+    ready: true,
+    required: ["canvas", "room", "asset-metadata"],
+    missing: [],
+  });
+  assert.deepEqual(status.collaboration.actions.openInWeb, {
+    allowed: true,
+    reason: null,
+    requirements: [],
+  });
+  assert.deepEqual(status.collaboration.actions.shareProject, {
+    allowed: true,
+    reason: null,
+    requirements: [],
+  });
 });
 
 test("project status identifies the current marker workspace separately from the canonical store", async () => {
