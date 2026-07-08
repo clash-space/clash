@@ -285,6 +285,29 @@ async function main() {
       comparedSnapshot.sameBytes === false,
     JSON.stringify(recoveryCompareReport),
   );
+  const externalManifestPath = path.join(artifactRoot, "external-recovery-manifest.json");
+  await writeJson(externalManifestPath, {
+    schemaVersion: 1,
+    projectId,
+    createdAt: now(),
+    canonicalReplica: recoveryManifest.canonicalReplica,
+    files: [],
+  });
+  const externalRecoveryCompare = runCli([
+    "doctor",
+    "storage-recovery",
+    "compare",
+    "--manifest",
+    externalManifestPath,
+    "--json",
+  ]);
+  recordCheck(
+    "doctor storage recovery compare rejects external manifests",
+    externalRecoveryCompare.status !== 0 &&
+      `${externalRecoveryCompare.stdout}\n${externalRecoveryCompare.stderr}`.includes("outside current project recovery root"),
+    externalRecoveryCompare.stderr || externalRecoveryCompare.stdout,
+    { command: externalRecoveryCompare.command },
+  );
 
   for (const id of [
     "project-workspace",
@@ -529,7 +552,18 @@ async function main() {
       startedAt,
       finishedAt: now(),
     },
-    commands: [init, before, duplicate, repair, recoveryCompare, tamperedRevisionBlobs, after, cloudSyncStatusResult].map((result) => ({
+    commands: [
+      init,
+      before,
+      duplicate,
+      repair,
+      recoveryList,
+      recoveryCompare,
+      externalRecoveryCompare,
+      tamperedRevisionBlobs,
+      after,
+      cloudSyncStatusResult,
+    ].map((result) => ({
       command: result.command,
       status: result.status,
       stdout: result.stdout.slice(0, 2000),

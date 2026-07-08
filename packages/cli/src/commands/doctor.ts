@@ -2,7 +2,7 @@ import { Command } from "commander";
 import { createHash } from "node:crypto";
 import type { Dirent } from "node:fs";
 import { createRequire } from "node:module";
-import { chmod, lstat, mkdir, readFile, readdir, rename, stat, writeFile } from "node:fs/promises";
+import { chmod, lstat, mkdir, readFile, readdir, realpath, rename, stat, writeFile } from "node:fs/promises";
 import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { timelineDslFromYaml, timelineDslHash } from "@clash/shared-types";
 import { isJsonMode, printJson } from "../lib/output";
@@ -735,24 +735,71 @@ interface SecondaryCanvasReplicaManifest {
 
 export async function compareSecondaryCanvasRecovery(options: {
   manifestPath: string;
+  project?: string;
+  cwd?: string;
+  env?: Record<string, string | undefined>;
+  homeDir?: string;
 }): Promise<SecondaryCanvasRecoveryCompareReport> {
+  const status = await resolveProjectStatus(options);
+  const recoveryRoot = join(status.roots.runtime, "recovery", "secondary-canvas-replicas");
   const manifestPath = resolve(options.manifestPath);
+  if (basename(manifestPath) !== "manifest.json" || !isSameOrInside(manifestPath, recoveryRoot)) {
+    throw new Error(`Secondary canvas recovery manifest is outside current project recovery root: ${manifestPath}`);
+  }
+  await assertRegularFile(
+    manifestPath,
+    `Secondary canvas recovery manifest must be a regular file inside current project recovery root: ${manifestPath}`,
+  );
+  if (!(await realPathIsSameOrInside(manifestPath, recoveryRoot))) {
+    throw new Error(`Secondary canvas recovery manifest is outside current project recovery root: ${manifestPath}`);
+  }
+
   const manifest = parseSecondaryCanvasReplicaManifest(
     JSON.parse(await readFile(manifestPath, "utf8")),
     manifestPath,
   );
+  if (manifest.projectId !== status.projectId) {
+    throw new Error(
+      `Secondary canvas recovery manifest project ${manifest.projectId} does not match current project ${status.projectId}`,
+    );
+  }
+
+  const canonicalReplica = {
+    replicaRoot: status.loro.replicaRoot,
+    snapshotPath: status.loro.snapshotPath,
+    updatesLogPath: status.loro.updatesLogPath,
+  };
+  if (
+    resolve(manifest.canonicalReplica.replicaRoot) !== resolve(canonicalReplica.replicaRoot) ||
+    resolve(manifest.canonicalReplica.snapshotPath) !== resolve(canonicalReplica.snapshotPath) ||
+    resolve(manifest.canonicalReplica.updatesLogPath) !== resolve(canonicalReplica.updatesLogPath)
+  ) {
+    throw new Error(
+      `Secondary canvas recovery manifest canonical replica does not match current project ${status.projectId}`,
+    );
+  }
+
+  const recoverySetRoot = dirname(manifestPath);
   const files: SecondaryCanvasRecoveryCompareFile[] = [];
   for (const file of manifest.files) {
-    const canonicalPath =
-      file.kind === "snapshot"
-        ? manifest.canonicalReplica.snapshotPath
-        : manifest.canonicalReplica.updatesLogPath;
-    const quarantined = await readFileCompareEvidence(file.destinationPath);
+    const destinationPath = resolve(file.destinationPath);
+    if (!isSameOrInside(destinationPath, recoverySetRoot)) {
+      throw new Error(`Secondary canvas recovery file destination is outside recovery set root: ${destinationPath}`);
+    }
+    await assertRegularFileIfPresent(
+      destinationPath,
+      `Secondary canvas recovery file destination must be a regular file inside recovery set root: ${destinationPath}`,
+    );
+    if (!(await realPathIsSameOrInsideIfPresent(destinationPath, recoverySetRoot))) {
+      throw new Error(`Secondary canvas recovery file destination is outside recovery set root: ${destinationPath}`);
+    }
+    const canonicalPath = file.kind === "snapshot" ? canonicalReplica.snapshotPath : canonicalReplica.updatesLogPath;
+    const quarantined = await readFileCompareEvidence(destinationPath);
     const canonical = await readFileCompareEvidence(canonicalPath);
     files.push({
       kind: file.kind,
       sourcePath: file.sourcePath,
-      destinationPath: file.destinationPath,
+      destinationPath,
       quarantined,
       canonical,
       sameBytes: quarantined.exists && canonical.exists && quarantined.sha256 === canonical.sha256,
@@ -762,9 +809,9 @@ export async function compareSecondaryCanvasRecovery(options: {
   return {
     schemaVersion: 1,
     status: "compared",
-    projectId: manifest.projectId,
+    projectId: status.projectId,
     manifestPath,
-    canonicalReplica: manifest.canonicalReplica,
+    canonicalReplica,
     safeToImportAutomatically: false,
     files,
   };
@@ -891,6 +938,46 @@ function parseSecondaryCanvasReplicaManifest(input: unknown, manifestPath: strin
       };
     }),
   };
+}
+
+async function assertRegularFile(filePath: string, message: string): Promise<void> {
+  const info = await lstat(filePath);
+  if (!info.isFile()) {
+    throw new Error(message);
+  }
+}
+
+async function assertRegularFileIfPresent(filePath: string, message: string): Promise<void> {
+  try {
+    const info = await lstat(filePath);
+    if (!info.isFile()) {
+      throw new Error(message);
+    }
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return;
+    throw error;
+  }
+}
+
+async function realPathIsSameOrInside(childPath: string, parentPath: string): Promise<boolean> {
+  const [childRealPath, parentRealPath] = await Promise.all([realpath(childPath), realpath(parentPath)]);
+  return isSameOrInside(childRealPath, parentRealPath);
+}
+
+async function realPathIsSameOrInsideIfPresent(childPath: string, parentPath: string): Promise<boolean> {
+  try {
+    return await realPathIsSameOrInside(childPath, parentPath);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+  }
+
+  try {
+    const [childParentRealPath, parentRealPath] = await Promise.all([realpath(dirname(childPath)), realpath(parentPath)]);
+    return isSameOrInside(childParentRealPath, parentRealPath);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return true;
+    throw error;
+  }
 }
 
 async function readFileCompareEvidence(filePath: string): Promise<FileCompareEvidence> {
@@ -1408,9 +1495,10 @@ storageRecoveryCommand
   .command("compare")
   .description("Compare a quarantined secondary canvas replica manifest against the canonical replica bytes")
   .requiredOption("--manifest <path>", "Path to a secondary canvas replica recovery manifest.json")
+  .option("--project <id>", "Project ID")
   .option("--json", "Output as JSON")
   .action(async (options) => {
-    const report = await compareSecondaryCanvasRecovery({ manifestPath: options.manifest });
+    const report = await compareSecondaryCanvasRecovery({ manifestPath: options.manifest, project: options.project });
     if (isJsonMode(options)) {
       printJson(report);
       return;

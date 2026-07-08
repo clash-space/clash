@@ -562,7 +562,12 @@ on editing internals.
 secondary-canvas recovery manifests under the host-owned runtime recovery root
 so agents do not have to discover protected paths manually. `storage-recovery
 compare` is read-only evidence tooling for one manifest: it reports quarantined
-and canonical file existence, size, and hash. Neither command imports or applies
+and canonical file existence, size, and hash. Compare is bound to the current
+project status: the manifest must be the real `manifest.json` under that
+project's protected runtime recovery root, must match the current project id and
+canonical replica paths, and each quarantined file path must stay inside the
+same recovery set without symlink indirection. This keeps the command from
+becoming a generic file hash oracle. Neither command imports or applies
 recovered Loro bytes automatically.
 
 ## Migration From Current State

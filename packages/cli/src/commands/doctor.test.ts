@@ -318,7 +318,7 @@ test("secondary canvas recovery compare reports canonical and quarantined file h
   const quarantined = repaired.repairs?.filter((repair) => repair.id === "secondary-canvas-replica-quarantine") ?? [];
   const manifestPath = join(quarantined[0].path ? join(quarantined[0].path, "..", "..") : "", "manifest.json");
 
-  const compared = await compareSecondaryCanvasRecovery({ manifestPath });
+  const compared = await compareSecondaryCanvasRecovery({ manifestPath, cwd, env: {}, homeDir });
 
   assert.equal(compared.schemaVersion, 1);
   assert.equal(compared.status, "compared");
@@ -335,6 +335,235 @@ test("secondary canvas recovery compare reports canonical and quarantined file h
   assert.equal(snapshot.canonical.size, "canonical snapshot".length);
   assert.notEqual(snapshot.quarantined.sha256, snapshot.canonical.sha256);
   assert.equal(snapshot.sameBytes, false);
+});
+
+test("secondary canvas recovery compare rejects manifests outside the current project recovery root", async () => {
+  const homeDir = await tempDir();
+  const cwd = await tempDir();
+  await initProject({ cwd, projectId: "doctor_project" });
+  const externalManifest = join(await tempDir(), "manifest.json");
+  await writeFile(
+    externalManifest,
+    JSON.stringify({
+      schemaVersion: 1,
+      projectId: "doctor_project",
+      createdAt: new Date().toISOString(),
+      canonicalReplica: {
+        replicaRoot: join(homeDir, ".clash", "local-api", "projects", "doctor_project", "loro"),
+        snapshotPath: join(homeDir, ".clash", "local-api", "projects", "doctor_project", "loro", "snapshot.bin"),
+        updatesLogPath: join(homeDir, ".clash", "local-api", "projects", "doctor_project", "loro", "updates.log"),
+      },
+      files: [],
+    }),
+    "utf8",
+  );
+
+  await assert.rejects(
+    compareSecondaryCanvasRecovery({ manifestPath: externalManifest, cwd, env: {}, homeDir }),
+    /outside current project recovery root/,
+  );
+});
+
+test("secondary canvas recovery compare rejects manifest destination paths outside its recovery set", async () => {
+  const homeDir = await tempDir();
+  const cwd = await tempDir();
+  await initProject({ cwd, projectId: "doctor_project" });
+  const status = buildProjectStatus(
+    { projectId: "doctor_project", source: "marker", markerPath: join(cwd, ".clash", "project.toml") },
+    { homeDir },
+  );
+  const recoverySetRoot = join(status.roots.runtime, "recovery", "secondary-canvas-replicas", "manual");
+  const leakedFile = join(await tempDir(), "outside-snapshot.bin");
+  await mkdir(recoverySetRoot, { recursive: true });
+  await writeFile(leakedFile, "outside bytes", "utf8");
+  const manifestPath = join(recoverySetRoot, "manifest.json");
+  await writeFile(
+    manifestPath,
+    JSON.stringify({
+      schemaVersion: 1,
+      projectId: "doctor_project",
+      createdAt: new Date().toISOString(),
+      canonicalReplica: {
+        replicaRoot: status.loro.replicaRoot,
+        snapshotPath: status.loro.snapshotPath,
+        updatesLogPath: status.loro.updatesLogPath,
+      },
+      files: [
+        {
+          kind: "snapshot",
+          sourcePath: join(cwd, "loro", "snapshot.bin"),
+          destinationPath: leakedFile,
+        },
+      ],
+    }),
+    "utf8",
+  );
+
+  await assert.rejects(
+    compareSecondaryCanvasRecovery({ manifestPath, cwd, env: {}, homeDir }),
+    /outside recovery set root/,
+  );
+});
+
+test("secondary canvas recovery compare rejects symlinked manifests", async () => {
+  const homeDir = await tempDir();
+  const cwd = await tempDir();
+  await initProject({ cwd, projectId: "doctor_project" });
+  const status = buildProjectStatus(
+    { projectId: "doctor_project", source: "marker", markerPath: join(cwd, ".clash", "project.toml") },
+    { homeDir },
+  );
+  const recoverySetRoot = join(status.roots.runtime, "recovery", "secondary-canvas-replicas", "manual");
+  const externalManifest = join(await tempDir(), "external-manifest.json");
+  await mkdir(recoverySetRoot, { recursive: true });
+  await writeFile(
+    externalManifest,
+    JSON.stringify({
+      schemaVersion: 1,
+      projectId: "doctor_project",
+      createdAt: new Date().toISOString(),
+      canonicalReplica: {
+        replicaRoot: status.loro.replicaRoot,
+        snapshotPath: status.loro.snapshotPath,
+        updatesLogPath: status.loro.updatesLogPath,
+      },
+      files: [],
+    }),
+    "utf8",
+  );
+  const manifestPath = join(recoverySetRoot, "manifest.json");
+  await symlink(externalManifest, manifestPath);
+
+  await assert.rejects(
+    compareSecondaryCanvasRecovery({ manifestPath, cwd, env: {}, homeDir }),
+    /must be a regular file/,
+  );
+});
+
+test("secondary canvas recovery compare rejects manifests reached through symlinked recovery set directories", async () => {
+  const homeDir = await tempDir();
+  const cwd = await tempDir();
+  await initProject({ cwd, projectId: "doctor_project" });
+  const status = buildProjectStatus(
+    { projectId: "doctor_project", source: "marker", markerPath: join(cwd, ".clash", "project.toml") },
+    { homeDir },
+  );
+  const recoveryRoot = join(status.roots.runtime, "recovery", "secondary-canvas-replicas");
+  const externalSetRoot = await tempDir();
+  await mkdir(recoveryRoot, { recursive: true });
+  await writeFile(
+    join(externalSetRoot, "manifest.json"),
+    JSON.stringify({
+      schemaVersion: 1,
+      projectId: "doctor_project",
+      createdAt: new Date().toISOString(),
+      canonicalReplica: {
+        replicaRoot: status.loro.replicaRoot,
+        snapshotPath: status.loro.snapshotPath,
+        updatesLogPath: status.loro.updatesLogPath,
+      },
+      files: [],
+    }),
+    "utf8",
+  );
+  const linkedSetRoot = join(recoveryRoot, "linked-set");
+  await symlink(externalSetRoot, linkedSetRoot);
+
+  await assert.rejects(
+    compareSecondaryCanvasRecovery({ manifestPath: join(linkedSetRoot, "manifest.json"), cwd, env: {}, homeDir }),
+    /outside current project recovery root/,
+  );
+});
+
+test("secondary canvas recovery compare rejects symlinked quarantined files", async () => {
+  const homeDir = await tempDir();
+  const cwd = await tempDir();
+  await initProject({ cwd, projectId: "doctor_project" });
+  const status = buildProjectStatus(
+    { projectId: "doctor_project", source: "marker", markerPath: join(cwd, ".clash", "project.toml") },
+    { homeDir },
+  );
+  const recoverySetRoot = join(status.roots.runtime, "recovery", "secondary-canvas-replicas", "manual");
+  const leakedFile = join(await tempDir(), "outside-snapshot.bin");
+  const linkedDestination = join(recoverySetRoot, "snapshot.bin");
+  await mkdir(recoverySetRoot, { recursive: true });
+  await mkdir(status.loro.replicaRoot, { recursive: true });
+  await writeFile(status.loro.snapshotPath, "canonical snapshot", "utf8");
+  await writeFile(leakedFile, "outside bytes", "utf8");
+  await symlink(leakedFile, linkedDestination);
+  const manifestPath = join(recoverySetRoot, "manifest.json");
+  await writeFile(
+    manifestPath,
+    JSON.stringify({
+      schemaVersion: 1,
+      projectId: "doctor_project",
+      createdAt: new Date().toISOString(),
+      canonicalReplica: {
+        replicaRoot: status.loro.replicaRoot,
+        snapshotPath: status.loro.snapshotPath,
+        updatesLogPath: status.loro.updatesLogPath,
+      },
+      files: [
+        {
+          kind: "snapshot",
+          sourcePath: join(cwd, "loro", "snapshot.bin"),
+          destinationPath: linkedDestination,
+        },
+      ],
+    }),
+    "utf8",
+  );
+
+  await assert.rejects(
+    compareSecondaryCanvasRecovery({ manifestPath, cwd, env: {}, homeDir }),
+    /must be a regular file/,
+  );
+});
+
+test("secondary canvas recovery compare rejects quarantined files reached through symlinked directories", async () => {
+  const homeDir = await tempDir();
+  const cwd = await tempDir();
+  await initProject({ cwd, projectId: "doctor_project" });
+  const status = buildProjectStatus(
+    { projectId: "doctor_project", source: "marker", markerPath: join(cwd, ".clash", "project.toml") },
+    { homeDir },
+  );
+  const recoverySetRoot = join(status.roots.runtime, "recovery", "secondary-canvas-replicas", "manual");
+  const externalDir = await tempDir();
+  const linkedDir = join(recoverySetRoot, "linked-dir");
+  const linkedDestination = join(linkedDir, "snapshot.bin");
+  await mkdir(recoverySetRoot, { recursive: true });
+  await mkdir(status.loro.replicaRoot, { recursive: true });
+  await writeFile(status.loro.snapshotPath, "canonical snapshot", "utf8");
+  await writeFile(join(externalDir, "snapshot.bin"), "outside bytes", "utf8");
+  await symlink(externalDir, linkedDir);
+  const manifestPath = join(recoverySetRoot, "manifest.json");
+  await writeFile(
+    manifestPath,
+    JSON.stringify({
+      schemaVersion: 1,
+      projectId: "doctor_project",
+      createdAt: new Date().toISOString(),
+      canonicalReplica: {
+        replicaRoot: status.loro.replicaRoot,
+        snapshotPath: status.loro.snapshotPath,
+        updatesLogPath: status.loro.updatesLogPath,
+      },
+      files: [
+        {
+          kind: "snapshot",
+          sourcePath: join(cwd, "loro", "snapshot.bin"),
+          destinationPath: linkedDestination,
+        },
+      ],
+    }),
+    "utf8",
+  );
+
+  await assert.rejects(
+    compareSecondaryCanvasRecovery({ manifestPath, cwd, env: {}, homeDir }),
+    /outside recovery set root/,
+  );
 });
 
 test("secondary canvas recovery list reports quarantined manifests for review", async () => {

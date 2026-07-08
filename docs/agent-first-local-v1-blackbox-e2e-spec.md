@@ -681,19 +681,20 @@ Result:
 Latest verified storage doctor repair smoke:
 
 ```text
-.tmp/storage-doctor-repair/2026-07-08T05-18-26-658Z/storage-doctor-repair-report.json
+.tmp/storage-doctor-repair/2026-07-08T05-34-28-355Z/storage-doctor-repair-report.json
 ```
 
 Result:
 
 - `status: pass`,
-- 49 checks passed,
+- 50 checks passed,
 - `clash init`, `clash doctor storage --json`,
   failing `clash doctor storage --json` with a parseable JSON report,
   `clash doctor storage --repair --json`,
   `clash doctor storage-recovery list --json`,
-  `clash doctor storage-recovery compare --manifest ... --json`, and follow-up
-  read-only doctor commands produced the expected exit codes,
+  successful and rejected
+  `clash doctor storage-recovery compare --manifest ... --json` calls, and
+  follow-up read-only doctor commands produced the expected exit codes,
 - workspace roots and local SQLite metadata index schema for asset references
   and text/timeline revisions were repaired through public CLI commands,
 - a hash-valid writable text revision blob was repaired back to read-only
@@ -705,6 +706,8 @@ Result:
 - recovery list exposed quarantined manifest inventory without import,
 - recovery compare reported quarantined file evidence against the canonical
   path/state and kept `safeToImportAutomatically: false`,
+- recovery compare rejected a valid-looking manifest outside the current
+  project's protected recovery root,
 - doctor reported no secondary canvas replica after repair,
 - project status reported `collaboration.mode: local-only`,
   `webOpenable: false`, `multiUser: false`, and no cloud ProjectRoom

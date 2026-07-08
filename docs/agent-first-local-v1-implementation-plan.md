@@ -499,7 +499,10 @@ Current status:
 - `clash doctor storage-recovery list --json` exposes the quarantined recovery
   manifest inventory for review, and `clash doctor storage-recovery compare
   --manifest ... --json` compares one manifest against canonical replica paths
-  with size/hash evidence while keeping automatic import disabled.
+  with size/hash evidence while keeping automatic import disabled; compare is
+  constrained to the current project's protected recovery root, matching
+  project/canonical replica, same-set destination paths, and non-symlinked
+  regular recovery files so it cannot become an arbitrary file hash oracle.
 - `clash asset link --asset <id>` now creates an agent-readable file under
   `assets/links/` via the immutable global asset cache.
 - Desktop real Codex startup/resume scripts build `@clash-space/bridge` before
