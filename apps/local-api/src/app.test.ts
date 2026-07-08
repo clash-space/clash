@@ -8094,6 +8094,14 @@ describe("local API app", () => {
       ownsCanonicalSnapshot: false,
       ownsCanonicalMetadata: false,
       viewFiles: {
+        texts: {
+          kind: "agent-editable-projection-files",
+          path: join(status.roots.projections, "text"),
+          defaultFilePattern: "<node-id>.md",
+          applyCommand: "clash text apply",
+          casRequired: true,
+          ownsCanonicalState: false,
+        },
         timelines: {
           kind: "agent-editable-view-files",
           path: status.roots.timelines,

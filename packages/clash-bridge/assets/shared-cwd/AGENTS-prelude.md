@@ -36,10 +36,11 @@ Treat the status payload as your filesystem contract:
   project deletion must go through an explicit Clash command, not file cleanup.
 - Write drafts, projections, session work files, and asset links only under
   paths listed in `editablePaths`.
-- Use `storage.workspace.viewFiles` to distinguish primary timeline view files
-  (`timelines/`, for `clash timeline pull/apply`) from generated timeline
-  projections (`projections/timelines/`, for action outputs that still require
-  explicit CAS apply).
+- Use `storage.workspace.viewFiles` before choosing editable view paths:
+  text nodes live under `projections/text/` and apply through `clash text apply`;
+  primary timeline view files live under `timelines/` for `clash timeline
+  pull/apply`; generated timeline projections live under
+  `projections/timelines/` and still require explicit CAS apply.
 - Treat project `assets/links` as inspection links only. Do not write directly
   into `storage.canonicalReplica.mediaAssets.path`; import or replace media
   through explicit `clash asset` / canvas COW commands.

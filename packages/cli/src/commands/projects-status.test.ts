@@ -145,6 +145,14 @@ test("project status exposes agent-readable project roots and protected local fi
       editablePaths: status.editablePaths,
       protectedPaths: [status.roots.runtime],
       viewFiles: {
+        texts: {
+          kind: "agent-editable-projection-files",
+          path: join(projectStore, "projections", "text"),
+          defaultFilePattern: "<node-id>.md",
+          applyCommand: "clash text apply",
+          casRequired: true,
+          ownsCanonicalState: false,
+        },
         timelines: {
           kind: "agent-editable-view-files",
           path: join(projectStore, "timelines"),

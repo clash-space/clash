@@ -551,6 +551,14 @@ Agents need a stable inspection payload:
       "editablePaths": [".../drafts", ".../projections", ".../timelines", ".../sessions", ".../assets/links"],
       "protectedPaths": [".../runtime"],
       "viewFiles": {
+        "texts": {
+          "kind": "agent-editable-projection-files",
+          "path": ".../projections/text",
+          "defaultFilePattern": "<node-id>.md",
+          "applyCommand": "clash text apply",
+          "casRequired": true,
+          "ownsCanonicalState": false
+        },
         "timelines": {
           "kind": "agent-editable-view-files",
           "path": ".../timelines",

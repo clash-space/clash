@@ -127,6 +127,8 @@ it("ensureAgentCwd installs standard Clash setup/init guidance", async () => {
     expect(agents).toContain("Do not add `--project`");
     expect(agents).toContain("editablePaths");
     expect(agents).toContain("viewFiles");
+    expect(agents).toContain("projections/text/");
+    expect(agents).toContain("clash text apply");
     expect(agents).toContain("timelines/");
     expect(agents).toContain("projections/timelines/");
     expect(agents).toContain("mediaAssets");

@@ -604,6 +604,22 @@ async function main() {
     }),
   );
   const mediaAssets = status?.storage?.canonicalReplica?.mediaAssets;
+  const textViewFiles = status?.storage?.workspace?.viewFiles?.texts;
+  recordCheck(
+    "text projection view files are editable but not canonical text revision content",
+    textViewFiles?.kind === "agent-editable-projection-files" &&
+      textViewFiles.path === path.join(status.projectWorkspaceRoot, "projections", "text") &&
+      textViewFiles.defaultFilePattern === "<node-id>.md" &&
+      textViewFiles.applyCommand === "clash text apply" &&
+      textViewFiles.casRequired === true &&
+      textViewFiles.ownsCanonicalState === false &&
+      !repairReport.status.protectedPaths.includes(textViewFiles.path),
+    JSON.stringify({
+      textViewFiles,
+      protectedPaths: status?.protectedPaths,
+      projectWorkspaceRoot: status?.projectWorkspaceRoot,
+    }),
+  );
   recordCheck(
     "canonical media asset blob root is protected and not workspace-owned",
     mediaAssets?.kind === "content-addressed-files" &&

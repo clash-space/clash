@@ -92,6 +92,14 @@ describe("project status path builder", () => {
         editablePaths: status.editablePaths,
         protectedPaths: [status.roots.runtime],
         viewFiles: {
+          texts: {
+            kind: "agent-editable-projection-files",
+            path: "/tmp/clash-home/projects/project%2Fone/projections/text",
+            defaultFilePattern: "<node-id>.md",
+            applyCommand: "clash text apply",
+            casRequired: true,
+            ownsCanonicalState: false,
+          },
           timelines: {
             kind: "agent-editable-view-files",
             path: "/tmp/clash-home/projects/project%2Fone/timelines",
@@ -153,6 +161,14 @@ describe("project status path builder", () => {
       },
     });
     expect(status.storage.workspace.viewFiles).toEqual({
+      texts: {
+        kind: "agent-editable-projection-files",
+        path: "/tmp/clash-home/projects/project%2Fone/projections/text",
+        defaultFilePattern: "<node-id>.md",
+        applyCommand: "clash text apply",
+        casRequired: true,
+        ownsCanonicalState: false,
+      },
       timelines: {
         kind: "agent-editable-view-files",
         path: status.roots.timelines,

@@ -43,6 +43,14 @@ export interface ProjectStatusStorage {
     editablePaths: string[];
     protectedPaths: string[];
     viewFiles: {
+      texts: {
+        kind: "agent-editable-projection-files";
+        path: string;
+        defaultFilePattern: "<node-id>.md";
+        applyCommand: "clash text apply";
+        casRequired: true;
+        ownsCanonicalState: false;
+      };
       timelines: {
         kind: "agent-editable-view-files";
         path: string;
@@ -210,6 +218,7 @@ export function buildProjectStatus(
   );
   const projections = joinPath(projectWorkspaceRoot, "projections");
   const timelines = joinPath(projectWorkspaceRoot, "timelines");
+  const textProjections = joinPath(projections, "text");
   const timelineProjections = joinPath(projections, "timelines");
   const drafts = joinPath(projectWorkspaceRoot, "drafts");
   const sessions = joinPath(projectWorkspaceRoot, "sessions");
@@ -318,6 +327,14 @@ export function buildProjectStatus(
         editablePaths,
         protectedPaths: [runtimeRoot],
         viewFiles: {
+          texts: {
+            kind: "agent-editable-projection-files",
+            path: textProjections,
+            defaultFilePattern: "<node-id>.md",
+            applyCommand: "clash text apply",
+            casRequired: true,
+            ownsCanonicalState: false,
+          },
           timelines: {
             kind: "agent-editable-view-files",
             path: timelines,

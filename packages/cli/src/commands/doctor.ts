@@ -420,6 +420,33 @@ export function inspectStorageContract(status: ProjectStatus): StorageDoctorChec
     if (storage.workspace.ownsCanonicalMetadata !== false) {
       problems.push("workspace owns canonical metadata");
     }
+    const textViewFiles = storage.workspace.viewFiles?.texts;
+    const expectedTextViewPath = join(status.roots.projections, "text");
+    if (!textViewFiles) {
+      problems.push("missing text view files contract");
+    } else {
+      if (textViewFiles.kind !== "agent-editable-projection-files") {
+        problems.push("text view files are not agent-editable-projection-files");
+      }
+      if (textViewFiles.path !== expectedTextViewPath) {
+        problems.push("text view files path does not match projections/text");
+      }
+      if (textViewFiles.defaultFilePattern !== "<node-id>.md") {
+        problems.push("text view files default pattern is wrong");
+      }
+      if (textViewFiles.applyCommand !== "clash text apply") {
+        problems.push("text view files apply command is wrong");
+      }
+      if (textViewFiles.casRequired !== true) {
+        problems.push("text view files do not require CAS");
+      }
+      if (textViewFiles.ownsCanonicalState !== false) {
+        problems.push("text view files claim to own canonical state");
+      }
+      if (status.protectedPaths.some((protectedPath) => isSameOrInside(textViewFiles.path, protectedPath))) {
+        problems.push("text view files point at protected canonical state");
+      }
+    }
     if (storage.canonicalReplica.role !== "single-machine-project-replica") {
       problems.push("canonical replica role is not single-machine-project-replica");
     }

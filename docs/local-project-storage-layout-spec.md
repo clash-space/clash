@@ -219,6 +219,11 @@ Notes:
   protected content-addressed roots for applied Markdown/YAML revision bodies.
   They are recovery/provenance stores referenced by SQLite revision indexes and
   API/CLI descriptors, not agent-writable projection folders.
+- `storage.workspace.viewFiles.texts` points at `projections/text/`, the
+  agent-editable Markdown projection surface used by `clash text pull/apply`.
+  Text projections require explicit CAS apply and do not own canonical text
+  state; applied bodies are recorded through SQLite revision rows plus protected
+  text revision content blobs.
 - `storage.workspace.viewFiles.timelines` points at `timelines/`, the primary
   agent-editable timeline view surface used by `clash timeline pull/apply`.
   `storage.workspace.viewFiles.timelineProjections` points at
