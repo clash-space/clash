@@ -34,8 +34,8 @@ Current routes:
 Current storage:
 
 - local SQLite via `apps/local-api/src/local-metadata-store.ts`.
-- local metadata schema bootstrap upgrades old partial core/projection SQLite
-  tables before route reads or writes.
+- local metadata/provider schema bootstraps upgrade old partial
+  core/provider/projection SQLite tables before route reads or writes.
 - legacy `db.json` is ignored; SQLite starts empty until first local write.
 - `POST /api/v1/sessions` and `DELETE /api/v1/sessions` now include
   accepted/rejected host mutation records. Session create keeps

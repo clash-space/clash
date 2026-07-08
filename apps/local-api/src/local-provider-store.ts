@@ -126,8 +126,261 @@ function applySchema(db: SqliteDatabase): void {
       updated_at TEXT,
       PRIMARY KEY (user_id, provider_id, account_id)
     );
-    COMMIT;
   `);
+  try {
+    ensureLocalProviderSqliteColumns(db);
+    db.exec("COMMIT");
+  } catch (error) {
+    db.exec("ROLLBACK");
+    throw error;
+  }
+}
+
+function ensureSqliteColumn(db: SqliteDatabase, table: string, columnDefinition: string): void {
+  const columnName = columnDefinition.trim().split(/\s+/)[0];
+  if (!columnName) return;
+  const columns = new Set(
+    db.prepare(`PRAGMA table_info(${table})`).all()
+      .map((row) => row.name)
+      .filter((name): name is string => typeof name === "string"),
+  );
+  if (!columns.has(columnName)) {
+    db.exec(`ALTER TABLE ${table} ADD COLUMN ${columnDefinition}`);
+  }
+}
+
+function sqlitePrimaryKeyColumns(db: SqliteDatabase, table: string): string[] {
+  return db.prepare(`PRAGMA table_info(${table})`).all()
+    .map((row) => ({
+      name: typeof row.name === "string" ? row.name : "",
+      pk: typeof row.pk === "number" ? row.pk : 0,
+    }))
+    .filter((row) => row.name && row.pk > 0)
+    .sort((a, b) => a.pk - b.pk)
+    .map((row) => row.name);
+}
+
+function hasPrimaryKey(db: SqliteDatabase, table: string, expectedColumns: string[]): boolean {
+  const actual = sqlitePrimaryKeyColumns(db, table);
+  return actual.length === expectedColumns.length && actual.every((column, index) => column === expectedColumns[index]);
+}
+
+function rebuildProviderTableIfPrimaryKeyDiffers(
+  db: SqliteDatabase,
+  table: string,
+  expectedPrimaryKey: string[],
+  columns: string[],
+  createTableSql: (tableName: string) => string,
+): void {
+  if (hasPrimaryKey(db, table, expectedPrimaryKey)) return;
+  const tempTable = `${table}__schema_upgrade`;
+  const columnList = columns.join(", ");
+  db.exec(`
+    DROP TABLE IF EXISTS ${tempTable};
+    ${createTableSql(tempTable)}
+    INSERT OR IGNORE INTO ${tempTable} (${columnList})
+      SELECT ${columnList} FROM ${table};
+    DROP TABLE ${table};
+    ALTER TABLE ${tempTable} RENAME TO ${table};
+  `);
+}
+
+function providerAccountsTableSql(tableName: string): string {
+  return `
+    CREATE TABLE ${tableName} (
+      user_id TEXT NOT NULL,
+      account_key TEXT NOT NULL,
+      id TEXT,
+      provider_id TEXT NOT NULL,
+      upstream_id TEXT,
+      region TEXT,
+      label TEXT,
+      enabled INTEGER NOT NULL,
+      priority REAL,
+      weight REAL,
+      created_at TEXT,
+      updated_at TEXT,
+      PRIMARY KEY (user_id, account_key)
+    );
+  `;
+}
+
+function providerAccountCredentialsTableSql(tableName: string): string {
+  return `
+    CREATE TABLE ${tableName} (
+      user_id TEXT NOT NULL,
+      account_key TEXT NOT NULL,
+      credential_key TEXT NOT NULL,
+      credential_value TEXT NOT NULL,
+      PRIMARY KEY (user_id, account_key, credential_key)
+    );
+  `;
+}
+
+function providerAccountSupportedModelsTableSql(tableName: string): string {
+  return `
+    CREATE TABLE ${tableName} (
+      user_id TEXT NOT NULL,
+      account_key TEXT NOT NULL,
+      model_id TEXT NOT NULL,
+      position INTEGER NOT NULL,
+      PRIMARY KEY (user_id, account_key, model_id)
+    );
+  `;
+}
+
+function providerAccountModelPrioritiesTableSql(tableName: string): string {
+  return `
+    CREATE TABLE ${tableName} (
+      user_id TEXT NOT NULL,
+      account_key TEXT NOT NULL,
+      model_id TEXT NOT NULL,
+      priority REAL NOT NULL,
+      PRIMARY KEY (user_id, account_key, model_id)
+    );
+  `;
+}
+
+function providerOAuthTableSql(tableName: string): string {
+  return `
+    CREATE TABLE ${tableName} (
+      user_id TEXT NOT NULL,
+      provider_id TEXT NOT NULL,
+      account_id TEXT NOT NULL DEFAULT '',
+      status TEXT NOT NULL,
+      access_token TEXT,
+      refresh_token TEXT,
+      token_type TEXT,
+      verification_uri TEXT,
+      user_code TEXT,
+      device_code TEXT,
+      interval_seconds INTEGER,
+      account_label TEXT,
+      expires_at TEXT,
+      error TEXT,
+      created_at TEXT,
+      updated_at TEXT,
+      PRIMARY KEY (user_id, provider_id, account_id)
+    );
+  `;
+}
+
+function ensureLocalProviderSqliteColumns(db: SqliteDatabase): void {
+  for (const column of [
+    "completed_at INTEGER NOT NULL DEFAULT 0",
+    "source_path TEXT NOT NULL DEFAULT ''",
+    "source_sha256 TEXT NOT NULL DEFAULT ''",
+  ]) {
+    ensureSqliteColumn(db, "local_migration", column);
+  }
+  for (const column of [
+    "account_key TEXT NOT NULL DEFAULT ''",
+    "id TEXT",
+    "provider_id TEXT NOT NULL DEFAULT ''",
+    "upstream_id TEXT",
+    "region TEXT",
+    "label TEXT",
+    "enabled INTEGER NOT NULL DEFAULT 1",
+    "priority REAL",
+    "weight REAL",
+    "created_at TEXT",
+    "updated_at TEXT",
+  ]) {
+    ensureSqliteColumn(db, "provider_accounts", column);
+  }
+  for (const column of [
+    "account_key TEXT NOT NULL DEFAULT ''",
+    "credential_key TEXT NOT NULL DEFAULT ''",
+    "credential_value TEXT NOT NULL DEFAULT ''",
+  ]) {
+    ensureSqliteColumn(db, "provider_account_credentials", column);
+  }
+  for (const column of [
+    "account_key TEXT NOT NULL DEFAULT ''",
+    "model_id TEXT NOT NULL DEFAULT ''",
+    "position INTEGER NOT NULL DEFAULT 0",
+  ]) {
+    ensureSqliteColumn(db, "provider_account_supported_models", column);
+  }
+  for (const column of [
+    "account_key TEXT NOT NULL DEFAULT ''",
+    "model_id TEXT NOT NULL DEFAULT ''",
+    "priority REAL NOT NULL DEFAULT 0",
+  ]) {
+    ensureSqliteColumn(db, "provider_account_model_priorities", column);
+  }
+  for (const column of [
+    "provider_id TEXT NOT NULL DEFAULT ''",
+    "account_id TEXT NOT NULL DEFAULT ''",
+    "status TEXT NOT NULL DEFAULT 'pending'",
+    "access_token TEXT",
+    "refresh_token TEXT",
+    "token_type TEXT",
+    "verification_uri TEXT",
+    "user_code TEXT",
+    "device_code TEXT",
+    "interval_seconds INTEGER",
+    "account_label TEXT",
+    "expires_at TEXT",
+    "error TEXT",
+    "created_at TEXT",
+    "updated_at TEXT",
+  ]) {
+    ensureSqliteColumn(db, "provider_oauth", column);
+  }
+  rebuildProviderTableIfPrimaryKeyDiffers(db, "provider_accounts", ["user_id", "account_key"], [
+    "user_id",
+    "account_key",
+    "id",
+    "provider_id",
+    "upstream_id",
+    "region",
+    "label",
+    "enabled",
+    "priority",
+    "weight",
+    "created_at",
+    "updated_at",
+  ], providerAccountsTableSql);
+  rebuildProviderTableIfPrimaryKeyDiffers(
+    db,
+    "provider_account_credentials",
+    ["user_id", "account_key", "credential_key"],
+    ["user_id", "account_key", "credential_key", "credential_value"],
+    providerAccountCredentialsTableSql,
+  );
+  rebuildProviderTableIfPrimaryKeyDiffers(
+    db,
+    "provider_account_supported_models",
+    ["user_id", "account_key", "model_id"],
+    ["user_id", "account_key", "model_id", "position"],
+    providerAccountSupportedModelsTableSql,
+  );
+  rebuildProviderTableIfPrimaryKeyDiffers(
+    db,
+    "provider_account_model_priorities",
+    ["user_id", "account_key", "model_id"],
+    ["user_id", "account_key", "model_id", "priority"],
+    providerAccountModelPrioritiesTableSql,
+  );
+  rebuildProviderTableIfPrimaryKeyDiffers(db, "provider_oauth", ["user_id", "provider_id", "account_id"], [
+    "user_id",
+    "provider_id",
+    "account_id",
+    "status",
+    "access_token",
+    "refresh_token",
+    "token_type",
+    "verification_uri",
+    "user_code",
+    "device_code",
+    "interval_seconds",
+    "account_label",
+    "expires_at",
+    "error",
+    "created_at",
+    "updated_at",
+  ], providerOAuthTableSql);
 }
 
 function optionalString(value: unknown): string | undefined {

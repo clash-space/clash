@@ -125,12 +125,12 @@ The main v1 gaps are:
 Project rows, assets, asset refs, runtime sessions, agent members, and local
 session messages are stored as SQLite rows. Field-level JSON remains only for
 structured columns such as asset metadata, asset sources, and message events.
-The metadata schema bootstrap upgrades old partial core metadata and
-asset/text/timeline projection tables before local-api route reads or writes,
-while storage doctor validates and repairs provider/OAuth table shape alongside
-the core metadata/provider auth/projection schema without inspecting secret values. A
-partially initialized `local.sqlite` therefore does not require a separate
-doctor repair before the API can restart for core metadata reads.
+The metadata/provider schema bootstraps upgrade old partial core metadata,
+asset/text/timeline projection tables, and provider/OAuth tables before
+local-api route reads or writes, while storage doctor validates and repairs the
+same provider/OAuth table shape without inspecting secret values. A partially
+initialized `local.sqlite` therefore does not require a separate doctor repair
+before the API can restart for core metadata or provider auth reads.
 `GET /api/v1/agents` now returns derived built-in local agents without inserting
 `agent_member` rows; write paths that need ownership records seed them inside
 explicit runtime-session or room-message mutations.

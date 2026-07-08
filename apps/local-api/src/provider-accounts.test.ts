@@ -29,6 +29,36 @@ function readSqlitePragma(dataDir: string, pragma: string): string | number | un
   }
 }
 
+function createPartialProviderSqlite(dataDir: string): void {
+  const { DatabaseSync } = require("node:sqlite") as {
+    DatabaseSync: new (path: string) => {
+      exec(sql: string): void;
+      close(): void;
+    };
+  };
+  const db = new DatabaseSync(join(dataDir, "local.sqlite"));
+  try {
+    db.exec(`
+      CREATE TABLE local_migration (id TEXT PRIMARY KEY NOT NULL);
+      CREATE TABLE provider_accounts (
+        user_id TEXT NOT NULL,
+        account_key TEXT NOT NULL,
+        PRIMARY KEY (user_id, account_key)
+      );
+      CREATE TABLE provider_account_credentials (user_id TEXT NOT NULL);
+      CREATE TABLE provider_account_supported_models (user_id TEXT NOT NULL);
+      CREATE TABLE provider_account_model_priorities (user_id TEXT NOT NULL);
+      CREATE TABLE provider_oauth (
+        user_id TEXT NOT NULL,
+        provider_id TEXT NOT NULL,
+        PRIMARY KEY (user_id, provider_id)
+      );
+    `);
+  } finally {
+    db.close();
+  }
+}
+
 describe("provider accounts", () => {
   it("initializes sqlite provider storage with WAL journal mode for local multi-client safety", async () => {
     const dataDir = await tempProviderDir();
@@ -43,6 +73,74 @@ describe("provider accounts", () => {
     ]);
 
     expect(readSqlitePragma(dataDir, "journal_mode")).toBe("wal");
+  });
+
+  it("upgrades partial sqlite provider tables before provider access", async () => {
+    const dataDir = await tempProviderDir();
+    createPartialProviderSqlite(dataDir);
+    const store = createLocalProviderStore(dataDir);
+
+    await expect(store.loadProviderAccounts()).resolves.toEqual([]);
+    await expect(store.loadProviderOAuth()).resolves.toEqual([]);
+    await expect(store.saveProviderAccounts([
+      {
+        userId: "user-1",
+        id: "mock-primary",
+        providerId: "mock",
+        enabled: true,
+        credentials: { apiKey: "sk-local" },
+        supportedModelIds: ["nano-banana-2"],
+        modelPriorities: { "nano-banana-2": 1 },
+      },
+    ])).resolves.toBeUndefined();
+    await expect(store.saveProviderOAuth([
+      {
+        userId: "user-1",
+        providerId: "dreamina",
+        accountId: "mock-primary",
+        status: "authorized",
+        accessToken: "access-token",
+        refreshToken: "refresh-token",
+      },
+      {
+        userId: "user-1",
+        providerId: "dreamina",
+        accountId: "mock-secondary",
+        status: "pending",
+        userCode: "user-code",
+        deviceCode: "device-code",
+      },
+    ])).resolves.toBeUndefined();
+
+    await expect(store.loadProviderAccounts()).resolves.toMatchObject([
+      {
+        userId: "user-1",
+        id: "mock-primary",
+        providerId: "mock",
+        enabled: true,
+        credentials: { apiKey: "sk-local" },
+        supportedModelIds: ["nano-banana-2"],
+        modelPriorities: { "nano-banana-2": 1 },
+      },
+    ]);
+    await expect(store.loadProviderOAuth()).resolves.toMatchObject([
+      {
+        userId: "user-1",
+        providerId: "dreamina",
+        accountId: "mock-primary",
+        status: "authorized",
+        accessToken: "access-token",
+        refreshToken: "refresh-token",
+      },
+      {
+        userId: "user-1",
+        providerId: "dreamina",
+        accountId: "mock-secondary",
+        status: "pending",
+        userCode: "user-code",
+        deviceCode: "device-code",
+      },
+    ]);
   });
 
   it("exposes provider account credentials without env-shaped variable keys", () => {
