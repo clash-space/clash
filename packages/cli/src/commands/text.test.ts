@@ -301,14 +301,24 @@ test("fetches text revision history through the host API", async () => {
     content: "indexed copy",
     createdAt: "2026-07-07T00:00:00.000Z",
   });
+  const revisionWithContent = {
+    ...revision,
+    content: {
+      kind: "text-revision-content",
+      contentHash: revision.contentHash,
+      mediaType: "text/markdown",
+      url: `/api/v1/projects/project_text/text-revisions/${revision.revisionId}/content`,
+      immutable: true,
+    },
+  };
   const calls: Array<{ path: string; method: string | undefined }> = [];
 
   const result = await fetchTextRevisionHistory("project_text", { nodeId: "text_node", limit: 2 }, async (path, init) => {
     calls.push({ path, method: init?.method });
-    return new Response(JSON.stringify({ revisions: [revision] }), { status: 200, headers: { "content-type": "application/json" } });
+    return new Response(JSON.stringify({ revisions: [revisionWithContent] }), { status: 200, headers: { "content-type": "application/json" } });
   });
 
-  assert.deepEqual(result, { revisions: [revision] });
+  assert.deepEqual(result, { revisions: [revisionWithContent] });
   assert.deepEqual(calls, [{
     path: "/api/v1/projects/project_text/text-revisions?nodeId=text_node&limit=2",
     method: "GET",

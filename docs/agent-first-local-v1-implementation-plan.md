@@ -318,7 +318,10 @@ Current status:
   Older targets remain compatible when the index endpoint is unavailable.
 - `clash text history` reads that host-owned revision index through
   `GET /api/v1/projects/:projectId/text-revisions`, giving agents a CLI
-  history surface without direct SQLite access.
+  history surface without direct SQLite access. Entries with a stored Markdown
+  body now include a `content` descriptor (`kind: "text-revision-content"`,
+  hash, media type, URL, immutable flag), making text revision bodies
+  file-like and addressable without mixing them into the media `assets` table.
 - `clash text content --revision <id> [--out <path>]` reads the immutable
   Markdown body through the host content endpoint, giving agents a first-class
   recovery/diff surface without constructing API URLs or opening SQLite.

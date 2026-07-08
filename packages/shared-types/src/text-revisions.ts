@@ -7,6 +7,15 @@ export const TextRevisionActorSchema = z.object({
 });
 export type TextRevisionActor = z.infer<typeof TextRevisionActorSchema>;
 
+export const TextRevisionContentDescriptorSchema = z.object({
+  kind: z.literal('text-revision-content'),
+  contentHash: z.string(),
+  mediaType: z.literal('text/markdown'),
+  url: z.string(),
+  immutable: z.literal(true),
+});
+export type TextRevisionContentDescriptor = z.infer<typeof TextRevisionContentDescriptorSchema>;
+
 export const TextAppliedRevisionSchema = z.object({
   schemaVersion: z.literal(1),
   kind: z.literal('clash.text.revision'),
@@ -23,3 +32,8 @@ export const TextAppliedRevisionSchema = z.object({
   actor: TextRevisionActorSchema.optional(),
 });
 export type TextAppliedRevision = z.infer<typeof TextAppliedRevisionSchema>;
+
+export const TextRevisionHistoryEntrySchema = TextAppliedRevisionSchema.extend({
+  content: TextRevisionContentDescriptorSchema.optional(),
+});
+export type TextRevisionHistoryEntry = z.infer<typeof TextRevisionHistoryEntrySchema>;

@@ -98,7 +98,9 @@ Existing text behavior:
   revision in node data.
 - `clash text history` reads the host-owned text revision index through the
   local API, so agents can inspect applied text revisions without direct DB
-  access.
+  access. History entries with stored Markdown bodies include an immutable
+  `text-revision-content` descriptor, making text revision content addressable
+  without treating it as a media asset row.
 - `clash text content --revision <id> [--out <path>]` fetches the immutable
   Markdown body for a selected applied revision through the host API. `--out`
   paths are checked against the current cwd, including symlink escape checks.

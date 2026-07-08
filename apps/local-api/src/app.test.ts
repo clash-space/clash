@@ -1210,9 +1210,12 @@ describe("local API app", () => {
     expect(registeredJson).toMatchObject({
       revision,
       content: {
+        kind: "text-revision-content",
         stored: true,
         contentHash,
+        mediaType: "text/markdown",
         url: `/api/v1/projects/project-text/text-revisions/${revision.revisionId}/content`,
+        immutable: true,
       },
       mutation: {
         operation: "text_revision_index",
@@ -1223,7 +1226,18 @@ describe("local API app", () => {
     });
 
     const listed = await app.request("/api/v1/projects/project-text/text-revisions?nodeId=script");
-    expect(await listed.json()).toEqual({ revisions: [revision] });
+    expect(await listed.json()).toEqual({
+      revisions: [{
+        ...revision,
+        content: {
+          kind: "text-revision-content",
+          contentHash,
+          mediaType: "text/markdown",
+          url: `/api/v1/projects/project-text/text-revisions/${revision.revisionId}/content`,
+          immutable: true,
+        },
+      }],
+    });
 
     const contentResponse = await app.request(registeredJson.content.url);
     expect(contentResponse.status).toBe(200);

@@ -490,8 +490,12 @@ export {
 export {
   TextAppliedRevisionSchema,
   TextRevisionActorSchema,
+  TextRevisionContentDescriptorSchema,
+  TextRevisionHistoryEntrySchema,
   type TextAppliedRevision,
   type TextRevisionActor,
+  type TextRevisionContentDescriptor,
+  type TextRevisionHistoryEntry,
 } from './text-revisions';
 
 export {

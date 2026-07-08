@@ -642,6 +642,9 @@ Rules:
 - when content is supplied, stores the applied Markdown body as an immutable
   app-owned content-addressed text blob and serves it through the content GET
   endpoint,
+- text revision history entries with stored bodies expose a `content` descriptor
+  (`kind: "text-revision-content"`, hash, media type, URL, immutable flag), so
+  agents can discover recovery content without direct DB/filesystem access,
 - rejects same revision id with different payloads,
 - returns an accepted host mutation record for successful index writes,
 - keeps text body editing behind `clash text pull/apply/replace` CAS rather

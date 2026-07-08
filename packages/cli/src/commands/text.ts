@@ -3,7 +3,11 @@ import WebSocket from "ws";
 import { randomUUID } from "node:crypto";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
-import { LoroSyncClient, TextAppliedRevisionSchema } from "@clash/shared-types";
+import {
+  LoroSyncClient,
+  TextRevisionHistoryEntrySchema,
+  type TextRevisionHistoryEntry,
+} from "@clash/shared-types";
 import { requireApiKey, getServerUrl } from "../lib/config";
 import { apiFetch } from "../lib/api";
 import { isJsonMode, printJson, printTable } from "../lib/output";
@@ -434,7 +438,7 @@ export async function registerTextRevisionIndex(
 }
 
 export type TextRevisionHistoryResult = {
-  revisions: TextAppliedRevision[];
+  revisions: TextRevisionHistoryEntry[];
 };
 
 export async function fetchTextRevisionHistory(
@@ -463,7 +467,7 @@ export async function fetchTextRevisionHistory(
   }
   return {
     revisions: body.revisions.map((revision) => {
-      const parsed = TextAppliedRevisionSchema.safeParse(revision);
+      const parsed = TextRevisionHistoryEntrySchema.safeParse(revision);
       if (!parsed.success) {
         throw new Error("Invalid text revision history response");
       }

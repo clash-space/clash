@@ -53,6 +53,8 @@ import {
   type ModelKind,
   type HostMutationRecord,
   type TextAppliedRevision,
+  type TextRevisionContentDescriptor,
+  type TextRevisionHistoryEntry,
   type TimelineAppliedRevision,
 } from "@clash/shared-types";
 import type { Asset, AssetKind } from "@clash/shared-types/assets";
@@ -345,6 +347,20 @@ function textRevisionContentUrl(revision: TextAppliedRevision): string {
   return `/api/v1/projects/${encodeURIComponent(revision.projectId)}/text-revisions/${encodeURIComponent(revision.revisionId)}/content`;
 }
 
+function textRevisionContentDescriptor(
+  revision: TextAppliedRevision,
+  options: { stored?: true } = {},
+): TextRevisionContentDescriptor & { stored?: true } {
+  return {
+    kind: "text-revision-content",
+    ...(options.stored ? { stored: true } : {}),
+    contentHash: revision.contentHash,
+    mediaType: "text/markdown",
+    url: textRevisionContentUrl(revision),
+    immutable: true,
+  };
+}
+
 function stableJsonForTimelineHash(value: unknown): string {
   if (Array.isArray(value)) return `[${value.map(stableJsonForTimelineHash).join(",")}]`;
   if (value && typeof value === "object") {
@@ -396,18 +412,27 @@ async function storeTextRevisionContentBlob(
     }
     await chmod(path, 0o444).catch(() => undefined);
     return {
-      stored: true,
-      contentHash: revision.contentHash,
-      url: textRevisionContentUrl(revision),
+      ...textRevisionContentDescriptor(revision, { stored: true }),
     };
   }
   await mkdir(dirname(path), { recursive: true });
   await writeFile(path, content, { encoding: "utf8", mode: 0o444 });
   await chmod(path, 0o444).catch(() => undefined);
   return {
-    stored: true,
-    contentHash: revision.contentHash,
-    url: textRevisionContentUrl(revision),
+    ...textRevisionContentDescriptor(revision, { stored: true }),
+  };
+}
+
+async function withTextRevisionContentDescriptor(
+  dataDir: string,
+  revision: TextAppliedRevision,
+): Promise<TextRevisionHistoryEntry> {
+  const path = textRevisionContentBlobPath(dataDir, revision.contentHash);
+  const fileStat = await stat(path).catch(() => null);
+  if (!fileStat?.isFile()) return revision;
+  return {
+    ...revision,
+    content: textRevisionContentDescriptor(revision),
   };
 }
 
@@ -4647,7 +4672,10 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
       nodeId: normalizeString(c.req.query("nodeId")),
       limit: Number.isFinite(limit) ? limit : undefined,
     });
-    return c.json({ revisions });
+    const entries = await Promise.all(
+      revisions.map((revision) => withTextRevisionContentDescriptor(options.dataDir, revision)),
+    );
+    return c.json({ revisions: entries });
   });
 
   app.get("/api/v1/projects/:projectId/text-revisions/:revisionId/content", async (c) => {
