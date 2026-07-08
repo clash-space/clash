@@ -929,12 +929,15 @@ Rules:
 - `clash timeline content --revision <id> [--out <path>]` reads the content GET
   endpoint as the agent-facing revision recovery surface; `--out` writes are
   cwd-contained.
+- caption export, timeline handoff export, and caption-burn export read the
+  source timeline lock and pin manifests, packages, ffmpeg plans, and derived
+  asset metadata to the applied timeline revision id when one is present.
 
 Remaining:
 
 - richer visual timeline revision UI/history,
 - local-to-cloud timeline revision mirror policy,
-- export/render UI that pins output artifacts to timeline revision ids.
+- remaining render/export UI surfaces that still need revision pinning.
 
 ### Projection apply endpoints/commands
 

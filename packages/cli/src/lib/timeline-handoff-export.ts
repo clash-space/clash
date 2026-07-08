@@ -1,7 +1,10 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { basename, dirname, extname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { timelineDslFromYaml, type ResolvedItem, type ResolvedTimelineDsl } from "@clash/shared-types";
-import { createTimelineSourceProvenance } from "./timeline-projection";
+import {
+  createTimelineSourceProvenance,
+  readAppliedTimelineRevisionForSource,
+} from "./timeline-projection";
 import { resolveAgentFilePathInsideCwd } from "./projection-cas";
 
 export type TimelineHandoffFormat = "csv";
@@ -57,10 +60,16 @@ export async function exportTimelineHandoff(
   if (!Number.isFinite(fps) || fps <= 0) {
     throw new Error("Timeline handoff export requires a positive fps from --fps or timeline fps");
   }
+  const appliedRevision = await readAppliedTimelineRevisionForSource({
+    cwd,
+    sourceTimelinePath: timelinePath,
+    dsl: parsed.dsl,
+  });
   const timelineProvenance = createTimelineSourceProvenance({
     cwd,
     filePath: timelinePath,
     dsl: parsed.dsl,
+    appliedRevision,
   });
   const rows = timelineRows(parsed.dsl, fps);
   await writeText(outputPath, renderCsv(rows));

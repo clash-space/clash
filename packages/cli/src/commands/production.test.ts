@@ -3378,6 +3378,42 @@ test("runs production export-captions from structured caption timeline to SRT, V
   const assManifest = JSON.parse(await readFile(join(cwd, "exports", "captions", "talk.caption-export.json"), "utf8"));
   assert.equal(assManifest.format, "ass");
   assert.equal(assManifest.outputPath, "exports/captions/talk.ass");
+
+  const appliedRevision = createTimelineAppliedRevision({
+    projectId: "project-1",
+    nodeId: "caption-editor-1",
+    cwd,
+    filePath: timelinePath,
+    dsl: parsedCaptionTimeline.dsl,
+    createdAt: "2026-07-08T00:00:00.000Z",
+    loroFrontiers: [{ peer: "caption-export", counter: 3 }],
+  });
+  await writeJson(join(cwd, "projections", "timelines", "asset-talk.caption.timeline.lock.json"), createTimelineLock({
+    projectId: "project-1",
+    nodeId: "caption-editor-1",
+    filePath: timelinePath,
+    dsl: parsedCaptionTimeline.dsl,
+    pulledAt: "2026-07-08T00:00:00.000Z",
+    appliedRevision,
+  }));
+  const applied = runExport("srt", "exports/captions/talk-applied.srt");
+  assert.equal(applied.status, 0, applied.stderr);
+  const appliedManifest = JSON.parse(await readFile(join(cwd, "exports", "captions", "talk-applied.caption-export.json"), "utf8"));
+  assert.deepEqual({
+    sourceTimelineId: appliedManifest.sourceTimelineId,
+    sourceTimelinePath: appliedManifest.sourceTimelinePath,
+    sourceTimelineHash: appliedManifest.sourceTimelineHash,
+    sourceTimelineRevisionId: appliedManifest.sourceTimelineRevisionId,
+    sourceTimelineRevisionStatus: appliedManifest.sourceTimelineRevisionStatus,
+    sourceTimelineFrontiers: appliedManifest.sourceTimelineFrontiers,
+  }, {
+    sourceTimelineId: appliedRevision.timelineId,
+    sourceTimelinePath: "projections/timelines/asset-talk.caption.timeline.yaml",
+    sourceTimelineHash: appliedRevision.timelineHash,
+    sourceTimelineRevisionId: appliedRevision.revisionId,
+    sourceTimelineRevisionStatus: "applied",
+    sourceTimelineFrontiers: [{ peer: "caption-export", counter: 3 }],
+  });
 });
 
 test("caption export rejects symlinked output paths that resolve outside cwd", async () => {
@@ -4191,6 +4227,59 @@ test("runs production export-timeline-handoff as CSV for external NLE review", a
   assert.equal(manifest.format, "csv");
   assert.deepEqual(manifest.itemTypes, { caption: 1, composition: 1, video: 1 });
   assert.deepEqual(manifest.outputs, ["exports/handoff/episode.timeline.csv"]);
+
+  const appliedRevision = createTimelineAppliedRevision({
+    projectId: "project-1",
+    nodeId: "timeline-editor-1",
+    cwd,
+    filePath: timelinePath,
+    dsl: parsedHandoffTimeline.dsl,
+    createdAt: "2026-07-08T00:00:00.000Z",
+    loroFrontiers: [{ peer: "handoff-export", counter: 5 }],
+  });
+  await writeJson(join(cwd, "projections", "timelines", "episode.timeline.lock.json"), createTimelineLock({
+    projectId: "project-1",
+    nodeId: "timeline-editor-1",
+    filePath: timelinePath,
+    dsl: parsedHandoffTimeline.dsl,
+    pulledAt: "2026-07-08T00:00:00.000Z",
+    appliedRevision,
+  }));
+  const appliedChild = spawnSync(
+    process.execPath,
+    [
+      "--import",
+      tsxLoader,
+      cliEntry.pathname,
+      "production",
+      "export-timeline-handoff",
+      "--timeline",
+      "projections/timelines/episode.timeline.yaml",
+      "--format",
+      "csv",
+      "--out",
+      "exports/handoff/episode-applied.timeline.csv",
+      "--json",
+    ],
+    { cwd, encoding: "utf8" },
+  );
+  assert.equal(appliedChild.status, 0, appliedChild.stderr);
+  const appliedManifest = JSON.parse(await readFile(join(cwd, "exports", "handoff", "episode-applied.timeline.handoff.json"), "utf8"));
+  assert.deepEqual({
+    sourceTimelineId: appliedManifest.sourceTimelineId,
+    sourceTimelinePath: appliedManifest.sourceTimelinePath,
+    sourceTimelineHash: appliedManifest.sourceTimelineHash,
+    sourceTimelineRevisionId: appliedManifest.sourceTimelineRevisionId,
+    sourceTimelineRevisionStatus: appliedManifest.sourceTimelineRevisionStatus,
+    sourceTimelineFrontiers: appliedManifest.sourceTimelineFrontiers,
+  }, {
+    sourceTimelineId: appliedRevision.timelineId,
+    sourceTimelinePath: "projections/timelines/episode.timeline.yaml",
+    sourceTimelineHash: appliedRevision.timelineHash,
+    sourceTimelineRevisionId: appliedRevision.revisionId,
+    sourceTimelineRevisionStatus: "applied",
+    sourceTimelineFrontiers: [{ peer: "handoff-export", counter: 5 }],
+  });
 });
 
 test("timeline handoff export rejects symlinked output paths that resolve outside cwd", async () => {

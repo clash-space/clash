@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { readFile } from "node:fs/promises";
 import { isAbsolute, join, relative, resolve, sep } from "node:path";
 import {
   agentReadToken,
@@ -262,6 +263,44 @@ export function createTimelineSourceProvenance(options: {
     ...(options.sourceTimelineFrontiers ? { sourceTimelineFrontiers: options.sourceTimelineFrontiers } : {}),
     ...(options.sourceTimelineVersionVector ? { sourceTimelineVersionVector: options.sourceTimelineVersionVector } : {}),
   };
+}
+
+export async function readAppliedTimelineRevisionForSource(options: {
+  cwd: string;
+  sourceTimelinePath: string;
+  dsl: ResolvedTimelineDsl;
+}): Promise<TimelineAppliedRevision | null> {
+  const cwd = resolve(options.cwd);
+  const sourceTimelinePath = isAbsolute(options.sourceTimelinePath)
+    ? resolve(options.sourceTimelinePath)
+    : resolve(cwd, options.sourceTimelinePath);
+  if (!isInsideOrEqual(cwd, sourceTimelinePath)) {
+    throw new Error("Timeline revision source path must stay inside the current project cwd");
+  }
+  const expectedHash = timelineHash(options.dsl);
+  const lockPath = resolveTimelineLockPath({ cwd, file: sourceTimelinePath });
+  let raw: string;
+  try {
+    raw = await readFile(lockPath, "utf8");
+  } catch (error) {
+    if (isMissingFile(error)) return null;
+    throw error;
+  }
+
+  try {
+    const lock = parseTimelineLock(raw);
+    const sourceProjectPath = toProjectPath(cwd, sourceTimelinePath);
+    if (lock.timelineHash !== expectedHash) return null;
+    if (!lock.appliedRevision || lock.appliedRevision.timelineHash !== expectedHash) return null;
+    if (lock.appliedRevision.sourceFilePath !== sourceProjectPath) {
+      const lockedFilePath = resolveTimelineFilePath({ cwd, file: lock.filePath });
+      const lockedProjectPath = toProjectPath(cwd, lockedFilePath);
+      if (lockedProjectPath !== sourceProjectPath) return null;
+    }
+    return lock.appliedRevision;
+  } catch {
+    return null;
+  }
 }
 
 export function createTimelineAppliedRevision(options: {
@@ -574,6 +613,13 @@ function toProjectPath(cwd: string, absolutePath: string): string {
 function isInsideOrEqual(parent: string, child: string): boolean {
   const relativePath = relative(parent, child);
   return relativePath === "" || (!relativePath.startsWith("..") && !isAbsolute(relativePath));
+}
+
+function isMissingFile(error: unknown): boolean {
+  return typeof error === "object"
+    && error !== null
+    && "code" in error
+    && (error as NodeJS.ErrnoException).code === "ENOENT";
 }
 
 function normalizeTrackForYaml(raw: unknown, index: number): ResolvedTimelineDsl["tracks"][number] {

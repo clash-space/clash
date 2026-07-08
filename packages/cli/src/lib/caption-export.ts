@@ -6,7 +6,10 @@ import {
   type ResolvedTimelineDsl,
   type ResolvedTrack,
 } from "@clash/shared-types";
-import { createTimelineSourceProvenance } from "./timeline-projection";
+import {
+  createTimelineSourceProvenance,
+  readAppliedTimelineRevisionForSource,
+} from "./timeline-projection";
 import { resolveAgentFilePathInsideCwd } from "./projection-cas";
 
 export type CaptionExportFormat = "srt" | "vtt" | "ass";
@@ -70,10 +73,16 @@ export async function exportCaptionFile(options: ExportCaptionFileOptions): Prom
   if (!Number.isFinite(fps) || fps <= 0) {
     throw new Error("Caption export requires a positive fps from --fps or timeline fps");
   }
+  const appliedRevision = await readAppliedTimelineRevisionForSource({
+    cwd,
+    sourceTimelinePath: timelinePath,
+    dsl: parsed.dsl,
+  });
   const timelineProvenance = createTimelineSourceProvenance({
     cwd,
     filePath: timelinePath,
     dsl: parsed.dsl,
+    appliedRevision,
   });
   const captions = collectCaptionEntries(parsed.dsl);
   if (captions.entries.length === 0) {

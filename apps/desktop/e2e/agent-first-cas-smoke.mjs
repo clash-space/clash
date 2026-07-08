@@ -1528,6 +1528,66 @@ async function runCaptionBurnTimelineRevisionPinning() {
     assets: [{ id: "asset-talk", type: "video", path: "assets/source/talk.mp4", metadata: {} }],
   });
 
+  const captionExport = runProduction([
+    "export-captions",
+    "--timeline",
+    "projections/timelines/captions.timeline.yaml",
+    "--format",
+    "srt",
+    "--out",
+    "exports/captions/applied-captions.srt",
+    "--json",
+  ]);
+  const captionExportPayload = captionExport.status === 0 ? parseStdoutJson(captionExport) : null;
+  const captionManifest = captionExportPayload
+    ? JSON.parse(readFileSync(captionExportPayload.manifestPath, "utf8"))
+    : null;
+  recordCheck(
+    "caption export pins manifest to applied timeline revision",
+    captionExport.status === 0 &&
+      captionManifest?.sourceTimelineId === appliedRevision.timelineId &&
+      captionManifest?.sourceTimelineHash === appliedRevision.timelineHash &&
+      captionManifest?.sourceTimelineRevisionId === appliedRevision.revisionId &&
+      captionManifest?.sourceTimelineRevisionStatus === "applied" &&
+      JSON.stringify(captionManifest?.sourceTimelineFrontiers) === JSON.stringify(appliedRevision.loroFrontiers),
+    captionExport.stderr || captionExport.stdout,
+    {
+      command: captionExport.command,
+      manifestPath: captionExportPayload?.manifestPath,
+      appliedRevision,
+    },
+  );
+
+  const timelineHandoff = runProduction([
+    "export-timeline-handoff",
+    "--timeline",
+    "projections/timelines/captions.timeline.yaml",
+    "--format",
+    "csv",
+    "--out",
+    "exports/handoff/applied.timeline.csv",
+    "--json",
+  ]);
+  const timelineHandoffPayload = timelineHandoff.status === 0 ? parseStdoutJson(timelineHandoff) : null;
+  const handoffManifest = timelineHandoffPayload
+    ? JSON.parse(readFileSync(timelineHandoffPayload.manifestPath, "utf8"))
+    : null;
+  recordCheck(
+    "timeline handoff export pins manifest to applied timeline revision",
+    timelineHandoff.status === 0 &&
+      handoffManifest?.sourceTimelineId === appliedRevision.timelineId &&
+      handoffManifest?.sourceTimelineHash === appliedRevision.timelineHash &&
+      handoffManifest?.sourceTimelineRevisionId === appliedRevision.revisionId &&
+      handoffManifest?.sourceTimelineRevisionStatus === "applied" &&
+      JSON.stringify(handoffManifest?.sourceTimelineFrontiers) === JSON.stringify(appliedRevision.loroFrontiers),
+    timelineHandoff.stderr || timelineHandoff.stdout,
+    {
+      command: timelineHandoff.command,
+      manifestPath: timelineHandoffPayload?.manifestPath,
+      appliedRevision,
+    },
+  );
+
   const exported = runProduction([
     "export-caption-burn",
     "--timeline",
@@ -1568,6 +1628,14 @@ async function runCaptionBurnTimelineRevisionPinning() {
   );
 
   return {
+    captionExport: {
+      manifestPath: captionExportPayload?.manifestPath,
+      sourceTimelineRevisionId: appliedRevision.revisionId,
+    },
+    timelineHandoff: {
+      manifestPath: timelineHandoffPayload?.manifestPath,
+      sourceTimelineRevisionId: appliedRevision.revisionId,
+    },
     export: {
       outputAssetId: exportedPayload?.outputAssetId,
       packagePath: exportedPayload?.packagePath,
@@ -2047,6 +2115,8 @@ async function main() {
     requireCheckPassed("timeline history reads host revision index");
     requireCheckPassed("timeline revision history exposes non-media revision content storage");
     requireCheckPassed("timeline content restores host revision body");
+    requireCheckPassed("caption export pins manifest to applied timeline revision");
+    requireCheckPassed("timeline handoff export pins manifest to applied timeline revision");
     requireCheckPassed("caption-burn export pins derived asset to applied timeline revision");
   } catch (error) {
     status = "fail";
@@ -2094,6 +2164,12 @@ async function main() {
       timelineContentRestoresHostRevisionBody: checks.some((check) => check.name === "timeline content restores host revision body" && check.status === "pass"),
       textCutExportSourceProvenanceRecorded: checks.some((check) => check.name === "text-cut export records source action provenance" && check.status === "pass"),
       textCutExportSymlinkActionRejected: checks.some((check) => check.name === "text-cut export rejects symlinked source action outside cwd" && check.status === "pass"),
+      captionExportTimelineRevisionPinned: checks.some((check) =>
+        check.name === "caption export pins manifest to applied timeline revision" && check.status === "pass"
+      ),
+      timelineHandoffExportTimelineRevisionPinned: checks.some((check) =>
+        check.name === "timeline handoff export pins manifest to applied timeline revision" && check.status === "pass"
+      ),
       captionBurnExportTimelineRevisionPinned: checks.some((check) =>
         check.name === "caption-burn export pins derived asset to applied timeline revision" && check.status === "pass"
       ),

@@ -8,10 +8,7 @@ import {
 import { exportCaptionFile } from "./caption-export";
 import {
   createTimelineSourceProvenance,
-  parseTimelineLock,
-  resolveTimelineLockPath,
-  timelineHash,
-  type TimelineAppliedRevision,
+  readAppliedTimelineRevisionForSource,
 } from "./timeline-projection";
 import { resolveAgentFilePathInsideCwd } from "./projection-cas";
 
@@ -284,37 +281,6 @@ function requireAsset(
   return asset;
 }
 
-async function readAppliedTimelineRevisionForSource(options: {
-  cwd: string;
-  sourceTimelinePath: string;
-  dsl: ResolvedTimelineDsl;
-}): Promise<TimelineAppliedRevision | null> {
-  const expectedHash = timelineHash(options.dsl);
-  const lockPath = resolveTimelineLockPath({ cwd: options.cwd, file: options.sourceTimelinePath });
-  let raw: string;
-  try {
-    raw = await readFile(lockPath, "utf8");
-  } catch (error) {
-    if (isMissingFile(error)) return null;
-    throw error;
-  }
-
-  try {
-    const lock = parseTimelineLock(raw);
-    const sourceProjectPath = toProjectRelativePath(options.cwd, options.sourceTimelinePath);
-    if (lock.timelineHash !== expectedHash) return null;
-    if (!lock.appliedRevision || lock.appliedRevision.timelineHash !== expectedHash) return null;
-    if (lock.appliedRevision.sourceFilePath !== sourceProjectPath) {
-      const lockedFilePath = resolveProjectPath(options.cwd, lock.filePath, "timeline lock filePath");
-      const lockedProjectPath = toProjectRelativePath(options.cwd, lockedFilePath);
-      if (lockedProjectPath !== sourceProjectPath) return null;
-    }
-    return lock.appliedRevision;
-  } catch {
-    return null;
-  }
-}
-
 function upsertOutputAsset(
   manifest: ProductionAssetManifest,
   input: {
@@ -404,13 +370,6 @@ function resolveAgentOutputPath(cwd: string, rawPath: string, writeVerb: string)
 function isInsideOrEqual(parent: string, child: string): boolean {
   const relativePath = relative(parent, child);
   return relativePath === "" || (!relativePath.startsWith("..") && !isAbsolute(relativePath));
-}
-
-function isMissingFile(error: unknown): boolean {
-  return typeof error === "object"
-    && error !== null
-    && "code" in error
-    && (error as NodeJS.ErrnoException).code === "ENOENT";
 }
 
 function toProjectRelativePath(cwd: string, absolutePath: string): string {
