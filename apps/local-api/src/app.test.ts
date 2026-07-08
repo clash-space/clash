@@ -10019,6 +10019,31 @@ describe("local API app", () => {
         accepted: true,
       },
     });
+    await expectSingleMutationAudit(app, {
+      operation: "room_message_create",
+      entityId: "room-message-1",
+      entityKind: "room-message",
+      reason: "local room message create",
+    });
+
+    const replayed = await app.request(`/api/v1/projects/${project.id}/room/messages`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        id: "room-message-1",
+        text: "hello local room",
+        sender_kind: "agent",
+        sender_id: "local-master-clash",
+        mentions: [{ user_id: "local-user", agent_member_id: "local-master-clash" }],
+      }),
+    });
+    expect(replayed.status).toBe(200);
+    await expectSingleMutationAudit(app, {
+      operation: "room_message_create",
+      entityId: "room-message-1",
+      entityKind: "room-message",
+      reason: "local room message create",
+    });
 
     const listed = await app.request(`/api/v1/projects/${project.id}/room/messages`);
     expect(await listed.json()).toMatchObject({

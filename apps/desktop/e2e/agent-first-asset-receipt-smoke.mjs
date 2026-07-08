@@ -3244,6 +3244,22 @@ async function main() {
 	    JSON.stringify(firstRoomMessage),
 	    { mutation: firstRoomMessage.mutation },
 	  );
+	  const localRoomMessageAuditResponse = await request("/api/v1/mutation-audit?operation=room_message_create&entityId=room-message-replay-smoke");
+	  const localRoomMessageAudit = await parseJsonResponse(localRoomMessageAuditResponse);
+	  const localRoomMessageAuditRecord = localRoomMessageAudit.records?.[0];
+	  recordCheck(
+	    "local room message create writes sanitized local mutation audit evidence",
+	    localRoomMessageAuditResponse.status === 200 &&
+	      localRoomMessageAudit.records?.length === 1 &&
+	      localRoomMessageAuditRecord.operation === "room_message_create" &&
+	      localRoomMessageAuditRecord.entity?.id === "room-message-replay-smoke" &&
+	      localRoomMessageAuditRecord.accepted === true &&
+	      localRoomMessageAuditRecord.actorClientType == null &&
+	      localRoomMessageAuditRecord.reason === "local room message create" &&
+	      mutationAuditRecordsHaveNoReadTokens(localRoomMessageAudit.records),
+	    JSON.stringify(localRoomMessageAudit),
+	    { mutation: firstRoomMessage.mutation },
+	  );
 
 	  const conflictingRoomMessageResponse = await request(`/api/v1/projects/${encodeURIComponent(sessionProject.id)}/room/messages`, {
 	    method: "POST",
@@ -3559,6 +3575,7 @@ async function main() {
 	      runtimeSessionCreateAuditRecorded: checks.some((check) => check.name === "runtime session create writes sanitized local mutation audit evidence" && check.status === "pass"),
 	      runtimeSessionAttachAuditRecorded: checks.some((check) => check.name === "runtime session attach writes sanitized local mutation audit evidence" && check.status === "pass"),
 	      localRoomMessageCreateAccepted: checks.some((check) => check.name === "local room message create accepts first client id" && check.status === "pass"),
+	      localRoomMessageCreateAuditRecorded: checks.some((check) => check.name === "local room message create writes sanitized local mutation audit evidence" && check.status === "pass"),
 	      localRoomMessageConflictRejected: checks.some((check) => check.name === "local room message id replay with different content is rejected" && check.status === "pass"),
 	      localRoomMessageOriginalPreserved: checks.some((check) => check.name === "local room message conflict preserves original content" && check.status === "pass"),
 	      roomSyncMissingProjectFirst: checks.some((check) => check.name === "room sync checks project existence before remote admission" && check.status === "pass"),

@@ -5053,7 +5053,8 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
       mentions?: unknown;
       sender_kind?: unknown;
       sender_id?: unknown;
-    };
+    } & ProjectWriteBody;
+    const preconditions = requestProjectWritePreconditions(c, body);
     const clientId = typeof body.id === "string" ? body.id.trim() : "";
     const messageId = clientId || crypto.randomUUID();
     const envelope = localMutationEnvelope("room_message_create", "room-message", messageId);
@@ -5076,6 +5077,7 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
     const senderId = senderKind === "agent" ? requestedSenderId : userId;
     const mentions = normalizeRoomMentions(body.mentions);
     const createdAt = Math.floor(Date.now() / 1000);
+    let createdMessage = false;
 
     const message = await db.update((state) => {
       const project = findActiveProject(state, projectId, userId);
@@ -5112,6 +5114,7 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
         text,
         created_at: createdAt,
       };
+      createdMessage = true;
       state.roomMessages.unshift(next);
       return next;
     });
@@ -5141,10 +5144,18 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
       }).catch(() => undefined);
     }
 
+    const mutation = hostMutationSucceeded(envelope, { resultEntityId: payload.id });
+    if (createdMessage) {
+      await db.appendMutationAudit(mutationAuditRecord({
+        mutation,
+        actorClientType: preconditions.actorClientType,
+        reason: "local room message create",
+      }));
+    }
     return c.json({
       ...payload,
       sync: await publicRoomSyncMeta(syncConfig),
-      mutation: hostMutationSucceeded(envelope, { resultEntityId: payload.id }),
+      mutation,
     });
   });
 
