@@ -77,11 +77,11 @@ applied bodies therefore have Obsidian-like file recoverability through content
 descriptors, without making the protected canonical store a directly editable
 vault.
 `clash doctor storage --json` verifies this role contract and warns when local
-SQLite is missing core metadata tables or the `asset_refs`,
-`asset_node_refs` / `reference_role`, `text_revisions`, or
+SQLite is missing core metadata tables, provider auth tables, or the
+`asset_refs`, `asset_node_refs` / `reference_role`, `text_revisions`, or
 `timeline_revisions` projection indexes required for host-readable projects,
-assets, sessions, room messages, mutation audit, asset usage, and revision
-history lookups. It also fails when the revision content blob
+assets, sessions, provider accounts, OAuth rows, room messages, mutation audit,
+asset usage, and revision history lookups. It also fails when the revision content blob
 roots are moved into editable agent paths, when existing revision blob files
 are writable or no longer match their content-addressed filenames, or when the
 cwd or project workspace contains stray `snapshot.bin` / `updates.log` files outside
@@ -593,8 +593,8 @@ Neither command imports or applies recovered Loro bytes automatically.
 8. Add storage doctor checks for:
    - multiple snapshots for one project (`secondary-canvas-replica` first pass),
    - broken asset links,
-   - missing local SQLite core metadata tables and projection indexes for
-     asset references and text/timeline revisions,
+   - missing local SQLite core metadata tables, provider auth tables, and
+     projection indexes for asset references and text/timeline revisions,
    - unexpected writes in protected directories,
    - missing project marker,
    - mismatched marker/env project id.
@@ -602,9 +602,9 @@ Neither command imports or applies recovered Loro bytes automatically.
    - create the standard agent workspace roots (`drafts/`,
      `projections/{text,timelines,storyboards,prompts,metadata}/`,
      `sessions/`, `assets/links/`, and protected `runtime/`),
-   - ensure the local SQLite core metadata tables plus `asset_refs`,
-     `asset_node_refs`, `text_revisions`, and `timeline_revisions` lookup
-     indexes exist,
+   - ensure the local SQLite core metadata tables, provider auth tables, plus
+     `asset_refs`, `asset_node_refs`, `text_revisions`, and
+     `timeline_revisions` lookup indexes exist,
    - restore read-only permissions on hash-valid text/timeline revision blob
      files that drifted writable,
    - quarantine secondary `snapshot.bin` / `updates.log` files under

@@ -1009,6 +1009,34 @@ test("storage doctor warns when local SQLite lacks core metadata tables", async 
   assert.match(schemaCheck.message, /mutation_audit/);
 });
 
+test("storage doctor warns when local SQLite lacks provider auth tables", async () => {
+  const homeDir = await tempDir();
+  const cwd = await tempDir();
+  await initProject({ cwd, projectId: "doctor_project" });
+  await runStorageDoctor({ cwd, env: {}, homeDir, repair: true });
+  const localApiDir = join(homeDir, ".clash", "local-api");
+  const sqlite = openSqlite(join(localApiDir, "local.sqlite"));
+  try {
+    sqlite.exec(`
+      DROP TABLE IF EXISTS provider_accounts;
+      DROP TABLE IF EXISTS provider_account_credentials;
+      DROP TABLE IF EXISTS provider_account_supported_models;
+      DROP TABLE IF EXISTS provider_account_model_priorities;
+      DROP TABLE IF EXISTS provider_oauth;
+    `);
+  } finally {
+    sqlite.close();
+  }
+
+  const report = await runStorageDoctor({ cwd, env: {}, homeDir });
+
+  assert.equal(report.ok, true);
+  const schemaCheck = checkById(report, "local-sqlite-schema");
+  assert.equal(schemaCheck.level, "warning");
+  assert.match(schemaCheck.message, /provider_accounts/);
+  assert.match(schemaCheck.message, /provider_oauth/);
+});
+
 test("storage doctor repair creates workspace roots and fixes local SQLite asset reference schema", async () => {
   const homeDir = await tempDir();
   const cwd = await tempDir();
@@ -1131,6 +1159,48 @@ test("storage doctor repair creates core local SQLite metadata tables", async ()
   }
 });
 
+test("storage doctor repair creates provider auth SQLite tables", async () => {
+  const homeDir = await tempDir();
+  const cwd = await tempDir();
+  await initProject({ cwd, projectId: "doctor_project" });
+  await runStorageDoctor({ cwd, env: {}, homeDir, repair: true });
+  const localApiDir = join(homeDir, ".clash", "local-api");
+  const sqlite = openSqlite(join(localApiDir, "local.sqlite"));
+  try {
+    sqlite.exec(`
+      DROP TABLE IF EXISTS provider_accounts;
+      DROP TABLE IF EXISTS provider_account_credentials;
+      DROP TABLE IF EXISTS provider_account_supported_models;
+      DROP TABLE IF EXISTS provider_account_model_priorities;
+      DROP TABLE IF EXISTS provider_oauth;
+    `);
+  } finally {
+    sqlite.close();
+  }
+
+  const repaired = await runStorageDoctor({ cwd, env: {}, homeDir, repair: true });
+
+  assert.equal(repaired.ok, true);
+  assert.equal(checkById(repaired, "local-sqlite-schema").level, "ok");
+  const sqliteAfterRepair = openSqlite(join(localApiDir, "local.sqlite"));
+  try {
+    for (const table of [
+      "provider_accounts",
+      "provider_account_credentials",
+      "provider_account_supported_models",
+      "provider_account_model_priorities",
+      "provider_oauth",
+    ]) {
+      assert.equal(
+        sqliteAfterRepair.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?").get(table)?.name,
+        table,
+      );
+    }
+  } finally {
+    sqliteAfterRepair.close();
+  }
+});
+
 test("storage doctor repair upgrades partial core local SQLite metadata tables", async () => {
   const homeDir = await tempDir();
   const cwd = await tempDir();
@@ -1173,7 +1243,7 @@ test("storage doctor repair upgrades partial core local SQLite metadata tables",
   assert.equal(checkById(verified, "local-sqlite-schema").level, "ok");
 });
 
-test("storage doctor accepts the local SQLite core metadata and projection schema", async () => {
+test("storage doctor accepts the local SQLite core metadata, provider auth, and projection schema", async () => {
   const homeDir = await tempDir();
   const cwd = await tempDir();
   await initProject({ cwd, projectId: "doctor_project" });
@@ -1193,6 +1263,7 @@ test("storage doctor accepts the local SQLite core metadata and projection schem
   const schemaCheck = checkById(report, "local-sqlite-schema");
   assert.equal(schemaCheck.level, "ok");
   assert.match(schemaCheck.message, /supports core metadata/);
+  assert.match(schemaCheck.message, /provider auth/);
 });
 
 test("doctor command is registered with storage subcommand", async () => {

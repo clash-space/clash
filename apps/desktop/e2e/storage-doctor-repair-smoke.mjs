@@ -490,6 +490,11 @@ async function main() {
       { type: "index", name: "mutation_audit_created_idx" },
       { type: "index", name: "mutation_audit_operation_idx" },
       { type: "index", name: "mutation_audit_entity_idx" },
+      { type: "table", name: "provider_accounts" },
+      { type: "table", name: "provider_account_credentials" },
+      { type: "table", name: "provider_account_supported_models" },
+      { type: "table", name: "provider_account_model_priorities" },
+      { type: "table", name: "provider_oauth" },
     ]),
     status.localSqlitePath,
   );
@@ -624,7 +629,7 @@ async function main() {
   const report = {
     schemaVersion: 1,
     status: "pass",
-    summary: "Storage doctor repair initializes agent workspace roots plus local SQLite core metadata and projection index schema through public CLI commands, and project status exposes explicit local/cloud action gates.",
+    summary: "Storage doctor repair initializes agent workspace roots plus local SQLite core metadata, provider auth, and projection index schema through public CLI commands, and project status exposes explicit local/cloud action gates.",
     run: {
       artifactRoot,
       workspace,

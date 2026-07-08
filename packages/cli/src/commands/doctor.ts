@@ -1237,6 +1237,7 @@ async function repairLocalSqliteSchema(sqlitePath: string): Promise<StorageDocto
     };
     db = new DatabaseSync(sqlitePath);
     ensureLocalSqliteCoreMetadataSchema(db);
+    ensureLocalSqliteProviderAuthSchema(db);
     db.exec(`
       CREATE TABLE IF NOT EXISTS asset_node_refs (
         asset_id TEXT NOT NULL,
@@ -1296,7 +1297,7 @@ async function repairLocalSqliteSchema(sqlitePath: string): Promise<StorageDocto
   }
   return [{
     id: "local-sqlite-schema",
-    message: "Ensured local SQLite core metadata, asset reference, and revision index schema.",
+    message: "Ensured local SQLite core metadata, provider auth, asset reference, and revision index schema.",
     path: sqlitePath,
   }];
 }
@@ -1551,6 +1552,125 @@ function ensureSqliteColumn(db: SqliteDatabase, table: string, columnDefinition:
   }
 }
 
+function ensureLocalSqliteProviderAuthSchema(db: SqliteDatabase): void {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS provider_accounts (
+      user_id TEXT NOT NULL,
+      account_key TEXT NOT NULL,
+      id TEXT,
+      provider_id TEXT NOT NULL,
+      upstream_id TEXT,
+      region TEXT,
+      label TEXT,
+      enabled INTEGER NOT NULL,
+      priority REAL,
+      weight REAL,
+      created_at TEXT,
+      updated_at TEXT,
+      PRIMARY KEY (user_id, account_key)
+    );
+
+    CREATE TABLE IF NOT EXISTS provider_account_credentials (
+      user_id TEXT NOT NULL,
+      account_key TEXT NOT NULL,
+      credential_key TEXT NOT NULL,
+      credential_value TEXT NOT NULL,
+      PRIMARY KEY (user_id, account_key, credential_key)
+    );
+
+    CREATE TABLE IF NOT EXISTS provider_account_supported_models (
+      user_id TEXT NOT NULL,
+      account_key TEXT NOT NULL,
+      model_id TEXT NOT NULL,
+      position INTEGER NOT NULL,
+      PRIMARY KEY (user_id, account_key, model_id)
+    );
+
+    CREATE TABLE IF NOT EXISTS provider_account_model_priorities (
+      user_id TEXT NOT NULL,
+      account_key TEXT NOT NULL,
+      model_id TEXT NOT NULL,
+      priority REAL NOT NULL,
+      PRIMARY KEY (user_id, account_key, model_id)
+    );
+
+    CREATE TABLE IF NOT EXISTS provider_oauth (
+      user_id TEXT NOT NULL,
+      provider_id TEXT NOT NULL,
+      account_id TEXT NOT NULL DEFAULT '',
+      status TEXT NOT NULL,
+      access_token TEXT,
+      refresh_token TEXT,
+      token_type TEXT,
+      verification_uri TEXT,
+      user_code TEXT,
+      device_code TEXT,
+      interval_seconds INTEGER,
+      account_label TEXT,
+      expires_at TEXT,
+      error TEXT,
+      created_at TEXT,
+      updated_at TEXT,
+      PRIMARY KEY (user_id, provider_id, account_id)
+    );
+  `);
+  for (const column of [
+    "account_key TEXT NOT NULL DEFAULT ''",
+    "id TEXT",
+    "provider_id TEXT NOT NULL DEFAULT ''",
+    "upstream_id TEXT",
+    "region TEXT",
+    "label TEXT",
+    "enabled INTEGER NOT NULL DEFAULT 1",
+    "priority REAL",
+    "weight REAL",
+    "created_at TEXT",
+    "updated_at TEXT",
+  ]) {
+    ensureSqliteColumn(db, "provider_accounts", column);
+  }
+  for (const column of [
+    "account_key TEXT NOT NULL DEFAULT ''",
+    "credential_key TEXT NOT NULL DEFAULT ''",
+    "credential_value TEXT NOT NULL DEFAULT ''",
+  ]) {
+    ensureSqliteColumn(db, "provider_account_credentials", column);
+  }
+  for (const column of [
+    "account_key TEXT NOT NULL DEFAULT ''",
+    "model_id TEXT NOT NULL DEFAULT ''",
+    "position INTEGER NOT NULL DEFAULT 0",
+  ]) {
+    ensureSqliteColumn(db, "provider_account_supported_models", column);
+  }
+  for (const column of [
+    "account_key TEXT NOT NULL DEFAULT ''",
+    "model_id TEXT NOT NULL DEFAULT ''",
+    "priority REAL NOT NULL DEFAULT 0",
+  ]) {
+    ensureSqliteColumn(db, "provider_account_model_priorities", column);
+  }
+  for (const column of [
+    "provider_id TEXT NOT NULL DEFAULT ''",
+    "account_id TEXT NOT NULL DEFAULT ''",
+    "status TEXT NOT NULL DEFAULT 'pending'",
+    "access_token TEXT",
+    "refresh_token TEXT",
+    "token_type TEXT",
+    "verification_uri TEXT",
+    "user_code TEXT",
+    "device_code TEXT",
+    "interval_seconds INTEGER",
+    "account_label TEXT",
+    "expires_at TEXT",
+    "error TEXT",
+    "created_at TEXT",
+    "updated_at TEXT",
+  ]) {
+    ensureSqliteColumn(db, "provider_oauth", column);
+  }
+}
+
 async function inspectLocalSqliteSchema(sqlitePath: string): Promise<StorageDoctorCheck> {
   if (!(await pathExists(sqlitePath, "file"))) {
     return {
@@ -1711,6 +1831,61 @@ async function inspectLocalSqliteSchema(sqlitePath: string): Promise<StorageDoct
       ],
       indexes: ["mutation_audit_created_idx", "mutation_audit_operation_idx", "mutation_audit_entity_idx"],
     });
+    inspectSqliteTableSchema(db, problems, {
+      table: "provider_accounts",
+      columns: [
+        "user_id",
+        "account_key",
+        "id",
+        "provider_id",
+        "upstream_id",
+        "region",
+        "label",
+        "enabled",
+        "priority",
+        "weight",
+        "created_at",
+        "updated_at",
+      ],
+      indexes: [],
+    });
+    inspectSqliteTableSchema(db, problems, {
+      table: "provider_account_credentials",
+      columns: ["user_id", "account_key", "credential_key", "credential_value"],
+      indexes: [],
+    });
+    inspectSqliteTableSchema(db, problems, {
+      table: "provider_account_supported_models",
+      columns: ["user_id", "account_key", "model_id", "position"],
+      indexes: [],
+    });
+    inspectSqliteTableSchema(db, problems, {
+      table: "provider_account_model_priorities",
+      columns: ["user_id", "account_key", "model_id", "priority"],
+      indexes: [],
+    });
+    inspectSqliteTableSchema(db, problems, {
+      table: "provider_oauth",
+      columns: [
+        "user_id",
+        "provider_id",
+        "account_id",
+        "status",
+        "access_token",
+        "refresh_token",
+        "token_type",
+        "verification_uri",
+        "user_code",
+        "device_code",
+        "interval_seconds",
+        "account_label",
+        "expires_at",
+        "error",
+        "created_at",
+        "updated_at",
+      ],
+      indexes: [],
+    });
 
     return problems.length > 0
       ? {
@@ -1722,7 +1897,7 @@ async function inspectLocalSqliteSchema(sqlitePath: string): Promise<StorageDoct
       : {
           id: "local-sqlite-schema",
           level: "ok",
-          message: "Local SQLite schema supports core metadata, asset reference indexing, and text/timeline revision indexing.",
+          message: "Local SQLite schema supports core metadata, provider auth, asset reference indexing, and text/timeline revision indexing.",
           path: sqlitePath,
         };
   } catch (error) {
