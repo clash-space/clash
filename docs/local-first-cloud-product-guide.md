@@ -195,6 +195,9 @@ Product rule:
 
 - Sync room chat by default once project sync is enabled.
 - Sync detailed agent logs only with explicit setting or team policy.
+- Project status exposes this split as `collaboration.tracePolicy`: room
+  messages and public session metadata are sync-worthy collaboration context,
+  while raw agent traces are `local-only` by default and excluded from room.
 
 ### Assets
 

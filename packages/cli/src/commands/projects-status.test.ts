@@ -10,6 +10,27 @@ import {
 } from "./projects";
 import type { ResolvedProjectContext } from "../lib/project-context";
 
+const expectedTracePolicy = {
+  schemaVersion: 1,
+  roomMessages: {
+    kind: "project-chat",
+    syncDefault: "sync-when-project-sync-enabled",
+    rawAgentTrace: false,
+  },
+  agentSessionMetadata: {
+    kind: "public-session-metadata",
+    syncDefault: "sync-when-project-sync-enabled",
+    rawAgentTrace: false,
+  },
+  rawAgentTraces: {
+    kind: "private-runtime-trace",
+    syncDefault: "local-only",
+    optInRequiredForSync: true,
+    excludedFromRoom: true,
+    sensitiveFields: ["tool-logs", "local-file-paths", "scratch-context"],
+  },
+};
+
 async function tempDir(): Promise<string> {
   return mkdtemp(join(tmpdir(), "clash-project-status-"));
 }
@@ -89,6 +110,7 @@ test("project status exposes agent-readable project roots and protected local fi
       requiredForLocalActions: true,
       availability: "owner-machine-online",
     },
+    tracePolicy: expectedTracePolicy,
   });
   assert.equal(status.clashHome, join(homeDir, ".clash"));
   assert.equal(status.projectStore, projectStore);
@@ -333,6 +355,7 @@ test("project status exposes explicit collaboration gates for synced and shared 
       requiredForLocalActions: true,
       availability: "owner-machine-online",
     },
+    tracePolicy: expectedTracePolicy,
   });
   assert.deepEqual(shared.collaboration, {
     schemaVersion: 1,
@@ -374,6 +397,7 @@ test("project status exposes explicit collaboration gates for synced and shared 
       requiredForLocalActions: true,
       availability: "owner-machine-online",
     },
+    tracePolicy: expectedTracePolicy,
   });
 });
 

@@ -143,6 +143,27 @@ export interface ProjectStatusActionGates {
   runLocalAgent: ProjectStatusActionGate;
 }
 
+export interface ProjectStatusTracePolicy {
+  schemaVersion: 1;
+  roomMessages: {
+    kind: "project-chat";
+    syncDefault: "sync-when-project-sync-enabled";
+    rawAgentTrace: false;
+  };
+  agentSessionMetadata: {
+    kind: "public-session-metadata";
+    syncDefault: "sync-when-project-sync-enabled";
+    rawAgentTrace: false;
+  };
+  rawAgentTraces: {
+    kind: "private-runtime-trace";
+    syncDefault: "local-only";
+    optInRequiredForSync: true;
+    excludedFromRoom: true;
+    sensitiveFields: string[];
+  };
+}
+
 export interface ProjectStatusCollaboration {
   schemaVersion: 1;
   mode: ProjectCollaborationMode;
@@ -157,6 +178,7 @@ export interface ProjectStatusCollaboration {
     requiredForLocalActions: true;
     availability: "owner-machine-online";
   };
+  tracePolicy: ProjectStatusTracePolicy;
 }
 
 export interface ProjectStatus {
@@ -431,6 +453,7 @@ export function projectCollaborationStatus(
       requiredForLocalActions: true,
       availability: "owner-machine-online",
     },
+    tracePolicy: projectTracePolicy(),
   };
 }
 
@@ -539,6 +562,29 @@ function deniedGate(
     allowed: false,
     reason,
     requirements,
+  };
+}
+
+function projectTracePolicy(): ProjectStatusTracePolicy {
+  return {
+    schemaVersion: 1,
+    roomMessages: {
+      kind: "project-chat",
+      syncDefault: "sync-when-project-sync-enabled",
+      rawAgentTrace: false,
+    },
+    agentSessionMetadata: {
+      kind: "public-session-metadata",
+      syncDefault: "sync-when-project-sync-enabled",
+      rawAgentTrace: false,
+    },
+    rawAgentTraces: {
+      kind: "private-runtime-trace",
+      syncDefault: "local-only",
+      optInRequiredForSync: true,
+      excludedFromRoom: true,
+      sensitiveFields: ["tool-logs", "local-file-paths", "scratch-context"],
+    },
   };
 }
 

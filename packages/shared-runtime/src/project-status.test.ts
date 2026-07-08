@@ -1,6 +1,27 @@
 import { describe, expect, it } from "vitest";
 import { buildProjectStatus } from "./project-status";
 
+const expectedTracePolicy = {
+  schemaVersion: 1,
+  roomMessages: {
+    kind: "project-chat",
+    syncDefault: "sync-when-project-sync-enabled",
+    rawAgentTrace: false,
+  },
+  agentSessionMetadata: {
+    kind: "public-session-metadata",
+    syncDefault: "sync-when-project-sync-enabled",
+    rawAgentTrace: false,
+  },
+  rawAgentTraces: {
+    kind: "private-runtime-trace",
+    syncDefault: "local-only",
+    optInRequiredForSync: true,
+    excludedFromRoom: true,
+    sensitiveFields: ["tool-logs", "local-file-paths", "scratch-context"],
+  },
+} as const;
+
 describe("project status path builder", () => {
   it("builds agent-editable roots and protected local store paths", () => {
     const status = buildProjectStatus(
@@ -76,6 +97,7 @@ describe("project status path builder", () => {
         requiredForLocalActions: true,
         availability: "owner-machine-online",
       },
+      tracePolicy: expectedTracePolicy,
     });
     expect(status.storage).toEqual({
       schemaVersion: 1,
@@ -421,5 +443,14 @@ describe("project status path builder", () => {
         },
       },
     });
+  });
+
+  it("publishes the room chat and raw agent trace sync boundary", () => {
+    const status = buildProjectStatus(
+      { projectId: "project-shared", source: "explicit" },
+      { clashRoot: "/tmp/clash-home", marker: { sync: { mode: "shared" } } },
+    );
+
+    expect(status.collaboration.tracePolicy).toEqual(expectedTracePolicy);
   });
 });

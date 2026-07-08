@@ -8067,6 +8067,26 @@ describe("local API app", () => {
           requiredForLocalActions: true,
           availability: "owner-machine-online",
         },
+        tracePolicy: {
+          schemaVersion: 1,
+          roomMessages: {
+            kind: "project-chat",
+            syncDefault: "sync-when-project-sync-enabled",
+            rawAgentTrace: false,
+          },
+          agentSessionMetadata: {
+            kind: "public-session-metadata",
+            syncDefault: "sync-when-project-sync-enabled",
+            rawAgentTrace: false,
+          },
+          rawAgentTraces: {
+            kind: "private-runtime-trace",
+            syncDefault: "local-only",
+            optInRequiredForSync: true,
+            excludedFromRoom: true,
+            sensitiveFields: ["tool-logs", "local-file-paths", "scratch-context"],
+          },
+        },
       },
       clashHome: clashRoot,
       localApiDataDir: dataDir,
