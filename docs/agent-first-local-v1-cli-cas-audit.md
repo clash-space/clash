@@ -237,11 +237,11 @@ Remaining guardrails:
   rejects active projects, defaults to a 7-day purge delay, and treats
   `--force` as the explicit admin purge override. v1 project create/delete/restore/purge,
   legacy project create/update/delete, asset create/ref-delete/cover-update, local sync
-  config update, local audio config update/install, local harness enablement/install,
+  config update, local audio config update/install, local harness enablement/install/install-adapter/upgrade/uninstall/authenticate,
   local agent-server config update, provider account update/delete, provider OAuth
   start/complete/delete, and session create/delete responses include accepted/rejected mutation records.
   Accepted v1 project create/delete, accepted legacy project create/update/delete,
-  accepted project restore/purge, accepted local sync config update, accepted local audio config update/install, accepted local harness enablement/install, accepted local agent-server config update, accepted provider account update/delete, accepted provider OAuth start/complete/delete, and accepted session create/delete write
+  accepted project restore/purge, accepted local sync config update, accepted local audio config update/install, accepted local harness enablement/install/install-adapter/upgrade/uninstall/authenticate, accepted local agent-server config update, accepted provider account update/delete, accepted provider OAuth start/complete/delete, and accepted session create/delete write
   first-pass sanitized local audit records readable through
   `clash audit mutations --operation project_create --entity <projectId> --json`,
   `clash audit mutations --operation project_update --entity <projectId> --json`,
@@ -253,6 +253,9 @@ Remaining guardrails:
   `clash audit mutations --operation local_audio_model_install --entity audio --json`,
   `clash audit mutations --operation local_harness_enablement_update --entity enabled --json`,
   `clash audit mutations --operation local_harness_install --entity <harnessId> --json`,
+  `clash audit mutations --operation local_harness_upgrade --entity <harnessId> --json`,
+  `clash audit mutations --operation local_harness_uninstall --entity <harnessId> --json`,
+  `clash audit mutations --operation local_harness_authenticate --entity <harnessId> --json`,
   `clash audit mutations --operation local_agent_servers_update --entity agent-servers --json`,
   `clash audit mutations --operation provider_accounts_update --entity <userId> --json`,
   `clash audit mutations --operation provider_account_delete --entity <accountId> --json`,

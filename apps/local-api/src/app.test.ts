@@ -100,6 +100,36 @@ async function createTestPrivateKeyPem(): Promise<string> {
   return `-----BEGIN PRIVATE KEY-----\n${body}\n-----END PRIVATE KEY-----\n`;
 }
 
+async function expectSingleMutationAudit(
+  app: ReturnType<typeof createLocalApiApp>,
+  options: {
+    operation: string;
+    entityId: string;
+    entityKind: string;
+    reason: string;
+    actorClientType?: string | null;
+  },
+) {
+  const audit = await app.request(
+    `/api/v1/mutation-audit?operation=${encodeURIComponent(options.operation)}&entityId=${encodeURIComponent(options.entityId)}`,
+  );
+  expect(audit.status).toBe(200);
+  const auditJson = await audit.json() as { records: Array<any> };
+  expect(auditJson.records).toHaveLength(1);
+  expect(auditJson.records[0]).toMatchObject({
+    operation: options.operation,
+    entity: { kind: options.entityKind, id: options.entityId },
+    actorClientType: options.actorClientType ?? null,
+    accepted: true,
+    forced: false,
+    reason: options.reason,
+    resultEntityId: options.entityId,
+  });
+  expect(auditJson.records[0].mutation.expectedReadToken).toBeUndefined();
+  expect(auditJson.records[0].mutation.beforeReadToken).toBeUndefined();
+  expect(auditJson.records[0].mutation.afterReadToken).toBeUndefined();
+}
+
 describe("local API app", () => {
   it("reports local health and a synthetic local session", async () => {
     const app = createLocalApiApp({ dataDir, userId: "local-user" });
@@ -7649,6 +7679,63 @@ describe("local API app", () => {
     });
   });
 
+  it("installs local registry agents through the explicit adapter route", async () => {
+    const installHarnessAdapter = vi.fn(async (id: string) => ({
+      harnesses: [
+        {
+          id,
+          label: "Gemini",
+          binary: "clash-acp-gemini",
+          enabled: false,
+          available: true,
+          installable: true,
+          installSource: "registry" as const,
+        },
+      ],
+    }));
+    const app = createLocalApiApp({
+      dataDir,
+      userId: "local-user",
+      localAcp: {
+        async listRuntimes() {
+          return { runtimes: [] };
+        },
+        async createSession() {
+          return { session_id: "local-session-existing" };
+        },
+        async listResumeSessions() {
+          return { sessions: [] };
+        },
+        async installHarnessAdapter(id) {
+          return installHarnessAdapter(id);
+        },
+      },
+    });
+
+    const response = await app.request("/api/v1/local/harnesses/gemini/install-adapter", {
+      method: "POST",
+    });
+
+    expect(response.status).toBe(200);
+    expect(installHarnessAdapter).toHaveBeenCalledWith("gemini");
+    expect(await response.json()).toMatchObject({
+      harnesses: [{ id: "gemini", available: true, installSource: "registry" }],
+      mutation: {
+        operation: "local_harness_install",
+        entity: { kind: "local-harness", id: "gemini" },
+        forced: false,
+        accepted: true,
+        resultEntityId: "gemini",
+      },
+    });
+    await expectSingleMutationAudit(app, {
+      operation: "local_harness_install",
+      entityId: "gemini",
+      entityKind: "local-harness",
+      reason: "local harness install",
+    });
+  });
+
   it("uninstalls local registry agents through the local ACP adapter", async () => {
     const uninstallHarness = vi.fn(async (id: string) => ({
       harnesses: [
@@ -7697,6 +7784,12 @@ describe("local API app", () => {
         accepted: true,
         resultEntityId: "gemini",
       },
+    });
+    await expectSingleMutationAudit(app, {
+      operation: "local_harness_uninstall",
+      entityId: "gemini",
+      entityKind: "local-harness",
+      reason: "local harness uninstall",
     });
   });
 
@@ -7752,6 +7845,12 @@ describe("local API app", () => {
         resultEntityId: "gemini",
       },
     });
+    await expectSingleMutationAudit(app, {
+      operation: "local_harness_upgrade",
+      entityId: "gemini",
+      entityKind: "local-harness",
+      reason: "local harness upgrade",
+    });
   });
 
   it("authenticates harnesses through the local ACP adapter", async () => {
@@ -7806,6 +7905,12 @@ describe("local API app", () => {
         accepted: true,
         resultEntityId: "gemini",
       },
+    });
+    await expectSingleMutationAudit(app, {
+      operation: "local_harness_authenticate",
+      entityId: "gemini",
+      entityKind: "local-harness",
+      reason: "local harness authenticate",
     });
   });
 

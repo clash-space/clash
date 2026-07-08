@@ -39,6 +39,14 @@ function recordCheck(name, pass, evidence, extra = {}) {
   }
 }
 
+function mutationAuditRecordsHaveNoReadTokens(records = []) {
+  return records.every((record) =>
+    record.mutation?.expectedReadToken == null &&
+    record.mutation?.beforeReadToken == null &&
+    record.mutation?.afterReadToken == null
+  );
+}
+
 function baseReadToken(readToken) {
   const marker = ":receipt:";
   const receiptAt = typeof readToken === "string" ? readToken.indexOf(marker) : -1;
@@ -129,6 +137,8 @@ async function main() {
 
   let enabledHarnessIds = ["codex-acp"];
   let geminiInstalled = false;
+  let geminiInstalledVersion = "1.1.0";
+  let geminiAuthConfigured = false;
   let audioInstalled = false;
   let oauthStartCount = 0;
   const audioConfig = createLocalAudioConfigStore({
@@ -165,8 +175,11 @@ async function main() {
       installed: geminiInstalled,
       installable: true,
       installSource: "registry",
-      installedVersion: geminiInstalled ? "1.1.0" : undefined,
-      latestVersion: "1.1.0",
+      installedVersion: geminiInstalled ? geminiInstalledVersion : undefined,
+      latestVersion: "1.2.0",
+      ...(geminiAuthConfigured
+        ? { auth: { status: "configured", message: "Gemini auth configured" } }
+        : {}),
     },
   ];
   let agentServers = {
@@ -203,10 +216,21 @@ async function main() {
       },
       async installHarness() {
         geminiInstalled = true;
+        geminiInstalledVersion = "1.1.0";
         return { harnesses: harnessRows() };
       },
       async uninstallHarness() {
         geminiInstalled = false;
+        geminiAuthConfigured = false;
+        return { harnesses: harnessRows() };
+      },
+      async upgradeHarness() {
+        geminiInstalled = true;
+        geminiInstalledVersion = "1.2.0";
+        return { harnesses: harnessRows() };
+      },
+      async authenticateHarness() {
+        geminiAuthConfigured = true;
         return { harnesses: harnessRows() };
       },
       async listAgentServers() {
@@ -833,6 +857,111 @@ async function main() {
       /Stale local harness uninstall rejected/.test(staleHarnessUninstallJson.error ?? ""),
     JSON.stringify(staleHarnessUninstallJson),
     { mutation: staleHarnessUninstallJson.mutation },
+  );
+
+  const acceptedHarnessUpgrade = await request("/api/v1/local/harnesses/gemini/upgrade", {
+    method: "POST",
+    headers: {
+      "x-clash-client-type": "agent",
+      "x-clash-if-match": acceptedHarnessInstallJson.readToken,
+    },
+  });
+  const acceptedHarnessUpgradeJson = await parseJsonResponse(acceptedHarnessUpgrade);
+  recordCheck(
+    "local harness upgrade with receipt read token is accepted",
+    acceptedHarnessUpgrade.status === 200 &&
+      acceptedHarnessUpgradeJson.mutation?.accepted === true &&
+      hasReceipt(acceptedHarnessUpgradeJson.readToken, "local-config") &&
+      acceptedHarnessUpgradeJson.readToken !== acceptedHarnessInstallJson.readToken &&
+      acceptedHarnessUpgradeJson.harnesses?.find((row) => row.id === "gemini")?.installedVersion === "1.2.0",
+    JSON.stringify(acceptedHarnessUpgradeJson),
+    { mutation: acceptedHarnessUpgradeJson.mutation },
+  );
+  const harnessUpgradeAuditResponse = await request("/api/v1/mutation-audit?operation=local_harness_upgrade&entityId=gemini");
+  const harnessUpgradeAudit = await parseJsonResponse(harnessUpgradeAuditResponse);
+  const harnessUpgradeAuditRecord = harnessUpgradeAudit.records?.[0];
+  recordCheck(
+    "local harness upgrade writes sanitized local mutation audit evidence",
+    harnessUpgradeAuditResponse.status === 200 &&
+      harnessUpgradeAudit.records?.length === 1 &&
+      harnessUpgradeAuditRecord.operation === "local_harness_upgrade" &&
+      harnessUpgradeAuditRecord.entity?.id === "gemini" &&
+      harnessUpgradeAuditRecord.accepted === true &&
+      harnessUpgradeAuditRecord.actorClientType === "agent" &&
+      harnessUpgradeAuditRecord.reason === "local harness upgrade" &&
+      mutationAuditRecordsHaveNoReadTokens(harnessUpgradeAudit.records),
+    JSON.stringify(harnessUpgradeAudit),
+    { mutation: acceptedHarnessUpgradeJson.mutation },
+  );
+
+  const acceptedHarnessAuth = await request("/api/v1/local/harnesses/gemini/authenticate", {
+    method: "POST",
+    headers: {
+      "x-clash-client-type": "agent",
+      "x-clash-if-match": acceptedHarnessUpgradeJson.readToken,
+    },
+    body: JSON.stringify({ method_id: "api-key" }),
+  });
+  const acceptedHarnessAuthJson = await parseJsonResponse(acceptedHarnessAuth);
+  recordCheck(
+    "local harness authenticate with receipt read token is accepted",
+    acceptedHarnessAuth.status === 200 &&
+      acceptedHarnessAuthJson.mutation?.accepted === true &&
+      hasReceipt(acceptedHarnessAuthJson.readToken, "local-config") &&
+      acceptedHarnessAuthJson.harnesses?.find((row) => row.id === "gemini")?.auth?.status === "configured",
+    JSON.stringify(acceptedHarnessAuthJson),
+    { mutation: acceptedHarnessAuthJson.mutation },
+  );
+  const harnessAuthAuditResponse = await request("/api/v1/mutation-audit?operation=local_harness_authenticate&entityId=gemini");
+  const harnessAuthAudit = await parseJsonResponse(harnessAuthAuditResponse);
+  const harnessAuthAuditRecord = harnessAuthAudit.records?.[0];
+  recordCheck(
+    "local harness authenticate writes sanitized local mutation audit evidence",
+    harnessAuthAuditResponse.status === 200 &&
+      harnessAuthAudit.records?.length === 1 &&
+      harnessAuthAuditRecord.operation === "local_harness_authenticate" &&
+      harnessAuthAuditRecord.entity?.id === "gemini" &&
+      harnessAuthAuditRecord.accepted === true &&
+      harnessAuthAuditRecord.actorClientType === "agent" &&
+      harnessAuthAuditRecord.reason === "local harness authenticate" &&
+      mutationAuditRecordsHaveNoReadTokens(harnessAuthAudit.records),
+    JSON.stringify(harnessAuthAudit),
+    { mutation: acceptedHarnessAuthJson.mutation },
+  );
+
+  const acceptedHarnessUninstall = await request("/api/v1/local/harnesses/gemini/install", {
+    method: "DELETE",
+    headers: {
+      "x-clash-client-type": "agent",
+      "x-clash-if-match": acceptedHarnessAuthJson.readToken,
+    },
+  });
+  const acceptedHarnessUninstallJson = await parseJsonResponse(acceptedHarnessUninstall);
+  recordCheck(
+    "local harness uninstall with receipt read token is accepted",
+    acceptedHarnessUninstall.status === 200 &&
+      acceptedHarnessUninstallJson.mutation?.accepted === true &&
+      hasReceipt(acceptedHarnessUninstallJson.readToken, "local-config") &&
+      acceptedHarnessUninstallJson.readToken !== acceptedHarnessAuthJson.readToken &&
+      acceptedHarnessUninstallJson.harnesses?.find((row) => row.id === "gemini")?.installed === false,
+    JSON.stringify(acceptedHarnessUninstallJson),
+    { mutation: acceptedHarnessUninstallJson.mutation },
+  );
+  const harnessUninstallAuditResponse = await request("/api/v1/mutation-audit?operation=local_harness_uninstall&entityId=gemini");
+  const harnessUninstallAudit = await parseJsonResponse(harnessUninstallAuditResponse);
+  const harnessUninstallAuditRecord = harnessUninstallAudit.records?.[0];
+  recordCheck(
+    "local harness uninstall writes sanitized local mutation audit evidence",
+    harnessUninstallAuditResponse.status === 200 &&
+      harnessUninstallAudit.records?.length === 1 &&
+      harnessUninstallAuditRecord.operation === "local_harness_uninstall" &&
+      harnessUninstallAuditRecord.entity?.id === "gemini" &&
+      harnessUninstallAuditRecord.accepted === true &&
+      harnessUninstallAuditRecord.actorClientType === "agent" &&
+      harnessUninstallAuditRecord.reason === "local harness uninstall" &&
+      mutationAuditRecordsHaveNoReadTokens(harnessUninstallAudit.records),
+    JSON.stringify(harnessUninstallAudit),
+    { mutation: acceptedHarnessUninstallJson.mutation },
   );
 
   const initialAgentServersResponse = await request("/api/v1/local/agent-servers");
@@ -3327,6 +3456,12 @@ async function main() {
       localHarnessInstallReceiptAccepted: checks.some((check) => check.name === "local harness install with receipt read token is accepted" && check.status === "pass"),
       localHarnessInstallAuditRecorded: checks.some((check) => check.name === "local harness install writes sanitized local mutation audit evidence" && check.status === "pass"),
       localHarnessUninstallStaleReceiptRejected: checks.some((check) => check.name === "local harness uninstall with stale receipt is rejected" && check.status === "pass"),
+      localHarnessUpgradeReceiptAccepted: checks.some((check) => check.name === "local harness upgrade with receipt read token is accepted" && check.status === "pass"),
+      localHarnessUpgradeAuditRecorded: checks.some((check) => check.name === "local harness upgrade writes sanitized local mutation audit evidence" && check.status === "pass"),
+      localHarnessAuthenticateReceiptAccepted: checks.some((check) => check.name === "local harness authenticate with receipt read token is accepted" && check.status === "pass"),
+      localHarnessAuthenticateAuditRecorded: checks.some((check) => check.name === "local harness authenticate writes sanitized local mutation audit evidence" && check.status === "pass"),
+      localHarnessUninstallReceiptAccepted: checks.some((check) => check.name === "local harness uninstall with receipt read token is accepted" && check.status === "pass"),
+      localHarnessUninstallAuditRecorded: checks.some((check) => check.name === "local harness uninstall writes sanitized local mutation audit evidence" && check.status === "pass"),
       localAgentServersGetReceiptReturned: checks.some((check) => check.name === "local agent servers get returns receipt read token" && check.status === "pass"),
       localAgentServersMissingReadRejected: checks.some((check) => check.name === "local agent servers update without prior read is rejected" && check.status === "pass"),
       localAgentServersBareCasRejected: checks.some((check) => check.name === "local agent servers update with bare CAS token is rejected" && check.status === "pass"),
