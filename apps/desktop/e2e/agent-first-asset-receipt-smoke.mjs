@@ -1351,6 +1351,7 @@ async function main() {
   firstCustomOutput.append("file", new File(["first-custom-checkpoint"], "custom.png", { type: "image/png" }));
   const firstCustomOutputResponse = await app.request("/api/custom-action/upload", {
     method: "POST",
+    headers: { "x-clash-client-type": "agent" },
     body: firstCustomOutput,
   });
   const firstCustomOutputJson = await parseJsonResponse(firstCustomOutputResponse);
@@ -1361,6 +1362,25 @@ async function main() {
       firstCustomOutputJson.mutation?.accepted === true,
     JSON.stringify(firstCustomOutputJson),
     { mutation: firstCustomOutputJson.mutation },
+  );
+
+  const customActionAuditResponse = await request("/api/v1/mutation-audit?operation=custom_action_upload&entityId=custom-checkpoint-smoke");
+  const customActionAudit = await parseJsonResponse(customActionAuditResponse);
+  const customActionAuditRecord = customActionAudit.records?.[0];
+  recordCheck(
+    "custom action upload writes sanitized local mutation audit evidence",
+    customActionAuditResponse.status === 200 &&
+      customActionAudit.records?.length === 1 &&
+      customActionAuditRecord.operation === "custom_action_upload" &&
+      customActionAuditRecord.entity?.id === "custom-checkpoint-smoke" &&
+      customActionAuditRecord.accepted === true &&
+      customActionAuditRecord.actorClientType === "agent" &&
+      customActionAuditRecord.reason === "custom action upload" &&
+      !JSON.stringify(customActionAuditRecord.mutation ?? {}).includes("receipt") &&
+      customActionAuditRecord.mutation?.expectedReadToken == null &&
+      customActionAuditRecord.mutation?.beforeReadToken == null &&
+      customActionAuditRecord.mutation?.afterReadToken == null,
+    JSON.stringify(customActionAudit),
   );
 
   const secondCustomOutput = new FormData();
@@ -2995,6 +3015,7 @@ async function main() {
       assetImportAuditRecorded: checks.some((check) => check.name === "asset import writes sanitized local mutation audit evidence" && check.status === "pass"),
       assetImportImmutableConflictRejected: checks.some((check) => check.name === "asset import rejects existing asset id with different immutable content" && check.status === "pass"),
       customActionCheckpointCreateAccepted: checks.some((check) => check.name === "custom action upload accepts first checkpoint output" && check.status === "pass"),
+      customActionCheckpointAuditRecorded: checks.some((check) => check.name === "custom action upload writes sanitized local mutation audit evidence" && check.status === "pass"),
       customActionCheckpointOverwriteRejected: checks.some((check) => check.name === "custom action upload rejects checkpoint overwrite" && check.status === "pass"),
       customActionCheckpointFilePreserved: checks.some((check) => check.name === "custom action checkpoint file remains first output after rejected overwrite" && check.status === "pass"),
       assetUploadSymlinkParentRejected: checks.some((check) => check.name === "asset upload rejects symlinked parent outside local asset storage" && check.status === "pass"),

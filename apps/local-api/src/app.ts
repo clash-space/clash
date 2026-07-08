@@ -6537,6 +6537,9 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
 
   app.post("/api/custom-action/upload", async (c) => {
     const form = await c.req.formData();
+    const actorClientType = normalizeString(c.req.header("x-clash-client-type")) ??
+      normalizeString(c.req.header("x-clash-actor-client-type")) ??
+      normalizeString(form.get("actorClientType"));
     const projectId = String(form.get("projectId") ?? "");
     const taskId = String(form.get("taskId") ?? "");
     const nodeId = String(form.get("nodeId") ?? "");
@@ -6554,11 +6557,17 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
     }
 
     if (outputType === "text") {
+      const mutation = hostMutationSucceeded(envelope, { resultEntityId: resultId });
+      await db.appendMutationAudit(mutationAuditRecord({
+        mutation,
+        actorClientType,
+        reason: "custom action upload",
+      }));
       return c.json({
         success: true,
         storageKey: null,
         content: String(form.get("content") ?? ""),
-        mutation: hostMutationSucceeded(envelope, { resultEntityId: resultId }),
+        mutation,
       });
     }
 
@@ -6634,11 +6643,17 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
         ...state.assetRefs.filter((ref) => !(ref.assetId === asset.id && ref.projectId === projectId)),
       ];
     });
+    const mutation = hostMutationSucceeded(envelope, { resultEntityId: assetId });
+    await db.appendMutationAudit(mutationAuditRecord({
+      mutation,
+      actorClientType,
+      reason: "custom action upload",
+    }));
     return c.json({
       success: true,
       storageKey,
       assetId,
-      mutation: hostMutationSucceeded(envelope, { resultEntityId: assetId }),
+      mutation,
     });
   });
 

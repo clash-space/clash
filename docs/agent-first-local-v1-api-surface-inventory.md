@@ -75,7 +75,8 @@ Current storage:
   mutation records for v1 auditability. For text custom-action results, the
   mutation records the action result without writing an asset row. For binary
   custom-action results, the uploaded file is a checkpoint asset: repeating the
-  same task/output id with different content is rejected before overwrite.
+  same task/output id with different content is rejected before overwrite, and
+  accepted uploads write sanitized local mutation audit evidence.
   Generic `/upload` records an `asset-blob` write; project-visible asset rows are
   still created through `/api/v1/assets` or `/api/v1/assets/import`.
 
@@ -983,7 +984,8 @@ edge graph actions,
 `clash assets gc --delete --if-match <readToken>` / destructive
 `POST /api/v1/assets/gc {dryRun:false}` asset garbage collection. custom-action
 upload uses the same shape for text action results and asset-backed media
-results, and generic `/upload` uses it for blob writes.
+results with sanitized local audit evidence, and generic `/upload` uses it for
+blob writes.
 Remaining local-api mutating endpoints still need parity before this is a full
 local API contract.
 
@@ -1018,6 +1020,8 @@ local API contract.
   --json`, `clash audit mutations --operation project_purge --entity <projectId>
   --json`, `clash audit mutations --operation asset_gc --entity local --json`,
   `clash audit mutations --operation asset_import --entity <assetId> --json`,
+  `clash audit mutations --operation custom_action_upload --entity <resultId>
+  --json`,
   `clash audit mutations --operation asset_cover_update --entity <assetId>
   --json`, `clash audit mutations --operation asset_references_refresh
   --entity <assetId> --json`,

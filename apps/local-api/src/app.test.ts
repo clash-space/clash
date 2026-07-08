@@ -3517,6 +3517,7 @@ describe("local API app", () => {
     imageForm.append("file", new File(["image-bytes"], "x.png", { type: "image/png" }));
     const image = await app.request("/api/custom-action/upload", {
       method: "POST",
+      headers: { "x-clash-client-type": "agent" },
       body: imageForm,
     });
     expect(image.status).toBe(200);
@@ -3532,6 +3533,23 @@ describe("local API app", () => {
         resultEntityId: "task-image",
       },
     });
+    const audit = await app.request("/api/v1/mutation-audit?operation=custom_action_upload&entityId=task-image");
+    expect(audit.status).toBe(200);
+    const auditJson = await audit.json() as { records: Array<{ actorClientType?: string; mutation?: any }> };
+    const agentAuditRecord = auditJson.records.find((record) => record.actorClientType === "agent");
+    expect(agentAuditRecord).toMatchObject({
+      operation: "custom_action_upload",
+      entity: { kind: "custom-action-result", id: "task-image" },
+      actorClientType: "agent",
+      accepted: true,
+      forced: false,
+      reason: "custom action upload",
+      resultEntityId: "task-image",
+    });
+    expect(JSON.stringify(agentAuditRecord?.mutation ?? {})).not.toContain("receipt");
+    expect(agentAuditRecord?.mutation).not.toHaveProperty("expectedReadToken");
+    expect(agentAuditRecord?.mutation).not.toHaveProperty("beforeReadToken");
+    expect(agentAuditRecord?.mutation).not.toHaveProperty("afterReadToken");
 
     const sqlite = openSqlite();
     try {
