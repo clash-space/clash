@@ -489,6 +489,34 @@ async function main() {
     JSON.stringify(acceptedAudioUpdateJson),
     { mutation: acceptedAudioUpdateJson.mutation },
   );
+  const audioConfigAuditResponse = await request("/api/v1/mutation-audit?operation=local_audio_config_update&entityId=audio");
+  const audioConfigAudit = await parseJsonResponse(audioConfigAuditResponse);
+  const audioConfigAuditAgentRecord = audioConfigAudit.records?.find((record) => record.actorClientType === "agent");
+  recordCheck(
+    "audio config update writes sanitized local mutation audit evidence",
+    audioConfigAuditResponse.status === 200 &&
+      audioConfigAudit.records?.length === 2 &&
+      audioConfigAuditAgentRecord?.operation === "local_audio_config_update" &&
+      audioConfigAuditAgentRecord.entity?.id === "audio" &&
+      audioConfigAuditAgentRecord.accepted === true &&
+      audioConfigAuditAgentRecord.actorClientType === "agent" &&
+      audioConfigAuditAgentRecord.reason === "local audio config update" &&
+      !JSON.stringify(audioConfigAudit.records ?? []).includes("receipt") &&
+      audioConfigAudit.records.every((record) =>
+        record.mutation?.expectedReadToken == null &&
+        record.mutation?.beforeReadToken == null &&
+        record.mutation?.afterReadToken == null
+      ),
+    JSON.stringify({
+      audioConfigAudit,
+      acceptedMutation: {
+        operation: acceptedAudioUpdateJson.mutation?.operation,
+        accepted: acceptedAudioUpdateJson.mutation?.accepted,
+        resultEntityId: acceptedAudioUpdateJson.mutation?.resultEntityId,
+      },
+    }),
+    { mutation: acceptedAudioUpdateJson.mutation },
+  );
 
   const missingAudioInstall = await request("/api/v1/local/audio/install", {
     method: "POST",
@@ -538,6 +566,32 @@ async function main() {
       acceptedAudioInstallJson.readToken !== acceptedAudioUpdateJson.readToken &&
       acceptedAudioInstallJson.asr?.setup?.available === true,
     JSON.stringify(acceptedAudioInstallJson),
+    { mutation: acceptedAudioInstallJson.mutation },
+  );
+  const audioInstallAuditResponse = await request("/api/v1/mutation-audit?operation=local_audio_model_install&entityId=audio");
+  const audioInstallAudit = await parseJsonResponse(audioInstallAuditResponse);
+  const audioInstallAuditRecord = audioInstallAudit.records?.[0];
+  recordCheck(
+    "audio install writes sanitized local mutation audit evidence",
+    audioInstallAuditResponse.status === 200 &&
+      audioInstallAudit.records?.length === 1 &&
+      audioInstallAuditRecord.operation === "local_audio_model_install" &&
+      audioInstallAuditRecord.entity?.id === "audio" &&
+      audioInstallAuditRecord.accepted === true &&
+      audioInstallAuditRecord.actorClientType === "agent" &&
+      audioInstallAuditRecord.reason === "local audio model install" &&
+      !JSON.stringify(audioInstallAudit.records ?? []).includes("receipt") &&
+      audioInstallAuditRecord.mutation?.expectedReadToken == null &&
+      audioInstallAuditRecord.mutation?.beforeReadToken == null &&
+      audioInstallAuditRecord.mutation?.afterReadToken == null,
+    JSON.stringify({
+      audioInstallAudit,
+      acceptedMutation: {
+        operation: acceptedAudioInstallJson.mutation?.operation,
+        accepted: acceptedAudioInstallJson.mutation?.accepted,
+        resultEntityId: acceptedAudioInstallJson.mutation?.resultEntityId,
+      },
+    }),
     { mutation: acceptedAudioInstallJson.mutation },
   );
 
@@ -3115,10 +3169,12 @@ async function main() {
       audioConfigBareCasRejected: checks.some((check) => check.name === "audio config update with bare CAS token is rejected" && check.status === "pass"),
       audioConfigStaleReceiptRejected: checks.some((check) => check.name === "audio config update with stale receipt is rejected" && check.status === "pass"),
       audioConfigReceiptAccepted: checks.some((check) => check.name === "audio config update with receipt read token is accepted" && check.status === "pass"),
+      audioConfigAuditRecorded: checks.some((check) => check.name === "audio config update writes sanitized local mutation audit evidence" && check.status === "pass"),
       audioInstallMissingReadRejected: checks.some((check) => check.name === "audio install without prior read is rejected" && check.status === "pass"),
       audioInstallBareCasRejected: checks.some((check) => check.name === "audio install with bare CAS token is rejected" && check.status === "pass"),
       audioInstallReceiptAccepted: checks.some((check) => check.name === "audio install with receipt read token is accepted" && check.status === "pass"),
       audioInstallStaleReceiptRejected: checks.some((check) => check.name === "audio install with stale receipt is rejected" && check.status === "pass"),
+      audioInstallAuditRecorded: checks.some((check) => check.name === "audio install writes sanitized local mutation audit evidence" && check.status === "pass"),
       audioTranscriptionMutationRecorded: checks.some((check) => check.name === "audio transcription action returns host mutation record" && check.status === "pass"),
       localHarnessGetReceiptReturned: checks.some((check) => check.name === "local harnesses get returns receipt read token" && check.status === "pass"),
       localHarnessMissingReadRejected: checks.some((check) => check.name === "local harness enablement update without prior read is rejected" && check.status === "pass"),

@@ -599,6 +599,36 @@ describe("local API app", () => {
         afterReadToken: expect.stringMatching(LOCAL_CONFIG_RECEIPT_READ_TOKEN_RE),
       },
     });
+    const audit = await app.request("/api/v1/mutation-audit?operation=local_audio_config_update&entityId=audio");
+    expect(audit.status).toBe(200);
+    const auditJson = await audit.json() as { records: Array<any> };
+    expect(auditJson.records).toHaveLength(2);
+    const humanAuditRecord = auditJson.records.find((record) => record.actorClientType == null);
+    const agentAuditRecord = auditJson.records.find((record) => record.actorClientType === "agent");
+    expect(humanAuditRecord).toMatchObject({
+      operation: "local_audio_config_update",
+      entity: { kind: "local-config", id: "audio" },
+      actorClientType: null,
+      accepted: true,
+      forced: false,
+      reason: "local audio config update",
+      resultEntityId: "audio",
+    });
+    expect(agentAuditRecord).toMatchObject({
+      operation: "local_audio_config_update",
+      entity: { kind: "local-config", id: "audio" },
+      actorClientType: "agent",
+      accepted: true,
+      forced: false,
+      reason: "local audio config update",
+      resultEntityId: "audio",
+    });
+    for (const record of auditJson.records) {
+      expect(JSON.stringify(record.mutation ?? {})).not.toContain("receipt");
+      expect(record.mutation.expectedReadToken).toBeUndefined();
+      expect(record.mutation.beforeReadToken).toBeUndefined();
+      expect(record.mutation.afterReadToken).toBeUndefined();
+    }
   });
 
   it("installs built-in ASR from the requested local model card", async () => {
@@ -722,6 +752,23 @@ describe("local API app", () => {
       resultEntityId: "audio",
     });
     expect(builtinInstall).toHaveBeenCalledTimes(1);
+    const audit = await app.request("/api/v1/mutation-audit?operation=local_audio_model_install&entityId=audio");
+    expect(audit.status).toBe(200);
+    const auditJson = await audit.json() as { records: Array<any> };
+    expect(auditJson.records).toHaveLength(1);
+    expect(auditJson.records[0]).toMatchObject({
+      operation: "local_audio_model_install",
+      entity: { kind: "local-config", id: "audio" },
+      actorClientType: "agent",
+      accepted: true,
+      forced: false,
+      reason: "local audio model install",
+      resultEntityId: "audio",
+    });
+    expect(JSON.stringify(auditJson.records[0].mutation ?? {})).not.toContain("receipt");
+    expect(auditJson.records[0].mutation.expectedReadToken).toBeUndefined();
+    expect(auditJson.records[0].mutation.beforeReadToken).toBeUndefined();
+    expect(auditJson.records[0].mutation.afterReadToken).toBeUndefined();
 
     const stale = await app.request("/api/v1/local/audio/install", {
       method: "POST",

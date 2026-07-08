@@ -666,13 +666,13 @@ Result:
 Latest verified asset receipt CAS smoke:
 
 ```text
-.tmp/agent-first-asset-receipts/2026-07-08T13-47-52-364Z/agent-first-asset-receipt-report.json
+.tmp/agent-first-asset-receipts/2026-07-08T13-53-05-618Z/agent-first-asset-receipt-report.json
 ```
 
 Result:
 
 - `status: pass`,
-- 161 checks passed through `npm --prefix apps/desktop run test:e2e:asset-receipts`,
+- 163 checks passed through `npm --prefix apps/desktop run test:e2e:asset-receipts`,
 - derived agent reads stayed read-only, provider model tests and local audio
   transcription actions recorded host mutation envelopes, and local sync, audio,
   harness, custom agent-server, provider account, provider OAuth, asset
@@ -680,8 +680,8 @@ Result:
   symlinked-parent rejection,
   metadata/ref/GC, project delete/restore/purge, and session delete agent writes
   rejected missing or bare read proofs; asset create/cover rejected invalid
-  storage keys before metadata persistence; accepted sync config updates and
-  asset cover updates write sanitized local mutation audit evidence; the same run also proved the restore
+  storage keys before metadata persistence; accepted sync config updates, audio
+  config updates, audio installs, and asset cover updates write sanitized local mutation audit evidence; the same run also proved the restore
   path's sanitized audit evidence, v1/legacy project create audit evidence,
   legacy project update/delete audit evidence, session create audit evidence,
   project purge's default delayed purge window,
@@ -691,7 +691,7 @@ Result:
   now requires receipt-bearing node reads, rejects downstream text content patch,
   local-api canvas batch delete now requires a graph-aware delete-plan receipt,
   rejects orphaning external references and bare CAS tokens, and writes sanitized
-  audit evidence; session create/delete, local sync config update, provider account
+  audit evidence; session create/delete, local sync config update, local audio config update/install, provider account
   delete, provider OAuth delete, asset-ref delete, asset GC delete, and local-api canvas edge delete also write sanitized local mutation audit
   evidence after accepted agent writes,
 - stale provider, OAuth, asset GC, project restore, and session receipts were

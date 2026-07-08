@@ -3749,16 +3749,22 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
     try {
       await audioConfig.updateFromRequest(body);
       const readState = await localAudioReadState(audioConfig);
+      const mutation = hostMutationSucceeded(hostMutation?.envelope ?? envelope, {
+        resultEntityId: "audio",
+        ...(hostMutation
+          ? {
+              afterReadToken: localAudioReceiptReadToken(readState),
+            }
+          : {}),
+      });
+      await db.appendMutationAudit(mutationAuditRecord({
+        mutation,
+        actorClientType: preconditions.actorClientType,
+        reason: "local audio config update",
+      }));
       return c.json({
         ...publicLocalAudioConfig(readState),
-        mutation: hostMutationSucceeded(hostMutation?.envelope ?? envelope, {
-          resultEntityId: "audio",
-          ...(hostMutation
-	            ? {
-	                afterReadToken: localAudioReceiptReadToken(readState),
-	              }
-	            : {}),
-        }),
+        mutation,
       });
     } catch (error) {
       if (error instanceof LocalAudioConfigError) {
@@ -3794,12 +3800,18 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
       await audioConfig.installBuiltin({ model: body.asr_model });
       const readState = await localAudioReadState(audioConfig);
       const readToken = localAudioReceiptReadToken(readState);
+      const mutation = hostMutationSucceeded(hostMutation?.envelope ?? envelope, {
+        resultEntityId: "audio",
+        ...(hostMutation ? { afterReadToken: readToken } : {}),
+      });
+      await db.appendMutationAudit(mutationAuditRecord({
+        mutation,
+        actorClientType: preconditions.actorClientType,
+        reason: "local audio model install",
+      }));
       return c.json({
         ...publicLocalAudioConfig(readState),
-        mutation: hostMutationSucceeded(hostMutation?.envelope ?? envelope, {
-          resultEntityId: "audio",
-          ...(hostMutation ? { afterReadToken: readToken } : {}),
-        }),
+        mutation,
       });
     } catch (error) {
       if (error instanceof LocalAudioConfigError) {
