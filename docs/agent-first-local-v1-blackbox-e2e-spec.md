@@ -383,7 +383,7 @@ Assertions:
 - `clash doctor storage --repair --json` reports explicit repair actions,
 - editable roots exist for drafts, projections, sessions, and asset links,
 - protected runtime root exists but remains protected,
-- local SQLite exists and reports the asset reference index schema as ready,
+- local SQLite exists and reports the metadata index schema as ready,
 - project status collaboration mode is `local-only`, not web-openable, not
   multi-user, and does not claim cloud ProjectRoom sequencing,
 - local project action gates deny `openInWeb`/`shareProject` with
@@ -681,21 +681,21 @@ Result:
 Latest verified storage doctor repair smoke:
 
 ```text
-.tmp/storage-doctor-repair/2026-07-08T05-05-00-505Z/storage-doctor-repair-report.json
+.tmp/storage-doctor-repair/2026-07-08T05-10-27-125Z/storage-doctor-repair-report.json
 ```
 
 Result:
 
 - `status: pass`,
-- 47 checks passed,
+- 48 checks passed,
 - `clash init`, `clash doctor storage --json`,
   failing `clash doctor storage --json` with a parseable JSON report,
   `clash doctor storage --repair --json`,
   `clash doctor storage-recovery list --json`,
   `clash doctor storage-recovery compare --manifest ... --json`, and follow-up
   read-only doctor commands produced the expected exit codes,
-- workspace roots and local SQLite asset reference schema were repaired through
-  public CLI commands,
+- workspace roots and local SQLite metadata index schema for asset references
+  and text/timeline revisions were repaired through public CLI commands,
 - doctor detected a cwd secondary canvas replica before repair, then
   quarantined it under host-owned runtime recovery while preserving bytes,
 - repair wrote a durable recovery manifest and follow-up doctor reported that
@@ -788,7 +788,7 @@ Current status:
   restored project paths.
 - `clash doctor storage --json` now has first-pass read-only path checks, and
   `clash doctor storage --repair` can initialize missing workspace roots plus
-  the local SQLite asset reference index schema.
+  the local SQLite metadata index schema.
 - Direct real Codex E2E now asserts the happy-path workspace roots; the broader
   black-box runner still needs to assert doctor warnings/errors for protected
   cwd, missing replica, and legacy `db.json`.

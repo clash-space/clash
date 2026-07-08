@@ -96,6 +96,19 @@ function isInside(childPath, parentPath) {
   return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative));
 }
 
+function sqliteObjectsExist(sqlitePath, objects) {
+  const { DatabaseSync } = require("node:sqlite");
+  const db = new DatabaseSync(sqlitePath);
+  try {
+    return objects.every((object) => {
+      const row = db.prepare("SELECT name FROM sqlite_master WHERE type = ? AND name = ?").get(object.type, object.name);
+      return row?.name === object.name;
+    });
+  } finally {
+    db.close();
+  }
+}
+
 async function main() {
   await mkdir(workspace, { recursive: true });
   await mkdir(clashHome, { recursive: true });
@@ -398,6 +411,18 @@ async function main() {
     );
   }
   recordCheck("local sqlite file exists after repair", await pathIsFile(status.localSqlitePath), status.localSqlitePath);
+  recordCheck(
+    "local sqlite metadata indexes exist after repair",
+    sqliteObjectsExist(status.localSqlitePath, [
+      { type: "table", name: "asset_node_refs" },
+      { type: "index", name: "asset_node_refs_asset_idx" },
+      { type: "table", name: "text_revisions" },
+      { type: "index", name: "text_revisions_project_node_idx" },
+      { type: "table", name: "timeline_revisions" },
+      { type: "index", name: "timeline_revisions_project_node_idx" },
+    ]),
+    status.localSqlitePath,
+  );
 
   const after = runCli(["doctor", "storage", "--json"]);
   recordCheck(
@@ -474,7 +499,7 @@ async function main() {
   const report = {
     schemaVersion: 1,
     status: "pass",
-    summary: "Storage doctor repair initializes agent workspace roots and local SQLite asset reference schema through public CLI commands, and project status exposes explicit local/cloud action gates.",
+    summary: "Storage doctor repair initializes agent workspace roots and local SQLite metadata index schema through public CLI commands, and project status exposes explicit local/cloud action gates.",
     run: {
       artifactRoot,
       workspace,

@@ -77,8 +77,9 @@ applied bodies therefore have Obsidian-like file recoverability through content
 descriptors, without making the protected canonical store a directly editable
 vault.
 `clash doctor storage --json` verifies this role contract and warns when local
-SQLite is missing the `asset_node_refs` / `reference_role` schema required for
-host-readable asset usage lookups. It also fails when the revision content blob
+SQLite is missing the `asset_node_refs` / `reference_role`,
+`text_revisions`, or `timeline_revisions` schema required for host-readable
+asset usage and revision history lookups. It also fails when the revision content blob
 roots are moved into editable agent paths, when existing revision blob files
 are writable or no longer match their content-addressed filenames, or when the
 cwd or project workspace contains stray `snapshot.bin` / `updates.log` files outside
@@ -578,7 +579,8 @@ recovered Loro bytes automatically.
 8. Add storage doctor checks for:
    - multiple snapshots for one project (`secondary-canvas-replica` first pass),
    - broken asset links,
-   - missing local SQLite asset reference index schema,
+   - missing local SQLite metadata index schema for asset references and
+     text/timeline revisions,
    - unexpected writes in protected directories,
    - missing project marker,
    - mismatched marker/env project id.
@@ -586,8 +588,8 @@ recovered Loro bytes automatically.
    - create the standard agent workspace roots (`drafts/`,
      `projections/{text,timelines,storyboards,prompts,metadata}/`,
      `sessions/`, `assets/links/`, and protected `runtime/`),
-   - ensure the local SQLite `asset_node_refs` table, `reference_role` column,
-     and lookup indexes exist,
+   - ensure the local SQLite `asset_node_refs`, `text_revisions`, and
+     `timeline_revisions` tables plus their lookup indexes exist,
    - quarantine secondary `snapshot.bin` / `updates.log` files under
      `runtime/recovery/secondary-canvas-replicas/` with durable `manifest.json`
      source-path and destination-path evidence, without applying them to

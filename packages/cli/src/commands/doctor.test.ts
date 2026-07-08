@@ -17,10 +17,69 @@ function openSqlite(path: string) {
   const { DatabaseSync } = require("node:sqlite") as {
     DatabaseSync: new (path: string) => {
       exec(sql: string): void;
+      prepare(sql: string): {
+        get(...params: unknown[]): Record<string, unknown> | undefined;
+      };
       close(): void;
     };
   };
   return new DatabaseSync(path);
+}
+
+function createAssetReferenceIndexSchema(sqlite: ReturnType<typeof openSqlite>): void {
+  sqlite.exec(`
+    CREATE TABLE asset_node_refs (
+      asset_id TEXT NOT NULL,
+      project_id TEXT NOT NULL,
+      node_id TEXT NOT NULL,
+      node_type TEXT NOT NULL,
+      field_path TEXT NOT NULL,
+      reference_role TEXT NOT NULL DEFAULT 'asset',
+      observed_at INTEGER NOT NULL,
+      PRIMARY KEY (project_id, node_id, field_path, asset_id)
+    );
+    CREATE INDEX asset_node_refs_asset_idx ON asset_node_refs(asset_id, project_id);
+    CREATE INDEX asset_node_refs_project_idx ON asset_node_refs(project_id, node_id);
+  `);
+}
+
+function createRevisionIndexSchema(sqlite: ReturnType<typeof openSqlite>): void {
+  sqlite.exec(`
+    CREATE TABLE text_revisions (
+      revision_id TEXT PRIMARY KEY NOT NULL,
+      text_id TEXT NOT NULL,
+      parent_revision_id TEXT,
+      project_id TEXT NOT NULL,
+      node_id TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      content_hash TEXT NOT NULL,
+      hash_algorithm TEXT NOT NULL,
+      source_file_path TEXT NOT NULL,
+      source_file_hash TEXT NOT NULL,
+      actor_json TEXT
+    );
+    CREATE INDEX text_revisions_project_node_idx ON text_revisions(project_id, node_id, created_at DESC);
+    CREATE INDEX text_revisions_text_idx ON text_revisions(text_id, created_at DESC);
+
+    CREATE TABLE timeline_revisions (
+      revision_id TEXT PRIMARY KEY NOT NULL,
+      timeline_id TEXT NOT NULL,
+      parent_revision_id TEXT,
+      project_id TEXT NOT NULL,
+      node_id TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      timeline_hash TEXT NOT NULL,
+      hash_algorithm TEXT NOT NULL,
+      source_file_path TEXT NOT NULL,
+      source_file_hash TEXT NOT NULL,
+      actor_json TEXT,
+      loro_frontiers_json TEXT,
+      loro_version_vector_json TEXT,
+      dependencies_json TEXT NOT NULL
+    );
+    CREATE INDEX timeline_revisions_project_node_idx ON timeline_revisions(project_id, node_id, created_at DESC);
+    CREATE INDEX timeline_revisions_timeline_idx ON timeline_revisions(timeline_id, created_at DESC);
+  `);
 }
 
 function checkById(report: Awaited<ReturnType<typeof runStorageDoctor>>, id: string) {
@@ -489,7 +548,28 @@ test("storage doctor warns when local SQLite lacks the asset reference index sch
   const schemaCheck = checkById(report, "local-sqlite-schema");
   assert.equal(schemaCheck.level, "warning");
   assert.match(schemaCheck.message, /asset_node_refs/);
-  assert.match(schemaCheck.message, /reference_role/);
+});
+
+test("storage doctor warns when local SQLite lacks text and timeline revision index schema", async () => {
+  const homeDir = await tempDir();
+  const cwd = await tempDir();
+  await initProject({ cwd, projectId: "doctor_project" });
+  const localApiDir = join(homeDir, ".clash", "local-api");
+  await mkdir(localApiDir, { recursive: true });
+  const sqlite = openSqlite(join(localApiDir, "local.sqlite"));
+  try {
+    createAssetReferenceIndexSchema(sqlite);
+  } finally {
+    sqlite.close();
+  }
+
+  const report = await runStorageDoctor({ cwd, env: {}, homeDir });
+
+  assert.equal(report.ok, true);
+  const schemaCheck = checkById(report, "local-sqlite-schema");
+  assert.equal(schemaCheck.level, "warning");
+  assert.match(schemaCheck.message, /text_revisions/);
+  assert.match(schemaCheck.message, /timeline_revisions/);
 });
 
 test("storage doctor repair creates workspace roots and fixes local SQLite asset reference schema", async () => {
@@ -527,12 +607,33 @@ test("storage doctor repair creates workspace roots and fixes local SQLite asset
   assert.equal(checkById(repaired, "protected-runtime-root").level, "ok");
   assert.equal(checkById(repaired, "local-sqlite").level, "ok");
   assert.equal(checkById(repaired, "local-sqlite-schema").level, "ok");
+  const sqliteAfterRepair = openSqlite(join(localApiDir, "local.sqlite"));
+  try {
+    assert.equal(
+      sqliteAfterRepair.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'text_revisions'").get()?.name,
+      "text_revisions",
+    );
+    assert.equal(
+      sqliteAfterRepair.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'timeline_revisions'").get()?.name,
+      "timeline_revisions",
+    );
+    assert.equal(
+      sqliteAfterRepair.prepare("SELECT name FROM sqlite_master WHERE type = 'index' AND name = 'text_revisions_project_node_idx'").get()?.name,
+      "text_revisions_project_node_idx",
+    );
+    assert.equal(
+      sqliteAfterRepair.prepare("SELECT name FROM sqlite_master WHERE type = 'index' AND name = 'timeline_revisions_project_node_idx'").get()?.name,
+      "timeline_revisions_project_node_idx",
+    );
+  } finally {
+    sqliteAfterRepair.close();
+  }
 
   const verified = await runStorageDoctor({ cwd, env: {}, homeDir });
   assert.equal(checkById(verified, "local-sqlite-schema").level, "ok");
 });
 
-test("storage doctor accepts the local SQLite asset reference index schema", async () => {
+test("storage doctor accepts the local SQLite metadata index schema", async () => {
   const homeDir = await tempDir();
   const cwd = await tempDir();
   await initProject({ cwd, projectId: "doctor_project" });
@@ -540,20 +641,8 @@ test("storage doctor accepts the local SQLite asset reference index schema", asy
   await mkdir(localApiDir, { recursive: true });
   const sqlite = openSqlite(join(localApiDir, "local.sqlite"));
   try {
-    sqlite.exec(`
-      CREATE TABLE asset_node_refs (
-        asset_id TEXT NOT NULL,
-        project_id TEXT NOT NULL,
-        node_id TEXT NOT NULL,
-        node_type TEXT NOT NULL,
-        field_path TEXT NOT NULL,
-        reference_role TEXT NOT NULL DEFAULT 'asset',
-        observed_at INTEGER NOT NULL,
-        PRIMARY KEY (project_id, node_id, field_path, asset_id)
-      );
-      CREATE INDEX asset_node_refs_asset_idx ON asset_node_refs(asset_id, project_id);
-      CREATE INDEX asset_node_refs_project_idx ON asset_node_refs(project_id, node_id);
-    `);
+    createAssetReferenceIndexSchema(sqlite);
+    createRevisionIndexSchema(sqlite);
   } finally {
     sqlite.close();
   }

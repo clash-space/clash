@@ -178,7 +178,7 @@ export async function runStorageDoctor(options: {
   if (options.repair === true) {
     repairs.push(...await repairProjectWorkspace(status));
     repairs.push(...await repairSecondaryCanvasReplicas(status, cwd));
-    repairs.push(...await repairLocalSqliteAssetReferenceSchema(status.localSqlitePath));
+    repairs.push(...await repairLocalSqliteSchema(status.localSqlitePath));
     checks.push({
       id: "storage-repair",
       level: "ok",
@@ -1092,7 +1092,7 @@ async function repairProjectWorkspace(status: ProjectStatus): Promise<StorageDoc
   return repairs;
 }
 
-async function repairLocalSqliteAssetReferenceSchema(sqlitePath: string): Promise<StorageDoctorRepair[]> {
+async function repairLocalSqliteSchema(sqlitePath: string): Promise<StorageDoctorRepair[]> {
   await mkdir(dirname(sqlitePath), { recursive: true });
   let db: SqliteDatabase | undefined;
   try {
@@ -1113,6 +1113,41 @@ async function repairLocalSqliteAssetReferenceSchema(sqlitePath: string): Promis
       );
       CREATE INDEX IF NOT EXISTS asset_node_refs_asset_idx ON asset_node_refs(asset_id, project_id);
       CREATE INDEX IF NOT EXISTS asset_node_refs_project_idx ON asset_node_refs(project_id, node_id);
+
+      CREATE TABLE IF NOT EXISTS text_revisions (
+        revision_id TEXT PRIMARY KEY NOT NULL,
+        text_id TEXT NOT NULL,
+        parent_revision_id TEXT,
+        project_id TEXT NOT NULL,
+        node_id TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        content_hash TEXT NOT NULL,
+        hash_algorithm TEXT NOT NULL,
+        source_file_path TEXT NOT NULL,
+        source_file_hash TEXT NOT NULL,
+        actor_json TEXT
+      );
+      CREATE INDEX IF NOT EXISTS text_revisions_project_node_idx ON text_revisions(project_id, node_id, created_at DESC);
+      CREATE INDEX IF NOT EXISTS text_revisions_text_idx ON text_revisions(text_id, created_at DESC);
+
+      CREATE TABLE IF NOT EXISTS timeline_revisions (
+        revision_id TEXT PRIMARY KEY NOT NULL,
+        timeline_id TEXT NOT NULL,
+        parent_revision_id TEXT,
+        project_id TEXT NOT NULL,
+        node_id TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        timeline_hash TEXT NOT NULL,
+        hash_algorithm TEXT NOT NULL,
+        source_file_path TEXT NOT NULL,
+        source_file_hash TEXT NOT NULL,
+        actor_json TEXT,
+        loro_frontiers_json TEXT,
+        loro_version_vector_json TEXT,
+        dependencies_json TEXT NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS timeline_revisions_project_node_idx ON timeline_revisions(project_id, node_id, created_at DESC);
+      CREATE INDEX IF NOT EXISTS timeline_revisions_timeline_idx ON timeline_revisions(timeline_id, created_at DESC);
     `);
     try {
       db.exec("ALTER TABLE asset_node_refs ADD COLUMN reference_role TEXT NOT NULL DEFAULT 'asset'");
@@ -1124,7 +1159,7 @@ async function repairLocalSqliteAssetReferenceSchema(sqlitePath: string): Promis
   }
   return [{
     id: "local-sqlite-schema",
-    message: "Ensured local SQLite asset reference index schema.",
+    message: "Ensured local SQLite asset reference and revision index schema.",
     path: sqlitePath,
   }];
 }
@@ -1145,37 +1180,61 @@ async function inspectLocalSqliteSchema(sqlitePath: string): Promise<StorageDoct
       DatabaseSync: new (path: string) => SqliteDatabase;
     };
     db = new DatabaseSync(sqlitePath);
-    const assetNodeRefs = db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'asset_node_refs'").get();
-    const columns = new Set(
-      db.prepare("PRAGMA table_info(asset_node_refs)").all()
-        .map((row) => typeof row.name === "string" ? row.name : "")
-        .filter(Boolean),
-    );
-    const indexNames = new Set(
-      db.prepare("SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = 'asset_node_refs'").all()
-        .map((row) => typeof row.name === "string" ? row.name : "")
-        .filter(Boolean),
-    );
     const problems: string[] = [];
-    if (!assetNodeRefs) problems.push("missing asset_node_refs table");
-    for (const column of ["asset_id", "project_id", "node_id", "node_type", "field_path", "reference_role", "observed_at"]) {
-      if (!columns.has(column)) problems.push(`missing asset_node_refs.${column} column`);
-    }
-    for (const index of ["asset_node_refs_asset_idx", "asset_node_refs_project_idx"]) {
-      if (!indexNames.has(index)) problems.push(`missing ${index} index`);
-    }
+    inspectSqliteTableSchema(db, problems, {
+      table: "asset_node_refs",
+      columns: ["asset_id", "project_id", "node_id", "node_type", "field_path", "reference_role", "observed_at"],
+      indexes: ["asset_node_refs_asset_idx", "asset_node_refs_project_idx"],
+    });
+    inspectSqliteTableSchema(db, problems, {
+      table: "text_revisions",
+      columns: [
+        "revision_id",
+        "text_id",
+        "parent_revision_id",
+        "project_id",
+        "node_id",
+        "created_at",
+        "content_hash",
+        "hash_algorithm",
+        "source_file_path",
+        "source_file_hash",
+        "actor_json",
+      ],
+      indexes: ["text_revisions_project_node_idx", "text_revisions_text_idx"],
+    });
+    inspectSqliteTableSchema(db, problems, {
+      table: "timeline_revisions",
+      columns: [
+        "revision_id",
+        "timeline_id",
+        "parent_revision_id",
+        "project_id",
+        "node_id",
+        "created_at",
+        "timeline_hash",
+        "hash_algorithm",
+        "source_file_path",
+        "source_file_hash",
+        "actor_json",
+        "loro_frontiers_json",
+        "loro_version_vector_json",
+        "dependencies_json",
+      ],
+      indexes: ["timeline_revisions_project_node_idx", "timeline_revisions_timeline_idx"],
+    });
 
     return problems.length > 0
       ? {
           id: "local-sqlite-schema",
           level: "warning",
-          message: `Local SQLite schema is missing agent-first asset reference indexing: ${problems.join("; ")}.`,
+          message: `Local SQLite schema is missing agent-first local metadata indexes: ${problems.join("; ")}.`,
           path: sqlitePath,
         }
       : {
           id: "local-sqlite-schema",
           level: "ok",
-          message: "Local SQLite schema supports asset reference indexing.",
+          message: "Local SQLite schema supports asset reference indexing and text/timeline revision indexing.",
           path: sqlitePath,
         };
   } catch (error) {
@@ -1187,6 +1246,38 @@ async function inspectLocalSqliteSchema(sqlitePath: string): Promise<StorageDoct
     };
   } finally {
     db?.close();
+  }
+}
+
+function inspectSqliteTableSchema(
+  db: SqliteDatabase,
+  problems: string[],
+  options: {
+    table: string;
+    columns: string[];
+    indexes: string[];
+  },
+): void {
+  const table = db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?").get(options.table);
+  if (!table) {
+    problems.push(`missing ${options.table} table`);
+    return;
+  }
+  const columns = new Set(
+    db.prepare(`PRAGMA table_info(${options.table})`).all()
+      .map((row) => typeof row.name === "string" ? row.name : "")
+      .filter(Boolean),
+  );
+  const indexNames = new Set(
+    db.prepare("SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = ?").all(options.table)
+      .map((row) => typeof row.name === "string" ? row.name : "")
+      .filter(Boolean),
+  );
+  for (const column of options.columns) {
+    if (!columns.has(column)) problems.push(`missing ${options.table}.${column} column`);
+  }
+  for (const index of options.indexes) {
+    if (!indexNames.has(index)) problems.push(`missing ${index} index`);
   }
 }
 
