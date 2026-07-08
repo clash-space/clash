@@ -364,8 +364,10 @@ describe("visual language surfaces", () => {
     expect(projectSource).toMatch(/const topActionsRight = isSidebarCollapsed \? 24 : sidebarWidth \+ 32/);
     expect(projectSource).toMatch(/style=\{\{ right: topActionsRight \}\}/);
     expect(projectSource).toMatch(/animate=\{\{ right: topActionsRight \}\}/);
-    expect(projectSource).toMatch(/const canShareProject = getRuntimeCapabilities\(\)\.loro\.persistence !== 'local'/);
-    expect(projectSource).toMatch(/\{canShareProject && \(/);
+    expect(projectSource).toMatch(/resolveProjectShareAdmission/);
+    expect(projectSource).toMatch(/shareGate: projectShareGate/);
+    expect(projectSource).toMatch(/runtimePersistence: runtimeCapabilities\.loro\.persistence/);
+    expect(projectSource).toMatch(/\{projectShareAdmission\.visible && \(/);
     expect(projectSource).toMatch(/<PresenceBar clients=\{otherClients\} \/>/);
     expect(projectSource).toMatch(/<UserControls projectChrome \/>/);
     expect(projectSource).not.toMatch(/MonitorPlay|isPresentationMode|Present canvas|Presenting/);

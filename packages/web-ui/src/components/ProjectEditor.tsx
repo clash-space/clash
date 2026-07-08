@@ -102,6 +102,7 @@ import { calculateScaledDimensions } from './nodes/assetNodeSizing';
 import { getAsset } from '@clash/web-ui/lib/hooks/useAsset';
 import { getSignedUrl } from '@clash/web-ui/lib/hooks/useSignedUrl';
 import { getRuntimeCapabilities, runtimeApiUrl } from '@clash/web-ui/lib/runtimeConfig';
+import { resolveProjectShareAdmission } from '@clash/web-ui/lib/projectShareGate';
 import { DESKTOP_TAB_TITLE_EVENT, type DesktopTabTitleEventDetail } from '@clash/web-ui/lib/desktopTabs';
 import { dispatchHostMutationEvent } from '@clash/web-ui/lib/hostMutationEvents';
 import { buildFallbackCanvasFromAssets } from '@clash/web-ui/lib/projectFallbackCanvas';
@@ -207,21 +208,6 @@ const sanitizeNodes = (nodes: AppNode[]): AppNode[] => {
         },
     });
 };
-
-function projectShareGateTooltip(
-    reason: string | null | undefined,
-    requirements: string[] | undefined,
-): string {
-    if (reason === 'project-is-local-only') return 'Enable sync before sharing this project';
-    if (reason === 'cloud-sync-not-ready') {
-        const missing = requirements && requirements.length > 0
-            ? `: ${requirements.join(', ')}`
-            : '';
-        return `Finish cloud sync setup before sharing${missing}`;
-    }
-    if (reason === 'sync-mode-unknown') return 'Resolve project sync mode before sharing';
-    return 'Copy project link';
-}
 
 /**
  * Floating "Group" pill that appears above the bounding box of the current
@@ -383,12 +369,10 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
     const projectStatus = useProjectStatus(project.id);
     const projectShareGate = projectStatus.actions?.shareProject;
     const runtimeCapabilities = getRuntimeCapabilities();
-    const runtimeCanShareProject = runtimeCapabilities.loro.persistence !== 'local';
-    const canShareProject = projectShareGate?.allowed ?? runtimeCanShareProject;
-    const shouldShowShareProjectAction = projectShareGate !== undefined || runtimeCanShareProject;
-    const shareProjectTooltip = projectShareGate && !projectShareGate.allowed
-        ? projectShareGateTooltip(projectShareGate.reason, projectShareGate.requirements)
-        : 'Copy project link';
+    const projectShareAdmission = resolveProjectShareAdmission({
+        shareGate: projectShareGate,
+        runtimePersistence: runtimeCapabilities.loro.persistence,
+    });
     const projectTitleInputWidthCh = Math.min(Math.max(Array.from(projectName || 'Untitled').length + 1, 5), 30);
     const handleProjectNameSubmit = (event: FormEvent<HTMLFormElement>) => {
         event.preventDefault();
@@ -697,7 +681,7 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
     }, [editorRouter]);
 
     const handleShareProject = useCallback(async () => {
-        if (!canShareProject) return;
+        if (!projectShareAdmission.allowed) return;
         if (typeof window === 'undefined') return;
         const href = window.location.href;
         try {
@@ -707,7 +691,7 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
         } catch {
             setShareCopied(false);
         }
-    }, [canShareProject]);
+    }, [projectShareAdmission.allowed]);
 
     const handleCreateSession = useCallback(async (initialMessage?: string): Promise<{ threadId: string; title: string } | null> => {
         try {
@@ -2425,12 +2409,12 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
                                 transition={{ type: 'spring', stiffness: 400, damping: 30 }}
                             >
                                 <PresenceBar clients={otherClients} />
-                                {shouldShowShareProjectAction && (
-                                    <Tooltip label={shareProjectTooltip}>
+                                {projectShareAdmission.visible && (
+                                    <Tooltip label={projectShareAdmission.tooltip}>
                                         <span className="inline-flex">
                                             <Button
                                                 onClick={handleShareProject}
-                                                disabled={!canShareProject}
+                                                disabled={!projectShareAdmission.allowed}
                                                 leftIcon={<ShareFat className="h-4 w-4" weight="bold" />}
                                                 size="sm"
                                                 shape="rounded"
