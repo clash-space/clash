@@ -203,11 +203,15 @@ export function useProjectRoom(projectId: string | null): UseProjectRoomReturn {
       setSyncPlan(json.plan ?? null);
       if (!res.ok) {
         setError(json.error ?? `sync failed: ${res.status}`);
+        return;
       }
+      await refetch();
+      setSync(json.sync ?? null);
+      setSyncPlan(json.plan ?? null);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     }
-  }, [projectId]);
+  }, [projectId, refetch]);
 
   const setLiveMessage = useCallback((msg: RoomMessageEvent) => {
     append([msg]);

@@ -118,6 +118,64 @@ describe("useProjectRoom", () => {
     ]);
   });
 
+  it("refreshes room history after successful explicit sync so imported messages appear", async () => {
+    let historyReads = 0;
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      if (init?.method === "POST") {
+        return new Response(JSON.stringify({
+          sync: {
+            mode: "cloud-sync",
+            remote_room: { enabled: true, status: "mirrored" },
+          },
+          plan: {
+            exportedIds: [],
+            importedIds: ["remote-room-1"],
+            matchedIds: [],
+            conflicts: [],
+          },
+        }), { headers: { "content-type": "application/json" } });
+      }
+      historyReads += 1;
+      return new Response(JSON.stringify({
+        sync: {
+          mode: "cloud-sync",
+          remote_room: { enabled: true, status: historyReads === 1 ? "pending" : "mirrored" },
+        },
+        messages: historyReads === 1
+          ? []
+          : [
+              {
+                id: "remote-room-1",
+                project_id: "project-1",
+                sender_kind: "user",
+                sender_id: "remote-user",
+                sender_user_id: "remote-user",
+                mentions: [],
+                text: "remote imported text",
+                at: 1_700_000_010,
+              },
+            ],
+      }), { headers: { "content-type": "application/json" } });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { result } = renderHook(() => useProjectRoom("project-1"));
+
+    await waitFor(() => expect(result.current.sync?.remote_room.status).toBe("pending"));
+    await act(async () => {
+      await result.current.syncRoom();
+    });
+
+    await waitFor(() => expect(result.current.messages).toHaveLength(1));
+    expect(result.current.messages[0]).toMatchObject({
+      id: "remote-room-1",
+      type: "room.message",
+      text: "remote imported text",
+    });
+    expect(result.current.syncPlan?.importedIds).toEqual(["remote-room-1"]);
+    expect(result.current.sync?.remote_room.status).toBe("mirrored");
+  });
+
   it("adds the returned local room message after send when no live echo is available", async () => {
     const fetchMock = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
       if (init?.method === "POST") {
