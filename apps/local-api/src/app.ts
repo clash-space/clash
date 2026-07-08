@@ -6712,7 +6712,10 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
       kind?: AssetKind;
       srcR2Key?: string;
       coverR2Key?: string | null;
-    };
+    } & ProjectWriteBody;
+    const actorClientType = optionalBodyString(body.actorClientType) ??
+      normalizeString(c.req.header("x-clash-client-type")) ??
+      normalizeString(c.req.header("x-clash-actor-client-type"));
     if (!body.projectId || !body.kind || typeof body.srcR2Key !== "string" || !body.srcR2Key) {
       return c.json({
         error: "Missing projectId, kind, or srcR2Key",
@@ -6766,19 +6769,25 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
         importedAt: at,
       });
     });
+    const mutation = hostMutationSucceeded({
+      operation: "asset_create",
+      entity: { kind: "asset", id: asset.id },
+      forced: false,
+    }, {
+      resultEntityId: asset.id,
+    });
+    await db.appendMutationAudit(mutationAuditRecord({
+      mutation,
+      actorClientType,
+      reason: "asset create",
+    }));
     return c.json({
       id: asset.id,
       srcR2Key: asset.srcR2Key,
       coverR2Key: asset.coverR2Key,
       signedUrl: asset.signedUrl,
       signedUrlExp: asset.signedUrlExp,
-      mutation: hostMutationSucceeded({
-        operation: "asset_create",
-        entity: { kind: "asset", id: asset.id },
-        forced: false,
-      }, {
-        resultEntityId: asset.id,
-      }),
+      mutation,
     });
   });
 

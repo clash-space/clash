@@ -1550,6 +1550,7 @@ async function main() {
 
   const createdResponse = await request("/api/v1/assets", {
     method: "POST",
+    headers: { "x-clash-client-type": "agent" },
     body: JSON.stringify({
       projectId,
       kind: "image",
@@ -1564,6 +1565,25 @@ async function main() {
     { mutation: created.mutation },
   );
   const assetId = created.id;
+
+  const assetCreateAuditResponse = await request(`/api/v1/mutation-audit?operation=asset_create&entityId=${encodeURIComponent(assetId)}`);
+  const assetCreateAudit = await parseJsonResponse(assetCreateAuditResponse);
+  const assetCreateAuditRecord = assetCreateAudit.records?.[0];
+  recordCheck(
+    "asset create writes sanitized local mutation audit evidence",
+    assetCreateAuditResponse.status === 200 &&
+      assetCreateAudit.records?.length === 1 &&
+      assetCreateAuditRecord.operation === "asset_create" &&
+      assetCreateAuditRecord.entity?.id === assetId &&
+      assetCreateAuditRecord.accepted === true &&
+      assetCreateAuditRecord.actorClientType === "agent" &&
+      assetCreateAuditRecord.reason === "asset create" &&
+      !JSON.stringify(assetCreateAuditRecord.mutation ?? {}).includes("receipt") &&
+      assetCreateAuditRecord.mutation?.expectedReadToken == null &&
+      assetCreateAuditRecord.mutation?.beforeReadToken == null &&
+      assetCreateAuditRecord.mutation?.afterReadToken == null,
+    JSON.stringify(assetCreateAudit),
+  );
 
   const initialAsset = await fetchAssetRecord({ assetId, request });
   recordCheck(
@@ -2903,6 +2923,7 @@ async function main() {
     booleans: {
       agentsReadDerivedMembersReturned: checks.some((check) => check.name === "agents read returns derived built-in members" && check.status === "pass"),
       agentsReadOnlyNoMemberPersisted: checks.some((check) => check.name === "agents read does not persist derived built-in members" && check.status === "pass"),
+      assetCreateAuditRecorded: checks.some((check) => check.name === "asset create writes sanitized local mutation audit evidence" && check.status === "pass"),
       assetGetReceiptReturned: checks.some((check) => check.name === "asset get returns receipt read token" && check.status === "pass"),
       coverMissingReadRejected: checks.some((check) => check.name === "asset cover update without prior read is rejected" && check.status === "pass"),
       coverBareCasRejected: checks.some((check) => check.name === "asset cover update with bare CAS token is rejected" && check.status === "pass"),

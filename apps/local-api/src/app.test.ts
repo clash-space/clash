@@ -1522,7 +1522,7 @@ describe("local API app", () => {
     const app = createLocalApiApp({ dataDir, userId: "local-user" });
     const created = await app.request("/api/v1/assets", {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: { "content-type": "application/json", "x-clash-client-type": "agent" },
       body: JSON.stringify({ projectId: "project-a", kind: "image", srcR2Key: "uploads/shared.png" }),
     });
     const { id: assetId, mutation: createMutation } = await created.json() as { id: string; mutation?: unknown };
@@ -1533,6 +1533,23 @@ describe("local API app", () => {
       forced: false,
       accepted: true,
     });
+    const createAudit = await app.request(`/api/v1/mutation-audit?operation=asset_create&entityId=${encodeURIComponent(assetId)}`);
+    expect(createAudit.status).toBe(200);
+    const createAuditJson = await createAudit.json() as { records: Array<{ actorClientType?: string; mutation?: any }> };
+    const agentCreateAuditRecord = createAuditJson.records.find((record) => record.actorClientType === "agent");
+    expect(agentCreateAuditRecord).toMatchObject({
+      operation: "asset_create",
+      entity: { kind: "asset", id: assetId },
+      actorClientType: "agent",
+      accepted: true,
+      forced: false,
+      reason: "asset create",
+      resultEntityId: assetId,
+    });
+    expect(JSON.stringify(agentCreateAuditRecord?.mutation ?? {})).not.toContain("receipt");
+    expect(agentCreateAuditRecord?.mutation).not.toHaveProperty("expectedReadToken");
+    expect(agentCreateAuditRecord?.mutation).not.toHaveProperty("beforeReadToken");
+    expect(agentCreateAuditRecord?.mutation).not.toHaveProperty("afterReadToken");
 
     let projectAReadToken = "";
     const sqlite = openSqlite();

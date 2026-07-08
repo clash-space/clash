@@ -666,13 +666,13 @@ Result:
 Latest verified asset receipt CAS smoke:
 
 ```text
-.tmp/agent-first-asset-receipts/2026-07-08T13-02-07-596Z/agent-first-asset-receipt-report.json
+.tmp/agent-first-asset-receipts/2026-07-08T13-09-50-692Z/agent-first-asset-receipt-report.json
 ```
 
 Result:
 
 - `status: pass`,
-- 155 checks passed through `npm --prefix apps/desktop run test:e2e:asset-receipts`,
+- 156 checks passed through `npm --prefix apps/desktop run test:e2e:asset-receipts`,
 - derived agent reads stayed read-only, provider model tests and local audio
   transcription actions recorded host mutation envelopes, and local sync, audio,
   harness, custom agent-server, provider account, provider OAuth, asset
@@ -903,9 +903,9 @@ Current status:
   plus local-api canvas node read/update/delete receipt enforcement,
   downstream text content patch rejection, local-api canvas batch delete
   plan/apply receipt enforcement, external orphan rejection, local-api canvas edge list/delete
-  receipt enforcement, and sanitized audit evidence for accepted asset import,
-  custom action checkpoint upload, asset cover updates, asset reference refresh,
-  asset GC, session deletion, node update/delete, batch deletion, and edge deletion;
+  receipt enforcement, and sanitized audit evidence for accepted asset create,
+  asset import, custom action checkpoint upload, asset cover updates, asset
+  reference refresh, asset GC, session deletion, node update/delete, batch deletion, and edge deletion;
   broader live UI asset/session/settings editing still needs product fixture
   coverage.
 - `clash text pull/apply/replace` exists; Suite D still needs real project
