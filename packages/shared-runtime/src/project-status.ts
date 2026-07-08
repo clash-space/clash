@@ -7,7 +7,24 @@ export interface ProjectStatusContext {
 }
 
 export interface ProjectStatusMarker {
+  store?: unknown;
+  workspaceId?: unknown;
   sync?: Record<string, unknown>;
+}
+
+export interface ProjectStatusCurrentWorkspace {
+  schemaVersion: 1;
+  role: "project-reference-workspace";
+  currentWorkingDirectory?: string;
+  markerPath?: string;
+  markerRoot?: string;
+  markerStore: string;
+  markerWorkspaceId?: string;
+  projectWorkspaceRoot: string;
+  locatedInProjectWorkspace: boolean | null;
+  ownsCanonicalSnapshot: false;
+  ownsCanonicalMetadata: false;
+  deletionDeletesProjectState: false;
 }
 
 export interface ProjectStatusStorage {
@@ -117,6 +134,7 @@ export interface ProjectStatus {
   clashHome: string;
   projectStore: string;
   projectWorkspaceRoot: string;
+  currentWorkspace: ProjectStatusCurrentWorkspace;
   localApiDataDir: string;
   localSqlitePath: string;
   legacyDbJsonPath: string;
@@ -148,6 +166,7 @@ export function buildProjectStatus(
     marker?: ProjectStatusMarker | null;
     clashRoot: string;
     localApiDataDir?: string;
+    currentWorkingDirectory?: string;
   },
 ): ProjectStatus {
   const clashRoot = options.clashRoot;
@@ -196,6 +215,27 @@ export function buildProjectStatus(
     timelineRevisionBlobRoot,
     runtimeRoot,
   ];
+  const markerRoot = context.markerPath ? projectMarkerRoot(context.markerPath) : undefined;
+  const currentWorkspace: ProjectStatusCurrentWorkspace = {
+    schemaVersion: 1,
+    role: "project-reference-workspace",
+    ...(options.currentWorkingDirectory
+      ? { currentWorkingDirectory: normalizePath(options.currentWorkingDirectory) }
+      : {}),
+    ...(context.markerPath ? { markerPath: context.markerPath } : {}),
+    ...(markerRoot ? { markerRoot } : {}),
+    markerStore: markerString(options.marker?.store) ?? "unknown",
+    ...(markerString(options.marker?.workspaceId)
+      ? { markerWorkspaceId: markerString(options.marker?.workspaceId) }
+      : {}),
+    projectWorkspaceRoot,
+    locatedInProjectWorkspace: options.currentWorkingDirectory
+      ? isSameOrInsidePath(options.currentWorkingDirectory, projectWorkspaceRoot)
+      : null,
+    ownsCanonicalSnapshot: false,
+    ownsCanonicalMetadata: false,
+    deletionDeletesProjectState: false,
+  };
 
   return {
     projectId: context.projectId,
@@ -206,6 +246,7 @@ export function buildProjectStatus(
     clashHome: clashRoot,
     projectStore: projectWorkspaceRoot,
     projectWorkspaceRoot,
+    currentWorkspace,
     localApiDataDir,
     localSqlitePath,
     legacyDbJsonPath,
@@ -432,6 +473,50 @@ function joinPath(...segments: string[]): string {
     .flatMap((segment) => segment.split("/"))
     .filter((segment) => segment.length > 0);
   return `${prefix}${parts.join("/")}`;
+}
+
+function projectMarkerRoot(markerPath: string): string | undefined {
+  const projectDotDir = dirnamePath(markerPath);
+  if (!projectDotDir) return undefined;
+  return dirnamePath(projectDotDir);
+}
+
+function dirnamePath(path: string): string | undefined {
+  const normalized = normalizePath(path);
+  if (!normalized || normalized === "/") return normalized || undefined;
+  const index = normalized.lastIndexOf("/");
+  if (index < 0) return undefined;
+  if (index === 0) return "/";
+  return normalized.slice(0, index);
+}
+
+function normalizePath(path: string): string {
+  const prefix = path.startsWith("/") ? "/" : "";
+  const parts: string[] = [];
+  for (const part of path.split("/")) {
+    if (!part || part === ".") continue;
+    if (part === "..") {
+      if (parts.length > 0) {
+        parts.pop();
+        continue;
+      }
+      if (!prefix) parts.push(part);
+      continue;
+    }
+    parts.push(part);
+  }
+  return `${prefix}${parts.join("/")}` || ".";
+}
+
+function isSameOrInsidePath(candidate: string, root: string): boolean {
+  const normalizedCandidate = normalizePath(candidate);
+  const normalizedRoot = normalizePath(root);
+  return normalizedCandidate === normalizedRoot
+    || normalizedCandidate.startsWith(`${normalizedRoot.replace(/\/+$/, "")}/`);
+}
+
+function markerString(value: unknown): string | undefined {
+  return typeof value === "string" && value.trim() ? value.trim() : undefined;
 }
 
 function normalizeCollaborationMode(raw: string): ProjectCollaborationMode {

@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp } from "node:fs/promises";
+import { mkdir, mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -202,6 +202,32 @@ test("project status reads marker sync mode when marker selects the project", as
     status.projectStore,
     join(homeDir, ".clash", "projects", "local_status_project"),
   );
+});
+
+test("project status identifies the current marker workspace separately from the canonical store", async () => {
+  const homeDir = await tempDir();
+  const cwd = await tempDir();
+  const childCwd = join(cwd, "drafts", "nested");
+  await mkdir(childCwd, { recursive: true });
+  const initialized = await initProject({ cwd, projectId: "workspace_status_project" });
+
+  const status = await resolveProjectStatus({ cwd: childCwd, env: {}, homeDir });
+
+  assert.deepEqual(status.currentWorkspace, {
+    schemaVersion: 1,
+    role: "project-reference-workspace",
+    currentWorkingDirectory: childCwd,
+    markerPath: initialized.markerPath,
+    markerRoot: cwd,
+    markerStore: "managed",
+    projectWorkspaceRoot: join(homeDir, ".clash", "projects", "workspace_status_project"),
+    locatedInProjectWorkspace: false,
+    ownsCanonicalSnapshot: false,
+    ownsCanonicalMetadata: false,
+    deletionDeletesProjectState: false,
+  });
+  assert.equal(status.projectStore, status.projectWorkspaceRoot);
+  assert.equal(status.storage.canonicalReplica.metadata.path, join(homeDir, ".clash", "local-api", "local.sqlite"));
 });
 
 test("project status exposes explicit collaboration gates for synced and shared modes", () => {

@@ -17,6 +17,7 @@ export {
   type ProjectStatusActionGates,
   type ProjectStatus,
   type ProjectStatusContext,
+  type ProjectStatusCurrentWorkspace,
   type ProjectStatusMarker,
   type ProjectStatusStorage,
   type ProjectStatusSource,

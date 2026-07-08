@@ -547,7 +547,20 @@ async function main() {
 
   const status = repairReport.status;
   recordCheck(
-    "project status keeps cwd as draft workspace",
+    "project status identifies cwd as reference workspace",
+    status?.currentWorkspace?.currentWorkingDirectory === workspace &&
+      status?.currentWorkspace?.markerPath === initialized.markerPath &&
+      status?.currentWorkspace?.markerRoot === workspace &&
+      status?.currentWorkspace?.markerStore === "managed" &&
+      status?.currentWorkspace?.projectWorkspaceRoot === status?.projectWorkspaceRoot &&
+      status?.currentWorkspace?.locatedInProjectWorkspace === false &&
+      status?.currentWorkspace?.ownsCanonicalSnapshot === false &&
+      status?.currentWorkspace?.ownsCanonicalMetadata === false &&
+      status?.currentWorkspace?.deletionDeletesProjectState === false,
+    JSON.stringify(status?.currentWorkspace),
+  );
+  recordCheck(
+    "project status keeps canonical state out of the reference workspace",
     status?.storage?.workspace?.ownsCanonicalSnapshot === false &&
       status?.storage?.workspace?.ownsCanonicalMetadata === false,
     JSON.stringify(status?.storage?.workspace),

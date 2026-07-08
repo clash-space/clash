@@ -390,6 +390,9 @@ Assertions:
 - local project action gates deny `openInWeb`/`shareProject` with
   `project-is-local-only`, allow `enableSync`, and keep local agent execution
   tied to `owner-machine-online`,
+- project status identifies the current cwd/marker root as a reference
+  workspace, reports `deletionDeletesProjectState: false`, and keeps canonical
+  state ownership false for the reference workspace,
 - canonical Loro snapshot path is protected and outside the editable project
   workspace root,
 - a `cloud-sync` marker keeps `openInWeb`/`shareProject` denied with
@@ -734,6 +737,9 @@ Result:
 - local action gates reported `openInWeb.allowed: false`,
   `shareProject.allowed: false`, `enableSync.allowed: true`, and
   `runLocalAgent.allowed: true`,
+- project status exposed `currentWorkspace` for the actual cwd/marker root,
+  marked it as a `project-reference-workspace`, and reported that deleting that
+  workspace does not delete project state,
 - a `cloud-sync` marker stayed `syncReadiness.status: pending`,
   `webOpenable: false`, and `roomAuthority: local` until the full sync
   capabilities are ready,
@@ -812,8 +818,9 @@ Current status:
 ## Open Implementation Gaps
 
 - `clash project status --json` now has first-pass stable fields for project
-  workspace, projection root, draft root, explicit runtime root, local SQLite
-  path, protected paths, and sync mode.
+  workspace, current cwd/marker reference workspace, projection root, draft
+  root, explicit runtime root, local SQLite path, protected paths, and sync
+  mode.
 - Black-box storage/project smokes now assert these fields against initialized
   and restored local project paths; broader UI release gates still need to carry
   the same evidence.

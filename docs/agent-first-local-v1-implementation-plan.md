@@ -460,6 +460,8 @@ Current status:
   - editable draft/projection/asset-link roots,
   - explicit `roots.runtime`/`runtimeRoot`,
   - protected local DB/snapshot/runtime paths,
+  - `currentWorkspace` for CLI calls, identifying the actual cwd/marker root as
+    a reference workspace that does not own canonical snapshot or metadata,
   - protected text/timeline revision content blob roots under
     `storage.canonicalReplica.contentBlobs`.
 - The command treats a marker in the cwd as context only. If `--project`
@@ -492,6 +494,9 @@ Current status:
   surface and explicitly owns no canonical snapshot/metadata, while
   `storage.canonicalReplica` identifies the protected machine-scoped SQLite
   metadata store and Loro canvas replica.
+- CLI project status also exposes `currentWorkspace`, separating the cwd and
+  project marker root from the canonical project workspace/store so agents can
+  tell when a user workspace is only a reference/draft surface.
 - `clash doctor storage --repair` creates missing workspace roots, ensures the
   local SQLite core metadata tables, provider auth tables/primary keys, plus
   asset/text/timeline projection indexes, and quarantines secondary cwd /

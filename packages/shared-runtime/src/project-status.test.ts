@@ -9,6 +9,16 @@ describe("project status path builder", () => {
     );
 
     expect(status.projectWorkspaceRoot).toBe("/tmp/clash-home/projects/project%2Fone");
+    expect(status.currentWorkspace).toEqual({
+      schemaVersion: 1,
+      role: "project-reference-workspace",
+      projectWorkspaceRoot: status.projectWorkspaceRoot,
+      locatedInProjectWorkspace: null,
+      markerStore: "unknown",
+      ownsCanonicalSnapshot: false,
+      ownsCanonicalMetadata: false,
+      deletionDeletesProjectState: false,
+    });
     expect(status.roots.projections).toBe("/tmp/clash-home/projects/project%2Fone/projections");
     expect(status.roots.assetLinks).toBe("/tmp/clash-home/projects/project%2Fone/assets/links");
     expect(status.roots.runtime).toBe("/tmp/clash-home/projects/project%2Fone/runtime");
@@ -125,6 +135,40 @@ describe("project status path builder", () => {
     );
 
     expect(first.projectWorkspaceRoot).not.toBe(second.projectWorkspaceRoot);
+  });
+
+  it("describes marker workspaces separately from canonical project roots", () => {
+    const status = buildProjectStatus(
+      {
+        projectId: "project-one",
+        source: "marker",
+        markerPath: "/tmp/clash-vault/.clash/project.toml",
+      },
+      {
+        clashRoot: "/tmp/clash-home",
+        currentWorkingDirectory: "/tmp/clash-vault/drafts/scene-1",
+        marker: {
+          store: "managed",
+          workspaceId: "workspace-1",
+          sync: { mode: "local" },
+        },
+      },
+    );
+
+    expect(status.currentWorkspace).toEqual({
+      schemaVersion: 1,
+      role: "project-reference-workspace",
+      currentWorkingDirectory: "/tmp/clash-vault/drafts/scene-1",
+      markerPath: "/tmp/clash-vault/.clash/project.toml",
+      markerRoot: "/tmp/clash-vault",
+      markerStore: "managed",
+      markerWorkspaceId: "workspace-1",
+      projectWorkspaceRoot: "/tmp/clash-home/projects/project-one",
+      locatedInProjectWorkspace: false,
+      ownsCanonicalSnapshot: false,
+      ownsCanonicalMetadata: false,
+      deletionDeletesProjectState: false,
+    });
   });
 
   it("normalizes project collaboration modes into explicit local/cloud gates", () => {

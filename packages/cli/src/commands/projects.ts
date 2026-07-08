@@ -1,7 +1,7 @@
 import { Command } from "commander";
 import { randomUUID } from "node:crypto";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import {
   buildProjectStatus as buildSharedProjectStatus,
   type ProjectStatus as SharedProjectStatus,
@@ -71,9 +71,10 @@ export async function resolveProjectStatus(options: {
   clashRoot?: string;
 } = {}): Promise<ProjectStatus> {
   const env = options.env ?? process.env;
+  const cwd = resolve(options.cwd ?? process.cwd());
   const context = await resolveProjectContext({
     project: options.project,
-    cwd: options.cwd,
+    cwd,
     env,
   });
   let marker: ProjectMarker | null = null;
@@ -85,17 +86,24 @@ export async function resolveProjectStatus(options: {
     marker,
     homeDir: options.homeDir,
     clashRoot: options.clashRoot ?? (options.homeDir ? undefined : resolveClashRoot(env)),
+    currentWorkingDirectory: cwd,
   });
 }
 
 export function buildProjectStatus(
   context: ResolvedProjectContext,
-  options: { marker?: ProjectMarker | null; homeDir?: string; clashRoot?: string } = {},
+  options: {
+    marker?: ProjectMarker | null;
+    homeDir?: string;
+    clashRoot?: string;
+    currentWorkingDirectory?: string;
+  } = {},
 ): ProjectStatus {
   const clashRoot = options.clashRoot ?? join(options.homeDir ?? homedir(), ".clash");
   return buildSharedProjectStatus(context, {
     marker: options.marker,
     clashRoot,
+    currentWorkingDirectory: options.currentWorkingDirectory,
   });
 }
 
