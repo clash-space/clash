@@ -3642,6 +3642,159 @@ async function main() {
 	    { mutation: acceptedRoomSync.mutation },
 	  );
 
+	  const conflictRoomDataDir = path.join(artifactRoot, "conflict-room-sync-data");
+	  await mkdir(conflictRoomDataDir, { recursive: true });
+	  const conflictRoomSyncConfig = createLocalSyncConfigStore({
+	    dataDir: conflictRoomDataDir,
+	    env: {},
+	    fetch: async (_input, init = {}) => {
+	      if (!init.method || init.method === "GET") {
+	        return new Response(JSON.stringify({
+	          messages: [
+	            {
+	              id: "room-sync-conflict-smoke",
+	              project_id: "ignored-by-local-api",
+	              sender_kind: "user",
+	              sender_id: "remote-user",
+	              sender_user_id: "remote-user",
+	              mentions: [],
+	              text: "remote room conflict text",
+	              at: 1_700_000_300,
+	            },
+	          ],
+	        }), { headers: { "content-type": "application/json" } });
+	      }
+	      return new Response("unexpected remote conflict write", { status: 500 });
+	    },
+	  });
+	  await conflictRoomSyncConfig.updateFromRequest({
+	    mode: "cloud-sync",
+	    remote_loro_url: "https://room-sync-conflict.example",
+	    remote_loro_token: "room-conflict-token",
+	    capabilities: { room: true },
+	  });
+	  const conflictRoomApp = createLocalApiApp({
+	    dataDir: conflictRoomDataDir,
+	    userId: "asset-receipt-smoke-user",
+	    syncConfig: conflictRoomSyncConfig,
+	  });
+	  const conflictRoomRequest = appRequest(conflictRoomApp);
+	  const conflictRoomProjectResponse = await conflictRoomRequest("/api/v1/projects", {
+	    method: "POST",
+	    body: JSON.stringify({ name: "Room Sync Conflict Smoke" }),
+	  });
+	  const conflictRoomProject = await parseJsonResponse(conflictRoomProjectResponse);
+	  await conflictRoomRequest(`/api/v1/projects/${encodeURIComponent(conflictRoomProject.id)}/room/messages`, {
+	    method: "POST",
+	    body: JSON.stringify({
+	      id: "room-sync-conflict-smoke",
+	      text: "local room conflict text",
+	    }),
+	  });
+	  const conflictedRoomSyncResponse = await conflictRoomRequest(`/api/v1/projects/${encodeURIComponent(conflictRoomProject.id)}/room/sync`, {
+	    method: "POST",
+	  });
+	  const conflictedRoomSync = await parseJsonResponse(conflictedRoomSyncResponse);
+	  const roomConflict = conflictedRoomSync.plan?.conflicts?.[0];
+	  recordCheck(
+	    "room sync conflict exposes local and remote hashes without overwrite",
+	    conflictedRoomSyncResponse.status === 409 &&
+	      conflictedRoomSync.error === "room sync conflict" &&
+	      roomConflict?.id === "room-sync-conflict-smoke" &&
+	      roomConflict?.local?.text === "local room conflict text" &&
+	      roomConflict?.remote?.text === "remote room conflict text" &&
+	      typeof roomConflict?.local?.contentHash === "string" &&
+	      typeof roomConflict?.remote?.contentHash === "string" &&
+	      conflictedRoomSync.mutation?.operation === "room_sync" &&
+	      conflictedRoomSync.mutation?.accepted === false,
+	    JSON.stringify(conflictedRoomSync),
+	    { mutation: conflictedRoomSync.mutation },
+	  );
+	  const staleConflictResolutionResponse = await conflictRoomRequest(
+	    `/api/v1/projects/${encodeURIComponent(conflictRoomProject.id)}/room/sync/conflicts/room-sync-conflict-smoke/resolve`,
+	    {
+	      method: "POST",
+	      body: JSON.stringify({
+	        resolution: "accept-divergence",
+	        localContentHash: "stale-local-hash",
+	        remoteContentHash: roomConflict?.remote?.contentHash,
+	      }),
+	    },
+	  );
+	  const staleConflictResolution = await parseJsonResponse(staleConflictResolutionResponse);
+	  recordCheck(
+	    "room sync conflict recovery rejects stale hashes",
+	    staleConflictResolutionResponse.status === 409 &&
+	      staleConflictResolution.error === "stale room sync conflict resolution" &&
+	      staleConflictResolution.mutation?.operation === "room_sync_conflict_resolve" &&
+	      staleConflictResolution.mutation?.accepted === false,
+	    JSON.stringify(staleConflictResolution),
+	    { mutation: staleConflictResolution.mutation },
+	  );
+	  const acceptedConflictResolutionResponse = await conflictRoomRequest(
+	    `/api/v1/projects/${encodeURIComponent(conflictRoomProject.id)}/room/sync/conflicts/room-sync-conflict-smoke/resolve`,
+	    {
+	      method: "POST",
+	      body: JSON.stringify({
+	        resolution: "accept-divergence",
+	        localContentHash: roomConflict?.local?.contentHash,
+	        remoteContentHash: roomConflict?.remote?.contentHash,
+	      }),
+	    },
+	  );
+	  const acceptedConflictResolution = await parseJsonResponse(acceptedConflictResolutionResponse);
+	  recordCheck(
+	    "room sync conflict recovery accepts inspected divergence",
+	    acceptedConflictResolutionResponse.status === 200 &&
+	      acceptedConflictResolution.resolution?.strategy === "accept-divergence" &&
+	      acceptedConflictResolution.resolution?.message_id === "room-sync-conflict-smoke" &&
+	      acceptedConflictResolution.mutation?.operation === "room_sync_conflict_resolve" &&
+	      acceptedConflictResolution.mutation?.accepted === true &&
+	      acceptedConflictResolution.mutation?.resultEntityId === "room-sync-conflict-smoke",
+	    JSON.stringify(acceptedConflictResolution),
+	    { mutation: acceptedConflictResolution.mutation },
+	  );
+	  const resumedConflictRoomSyncResponse = await conflictRoomRequest(`/api/v1/projects/${encodeURIComponent(conflictRoomProject.id)}/room/sync`, {
+	    method: "POST",
+	  });
+	  const resumedConflictRoomSync = await parseJsonResponse(resumedConflictRoomSyncResponse);
+	  const conflictRoomMessagesResponse = await conflictRoomRequest(`/api/v1/projects/${encodeURIComponent(conflictRoomProject.id)}/room/messages`);
+	  const conflictRoomMessages = await parseJsonResponse(conflictRoomMessagesResponse);
+	  recordCheck(
+	    "room sync conflict recovery preserves local divergence",
+	    resumedConflictRoomSyncResponse.status === 200 &&
+	      resumedConflictRoomSync.plan?.resolvedConflictIds?.includes("room-sync-conflict-smoke") === true &&
+	      resumedConflictRoomSync.plan?.conflicts?.length === 0 &&
+	      resumedConflictRoomSync.mutation?.operation === "room_sync" &&
+	      resumedConflictRoomSync.mutation?.accepted === true &&
+	      conflictRoomMessages.messages?.some((message) =>
+	        message.id === "room-sync-conflict-smoke" &&
+	        message.text === "local room conflict text"
+	      ) &&
+	      !conflictRoomMessages.messages?.some((message) =>
+	        message.id === "room-sync-conflict-smoke" &&
+	        message.text === "remote room conflict text"
+	      ),
+	    JSON.stringify({ resumedConflictRoomSync, conflictRoomMessages }),
+	    { mutation: resumedConflictRoomSync.mutation },
+	  );
+	  const conflictResolutionEntityId = `${conflictRoomProject.id}:room-sync-conflict-smoke`;
+	  const conflictResolutionAuditResponse = await conflictRoomRequest(`/api/v1/mutation-audit?operation=room_sync_conflict_resolve&entityId=${encodeURIComponent(conflictResolutionEntityId)}`);
+	  const conflictResolutionAudit = await parseJsonResponse(conflictResolutionAuditResponse);
+	  const conflictResolutionAuditRecord = conflictResolutionAudit.records?.[0];
+	  recordCheck(
+	    "room sync conflict recovery writes sanitized audit evidence",
+	    conflictResolutionAuditResponse.status === 200 &&
+	      conflictResolutionAudit.records?.length === 1 &&
+	      conflictResolutionAuditRecord.operation === "room_sync_conflict_resolve" &&
+	      conflictResolutionAuditRecord.entity?.id === conflictResolutionEntityId &&
+	      conflictResolutionAuditRecord.accepted === true &&
+	      conflictResolutionAuditRecord.reason === "room sync conflict accepted as divergence" &&
+	      mutationAuditRecordsHaveNoReadTokens(conflictResolutionAudit.records),
+	    JSON.stringify(conflictResolutionAudit),
+	    { mutation: acceptedConflictResolution.mutation },
+	  );
+
 	  const report = {
 	    schemaVersion: 1,
 	    status: "pass",
@@ -3893,6 +4046,11 @@ async function main() {
 	      roomSyncLocalOnlyAdmissionReturned: checks.some((check) => check.name === "local-only room sync returns explicit admission gate" && check.status === "pass"),
 	      roomSyncExplicitMirrorAccepted: checks.some((check) => check.name === "room sync mirrors local and remote messages through explicit action" && check.status === "pass"),
 	      roomSyncAuditRecorded: checks.some((check) => check.name === "room sync writes sanitized local mutation audit evidence" && check.status === "pass"),
+	      roomSyncConflictExposed: checks.some((check) => check.name === "room sync conflict exposes local and remote hashes without overwrite" && check.status === "pass"),
+	      roomSyncConflictStaleResolveRejected: checks.some((check) => check.name === "room sync conflict recovery rejects stale hashes" && check.status === "pass"),
+	      roomSyncConflictDivergenceAccepted: checks.some((check) => check.name === "room sync conflict recovery accepts inspected divergence" && check.status === "pass"),
+	      roomSyncConflictLocalDivergencePreserved: checks.some((check) => check.name === "room sync conflict recovery preserves local divergence" && check.status === "pass"),
+	      roomSyncConflictResolutionAuditRecorded: checks.some((check) => check.name === "room sync conflict recovery writes sanitized audit evidence" && check.status === "pass"),
 	    },
 	  };
 

@@ -852,6 +852,9 @@ acknowledge an inspected conflict with `accept-divergence` only by presenting th
 local and remote content hashes from the conflict plan. The resolution is stored
 as SQLite room sync state, with mutation audit as evidence, so later sync can
 unblock unrelated rows without overwriting either side.
+The local-api/CLI black-box receipt smoke verifies stale-hash rejection,
+accepted divergence, later `resolvedConflictIds`, local text preservation, and
+sanitized conflict-resolution audit evidence.
 
 ### P1: Host-owned mutation API
 

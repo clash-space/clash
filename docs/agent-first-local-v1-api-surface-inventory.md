@@ -855,7 +855,7 @@ Rules:
 Remaining:
 
 - conflict recovery UI and broader admission policy,
-- richer conflict recovery UX across local and remote,
+- richer visible conflict recovery UX across local and remote,
 - live room UI parity in local desktop.
 
 ### Local text revision endpoints

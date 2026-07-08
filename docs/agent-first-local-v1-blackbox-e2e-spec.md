@@ -672,13 +672,13 @@ Result:
 Latest verified asset receipt CAS smoke:
 
 ```text
-.tmp/agent-first-asset-receipts/2026-07-08T15-17-10-397Z/agent-first-asset-receipt-report.json
+.tmp/agent-first-asset-receipts/2026-07-08T15-41-03-104Z/agent-first-asset-receipt-report.json
 ```
 
 Result:
 
 - `status: pass`,
-- 187 checks passed through `npm --prefix apps/desktop run test:e2e:asset-receipts`,
+- 192 checks passed through `npm --prefix apps/desktop run test:e2e:asset-receipts`,
 - derived agent reads stayed read-only, provider model tests and local audio
   transcription actions recorded host mutation envelopes, and local sync, audio,
   harness, custom agent-server, provider account, provider OAuth, asset
@@ -705,7 +705,10 @@ Result:
   local-api canvas batch delete now requires a graph-aware delete-plan receipt,
   rejects orphaning external references and bare CAS tokens, and writes sanitized
   audit evidence; accepted room sync mirrors local/remote room messages through
-  the explicit action and writes sanitized local mutation audit evidence;
+  the explicit action and writes sanitized local mutation audit evidence; room
+  sync conflict recovery exposes local/remote hashes, rejects stale hash
+  resolution, accepts inspected divergence, preserves local text on later sync,
+  and writes sanitized mutation audit evidence;
   session create/delete, runtime session create/attach, local room message create, local sync config update, local audio config update/install, local harness enablement/install/upgrade/authenticate/uninstall, local agent-server config update, provider account
   update/delete, provider OAuth start/complete/delete, asset-ref delete, asset GC delete, and local-api canvas edge delete also write sanitized local mutation audit
   evidence after accepted agent writes,
@@ -713,8 +716,9 @@ Result:
   rejected,
 - fresh host-issued receipts were accepted and reported mutation envelopes,
 - restored project status preserved the local storage path contract,
-- room sync checked project existence before remote admission, and local-only
-  room sync returned a machine-readable admission gate requiring `enable-sync`.
+- room sync checked project existence before remote admission, local-only room
+  sync returned a machine-readable admission gate requiring `enable-sync`, and
+  conflict recovery preserved local divergence without overwriting either side.
 
 Latest verified storage doctor repair smoke:
 
