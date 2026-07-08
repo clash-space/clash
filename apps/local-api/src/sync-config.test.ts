@@ -33,4 +33,27 @@ describe("local sync config", () => {
       },
     });
   });
+
+  it("stores explicit sync capability readiness separately from remote credentials", async () => {
+    const store = createLocalSyncConfigStore({ dataDir, env: {} });
+
+    await store.updateFromRequest({
+      mode: "cloud-sync",
+      remote_loro_url: "https://sync.example",
+      capabilities: {
+        canvas: true,
+        room: true,
+        asset_metadata: true,
+      },
+    });
+
+    await expect(store.getPublicConfig()).resolves.toMatchObject({
+      mode: "cloud-sync",
+      capabilities: {
+        canvas: true,
+        room: true,
+        asset_metadata: true,
+      },
+    });
+  });
 });

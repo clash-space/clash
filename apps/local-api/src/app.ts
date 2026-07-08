@@ -691,11 +691,20 @@ function publicLocalSyncConfig(readState: LocalSyncConfigReadState) {
   return {
     mode: readState.mode,
     remote_loro: readState.remote_loro,
+    capabilities: readState.capabilities,
     readToken: localConfigReceiptReadToken({
       id: "sync",
-      config: { mode: readState.mode, remote_loro: readState.remote_loro },
+      config: localSyncConfigReadProjection(readState),
       updatedAt: readState.updated_at,
     }),
+  };
+}
+
+function localSyncConfigReadProjection(readState: LocalSyncConfigReadState) {
+  return {
+    mode: readState.mode,
+    remote_loro: readState.remote_loro,
+    capabilities: readState.capabilities,
   };
 }
 
@@ -2083,10 +2092,7 @@ function validateLocalSyncConfigMutation(options: {
 }) {
   const currentReadToken = localConfigReadToken({
     id: "sync",
-    config: {
-      mode: options.readState.mode,
-      remote_loro: options.readState.remote_loro,
-    },
+    config: localSyncConfigReadProjection(options.readState),
     updatedAt: options.readState.updated_at,
   });
   const guard = validateAgentReadProof({
@@ -3469,7 +3475,7 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
             ? {
                 afterReadToken: localConfigReceiptReadToken({
                   id: "sync",
-                  config: { mode: readState.mode, remote_loro: readState.remote_loro },
+                  config: localSyncConfigReadProjection(readState),
                   updatedAt: readState.updated_at,
                 }),
               }
@@ -4391,7 +4397,7 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
       {
         clashRoot,
         localApiDataDir,
-        marker: { sync: { mode: sync.mode } },
+        marker: { sync: { mode: sync.mode, capabilities: sync.capabilities } },
       },
     ));
   });

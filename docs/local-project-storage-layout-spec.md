@@ -496,6 +496,8 @@ Local-only:
 Synced:
 
 - project status reports `syncReadiness.ready: true`,
+- readiness comes from explicit local sync capability flags, not merely from a
+  configured remote URL,
 - canvas updates have a remote persistence path,
 - asset metadata and required blobs are uploaded or lazily fetchable,
 - room messages sync,

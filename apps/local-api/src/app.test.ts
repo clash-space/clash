@@ -67,6 +67,11 @@ const PROVIDER_ACCOUNT_RECEIPT_READ_TOKEN_RE = /^provider-account-v1:[a-f0-9]{16
 const PROVIDER_ACCOUNTS_RECEIPT_READ_TOKEN_RE = /^provider-accounts-v1:[a-f0-9]{16}:receipt:[A-Za-z0-9._~-]+$/;
 const PROVIDER_OAUTH_RECEIPT_READ_TOKEN_RE = /^provider-oauth-v1:[a-f0-9]{16}:receipt:[A-Za-z0-9._~-]+$/;
 const ASSET_GC_RECEIPT_READ_TOKEN_RE = /^asset-gc-v1:[a-f0-9]{16}:receipt:[A-Za-z0-9._~-]+$/;
+const DEFAULT_SYNC_CAPABILITIES = {
+  canvas: false,
+  room: false,
+  asset_metadata: false,
+};
 
 beforeEach(async () => {
   dataDir = await mkdtemp(join(tmpdir(), "clash-local-api-"));
@@ -135,6 +140,7 @@ describe("local API app", () => {
         has_token: false,
         source: "none",
       },
+      capabilities: DEFAULT_SYNC_CAPABILITIES,
       readToken: expect.stringMatching(LOCAL_CONFIG_RECEIPT_READ_TOKEN_RE),
     });
 
@@ -156,6 +162,7 @@ describe("local API app", () => {
         has_token: true,
         source: "config",
       },
+      capabilities: DEFAULT_SYNC_CAPABILITIES,
       readToken: expect.stringMatching(LOCAL_CONFIG_RECEIPT_READ_TOKEN_RE),
       mutation: {
         operation: "local_sync_config_update",
@@ -176,6 +183,7 @@ describe("local API app", () => {
         has_token: true,
         source: "config",
       },
+      capabilities: DEFAULT_SYNC_CAPABILITIES,
       readToken: expect.stringMatching(LOCAL_CONFIG_RECEIPT_READ_TOKEN_RE),
     });
   });
@@ -8248,6 +8256,66 @@ describe("local API app", () => {
         localAgentRuntime: {
           requiredForLocalActions: true,
           availability: "owner-machine-online",
+        },
+      },
+    });
+  });
+
+  it("marks cloud-sync project status ready only after local sync capabilities are ready", async () => {
+    const app = createLocalApiApp({ dataDir, userId: "local-user", syncEnv: {} });
+    const sync = await app.request("/api/v1/local/sync", {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        mode: "cloud-sync",
+        remote_loro_url: "https://api.example.com",
+        capabilities: {
+          canvas: true,
+          room: true,
+          asset_metadata: true,
+        },
+      }),
+    });
+    expect(sync.status).toBe(200);
+
+    const created = await app.request("/api/v1/projects", {
+      method: "POST",
+      body: JSON.stringify({ name: "Ready Synced Status Project" }),
+      headers: { "content-type": "application/json" },
+    });
+    const project = (await created.json()) as { id: string };
+
+    const statusRes = await app.request(`/api/v1/projects/${project.id}/status`);
+
+    expect(statusRes.status).toBe(200);
+    const status = (await statusRes.json()) as any;
+    expect(status).toMatchObject({
+      projectId: project.id,
+      mode: "cloud-sync",
+      syncMode: "cloud-sync",
+      collaboration: {
+        mode: "synced",
+        rawMode: "cloud-sync",
+        webOpenable: true,
+        roomAuthority: "local-with-cloud-mirror",
+        cloudProjectRoom: "disabled",
+        syncReadiness: {
+          status: "ready",
+          ready: true,
+          required: ["canvas", "room", "asset-metadata"],
+          missing: [],
+        },
+        actions: {
+          openInWeb: {
+            allowed: true,
+            reason: null,
+            requirements: [],
+          },
+          shareProject: {
+            allowed: true,
+            reason: null,
+            requirements: [],
+          },
         },
       },
     });

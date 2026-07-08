@@ -491,6 +491,26 @@ Agents need a stable inspection payload:
       "required": ["canvas", "room", "asset-metadata"],
       "missing": ["canvas", "room", "asset-metadata"]
     },
+    "tracePolicy": {
+      "schemaVersion": 1,
+      "roomMessages": {
+        "kind": "project-chat",
+        "syncDefault": "sync-when-project-sync-enabled",
+        "rawAgentTrace": false
+      },
+      "agentSessionMetadata": {
+        "kind": "public-session-metadata",
+        "syncDefault": "sync-when-project-sync-enabled",
+        "rawAgentTrace": false
+      },
+      "rawAgentTraces": {
+        "kind": "private-runtime-trace",
+        "syncDefault": "local-only",
+        "optInRequiredForSync": true,
+        "excludedFromRoom": true,
+        "sensitiveFields": ["tool-logs", "local-file-paths", "scratch-context"]
+      }
+    },
     "localAgentRuntime": {
       "requiredForLocalActions": true,
       "availability": "owner-machine-online"
@@ -630,8 +650,11 @@ The `collaboration` object is the machine-readable local/cloud mode gate:
 `local`/`local-only` normalize to `local-only` and are not web-openable;
 `cloud-sync`/`synced` normalize to `synced` but remain `webOpenable: false`
 with `syncReadiness.status: "pending"` until canvas, room, and asset-metadata
-sync capabilities are explicitly ready; only ready synced projects may use
-`roomAuthority: "local-with-cloud-mirror"`. Only `shared` enables
+sync capabilities are explicitly ready in local sync config and passed through
+the status builder; only ready synced projects may use
+`roomAuthority: "local-with-cloud-mirror"`. The same payload exposes
+`tracePolicy` so room chat/public session metadata and raw agent traces do not
+share an accidental sync surface. Only `shared` enables
 `cloudProjectRoom: "sequencer"` and `multiUser: true`. Local actions still
 require the owner's machine-local agent runtime in every mode.
 The `storage` object is the machine-readable role contract: the workspace is

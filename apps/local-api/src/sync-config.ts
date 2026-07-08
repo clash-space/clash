@@ -10,6 +10,12 @@ import { createHttpRemoteRoomSync, type RemoteRoomSync } from "./room-sync.js";
 export type LocalSyncMode = "local-only" | "cloud-sync";
 export type RemoteLoroSource = "none" | "env" | "config";
 
+export interface LocalSyncCapabilities {
+  canvas: boolean;
+  room: boolean;
+  asset_metadata: boolean;
+}
+
 export interface PublicLocalSyncConfig {
   mode: LocalSyncMode;
   remote_loro: {
@@ -18,6 +24,7 @@ export interface PublicLocalSyncConfig {
     has_token: boolean;
     source: RemoteLoroSource;
   };
+  capabilities: LocalSyncCapabilities;
 }
 
 export type LocalSyncConfigReadState = PublicLocalSyncConfig & {
@@ -43,6 +50,7 @@ interface LocalSyncConfigFile {
   mode: LocalSyncMode;
   remoteLoroUrl: string | null;
   remoteLoroToken: string | null;
+  capabilities: LocalSyncCapabilities;
   updatedAt: string;
 }
 
@@ -50,6 +58,7 @@ interface EffectiveLocalSyncConfig {
   mode: LocalSyncMode;
   remoteLoroUrl: string | null;
   remoteLoroToken: string | null;
+  capabilities: LocalSyncCapabilities;
   source: RemoteLoroSource;
   updatedAt: string;
 }
@@ -89,12 +98,39 @@ function normalizeMode(value: unknown): LocalSyncMode {
   throw new LocalSyncConfigError("mode must be local-only or cloud-sync");
 }
 
+function defaultSyncCapabilities(): LocalSyncCapabilities {
+  return {
+    canvas: false,
+    room: false,
+    asset_metadata: false,
+  };
+}
+
+function normalizeCapabilities(
+  value: unknown,
+  fallback: LocalSyncCapabilities = defaultSyncCapabilities(),
+): LocalSyncCapabilities {
+  if (value === undefined || value === null) return fallback;
+  if (typeof value !== "object" || Array.isArray(value)) {
+    throw new LocalSyncConfigError("capabilities must be an object");
+  }
+  const record = value as Record<string, unknown>;
+  return {
+    canvas: record.canvas === undefined ? fallback.canvas : record.canvas === true,
+    room: record.room === undefined ? fallback.room : record.room === true,
+    asset_metadata: record.asset_metadata === undefined
+      ? fallback.asset_metadata
+      : record.asset_metadata === true,
+  };
+}
+
 function envConfig(env: RemoteLoroPersistenceEnv | undefined): EffectiveLocalSyncConfig {
   const url = normalizeRemoteUrl(env?.CLASH_REMOTE_LORO_URL);
   return {
     mode: url ? "cloud-sync" : "local-only",
     remoteLoroUrl: url,
     remoteLoroToken: trimToNull(env?.CLASH_REMOTE_LORO_TOKEN),
+    capabilities: defaultSyncCapabilities(),
     source: url ? "env" : "none",
     updatedAt: "env",
   };
@@ -110,6 +146,7 @@ function toPublicConfig(config: EffectiveLocalSyncConfig): PublicLocalSyncConfig
       has_token: enabled && !!config.remoteLoroToken,
       source: enabled ? config.source : "none",
     },
+    capabilities: enabled ? config.capabilities : defaultSyncCapabilities(),
   };
 }
 
@@ -128,6 +165,7 @@ async function readConfigFile(path: string): Promise<LocalSyncConfigFile | null>
       mode: normalizeMode(data.mode),
       remoteLoroUrl: normalizeRemoteUrl(data.remoteLoroUrl),
       remoteLoroToken: trimToNull(data.remoteLoroToken),
+      capabilities: normalizeCapabilities(data.capabilities),
       updatedAt: typeof data.updatedAt === "string" ? data.updatedAt : new Date(0).toISOString(),
     };
   } catch {
@@ -154,6 +192,7 @@ export function createLocalSyncConfigStore(
       mode: file.mode,
       remoteLoroUrl: file.remoteLoroUrl,
       remoteLoroToken: file.remoteLoroToken,
+      capabilities: file.mode === "cloud-sync" ? file.capabilities : defaultSyncCapabilities(),
       source: file.remoteLoroUrl ? "config" : "none",
       updatedAt: file.updatedAt,
     };
@@ -174,6 +213,7 @@ export function createLocalSyncConfigStore(
         mode: envConfig(env).mode,
         remoteLoroUrl: envConfig(env).remoteLoroUrl,
         remoteLoroToken: null,
+        capabilities: envConfig(env).capabilities,
         updatedAt: new Date(0).toISOString(),
       };
 
@@ -188,12 +228,16 @@ export function createLocalSyncConfigStore(
       if (mode === "cloud-sync" && !remoteLoroUrl) {
         throw new LocalSyncConfigError("remote_loro_url is required for cloud-sync mode");
       }
+      const capabilities = mode === "cloud-sync"
+        ? normalizeCapabilities(input.capabilities, current.capabilities)
+        : defaultSyncCapabilities();
 
       const next: LocalSyncConfigFile = {
         version: 1,
         mode,
         remoteLoroUrl: mode === "cloud-sync" ? remoteLoroUrl : null,
         remoteLoroToken: mode === "cloud-sync" ? remoteLoroToken : null,
+        capabilities,
         updatedAt: new Date().toISOString(),
       };
       await writeConfigFile(path, next);
@@ -201,6 +245,7 @@ export function createLocalSyncConfigStore(
         mode: next.mode,
         remoteLoroUrl: next.remoteLoroUrl,
         remoteLoroToken: next.remoteLoroToken,
+        capabilities: next.capabilities,
         source: next.remoteLoroUrl ? "config" : "none",
         updatedAt: next.updatedAt,
       });
