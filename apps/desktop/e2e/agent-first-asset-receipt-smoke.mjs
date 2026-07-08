@@ -1761,10 +1761,60 @@ async function main() {
     `status=${customOutputBytes.status}`,
   );
 
+  const assetBlobUploadForm = new FormData();
+  assetBlobUploadForm.append("file", new File(["agent-blob-upload"], "agent note.txt", { type: "text/plain" }));
+  const assetBlobUploadResponse = await request("/upload", {
+    method: "POST",
+    headers: { "x-clash-client-type": "agent" },
+    body: assetBlobUploadForm,
+  });
+  const assetBlobUpload = await parseJsonResponse(assetBlobUploadResponse);
+  const assetBlobStorageKey = assetBlobUpload.storageKey;
+  const assetBlobReadResponse = typeof assetBlobStorageKey === "string"
+    ? await request(`/assets/${assetBlobStorageKey}`)
+    : null;
+  recordCheck(
+    "asset blob upload accepts agent local file",
+    assetBlobUploadResponse.status === 200 &&
+      typeof assetBlobStorageKey === "string" &&
+      /^uploads\/.+-agent_note\.txt$/.test(assetBlobStorageKey) &&
+      assetBlobUpload.mutation?.accepted === true &&
+      assetBlobUpload.mutation?.operation === "asset_blob_upload" &&
+      assetBlobReadResponse?.status === 200 &&
+      await assetBlobReadResponse.text() === "agent-blob-upload",
+    JSON.stringify(assetBlobUpload),
+    { mutation: assetBlobUpload.mutation },
+  );
+
+  const assetBlobUploadAuditResponse = typeof assetBlobStorageKey === "string"
+    ? await request(`/api/v1/mutation-audit?operation=asset_blob_upload&entityId=${encodeURIComponent(assetBlobStorageKey)}`)
+    : null;
+  const assetBlobUploadAudit = assetBlobUploadAuditResponse
+    ? await parseJsonResponse(assetBlobUploadAuditResponse)
+    : { records: [] };
+  const assetBlobUploadAuditRecord = assetBlobUploadAudit.records?.[0];
+  recordCheck(
+    "asset blob upload writes sanitized local mutation audit evidence",
+    assetBlobUploadAuditResponse?.status === 200 &&
+      assetBlobUploadAudit.records?.length === 1 &&
+      assetBlobUploadAuditRecord.operation === "asset_blob_upload" &&
+      assetBlobUploadAuditRecord.entity?.kind === "asset-blob" &&
+      assetBlobUploadAuditRecord.entity?.id === assetBlobStorageKey &&
+      assetBlobUploadAuditRecord.accepted === true &&
+      assetBlobUploadAuditRecord.actorClientType === "agent" &&
+      assetBlobUploadAuditRecord.reason === "asset blob upload" &&
+      !JSON.stringify(assetBlobUploadAuditRecord.mutation ?? {}).includes("receipt") &&
+      assetBlobUploadAuditRecord.mutation?.expectedReadToken == null &&
+      assetBlobUploadAuditRecord.mutation?.beforeReadToken == null &&
+      assetBlobUploadAuditRecord.mutation?.afterReadToken == null,
+    JSON.stringify(assetBlobUploadAudit),
+  );
+
   const escapedUploadTarget = path.join(artifactRoot, "outside-upload-target");
   const symlinkedUploadParent = path.join(dataDir, "assets", "uploads");
   await mkdir(escapedUploadTarget, { recursive: true });
   await mkdir(path.dirname(symlinkedUploadParent), { recursive: true });
+  await rm(symlinkedUploadParent, { recursive: true, force: true });
   await symlink(escapedUploadTarget, symlinkedUploadParent);
   try {
     const symlinkUploadForm = new FormData();
@@ -3659,6 +3709,8 @@ async function main() {
       customActionCheckpointAuditRecorded: checks.some((check) => check.name === "custom action upload writes sanitized local mutation audit evidence" && check.status === "pass"),
       customActionCheckpointOverwriteRejected: checks.some((check) => check.name === "custom action upload rejects checkpoint overwrite" && check.status === "pass"),
       customActionCheckpointFilePreserved: checks.some((check) => check.name === "custom action checkpoint file remains first output after rejected overwrite" && check.status === "pass"),
+      assetBlobUploadAccepted: checks.some((check) => check.name === "asset blob upload accepts agent local file" && check.status === "pass"),
+      assetBlobUploadAuditRecorded: checks.some((check) => check.name === "asset blob upload writes sanitized local mutation audit evidence" && check.status === "pass"),
       assetUploadSymlinkParentRejected: checks.some((check) => check.name === "asset upload rejects symlinked parent outside local asset storage" && check.status === "pass"),
       assetUploadSymlinkRootRejected: checks.some((check) => check.name === "asset upload rejects symlinked root outside local asset storage" && check.status === "pass"),
       assetReadSymlinkParentRejected: checks.some((check) => check.name === "asset reads reject symlinked parent outside local asset storage" && check.status === "pass"),

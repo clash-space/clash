@@ -666,13 +666,13 @@ Result:
 Latest verified asset receipt CAS smoke:
 
 ```text
-.tmp/agent-first-asset-receipts/2026-07-08T14-47-35-424Z/agent-first-asset-receipt-report.json
+.tmp/agent-first-asset-receipts/2026-07-08T14-55-52-509Z/agent-first-asset-receipt-report.json
 ```
 
 Result:
 
 - `status: pass`,
-- 180 checks passed through `npm --prefix apps/desktop run test:e2e:asset-receipts`,
+- 182 checks passed through `npm --prefix apps/desktop run test:e2e:asset-receipts`,
 - derived agent reads stayed read-only, provider model tests and local audio
   transcription actions recorded host mutation envelopes, and local sync, audio,
   harness, custom agent-server, provider account, provider OAuth, asset
@@ -683,7 +683,8 @@ Result:
   storage keys before metadata persistence; accepted sync config updates, audio
   config updates, audio installs, harness enablement/install/upgrade/authenticate/uninstall, custom agent-server
   updates, provider account updates, provider OAuth start/complete, and asset
-  cover updates write sanitized local mutation audit evidence; the same run also proved the restore
+  cover updates and generic asset blob uploads write sanitized local mutation audit
+  evidence; the same run also proved the restore
   path's sanitized audit evidence, v1/legacy project create audit evidence,
   legacy project update/delete audit evidence, session create audit evidence,
   local room message create audit evidence,

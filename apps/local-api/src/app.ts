@@ -6841,9 +6841,16 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
       }, 400);
     }
     await writeFile(path, new Uint8Array(await file.arrayBuffer()));
+    const preconditions = requestProjectWritePreconditions(c);
+    const mutation = hostMutationSucceeded(envelope, { resultEntityId: storageKey });
+    await db.appendMutationAudit(mutationAuditRecord({
+      mutation,
+      actorClientType: preconditions.actorClientType,
+      reason: "asset blob upload",
+    }));
     return c.json({
       storageKey,
-      mutation: hostMutationSucceeded(envelope, { resultEntityId: storageKey }),
+      mutation,
     });
   });
 

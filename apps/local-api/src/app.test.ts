@@ -10955,6 +10955,12 @@ describe("local API app", () => {
       accepted: true,
       resultEntityId: storageKey,
     });
+    await expectSingleMutationAudit(app, {
+      operation: "asset_blob_upload",
+      entityId: storageKey,
+      entityKind: "asset-blob",
+      reason: "asset blob upload",
+    });
 
     const sign = await app.request(`/assets/sign?key=${encodeURIComponent(storageKey)}`);
     expect(await sign.json()).toMatchObject({ url: `http://localhost/assets/${storageKey}` });

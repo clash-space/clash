@@ -594,9 +594,10 @@ Conclusion:
   read receipt before invoking the local ACP attach hook. Asset reference-index
   refresh now records an accepted host metadata mutation. It also covers immutable
   asset import: same-id different content is rejected and must use a new asset id
-  plus COW replacement. Asset blob upload/read reject symlinked roots and
-  parents, and workflow-generated asset writes reject symlinked parents outside
-  local asset storage. Custom action
+  plus COW replacement. Asset blob uploads write sanitized audit evidence;
+  asset blob upload/read reject symlinked roots and parents, and
+  workflow-generated asset writes reject symlinked parents outside local asset
+  storage. Custom action
   binary checkpoint outputs now reject same
   task/output reruns with different content before overwriting the checkpoint
   file. Focused Web/CLI/shared-type tests now cover graph/edge read-token CAS
