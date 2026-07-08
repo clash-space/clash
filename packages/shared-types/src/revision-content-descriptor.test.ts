@@ -9,6 +9,7 @@ describe("revision content descriptors", () => {
     expect(
       TextRevisionContentDescriptorSchema.parse({
         kind: "text-revision-content",
+        stored: true,
         contentHash: "1234567890abcdef",
         mediaType: "text/markdown",
         url: "/api/v1/projects/project/text-revisions/txrev-1/content",
@@ -21,6 +22,7 @@ describe("revision content descriptors", () => {
         },
       }),
     ).toMatchObject({
+      stored: true,
       storage: {
         registry: "text_revisions",
         mediaAsset: false,
@@ -33,6 +35,7 @@ describe("revision content descriptors", () => {
     expect(
       TimelineRevisionContentDescriptorSchema.parse({
         kind: "timeline-revision-content",
+        stored: true,
         timelineHash: "1234567890abcdef",
         mediaType: "application/yaml",
         url: "/api/v1/projects/project/timeline-revisions/tlrev-1/content",
@@ -45,6 +48,7 @@ describe("revision content descriptors", () => {
         },
       }),
     ).toMatchObject({
+      stored: true,
       storage: {
         registry: "timeline_revisions",
         mediaAsset: false,

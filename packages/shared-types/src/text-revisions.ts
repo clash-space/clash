@@ -9,6 +9,7 @@ export type TextRevisionActor = z.infer<typeof TextRevisionActorSchema>;
 
 export const TextRevisionContentDescriptorSchema = z.object({
   kind: z.literal('text-revision-content'),
+  stored: z.literal(true).optional(),
   contentHash: z.string(),
   mediaType: z.literal('text/markdown'),
   url: z.string(),

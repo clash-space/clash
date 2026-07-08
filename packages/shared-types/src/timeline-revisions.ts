@@ -17,6 +17,7 @@ export type TimelineRevisionDependencies = z.infer<typeof TimelineRevisionDepend
 
 export const TimelineRevisionContentDescriptorSchema = z.object({
   kind: z.literal('timeline-revision-content'),
+  stored: z.literal(true).optional(),
   timelineHash: z.string(),
   mediaType: z.literal('application/yaml'),
   url: z.string(),
