@@ -2247,9 +2247,31 @@ async function main() {
 
   const legacyDeleteProjectResponse = await request("/api/projects", {
     method: "POST",
+    headers: { "x-clash-client-type": "agent" },
     body: JSON.stringify({ prompt: "Legacy Project Delete Audit Smoke" }),
   });
   const legacyDeleteProject = await parseJsonResponse(legacyDeleteProjectResponse);
+  const legacyCreateAuditResponse = await request(`/api/v1/mutation-audit?operation=project_create&entityId=${encodeURIComponent(legacyDeleteProject.id)}`);
+  const legacyCreateAudit = await parseJsonResponse(legacyCreateAuditResponse);
+  const legacyCreateAuditRecord = legacyCreateAudit.records?.[0];
+  recordCheck(
+    "legacy project create writes sanitized local mutation audit evidence",
+    legacyDeleteProjectResponse.status === 200 &&
+      legacyDeleteProject.mutation?.accepted === true &&
+      legacyCreateAuditResponse.status === 200 &&
+      legacyCreateAudit.records?.length === 1 &&
+      legacyCreateAuditRecord.operation === "project_create" &&
+      legacyCreateAuditRecord.entity?.id === legacyDeleteProject.id &&
+      legacyCreateAuditRecord.accepted === true &&
+      legacyCreateAuditRecord.actorClientType === "agent" &&
+      legacyCreateAuditRecord.reason === "legacy project create" &&
+      !JSON.stringify(legacyCreateAuditRecord.mutation ?? {}).includes("receipt") &&
+      legacyCreateAuditRecord.mutation?.expectedReadToken == null &&
+      legacyCreateAuditRecord.mutation?.beforeReadToken == null &&
+      legacyCreateAuditRecord.mutation?.afterReadToken == null,
+    JSON.stringify({ legacyDeleteProject, legacyCreateAudit }),
+    { mutation: legacyDeleteProject.mutation },
+  );
   const legacyDeleteResponse = await request(`/api/projects/${encodeURIComponent(legacyDeleteProject.id)}`, {
     method: "DELETE",
   });
@@ -2280,6 +2302,7 @@ async function main() {
 
   const restoreProjectResponse = await request("/api/v1/projects", {
     method: "POST",
+    headers: { "x-clash-client-type": "agent" },
     body: JSON.stringify({ name: "Project Restore Receipt Smoke" }),
   });
   const restoreProject = await parseJsonResponse(restoreProjectResponse);
@@ -2287,6 +2310,27 @@ async function main() {
     "project restore source project create accepted",
     restoreProjectResponse.status === 201 && hasReceipt(restoreProject.readToken, "project"),
     `status=${restoreProjectResponse.status} id=${restoreProject.id ?? ""} readToken=${restoreProject.readToken ?? ""}`,
+    { mutation: restoreProject.mutation },
+  );
+  const projectCreateAuditResponse = await request(`/api/v1/mutation-audit?operation=project_create&entityId=${encodeURIComponent(restoreProject.id)}`);
+  const projectCreateAudit = await parseJsonResponse(projectCreateAuditResponse);
+  const projectCreateAuditRecord = projectCreateAudit.records?.[0];
+  recordCheck(
+    "v1 project create writes sanitized local mutation audit evidence",
+    restoreProjectResponse.status === 201 &&
+      restoreProject.mutation?.accepted === true &&
+      projectCreateAuditResponse.status === 200 &&
+      projectCreateAudit.records?.length === 1 &&
+      projectCreateAuditRecord.operation === "project_create" &&
+      projectCreateAuditRecord.entity?.id === restoreProject.id &&
+      projectCreateAuditRecord.accepted === true &&
+      projectCreateAuditRecord.actorClientType === "agent" &&
+      projectCreateAuditRecord.reason === "v1 project create" &&
+      !JSON.stringify(projectCreateAuditRecord.mutation ?? {}).includes("receipt") &&
+      projectCreateAuditRecord.mutation?.expectedReadToken == null &&
+      projectCreateAuditRecord.mutation?.beforeReadToken == null &&
+      projectCreateAuditRecord.mutation?.afterReadToken == null,
+    JSON.stringify({ restoreProject, projectCreateAudit }),
     { mutation: restoreProject.mutation },
   );
 
@@ -2959,7 +3003,9 @@ async function main() {
       canvasEdgeListReceiptReturned: checks.some((check) => check.name === "canvas edge list returns graph and edge receipt read tokens" && check.status === "pass"),
       canvasEdgeDeleteReceiptAccepted: checks.some((check) => check.name === "canvas edge delete with receipt is accepted" && check.status === "pass"),
       canvasEdgeDeleteAuditRecorded: checks.some((check) => check.name === "canvas edge delete writes sanitized local mutation audit evidence" && check.status === "pass"),
+      legacyProjectCreateAuditRecorded: checks.some((check) => check.name === "legacy project create writes sanitized local mutation audit evidence" && check.status === "pass"),
       legacyProjectDeleteAuditRecorded: checks.some((check) => check.name === "legacy project delete writes sanitized local mutation audit evidence" && check.status === "pass"),
+      projectCreateAuditRecorded: checks.some((check) => check.name === "v1 project create writes sanitized local mutation audit evidence" && check.status === "pass"),
       projectRestoreDeletedGetHidden: checks.some((check) => check.name === "deleted project is hidden from normal project get" && check.status === "pass"),
       projectRestoreGetReceiptReturned: checks.some((check) => check.name === "deleted project get returns restore receipt" && check.status === "pass"),
       projectRestoreMissingReadRejected: checks.some((check) => check.name === "project restore without prior deleted read is rejected" && check.status === "pass"),

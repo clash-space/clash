@@ -8333,6 +8333,62 @@ describe("local API app", () => {
     expect(await (await app.request("/api/projects")).json()).toEqual([]);
   });
 
+  it("writes sanitized mutation audit records for local project creation", async () => {
+    const app = createLocalApiApp({ dataDir, userId: "local-user" });
+
+    const v1Created = await app.request("/api/v1/projects", {
+      method: "POST",
+      body: JSON.stringify({ name: "Agent Project" }),
+      headers: { "content-type": "application/json", "x-clash-client-type": "agent" },
+    });
+    expect(v1Created.status).toBe(201);
+    const v1Project = await v1Created.json() as { id: string; readToken: string };
+
+    const v1Audit = await app.request(`/api/v1/mutation-audit?operation=project_create&entityId=${encodeURIComponent(v1Project.id)}`);
+    expect(v1Audit.status).toBe(200);
+    const v1AuditJson = await v1Audit.json() as { records: Array<any> };
+    expect(v1AuditJson.records).toHaveLength(1);
+    expect(v1AuditJson.records[0]).toMatchObject({
+      operation: "project_create",
+      entity: { kind: "project", id: v1Project.id },
+      actorClientType: "agent",
+      accepted: true,
+      forced: false,
+      reason: "v1 project create",
+      resultEntityId: v1Project.id,
+    });
+    expect(JSON.stringify(v1AuditJson.records[0].mutation ?? {})).not.toContain("receipt");
+    expect(v1AuditJson.records[0].mutation.expectedReadToken).toBeUndefined();
+    expect(v1AuditJson.records[0].mutation.beforeReadToken).toBeUndefined();
+    expect(v1AuditJson.records[0].mutation.afterReadToken).toBeUndefined();
+
+    const legacyCreated = await app.request("/api/projects", {
+      method: "POST",
+      body: JSON.stringify({ prompt: "Legacy Agent Project" }),
+      headers: { "content-type": "application/json", "x-clash-client-type": "agent" },
+    });
+    expect(legacyCreated.status).toBe(200);
+    const legacyProject = await legacyCreated.json() as { id: string; readToken: string };
+
+    const legacyAudit = await app.request(`/api/v1/mutation-audit?operation=project_create&entityId=${encodeURIComponent(legacyProject.id)}`);
+    expect(legacyAudit.status).toBe(200);
+    const legacyAuditJson = await legacyAudit.json() as { records: Array<any> };
+    expect(legacyAuditJson.records).toHaveLength(1);
+    expect(legacyAuditJson.records[0]).toMatchObject({
+      operation: "project_create",
+      entity: { kind: "project", id: legacyProject.id },
+      actorClientType: "agent",
+      accepted: true,
+      forced: false,
+      reason: "legacy project create",
+      resultEntityId: legacyProject.id,
+    });
+    expect(JSON.stringify(legacyAuditJson.records[0].mutation ?? {})).not.toContain("receipt");
+    expect(legacyAuditJson.records[0].mutation.expectedReadToken).toBeUndefined();
+    expect(legacyAuditJson.records[0].mutation.beforeReadToken).toBeUndefined();
+    expect(legacyAuditJson.records[0].mutation.afterReadToken).toBeUndefined();
+  });
+
   it("requires agent project writes to carry a fresh read proof", async () => {
     const app = createLocalApiApp({ dataDir, userId: "local-user" });
 

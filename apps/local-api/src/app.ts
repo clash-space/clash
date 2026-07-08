@@ -4578,7 +4578,8 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
     const body = (await c.req.json().catch(() => ({}))) as {
       name?: string;
       description?: string;
-    };
+    } & ProjectWriteBody;
+    const preconditions = requestProjectWritePreconditions(c, body);
     const name = body.name?.trim();
     if (!name) return c.json({ error: "name is required" }, 400);
 
@@ -4597,19 +4598,25 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
       return next;
     });
     const readToken = projectReceiptReadToken(project);
+    const mutation = hostMutationSucceeded({
+      operation: "project_create",
+      entity: { kind: "project", id: project.id },
+      forced: false,
+    }, {
+      resultEntityId: project.id,
+      afterReadToken: readToken,
+    });
+    await db.appendMutationAudit(mutationAuditRecord({
+      mutation,
+      actorClientType: preconditions.actorClientType,
+      reason: "v1 project create",
+    }));
     return c.json({
       id: project.id,
       name: project.name,
       description: project.description,
       readToken,
-      mutation: hostMutationSucceeded({
-        operation: "project_create",
-        entity: { kind: "project", id: project.id },
-        forced: false,
-      }, {
-        resultEntityId: project.id,
-        afterReadToken: readToken,
-      }),
+      mutation,
     }, 201);
   });
 
@@ -6179,7 +6186,8 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
       prompt?: string;
       name?: string;
       description?: string;
-    };
+    } & ProjectWriteBody;
+    const preconditions = requestProjectWritePreconditions(c, body);
     const prompt = (body.prompt ?? body.name ?? "Untitled project").trim();
     if (!prompt) {
       return c.json({
@@ -6207,17 +6215,23 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
       return next;
     });
     const readToken = projectReceiptReadToken(project);
+    const mutation = hostMutationSucceeded({
+      operation: "project_create",
+      entity: { kind: "project", id: project.id },
+      forced: false,
+    }, {
+      resultEntityId: project.id,
+      afterReadToken: readToken,
+    });
+    await db.appendMutationAudit(mutationAuditRecord({
+      mutation,
+      actorClientType: preconditions.actorClientType,
+      reason: "legacy project create",
+    }));
     return c.json({
       id: project.id,
       readToken,
-      mutation: hostMutationSucceeded({
-        operation: "project_create",
-        entity: { kind: "project", id: project.id },
-        forced: false,
-      }, {
-        resultEntityId: project.id,
-        afterReadToken: readToken,
-      }),
+      mutation,
     });
   });
 
