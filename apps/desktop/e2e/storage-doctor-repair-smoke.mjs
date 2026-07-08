@@ -619,6 +619,28 @@ async function main() {
   const textViewFiles = status?.storage?.workspace?.viewFiles?.texts;
   const timelineViewFiles = status?.storage?.workspace?.viewFiles?.timelines;
   const timelineProjectionFiles = status?.storage?.workspace?.viewFiles?.timelineProjections;
+  const localSecrets = status?.storage?.localSecrets;
+  recordCheck(
+    "local secret files are protected local-only storage, not agent-editable projections",
+    localSecrets?.role === "machine-local-secret-files" &&
+      localSecrets?.syncDefault === "local-only" &&
+      localSecrets?.agentWritable === false &&
+      localSecrets?.files?.cliConfig?.kind === "cli-api-key-config" &&
+      localSecrets.files.cliConfig.path === path.join(clashHome, "config.json") &&
+      localSecrets.files.cliConfig.agentWritable === false &&
+      localSecrets?.files?.bridgeCredentials?.kind === "local-runtime-credentials" &&
+      localSecrets.files.bridgeCredentials.path === path.join(clashHome, "credentials.json") &&
+      localSecrets.files.bridgeCredentials.agentWritable === false &&
+      repairReport.status.protectedPaths.includes(localSecrets.files.cliConfig.path) &&
+      repairReport.status.protectedPaths.includes(localSecrets.files.bridgeCredentials.path) &&
+      !isInside(localSecrets.files.cliConfig.path, status.projectWorkspaceRoot) &&
+      !isInside(localSecrets.files.bridgeCredentials.path, status.projectWorkspaceRoot),
+    JSON.stringify({
+      localSecrets,
+      projectWorkspaceRoot: status?.projectWorkspaceRoot,
+      protectedPaths: status?.protectedPaths,
+    }),
+  );
   recordCheck(
     "text projection view files are editable but not canonical text revision content",
     textViewFiles?.kind === "agent-editable-projection-files" &&
@@ -675,6 +697,48 @@ async function main() {
   );
   const textRevisionBlobs = status?.storage?.canonicalReplica?.contentBlobs?.textRevisions;
   const timelineRevisionBlobs = status?.storage?.canonicalReplica?.contentBlobs?.timelineRevisions;
+  const contentModel = status?.storage?.contentModel;
+  recordCheck(
+    "text and timeline content model separates projections from non-media revision blobs",
+    contentModel?.role === "agent-projections-with-host-indexed-revision-content" &&
+      contentModel?.textNodes?.liveState === "loro-canvas-text-node-data" &&
+      contentModel.textNodes.editableProjection === "storage.workspace.viewFiles.texts" &&
+      contentModel.textNodes.projectionPath === textViewFiles?.path &&
+      contentModel.textNodes.applyCommand === "clash text apply" &&
+      contentModel.textNodes.replaceCommand === "clash text replace" &&
+      contentModel.textNodes.casRequired === true &&
+      contentModel.textNodes.copyOnWriteWhenReferenced === true &&
+      contentModel.textNodes.revisionRegistry === "text_revisions" &&
+      contentModel.textNodes.revisionBlobPath === textRevisionBlobs?.path &&
+      contentModel.textNodes.mediaAsset === false &&
+      contentModel.textNodes.agentWritableCanonicalState === false &&
+      contentModel?.timelines?.liveState === "loro-canvas-video-editor-node-data" &&
+      contentModel.timelines.editableProjection === "storage.workspace.viewFiles.timelines" &&
+      contentModel.timelines.projectionPath === timelineViewFiles?.path &&
+      contentModel.timelines.applyCommand === "clash timeline apply" &&
+      contentModel.timelines.replaceCommand === "clash timeline replace" &&
+      contentModel.timelines.casRequired === true &&
+      contentModel.timelines.copyOnWriteWhenReferenced === true &&
+      contentModel.timelines.revisionRegistry === "timeline_revisions" &&
+      contentModel.timelines.revisionBlobPath === timelineRevisionBlobs?.path &&
+      contentModel.timelines.mediaAsset === false &&
+      contentModel.timelines.agentWritableCanonicalState === false &&
+      contentModel.textNodes.revisionBlobPath !== mediaAssets?.path &&
+      contentModel.timelines.revisionBlobPath !== mediaAssets?.path &&
+      repairReport.status.protectedPaths.includes(contentModel.textNodes.revisionBlobPath) &&
+      repairReport.status.protectedPaths.includes(contentModel.timelines.revisionBlobPath) &&
+      !repairReport.status.protectedPaths.includes(contentModel.textNodes.projectionPath) &&
+      !repairReport.status.protectedPaths.includes(contentModel.timelines.projectionPath),
+    JSON.stringify({
+      contentModel,
+      textViewFiles,
+      timelineViewFiles,
+      textRevisionBlobs,
+      timelineRevisionBlobs,
+      mediaAssets,
+      protectedPaths: status?.protectedPaths,
+    }),
+  );
   recordCheck(
     "revision content blob roots are protected and outside editable workspace roots",
     textRevisionBlobs?.kind === "content-addressed-files" &&
