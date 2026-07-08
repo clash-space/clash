@@ -346,6 +346,10 @@ Evidence:
   successful explicit divergence recovery, SQLite
   `room_sync_conflict_resolution` persistence, and a later sync that reports
   `resolvedConflictIds` without overwriting the local text.
+- `useProjectRoom.syncRoom()` is now the explicit UI-side room mirror action;
+  it preserves failed sync metadata plus conflict plans for the visible
+  `GroupChatPanel` conflict banner, while ordinary history refresh remains a
+  read-only room fetch.
 - CLI reports a generic missing-room-API message on 404 for older targets.
 - Local ACP can dispatch room mentions into sessions.
 
@@ -353,8 +357,8 @@ Conclusion:
 
 - Do not remove room.
 - Local room persistence/routing baseline is implemented; cloud sync policy is
-  narrowed to admission-controlled sync loop wiring, conflict recovery UI, and
-  live UI parity.
+  narrowed to admission-controlled sync loop wiring, richer conflict recovery
+  affordances, and live UI parity.
 
 ## Restriction Matrix
 
@@ -399,9 +403,9 @@ Current status:
   link to the v1 docs and this traceability matrix.
 - Item 12 is checked with `git diff --check`, JSON parse for schema, desktop
   agent-browser smoke, short-drama timeline smoke, and the Codex QA harness.
-- Code implementation remains incomplete for automatic SQLite repair, local
-  room conflict recovery/admission UI, copy-on-write UI/history, remaining storyboard/asset
-  projection adoption, and deeper guardrails.
+- Code implementation remains incomplete for automatic SQLite repair, richer
+  local room conflict recovery/admission UI, copy-on-write UI/history,
+  remaining storyboard/asset projection adoption, and deeper guardrails.
 - Stub ACP, real Codex ACP, direct real Codex layout, and real Codex ACP resume
   layout QA paths passed. The real runs recorded session cwd under
   `~/.clash/projects/<encodedProjectId>` before and after restart and verified the v1

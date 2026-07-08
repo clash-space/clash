@@ -869,8 +869,8 @@ Current status:
   admission evidence, remote/local conflict hash inspection, stale-hash
   rejection, explicit divergence recovery persistence, and later sync
   continuation without overwriting local text. Remaining work is
-  admission-controlled remote sync loop wiring, conflict recovery UI, and
-  broader live UI parity.
+  admission-controlled remote sync loop wiring, richer conflict recovery
+  affordances, and broader live UI parity.
 - `apps/desktop/e2e/agent-first-cas-smoke.mjs` now covers public CLI
   read-proof rejection for missing/stale/wrong-file locks, text/timeline
   outside-cwd and symlink-outside-cwd projection path rejection including

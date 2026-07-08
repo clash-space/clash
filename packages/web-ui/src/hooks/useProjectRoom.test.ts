@@ -40,6 +40,84 @@ describe("useProjectRoom", () => {
     });
   });
 
+  it("keeps remote/local room sync conflict plans available for UI recovery hints", async () => {
+    const conflictResponse = {
+      error: "room sync conflict",
+      sync: {
+        mode: "cloud-sync",
+        remote_room: {
+          enabled: true,
+          status: "failed",
+          error: "room sync conflict",
+        },
+      },
+      plan: {
+        exportedIds: [],
+        importedIds: [],
+        matchedIds: [],
+        conflicts: [
+          {
+            id: "room-conflict-1",
+            reason: "content-mismatch",
+            local: {
+              id: "room-conflict-1",
+              project_id: "project-1",
+              sender_kind: "user",
+              sender_id: "local-user",
+              sender_user_id: "local-user",
+              mentions: [],
+              text: "local text",
+              at: 1_700_000_000,
+              contentHash: "local-hash",
+            },
+            remote: {
+              id: "room-conflict-1",
+              project_id: "project-1",
+              sender_kind: "user",
+              sender_id: "remote-user",
+              sender_user_id: "remote-user",
+              mentions: [],
+              text: "remote text",
+              at: 1_700_000_001,
+              contentHash: "remote-hash",
+            },
+          },
+        ],
+        resolvedConflictIds: [],
+      },
+    };
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      if (init?.method === "POST") {
+        return new Response(JSON.stringify(conflictResponse), { status: 409, headers: { "content-type": "application/json" } });
+      }
+      return new Response(JSON.stringify({
+        sync: {
+          mode: "cloud-sync",
+          remote_room: { enabled: true, status: "pending" },
+        },
+        messages: [],
+      }), { headers: { "content-type": "application/json" } });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { result } = renderHook(() => useProjectRoom("project-1"));
+
+    await waitFor(() => expect(result.current.sync?.remote_room.status).toBe("pending"));
+    await act(async () => {
+      await result.current.syncRoom();
+    });
+
+    await waitFor(() => expect(result.current.sync?.remote_room.status).toBe("failed"));
+    expect(result.current.error).toBe("room sync conflict");
+    expect(result.current.syncPlan?.conflicts).toEqual([
+      expect.objectContaining({
+        id: "room-conflict-1",
+        local: expect.objectContaining({ contentHash: "local-hash" }),
+        remote: expect.objectContaining({ contentHash: "remote-hash" }),
+      }),
+    ]);
+  });
+
   it("adds the returned local room message after send when no live echo is available", async () => {
     const fetchMock = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
       if (init?.method === "POST") {

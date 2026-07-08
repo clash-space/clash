@@ -33,7 +33,7 @@
 
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
-import { CaretLeft, CaretRight, ArrowClockwise, Lightning } from '@phosphor-icons/react';
+import { CaretLeft, CaretRight, ArrowClockwise, CloudArrowUp, Lightning } from '@phosphor-icons/react';
 import { Link, useNavigate } from 'react-router';
 import betterAuthClient from '@clash/web-ui/lib/betterAuthClient';
 import { useBillingBalance } from '@clash/web-ui/hooks/useBillingBalance';
@@ -408,6 +408,12 @@ export function GroupChatPanel({
     ? invitedAgent.find((c) => c.id === activeTab)?.display_name ?? 'Agent'
     : 'Room';
   const syncIndicator = roomSyncIndicator(room.sync);
+  const roomSyncConflicts = room.syncPlan?.conflicts ?? [];
+  const roomSyncConflictCount = roomSyncConflicts.length;
+  const roomSyncConflictRecoveryHint =
+    roomSyncConflictCount > 0
+      ? `${roomSyncConflictCount} room conflict${roomSyncConflictCount === 1 ? '' : 's'} needs review. Hashes come from clash room sync --json; apply an explicit recovery with clash room resolve-conflict after comparing both sides.`
+      : '';
 
   return (
     <TabProvider
@@ -500,6 +506,15 @@ export function GroupChatPanel({
               icon={<ArrowClockwise className="w-4 h-4" weight="bold" />}
               size="lg"
               onClick={() => void room.refetch()}
+              className="rounded-matrix bg-warm-muted text-stone-700 hover:bg-warm-hover hover:text-brand dark:text-stone-300 focus-visible:ring-brand/60 focus-visible:ring-offset-1"
+            />
+          </Tooltip>
+          <Tooltip label="Sync room">
+            <IconButton
+              label="Sync room"
+              icon={<CloudArrowUp className="w-4 h-4" weight="bold" />}
+              size="lg"
+              onClick={() => void room.syncRoom()}
               className="rounded-matrix bg-warm-muted text-stone-700 hover:bg-warm-hover hover:text-brand dark:text-stone-300 focus-visible:ring-brand/60 focus-visible:ring-offset-1"
             />
           </Tooltip>
@@ -622,6 +637,19 @@ export function GroupChatPanel({
                 <span>{syncIndicator.label}</span>
               </div>
             </Tooltip>
+          </div>
+        )}
+        {activeTab === ROOM_TAB && roomSyncConflictCount > 0 && (
+          <div
+            className="mx-5 mb-2 rounded-matrix border border-red-200/80 bg-red-50/80 px-3 py-2 text-xs text-red-800 shadow-sm dark:border-red-900/60 dark:bg-red-950/30 dark:text-red-200"
+            aria-label={roomSyncConflictRecoveryHint}
+          >
+            <div className="flex items-center justify-between gap-3">
+              <span className="font-semibold">Room sync conflict</span>
+              <span className="tabular-nums">
+                {roomSyncConflictCount} conflict{roomSyncConflictCount === 1 ? '' : 's'}
+              </span>
+            </div>
           </div>
         )}
 

@@ -46,11 +46,32 @@ export interface RoomSyncMeta {
   };
 }
 
+export interface RoomConflictMessage extends RoomMessageEvent {
+  project_id: string;
+  contentHash: string;
+}
+
+export interface RoomSyncPlan {
+  exportedIds: string[];
+  importedIds: string[];
+  matchedIds: string[];
+  conflicts: Array<{
+    id: string;
+    reason: string;
+    local: RoomConflictMessage;
+    remote: RoomConflictMessage;
+  }>;
+  resolvedConflictIds?: string[];
+}
+
 export interface UseProjectRoomReturn {
   messages: RoomMessageEvent[];
   loading: boolean;
   error: string | null;
   sync: RoomSyncMeta | null;
+  syncPlan: RoomSyncPlan | null;
+  /** Explicitly mirror local/remote room messages and retain any conflict plan. */
+  syncRoom: () => Promise<void>;
   /** POST a user-typed message. mentions encodes @-targets. */
   send: (text: string, mentions?: RoomMention[]) => Promise<void>;
   /** Forward a server-pushed room.message into the local log. */
@@ -64,6 +85,7 @@ export function useProjectRoom(projectId: string | null): UseProjectRoomReturn {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [sync, setSync] = useState<RoomSyncMeta | null>(null);
+  const [syncPlan, setSyncPlan] = useState<RoomSyncPlan | null>(null);
   const seenIds = useRef<Set<string>>(new Set());
 
   const append = useCallback((batch: RoomMessageEvent[]) => {
@@ -90,12 +112,18 @@ export function useProjectRoom(projectId: string | null): UseProjectRoomReturn {
       const res = await fetch(runtimeApiUrl(`${ROOM_BASE}/${projectId}/room/messages`), {
         credentials: 'same-origin',
       });
+      const json = (await res.json().catch(() => ({}))) as {
+        error?: string;
+        messages?: RoomMessageEvent[];
+        sync?: RoomSyncMeta;
+        plan?: RoomSyncPlan;
+      };
+      setSync(json.sync ?? null);
+      setSyncPlan(json.plan ?? null);
       if (!res.ok) {
-        setError(`fetch failed: ${res.status}`);
+        setError(json.error ?? `fetch failed: ${res.status}`);
         return;
       }
-      const json = (await res.json()) as { messages: RoomMessageEvent[]; sync?: RoomSyncMeta };
-      setSync(json.sync ?? null);
       // Normalize: API returns plain objects; tag them with the
       // discriminator so isSidebandMessage-style consumers don't trip.
       const tagged = (json.messages ?? []).map((m) => ({ ...m, type: 'room.message' as const }));
@@ -113,6 +141,7 @@ export function useProjectRoom(projectId: string | null): UseProjectRoomReturn {
     seenIds.current = new Set();
     setMessages([]);
     setSync(null);
+    setSyncPlan(null);
     if (projectId) void refetch();
   }, [projectId, refetch]);
 
@@ -126,14 +155,15 @@ export function useProjectRoom(projectId: string | null): UseProjectRoomReturn {
         headers: { 'content-type': 'application/json' },
         body,
       });
-      if (!res.ok) {
-        setError(`send failed: ${res.status}`);
-        return;
-      }
       const json = (await res.json().catch(() => null)) as
-        | (Partial<RoomMessageEvent> & { type?: string; sync?: RoomSyncMeta })
+        | (Partial<RoomMessageEvent> & { type?: string; error?: string; sync?: RoomSyncMeta; plan?: RoomSyncPlan })
         | null;
       if (json?.sync) setSync(json.sync);
+      if (json?.plan) setSyncPlan(json.plan);
+      if (!res.ok) {
+        setError(json?.error ?? `send failed: ${res.status}`);
+        return;
+      }
       if (
         json &&
         (json?.type === undefined || json.type === 'room.message') &&
@@ -156,9 +186,32 @@ export function useProjectRoom(projectId: string | null): UseProjectRoomReturn {
     }
   }, [projectId, append]);
 
+  const syncRoom = useCallback(async () => {
+    if (!projectId) return;
+    setError(null);
+    try {
+      const res = await fetch(runtimeApiUrl(`${ROOM_BASE}/${projectId}/room/sync`), {
+        method: 'POST',
+        credentials: 'same-origin',
+      });
+      const json = (await res.json().catch(() => ({}))) as {
+        error?: string;
+        sync?: RoomSyncMeta;
+        plan?: RoomSyncPlan;
+      };
+      setSync(json.sync ?? null);
+      setSyncPlan(json.plan ?? null);
+      if (!res.ok) {
+        setError(json.error ?? `sync failed: ${res.status}`);
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
+  }, [projectId]);
+
   const setLiveMessage = useCallback((msg: RoomMessageEvent) => {
     append([msg]);
   }, [append]);
 
-  return { messages, loading, error, sync, send, setLiveMessage, refetch };
+  return { messages, loading, error, sync, syncPlan, syncRoom, send, setLiveMessage, refetch };
 }

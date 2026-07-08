@@ -126,6 +126,15 @@ describe("GroupChatPanel primitives", () => {
     expect(panelSource).toContain("Enable sync to mirror this room to cloud");
   });
 
+  it("surfaces room sync conflict recovery hints instead of a generic failed indicator only", () => {
+    const panelSource = readSource("packages/web-ui/src/components/GroupChatPanel.tsx");
+
+    expect(panelSource).toContain("room.syncPlan?.conflicts");
+    expect(panelSource).toContain("Room sync conflict");
+    expect(panelSource).toContain("clash room sync --json");
+    expect(panelSource).toContain("clash room resolve-conflict");
+  });
+
   it("uses a mature gesture primitive for panel resizing instead of document mouse listeners", () => {
     const panelSource = readSource("packages/web-ui/src/components/GroupChatPanel.tsx");
 
