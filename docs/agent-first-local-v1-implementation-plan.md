@@ -1195,6 +1195,18 @@ Implementation:
   storage.
 - Ensure projection/draft commands never expose credential-bearing files.
 
+Current status:
+
+- CLI `config.json` is still file-backed when `clash auth login` is used, but
+  `saveConfig` writes it with owner-only permissions and `clash auth status`
+  prints only a redacted token preview.
+- Local provider credentials and OAuth access/refresh/user/device codes are
+  encrypted before SQLite persistence; public provider/OAuth DTOs expose
+  configured credential names, status, receipt-bearing read tokens, and public
+  timestamps, not raw secret values.
+- Keychain-backed CLI API-key storage and a broader projection secret scanner
+  remain future hardening.
+
 Acceptance:
 
 - CLI token file, if present, is not world/group readable.

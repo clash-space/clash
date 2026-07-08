@@ -2,6 +2,16 @@ import { Command } from "commander";
 import { createServer } from "node:http";
 import { configFilePath, saveConfig, loadConfig, getApiKey, getServerUrl } from "../lib/config";
 
+export function redactApiKeyForDisplay(apiKey: string): string {
+  const token = apiKey.trim();
+  if (!token) return "[redacted]";
+  const prefix = token.startsWith("clsh_")
+    ? "clsh_"
+    : token.slice(0, Math.min(4, token.length));
+  const suffix = token.length >= 12 ? token.slice(-4) : "";
+  return suffix ? `${prefix}...${suffix}` : `${prefix}...`;
+}
+
 export const authCommand = new Command("auth")
   .description(`Manage authentication
 
@@ -110,7 +120,7 @@ authCommand
       process.exit(1);
     }
 
-    console.log(`API key: ${apiKey.slice(0, 13)}...`);
+    console.log(`API key: ${redactApiKeyForDisplay(apiKey)}`);
     console.log(`Server:  ${serverUrl}`);
 
     try {
