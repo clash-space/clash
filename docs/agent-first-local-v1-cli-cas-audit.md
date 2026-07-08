@@ -239,13 +239,14 @@ Remaining guardrails:
   legacy project create/update/delete, asset create/ref-delete/cover-update, and
   session create/delete responses include accepted/rejected mutation records.
   Accepted v1 project create/delete, accepted legacy project create/update/delete,
-  and accepted project restore/purge write first-pass sanitized local audit
-  records readable through
+  accepted project restore/purge, and accepted session create/delete write
+  first-pass sanitized local audit records readable through
   `clash audit mutations --operation project_create --entity <projectId> --json`,
   `clash audit mutations --operation project_update --entity <projectId> --json`,
   `clash audit mutations --operation project_delete --entity <projectId> --json`,
   `clash audit mutations --operation project_restore --entity <projectId> --json`,
-  or `clash audit mutations --operation project_purge --entity <projectId> --json`
+  `clash audit mutations --operation project_purge --entity <projectId> --json`,
+  or `clash audit mutations --operation session_create --entity <threadId> --json`
   without exposing receipt-bearing read tokens or raw SQLite.
   Local room message POST responses also include accepted/rejected mutation
   records while keeping `sync.remote_room.enabled=false` until remote sync is
@@ -366,7 +367,7 @@ Required behavior:
 
 - Add admin/debug commands for explicit low-level patching.
 - Extend first-pass local mutation audit beyond project create/update/delete/restore/purge,
-  session delete, provider account delete, provider OAuth delete, asset-ref
+  session create/delete, provider account delete, provider OAuth delete, asset-ref
   delete, asset create, asset import, custom action upload, asset cover update, asset reference refresh, asset GC delete, local-api canvas node update/delete, local-api canvas batch delete, and local-api canvas edge delete to the remaining
   force/destructive mutation surfaces.
 - Broaden direct canvas read-token fixtures beyond the live local-api node/batch/edge

@@ -950,7 +950,7 @@ describe("local API app", () => {
 
     const created = await app.request("/api/v1/sessions", {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: { "content-type": "application/json", "x-clash-client-type": "agent" },
       body: JSON.stringify({ projectId, title: "Editable session" }),
     });
     expect(created.status).toBe(200);
@@ -963,6 +963,23 @@ describe("local API app", () => {
       forced: false,
       accepted: true,
     });
+    const createAudit = await app.request(`/api/v1/mutation-audit?operation=session_create&entityId=${encodeURIComponent(createdJson.threadId)}`);
+    expect(createAudit.status).toBe(200);
+    const createAuditJson = await createAudit.json() as { records: Array<any> };
+    expect(createAuditJson.records).toHaveLength(1);
+    expect(createAuditJson.records[0]).toMatchObject({
+      operation: "session_create",
+      entity: { kind: "session", id: createdJson.threadId },
+      actorClientType: "agent",
+      accepted: true,
+      forced: false,
+      reason: "session create",
+      resultEntityId: createdJson.threadId,
+    });
+    expect(JSON.stringify(createAuditJson.records[0].mutation ?? {})).not.toContain("receipt");
+    expect(createAuditJson.records[0].mutation.expectedReadToken).toBeUndefined();
+    expect(createAuditJson.records[0].mutation.beforeReadToken).toBeUndefined();
+    expect(createAuditJson.records[0].mutation.afterReadToken).toBeUndefined();
 
     const deletedProject = await app.request(`/api/v1/projects/${encodeURIComponent(projectId)}`, {
       method: "DELETE",

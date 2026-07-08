@@ -2663,6 +2663,7 @@ async function main() {
   );
   const sessionResponse = await request("/api/v1/sessions", {
     method: "POST",
+    headers: { "x-clash-client-type": "agent" },
     body: JSON.stringify({ projectId: sessionProject.id, title: "Receipt guarded session" }),
   });
   const sessionCreated = await parseJsonResponse(sessionResponse);
@@ -2670,6 +2671,27 @@ async function main() {
     "session create accepted",
     sessionResponse.status === 200 && typeof sessionCreated.threadId === "string",
     `status=${sessionResponse.status} threadId=${sessionCreated.threadId ?? ""}`,
+    { mutation: sessionCreated.mutation },
+  );
+  const sessionCreateAuditResponse = await request(`/api/v1/mutation-audit?operation=session_create&entityId=${encodeURIComponent(sessionCreated.threadId)}`);
+  const sessionCreateAudit = await parseJsonResponse(sessionCreateAuditResponse);
+  const sessionCreateAuditRecord = sessionCreateAudit.records?.[0];
+  recordCheck(
+    "session create writes sanitized local mutation audit evidence",
+    sessionResponse.status === 200 &&
+      sessionCreated.mutation?.accepted === true &&
+      sessionCreateAuditResponse.status === 200 &&
+      sessionCreateAudit.records?.length === 1 &&
+      sessionCreateAuditRecord.operation === "session_create" &&
+      sessionCreateAuditRecord.entity?.id === sessionCreated.threadId &&
+      sessionCreateAuditRecord.accepted === true &&
+      sessionCreateAuditRecord.actorClientType === "agent" &&
+      sessionCreateAuditRecord.reason === "session create" &&
+      !JSON.stringify(sessionCreateAuditRecord.mutation ?? {}).includes("receipt") &&
+      sessionCreateAuditRecord.mutation?.expectedReadToken == null &&
+      sessionCreateAuditRecord.mutation?.beforeReadToken == null &&
+      sessionCreateAuditRecord.mutation?.afterReadToken == null,
+    JSON.stringify({ sessionCreated, sessionCreateAudit }),
     { mutation: sessionCreated.mutation },
   );
   const sessionsResponse = await request(`/api/v1/sessions?projectId=${encodeURIComponent(sessionProject.id)}`);
@@ -3053,6 +3075,7 @@ async function main() {
       projectPurgeForceAccepted: checks.some((check) => check.name === "project purge with deleted-project receipt and force is accepted" && check.status === "pass"),
       projectPurgeRecoveryPointRemoved: checks.some((check) => check.name === "project purge removes deleted recovery point" && check.status === "pass"),
       projectPurgeAuditRecorded: checks.some((check) => check.name === "project purge writes sanitized local mutation audit evidence" && check.status === "pass"),
+      sessionCreateAuditRecorded: checks.some((check) => check.name === "session create writes sanitized local mutation audit evidence" && check.status === "pass"),
       syncConfigGetReceiptReturned: checks.some((check) => check.name === "sync config get returns receipt read token" && check.status === "pass"),
       syncConfigMissingReadRejected: checks.some((check) => check.name === "sync config update without prior read is rejected" && check.status === "pass"),
       syncConfigBareCasRejected: checks.some((check) => check.name === "sync config update with bare CAS token is rejected" && check.status === "pass"),

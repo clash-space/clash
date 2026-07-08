@@ -6401,7 +6401,8 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
   });
 
   app.post("/api/v1/sessions", async (c) => {
-    const body = (await c.req.json().catch(() => ({}))) as { projectId?: string; title?: string };
+    const body = (await c.req.json().catch(() => ({}))) as { projectId?: string; title?: string } & ProjectWriteBody;
+    const preconditions = requestProjectWritePreconditions(c, body);
     if (!body.projectId) {
       return c.json({
         error: "Missing projectId",
@@ -6441,16 +6442,22 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
         }, created.error),
       }, 409);
     }
+    const mutation = hostMutationSucceeded({
+      operation: "session_create",
+      entity: { kind: "session", id: created.session.id },
+      forced: false,
+    }, {
+      resultEntityId: created.session.id,
+    });
+    await db.appendMutationAudit(mutationAuditRecord({
+      mutation,
+      actorClientType: preconditions.actorClientType,
+      reason: "session create",
+    }));
     return c.json({
       threadId: created.session.id,
       title: created.session.title,
-      mutation: hostMutationSucceeded({
-        operation: "session_create",
-        entity: { kind: "session", id: created.session.id },
-        forced: false,
-      }, {
-        resultEntityId: created.session.id,
-      }),
+      mutation,
     });
   });
 
