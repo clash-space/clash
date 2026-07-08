@@ -238,9 +238,11 @@ Remaining guardrails:
   `--force` as the explicit admin purge override. v1 project create/delete/restore/purge,
   legacy project create/update/delete, asset create/ref-delete/cover-update, and
   session create/delete responses include accepted/rejected mutation records.
-  Accepted v1/legacy project create/delete plus accepted project restore/purge writes
-  first-pass sanitized local audit records readable through
+  Accepted v1 project create/delete, accepted legacy project create/update/delete,
+  and accepted project restore/purge write first-pass sanitized local audit
+  records readable through
   `clash audit mutations --operation project_create --entity <projectId> --json`,
+  `clash audit mutations --operation project_update --entity <projectId> --json`,
   `clash audit mutations --operation project_delete --entity <projectId> --json`,
   `clash audit mutations --operation project_restore --entity <projectId> --json`,
   or `clash audit mutations --operation project_purge --entity <projectId> --json`
@@ -363,7 +365,7 @@ Required behavior:
 ### P2
 
 - Add admin/debug commands for explicit low-level patching.
-- Extend first-pass local mutation audit beyond project create/delete/restore/purge,
+- Extend first-pass local mutation audit beyond project create/update/delete/restore/purge,
   session delete, provider account delete, provider OAuth delete, asset-ref
   delete, asset create, asset import, custom action upload, asset cover update, asset reference refresh, asset GC delete, local-api canvas node update/delete, local-api canvas batch delete, and local-api canvas edge delete to the remaining
   force/destructive mutation surfaces.

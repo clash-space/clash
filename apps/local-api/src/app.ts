@@ -6300,6 +6300,14 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
         },
       };
     });
+    const mutation = (result.body as { mutation?: HostMutationRecord }).mutation;
+    if (mutation?.accepted === true) {
+      await db.appendMutationAudit(mutationAuditRecord({
+        mutation,
+        actorClientType: preconditions.actorClientType,
+        reason: "legacy project update",
+      }));
+    }
     return c.json(result.body, result.status);
   });
 

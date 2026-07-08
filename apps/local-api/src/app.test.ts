@@ -8479,6 +8479,36 @@ describe("local API app", () => {
       forced: false,
       accepted: true,
     });
+    const updateAudit = await app.request(`/api/v1/mutation-audit?operation=project_update&entityId=${encodeURIComponent(createdJson.id)}`);
+    expect(updateAudit.status).toBe(200);
+    const updateAuditJson = await updateAudit.json() as { records: Array<any> };
+    expect(updateAuditJson.records).toHaveLength(2);
+    const agentUpdateAuditRecord = updateAuditJson.records.find((record) => record.actorClientType === "agent");
+    const humanUpdateAuditRecord = updateAuditJson.records.find((record) => record.actorClientType == null);
+    expect(humanUpdateAuditRecord).toMatchObject({
+      operation: "project_update",
+      entity: { kind: "project", id: createdJson.id },
+      actorClientType: null,
+      accepted: true,
+      forced: false,
+      reason: "legacy project update",
+      resultEntityId: createdJson.id,
+    });
+    expect(agentUpdateAuditRecord).toMatchObject({
+      operation: "project_update",
+      entity: { kind: "project", id: createdJson.id },
+      actorClientType: "agent",
+      accepted: true,
+      forced: false,
+      reason: "legacy project update",
+      resultEntityId: createdJson.id,
+    });
+    for (const record of updateAuditJson.records) {
+      expect(JSON.stringify(record.mutation ?? {})).not.toContain("receipt");
+      expect(record.mutation.expectedReadToken).toBeUndefined();
+      expect(record.mutation.beforeReadToken).toBeUndefined();
+      expect(record.mutation.afterReadToken).toBeUndefined();
+    }
 
     const missingDelete = await app.request(`/api/v1/projects/${createdJson.id}`, {
       method: "DELETE",

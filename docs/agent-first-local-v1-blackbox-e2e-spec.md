@@ -666,13 +666,13 @@ Result:
 Latest verified asset receipt CAS smoke:
 
 ```text
-.tmp/agent-first-asset-receipts/2026-07-08T13-19-18-309Z/agent-first-asset-receipt-report.json
+.tmp/agent-first-asset-receipts/2026-07-08T13-28-20-497Z/agent-first-asset-receipt-report.json
 ```
 
 Result:
 
 - `status: pass`,
-- 158 checks passed through `npm --prefix apps/desktop run test:e2e:asset-receipts`,
+- 159 checks passed through `npm --prefix apps/desktop run test:e2e:asset-receipts`,
 - derived agent reads stayed read-only, provider model tests and local audio
   transcription actions recorded host mutation envelopes, and local sync, audio,
   harness, custom agent-server, provider account, provider OAuth, asset
@@ -683,7 +683,7 @@ Result:
   storage keys before metadata persistence; accepted asset cover updates write
   sanitized local mutation audit evidence; the same run also proved the restore
   path's sanitized audit evidence, v1/legacy project create audit evidence,
-  legacy project delete audit evidence,
+  legacy project update/delete audit evidence,
   project purge's default delayed purge window,
   explicit force override, deleted recovery point removal,
   canonical project replica deletion, and sanitized local mutation audit
@@ -905,9 +905,9 @@ Current status:
   downstream text content patch rejection, local-api canvas batch delete
   plan/apply receipt enforcement, external orphan rejection, local-api canvas edge list/delete
   receipt enforcement, and sanitized audit evidence for accepted v1/legacy
-  project create, asset create, asset import, custom action checkpoint upload,
-  asset cover updates, asset reference refresh, asset GC, session deletion,
-  node update/delete, batch deletion, and edge deletion;
+  project create, legacy project update, asset create, asset import, custom
+  action checkpoint upload, asset cover updates, asset reference refresh, asset
+  GC, session deletion, node update/delete, batch deletion, and edge deletion;
   broader live UI asset/session/settings editing still needs product fixture
   coverage.
 - `clash text pull/apply/replace` exists; Suite D still needs real project
